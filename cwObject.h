@@ -1,0 +1,165 @@
+#ifndef cwObject_H
+#define cwObject_H
+
+
+namespace cw
+{
+  
+  enum
+  {
+   kInvalidTId = 0x00000000,
+   kNullTId    = 0x00000001,
+   kErrorTId   = 0x00000002,
+   kCharTId    = 0x00000004,
+   kInt8TId    = 0x00000008,
+   kUInt8TId   = 0x00000010,
+   kInt16TId   = 0x00000020,
+   kUInt16TId  = 0x00000040,
+   kInt32TId   = 0x00000080,
+   kUInt32TId  = 0x00000100,
+   kInt64TId   = 0x00000200,
+   kUInt64TId  = 0x00000400,
+   kFloatTId   = 0x00000800,
+   kDoubleTId  = 0x00001000,
+   kBoolTId    = 0x00002000,
+   kStringTId  = 0x00004000,
+   kVectTId    = 0x00008000,
+   kPairTId    = 0x00010000,
+   kListTId    = 0x00020000,
+   kDictTId    = 0x00040000,
+   kRootTId    = 0x00080000,
+
+   kHexFl      = 0x10000000,
+   kIdentFl    = 0x20000000
+   
+  };
+
+  typedef unsigned objTypeId_t;
+
+
+  
+  enum
+  {
+   kValueContainerFl = 0x01,  // root,pair, or list are the only legal value containers
+   kContainerFl = 0x02
+  };
+
+  struct object_str;
+  struct vect_str;
+
+  typedef struct print_ctx_str
+  {
+    unsigned indent = 0;
+    bool listOnOneLineFl = true;
+  } print_ctx_t;
+ 
+  typedef struct type_str
+  {
+    objTypeId_t id;
+    const char* label;
+    unsigned    flags;
+
+    void (*free)( struct object_str* o );
+    rc_t (*value)( const struct object_str* o, unsigned tid, void* dst );
+    void (*print)( const struct object_str* o, print_ctx_t& c );
+  } objType_t;
+
+
+  typedef struct object_str
+  {
+    objType_t*         type    = nullptr;
+    struct object_str* parent  = nullptr;
+    struct object_str* sibling = nullptr;
+    union
+    {
+      char             c;
+      
+      std::int8_t      i8;
+      std::uint8_t     u8;
+      std::int16_t     i16;
+      std::uint16_t    u16;
+      std::int32_t     i32;
+      std::uint32_t    u32;
+      std::int64_t     i64;
+      std::uint64_t    u64;
+
+      bool             b;
+        
+      float            f;
+      double           d;
+      
+      char*            str;
+      struct vect_str* vect;
+      
+      struct object_str* children; // 'children' is valid when is_container()==true
+    } u;
+
+
+    void free();
+    unsigned child_count() const;
+
+    // Value containers are parents of leaf nodes. (A dictionary is not a value container because it's children are pairs with are not leaf nodes.)
+    inline bool is_value_container() const { return type != nullptr && cwIsFlag(type->flags,kValueContainerFl); }
+
+    // Containers have children and use the object.u.children pointer.
+    inline bool is_container()       const { return type != nullptr && cwIsFlag(type->flags,kContainerFl); }
+    inline bool is_pair()            const { return type != nullptr && type->id == kPairTId; }
+    inline bool is_dict()            const { return type != nullptr && type->id == kDictTId; }
+    inline bool is_list()            const { return type != nullptr && type->id == kListTId; }
+
+    rc_t value( void* dst, unsigned dstTypeId );
+    rc_t value( char& v ) const;
+    rc_t value( int8_t&  v ) const;
+    rc_t value( uint8_t& v ) const;
+    rc_t value( int16_t&  v ) const;
+    rc_t value( uint16_t& v ) const;
+    rc_t value( int32_t&  v ) const;
+    rc_t value( uint32_t& v ) const;
+    rc_t value( int64_t&  v ) const;
+    rc_t value( uint64_t& v ) const;
+    rc_t value( float&  v ) const;
+    rc_t value( double& v ) const;
+    rc_t value( char*& v ) const;
+
+    const char* pair_label() const;
+    const struct object_str* pair_value() const;
+    const struct object_str* find( const char* label ) const;
+
+    template< typename T >
+      rc_t get( const char* label, T& v  ) const
+    {
+      const struct object_str* o;
+      if((o = find(label)) == NULL )
+        return cwLogError(kInvalidIdRC,"The pair label '%s' could not be found.",cwStringNullGuard(label));
+      return o->value(v);
+    }
+    
+    rc_t getv() const { return kOkRC; } 
+    
+    template< typename T0, typename T1, typename... ARGS >
+      rc_t getv( T0 label, T1* valRef, ARGS ...args ) const
+    {
+      rc_t rc;
+
+      if((rc = get(label,*valRef)) == kOkRC )
+        rc = getv(args...);
+      return rc;
+    }
+   
+    
+    void print(const print_ctx_t* c=NULL) const;
+    
+  } object_t;
+
+
+
+  unsigned object_child_count( const object_t*  o );
+
+
+  rc_t objectFromString( const char* s, object_t*& objRef );
+  rc_t objectFromFile( const char* fn, object_t*& objRef );
+  void objectPrintTypes( object_t* o );
+
+}
+
+#endif
