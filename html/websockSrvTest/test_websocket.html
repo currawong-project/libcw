@@ -1,0 +1,96 @@
+ <meta charset="UTF-8"> 
+<html>
+  <body>
+    
+    <div id="titleDivId">Websock Test App</div><br>
+    Incoming text messages from the server.
+    <br>
+    <br>
+    <textarea id=r readonly cols=40 rows=10></textarea><br>
+    <br>
+    
+    Outgoing text message to the server.
+    
+    <input type="text" id="msgTextId" cols=40 rows=1>
+    <button id="sendBtnId", onclick="sendmsg();">Send</button>
+    <br>
+    <button id="quitBtnId", onclick="sendquit();">Quit</button>
+  </body>
+  
+  
+  <script>
+
+    function new_ws(urlpath, protocol)
+    {
+      if (typeof MozWebSocket != "undefined")
+	return new MozWebSocket(urlpath, protocol);
+
+      return new WebSocket(urlpath, protocol);
+    }
+
+    subscriber_ws = new_ws("ws://localhost:7681/", "websocksrv_test_protocol");
+    try {
+      subscriber_ws.onopen = function()
+      {
+	document.getElementById("quitBtnId").disabled = 0;
+	document.getElementById("sendBtnId").disabled = 0;
+      }
+
+      subscriber_ws.onmessage = function got_packet(msg)
+      {
+	document.getElementById("r").value     = document.getElementById("r").value + msg.data + "\n";
+	document.getElementById("r").scrollTop = document.getElementById("r").scrollHeight;
+      } 
+
+      subscriber_ws.onclose = function()
+      {
+	document.getElementById("quitBtnId").disabled = 1;
+	document.getElementById("sendBtnId").disabled = 1;	
+      }
+      
+    } catch(exception)
+    {
+      alert('<p>Error' + exception);  
+    }
+
+    publisher_ws = new_ws("ws://localhost:7681//publisher", "websocksrv_test_protocol");
+    try {
+      
+      publisher_ws.onopen =    function()
+      {
+	document.getElementById("msgTextId").disabled = 0;
+	document.getElementById("titleDivId").style.color = '#00ff00'
+      }
+      
+      publisher_ws.onmessage = function got_packet(msg)
+      {
+	console.log("rcv:"+msg.data)
+      }
+      
+      publisher_ws.onclose =   function()
+      {
+	document.getElementById("msgTextId").disabled = 1;
+	document.getElementById("titleDivId").style.color = '#ff0000'
+      }
+      
+    } catch(exception)
+    {
+      alert('<p>Error' + exception);  
+    }
+
+    function sendmsg()
+    {
+      var val = document.getElementById("msgTextId").value
+      publisher_ws.send(val);
+      document.getElementById("msgTextId").value = "";
+    }
+
+    function sendquit()
+    {
+      publisher_ws.send("quit");
+    }
+
+    </script>
+  
+</html>
+

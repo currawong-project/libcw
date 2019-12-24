@@ -3,11 +3,21 @@
 #include "cwCommonImpl.h"
 #include "cwMem.h"
 #include "cwFileSys.h"
+#include "cwTextBuf.h"
 #include "cwLex.h"
 #include "cwNumericConvert.h"
 #include "cwObject.h"
 #include "cwThread.h"
 #include "cwText.h"
+#include "cwWebSock.h"
+#include "cwWebSockSvr.h"
+#include "cwSerialPort.h"
+#include "cwSerialPortSrv.h"
+#include "cwMidi.h"
+#include "cwTime.h"
+#include "cwMidiPort.h"
+#include "cwAudioPort.h"
+#include "cwAudioBuf.h"
 
 #include <iostream>
 
@@ -17,12 +27,12 @@ void print()
   printf("\n");
 }
 
-template<typename T0, typename T1, typename... ARGS>
-  void print(T0 t0, T1 t1, ARGS ...args)
+template<typename T0, typename T1, typename ...ARGS>
+  void print(T0 t0, T1 t1, ARGS&&... args)
 {
   static const unsigned short int size = sizeof...(ARGS);
   std::cout << t0 << ":" << t1 << " (" << size << "), ";
-  print(args...);
+  print(std::forward<ARGS>(args)...);
 }
 
 void get(int)
@@ -31,18 +41,31 @@ void get(int)
 }
 
 template<typename T0, typename T1, typename... ARGS>
-  void get(int n, T0 t0, T1* t1, ARGS ...args)
+  void get(int n, T0 t0, T1& t1, ARGS&&... args)
 {
   std::cout << t0 << ":" " (" << n << "), ";
-  *t1 = n;
-  get(n+1,args...);
+  t1 = n;
+  get(n+1,std::forward<ARGS>(args)...);
 }
 
 
 using namespace std;
 
 
-void fileSysTest( cw::object_t* cfg, int argc, char* argv[] )
+void variadicTplTest( cw::object_t* cfg, int argc, const char* argv[] )
+{
+  print("a", 1, "b", 3.14, "c",5L);
+  
+  int v0=0,v1=0,v2=0;
+  get(0, "a", v0, "b", v1, "c", v2);
+  printf("get: %i %i %i",v0,v1,v2);
+  
+  printf("\n");
+}
+
+
+
+void fileSysTest( cw::object_t* cfg, int argc, const char* argv[] )
 {
   cw::fileSysPathPart_t* pp = cw::fileSysPathParts(__FILE__);
   
@@ -59,7 +82,7 @@ void fileSysTest( cw::object_t* cfg, int argc, char* argv[] )
   
 }
 
-void numbCvtTest( cw::object_t* cfg, int argc, char* argv[] )
+void numbCvtTest( cw::object_t* cfg, int argc, const char* argv[] )
 {
   int8_t x0 = 3;
   int x1 = 127;
@@ -76,7 +99,7 @@ void numbCvtTest( cw::object_t* cfg, int argc, char* argv[] )
   
 }
 
-void objectTest( cw::object_t* cfg, int argc, char* argv[] )
+void objectTest( cw::object_t* cfg, int argc, const char* argv[] )
 {
   cw::object_t* o;
   const char s [] = "{ a:1, b:2, c:[ 1.23, 4.56 ] }";
@@ -91,48 +114,62 @@ void objectTest( cw::object_t* cfg, int argc, char* argv[] )
   int a = 0;
   int b = 0;
 
-  o->getv("a",&a,"b",&b);
+  o->getv("a",a,"b",b);
   printf("G: %i %i\n",a,b);
     
   o->free();
-  
 }
 
-void threadTest( cw::object_t* cfg, int argc, char* argv[] )
+void threadTest(        cw::object_t* cfg, int argc, const char* argv[] ) { cw::threadTest(); }
+void websockSrvTest(    cw::object_t* cfg, int argc, const char* argv[] ) { cw::websockSrvTest(); }
+void serialPortSrvTest( cw::object_t* cfg, int argc, const char* argv[] ) { cw::serialPortSrvTest(); }
+void midiDeviceTest(    cw::object_t* cfg, int argc, const char* argv[] ) { cw::midi::device::test();}
+void textBufTest(       cw::object_t* cfg, int argc, const char* argv[] ) { cw::textBuf::test(); }
+void audioBufTest(      cw::object_t* cfg, int argc, const char* argv[] ) { cw::audio::buf::test(); }
+void audioPortTest(     cw::object_t* cfg, int argc, const char* argv[] )
 {
-  cw::threadTest();
+  cw::audio::device::test( false, argc, argv );
 }
 
-void variadicTplTest( cw::object_t* cfg, int argc, char* argv[] )
+void stubTest( cw::object_t* cfg, int argc, const char* argv[] )
 {
-  print("a", 1, "b", 3.14, "c",5L);
-  
-  int v0=0,v1=0,v2=0;
-  get(0, "a", &v0, "b", &v1, "c", &v2);
-  printf("%i %i %i",v0,v1,v2);
-  
-  printf("\n");
+  typedef struct v_str
+  {
+    int x = 1;
+    int y = 2;
+    void* z = nullptr;
+  } v_t;
+
+
+  v_t v;
+  printf("%i %i %p\n",v.x,v.y,v.z);
 }
 
 
-
-int main( int argc, char* argv[] )
+int main( int argc, const char* argv[] )
 {  
 
   typedef struct func_str
   {
     const char* label;
-    void (*func)(cw::object_t* cfg, int argc, char* argv[] );    
+    void (*func)(cw::object_t* cfg, int argc, const char* argv[] );    
   } func_t;
 
   // function dispatch list
   func_t modeArray[] =
   {
+   { "variadicTpl", variadicTplTest },
    { "fileSys", fileSysTest },
    { "numbCvt", numbCvtTest },
    { "object", objectTest },
    { "thread", threadTest },
-   { "variadicTpl", variadicTplTest },
+   { "websockSrv", websockSrvTest },
+   { "serialSrv", serialPortSrvTest },
+   { "midiDevice", midiDeviceTest },
+   { "textBuf", textBufTest },
+   { "audioBuf", audioBufTest },
+   { "audioPort",audioPortTest },
+   { "stub", stubTest },
    { nullptr, nullptr }
   };
 

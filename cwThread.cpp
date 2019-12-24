@@ -8,102 +8,105 @@
 
 namespace cw
 {
-
-  enum
-  {
-   kDoExitThFl  = 0x01,
-   kDoPauseThFl = 0x02,
-   kDoRunThFl   = 0x04
-  };
   
-  typedef struct thread_str
+  namespace thread
   {
-    pthread_t        pThreadH;
-    kThreadStateId_t stateId;
-    threadFunc_t     func;
-    void*            funcArg;
-    unsigned         doFlags;
-    unsigned         stateMicros;
-    unsigned         pauseMicros;
-    unsigned         sleepMicros = 15000;
-  } thread_t;
-
-#define _threadHandleToPtr(h) handleToPtr<threadH_t,thread_t>(h)
-
-  rc_t _waitForState( thread_t* p, unsigned stateId )
-  {
-    unsigned waitTimeMicroSecs = 0;
-
-    while( p->stateId != stateId && waitTimeMicroSecs < p->stateMicros )
+    enum
     {
-      sleepUs( p->sleepMicros );
-      waitTimeMicroSecs += p->sleepMicros;
+     kDoExitThFl  = 0x01,
+     kDoPauseThFl = 0x02,
+     kDoRunThFl   = 0x04
+    };
+  
+    typedef struct thread_str
+    {
+      pthread_t pThreadH;
+      stateId_t stateId;
+      cbFunc_t  func;
+      void*     funcArg;
+      unsigned  doFlags;
+      unsigned  stateMicros;
+      unsigned  pauseMicros;
+      unsigned  sleepMicros = 15000;
+    } thread_t;
+
+    inline thread_t* _handleToPtr(handle_t h) { return handleToPtr<handle_t,thread_t>(h); }
+
+    rc_t _waitForState( thread_t* p, unsigned stateId )
+    {
+      unsigned waitTimeMicroSecs = 0;
+
+      while( p->stateId != stateId && waitTimeMicroSecs < p->stateMicros )
+      {
+        sleepUs( p->sleepMicros );
+        waitTimeMicroSecs += p->sleepMicros;
+      }
+
+      return p->stateId==stateId ? kOkRC :  kTimeOutRC;
     }
 
-    return p->stateId==stateId ? kOkRC :  kTimeOutRC;
-  }
-
-  void _threadCleanUpCallback(void* p)
-  {
-    ((thread_t*)p)->stateId = kExitedThId;
-  }
+    void _threadCleanUpCallback(void* p)
+    {
+      ((thread_t*)p)->stateId = kExitedThId;
+    }
   
 
-  void* _threadCallback(void* param)
-  {
-    thread_t* p = (thread_t*)param;
-
-    // set a clean up handler - this will be called when the 
-    // thread terminates unexpectedly or pthread_cleanup_pop() is called.
-    pthread_cleanup_push(_threadCleanUpCallback,p);
-
-    while( cwIsFlag(p->doFlags,kDoExitThFl) == false )
+    void* _threadCallback(void* param)
     {
+      thread_t* p = (thread_t*)param;
 
-      // if we are in the pause state
-      if( p->stateId == kPausedThId )
+      // set a clean up handler - this will be called when the 
+      // thread terminates unexpectedly or pthread_cleanup_pop() is called.
+      pthread_cleanup_push(_threadCleanUpCallback,p);
+
+      while( cwIsFlag(p->doFlags,kDoExitThFl) == false )
       {
+
+        // if we are in the pause state
+        if( p->stateId == kPausedThId )
+        {
         
-        sleepUs( p->pauseMicros );
+          sleepUs( p->pauseMicros );
 
-        // check if we have been requested to leave the pause state
-        if( cwIsFlag(p->doFlags,kDoRunThFl) )
+          // check if we have been requested to leave the pause state
+          if( cwIsFlag(p->doFlags,kDoRunThFl) )
+          {
+            p->doFlags = cwClrFlag(p->doFlags,kDoRunThFl);
+            p->stateId   = kRunningThId;
+          }
+        }
+        else
         {
-          p->doFlags = cwClrFlag(p->doFlags,kDoRunThFl);
-          p->stateId   = kRunningThId;
+          // call the user-defined function
+          if( p->func(p->funcArg)==false )
+            break;
+
+          // check if we have been requested to enter the pause state
+          if( cwIsFlag(p->doFlags,kDoPauseThFl) )
+          {
+            p->doFlags = cwClrFlag(p->doFlags,kDoPauseThFl);
+            p->stateId   = kPausedThId;        
+          }
         }
       }
-      else
-      {
-        // call the user-defined function
-        if( p->func(p->funcArg)==false )
-          break;
 
-        // check if we have been requested to enter the pause state
-        if( cwIsFlag(p->doFlags,kDoPauseThFl) )
-        {
-          p->doFlags = cwClrFlag(p->doFlags,kDoPauseThFl);
-          p->stateId   = kPausedThId;        
-        }
-      }
-    }
-
-    pthread_cleanup_pop(1);
+      pthread_cleanup_pop(1);
 	
-    pthread_exit(NULL);
+      pthread_exit(NULL);
 
-    return p;
-  }
-  
+      return p;
+    }
+  }  
 }
 
 
-cw::rc_t cw::threadCreate( threadH_t& hRef, threadFunc_t func, void* funcArg, int stateMicros, int pauseMicros )
+cw::rc_t cw::thread::create( handle_t& hRef, cbFunc_t func, void* funcArg, int stateMicros, int pauseMicros )
 {
   rc_t rc;
   int  sysRC;
-  
-  if((rc = threadDestroy(hRef)) != kOkRC )
+  pthread_attr_t attr;
+
+  if((rc = destroy(hRef)) != kOkRC )
     return rc;
 
   thread_t* p = memAllocZ<thread_t>();
@@ -113,25 +116,37 @@ cw::rc_t cw::threadCreate( threadH_t& hRef, threadFunc_t func, void* funcArg, in
   p->stateMicros = stateMicros;
   p->pauseMicros = pauseMicros;
   p->stateId     = kPausedThId;
-  
-  if((sysRC = pthread_create(&p->pThreadH,NULL, _threadCallback, (void*)p )) != 0 )
+
+  if((sysRC = pthread_attr_init(&attr)) != 0)
   {
     p->stateId = kNotInitThId;
-    rc = cwLogSysError(kOpFailRC,sysRC,"Thread create failed.");
+    rc = cwLogSysError(kOpFailRC,sysRC,"Thread attribute init failed.");
   }
+  else
+    if ((sysRC = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)) != 0)
+    {
+      p->stateId = kNotInitThId;
+      rc = cwLogSysError(kOpFailRC,sysRC,"Thread set detach attribute failed.");
+    }  
+    else      
+      if((sysRC = pthread_create(&p->pThreadH, &attr, _threadCallback, (void*)p )) != 0 )
+      {
+        p->stateId = kNotInitThId;
+        rc = cwLogSysError(kOpFailRC,sysRC,"Thread create failed.");
+      }
   
   hRef.set(p);
   return rc;
 }
   
-cw::rc_t cw::threadDestroy( threadH_t& hRef )
+cw::rc_t cw::thread::destroy( handle_t& hRef )
 {
   rc_t rc = kOkRC;
   
   if( !hRef.isValid() )
     return rc;
 
-  thread_t* p  = _threadHandleToPtr(hRef);
+  thread_t* p  = _handleToPtr(hRef);
 
   // tell the thread to exit
   p->doFlags = cwSetFlag(p->doFlags,kDoExitThFl);
@@ -140,18 +155,19 @@ cw::rc_t cw::threadDestroy( threadH_t& hRef )
   if((rc = _waitForState(p,kExitedThId)) != kOkRC )
     return  cwLogError(rc,"Thread timed out waiting for destroy.");
 
-  hRef.release();
+  memRelease(p);
+  hRef.clear();
   
   return rc;
 }
 
 
-cw::rc_t cw::threadPause( threadH_t& h, unsigned cmdFlags )
+cw::rc_t cw::thread::pause( handle_t h, unsigned cmdFlags )
 {
   rc_t      rc         = kOkRC;
-  bool      pauseFl    = cwIsFlag(cmdFlags,kThreadPauseFl);
-  bool      waitFl     = cwIsFlag(cmdFlags,kThreadWaitFl);
-  thread_t* p          = _threadHandleToPtr(h);
+  bool      pauseFl    = cwIsFlag(cmdFlags,kPauseFl);
+  bool      waitFl     = cwIsFlag(cmdFlags,kWaitFl);
+  thread_t* p          = _handleToPtr(h);
   bool      isPausedFl = p->stateId == kPausedThId;
   unsigned  waitId;
  
@@ -179,12 +195,17 @@ cw::rc_t cw::threadPause( threadH_t& h, unsigned cmdFlags )
   
 }
 
-cw::kThreadStateId_t cw::threadState( threadH_t h )
+cw::rc_t cw::thread::unpause( handle_t h )
+{  return pause( h, kWaitFl);  }
+
+cw::thread::stateId_t cw::thread::state( handle_t h )
 {
-  thread_t* p = _threadHandleToPtr(h);
+  thread_t* p = _handleToPtr(h);
   return p->stateId;
 }
 
+unsigned cw::thread::id()
+{ return static_cast<unsigned>(pthread_self()); }
 
 namespace cw
 {
@@ -198,15 +219,15 @@ namespace cw
 
 cw::rc_t cw::threadTest()
 {
-  threadH_t h;
-  unsigned  val = 0;
-  rc_t      rc;
-  char c = 0;
+  thread::handle_t h;
+  unsigned val = 0;
+  rc_t     rc;
+  char     c   = 0;
   
-  if((rc = threadCreate(h,_threadTestCb,&val)) != kOkRC )
+  if((rc = thread::create(h,_threadTestCb,&val)) != kOkRC )
     return rc;
   
-  if((rc = threadPause(h,0)) != kOkRC )
+  if((rc = thread::pause(h,0)) != kOkRC )
     goto errLabel;
 
 
@@ -225,18 +246,18 @@ cw::rc_t cw::threadTest()
         break;
 
       case 's':
-        cwLogInfo("state=%i\n",threadState(h));
+        cwLogInfo("state=%i\n",thread::state(h));
         break;
 
       case 'p':
         {
-          if( threadState(h) == kPausedThId )
-            rc = threadPause(h,kThreadWaitFl);
+          if( thread::state(h) == thread::kPausedThId )
+            rc = thread::pause(h,thread::kWaitFl);
           else
-            rc = threadPause(h,kThreadPauseFl|kThreadWaitFl);
+            rc = thread::pause(h,thread::kPauseFl|thread::kWaitFl);
 
           if( rc == kOkRC )
-            cwLogInfo("new state:%i\n", threadState(h));
+            cwLogInfo("new state:%i\n", thread::state(h));
           else
           {
             cwLogError(rc,"threadPause() test failed.");
@@ -256,7 +277,7 @@ cw::rc_t cw::threadTest()
   }
 
  errLabel:
-  rc_t rc0 = rc = threadDestroy(h);
+  rc_t rc0 = rc = thread::destroy(h);
   
   return rc == kOkRC ? rc0 : rc;
 }

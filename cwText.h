@@ -8,6 +8,7 @@ namespace cw
   
   // if both s0 and s1 are nullptr then a match is indicated
   int textCompare( const char* s0, const char* s1 );
+  int textCompare( const char* s0, const char* s1, unsigned n);
 }
 
 #endif

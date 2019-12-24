@@ -44,10 +44,6 @@ namespace cw
 
   typedef unsigned rc_t;
   
-  typedef struct handle_str
-  {
-    void* p;
-  } handle_t;
 
   template< typename T >
     struct handle
@@ -56,8 +52,8 @@ namespace cw
     T* p = nullptr;
 
     void set(T* ptr)     { this->p=ptr; }
+    void clear()         { this->p=nullptr; }
     bool isValid() const { return this->p != nullptr; }
-    void release() { memRelease(p); p=nullptr; }
   };
 
 }

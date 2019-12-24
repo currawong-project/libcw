@@ -49,8 +49,8 @@ namespace cw
 #define cwLogVDebugH(h,rc,fmt, vl) cw::logMsg( h, cw::kDebug_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, rc, fmt, vl )
 #define cwLogDebugH( h,rc,fmt,...) cw::logMsg( h, cw::kDebug_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, rc, fmt, ##__VA_ARGS__ )
 
-#define cwLogVInfoH(h,rc,fmt, vl) cw::logMsg( h, cw::kInfo_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, rc, fmt, vl )
-#define cwLogInfoH( h,rc,fmt,...) cw::logMsg( h, cw::kInfo_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, rc, fmt, ##__VA_ARGS__ )
+#define cwLogVInfoH(h,fmt, vl) cw::logMsg( h, cw::kInfo_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, cw::kOkRC, fmt, vl )
+#define cwLogInfoH( h,fmt,...) cw::logMsg( h, cw::kInfo_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, cw::kOkRC, fmt, ##__VA_ARGS__ )
 
 #define cwLogVWarningH(h,rc,fmt, vl) cw::logMsg( h, cw::kWarning_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, rc, fmt, vl )
 #define cwLogWarningH( h,rc,fmt,...) cw::logMsg( h, cw::kWarning_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, rc, fmt, ##__VA_ARGS__ )
@@ -82,11 +82,9 @@ namespace cw
 
 #endif
 
-#define cwLogVInfoRC(rc,fmt, vl)  cwLogVInfoH( cw::logGlobalHandle(), (rc), (fmt), (vl) )
-#define cwLogInfoRC( rc,fmt,...)  cwLogInfoH(  cw::logGlobalHandle(), (rc), (fmt), ##__VA_ARGS__ )
 
-#define cwLogVInfo(fmt, vl)       cwLogVInfoH( cw::logGlobalHandle(), cw::kOkRC, (fmt), (vl) )
-#define cwLogInfo( fmt,...)       cwLogInfoH(  cw::logGlobalHandle(), cw::kOkRC, (fmt), ##__VA_ARGS__ )
+#define cwLogVInfo(fmt, vl)       cwLogVInfoH( cw::logGlobalHandle(), (fmt), (vl) )
+#define cwLogInfo( fmt,...)       cwLogInfoH(  cw::logGlobalHandle(), (fmt), ##__VA_ARGS__ )
 
 #define cwLogVWarningRC(rc,fmt, vl) cwLogVWarningH( cw::logGlobalHandle(), (rc), (fmt), (vl) )
 #define cwLogWarningRC( rc,fmt,...) cwLogWarningH(  cw::logGlobalHandle(), (rc), (fmt), ##__VA_ARGS__ )

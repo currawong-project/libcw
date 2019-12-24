@@ -137,12 +137,12 @@ namespace cw
     rc_t getv() const { return kOkRC; } 
     
     template< typename T0, typename T1, typename... ARGS >
-      rc_t getv( T0 label, T1* valRef, ARGS ...args ) const
+      rc_t getv( T0 label, T1& valRef, ARGS&&... args ) const
     {
       rc_t rc;
 
-      if((rc = get(label,*valRef)) == kOkRC )
-        rc = getv(args...);
+      if((rc = get(label,valRef)) == kOkRC )
+        rc = getv(std::forward<ARGS>(args)...);
       return rc;
     }
    
@@ -152,8 +152,6 @@ namespace cw
   } object_t;
 
 
-
-  unsigned object_child_count( const object_t*  o );
 
 
   rc_t objectFromString( const char* s, object_t*& objRef );

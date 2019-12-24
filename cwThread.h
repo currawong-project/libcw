@@ -3,27 +3,35 @@
 
 namespace cw
 {
-  typedef enum
+  namespace thread
   {
-   kNotInitThId,
-   kPausedThId,
-   kRunningThId,
-   kExitedThId
-  } kThreadStateId_t;
+    typedef enum
+    {
+     kNotInitThId,
+     kPausedThId,
+     kRunningThId,
+     kExitedThId
+    } stateId_t;
   
-  typedef handle<struct thread_str> threadH_t;
+    typedef handle<struct thread_str> handle_t;
 
-  typedef bool (*threadFunc_t)( void* arg );
+    typedef bool (*cbFunc_t)( void* arg );
 
-  // stateMicros = time out duration for switching in/out of pause or in to exit
-  // pauseMicros = duration of thread sleep interval when in paused state.
-  rc_t threadCreate( threadH_t& hRef, threadFunc_t func, void* funcArg, int stateTimeOutMicros=100000, int pauseMicros=10000 );
-  rc_t threadDestroy( threadH_t& hRef );
+    // stateMicros = total time out duration for switching to the  exit state or for switching in/out of pause state. 
+    // pauseMicros = duration of thread sleep interval when in paused state.
+    rc_t create( handle_t& hRef, cbFunc_t func, void* funcArg, int stateTimeOutMicros=100000, int pauseMicros=10000 );
+    rc_t destroy( handle_t& hRef );
 
-  enum { kThreadPauseFl=0x01, kThreadWaitFl=0x02 };
-  rc_t threadPause( threadH_t& h, unsigned cmdFlags );
-  kThreadStateId_t threadState( threadH_t h );
+  
+    enum { kPauseFl=0x01, kWaitFl=0x02 };
+    rc_t pause( handle_t h, unsigned cmdFlags = kWaitFl );
+    rc_t unpause( handle_t h ); // same as threadPause(h,kWaitFl)
+  
+    stateId_t state( handle_t h );
 
+    // Return the thread id of the calling context.
+    unsigned id();
+  }
   rc_t threadTest();
 }
 

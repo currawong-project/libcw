@@ -15,3 +15,11 @@ int cw::textCompare( const char* s0, const char* s1 )
 
   return strcmp(s0,s1);
 }
+
+int cw::textCompare( const char* s0, const char* s1, unsigned n)
+{
+  if( s0 == nullptr || s1 == nullptr )
+    return s0==s1 ? 0 : 1; // if both pointers are nullptr then trigger a match
+
+  return strncmp(s0,s1,n);  
+}

@@ -10,9 +10,11 @@
 #include <climits>
 #include <cinttypes>
 #include <cfloat>
+#include <cmath>
 #include <algorithm>  // std::min,std::max
-#include <utility>   // std::forward
-#include <limits>    // std::numeric_limits<
+#include <utility>    // std::forward
+#include <limits>     // std::numeric_limits<
+#include <atomic>
 
 #if defined(cwLINUX) || defined(cwOSX)
 #define cwPOSIX_FILE_SYS
@@ -46,7 +48,8 @@ namespace cw
 #define cwAssert(cond) while(1){ if(!(cond)){ cwLogFatal(kAssertFailRC,"Assert failed on condition:%s",#cond ); } break; }
   
 
-  template< typename H, typename T > T* handleToPtr( H h )
+  template< typename H, typename T >
+    T* handleToPtr( H h )
   {
     cwAssert( h.p != nullptr );
     return h.p;

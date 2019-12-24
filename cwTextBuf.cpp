@@ -6,114 +6,140 @@
 
 namespace cw
 {
-  typedef struct textBuf_str
+  namespace textBuf
   {
-    char*    buf;
-    unsigned expandCharN;         // count of characters to expand buf
-    unsigned allocCharN;          // current allocated size of buf
-    unsigned endN;                // current count of character in buf
-    char*    boolTrueText;
-    char*    boolFalseText;
-    int      intWidth;
-    unsigned intFlags;
-    int      floatWidth;
-    int      floatDecPlN;
-  } textBuf_t;
-
+    typedef struct textBuf_str
+    {
+      char*    buf;
+      unsigned expandCharN;         // count of characters to expand buf
+      unsigned allocCharN;          // current allocated size of buf
+      unsigned endN;                // current count of character in buf
+      char*    boolTrueText;
+      char*    boolFalseText;
+      int      intWidth;
+      unsigned intFlags;
+      int      floatWidth;
+      int      floatDecPlN;
+    } this_t;
+  }
 }
 
-#define _textBufHandleToPtr(h) handleToPtr<textBufH_t,textBuf_t>(h)
+#define _handleToPtr(h) handleToPtr<handle_t,this_t>(h)
 
-cw::rc_t cw::textBufCreate( textBufH_t& hRef, unsigned initCharN, unsigned expandCharN )
+cw::rc_t cw::textBuf::create( handle_t& hRef, unsigned initCharN, unsigned expandCharN )
 {
   rc_t rc;
-  if((rc = textBufDestroy(hRef)) != kOkRC )
+  if((rc = destroy(hRef)) != kOkRC )
     return rc;
 
-  textBuf_t* p   = memAllocZ<textBuf_t>();
-  p->buf         = memAllocZ<char>(initCharN);
-  p->expandCharN = expandCharN;
-  p->boolTrueText = memDuplStr("true");
+  this_t* p        = memAllocZ<this_t>();
+  p->buf           = memAllocZ<char>(initCharN);
+  p->expandCharN   = expandCharN;
+  p->allocCharN    = initCharN;
+  p->boolTrueText  = memDuplStr("true");
   p->boolFalseText = memDuplStr("false");
   hRef.set(p);
   return rc;
 }
 
-cw::rc_t cw::textBufDestroy(textBufH_t& hRef )
+cw::textBuf::handle_t cw::textBuf::create( unsigned initCharN, unsigned expandCharN )
+{
+  handle_t h;
+  rc_t rc;
+  if((rc = create(h,initCharN,expandCharN)) != kOkRC )
+  {
+    cwLogError(rc,"Log create ailed.");
+    h.clear();
+  }
+  return h;  
+}
+
+cw::rc_t cw::textBuf::destroy(handle_t& hRef )
 {
   rc_t rc = kOkRC;
   if( !hRef.isValid() )
     return rc;
 
-  textBuf_t* p = _textBufHandleToPtr(hRef);
+  this_t* p = _handleToPtr(hRef);
   
   memRelease(p->buf);
   memRelease(p->boolTrueText);
   memRelease(p->boolFalseText);
-  hRef.release();
+  memRelease(p);
+  hRef.clear();
   return rc;
 }
 
-const char* cw::textBufText( textBufH_t h )
+void cw::textBuf::clear( handle_t h )
 {
-  textBuf_t* p = _textBufHandleToPtr(h);
+  this_t* p = _handleToPtr(h);
+  p->endN = 0;
+}
+
+const char* cw::textBuf::text( handle_t h )
+{
+  this_t* p = _handleToPtr(h);
   return p->buf;
 }
 
-cw::rc_t cw::textBufPrintf( textBufH_t h, const char* fmt, va_list vl )
+cw::rc_t cw::textBuf::print( handle_t h, const char* fmt, va_list vl )
 {
   va_list vl1;
   va_copy(vl1,vl);
 
-  textBuf_t* p = _textBufHandleToPtr(h);
+  this_t* p = _handleToPtr(h);
   
-  int n = snprintf(nullptr,0,fmt,vl);
+  int n = vsnprintf(nullptr,0,fmt,vl1);
 
-  
-  if( p->endN + n > p->allocCharN )
+  if( n > 0 )
   {
-    unsigned minExpandCharN = (p->endN + n) - p->allocCharN;
-    unsigned expandCharN = std::max(minExpandCharN,p->expandCharN);
-    p->allocCharN =+ expandCharN;
-    p->buf = memResizeZ<char>( p->buf, p->allocCharN );    
-  }
+    n += 1; // add one to make space for  the terminating zero
+      
+    if( p->endN + n > p->allocCharN )
+    {
+      unsigned minExpandCharN = (p->endN + n) - p->allocCharN;
+      unsigned expandCharN = std::max(minExpandCharN,p->expandCharN);
+      p->allocCharN += expandCharN;
+      p->buf = memResizeZ<char>( p->buf, p->allocCharN );    
+    }
     
-  int m = snprintf(p->buf + p->endN, n, fmt, vl );
+    int m = vsnprintf(p->buf + p->endN, n, fmt, vl );
 
-  cwAssert(m=n);
-  p->endN += n;
-   
+    cwAssert(m==(n-1));
+    p->endN += n-1; // subtract 1 to no count the terminating zero in the character count
+  }
+  
   va_end(vl1);
   return kOkRC;
 }
 
-cw::rc_t cw::textBufPrintf( textBufH_t h, const char* fmt,  ... )
+cw::rc_t cw::textBuf::print( handle_t h, const char* fmt,  ... )
 {
   va_list vl;
   va_start(vl,fmt);
-  rc_t rc = textBufPrintf(h,fmt,vl);
+  rc_t rc = print(h,fmt,vl);
   va_end(vl);
   return rc;
 }
 
-cw::rc_t cw::textBufPrintBool( textBufH_t h, bool v )
+cw::rc_t cw::textBuf::printBool( handle_t h, bool v )
 {
-  textBuf_t* p = _textBufHandleToPtr(h);  
-  return textBufPrintf(h,"%s", v ? p->boolTrueText : p->boolFalseText);
+  this_t* p = _handleToPtr(h);  
+  return print(h,"%s", v ? p->boolTrueText : p->boolFalseText);
 }
 
-cw::rc_t cw::textBufPrintInt( textBufH_t h, int v )
-{ return textBufPrintf(h,"%i",v); }
+cw::rc_t cw::textBuf::printInt( handle_t h, int v )
+{ return print(h,"%i",v); }
 
-cw::rc_t cw::textBufPrintUInt( textBufH_t h, unsigned v )
-{ return textBufPrintf(h,"%i",v); }
+cw::rc_t cw::textBuf::printUInt( handle_t h, unsigned v )
+{ return print(h,"%i",v); }
 
-cw::rc_t cw::textBufPrintFloat( textBufH_t h, double v )
-{ return textBufPrintf(h,"%f",v); }
+cw::rc_t cw::textBuf::printFloat( handle_t h, double v )
+{ return print(h,"%f",v); }
 
-cw::rc_t cw::textBufSetBoolFormat( textBufH_t h, bool v, const char* s)
+cw::rc_t cw::textBuf::setBoolFormat( handle_t h, bool v, const char* s)
 {
-  textBuf_t* p = _textBufHandleToPtr(h);
+  this_t* p = _handleToPtr(h);
   
   if( v )    
     p->boolTrueText = memReallocStr(p->boolTrueText,s);
@@ -122,19 +148,34 @@ cw::rc_t cw::textBufSetBoolFormat( textBufH_t h, bool v, const char* s)
   return kOkRC;
 }
 
-cw::rc_t cw::textBufSetIntFormat( textBufH_t h, unsigned width, unsigned flags )
+cw::rc_t cw::textBuf::setIntFormat( handle_t h, unsigned width, unsigned flags )
 {
-  textBuf_t* p = _textBufHandleToPtr(h);
+  this_t* p = _handleToPtr(h);
   p->intWidth = width;
   p->intFlags = flags;
   return kOkRC;
 }
 
-cw::rc_t cw::textBufSetFloatFormat( textBufH_t h, unsigned width, unsigned decPlN )
+cw::rc_t cw::textBuf::setFloatFormat( handle_t h, unsigned width, unsigned decPlN )
 {
-  textBuf_t* p = _textBufHandleToPtr(h);
+  this_t* p = _handleToPtr(h);
   p->floatWidth = width;
   p->floatDecPlN = decPlN;
   return kOkRC;
 }
 
+cw::rc_t cw::textBuf::test()
+{
+  handle_t h;
+  rc_t rc;
+
+  if((rc = create(h,8,8)) != kOkRC )
+    return rc;
+
+  print(h,"Hello\n");
+  print(h,"foo\n");
+
+  printf("%s", text(h) );
+
+  return destroy(h);
+}

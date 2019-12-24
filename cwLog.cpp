@@ -77,7 +77,7 @@ cw::rc_t cw::logMsg( logHandle_t h, unsigned level, const char* function, const 
   if( n != -1 )
   {
 
-    char msg[n+1];
+    char msg[n+1]; // add 1 to allow space for the terminating zero
     int m = vsnprintf(msg,n+1,fmt,vl1);
     cwAssert(m==n);
     

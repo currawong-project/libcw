@@ -9,15 +9,19 @@ namespace cw
   
   void* _memAlloc( void* p0, unsigned n, bool zeroFl )
   {
-    void*    p   = nullptr;  // ptr to new block
-    unsigned p0N = 0;     // size of existing block
+    void*    p   = nullptr;     // ptr to new block
+    unsigned p0N = 0;           // size of existing block
+    unsigned* p0_1 = nullptr;   // pointer to base of existing block
+
+    n += sizeof(unsigned); // add space for the size of the block
     
     // if there is no existing block
-    if( p0 == nullptr )
-      n += sizeof(unsigned); // add space for the size of the block
-    else
+    if( p0 != nullptr )
     {
-      p0N = ((unsigned*)p0)[-1]; // get size of existing block
+      // get a pointer to the base of the exsting block
+      p0_1 = ((unsigned*)p0) - 1;
+      
+      p0N = p0_1[0]; // get size of existing block
 
       // if the block is shrinking
       if( p0N >= n )
@@ -29,7 +33,7 @@ namespace cw
     // if expanding then copy in data from existing block
     if( p0 != nullptr )
     {
-      memcpy(p,p0,p0N);
+      memcpy(p,p0_1,p0N);
       memFree(p0);  // free the existing block
     }
 
@@ -40,7 +44,7 @@ namespace cw
     // get pointer to base of new block
     unsigned* p1 = static_cast<unsigned*>(p);
       
-    p1[0] = p0N + n; // set size of new block
+    p1[0] = n; // set size of new block
 
     // advance past the block size and return
     return p1+1;    
