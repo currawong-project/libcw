@@ -17,8 +17,8 @@ SRC += cwSerialPort.cpp  cwSerialPortSrv.cpp
 HDR += cwMidi.h   cwMidiPort.h
 SRC += cwMidi.cpp cwMidiPort.cpp cwMidiAlsa.cpp
 
-HDR += cwAudioBuf.h    cwAudioPort.h   cwAudioPortAlsa.h
-SRC += cwAudioBuf.cpp  cwAudioPort.cpp cwAudioPortAlsa.cpp
+HDR += cwAudioBuf.h    cwAudioDevice.h   cwAudioDeviceAlsa.h
+SRC += cwAudioBuf.cpp  cwAudioDevice.cpp cwAudioDeviceAlsa.cpp cwAudioDeviceTest.cpp
 
 
 LIBS = -lpthread  -lwebsockets  -lasound

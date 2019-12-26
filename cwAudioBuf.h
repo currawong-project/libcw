@@ -227,7 +227,7 @@ namespace cw
       void inputToOutput( unsigned inDevIdx, unsigned outDevIdx );
 
       // Print the current buffer state.
-      void report( textBuf::handle_t tbH );
+      void report();
 
       // Run a buffer usage simulation to test the class. cmAudioPortTest.c calls this function.
       void test();

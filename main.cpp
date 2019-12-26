@@ -16,7 +16,9 @@
 #include "cwMidi.h"
 #include "cwTime.h"
 #include "cwMidiPort.h"
-#include "cwAudioPort.h"
+#include "cwAudioDevice.h"
+#include "cwAudioDeviceTest.h"
+#include "cwAudioDeviceAlsa.h"
 #include "cwAudioBuf.h"
 
 #include <iostream>
@@ -126,10 +128,8 @@ void serialPortSrvTest( cw::object_t* cfg, int argc, const char* argv[] ) { cw::
 void midiDeviceTest(    cw::object_t* cfg, int argc, const char* argv[] ) { cw::midi::device::test();}
 void textBufTest(       cw::object_t* cfg, int argc, const char* argv[] ) { cw::textBuf::test(); }
 void audioBufTest(      cw::object_t* cfg, int argc, const char* argv[] ) { cw::audio::buf::test(); }
-void audioPortTest(     cw::object_t* cfg, int argc, const char* argv[] )
-{
-  cw::audio::device::test( false, argc, argv );
-}
+void audioDevTest(      cw::object_t* cfg, int argc, const char* argv[] ) { cw::audio::device::test( argc, argv ); }
+void audioDevAlsaTest(  cw::object_t* cfg, int argc, const char* argv[] ) { cw::audio::device::alsa::report(); }
 
 void stubTest( cw::object_t* cfg, int argc, const char* argv[] )
 {
@@ -168,7 +168,8 @@ int main( int argc, const char* argv[] )
    { "midiDevice", midiDeviceTest },
    { "textBuf", textBufTest },
    { "audioBuf", audioBufTest },
-   { "audioPort",audioPortTest },
+   { "audioDev",audioDevTest },
+   { "audioDevAlsa", audioDevAlsaTest },
    { "stub", stubTest },
    { nullptr, nullptr }
   };

@@ -532,27 +532,27 @@ cw::rc_t            cw::lexSetTextBuffer( lexH_t h, const char* cp, unsigned cn 
 
 cw::rc_t cw::lexSetFile( lexH_t h, const char* fn )
 {
-  rc_t      rc = kOkRC;
-  fileH_t   fh;
-  lex_t*    p  = _lexHandleToPtr(h);
-  long      n  = 0;
+  rc_t           rc = kOkRC;
+  file::handle_t fh;
+  lex_t*         p  = _lexHandleToPtr(h);
+  long           n  = 0;
 
   assert( fn != nullptr && p != nullptr );
 
   // open the file
-  if((rc = fileOpen(fh,fn,kReadFileFl)) != kOkRC )
+  if((rc = file::open(fh,fn,file::kReadFl)) != kOkRC )
     return rc;
 
   // seek to the end of the file
-  if((rc = fileSeek(fh,kEndFileFl,0)) != kOkRC )
+  if((rc = file::seek(fh,file::kEndFl,0)) != kOkRC )
     return rc;
   
   // get the length of the file
-  if((rc = fileTell(fh,&n)) != kOkRC )
+  if((rc = file::tell(fh,&n)) != kOkRC )
     return rc;
 
   // rewind to the beginning of the file
-  if((rc = fileSeek(fh,kBeginFileFl,0)) != kOkRC )
+  if((rc = file::seek(fh,file::kBeginFl,0)) != kOkRC )
     return rc;
 
   // allocate the text buffer
@@ -563,7 +563,7 @@ cw::rc_t cw::lexSetFile( lexH_t h, const char* fn )
   }
 
   // read the file into the buffer
-  if((rc = fileRead(fh,p->textBuf,n)) != kOkRC )
+  if((rc = file::read(fh,p->textBuf,n)) != kOkRC )
     return rc;
 
   if((rc = _lexSetTextBuffer( p, p->textBuf, n )) != kOkRC )
@@ -571,7 +571,7 @@ cw::rc_t cw::lexSetFile( lexH_t h, const char* fn )
   
  errLabel:
   // close the file
-  rc_t rc0 = fileClose(fh);
+  rc_t rc0 = file::close(fh);
 
   if(rc != kOkRC )
     return rc;

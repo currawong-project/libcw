@@ -4,7 +4,7 @@
 #include "cwMem.h"
 #include "cwTime.h"
 #include "cwTextBuf.h"
-#include "cwAudioPort.h"
+#include "cwAudioDevice.h"
 #include "cwAudioBuf.h"
 
 /*
@@ -853,13 +853,11 @@ void cw::audio::buf::inputToOutput( unsigned iDevIdx, unsigned oDevIdx )
   
 }
 
-void cw::audio::buf::report( textBuf::handle_t tbH )
+void cw::audio::buf::report()
 {
   unsigned i,j,k;
   for(i=0; i<_theBuf.devCnt; ++i)
   {
-    textBuf::print(tbH,"%i ",i);
-
     for(j=0; j<kIoApCnt; ++j)
     {
       cmApIO* ip = _theBuf.devArray[i].ioArray + j;
@@ -875,13 +873,11 @@ void cw::audio::buf::report( textBuf::handle_t tbH )
         fn += cp->fn;
       }
 
-      textBuf::print(tbH,"%s - i:%7i o:%7i f:%7i n:%7i err %s:%7i ",
-        j==0?"IN":"OUT",
+      cwLogInfo("%i :  %s - i:%7i o:%7i f:%7i n:%7i err %s:%7i ",
+        i,j==0?"IN ":"OUT",
         ii,oi,fn,ip->n, (j==0?"over":"under"), ip->faultCnt);
 
     }
-
-    textBuf::print(tbH,"\n");
   }
 }
 

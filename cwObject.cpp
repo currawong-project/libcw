@@ -521,7 +521,7 @@ cw::rc_t cw::objectFromFile( const char* fn, object_t*& objRef )
   unsigned bufByteCnt = 0;
   char*    buf        = NULL;
   
-  if(( buf = fileFnToStr(fn, &bufByteCnt)) != NULL )
+  if(( buf = file::fnToStr(fn, &bufByteCnt)) != NULL )
   {
     rc = objectFromString( buf, objRef );
     memRelease(buf);

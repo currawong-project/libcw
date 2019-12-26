@@ -2,375 +2,12 @@
 #include "cwLog.h"
 #include "cwCommonImpl.h"
 #include "cwMem.h"
-#include "cwTextBuf.h"
 #include "cwTime.h"
-#include "cwAudioPort.h"
+#include "cwTextBuf.h"
+#include "cwAudioDevice.h"
 #include "cwAudioBuf.h"
-
-
-#ifdef cwLINUX
-#include "cwAudioPortAlsa.h"
-#endif
-
-#ifdef cwOSX
-#include "cmAudioPortOsx.h"
-#endif
-
-namespace cw
-{
-  namespace audio
-  {
-    namespace device
-    {
-
-      typedef struct
-      {
-        unsigned      begDevIdx;
-        unsigned      endDevIdx;
-
-        rc_t        (*initialize)( unsigned baseApDevIdx );
-        rc_t        (*finalize)();
-        rc_t        (*deviceCount)();
-        const char* (*deviceLabel)(          unsigned devIdx );
-        unsigned    (*deviceChannelCount)(   unsigned devIdx, bool inputFl );
-        double      (*deviceSampleRate)(    unsigned devIdx );
-        unsigned    (*deviceFramesPerCycle)( unsigned devIdx, bool inputFl );
-        rc_t        (*deviceSetup)( unsigned devIdx, double sr, unsigned frmPerCycle, cbFunc_t cb, void* cbData );
-        rc_t        (*deviceStart)( unsigned devIdx );
-        rc_t        (*deviceStop)(  unsigned devIdx );
-        bool        (*deviceIsStarted)( unsigned devIdx );
-
-      } cmApDriver_t;
-
-      typedef struct
-      {
-        cmApDriver_t*  drvArray;
-        unsigned       drvCnt;
-        unsigned       devCnt;
-      } cmAp_t;
-
-      cmAp_t* _ap = NULL;
-
-      rc_t      _cmApIndexToDev( unsigned devIdx, cmApDriver_t** drvPtrPtr, unsigned* devIdxPtr )
-      {
-        assert( drvPtrPtr != NULL && devIdxPtr != NULL );
-        *drvPtrPtr = NULL;
-        *devIdxPtr = kInvalidIdx;
-
-        unsigned i;
-        for(i=0; i<_ap->drvCnt; ++i)
-          if( _ap->drvArray[i].begDevIdx != kInvalidIdx )
-            if( (_ap->drvArray[i].begDevIdx <= devIdx) && (devIdx <= _ap->drvArray[i].endDevIdx) )
-            {
-              *drvPtrPtr = _ap->drvArray + i;
-              *devIdxPtr = devIdx - _ap->drvArray[i].begDevIdx;
-              return kOkRC;
-            }
-  
-        return cwLogError(kInvalidIdRC,"The audio port device index %i is not valid.",devIdx);
-      }
-    }
-  }
-}
-
-cw::rc_t      cw::audio::device::initialize()
-{
-  rc_t rc = kOkRC;
-  if((rc = finalize()) != kOkRC )
-    return rc;
-
-  _ap = memAllocZ<cmAp_t>(1);
-
-  _ap->drvCnt = 1;
-  _ap->drvArray = memAllocZ<cmApDriver_t>(_ap->drvCnt);
-  cmApDriver_t* dp = _ap->drvArray;
-  
-#ifdef cwOSX
-  dp->initialize           = cmApOsxInitialize;
-  dp->finalize             = cmApOsxFinalize;
-  dp->deviceCount          = cmApOsxDeviceCount;
-  dp->deviceLabel          = cmApOsxDeviceLabel;
-  dp->deviceChannelCount   = cmApOsxDeviceChannelCount;
-  dp->deviceSampleRate     = cmApOsxDeviceSampleRate;
-  dp->deviceFramesPerCycle = cmApOsxDeviceFramesPerCycle;
-  dp->deviceSetup          = cmApOsxDeviceSetup;
-  dp->deviceStart          = cmApOsxDeviceStart;
-  dp->deviceStop           = cmApOsxDeviceStop;
-  dp->deviceIsStarted      = cmApOsxDeviceIsStarted;  
-#endif
-
-#ifdef cwLINUX
-  dp->initialize           = alsa::initialize;
-  dp->finalize             = alsa::finalize;
-  dp->deviceCount          = alsa::deviceCount;
-  dp->deviceLabel          = alsa::deviceLabel;
-  dp->deviceChannelCount   = alsa::deviceChannelCount;
-  dp->deviceSampleRate     = alsa::deviceSampleRate;
-  dp->deviceFramesPerCycle = alsa::deviceFramesPerCycle;
-  dp->deviceSetup          = alsa::deviceSetup;
-  dp->deviceStart          = alsa::deviceStart;
-  dp->deviceStop           = alsa::deviceStop;
-  dp->deviceIsStarted      = alsa::deviceIsStarted;  
-#endif
-
-  /*
-  dp = _ap->drvArray + 1;
-
-  dp->initialize           = cmApFileInitialize;
-  dp->finalize             = cmApFileFinalize;
-  dp->deviceCount          = cmApFileDeviceCount;
-  dp->deviceLabel          = cmApFileDeviceLabel;
-  dp->deviceChannelCount   = cmApFileDeviceChannelCount;
-  dp->deviceSampleRate     = cmApFileDeviceSampleRate;
-  dp->deviceFramesPerCycle = cmApFileDeviceFramesPerCycle;
-  dp->deviceSetup          = cmApFileDeviceSetup;
-  dp->deviceStart          = cmApFileDeviceStart;
-  dp->deviceStop           = cmApFileDeviceStop;
-  dp->deviceIsStarted      = cmApFileDeviceIsStarted;  
-
-  dp = _ap->drvArray + 2;
-
-  dp->initialize           = cmApAggInitialize;
-  dp->finalize             = cmApAggFinalize;
-  dp->deviceCount          = cmApAggDeviceCount;
-  dp->deviceLabel          = cmApAggDeviceLabel;
-  dp->deviceChannelCount   = cmApAggDeviceChannelCount;
-  dp->deviceSampleRate     = cmApAggDeviceSampleRate;
-  dp->deviceFramesPerCycle = cmApAggDeviceFramesPerCycle;
-  dp->deviceSetup          = cmApAggDeviceSetup;
-  dp->deviceStart          = cmApAggDeviceStart;
-  dp->deviceStop           = cmApAggDeviceStop;
-  dp->deviceIsStarted      = cmApAggDeviceIsStarted;  
-
-  dp = _ap->drvArray + 3;
-
-  dp->initialize           = cmApNrtInitialize;
-  dp->finalize             = cmApNrtFinalize;
-  dp->deviceCount          = cmApNrtDeviceCount;
-  dp->deviceLabel          = cmApNrtDeviceLabel;
-  dp->deviceChannelCount   = cmApNrtDeviceChannelCount;
-  dp->deviceSampleRate     = cmApNrtDeviceSampleRate;
-  dp->deviceFramesPerCycle = cmApNrtDeviceFramesPerCycle;
-  dp->deviceSetup          = cmApNrtDeviceSetup;
-  dp->deviceStart          = cmApNrtDeviceStart;
-  dp->deviceStop           = cmApNrtDeviceStop;
-  dp->deviceIsStarted      = cmApNrtDeviceIsStarted;  
-  */
-  
-  _ap->devCnt = 0;
-
-  unsigned i;
-  for(i=0; i<_ap->drvCnt; ++i)
-  {
-    unsigned dn; 
-    rc_t rc0;
-
-    _ap->drvArray[i].begDevIdx = kInvalidIdx;
-    _ap->drvArray[i].endDevIdx = kInvalidIdx;
-
-    if((rc0 = _ap->drvArray[i].initialize(_ap->devCnt)) != kOkRC )
-    {
-      rc = rc0;
-      continue;
-    }
-
-    if((dn = _ap->drvArray[i].deviceCount()) > 0)
-    {
-      _ap->drvArray[i].begDevIdx = _ap->devCnt;
-      _ap->drvArray[i].endDevIdx = _ap->devCnt + dn - 1;
-      _ap->devCnt += dn;
-    }
-  }
-
-  if( rc != kOkRC )
-    finalize();
-
-  return rc;
-}
-
-cw::rc_t      cw::audio::device::finalize()
-{
-  rc_t rc=kOkRC;
-  rc_t rc0 = kOkRC;
-  unsigned i;
-
-  if( _ap == NULL )
-    return kOkRC;
-
-  for(i=0; i<_ap->drvCnt; ++i)
-  {
-    if((rc0 = _ap->drvArray[i].finalize()) != kOkRC )
-      rc = rc0;
-  }
-
-  memRelease(_ap->drvArray);
-  memRelease(_ap);
-  return rc;
-}
-
-
-unsigned cw::audio::device::deviceCount()
-{ return _ap->devCnt; }
-
-const char*   cw::audio::device::deviceLabel( unsigned devIdx )
-{
-  cmApDriver_t* dp = NULL;
-  unsigned      di = kInvalidIdx;
-  rc_t      rc;
-
-  if( devIdx == kInvalidIdx )
-    return NULL;
-
-  if((rc = _cmApIndexToDev(devIdx,&dp,&di)) != kOkRC )
-    return cwStringNullGuard(NULL);
-
-  return dp->deviceLabel(di);
-}
-
-unsigned      cw::audio::device::deviceLabelToIndex( const char* label )
-{
-  unsigned n = deviceCount();
-  unsigned i;
-  for(i=0; i<n; ++i)
-  {
-    const char* s = deviceLabel(i);
-    if( s!=NULL && strcmp(s,label)==0)
-      return i;
-  }
-  return kInvalidIdx;
-}
-
-
-unsigned      cw::audio::device::deviceChannelCount(   unsigned devIdx, bool inputFl )
-{
-  cmApDriver_t* dp = NULL;
-  unsigned      di = kInvalidIdx;
-  rc_t      rc;
-
-  if( devIdx == kInvalidIdx )
-    return 0;
-
-  if((rc = _cmApIndexToDev(devIdx,&dp,&di)) != kOkRC )
-    return rc;
-
-  return dp->deviceChannelCount(di,inputFl);
-}
-
-double        cw::audio::device::deviceSampleRate(     unsigned devIdx )
-{
-  cmApDriver_t* dp = NULL;
-  unsigned      di = kInvalidIdx;
-  rc_t      rc;
-
-  if((rc = _cmApIndexToDev(devIdx,&dp,&di)) != kOkRC )
-    return rc;
-
-  return dp->deviceSampleRate(di);
-}
-
-unsigned      cw::audio::device::deviceFramesPerCycle( unsigned devIdx, bool inputFl )
-{
-  cmApDriver_t* dp = NULL;
-  unsigned      di = kInvalidIdx;
-  rc_t      rc;
-
-  if( devIdx == kInvalidIdx )
-    return 0;
-
-  if((rc = _cmApIndexToDev(devIdx,&dp,&di)) != kOkRC )
-    return rc;
-
-  return dp->deviceFramesPerCycle(di,inputFl);
-}
-
-cw::rc_t      cw::audio::device::deviceSetup(          
-  unsigned          devIdx, 
-  double            srate, 
-  unsigned          framesPerCycle, 
-  cbFunc_t          cbFunc,
-  void*             cbArg )
-{
-  cmApDriver_t* dp;
-  unsigned      di;
-  rc_t      rc;
-
-  if( devIdx == kInvalidIdx )
-    return kOkRC;
-
-  if((rc = _cmApIndexToDev(devIdx,&dp,&di)) != kOkRC )
-    return rc;
-
-  return dp->deviceSetup(di,srate,framesPerCycle,cbFunc,cbArg);
-}
-
-cw::rc_t      cw::audio::device::deviceStart( unsigned devIdx )
-{
-  cmApDriver_t* dp;
-  unsigned      di;
-  rc_t      rc;
-
-  if( devIdx == kInvalidIdx )
-    return kOkRC;
-
-  if((rc = _cmApIndexToDev(devIdx,&dp,&di)) != kOkRC )
-    return rc;
-
-  return dp->deviceStart(di);
-}
-
-cw::rc_t      cw::audio::device::deviceStop(  unsigned devIdx )
-{
-  cmApDriver_t* dp;
-  unsigned      di;
-  rc_t      rc;
-
-  if( devIdx == kInvalidIdx )
-    return kOkRC;
-
-  if((rc = _cmApIndexToDev(devIdx,&dp,&di)) != kOkRC )
-    return rc;
-
-  return dp->deviceStop(di);
-}
-
-bool          cw::audio::device::deviceIsStarted( unsigned devIdx )
-{
-  cmApDriver_t* dp;
-  unsigned      di;
-  rc_t      rc;
-
-  if( devIdx == kInvalidIdx )
-    return false;
-
-  if((rc = _cmApIndexToDev(devIdx,&dp,&di)) != kOkRC )
-    return rc;
-
-  return dp->deviceIsStarted(di);
-}
-
-
-
-void cw::audio::device::report()
-{
-  unsigned i,j,k;
-  for(j=0,k=0; j<_ap->drvCnt; ++j)
-  {
-    cmApDriver_t* drvPtr = _ap->drvArray + j;
-    unsigned      n      = drvPtr->deviceCount(); 
-
-    for(i=0; i<n; ++i,++k)
-    {
-      cwLogInfo( "%i %f in:%i (%i) out:%i (%i) %s",
-        k, drvPtr->deviceSampleRate(i),
-        drvPtr->deviceChannelCount(i,true),  drvPtr->deviceFramesPerCycle(i,true),
-        drvPtr->deviceChannelCount(i,false), drvPtr->deviceFramesPerCycle(i,false),
-        drvPtr->deviceLabel(i));
-  
-    }
-  }
-
-  //cmApAlsaDeviceReport(rpt);
-}
+#include "cwAudioDeviceAlsa.h"
+#include "cwAudioDeviceTest.h"
 
 namespace  cw
 {
@@ -380,7 +17,7 @@ namespace  cw
     {
       /// [cmAudioPortExample]
 
-      // See cmApPortTest() below for the main point of entry.
+      // See test() below for the main point of entry.
 
       // Data structure used to hold the parameters for cpApPortTest()
       // and the user defined data record passed to the host from the
@@ -640,8 +277,10 @@ namespace  cw
         cwLogInfo(msg);
       }
 
-      // Get a command line option.
-      int _cmApGetOpt( int argc, const char* argv[], const char* label, int defaultVal, bool boolFl )
+      // Get a command line option. Note that if 'boolFl' is set to 'true' then the function simply
+      // returns '1'.  This is used to handle arguments whose presense indicates a positive boolean
+      // flag. For example -h (help) indicates that the usage data should be printed - it needs no other argument.
+      int _cmApGetOpt( int argc, const char* argv[], const char* label, int defaultVal, bool boolFl=false )
       {
         int i = 0;
         for(; i<argc; ++i)
@@ -664,6 +303,12 @@ namespace  cw
 
       void _cmApPortCb2( audioPacket_t* inPktArray, unsigned inPktCnt, audioPacket_t* outPktArray, unsigned outPktCnt )
       {
+        for(unsigned i=0; i<inPktCnt; ++i)
+          static_cast<cmApPortTestRecd*>(inPktArray[i].cbArg)->cbCnt++;
+
+        for(unsigned i=0; i<outPktCnt; ++i)
+          static_cast<cmApPortTestRecd*>(outPktArray[i].cbArg)->cbCnt++;
+        
         buf::inputToOutput( _cmGlobalInDevIdx, _cmGlobalOutDevIdx );
 
         buf::update( inPktArray, inPktCnt, outPktArray, outPktCnt );
@@ -673,23 +318,26 @@ namespace  cw
 }
 
 // Audio Port testing function
-cw::rc_t cw::audio::device::test( bool runFl,  int argc, const char** argv )
+cw::rc_t cw::audio::device::test( int argc, const char** argv )
 {
   cmApPortTestRecd  r;
   unsigned          i;
-  int               result = 0;
-  textBuf::handle_t tbH = textBuf::create();
+  rc_t              rc;
+  driver_t*         drv   = nullptr;
+  handle_t          h;
+  alsa::handle_t    alsaH;
+  bool              runFl = true;
 
   if( _cmApGetOpt(argc,argv,"-h",0,true) )
     _cmApPrintUsage();
 
 
-  runFl            = _cmApGetOpt(argc,argv,"-p",!runFl,true)?false:true;
-  r.srate          = _cmApGetOpt(argc,argv,"-r",44100,false);
-  r.chIdx          = _cmApGetOpt(argc,argv,"-a",0,false);
-  r.chCnt          = _cmApGetOpt(argc,argv,"-c",2,false);
-  r.bufCnt         = _cmApGetOpt(argc,argv,"-b",3,false);
-  r.framesPerCycle = _cmApGetOpt(argc,argv,"-f",512,false);
+  runFl            = _cmApGetOpt(argc,argv,"-p",0,true)?false:true;
+  r.srate          = _cmApGetOpt(argc,argv,"-r",44100);
+  r.chIdx          = _cmApGetOpt(argc,argv,"-a",0);
+  r.chCnt          = _cmApGetOpt(argc,argv,"-c",2);
+  r.bufCnt         = _cmApGetOpt(argc,argv,"-b",3);
+  r.framesPerCycle = _cmApGetOpt(argc,argv,"-f",512);
   r.bufFrmCnt      = (r.bufCnt*r.framesPerCycle);
   r.bufSmpCnt      = (r.chCnt  * r.bufFrmCnt);
   r.logCnt         = 100; 
@@ -699,8 +347,8 @@ cw::rc_t cw::audio::device::test( bool runFl,  int argc, const char** argv )
   char         log[r.logCnt];
   unsigned    ilog[r.logCnt];
   
-  r.inDevIdx   = _cmGlobalInDevIdx  = _cmApGetOpt(argc,argv,"-i",0,false);   
-  r.outDevIdx  = _cmGlobalOutDevIdx = _cmApGetOpt(argc,argv,"-o",2,false); 
+  r.inDevIdx   = _cmGlobalInDevIdx  = _cmApGetOpt(argc,argv,"-i",0);   
+  r.outDevIdx  = _cmGlobalOutDevIdx = _cmApGetOpt(argc,argv,"-o",2); 
   r.phase      = 0;
   r.frqHz      = 2000;
   r.bufInIdx   = 0;
@@ -713,75 +361,75 @@ cw::rc_t cw::audio::device::test( bool runFl,  int argc, const char** argv )
   r.ilog       = ilog;
   r.cbCnt      = 0;
 
-  cwLogInfo("%s in:%i out:%i chidx:%i chs:%i bufs=%i frm=%i rate=%f",runFl?"exec":"rpt",r.inDevIdx,r.outDevIdx,r.chIdx,r.chCnt,r.bufCnt,r.framesPerCycle,r.srate);
+  cwLogInfo("Program cfg: %s in:%i out:%i chidx:%i chs:%i bufs=%i frm=%i rate=%f",runFl?"exec":"rpt",r.inDevIdx,r.outDevIdx,r.chIdx,r.chCnt,r.bufCnt,r.framesPerCycle,r.srate);
 
-  /*
-  if( cmApFileAllocate(rpt) != kOkRC )
-  {
-    cwLogInfo("Audio port file allocation failed.");
-    result = -1;
-    goto errLabel;
-  }
-
-  // allocate the non-real-time port
-  if( cmApNrtAllocate(rpt) != kOkRC )
-  {
-    cwLogInfo("Non-real-time system allocation failed.");
-    result = 1;
-    goto errLabel;
-  }
-  */
   
-  // initialize the audio device interface
-  if( initialize() != kOkRC )
+  // initialize the audio device interface  
+  if((rc = create(h)) != kOkRC )
   {
     cwLogInfo("Initialize failed.");
-    result = 1;
+    goto errLabel;
+  }
+
+  // initialize the ALSA device driver interface
+  if((rc = alsa::create(alsaH, drv )) != kOkRC )
+  {
+    cwLogInfo("ALSA initialize failed.");
+    goto errLabel;
+  }
+
+  // register the ALSA device driver with the audio interface
+  if((rc = registerDriver( h, drv )) != kOkRC )
+  {
+    cwLogInfo("ALSA driver registration failed.");
     goto errLabel;
   }
   
   // report the current audio device configuration
-  for(i=0; i<deviceCount(); ++i)
+  for(i=0; i<deviceCount(h); ++i)
   {
-    cwLogInfo("%i [in: chs=%i frames=%i] [out: chs=%i frames=%i] srate:%f %s",i,deviceChannelCount(i,true),deviceFramesPerCycle(i,true),deviceChannelCount(i,false),deviceFramesPerCycle(i,false),deviceSampleRate(i),deviceLabel(i));
+    cwLogInfo("%i [in: chs=%i frames=%i] [out: chs=%i frames=%i] srate:%f %s",i,deviceChannelCount(h,i,true),deviceFramesPerCycle(h,i,true),deviceChannelCount(h,i,false),deviceFramesPerCycle(h,i,false),deviceSampleRate(h,i),deviceLabel(h,i));
   }
+  
   // report the current audio devices using the audio port interface function
-  report();
+  report(h);
 
   if( runFl )
   {
     // initialize the audio bufer
-    buf::initialize( deviceCount(), r.meterMs );
+    buf::initialize( deviceCount(h), r.meterMs );
 
     // setup the buffer for the output device
-    buf::setup( r.outDevIdx, r.srate, r.framesPerCycle, r.bufCnt, deviceChannelCount(r.outDevIdx,true), r.framesPerCycle, deviceChannelCount(r.outDevIdx,false), r.framesPerCycle );
+    buf::setup( r.outDevIdx, r.srate, r.framesPerCycle, r.bufCnt, deviceChannelCount(h,r.outDevIdx,true), r.framesPerCycle, deviceChannelCount(h,r.outDevIdx,false), r.framesPerCycle );
 
     // setup the buffer for the input device
     if( r.inDevIdx != r.outDevIdx )
-      buf::setup( r.inDevIdx, r.srate, r.framesPerCycle, r.bufCnt, deviceChannelCount(r.inDevIdx,true), r.framesPerCycle, deviceChannelCount(r.inDevIdx,false), r.framesPerCycle ); 
+      buf::setup( r.inDevIdx, r.srate, r.framesPerCycle, r.bufCnt, deviceChannelCount(h,r.inDevIdx,true), r.framesPerCycle, deviceChannelCount(h,r.inDevIdx,false), r.framesPerCycle ); 
 
     // setup an output device
-    if(deviceSetup(r.outDevIdx,r.srate,r.framesPerCycle,_cmApPortCb2,&r) != kOkRC )
+    if(deviceSetup(h, r.outDevIdx,r.srate,r.framesPerCycle,_cmApPortCb2,&r) != kOkRC )
       cwLogInfo("Out device setup failed.");
     else
       // setup an input device
-      if( deviceSetup(r.inDevIdx,r.srate,r.framesPerCycle,_cmApPortCb2,&r) != kOkRC )
+      if( deviceSetup(h, r.inDevIdx,r.srate,r.framesPerCycle,_cmApPortCb2,&r) != kOkRC )
         cwLogInfo("In device setup failed.");
       else
         // start the input device
-        if( deviceStart(r.inDevIdx) != kOkRC )
+        if( deviceStart(h, r.inDevIdx) != kOkRC )
           cwLogInfo("In device start failed.");
         else
           // start the output device
-          if( deviceStart(r.outDevIdx) != kOkRC )
+          if( deviceStart(h, r.outDevIdx) != kOkRC )
             cwLogInfo("Out Device start failed.");
-
+          else
+            cwLogInfo("Setup complete!");
     
-    cwLogInfo("q=quit O/o output tone, I/i input tone P/p pass");
+    
+    cwLogInfo("q=quit O/o output tone, I/i input tone P/p pass s=buf report");
     char c;
     while((c=getchar()) != 'q')
     {
-      //cmApAlsaDeviceRtReport(rpt,r.outDevIdx);
+      deviceRealTimeReport(h, r.outDevIdx );
 
       switch(c)
       {
@@ -801,48 +449,42 @@ cw::rc_t cw::audio::device::test( bool runFl,  int argc, const char** argv )
           break;
           
         case 's':
-          buf::report(tbH);
-          cwLogInfo("%s",textBuf::text(tbH));
-          textBuf::clear(tbH);
+          buf::report();
           break;
       }
 
     }
 
     // stop the input device
-    if( deviceIsStarted(r.inDevIdx) )
-      if( deviceStop(r.inDevIdx) != kOkRC )
+    if( deviceIsStarted(h,r.inDevIdx) )
+      if( deviceStop(h,r.inDevIdx) != kOkRC )
         cwLogInfo("In device stop failed.");
 
     // stop the output device
-    if( deviceIsStarted(r.outDevIdx) )
-      if( deviceStop(r.outDevIdx) != kOkRC )
+    if( deviceIsStarted(h,r.outDevIdx) )
+      if( deviceStop(h,r.outDevIdx) != kOkRC )
         cwLogInfo("Out device stop failed.");
   }
 
  errLabel:
 
+  // release the ALSA driver
+  rc_t rc0 = alsa::destroy(alsaH);
+  
   // release any resources held by the audio port interface
-  if( finalize() != kOkRC )
-    cwLogInfo("Finalize failed.");
-
-  buf::finalize();
+  rc_t rc1 = destroy(h);
+  
+  rc_t rc2 = buf::finalize();
 
   //cmApNrtFree();
   //cmApFileFree();
 
   // report the count of audio buffer callbacks
   cwLogInfo("cb count:%i", r.cbCnt );
-  //for(i=0; i<_logCnt; ++i)
-  //  cwLogInfo("%c(%i)",_log[i],_ilog[i]);
-  //cwLogInfo("\n");
 
-  textBuf::destroy(tbH);
-
-  return result;
+  return rcSelect(rc,rc0,rc1,rc2);
 }
 
 /// [cmAudioPortExample]
-
 
 

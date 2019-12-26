@@ -64,6 +64,19 @@ namespace cw
   const char* idToLabel( const idLabelPair_t* array, unsigned id, unsigned eolId );
   unsigned    labelToId( const idLabelPair_t* array, const char* label, unsigned eolId );
 
+
+  inline rc_t rcSelect() { return kOkRC; }
+
+  template<typename T, typename... ARGS>
+    rc_t rcSelect(T rc, ARGS... args)
+  {
+    if( rc != kOkRC )
+      return rc;
+    
+    return rcSelect(args...);
+  }
+
+
   void sleepSec( unsigned secs ); // sleep seconds
   void sleepMs( unsigned ms ); // sleep milliseconds
   void sleepUs( unsigned us ); // sleep seconds

@@ -14,132 +14,138 @@
 namespace cw
 {
 
-  typedef struct file_str
+  namespace file
   {
-    FILE* fp;
-    char* fnStr;
-  } file_t;
+    typedef struct file_str
+    {
+      FILE* fp;
+      char* fnStr;
+    } this_t;
 
 
-#define _fileHandleToPtr(h) handleToPtr<fileH_t,file_t>(h)
+    this_t* _handleToPtr(handle_t h)
+    {
+      return handleToPtr<handle_t,this_t>(h);
+    }
   
-char*  _fileToBuf( fileH_t h, unsigned nn, unsigned* bufByteCntPtr )
-{
-  errno = 0;
+    char*  _fileToBuf( handle_t h, unsigned nn, unsigned* bufByteCntPtr )
+    {
+      errno = 0;
 
-  unsigned n   = fileByteCount(h);
-  char*    buf = nullptr;
+      unsigned n   = byteCount(h);
+      char*    buf = nullptr;
 
-  // if the file size calculation is ok
-  if( errno != 0 )
-  {
-    cwLogSysError(kOpFailRC,errno,"Invalid file buffer length on '%s'.", cwStringNullGuard(fileName(h)));
-    goto errLabel;
-  }
+      // if the file size calculation is ok
+      if( errno != 0 )
+      {
+        cwLogSysError(kOpFailRC,errno,"Invalid file buffer length on '%s'.", cwStringNullGuard(name(h)));
+        goto errLabel;
+      }
   
-  // allocate the read target buffer
-  if((buf = memAlloc<char>(n+nn)) == nullptr)
-  {
-    cwLogError(kMemAllocFailRC,"Read buffer allocation failed.");
-    goto errLabel;
-  }
+      // allocate the read target buffer
+      if((buf = memAlloc<char>(n+nn)) == nullptr)
+      {
+        cwLogError(kMemAllocFailRC,"Read buffer allocation failed.");
+        goto errLabel;
+      }
 
-  // read the file
-  if( fileRead(h,buf,n) != kOkRC )
-    goto errLabel;
+      // read the file
+      if( read(h,buf,n) != kOkRC )
+        goto errLabel;
 
-  // zero memory after the file data
-  memset(buf+n,0,nn);
+      // zero memory after the file data
+      memset(buf+n,0,nn);
 
-  if( bufByteCntPtr != nullptr )
-    *bufByteCntPtr = n;
+      if( bufByteCntPtr != nullptr )
+        *bufByteCntPtr = n;
 
-  return buf;
+      return buf;
 
- errLabel:
-  if( bufByteCntPtr != nullptr )
-    *bufByteCntPtr = 0;
+    errLabel:
+      if( bufByteCntPtr != nullptr )
+        *bufByteCntPtr = 0;
 
-  memRelease(buf);
+      memRelease(buf);
 
-  return nullptr;
+      return nullptr;
     
-}
+    }
 
-char* _fileFnToBuf( const char* fn, unsigned nn, unsigned* bufByteCntPtr  )
-{
-  fileH_t h;
-  char*   buf = nullptr;
+    char* _fileFnToBuf( const char* fn, unsigned nn, unsigned* bufByteCntPtr  )
+    {
+      handle_t h;
+      char*   buf = nullptr;
 
-  if( fileOpen(h,fn,kReadFileFl | kBinaryFileFl) != kOkRC )
-    goto errLabel;
+      if( open(h,fn,kReadFl | kBinaryFl) != kOkRC )
+        goto errLabel;
 
-  buf = _fileToBuf(h,nn,bufByteCntPtr);
+      buf = _fileToBuf(h,nn,bufByteCntPtr);
 
- errLabel:
-  fileClose(h);
+    errLabel:
+      close(h);
   
-  return buf;
-}
+      return buf;
+    }
 
-  rc_t _fileGetLine( file_t* p, char* buf, unsigned* bufByteCntPtr )
-{
-  // fgets() reads up to n-1 bytes into buf[]
-  if( fgets(buf,*bufByteCntPtr,p->fp) == nullptr )
-  {
-    // an read error or EOF condition occurred
-    *bufByteCntPtr = 0;
+    rc_t _fileGetLine( this_t* p, char* buf, unsigned* bufByteCntPtr )
+    {
+      // fgets() reads up to n-1 bytes into buf[]
+      if( fgets(buf,*bufByteCntPtr,p->fp) == nullptr )
+      {
+        // an read error or EOF condition occurred
+        *bufByteCntPtr = 0;
 
-    if( !feof(p->fp ) )
-      return cwLogSysError(kReadFailRC,errno,"File read line failed");
+        if( !feof(p->fp ) )
+          return cwLogSysError(kReadFailRC,errno,"File read line failed");
     
-    return kReadFailRC;
+        return kReadFailRC;
+      }
+
+      return kOkRC;
+    }
+
   }
 
-  return kOkRC;
 }
 
-}
-
-
-cw::rc_t cw::fileOpen( fileH_t& hRef, const char* fn, unsigned flags )
+cw::rc_t cw::file::open( handle_t& hRef, const char* fn, unsigned flags )
 {
   char mode[] = "/0/0/0";
-  file_t* p   = nullptr;
+  this_t* p   = nullptr;
   rc_t    rc;
 
-  if((rc = fileClose(hRef)) != kOkRC )
+  if((rc = close(hRef)) != kOkRC )
     return rc;
 
-  if( cwIsFlag(flags,kReadFileFl) )
+  if( cwIsFlag(flags,kReadFl) )
     mode[0]     = 'r';
   else
-    if( cwIsFlag(flags,kWriteFileFl) )
+    if( cwIsFlag(flags,kWriteFl) )
       mode[0]   = 'w';
     else
-      if( cwIsFlag(flags,kAppendFileFl) )
+      if( cwIsFlag(flags,kAppendFl) )
         mode[0] = 'a';
       else
-        cwLogError(kInvalidArgRC,"File open flags must contain 'kReadFileFl','kWriteFileFl', or 'kAppendFileFl'.");
+        cwLogError(kInvalidArgRC,"File open flags must contain 'kReadFl','kWriteFl', or 'kAppendFl'.");
   
-  if( cwIsFlag(flags,kUpdateFileFl) )
+  if( cwIsFlag(flags,kUpdateFl) )
     mode[1] = '+';
 
   // handle requests to use stdin,stdout,stderr
   FILE* sfp = nullptr;
-  if( cwIsFlag(flags,kStdoutFileFl) )
+  if( cwIsFlag(flags,kStdoutFl) )
   {
     sfp = stdout;
     fn  = "stdout";
   }
   else
-    if( cwIsFlag(flags,kStderrFileFl) )
+    if( cwIsFlag(flags,kStderrFl) )
     {
       sfp = stderr;
       fn  = "stderr";
     }
     else
-      if( cwIsFlag(flags,kStdinFileFl) )
+      if( cwIsFlag(flags,kStdinFl) )
       {
         sfp = stdin;
         fn  = "stdin";
@@ -149,9 +155,9 @@ cw::rc_t cw::fileOpen( fileH_t& hRef, const char* fn, unsigned flags )
   if( fn == nullptr )
     return cwLogError(kInvalidArgRC,"File object allocation failed due to empty file name.");
 
-  unsigned byteCnt = sizeof(file_t) + strlen(fn) + 1;
+  unsigned byteCnt = sizeof(this_t) + strlen(fn) + 1;
 
-  if((p = memAllocZ<file_t>(byteCnt)) == nullptr )
+  if((p = memAllocZ<this_t>(byteCnt)) == nullptr )
     return cwLogError(kOpFailRC,"File object allocation failed for file '%s'.",cwStringNullGuard(fn));
 
   p->fnStr = (char*)(p+1);
@@ -175,12 +181,12 @@ cw::rc_t cw::fileOpen( fileH_t& hRef, const char* fn, unsigned flags )
   return kOkRC;
 }
 
-cw::rc_t cw::fileClose(   fileH_t& hRef )
+cw::rc_t cw::file::close(   handle_t& hRef )
 {
-  if( fileIsValid(hRef) == false )
+  if( isValid(hRef) == false )
     return kOkRC;
 
-  file_t* p = _fileHandleToPtr(hRef);
+  this_t* p = _handleToPtr(hRef);
   
   errno                = 0;
   if( p->fp != nullptr )
@@ -188,17 +194,17 @@ cw::rc_t cw::fileClose(   fileH_t& hRef )
       return cwLogSysError(kCloseFailRC,errno,"File close failed on '%s'.", cwStringNullGuard(p->fnStr));
   
   memRelease(p);
-  hRef.set(nullptr);
+  hRef.clear();
 
   return kOkRC;
 }
 
-bool       cw::fileIsValid( fileH_t h )
+bool       cw::file::isValid( handle_t h )
 { return h.isValid(); }
 
-cw::rc_t cw::fileRead(    fileH_t h, void* buf, unsigned bufByteCnt )
+cw::rc_t cw::file::read(    handle_t h, void* buf, unsigned bufByteCnt )
 {
-  file_t* p = _fileHandleToPtr(h);
+  this_t* p = _handleToPtr(h);
   
   errno = 0;
   if( fread(buf,bufByteCnt,1,p->fp) != 1 )
@@ -207,9 +213,9 @@ cw::rc_t cw::fileRead(    fileH_t h, void* buf, unsigned bufByteCnt )
   return kOkRC;
 }
 
-cw::rc_t cw::fileWrite(   fileH_t h, const void* buf, unsigned bufByteCnt )
+cw::rc_t cw::file::write(   handle_t h, const void* buf, unsigned bufByteCnt )
 {
-  file_t* p = _fileHandleToPtr(h);
+  this_t* p = _handleToPtr(h);
   
   errno = 0;
   if( fwrite(buf,bufByteCnt,1,p->fp) != 1 )
@@ -218,18 +224,18 @@ cw::rc_t cw::fileWrite(   fileH_t h, const void* buf, unsigned bufByteCnt )
   return kOkRC;
 }
 
-cw::rc_t cw::fileSeek(    fileH_t h, enum fileSeekFlags_t flags, int offsByteCnt )
+cw::rc_t cw::file::seek(    handle_t h, enum seekFlags_t flags, int offsByteCnt )
 {
-  file_t*  p         = _fileHandleToPtr(h);
+  this_t*  p         = _handleToPtr(h);
   unsigned fileflags = 0;
 
-  if( cwIsFlag(flags,kBeginFileFl) )
+  if( cwIsFlag(flags,kBeginFl) )
     fileflags = SEEK_SET;
   else
-    if( cwIsFlag(flags,kCurFileFl) )
+    if( cwIsFlag(flags,kCurFl) )
       fileflags = SEEK_CUR;
     else
-      if( cwIsFlag(flags,kEndFileFl) )
+      if( cwIsFlag(flags,kEndFl) )
         fileflags = SEEK_END;
       else
         return cwLogError(kInvalidArgRC,"Invalid file seek flag on '%s'.",cwStringNullGuard(p->fnStr));
@@ -241,11 +247,11 @@ cw::rc_t cw::fileSeek(    fileH_t h, enum fileSeekFlags_t flags, int offsByteCnt
   return kOkRC;
 }
 
-cw::rc_t cw::fileTell( fileH_t h, long* offsPtr )
+cw::rc_t cw::file::tell( handle_t h, long* offsPtr )
 {
   cwAssert( offsPtr != nullptr );
   *offsPtr           = -1;
-  file_t* p = _fileHandleToPtr(h);
+  this_t* p = _handleToPtr(h);
   errno              = 0;
 
   if((*offsPtr = ftell(p->fp)) == -1)
@@ -254,15 +260,15 @@ cw::rc_t cw::fileTell( fileH_t h, long* offsPtr )
 }
 
 
-bool       cw::fileEof(     fileH_t h )
-{ return feof( _fileHandleToPtr(h)->fp ) != 0; }
+bool       cw::file::eof(     handle_t h )
+{ return feof( _handleToPtr(h)->fp ) != 0; }
 
 
-unsigned   cw::fileByteCount(  fileH_t h )
+unsigned   cw::file::byteCount(  handle_t h )
 {
   struct stat sr;
   int         f;
-  file_t*     p = _fileHandleToPtr(h);
+  this_t*     p = _handleToPtr(h);
   const char errMsg[] = "File byte count request failed.";
 
   errno = 0;
@@ -282,44 +288,44 @@ unsigned   cw::fileByteCount(  fileH_t h )
   return sr.st_size;
 }
 
-cw::rc_t   cw::fileByteCountFn( const char* fn, unsigned* fileByteCntPtr )
+cw::rc_t   cw::file::byteCountFn( const char* fn, unsigned* fileByteCntPtr )
 {
   cwAssert( fileByteCntPtr != nullptr );
   rc_t    rc;
-  fileH_t h;
+  handle_t h;
 
-  if((rc = fileOpen(h,fn,kReadFileFl)) != kOkRC )
+  if((rc = open(h,fn,kReadFl)) != kOkRC )
     return rc;
 
   if( fileByteCntPtr != nullptr)
-    *fileByteCntPtr   = fileByteCount(h);
+    *fileByteCntPtr   = byteCount(h);
 
-  fileClose(h);
+  close(h);
 
   return rc;    
 }
 
-cw::rc_t cw::fileCompare( const char* fn0, const char* fn1, bool& isEqualRef )
+cw::rc_t cw::file::compare( const char* fn0, const char* fn1, bool& isEqualRef )
 {
   rc_t     rc         = kOkRC;
   unsigned bufByteCnt = 2048;
-  fileH_t  h0;
-  fileH_t  h1;
-  file_t*  p0         = nullptr;
-  file_t*  p1         = nullptr;
+  handle_t  h0;
+  handle_t  h1;
+  this_t*  p0         = nullptr;
+  this_t*  p1         = nullptr;
   char     b0[ bufByteCnt ];
   char     b1[ bufByteCnt ];
 
   isEqualRef = true;
 
-  if((rc = fileOpen(h0,fn0,kReadFileFl)) != kOkRC )
+  if((rc = open(h0,fn0,kReadFl)) != kOkRC )
     goto errLabel;
 
-  if((rc = fileOpen(h1,fn1,kReadFileFl)) != kOkRC )
+  if((rc = open(h1,fn1,kReadFl)) != kOkRC )
     goto errLabel;
 
-  p0 = _fileHandleToPtr(h0);
-  p1 = _fileHandleToPtr(h1);
+  p0 = _handleToPtr(h0);
+  p1 = _handleToPtr(h1);
 
   while(1)
   {
@@ -336,36 +342,36 @@ cw::rc_t cw::fileCompare( const char* fn0, const char* fn1, bool& isEqualRef )
   }
 
  errLabel:
-  fileClose(h0);
-  fileClose(h1);
+  close(h0);
+  close(h1);
   return rc;
 }
 
 
-const char* cw::fileName( fileH_t h )
+const char* cw::file::name( handle_t h )
 {
-  file_t* p = _fileHandleToPtr(h);
+  this_t* p = _handleToPtr(h);
   return p->fnStr;
 }
 
-cw::rc_t cw::fileFnWrite( const char* fn, const void* buf, unsigned bufByteCnt )
+cw::rc_t cw::file::fnWrite( const char* fn, const void* buf, unsigned bufByteCnt )
 {
-  fileH_t h;
+  handle_t h;
   rc_t rc;
 
-  if((rc = fileOpen(h,fn,kWriteFileFl)) != kOkRC )
+  if((rc = open(h,fn,kWriteFl)) != kOkRC )
     goto errLabel;
 
-  rc = fileWrite(h,buf,bufByteCnt);
+  rc = write(h,buf,bufByteCnt);
 
  errLabel:
-  fileClose(h);
+  close(h);
   
   return rc;
 }
 
 
-cw::rc_t    cw::fileCopy( 
+cw::rc_t    cw::file::copy( 
     const char* srcDir, 
     const char* srcFn, 
     const char* srcExt, 
@@ -401,12 +407,12 @@ cw::rc_t    cw::fileCopy(
   }
 
   // read the source file into a buffer
-  if((buf = fileFnToBuf(srcPathFn,&byteCnt)) == nullptr )
+  if((buf = fnToBuf(srcPathFn,&byteCnt)) == nullptr )
     rc = cwLogError(kReadFailRC,"Attempt to fill a buffer from '%s' failed.",cwStringNullGuard(srcPathFn));
   else
   {
     // write the file to the output file
-    if( fileFnWrite(dstPathFn,buf,byteCnt) != kOkRC )
+    if( fnWrite(dstPathFn,buf,byteCnt) != kOkRC )
       rc = cwLogError(kWriteFailRC,"An attempt to write a buffer to '%s' failed.",cwStringNullGuard(dstPathFn));    
   }
 
@@ -419,7 +425,7 @@ cw::rc_t    cw::fileCopy(
 
 }
 
-cw::rc_t cw::fileBackup( const char* dir, const char* name, const char* ext )
+cw::rc_t cw::file::backup( const char* dir, const char* name, const char* ext )
 {
   rc_t               rc      = kOkRC;
   char*              newName = nullptr;
@@ -465,7 +471,7 @@ cw::rc_t cw::fileBackup( const char* dir, const char* name, const char* ext )
     if( fileSysIsFile(newFn) == false )
     {
       // .. then duplicate the file
-      if((rc = fileCopy(srcFn,nullptr,nullptr,newFn,nullptr,nullptr)) != kOkRC )
+      if((rc = copy(srcFn,nullptr,nullptr,newFn,nullptr,nullptr)) != kOkRC )
         rc = cwLogError(rc,"The file '%s' could not be duplicated as '%s'.",cwStringNullGuard(srcFn),cwStringNullGuard(newFn));
 
       break;
@@ -486,22 +492,22 @@ cw::rc_t cw::fileBackup( const char* dir, const char* name, const char* ext )
 }
 
 
-char*  cw::fileToBuf( fileH_t h, unsigned* bufByteCntPtr )
+char*  cw::file::toBuf( handle_t h, unsigned* bufByteCntPtr )
 { return _fileToBuf(h,0,bufByteCntPtr); }
 
-char*  cw::fileFnToBuf( const char* fn, unsigned* bufByteCntPtr )
+char*  cw::file::fnToBuf( const char* fn, unsigned* bufByteCntPtr )
 { return _fileFnToBuf(fn,0,bufByteCntPtr); }
 
-char*  cw::fileToStr( fileH_t h, unsigned* bufByteCntPtr )
+char*  cw::file::toStr( handle_t h, unsigned* bufByteCntPtr )
 { return _fileToBuf(h,1,bufByteCntPtr); }
 
-char*  cw::fileFnToStr( const char* fn, unsigned* bufByteCntPtr )
+char*  cw::file::fnToStr( const char* fn, unsigned* bufByteCntPtr )
 { return _fileFnToBuf(fn,1,bufByteCntPtr); }
 
-cw::rc_t cw::fileLineCount( fileH_t h, unsigned* lineCntPtr )
+cw::rc_t cw::file::lineCount( handle_t h, unsigned* lineCntPtr )
 {
   rc_t     rc      = kOkRC;
-  file_t*  p       = _fileHandleToPtr(h);
+  this_t*  p       = _handleToPtr(h);
   unsigned lineCnt = 0;
   long     offs;
   int      c;
@@ -510,7 +516,7 @@ cw::rc_t cw::fileLineCount( fileH_t h, unsigned* lineCntPtr )
   cwAssert( lineCntPtr != nullptr );
   *lineCntPtr = 0;
 
-  if((rc = fileTell(h,&offs)) != kOkRC )
+  if((rc = tell(h,&offs)) != kOkRC )
     return rc;
 
   errno = 0;
@@ -522,7 +528,7 @@ cw::rc_t cw::fileLineCount( fileH_t h, unsigned* lineCntPtr )
     if( c == EOF ) 
     {
       if( errno )
-        rc = cwLogSysError(kReadFailRC,errno,"File read char failed on 's'.", cwStringNullGuard(fileName(h)));
+        rc = cwLogSysError(kReadFailRC,errno,"File read char failed on 's'.", cwStringNullGuard(name(h)));
       else
         ++lineCnt; // add one in case the last line isn't terminated with a '\n'. 
 
@@ -535,7 +541,7 @@ cw::rc_t cw::fileLineCount( fileH_t h, unsigned* lineCntPtr )
 
   }
 
-  if((rc = fileSeek(h,kBeginFileFl,offs)) != kOkRC )
+  if((rc = seek(h,kBeginFl,offs)) != kOkRC )
     return rc;
 
   *lineCntPtr = lineCnt;
@@ -544,10 +550,10 @@ cw::rc_t cw::fileLineCount( fileH_t h, unsigned* lineCntPtr )
 }
 
 
-cw::rc_t cw::fileGetLine( fileH_t h, char* buf, unsigned* bufByteCntPtr )
+cw::rc_t cw::file::getLine( handle_t h, char* buf, unsigned* bufByteCntPtr )
 {
   cwAssert( bufByteCntPtr != nullptr );
-  file_t* p  = _fileHandleToPtr(h);
+  this_t* p  = _handleToPtr(h);
   unsigned  tn = 128;
   char  t[ tn ];
   unsigned  on = *bufByteCntPtr;
@@ -555,7 +561,7 @@ cw::rc_t cw::fileGetLine( fileH_t h, char* buf, unsigned* bufByteCntPtr )
   rc_t rc;
 
   // store the current file offset
-  if((rc = fileTell(h,&offs)) != kOkRC )
+  if((rc = tell(h,&offs)) != kOkRC )
     return rc;
   
   // if no buffer was given then use t[]
@@ -598,7 +604,7 @@ cw::rc_t cw::fileGetLine( fileH_t h, char* buf, unsigned* bufByteCntPtr )
   }
 
   // restore the original file offset
-  if((rc = fileSeek(h,kBeginFileFl,offs)) != kOkRC )
+  if((rc = seek(h,kBeginFl,offs)) != kOkRC )
     return rc;
 
   // add 1 for /0, 1 for /n and 1 to detect buf-too-short
@@ -608,7 +614,7 @@ cw::rc_t cw::fileGetLine( fileH_t h, char* buf, unsigned* bufByteCntPtr )
   
 }
 
-cw::rc_t cw::fileGetLineAuto( fileH_t h, char** bufPtrPtr, unsigned* bufByteCntPtr )
+cw::rc_t cw::file::getLineAuto( handle_t h, char** bufPtrPtr, unsigned* bufByteCntPtr )
 {
   rc_t  rc  = kOkRC;
   bool  fl  = true;
@@ -620,7 +626,7 @@ cw::rc_t cw::fileGetLineAuto( fileH_t h, char** bufPtrPtr, unsigned* bufByteCntP
   {
     fl         = false;
 
-    switch( rc = fileGetLine(h,buf,bufByteCntPtr) )
+    switch( rc = getLine(h,buf,bufByteCntPtr) )
     {
       case kOkRC:
         {
@@ -644,91 +650,91 @@ cw::rc_t cw::fileGetLineAuto( fileH_t h, char** bufPtrPtr, unsigned* bufByteCntP
   return rc;
 }
 
-cw::rc_t cw::fileReadChar(   fileH_t h, char*           buf, unsigned cnt ) 
-{ return fileRead(h,buf,sizeof(buf[0])*cnt); }
+cw::rc_t cw::file::readChar(   handle_t h, char*           buf, unsigned cnt ) 
+{ return read(h,buf,sizeof(buf[0])*cnt); }
 
-cw::rc_t cw::fileReadUChar(  fileH_t h, unsigned char*  buf, unsigned cnt ) 
-{ return fileRead(h,buf,sizeof(buf[0])*cnt); }
+cw::rc_t cw::file::readUChar(  handle_t h, unsigned char*  buf, unsigned cnt ) 
+{ return read(h,buf,sizeof(buf[0])*cnt); }
 
-cw::rc_t cw::fileReadShort(  fileH_t h, short*          buf, unsigned cnt ) 
-{ return fileRead(h,buf,sizeof(buf[0])*cnt); }
+cw::rc_t cw::file::readShort(  handle_t h, short*          buf, unsigned cnt ) 
+{ return read(h,buf,sizeof(buf[0])*cnt); }
 
-cw::rc_t cw::fileReadUShort( fileH_t h, unsigned short* buf, unsigned cnt ) 
-{ return fileRead(h,buf,sizeof(buf[0])*cnt); }
+cw::rc_t cw::file::readUShort( handle_t h, unsigned short* buf, unsigned cnt ) 
+{ return read(h,buf,sizeof(buf[0])*cnt); }
 
-cw::rc_t cw::fileReadLong(   fileH_t h, long*           buf, unsigned cnt ) 
-{ return fileRead(h,buf,sizeof(buf[0])*cnt); }
+cw::rc_t cw::file::readLong(   handle_t h, long*           buf, unsigned cnt ) 
+{ return read(h,buf,sizeof(buf[0])*cnt); }
 
-cw::rc_t cw::fileReadULong(  fileH_t h, unsigned long*  buf, unsigned cnt ) 
-{ return fileRead(h,buf,sizeof(buf[0])*cnt); }
+cw::rc_t cw::file::readULong(  handle_t h, unsigned long*  buf, unsigned cnt ) 
+{ return read(h,buf,sizeof(buf[0])*cnt); }
 
-cw::rc_t cw::fileReadInt(    fileH_t h, int*            buf, unsigned cnt ) 
-{ return fileRead(h,buf,sizeof(buf[0])*cnt); }
+cw::rc_t cw::file::readInt(    handle_t h, int*            buf, unsigned cnt ) 
+{ return read(h,buf,sizeof(buf[0])*cnt); }
 
-cw::rc_t cw::fileReadUInt(   fileH_t h, unsigned int*   buf, unsigned cnt ) 
-{ return fileRead(h,buf,sizeof(buf[0])*cnt); }
+cw::rc_t cw::file::readUInt(   handle_t h, unsigned int*   buf, unsigned cnt ) 
+{ return read(h,buf,sizeof(buf[0])*cnt); }
 
-cw::rc_t cw::fileReadFloat(  fileH_t h, float*          buf, unsigned cnt ) 
-{ return fileRead(h,buf,sizeof(buf[0])*cnt); }
+cw::rc_t cw::file::readFloat(  handle_t h, float*          buf, unsigned cnt ) 
+{ return read(h,buf,sizeof(buf[0])*cnt); }
 
-cw::rc_t cw::fileReadDouble( fileH_t h, double*         buf, unsigned cnt ) 
-{ return fileRead(h,buf,sizeof(buf[0])*cnt); }
+cw::rc_t cw::file::readDouble( handle_t h, double*         buf, unsigned cnt ) 
+{ return read(h,buf,sizeof(buf[0])*cnt); }
 
-cw::rc_t cw::fileReadBool(   fileH_t h, bool*           buf, unsigned cnt ) 
-{ return fileRead(h,buf,sizeof(buf[0])*cnt); }
-
-
-
-cw::rc_t cw::fileWriteChar(   fileH_t h, const char*           buf, unsigned cnt )
-{ return fileWrite(h,buf,sizeof(buf[0])*cnt); }
-
-cw::rc_t cw::fileWriteUChar(  fileH_t h, const unsigned char*  buf, unsigned cnt )
-{ return fileWrite(h,buf,sizeof(buf[0])*cnt); }
-
-cw::rc_t cw::fileWriteShort(  fileH_t h, const short*          buf, unsigned cnt )
-{ return fileWrite(h,buf,sizeof(buf[0])*cnt); }
-
-cw::rc_t cw::fileWriteUShort( fileH_t h, const unsigned short* buf, unsigned cnt )
-{ return fileWrite(h,buf,sizeof(buf[0])*cnt); }
-
-cw::rc_t cw::fileWriteLong(   fileH_t h, const long*           buf, unsigned cnt )
-{ return fileWrite(h,buf,sizeof(buf[0])*cnt); }
-
-cw::rc_t cw::fileWriteULong(  fileH_t h, const unsigned long*  buf, unsigned cnt )
-{ return fileWrite(h,buf,sizeof(buf[0])*cnt); }
-
-cw::rc_t cw::fileWriteInt(    fileH_t h, const int*            buf, unsigned cnt )
-{ return fileWrite(h,buf,sizeof(buf[0])*cnt); }
-
-cw::rc_t cw::fileWriteUInt(   fileH_t h, const unsigned int*   buf, unsigned cnt )
-{ return fileWrite(h,buf,sizeof(buf[0])*cnt); }
-
-cw::rc_t cw::fileWriteFloat(  fileH_t h, const float*          buf, unsigned cnt )
-{ return fileWrite(h,buf,sizeof(buf[0])*cnt); }
-
-cw::rc_t cw::fileWriteDouble( fileH_t h, const double*         buf, unsigned cnt )
-{ return fileWrite(h,buf,sizeof(buf[0])*cnt); }
-
-cw::rc_t cw::fileWriteBool(   fileH_t h, const bool*           buf, unsigned cnt )
-{ return fileWrite(h,buf,sizeof(buf[0])*cnt); }
+cw::rc_t cw::file::readBool(   handle_t h, bool*           buf, unsigned cnt ) 
+{ return read(h,buf,sizeof(buf[0])*cnt); }
 
 
-cw::rc_t cw::fileWriteStr( fileH_t h, const char* s )
+
+cw::rc_t cw::file::writeChar(   handle_t h, const char*           buf, unsigned cnt )
+{ return write(h,buf,sizeof(buf[0])*cnt); }
+
+cw::rc_t cw::file::writeUChar(  handle_t h, const unsigned char*  buf, unsigned cnt )
+{ return write(h,buf,sizeof(buf[0])*cnt); }
+
+cw::rc_t cw::file::writeShort(  handle_t h, const short*          buf, unsigned cnt )
+{ return write(h,buf,sizeof(buf[0])*cnt); }
+
+cw::rc_t cw::file::writeUShort( handle_t h, const unsigned short* buf, unsigned cnt )
+{ return write(h,buf,sizeof(buf[0])*cnt); }
+
+cw::rc_t cw::file::writeLong(   handle_t h, const long*           buf, unsigned cnt )
+{ return write(h,buf,sizeof(buf[0])*cnt); }
+
+cw::rc_t cw::file::writeULong(  handle_t h, const unsigned long*  buf, unsigned cnt )
+{ return write(h,buf,sizeof(buf[0])*cnt); }
+
+cw::rc_t cw::file::writeInt(    handle_t h, const int*            buf, unsigned cnt )
+{ return write(h,buf,sizeof(buf[0])*cnt); }
+
+cw::rc_t cw::file::writeUInt(   handle_t h, const unsigned int*   buf, unsigned cnt )
+{ return write(h,buf,sizeof(buf[0])*cnt); }
+
+cw::rc_t cw::file::writeFloat(  handle_t h, const float*          buf, unsigned cnt )
+{ return write(h,buf,sizeof(buf[0])*cnt); }
+
+cw::rc_t cw::file::writeDouble( handle_t h, const double*         buf, unsigned cnt )
+{ return write(h,buf,sizeof(buf[0])*cnt); }
+
+cw::rc_t cw::file::writeBool(   handle_t h, const bool*           buf, unsigned cnt )
+{ return write(h,buf,sizeof(buf[0])*cnt); }
+
+
+cw::rc_t cw::file::writeStr( handle_t h, const char* s )
 {
   rc_t rc;
   
   unsigned n = textLength(s);
 
-  if((rc = fileWriteUInt(h,&n,1)) != kOkRC )
+  if((rc = writeUInt(h,&n,1)) != kOkRC )
     return rc;
 
   if( n > 0 )
-    rc = fileWriteChar(h,s,n);
+    rc = writeChar(h,s,n);
   return rc;
 }
 
 
-cw::rc_t cw::fileReadStr(  fileH_t h, char** sRef, unsigned maxCharN )
+cw::rc_t cw::file::readStr(  handle_t h, char** sRef, unsigned maxCharN )
 {
   unsigned n;
   rc_t rc;
@@ -741,7 +747,7 @@ cw::rc_t cw::fileReadStr(  fileH_t h, char** sRef, unsigned maxCharN )
     maxCharN = 16384;
 
   // read the string length
-  if((rc = fileReadUInt(h,&n,1)) != kOkRC )
+  if((rc = readUInt(h,&n,1)) != kOkRC )
     return rc;
 
   // verify that string isn't too long
@@ -754,7 +760,7 @@ cw::rc_t cw::fileReadStr(  fileH_t h, char** sRef, unsigned maxCharN )
   char* s = memAllocZ<char>(n+1);
 
   // fill the buffer from the file
-  if((rc = fileReadChar(h,s,n)) != kOkRC )
+  if((rc = readChar(h,s,n)) != kOkRC )
     return rc;
 
   s[n] = 0; // terminate the string
@@ -765,33 +771,33 @@ cw::rc_t cw::fileReadStr(  fileH_t h, char** sRef, unsigned maxCharN )
 }
 
 
-cw::rc_t cw::filePrint(   fileH_t h, const char* text )
+cw::rc_t cw::file::print(   handle_t h, const char* text )
 {
-  file_t* p = _fileHandleToPtr(h);
+  this_t* p = _handleToPtr(h);
 
   errno = 0;
   if( fputs(text,p->fp) < 0 )
-    return cwLogSysError(kOpFailRC,errno,"File print failed on '%s'.", cwStringNullGuard(fileName(h)));
+    return cwLogSysError(kOpFailRC,errno,"File print failed on '%s'.", cwStringNullGuard(name(h)));
 
   return kOkRC;
 }
 
 
-cw::rc_t cw::fileVPrintf( fileH_t h, const char* fmt, va_list vl )
+cw::rc_t cw::file::vPrintf( handle_t h, const char* fmt, va_list vl )
 {
-  file_t* p = _fileHandleToPtr(h);
+  this_t* p = _handleToPtr(h);
   
   if( vfprintf(p->fp,fmt,vl) < 0 )
-    return cwLogSysError(kOpFailRC,errno,"File print failed on '%s'.", cwStringNullGuard(fileName(h)));
+    return cwLogSysError(kOpFailRC,errno,"File print failed on '%s'.", cwStringNullGuard(name(h)));
   
   return kOkRC;
 }
 
-cw::rc_t cw::filePrintf(  fileH_t h, const char* fmt, ... )
+cw::rc_t cw::file::printf(  handle_t h, const char* fmt, ... )
 {
   va_list vl;
   va_start(vl,fmt);
-  rc_t rc = fileVPrintf(h,fmt,vl);
+  rc_t rc = vPrintf(h,fmt,vl);
   va_end(vl);
   return rc;
 }

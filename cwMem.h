@@ -93,11 +93,12 @@ namespace cw
       return memDuplStr(s1);
     }
 
+    // s1n is <= s0n 
     // copy s1[] into s0[]
     size_t i=0;
     for(; s1[i]; ++i)
       s0[i] = s1[i];
-    s0[i+1] = 0;
+    s0[i] = 0;
 
     return s0;
   }
@@ -118,7 +119,7 @@ namespace cw
 
     
     C buf[ bufN + 1 ];
-    size_t n = vsnprintf(buf,bufN,fmt,vl1);
+    size_t n = vsnprintf(buf,bufN+1,fmt,vl1);
 
     cwAssert(n <= bufN);
 
