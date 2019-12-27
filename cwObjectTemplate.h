@@ -6,7 +6,7 @@ namespace cw
 {
   objType_t*   _objIdToType( objTypeId_t tid );
   object_t* _objAllocate( objTypeId_t tid=kInvalidTId, object_t* parent=NULL );
-  object_t* _objCreateConainerNode( lexH_t lexH, object_t* parent, objTypeId_t tid );
+  object_t* _objCreateConainerNode( lex::handle_t lexH, object_t* parent, objTypeId_t tid );
   object_t* _objAppendLeftMostNode( object_t* parent, object_t* newNode );
 
   template< typename T >

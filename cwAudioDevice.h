@@ -1,3 +1,24 @@
+//( { file_desc: "Cross platform audio device interface." kw:[audio rt] }
+//
+// This interface provides data declarations for platform dependent 
+// audio I/O functions. The implementation for the functions are
+// in platform specific modules. See cwAudioDeviceAlsa.cpp.
+//
+// ALSA Notes:  
+// Assign capture device to line or mic input:
+// amixer -c 0 cset iface=MIXER,name='Input Source',index=0 Mic
+// amixer -c 0 cset iface=MIXER,name='Input Source',index=0 Line
+//
+// -c 0                            select the first card
+// -iface=MIXER                    the cset is targetting the MIXER component
+// -name='Input Source',index=0    the control to set is the first 'Input Source'
+// Note that the 'Capture' control sets the input gain.
+//
+// See alsamixer for a GUI to accomplish the same thing.
+//
+//
+//)
+
 #ifndef cwAudioDevice_H
 #define cwAudioDevice_H
 
@@ -46,7 +67,7 @@ namespace cw
       // In general it should be assmed that this call is made from a system thread which is not 
       // the same as the application thread.
       // The usual thread safety precautions should therefore be taken if this function implementation
-      // interacts with data structures also handled by the application. The audio buffer class (\see cmApBuf.h) 
+      // interacts with data structures also handled by the application. The audio buffer class (\see cwAudioBuf.h) 
       // is designed to provide a safe and efficient way to communicate between
       // the audio thread and the application.
       typedef void (*cbFunc_t)( audioPacket_t* inPktArray, unsigned inPktCnt, audioPacket_t* outPktArray, unsigned outPktCnt );
@@ -79,7 +100,25 @@ namespace cw
       unsigned    deviceChannelCount(   handle_t h, unsigned devIdx, bool inputFl );
       double      deviceSampleRate(     handle_t h, unsigned devIdx );
       unsigned    deviceFramesPerCycle( handle_t h, unsigned devIdx, bool inputFl );
-      rc_t        deviceSetup(          handle_t h, unsigned devIdx, double sr, unsigned frmPerCycle, cbFunc_t cb, void* cbData );
+      
+      // Configure a device.  
+      // All devices must be setup before they are started.
+      // framesPerCycle is the requested number of samples per audio callback. The
+      // actual number of samples made from a callback may be smaller. See the note
+      // regarding this in audioPacket_t.
+      // If the device cannot support the requested configuration then the function
+      // will return an error code.
+      // If the device is started when this function is called then it will be 
+      // automatically stopped and then restarted following the reconfiguration.
+      // If the reconfiguration fails then the device may not be restared.
+      rc_t        deviceSetup(
+        handle_t h,
+        unsigned devIdx,
+        double   sr,
+        unsigned frmPerCycle,
+        cbFunc_t cb,
+        void*    cbData );
+      
       rc_t        deviceStart(          handle_t h, unsigned devIdx );
       rc_t        deviceStop(           handle_t h, unsigned devIdx );
       bool        deviceIsStarted(      handle_t h, unsigned devIdx );

@@ -20,6 +20,9 @@
 #include "cwAudioDeviceTest.h"
 #include "cwAudioDeviceAlsa.h"
 #include "cwAudioBuf.h"
+#include "cwTcpSocket.h"
+#include "cwTcpSocketSrv.h"
+#include "cwTcpSocketTest.h"
 
 #include <iostream>
 
@@ -131,6 +134,33 @@ void audioBufTest(      cw::object_t* cfg, int argc, const char* argv[] ) { cw::
 void audioDevTest(      cw::object_t* cfg, int argc, const char* argv[] ) { cw::audio::device::test( argc, argv ); }
 void audioDevAlsaTest(  cw::object_t* cfg, int argc, const char* argv[] ) { cw::audio::device::alsa::report(); }
 
+void socketTest( cw::object_t* cfg, int argc, const char* argv[] )
+{
+  if( argc >= 3 )
+  {
+    unsigned short localPort  = atoi(argv[1]);
+    unsigned short remotePort = atoi(argv[2]);
+
+    printf("local:%i remote:%i\n", localPort, remotePort);
+    
+    cw::net::socket::test( localPort, "127.0.0.1", remotePort );
+  }
+}
+
+void socketSrvTest( cw::object_t* cfg, int argc, const char* argv[] )
+{
+  if( argc >= 3 )
+  {
+    unsigned short localPort  = atoi(argv[1]);
+    unsigned short remotePort = atoi(argv[2]);
+
+    printf("local:%i remote:%i\n", localPort, remotePort);
+    
+    cw::net::srv::test( localPort, "127.0.0.1", remotePort );
+  }
+}
+
+
 void stubTest( cw::object_t* cfg, int argc, const char* argv[] )
 {
   typedef struct v_str
@@ -170,6 +200,8 @@ int main( int argc, const char* argv[] )
    { "audioBuf", audioBufTest },
    { "audioDev",audioDevTest },
    { "audioDevAlsa", audioDevAlsaTest },
+   { "socket", socketTest },
+   { "socketSrv", socketSrvTest },
    { "stub", stubTest },
    { nullptr, nullptr }
   };
@@ -180,7 +212,7 @@ int main( int argc, const char* argv[] )
   const char*   mode  = argc > 2 ? argv[2] : nullptr;
 
   
-  cw::logCreateGlobal();
+  cw::log::createGlobal();
 
   // if valid command line args were given and the cfg file was successfully read
   if( cfgFn != nullptr && mode != nullptr && objectFromFile( cfgFn, cfg ) == cw::kOkRC )
@@ -201,7 +233,7 @@ int main( int argc, const char* argv[] )
     cfg->free();
   }
   
-  cw::logDestroyGlobal();
+  cw::log::destroyGlobal();
 
   return 0;
 }

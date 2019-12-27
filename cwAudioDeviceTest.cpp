@@ -26,7 +26,7 @@ namespace  cw
       {
         unsigned      bufCnt;         // 2=double buffering 3=triple buffering
         unsigned      chIdx;          // first test channel
-        unsigned      chCnt;          // count of channels to test
+        //unsigned      chCnt;          // count of channels to test
         unsigned      framesPerCycle; // DSP frames per cycle
         unsigned      bufFrmCnt;      // count of DSP frames used by the audio buffer  (bufCnt * framesPerCycle)
         unsigned      bufSmpCnt;      // count of samples used by the audio buffer     (chCnt  * bufFrmCnt)
@@ -51,7 +51,8 @@ namespace  cw
         unsigned*     ilog;          // ilog[logCnt]
         unsigned      logIdx;        // current log index
 
-        unsigned      cbCnt;         // count the callback
+        unsigned      iCbCnt;         // count the callback
+        unsigned      oCbCnt;
       } cmApPortTestRecd;
 
 
@@ -215,7 +216,7 @@ namespace  cw
             // copy the incoming audio into an internal buffer where it can be picked up by _cpApCopyOut().
             _cmApCopyIn( r, (sample_t*)inPktArray[i].audioBytesPtr, inPktArray[i].begChIdx, inPktArray[i].chCnt, inPktArray[i].audioFramesCnt );
           }
-          ++r->cbCnt;
+          ++r->iCbCnt;
 
           //printf("i %4i in:%4i out:%4i\n",r->bufFullCnt,r->bufInIdx,r->bufOutIdx);
         }
@@ -252,7 +253,7 @@ namespace  cw
 
           //printf("o %4i in:%4i out:%4i\n",r->bufFullCnt,r->bufInIdx,r->bufOutIdx);
           // count callbacks
-          ++r->cbCnt;
+          ++r->oCbCnt;
         }
       }
 #endif
@@ -304,10 +305,10 @@ namespace  cw
       void _cmApPortCb2( audioPacket_t* inPktArray, unsigned inPktCnt, audioPacket_t* outPktArray, unsigned outPktCnt )
       {
         for(unsigned i=0; i<inPktCnt; ++i)
-          static_cast<cmApPortTestRecd*>(inPktArray[i].cbArg)->cbCnt++;
+          static_cast<cmApPortTestRecd*>(inPktArray[i].cbArg)->iCbCnt++;
 
         for(unsigned i=0; i<outPktCnt; ++i)
-          static_cast<cmApPortTestRecd*>(outPktArray[i].cbArg)->cbCnt++;
+          static_cast<cmApPortTestRecd*>(outPktArray[i].cbArg)->oCbCnt++;
         
         buf::inputToOutput( _cmGlobalInDevIdx, _cmGlobalOutDevIdx );
 
@@ -334,12 +335,12 @@ cw::rc_t cw::audio::device::test( int argc, const char** argv )
 
   runFl            = _cmApGetOpt(argc,argv,"-p",0,true)?false:true;
   r.srate          = _cmApGetOpt(argc,argv,"-r",44100);
-  r.chIdx          = _cmApGetOpt(argc,argv,"-a",0);
-  r.chCnt          = _cmApGetOpt(argc,argv,"-c",2);
+  //r.chIdx          = _cmApGetOpt(argc,argv,"-a",0);
+  //r.chCnt          = _cmApGetOpt(argc,argv,"-c",2);
   r.bufCnt         = _cmApGetOpt(argc,argv,"-b",3);
   r.framesPerCycle = _cmApGetOpt(argc,argv,"-f",512);
-  r.bufFrmCnt      = (r.bufCnt*r.framesPerCycle);
-  r.bufSmpCnt      = (r.chCnt  * r.bufFrmCnt);
+  //r.bufFrmCnt      = (r.bufCnt*r.framesPerCycle);
+  //r.bufSmpCnt      = (r.chCnt  * r.bufFrmCnt);
   r.logCnt         = 100; 
   r.meterMs        = 50;
 
@@ -348,7 +349,7 @@ cw::rc_t cw::audio::device::test( int argc, const char** argv )
   unsigned    ilog[r.logCnt];
   
   r.inDevIdx   = _cmGlobalInDevIdx  = _cmApGetOpt(argc,argv,"-i",0);   
-  r.outDevIdx  = _cmGlobalOutDevIdx = _cmApGetOpt(argc,argv,"-o",2); 
+  r.outDevIdx  = _cmGlobalOutDevIdx = _cmApGetOpt(argc,argv,"-o",0); 
   r.phase      = 0;
   r.frqHz      = 2000;
   r.bufInIdx   = 0;
@@ -359,9 +360,10 @@ cw::rc_t cw::audio::device::test( int argc, const char** argv )
   r.buf        = buf;
   r.log        = log;
   r.ilog       = ilog;
-  r.cbCnt      = 0;
-
-  cwLogInfo("Program cfg: %s in:%i out:%i chidx:%i chs:%i bufs=%i frm=%i rate=%f",runFl?"exec":"rpt",r.inDevIdx,r.outDevIdx,r.chIdx,r.chCnt,r.bufCnt,r.framesPerCycle,r.srate);
+  r.iCbCnt     = 0;
+  r.oCbCnt     = 0;
+  
+  //cwLogInfo("Program cfg: %s in:%i out:%i chidx:%i chs:%i bufs=%i frm=%i rate=%f",runFl?"exec":"rpt",r.inDevIdx,r.outDevIdx,r.chIdx,r.chCnt,r.bufCnt,r.framesPerCycle,r.srate);
 
   
   // initialize the audio device interface  
@@ -388,11 +390,11 @@ cw::rc_t cw::audio::device::test( int argc, const char** argv )
   // report the current audio device configuration
   for(i=0; i<deviceCount(h); ++i)
   {
-    cwLogInfo("%i [in: chs=%i frames=%i] [out: chs=%i frames=%i] srate:%f %s",i,deviceChannelCount(h,i,true),deviceFramesPerCycle(h,i,true),deviceChannelCount(h,i,false),deviceFramesPerCycle(h,i,false),deviceSampleRate(h,i),deviceLabel(h,i));
+    cwLogInfo("%i [in: chs=%i frames=%i] [out: chs=%i frames=%i] srate:%8.1f %s",i,deviceChannelCount(h,i,true),deviceFramesPerCycle(h,i,true),deviceChannelCount(h,i,false),deviceFramesPerCycle(h,i,false),deviceSampleRate(h,i),deviceLabel(h,i));
   }
   
   // report the current audio devices using the audio port interface function
-  report(h);
+  //report(h);
 
   if( runFl )
   {
@@ -403,7 +405,7 @@ cw::rc_t cw::audio::device::test( int argc, const char** argv )
     buf::setup( r.outDevIdx, r.srate, r.framesPerCycle, r.bufCnt, deviceChannelCount(h,r.outDevIdx,true), r.framesPerCycle, deviceChannelCount(h,r.outDevIdx,false), r.framesPerCycle );
 
     // setup the buffer for the input device
-    if( r.inDevIdx != r.outDevIdx )
+    //if( r.inDevIdx != r.outDevIdx )
       buf::setup( r.inDevIdx, r.srate, r.framesPerCycle, r.bufCnt, deviceChannelCount(h,r.inDevIdx,true), r.framesPerCycle, deviceChannelCount(h,r.inDevIdx,false), r.framesPerCycle ); 
 
     // setup an output device
@@ -425,7 +427,11 @@ cw::rc_t cw::audio::device::test( int argc, const char** argv )
             cwLogInfo("Setup complete!");
     
     
-    cwLogInfo("q=quit O/o output tone, I/i input tone P/p pass s=buf report");
+    cwLogInfo("q=quit O/o output tone, I/i input tone, P/p pass M/m meter s=buf report");
+
+    //buf::enableTone( r.outDevIdx,-1,buf::kOutFl | buf::kEnableFl);
+    //buf::enableMeter(r.outDevIdx,-1,buf::kOutFl | buf::kEnableFl);
+    
     char c;
     while((c=getchar()) != 'q')
     {
@@ -446,6 +452,12 @@ cw::rc_t cw::audio::device::test( int argc, const char** argv )
         case 'p':
         case 'P':
           buf::enablePass(r.outDevIdx,-1,buf::kOutFl | (c=='P'?buf::kEnableFl:0));
+          break;
+
+        case 'M':
+        case 'm':
+          buf::enableMeter( r.inDevIdx,  -1,  buf::kInFl | (c=='M'?buf::kEnableFl:0));
+          buf::enableMeter( r.outDevIdx, -1, buf::kOutFl | (c=='M'?buf::kEnableFl:0));
           break;
           
         case 's':
@@ -480,7 +492,7 @@ cw::rc_t cw::audio::device::test( int argc, const char** argv )
   //cmApFileFree();
 
   // report the count of audio buffer callbacks
-  cwLogInfo("cb count:%i", r.cbCnt );
+  cwLogInfo("cb count: i:%i o:%i", r.iCbCnt, r.oCbCnt );
 
   return rcSelect(rc,rc0,rc1,rc2);
 }

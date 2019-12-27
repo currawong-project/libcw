@@ -16,4 +16,11 @@
 
 - change cwMpScNbQueue so that it does not require 'new'.
 
+- cwAudioBuf.cpp - the ch->fn in update() does not have the correct memory fence.
+
+- change file names to match object names
+
+- change all NULL's to nullptr
+
+- implement kTcpFl in cwTcpSocket.cpp
 

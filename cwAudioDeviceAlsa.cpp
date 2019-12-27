@@ -110,7 +110,7 @@ namespace cw
           
           if( alsaRC == 0 )
           {
-            rc = logMsg( logGlobalHandle(), kError_LogLevel, func, fn, lineNumb, 0, kOpFailRC, fmt, vl0 );            
+            rc = log::msg( log::globalHandle(), log::kError_LogLevel, func, fn, lineNumb, 0, kOpFailRC, fmt, vl0 );            
           }
           else
           {
@@ -129,7 +129,7 @@ namespace cw
             char msg1[n+1];
             m = snprintf(msg1,n+1,fmt1,msg0,snd_strerror(alsaRC));
             
-            rc = logMsg( logGlobalHandle(), kError_LogLevel, func, fn, lineNumb, 0, kOpFailRC, "%s", msg1 );
+            rc = log::msg( log::globalHandle(), log::kError_LogLevel, func, fn, lineNumb, 0, kOpFailRC, "%s", msg1 );
           }
           
           va_end(vl0);
@@ -367,6 +367,7 @@ namespace cw
           int cnt = 0;
           int err;
 
+
           do
           {
             if((err = snd_pcm_open(pcmHPtr,devNameStr,inputFl ? SND_PCM_STREAM_CAPTURE : SND_PCM_STREAM_PLAYBACK,0)) < 0 )
@@ -522,23 +523,48 @@ namespace cw
           }
         }
 
+        int NNN = 0;
+        void _rms( const char* devNameStr, const device::sample_t* s0p, const int* s1p, unsigned n )
+        {
+          double   facc  = 0.0;
+          int      iacc  = 0;
+          unsigned normN = 0;
+          unsigned zeroN = 0;
+          
+          for(unsigned i=0; i<n; i+=2)
+          {
+            facc += s0p[i] * s0p[i];
+            iacc += s1p[i] * s1p[i];
+            
+            if( s0p[i] == 0.0 )
+              zeroN += 1;
+            else
+              if( std::isnormal(s0p[i]) )
+                normN += 1;
+          }
+
+          printf("%i z:%i n:%i : %f %i : %s\n", n, zeroN, normN, facc/(n/2), iacc/(n/2), devNameStr);
+          
+        }
 
         // Returns count of frames written on success or < 0 on error;
         // set smpPtr to NULL to write a buffer of silence
         int _devWriteBuf( devRecd_t* drp, snd_pcm_t* pcmH, const device::sample_t* sp, unsigned chCnt, unsigned frmCnt, unsigned bits, unsigned sigBits )
         {
-          int                 err         = 0;
-          unsigned            bytesPerSmp = (bits==24 ? 32 : bits)/8;
-          unsigned            smpCnt      = chCnt * frmCnt;
-          unsigned            byteCnt     = bytesPerSmp * smpCnt;
+          int                     err         = 0;
+          unsigned                bytesPerSmp = (bits==24 ? 32 : bits)/8;
+          unsigned                smpCnt      = chCnt * frmCnt;
+          unsigned                byteCnt     = bytesPerSmp * smpCnt;
           const device::sample_t* ep          = sp + smpCnt;
-          char                obuf[ byteCnt ];
+          char                    obuf[ byteCnt ];
+          
+          //const device::sample_t* rms = sp;
 
           // if no output was given then fill the device buffer with zeros
           if( sp == NULL )
             memset(obuf,0,byteCnt);
           else
-          {
+          {            
             // otherwise convert the floating point samples to integers
             switch( bits )
             {
@@ -575,13 +601,21 @@ namespace cw
                   int* dp = (int*)obuf;
 
                   while( sp < ep )
-                    *dp++ = (int)(*sp++ * 0x7fffffff);        
+                    *dp++ = (int)(*sp++ * 0x7fffffff);
+                    //*dp++ = (rand() - (RAND_MAX/2)) * 2;
 
                 }
                 break;
             }
           }
 
+          /*
+          NNN+=1;
+          if( NNN % 100 == 0)
+          {
+            _rms(drp->nameStr,rms,(const int*)obuf,smpCnt);
+          }
+          */
 
           // send the bytes to the device
           err = snd_pcm_writei( pcmH, obuf, frmCnt );
@@ -734,7 +768,7 @@ namespace cw
             {
               // callback to fill the buffer
               drp->cbFunc(NULL,0,&pkt,1);
-
+              
               // note that the application may return fewer samples than were requested
               err = _devWriteBuf(drp, pcmH, pkt.audioFramesCnt < frmCnt ? NULL : drp->oBuf,chCnt,frmCnt,drp->oBits,drp->oSigBits);
 

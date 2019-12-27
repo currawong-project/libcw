@@ -18,7 +18,8 @@
 
 #if defined(cwLINUX) || defined(cwOSX)
 #define cwPOSIX_FILE_SYS
-#include <time.h> //  linux time.h
+#include <time.h>         // timespec
+#include <netinet/in.h>	  // struct sockaddr_in
 #define cwPathSeparatorChar '/'
 #endif
 

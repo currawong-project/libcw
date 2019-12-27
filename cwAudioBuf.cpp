@@ -44,6 +44,9 @@
   
 */
 
+#define atomicUIntIncr( vRef, dVal ) std::atomic_fetch_add<unsigned>(vRef,dVal)
+#define atomicUIntDecr( vRef, dVal ) std::atomic_fetch_sub<unsigned>(vRef,dVal)
+
 namespace cw
 {
   namespace audio
@@ -94,8 +97,8 @@ namespace cw
         unsigned   devCnt;
         unsigned   meterMs;
 
-        sample_t* zeroBuf;    // buffer of zeros 
-        unsigned      zeroBufCnt; // max of all dspFrameCnt for all devices.
+        sample_t* zeroBuf;      // buffer of zeros 
+        unsigned  zeroBufCnt;   // max of all dspFrameCnt for all devices.
       } cmApBuf;
 
       cmApBuf _theBuf;
@@ -411,8 +414,7 @@ cw::rc_t cw::audio::buf::update(
         // advance the input channel buffer
         cp->ii  = n1>0 ? n1 : cp->ii + n0;
         //cp->fn += pp->audioFramesCnt;
-        //cmThUIntIncr(&cp->fn,pp->audioFramesCnt);
-        std::atomic_fetch_add<unsigned>(&cp->fn,pp->audioFramesCnt);
+        atomicUIntIncr(&cp->fn,pp->audioFramesCnt);
 
       }
     }
@@ -424,7 +426,7 @@ cw::rc_t cw::audio::buf::update(
     for(i=0; i<outPktCnt; ++i)
     {
       device::audioPacket_t* pp = outPktArray + i;           
-      cmApIO*            op = _theBuf.devArray[pp->devIdx].ioArray + kOutApIdx; // dest io recd
+      cmApIO*                op = _theBuf.devArray[pp->devIdx].ioArray + kOutApIdx; // dest io recd
 
       // if the base timestamp has not yet been set then set it.
       if( op->timeStamp.tv_sec==0 && op->timeStamp.tv_nsec==0 )
@@ -433,10 +435,10 @@ cw::rc_t cw::audio::buf::update(
       // for each dest packet channel and enabled source channel
       for(j=0; j<pp->chCnt; ++j)
       {
-        cmApCh*  cp = op->chArray + pp->begChIdx + j; // dest ch
-        unsigned n0 = op->n - cp->oi;                 // first src segment
-        unsigned n1 = 0;                              // second src segment
-        volatile unsigned fn = cp->fn; // store fn because it may be changed by the client thread
+        cmApCh*           cp = op->chArray + pp->begChIdx + j; // dest ch
+        unsigned          n0 = op->n - cp->oi;                 // first src segment
+        unsigned          n1 = 0;                              // second src segment
+        volatile unsigned fn = cp->fn;                         // store fn because it may be changed by the client thread
 
         // if the outgoing samples  will underflow the buffer 
         if( pp->audioFramesCnt > fn )
@@ -501,8 +503,7 @@ cw::rc_t cw::audio::buf::update(
         // advance the output channel buffer
         cp->oi  = n1>0 ? n1 : cp->oi + n0;
         //cp->fn -= pp->audioFramesCnt;
-        //cmThUIntDecr(&cp->fn,pp->audioFramesCnt);
-        std::atomic_fetch_sub<unsigned>(&cp->fn,pp->audioFramesCnt);
+        atomicUIntDecr(&cp->fn,pp->audioFramesCnt);
 
       }
     }    
@@ -750,7 +751,6 @@ void cw::audio::buf::getIO(   unsigned iDevIdx, sample_t* iBufArray[], unsigned 
       if( oBufArray[i] != NULL )
         memset( oBufArray[i], 0, byteCnt );
   }
-
 }
 
 void cw::audio::buf::advance( unsigned devIdx, unsigned flags )
@@ -768,8 +768,7 @@ void cw::audio::buf::advance( unsigned devIdx, unsigned flags )
     {
       cmApCh* cp = ioPtr->chArray + i;
       cp->oi     = (cp->oi + ioPtr->dspFrameCnt) % ioPtr->n;
-      //cmThUIntDecr(&cp->fn,ioPtr->dspFrameCnt);
-      std::atomic_fetch_sub<unsigned>(&cp->fn,ioPtr->dspFrameCnt);
+      atomicUIntDecr(&cp->fn,ioPtr->dspFrameCnt);
 
       
     }
@@ -777,8 +776,7 @@ void cw::audio::buf::advance( unsigned devIdx, unsigned flags )
     // count the number of samples input from this device
     if( ioPtr->timeStamp.tv_sec!=0 && ioPtr->timeStamp.tv_nsec!=0 )
     {
-      //cmThUIntIncr(&ioPtr->ioFrameCnt,ioPtr->dspFrameCnt);
-      std::atomic_fetch_add<unsigned>(&ioPtr->ioFrameCnt, ioPtr->dspFrameCnt);
+      atomicUIntIncr(&ioPtr->ioFrameCnt,ioPtr->dspFrameCnt);
     }
   }
   
@@ -789,17 +787,14 @@ void cw::audio::buf::advance( unsigned devIdx, unsigned flags )
     {
       cmApCh* cp = ioPtr->chArray + i;
       cp->ii     = (cp->ii + ioPtr->dspFrameCnt) % ioPtr->n;
-      //cmThUIntIncr(&cp->fn,ioPtr->dspFrameCnt);
-      std::atomic_fetch_add<unsigned>(&cp->fn,ioPtr->dspFrameCnt);
+      atomicUIntIncr(&cp->fn,ioPtr->dspFrameCnt);
 
     }
 
     // count the number of samples output from this device
     if( ioPtr->timeStamp.tv_sec!=0 && ioPtr->timeStamp.tv_nsec!=0 )
     {
-      //cmThUIntIncr(&ioPtr->ioFrameCnt,ioPtr->dspFrameCnt);
-      std::atomic_fetch_add<unsigned>(&ioPtr->ioFrameCnt,ioPtr->dspFrameCnt);
-
+      atomicUIntIncr(&ioPtr->ioFrameCnt,ioPtr->dspFrameCnt);
     }
   }
 }
@@ -865,17 +860,20 @@ void cw::audio::buf::report()
       unsigned ii = 0;
       unsigned oi = 0;
       unsigned fn  = 0;
+      sample_t m   = 0;
       for(k=0; k<ip->chCnt; ++k)
       {
         cmApCh* cp = ip->chArray + i;
         ii += cp->ii;
         oi += cp->oi;
         fn += cp->fn;
+        m += _cmApMeterValue(cp);
       }
+      
 
-      cwLogInfo("%i :  %s - i:%7i o:%7i f:%7i n:%7i err %s:%7i ",
+      cwLogInfo("%i :  %s - i:%7i o:%7i f:%7i n:%7i err %s:%7i meter:%f",
         i,j==0?"IN ":"OUT",
-        ii,oi,fn,ip->n, (j==0?"over":"under"), ip->faultCnt);
+        ii,oi,fn,ip->n, (j==0?"over ":"under"), ip->faultCnt, m/ip->chCnt);
 
     }
   }

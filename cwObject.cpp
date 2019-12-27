@@ -16,7 +16,7 @@ namespace cw
 {
   enum
   {
-   kLCurlyLexTId = cw::kUserLexTId+1, 
+   kLCurlyLexTId = cw::lex::kUserLexTId+1, 
    kRCurlyLexTId,
    kLHardLexTId,
    kRHardLexTId,
@@ -38,7 +38,7 @@ namespace cw
    { kTrueLexTId,   "true"},
    { kFalseLexTId,  "false"},
    { kNullLexTId,   "null" },
-   { cw::kErrorLexTId,""}
+   { lex::kErrorLexTId,""}
   
   };
 
@@ -98,8 +98,7 @@ namespace cw
   {
     for(unsigned i=0; i<indent; ++i)
       printf(indentStr);
-    printf("%s",text);
- 
+    printf("%s",text); 
   }
 
   void _objTypePrintChild( const object_t* o, print_ctx_t& c, const char* eolStr=",\n", const char* indentStr=" " )
@@ -244,19 +243,19 @@ namespace cw
     return o;
   }
 
-  rc_t _objSyntaxError( lexH_t lexH, const char* fmt, ... )
+  rc_t _objSyntaxError( lex::handle_t lexH, const char* fmt, ... )
   {
     va_list vl;
     va_start(vl,fmt);
 
     cwLogVError( kSyntaxErrorRC, fmt, vl );
-    cwLogError(  kSyntaxErrorRC, "Error on line: %i.", lexCurrentLineNumber(lexH));
+    cwLogError(  kSyntaxErrorRC, "Error on line: %i.", lex::currentLineNumber(lexH));
     va_end(vl);
     return kSyntaxErrorRC;
   }
  
   
-  rc_t _objVerifyParentIsValueContainer( lexH_t lexH, const object_t* parent, const char* msg )
+  rc_t _objVerifyParentIsValueContainer( lex::handle_t lexH, const object_t* parent, const char* msg )
   {
     if( parent == nullptr )
       return _objSyntaxError(lexH,"The parent node must always be valid.");
@@ -289,7 +288,7 @@ namespace cw
     return newNode;
   }
 
-  object_t* _objCreateConainerNode( lexH_t lexH, object_t* parent, objTypeId_t tid )
+  object_t* _objCreateConainerNode( lex::handle_t lexH, object_t* parent, objTypeId_t tid )
   {
     if( _objVerifyParentIsValueContainer(lexH,parent,_objTypeIdToLabel(tid)) == kOkRC )
       return _objAppendLeftMostNode( parent, _objAllocate( tid, parent ));
@@ -390,28 +389,28 @@ void cw::object_t::print(const print_ctx_t* c) const
 
 cw::rc_t cw::objectFromString( const char* s, object_t*& objRef )
 {
-  lexH_t    lexH;
-  rc_t      rc;
-  unsigned  lexFlags = 0;
-  unsigned  lexId    = kErrorLexTId;
-  object_t* cnp      = _objAllocate(kRootTId,nullptr);
-  object_t* root     = cnp;
+  lex::handle_t lexH;
+  rc_t          rc;
+  unsigned      lexFlags = 0;
+  unsigned      lexId    = lex::kErrorLexTId;
+  object_t*     cnp      = _objAllocate(kRootTId,nullptr);
+  object_t*     root     = cnp;
 
   objRef = nullptr;
 
-  if((rc = lexCreate(lexH,s,textLength(s), lexFlags )) != kOkRC )
+  if((rc = lex::create(lexH,s,textLength(s), lexFlags )) != kOkRC )
     return rc;
 
   // setup the lexer with additional tokens
-  for(unsigned i=0; _objTokenArray[i].id != cw::kErrorLexTId; ++i)
-    if((rc = lexRegisterToken( lexH, _objTokenArray[i].id, _objTokenArray[i].label )) != kOkRC )
+  for(unsigned i=0; _objTokenArray[i].id != lex::kErrorLexTId; ++i)
+    if((rc = lex::registerToken( lexH, _objTokenArray[i].id, _objTokenArray[i].label )) != kOkRC )
     {
       rc = cwLogError(rc,"Object lexer token registration failed on token id:%i : '%s'",_objTokenArray[i].id, _objTokenArray[i].label);
       goto errLabel;
     }
 
   // main parser loop
-  while((lexId = lexGetNextToken(lexH)) != cw::kErrorLexTId && (lexId != kEofLexTId) && (rc == kOkRC))
+  while((lexId = lex::getNextToken(lexH)) != lex::kErrorLexTId && (lexId != lex::kEofLexTId) && (rc == kOkRC))
   {
 
     //printf("Lex:%s\n",lexIdToLabel(lexH,lexId));
@@ -450,16 +449,16 @@ cw::rc_t cw::objectFromString( const char* s, object_t*& objRef )
           rc = _objSyntaxError(lexH,"Unexpected comma outside of 'array' or 'object'.");
         break;
         
-      case kRealLexTId:
-        _objCreateValueNode( cnp, lexTokenDouble(lexH), "real" );
+      case lex::kRealLexTId:
+        _objCreateValueNode( cnp, lex::tokenDouble(lexH), "real" );
         break;
         
-      case kIntLexTId:
-        _objCreateValueNode( cnp, lexTokenInt(lexH), "int" );
+      case lex::kIntLexTId:
+        _objCreateValueNode( cnp, lex::tokenInt(lexH), "int" );
         break;
         
-      case kHexLexTId:
-        _objCreateValueNode( cnp, lexTokenInt(lexH), "int", kHexFl );
+      case lex::kHexLexTId:
+        _objCreateValueNode( cnp, lex::tokenInt(lexH), "int", kHexFl );
         break;
         
       case kTrueLexTId:
@@ -474,8 +473,8 @@ cw::rc_t cw::objectFromString( const char* s, object_t*& objRef )
         _objAppendLeftMostNode( cnp, _objAllocate( kNullTId, cnp ));
         break;        
 
-      case kIdentLexTId:
-      case kQStrLexTId:
+      case lex::kIdentLexTId:
+      case lex::kQStrLexTId:
         {
           
           // if the parent is an object then this string must be a pair label
@@ -483,15 +482,15 @@ cw::rc_t cw::objectFromString( const char* s, object_t*& objRef )
             cnp = _objAppendLeftMostNode( cnp, _objAllocate( kPairTId, cnp ));
                
           
-          char*    v       = memDuplStr(lexTokenText(lexH),lexTokenCharCount(lexH));
-          unsigned identFl = lexId == kIdentLexTId ? kIdentFl    : 0;
+          char*    v       = memDuplStr(lex::tokenText(lexH),lex::tokenCharCount(lexH));
+          unsigned identFl = lexId == lex::kIdentLexTId ? kIdentFl    : 0;
           
           
           _objCreateValueNode<char*>( cnp, v, "string", identFl );
         }
         break;
 
-      case kEofLexTId:
+      case lex::kEofLexTId:
         break;
 
       default:
@@ -509,7 +508,7 @@ cw::rc_t cw::objectFromString( const char* s, object_t*& objRef )
   objRef = root;
   
  errLabel:
-  rc_t rc0 = lexDestroy(lexH);
+  rc_t rc0 = lex::destroy(lexH);
 
   return rc != kOkRC ? rc : rc0;
   

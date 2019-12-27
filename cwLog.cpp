@@ -6,46 +6,47 @@
 
 namespace cw
 {
-
-  typedef struct log_str
+  namespace log
   {
-    logOutputCbFunc_t outCbFunc;
-    void*             outCbArg;
-    logFormatCbFunc_t fmtCbFunc;
-    void*             fmtCbArg;
-    unsigned          level;
-  } log_t;
+    typedef struct log_str
+    {
+      logOutputCbFunc_t outCbFunc;
+      void*             outCbArg;
+      logFormatCbFunc_t fmtCbFunc;
+      void*             fmtCbArg;
+      unsigned          level;
+    } log_t;
 
 
-  logHandle_t __logGlobalHandle__;
-  logHandle_t logNullHandle;
+    handle_t __logGlobalHandle__;
+
+    idLabelPair_t logLevelLabelArray[] =
+    {
+     { kDebug_LogLevel,   "debug" },
+     { kInfo_LogLevel,    "info" },
+     { kWarning_LogLevel, "warning" },
+     { kError_LogLevel,   "error" },
+     { kFatal_LogLevel,  "fatal" },
+     { kInvalid_LogLevel, "<invalid>" }
+    };
   
-#define logHandleToPtr(h) handleToPtr<logHandle_t,log_t>(h)
-
-  idLabelPair_t logLevelLabelArray[] =
-  {
-   { kDebug_LogLevel, "debug" },
-   { kInfo_LogLevel,    "info" },
-   { kWarning_LogLevel, "warning" },
-   { kError_LogLevel,   "error" },
-   { kFatal_LogLevel,  "fatal" },
-   { kInvalid_LogLevel, "<invalid>" }
-  };
-  
+    log_t* _handleToPtr( handle_t h ) { return handleToPtr<handle_t,log_t>(h); }
+  }
 }
 
 
 
-cw::rc_t cw::logCreate(  logHandle_t& hRef, unsigned level, logOutputCbFunc_t outCbFunc, void* outCbArg,  logFormatCbFunc_t fmtCbFunc, void* fmtCbArg  )
+
+cw::rc_t cw::log::create(  handle_t& hRef, unsigned level, logOutputCbFunc_t outCbFunc, void* outCbArg,  logFormatCbFunc_t fmtCbFunc, void* fmtCbArg  )
 {
   rc_t rc;
-  if((rc = logDestroy(hRef)) != kOkRC)
+  if((rc = destroy(hRef)) != kOkRC)
     return rc;
 
   log_t* p = memAllocZ<log_t>();
-  p->outCbFunc = outCbFunc == nullptr ? logDefaultOutput : outCbFunc;
+  p->outCbFunc = outCbFunc == nullptr ? defaultOutput : outCbFunc;
   p->outCbArg  = outCbArg;
-  p->fmtCbFunc = fmtCbFunc == nullptr ? logDefaultFormatter : fmtCbFunc;
+  p->fmtCbFunc = fmtCbFunc == nullptr ? defaultFormatter : fmtCbFunc;
   p->fmtCbArg  = fmtCbArg;
   p->level     = level;
   hRef.p = p;
@@ -53,7 +54,7 @@ cw::rc_t cw::logCreate(  logHandle_t& hRef, unsigned level, logOutputCbFunc_t ou
   return rc; 
 }
 
-cw::rc_t cw::logDestroy( logHandle_t& hRef )
+cw::rc_t cw::log::destroy( handle_t& hRef )
 {
   rc_t rc = kOkRC;
   
@@ -64,9 +65,9 @@ cw::rc_t cw::logDestroy( logHandle_t& hRef )
   return rc;  
 }
 
-cw::rc_t cw::logMsg( logHandle_t h, unsigned level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t rc, const char* fmt, va_list vl )
+cw::rc_t cw::log::msg( handle_t h, unsigned level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t rc, const char* fmt, va_list vl )
 {
-  log_t* p = logHandleToPtr(h);
+  log_t* p = _handleToPtr(h);
 
   va_list     vl1;
   va_copy(vl1,vl);
@@ -88,30 +89,30 @@ cw::rc_t cw::logMsg( logHandle_t h, unsigned level, const char* function, const 
   return rc;  
 }
 
-cw::rc_t cw::logMsg( logHandle_t h, unsigned level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t returnCode, const char* fmt, ... )
+cw::rc_t cw::log::msg( handle_t h, unsigned level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t returnCode, const char* fmt, ... )
 {
   rc_t rc;
   va_list vl;
   va_start(vl,fmt);
-  rc = logMsg( h, level, function, filename, line, systemErrorCode, returnCode, fmt, vl );
+  rc = msg( h, level, function, filename, line, systemErrorCode, returnCode, fmt, vl );
   va_end(vl);
   return rc;
 }
 
-void     cw::logSetLevel( logHandle_t h, unsigned level )
+void     cw::log::setLevel( handle_t h, unsigned level )
 {
-  log_t* p = logHandleToPtr(h);
+  log_t* p = _handleToPtr(h);
   p->level = level;
 }
 
-unsigned cw::logLevel( logHandle_t h )
+unsigned cw::log::level( handle_t h )
 {
-  log_t* p = logHandleToPtr(h);
+  log_t* p = _handleToPtr(h);
   return p->level;
 }
 
 
-const char* cw::logLevelToLabel( unsigned level )
+const char* cw::log::levelToLabel( unsigned level )
 {
   const char* label;
   if((label = idToLabel(logLevelLabelArray,level,kInvalid_LogLevel)) == nullptr)
@@ -122,20 +123,20 @@ const char* cw::logLevelToLabel( unsigned level )
 
 
 
-void  cw::logDefaultOutput( void* arg, unsigned level, const char* text )
+void  cw::log::defaultOutput( void* arg, unsigned level, const char* text )
 {
   FILE* f = level >= kWarning_LogLevel ? stderr : stdout;
   fprintf(f,"%s",text);
 }
 
-void cw::logDefaultFormatter( void* cbArg, logOutputCbFunc_t outFunc, void* outCbArg, unsigned level, const char* function, const char* filename, unsigned lineno, int sys_errno, rc_t rc, const char* msg )
+void cw::log::defaultFormatter( void* cbArg, logOutputCbFunc_t outFunc, void* outCbArg, unsigned level, const char* function, const char* filename, unsigned lineno, int sys_errno, rc_t rc, const char* msg )
 {
   // TODO: This code is avoids the use of dynamic memory allocation but relies on stack allocation. It's a security vulnerability.
   //       
   
   const char* systemLabel = sys_errno==0 ? "" : "System Error: ";
   const char* systemMsg   = sys_errno==0 ? "" : strerror(sys_errno);
-  const char* levelStr    = logLevelToLabel(level);
+  const char* levelStr    = levelToLabel(level);
   
   const char* rcFmt = "rc:%i";
   int rcn = snprintf(nullptr,0,rcFmt,rc);
@@ -175,35 +176,33 @@ void cw::logDefaultFormatter( void* cbArg, logOutputCbFunc_t outFunc, void* outC
   int m = snprintf(s,n+1,fmt,levelStr,msg,syStr,rcStr,loStr);
   cwAssert(m==n);
 
-    outFunc(outCbArg,level,s);   
-  
+  outFunc(outCbArg,level,s);     
 }
 
 
-cw::rc_t cw::logCreateGlobal(  unsigned level, logOutputCbFunc_t outCb, void* outCbArg,  logFormatCbFunc_t fmtCb, void* fmtCbArg  )
+cw::rc_t cw::log::createGlobal(  unsigned level, logOutputCbFunc_t outCb, void* outCbArg,  logFormatCbFunc_t fmtCb, void* fmtCbArg  )
 {
-  logHandle_t h;
+  handle_t h;
   rc_t rc;
   
-  if((rc = logCreate(h, level, outCb, outCbArg, fmtCb, fmtCbArg  )) == kOkRC )
-    logSetGlobalHandle(h);
+  if((rc = create(h, level, outCb, outCbArg, fmtCb, fmtCbArg  )) == kOkRC )
+    setGlobalHandle(h);
 
   return rc;
-
 }
 
-cw::rc_t cw::logDestroyGlobal()
+cw::rc_t cw::log::destroyGlobal()
 {
-  return logDestroy(__logGlobalHandle__);
+  return destroy(__logGlobalHandle__);
 }
 
 
-void cw::logSetGlobalHandle( logHandle_t h )
+void cw::log::setGlobalHandle( handle_t h )
 {
   __logGlobalHandle__ = h;
 }
 
-cw::logHandle_t cw::logGlobalHandle()
+cw::log::handle_t cw::log::globalHandle()
 {
   return __logGlobalHandle__;
 }

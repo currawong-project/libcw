@@ -5,26 +5,26 @@
 // samples in a thread-safe manner. 
 //
 // Usage example and testing code:
-// See cmApBufTest() and cmAudioSysTest().
-// \snippet cmApBuf.c cmApBufExample
+// See audio::device::test()
+// \snippet cwAudioBuf.c cwAudioBufExample
 //
 // Notes on channel flags:
 // Disabled channels:  kChFl is cleared
-//   cmApBufGet()     
+//   get()     
 //      in  - return NULL buffer pointers  
 //      out - return NULL buffer points
 //
-//   cmApBufUpdate()
+//   update()
 //      in  - incoming samples are set to 0. 
 //      out - outgoing samples are set to 0.
 //
 // Muted channels: kMuteFl is set 
-//   cmApBufUpdate()
+//   update()
 //      in  - incoming samples are set to 0. 
 //      out - outgoing samples are set to 0.
 //
 // Tone channels: kToneFl is set 
-//   cmApBufUpdate()
+//   update()
 //      in  - incoming samples are filled with a 1k sine tone
 //      out - outgoing samples are filled with a 1k sine tone
 //)
@@ -76,7 +76,7 @@ namespace cw
 
       // This function is called asynchronously by the audio device driver to transfer incoming samples to the
       // the buffer and to send outgoing samples to the DAC. This function is 
-      // intended to be called from the audio port callback function (\see cmApCallbackPtr_t).
+      // intended to be called from the audio port callback function (\see auido::device::cbFunc_t).
       // This function is thread-safe under the condition where the audio device uses
       // different threads for input and output.
       //
