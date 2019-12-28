@@ -160,6 +160,20 @@ void socketSrvTest( cw::object_t* cfg, int argc, const char* argv[] )
   }
 }
 
+void dirEntryTest( cw::object_t* cfg, int argc, const char* argv[] )
+{
+  if( argc >= 2 )
+  {
+    const char*              path         = argv[1];
+    unsigned                 dirEntryN    = 0;
+    unsigned                 includeFlags = cw::filesys::kFileFsFl | cw::filesys::kDirFsFl | cw::filesys::kFullPathFsFl | cw::filesys::kRecurseFsFl;
+    cw::filesys::dirEntry_t* de           = cw::filesys::dirEntries( path,includeFlags, &dirEntryN );
+    for(unsigned i=0; i<dirEntryN; ++i)
+      cwLogInfo("%s",de[i].name);
+
+    cw::mem::release(de);
+  }
+}
 
 void stubTest( cw::object_t* cfg, int argc, const char* argv[] )
 {
@@ -202,6 +216,7 @@ int main( int argc, const char* argv[] )
    { "audioDevAlsa", audioDevAlsaTest },
    { "socket", socketTest },
    { "socketSrv", socketSrvTest },
+   { "dirEntry", dirEntryTest },
    { "stub", stubTest },
    { nullptr, nullptr }
   };

@@ -39,6 +39,39 @@ namespace cw
     // The returned record and the strings it points to are contained in a single block of
     // memory which must be released by a call to memRelease() or memFree()
     pathPart_t* pathParts( const char* pathNameStr );
+
+    // Flags used by dirEntries 'includeFlags' parameter.
+    enum
+    {
+     kFileFsFl         = 0x001,   //< include all visible files
+     kDirFsFl          = 0x002,   //< include all visible directory 
+     kLinkFsFl         = 0x004,   //< include all symbolic links
+     kInvisibleFsFl    = 0x008,   //< include file/dir name beginning with a '.'
+     kCurDirFsFl       = 0x010,   //< include '.' directory
+     kParentDirFsFl    = 0x020,   //< include '..' directory
+
+     kAllFsFl          = 0x02f,   //< all type flags
+
+     kFullPathFsFl     = 0x040,   //< return the full path in the 'name' field of dirEntry_t;
+     kRecurseFsFl      = 0x080,   //< recurse into directories
+     kRecurseLinksFsFl = 0x100    //< recurse into symbol link directories 
+    };
+
+    // The return type for dirEntries().
+    typedef struct
+    {
+      unsigned    flags;    //< Entry type flags from kXXXFsFl.
+      const char* name;     //< Entry name or full path depending on kFullPathFsFl.
+    } dirEntry_t;
+
+    // Return the file and directory names contained in a given subdirectory.
+    //
+    // Set 'includeFlags' with the  kXXXFsFl flags of the files to include in the returned 
+    // directory entry array.  The value pointed to by dirEntryCntPtr will be set to the
+    // number of records in the returned array.
+    dirEntry_t* dirEntries( const char* dirStr, unsigned includeFlags, unsigned* dirEntryCntRef );
+
+    
   }
   
 }

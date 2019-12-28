@@ -20,8 +20,7 @@ namespace cw {
 
     rc_t destroy( handle_t& h );
 
-    thread::handle_t threadHandle( handle_t h );
-
+    thread::handle_t  threadHandle( handle_t h );
     websock::handle_t websockHandle( handle_t h );
 
     // Start or unpause the server.

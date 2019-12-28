@@ -8,6 +8,7 @@
 #ifdef cwLINUX
 #include <libgen.h>
 #include <sys/stat.h>
+#include <dirent.h> // opendir()/readdir()
 #endif
 
 namespace cw
@@ -140,7 +141,7 @@ char* cw::filesys::vMakeFn( const char* dir, const char* fn, const char* ext, va
   while( (dp = va_arg(vl,const char*)) != nullptr )
     n += strlen(dp) + 1;  // add 1 for ending sep
 
-   // add 1 for terminating zero and allocate memory
+  // add 1 for terminating zero and allocate memory
 
   if((rp = mem::allocZ<char>( n+1 )) == nullptr )
   {
@@ -340,6 +341,257 @@ cw::filesys::pathPart_t* cw::filesys::pathParts( const char* pathStr )
     rp->extStr = nullptr;
 
   return rp;
+}
+
+namespace cw
+{
+  namespace filesys
+  {
+    typedef struct 
+    {
+      unsigned    filterFlags;
+      dirEntry_t* rp;
+      char*       dataPtr;
+      char*       endPtr;
+      unsigned    entryCnt;
+      unsigned    entryIdx;
+      unsigned    dataByteCnt;
+      unsigned    passIdx;
+    } deRecd_t;
+    
+    cw::rc_t _dirGetEntries(  deRecd_t* drp, const char* dirStr )
+    {
+      rc_t           rc          = kOkRC;
+      DIR*           dirp        = NULL;
+      struct dirent* dp          = NULL;
+      char           curDirPtr[] = "./";  
+      unsigned       dn          = 0;
+
+
+      if( dirStr == NULL || strlen(dirStr) == 0 )
+        dirStr = curDirPtr;
+
+      if( isDir(dirStr) == false )
+        return rc;
+
+      unsigned fnCharCnt = strlen(dirStr) + PATH_MAX;
+      char     fn[ fnCharCnt + 1 ];
+
+
+      // copy the directory into fn[] ...
+      fn[0]         = 0;
+      fn[fnCharCnt] = 0;
+
+      strcpy(fn,dirStr);
+
+      cwAssert( strlen(fn)+2 < fnCharCnt );
   
+      // ... and be sure that it is terminated with a path sep char
+      if( fn[ strlen(fn)-1 ] != cwPathSeparatorChar )
+      {
+        char sep[] = { cwPathSeparatorChar, '\0' };                    
+        strcat(fn,sep);
+      }
+      // file names will be appended to the path at this location
+      unsigned fni = strlen(fn);
+
+      // open the directory
+      if((dirp = opendir(dirStr)) == NULL)
+      {
+        rc = cwLogSysError(kOpFailRC,errno,"Unable to open the directory:'%s'.",dirStr);
+
+        goto errLabel;
+      }
+
+      // get the next directory entry
+      while((dp = readdir(dirp)) != NULL )
+      {
+        // validate d_name 
+        if( (dn = strlen(dp->d_name)) > 0 )
+        {
+          unsigned flags = 0;
+        
+          // handle cases where d_name begins with '.'
+          if( dp->d_name[0] == '.' )
+          {
+            if( strcmp(dp->d_name,".") == 0 )
+            {
+              if( cwIsFlag(drp->filterFlags,kCurDirFsFl) == false )
+                continue;
+
+              flags |= kCurDirFsFl;
+            }
+
+            if( strcmp(dp->d_name,"..") == 0 )
+            {
+              if( cwIsFlag(drp->filterFlags,kParentDirFsFl) == false )
+                continue;
+
+              flags |= kParentDirFsFl;
+            }
+
+            if( flags == 0 )
+            {
+              if( cwIsFlag(drp->filterFlags,kInvisibleFsFl) == false )
+                continue;
+
+              flags |= kInvisibleFsFl;
+            }
+          }
+
+          fn[fni] = 0;
+          strncat( fn, dp->d_name, fnCharCnt-fni );
+          unsigned fnN = strlen(fn);
+
+          // if the filename is too long for the buffer
+          if( fnN > fnCharCnt )
+          {
+            rc = cwLogSysError(kBufTooSmallRC, errno, "The directory entry:'%s' was too long to be processed.",dp->d_name);
+            goto errLabel;
+          }
+
+          // is a link
+          if( isLink(fn) )
+          {
+            if( cwIsFlag(drp->filterFlags,kLinkFsFl) == false )
+              continue;
+
+            flags |= kLinkFsFl;
+
+            if( cwIsFlag(drp->filterFlags,kRecurseLinksFsFl) )
+              if((rc = _dirGetEntries(drp,fn)) != kOkRC )
+                goto errLabel;
+          }
+          else
+          {
+
+            // is the entry a file
+            if( isFile(fn) )
+            {
+              if( cwIsFlag(drp->filterFlags,kFileFsFl)==false )
+                continue;
+
+              flags |= kFileFsFl;
+            }
+            else
+            {
+              // is the entry a dir
+              if( isDir(fn) )
+              {
+                if( cwIsFlag(drp->filterFlags,kDirFsFl) == false)
+                  continue;
+
+                flags |= kDirFsFl;
+
+                if( cwIsFlag(drp->filterFlags,kRecurseFsFl) )
+                  if((rc = _dirGetEntries(drp,fn)) != kOkRC )
+                    goto errLabel;
+              }
+              else
+              {
+                continue;
+              }
+            }
+          }
+
+          //cwAssert(flags != 0);
+
+          if( drp->passIdx == 0 )
+          {
+            ++drp->entryCnt;
+        
+            // add 1 for the name terminating zero
+            drp->dataByteCnt += sizeof(dirEntry_t) + 1;
+
+            if( cwIsFlag(drp->filterFlags,kFullPathFsFl) )
+              drp->dataByteCnt += fnN;
+            else
+              drp->dataByteCnt += dn;
+
+          }
+          else
+          {
+            cwAssert( drp->passIdx == 1 );
+            cwAssert( drp->entryIdx < drp->entryCnt );
+
+            unsigned n = 0;
+            if( cwIsFlag(drp->filterFlags,kFullPathFsFl) )
+            {
+              n = fnN+1;
+              cwAssert( drp->dataPtr + n <= drp->endPtr );
+              strcpy(drp->dataPtr,fn);
+            }
+            else
+            {
+              n = dn+1;
+              cwAssert( drp->dataPtr + n <= drp->endPtr );
+              strcpy(drp->dataPtr,dp->d_name);
+            }
+
+            drp->rp[ drp->entryIdx ].flags = flags;
+            drp->rp[ drp->entryIdx ].name  = drp->dataPtr;
+            drp->dataPtr += n;
+            cwAssert( drp->dataPtr <= drp->endPtr);
+            ++drp->entryIdx;
+          }
+        }  
+      }
+
+    errLabel:
+      if( dirp != NULL )
+        closedir(dirp);
+
+      return rc;
+    }
+  }
+}
+
+cw::filesys::dirEntry_t* cw::filesys::dirEntries( const char* dirStr, unsigned filterFlags, unsigned* dirEntryCntPtr )
+{
+  rc_t          rc = kOkRC;
+  deRecd_t r;
+
+  memset(&r,0,sizeof(r));
+  //r.p           = _cmFileSysHandleToPtr(h);
+  r.filterFlags = filterFlags;
+
+  cwAssert( dirEntryCntPtr != NULL );
+  *dirEntryCntPtr = 0;
+  
+  for(r.passIdx=0; r.passIdx<2; ++r.passIdx)
+  {
+    if((rc = _dirGetEntries( &r, dirStr )) != kOkRC )
+      goto errLabel;
+
+    if( r.passIdx == 0 && r.dataByteCnt>0 )
+    {
+      // allocate memory to hold the return values
+      if(( r.rp = mem::allocZ<dirEntry_t>( r.dataByteCnt )) == NULL )
+      {
+        rc = cwLogError(kObjAllocFailRC, "Unable to allocate %i bytes of dir entry memory.",r.dataByteCnt);
+        goto errLabel;
+      }
+
+      r.dataPtr = (char*)(r.rp + r.entryCnt);
+      r.endPtr  = ((char*)r.rp) + r.dataByteCnt; 
+    }
+  }
+
+ errLabel:
+  
+  if( rc == kOkRC )
+  {
+    cwAssert( r.entryIdx == r.entryCnt );
+    *dirEntryCntPtr = r.entryCnt;
+  }
+  else
+  {
+    if( r.rp != NULL )
+      mem::release(r.rp);    
+
+    r.rp = NULL;
+  }
+
+  return r.rp;
 }
 
