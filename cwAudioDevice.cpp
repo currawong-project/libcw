@@ -34,11 +34,11 @@ namespace cw
         while( d != nullptr )
         {
           drv_t* d0 = d->link;
-          memRelease(d);
+          mem::release(d);
           d = d0;
         }
 
-        memRelease(p);
+        mem::release(p);
         
         return kOkRC;
       }
@@ -70,7 +70,7 @@ cw::rc_t cw::audio::device::create(  handle_t& hRef )
   if((rc = destroy(hRef)) != kOkRC)
     return rc;
 
-  device_t* p = memAllocZ<device_t>();
+  device_t* p = mem::allocZ<device_t>();
   hRef.set(p);
 
   return rc;  
@@ -99,7 +99,7 @@ cw::rc_t cw::audio::device::registerDriver( handle_t h, driver_t* drv )
   unsigned n = drv->deviceCount( drv );
   if( n > 0 )
   {
-    drv_t* d = memAllocZ<drv_t>();
+    drv_t* d = mem::allocZ<drv_t>();
   
     d->begIdx      = p->nextDrvIdx;
     p->nextDrvIdx += n;

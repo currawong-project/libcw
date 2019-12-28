@@ -358,7 +358,7 @@ namespace cw
           p->devCnt += 1;
 
         // allocate the device array
-        p->devArray = memAllocZ<dev_t>(p->devCnt);
+        p->devArray = mem::allocZ<dev_t>(p->devCnt);
 
         // fill in each device record
         snd_seq_client_info_set_client(cip, -1);
@@ -370,7 +370,7 @@ namespace cw
           const char* name   = snd_seq_client_info_get_name(cip);
     
           // initalize the device record
-          p->devArray[i].nameStr    = memDuplStr(cwStringNullGuard(name));
+          p->devArray[i].nameStr    = mem::duplStr(cwStringNullGuard(name));
           p->devArray[i].iPortCnt   = 0;
           p->devArray[i].oPortCnt   = 0;
           p->devArray[i].iPortArray = NULL;
@@ -396,10 +396,10 @@ namespace cw
 
           // allocate the device port arrays
           if( p->devArray[i].iPortCnt > 0 )
-            p->devArray[i].iPortArray = memAllocZ<port_t>(p->devArray[i].iPortCnt);
+            p->devArray[i].iPortArray = mem::allocZ<port_t>(p->devArray[i].iPortCnt);
 
           if( p->devArray[i].oPortCnt > 0 )
-            p->devArray[i].oPortArray = memAllocZ<port_t>(p->devArray[i].oPortCnt);
+            p->devArray[i].oPortArray = mem::allocZ<port_t>(p->devArray[i].oPortCnt);
     
 
           snd_seq_port_info_set_client(pip,client);    // set the ports client id
@@ -417,7 +417,7 @@ namespace cw
             {
               assert(j<p->devArray[i].iPortCnt);
               p->devArray[i].iPortArray[j].inputFl   = true;
-              p->devArray[i].iPortArray[j].nameStr   = memDuplStr(cwStringNullGuard(port));
+              p->devArray[i].iPortArray[j].nameStr   = mem::duplStr(cwStringNullGuard(port));
               p->devArray[i].iPortArray[j].alsa_type = type;
               p->devArray[i].iPortArray[j].alsa_cap  = caps;
               p->devArray[i].iPortArray[j].alsa_addr = addr;
@@ -439,7 +439,7 @@ namespace cw
             {
               assert(k<p->devArray[i].oPortCnt);
               p->devArray[i].oPortArray[k].inputFl   = false;
-              p->devArray[i].oPortArray[k].nameStr   = memDuplStr(cwStringNullGuard(port));
+              p->devArray[i].oPortArray[k].nameStr   = mem::duplStr(cwStringNullGuard(port));
               p->devArray[i].oPortArray[k].alsa_type = type;
               p->devArray[i].oPortArray[k].alsa_cap  = caps;
               p->devArray[i].oPortArray[k].alsa_addr = addr;
@@ -513,7 +513,7 @@ cw::rc_t cw::midi::device::initialize(  cbFunc_t cbFunc, void* cbArg, unsigned p
     return rc;
 
   // allocate the global root object
-  _cmMpRoot = p = memAllocZ<cmMpRoot_t>(1);
+  _cmMpRoot = p = mem::allocZ<cmMpRoot_t>(1);
   p->h          = NULL;
   p->alsa_queue = -1;
 
@@ -541,7 +541,7 @@ cw::rc_t cw::midi::device::initialize(  cbFunc_t cbFunc, void* cbArg, unsigned p
 
   // allocate the file descriptors used for polling
   p->alsa_fdCnt = snd_seq_poll_descriptors_count(p->h, POLLIN);
-  p->alsa_fd = memAllocZ<struct pollfd>(p->alsa_fdCnt);
+  p->alsa_fd = mem::allocZ<struct pollfd>(p->alsa_fdCnt);
   snd_seq_poll_descriptors(p->h, p->alsa_fd, p->alsa_fdCnt, POLLIN);
 
   p->cbFunc    = cbFunc;
@@ -620,25 +620,25 @@ cw::rc_t cw::midi::device::finalize()
       for(j=0; j<p->devArray[i].iPortCnt; ++j)
       {
         parser::destroy(p->devArray[i].iPortArray[j].parserH);
-        memRelease( p->devArray[i].iPortArray[j].nameStr );
+        mem::release( p->devArray[i].iPortArray[j].nameStr );
       }
 
       for(j=0; j<p->devArray[i].oPortCnt; ++j)
       {
-        memRelease( p->devArray[i].oPortArray[j].nameStr );
+        mem::release( p->devArray[i].oPortArray[j].nameStr );
       }
       
-      memRelease(p->devArray[i].iPortArray);
-      memRelease(p->devArray[i].oPortArray);
-      memRelease(p->devArray[i].nameStr);
+      mem::release(p->devArray[i].iPortArray);
+      mem::release(p->devArray[i].oPortArray);
+      mem::release(p->devArray[i].nameStr);
    
     }
 
-    memRelease(p->devArray);
+    mem::release(p->devArray);
     
-    memFree(p->alsa_fd);
+    mem::free(p->alsa_fd);
 
-    memRelease(_cmMpRoot);
+    mem::release(_cmMpRoot);
     
   }
 

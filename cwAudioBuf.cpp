@@ -75,12 +75,12 @@ namespace cw
       {
         unsigned              chCnt;
         cmApCh*               chArray;
-        unsigned              n;          // length of b[] (multiple of dspFrameCnt)  bufCnt*framesPerCycle
-        double                srate;      // device sample rate;
+        unsigned              n; // length of b[] (multiple of dspFrameCnt)  bufCnt*framesPerCycle
+        double                srate; // device sample rate;
         unsigned              faultCnt;
         unsigned              framesPerCycle;
         unsigned              dspFrameCnt;
-        time::spec_t          timeStamp;  // base (starting) time stamp for this device
+        time::spec_t          timeStamp; // base (starting) time stamp for this device
         std::atomic<unsigned> ioFrameCnt; // count of frames input or output for this device
 
       } cmApIO;
@@ -88,30 +88,30 @@ namespace cw
       typedef struct
       {
         // ioArray[] always contains 2 elements - one for input the other for output.
-        cmApIO     ioArray[kIoApCnt]; 
+        cmApIO ioArray[kIoApCnt]; 
       } cmApDev;
 
-      typedef struct
+      typedef struct audioBuf_str
       {
-        cmApDev*   devArray;       
-        unsigned   devCnt;
-        unsigned   meterMs;
+        cmApDev* devArray;       
+        unsigned devCnt;
+        unsigned meterMs;
 
         sample_t* zeroBuf;      // buffer of zeros 
         unsigned  zeroBufCnt;   // max of all dspFrameCnt for all devices.
-      } cmApBuf;
+      } audioBuf_t;
 
-      cmApBuf _theBuf;
+      inline audioBuf_t* _handleToPtr( handle_t h ) { return handleToPtr<handle_t,audioBuf_t>(h); }
 
 
       sample_t _cmApMeterValue( const cmApCh* cp )
       {
-        double sum = 0;
+        double   sum  = 0;
         unsigned i;
         for(i=0; i<cp->mn; ++i)
-          sum += cp->m[i];
+          sum        += cp->m[i];
 
-        return cp->mn==0 ? 0 : (sample_t)sqrt(sum/cp->mn);
+        return cp->mn == 0 ? 0 : (sample_t)sqrt(sum/cp->mn);
       }
 
       void _cmApSine( cmApCh* cp, sample_t* b0, unsigned n0, sample_t* b1, unsigned n1, unsigned stride, float srate )
@@ -130,24 +130,24 @@ namespace cw
         const sample_t* ep  = b + bn;
         sample_t        sum = 0;
 
-        for(; b<ep; b+=stride)
-          sum += *b * *b;
+        for(; b<ep; b += stride)
+          sum         += *b * *b;
 
         return sum / bn;
       }
 
       void _cmApChFinalize( cmApCh* chPtr )
       {
-        memRelease( chPtr->b );
-        memRelease( chPtr->m );
+        mem::release( chPtr->b );
+        mem::release( chPtr->m );
       }
 
-      // n=buf sample cnt mn=meter buf smp cnt
+      // n = buf sample cnt mn=meter buf smp cnt
       void _cmApChInitialize( cmApCh* chPtr, unsigned n, unsigned mn )
       {
         _cmApChFinalize(chPtr);
 
-        chPtr->b    = n==0 ? NULL : memAllocZ<sample_t>( n );
+        chPtr->b    = n==0 ? NULL : mem::allocZ<sample_t>( n );
         chPtr->ii   = 0;
         chPtr->oi   = 0;
         chPtr->fn   = 0;
@@ -155,7 +155,7 @@ namespace cw
         chPtr->hz   = 1000;
         chPtr->gain = 1.0;
         chPtr->mn   = mn;
-        chPtr->m    = memAllocZ<sample_t>(mn);
+        chPtr->m    = mem::allocZ<sample_t>(mn);
         chPtr->mi   = 0;
       }
 
@@ -165,7 +165,7 @@ namespace cw
         for(i=0; i<ioPtr->chCnt; ++i)
           _cmApChFinalize( ioPtr->chArray + i );
 
-        memRelease(ioPtr->chArray);
+        mem::release(ioPtr->chArray);
         ioPtr->chCnt = 0;
         ioPtr->n     = 0;
       }
@@ -178,7 +178,7 @@ namespace cw
 
         n += (n % dspFrameCnt); // force buffer size to be a multiple of dspFrameCnt
   
-        ioPtr->chArray           = chCnt==0 ? NULL : memAllocZ<cmApCh>(chCnt );
+        ioPtr->chArray           = chCnt==0 ? NULL : mem::allocZ<cmApCh>(chCnt );
         ioPtr->chCnt             = chCnt;
         ioPtr->n                 = n;
         ioPtr->faultCnt          = 0;
@@ -189,7 +189,7 @@ namespace cw
         ioPtr->timeStamp.tv_nsec = 0;
         ioPtr->ioFrameCnt        = 0;
 
-        for(i=0; i<chCnt; ++i )
+        for(i = 0; i<chCnt; ++i )
           _cmApChInitialize( ioPtr->chArray + i, n, meterBufN );
 
       }
@@ -197,7 +197,7 @@ namespace cw
       void _cmApDevFinalize( cmApDev* dp )
       {
         unsigned i;
-        for(i=0; i<kIoApCnt; ++i)
+        for(i = 0; i<kIoApCnt; ++i)
           _cmApIoFinalize( dp->ioArray+i);
       }
 
@@ -207,7 +207,7 @@ namespace cw
 
         _cmApDevFinalize(dp);
 
-        for(i=0; i<kIoApCnt; ++i)
+        for(i = 0; i<kIoApCnt; ++i)
         {
           unsigned chCnt = i==kInApIdx ? iChCnt : oChCnt;
           unsigned bufN  = i==kInApIdx ? iBufN  : oBufN;
@@ -220,15 +220,15 @@ namespace cw
 
 void _theBufCalcTimeStamp( double srate, const time::spec_t* baseTimeStamp, unsigned frmCnt, time::spec_t* retTimeStamp )
 {
-  if( retTimeStamp==NULL )
+  if( retTimeStamp == NULL )
     return;
 
-  double   secs         = frmCnt / srate;
-  unsigned int_secs     = floor(secs);
-  double   frac_secs    = secs - int_secs;
+  double   secs      = frmCnt / srate;
+  unsigned int_secs  = floor(secs);
+  double   frac_secs = secs - int_secs;
 
   retTimeStamp->tv_nsec = floor(baseTimeStamp->tv_nsec + frac_secs * 1000000000);
-  retTimeStamp->tv_sec  = baseTimeStamp->tv_sec  + int_secs;
+  retTimeStamp->tv_sec = baseTimeStamp->tv_sec  + int_secs;
 
   if( retTimeStamp->tv_nsec > 1000000000 )
   {
@@ -242,34 +242,48 @@ void _theBufCalcTimeStamp( double srate, const time::spec_t* baseTimeStamp, unsi
   }
 }
 
-cw::rc_t cw::audio::buf::initialize( unsigned devCnt, unsigned meterMs )
+cw::rc_t cw::audio::buf::create( handle_t& hRef, unsigned devCnt, unsigned meterMs )
 {
   rc_t rc;
 
-  if((rc = finalize()) != kOkRC )
+  if((rc = destroy(hRef)) != kOkRC )
+    return rc;
+  
+  audioBuf_t* p = mem::allocZ<audioBuf_t>();
+  
+  p->devArray        = mem::allocZ<cmApDev>(devCnt );
+  p->devCnt = devCnt;
+
+  hRef.set(p);
+  
+  setMeterMs(hRef,meterMs);
+
+  return kOkRC;
+}
+
+cw::rc_t cw::audio::buf::destroy( handle_t& hRef )
+{
+  rc_t rc = kOkRC;
+  
+  if( !hRef.isValid() )
     return rc;
 
-  _theBuf.devArray        = memAllocZ<cmApDev>(devCnt );
-  _theBuf.devCnt          = devCnt;
-  setMeterMs(meterMs);
-  return kOkRC;
-}
-
-cw::rc_t cw::audio::buf::finalize()
-{
-  unsigned i;
-  for(i=0; i<_theBuf.devCnt; ++i)    
-    _cmApDevFinalize(_theBuf.devArray + i);
-
-  memRelease( _theBuf.devArray );
-  memRelease( _theBuf.zeroBuf );
+  audioBuf_t* p = _handleToPtr(hRef);
   
-  _theBuf.devCnt          = 0;
+  unsigned i;
+  for(i=0; i<p->devCnt; ++i)    
+    _cmApDevFinalize(p->devArray + i);
+
+  mem::release( p->devArray );
+  mem::release( p->zeroBuf );
+  
+  p->devCnt          = 0;
 
   return kOkRC;
 }
 
-cw::rc_t cw::audio::buf::setup( 
+cw::rc_t cw::audio::buf::setup(
+  handle_t h,
   unsigned devIdx,
   double   srate,
   unsigned dspFrameCnt,
@@ -279,25 +293,27 @@ cw::rc_t cw::audio::buf::setup(
   unsigned outChCnt, 
   unsigned outFramesPerCycle)
 {
-  cmApDev* devPtr    = _theBuf.devArray + devIdx;
+  audioBuf_t* p = _handleToPtr(h);
+  cmApDev* devPtr    = p->devArray + devIdx;
   unsigned iBufN     = bufCnt * inFramesPerCycle;
   unsigned oBufN     = bufCnt * outFramesPerCycle;
-  unsigned meterBufN = std::max(1.0,floor(srate * _theBuf.meterMs / (1000.0 * outFramesPerCycle)));
+  unsigned meterBufN = std::max(1.0,floor(srate * p->meterMs / (1000.0 * outFramesPerCycle)));
 
   _cmApDevInitialize( devPtr, srate, inFramesPerCycle, inChCnt, iBufN, outFramesPerCycle, outChCnt, oBufN, meterBufN, dspFrameCnt );
 
-  if( inFramesPerCycle > _theBuf.zeroBufCnt || outFramesPerCycle > _theBuf.zeroBufCnt )
+  if( inFramesPerCycle > p->zeroBufCnt || outFramesPerCycle > p->zeroBufCnt )
   {
-    _theBuf.zeroBufCnt = std::max(inFramesPerCycle,outFramesPerCycle);
-    _theBuf.zeroBuf    = memResizeZ<sample_t>(_theBuf.zeroBuf,_theBuf.zeroBufCnt);
+    p->zeroBufCnt = std::max(inFramesPerCycle,outFramesPerCycle);
+    p->zeroBuf    = mem::resizeZ<sample_t>(p->zeroBuf,p->zeroBufCnt);
   }
 
   return kOkRC;  
 }
 
-cw::rc_t cw::audio::buf::primeOutput( unsigned devIdx, unsigned audioCycleCnt )
+cw::rc_t cw::audio::buf::primeOutput( handle_t h, unsigned devIdx, unsigned audioCycleCnt )
 {
-  cmApIO*  iop = _theBuf.devArray[devIdx].ioArray + kOutApIdx;
+  audioBuf_t* p = _handleToPtr(h);
+  cmApIO*  iop = p->devArray[devIdx].ioArray + kOutApIdx;
   unsigned i;
   
   for(i=0; i<iop->chCnt; ++i)
@@ -313,17 +329,18 @@ cw::rc_t cw::audio::buf::primeOutput( unsigned devIdx, unsigned audioCycleCnt )
   return kOkRC;
 }
 
-void cw::audio::buf::onPortEnable( unsigned devIdx, bool enableFl )
+void cw::audio::buf::onPortEnable( handle_t h, unsigned devIdx, bool enableFl )
 {
+  audioBuf_t* p = _handleToPtr(h);
   if( devIdx == kInvalidIdx || enableFl==false)
     return;
    
-  cmApIO*  iop = _theBuf.devArray[devIdx].ioArray + kOutApIdx;
+  cmApIO*  iop = p->devArray[devIdx].ioArray + kOutApIdx;
   iop->timeStamp.tv_sec = 0;
   iop->timeStamp.tv_nsec = 0;
   iop->ioFrameCnt = 0;
 
-  iop = _theBuf.devArray[devIdx].ioArray + kInApIdx;
+  iop = p->devArray[devIdx].ioArray + kInApIdx;
   iop->timeStamp.tv_sec = 0;
   iop->timeStamp.tv_nsec = 0;
   iop->ioFrameCnt = 0;
@@ -332,12 +349,14 @@ void cw::audio::buf::onPortEnable( unsigned devIdx, bool enableFl )
 }
 
 cw::rc_t cw::audio::buf::update(
+  handle_t h,
   device::audioPacket_t* inPktArray, 
   unsigned               inPktCnt, 
   device::audioPacket_t* outPktArray, 
   unsigned               outPktCnt )
 {
   unsigned i,j;
+  audioBuf_t* p = _handleToPtr(h);
 
   // copy samples from the packet to the buffer
   if( inPktArray != NULL )
@@ -345,7 +364,7 @@ cw::rc_t cw::audio::buf::update(
     for(i=0; i<inPktCnt; ++i)
     {
       device::audioPacket_t* pp = inPktArray + i;           
-      cmApIO*                ip = _theBuf.devArray[pp->devIdx].ioArray + kInApIdx; // dest io recd
+      cmApIO*                ip = p->devArray[pp->devIdx].ioArray + kInApIdx; // dest io recd
 
       // if the base time stamp has not yet been set - then set it
       if( ip->timeStamp.tv_sec==0 && ip->timeStamp.tv_nsec==0 )
@@ -375,7 +394,7 @@ cw::rc_t cw::audio::buf::update(
           n0 = pp->audioFramesCnt;
 
         bool            enaFl = cwIsFlag(cp->fl,kChFl) && cwIsFlag(cp->fl,kMuteFl)==false;
-        const sample_t* sp    = enaFl ? ((sample_t*)pp->audioBytesPtr) + j : _theBuf.zeroBuf;
+        const sample_t* sp    = enaFl ? ((sample_t*)pp->audioBytesPtr) + j : p->zeroBuf;
         unsigned        ssn   = enaFl ? pp->chCnt : 1; // stride (packet samples are interleaved)
         sample_t*       dp    = cp->b + cp->ii;
         const sample_t* ep    = dp    + n0;
@@ -426,7 +445,7 @@ cw::rc_t cw::audio::buf::update(
     for(i=0; i<outPktCnt; ++i)
     {
       device::audioPacket_t* pp = outPktArray + i;           
-      cmApIO*                op = _theBuf.devArray[pp->devIdx].ioArray + kOutApIdx; // dest io recd
+      cmApIO*                op = p->devArray[pp->devIdx].ioArray + kOutApIdx; // dest io recd
 
       // if the base timestamp has not yet been set then set it.
       if( op->timeStamp.tv_sec==0 && op->timeStamp.tv_nsec==0 )
@@ -474,7 +493,7 @@ cw::rc_t cw::audio::buf::update(
         }
         else                    // otherwise copy samples from the output buffer to the packet
         {
-          const sample_t* sp = enaFl ? cp->b + cp->oi : _theBuf.zeroBuf;
+          const sample_t* sp = enaFl ? cp->b + cp->oi : p->zeroBuf;
           const sample_t* ep = sp + n0;
 
           // copy the first segment
@@ -485,7 +504,7 @@ cw::rc_t cw::audio::buf::update(
           if( n1 > 0 )
           {
             // copy the second segment
-            sp    = enaFl ? cp->b : _theBuf.zeroBuf;
+            sp    = enaFl ? cp->b : p->zeroBuf;
             ep    = sp + n1;
             for(; sp<ep; dp += pp->chCnt )
               *dp = cp->gain * *sp++;
@@ -511,119 +530,136 @@ cw::rc_t cw::audio::buf::update(
   return kOkRC;
 }
 
-unsigned cw::audio::buf::meterMs()
-{ return _theBuf.meterMs; }
-
-void     cw::audio::buf::setMeterMs( unsigned meterMs )
-{ _theBuf.meterMs = std::min(1000u,std::max(10u,meterMs)); }
-
-unsigned cw::audio::buf::channelCount( unsigned devIdx, unsigned flags )
+unsigned cw::audio::buf::meterMs( handle_t h )
 {
-  if( devIdx == kInvalidIdx )
-    return 0;
-
-  unsigned idx      = flags & kInFl     ? kInApIdx : kOutApIdx;
-  return _theBuf.devArray[devIdx].ioArray[ idx ].chCnt; 
+  audioBuf_t* p = _handleToPtr(h);
+  return p->meterMs;
 }
 
-void cw::audio::buf::setFlag( unsigned devIdx, unsigned chIdx, unsigned flags )
+void     cw::audio::buf::setMeterMs( handle_t h, unsigned meterMs )
 {
+  audioBuf_t* p = _handleToPtr(h);
+
+  p->meterMs = std::min(1000u,std::max(10u,meterMs));
+}
+
+unsigned cw::audio::buf::channelCount( handle_t h, unsigned devIdx, unsigned flags )
+{
+  
+  if( devIdx == kInvalidIdx )
+    return 0;
+  audioBuf_t* p = _handleToPtr(h);
+
+  unsigned idx      = flags & kInFl     ? kInApIdx : kOutApIdx;
+  return p->devArray[devIdx].ioArray[ idx ].chCnt; 
+}
+
+void cw::audio::buf::setFlag( handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags )
+{
+  
   if( devIdx == kInvalidIdx )
     return;
 
+  audioBuf_t* p = _handleToPtr(h);
   unsigned idx      = flags & kInFl     ? kInApIdx : kOutApIdx;
   bool     enableFl = flags & kEnableFl ? true : false; 
   unsigned i        = chIdx != kInvalidIdx ? chIdx   : 0;
-  unsigned n        = chIdx != kInvalidIdx ? chIdx+1 : _theBuf.devArray[devIdx].ioArray[idx].chCnt;
+  unsigned n        = chIdx != kInvalidIdx ? chIdx+1 : p->devArray[devIdx].ioArray[idx].chCnt;
   
   for(; i<n; ++i)
   {
-    cmApCh*  cp  = _theBuf.devArray[devIdx].ioArray[idx].chArray + i;
+    cmApCh*  cp  = p->devArray[devIdx].ioArray[idx].chArray + i;
     cp->fl = cwEnaFlag(cp->fl, flags & (kChFl|kToneFl|kMeterFl|kMuteFl|kPassFl), enableFl );
   }
   
 }  
 
-bool cw::audio::buf::isFlag( unsigned devIdx, unsigned chIdx, unsigned flags )
+bool cw::audio::buf::isFlag( handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags )
 {
   if( devIdx == kInvalidIdx )
     return false;
 
+  audioBuf_t* p = _handleToPtr(h);
   unsigned idx      = flags & kInFl ? kInApIdx : kOutApIdx;
-  return cwIsFlag(_theBuf.devArray[devIdx].ioArray[idx].chArray[chIdx].fl,flags);
+  return cwIsFlag(p->devArray[devIdx].ioArray[idx].chArray[chIdx].fl,flags);
 }
 
 
-void  cw::audio::buf::enableChannel(   unsigned devIdx, unsigned chIdx, unsigned flags )
-{  setFlag(devIdx,chIdx,flags | kChFl); }
+void  cw::audio::buf::enableChannel(   handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags )
+{  setFlag(h,devIdx,chIdx,flags | kChFl); }
 
-bool  cw::audio::buf::isChannelEnabled(   unsigned devIdx, unsigned chIdx, unsigned flags )
-{ return isFlag(devIdx, chIdx, flags | kChFl); }
+bool  cw::audio::buf::isChannelEnabled(   handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags )
+{ return isFlag(h,devIdx, chIdx, flags | kChFl); }
 
-void  cw::audio::buf::enableTone(   unsigned devIdx, unsigned chIdx, unsigned flags )
-{ setFlag(devIdx,chIdx,flags | kToneFl); }
+void  cw::audio::buf::enableTone(   handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags )
+{ setFlag(h,devIdx,chIdx,flags | kToneFl); }
 
-bool  cw::audio::buf::isToneEnabled(   unsigned devIdx, unsigned chIdx, unsigned flags )
-{ return isFlag(devIdx,chIdx,flags | kToneFl); }
+bool  cw::audio::buf::isToneEnabled(   handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags )
+{ return isFlag(h,devIdx,chIdx,flags | kToneFl); }
 
-void  cw::audio::buf::enableMute(   unsigned devIdx, unsigned chIdx, unsigned flags )
-{ setFlag(devIdx,chIdx,flags | kMuteFl); }
+void  cw::audio::buf::enableMute(   handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags )
+{ setFlag(h,devIdx,chIdx,flags | kMuteFl); }
 
-bool  cw::audio::buf::isMuteEnabled(   unsigned devIdx, unsigned chIdx, unsigned flags )
-{ return isFlag(devIdx,chIdx,flags | kMuteFl); }
+bool  cw::audio::buf::isMuteEnabled(   handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags )
+{ return isFlag(h,devIdx,chIdx,flags | kMuteFl); }
 
-void  cw::audio::buf::enablePass(   unsigned devIdx, unsigned chIdx, unsigned flags )
-{ setFlag(devIdx,chIdx,flags | kPassFl); }
+void  cw::audio::buf::enablePass(   handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags )
+{ setFlag(h,devIdx,chIdx,flags | kPassFl); }
 
-bool  cw::audio::buf::isPassEnabled(   unsigned devIdx, unsigned chIdx, unsigned flags )
-{ return isFlag(devIdx,chIdx,flags | kPassFl); }
+bool  cw::audio::buf::isPassEnabled(   handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags )
+{ return isFlag(h,devIdx,chIdx,flags | kPassFl); }
 
-void  cw::audio::buf::enableMeter(   unsigned devIdx, unsigned chIdx, unsigned flags )
-{ setFlag(devIdx,chIdx,flags | kMeterFl); }
+void  cw::audio::buf::enableMeter(   handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags )
+{ setFlag(h,devIdx,chIdx,flags | kMeterFl); }
 
-bool  cw::audio::buf::isMeterEnabled(unsigned devIdx, unsigned chIdx, unsigned flags )
-{ return isFlag(devIdx,chIdx,flags | kMeterFl); }
+bool  cw::audio::buf::isMeterEnabled(handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags )
+{ return isFlag(h,devIdx,chIdx,flags | kMeterFl); }
 
-cw::audio::buf::sample_t cw::audio::buf::meter(unsigned devIdx, unsigned chIdx, unsigned flags )
+cw::audio::buf::sample_t cw::audio::buf::meter(handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags )
 {
   if( devIdx == kInvalidIdx )
     return 0;
 
+  audioBuf_t* p = _handleToPtr(h);
+  
   unsigned            idx = flags & kInFl  ? kInApIdx : kOutApIdx;
-  const cmApCh*       cp  = _theBuf.devArray[devIdx].ioArray[idx].chArray + chIdx;
+  const cmApCh*       cp  = p->devArray[devIdx].ioArray[idx].chArray + chIdx;
   return _cmApMeterValue(cp);  
 } 
 
-void cw::audio::buf::setGain( unsigned devIdx, unsigned chIdx, unsigned flags, double gain )
+void cw::audio::buf::setGain( handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags, double gain )
 {
   if( devIdx == kInvalidIdx )
     return;
+  audioBuf_t* p = _handleToPtr(h);
 
   unsigned idx      = flags & kInFl           ? kInApIdx : kOutApIdx;
   unsigned i        = chIdx != kInvalidIdx      ? chIdx : 0;
-  unsigned n        = i + (chIdx != kInvalidIdx ? 1     : _theBuf.devArray[devIdx].ioArray[idx].chCnt);
+  unsigned n        = i + (chIdx != kInvalidIdx ? 1     : p->devArray[devIdx].ioArray[idx].chCnt);
 
   for(; i<n; ++i)
-    _theBuf.devArray[devIdx].ioArray[idx].chArray[i].gain = gain;
+    p->devArray[devIdx].ioArray[idx].chArray[i].gain = gain;
 }
 
-double cw::audio::buf::gain( unsigned devIdx, unsigned chIdx, unsigned flags )
+double cw::audio::buf::gain( handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags )
 {
   if( devIdx == kInvalidIdx )
     return 0;
+  audioBuf_t* p = _handleToPtr(h);
 
   unsigned idx   = flags & kInFl  ? kInApIdx : kOutApIdx;
-  return  _theBuf.devArray[devIdx].ioArray[idx].chArray[chIdx].gain;  
+  return  p->devArray[devIdx].ioArray[idx].chArray[chIdx].gain;  
 }
 
 
-unsigned cw::audio::buf::getStatus( unsigned devIdx, unsigned flags, double* meterArray, unsigned meterCnt, unsigned* faultCntPtr )
+unsigned cw::audio::buf::getStatus( handle_t h, unsigned devIdx, unsigned flags, double* meterArray, unsigned meterCnt, unsigned* faultCntPtr )
 {
   if( devIdx == kInvalidIdx )
     return 0;
 
+  audioBuf_t* p = _handleToPtr(h);
   unsigned ioIdx = cwIsFlag(flags,kInFl) ? kInApIdx : kOutApIdx;
-  cmApIO*  iop   = _theBuf.devArray[devIdx].ioArray + ioIdx;
+  cmApIO*  iop   = p->devArray[devIdx].ioArray + ioIdx;
   unsigned chCnt = std::min(iop->chCnt, meterCnt );
   unsigned i;
 
@@ -636,18 +672,19 @@ unsigned cw::audio::buf::getStatus( unsigned devIdx, unsigned flags, double* met
 }
 
 
-bool cw::audio::buf::isDeviceReady( unsigned devIdx, unsigned flags )
-{
+bool cw::audio::buf::isDeviceReady( handle_t h, unsigned devIdx, unsigned flags )
+{  
   //bool     iFl = true;
   //bool     oFl = true;
   unsigned i   = 0;
 
   if( devIdx == kInvalidIdx )
     return false;
+  audioBuf_t* p = _handleToPtr(h);
 
   if( flags & kInFl )
   {
-    const cmApIO* ioPtr = _theBuf.devArray[devIdx].ioArray + kInApIdx;
+    const cmApIO* ioPtr = p->devArray[devIdx].ioArray + kInApIdx;
     for(i=0; i<ioPtr->chCnt; ++i)
       if( ioPtr->chArray[i].fn < ioPtr->dspFrameCnt )
         return false;
@@ -657,7 +694,7 @@ bool cw::audio::buf::isDeviceReady( unsigned devIdx, unsigned flags )
 
   if( flags & kOutFl )
   {
-    const cmApIO* ioPtr = _theBuf.devArray[devIdx].ioArray + kOutApIdx;
+    const cmApIO* ioPtr = p->devArray[devIdx].ioArray + kOutApIdx;
 
     for(i=0; i<ioPtr->chCnt; ++i)
       if( (ioPtr->n - ioPtr->chArray[i].fn) < ioPtr->dspFrameCnt )
@@ -674,8 +711,9 @@ bool cw::audio::buf::isDeviceReady( unsigned devIdx, unsigned flags )
 
 // Note that his function returns audio samples but does NOT
 // change any internal states.
-void cw::audio::buf::get( unsigned devIdx, unsigned flags, sample_t* bufArray[], unsigned bufChCnt )
+void cw::audio::buf::get( handle_t h, unsigned devIdx, unsigned flags, sample_t* bufArray[], unsigned bufChCnt )
 {
+  audioBuf_t* p = _handleToPtr(h);
   unsigned i;
   if( devIdx == kInvalidIdx )
   {
@@ -685,7 +723,7 @@ void cw::audio::buf::get( unsigned devIdx, unsigned flags, sample_t* bufArray[],
   }
 
   unsigned      idx   = flags & kInFl ? kInApIdx : kOutApIdx;
-  const cmApIO* ioPtr = _theBuf.devArray[devIdx].ioArray + idx;
+  const cmApIO* ioPtr = p->devArray[devIdx].ioArray + idx;
   unsigned      n     = bufChCnt < ioPtr->chCnt ? bufChCnt : ioPtr->chCnt;
   //unsigned      offs  = flags & kInFl ? ioPtr->oi : ioPtr->ii; 
   cmApCh*       cp    = ioPtr->chArray;
@@ -698,17 +736,18 @@ void cw::audio::buf::get( unsigned devIdx, unsigned flags, sample_t* bufArray[],
   
 }
 
-void cw::audio::buf::getIO(   unsigned iDevIdx, sample_t* iBufArray[], unsigned iBufChCnt, time::spec_t* iTimeStampPtr, unsigned oDevIdx, sample_t* oBufArray[], unsigned oBufChCnt, time::spec_t* oTimeStampPtr )
+void cw::audio::buf::getIO( handle_t h, unsigned iDevIdx, sample_t* iBufArray[], unsigned iBufChCnt, time::spec_t* iTimeStampPtr, unsigned oDevIdx, sample_t* oBufArray[], unsigned oBufChCnt, time::spec_t* oTimeStampPtr )
 {
-  get( iDevIdx, kInFl, iBufArray, iBufChCnt );
-  get( oDevIdx, kOutFl,oBufArray, oBufChCnt );
+  audioBuf_t* p = _handleToPtr(h);
+  get( h, iDevIdx, kInFl, iBufArray, iBufChCnt );
+  get( h, oDevIdx, kOutFl,oBufArray, oBufChCnt );
 
   unsigned i       = 0;
 
   if( iDevIdx != kInvalidIdx && oDevIdx != kInvalidIdx )
   {
-    const cmApIO* ip       = _theBuf.devArray[iDevIdx].ioArray + kInApIdx;
-    const cmApIO* op       = _theBuf.devArray[oDevIdx].ioArray + kOutApIdx;
+    const cmApIO* ip       = p->devArray[iDevIdx].ioArray + kInApIdx;
+    const cmApIO* op       = p->devArray[oDevIdx].ioArray + kOutApIdx;
     unsigned      minChCnt = std::min(iBufChCnt,oBufChCnt);  
     unsigned      frmCnt   = std::min(ip->dspFrameCnt,op->dspFrameCnt);
     unsigned      byteCnt  = frmCnt * sizeof(sample_t);
@@ -742,7 +781,7 @@ void cw::audio::buf::getIO(   unsigned iDevIdx, sample_t* iBufArray[], unsigned 
 
   if( oDevIdx != kInvalidIdx )
   {
-    const cmApIO* op  = _theBuf.devArray[oDevIdx].ioArray + kOutApIdx;
+    const cmApIO* op  = p->devArray[oDevIdx].ioArray + kOutApIdx;
     unsigned byteCnt  = op->dspFrameCnt * sizeof(sample_t);
 
     _theBufCalcTimeStamp(op->srate, &op->timeStamp, op->ioFrameCnt, oTimeStampPtr );
@@ -753,16 +792,17 @@ void cw::audio::buf::getIO(   unsigned iDevIdx, sample_t* iBufArray[], unsigned 
   }
 }
 
-void cw::audio::buf::advance( unsigned devIdx, unsigned flags )
+void cw::audio::buf::advance( handle_t h, unsigned devIdx, unsigned flags )
 {
   unsigned i;
 
   if( devIdx == kInvalidIdx )
     return;
+  audioBuf_t* p = _handleToPtr(h);
 
   if( flags & kInFl )
   {
-    cmApIO* ioPtr = _theBuf.devArray[devIdx].ioArray + kInApIdx;
+    cmApIO* ioPtr = p->devArray[devIdx].ioArray + kInApIdx;
 
     for(i=0; i<ioPtr->chCnt; ++i)
     {
@@ -782,7 +822,7 @@ void cw::audio::buf::advance( unsigned devIdx, unsigned flags )
   
   if( flags & kOutFl )
   {
-    cmApIO* ioPtr = _theBuf.devArray[devIdx].ioArray + kOutApIdx;
+    cmApIO* ioPtr = p->devArray[devIdx].ioArray + kOutApIdx;
     for(i=0; i<ioPtr->chCnt; ++i)
     {
       cmApCh* cp = ioPtr->chArray + i;
@@ -800,13 +840,14 @@ void cw::audio::buf::advance( unsigned devIdx, unsigned flags )
 }
 
 
-void cw::audio::buf::inputToOutput( unsigned iDevIdx, unsigned oDevIdx )
+void cw::audio::buf::inputToOutput( handle_t h, unsigned iDevIdx, unsigned oDevIdx )
 {
   if( iDevIdx == kInvalidIdx || oDevIdx == kInvalidIdx )
     return;
+  audioBuf_t* p = _handleToPtr(h);
 
-  unsigned    iChCnt   = channelCount( iDevIdx, kInFl  );
-  unsigned    oChCnt   = channelCount( oDevIdx, kOutFl );
+  unsigned    iChCnt   = channelCount( h, iDevIdx, kInFl  );
+  unsigned    oChCnt   = channelCount( h, oDevIdx, kOutFl );
   unsigned    chCnt    = iChCnt < oChCnt ? iChCnt : oChCnt;
   
   unsigned    i;
@@ -815,17 +856,17 @@ void cw::audio::buf::inputToOutput( unsigned iDevIdx, unsigned oDevIdx )
   sample_t* oBufPtrArray[ oChCnt ];
 
 
-  while( isDeviceReady( iDevIdx, kInFl ) && isDeviceReady( oDevIdx, kOutFl ) )
+  while( isDeviceReady( h, iDevIdx, kInFl ) && isDeviceReady( h, oDevIdx, kOutFl ) )
   {
-    get( iDevIdx, kInFl,  iBufPtrArray, iChCnt );
-    get( oDevIdx, kOutFl, oBufPtrArray, oChCnt );
+    get( h, iDevIdx, kInFl,  iBufPtrArray, iChCnt );
+    get( h, oDevIdx, kOutFl, oBufPtrArray, oChCnt );
 
     // Warning: buffer pointers to disabled channels will be set to NULL
 
     for(i=0; i<chCnt; ++i)
     {
-      cmApIO* ip = _theBuf.devArray[iDevIdx ].ioArray + kInApIdx;
-      cmApIO* op = _theBuf.devArray[oDevIdx].ioArray + kOutApIdx;
+      cmApIO* ip = p->devArray[iDevIdx].ioArray + kInApIdx;
+      cmApIO* op = p->devArray[oDevIdx].ioArray + kOutApIdx;
 
       cwAssert( ip->dspFrameCnt == op->dspFrameCnt );
 
@@ -842,20 +883,21 @@ void cw::audio::buf::inputToOutput( unsigned iDevIdx, unsigned oDevIdx )
       }
     }
 
-    advance( iDevIdx, kInFl );
-    advance( oDevIdx, kOutFl );
+    advance( h, iDevIdx, kInFl );
+    advance( h, oDevIdx, kOutFl );
   }
   
 }
 
-void cw::audio::buf::report()
+void cw::audio::buf::report(handle_t h)
 {
+  audioBuf_t* p = _handleToPtr(h);
   unsigned i,j,k;
-  for(i=0; i<_theBuf.devCnt; ++i)
+  for(i=0; i<p->devCnt; ++i)
   {
     for(j=0; j<kIoApCnt; ++j)
     {
-      cmApIO* ip = _theBuf.devArray[i].ioArray + j;
+      cmApIO* ip = p->devArray[i].ioArray + j;
 
       unsigned ii = 0;
       unsigned oi = 0;
@@ -902,7 +944,8 @@ void cw::audio::buf::test()
   sample_t*             os       = oSig;
   device::audioPacket_t pkt;
   unsigned              i,j;
-
+  handle_t              h;
+  
   // create a simulated signal
   for(i=0; i<sigN; ++i)
   {
@@ -920,10 +963,10 @@ void cw::audio::buf::test()
  
 
   // initialize a the audio buffer 
-  initialize(devCnt,meterMs);
+  create(h,devCnt,meterMs);
 
   // setup the buffer with the specific parameters to by used by the host audio ports
-  setup(devIdx,srate,dspFrameCnt,cycleCnt,inChCnt,framesPerCycle,outChCnt,framesPerCycle);
+  setup(h,devIdx,srate,dspFrameCnt,cycleCnt,inChCnt,framesPerCycle,outChCnt,framesPerCycle);
 
   // simulate cylcing through sigN buffer transactions
   for(i=0; i<sigN; i+=framesPerCycle*inChCnt)
@@ -934,16 +977,16 @@ void cw::audio::buf::test()
 
     // simulate a call from the audio port with incoming samples 
     // (fill the audio buffers internal input buffers)
-    update(&pkt,1,NULL,0);
+    update(h,&pkt,1,NULL,0);
 
     // if all devices need to be serviced
-    while( isDeviceReady( devIdx, kInFl | kOutFl ))
+    while( isDeviceReady( h, devIdx, kInFl | kOutFl ))
     {
       // get pointers to full internal input buffers
-      get(devIdx, kInFl, inBufArray, bufChCnt );
+      get(h, devIdx, kInFl, inBufArray, bufChCnt );
       
       // get pointers to empty internal output buffers
-      get(devIdx, kOutFl, outBufArray, bufChCnt );
+      get(h, devIdx, kOutFl, outBufArray, bufChCnt );
 
       // Warning: pointers to disabled channels will be set to NULL.
 
@@ -961,14 +1004,14 @@ void cw::audio::buf::test()
 
       // signal the buffer that this cycle is complete.
       // (marks current internal input/output buffer empty/full)
-      advance( devIdx, kInFl | kOutFl );
+      advance( h, devIdx, kInFl | kOutFl );
     }
 
     pkt.audioBytesPtr = os;
     
     // simulate a call from the audio port picking up outgoing samples
     // (empties the audio buffers internal output buffers)
-    update(NULL,0,&pkt,1);
+    update(h,NULL,0,&pkt,1);
 
     os += pkt.audioFramesCnt * pkt.chCnt;
   }
@@ -977,7 +1020,7 @@ void cw::audio::buf::test()
     cwLogInfo("%f ",oSig[i]);
   cwLogInfo("\n");
 
-  finalize();
+  destroy(h);
 }
 
 /// [cwAudioBufExample]

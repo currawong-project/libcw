@@ -30,7 +30,7 @@ namespace cw
       if((rc = thread::destroy(p->threadH)) != kOkRC )
         return rc;
 
-      memRelease(p);
+      mem::release(p);
 
       return rc;
     }
@@ -55,7 +55,7 @@ cw::rc_t cw::serialPortSrv::create( handle_t& h, const char* deviceStr, unsigned
 {
   rc_t rc = kOkRC;
 
-  this_t* p = memAllocZ<this_t>();
+  this_t* p = mem::allocZ<this_t>();
       
   if((rc = serialPort::create( p->portH, deviceStr, baudRate, cfgFlags, cbFunc, cbArg )) != kOkRC )
     goto errLabel;

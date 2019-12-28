@@ -54,7 +54,7 @@ namespace cw
   }
 }
 
-bool cw::fileSysIsDir( const char* dirStr )
+bool cw::filesys::isDir( const char* dirStr )
 {
   struct stat s;
 
@@ -73,7 +73,7 @@ bool cw::fileSysIsDir( const char* dirStr )
   return S_ISDIR(s.st_mode);
 }
 
-bool cw::fileSysIsFile( const char* fnStr )
+bool cw::filesys::isFile( const char* fnStr )
 {
   struct stat s;
   errno = 0;
@@ -93,7 +93,7 @@ bool cw::fileSysIsFile( const char* fnStr )
 }
 
 
-bool cw::fileSysIsLink( const char* fnStr )
+bool cw::filesys::isLink( const char* fnStr )
 {
   struct stat s;
   errno = 0;
@@ -113,7 +113,7 @@ bool cw::fileSysIsLink( const char* fnStr )
 
 
 
-char* cw::fileSysVMakeFn( const char* dir, const char* fn, const char* ext, va_list vl )
+char* cw::filesys::vMakeFn( const char* dir, const char* fn, const char* ext, va_list vl )
 {
   rc_t        rc      = kOkRC;
   char*       rp      = nullptr;
@@ -142,7 +142,7 @@ char* cw::fileSysVMakeFn( const char* dir, const char* fn, const char* ext, va_l
 
    // add 1 for terminating zero and allocate memory
 
-  if((rp = memAllocZ<char>( n+1 )) == nullptr )
+  if((rp = mem::allocZ<char>( n+1 )) == nullptr )
   {
     rc = cwLogError(kMemAllocFailRC,"Unable to allocate file name memory.");
     goto errLabel;
@@ -187,31 +187,31 @@ char* cw::fileSysVMakeFn( const char* dir, const char* fn, const char* ext, va_l
  errLabel:
 
   if( rc != kOkRC && rp != nullptr )
-    memRelease( rp );
+    mem::release( rp );
 
   return rp;
 }
 
 
-char* cw::fileSysMakeFn(  const char* dir, const char* fn, const char* ext, ... )
+char* cw::filesys::makeFn(  const char* dir, const char* fn, const char* ext, ... )
 {
   va_list vl;
   va_start(vl,ext);
-  char* fnOut = fileSysVMakeFn(dir,fn,ext,vl);
+  char* fnOut = filesys::vMakeFn(dir,fn,ext,vl);
   va_end(vl);
   return fnOut;
 }
 
 
 
-cw::fileSysPathPart_t* cw::fileSysPathParts( const char* pathStr )
+cw::filesys::pathPart_t* cw::filesys::pathParts( const char* pathStr )
 {
   unsigned           n  = 0;    // char's in pathStr
   unsigned           dn = 0;    // char's in the dir part
   unsigned           fn = 0;    // char's in the name part
   unsigned           en = 0;    // char's in the ext part
   char*              cp = nullptr;
-  fileSysPathPart_t* rp = nullptr;
+  pathPart_t* rp = nullptr;
 
 
   if( pathStr==nullptr )
@@ -283,10 +283,10 @@ cw::fileSysPathPart_t* cw::fileSysPathParts( const char* pathStr )
     dn = strlen(cp);
 
   // get the total size of the returned memory. (add 3 for ecmh possible terminating zero)
-  n = sizeof(fileSysPathPart_t) + dn + fn + en + 3;
+  n = sizeof(pathPart_t) + dn + fn + en + 3;
 
   // alloc memory
-  if((rp = memAllocZ<fileSysPathPart_t>( n )) == nullptr )
+  if((rp = mem::allocZ<pathPart_t>( n )) == nullptr )
   {
     cwLogError( kMemAllocFailRC, "Unable to allocate the file system path part record for '%s'.",pathStr);
     return nullptr;

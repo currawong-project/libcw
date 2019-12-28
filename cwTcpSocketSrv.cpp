@@ -35,8 +35,8 @@ namespace cw
         if((rc = socket::destroy(p->sockH)) != kOkRC )
           return rc;
 
-        memRelease(p->recvBuf);
-        memRelease(p);
+        mem::release(p->recvBuf);
+        mem::release(p);
 
         return rc;
       }
@@ -72,7 +72,7 @@ cw::rc_t cw::net::srv::create(
   if((rc = destroy(hRef)) != kOkRC )
     return rc;
 
-  socksrv_t* p = memAllocZ<socksrv_t>();
+  socksrv_t* p = mem::allocZ<socksrv_t>();
 
   if((rc = socket::create( p->sockH, port, socket::kNonBlockingFl, 0, remoteAddr, remotePort )) != kOkRC )
     goto errLabel;
@@ -80,7 +80,7 @@ cw::rc_t cw::net::srv::create(
   if((rc = thread::create( p->threadH, _threadFunc, p )) != kOkRC )
     goto errLabel;
 
-  p->recvBuf        = memAllocZ<char>( recvBufByteCnt );
+  p->recvBuf        = mem::allocZ<char>( recvBufByteCnt );
   p->recvBufByteCnt = recvBufByteCnt;
   p->cbFunc         = cbFunc;
   p->cbArg          = cbArg;

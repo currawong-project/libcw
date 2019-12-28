@@ -144,17 +144,17 @@ namespace cw
 
       void _destroy( parser_t* p )
       {
-        memRelease(p->buf);
+        mem::release(p->buf);
 
         cbRecd_t* c = p->cbChain;
         while(c != NULL)
         {
           cbRecd_t* nc = c->linkPtr;
-          memRelease(c);
+          mem::release(c);
           c = nc;
         }
 
-        memRelease(p);
+        mem::release(p);
 
       }
 
@@ -165,7 +165,7 @@ namespace cw
 cw::rc_t cw::midi::parser::create( handle_t& hRef, unsigned devIdx, unsigned portIdx, cbFunc_t cbFunc, void* cbDataPtr, unsigned bufByteCnt )
 {
   rc_t      rc = kOkRC;
-  parser_t* p  = memAllocZ<parser_t>( 1 );
+  parser_t* p  = mem::allocZ<parser_t>( 1 );
 
 
   p->pkt.devIdx        = devIdx;
@@ -176,7 +176,7 @@ cw::rc_t cw::midi::parser::create( handle_t& hRef, unsigned devIdx, unsigned por
   //p->cbChain->cbDataPtr = cbDataPtr;
   //p->cbChain->linkPtr   = NULL;
   p->cbChain           = NULL;
-  p->buf               = memAllocZ<byte_t>( bufByteCnt );
+  p->buf               = mem::allocZ<byte_t>( bufByteCnt );
   p->bufByteCnt        = bufByteCnt;
   p->bufIdx            = 0;
   p->msgCnt            = 0;
@@ -409,7 +409,7 @@ cw::rc_t  cw::midi::parser::transmit( handle_t h )
 cw::rc_t      cw::midi::parser::installCallback( handle_t h, cbFunc_t  cbFunc, void* cbDataPtr )
 {
   parser_t*   p        = _handleToPtr(h);
-  cbRecd_t* newCbPtr = memAllocZ<cbRecd_t>( 1 );
+  cbRecd_t* newCbPtr = mem::allocZ<cbRecd_t>( 1 );
   cbRecd_t* c        = p->cbChain;
   
   newCbPtr->cbFunc    = cbFunc;
@@ -456,7 +456,7 @@ cw::rc_t      cw::midi::parser::removeCallback(  handle_t h, cbFunc_t cbFunc, vo
   else
     c0->linkPtr = c1->linkPtr;
 
-  memRelease(c1);
+  mem::release(c1);
   
   return kOkRC;
 }

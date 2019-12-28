@@ -41,23 +41,21 @@ namespace cw
   
       //(
 
-      typedef device::sample_t sample_t;
-  
-      enum
-      {
-       kOkAbRC = 0
-      };
+      typedef device::sample_t            sample_t;
+      typedef handle<struct audioBuf_str> handle_t;
+      
 
       // Allocate and initialize an audio buffer.
       // devCnt - count of devices this buffer will handle.
       // meterMs - length of the meter buffers in milliseconds (automatically limit to the range:10 to 1000)
-      rc_t initialize( unsigned devCnt, unsigned meterMs );
+      rc_t create( handle_t& hRef, unsigned devCnt, unsigned meterMs );
 
       // Deallocate and release any resource held by an audio buffer allocated via initialize().
-      rc_t finalize();
+      rc_t destroy( handle_t& hRef );
 
       // Configure a buffer for a given device.  
-      rc_t setup( 
+      rc_t setup(
+        handle_t h,
         unsigned devIdx,              //< device to setup
         double   srate,               //< device sample rate (only required for synthesizing the correct test-tone frequency)
         unsigned dspFrameCnt,         // dspFrameCnt - count of samples in channel buffers returned via get() 
@@ -69,10 +67,10 @@ namespace cw
                              );
 
       // Prime the buffer with 'audioCycleCnt' * outFramesPerCycle samples ready to be played
-      rc_t primeOutput( unsigned devIdx, unsigned audioCycleCnt );
+      rc_t primeOutput( handle_t h, unsigned devIdx, unsigned audioCycleCnt );
 
       // Notify the audio buffer that a device is being enabled or disabled.
-      void onPortEnable( unsigned devIdx, bool enabelFl );
+      void onPortEnable( handle_t h, unsigned devIdx, bool enabelFl );
 
       // This function is called asynchronously by the audio device driver to transfer incoming samples to the
       // the buffer and to send outgoing samples to the DAC. This function is 
@@ -91,6 +89,7 @@ namespace cw
       // The enable flag has higher precedence than the tone flag therefore disabled channels
       // will be set to zero even if the tone flag is set.
       rc_t update(
+        handle_t               h, 
         device::audioPacket_t* inPktArray,  //< full audio packets from incoming audio (from ADC)
         unsigned               inPktCnt,    //< count of incoming audio packets
         device::audioPacket_t* outPktArray, //< empty audio packet for outgoing audio (to DAC)  
@@ -112,78 +111,78 @@ namespace cw
       };
 
       // Return the meter window period as set by initialize()
-      unsigned meterMs();
+      unsigned meterMs(handle_t h);
   
       // Set the meter update period. THis function limits the value to between 10 and 1000.
-      void     setMeterMs( unsigned meterMs );
+      void     setMeterMs( handle_t h, unsigned meterMs );
 
       // Returns the channel count set via setup().
-      unsigned channelCount( unsigned devIdx, unsigned flags );
+      unsigned channelCount( handle_t h, unsigned devIdx, unsigned flags );
 
       // Set chIdx to -1 to enable all channels on this device.
       // Set flags to {kInFl | kOutFl} | {kChFl | kToneFl | kMeterFl} | { kEnableFl=on | 0=off }  
-      void setFlag( unsigned devIdx, unsigned chIdx, unsigned flags );
+      void setFlag( handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags );
   
       // Return true if the the flags is set.
-      bool isFlag( unsigned devIdx, unsigned chIdx, unsigned flags );
+      bool isFlag( handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags );
 
       // Set chIdx to -1 to enable all channels on this device.
-      void  enableChannel(   unsigned devIdx, unsigned chIdx, unsigned flags );
+      void  enableChannel(   handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags );
 
       // Returns true if an input/output channel is enabled on the specified device.
-      bool  isChannelEnabled(unsigned devIdx, unsigned chIdx, unsigned flags );
+      bool  isChannelEnabled(handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags );
 
       // Set the state of the tone generator on the specified channel.
       // Set chIdx to -1 to apply the change to all channels on this device.
       // Set flags to {kInFl | kOutFl} | { kEnableFl=on | 0=off }
-      void  enableTone(   unsigned devIdx, unsigned chIdx, unsigned flags );
+      void  enableTone(   handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags );
 
       // Returns true if an input/output tone is enabled on the specified device.
-      bool  isToneEnabled(unsigned devIdx, unsigned chIdx, unsigned flags );
+      bool  isToneEnabled(handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags );
 
       // Mute a specified channel.
       // Set chIdx to -1 to apply the change to all channels on this device.
       // Set flags to {kInFl | kOutFl} | { kEnableFl=on | 0=off }
-      void  enableMute(   unsigned devIdx, unsigned chIdx, unsigned flags );
+      void  enableMute(   handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags );
 
       // Returns true if an input/output channel is muted on the specified device.
-      bool  isMuteEnabled(unsigned devIdx, unsigned chIdx, unsigned flags );
+      bool  isMuteEnabled(handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags );
 
       // Set the specified channel to pass through.
       // Set chIdx to -1 to apply the change to all channels on this device.
       // Set flags to {kInFl | kOutFl} | { kEnableFl=on | 0=off }
-      void  enablePass(   unsigned devIdx, unsigned chIdx, unsigned flags );
+      void  enablePass(   handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags );
 
       // Returns true if pass through is enabled on the specified channel.
-      bool  isPassEnabled(unsigned devIdx, unsigned chIdx, unsigned flags );
+      bool  isPassEnabled(handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags );
 
       // Turn meter data collection on and off.
       // Set chIdx to -1 to apply the change to all channels on this device.
       // Set flags to {kInFl | kOutFl} | { kEnableFl=on | 0=off }
-      void  enableMeter(   unsigned devIdx, unsigned chIdx, unsigned flags );
+      void  enableMeter(   handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags );
 
       // Returns true if an input/output tone is enabled on the specified device.
-      bool  isMeterEnabled(unsigned devIdx, unsigned chIdx, unsigned flags );
+      bool  isMeterEnabled(handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags );
 
       // Return the meter value for the requested channel.
       // Set flags to kInFl | kOutFl.
-      sample_t meter(unsigned devIdx, unsigned chIdx, unsigned flags );
+      sample_t meter(handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags );
 
       // Set chIdx to -1 to apply the gain to all channels on the specified device.
-      void setGain( unsigned devIdx, unsigned chIdx, unsigned flags, double gain );
+      void setGain( handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags, double gain );
 
       // Return the current gain seting for the specified channel.
-      double gain( unsigned devIdx, unsigned chIdx, unsigned flags ); 
+      double gain( handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags ); 
 
       // Get the meter and fault status of the channel input or output channel array of a device.
       // Set 'flags' to { kInFl | kOutFl }.
       // The returns value is the count of channels actually written to meterArray.
       // If 'faultCntPtr' is non-NULL then it is set to the faultCnt of the associated devices input or output buffer.
-      unsigned getStatus( unsigned devIdx, unsigned flags, double* meterArray, unsigned meterCnt, unsigned* faultCntPtr );
+      unsigned getStatus( handle_t h, unsigned devIdx, unsigned flags, double* meterArray, unsigned meterCnt, unsigned* faultCntPtr );
 
       // Do all enabled input/output channels on this device have samples available?
       // 'flags' can be set to either or both kInFl and kOutFl
-      bool  isDeviceReady( unsigned devIdx, unsigned flags ); 
+      bool  isDeviceReady( handle_t h, unsigned devIdx, unsigned flags ); 
 
       // This function is called by the application to get full incoming sample buffers and
       // to fill empty outgoing sample buffers.
@@ -195,7 +194,7 @@ namespace cw
       // (see initialize()).
       // Note that this function just returns audio information it does not
       // change any internal states.
-      void get( unsigned devIdx, unsigned flags, sample_t* bufArray[], unsigned bufChCnt );
+      void get( handle_t h, unsigned devIdx, unsigned flags, sample_t* bufArray[], unsigned bufChCnt );
 
       // This function replaces calls to get() and implements pass-through and output 
       // buffer zeroing: 
@@ -212,22 +211,22 @@ namespace cw
       // 3) This function just returns audio information it does not
       // change any internal states.
       // 4) The timestamp pointers are optional.
-      void getIO(   unsigned iDevIdx, sample_t* iBufArray[], unsigned iBufChCnt, time::spec_t* iTimeStampPtr, 
+      void getIO(   handle_t h, unsigned iDevIdx, sample_t* iBufArray[], unsigned iBufChCnt, time::spec_t* iTimeStampPtr, 
         unsigned oDevIdx, sample_t* oBufArray[], unsigned oBufChCnt, time::spec_t* oTimeStampPtr );
 
 
       // The application calls this function each time it completes processing of a bufArray[]
       // returned from get(). 'flags' can be set to either or both kInFl and kOutFl.
       // This function should only be called from the client thread.
-      void advance( unsigned devIdx, unsigned flags );
+      void advance( handle_t h, unsigned devIdx, unsigned flags );
 
       // Copy all available samples incoming samples from an input device to an output device.
       // The source code for this example is a good example of how an application should use get()
       // and advance().
-      void inputToOutput( unsigned inDevIdx, unsigned outDevIdx );
+      void inputToOutput( handle_t h, unsigned inDevIdx, unsigned outDevIdx );
 
       // Print the current buffer state.
-      void report();
+      void report( handle_t h );
 
       // Run a buffer usage simulation to test the class. cmAudioPortTest.c calls this function.
       void test();

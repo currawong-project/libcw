@@ -18,13 +18,13 @@ namespace cw
     
     MpScNbQueue()
     {
-      node_t* stub = memAllocZ<node_t>();
+      node_t* stub = mem::allocZ<node_t>();
       _head = stub;
       _tail = stub;
     }
     
     virtual ~MpScNbQueue()
-    { memFree(_tail); }
+    { mem::free(_tail); }
 
     MpScNbQueue( const MpScNbQueue& ) = delete;
     MpScNbQueue( const MpScNbQueue&& ) = delete;
@@ -34,7 +34,7 @@ namespace cw
 
     void    push( T* payload )
     {
-      node_t* new_node = memAllocZ<node_t>(1);
+      node_t* new_node = mem::allocZ<node_t>(1);
       new_node->payload = payload;
       new_node->next.store(nullptr);
       node_t* prev   = _head.exchange(new_node,std::memory_order_acq_rel);  // append the new node to the list (aquire-release)
@@ -51,7 +51,7 @@ namespace cw
       {
         _tail    = next;    
         payload = next->payload;
-        memFree(t);
+        mem::free(t);
       }
   
       return payload;

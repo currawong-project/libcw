@@ -109,7 +109,7 @@ cw::rc_t cw::thread::create( handle_t& hRef, cbFunc_t func, void* funcArg, int s
   if((rc = destroy(hRef)) != kOkRC )
     return rc;
 
-  thread_t* p = memAllocZ<thread_t>();
+  thread_t* p = mem::allocZ<thread_t>();
 
   p->func        = func;
   p->funcArg     = funcArg;
@@ -155,7 +155,7 @@ cw::rc_t cw::thread::destroy( handle_t& hRef )
   if((rc = _waitForState(p,kExitedThId)) != kOkRC )
     return  cwLogError(rc,"Thread timed out waiting for destroy.");
 
-  memRelease(p);
+  mem::release(p);
   hRef.clear();
   
   return rc;

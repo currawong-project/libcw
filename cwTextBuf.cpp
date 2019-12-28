@@ -32,12 +32,12 @@ cw::rc_t cw::textBuf::create( handle_t& hRef, unsigned initCharN, unsigned expan
   if((rc = destroy(hRef)) != kOkRC )
     return rc;
 
-  this_t* p        = memAllocZ<this_t>();
-  p->buf           = memAllocZ<char>(initCharN);
+  this_t* p        = mem::allocZ<this_t>();
+  p->buf           = mem::allocZ<char>(initCharN);
   p->expandCharN   = expandCharN;
   p->allocCharN    = initCharN;
-  p->boolTrueText  = memDuplStr("true");
-  p->boolFalseText = memDuplStr("false");
+  p->boolTrueText  = mem::duplStr("true");
+  p->boolFalseText = mem::duplStr("false");
   hRef.set(p);
   return rc;
 }
@@ -62,10 +62,10 @@ cw::rc_t cw::textBuf::destroy(handle_t& hRef )
 
   this_t* p = _handleToPtr(hRef);
   
-  memRelease(p->buf);
-  memRelease(p->boolTrueText);
-  memRelease(p->boolFalseText);
-  memRelease(p);
+  mem::release(p->buf);
+  mem::release(p->boolTrueText);
+  mem::release(p->boolFalseText);
+  mem::release(p);
   hRef.clear();
   return rc;
 }
@@ -100,7 +100,7 @@ cw::rc_t cw::textBuf::print( handle_t h, const char* fmt, va_list vl )
       unsigned minExpandCharN = (p->endN + n) - p->allocCharN;
       unsigned expandCharN = std::max(minExpandCharN,p->expandCharN);
       p->allocCharN += expandCharN;
-      p->buf = memResizeZ<char>( p->buf, p->allocCharN );    
+      p->buf = mem::resizeZ<char>( p->buf, p->allocCharN );    
     }
     
     int m = vsnprintf(p->buf + p->endN, n, fmt, vl );
@@ -142,9 +142,9 @@ cw::rc_t cw::textBuf::setBoolFormat( handle_t h, bool v, const char* s)
   this_t* p = _handleToPtr(h);
   
   if( v )    
-    p->boolTrueText = memReallocStr(p->boolTrueText,s);
+    p->boolTrueText = mem::reallocStr(p->boolTrueText,s);
   else
-    p->boolFalseText = memReallocStr(p->boolFalseText,s);
+    p->boolFalseText = mem::reallocStr(p->boolFalseText,s);
   return kOkRC;
 }
 

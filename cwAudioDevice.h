@@ -70,7 +70,7 @@ namespace cw
       // interacts with data structures also handled by the application. The audio buffer class (\see cwAudioBuf.h) 
       // is designed to provide a safe and efficient way to communicate between
       // the audio thread and the application.
-      typedef void (*cbFunc_t)( audioPacket_t* inPktArray, unsigned inPktCnt, audioPacket_t* outPktArray, unsigned outPktCnt );
+      typedef void (*cbFunc_t)( void* cbArg, audioPacket_t* inPktArray, unsigned inPktCnt, audioPacket_t* outPktArray, unsigned outPktCnt );
       
       typedef struct driver_str
       {

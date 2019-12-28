@@ -32,7 +32,7 @@ namespace cw
     void   _setClosedState( port_t* p )
     {
       if( p->_deviceStr != nullptr )
-        cw::memFree(const_cast<char*>(p->_deviceStr));
+        cw::mem::free(const_cast<char*>(p->_deviceStr));
      
       p->_deviceH = -1;
       p->_deviceStr = nullptr;
@@ -103,7 +103,7 @@ namespace cw
         _setClosedState(p);
       }
 
-      memRelease(p);
+      mem::release(p);
 
     errLabel:
       return rc;      
@@ -123,7 +123,7 @@ cw::rc_t cw::serialPort::create( handle_t& h, const char* deviceStr, unsigned ba
   if((rc = destroy(h)) != kOkRC )
     return rc;
 
-  port_t* p = memAllocZ<port_t>();
+  port_t* p = mem::allocZ<port_t>();
 
   p->_deviceH = -1;
     
@@ -239,7 +239,7 @@ cw::rc_t cw::serialPort::create( handle_t& h, const char* deviceStr, unsigned ba
   p->_pollfd.fd     = p->_deviceH;
   p->_pollfd.events = POLLIN;
   
-  p->_deviceStr = cw::memAllocStr( deviceStr );
+  p->_deviceStr = cw::mem::allocStr( deviceStr );
   p->_baudRate  = baudRate;
 	p->_cfgFlags  = cfgFlags;
   p->_cbFunc    = cbFunc;

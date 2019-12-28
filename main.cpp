@@ -72,18 +72,18 @@ void variadicTplTest( cw::object_t* cfg, int argc, const char* argv[] )
 
 void fileSysTest( cw::object_t* cfg, int argc, const char* argv[] )
 {
-  cw::fileSysPathPart_t* pp = cw::fileSysPathParts(__FILE__);
+  cw::filesys::pathPart_t* pp = cw::filesys::pathParts(__FILE__);
   
   cwLogInfo("dir:%s",pp->dirStr);
   cwLogInfo("fn: %s",pp->fnStr);
   cwLogInfo("ext:%s",pp->extStr);
 
-  char* fn = cw::fileSysMakeFn( pp->dirStr, pp->fnStr, pp->extStr, nullptr );
+  char* fn = cw::filesys::makeFn( pp->dirStr, pp->fnStr, pp->extStr, nullptr );
 
   cwLogInfo("fn: %s",fn);
 
-  cw::memRelease(pp);
-  cw::memRelease(fn);
+  cw::mem::release(pp);
+  cw::mem::release(fn);
   
 }
 

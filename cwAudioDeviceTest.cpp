@@ -34,229 +34,14 @@ namespace  cw
         unsigned      outDevIdx;      // output device index
         double        srate;          // audio sample rate
         unsigned      meterMs;        // audio meter buffer length
-
-        // param's and state for cmApSynthSine()
-        unsigned      phase;          // sine synth phase
-        double        frqHz;          // sine synth frequency in Hz
-
-        // buffer and state for cmApCopyIn/Out()
-        sample_t*     buf;            // buf[bufSmpCnt] - circular interleaved audio buffer
-        unsigned      bufInIdx;       // next input buffer index
-        unsigned      bufOutIdx;      // next output buffer index
-        unsigned      bufFullCnt;     // count of full samples
-
-        // debugging log data arrays 
-        unsigned      logCnt;        // count of elements in log[] and ilong[]
-        char*         log;           // log[logCnt]
-        unsigned*     ilog;          // ilog[logCnt]
-        unsigned      logIdx;        // current log index
-
+        
         unsigned      iCbCnt;         // count the callback
         unsigned      oCbCnt;
+
+        buf::handle_t audioBufH;
       } cmApPortTestRecd;
 
 
-#ifdef NOT_DEF
-      // The application can request any block of channels from the device. The packets are provided with the starting
-      // device channel and channel count.  This function converts device channels and channel counts to buffer
-      // channel indexes and counts.  
-      //
-      //  Example:
-      //      input                            output
-      //       i,n                              i n
-      //  App: 0,4   0 1 2 3                ->  2 2
-      //  Pkt  2,8       2 3 4 5 6 7 8      ->  0 2
-      //
-      // The return value is the count of application requested channels located in this packet.
-      //
-      // input: *appChIdxPtr and appChCnt describe a block of device channels requested by the application.
-      //        *pktChIdxPtr and pktChCnt describe a block of device channels provided to the application
-      //
-      // output:*appChIdxPtr and <return value> describe a block of app buffer channels which will send/recv samples.
-      //        *pktChIdxPtr and <return value>  describe a block of pkt buffer channels which will send/recv samples
-      //
-      unsigned _cmApDeviceToBuffer( unsigned* appChIdxPtr, unsigned appChCnt, unsigned* pktChIdxPtr, unsigned pktChCnt )
-      {
-        unsigned abi = *appChIdxPtr;
-        unsigned aei = abi+appChCnt-1;
-
-        unsigned pbi = *pktChIdxPtr;
-        unsigned pei = pbi+pktChCnt-1;
-
-        // if the ch's rqstd by the app do not overlap with this packet - return false.
-        if( aei < pbi || abi > pei )
-          return 0;
-
-        // if the ch's rqstd by the app overlap with the beginning of the pkt channel block
-        if( abi < pbi )
-        {
-          appChCnt     -= pbi - abi;
-          *appChIdxPtr  = pbi - abi;
-          *pktChIdxPtr  = 0;
-        }
-        else
-        {
-          // the rqstd ch's begin inside the pkt channel block
-          pktChCnt     -= abi - pbi;
-          *pktChIdxPtr  = abi - pbi;
-          *appChIdxPtr  = 0;
-        }
-
-        // if the pkt channels extend beyond the rqstd ch block
-        if( aei < pei )
-          pktChCnt -= pei - aei;
-        else 
-          appChCnt -= aei - pei; // the rqstd ch's extend beyond or coincide with the pkt block
-
-        // the returned channel count must always be the same for both the rqstd and pkt 
-        return cmMin(appChCnt,pktChCnt);
-
-      }
-
-
-      // synthesize a sine signal into an interleaved audio buffer
-      unsigned _cmApSynthSine( cmApPortTestRecd* r, float* p, unsigned chIdx, unsigned chCnt, unsigned frmCnt, unsigned phs, double hz )
-      {
-        long     ph = 0;
-        unsigned i;
-        unsigned bufIdx    = r->chIdx;
-        unsigned bufChCnt;
-
-        if( (bufChCnt =  _cmApDeviceToBuffer( &bufIdx, r->chCnt, &chIdx, chCnt )) == 0)
-          return phs;
-
-  
-        //if( r->cbCnt < 50 )
-        //  printf("ch:%i cnt:%i  ch:%i cnt:%i  bi:%i bcn:%i\n",r->chIdx,r->chCnt,chIdx,chCnt,bufIdx,bufChCnt);
- 
-
-        for(i=bufIdx; i<bufIdx+bufChCnt; ++i)
-        {
-          unsigned j;
-          float*   op = p + i;
-
-          ph = phs;
-          for(j=0; j<frmCnt; j++, op+=chCnt, ph++)
-          {
-            *op = (float)(0.9 * sin( 2.0 * M_PI * hz * ph / r->srate ));
-          }
-        }
-  
-        return ph;
-      }
-
-      // Copy the audio samples in the interleaved audio buffer sp[srcChCnt*srcFrameCnt]
-      // to the internal record buffer.
-      void _cmApCopyIn( cmApPortTestRecd* r, const sample_t* sp, unsigned srcChIdx, unsigned srcChCnt, unsigned srcFrameCnt  )
-      {
-        unsigned i,j;
-
-        unsigned chCnt = cmMin(r->chCnt,srcChCnt);
-
-        for(i=0; i<srcFrameCnt; ++i)
-        {
-          for(j=0; j<chCnt; ++j)
-            r->buf[ r->bufInIdx + j ] = sp[ (i*srcChCnt) + j ];
-
-          for(; j<r->chCnt; ++j)
-            r->buf[ r->bufInIdx + j ] = 0;
-
-          r->bufInIdx = (r->bufInIdx+r->chCnt) % r->bufFrmCnt;
-        }
-
-        //r->bufFullCnt = (r->bufFullCnt + srcFrameCnt) % r->bufFrmCnt;
-        r->bufFullCnt += srcFrameCnt;
-      }
-
-      // Copy audio samples out of the internal record buffer into dp[dstChCnt*dstFrameCnt].
-      void _cmApCopyOut( cmApPortTestRecd* r, sample_t* dp, unsigned dstChIdx, unsigned dstChCnt, unsigned dstFrameCnt )
-      {
-        // if there are not enough samples available to fill the destination buffer then zero the dst buf.
-        if( r->bufFullCnt < dstFrameCnt )
-        {
-          printf("Empty Output Buffer\n");
-          memset( dp, 0, dstFrameCnt*dstChCnt*sizeof(sample_t) );
-        }
-        else
-        {
-          unsigned i,j;
-          unsigned chCnt = cmMin(dstChCnt, r->chCnt);
-
-          // for each output frame
-          for(i=0; i<dstFrameCnt; ++i)
-          {
-            // copy the first chCnt samples from the internal buf to the output buf
-            for(j=0; j<chCnt; ++j)
-              dp[ (i*dstChCnt) + j ] = r->buf[ r->bufOutIdx + j ];
-
-            // zero any output ch's for which there is no internal buf channel
-            for(; j<dstChCnt; ++j)
-              dp[ (i*dstChCnt) + j ] = 0;
-
-            // advance the internal buffer
-            r->bufOutIdx = (r->bufOutIdx + r->chCnt) % r->bufFrmCnt;
-          }
-
-          r->bufFullCnt -= dstFrameCnt;
-        }
-      }
-
-      // Audio port callback function called from the audio device thread.
-      void _cmApPortCb( cmApAudioPacket_t* inPktArray, unsigned inPktCnt, cmApAudioPacket_t* outPktArray, unsigned outPktCnt )
-      {
-        unsigned i;
-
-        // for each incoming audio packet
-        for(i=0; i<inPktCnt; ++i)
-        {
-          cmApPortTestRecd* r = (cmApPortTestRecd*)inPktArray[i].userCbPtr; 
-
-          if( inPktArray[i].devIdx == r->inDevIdx )
-          {
-            // copy the incoming audio into an internal buffer where it can be picked up by _cpApCopyOut().
-            _cmApCopyIn( r, (sample_t*)inPktArray[i].audioBytesPtr, inPktArray[i].begChIdx, inPktArray[i].chCnt, inPktArray[i].audioFramesCnt );
-          }
-          ++r->iCbCnt;
-
-          //printf("i %4i in:%4i out:%4i\n",r->bufFullCnt,r->bufInIdx,r->bufOutIdx);
-        }
-
-        unsigned hold_phase = 0;
-
-        // for each outgoing audio packet
-        for(i=0; i<outPktCnt; ++i)
-        {
-          cmApPortTestRecd* r = (cmApPortTestRecd*)outPktArray[i].userCbPtr; 
-
-          if( outPktArray[i].devIdx == r->outDevIdx )
-          {
-            // zero the output buffer
-            memset(outPktArray[i].audioBytesPtr,0,outPktArray[i].chCnt * outPktArray[i].audioFramesCnt * sizeof(sample_t) );
-      
-            // if the synth is enabled
-            if( r->synthFl )
-            {
-              unsigned tmp_phase  = _cmApSynthSine( r, outPktArray[i].audioBytesPtr, outPktArray[i].begChIdx, outPktArray[i].chCnt, outPktArray[i].audioFramesCnt, r->phase, r->frqHz );  
-
-              // the phase will only change on packets that are actually used
-              if( tmp_phase != r->phase )
-                hold_phase = tmp_phase;
-            }
-            else
-            {
-              // copy the any audio in the internal record buffer to the playback device 
-              _cmApCopyOut( r, (sample_t*)outPktArray[i].audioBytesPtr, outPktArray[i].begChIdx, outPktArray[i].chCnt, outPktArray[i].audioFramesCnt );   
-            }
-          }
-
-          r->phase = hold_phase;
-
-          //printf("o %4i in:%4i out:%4i\n",r->bufFullCnt,r->bufInIdx,r->bufOutIdx);
-          // count callbacks
-          ++r->oCbCnt;
-        }
-      }
-#endif
 
       // print the usage message for cmAudioPortTest.c
       void _cmApPrintUsage()
@@ -302,17 +87,19 @@ namespace  cw
       unsigned _cmGlobalInDevIdx  = 0;
       unsigned _cmGlobalOutDevIdx = 0;
 
-      void _cmApPortCb2( audioPacket_t* inPktArray, unsigned inPktCnt, audioPacket_t* outPktArray, unsigned outPktCnt )
+      void _cmApPortCb2( void* arg, audioPacket_t* inPktArray, unsigned inPktCnt, audioPacket_t* outPktArray, unsigned outPktCnt )
       {
+        cmApPortTestRecd* p = static_cast<cmApPortTestRecd*>(arg);
+        
         for(unsigned i=0; i<inPktCnt; ++i)
           static_cast<cmApPortTestRecd*>(inPktArray[i].cbArg)->iCbCnt++;
 
         for(unsigned i=0; i<outPktCnt; ++i)
           static_cast<cmApPortTestRecd*>(outPktArray[i].cbArg)->oCbCnt++;
         
-        buf::inputToOutput( _cmGlobalInDevIdx, _cmGlobalOutDevIdx );
+        buf::inputToOutput( p->audioBufH, _cmGlobalInDevIdx, _cmGlobalOutDevIdx );
 
-        buf::update( inPktArray, inPktCnt, outPktArray, outPktCnt );
+        buf::update( p->audioBufH, inPktArray, inPktCnt, outPktArray, outPktCnt );
       }
     }
   }
@@ -341,25 +128,11 @@ cw::rc_t cw::audio::device::test( int argc, const char** argv )
   r.framesPerCycle = _cmApGetOpt(argc,argv,"-f",512);
   //r.bufFrmCnt      = (r.bufCnt*r.framesPerCycle);
   //r.bufSmpCnt      = (r.chCnt  * r.bufFrmCnt);
-  r.logCnt         = 100; 
+  //r.logCnt         = 100; 
   r.meterMs        = 50;
 
-  sample_t     buf[r.bufSmpCnt];
-  char         log[r.logCnt];
-  unsigned    ilog[r.logCnt];
-  
   r.inDevIdx   = _cmGlobalInDevIdx  = _cmApGetOpt(argc,argv,"-i",0);   
   r.outDevIdx  = _cmGlobalOutDevIdx = _cmApGetOpt(argc,argv,"-o",0); 
-  r.phase      = 0;
-  r.frqHz      = 2000;
-  r.bufInIdx   = 0;
-  r.bufOutIdx  = 0;
-  r.bufFullCnt = 0;
-  r.logIdx     = 0;
-
-  r.buf        = buf;
-  r.log        = log;
-  r.ilog       = ilog;
   r.iCbCnt     = 0;
   r.oCbCnt     = 0;
   
@@ -399,14 +172,14 @@ cw::rc_t cw::audio::device::test( int argc, const char** argv )
   if( runFl )
   {
     // initialize the audio bufer
-    buf::initialize( deviceCount(h), r.meterMs );
+    buf::create( r.audioBufH, deviceCount(h), r.meterMs );
 
     // setup the buffer for the output device
-    buf::setup( r.outDevIdx, r.srate, r.framesPerCycle, r.bufCnt, deviceChannelCount(h,r.outDevIdx,true), r.framesPerCycle, deviceChannelCount(h,r.outDevIdx,false), r.framesPerCycle );
+    buf::setup( r.audioBufH, r.outDevIdx, r.srate, r.framesPerCycle, r.bufCnt, deviceChannelCount(h,r.outDevIdx,true), r.framesPerCycle, deviceChannelCount(h,r.outDevIdx,false), r.framesPerCycle );
 
     // setup the buffer for the input device
     //if( r.inDevIdx != r.outDevIdx )
-      buf::setup( r.inDevIdx, r.srate, r.framesPerCycle, r.bufCnt, deviceChannelCount(h,r.inDevIdx,true), r.framesPerCycle, deviceChannelCount(h,r.inDevIdx,false), r.framesPerCycle ); 
+    buf::setup( r.audioBufH, r.inDevIdx, r.srate, r.framesPerCycle, r.bufCnt, deviceChannelCount(h,r.inDevIdx,true), r.framesPerCycle, deviceChannelCount(h,r.inDevIdx,false), r.framesPerCycle ); 
 
     // setup an output device
     if(deviceSetup(h, r.outDevIdx,r.srate,r.framesPerCycle,_cmApPortCb2,&r) != kOkRC )
@@ -429,8 +202,8 @@ cw::rc_t cw::audio::device::test( int argc, const char** argv )
     
     cwLogInfo("q=quit O/o output tone, I/i input tone, P/p pass M/m meter s=buf report");
 
-    //buf::enableTone( r.outDevIdx,-1,buf::kOutFl | buf::kEnableFl);
-    //buf::enableMeter(r.outDevIdx,-1,buf::kOutFl | buf::kEnableFl);
+    // turn on the meters
+    buf::enableMeter(r.audioBufH, r.outDevIdx,-1,buf::kOutFl | buf::kEnableFl);
     
     char c;
     while((c=getchar()) != 'q')
@@ -441,27 +214,27 @@ cw::rc_t cw::audio::device::test( int argc, const char** argv )
       {
         case 'i':
         case 'I':
-          buf::enableTone(r.inDevIdx,-1,buf::kInFl | (c=='I'?buf::kEnableFl:0));
+          buf::enableTone(r.audioBufH, r.inDevIdx,-1,buf::kInFl | (c=='I'?buf::kEnableFl:0));
           break;
 
         case 'o':
         case 'O':
-          buf::enableTone(r.outDevIdx,-1,buf::kOutFl | (c=='O'?buf::kEnableFl:0));
+          buf::enableTone(r.audioBufH, r.outDevIdx,-1,buf::kOutFl | (c=='O'?buf::kEnableFl:0));
           break;
 
         case 'p':
         case 'P':
-          buf::enablePass(r.outDevIdx,-1,buf::kOutFl | (c=='P'?buf::kEnableFl:0));
+          buf::enablePass(r.audioBufH, r.outDevIdx,-1,buf::kOutFl | (c=='P'?buf::kEnableFl:0));
           break;
 
         case 'M':
         case 'm':
-          buf::enableMeter( r.inDevIdx,  -1,  buf::kInFl | (c=='M'?buf::kEnableFl:0));
-          buf::enableMeter( r.outDevIdx, -1, buf::kOutFl | (c=='M'?buf::kEnableFl:0));
+          buf::enableMeter( r.audioBufH, r.inDevIdx,  -1,  buf::kInFl | (c=='M'?buf::kEnableFl:0));
+          buf::enableMeter( r.audioBufH, r.outDevIdx, -1, buf::kOutFl | (c=='M'?buf::kEnableFl:0));
           break;
           
         case 's':
-          buf::report();
+          buf::report(r.audioBufH);
           break;
       }
 
@@ -486,7 +259,7 @@ cw::rc_t cw::audio::device::test( int argc, const char** argv )
   // release any resources held by the audio port interface
   rc_t rc1 = destroy(h);
   
-  rc_t rc2 = buf::finalize();
+  rc_t rc2 = buf::destroy(r.audioBufH);
 
   //cmApNrtFree();
   //cmApFileFree();

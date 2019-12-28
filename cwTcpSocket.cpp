@@ -56,7 +56,7 @@ namespace cw
           p->sockH = cwSOCKET_NULL_SOCK;		
         }
         
-        memRelease(p); 
+        mem::release(p); 
         return kOkRC;
       }
 
@@ -122,7 +122,7 @@ cw::rc_t cw::net::socket::create(
   if((rc = destroy(hRef)) != kOkRC )
     return rc;
 
-  socket_t* p = memAllocZ<socket_t>();
+  socket_t* p = mem::allocZ<socket_t>();
   p->sockH = cwSOCKET_NULL_SOCK;
 
   // get a handle to the socket

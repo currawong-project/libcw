@@ -43,7 +43,7 @@ cw::rc_t cw::log::create(  handle_t& hRef, unsigned level, logOutputCbFunc_t out
   if((rc = destroy(hRef)) != kOkRC)
     return rc;
 
-  log_t* p = memAllocZ<log_t>();
+  log_t* p = mem::allocZ<log_t>();
   p->outCbFunc = outCbFunc == nullptr ? defaultOutput : outCbFunc;
   p->outCbArg  = outCbArg;
   p->fmtCbFunc = fmtCbFunc == nullptr ? defaultFormatter : fmtCbFunc;
@@ -61,7 +61,7 @@ cw::rc_t cw::log::destroy( handle_t& hRef )
   if( hRef.p == nullptr )
     return rc;
 
-  memRelease( hRef.p );
+  mem::release( hRef.p );
   return rc;  
 }
 

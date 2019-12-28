@@ -30,7 +30,7 @@ namespace cw
       if((rc = websock::destroy(p->_websockH)) != kOkRC )
         return rc;
 
-      memRelease(p);
+      mem::release(p);
 
       return rc;
     }
@@ -60,7 +60,7 @@ cw::rc_t cw::websockSrv::create(
   if((rc = destroy(h)) != kOkRC )
     return rc;
 
-  websockSrv_t* p = memAllocZ<websockSrv_t>();
+  websockSrv_t* p = mem::allocZ<websockSrv_t>();
 
   if((rc = websock::create( p->_websockH, cbFunc, cbArg, physRootDir, dfltHtmlPageFn, port, protocolA, protocolN )) != kOkRC )
     goto errLabel;

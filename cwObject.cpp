@@ -45,11 +45,11 @@ namespace cw
 
   
   void _objTypeFree( object_t* o )
-  { memRelease(o); }
+  { mem::release(o); }
   
   void _objTypeFreeString( object_t* o )
   {
-    memRelease( o->u.str );
+    mem::release( o->u.str );
     _objTypeFree(o);
   }
   
@@ -237,7 +237,7 @@ namespace cw
       }
     }
     
-    object_t* o =  memAllocZ<object_t>();
+    object_t* o =  mem::allocZ<object_t>();
     o->type   = type;
     o->parent = parent;
     return o;
@@ -482,7 +482,7 @@ cw::rc_t cw::objectFromString( const char* s, object_t*& objRef )
             cnp = _objAppendLeftMostNode( cnp, _objAllocate( kPairTId, cnp ));
                
           
-          char*    v       = memDuplStr(lex::tokenText(lexH),lex::tokenCharCount(lexH));
+          char*    v       = mem::duplStr(lex::tokenText(lexH),lex::tokenCharCount(lexH));
           unsigned identFl = lexId == lex::kIdentLexTId ? kIdentFl    : 0;
           
           
@@ -523,7 +523,7 @@ cw::rc_t cw::objectFromFile( const char* fn, object_t*& objRef )
   if(( buf = file::fnToStr(fn, &bufByteCnt)) != NULL )
   {
     rc = objectFromString( buf, objRef );
-    memRelease(buf);
+    mem::release(buf);
   }
 
   return rc;

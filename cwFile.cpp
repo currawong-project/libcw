@@ -43,7 +43,7 @@ namespace cw
       }
   
       // allocate the read target buffer
-      if((buf = memAlloc<char>(n+nn)) == nullptr)
+      if((buf = mem::alloc<char>(n+nn)) == nullptr)
       {
         cwLogError(kMemAllocFailRC,"Read buffer allocation failed.");
         goto errLabel;
@@ -65,7 +65,7 @@ namespace cw
       if( bufByteCntPtr != nullptr )
         *bufByteCntPtr = 0;
 
-      memRelease(buf);
+      mem::release(buf);
 
       return nullptr;
     
@@ -157,7 +157,7 @@ cw::rc_t cw::file::open( handle_t& hRef, const char* fn, unsigned flags )
 
   unsigned byteCnt = sizeof(this_t) + strlen(fn) + 1;
 
-  if((p = memAllocZ<this_t>(byteCnt)) == nullptr )
+  if((p = mem::allocZ<this_t>(byteCnt)) == nullptr )
     return cwLogError(kOpFailRC,"File object allocation failed for file '%s'.",cwStringNullGuard(fn));
 
   p->fnStr = (char*)(p+1);
@@ -171,7 +171,7 @@ cw::rc_t cw::file::open( handle_t& hRef, const char* fn, unsigned flags )
     if((p->fp = fopen(fn,mode)) == nullptr )
     {
       rc_t rc = cwLogSysError(kOpenFailRC,errno,"File open failed on file:'%s'.",cwStringNullGuard(fn));
-      memRelease(p);
+      mem::release(p);
       return rc;
     }
   }
@@ -193,7 +193,7 @@ cw::rc_t cw::file::close(   handle_t& hRef )
     if( fclose(p->fp) != 0 )
       return cwLogSysError(kCloseFailRC,errno,"File close failed on '%s'.", cwStringNullGuard(p->fnStr));
   
-  memRelease(p);
+  mem::release(p);
   hRef.clear();
 
   return kOkRC;
@@ -386,21 +386,21 @@ cw::rc_t    cw::file::copy(
   char*    dstPathFn = nullptr;
 
   // form the source path fn
-  if((srcPathFn = fileSysMakeFn(srcDir,srcFn,srcExt,nullptr)) == nullptr )
+  if((srcPathFn = filesys::makeFn(srcDir,srcFn,srcExt,nullptr)) == nullptr )
   {
     rc = cwLogError(kOpFailRC,"The soure file name for dir:%s name:%s ext:%s could not be formed.",cwStringNullGuard(srcDir),cwStringNullGuard(srcFn),cwStringNullGuard(srcExt));
     goto errLabel;
   }
 
   // form the dest path fn
-  if((dstPathFn = fileSysMakeFn(dstDir,dstFn,dstExt,nullptr)) == nullptr )
+  if((dstPathFn = filesys::makeFn(dstDir,dstFn,dstExt,nullptr)) == nullptr )
   {
     rc = cwLogError(kOpFailRC,"The destination file name for dir:%s name:%s ext:%s could not be formed.",cwStringNullGuard(dstDir),cwStringNullGuard(dstFn),cwStringNullGuard(dstExt));
     goto errLabel;
   }
 
   // verify that the source exists
-  if( fileSysIsFile(srcPathFn) == false )
+  if( filesys::isFile(srcPathFn) == false )
   {
     rc = cwLogError(kOpenFailRC,"The source file '%s' does not exist.",cwStringNullGuard(srcPathFn));
     goto errLabel;
@@ -418,9 +418,9 @@ cw::rc_t    cw::file::copy(
 
  errLabel:
   // free the buffer
-  memRelease(buf);
-  memRelease(srcPathFn);
-  memRelease(dstPathFn);
+  mem::release(buf);
+  mem::release(srcPathFn);
+  mem::release(dstPathFn);
   return rc;
 
 }
@@ -432,21 +432,21 @@ cw::rc_t cw::file::backup( const char* dir, const char* name, const char* ext )
   char*              newFn   = nullptr;
   unsigned           n       = 0;
   char*              srcFn   = nullptr;
-  fileSysPathPart_t* pp      = nullptr;
+  filesys::pathPart_t* pp      = nullptr;
 
   // form the name of the backup file
-  if((srcFn = fileSysMakeFn(dir,name,ext,nullptr)) == nullptr )
+  if((srcFn = filesys::makeFn(dir,name,ext,nullptr)) == nullptr )
   {
     rc = cwLogError(kOpFailRC,"Backup source file name formation failed.");
     goto errLabel;
   }
 
   // if the src file does not exist then there is nothing to do
-  if( fileSysIsFile(srcFn) == false )
+  if( filesys::isFile(srcFn) == false )
     return rc;
 
   // break the source file name up into dir/fn/ext.
-  if((pp = fileSysPathParts(srcFn)) == nullptr || pp->fnStr==nullptr)
+  if((pp = filesys::pathParts(srcFn)) == nullptr || pp->fnStr==nullptr)
   {
     rc = cwLogError(kOpFailRC,"The file name '%s' could not be parsed into its parts.",cwStringNullGuard(srcFn));
     goto errLabel;
@@ -455,20 +455,20 @@ cw::rc_t cw::file::backup( const char* dir, const char* name, const char* ext )
   // iterate until a unique file name is found
   for(n=0; 1; ++n)
   {
-    memRelease(newFn);
+    mem::release(newFn);
 
     // generate a new file name
-    newName = memPrintf(newName,"%s_%i",pp->fnStr,n);
+    newName = mem::printf(newName,"%s_%i",pp->fnStr,n);
     
     // form the new file name into a complete path
-    if((newFn = fileSysMakeFn(pp->dirStr,newName,pp->extStr,nullptr)) == nullptr )
+    if((newFn = filesys::makeFn(pp->dirStr,newName,pp->extStr,nullptr)) == nullptr )
     {
       rc = cwLogError(kOpFailRC,"A backup file name could not be formed for the file '%s'.",cwStringNullGuard(newName));
       goto errLabel;
     }
 
     // if the new file name is not already in use ...
-    if( fileSysIsFile(newFn) == false )
+    if( filesys::isFile(newFn) == false )
     {
       // .. then duplicate the file
       if((rc = copy(srcFn,nullptr,nullptr,newFn,nullptr,nullptr)) != kOkRC )
@@ -482,10 +482,10 @@ cw::rc_t cw::file::backup( const char* dir, const char* name, const char* ext )
 
  errLabel:
 
-  memRelease(srcFn);
-  memRelease(newFn);
-  memRelease(newName);
-  memRelease(pp);
+  mem::release(srcFn);
+  mem::release(newFn);
+  mem::release(newName);
+  mem::release(pp);
 
   return rc;
 
@@ -635,12 +635,12 @@ cw::rc_t cw::file::getLineAuto( handle_t h, char** bufPtrPtr, unsigned* bufByteC
         break;
         
       case kBufTooSmallRC:
-        buf = memResizeZ<char>(buf,*bufByteCntPtr);
+        buf = mem::resizeZ<char>(buf,*bufByteCntPtr);
         fl  = true;
         break;
 
       default:
-        memRelease(buf);
+        mem::release(buf);
         break;
     }
   }
@@ -757,7 +757,7 @@ cw::rc_t cw::file::readStr(  handle_t h, char** sRef, unsigned maxCharN )
   }
 
   // allocate a read buffer
-  char* s = memAllocZ<char>(n+1);
+  char* s = mem::allocZ<char>(n+1);
 
   // fill the buffer from the file
   if((rc = readChar(h,s,n)) != kOkRC )

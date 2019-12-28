@@ -203,8 +203,8 @@ namespace cw
 
           msg_t* t = m1->link;
       
-          memFree(m1->msg);
-          memFree(m1);
+          mem::free(m1->msg);
+          mem::free(m1);
 
           m1 = t;
 
@@ -232,8 +232,8 @@ namespace cw
       
         while((m = p->_q->pop()) != nullptr)
         {
-          memFree(m->msg);
-          memFree(m);
+          mem::free(m->msg);
+          mem::free(m);
         }
       
         delete p->_q;
@@ -241,7 +241,7 @@ namespace cw
     
       for(int i=0; p->_protocolA!=nullptr and p->_protocolA[i].callback != nullptr; ++i)
       {
-        memFree(const_cast<char*>(p->_protocolA[i].name));
+        mem::free(const_cast<char*>(p->_protocolA[i].name));
     
         // TODO: delete any msgs in the protocol state here
         auto ps = static_cast<protocolState_t*>(p->_protocolA[i].user);
@@ -251,28 +251,28 @@ namespace cw
         {
           msg_t* tmp = m->link;
       
-          memFree(m->msg);
-          memFree(m);
+          mem::free(m->msg);
+          mem::free(m);
           m = tmp;
         }
     
-        memFree(ps); 
+        mem::free(ps); 
       }
   
-      memRelease(p->_protocolA);
+      mem::release(p->_protocolA);
       p->_protocolN = 0;
 
       if( p->_mount != nullptr )
       {
-        memFree(const_cast<char*>(p->_mount->origin));
-        memFree(const_cast<char*>(p->_mount->def));
-        memRelease(p->_mount);
+        mem::free(const_cast<char*>(p->_mount->origin));
+        mem::free(const_cast<char*>(p->_mount->def));
+        mem::release(p->_mount);
       }
 
       p->_nextSessionId = 0;
       p->_connSessionN  = 0;
 
-      memRelease(p);
+      mem::release(p);
 
       return kOkRC;
 
@@ -296,21 +296,21 @@ cw::rc_t cw::websock::create(
   if((rc = destroy(h)) != kOkRC )
     return rc;
 
-  websock_t* p = memAllocZ<websock_t>();
+  websock_t* p = mem::allocZ<websock_t>();
 
   int logs = LLL_USER | LLL_ERR | LLL_WARN | LLL_NOTICE;
 	lws_set_log_level(logs, NULL);
 
   // Allocate one extra record to act as the end-of-list sentinel.
   p->_protocolN = protocolN + 1;
-  p->_protocolA = memAllocZ<struct lws_protocols>(p->_protocolN);
+  p->_protocolA = mem::allocZ<struct lws_protocols>(p->_protocolN);
   
   // Setup the websocket internal protocol state array
   for(unsigned i=0; i<protocolN; ++i)
   {
     // Allocate the application protocol state array where this application can keep protocol related info
-    auto protocolState = memAllocZ<protocolState_t>(1);
-    auto dummy         = memAllocZ<msg_t>(1);
+    auto protocolState = mem::allocZ<protocolState_t>(1);
+    auto dummy         = mem::allocZ<msg_t>(1);
     
     protocolState->thisPtr = p;
     protocolState->begMsg  = dummy;
@@ -318,7 +318,7 @@ cw::rc_t cw::websock::create(
     
     // Setup the interal lws_protocols record 
     struct lws_protocols* pr  = p->_protocolA + i;
-    pr->name                  = memAllocStr(protocolArgA[i].label); 
+    pr->name                  = mem::allocStr(protocolArgA[i].label); 
     pr->id                    = protocolArgA[i].id;
     pr->rx_buffer_size        = protocolArgA[i].rcvBufByteN;
     pr->tx_packet_size        = 0; //protocolArgA[i].xmtBufByteN;
@@ -328,11 +328,11 @@ cw::rc_t cw::websock::create(
   }
 
   static const char* slash = {"/"};
-  p->_mount = memAllocZ<struct lws_http_mount>(1);
+  p->_mount = mem::allocZ<struct lws_http_mount>(1);
   p->_mount->mountpoint     = slash;
   p->_mount->mountpoint_len = strlen(slash);
-  p->_mount->origin         = memAllocStr(physRootDir); // physical directory assoc'd with http "/"
-  p->_mount->def            = memAllocStr(dfltHtmlPageFn);
+  p->_mount->origin         = mem::allocStr(physRootDir); // physical directory assoc'd with http "/"
+  p->_mount->def            = mem::allocStr(dfltHtmlPageFn);
   p->_mount->origin_protocol= LWSMPRO_FILE;
   
   memset(&info,0,sizeof(info));
@@ -381,8 +381,8 @@ cw::rc_t cw::websock::send(handle_t h,  unsigned protocolId, const void* msg, un
 {
   rc_t rc = kOkRC;
   
-  msg_t* m = memAllocZ<msg_t>(1);
-  m->msg   = memAllocZ<unsigned char>(byteN);
+  msg_t* m = mem::allocZ<msg_t>(1);
+  m->msg   = mem::allocZ<unsigned char>(byteN);
   memcpy(m->msg,msg,byteN);
   m->msgByteN   = byteN;
   m->protocolId = protocolId;
@@ -442,10 +442,10 @@ cw::rc_t cw::websock::exec( handle_t h, unsigned timeOutMs )
 
 
     // add the pre-padding bytes to the msg
-    unsigned char* msg = memAllocZ<unsigned char>(LWS_PRE + m->msgByteN);
+    unsigned char* msg = mem::allocZ<unsigned char>(LWS_PRE + m->msgByteN);
     memcpy( msg+LWS_PRE, m->msg, m->msgByteN );
 
-    memFree(m->msg); // free the original msg buffer
+    mem::free(m->msg); // free the original msg buffer
     
     m->msg            = msg;               
     m->msgId          = ps->nextNewMsgId;  // set the msg id

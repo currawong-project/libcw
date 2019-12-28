@@ -362,9 +362,9 @@ namespace cw
       if( p->mfi == p->mfn )
       {
         int incr_cnt = 10;
-        lexMatcher* np = memAllocZ<lexMatcher>( p->mfn + incr_cnt );
+        lexMatcher* np = mem::allocZ<lexMatcher>( p->mfn + incr_cnt );
         memcpy(np,p->mfp,p->mfi*sizeof(lexMatcher));
-        memRelease(p->mfp);
+        mem::release(p->mfp);
         p->mfp = np;
         p->mfn += incr_cnt;
       }
@@ -378,7 +378,7 @@ namespace cw
       if( keyStr != nullptr )
       {
         // allocate space for the token string and store it
-        p->mfp[p->mfi].tokenStr = memDuplStr(keyStr);
+        p->mfp[p->mfi].tokenStr = mem::duplStr(keyStr);
       }
 
 
@@ -442,20 +442,20 @@ cw::rc_t cw::lex::create( handle_t& hRef, const char* cp, unsigned cn, unsigned 
   if((rc = lex::destroy(hRef)) != kOkRC )
     return rc;
   
-  p          = memAllocZ<lex_t>();
+  p          = mem::allocZ<lex_t>();
 
   p->flags           = flags;
   
   _lexSetTextBuffer( p, cp, cn );
 
   int init_mfn       = 10;
-  p->mfp             = memAllocZ<lexMatcher>( init_mfn );
+  p->mfp             = mem::allocZ<lexMatcher>( init_mfn );
   p->mfn             = init_mfn;
   p->mfi             = 0;
 
-  p->lineCmtStr      = memDuplStr( dfltLineCmt );
-  p->blockBegCmtStr  = memDuplStr( dfltBlockBegCmt );
-  p->blockEndCmtStr  = memDuplStr( dfltBlockEndCmt );
+  p->lineCmtStr      = mem::duplStr( dfltLineCmt );
+  p->blockBegCmtStr  = mem::duplStr( dfltBlockBegCmt );
+  p->blockEndCmtStr  = mem::duplStr( dfltBlockEndCmt );
 
   _lexInstallMatcher( p, kSpaceLexTId,    _lexSpaceMatcher,    nullptr, nullptr );
   _lexInstallMatcher( p, kRealLexTId,     _lexRealMatcher,     nullptr, nullptr  );
@@ -493,21 +493,21 @@ cw::rc_t cw::lex::destroy( handle_t& hRef )
       // free the user token strings
       for(; i<p->mfi; ++i)
         if( p->mfp[i].tokenStr != nullptr )
-          memRelease(p->mfp[i].tokenStr);
+          mem::release(p->mfp[i].tokenStr);
 
       // free the matcher array
-      memRelease(p->mfp);
+      mem::release(p->mfp);
       p->mfi = 0;
       p->mfn = 0;
     }
 
-    memRelease(p->lineCmtStr);
-    memRelease(p->blockBegCmtStr);
-    memRelease(p->blockEndCmtStr);
-    memRelease(p->textBuf);
+    mem::release(p->lineCmtStr);
+    mem::release(p->blockBegCmtStr);
+    mem::release(p->blockEndCmtStr);
+    mem::release(p->textBuf);
 
     // free the lexer object
-    memRelease(p);
+    mem::release(p);
     hRef.set(nullptr);
   }
 
@@ -556,7 +556,7 @@ cw::rc_t cw::lex::setFile( handle_t h, const char* fn )
     return rc;
 
   // allocate the text buffer
-  if((p->textBuf = memResizeZ<char>(p->textBuf, n+1)) == nullptr )
+  if((p->textBuf = mem::resizeZ<char>(p->textBuf, n+1)) == nullptr )
   {
     rc = cwLogError(kMemAllocFailRC,"Unable to allocate the text file buffer for:'%s'.",fn);
     goto errLabel;

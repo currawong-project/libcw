@@ -4,10 +4,7 @@
 #include "cwMem.h"
 
 
-namespace cw
-{
-  
-  void* _memAlloc( void* p0, unsigned n, bool zeroFl )
+void* cw::mem::_alloc( void* p0, unsigned n, bool zeroFl )
   {
     void*    p   = nullptr;     // ptr to new block
     unsigned p0N = 0;           // size of existing block
@@ -34,7 +31,7 @@ namespace cw
     if( p0 != nullptr )
     {
       memcpy(p,p0_1,p0N);
-      memFree(p0);  // free the existing block
+      mem::free(p0);  // free the existing block
     }
 
     // if requested zero the block
@@ -50,22 +47,22 @@ namespace cw
     return p1+1;    
   }
 
-}
 
-unsigned cw::memByteCount( const void* p )
+
+unsigned cw::mem::byteCount( const void* p )
 {
   return p==nullptr ? 0 : static_cast<const unsigned*>(p)[-1];
 }
 
 
-char* cw::memAllocStr( const char* s )
+char* cw::mem::allocStr( const char* s )
 {
   char* s1 = nullptr;
   
   if( s != nullptr )
   {
     unsigned sn = strlen(s);
-    s1 = static_cast<char*>(_memAlloc(nullptr,sn+1,false));
+    s1 = static_cast<char*>(_alloc(nullptr,sn+1,false));
     memcpy(s1,s,sn);
     s1[sn] = 0;
   }
@@ -73,27 +70,27 @@ char* cw::memAllocStr( const char* s )
   return s1;
 }
 
-void* cw::memAllocDupl( const void* p0, unsigned byteN )
+void* cw::mem::allocDupl( const void* p0, unsigned byteN )
 {
   if( p0 == nullptr || byteN == 0 )
     return nullptr;
   
-  void* p1 = _memAlloc(nullptr,byteN,false);
+  void* p1 = _alloc(nullptr,byteN,false);
   memcpy(p1,p0,byteN);
   return p1;
 }
 
-void* cw::memAllocDupl( const void* p )
+void* cw::mem::allocDupl( const void* p )
 {
-  return memAllocDupl(p,memByteCount(p));
+  return allocDupl(p,byteCount(p));
 }
 
 
 
-void cw::memFree( void* p )
+void cw::mem::free( void* p )
 {
   if( p != nullptr)
   {
-    free(static_cast<unsigned*>(p)-1);
+    ::free(static_cast<unsigned*>(p)-1);
   }
 }

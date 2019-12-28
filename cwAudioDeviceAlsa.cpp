@@ -331,7 +331,7 @@ namespace cw
           const int reallocN = 5;
           if( p->devCnt == p->devAllocCnt )
           {
-            p->devArray     = memResizeZ<devRecd_t>( p->devArray, p->devAllocCnt + reallocN );
+            p->devArray     = mem::resizeZ<devRecd_t>( p->devArray, p->devAllocCnt + reallocN );
             p->devAllocCnt += reallocN;
           }
 
@@ -397,21 +397,21 @@ namespace cw
             _devShutdown(p,p->devArray+i,true);
             _devShutdown(p,p->devArray+i,false);
 
-            memRelease(p->devArray[i].iBuf);
-            memRelease(p->devArray[i].oBuf);
-            memRelease(p->devArray[i].nameStr);
-            memRelease(p->devArray[i].descStr);
+            mem::release(p->devArray[i].iBuf);
+            mem::release(p->devArray[i].oBuf);
+            mem::release(p->devArray[i].nameStr);
+            mem::release(p->devArray[i].descStr);
   
           }
 
-          memRelease(p->pollfds);
-          memRelease(p->pollfdsDesc);
+          mem::release(p->pollfds);
+          mem::release(p->pollfdsDesc);
 
-          memRelease(p->devArray);
+          mem::release(p->devArray);
           p->devAllocCnt = 0;
           p->devCnt      = 0;
 
-          memRelease(p);
+          mem::release(p);
 
           return rc;            
         }
@@ -759,7 +759,7 @@ namespace cw
               {
                 pkt.audioFramesCnt = err;
 
-                drp->cbFunc(&pkt,1,NULL,0 ); // send the samples to the application
+                drp->cbFunc(drp->cbArg,&pkt,1,NULL,0 ); // send the samples to the application
               }
             }
 
@@ -767,7 +767,7 @@ namespace cw
             else
             {
               // callback to fill the buffer
-              drp->cbFunc(NULL,0,&pkt,1);
+              drp->cbFunc(drp->cbArg,NULL,0,&pkt,1);
               
               // note that the application may return fewer samples than were requested
               err = _devWriteBuf(drp, pcmH, pkt.audioFramesCnt < frmCnt ? NULL : drp->oBuf,chCnt,frmCnt,drp->oBits,drp->oSigBits);
@@ -900,7 +900,7 @@ namespace cw
                     if((err = _devReadBuf(drp,pcmH,drp->iBuf,chCnt,frmCnt,drp->iBits,drp->oBits)) > 0 )
                     {
                       pkt.audioFramesCnt = err;
-                      drp->cbFunc(&pkt,1,NULL,0 ); // send the samples to the application
+                      drp->cbFunc(drp->cbArg,&pkt,1,NULL,0 ); // send the samples to the application
 
                     }
                   }
@@ -909,7 +909,7 @@ namespace cw
                   {
 
                     // callback to fill the buffer
-                    drp->cbFunc(NULL,0,&pkt,1);
+                    drp->cbFunc(drp->cbArg,NULL,0,&pkt,1);
 
                     // note that the application may return fewer samples than were requested
                     err = _devWriteBuf(drp, pcmH, pkt.audioFramesCnt < frmCnt ? NULL : drp->oBuf,chCnt,frmCnt,drp->oBits,drp->oSigBits);
@@ -1092,7 +1092,7 @@ namespace cw
                   drp->iSignFl  = signFl;
                   drp->iSwapFl  = swapFl;
                   drp->iPcmH    = pcmH;
-                  drp->iBuf     = memResizeZ<device::sample_t>( drp->iBuf, actFpC * drp->iChCnt );
+                  drp->iBuf     = mem::resizeZ<device::sample_t>( drp->iBuf, actFpC * drp->iChCnt );
                   drp->iFpC     = actFpC;
                 }		
                 else
@@ -1102,7 +1102,7 @@ namespace cw
                   drp->oSignFl  = signFl;
                   drp->oSwapFl  = swapFl;
                   drp->oPcmH    = pcmH;
-                  drp->oBuf     = memResizeZ<device::sample_t>( drp->oBuf, actFpC * drp->oChCnt );
+                  drp->oBuf     = mem::resizeZ<device::sample_t>( drp->oBuf, actFpC * drp->oChCnt );
                   drp->oFpC     = actFpC;
                 }
 
@@ -1131,8 +1131,8 @@ namespace cw
                     // if the pollfds[] needs more memroy
                     if( p->pollfdsCnt + fdsCnt > p->pollfdsAllocCnt )
                     {
-                      p->pollfds          = memResizeZ<struct pollfd>( p->pollfds,     p->pollfdsCnt + fdsCnt );
-                      p->pollfdsDesc      = memResizeZ<pollfdsDesc_t>( p->pollfdsDesc, p->pollfdsCnt + fdsCnt );
+                      p->pollfds          = mem::resizeZ<struct pollfd>( p->pollfds,     p->pollfdsCnt + fdsCnt );
+                      p->pollfdsDesc      = mem::resizeZ<pollfdsDesc_t>( p->pollfdsDesc, p->pollfdsCnt + fdsCnt );
                       p->pollfdsAllocCnt += fdsCnt;
                     }
                   }
@@ -1174,7 +1174,7 @@ cw::rc_t cw::audio::device::alsa::create( handle_t& hRef, struct driver_str*& dr
   if((rc = destroy(hRef)) != kOkRC )
     return rc;
 
-  alsa_t* p = memAllocZ<alsa_t>();
+  alsa_t* p = mem::allocZ<alsa_t>();
 
   // for each sound card
   while(1)
@@ -1277,8 +1277,8 @@ cw::rc_t cw::audio::device::alsa::create( handle_t& hRef, struct driver_str*& dr
             continue;
 
           // form the device name and desc. string
-          dr.nameStr = memPrintf(dr.nameStr,"hw:%i,%i,%i",cardNum,devNum,i);
-          dr.descStr = memPrintf(dr.descStr,"%s %s",cardNamePtr,snd_pcm_info_get_name(info));
+          dr.nameStr = mem::printf(dr.nameStr,"hw:%i,%i,%i",cardNum,devNum,i);
+          dr.descStr = mem::printf(dr.descStr,"%s %s",cardNamePtr,snd_pcm_info_get_name(info));
          
           // attempt to open the sub-device
           if((err = _devOpen(&pcmH,dr.nameStr,inputFl)) < 0 )
@@ -1320,8 +1320,8 @@ cw::rc_t cw::audio::device::alsa::create( handle_t& hRef, struct driver_str*& dr
           _devAppend(p,&dr);
         else
         {
-          memRelease(dr.nameStr);
-          memRelease(dr.descStr);
+          mem::release(dr.nameStr);
+          mem::release(dr.descStr);
         }
 
       } // sub-dev loop
@@ -1343,8 +1343,8 @@ cw::rc_t cw::audio::device::alsa::create( handle_t& hRef, struct driver_str*& dr
   {
     p->pollfdsCnt      = 0;
     p->pollfdsAllocCnt = 2*p->devCnt;
-    p->pollfds         = memAllocZ<struct pollfd>(    p->pollfdsAllocCnt );
-    p->pollfdsDesc     = memAllocZ<pollfdsDesc_t>(p->pollfdsAllocCnt );
+    p->pollfds         = mem::allocZ<struct pollfd>(    p->pollfdsAllocCnt );
+    p->pollfdsDesc     = mem::allocZ<pollfdsDesc_t>(p->pollfdsAllocCnt );
 
     if((rc = thread::create(p->thH,_threadFunc,p)) != kOkRC )
     {
@@ -1448,8 +1448,7 @@ cw::rc_t  cw::audio::device::alsa::deviceSetup( struct driver_str* drv, unsigned
     drp->cbArg          = cbArg;
   }
 
-  return rc;
-  
+  return rc;  
 }
 
 cw::rc_t  cw::audio::device::alsa::deviceStart( struct driver_str* drv, unsigned devIdx )
