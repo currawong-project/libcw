@@ -23,6 +23,8 @@
 #include "cwTcpSocket.h"
 #include "cwTcpSocketSrv.h"
 #include "cwTcpSocketTest.h"
+#include "cwMdns.h"
+//#include "cwNbMem.h"
 
 #include <iostream>
 
@@ -133,6 +135,7 @@ void textBufTest(       cw::object_t* cfg, int argc, const char* argv[] ) { cw::
 void audioBufTest(      cw::object_t* cfg, int argc, const char* argv[] ) { cw::audio::buf::test(); }
 void audioDevTest(      cw::object_t* cfg, int argc, const char* argv[] ) { cw::audio::device::test( argc, argv ); }
 void audioDevAlsaTest(  cw::object_t* cfg, int argc, const char* argv[] ) { cw::audio::device::alsa::report(); }
+//void nbmemTest(         cw::object_t* cfg, int argc, const char* argv[] ) { cw::nbmem::test(); }
 
 void socketTest( cw::object_t* cfg, int argc, const char* argv[] )
 {
@@ -140,10 +143,31 @@ void socketTest( cw::object_t* cfg, int argc, const char* argv[] )
   {
     unsigned short localPort  = atoi(argv[1]);
     unsigned short remotePort = atoi(argv[2]);
-
+    const char* remoteAddr = "127.0.0.1"; //"224.0.0.251"; //"127.0.0.1";
     printf("local:%i remote:%i\n", localPort, remotePort);
     
-    cw::net::socket::test( localPort, "127.0.0.1", remotePort );
+    cw::net::socket::test( localPort, remoteAddr, remotePort );
+  }
+}
+
+void socketTestTcp( cw::object_t* cfg, int argc, const char* argv[] )
+{
+  // server: ./cw_rt main.cfg socketTcp 5434 5435 dgram/stream server
+  // client: ./cw_rt main.cfg socketTcp 5435 5434 dgram/stream
+  
+  if( argc >= 4 )
+  {
+    unsigned short localPort  = atoi(argv[1]);
+    unsigned short remotePort = atoi(argv[2]);
+    bool           dgramFl    = strcmp(argv[3],"dgram") == 0;
+    bool           serverFl   = false;
+    
+    if( argc >= 5 )
+      serverFl = strcmp(argv[4],"server") == 0;
+
+    printf("local:%i remote:%i %s %s\n", localPort, remotePort, dgramFl ? "dgram":"stream", serverFl?"server":"client");
+    
+    cw::net::socket::test_tcp( localPort, "127.0.0.1", remotePort, dgramFl, serverFl );
   }
 }
 
@@ -159,6 +183,12 @@ void socketSrvTest( cw::object_t* cfg, int argc, const char* argv[] )
     cw::net::srv::test( localPort, "127.0.0.1", remotePort );
   }
 }
+
+void socketMdnsTest( cw::object_t* cfg, int argc, const char* argv[] )
+{
+  cw::net::mdns::test();
+}
+
 
 void dirEntryTest( cw::object_t* cfg, int argc, const char* argv[] )
 {
@@ -177,6 +207,7 @@ void dirEntryTest( cw::object_t* cfg, int argc, const char* argv[] )
 
 void stubTest( cw::object_t* cfg, int argc, const char* argv[] )
 {
+  /*
   typedef struct v_str
   {
     int x = 1;
@@ -187,6 +218,12 @@ void stubTest( cw::object_t* cfg, int argc, const char* argv[] )
 
   v_t v;
   printf("%i %i %p\n",v.x,v.y,v.z);
+  */
+
+  const char* s = "\x16lmac=00-90-D5-80-F4-DE\x7dummy=0";
+  printf("len:%li\n",strlen(s));
+    
+  
 }
 
 
@@ -214,8 +251,11 @@ int main( int argc, const char* argv[] )
    { "audioBuf", audioBufTest },
    { "audioDev",audioDevTest },
    { "audioDevAlsa", audioDevAlsaTest },
+   //{ "nbmem", nbmemTest },
    { "socket", socketTest },
+   { "socketTcp", socketTestTcp },
    { "socketSrv", socketSrvTest },
+   { "socketMdns", socketMdnsTest },
    { "dirEntry", dirEntryTest },
    { "stub", stubTest },
    { nullptr, nullptr }
@@ -235,12 +275,15 @@ int main( int argc, const char* argv[] )
     int i;
     // locate the requested function and call it
     for(i=0; modeArray[i].label!=nullptr; ++i)
+    {
+      //printf("'%s' '%s'\n",modeArray[i].label,mode);
+      
       if( cw::textCompare(modeArray[i].label,mode)==0 )
       {
         modeArray[i].func( cfg, argc-2, argv + 2 );
         break;
       }
-
+    }
     // if the requested function was not found
     if( modeArray[i].label == nullptr )
       cwLogError(cw::kInvalidArgRC,"The mode selector: '%s' is not valid.", cwStringNullGuard(mode));
