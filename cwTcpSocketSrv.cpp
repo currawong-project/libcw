@@ -46,8 +46,17 @@ namespace cw
         socksrv_t*         p          = static_cast<socksrv_t*>(arg);
         unsigned           rcvByteCnt = 0;
         struct sockaddr_in fromAddr;
+        rc_t rc = kOkRC;
         
-        if( select_recieve(p->sockH, p->recvBuf, p->recvBufByteCnt, p->timeOutMs, &rcvByteCnt, &fromAddr ) == kOkRC )
+        if( p->timeOutMs == 0 )
+        {
+          rc = recv_from(p->sockH, p->recvBuf, p->recvBufByteCnt, &rcvByteCnt, &fromAddr );
+          sleepMs(100);
+        }
+        else
+          rc = select_recieve(p->sockH, p->recvBuf, p->recvBufByteCnt, p->timeOutMs, &rcvByteCnt, &fromAddr );
+        
+        if( rc == kOkRC )
           if( rcvByteCnt>0 && p->cbFunc != nullptr )
             p->cbFunc( p->cbArg, p->recvBuf, rcvByteCnt, &fromAddr );
         
@@ -74,7 +83,7 @@ cw::rc_t cw::net::srv::create(
 
   socksrv_t* p = mem::allocZ<socksrv_t>();
 
-  if((rc = socket::create( p->sockH, port, socket::kNonBlockingFl, 0, remoteAddr, remotePort )) != kOkRC )
+  if((rc = socket::create( p->sockH, port, flags, timeOutMs, remoteAddr, remotePort )) != kOkRC )
     goto errLabel;
 
   if((rc = thread::create( p->threadH, _threadFunc, p )) != kOkRC )

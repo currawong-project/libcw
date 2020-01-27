@@ -14,10 +14,16 @@ namespace cw
       
       enum
       {
-       kNonBlockingFl = 0x00,  // create a non-blocking socket  
-       kBlockingFl    = 0x01,  // create a blocking socket  
-       kTcpFl         = 0x02,  // create a TCP socket rather than a UDP socket
-       kBroadcastFl   = 0x04   
+       kNonBlockingFl   = 0x000,  // create a non-blocking socket  
+       kBlockingFl      = 0x001,  // create a blocking socket  
+       kTcpFl           = 0x002,  // create a TCP socket rather than a UDP socket
+       kBroadcastFl     = 0x004,
+       kReuseAddrFl     = 0x008,
+       kReusePortFl     = 0x010,
+       kMultiCastTtlFl  = 0x020,
+       kMultiCastLoopFl = 0x040,
+       kListenFl        = 0x080,
+       kStreamFl        = 0x100
       };
 
       enum
@@ -35,6 +41,13 @@ namespace cw
         portNumber_t         remotePort = socket::kInvalidPortNumber );
 
       rc_t destroy( handle_t& hRef );
+
+      rc_t join_multicast_group( handle_t h, const char* addr );
+
+      rc_t setTimeOutMs( handle_t h, unsigned timeOutMs );
+
+      // Listen for a connections
+      rc_t accept( handle_t h );
 
       // Set a destination address for this socket. Once a destination address is set
       // the caller may use send() to communicate with the specified remote socket
@@ -64,6 +77,8 @@ namespace cw
       // 
       rc_t select_recieve(handle_t h, char* buf, unsigned bufByteCnt, unsigned timeOutMs, unsigned* recvByteCntRef=nullptr, struct sockaddr_in* fromAddr=nullptr );
 
+      //
+      rc_t recv_from(handle_t h, char* buf, unsigned bufByteCnt, unsigned* recvByteCntRef=nullptr, struct sockaddr_in* fromAddr=nullptr );
 
       // Prepare a struct sockadddr_in for use with send()
       rc_t        initAddr( handle_t h, const char* addrStr, portNumber_t portNumber, struct sockaddr_in* retAddrPtr );

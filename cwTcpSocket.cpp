@@ -34,6 +34,7 @@ namespace cw
       typedef struct socket_str
       {
         int                sockH;
+        int                fdH;
         unsigned           flags;
         unsigned           recvBufByteCnt;
         struct sockaddr_in sockaddr;
@@ -45,6 +46,18 @@ namespace cw
 
       rc_t _destroy( socket_t* p )
       {
+        
+        // close the fdH
+        if( p->fdH != cwSOCKET_NULL_SOCK )
+        {
+          errno = 0;
+          
+          if( ::close(p->fdH) != 0 )
+            cwLogSysError(kOpFailRC,errno,"The socket fd close failed." );
+          
+          p->fdH = cwSOCKET_NULL_SOCK;		
+        }
+
         // close the socket		
         if( p->sockH != cwSOCKET_NULL_SOCK )
         {
@@ -52,7 +65,7 @@ namespace cw
           
           if( ::close(p->sockH) != 0 )
             cwLogSysError(kOpFailRC,errno,"The socket close failed." );
-			
+          
           p->sockH = cwSOCKET_NULL_SOCK;		
         }
         
@@ -65,8 +78,8 @@ namespace cw
       {
         memset(retAddrPtr,0,sizeof(struct sockaddr_in));
 
-        if( portNumber == kInvalidPortNumber )
-          return cwLogError(kInvalidArgRC,"The port number %i cannot be used.",kInvalidPortNumber);
+        //if( portNumber == kInvalidPortNumber )
+        //  return cwLogError(kInvalidArgRC,"The port number %i cannot be used.",kInvalidPortNumber);
 	
         if( addrStr == NULL )
           retAddrPtr->sin_addr.s_addr 	= htonl(INADDR_ANY);
@@ -80,7 +93,8 @@ namespace cw
 	
         //retAddrPtr->sin_len 			= sizeof(struct sockaddr_in);
         retAddrPtr->sin_family 		= AF_INET;
-        retAddrPtr->sin_port 			= htons(portNumber);
+        if( portNumber != kInvalidPortNumber  )
+          retAddrPtr->sin_port 			= htons(portNumber);
 	
         return kOkRC;
       }
@@ -104,7 +118,27 @@ namespace cw
 
         return rc;
       }
-      
+
+
+      rc_t _setTimeOutMs( socket_t* p, unsigned timeOutMs )
+      {
+        rc_t rc = kOkRC;
+
+        struct timeval 		timeOut;
+    
+        // set the socket time out 
+        timeOut.tv_sec 	= timeOutMs/1000;
+        timeOut.tv_usec = (timeOutMs - (timeOut.tv_sec * 1000)) * 1000;
+        
+        if( setsockopt( p->sockH, SOL_SOCKET, SO_RCVTIMEO, &timeOut, sizeof(timeOut) ) == cwSOCKET_SYS_ERR )
+        {
+          rc = cwLogSysError(kOpFailRC,errno, "Attempt to set the socket timeout failed." );
+          goto errLabel;
+        }
+
+      errLabel:
+        return rc;
+      }      
     }
   }    
 }
@@ -124,43 +158,25 @@ cw::rc_t cw::net::socket::create(
 
   socket_t* p = mem::allocZ<socket_t>();
   p->sockH = cwSOCKET_NULL_SOCK;
+  p->fdH   = cwSOCKET_NULL_SOCK;
 
+  int type     = cwIsFlag(flags,kStreamFl) ? SOCK_STREAM : SOCK_DGRAM;
+  int protocol = cwIsFlag(flags,kTcpFl)    ? 0           : IPPROTO_UDP;
+  
   // get a handle to the socket
-  if(( p->sockH = ::socket( AF_INET, SOCK_DGRAM, IPPROTO_UDP ) ) == cwSOCKET_SYS_ERR )
+  if(( p->sockH = ::socket( AF_INET, type, protocol ) ) == cwSOCKET_SYS_ERR )
     return cwLogSysError(kOpFailRC, errno, "Socket create failed." );	 
 	
-  // create the local address		
-  if((rc = _initAddr(p, NULL, port,  &p->sockaddr )) != kOkRC )
-    goto errLabel;
-			
-  // bind the socket to a local address/port	
-  if( (bind( p->sockH, (struct sockaddr*)&p->sockaddr, sizeof(p->sockaddr))) == cwSOCKET_SYS_ERR )
-  {
-    rc = cwLogSysError(kOpFailRC,errno,"Socket bind failed." );
-    goto errLabel;
-  }
-
-  // if a remote addr was given connect this socket to it
-  if( remoteAddr != NULL )
-    if((rc = _connect(p,remoteAddr,remotePort)) != kOkRC )
-      goto errLabel;
-
   // if this socket should block
-  if( cwIsFlag(flags,kBlockingFl) )
+  if( cwIsFlag(flags,kBlockingFl))
   {
-    struct timeval 		timeOut;
-    
-    // set the socket time out 
-    timeOut.tv_sec 	= timeOutMs/1000;
-    timeOut.tv_usec = (timeOutMs - (timeOut.tv_sec * 1000)) * 1000;
-		
-    if( setsockopt( p->sockH, SOL_SOCKET, SO_RCVTIMEO, &timeOut, sizeof(timeOut) ) == cwSOCKET_SYS_ERR )
+    if( timeOutMs > 0 )
     {
-      rc = cwLogSysError(kOpFailRC,errno, "Attempt to set the socket timeout failed." );
-      goto errLabel;
+      _setTimeOutMs(p,timeOutMs);
     }
-
+    
     p->flags = cwSetFlag(p->flags,kIsBlockingFl);
+    
 
   }
   else
@@ -184,18 +200,90 @@ cw::rc_t cw::net::socket::create(
     }	    
 
   }
+    
+  if( cwIsFlag(flags,kReuseAddrFl) )
+  {
+    unsigned int reuseaddr = 1;
+    if( setsockopt(p->sockH, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuseaddr, sizeof(reuseaddr)) == cwSOCKET_SYS_ERR )
+    {
+      rc = cwLogSysError(kOpFailRC,errno, "Attempt to set the socket 'reuse address' attribute failed." );
+      goto errLabel;      
+    }
+  }
+  
+#ifdef SO_REUSEPORT
+  if( cwIsFlag(flags,kReusePortFl) )
+  {
+    unsigned int reuseaddr = 1;
+    if(setsockopt(p->sockH, SOL_SOCKET, SO_REUSEPORT, (const char*)&reuseaddr, sizeof(reuseaddr)) == cwSOCKET_SYS_ERR )
+    {
+      rc = cwLogSysError(kOpFailRC,errno, "Attempt to set the socket 'reuse port' attribute failed." );
+      goto errLabel;      
+    }
+  }
+#endif
+
+  if( cwIsFlag(flags,kMultiCastTtlFl) )
+  {
+    unsigned char ttl = 1;
+    if( setsockopt(p->sockH, IPPROTO_IP, IP_MULTICAST_TTL, (const char*)&ttl, sizeof(ttl)) == cwSOCKET_SYS_ERR )
+    {
+      rc = cwLogSysError(kOpFailRC,errno, "Attempt to set the socket 'multicast TTL' attribute failed." );
+      goto errLabel;      
+    }
+  }
+
+  if( cwIsFlag(flags,kMultiCastLoopFl) )
+  {
+    
+    unsigned char loopback = 1;
+    if( setsockopt(p->sockH, IPPROTO_IP, IP_MULTICAST_LOOP, (const char*)&loopback, sizeof(loopback)) == cwSOCKET_SYS_ERR )
+    {
+      rc = cwLogSysError(kOpFailRC,errno, "Attempt to set the socket 'reuse port' attribute failed." );
+      goto errLabel;      
+    }
+    
+  }
+  
 
   // if broadcast option was requested.
   if( cwIsFlag(flags,kBroadcastFl) )
   {
-    int bcastFl = 1;
+    int bcastFl                                                                      = 1;
     if( setsockopt( p->sockH, SOL_SOCKET, SO_BROADCAST, &bcastFl, sizeof(bcastFl) ) == cwSOCKET_SYS_ERR )
     {
       rc = cwLogSysError(kOpFailRC,errno, "Attempt to set the socket broadcast attribute failed." );
       goto errLabel;
     }
   }
+  
+  // create the local address		
+  if((rc = _initAddr(p, NULL, port,  &p->sockaddr )) != kOkRC )
+    goto errLabel;
+			
+  
+  // bind the socket to a local address/port	
+  if( (bind( p->sockH, (struct sockaddr*)&p->sockaddr, sizeof(p->sockaddr))) == cwSOCKET_SYS_ERR )
+  {
+    rc = cwLogSysError(kOpFailRC,errno,"Socket bind failed." );
+    goto errLabel;
+  }
 
+  // if a remote addr was given connect this socket to it
+  if( remoteAddr != NULL )
+    if((rc = _connect(p,remoteAddr,remotePort)) != kOkRC )
+      goto errLabel;
+
+  // if the socket should be marked for listening
+  if( cwIsFlag(flags,kListenFl) )
+  {
+    if( ::listen(p->sockH, 10) != 0 )
+    {
+      rc = cwLogSysError(kOpFailRC,errno,"Socket listen() failed.");
+      goto errLabel;
+    }
+  }
+  
  errLabel:
   if(rc != kOkRC )
     _destroy(p);
@@ -204,7 +292,7 @@ cw::rc_t cw::net::socket::create(
 
   return rc;
 }
-  
+
 cw::rc_t cw::net::socket::destroy( handle_t& hRef )
 {
   rc_t rc = kOkRC;
@@ -220,6 +308,82 @@ cw::rc_t cw::net::socket::destroy( handle_t& hRef )
   return rc;
 }
 
+cw::rc_t cw::net::socket::join_multicast_group( handle_t h, const char* addrStr )
+{
+  rc_t           rc = kOkRC;  
+  socket_t*      p  = _handleToPtr(h);
+  struct ip_mreq req;
+
+	memset(&req, 0, sizeof(req));
+
+  if(inet_pton(AF_INET,addrStr,&req.imr_multiaddr.s_addr) == 0 )
+  {
+    rc = cwLogSysError(kOpFailRC,errno, "The network address string '%s' could not be converted to a netword address structure.",cwStringNullGuard(addrStr) );
+    goto errLabel;
+  }
+  
+	req.imr_interface.s_addr = INADDR_ANY;
+  
+	if(setsockopt(p->sockH, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char*)&req, sizeof(req)) == cwSOCKET_SYS_ERR )
+  {
+    rc = cwLogSysError(kOpFailRC,errno, "Attempt to add socket to multicast group on '%s' failed.", cwStringNullGuard(addrStr) );
+    goto errLabel;   
+  }
+
+ errLabel:
+  return rc;
+}
+
+cw::rc_t cw::net::socket::setTimeOutMs( handle_t h, unsigned timeOutMs )
+{
+  socket_t* p = _handleToPtr(h);
+  return _setTimeOutMs(p,timeOutMs);
+}
+
+
+cw::rc_t cw::net::socket::accept( handle_t h )
+{
+  struct sockaddr_storage remoteAddr; // connector's address information
+  socklen_t sin_size = sizeof(remoteAddr);
+  
+  rc_t rc = kOkRC;
+  int  fd = cwSOCKET_NULL_SOCK;
+  
+  socket_t* p = _handleToPtr(h);
+  
+  if((fd = accept(p->sockH, (struct sockaddr*)&remoteAddr, &sin_size)) < 0)
+  {
+    if( errno == EAGAIN || errno == EWOULDBLOCK )
+      rc = kTimeOutRC;
+    else
+    {
+      rc = cwLogSysError(kOpFailRC,errno,"Socket accept() failed.");
+      goto errLabel;
+    }
+  }
+  else
+  {
+    char s[INET_ADDRSTRLEN+1];
+  
+    addrToString( (struct sockaddr_in*)&remoteAddr, s, INET_ADDRSTRLEN );
+
+    if( p->fdH != cwSOCKET_NULL_SOCK )
+    {
+      close(p->fdH);
+      p->fdH = cwSOCKET_NULL_SOCK;
+    }
+
+    p->fdH = fd;
+
+    printf("Connect:%s\n",s);
+
+  }
+
+ errLabel:
+  return rc;
+}
+
+
 cw::rc_t cw::net::socket::connect( handle_t h, const char* remoteAddr, portNumber_t remotePort )
 {
   socket_t* p = _handleToPtr(h);
@@ -232,7 +396,7 @@ cw::rc_t cw::net::socket::send( handle_t h, const void* data, unsigned dataByteC
   errno = 0;
   
   if( cwIsFlag(p->flags,kIsConnectedFl) == false )
-    return cwLogError(kInvalidOpRC,"cmUdpSend() only works with connected sockets.");
+    return cwLogError(kInvalidOpRC,"socket::send() only works with connected sockets.");
 
   if( ::send( p->sockH, data, dataByteCnt, 0 ) == cwSOCKET_SYS_ERR )
     return cwLogSysError(kOpFailRC,errno,"Send failed.");
@@ -246,7 +410,7 @@ cw::rc_t cw::net::socket::send( handle_t h, const void* data, unsigned dataByteC
   
   errno = 0;
    
-  if( sendto(p->sockH, data, dataByteCnt, 0, (struct sockaddr*)remoteAddr, sizeof(*remoteAddr)) == cwSOCKET_SYS_ERR )
+  if( ::sendto(p->sockH, data, dataByteCnt, 0, (struct sockaddr*)remoteAddr, sizeof(*remoteAddr)) == cwSOCKET_SYS_ERR )
     return cwLogSysError(kOpFailRC,errno,"Send to remote addr. failed.");
 
   return kOkRC;
@@ -276,7 +440,9 @@ cw::rc_t cw::net::socket::recieve( handle_t h, char* data, unsigned dataByteCnt,
   if( recvByteCntRef != NULL )
     *recvByteCntRef = 0;
 
-	if((retVal = recvfrom(p->sockH, data, dataByteCnt, 0, (struct sockaddr*)fromAddr, &sizeOfRemoteAddr )) == cwSOCKET_SYS_ERR )
+  int fd = p->fdH != cwSOCKET_NULL_SOCK ? p->fdH : p->sockH;
+
+	if((retVal = recvfrom(fd, data, dataByteCnt, 0, (struct sockaddr*)fromAddr, &sizeOfRemoteAddr )) == cwSOCKET_SYS_ERR )
       return errno == EAGAIN ? kTimeOutRC : cwLogSysError(kOpFailRC,errno,"recvfrom() failed.");
 	
   if( recvByteCntRef != NULL )
@@ -341,6 +507,43 @@ cw::rc_t cw::net::socket::select_recieve(handle_t h, char* buf, unsigned bufByte
       { cwAssert(0); }
   } // switch
 
+  return rc;
+}
+
+cw::rc_t cw::net::socket::recv_from(handle_t h, char* buf, unsigned bufByteCnt, unsigned* recvByteCntRef, struct sockaddr_in* fromAddr )
+{
+  rc_t      rc      = kOkRC;
+  socket_t* p       = _handleToPtr(h);
+	socklen_t addrlen = 0;
+  int       bytesN  = 0;
+
+  if( recvByteCntRef != nullptr )
+    *recvByteCntRef = 0;
+  
+  if( fromAddr != nullptr )
+  {
+    addrlen = sizeof(*fromAddr);
+    memset(fromAddr,0,sizeof(*fromAddr));
+  }
+
+  int fd = p->fdH != cwSOCKET_NULL_SOCK ? p->fdH : p->sockH;
+  
+	if((bytesN = recvfrom(fd, buf, bufByteCnt, 0, (struct sockaddr*)fromAddr, &addrlen)) < 0 )
+  {
+    // if this is a non-blocking socket then return value -1 indicates that no data is available.
+    if( cwIsNotFlag( p->flags, kBlockingFl) && bytesN == -1)
+      bytesN = 0;
+    else
+    {
+      rc = cwLogSysError(kReadFailRC,errno,"recvfrom() failed.");
+      goto errLabel;
+    }
+  }
+
+  if( recvByteCntRef != nullptr )
+    *recvByteCntRef = bytesN;
+  
+ errLabel:
   return rc;
 }
 

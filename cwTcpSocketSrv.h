@@ -7,7 +7,7 @@ namespace cw
   {
     namespace srv
     {
-      typedef void (*cbFunc_t)( void* cbArg, const char* data, unsigned dataByteCnt, const struct sockaddr_in* fromAddr ); 
+      typedef void (*cbFunc_t)( void* cbArg, const void* data, unsigned dataByteCnt, const struct sockaddr_in* fromAddr ); 
       typedef handle< struct socksrv_str > handle_t;
       
       rc_t create( handle_t& hRef,                 // 
