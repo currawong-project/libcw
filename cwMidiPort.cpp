@@ -30,7 +30,7 @@ namespace cw
 
       typedef struct cmMpParserCb_str
       {
-        cbFunc_t           cbFunc;
+        cbFunc_t                 cbFunc;
         void*                    cbDataPtr;
         struct cmMpParserCb_str* linkPtr;
       } cbRecd_t;
@@ -478,23 +478,23 @@ bool cw::midi::parser::hasCallback( handle_t h, cbFunc_t cbFunc, void* cbArg )
 //
 //
 
-unsigned    cw::midi::device::nameToIndex(const char* deviceName)
+unsigned    cw::midi::device::nameToIndex(handle_t h, const char* deviceName)
 {
   assert(deviceName!=NULL);
   unsigned i;
-  unsigned n = count();
+  unsigned n = count(h);
   for(i=0; i<n; ++i)
-    if( strcmp(name(i),deviceName)==0)
+    if( strcmp(name(h,i),deviceName)==0)
       return i;
   return kInvalidIdx;
 }
 
-unsigned    cw::midi::device::portNameToIndex( unsigned devIdx, unsigned flags, const char* portNameStr )
+unsigned    cw::midi::device::portNameToIndex( handle_t h, unsigned devIdx, unsigned flags, const char* portNameStr )
 {
   unsigned i;
-  unsigned n = portCount(devIdx,flags);
+  unsigned n = portCount(h,devIdx,flags);
   for(i=0; i<n; ++i)
-    if( strcmp(portName(devIdx,flags,i),portNameStr)==0)
+    if( strcmp(portName(h,devIdx,flags,i),portNameStr)==0)
       return i;
 
   return kInvalidIdx;
@@ -532,13 +532,14 @@ namespace cw
     
 cw::rc_t cw::midi::device::test()
 {
-  rc_t rc = kOkRC;
-  char ch;
-  unsigned parserBufByteCnt = 1024;
+  rc_t              rc               = kOkRC;
+  char              ch;
+  unsigned          parserBufByteCnt = 1024;
   textBuf::handle_t tbH;
+  handle_t          h;
 
   // initialie the MIDI system
-  if((rc = initialize(testCallback,NULL,parserBufByteCnt,"app")) != kOkRC )
+  if((rc = create(h,testCallback,NULL,parserBufByteCnt,"app")) != kOkRC )
     return rc;
 
   // create a text buffer to hold the MIDI system report text
@@ -546,18 +547,18 @@ cw::rc_t cw::midi::device::test()
     goto errLabel;
 
   // generate and print the MIDI system report
-  report(tbH);
+  report(h,tbH);
   cwLogInfo("%s",textBuf::text(tbH));
   
   cwLogInfo("any key to send note-on (<q>=quit)\n");
 
   while((ch = getchar()) != 'q')
   {
-    send(2,0,0x90,60,60);
+    send(h,2,0,0x90,60,60);
   } 
 
  errLabel:
   textBuf::destroy(tbH);
-  finalize();
+  destroy(h);
   return rc;
 }

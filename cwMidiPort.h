@@ -65,28 +65,31 @@ namespace cw
 
     namespace device
     {
+      typedef handle< struct device_str> handle_t;
+      
       // 'cbFunc' and 'cbDataPtr' are optional (they may be set to NULL).  In this case
       // 'cbFunc' and 'cbDataPtr' may be set in a later call to cmMpInstallCallback().
-      rc_t initialize( cbFunc_t cbFunc, void* cbDataPtr, unsigned parserBufByteCnt, const char* appNameStr );
-      rc_t finalize();
-      bool isInitialized();
+      rc_t create( handle_t& h, cbFunc_t cbFunc, void* cbDataPtr, unsigned parserBufByteCnt, const char* appNameStr );
+      rc_t destroy( handle_t& h);
+      bool isInitialized( handle_t h );
 
-      unsigned    count();
-      const char* name(       unsigned devIdx );
-      unsigned    nameToIndex(const char* deviceName);
-      unsigned    portCount(  unsigned devIdx, unsigned flags );
-      const char* portName(   unsigned devIdx, unsigned flags, unsigned portIdx );
-      unsigned    portNameToIndex( unsigned devIdx, unsigned flags, const char* portName );
-      rc_t        send(       unsigned devIdx, unsigned portIdx, byte_t st, byte_t d0, byte_t d1 );
-      rc_t        sendData(   unsigned devIdx, unsigned portIdx, const byte_t* dataPtr, unsigned byteCnt );
+      unsigned    count( handle_t h );
+      const char* name(        handle_t h, unsigned devIdx );
+      unsigned    nameToIndex(handle_t h, const char* deviceName);
+      unsigned    portCount(  handle_t h, unsigned devIdx, unsigned flags );
+      const char* portName(   handle_t h, unsigned devIdx, unsigned flags, unsigned portIdx );
+      unsigned    portNameToIndex( handle_t h, unsigned devIdx, unsigned flags, const char* portName );
+      rc_t        send(       handle_t h, unsigned devIdx, unsigned portIdx, byte_t st, byte_t d0, byte_t d1 );
+      rc_t        sendData(   handle_t h, unsigned devIdx, unsigned portIdx, const byte_t* dataPtr, unsigned byteCnt );
 
       // Set devIdx to -1 to assign the callback to all devices.
       // Set portIdx to -1 to assign the callback to all ports on the specified devices.
       // 
-      rc_t installCallback( unsigned devIdx, unsigned portIdx, cbFunc_t cbFunc, void* cbDataPtr );
-      rc_t removeCallback(  unsigned devIdx, unsigned portIdx, cbFunc_t cbFunc, void* cbDataPtr );
-      bool usesCallback(    unsigned devIdx, unsigned portIdx, cbFunc_t cbFunc, void* cbDataPtr );
-      void report( textBuf::handle_t h);
+      rc_t installCallback( handle_t h, unsigned devIdx, unsigned portIdx, cbFunc_t cbFunc, void* cbDataPtr );
+      rc_t removeCallback(  handle_t h, unsigned devIdx, unsigned portIdx, cbFunc_t cbFunc, void* cbDataPtr );
+      bool usesCallback(    handle_t h, unsigned devIdx, unsigned portIdx, cbFunc_t cbFunc, void* cbDataPtr );
+      
+      void report( handle_t h, textBuf::handle_t tbH);
       
       rc_t test();
     }

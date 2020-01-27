@@ -29,43 +29,35 @@ namespace cw
       // MIDI devices 
       typedef struct
       {
-        char*         nameStr;  // string label for this device
-        unsigned      iPortCnt; // input ports on this device
-        port_t*       iPortArray;
-        unsigned      oPortCnt; // output ports on this device
-        port_t*       oPortArray;
-        unsigned char clientId; // ALSA client id (all ports on this device use use this client id in their address)
+        char*         nameStr;    // string label for this device
+        unsigned      iPortCnt;   // input ports on this device
+        port_t*       iPortArray; //
+        unsigned      oPortCnt;   // output ports on this device
+        port_t*       oPortArray; //
+        unsigned char clientId;   // ALSA client id (all ports on this device use use this client id in their address)
 
       } dev_t;
 
-      typedef struct
+      typedef struct device_str
       {
-        unsigned        devCnt;       // MIDI devices attached to this computer
-        dev_t*      devArray;
+        unsigned         devCnt;           // MIDI devices attached to this computer
+        dev_t*           devArray;
+        cbFunc_t         cbFunc;           // MIDI input application callback 
+        void*            cbDataPtr;
+        snd_seq_t*       h;                // ALSA system sequencer handle
+        snd_seq_addr_t   alsa_addr;        // ALSA client/port address representing the application
+        int              alsa_queue;       // ALSA device queue
+        thread::handle_t thH;              // MIDI input listening thread
+        int              alsa_fdCnt;       // MIDI input driver file descriptor array
+        struct pollfd*   alsa_fd;
+        dev_t*           prvRcvDev;        // the last device and port to rcv MIDI 
+        port_t*          prvRcvPort;
+        unsigned         prvTimeMicroSecs; // time of last recognized event in microseconds
+        unsigned         eventCnt;         // count of recognized events
+        time::spec_t     baseTimeStamp;
+      } device_t;
 
-        cbFunc_t  cbFunc;       // MIDI input application callback 
-        void*           cbDataPtr;
-
-        snd_seq_t*      h;            // ALSA system sequencer handle
-
-        snd_seq_addr_t  alsa_addr;    // ALSA client/port address representing the application
-        int             alsa_queue;   // ALSA device queue
-        thread::handle_t     thH;          // MIDI input listening thread
-
-        int             alsa_fdCnt;   // MIDI input driver file descriptor array
-        struct pollfd*  alsa_fd;
-
-        dev_t*      prvRcvDev;    // the last device and port to rcv MIDI 
-        port_t*     prvRcvPort;
-
-        unsigned        prvTimeMicroSecs; // time of last recognized event in microseconds
-        unsigned        eventCnt;     // count of recognized events
-  
-        time::spec_t    baseTimeStamp;
-
-      } cmMpRoot_t;
-
-      cmMpRoot_t* _cmMpRoot = NULL;
+      device_t* _handleToPtr( handle_t h ){ return handleToPtr<handle_t,device_t>(h); }
 
       rc_t _cmMpErrMsgV(rc_t rc, int alsaRc, const char* fmt, va_list vl )
       {
@@ -97,9 +89,8 @@ namespace cw
         return i;
       }
 
-      dev_t* _cmMpClientIdToDev( int clientId )
+      dev_t* _cmMpClientIdToDev( device_t* p, int clientId )
       {
-        cmMpRoot_t* p = _cmMpRoot;
         unsigned    i;
         for(i=0; i<p->devCnt; ++i)
           if( p->devArray[i].clientId == clientId )
@@ -126,11 +117,10 @@ namespace cw
         *d1 = v & 0x7f;
       }
 
-      rc_t cmMpPoll()
+      rc_t _cmMpPoll(device_t* p)
       {
-        rc_t    rc        = kOkRC;
-        cmMpRoot_t* p         = _cmMpRoot;
-        int         timeOutMs = 50;
+        rc_t rc        = kOkRC;
+        int  timeOutMs = 50;
 
         snd_seq_event_t *ev;
 
@@ -152,7 +142,7 @@ namespace cw
       
             // get the device this event arrived from
             if( p->prvRcvDev==NULL || p->prvRcvDev->clientId != ev->source.client )
-              p->prvRcvDev = _cmMpClientIdToDev(ev->source.client);
+              p->prvRcvDev = _cmMpClientIdToDev(p,ev->source.client);
       
             // get the port this event arrived from
             if( p->prvRcvDev != NULL && (p->prvRcvPort==NULL || p->prvRcvPort->alsa_addr.port != ev->source.port) )
@@ -281,15 +271,16 @@ namespace cw
       }
 
 
-      bool _threadCbFunc(void* param)
+      bool _threadCbFunc(void* arg)
       {
-        cmMpPoll();
+        device_t* p = static_cast<device_t*>(arg);
+        _cmMpPoll(p);
         return true;
       }
 
-      rc_t _cmMpAllocStruct( cmMpRoot_t* p, const char* appNameStr, cbFunc_t cbFunc, void* cbDataPtr, unsigned parserBufByteCnt )
+      rc_t _cmMpAllocStruct( device_t* p, const char* appNameStr, cbFunc_t cbFunc, void* cbDataPtr, unsigned parserBufByteCnt )
       {
-        rc_t                  rc   = kOkRC;
+        rc_t                      rc   = kOkRC;
         snd_seq_client_info_t*    cip  = NULL;
         snd_seq_port_info_t*      pip  = NULL;
         snd_seq_port_subscribe_t *subs = NULL;
@@ -498,28 +489,100 @@ namespace cw
         textBuf::print( tbH,")\n");
 
       }
+
+      rc_t _destroy( device_t* p )
+      {
+        rc_t rc = kOkRC;
+        
+        if( p != NULL )
+        {
+          int arc;
+
+          // stop the thread first
+          if((rc = thread::destroy(p->thH)) != kOkRC )
+          {
+            rc = _cmMpErrMsg(rc,0,"Thread destroy failed.");
+            goto errLabel;
+          }
+
+          // stop the queue
+          if( p->h != NULL )
+            if((arc = snd_seq_stop_queue(p->h,p->alsa_queue, NULL)) < 0 )
+            {
+              rc = _cmMpErrMsg(kOpFailRC,arc,"ALSA queue stop failed.");
+              goto errLabel;
+            }
+
+          // release the alsa queue
+          if( p->alsa_queue != -1 )
+          {
+            if((arc = snd_seq_free_queue(p->h,p->alsa_queue)) < 0 )
+              rc = _cmMpErrMsg(kOpFailRC,arc,"ALSA queue release failed.");
+            else
+              p->alsa_queue = -1;
+          }
+
+          // release the alsa system handle
+          if( p->h != NULL )
+          {
+            if( (arc = snd_seq_close(p->h)) < 0 )
+              rc = _cmMpErrMsg(kOpFailRC,arc,"ALSA sequencer close failed.");
+            else
+              p->h = NULL;
+          }
+
+          unsigned i,j;
+          for(i=0; i<p->devCnt; ++i)
+          {
+            for(j=0; j<p->devArray[i].iPortCnt; ++j)
+            {
+              parser::destroy(p->devArray[i].iPortArray[j].parserH);
+              mem::release( p->devArray[i].iPortArray[j].nameStr );
+            }
+
+            for(j=0; j<p->devArray[i].oPortCnt; ++j)
+            {
+              mem::release( p->devArray[i].oPortArray[j].nameStr );
+            }
+      
+            mem::release(p->devArray[i].iPortArray);
+            mem::release(p->devArray[i].oPortArray);
+            mem::release(p->devArray[i].nameStr);
+   
+          }
+
+          mem::release(p->devArray);
+    
+          mem::free(p->alsa_fd);
+
+          mem::release(p);
+    
+        }
+      errLabel:
+        return rc;
+      }
+      
       
     } // device
   } // midi    
 } // cw
 
-cw::rc_t cw::midi::device::initialize(  cbFunc_t cbFunc, void* cbArg, unsigned parserBufByteCnt, const char* appNameStr )
-{
-  rc_t               rc  = kOkRC;
-  int                    arc = 0;
-  cmMpRoot_t*            p = NULL;
 
-  if((rc = finalize()) != kOkRC )
+cw::rc_t cw::midi::device::create(  handle_t& h, cbFunc_t cbFunc, void* cbArg, unsigned parserBufByteCnt, const char* appNameStr )
+{
+  rc_t rc  = kOkRC;
+  int  arc = 0;
+
+  if((rc = destroy(h)) != kOkRC )
     return rc;
 
-  // allocate the global root object
-  _cmMpRoot = p = mem::allocZ<cmMpRoot_t>(1);
+  device_t* p   = mem::allocZ<device_t>(1);
   p->h          = NULL;
   p->alsa_queue = -1;
 
 
   // create the listening thread
-  if((rc = thread::create( p->thH, _threadCbFunc, NULL)) != kOkRC )
+  if((rc = thread::create( p->thH, _threadCbFunc, p)) != kOkRC )
   {
     rc = _cmMpErrMsg(rc,0,"Thread initialization failed.");
     goto errLabel;
@@ -563,140 +626,95 @@ cw::rc_t cw::midi::device::initialize(  cbFunc_t cbFunc, void* cbArg, unsigned p
   if((rc = thread::unpause(p->thH)) != kOkRC )
     rc = _cmMpErrMsg(rc,0,"Thread start failed.");
 
+  h.set(p);
+  
  errLabel:
 
   if( rc != kOkRC )
-    finalize();
+    _destroy(p);
 
   return rc;
   
 }
 
-cw::rc_t cw::midi::device::finalize()
+
+cw::rc_t cw::midi::device::destroy( handle_t& h )
 {
-  rc_t    rc = kOkRC;
-  cmMpRoot_t* p  = _cmMpRoot;
+  rc_t rc = kOkRC;
+  
+  if( !h.isValid() )
+    return rc;
 
-  if( _cmMpRoot != NULL )
-  {
-    int arc;
+  device_t* p  = _handleToPtr(h);
 
-    // stop the thread first
-    if((rc = thread::destroy(p->thH)) != kOkRC )
-    {
-      rc = _cmMpErrMsg(rc,0,"Thread destroy failed.");
-      goto errLabel;
-    }
+  if((rc = _destroy(p)) != kOkRC )
+    return rc;
 
-    // stop the queue
-    if( p->h != NULL )
-      if((arc = snd_seq_stop_queue(p->h,p->alsa_queue, NULL)) < 0 )
-      {
-        rc = _cmMpErrMsg(kOpFailRC,arc,"ALSA queue stop failed.");
-        goto errLabel;
-      }
-
-    // release the alsa queue
-    if( p->alsa_queue != -1 )
-    {
-      if((arc = snd_seq_free_queue(p->h,p->alsa_queue)) < 0 )
-        rc = _cmMpErrMsg(kOpFailRC,arc,"ALSA queue release failed.");
-      else
-        p->alsa_queue = -1;
-    }
-
-    // release the alsa system handle
-    if( p->h != NULL )
-    {
-      if( (arc = snd_seq_close(p->h)) < 0 )
-        rc = _cmMpErrMsg(kOpFailRC,arc,"ALSA sequencer close failed.");
-      else
-        p->h = NULL;
-    }
-
-    unsigned i,j;
-    for(i=0; i<p->devCnt; ++i)
-    {
-      for(j=0; j<p->devArray[i].iPortCnt; ++j)
-      {
-        parser::destroy(p->devArray[i].iPortArray[j].parserH);
-        mem::release( p->devArray[i].iPortArray[j].nameStr );
-      }
-
-      for(j=0; j<p->devArray[i].oPortCnt; ++j)
-      {
-        mem::release( p->devArray[i].oPortArray[j].nameStr );
-      }
-      
-      mem::release(p->devArray[i].iPortArray);
-      mem::release(p->devArray[i].oPortArray);
-      mem::release(p->devArray[i].nameStr);
-   
-    }
-
-    mem::release(p->devArray);
+  h.clear();
     
-    mem::free(p->alsa_fd);
-
-    mem::release(_cmMpRoot);
-    
-  }
-
- errLabel:
   return rc;
 }
 
-bool        cw::midi::device::isInitialized()
-{ return _cmMpRoot!=NULL; }
+bool cw::midi::device::isInitialized(handle_t h)
+{ return h.isValid(); }
 
-unsigned      cw::midi::device::count()
-{ return _cmMpRoot==NULL ? 0 : _cmMpRoot->devCnt; }
-
-const char* cw::midi::device::name( unsigned devIdx )
-{ 
-  if( _cmMpRoot==NULL || devIdx>=_cmMpRoot->devCnt)
-    return NULL;
-
-  return _cmMpRoot->devArray[devIdx].nameStr;
+unsigned      cw::midi::device::count(handle_t h)
+{
+  device_t* p = _handleToPtr(h);
+  return p->devCnt;
 }
 
-unsigned    cw::midi::device::portCount(  unsigned devIdx, unsigned flags )
+const char* cw::midi::device::name( handle_t h, unsigned devIdx )
+{ 
+  device_t* p = _handleToPtr(h);
+  
+  if( p==NULL || devIdx>=p->devCnt)
+    return NULL;
+
+  return p->devArray[devIdx].nameStr;
+}
+
+unsigned    cw::midi::device::portCount(  handle_t h, unsigned devIdx, unsigned flags )
 {
-  if( _cmMpRoot==NULL || devIdx>=_cmMpRoot->devCnt)
+  device_t* p = _handleToPtr(h);
+  
+  if( p==NULL || devIdx>=p->devCnt)
     return 0;
 
   if( cwIsFlag(flags,kInMpFl) )
-    return _cmMpRoot->devArray[devIdx].iPortCnt;
+    return p->devArray[devIdx].iPortCnt;
 
-  return _cmMpRoot->devArray[devIdx].oPortCnt;  
+  return p->devArray[devIdx].oPortCnt;  
 }
 
-const char*    cw::midi::device::portName(   unsigned devIdx, unsigned flags, unsigned portIdx )
+const char*    cw::midi::device::portName(   handle_t h, unsigned devIdx, unsigned flags, unsigned portIdx )
 {
-  if( _cmMpRoot==NULL || devIdx>=_cmMpRoot->devCnt)
+  device_t* p = _handleToPtr(h);
+  
+  if( p==NULL || devIdx>=p->devCnt)
     return 0;
 
   if( cwIsFlag(flags,kInMpFl) )
   {
-    if( portIdx >= _cmMpRoot->devArray[devIdx].iPortCnt )
+    if( portIdx >= p->devArray[devIdx].iPortCnt )
       return 0;
 
-    return _cmMpRoot->devArray[devIdx].iPortArray[portIdx].nameStr;
+    return p->devArray[devIdx].iPortArray[portIdx].nameStr;
   }
 
-  if( portIdx >= _cmMpRoot->devArray[devIdx].oPortCnt )
+  if( portIdx >= p->devArray[devIdx].oPortCnt )
     return 0;
 
-  return _cmMpRoot->devArray[devIdx].oPortArray[portIdx].nameStr;  
+  return p->devArray[devIdx].oPortArray[portIdx].nameStr;  
 }
 
 
-cw::rc_t  cw::midi::device::send( unsigned devIdx, unsigned portIdx, byte_t status, byte_t d0, byte_t d1 )
+cw::rc_t  cw::midi::device::send( handle_t h, unsigned devIdx, unsigned portIdx, byte_t status, byte_t d0, byte_t d1 )
 {
-  rc_t rc = kOkRC;
+  rc_t            rc = kOkRC;
   snd_seq_event_t ev;
-  int arc;
-  cmMpRoot_t* p = _cmMpRoot;
+  int             arc;
+  device_t*       p  = _handleToPtr(h);
 
   assert( p!=NULL && devIdx < p->devCnt && portIdx < p->devArray[devIdx].oPortCnt );
 
@@ -779,23 +797,23 @@ cw::rc_t  cw::midi::device::send( unsigned devIdx, unsigned portIdx, byte_t stat
   return rc;
 }
 
-cw::rc_t      cw::midi::device::sendData( unsigned devIdx, unsigned portIdx, const byte_t* dataPtr, unsigned byteCnt )
+cw::rc_t      cw::midi::device::sendData( handle_t h, unsigned devIdx, unsigned portIdx, const byte_t* dataPtr, unsigned byteCnt )
 {
   return cwLogError(kInvalidOpRC,"cmMpDeviceSendData() has not yet been implemented for ALSA.");
 }
 
-cw::rc_t    cw::midi::device::installCallback( unsigned devIdx, unsigned portIdx, cbFunc_t cbFunc, void* cbDataPtr )
+cw::rc_t    cw::midi::device::installCallback( handle_t h, unsigned devIdx, unsigned portIdx, cbFunc_t cbFunc, void* cbDataPtr )
 {
-  rc_t    rc = kOkRC;
-  unsigned    di;
-  unsigned    dn = count();
-  cmMpRoot_t* p  = _cmMpRoot;
+  rc_t      rc = kOkRC;
+  unsigned  di;
+  unsigned  dn = count(h);
+  device_t* p  = _handleToPtr(h);
 
   for(di=0; di<dn; ++di)
     if( di==devIdx || devIdx == kInvalidIdx )
     {
       unsigned pi;
-      unsigned pn = portCount(di,kInMpFl);
+      unsigned pn = portCount(h,di,kInMpFl);
 
       for(pi=0; pi<pn; ++pi)
         if( pi==portIdx || portIdx == kInvalidIdx )
@@ -807,23 +825,23 @@ cw::rc_t    cw::midi::device::installCallback( unsigned devIdx, unsigned portIdx
   return rc;
 }
 
-cw::rc_t    cw::midi::device::removeCallback(  unsigned devIdx, unsigned portIdx, cbFunc_t cbFunc, void* cbDataPtr )
+cw::rc_t    cw::midi::device::removeCallback(  handle_t h, unsigned devIdx, unsigned portIdx, cbFunc_t cbFunc, void* cbDataPtr )
 {
-  rc_t rc     = kOkRC;
-  unsigned di;
-  unsigned dn     = count();
-  unsigned remCnt = 0;
-  cmMpRoot_t* p = _cmMpRoot;
+  rc_t      rc     = kOkRC;
+  unsigned  di;
+  unsigned  dn     = count(h);
+  unsigned  remCnt = 0;
+  device_t* p      = _handleToPtr(h);
 
   for(di=0; di<dn; ++di)
     if( di==devIdx || devIdx == kInvalidIdx )
     {
       unsigned pi;
-      unsigned pn = portCount(di,kInMpFl);
+      unsigned pn = portCount(h,di,kInMpFl);
 
       for(pi=0; pi<pn; ++pi)
         if( pi==portIdx || portIdx == kInvalidIdx )
-          if( parser::hasCallback(  p->devArray[di].iPortArray[pi].parserH, cbFunc, cbDataPtr ) )
+          if( parser::hasCallback(p->devArray[di].iPortArray[pi].parserH, cbFunc, cbDataPtr ) )
           {
             if( parser::removeCallback( p->devArray[di].iPortArray[pi].parserH, cbFunc, cbDataPtr ) != kOkRC )
               goto errLabel;
@@ -839,17 +857,17 @@ cw::rc_t    cw::midi::device::removeCallback(  unsigned devIdx, unsigned portIdx
   return rc;
 }
 
-bool        cw::midi::device::usesCallback(    unsigned devIdx, unsigned portIdx, cbFunc_t cbFunc, void* cbDataPtr )
+bool        cw::midi::device::usesCallback(    handle_t h, unsigned devIdx, unsigned portIdx, cbFunc_t cbFunc, void* cbDataPtr )
 {
-  unsigned di;
-  unsigned dn     = count();
-  cmMpRoot_t* p = _cmMpRoot;
+  unsigned  di;
+  unsigned  dn = count(h);
+  device_t* p  = _handleToPtr(h);
 
   for(di=0; di<dn; ++di)
     if( di==devIdx || devIdx == kInvalidIdx )
     {
       unsigned pi;
-      unsigned pn = portCount(di,kInMpFl);
+      unsigned pn = portCount(h,di,kInMpFl);
 
       for(pi=0; pi<pn; ++pi)
         if( pi==portIdx || portIdx == kInvalidIdx )
@@ -862,9 +880,9 @@ bool        cw::midi::device::usesCallback(    unsigned devIdx, unsigned portIdx
 
 
 
-void cw::midi::device::report( textBuf::handle_t tbH )
+void cw::midi::device::report( handle_t h, textBuf::handle_t tbH )
 {
-  cmMpRoot_t* p = _cmMpRoot;
+  device_t* p = _handleToPtr(h);
   unsigned i,j;
 
   textBuf::print( tbH,"Buffer size bytes in:%i out:%i\n",snd_seq_get_input_buffer_size(p->h),snd_seq_get_output_buffer_size(p->h));
