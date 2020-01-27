@@ -8,8 +8,7 @@ namespace cw
   class MpScNbQueue
   {
   public:
-
-
+    
     typedef struct node_str
     {
       std::atomic<struct node_str*> next     = nullptr;
@@ -19,8 +18,8 @@ namespace cw
     MpScNbQueue()
     {
       node_t* stub = mem::allocZ<node_t>();
-      _head = stub;
-      _tail = stub;
+      _head = stub;   // last-in
+      _tail = stub;   // first-out 
     }
     
     virtual ~MpScNbQueue()
@@ -37,19 +36,29 @@ namespace cw
       node_t* new_node = mem::allocZ<node_t>(1);
       new_node->payload = payload;
       new_node->next.store(nullptr);
-      node_t* prev   = _head.exchange(new_node,std::memory_order_acq_rel);  // append the new node to the list (aquire-release)
-      prev->next.store(new_node,std::memory_order_release);                  // make the new node accessible by the consumer (release to consumer)
+      // Note that the elements of the queue are only accessed from the end of the queue (tail).
+      // New nodes can therefore safely be updated in two steps:
+
+      // 1. Atomically set _head to the new node and return 'old-head'
+      node_t* prev   = _head.exchange(new_node,std::memory_order_acq_rel);  
+
+      // Note that at this point only the new node may have the 'old-head' as it's predecssor.
+      // Other threads may therefore safely interrupt at this point.
+      
+      // 2. Set the old-head next pointer to the new node (thereby adding the new node to the list)
+      prev->next.store(new_node,std::memory_order_release); // RELEASE 'next' to consumer            
+      
       
     }
     
     T*      pop()
     {
-      T* payload = nullptr;
-      node_t* t    = _tail;
-      node_t* next = t->next.load(std::memory_order_acquire);  //  acquire from producer
+      T*      payload = nullptr;
+      node_t* t       = _tail;
+      node_t* next    = t->next.load(std::memory_order_acquire);  //  ACQUIRE 'next' from producer
       if( next != nullptr )
       {
-        _tail    = next;    
+        _tail   = next;    
         payload = next->payload;
         mem::free(t);
       }
@@ -60,14 +69,10 @@ namespace cw
     
     bool    isempty() const
     {
-      return _tail->next.load(std::memory_order_acquire) == nullptr;  //  acquire from producer
+      return _tail->next.load(std::memory_order_acquire) == nullptr;  //  ACQUIRE 'next'  from producer
     }
 
   private:
-
-    void _push( node_t* new_node )
-    {
-    }
 
     node_t*              _stub;
     node_t*              _tail;
