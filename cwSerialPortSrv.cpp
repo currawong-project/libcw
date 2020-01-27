@@ -97,7 +97,7 @@ cw::serialPort::handle_t cw::serialPortSrv::portHandle( handle_t h )
   return p->portH;
 }
 
-cw::thread::handle_t           cw::serialPortSrv::threadHandle( handle_t h )
+cw::thread::handle_t cw::serialPortSrv::threadHandle( handle_t h )
 {
   this_t* p = _handleToPtr(h);
   return p->threadH;
