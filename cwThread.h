@@ -17,6 +17,8 @@ namespace cw
 
     typedef bool (*cbFunc_t)( void* arg );
 
+    typedef  unsigned long long thread_id_t;
+
     // stateMicros = total time out duration for switching to the  exit state or for switching in/out of pause state. 
     // pauseMicros = duration of thread sleep interval when in paused state.
     rc_t create( handle_t& hRef, cbFunc_t func, void* funcArg, int stateTimeOutMicros=100000, int pauseMicros=10000 );
@@ -30,7 +32,7 @@ namespace cw
     stateId_t state( handle_t h );
 
     // Return the thread id of the calling context.
-    unsigned id();
+    thread_id_t id();
   }
   rc_t threadTest();
 }

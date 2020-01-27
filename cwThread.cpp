@@ -204,8 +204,21 @@ cw::thread::stateId_t cw::thread::state( handle_t h )
   return p->stateId;
 }
 
-unsigned cw::thread::id()
-{ return static_cast<unsigned>(pthread_self()); }
+cw::thread::thread_id_t cw::thread::id()
+{
+  typedef struct
+  {
+    union
+    {
+      thread_id_t id;
+      pthread_t   pthread_id;
+    } u;
+  } id_t;
+  
+  id_t id;
+  id.u.pthread_id = pthread_self();
+  return id.u.id;
+}
 
 namespace cw
 {
