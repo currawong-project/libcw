@@ -35,8 +35,6 @@ namespace cw
   };
 
   typedef unsigned objTypeId_t;
-
-
   
   enum
   {
@@ -102,10 +100,10 @@ namespace cw
     inline bool is_value_container() const { return type != nullptr && cwIsFlag(type->flags,kValueContainerFl); }
 
     // Containers have children and use the object.u.children pointer.
-    inline bool is_container()       const { return type != nullptr && cwIsFlag(type->flags,kContainerFl); }
-    inline bool is_pair()            const { return type != nullptr && type->id == kPairTId; }
-    inline bool is_dict()            const { return type != nullptr && type->id == kDictTId; }
-    inline bool is_list()            const { return type != nullptr && type->id == kListTId; }
+    inline bool is_container() const { return type != nullptr && cwIsFlag(type->flags,kContainerFl); }
+    inline bool is_pair()      const { return type != nullptr && type->id == kPairTId; }
+    inline bool is_dict()      const { return type != nullptr && type->id == kDictTId; }
+    inline bool is_list()      const { return type != nullptr && type->id == kListTId; }
 
     rc_t value( void* dst, unsigned dstTypeId );
     rc_t value( char& v ) const;
@@ -124,6 +122,7 @@ namespace cw
     const char* pair_label() const;
     const struct object_str* pair_value() const;
     const struct object_str* find( const char* label ) const;
+    const struct object_str* list_ele( unsigned idx ) const;
 
     template< typename T >
       rc_t get( const char* label, T& v  ) const

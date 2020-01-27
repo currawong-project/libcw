@@ -371,10 +371,22 @@ const struct cw::object_str* cw::object_t::find( const char* label ) const
       if((ch = o->find(label)) != nullptr )
         return ch;
     }     
-  }
-  
+  }  
   return nullptr;
 }
+
+const struct cw::object_str* cw::object_t::list_ele( unsigned idx ) const
+{
+  if( is_list() )
+  {
+    unsigned i = 0;
+    for(object_t* o=u.children; o!=nullptr; o=o->sibling,++i)
+      if( i == idx )
+        return o;            
+  }
+  return nullptr;
+}
+
 
 
 void cw::object_t::print(const print_ctx_t* c) const
