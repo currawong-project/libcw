@@ -925,7 +925,7 @@ namespace cw
         char addrBuf[ INET_ADDRSTRLEN ];
         socket::addrToString( fromAddr, addrBuf, INET_ADDRSTRLEN );
         p->cbN += 1;
-        if( true )
+        if( false )
         {
           printf("%i bytes:%i %s\n", p->cbN, dataByteCnt, addrBuf );
           print_hex( (const char*)data, dataByteCnt );
@@ -933,36 +933,74 @@ namespace cw
         }
       }
 
+      rc_t send_response( mdns_app_t* app, socket::handle_t sockH )
+      {
+        rc_t rc = kOkRC;
+
+        //              send_response( app, sockH );
+ 
+        // wifi: 98 5A EB 89 BA AA
+        // enet: 38 C9 86 37 44 E7
+          
+        unsigned char buf[] =
+          { 0x0b,0x00,0x00,0x00,0x00,0x00,0x00,0x50,0x00,0x02,0x03,0xfc,0x01,0x05,
+            0x06,0x00,
+            0x98,0x5a,0xeb,0x89,0xba,0xaa,
+            0x01,0x00,
+            0xc0,0xa8,0x00,0x44,
+            0x00,0x00,
+            0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            0x03,0xff,0x00,0x30,0x08,0x00,0x00,0x80,0x00,0x40,0x01,0x01,0x00,0x00,0x00,0x00,
+            0x00,0x00
+          };
+
+        unsigned bufByteN = sizeof(buf);
+        if((rc = socket::send( sockH, buf, bufByteN )) != kOkRC )
+        {
+          error(&app->mdns,"Send failed.");
+        }
+
+        return rc;
+      }
+
       bool tcpReceiveCallback( void* arg )
       {
-        mdns_app_t*      p            = static_cast<mdns_app_t*>(arg);
-        socket::handle_t sockH        = p->tcpH;
-        char             buf[ p->recvBufByteN ];
+        mdns_app_t*      app       = static_cast<mdns_app_t*>(arg);
+        socket::handle_t sockH     = app->tcpH;
+        char             buf[ app->recvBufByteN ];
         unsigned         readByteN = 0;
-        
-        rc_t rc = kOkRC;
+        unsigned         msg_idx   = 0;
+        rc_t             rc        = kOkRC;
 
         if( !socket::isConnected(sockH) )
         {
           if((rc = socket::accept( sockH )) == kOkRC )
           {
-            log(&p->mdns,"TCP connected.\n");
+            log(&app->mdns,"TCP connected.\n");
           }
         }
         else
         {
-          if((rc = socket::recieve( sockH, buf, p->recvBufByteN, &readByteN, nullptr )) == kOkRC )
+          if((rc = socket::recieve( sockH, buf, app->recvBufByteN, &readByteN, nullptr )) == kOkRC )
           {
+              
+            printf("msg: %i\n",msg_idx++);
+            //print_hex(buf,readByteN);
+            if( readByteN > 0 )
+            {
+              send_response( app, sockH );
+            }
+            
             // if the server disconnects then recvBufByteN 
             if( isConnected( sockH ) )
             {
-              log(&p->mdns,"TCP disconnected.");
+              log(&app->mdns,"TCP disconnected.");
             }
             else
             {
-              printf("+");
-              fflush(stdout);
               // handle recv'd TCP messages here.
+              send_response( app, sockH );
             }
           }
                   
@@ -971,6 +1009,7 @@ namespace cw
       }
 
       rc_t sendMsg1( mdns_app_t* p )
+        \
       {
         rc_t     rc       = kOkRC;
         unsigned transId  = 0;
@@ -1034,8 +1073,10 @@ namespace cw
             kInvalidRecdTId );
 
           //print_hex(buf0,bufByteN);
-          //send( sockH, buf0, bufByteN, "224.0.0.251", 5353 );
+          send( sockH, buf0, bufByteN, "224.0.0.251", 5353 );
           free(buf0);
+
+          sleepMs(500);
           
           bufByteN = 0;
           
