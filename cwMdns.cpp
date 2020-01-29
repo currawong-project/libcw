@@ -66,7 +66,9 @@ namespace cw
       typedef struct mdns_app_str
       {
         srv::handle_t mdnsH;
-        srv::handle_t tcpH;
+        socket::handle_t tcpH;
+        thread::handle_t tcpThreadH;
+        unsigned      recvBufByteN;
         unsigned      cbN;
         mdns_t        mdns;
       } mdns_app_t;
@@ -117,6 +119,7 @@ namespace cw
        kAAAA_DnsTId  = 28,
        kSRV_DnsTId   = 33,
        kOPT_DnsTId   = 41,
+       kNSEC_DnsTId  = 47,
        kANY_DnsTId   = 255
        // REMEMBER: Add new type id's to dnsTypeIdToString()
       };
@@ -149,6 +152,7 @@ namespace cw
           case kAAAA_DnsTId: return "AAAA";
           case kSRV_DnsTId:  return "SRV";
           case kOPT_DnsTId:  return "OPT";
+          case kNSEC_DnsTId: return "NSEC";
           case kANY_DnsTId:  return "ANY";  
         }
         return "<unknown DNS type>";
@@ -173,7 +177,10 @@ namespace cw
           // unsigned n0 = msgByteN;
 
           // record name bytes
-          msgByteN += strlen(name) + 2;  // add 1 for initial segment length and 1 for terminating zero
+          if( name[0] == ((char)0xc0) )
+            msgByteN += 2;
+          else
+            msgByteN += strlen(name) + 2;  // add 1 for initial segment length and 1 for terminating zero
 
           if( recdTId == kQuestionRecdTId )
           {
@@ -186,10 +193,38 @@ namespace cw
 
             switch( dnsTId )
             {
-              case kA_DnsTId:    msgByteN += kABodyByteN; break;
-              case kPTR_DnsTId:  msgByteN += strlen(text) + 1; break;
-              case kTXT_DnsTId:  msgByteN += strlen(text) + 1; break;
-              case kSRV_DnsTId:  msgByteN += kSrvBodyByteN + strlen(text) + 1; break;
+              case kA_DnsTId:
+                msgByteN += kABodyByteN;
+                break;
+                
+              case kPTR_DnsTId:
+                if( numb0 == 0 )
+                {
+                  if( text[0] == ((char)0xc0) )
+                    msgByteN += 2;
+                  else
+                    msgByteN += strlen(text) + 1;
+                }
+                else
+                {
+                  msgByteN += 2;
+                }
+                break;
+                
+              case kTXT_DnsTId:
+                if( text[0] == ((char)0xc0) )
+                  msgByteN += 2;
+                else
+                  msgByteN += strlen(text) + 2;
+                break;
+                
+              case kSRV_DnsTId:
+                msgByteN += kSrvBodyByteN;
+                if( text[0] == ((char)0xc0) )
+                  msgByteN += 2;
+                else
+                  msgByteN += strlen(text) + 1;
+                break;
               default:
                 assert(0);
             }
@@ -220,6 +255,14 @@ namespace cw
       {
         unsigned n = 0;
         unsigned j = 0;
+
+        if( name[0] == ((char)0xc0) )
+        {
+          assert( bN >= 2 );
+          b[0] = name[0];
+          b[1] = name[1];
+          return b + 1 + 1;
+        }
 
         // for each input character
         for(unsigned i=0; true; ++i)
@@ -282,20 +325,37 @@ namespace cw
       {
         char*     b1 = format_rsrc( b, bN, name, kA_DnsTId, clss, ttl, kABodyByteN );
         uint32_t* l  = (uint32_t*)b1;
-        l[0]         = htonl(addr);
+        l[0]         = addr; //htonl(addr);
                   
         return b1 + kABodyByteN;
       }
       
-      char* format_PTR_rsrc( char* b, unsigned bN, const char* name, unsigned clss, unsigned ttl, const char* text )
+      char* format_PTR_rsrc( char* b, unsigned bN, const char* name, unsigned clss, unsigned ttl, const char* text, unsigned offset=0 )
       {
         // u[0] u[1]  u[2-3] u[4] u[5 ... ]
         // type class TTL    dlen text
 
         unsigned dataByteN = strlen(text)+1;
+
+        if( offset != 0 || text[0] == ((char)0xc0) )
+          dataByteN = 2;
+        
         char* b1 = format_rsrc( b, bN, name, kPTR_DnsTId, clss, ttl, dataByteN );
-       
-        b1 = format_name(b1,bN-(b1-b),text,false);
+
+        assert( b < b1 );
+        unsigned n = b1-b;
+        
+        if( offset == 0 )
+        {
+          b1 = format_name(b1,bN-n,text,false);
+        }
+        else
+        {
+          assert( bN - n >= 2 );
+          b1[0] = ((char)0xc0);
+          b1[1] = offset;
+          b1 += dataByteN;
+        }
         return b1;
       }
       
@@ -306,7 +366,7 @@ namespace cw
 
         unsigned dataByteN = strlen(text)+1;
         char* b1 = format_rsrc( b, bN, name, kTXT_DnsTId, clss, ttl, dataByteN );
-       
+
         b1 = format_name(b1,bN-(b1-b),text,false,'\n');
         return b1;
       }
@@ -315,14 +375,20 @@ namespace cw
       {
         // u[0] u[1]  u[2-3] u[4] u[5]  u[6]  u[7] u[8 ...]
         // type class TTL    dlen pri  weight port target
+        unsigned dataByteN = kSrvBodyByteN;
 
-        unsigned  dataByteN = kSrvBodyByteN + strlen(text)+1;
-        char*     b1        = format_rsrc( b, bN, name, kSRV_DnsTId, clss, ttl, dataByteN );
+        if( text[0] == ((char)0xc0))
+          dataByteN = 2;
+        else
+          dataByteN += strlen(text)+1;
+
+        
+        char*     b1        = format_rsrc( b, bN, name, kSRV_DnsTId, clss, ttl, dataByteN+1 );
         uint16_t* u         = (uint16_t*)b1;
         u[0]                = htons(priority);
         u[1]                = htons(weight);
         u[2]                = htons(port);          
-        b1                  = format_name(b1 + kSrvBodyByteN,bN-((b1-b)+kSrvBodyByteN),text,false);
+        b1                  = format_name(b1 + kSrvBodyByteN,bN-((b1-b)+kSrvBodyByteN),text,true);
         return b1;
       }
 
@@ -355,8 +421,6 @@ namespace cw
         uint16_t* u      = (uint16_t*)buf;
         unsigned  recdN  = 0;
 
-        u[0] = transactionId;
-        u[1] = flags;
 
         // for each specified record
         while( true )
@@ -381,7 +445,7 @@ namespace cw
             switch( dnsTId )
             {
               case kA_DnsTId:    b1 = format_A_rsrc(  b0, bN, name, clss, ttl, numb0 ); break;
-              case kPTR_DnsTId:  b1 = format_PTR_rsrc(b0, bN, name, clss, ttl, text );        break;
+              case kPTR_DnsTId:  b1 = format_PTR_rsrc(b0, bN, name, clss, ttl, text, numb0 );        break;
               case kTXT_DnsTId:  b1 = format_TXT_rsrc(b0, bN, name, clss, ttl, text );        break;
               case kSRV_DnsTId:  b1 = format_SRV_rsrc(b0, bN, name, clss, ttl, text, numb0 ); break;
               default:
@@ -423,6 +487,8 @@ namespace cw
           *msgByteNRef = byteN;
 
         // convert the record counts to the network endianess
+        u[0] = htons(transactionId);
+        u[1] = htons(flags);        
         u[2] = htons(u[2]);
         u[3] = htons(u[3]);
         u[4] = htons(u[4]);
@@ -452,7 +518,7 @@ namespace cw
         return b;        
       }
 
-      unsigned calc_ptr_string_byte_count( const char* b )
+      unsigned calc_ptr_string_byte_count( const char* b, bool dotFl )
       {
         unsigned n = 0;
         unsigned i = 0;
@@ -461,8 +527,9 @@ namespace cw
         while( b[i] != 0 && (b[i] & 0xc0) != 0xc0)
         {
           // TODO: what if this is a 'ptr' ... getting the length of a pointer string may require a recursive function?
-          n += b[i] + 1;
+          n += b[i] + (dotFl ? 1 : 0);
           i += b[i] + 1;
+          dotFl = true;
         }
         return n;
       }
@@ -489,10 +556,10 @@ namespace cw
             unsigned short offset = b[i] & 0x3f;
             offset = (offset<<8) + ((unsigned char)b[i+1]);
 
-            strByteN += calc_ptr_string_byte_count( base + offset) + 1;
+            strByteN += calc_ptr_string_byte_count( base + offset, i!=0) + 1;
 
             if( logFl )
-              log(p,"%.*s | ", base[offset], base + offset + 1 );
+              log(p,"%.*s.", base[offset], base + offset + 1 );
 
             
             i += 2;
@@ -505,13 +572,14 @@ namespace cw
             if( b[i] == 0 )
             {
               ++i;
+              strByteN += 1;
               break; // zero terminates the name
             }
 
             if( logFl )
-              log(p,"%.*s | ", b[i], b+i+1 );
+              log(p,"%.*s.", b[i], b+i+1 );
             
-            strByteN += b[i] + 1;
+            strByteN += b[i] + (i==0 ? 0 : 1);
             i        += b[i] + 1;
             segN     += 1;
             
@@ -531,11 +599,98 @@ namespace cw
         return i; // i is the count of byte used by the name in the packet buffer
       }
 
+      // name[0] must be the length of the segment.
+      // Returns the count of bytes written to buf.
+      unsigned copy_out_segment( const char* name, char* buf, unsigned bufN,  bool dotFl )
+      {
+        // get segment length
+        unsigned n = name[0];
+        unsigned i = 0;
+        
+        if( dotFl )
+        {
+          assert( bufN > 0 );
+          
+          buf[0]  = '.';
+          i      += 1;
+          bufN   -= 1;
+        }
+        
+        assert( n <= bufN );
+        strncpy(buf + i, name+1, n );
+       
+        return i + n;
+      }
 
+      // Return the count of bytes written to buf[].
+      unsigned  get_ptr_name( const char* name, char* buf, unsigned bufByteN, bool dotFl )
+      {
+        unsigned i = 0;
+        unsigned N = 0;
+        
+        // terminate when a zero or another ptr string is encountered
+        while( name[i] != 0 && (name[i] & 0xc0) != 0xc0)
+        {
+          unsigned n = copy_out_segment( name + i, buf, bufByteN, dotFl );
+          buf      += n;
+          bufByteN -= n;          
+          dotFl     = true;
+          i        += name[i] + 1;
+          N        += n;
+        }
+        
+        return N;
+      }
+      
+      void get_name( const char* b, const char* base, char* buf, unsigned bufByteN )
+      {        
+        unsigned i = 0;
+        
+        while( true )
+        {
+          // if this a pointer
+          if( (b[i] & 0xc0) == 0xc0 )
+          {
+            // TODO check for going past buffer before add 1 to index
+            unsigned short offset = b[i] & 0x3f;
+            offset = (offset<<8) + ((unsigned char)b[i+1]);
+
+            unsigned n = get_ptr_name( base + offset, buf, bufByteN, i!=0 );
+            bufByteN -= n;
+            buf      += n;
+
+            i += 2;
+
+            break; // ptr terminates the name
+          }
+          else
+          {
+            if( b[i] == 0 )
+            {
+              break; // zero terminates the name
+            }
+
+
+            unsigned n = copy_out_segment( b + i, buf, bufByteN,  i!=0 );
+            bufByteN -= n;
+            buf      += n;
+            i        += b[i] + 1;
+            
+          }          
+        }
+
+        assert( bufByteN >= 1 );
+        buf[0]    = 0;
+        bufByteN -= 1;
+      }
+      
 
       unsigned resource_recd_byte_count( mdns_t* p, const char* base, const char* b, unsigned bN )
       {
         unsigned nameN = calc_name_byte_count( p, base, b, bN, nullptr, false );
+        
+
+        
         uint16_t* u = (uint16_t*)(b + nameN);
         return nameN + 10 + ntohs(u[4]);        
       }
@@ -577,7 +732,7 @@ namespace cw
         const char* target = b + kSrvBodyByteN;
         unsigned    nameN  = calc_name_byte_count( p, base, target, byteN - kSrvBodyByteN );
 
-        return b + kSrvBodyByteN + nameN;
+        return b + kSrvBodyByteN + nameN + 1;
       }
 
       const char* parse_OPT_recd( mdns_t* p, const char* base, const char* b, unsigned byteN )
@@ -591,9 +746,16 @@ namespace cw
         return b + kOptBodyByteN + optByteN;
       }
 
+      const char* parse_NSEC_recd( mdns_t* p, const char* base, const char* b, unsigned byteN )
+      {
+        // TODO: add parser here
+        return nullptr;
+      }
+      
       const char* parse_resource_recd( mdns_t* p, const char* base, const char* b, unsigned byteN )
       {
-        unsigned       nameByteN = calc_name_byte_count( p, base, b, byteN-kRsrcBodyByteN );
+        unsigned       nameStrByteN = 0;
+        unsigned       nameByteN = calc_name_byte_count( p, base, b, byteN-kRsrcBodyByteN, &nameStrByteN );
         uint16_t*      u         = (uint16_t*)(b + nameByteN);
         uint16_t       type      = ntohs(u[0]);
         uint16_t       clss      = ntohs(u[1]);
@@ -603,6 +765,9 @@ namespace cw
         
         log(p," nameN:%i type:%s (0x%02x) class:0x%02x ttl:%i dataN:%i ",nameByteN,dnsTypeIdToString(type),type,clss,ttl,dataN );
 
+        char nameBuf[ nameStrByteN ];
+        get_name( b, base, nameBuf, nameStrByteN );
+        
         b += nameByteN + kRsrcBodyByteN; // advance to the record data
         
         assert( nameByteN + kRsrcBodyByteN + dataN <= byteN);
@@ -614,11 +779,14 @@ namespace cw
           case kTXT_DnsTId:  parse_TXT_recd(p,base,b,dataN); break;
           case kSRV_DnsTId:  parse_SRV_recd(p,base,b,dataN); break;
           case kOPT_DnsTId:  parse_OPT_recd(p,base,b,dataN); break;
+          case kNSEC_DnsTId: parse_NSEC_recd(p,base,b,dataN); break;
           default:
             error(p,"Unhandled DNS type id: %i (0x%x)",type);
         }
 
         log(p,"\n");
+
+        printf("Extracted name:%s\n",nameBuf);
         
         return b0 + resource_recd_byte_count(p,base,b0,byteN);
 
@@ -691,7 +859,6 @@ namespace cw
         uint16_t        nameSrvN  = ntohs(hdr[4]);
         uint16_t        addN      = ntohs(hdr[5]);
 
-
         log(p,"*** Msg: id:0x%04x flags:0x%04x qN:%i aN:%i nsN:%i addN:%i\n", transId, flags, questionN, answerN, nameSrvN,addN);
 
         const char* b0 = (const char*)(hdr + 6);
@@ -752,15 +919,155 @@ namespace cw
         }
       }
             
-      void mdnsRecieveCallback( void* arg, const void* data, unsigned dataByteCnt, const struct sockaddr_in* fromAddr )
+      void udpReceiveCallback( void* arg, const void* data, unsigned dataByteCnt, const struct sockaddr_in* fromAddr )
       {
         mdns_app_t* p = static_cast<mdns_app_t*>(arg);
         char addrBuf[ INET_ADDRSTRLEN ];
         socket::addrToString( fromAddr, addrBuf, INET_ADDRSTRLEN );
         p->cbN += 1;
-        printf("%i bytes:%i %s\n", p->cbN, dataByteCnt, addrBuf );
-        print_hex( (const char*)data, dataByteCnt );
-        parse_msg(&p->mdns,data,dataByteCnt);
+        if( true )
+        {
+          printf("%i bytes:%i %s\n", p->cbN, dataByteCnt, addrBuf );
+          print_hex( (const char*)data, dataByteCnt );
+          parse_msg(&p->mdns,data,dataByteCnt);
+        }
+      }
+
+      bool tcpReceiveCallback( void* arg )
+      {
+        mdns_app_t*      p            = static_cast<mdns_app_t*>(arg);
+        socket::handle_t sockH        = p->tcpH;
+        char             buf[ p->recvBufByteN ];
+        unsigned         readByteN = 0;
+        
+        rc_t rc = kOkRC;
+
+        if( !socket::isConnected(sockH) )
+        {
+          if((rc = socket::accept( sockH )) == kOkRC )
+          {
+            log(&p->mdns,"TCP connected.\n");
+          }
+        }
+        else
+        {
+          if((rc = socket::recieve( sockH, buf, p->recvBufByteN, &readByteN, nullptr )) == kOkRC )
+          {
+            // if the server disconnects then recvBufByteN 
+            if( isConnected( sockH ) )
+            {
+              log(&p->mdns,"TCP disconnected.");
+            }
+            else
+            {
+              printf("+");
+              fflush(stdout);
+              // handle recv'd TCP messages here.
+            }
+          }
+                  
+        }
+        return true;
+      }
+
+      rc_t sendMsg1( mdns_app_t* p )
+      {
+        rc_t     rc       = kOkRC;
+        unsigned transId  = 0;
+        unsigned bufByteN = 0;
+        unsigned flags    = 0;
+        unsigned ttl      = 120;
+        socket::handle_t sockH    = srv::socketHandle(p->mdnsH);
+        
+        struct sockaddr_in addr;
+        
+        if((rc = socket::initAddr( sockH, "192.168.0.68", 4325, &addr )) != kOkRC )
+        {
+          error(&p->mdns,"Get inet address failed.");
+          goto errLabel;
+        }
+        else
+        {
+          //const char* mac = "985AEB89BAAA"
+          char*    buf      = alloc_msg( &bufByteN, transId, flags,
+            kQuestionRecdTId,    "68.0.168.192.in-addr.arpa",     kANY_DnsTId,  kInClassFl, 0,   0,     nullptr,
+            kQuestionRecdTId,    "Euphonix-MC-985AEB89BAAA.local", kANY_DnsTId,  kInClassFl, 0,   0,     nullptr,
+            kNameServerRecdTId,  "Euphonix-MC-985AEB89BAAA.local", kA_DnsTId,    kInClassFl, ttl, addr.sin_addr, nullptr,
+            kNameServerRecdTId,  "68.0.168.192.in-addr.arpa",      kPTR_DnsTId,  kInClassFl, ttl, 43,    "Euphonix-MC-985AEB89BAAA.local",
+            kInvalidRecdTId );
+
+          //print_hex(buf,bufByteN);
+          //parse_msg( nullptr, buf, bufByteN );
+
+          send( sockH, buf, bufByteN, "224.0.0.251", 5353 );
+          
+          free(buf);
+        }
+        
+      errLabel:
+        
+        return rc;
+      }
+
+      rc_t sendMsg2( mdns_app_t* p )
+      {
+        rc_t     rc       = kOkRC;
+        unsigned transId  = 0;
+        unsigned bufByteN = 0;
+        unsigned flags    = 0x8400;
+        socket::handle_t sockH    = srv::socketHandle(p->mdnsH);
+        
+        struct sockaddr_in addr;
+        
+        if((rc = socket::initAddr( sockH, "192.168.0.68", 4325, &addr )) != kOkRC )
+        {
+          error(&p->mdns,"Get inet address failed.");
+          goto errLabel;
+        }
+        else
+        {
+
+          char*    buf0  = alloc_msg( &bufByteN, transId, 0,
+            kQuestionRecdTId,    "MC Mix - 1._EuConProxy._tcp.local", kANY_DnsTId, kInClassFl, 0,        0, nullptr,
+            kNameServerRecdTId,  "\xc0\x0c",                          kSRV_DnsTId, kInClassFl, 120,  49168, "Euphonix-MC-985AEB89BAAA.local",
+            kNameServerRecdTId,  "\xc0\x0c",                          kTXT_DnsTId, kInClassFl, 4500,     0, "lmac=98-5A-EB-89-BA-AA\ndummy=0",            
+            kInvalidRecdTId );
+
+          //print_hex(buf0,bufByteN);
+          //send( sockH, buf0, bufByteN, "224.0.0.251", 5353 );
+          free(buf0);
+          
+          bufByteN = 0;
+          
+          char*    buf      = alloc_msg( &bufByteN, transId, flags,
+            kAnswerRecdTId,    "MC Mix - 1._EuConProxy._tcp.local",  kSRV_DnsTId,  kFlushClassFl | kInClassFl,  120,         49168,  "Euphonix-MC-985AEB89BAAA.local",
+            kAnswerRecdTId,    "\xc0\x3f",                           kA_DnsTId,    kFlushClassFl | kInClassFl,  120, addr.sin_addr,  nullptr,
+            kAnswerRecdTId,    "\xc0\x17",                           kPTR_DnsTId,                  kInClassFl, 4500,             0,  "\xc0\x0c",
+            kAnswerRecdTId,    "\xc0\x0c",                           kTXT_DnsTId,  kFlushClassFl | kInClassFl, 4500,             0,  "lmac=98-5A-EB-89-BA-AA\ndummy=1",
+            kAnswerRecdTId,     "_services._dns-sd._udp.local",      kPTR_DnsTId,                  kInClassFl, 4500,             0,   "\xc0\x17",
+            kInvalidRecdTId );
+          
+          /* working with 1
+          char*    buf      = alloc_msg( &bufByteN, transId, flags,
+            kAnswerRecdTId,    "MC Mix._EuConProxy._tcp.local",      kSRV_DnsTId,  kFlushClassFl | kInClassFl,  120,         49168,  "Euphonix-MC-985AEB89BAAA.local",
+            kAnswerRecdTId,    "\xc0\x3b",                           kA_DnsTId,    kFlushClassFl | kInClassFl,  120, addr.sin_addr,  nullptr,
+            kAnswerRecdTId,    "\xc0\x13",                           kPTR_DnsTId,                  kInClassFl, 4500,             0,  "\xc0\x0c",
+            kAnswerRecdTId,    "\xc0\x0c",                           kTXT_DnsTId,  kFlushClassFl | kInClassFl, 4500,             0,  "lmac=98-5A-EB-89-BA-AA\ndummy=1",
+            kAnswerRecdTId,     "_services._dns-sd._udp.local",      kPTR_DnsTId,                  kInClassFl, 4500,             0,   "\xc0\x13",
+            kInvalidRecdTId );
+          */
+          
+          //print_hex(buf,bufByteN);
+          //parse_msg( nullptr, buf, bufByteN );
+
+          send( sockH, buf, bufByteN, "224.0.0.251", 5353 );
+          
+          free(buf);
+        }
+        
+      errLabel:
+        
+        return rc;
       }
 
       void testAllocMsg( const char* tag )
@@ -798,8 +1105,7 @@ namespace cw
         free(buf);
         
       }
-
-
+      
     }
   }
 }
@@ -810,36 +1116,66 @@ cw::rc_t cw::net::mdns::test()
 {
   rc_t                 rc;
   socket::portNumber_t mdnsPort       = 5353;
-  unsigned             recvBufByteCnt = 4096;
-  unsigned             timeOutMs      = 0;  // if timeOutMs==0 server uses recv_from()
+  socket::portNumber_t tcpPort        = 49168;
+  unsigned             udpTimeOutMs   = 0;  // if timeOutMs==0 server uses recv_from()
+  unsigned             tcpTimeOutMs  = 50;
   const unsigned       sbufN          = 31;
   char                 sbuf[ sbufN+1 ];
   mdns_app_t           app;
-  app.cbN = 0;
+  
+  app.cbN          = 0;
+  app.recvBufByteN = 4096;
 
   // create the mDNS UDP socket server
   if((rc = srv::create(
         app.mdnsH,
         mdnsPort,
         socket::kNonBlockingFl | socket::kReuseAddrFl | socket::kReusePortFl | socket::kMultiCastTtlFl | socket::kMultiCastLoopFl,
-        mdnsRecieveCallback,
+        udpReceiveCallback,
         &app,
-        recvBufByteCnt,
-        timeOutMs,
+        app.recvBufByteN,
+        udpTimeOutMs,
         NULL,
         socket::kInvalidPortNumber )) != kOkRC )
-  {
-    return rc;
+  {    
+    return cwLogError(rc,"mDNS UDP socket create failed.");
   }
+
 
   // add the mDNS socket to the multicast group
   if((rc =  join_multicast_group( socketHandle(app.mdnsH), "224.0.0.251" )) != kOkRC )
     goto errLabel;
 
+  // set the TTL for multicast 
+  if((rc = set_multicast_time_to_live( socketHandle(app.mdnsH), 255 )) != kOkRC )
+      goto errLabel;
+
+  // create the mDNS TCP socket
+  if((rc = socket::create(
+        app.tcpH,
+        tcpPort,
+        socket::kTcpFl | socket::kBlockingFl | socket::kStreamFl | socket::kListenFl,
+        tcpTimeOutMs,
+        NULL,
+        socket::kInvalidPortNumber )) != kOkRC )
+  {    
+    rc = cwLogError(rc,"mDNS TCP socket create failed.");
+    goto errLabel;
+  }
+
+    // create the TCP listening thread
+  if((rc = thread::create( app.tcpThreadH, tcpReceiveCallback, &app )) != kOkRC )
+    goto errLabel;
+
+  
   // start the mDNS socket server
   if((rc = srv::start( app.mdnsH )) != kOkRC )
     goto errLabel;
 
+  // start the tcp thread
+  if((rc = thread::unpause( app.tcpThreadH )) != kOkRC )
+    goto errLabel;
+  
   while( true )
   {
     printf("? ");
@@ -850,6 +1186,16 @@ cw::rc_t cw::net::mdns::test()
         testAllocMsg(sbuf);
         break;
       }
+
+      if( strcmp(sbuf,"msg1\n") == 0 )
+      {
+        sendMsg1( &app );
+      }
+
+      if( strcmp(sbuf,"msg2\n") == 0 )
+      {
+        sendMsg2( &app );
+      }
       
       if( strcmp(sbuf,"quit\n") == 0)
         break;
@@ -859,6 +1205,8 @@ cw::rc_t cw::net::mdns::test()
  errLabel:
   // close the mDNS server
   rc_t rc0 = destroy(app.mdnsH);
+  rc_t rc1 = thread::destroy(app.tcpThreadH);
+  rc_t rc2 = socket::destroy(app.tcpH);
 
-  return rcSelect(rc,rc0);  
+  return rcSelect(rc,rc0,rc1,rc2);  
 }
