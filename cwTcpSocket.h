@@ -42,6 +42,8 @@ namespace cw
 
       rc_t destroy( handle_t& hRef );
 
+      rc_t set_multicast_time_to_live( handle_t h, unsigned seconds );
+
       rc_t join_multicast_group( handle_t h, const char* addr );
 
       rc_t setTimeOutMs( handle_t h, unsigned timeOutMs );
@@ -53,6 +55,9 @@ namespace cw
       // the caller may use send() to communicate with the specified remote socket
       // without having to specify a destination address on each call.
       rc_t connect( handle_t h, const char* remoteAddr, portNumber_t port );
+
+      // Return true if this socket is connected to a remote endpoint.
+      bool isConnected( handle_t h );
       
       // Send a message to a remote UDP socket over a previously connected socket
       rc_t send( handle_t h, const void* data, unsigned dataByteCnt );

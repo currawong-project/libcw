@@ -308,6 +308,19 @@ cw::rc_t cw::net::socket::destroy( handle_t& hRef )
   return rc;
 }
 
+cw::rc_t cw::net::socket::set_multicast_time_to_live( handle_t h, unsigned seconds )
+{
+  rc_t      rc = kOkRC;
+  socket_t* p  = _handleToPtr(h);
+  
+  if( setsockopt( p->sockH, IPPROTO_IP, IP_MULTICAST_TTL, &seconds, sizeof(seconds) ) == cwSOCKET_SYS_ERR )
+  {
+    rc = cwLogSysError(kOpFailRC,errno, "Attempt to set the socket multicast TTLfailed." );
+  }
+
+  return rc;
+}
+
 cw::rc_t cw::net::socket::join_multicast_group( handle_t h, const char* addrStr )
 {
   rc_t           rc = kOkRC;  
@@ -375,6 +388,8 @@ cw::rc_t cw::net::socket::accept( handle_t h )
 
     p->fdH = fd;
 
+    p->flags = cwSetFlag(p->flags,kIsConnectedFl);
+
     printf("Connect:%s\n",s);
 
   }
@@ -389,6 +404,12 @@ cw::rc_t cw::net::socket::connect( handle_t h, const char* remoteAddr, portNumbe
   socket_t* p = _handleToPtr(h);
   return _connect(p,remoteAddr,remotePort);  
 }
+
+bool cw::net::socket::isConnected( handle_t h )
+{
+  socket_t* p = _handleToPtr(h);  
+  return cwIsFlag(p->flags,kIsConnectedFl);
+}
       
 cw::rc_t cw::net::socket::send( handle_t h, const void* data, unsigned dataByteCnt )
 {
@@ -398,7 +419,9 @@ cw::rc_t cw::net::socket::send( handle_t h, const void* data, unsigned dataByteC
   if( cwIsFlag(p->flags,kIsConnectedFl) == false )
     return cwLogError(kInvalidOpRC,"socket::send() only works with connected sockets.");
 
-  if( ::send( p->sockH, data, dataByteCnt, 0 ) == cwSOCKET_SYS_ERR )
+  int fd = p->fdH != cwSOCKET_NULL_SOCK ? p->fdH : p->sockH;
+
+  if( ::send( fd, data, dataByteCnt, 0 ) == cwSOCKET_SYS_ERR )
     return cwLogSysError(kOpFailRC,errno,"Send failed.");
 
   return kOkRC;    
@@ -434,7 +457,7 @@ cw::rc_t cw::net::socket::recieve( handle_t h, char* data, unsigned dataByteCnt,
   rc_t      rc               = kOkRC;
   ssize_t   retVal           = 0;
 	socklen_t sizeOfRemoteAddr = fromAddr==NULL ? 0 : sizeof(struct sockaddr_in);
-	
+  
   errno = 0;
 
   if( recvByteCntRef != NULL )
@@ -444,7 +467,12 @@ cw::rc_t cw::net::socket::recieve( handle_t h, char* data, unsigned dataByteCnt,
 
 	if((retVal = recvfrom(fd, data, dataByteCnt, 0, (struct sockaddr*)fromAddr, &sizeOfRemoteAddr )) == cwSOCKET_SYS_ERR )
       return errno == EAGAIN ? kTimeOutRC : cwLogSysError(kOpFailRC,errno,"recvfrom() failed.");
-	
+
+
+  // if the read 0 bytes but did not time out this probably means that it was disconnected
+  if( retVal == 0 )
+    p->flags = cwClrFlag(p->flags,kIsConnectedFl);
+  
   if( recvByteCntRef != NULL )
     *recvByteCntRef = retVal;
 

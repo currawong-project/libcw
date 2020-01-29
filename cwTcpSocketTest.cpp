@@ -20,13 +20,13 @@ namespace cw
     {
       typedef struct app_str
       {
+        const char*      remoteAddr;
+        unsigned         remotePort;
         unsigned         recvBufByteN;
         handle_t         sockH;
         thread::handle_t threadH;
         unsigned         cbN;
         bool             serverFl;
-        bool             readyFl;
-        bool             connectedFl;
       } app_t;
 
       bool _dgramThreadFunc( void* arg )
@@ -61,44 +61,42 @@ namespace cw
         char               buf[ app->recvBufByteN ];
         unsigned           recvBufByteN = 0;
 
-        if( !app->serverFl )
+        if( isConnected(app->sockH) == false )
         {
-          // the client node has nothing to do because it does not receive (it only sends)
-          sleepMs(50);
-        }
-        else
-        {
-          if( app->connectedFl == false )
+          if( app->serverFl )
           {
             if((rc = accept( app->sockH )) == kOkRC )
             {
-              app->connectedFl = true;
               printf("Server connected.\n");
             }
           }
           else
-          {              
-            if((rc = recieve( app->sockH, buf, app->recvBufByteN, &recvBufByteN, nullptr )) == kOkRC )
+          {
+            sleepMs(50);
+          }
+        }
+        else
+        {              
+          if((rc = recieve( app->sockH, buf, app->recvBufByteN, &recvBufByteN, nullptr )) == kOkRC )
+          {
+            // if the server disconnects then recvBufByteN 
+            if( !isConnected( app->sockH) )
             {
-              // if the server disconnects then recvBufByteN 
-              if( recvBufByteN==0 )
-              {
-                app->connectedFl = false;
-              }
-              else
-              {
-                printf("%i %s\n", recvBufByteN, buf );
-              }
+              printf("Disconnected.");
+            }
+            else
+            {
+              printf("%i %s\n", recvBufByteN, buf );
             }
           }
-        }      
+        }
 
         // count the number of callbacks
         app->cbN += 1;
         if( app->cbN % 10 == 0)
         {
           // print '+' when the server is not connected.
-          printf("%s", app->serverFl && app->connectedFl == false ? "+" : ".");
+          printf("%s", isConnected(app->sockH) == false ? "+" : ".");
           fflush(stdout);
         }
           
@@ -160,12 +158,12 @@ cw::rc_t cw::net::socket::test_tcp( portNumber_t localPort, const char* remoteAd
   bool           streamFl = !dgramFl;
   bool           clientFl = !serverFl;
   unsigned       flags = kTcpFl | kBlockingFl;
-  
+
+  app.remoteAddr   = remoteAddr;
+  app.remotePort   = remotePort;
   app.cbN          = 0;
   app.recvBufByteN = sbufN+1;
   app.serverFl     = serverFl;
-  app.readyFl      = false;
-  app.connectedFl  = false;
 
   if( serverFl && streamFl )
     flags |= kListenFl;
@@ -181,13 +179,12 @@ cw::rc_t cw::net::socket::test_tcp( portNumber_t localPort, const char* remoteAd
   if((rc = thread::create( app.threadH, streamFl ? _tcpStreamThreadFunc : _dgramThreadFunc, &app )) != kOkRC )
     goto errLabel;
 
-  // if this is the client then connect to the server (which must have already been started)
+  // if this is a streaming client then connect to the server (which must have already been started)
   if( streamFl && clientFl )
   {
+    // note that this creates a bi-directional stream
     if((rc = connect(app.sockH,remoteAddr,remotePort)) != kOkRC )
-      goto errLabel;
-    
-    app.connectedFl = true;
+      goto errLabel;    
   }
 
   printf("Starting node ....\n");
@@ -205,16 +202,15 @@ cw::rc_t cw::net::socket::test_tcp( portNumber_t localPort, const char* remoteAd
       if( strcmp(sbuf,"quit\n") == 0)
         break;
 
-      // when using streams only the client can send
-      if( streamFl & clientFl )
+      if( streamFl )
       {  
+        // when using streams no remote address is necessary
         printf("Sending:%s",sbuf);      
         send(app.sockH, sbuf, strlen(sbuf)+1 );
       }
-
-      // when using dgrams the dest. address is need to send
-      if( dgramFl )
+      else
       {
+        // when using dgrams the dest. address is required
         printf("Sending:%s",sbuf);      
         send(app.sockH, sbuf, strlen(sbuf)+1, remoteAddr, remotePort);
       }
