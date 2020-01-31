@@ -8,6 +8,7 @@
 #include "cwTcpSocket.h"
 #include "cwTcpSocketSrv.h"
 #include "cwMdns.h"
+#include "cwTime.h"
 
 namespace cw
 {
@@ -71,6 +72,9 @@ namespace cw
         unsigned      recvBufByteN;
         unsigned      cbN;
         mdns_t        mdns;
+        unsigned      protocolState;
+        time::spec_t  t0;
+        unsigned      txtXmtN;
       } mdns_app_t;
 
 
@@ -481,7 +485,12 @@ namespace cw
         // Note that the buffer should be exactly full when all data is written.
         // If this is not true then either the buffer size calculation or
         // the buffer serialization code is incorrect.
-        assert( bN - kHdrBodyByteN == 0 );
+
+        // BUG BUG BUG
+        // BUG BUG BUG: see comment in send_txt() for reason that this check is turned off 
+        // BUG BUG BUG
+        
+        //assert( bN == kHdrBodyByteN );  
         
         if( msgByteNRef != nullptr )
           *msgByteNRef = byteN;
@@ -918,22 +927,62 @@ namespace cw
           }
         }
       }
-            
+
+      rc_t send_txt( mdns_app_t* p )
+      {
+        rc_t rc = kOkRC;
+        unsigned bufByteN = 0;
+        unsigned transId = 0;
+        char*    buf      = alloc_msg( &bufByteN, transId, 0x8400,  // 30-23-03-1b-b6-f9
+          kAnswerRecdTId,    "MC Mix - 1._EuConProxy._tcp.local",  kTXT_DnsTId,  kFlushClassFl | kInClassFl, 4500,  0,  "lmac=38-C9-86-37-44-E7\nhost=mbp19\nhmac=BE-BD-EA-31-F9-88\ndummy=1",
+          kInvalidRecdTId );
+                    
+        //print_hex(buf,bufByteN);
+        //parse_msg( nullptr, buf, bufByteN );
+
+        // BUG BUG BUG BUG
+        // BUG BUG BUG BUG: if all was well should not need to subtract 1 from bufByteN - this is related to turning off the final size assert() in alloc_msgv
+        // BUG BUG BUG BUG
+        
+        send( srv::socketHandle(p->mdnsH), buf, bufByteN-1, "224.0.0.251", 5353 );
+          
+        free(buf);
+        
+        return rc;
+      }
+      
       void udpReceiveCallback( void* arg, const void* data, unsigned dataByteCnt, const struct sockaddr_in* fromAddr )
       {
         mdns_app_t* p = static_cast<mdns_app_t*>(arg);
         char addrBuf[ INET_ADDRSTRLEN ];
         socket::addrToString( fromAddr, addrBuf, INET_ADDRSTRLEN );
         p->cbN += 1;
+
+        
         if( false )
         {
           printf("%i bytes:%i %s\n", p->cbN, dataByteCnt, addrBuf );
           print_hex( (const char*)data, dataByteCnt );
           parse_msg(&p->mdns,data,dataByteCnt);
         }
+
+        if( dataByteCnt > 0 )
+        {
+          uint16_t* u = (uint16_t*)data;
+          uint8_t*  b = (uint8_t*)data;
+          if( u[1]==0 && u[2] == 1 && b[12] == 0x0a )
+          {
+            printf("dataByteCnt:%i\n",dataByteCnt);
+            if( dataByteCnt == 51 )
+              printf("MATCH!\n");
+          }
+        }
+        
+        
+
       }
 
-      rc_t send_response( mdns_app_t* app, socket::handle_t sockH )
+      rc_t send_response1( mdns_app_t* app, socket::handle_t sockH )
       {
         rc_t rc = kOkRC;
 
@@ -945,7 +994,7 @@ namespace cw
         unsigned char buf[] =
           { 0x0b,0x00,0x00,0x00,0x00,0x00,0x00,0x50,0x00,0x02,0x03,0xfc,0x01,0x05,
             0x06,0x00,
-            0x98,0x5a,0xeb,0x89,0xba,0xaa,
+            0x38,0xc9,0x86,0x37,0x44,0xe7,
             0x01,0x00,
             0xc0,0xa8,0x00,0x44,
             0x00,0x00,
@@ -964,13 +1013,28 @@ namespace cw
         return rc;
       }
 
+      rc_t send_response2( mdns_app_t* app, socket::handle_t sockH )
+      {
+        rc_t rc = kOkRC;
+
+        unsigned char buf[] =
+          { 0x0d,0x00,0x00,0x00,0x00,0x00,0x00,0x08 };
+
+        unsigned bufByteN = sizeof(buf);
+        if((rc = socket::send( sockH, buf, bufByteN )) != kOkRC )
+        {
+          error(&app->mdns,"Send failed.");
+        }
+
+        return rc;
+      }
+      
       bool tcpReceiveCallback( void* arg )
       {
         mdns_app_t*      app       = static_cast<mdns_app_t*>(arg);
         socket::handle_t sockH     = app->tcpH;
         char             buf[ app->recvBufByteN ];
         unsigned         readByteN = 0;
-        unsigned         msg_idx   = 0;
         rc_t             rc        = kOkRC;
 
         if( !socket::isConnected(sockH) )
@@ -982,25 +1046,68 @@ namespace cw
         }
         else
         {
-          if((rc = socket::recieve( sockH, buf, app->recvBufByteN, &readByteN, nullptr )) == kOkRC )
+          if((rc = socket::recieve( sockH, buf, app->recvBufByteN, &readByteN, nullptr )) == kOkRC || rc == kTimeOutRC )
           {
-              
-            printf("msg: %i\n",msg_idx++);
+
+            //printf(".");
+            //fflush(stdout);
+            
+            //printf("msg: %i\n",msg_idx++);
             //print_hex(buf,readByteN);
-            if( readByteN > 0 )
+            if( readByteN > 0 && app->protocolState == 0)
             {
-              send_response( app, sockH );
+              if( app->protocolState == 0 )
+                send_response1( app, sockH );
+              app->protocolState += 1;
+              printf("PROTO:%i\n",app->protocolState);
             }
+            else
+            {
+              if( app->protocolState == 1 )
+              {
+                send_response2( app, sockH );
+                app->protocolState += 1;
+                printf("PROTO:%i\n",app->protocolState);
+              }
+              else
+              {
+                if( app->protocolState == 2 )
+                {
+                  time::get(app->t0);
+                  //send_txt(app);
+                  app->protocolState+=1;
+                  printf("PROTO:%i\n",app->protocolState);
+                }
+                else
+                {
+                  if( app->protocolState > 2 && app->txtXmtN < 20 )
+                  {
+            
+                    time::spec_t t1;
+                    time::get(t1);
+                    if( time::elapsedMs( &app->t0, &t1 ) >= 2500 )
+                    {
+                      //send_txt(app);
+                      app->txtXmtN+=1;
+                      printf("TXT:%i\n",app->txtXmtN);
+                      app->t0 = t1;
+                    }
+                  }            
+                }
+              }
+            }
+          
+            
             
             // if the server disconnects then recvBufByteN 
             if( isConnected( sockH ) )
             {
-              log(&app->mdns,"TCP disconnected.");
+              //log(&app->mdns,"TCP disconnected.");
             }
             else
             {
               // handle recv'd TCP messages here.
-              send_response( app, sockH );
+              //send_response( app, sockH );
             }
           }
                   
@@ -1009,7 +1116,6 @@ namespace cw
       }
 
       rc_t sendMsg1( mdns_app_t* p )
-        \
       {
         rc_t     rc       = kOkRC;
         unsigned transId  = 0;
@@ -1027,12 +1133,14 @@ namespace cw
         }
         else
         {
-          //const char* mac = "985AEB89BAAA"
+          // wifi: 98 5A EB 89 BA AA  "985AEB89BAAA" 98-5A-EB-89-BA-AA
+          // enet: 38 C9 86 37 44 E7  "38C9863744E7" 38-C9-86-37-44-E7
+          
           char*    buf      = alloc_msg( &bufByteN, transId, flags,
             kQuestionRecdTId,    "68.0.168.192.in-addr.arpa",     kANY_DnsTId,  kInClassFl, 0,   0,     nullptr,
-            kQuestionRecdTId,    "Euphonix-MC-985AEB89BAAA.local", kANY_DnsTId,  kInClassFl, 0,   0,     nullptr,
-            kNameServerRecdTId,  "Euphonix-MC-985AEB89BAAA.local", kA_DnsTId,    kInClassFl, ttl, addr.sin_addr, nullptr,
-            kNameServerRecdTId,  "68.0.168.192.in-addr.arpa",      kPTR_DnsTId,  kInClassFl, ttl, 43,    "Euphonix-MC-985AEB89BAAA.local",
+            kQuestionRecdTId,    "Euphonix-MC-38C9863744E7.local", kANY_DnsTId,  kInClassFl, 0,   0,     nullptr,
+            kNameServerRecdTId,  "Euphonix-MC-38C9863744E7.local", kA_DnsTId,    kInClassFl, ttl, addr.sin_addr, nullptr,
+            kNameServerRecdTId,  "68.0.168.192.in-addr.arpa",      kPTR_DnsTId,  kInClassFl, ttl, 43,    "Euphonix-MC-38C9863744E7.local",
             kInvalidRecdTId );
 
           //print_hex(buf,bufByteN);
@@ -1068,8 +1176,8 @@ namespace cw
 
           char*    buf0  = alloc_msg( &bufByteN, transId, 0,
             kQuestionRecdTId,    "MC Mix - 1._EuConProxy._tcp.local", kANY_DnsTId, kInClassFl, 0,        0, nullptr,
-            kNameServerRecdTId,  "\xc0\x0c",                          kSRV_DnsTId, kInClassFl, 120,  49168, "Euphonix-MC-985AEB89BAAA.local",
-            kNameServerRecdTId,  "\xc0\x0c",                          kTXT_DnsTId, kInClassFl, 4500,     0, "lmac=98-5A-EB-89-BA-AA\ndummy=0",            
+            kNameServerRecdTId,  "\xc0\x0c",                          kSRV_DnsTId, kInClassFl, 120,  49168, "Euphonix-MC-38C9863744E7.local",
+            kNameServerRecdTId,  "\xc0\x0c",                          kTXT_DnsTId, kInClassFl, 4500,     0, "lmac=38-C9-86-37-44-E7\ndummy=0",            
             kInvalidRecdTId );
 
           //print_hex(buf0,bufByteN);
@@ -1081,23 +1189,13 @@ namespace cw
           bufByteN = 0;
           
           char*    buf      = alloc_msg( &bufByteN, transId, flags,
-            kAnswerRecdTId,    "MC Mix - 1._EuConProxy._tcp.local",  kSRV_DnsTId,  kFlushClassFl | kInClassFl,  120,         49168,  "Euphonix-MC-985AEB89BAAA.local",
+            kAnswerRecdTId,    "MC Mix - 1._EuConProxy._tcp.local",  kSRV_DnsTId,  kFlushClassFl | kInClassFl,  120,         49168,  "Euphonix-MC-38C9863744E7.local",
             kAnswerRecdTId,    "\xc0\x3f",                           kA_DnsTId,    kFlushClassFl | kInClassFl,  120, addr.sin_addr,  nullptr,
             kAnswerRecdTId,    "\xc0\x17",                           kPTR_DnsTId,                  kInClassFl, 4500,             0,  "\xc0\x0c",
-            kAnswerRecdTId,    "\xc0\x0c",                           kTXT_DnsTId,  kFlushClassFl | kInClassFl, 4500,             0,  "lmac=98-5A-EB-89-BA-AA\ndummy=1",
+            kAnswerRecdTId,    "\xc0\x0c",                           kTXT_DnsTId,  kFlushClassFl | kInClassFl, 4500,             0,  "lmac=38-C9-86-37-44-E7\ndummy=1",
             kAnswerRecdTId,     "_services._dns-sd._udp.local",      kPTR_DnsTId,                  kInClassFl, 4500,             0,   "\xc0\x17",
             kInvalidRecdTId );
-          
-          /* working with 1
-          char*    buf      = alloc_msg( &bufByteN, transId, flags,
-            kAnswerRecdTId,    "MC Mix._EuConProxy._tcp.local",      kSRV_DnsTId,  kFlushClassFl | kInClassFl,  120,         49168,  "Euphonix-MC-985AEB89BAAA.local",
-            kAnswerRecdTId,    "\xc0\x3b",                           kA_DnsTId,    kFlushClassFl | kInClassFl,  120, addr.sin_addr,  nullptr,
-            kAnswerRecdTId,    "\xc0\x13",                           kPTR_DnsTId,                  kInClassFl, 4500,             0,  "\xc0\x0c",
-            kAnswerRecdTId,    "\xc0\x0c",                           kTXT_DnsTId,  kFlushClassFl | kInClassFl, 4500,             0,  "lmac=98-5A-EB-89-BA-AA\ndummy=1",
-            kAnswerRecdTId,     "_services._dns-sd._udp.local",      kPTR_DnsTId,                  kInClassFl, 4500,             0,   "\xc0\x13",
-            kInvalidRecdTId );
-          */
-          
+                    
           //print_hex(buf,bufByteN);
           //parse_msg( nullptr, buf, bufByteN );
 
@@ -1163,9 +1261,11 @@ cw::rc_t cw::net::mdns::test()
   const unsigned       sbufN          = 31;
   char                 sbuf[ sbufN+1 ];
   mdns_app_t           app;
-  
+ 
   app.cbN          = 0;
   app.recvBufByteN = 4096;
+  app.protocolState = 0;
+  app.txtXmtN = 0;
 
   // create the mDNS UDP socket server
   if((rc = srv::create(
@@ -1191,7 +1291,7 @@ cw::rc_t cw::net::mdns::test()
   if((rc = set_multicast_time_to_live( socketHandle(app.mdnsH), 255 )) != kOkRC )
       goto errLabel;
 
-  // create the mDNS TCP socket
+  // create the  TCP socket
   if((rc = socket::create(
         app.tcpH,
         tcpPort,
@@ -1224,7 +1324,8 @@ cw::rc_t cw::net::mdns::test()
     {
       if( strcmp(sbuf,"msg0\n") == 0 )
       {
-        testAllocMsg(sbuf);
+        //testAllocMsg(sbuf);
+        send_txt(&app);
         break;
       }
 
