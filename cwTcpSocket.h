@@ -85,6 +85,9 @@ namespace cw
       //
       rc_t recv_from(handle_t h, char* buf, unsigned bufByteCnt, unsigned* recvByteCntRef=nullptr, struct sockaddr_in* fromAddr=nullptr );
 
+      // Note that 
+      rc_t get_mac( handle_t h, unsigned char buf[6], const char* interfaceName=nullptr );
+
       // Prepare a struct sockadddr_in for use with send()
       rc_t        initAddr( handle_t h, const char* addrStr, portNumber_t portNumber, struct sockaddr_in* retAddrPtr );
       

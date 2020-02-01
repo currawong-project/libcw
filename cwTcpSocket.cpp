@@ -3,7 +3,9 @@
 #include "cwCommonImpl.h"
 #include "cwMem.h"
 
-#include <sys/socket.h> 
+#include <sys/socket.h>
+#include <sys/ioctl.h>
+#include <net/if.h>
 #include <netinet/in.h>	
 #include <arpa/inet.h>	
 #include <fcntl.h>		
@@ -471,7 +473,9 @@ cw::rc_t cw::net::socket::recieve( handle_t h, char* data, unsigned dataByteCnt,
 
   // if the read 0 bytes but did not time out this probably means that it was disconnected
   if( retVal == 0 )
-    p->flags = cwClrFlag(p->flags,kIsConnectedFl);
+  {
+    //p->flags = cwClrFlag(p->flags,kIsConnectedFl);
+  }
   
   if( recvByteCntRef != NULL )
     *recvByteCntRef = retVal;
@@ -575,6 +579,53 @@ cw::rc_t cw::net::socket::recv_from(handle_t h, char* buf, unsigned bufByteCnt, 
   return rc;
 }
 
+cw::rc_t cw::net::socket::get_mac( handle_t h, unsigned char outBuf[6], const char* interfaceName )
+{
+  cw::rc_t  rc   = kOkRC;
+  socket_t* p    = _handleToPtr(h);
+  struct ifreq  ifr;
+  struct ifconf ifc;
+  char buf[1024];
+    
+  ifc.ifc_len = sizeof(buf);
+  ifc.ifc_buf = buf;
+  
+  if (ioctl(p->sockH, SIOCGIFCONF, &ifc) == -1)
+  {
+    rc = cwLogSysError(kOpFailRC,errno,"ioctl(SIOCGIFCONF) failed.");
+    return rc;
+  }
+
+  struct ifreq*             it  = ifc.ifc_req;
+  const struct ifreq* const end = it + (ifc.ifc_len / sizeof(struct ifreq));
+
+  for (; it != end; ++it)
+  {
+    if( strcmp(it->ifr_name,interfaceName ) == 0 )
+    {
+      strcpy(ifr.ifr_name, it->ifr_name);
+        
+      if (ioctl(p->sockH, SIOCGIFFLAGS, &ifr) != 0)
+      {
+        rc = cwLogSysError(kOpFailRC,errno,"ioctl(SIOCGIFCONF) failed.");
+      }
+      else
+      {
+        if (! (ifr.ifr_flags & IFF_LOOPBACK))
+        {
+          // don't count loopback
+          if (ioctl(p->sockH, SIOCGIFHWADDR, &ifr) == 0)
+          {
+            memcpy(outBuf, ifr.ifr_hwaddr.sa_data, 6);
+            return kOkRC;
+          }
+        }
+      }
+    }
+  }
+  
+  return cwLogError(kInvalidArgRC,"The MAC address of interface '%s' could not be found.", interfaceName);
+}
 
 cw::rc_t cw::net::socket::initAddr( handle_t h, const char* addrStr, portNumber_t portNumber, struct sockaddr_in* retAddrPtr )
 {
