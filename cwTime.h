@@ -25,6 +25,8 @@ namespace cw
     // t1 is assumed to be at a later time than t0.
     unsigned elapsedMicros( const spec_t*  t0, const spec_t* t1 );
 
+    // Wrapper on elapsedMicros()
+    unsigned elapsedMs( const spec_t*  t0, const spec_t* t1 );
   
     // Same as elapsedMicros() but the times are not assumed to be ordered.
     // The function therefore begins by swapping t1 and t0 if t0 is after t1.

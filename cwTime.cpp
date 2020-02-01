@@ -61,6 +61,10 @@ unsigned cw::time::elapsedMicros( const spec_t* t0, const spec_t* t1 )
   return u1 - u0;
 }
 
+unsigned cw::time::elapsedMs( const spec_t*  t0, const spec_t* t1 )
+{ return elapsedMicros(t0,t1)/1000; }
+
+
 unsigned cw::time::absElapsedMicros( const spec_t*  t0, const spec_t* t1 )
 {
   if( isLTE(t0,t1) )
