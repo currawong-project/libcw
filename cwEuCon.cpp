@@ -1,0 +1,345 @@
+#include "cwCommon.h"
+
+#include "cwLog.h"
+#include "cwCommonImpl.h"
+
+
+#include "cwMem.h"
+#include "cwTime.h"
+
+#include "cwThread.h"
+#include "cwTcpSocket.h"
+#include "cwTcpSocketSrv.h"
+#include "cwUtility.h"
+
+#include "cwEuCon.h"
+#include "dns_sd/dns_sd_const.h"
+
+namespace cw
+{
+  namespace net
+  {
+    namespace eucon
+    {
+      enum
+      {
+       kSendHandshake_0_Id,
+       kWaitForBeat_1_Id,    //
+       kWaitForHandshake_2_Id,
+       kRunning_3_Id
+      };
+      
+      typedef struct eucon_str
+      {
+        srv::handle_t        udpH;
+        srv::handle_t        tcpH;
+        unsigned             udpRecvBufByteN;
+        unsigned             tcpRecvBufByteN;
+        socket::portNumber_t servicePort;
+        unsigned             protoState;
+        unsigned      cbCnt;
+        time::spec_t  t0;
+      } eucon_t;
+
+      inline eucon_t* _handleToPtr( handle_t h )
+      { return handleToPtr<handle_t,eucon_t>(h); }
+      
+      
+      rc_t _destroy( eucon_t* p)
+      {
+        rc_t rc = kOkRC;
+
+        srv::destroy(p->udpH);
+        srv::destroy(p->tcpH);
+        
+        mem::release(p);
+        return rc;
+      }
+
+      rc_t _init( eucon_t* p )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+
+      rc_t _sendHandshake_0( socket::handle_t sockH, const char* label )
+      {
+        rc_t          rc = kOkRC;
+        unsigned char buf[88];
+        memset(buf,0,88);
+        buf[0] = 0x0a;
+
+        // send the initial handshake 
+        if((rc = socket::send( sockH, buf, 88 )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Initial TCP '%s' request failed.",label);
+        }
+
+        return rc;
+      }
+
+      rc_t _sendHandshake_1( socket::handle_t sockH )
+      {
+        rc_t          rc = kOkRC;
+        unsigned char buf[4];
+        memset(buf,0,4);
+        buf[0] = 0x0c;
+
+        // send the initial handshake 
+        if((rc = socket::send( sockH, buf, 4 )) != kOkRC )
+        {
+          rc = cwLogError(rc,"TCP '%s' request failed.");
+        }
+
+        return rc;
+      }
+      
+      void _udpReceiveCallback( void* arg, const void* data, unsigned dataByteCnt, const struct sockaddr_in* fromAddr )
+      {
+        rc_t            rc = kOkRC;
+        eucon_t*        p  = (eucon_t*)arg;
+        const uint16_t* u  = (const uint16_t*)data;
+
+        // if this is a DNS-SD reply
+        if( cwIsFlag(ntohs(u[1]), kReplyHdrDnsFl ) )
+        {
+          const char* name  = (const char*)(u+6);
+          const char* label = "MC Mix - 1";
+
+          //printf("%.*s|%li\n", name[0], name+1, strlen(label) );
+
+          // if this a 'MC Mix' DNS-SD SRV reply
+          if( strncmp(name+1, label, name[0]) == 0 )
+          {
+            // get the address of the advertising 'MC Mix'
+            char addrBuf[ INET_ADDRSTRLEN+1 ];
+            if(socket::addrToString( fromAddr, addrBuf, INET_ADDRSTRLEN ) == kOkRC )
+            {
+              socket::handle_t sockH = socketHandle(p->tcpH);
+
+              // if the socket is not connected
+              if(  socket::isConnected(sockH) == false )
+              {
+                // Connect to the 'MC Mix' service
+                if((rc = socket::connect( sockH, addrBuf, p->servicePort )) != kOkRC )
+                {
+                  cwLogError(rc,"Connection to '%s' service failed.", label );
+                }
+                else
+                {
+                  printf("Connected.\n");
+
+                  if( true )
+                  {
+                    struct sockaddr_in addr;
+                    char aBuf[ INET_ADDRSTRLEN+1 ];
+                    socket::peername( sockH, &addr );
+                    socket::addrToString( &addr, aBuf, INET_ADDRSTRLEN);
+                    printf("PEER: %i %s\n", addr.sin_port,aBuf );
+                    
+                  }
+                  
+                  // Send the initial handshake to the Surface
+                  _sendHandshake_0( sockH, label );
+                  
+                  // FENCE
+                  p->protoState = kWaitForBeat_1_Id;
+                }
+              }
+            }
+          }
+        }        
+      }
+
+      void _tcpReceiveCallback( void* arg, const void* data, unsigned dataByteCnt, const struct sockaddr_in* fromAddr )
+      {
+        eucon_t* p = static_cast<eucon_t*>(arg);
+
+        if( dataByteCnt > 0)
+        {
+          if( dataByteCnt >= 4 )
+          {
+            //printHex(data,dataByteCnt);
+            unsigned hdr = *(const unsigned*)data;
+
+            switch( p->protoState )
+            {
+              case kWaitForBeat_1_Id:
+                if( hdr == 3 )
+                {
+                  p->protoState = kWaitForHandshake_2_Id;
+                  _sendHandshake_1( socketHandle(p->tcpH) );
+                }
+                break;
+
+              case kWaitForHandshake_2_Id:
+                if( hdr == 0x0d )
+                {
+                  p->protoState = kRunning_3_Id;
+                }
+                break;
+            }
+            
+          }
+        }
+        
+        p->cbCnt+=1;
+        
+        if( p->cbCnt % 20 == 0 )
+        {
+          time::spec_t t1;
+          time::get(t1);
+          unsigned ms = time::elapsedMs( &p->t0, &t1 );
+          printf("cb: %i %i\n",p->cbCnt,ms);
+        }
+      }
+      
+    }
+  }
+}
+
+
+cw::rc_t cw::net::eucon::create( handle_t& hRef, socket::portNumber_t tcpPort, socket::portNumber_t servicePort, unsigned recvBufByteN, unsigned timeOutMs )
+{
+  rc_t        rc              = kOkRC;
+  uint16_t    mdnsPort        = 5353;
+  const char* mdnsIp          = "224.0.0.251";
+  unsigned    udpRecvBufByteN = recvBufByteN;
+  unsigned    tcpRecvBufByteN = recvBufByteN;
+  unsigned    udpTimeOutMs    = timeOutMs;
+  unsigned    tcpTimeOutMs    = timeOutMs;
+  
+  if((rc = destroy(hRef)) != kOkRC )
+    return rc;
+
+  eucon_t* p         = mem::allocZ<eucon_t>();
+  p->udpRecvBufByteN = udpRecvBufByteN;
+  p->tcpRecvBufByteN = tcpRecvBufByteN;
+  p->servicePort     = servicePort;
+  p->protoState      = kSendHandshake_0_Id;
+  
+  // create the mDNS UDP socket server
+  if((rc = srv::create(
+        p->udpH,
+        mdnsPort,
+        socket::kBlockingFl | socket::kReuseAddrFl | socket::kReusePortFl | socket::kMultiCastTtlFl | socket::kMultiCastLoopFl,
+        srv::kUseRecvFromFl,
+        _udpReceiveCallback,
+        p,
+        p->udpRecvBufByteN,
+        udpTimeOutMs,
+        NULL,
+        socket::kInvalidPortNumber )) != kOkRC )
+  {    
+    return cwLogError(rc,"mDNS UDP socket create failed.");
+  }
+
+  // add the mDNS socket to the multicast group
+  if((rc =  join_multicast_group( socketHandle(p->udpH), mdnsIp )) != kOkRC )
+    goto errLabel;
+  
+  // set the TTL for multicast 
+  if((rc = set_multicast_time_to_live( socketHandle(p->udpH), 255 )) != kOkRC )
+    goto errLabel;
+
+  // create the service TCP socket server
+  if((rc = srv::create(
+        p->tcpH,
+        tcpPort,
+        socket::kTcpFl | socket::kBlockingFl | socket::kStreamFl,
+        0,
+        _tcpReceiveCallback,
+        p,
+        p->tcpRecvBufByteN,
+        tcpTimeOutMs,
+        NULL,
+        socket::kInvalidPortNumber)) != kOkRC )
+  {    
+    rc = cwLogError(rc,"mDNS TCP socket create failed.");
+    goto errLabel;
+  }
+
+  hRef.set(p);
+  
+ errLabel:
+  if( rc != kOkRC )
+    _destroy(p);
+
+  return rc;
+}
+
+cw::rc_t cw::net::eucon::destroy( handle_t& hRef )
+{
+  rc_t rc = kOkRC;
+  
+  if( !hRef.isValid() )
+    return rc;
+
+  eucon_t* p = _handleToPtr(hRef);
+  if((rc = _destroy(p)) != kOkRC )
+    return rc;
+  
+  hRef.clear();
+  return rc;
+  
+}
+
+cw::rc_t cw::net::eucon::start( handle_t h )
+{
+  rc_t     rc = kOkRC;
+  eucon_t* p  = _handleToPtr(h);
+
+  time::get(p->t0);
+  
+  if((rc = _init(p)) != kOkRC )
+    return rc;
+  
+  // start the mDNS socket server
+  if((rc = srv::start( p->udpH )) != kOkRC )
+    return rc;
+  
+  // start the TCP socket server
+  if((rc = srv::start( p->tcpH )) != kOkRC )
+    return rc;
+  
+  return rc;
+  
+}
+
+cw::rc_t cw::net::eucon::test()
+{
+  rc_t                 rc                 = kOkRC;
+  socket::portNumber_t tcpPort            = 49170;
+  socket::portNumber_t defaultServicePort = 49168;
+  const unsigned       sbufN              = 31;
+  unsigned             recvBufByteN       = 4096;
+  unsigned             timeOutMs          = 50;
+  handle_t             h;
+  char                 sbuf[ sbufN+1 ];
+
+  // create the EuCon server
+  if((rc = create(  h, tcpPort, defaultServicePort, recvBufByteN, timeOutMs )) != kOkRC )
+    return cwLogError(rc,"Unable to create EuCon server.");
+
+  // start the EuCon server
+  if((rc = start( h )) != kOkRC )
+    goto errLabel;
+  
+  while( true )
+  {
+    printf("? ");
+    if( std::fgets(sbuf,sbufN,stdin) == sbuf )
+    {
+
+      if( strcmp(sbuf,"quit\n") == 0 )
+        break;
+        
+    }
+  }
+
+ errLabel:
+  rc = destroy(h);
+
+  return rc;
+}
+
