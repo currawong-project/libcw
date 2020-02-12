@@ -272,4 +272,11 @@ cw::rc_t cw::audio::device::test( int argc, const char** argv )
 
 /// [cmAudioPortExample]
 
+cw::rc_t cw::audio::device::report()
+{
+  const char* argv[] = { "-p" };
+  return test(0,argv);   
+}
+
+
 

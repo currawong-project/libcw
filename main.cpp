@@ -24,6 +24,8 @@
 #include "cwTcpSocketSrv.h"
 #include "cwTcpSocketTest.h"
 #include "cwMdns.h"
+#include "cwDnsSd.h"
+#include "cwEuCon.h"
 //#include "cwNbMem.h"
 
 #include <iostream>
@@ -135,6 +137,7 @@ void textBufTest(       cw::object_t* cfg, int argc, const char* argv[] ) { cw::
 void audioBufTest(      cw::object_t* cfg, int argc, const char* argv[] ) { cw::audio::buf::test(); }
 void audioDevTest(      cw::object_t* cfg, int argc, const char* argv[] ) { cw::audio::device::test( argc, argv ); }
 void audioDevAlsaTest(  cw::object_t* cfg, int argc, const char* argv[] ) { cw::audio::device::alsa::report(); }
+void audioDevRpt(       cw::object_t* cfg, int argc, const char* argv[] ) { cw::audio::device::report(); }
 //void nbmemTest(         cw::object_t* cfg, int argc, const char* argv[] ) { cw::nbmem::test(); }
 
 void socketTest( cw::object_t* cfg, int argc, const char* argv[] )
@@ -171,22 +174,46 @@ void socketTestTcp( cw::object_t* cfg, int argc, const char* argv[] )
   }
 }
 
-void socketSrvTest( cw::object_t* cfg, int argc, const char* argv[] )
+void socketSrvUdpTest( cw::object_t* cfg, int argc, const char* argv[] )
 {
-  if( argc >= 3 )
+  if( argc >= 4 )
   {
     unsigned short localPort  = atoi(argv[1]);
-    unsigned short remotePort = atoi(argv[2]);
+    const char*    remoteIp   = argv[2];
+    unsigned short remotePort = atoi(argv[3]);
 
-    printf("local:%i remote:%i\n", localPort, remotePort);
+    printf("local:%i to remote:%s %i\n", localPort, remoteIp, remotePort);
     
-    cw::net::srv::test( localPort, "127.0.0.1", remotePort );
+    cw::net::srv::test_udp_srv( localPort, remoteIp, remotePort );
+  }
+}
+void socketSrvTcpTest( cw::object_t* cfg, int argc, const char* argv[] )
+{
+  if( argc >= 4 )
+  {
+    unsigned short localPort  = atoi(argv[1]);
+    const char*    remoteIp   = argv[2];
+    unsigned short remotePort = atoi(argv[3]);
+
+    printf("local:%i to remote:%s %i\n", localPort, remoteIp, remotePort);
+    
+    cw::net::srv::test_tcp_srv( localPort, remoteIp, remotePort );
   }
 }
 
 void socketMdnsTest( cw::object_t* cfg, int argc, const char* argv[] )
 {
   cw::net::mdns::test();
+}
+
+void dnsSdTest( cw::object_t* cfg, int arg, const char* argv[] )
+{
+  cw::net::dnssd::test();
+}
+
+void euConTest( cw::object_t* cfg, int arg, const char* argv[] )
+{
+  cw::net::eucon::test();
 }
 
 
@@ -219,10 +246,12 @@ void stubTest( cw::object_t* cfg, int argc, const char* argv[] )
   v_t v;
   printf("%i %i %p\n",v.x,v.y,v.z);
   */
-
+  /*
   const char* s = "\x16lmac=00-90-D5-80-F4-DE\x7dummy=0";
   printf("len:%li\n",strlen(s));
-    
+  */
+
+  
   
 }
 
@@ -251,11 +280,15 @@ int main( int argc, const char* argv[] )
    { "audioBuf", audioBufTest },
    { "audioDev",audioDevTest },
    { "audioDevAlsa", audioDevAlsaTest },
+   { "audioDevRpt", audioDevRpt },
    //{ "nbmem", nbmemTest },
    { "socket", socketTest },
    { "socketTcp", socketTestTcp },
-   { "socketSrv", socketSrvTest },
+   { "socketSrvUdp", socketSrvUdpTest },
+   { "socketSrvTcp", socketSrvTcpTest },
    { "socketMdns", socketMdnsTest },
+   { "dnssd",  dnsSdTest },
+   { "eucon",  euConTest },
    { "dirEntry", dirEntryTest },
    { "stub", stubTest },
    { nullptr, nullptr }

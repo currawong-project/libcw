@@ -8,6 +8,7 @@ namespace cw
     namespace device
     {
       rc_t test( int argc, const char** argv );
+      rc_t report();
     }
   }  
 }
