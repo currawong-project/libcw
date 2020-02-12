@@ -9,16 +9,25 @@ namespace cw
     {
       typedef void (*cbFunc_t)( void* cbArg, const void* data, unsigned dataByteCnt, const struct sockaddr_in* fromAddr ); 
       typedef handle< struct socksrv_str > handle_t;
+
+      enum
+      {
+       kUseAcceptFl     = 0x01,  // wait for a connection
+       kUseRecvFromFl   = 0x02,  // use socket::recv_from
+       kRecvTimeOutFl   = 0x04,  // Generate empty receive callbacks on receive timeouts
+      };
       
       rc_t create( handle_t& hRef,                 // 
         socket::portNumber_t port,                 // local port number
-        unsigned             flags,                // see socket::flags 
+        unsigned             flags,                // see socket::flags
+        unsigned             srvFlags,             // 
         cbFunc_t             cbFunc,               // callback for received messages
         void*                cbArg,                // callback arg
         unsigned             recvBufByteCnt = 1024,// recieve buffer size
         unsigned             timeOutMs      = 100, // time out to use with recv() on thread select()
         const char*          remoteAddr     = NULL,
-        socket::portNumber_t remotePort     = socket::kInvalidPortNumber );
+        socket::portNumber_t remotePort     = socket::kInvalidPortNumber,
+        const char*          localAddr      = NULL);
 
       rc_t destroy( handle_t& hRef );
 

@@ -13,7 +13,8 @@ namespace cw
 
     namespace srv
     {
-      rc_t test( socket::portNumber_t localPort, const char* remoteAddr, socket::portNumber_t remotePort );
+      rc_t test_udp_srv( socket::portNumber_t localPort, const char* remoteAddr, socket::portNumber_t remotePort );
+      rc_t test_tcp_srv( socket::portNumber_t localPort, const char* remoteAddr, socket::portNumber_t remotePort );
       rc_t mdns_test();
     }
   }

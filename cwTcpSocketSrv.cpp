@@ -21,6 +21,7 @@ namespace cw
         unsigned         timeOutMs;
         char*            recvBuf;
         unsigned         recvBufByteCnt;
+        unsigned         flags;
       } socksrv_t;
 
       inline socksrv_t* _handleToPtr( handle_t h ) { return handleToPtr<handle_t,socksrv_t>(h); }
@@ -43,23 +44,44 @@ namespace cw
 
       bool _threadFunc( void* arg )
       {
+        rc_t               rc         = kOkRC;
         socksrv_t*         p          = static_cast<socksrv_t*>(arg);
         unsigned           rcvByteCnt = 0;
         struct sockaddr_in fromAddr;
-        rc_t rc = kOkRC;
+
         
-        if( p->timeOutMs == 0 )
+        if( cwIsFlag(p->flags,kUseAcceptFl) && socket::isConnected(p->sockH)==false )
         {
-          rc = recv_from(p->sockH, p->recvBuf, p->recvBufByteCnt, &rcvByteCnt, &fromAddr );
-          sleepMs(100);
+          rc = socket::accept( p->sockH );
         }
         else
-          rc = select_recieve(p->sockH, p->recvBuf, p->recvBufByteCnt, p->timeOutMs, &rcvByteCnt, &fromAddr );
-        
-        if( rc == kOkRC )
-          if( rcvByteCnt>0 && p->cbFunc != nullptr )
-            p->cbFunc( p->cbArg, p->recvBuf, rcvByteCnt, &fromAddr );
-        
+        {
+          // if this is a TCP socket that is not connected
+          if(  cwIsFlag(socket::flags( p->sockH),socket::kTcpFl) &&  socket::isConnected(p->sockH) == false )
+          {
+            sleepMs(p->timeOutMs);
+          }
+          else
+          {
+            // this is a connected TCP socket or UDP socket
+            if( cwIsFlag(p->flags,kUseRecvFromFl) )
+            {
+              rc = recv_from(p->sockH, p->recvBuf, p->recvBufByteCnt, &rcvByteCnt, &fromAddr );
+            }
+            else
+            {
+              rc = select_receive(p->sockH, p->recvBuf, p->recvBufByteCnt, p->timeOutMs, &rcvByteCnt, &fromAddr );
+            }
+
+            if( (p->cbFunc != nullptr) && ((rc == kOkRC && rcvByteCnt>0) || (cwIsFlag(p->flags,kRecvTimeOutFl) && rc == kTimeOutRC)))
+            {
+              void*               buf  = rc == kTimeOutRC ? nullptr : p->recvBuf;
+              unsigned            n    = rc == kTimeOutRC ? 0       : rcvByteCnt;
+              struct sockaddr_in* addr = rc == kTimeOutRC ? nullptr : &fromAddr;
+              p->cbFunc( p->cbArg, buf, n, addr );
+            }
+          } 
+        }
         return true;
       }       
     }
@@ -70,12 +92,14 @@ cw::rc_t cw::net::srv::create(
   handle_t&            hRef,
   socket::portNumber_t port,
   unsigned             flags,
+  unsigned             srvFlags,
   cbFunc_t             cbFunc,
   void*                cbArg,
   unsigned             recvBufByteCnt,
   unsigned             timeOutMs,
   const char*          remoteAddr,
-  socket::portNumber_t remotePort )
+  socket::portNumber_t remotePort,
+  const char*          localAddr)
 {
   rc_t rc;
   if((rc = destroy(hRef)) != kOkRC )
@@ -83,16 +107,18 @@ cw::rc_t cw::net::srv::create(
 
   socksrv_t* p = mem::allocZ<socksrv_t>();
 
-  if((rc = socket::create( p->sockH, port, flags, timeOutMs, remoteAddr, remotePort )) != kOkRC )
+  if((rc = socket::create( p->sockH, port, flags, timeOutMs, remoteAddr, remotePort, localAddr )) != kOkRC )
     goto errLabel;
 
   if((rc = thread::create( p->threadH, _threadFunc, p )) != kOkRC )
     goto errLabel;
 
+  p->flags          = srvFlags;
   p->recvBuf        = mem::allocZ<char>( recvBufByteCnt );
   p->recvBufByteCnt = recvBufByteCnt;
   p->cbFunc         = cbFunc;
   p->cbArg          = cbArg;
+  p->timeOutMs      = timeOutMs;
 
  errLabel:
   if( rc == kOkRC )

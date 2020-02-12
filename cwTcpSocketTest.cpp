@@ -38,7 +38,7 @@ namespace cw
         char               buf[ app->recvBufByteN ];
         unsigned           recvBufByteN = 0;
         
-        if((rc = recieve( app->sockH, buf, app->recvBufByteN, &recvBufByteN, &fromAddr )) == kOkRC )
+        if((rc = receive( app->sockH, buf, app->recvBufByteN, &recvBufByteN, &fromAddr )) == kOkRC )
         {
           addrToString( &fromAddr, addrBuf );
           printf("%i %s from %s\n", recvBufByteN, buf, addrBuf );
@@ -77,7 +77,7 @@ namespace cw
         }
         else
         {              
-          if((rc = recieve( app->sockH, buf, app->recvBufByteN, &recvBufByteN, nullptr )) == kOkRC )
+          if((rc = receive( app->sockH, buf, app->recvBufByteN, &recvBufByteN, nullptr )) == kOkRC )
           {
             // if the server disconnects then recvBufByteN 
             if( !isConnected( app->sockH) )
@@ -238,19 +238,19 @@ namespace cw
         unsigned cbN;
       } app_t;
       
-      void srvRecieveCallback( void* arg, const void* data, unsigned dataByteCnt, const struct sockaddr_in* fromAddr )
+      void srvReceiveCallback( void* arg, const void* data, unsigned dataByteCnt, const struct sockaddr_in* fromAddr )
       {
         app_t* p = static_cast<app_t*>(arg);
         char addrBuf[ INET_ADDRSTRLEN ];
         socket::addrToString( fromAddr, addrBuf, INET_ADDRSTRLEN );
         p->cbN += 1;
-        printf("%i %s %s", p->cbN, addrBuf, (const char*)data );
+        printf("%i %s %s\n", p->cbN, addrBuf, (const char*)data );
       }
     }      
   }
 }
 
-cw::rc_t cw::net::srv::test( socket::portNumber_t localPort, const char* remoteAddr, socket::portNumber_t remotePort )
+cw::rc_t cw::net::srv::test_udp_srv( socket::portNumber_t localPort, const char* remoteAddr, socket::portNumber_t remotePort )
 {
   rc_t           rc;
   unsigned       recvBufByteCnt = 1024;
@@ -260,7 +260,17 @@ cw::rc_t cw::net::srv::test( socket::portNumber_t localPort, const char* remoteA
   app_t          app;
   app.cbN = 0;
   
-  if((rc = srv::create(app.srvH, localPort, socket::kBlockingFl, srvRecieveCallback, &app, recvBufByteCnt, timeOutMs, NULL, socket::kInvalidPortNumber )) != kOkRC )
+  if((rc = srv::create(app.srvH,
+        localPort,
+        socket::kBlockingFl,
+        0,
+        srvReceiveCallback,
+        &app,
+        recvBufByteCnt,
+        timeOutMs,
+        nullptr,
+        socket::kInvalidPortNumber )) != kOkRC )
+    
     return rc;
 
   if((rc = srv::start( app.srvH )) != kOkRC )
@@ -273,6 +283,51 @@ cw::rc_t cw::net::srv::test( socket::portNumber_t localPort, const char* remoteA
     {
       printf("Sending:%s",sbuf);
       send(app.srvH, sbuf, strlen(sbuf)+1, remoteAddr, remotePort );
+      
+      if( strcmp(sbuf,"quit\n") == 0)
+        break;
+    }
+  }
+
+ errLabel:
+  rc_t rc0 = destroy(app.srvH);
+
+  return rcSelect(rc,rc0);  
+}
+
+cw::rc_t cw::net::srv::test_tcp_srv( socket::portNumber_t localPort, const char* remoteAddr, socket::portNumber_t remotePort )
+{
+  rc_t           rc;
+  unsigned       recvBufByteCnt = 1024;
+  unsigned       timeOutMs      = 100;
+  const unsigned sbufN          = 31;
+  char           sbuf[ sbufN+1 ];
+  app_t          app;
+  app.cbN = 0;
+  
+  if((rc = srv::create(app.srvH,
+        localPort,
+        socket::kBlockingFl | socket::kTcpFl | socket::kStreamFl,
+        0,
+        srvReceiveCallback,
+        &app,
+        recvBufByteCnt,
+        timeOutMs,
+        remoteAddr,
+        remotePort )) != kOkRC )
+    
+    return rc;
+
+  if((rc = srv::start( app.srvH )) != kOkRC )
+    goto errLabel;
+
+  while( true )
+  {
+    printf("? ");
+    if( std::fgets(sbuf,sbufN,stdin) == sbuf )
+    {
+      printf("Sending:%s",sbuf);
+      send(app.srvH, sbuf, strlen(sbuf)+1 );
       
       if( strcmp(sbuf,"quit\n") == 0)
         break;

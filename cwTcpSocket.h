@@ -23,7 +23,7 @@ namespace cw
        kMultiCastTtlFl  = 0x020,
        kMultiCastLoopFl = 0x040,
        kListenFl        = 0x080,
-       kStreamFl        = 0x100
+       kStreamFl        = 0x100,  // connected stream (not Datagram)
       };
 
       enum
@@ -38,9 +38,12 @@ namespace cw
         unsigned             flags,
         unsigned             timeOutMs  = 100, // time out to use with recv() on blocking sockets
         const char*          remoteAddr = NULL,
-        portNumber_t         remotePort = socket::kInvalidPortNumber );
-
+        portNumber_t         remotePort = socket::kInvalidPortNumber,
+        const char*          localAddr  = NULL );
+      
       rc_t destroy( handle_t& hRef );
+
+      unsigned flags( handle_t h );
 
       rc_t set_multicast_time_to_live( handle_t h, unsigned seconds );
 
@@ -77,26 +80,31 @@ namespace cw
       // return immediately if no incoming messages are waiting.  If
       // recvByteCntRef is valid (non-NULL) then it is set to the
       // length of the received message or 0 if no msg was received.
-      rc_t recieve(handle_t h, char* data, unsigned dataByteCnt, unsigned* recvByteCntRef=nullptr, struct sockaddr_in* fromAddr=nullptr );
+      rc_t receive(handle_t h, char* data, unsigned dataByteCnt, unsigned* recvByteCntRef=nullptr, struct sockaddr_in* fromAddr=nullptr );
 
       // 
-      rc_t select_recieve(handle_t h, char* buf, unsigned bufByteCnt, unsigned timeOutMs, unsigned* recvByteCntRef=nullptr, struct sockaddr_in* fromAddr=nullptr );
+      rc_t select_receive(handle_t h, char* buf, unsigned bufByteCnt, unsigned timeOutMs, unsigned* recvByteCntRef=nullptr, struct sockaddr_in* fromAddr=nullptr );
 
       //
       rc_t recv_from(handle_t h, char* buf, unsigned bufByteCnt, unsigned* recvByteCntRef=nullptr, struct sockaddr_in* fromAddr=nullptr );
 
       // Note that 
-      rc_t get_mac( handle_t h, unsigned char buf[6], const char* interfaceName=nullptr );
+      rc_t get_mac( handle_t h, unsigned char buf[6], struct sockaddr_in* addr=nullptr, const char* netInterfaceName=nullptr );
 
       // Prepare a struct sockadddr_in for use with send()
       rc_t        initAddr( handle_t h, const char* addrStr, portNumber_t portNumber, struct sockaddr_in* retAddrPtr );
       
-      const char* addrToString( const struct sockaddr_in* addr, char* buf, unsigned bufN=INET_ADDRSTRLEN );
+      rc_t        addrToString( const struct sockaddr_in* addr, char* buf, unsigned bufN=INET_ADDRSTRLEN );
       
       bool        addrIsEqual( const struct sockaddr_in* addr0, const struct sockaddr_in* addr1 );
       
-      const char* hostName( handle_t h );
-      
+      const char*   hostName( handle_t h );
+      const char*   ipAddress( handle_t h );
+      unsigned      inetAddress( handle_t h );
+      portNumber_t  port( handle_t h );
+      rc_t          peername( handle_t h, struct sockaddr_in* addr );
+
+      rc_t get_info( const char* netInterfaceName, unsigned char mac[6], char* hostBuf=nullptr, unsigned hostBufN=_POSIX_HOST_NAME_MAX, struct sockaddr_in* addr=nullptr );
 
       
       

@@ -37,6 +37,7 @@ namespace cw
       {
         int                sockH;
         int                fdH;
+        unsigned           createFlags;
         unsigned           flags;
         unsigned           recvBufByteCnt;
         struct sockaddr_in sockaddr;
@@ -140,7 +141,61 @@ namespace cw
 
       errLabel:
         return rc;
-      }      
+      }
+
+      rc_t _get_info( int sockH, unsigned char outBuf[6], struct sockaddr_in* addr, const char* interfaceName )
+      {
+        cw::rc_t  rc   = kOkRC;
+        struct ifreq  ifr;
+        struct ifconf ifc;
+        char buf[1024];
+    
+        ifc.ifc_len = sizeof(buf);
+        ifc.ifc_buf = buf;
+  
+        if (ioctl(sockH, SIOCGIFCONF, &ifc) == -1)
+        {
+          rc = cwLogSysError(kOpFailRC,errno,"ioctl(SIOCGIFCONF) failed.");
+          return rc;
+        }
+
+        struct ifreq*             it  = ifc.ifc_req;
+        const struct ifreq* const end = it + (ifc.ifc_len / sizeof(struct ifreq));
+
+        for (; it != end; ++it)
+        {
+          if( strcmp(it->ifr_name,interfaceName ) == 0 )
+          {
+            strcpy(ifr.ifr_name, it->ifr_name);
+        
+            if (ioctl(sockH, SIOCGIFFLAGS, &ifr) != 0)
+            {
+              rc = cwLogSysError(kOpFailRC,errno,"ioctl(SIOCGIFCONF) failed.");
+            }
+            else
+            {
+              if (! (ifr.ifr_flags & IFF_LOOPBACK))
+              {
+                // don't count loopback
+                if (ioctl(sockH, SIOCGIFHWADDR, &ifr) == 0)
+                {
+                  memcpy(outBuf, ifr.ifr_hwaddr.sa_data, 6);
+
+                  if( addr != nullptr &&  ioctl(sockH, SIOCGIFADDR, &ifr) == 0)
+                  {
+                    addr->sin_addr = ((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr;
+                  }
+            
+                  return kOkRC;
+                }
+              }
+            }
+          }
+        }
+  
+        return cwLogError(kInvalidArgRC,"The network interface information for '%s' could not be found.", interfaceName);
+      }
+      
     }
   }    
 }
@@ -152,16 +207,18 @@ cw::rc_t cw::net::socket::create(
   unsigned     flags,
   unsigned     timeOutMs,
   const char*  remoteAddr,
-  portNumber_t remotePort )
+  portNumber_t remotePort,
+  const char*  localAddr)
 {
   rc_t rc;
   if((rc = destroy(hRef)) != kOkRC )
     return rc;
 
   socket_t* p = mem::allocZ<socket_t>();
-  p->sockH = cwSOCKET_NULL_SOCK;
-  p->fdH   = cwSOCKET_NULL_SOCK;
-
+  p->sockH       = cwSOCKET_NULL_SOCK;
+  p->fdH         = cwSOCKET_NULL_SOCK;
+  p->createFlags = flags;
+  
   int type     = cwIsFlag(flags,kStreamFl) ? SOCK_STREAM : SOCK_DGRAM;
   int protocol = cwIsFlag(flags,kTcpFl)    ? 0           : IPPROTO_UDP;
   
@@ -259,11 +316,10 @@ cw::rc_t cw::net::socket::create(
     }
   }
   
-  // create the local address		
-  if((rc = _initAddr(p, NULL, port,  &p->sockaddr )) != kOkRC )
+  // create the 32 bit local address		
+  if((rc = _initAddr(p, localAddr, port,  &p->sockaddr )) != kOkRC )
     goto errLabel;
-			
-  
+
   // bind the socket to a local address/port	
   if( (bind( p->sockH, (struct sockaddr*)&p->sockaddr, sizeof(p->sockaddr))) == cwSOCKET_SYS_ERR )
   {
@@ -271,6 +327,11 @@ cw::rc_t cw::net::socket::create(
     goto errLabel;
   }
 
+  // get the local address as a string
+  if((rc = addrToString( &p->sockaddr, p->ntopBuf,  sizeof(p->ntopBuf) )) != kOkRC )
+    goto errLabel;
+  
+  
   // if a remote addr was given connect this socket to it
   if( remoteAddr != NULL )
     if((rc = _connect(p,remoteAddr,remotePort)) != kOkRC )
@@ -308,6 +369,12 @@ cw::rc_t cw::net::socket::destroy( handle_t& hRef )
 
   hRef.clear();
   return rc;
+}
+
+unsigned cw::net::socket::flags( handle_t h )
+{
+  socket_t* p  = _handleToPtr(h);
+  return p->createFlags;
 }
 
 cw::rc_t cw::net::socket::set_multicast_time_to_live( handle_t h, unsigned seconds )
@@ -392,8 +459,19 @@ cw::rc_t cw::net::socket::accept( handle_t h )
 
     p->flags = cwSetFlag(p->flags,kIsConnectedFl);
 
-    printf("Connect:%s\n",s);
-
+    /*
+                  if( false )
+                  {
+                    struct sockaddr_in addr;
+                    char aBuf[ INET_ADDRSTRLEN+1 ];
+                    peername( h, &addr );
+                    addrToString( &addr, aBuf, INET_ADDRSTRLEN);
+                    printf("DNS-SD PEER: %i %s\n", addr.sin_port,aBuf );
+                    
+                  }
+    */
+    
+    cwLogInfo("Connect:%s\n",s);
   }
 
  errLabel:
@@ -453,7 +531,7 @@ cw::rc_t cw::net::socket::send( handle_t h, const void* data, unsigned dataByteC
   return send( h, data, dataByteCnt, &addr );
 }
 
-cw::rc_t cw::net::socket::recieve( handle_t h, char* data, unsigned dataByteCnt, unsigned* recvByteCntRef, struct sockaddr_in* fromAddr )
+cw::rc_t cw::net::socket::receive( handle_t h, char* data, unsigned dataByteCnt, unsigned* recvByteCntRef, struct sockaddr_in* fromAddr )
 {
   socket_t* p                = _handleToPtr(h);
   rc_t      rc               = kOkRC;
@@ -468,22 +546,29 @@ cw::rc_t cw::net::socket::recieve( handle_t h, char* data, unsigned dataByteCnt,
   int fd = p->fdH != cwSOCKET_NULL_SOCK ? p->fdH : p->sockH;
 
 	if((retVal = recvfrom(fd, data, dataByteCnt, 0, (struct sockaddr*)fromAddr, &sizeOfRemoteAddr )) == cwSOCKET_SYS_ERR )
-      return errno == EAGAIN ? kTimeOutRC : cwLogSysError(kOpFailRC,errno,"recvfrom() failed.");
-
-
-  // if the read 0 bytes but did not time out this probably means that it was disconnected
-  if( retVal == 0 )
   {
-    //p->flags = cwClrFlag(p->flags,kIsConnectedFl);
+    switch( errno )
+    {
+      case EAGAIN:
+        return kTimeOutRC;
+
+      case ENOTCONN:
+        if( cwIsFlag(p->flags,kIsConnectedFl ) )
+          cwLogWarning("Socket Disconnected.");
+        
+        p->flags = cwClrFlag(p->flags,kIsConnectedFl);
+    }
+    
+    return cwLogSysError(kOpFailRC,errno,"recvfrom() failed.");
   }
-  
+
   if( recvByteCntRef != NULL )
     *recvByteCntRef = retVal;
 
   return rc;  
 }
 
-cw::rc_t cw::net::socket::select_recieve(handle_t h, char* buf, unsigned bufByteCnt, unsigned timeOutMs, unsigned* recvByteCntRef, struct sockaddr_in* fromAddr )
+cw::rc_t cw::net::socket::select_receive(handle_t h, char* buf, unsigned bufByteCnt, unsigned timeOutMs, unsigned* recvByteCntRef, struct sockaddr_in* fromAddr )
 {
   rc_t           rc = kOkRC;
   socket_t*      p  = _handleToPtr(h);
@@ -509,7 +594,8 @@ cw::rc_t cw::net::socket::select_recieve(handle_t h, char* buf, unsigned bufByte
         cwLogSysError(kOpFailRC,errno,"Select failed.");
       break;
 			
-    case 0:   // select() timed out	
+    case 0:   // select() timed out
+      rc = kTimeOutRC;
       break;
 			
     case 1:   // (> 0) count of ready descripters
@@ -522,7 +608,19 @@ cw::rc_t cw::net::socket::select_recieve(handle_t h, char* buf, unsigned bufByte
 
         // recv the incoming msg into buf[]
         if(( retByteCnt = recvfrom( p->sockH, buf, bufByteCnt, 0, (struct sockaddr*)fromAddr, &addrByteCnt )) == cwSOCKET_SYS_ERR )
+        {
+          switch( errno )
+          {
+            case ECONNRESET:
+              if( cwIsFlag(p->flags,kIsConnectedFl) )
+                cwLogWarning("Socket Disconnected.");
+              p->flags = cwClrFlag(p->flags,kIsConnectedFl);
+
+          }
+          
           rc = cwLogSysError(kOpFailRC,errno,"recvfrom() failed.");
+          
+        }
         else
         {
           // check for overflow
@@ -579,52 +677,10 @@ cw::rc_t cw::net::socket::recv_from(handle_t h, char* buf, unsigned bufByteCnt, 
   return rc;
 }
 
-cw::rc_t cw::net::socket::get_mac( handle_t h, unsigned char outBuf[6], const char* interfaceName )
+cw::rc_t cw::net::socket::get_mac( handle_t h, unsigned char outBuf[6], struct sockaddr_in* addr, const char* netInterfaceName )
 {
-  cw::rc_t  rc   = kOkRC;
-  socket_t* p    = _handleToPtr(h);
-  struct ifreq  ifr;
-  struct ifconf ifc;
-  char buf[1024];
-    
-  ifc.ifc_len = sizeof(buf);
-  ifc.ifc_buf = buf;
-  
-  if (ioctl(p->sockH, SIOCGIFCONF, &ifc) == -1)
-  {
-    rc = cwLogSysError(kOpFailRC,errno,"ioctl(SIOCGIFCONF) failed.");
-    return rc;
-  }
-
-  struct ifreq*             it  = ifc.ifc_req;
-  const struct ifreq* const end = it + (ifc.ifc_len / sizeof(struct ifreq));
-
-  for (; it != end; ++it)
-  {
-    if( strcmp(it->ifr_name,interfaceName ) == 0 )
-    {
-      strcpy(ifr.ifr_name, it->ifr_name);
-        
-      if (ioctl(p->sockH, SIOCGIFFLAGS, &ifr) != 0)
-      {
-        rc = cwLogSysError(kOpFailRC,errno,"ioctl(SIOCGIFCONF) failed.");
-      }
-      else
-      {
-        if (! (ifr.ifr_flags & IFF_LOOPBACK))
-        {
-          // don't count loopback
-          if (ioctl(p->sockH, SIOCGIFHWADDR, &ifr) == 0)
-          {
-            memcpy(outBuf, ifr.ifr_hwaddr.sa_data, 6);
-            return kOkRC;
-          }
-        }
-      }
-    }
-  }
-  
-  return cwLogError(kInvalidArgRC,"The MAC address of interface '%s' could not be found.", interfaceName);
+  socket_t* p = _handleToPtr(h);
+  return _get_info(p->sockH, outBuf, addr, netInterfaceName );
 }
 
 cw::rc_t cw::net::socket::initAddr( handle_t h, const char* addrStr, portNumber_t portNumber, struct sockaddr_in* retAddrPtr )
@@ -633,18 +689,21 @@ cw::rc_t cw::net::socket::initAddr( handle_t h, const char* addrStr, portNumber_
   return _initAddr(p,addrStr,portNumber,retAddrPtr);
 }
       
-const char* cw::net::socket::addrToString( const struct sockaddr_in* addr, char* buf, unsigned bufN )
+cw::rc_t cw::net::socket::addrToString( const struct sockaddr_in* addr, char* buf, unsigned bufN )
 {
+  rc_t rc = kOkRC;
+  
   errno = 0;
   
   if( inet_ntop(AF_INET, &(addr->sin_addr),  buf, bufN) == NULL)
   {
-    cwLogSysError(kOpFailRC,errno, "Network address to string conversion failed." );
-    return NULL;
+    rc = cwLogSysError(kOpFailRC,errno, "Network address to string conversion failed." );
+    goto errLabel;
   }
   
   buf[bufN-1]=0;
-  return buf;
+ errLabel:
+  return rc;
 }
       
 bool cw::net::socket::addrIsEqual( const struct sockaddr_in* a0, const struct sockaddr_in* a1 )
@@ -662,10 +721,64 @@ const char* cw::net::socket::hostName( handle_t h )
 
   if( gethostname(p->hnameBuf,HOST_NAME_MAX) != 0 )
   {
-     cwLogSysError(kOpFailRC,errno, "gethostname() failed." );
-     return NULL;
+    cwLogSysError(kOpFailRC,errno, "gethostname() failed." );
+    return NULL;
   }
   
   p->hnameBuf[HOST_NAME_MAX] = 0;
   return p->hnameBuf;
+}
+
+const char* cw::net::socket::ipAddress( handle_t h )
+{
+  socket_t* p = _handleToPtr(h);
+  return p->ntopBuf;
+}
+
+unsigned    cw::net::socket::inetAddress( handle_t h )
+{
+  socket_t* p = _handleToPtr(h);
+
+  return  p->sockaddr.sin_addr.s_addr;
+}
+
+cw::net::socket::portNumber_t    cw::net::socket::port( handle_t h )
+{
+  socket_t* p = _handleToPtr(h);
+  return  ntohs(p->sockaddr.sin_port);
+}
+
+cw::rc_t cw::net::socket::peername( handle_t h, struct sockaddr_in* addr )
+{
+  rc_t      rc = kOkRC;
+  socklen_t n  = sizeof(struct sockaddr_in);
+  socket_t* p = _handleToPtr(h);
+  
+  if( getpeername(p->sockH, (struct sockaddr*)addr, &n)  == cwSOCKET_SYS_ERR )
+    return cwLogSysError(kOpFailRC,errno,"Get peer name failed.");
+
+  addr->sin_port = ntohs(addr->sin_port);
+
+  return rc;
+}
+
+cw::rc_t cw::net::socket::get_info( const char* netInterfaceName, unsigned char mac[6], char* host, unsigned hostN, struct sockaddr_in* addr )
+{
+  rc_t rc = kOkRC;
+  int sockH;
+
+  if( host != nullptr )
+    if( gethostname(host,hostN) != 0 )
+      return cwLogSysError(kOpFailRC,errno,"Unable to get the local host name.");
+  
+  // get a handle to the socket
+  if(( sockH = ::socket( AF_INET, SOCK_DGRAM, 0 ) ) == cwSOCKET_SYS_ERR )
+    return cwLogSysError(kOpFailRC,errno,"Unable to create temporary socket.");
+
+  if((rc = _get_info(sockH,mac,addr,netInterfaceName)) != kOkRC )
+    goto errLabel;
+
+ errLabel:
+  close(sockH);
+  return rc;
 }
