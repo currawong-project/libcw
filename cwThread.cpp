@@ -28,6 +28,8 @@ namespace cw
       unsigned  stateMicros;
       unsigned  pauseMicros;
       unsigned  sleepMicros = 15000;
+      pthread_attr_t attr;
+      
     } thread_t;
 
     inline thread_t* _handleToPtr(handle_t h) { return handleToPtr<handle_t,thread_t>(h); }
@@ -104,7 +106,6 @@ cw::rc_t cw::thread::create( handle_t& hRef, cbFunc_t func, void* funcArg, int s
 {
   rc_t rc;
   int  sysRC;
-  pthread_attr_t attr;
 
   if((rc = destroy(hRef)) != kOkRC )
     return rc;
@@ -117,19 +118,19 @@ cw::rc_t cw::thread::create( handle_t& hRef, cbFunc_t func, void* funcArg, int s
   p->pauseMicros = pauseMicros;
   p->stateId     = kPausedThId;
 
-  if((sysRC = pthread_attr_init(&attr)) != 0)
+  if((sysRC = pthread_attr_init(&p->attr)) != 0)
   {
     p->stateId = kNotInitThId;
     rc = cwLogSysError(kOpFailRC,sysRC,"Thread attribute init failed.");
   }
   else
-    if ((sysRC = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)) != 0)
+    if ((sysRC = pthread_attr_setdetachstate(&p->attr, PTHREAD_CREATE_DETACHED)) != 0)
     {
       p->stateId = kNotInitThId;
       rc = cwLogSysError(kOpFailRC,sysRC,"Thread set detach attribute failed.");
     }  
     else      
-      if((sysRC = pthread_create(&p->pThreadH, &attr, _threadCallback, (void*)p )) != 0 )
+      if((sysRC = pthread_create(&p->pThreadH, &p->attr, _threadCallback, (void*)p )) != 0 )
       {
         p->stateId = kNotInitThId;
         rc = cwLogSysError(kOpFailRC,sysRC,"Thread create failed.");
@@ -155,6 +156,10 @@ cw::rc_t cw::thread::destroy( handle_t& hRef )
   if((rc = _waitForState(p,kExitedThId)) != kOkRC )
     return  cwLogError(rc,"Thread timed out waiting for destroy.");
 
+  if( pthread_attr_destroy(&p->attr) != 0 )
+    rc = cwLogError(kOpFailRC,"Thread attribute destroy failed.");
+    
+  
   mem::release(p);
   hRef.clear();
   
