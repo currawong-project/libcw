@@ -43,7 +43,7 @@ namespace cw
       
     rc_t create(
       handle_t&   h,
-      const char* cfgStr,
+      const char* cfgStr,      // configuration information as text
       cbFunc_t    cbFunc,
       void*       cbArg,
       const char* cfgLabel="io" );
@@ -65,6 +65,10 @@ namespace cw
     const char* midiDevicePortName(  handle_t h, unsigned devIdx, bool inputFl, unsigned portIdx );
     unsigned    midiDevicePortIndex( handle_t h, unsigned devIdx, bool inputFl, const char* portName );    
     rc_t        midiDeviceSend(      handle_t h, unsigned devIdx, unsigned portIdx, midi::byte_t status, midi::byte_t d0, midi::byte_t d1 );
+
+    
+
+    
     
   }
 }

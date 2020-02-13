@@ -38,6 +38,15 @@ cw::rc_t cw::io::test()
               midi: {
                  parserBufByteN: 1024,
               }
+          
+              audio: [
+                {
+                  name:   "default",
+                  device: "HDA Intel PCH CS4208 Analog",
+                  srate:  48000,
+                  framesPerCycle: 64                  
+                }
+              ]
             }
       })";
     

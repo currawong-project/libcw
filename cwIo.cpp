@@ -15,6 +15,10 @@
 #include "cwSerialPort.h"
 #include "cwSerialPortSrv.h"
 
+#include "cwAudioDevice.h"
+#include "cwAudioBuf.h"
+#include "cwAudioDeviceAlsa.h"
+
 
 namespace cw
 {
@@ -41,7 +45,11 @@ namespace cw
       serialPort_t*          serialA;
       unsigned               serialN;
       
-      midi::device::handle_t midiH;      
+      midi::device::handle_t midiH;
+
+      audio::device::handle_t       audioH;
+      audio::device::alsa::handle_t alsaH;
+      
     } io_t;
   
 
@@ -215,6 +223,59 @@ namespace cw
       
       return rc;
     }
+
+    void _audioDeviceCallback( void* cbArg, audio::device::audioPacket_t* inPktArray, unsigned inPktCnt, audio::device::audioPacket_t* outPktArray, unsigned outPktCnt )
+    {
+    }
+
+    rc_t _audioDeviceConfig( io_t* p, const object_t* c )
+    {
+      rc_t rc = kOkRC;
+      
+      
+      
+      return rc;
+    }
+
+
+    rc_t _audioDeviceCreate( io_t* p, const object_t*& c )
+    {      
+      rc_t                     rc       = kOkRC;
+      audio::device::driver_t* audioDrv = nullptr;
+
+      // initialize the audio device interface  
+      if((rc = audio::device::create(p->audioH)) != kOkRC )
+      {
+        cwLogInfo("Initialize failed.");
+        goto errLabel;
+      }
+
+      // initialize the ALSA device driver interface
+      if((rc = audio::device::alsa::create(p->alsaH, audioDrv )) != kOkRC )
+      {
+        cwLogInfo("ALSA initialize failed.");
+        goto errLabel;
+      }
+
+      // register the ALSA device driver with the audio interface
+      if((rc = audio::device::registerDriver( p->audioH, audioDrv )) != kOkRC )
+      {
+        cwLogInfo("ALSA driver registration failed.");
+        goto errLabel;
+      }
+
+      // 
+      if((rc = _audioDeviceConfig( p, c )) != kOkRC )
+      {
+        cwLogInfo("Audio device configuration failed.");
+        goto errLabel;
+      }
+
+
+    errLabel:
+      return rc;
+    }
+
   }
 }
 
@@ -252,6 +313,10 @@ cw::rc_t cw::io::create( handle_t& h, const char* cfgStr, cbFunc_t cbFunc, void*
 
   // create the MIDI port device
   if((rc = _midiPortCreate(p,o)) != kOkRC )
+    goto errLabel;
+
+  // create the Audio device interface
+  if((rc = _audioDeviceCreate(p,o)) != kOkRC )
     goto errLabel;
   
   // create the the thread
