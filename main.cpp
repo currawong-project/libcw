@@ -26,6 +26,8 @@
 #include "cwMdns.h"
 #include "cwDnsSd.h"
 #include "cwEuCon.h"
+#include "cwIo.h"
+#include "cwIoTest.h"
 //#include "cwNbMem.h"
 
 #include <iostream>
@@ -138,7 +140,7 @@ void audioBufTest(      cw::object_t* cfg, int argc, const char* argv[] ) { cw::
 void audioDevTest(      cw::object_t* cfg, int argc, const char* argv[] ) { cw::audio::device::test( argc, argv ); }
 void audioDevAlsaTest(  cw::object_t* cfg, int argc, const char* argv[] ) { cw::audio::device::alsa::report(); }
 void audioDevRpt(       cw::object_t* cfg, int argc, const char* argv[] ) { cw::audio::device::report(); }
-//void nbmemTest(         cw::object_t* cfg, int argc, const char* argv[] ) { cw::nbmem::test(); }
+void ioTest(            cw::object_t* cfg, int argc, const char* argv[] ) { cw::io::test(); }
 
 void socketTest( cw::object_t* cfg, int argc, const char* argv[] )
 {
@@ -290,6 +292,7 @@ int main( int argc, const char* argv[] )
    { "dnssd",  dnsSdTest },
    { "eucon",  euConTest },
    { "dirEntry", dirEntryTest },
+   { "io", ioTest },
    { "stub", stubTest },
    { nullptr, nullptr }
   };
