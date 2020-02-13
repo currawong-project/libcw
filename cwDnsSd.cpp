@@ -10,6 +10,8 @@
 
 #include "cwDnsSd.h"
 #include "cwUtility.h"
+
+#include "dns_sd/rpt.h"
 #include "dns_sd/dns_sd.h"
 #include "dns_sd/fader.h"
 
@@ -46,16 +48,24 @@ namespace cw
         char*         hostIpAddr;
         uint16_t      hostPort;
         unsigned char hostMac[6];
+        unsigned      ticksPerHeartBeat;
 
         unsigned cbCnt;
         time::spec_t t0;
         
       } dnssd_t;
 
+      void print_callback( const char* text )
+      {
+        printf("%s",text);
+      }
+      
       inline dnssd_t* _handleToPtr( handle_t h )
       {
         return handleToPtr<handle_t,dnssd_t>(h);
       }
+
+      
 
       rc_t _destroy( dnssd_t* p )
       {
@@ -132,7 +142,7 @@ namespace cw
 
         if( dataByteCnt > 0 )
         {
-          p->fdr->host_receive( data, dataByteCnt );  
+          p->fdr->receive( data, dataByteCnt );  
         }
 
         time::spec_t t1;
@@ -219,17 +229,17 @@ namespace cw
           delete p->dnsSd;
 
         // create the MDNS logic object
-        p->dnsSd = new dns_sd(udpSendCallback,p);
+        p->dnsSd = new dns_sd(udpSendCallback,p,print_callback);
         
         // create the Surface logic object
-        p->fdr   = new fader(p->hostMac, hostAddr.sin_addr.s_addr, tcpSendCallback, p );
+        p->fdr   = new fader(print_callback, p->hostMac, hostAddr.sin_addr.s_addr, tcpSendCallback, p, p->ticksPerHeartBeat );
   
         // Setup the internal dnsSd object
         p->dnsSd->setup( p->serviceName, p->serviceType, p->serviceDomain, p->hostName, hostAddr.sin_addr.s_addr, p->hostPort, formatStr );
         
         free(formatStr);
 
-        p->dnsSd->gen_response();
+        p->dnsSd->gen_question();
 
         return rc;
       }
@@ -292,13 +302,14 @@ cw::rc_t cw::net::dnssd::createV(  handle_t& hRef, const char* name, const char*
     goto errLabel;
   }
 
-  p->serviceName   = mem::duplStr(name);
-  p->serviceType   = mem::duplStr(type);
-  p->serviceDomain = mem::duplStr(domain);
-  p->hostName      = mem::duplStr(hostName);
-  p->hostIpAddr    = mem::duplStr(hostIpAddr);
-  p->hostPort      = hostPort;
-  p->dnsSd         = nullptr;
+  p->serviceName       = mem::duplStr(name);
+  p->serviceType       = mem::duplStr(type);
+  p->serviceDomain     = mem::duplStr(domain);
+  p->hostName          = mem::duplStr(hostName);
+  p->hostIpAddr        = mem::duplStr(hostIpAddr);
+  p->hostPort          = hostPort;
+  p->dnsSd             = nullptr;
+  p->ticksPerHeartBeat = 50;
   memcpy(p->hostMac,hostMac,6);
   
   if((rc = _setTextRecdFieldsV( p, text,  vl )) != kOkRC )

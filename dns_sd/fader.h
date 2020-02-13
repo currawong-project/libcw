@@ -2,6 +2,17 @@
 #define fader_h
 
 
+/*
+1. wait for 0x0a packet
+   send_response_0()
+   wait 50 ms
+   send_heart_beat()
+2. wait for next host packet
+   send_response_1()
+
+ */
+
+
 class fader
 {
 public:
@@ -15,13 +26,13 @@ public:
   // Function to send TCP messages to the host.
   typedef void (*hostCallback_t)( void* arg, const void* buf, unsigned bufByteN );
   
-  fader( const unsigned char faderMac[6], uint32_t faderInetAddr, hostCallback_t hostCbFunc, void* cbArg, unsigned chN = 8 );
+  fader( printCallback_t printCbFunc, const unsigned char faderMac[6], uint32_t faderInetAddr, hostCallback_t hostCbFunc, void* cbArg, unsigned ticksPerHeartBeat, unsigned chN = 8 );
   virtual ~fader();
 
   // Called by the TCP receive function to update the faders state
   // based on host state changes.
   // Return kUnknownMsgRC if the received msg is not recognized.
-  rc_t   host_receive( const void* buf, unsigned bufByteN );  
+  rc_t   receive( const void* buf, unsigned bufByteN );  
 
   // Called by the application to drive time dependent functions.
   // Return kTimeOut if the protocol state machine has timed out.
@@ -48,16 +59,19 @@ private:
     bool     muteFl;
   } ch_t;
 
+  printCallback_t _printCbFunc;
   uint32_t       _inetAddr;
-  unsigned       _lastTickSeconds;
+  unsigned       _tickN;
   ch_t*          _chArray;
   unsigned       _chN;
   hostCallback_t _hostCbFunc;
   void*          _hostCbArg;
   protoState_t   _protoState;
   unsigned char  _mac[6];
+  unsigned       _ticksPerHeartBeat;
 
   void     _send_response_0();
+  void     _send_response_1();
   void     _send_heartbeat();
   void     _send( const void* buf, unsigned bufByteN );
   void     _on_fader_receive( uint16_t chanIdx, uint16_t position );

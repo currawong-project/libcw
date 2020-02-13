@@ -23,11 +23,11 @@ SRC += cwAudioBuf.cpp  cwAudioDevice.cpp cwAudioDeviceAlsa.cpp cwAudioDeviceTest
 HDR += cwTcpSocket.h   cwTcpSocketSrv.h   cwTcpSocketTest.h   
 SRC += cwTcpSocket.cpp cwTcpSocketSrv.cpp cwTcpSocketTest.cpp 
 
-HDR += cwMdns.h   cwEuCon.h   cwDnsSd.h   dns_sd/dns_sd.h   dns_sd/dns_sd_print.h   dns_sd/dns_sd_const.h  dns_sd/fader.h 
-SRC += cwMdns.cpp cwEuCon.cpp cwDnsSd.cpp dns_sd/dns_sd.cpp dns_sd/dns_sd_print.cpp                        dns_sd/fader.cpp
+HDR += cwMdns.h   cwEuCon.h   cwDnsSd.h   dns_sd/dns_sd.h   dns_sd/dns_sd_print.h   dns_sd/dns_sd_const.h  dns_sd/fader.h     dns_sd/rpt.h
+SRC += cwMdns.cpp cwEuCon.cpp cwDnsSd.cpp dns_sd/dns_sd.cpp dns_sd/dns_sd_print.cpp                        dns_sd/fader.cpp   dns_sd/rpt.cpp
 
-# HDR += cwIo.h   cwIoTest.h   cwNbMem.h
-# SRC += cwIo.cpp cwIoTest.cpp cwNbMem.cpp
+HDR += cwIo.h   cwIoTest.h
+SRC += cwIo.cpp cwIoTest.cpp
 
 LIBS = -lpthread  -lwebsockets  -lasound
 

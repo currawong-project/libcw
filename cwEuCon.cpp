@@ -159,7 +159,8 @@ namespace cw
         {
           if( dataByteCnt >= 4 )
           {
-            //printHex(data,dataByteCnt);
+            printHex(data,dataByteCnt);
+            
             unsigned hdr = *(const unsigned*)data;
 
             switch( p->protoState )

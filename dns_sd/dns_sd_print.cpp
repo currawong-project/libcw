@@ -1,13 +1,24 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <stdarg.h>
+
+#ifdef cwLINUX
 #include <arpa/inet.h>
+#endif
+
+#ifdef ARDUINO
+#include <utility/util.h>
+#endif
+
+#include "rpt.h"
+#include "dns_sd.h"
 #include "dns_sd_print.h"
 #include "dns_sd_const.h"
 
 
-unsigned _print_name( const char* s, const char* buf )
+int  _print_name( printCallback_t printCbFunc, const unsigned char* s, const unsigned char* buf )
 {
-  unsigned n = 0;     // track allocated length of the name in this record
+  int n = 0;     // track allocated length of the name in this record
   bool incrFl = true; // do not incrmement 'n' if the name switches to a ptr segment
   
   while( *s )
@@ -23,10 +34,12 @@ unsigned _print_name( const char* s, const char* buf )
     {
       for(char i=0; i<s[0]; ++i)
       {
-        printf("%c",s[i+1]);
+        char x[2];
+        x[0] = s[i+1];
+        x[1] = 0;
+        rpt(printCbFunc,"%s",x);
         if( incrFl )
-          ++n;
-        
+          ++n;        
       }
       
       s += s[0]+1;
@@ -34,54 +47,56 @@ unsigned _print_name( const char* s, const char* buf )
       
       if(*s)
       {
-        printf(".");
+        rpt(printCbFunc,".");
       }
     }
   }
   return n;
 }
 
-void dns_sd_print( const void* buf, unsigned bufByteN )
+void dns_sd_print( printCallback_t printCbFunc, const void* buf, unsigned bufByteN )
 {
-  const uint16_t* u    = (uint16_t*)buf;
-  const char*     b    = (const char*)(u+6);
+  (void)bufByteN;
   
-  printf("%s ", ntohs(u[1]) & 0x8000 ? "Response " : "Question ");
+  const uint16_t*      u = (uint16_t*)buf;
+  const unsigned char* b = (const unsigned char*)(u+6);
+
+  rpt(printCbFunc,"%s ", ntohs(u[1]) & 0x8000 ? "Response:" : "Question:");
   
-  unsigned n = _print_name(b,(const char*)buf);
+  int n = _print_name(printCbFunc,b,(const unsigned char*)buf);
+
+  rpt(printCbFunc," slen:%i ", n);
   
-  printf(" slen:%i ",n);
-  
-  u = (uint16_t*)(b + n+1); // advance past name
+  u = (uint16_t*)(b + n + 1); // advance past name
 
   switch( ntohs(u[0]) )
   {
-    case kA_DnsTId:   printf("A ");
+    case kA_DnsTId:   rpt(printCbFunc,"A ");
       break;
       
-    case kPTR_DnsTId: printf("PTR ");
+    case kPTR_DnsTId: rpt(printCbFunc,"PTR ");
       break;
       
-    case kTXT_DnsTId: printf("TXT ");
+    case kTXT_DnsTId: rpt(printCbFunc,"TXT ");
       break;
       
-    case kSRV_DnsTId: printf("SRV ");
+    case kSRV_DnsTId: rpt(printCbFunc,"SRV ");
       break;
       
-    case kAAAA_DnsTId:printf("AAAA ");
+    case kAAAA_DnsTId:rpt(printCbFunc,"AAAA ");
       break;
-    case kOPT_DnsTId: printf("OPT ");
+    case kOPT_DnsTId: rpt(printCbFunc,"OPT ");
       break;
-    case kNSEC_DnsTId:printf("NSEC "); break;
-    case kANY_DnsTId: printf("ANY "); break; 
+    case kNSEC_DnsTId:rpt(printCbFunc,"NSEC "); break;
+    case kANY_DnsTId: rpt(printCbFunc,"ANY "); break; 
    default:
-      printf("<unk> 0x%2x",ntohs(u[0])); break;
+      rpt(printCbFunc,"<unk> 0x%2x",ntohs(u[0])); break;
   }
 
   if( ntohs(u[1]) & 0x80 )
-    printf("flush ");
+    rpt(printCbFunc,"flush ");
 
-  printf("\n");
+  rpt(printCbFunc,"\n");
 }
 
 

@@ -14,8 +14,8 @@ public:
 
   typedef void (*sendCallback_t)( void* arg, const void* buf, unsigned bufByteN );
 
-  dns_sd( sendCallback_t sendCbFunc, void* sendCbArg );
-  dns_sd( sendCallback_t sendCbFunc, void* sendCbArg, const char* serviceName, const char* serviceType,  const char* serviceDomain, const char* hostName, uint32_t hostAddr, uint16_t hostPort, const char* text );
+  dns_sd( sendCallback_t sendCbFunc, void* sendCbArg, printCallback_t printCbFunc );
+  dns_sd( sendCallback_t sendCbFunc, void* sendCbArg, printCallback_t printCbFunc, const char* serviceName, const char* serviceType,  const char* serviceDomain, const char* hostName, uint32_t hostAddr, uint16_t hostPort, const char* text );
   virtual ~dns_sd();
 
   result_t setup(  const char* serviceName, const char* serviceType,  const char* serviceDomain, const char* hostName, uint32_t hostAddr, uint16_t hostPort, const char* text );
@@ -38,15 +38,16 @@ private:
   };
 
 
-  sendCallback_t _sendCbFunc;
-  void*          _sendCbArg;
-  char*          _serviceName;
-  char*          _serviceType;
-  char*          _serviceDomain;
-  char*          _hostName;
-  uint32_t       _hostAddr;
-  uint16_t       _hostPort;
-  char*          _text;
+  sendCallback_t  _sendCbFunc;
+  void*           _sendCbArg;
+  printCallback_t _printCbFunc;
+  char*           _serviceName;
+  char*           _serviceType;
+  char*           _serviceDomain;
+  char*           _hostName;
+  uint32_t        _hostAddr;
+  uint16_t        _hostPort;
+  char*           _text;
     
 
   void           _free();

@@ -1,20 +1,29 @@
-#include "dns_sd.h"
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+
+#ifdef cwLINUX
 #include <arpa/inet.h>
+#endif
+
+#ifdef ARDUINO
+#include <utility/util.h>
+#endif
+
+#include "rpt.h"
+#include "dns_sd.h"
 #include "dns_sd_const.h"
 #include "dns_sd_print.h"
 
 
 #define DNS_SD_SERVICE_TYPE_STRING "_services._dns-sd._udp"
 
-dns_sd::dns_sd(sendCallback_t sendCbFunc, void* sendCbArg )
-  : _sendCbFunc(sendCbFunc),_sendCbArg(sendCbArg),_serviceName(nullptr),_serviceType(nullptr),_serviceDomain(nullptr),_hostName(nullptr),_hostPort(0),_text(nullptr)
+dns_sd::dns_sd(sendCallback_t sendCbFunc, void* sendCbArg, printCallback_t printCbFunc )
+  : _sendCbFunc(sendCbFunc),_sendCbArg(sendCbArg),_printCbFunc(printCbFunc),_serviceName(nullptr),_serviceType(nullptr),_serviceDomain(nullptr),_hostName(nullptr),_hostPort(0),_text(nullptr)
 {}
 
-dns_sd::dns_sd( sendCallback_t sendCbFunc, void* sendCbArg, const char* serviceName, const char* serviceType,  const char* serviceDomain, const char* hostName, uint32_t hostAddr, uint16_t hostPort, const char* text )
-  : _sendCbFunc(sendCbFunc),_sendCbArg(sendCbArg),_serviceName(nullptr),_serviceType(nullptr),_serviceDomain(nullptr),_hostName(nullptr),_hostPort(0),_text(nullptr)
+dns_sd::dns_sd( sendCallback_t sendCbFunc, void* sendCbArg, printCallback_t printCbFunc, const char* serviceName, const char* serviceType,  const char* serviceDomain, const char* hostName, uint32_t hostAddr, uint16_t hostPort, const char* text )
+  : _sendCbFunc(sendCbFunc),_sendCbArg(sendCbArg),_printCbFunc(printCbFunc),_serviceName(nullptr),_serviceType(nullptr),_serviceDomain(nullptr),_hostName(nullptr),_hostPort(0),_text(nullptr)
 {
   setup( serviceName, serviceType, serviceDomain, hostName, hostAddr, hostPort, text );
 }
@@ -52,7 +61,6 @@ void dns_sd::gen_question()
   _format_question(b, n);
   _send(b,n);
   free(b);
-
 }
 
 void dns_sd::gen_response()
@@ -76,9 +84,14 @@ void dns_sd::_free()
 unsigned dns_sd::_calc_question_byte_count()
 {
   unsigned n = kHdrBodyByteN;
+  // Question
   n += 1 + strlen(_serviceName) + 1 + strlen(_serviceType) + 1 + strlen(_serviceDomain) + 1 + kQuestionBodyByteN;
-  n += 2 + kRsrcBodyByteN + kSrvBodyByteN + 1 + strlen(_hostName) + 2;   
-  //n += 2 + kRsrcBodyByteN + strlen(_text) + 1;
+  
+  // SRV
+  n += 2 + kRsrcBodyByteN + kSrvBodyByteN + 1 + strlen(_hostName) + 2;
+  
+  // TXT
+  n += 2 + kRsrcBodyByteN + strlen(_text) + 1;
   return n;   
 }
 
@@ -92,7 +105,7 @@ void dns_sd::_format_question( unsigned char* buf, unsigned bufByteN )
   u[1] = htons(0);  // flags
   u[2] = htons(1);  // question
   u[3] = htons(0);  // answer
-  u[4] = htons(1);  // name server
+  u[4] = htons(2);  // name server
   u[5] = htons(0);  // other
 
   unsigned char* b    = (unsigned char*)(u + 6);
@@ -111,7 +124,7 @@ void dns_sd::_format_question( unsigned char* buf, unsigned bufByteN )
   b = _write_uint16(   b, bend, kInClassDnsFl );
   
   // Format SRV name server
-  b = _write_ptr( namePtr, b, bend );          // name
+  b = _write_ptr(    b, bend, namePtr );          // name
   b = _write_uint16( b, bend, kSRV_DnsTId );   // type 
   b = _write_uint16( b, bend, kInClassDnsFl ); // class
   b = _write_uint32( b, bend, 120 );           // TTL
@@ -121,16 +134,19 @@ void dns_sd::_format_question( unsigned char* buf, unsigned bufByteN )
   b = _write_uint16( b, bend, _hostPort );     // port
   b = _write_text(   b, bend, _hostName );     // host
   b = _write_ptr(    b, bend, domainPtr );     // host suffix (.local)
-  /*
+  
   // Format TXT name server
-  b = _write_ptr(    namePtr,      b, bend );      // name
-  b = _write_uint16( kTXT_DnsTId,  b, bend );      // type
-  b = _write_uint16( kInClassDnsFl,   b, bend );      // class
-  b = _write_uint32( 4500,         b, bend );      // TTL
-  b = _write_uint16( strlen(_text),b, bend );      // dlen
-  b = _write_text(   _text,        b, bend );      // text 
-  */
-  assert( b == bend );
+  b = _write_ptr(    b, bend, namePtr );       // name
+  b = _write_uint16( b, bend, kTXT_DnsTId );   // type
+  b = _write_uint16( b, bend, kInClassDnsFl ); // class
+  b = _write_uint32( b, bend, 4500 );          // TTL
+  b = _write_uint16( b, bend, strlen(_text)+1 ); // dlen
+  b = _write_text(   b, bend, _text );         // text 
+  
+  //assert( b == bend );
+
+  //rpt(_printCbFunc,"%i %i : %s\n", b - buf, bend - buf, _text );
+
 }
 
 unsigned char* dns_sd::_write_uint16( unsigned char* b, unsigned char* bend, uint16_t value  )
@@ -152,6 +168,8 @@ unsigned char* dns_sd::_write_uint32( unsigned char* b, unsigned char* bend, uin
 unsigned char* dns_sd::_write_ptr( unsigned char* b, unsigned char* bend, const unsigned char ptr[2] )
 {
   assert( (ptr[0] & 0xc0) == 0xc0 );
+  assert( bend - b >= 2 );
+  
   b[0] = ptr[0];
   b[1] = ptr[1];
   return b+2;      
@@ -291,13 +309,15 @@ void dns_sd::_format_response( unsigned char* buf, unsigned bufByteN )
   b = _write_ptr(    b, bend, typePtr );
  
 
-  printf("%li %li : %s\n", b - buf, bend - buf, _text );
+  //rpt(_printCbFunc,"%i %i : %s\n", b - buf, bend - buf, _text );
 }
 
 
 void dns_sd::_parse( const char* buf, unsigned bufByteN )
 {
-  dns_sd_print(buf,bufByteN);
+  //(void)buf;
+  //(void)bufByteN;
+  dns_sd_print(_printCbFunc,buf,bufByteN);
 }
 
 void dns_sd::_send( const void* buf, unsigned bufByteN )
