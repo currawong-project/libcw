@@ -308,7 +308,11 @@ namespace cw
        kSendHandshake_0_Id,     // send [0x0a, ...]
        kWaitForBeat_1_Id,       // wait for first heart beat -> then send [0x0c ...]
        kWaitForHandshake_2_Id,  // wait for [0x0d ...] -> then send response_3_a
-       kRunning_3_Id
+       kResponse_3_A_Id,
+       kResponse_3_B_Id,
+       kResponse_4_A_Id,
+       kResponse_4_B_Id,
+       kRunning_Id
       };
       
       typedef struct eucon_str
@@ -344,39 +348,7 @@ namespace cw
         return rc;
       }
 
-      rc_t _sendHandshake_0( socket::handle_t sockH, const char* label )
-      {
-        rc_t          rc = kOkRC;
-        unsigned char buf[88];
-        memset(buf,0,88);
-        buf[0] = 0x0a;
-
-        // send the initial handshake 
-        if((rc = socket::send( sockH, buf, 88 )) != kOkRC )
-        {
-          rc = cwLogError(rc,"Initial TCP '%s' request failed.",label);
-        }
-
-        return rc;
-      }
-
-      rc_t _sendHandshake_1( socket::handle_t sockH )
-      {
-        rc_t          rc = kOkRC;
-        unsigned char buf[4];
-        memset(buf,0,4);
-        buf[0] = 0x0c;
-
-        // send the initial handshake 
-        if((rc = socket::send( sockH, buf, 4 )) != kOkRC )
-        {
-          rc = cwLogError(rc,"TCP '%s' request failed.");
-        }
-
-        return rc;
-      }
-
-      rc_t _send_response( const char* packet )
+      rc_t _send_response( socket::handle_t sockH, const char* packet )
       {
         rc_t rc = kOkRC;
         
@@ -389,6 +361,45 @@ namespace cw
         return rc;
       }
       
+      rc_t _sendHandshake_0( socket::handle_t sockH, const char* label )
+      {
+        /*
+        rc_t          rc = kOkRC;
+        unsigned char buf[88];
+        memset(buf,0,88);
+        buf[0] = 0x0a;
+
+        // send the initial handshake 
+        if((rc = socket::send( sockH, buf, 88 )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Initial TCP '%s' request failed.",label);
+        }
+
+        return rc;
+        */
+        return _send_response(sockH,RESPONSE_1);
+      }
+
+      rc_t _sendHandshake_1( socket::handle_t sockH )
+      {
+        /*
+        rc_t          rc = kOkRC;
+        unsigned char buf[4];
+        memset(buf,0,4);
+        buf[0] = 0x0c;
+
+        // send the initial handshake 
+        if((rc = socket::send( sockH, buf, 4 )) != kOkRC )
+        {
+          rc = cwLogError(rc,"TCP '%s' request failed.");
+        }
+
+        return rc;
+        */
+        return _send_response(sockH,RESPONSE_2);
+      }
+
+
       void _udpReceiveCallback( void* arg, const void* data, unsigned dataByteCnt, const struct sockaddr_in* fromAddr )
       {
         rc_t            rc = kOkRC;
@@ -471,8 +482,28 @@ namespace cw
               case kWaitForHandshake_2_Id:
                 if( hdr == 0x0d )
                 {
-                  p->protoState = kRunning_3_Id;
+                  p->protoState = kResponse_3_A_Id;
                 }
+                break;
+
+              case kResponse_3_A_Id:                
+                _send_response(socketHandle(p->tcpH),RESPONSE_3_A);                
+                p->protoState = kResponse_3_B_Id;
+                break;
+                
+              case kResponse_3_B_Id:
+                _send_response(socketHandle(p->tcpH),RESPONSE_3_B);                
+                p->protoState = kResponse_4_A_Id;
+                break;
+                
+              case kResponse_4_A_Id:
+                _send_response(socketHandle(p->tcpH),RESPONSE_4_A);                
+                p->protoState = kResponse_4_B_Id;
+                break;
+                
+              case kResponse_4_B_Id:
+                _send_response(socketHandle(p->tcpH),RESPONSE_4_B);                
+                p->protoState = kRunning_Id;
                 break;
             }
             

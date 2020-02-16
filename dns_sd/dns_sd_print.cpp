@@ -1,11 +1,9 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdarg.h>
-
 #ifdef cwLINUX
 #include <arpa/inet.h>
 #endif
-
 #ifdef ARDUINO
 #include <utility/util.h>
 #endif
@@ -39,7 +37,8 @@ int  _print_name( printCallback_t printCbFunc, const unsigned char* s, const uns
         x[1] = 0;
         rpt(printCbFunc,"%s",x);
         if( incrFl )
-          ++n;        
+          ++n;
+        
       }
       
       s += s[0]+1;
