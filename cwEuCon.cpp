@@ -412,7 +412,7 @@ namespace cw
           const char* name  = (const char*)(u+6);
           const char* label = "MC Mix - 1";
 
-          //printf("%.*s|%li\n", name[0], name+1, strlen(label) );
+          printf("%.*s|%li\n", name[0], name+1, strlen(label) );
 
           // if this a 'MC Mix' DNS-SD SRV reply
           if( strncmp(name+1, label, name[0]) == 0 )
