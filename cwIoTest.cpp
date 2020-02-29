@@ -39,14 +39,19 @@ cw::rc_t cw::io::test()
                  parserBufByteN: 1024,
               }
           
-              audio: [
-                {
-                  name:   "default",
-                  device: "HDA Intel PCH CS4208 Analog",
-                  srate:  48000,
-                  framesPerCycle: 64                  
-                }
-              ]
+              audio: {
+                  meterMs: 50,
+                  
+                  deviceL: [
+                  {
+                    enableFl:   true,
+                    name:       "Default",
+                    device:     "HDA Intel PCH CS4208 Analog",
+                    srate:       48000,
+                    dspFrameCnt:    64,
+                    cycleCnt:        3   
+                  }
+                ]
             }
       })";
     

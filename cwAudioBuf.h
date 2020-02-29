@@ -58,7 +58,7 @@ namespace cw
         handle_t h,
         unsigned devIdx,              //< device to setup
         double   srate,               //< device sample rate (only required for synthesizing the correct test-tone frequency)
-        unsigned dspFrameCnt,         // dspFrameCnt - count of samples in channel buffers returned via get() 
+        unsigned dspFrameCnt,         //< dspFrameCnt - count of samples in channel buffers returned via get() 
         unsigned cycleCnt,            //< number of audio port cycles to store 
         unsigned inChCnt,             //< input channel count on this device
         unsigned inFramesPerCycle,    //< maximum number of incoming sample frames on an audio port cycle

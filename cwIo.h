@@ -29,6 +29,10 @@ namespace cw
       midi::packet_t* pkt;
     } midi_msg_t;
 
+    typedef struct audio_msg_str
+    {
+    } audio_msg_t;
+
     typedef struct msg_str
     {
       unsigned tid;
@@ -67,6 +71,15 @@ namespace cw
     rc_t        midiDeviceSend(      handle_t h, unsigned devIdx, unsigned portIdx, midi::byte_t status, midi::byte_t d0, midi::byte_t d1 );
 
     
+    unsigned    audioDeviceCount(          handle_t h );
+    unsigned    audioDeviceLabelToIndex(   handle_t h, const char* label );
+    const char* audioDeviceLabel(          handle_t h, unsigned devIdx );
+    unsigned    audioDeviceChannelCount(   handle_t h, unsigned devIdx, bool inputFl );
+    double      audioDeviceSampleRate(     handle_t h, unsigned devIdx );
+    unsigned    audioDeviceFramesPerCycle( handle_t h, unsigned devIdx, bool inputFl );
+    rc_t        audioDeviceStart(          handle_t h, unsigned devIdx );
+    rc_t        audioDeviceStop(           handle_t h, unsigned devIdx );
+    bool        audioDeviceIsStarted(      handle_t h, unsigned devIdx );
 
     
     

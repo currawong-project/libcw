@@ -34,6 +34,17 @@ namespace cw
       unsigned                pollPeriodMs;      
       serialPortSrv::handle_t serialH;
     } serialPort_t;
+
+    typedef struct audioCfg_str
+    {
+      unsigned enableFl;
+      char*    name;
+      char*    device;
+      double   srate;
+      unsigned dspFrameCnt;
+      unsigned cycleCnt;
+      unsigned devIdx;
+    } audioCfg_t;
     
     typedef struct io_str
     {
@@ -49,6 +60,9 @@ namespace cw
 
       audio::device::handle_t       audioH;
       audio::device::alsa::handle_t alsaH;
+      
+      unsigned    audioCfgN;
+      audioCfg_t* audioCfgA;      
       
     } io_t;
   
@@ -226,14 +240,78 @@ namespace cw
 
     void _audioDeviceCallback( void* cbArg, audio::device::audioPacket_t* inPktArray, unsigned inPktCnt, audio::device::audioPacket_t* outPktArray, unsigned outPktCnt )
     {
+      //io_t* p = (io_t*)cbArg;
+      
     }
 
     rc_t _audioDeviceConfig( io_t* p, const object_t* c )
     {
-      rc_t rc = kOkRC;
+      rc_t            rc      = kOkRC;
+      unsigned        meterMs = 50;
+      const object_t* node    = nullptr;
+      const object_t* deviceL = nullptr;
       
-      
-      
+      // get the audio port node
+      if((node = c->find("audio")) == nullptr )
+        return cwLogError(kSyntaxErrorRC,"Unable to locate the 'audio' configuration node.");
+
+      // get the meterMs value
+      if((rc = node->get("meterMs", meterMs )) != kOkRC )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"Audio 'meterMs' parse failed.");
+        goto errLabel;
+      }
+
+      // get the audio device list
+      if((deviceL = node->find("deviceL")) == nullptr )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"Audio 'deviceL' failed.");
+        goto errLabel;
+      }
+
+      // create an audio device cfg list
+      p->audioCfgN = deviceL->child_count();
+      p->audioCfgA = mem::allocZ<audioCfg_t>(p->audioCfgN);
+
+      // fill in the audio device cfg list
+      for(unsigned i=0; i<p->audioCfgN; ++i)
+      {
+        audioCfg_t* r = p->audioCfgA + i;
+        if((node = deviceL->list_ele(i)) == nullptr )
+        {
+          if(( rc = node->getv(
+                "enableFl",    r->enableFl,
+                "name",        r->name,
+                "device",      r->device,
+                "srate",       r->srate,
+                "dspFrameCnt", r->dspFrameCnt,
+                "cycleCnt",    r->cycleCnt )) != kOkRC )
+          {
+            rc = cwLogError(rc,"Error parsing audio cfg record at index:%i",i);
+            goto errLabel;
+          }          
+        }
+
+        // if the configuration is enabled
+        if( r->enableFl )
+        {
+          // get the hardware device index
+          if((r->devIdx = audio::device::deviceLabelToIndex( p->audioH, r->device)) == kInvalidIdx )
+          {
+            rc = cwLogError(rc,"Unable to locate the audio hardware device:'%s'.", r->device);
+            goto errLabel;
+          }
+
+          // setup the device based on the configuration
+          if((rc = audio::device::deviceSetup(p->audioH,r->devIdx,r->srate,r->dspFrameCnt,_audioDeviceCallback,p)) != kOkRC )
+          {
+            rc = cwLogError(rc,"Unable to setup the audio hardware device:'%s'.", r->device);
+            goto errLabel;
+          }          
+        }
+      }
+
+    errLabel:
       return rc;
     }
 
@@ -264,7 +342,7 @@ namespace cw
         goto errLabel;
       }
 
-      // 
+      // read the configuration information and setup the audio hardware
       if((rc = _audioDeviceConfig( p, c )) != kOkRC )
       {
         cwLogInfo("Audio device configuration failed.");
@@ -301,7 +379,7 @@ cw::rc_t cw::io::create( handle_t& h, const char* cfgStr, cbFunc_t cbFunc, void*
   }
 
   // get the main io cfg object.
-  if((o = obj_base->find(cfgLabel)) != nullptr )
+  if((o = obj_base->find(cfgLabel)) == nullptr )
   {
     rc = cwLogError(kSyntaxErrorRC,"Unable to locate the I/O cfg. label:%s.",cfgLabel);
     goto errLabel;
@@ -439,4 +517,49 @@ cw::rc_t cw::io::midiDeviceSend( handle_t h, unsigned devIdx, unsigned portIdx, 
   //io_t* p = _handleToPtr(h);
   //return midi::device::send( p->midiH, devIdx, portIdx, status, d0, d1 );
   return rc;
+}
+
+
+unsigned    cw::io::audioDeviceCount(          handle_t h )
+{
+  io_t* p = _handleToPtr(h);
+  return p->audioCfgN;
+}
+
+unsigned    cw::io::audioDeviceLabelToIndex(   handle_t h, const char* label )
+{
+  io_t* p = _handleToPtr(h);
+  for(unsigned i=0; i<p->audioCfgN; ++i)
+    if( strcmp(p->audioCfgA[i].name,label) == 0 )
+      return i;
+  
+  return kInvalidIdx;
+}
+
+const char* cw::io::audioDeviceLabel(          handle_t h, unsigned devIdx )
+{
+  io_t* p = _handleToPtr(h);
+  assert( devIdx < p->audioCfgN );
+  return p->audioCfgA[ devIdx ].name;
+}
+
+cw::rc_t    cw::io::audioDeviceStart(          handle_t h, unsigned devIdx )
+{
+  io_t* p = _handleToPtr(h);
+  assert( devIdx < p->audioCfgN );
+  return audio::device::deviceStart( p->audioH, p->audioCfgA[ devIdx ].devIdx ); 
+}
+
+cw::rc_t    cw::io::audioDeviceStop(           handle_t h, unsigned devIdx )
+{
+  io_t* p = _handleToPtr(h);
+  assert( devIdx < p->audioCfgN );
+  return audio::device::deviceStop( p->audioH, p->audioCfgA[ devIdx ].devIdx );
+}
+
+bool        cw::io::audioDeviceIsStarted(      handle_t h, unsigned devIdx )
+{
+  io_t* p = _handleToPtr(h);
+  assert( devIdx < p->audioCfgN );
+  return audio::device::deviceIsStarted( p->audioH, p->audioCfgA[ devIdx ].devIdx );
 }
