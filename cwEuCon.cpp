@@ -348,14 +348,14 @@ namespace cw
         return rc;
       }
 
-      rc_t _send_response( socket::handle_t sockH, const char* packet )
+      rc_t _send_response( socket::handle_t sockH, const char* packet, unsigned packetN )
       {
         rc_t rc = kOkRC;
         
         // send the initial handshake 
-        if((rc = socket::send( sockH, packet, strlen(packet) )) != kOkRC )
+        if((rc = socket::send( sockH, packet, packetN )) != kOkRC )
         {
-          rc = cwLogError(rc,"TCP '%s' request failed.");
+          rc = cwLogError(rc,"TCP '%s' send failed.");
         }
         
         return rc;
@@ -363,40 +363,12 @@ namespace cw
       
       rc_t _sendHandshake_0( socket::handle_t sockH, const char* label )
       {
-        /*
-        rc_t          rc = kOkRC;
-        unsigned char buf[88];
-        memset(buf,0,88);
-        buf[0] = 0x0a;
-
-        // send the initial handshake 
-        if((rc = socket::send( sockH, buf, 88 )) != kOkRC )
-        {
-          rc = cwLogError(rc,"Initial TCP '%s' request failed.",label);
-        }
-
-        return rc;
-        */
-        return _send_response(sockH,RESPONSE_1);
+        return _send_response(sockH,RESPONSE_1,sizeof(RESPONSE_1)-1);
       }
 
       rc_t _sendHandshake_1( socket::handle_t sockH )
       {
-        /*
-        rc_t          rc = kOkRC;
-        unsigned char buf[4];
-        memset(buf,0,4);
-        buf[0] = 0x0c;
-
-        // send the initial handshake 
-        if((rc = socket::send( sockH, buf, 4 )) != kOkRC )
-        {
-          rc = cwLogError(rc,"TCP '%s' request failed.");
-        }
-
-        return rc;
-        */
-        return _send_response(sockH,RESPONSE_2);
+        return _send_response(sockH,RESPONSE_2,sizeof(RESPONSE_2)-1);
       }
 
 
@@ -416,7 +388,7 @@ namespace cw
 
           // if this a 'MC Mix' DNS-SD SRV reply
           if( strncmp(name+1, label, name[0]) == 0 )
-          {
+          {            
             // get the address of the advertising 'MC Mix'
             char addrBuf[ INET_ADDRSTRLEN+1 ];
             if(socket::addrToString( fromAddr, addrBuf, INET_ADDRSTRLEN ) == kOkRC )
@@ -465,7 +437,7 @@ namespace cw
         {
           if( dataByteCnt >= 4 )
           {
-            printHex(data,dataByteCnt);
+            //printHex(data,dataByteCnt);
             
             unsigned hdr = *(const unsigned*)data;
 
@@ -476,6 +448,7 @@ namespace cw
                 {
                   p->protoState = kWaitForHandshake_2_Id;
                   _sendHandshake_1( socketHandle(p->tcpH) );
+                  printf("Rcvd Beat - sent 0xc\n");
                 }
                 break;
 
@@ -483,31 +456,42 @@ namespace cw
                 if( hdr == 0x0d )
                 {
                   p->protoState = kResponse_3_A_Id;
+                  printf("Rcvd 0xd\n");
                 }
                 break;
 
-              case kResponse_3_A_Id:                
-                _send_response(socketHandle(p->tcpH),RESPONSE_3_A);                
-                p->protoState = kResponse_3_B_Id;
-                break;
-                
-              case kResponse_3_B_Id:
-                _send_response(socketHandle(p->tcpH),RESPONSE_3_B);                
-                p->protoState = kResponse_4_A_Id;
-                break;
-                
-              case kResponse_4_A_Id:
-                _send_response(socketHandle(p->tcpH),RESPONSE_4_A);                
-                p->protoState = kResponse_4_B_Id;
-                break;
-                
-              case kResponse_4_B_Id:
-                _send_response(socketHandle(p->tcpH),RESPONSE_4_B);                
-                p->protoState = kRunning_Id;
-                break;
-            }
-            
+            }            
           }
+        }
+
+        switch(p->protoState)
+        {
+          case kResponse_3_A_Id:                
+            _send_response(socketHandle(p->tcpH),RESPONSE_3_A,sizeof(RESPONSE_3_A)-1);                
+            p->protoState = kResponse_3_B_Id;
+            break;
+                
+          case kResponse_3_B_Id:
+            _send_response(socketHandle(p->tcpH),RESPONSE_3_B,sizeof(RESPONSE_3_B)-1);                
+            p->protoState = kResponse_4_A_Id;
+            break;
+                
+          case kResponse_4_A_Id:
+            _send_response(socketHandle(p->tcpH),RESPONSE_4_A,sizeof(RESPONSE_4_A)-1);                
+            p->protoState = kResponse_4_B_Id;
+            break;
+                
+          case kResponse_4_B_Id:
+            _send_response(socketHandle(p->tcpH),RESPONSE_4_B,sizeof(RESPONSE_4_B)-1);                
+            p->protoState = kRunning_Id;
+            break;
+
+          case kRunning_Id:
+            printf("Rcv: %i : ",dataByteCnt );
+            for(unsigned i=0; i<dataByteCnt; ++i)
+              printf("0x%02x ",((uint8_t*)data)[i]);
+            printf("\n");
+          
         }
         
         p->cbCnt+=1;
@@ -516,8 +500,8 @@ namespace cw
         {
           time::spec_t t1;
           time::get(t1);
-          unsigned ms = time::elapsedMs( &p->t0, &t1 );
-          printf("cb: %i %i\n",p->cbCnt,ms);
+          //unsigned ms = time::elapsedMs( &p->t0, &t1 );
+          //printf("cb: %i %i\n",p->cbCnt,ms);
         }
       }
       

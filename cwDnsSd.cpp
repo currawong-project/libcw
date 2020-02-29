@@ -123,6 +123,9 @@ namespace cw
       void tcpSendCallback( void* arg, const void* buf, unsigned bufByteN )
       {
         rc_t rc;
+
+        printf("Send:%i\n",bufByteN);
+        
         dnssd_t* p = (dnssd_t*)arg;
         if((rc = srv::send(p->tcpH,buf,bufByteN)) != kOkRC )
           cwLogError(rc,"TCP send failed.");
@@ -239,7 +242,8 @@ namespace cw
         
         free(formatStr);
 
-        p->dnsSd->gen_question();
+        //p->dnsSd->gen_question();
+        p->dnsSd->gen_response();
 
         return rc;
       }
@@ -395,7 +399,7 @@ cw::rc_t cw::net::dnssd::start( handle_t h )
 cw::rc_t cw::net::dnssd::test()
 {
   rc_t               rc            = kOkRC;
-  const char*        netIFace      = "wlp3s0";
+  const char*        netIFace      = "ens9";
   const char*        serviceName   = "MC Mix - 1";
   const char*        serviceType   = "_EuConProxy._tcp";
   const char*        serviceDomain = "local";
@@ -427,9 +431,9 @@ cw::rc_t cw::net::dnssd::test()
   //
   // Override the host name and mac address to match the example Wireshark captures
   //
-  strcpy(hostname,"Euphonix-MC-0090D580F4DE");
-  unsigned char tmp_mac[] = { 0x00, 0x90, 0xd5, 0x80, 0xf4, 0xde };
-  memcpy(hostMac,tmp_mac,6);
+  //strcpy(hostname,"Euphonix-MC-0090D580F4DE");
+  //unsigned char tmp_mac[] = { 0x00, 0x90, 0xd5, 0x80, 0xf4, 0xde };
+  //memcpy(hostMac,tmp_mac,6);
       
 
   // create the DNS-SD server
