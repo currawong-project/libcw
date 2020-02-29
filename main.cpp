@@ -113,7 +113,7 @@ void numbCvtTest( cw::object_t* cfg, int argc, const char* argv[] )
 void objectTest( cw::object_t* cfg, int argc, const char* argv[] )
 {
   cw::object_t* o;
-  const char s [] = "{ a:1, b:2, c:[ 1.23, 4.56 ] }";
+  const char s [] = "{ a:1, b:2, c:[ 1.23, 4.56 ], d:true, e:false, f:true }";
   cw::objectFromString(s,o);
 
   int v;

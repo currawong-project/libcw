@@ -44,7 +44,17 @@ namespace cw
     }
     return obj;
   }
-  
+
+  template<> object_t* _objSetLeafValue<bool>( object_t* obj,  bool value )
+  {
+    if( obj != NULL )
+    {  
+      obj->u.b = value;
+      obj->type = _objIdToType(kBoolTId);
+    }
+    return obj;
+  }
+
   template<> object_t* _objSetLeafValue< char*>( object_t* obj,  char* value )
   {
     if( obj != NULL )
@@ -73,6 +83,8 @@ namespace cw
   template<> object_t* _objCreateValueNode< char*>( object_t* parent, char* value, const char* msg, unsigned flags )
   { return _objAppendLeftMostNode( parent, _objSetLeafValue( _objAllocate(), value ) ); }
 
+  template<> object_t* _objCreateValueNode<bool>( object_t* parent, bool value, const char* msg, unsigned flags )
+  { return _objAppendLeftMostNode( parent, _objSetLeafValue( _objAllocate(), value ) ); }
 
   template< typename T >
   rc_t getObjectValue( const T& src, unsigned tid, void* dst, const char* typeLabel )

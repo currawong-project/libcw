@@ -240,6 +240,7 @@ namespace cw
     object_t* o =  mem::allocZ<object_t>();
     o->type   = type;
     o->parent = parent;
+    
     return o;
   }
 
