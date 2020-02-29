@@ -5,8 +5,8 @@ SRC =                     cwCommonImpl.cpp cwMem.cpp cwLog.cpp  cwUtility.cpp
 HDR += cwFileSys.h   cwText.h   cwFile.h    cwTime.h   cwLex.h   cwNumericConvert.h 
 SRC += cwFileSys.cpp cwText.cpp cwFile.cpp  cwTime.cpp cwLex.cpp
 
-HDR += cwObject.h   cwTextBuf.h    cwThread.h    cwMpScNbQueue.h
-SRC += cwObject.cpp cwTextBuf.cpp  cwThread.cpp
+HDR += cwObject.h   cwObjectTemplate.h cwTextBuf.h    cwThread.h    cwMpScNbQueue.h
+SRC += cwObject.cpp                    cwTextBuf.cpp  cwThread.cpp
 
 HDR += cwWebSock.h   cwWebSockSvr.h     
 SRC += cwWebSock.cpp cwWebSockSvr.cpp
