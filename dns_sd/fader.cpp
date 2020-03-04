@@ -52,6 +52,8 @@ fader::rc_t fader::receive( const void* buf, unsigned bufByteN )
   rc_t           rc   = kOkRC;
   const uint8_t* b    = (const uint8_t*)buf; // current msg ptr
   const uint8_t* bend = b + bufByteN; // end of buffer ptr    
+
+  printf("RECV:%i\n",bufByteN);
   
   while(b<bend)
   {
@@ -146,7 +148,8 @@ fader::rc_t   fader::tick()
   if( _tickN == _ticksPerHeartBeat )
   {
     _tickN = 0;
-    _send_heartbeat();
+    if( _protoState == kWaitForHeartBeat_Id )
+      _send_heartbeat();
   }
   
   return rc;
