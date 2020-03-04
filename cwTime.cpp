@@ -116,3 +116,44 @@ void cw::time::setZero( spec_t* t0 )
 }
 
 
+cw::rc_t cw::time::now( spec_t& ts )
+{
+  rc_t rc = kOkRC;
+  int  errRC;
+  
+  memset(&ts,0,sizeof(ts));
+  
+  if((errRC = clock_gettime(CLOCK_REALTIME, &ts)) != 0 )
+  		rc = cwLogSysError(kInvalidOpRC,errRC,"Unable to obtain system time.");
+
+  return rc;
+}
+
+
+void cw::time::advanceMs( spec_t& ts, unsigned ms )
+{
+  // strip off whole seconds from ms
+  unsigned sec = ms / 1000; 
+
+  // find the remaining fractional second in milliseconds
+  ms = (ms - sec*1000);
+  
+  ts.tv_sec  += sec;
+  ts.tv_nsec +=  ms * 1000000; // convert millisconds to nanoseconds
+
+  // stip off whole seconds from tv_nsec
+  while( ts.tv_nsec > 1e9 )
+  {
+    ts.tv_nsec -= 1e9;
+    ts.tv_sec +=1;
+  }    
+}
+
+cw::rc_t cw::time::futureMs( spec_t& ts, unsigned ms )
+{
+  rc_t rc;
+  if((rc = now(ts)) == kOkRC )
+    advanceMs(ts,ms);
+
+  return rc;   
+}

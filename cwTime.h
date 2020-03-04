@@ -49,6 +49,12 @@ namespace cw
 
     void setZero( spec_t* t0 );
 
+    rc_t now( spec_t& ts );
+
+    void advanceMs( spec_t& ts, unsigned ms );
+
+    rc_t futureMs( spec_t& ts, unsigned ms );
+
     //)
 
   }
