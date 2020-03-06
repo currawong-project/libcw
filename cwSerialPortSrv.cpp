@@ -13,9 +13,9 @@ namespace cw
   {
     typedef struct this_str
     {
-      serialPort::handle_t portH;
+      serialPort::handle_t mgrH;
       thread::handle_t     threadH;
-      unsigned            _pollPeriodMs;
+      unsigned             pollPeriodMs;
     } this_t;
 
     inline this_t* _handleToPtr( handle_t h ) { return handleToPtr<handle_t,this_t>(h); }
@@ -23,25 +23,57 @@ namespace cw
     rc_t _destroy( this_t* p )
     {
       rc_t rc = kOkRC;
-      
-      if((rc = serialPort::destroy(p->portH)) != kOkRC )
-        return rc;
 
       if((rc = thread::destroy(p->threadH)) != kOkRC )
         return rc;
+      
+      if((rc = serialPort::destroy(p->mgrH)) != kOkRC )
+        return rc;
+
 
       mem::release(p);
 
       return rc;
     }
-    
+
+    // Do periodic non-blocking reads of each serial port and sleep between reads.
+    bool threadCallbackAlt( void* arg )
+    {
+      this_t*  p     = static_cast<this_t*>(arg);
+      unsigned portN = serialPort::portCount( p->mgrH );
+
+      unsigned readN;
+      
+      for(unsigned i=0; i<portN; ++i)
+      {
+        
+        rc_t rc = serialPort::receive_nb( p->mgrH, serialPort::portIndexToId(p->mgrH,i), readN );
+        
+        if( rc != kOkRC && rc != kTimeOutRC )
+        {
+          cwLogError(rc,"Serial server receive failed.");
+          return false;
+        }
+      }
+
+      if( readN == 0)
+        sleepMs(20);
+
+      return true;
+    }
+
+    // Wait for data to arrive on any port.
     bool threadCallback( void* arg )
     {
       this_t* p = static_cast<this_t*>(arg);
 
       unsigned readN;
-      if( serialPort::isopen(p->portH) )
-        serialPort::receive(p->portH,p->_pollPeriodMs,readN);
+      rc_t rc = serialPort::receive(p->mgrH,p->pollPeriodMs,readN);
+      if( rc != kOkRC && rc != kTimeOutRC )
+      {
+        cwLogError(rc,"Serial server receive failed.");
+        return false;
+      }
       
       
       return true;
@@ -51,19 +83,19 @@ namespace cw
 
 
 
-cw::rc_t cw::serialPortSrv::create( handle_t& h, const char* deviceStr, unsigned baudRate, unsigned cfgFlags, serialPort::callbackFunc_t cbFunc, void* cbArg, unsigned pollPeriodMs )
+cw::rc_t cw::serialPortSrv::create( handle_t& h, unsigned pollPeriodMs, unsigned recvBufByteN )
 {
   rc_t rc = kOkRC;
 
   this_t* p = mem::allocZ<this_t>();
-      
-  if((rc = serialPort::create( p->portH, deviceStr, baudRate, cfgFlags, cbFunc, cbArg )) != kOkRC )
-    goto errLabel;
+
+  if((rc = serialPort::create( p->mgrH, recvBufByteN)) != kOkRC )
+      goto errLabel;
 
   if((rc = thread::create( p->threadH, threadCallback, p)) != kOkRC )
     goto errLabel;
 
-  p->_pollPeriodMs = pollPeriodMs;
+  p->pollPeriodMs = pollPeriodMs;
 
  errLabel:
   if( rc != kOkRC )
@@ -91,10 +123,10 @@ cw::rc_t cw::serialPortSrv::destroy(handle_t& h )
 }
 
 
-cw::serialPort::handle_t cw::serialPortSrv::portHandle( handle_t h )
+cw::serialPort::handle_t cw::serialPortSrv::serialHandle( handle_t h )
 {
   this_t* p = _handleToPtr(h);
-  return p->portH;
+  return p->mgrH;
 }
 
 cw::thread::handle_t cw::serialPortSrv::threadHandle( handle_t h )
@@ -116,22 +148,22 @@ cw::rc_t cw::serialPortSrv::pause( handle_t h )
 }
 
 
-cw::rc_t cw::serialPortSrv::send( handle_t h, const void* byteA, unsigned byteN )
+cw::rc_t cw::serialPortSrv::send( handle_t h, unsigned portId, const void* byteA, unsigned byteN )
 {
   this_t* p = _handleToPtr(h);
-  return cw::serialPort::send(p->portH,byteA,byteN);
+  return cw::serialPort::send(p->mgrH,portId,byteA,byteN);
 }
 
 
 namespace cw
 {
 
-  void serialPortSrvTestCb( void* arg, const void* byteA, unsigned byteN )
+  void serialPortSrvTestCb( void* arg, unsigned userId, const void* byteA, unsigned byteN )
   {
     const char* text = static_cast<const char*>(byteA);
       
     for(unsigned i=0; i<byteN; ++i)
-      printf("%c:%i ",text[i],(int)text[i]);
+      printf("id:%i %c:%i\n",userId,text[i],(int)text[i]);
 
     if( byteN )
       fflush(stdout);      
@@ -140,19 +172,31 @@ namespace cw
 
 cw::rc_t cw::serialPortSrvTest()
 {
-  // Use this test an Arduino running study/serial/arduino_xmt_rcv/main.c  
-  rc_t                      rc             = kOkRC;
-  const char*               device         = "/dev/ttyACM0";
-  unsigned                  baud           = 38400;
-  unsigned                  serialCfgFlags = serialPort::kDefaultCfgFlags;
-  unsigned                  pollPeriodMs   = 50;
-  serialPortSrv::handle_t   h;
+  // Use this test an Arduino running study/serial/arduino_xmt_rcv/main.c
   
-  rc = serialPortSrv::create(h,device,baud,serialCfgFlags,&serialPortSrvTestCb,nullptr,pollPeriodMs);
+  rc_t                    rc               = kOkRC;
+  bool                    quitFl           = false;
+  unsigned                pollPeriodMs     = 50;
+  unsigned                portId[]         = {0,1};
+  const char*             device[]         = {"/dev/ttyACM1","/dev/ttyACM0"};
+  unsigned                baud[]           = {38400,38400};
+  unsigned                serialCfgFlags[] = {serialPort::kDefaultCfgFlags,serialPort::kDefaultCfgFlags};
+  unsigned                portN            = 2; //sizeof(portId)/sizeof(portId[0]);
+  unsigned                portIdx          = 0;  
+  serialPortSrv::handle_t h;
 
+  // open the serial port mgr
+  if((rc = serialPortSrv::create(h,pollPeriodMs)) != kOkRC )
+    return rc;
+
+  // open the serial ports
+  for(unsigned i=0; i<portN; ++i)
+    if((rc = serialPort::createPort( serialPortSrv::serialHandle(h), portId[i], device[i], baud[i], serialCfgFlags[i], &serialPortSrvTestCb, nullptr)) != kOkRC )
+      goto errLabel;
+
+  // start the server
   serialPortSrv::start(h);
   
-  bool quitFl = false;
   printf("q=quit\n");
   while(!quitFl)
   {
@@ -162,11 +206,17 @@ cw::rc_t cw::serialPortSrvTest()
       quitFl = true;
     else
       if( '0' <= c and c <= 'z' )
-        serialPortSrv::send(h,&c,1);
+      {
+        // send the output to consecutive ports
+        serialPortSrv::send(h,portId[portIdx],&c,1);
+        portIdx = (portIdx+1) % portN;
+      }
       
     
   }
 
+ errLabel:
+  
   serialPortSrv::destroy(h);
   return rc;
 }
