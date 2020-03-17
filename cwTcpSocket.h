@@ -92,7 +92,7 @@ namespace cw
       rc_t get_mac( handle_t h, unsigned char buf[6], struct sockaddr_in* addr=nullptr, const char* netInterfaceName=nullptr );
 
       // Prepare a struct sockadddr_in for use with send()
-      rc_t        initAddr( handle_t h, const char* addrStr, portNumber_t portNumber, struct sockaddr_in* retAddrPtr );
+      rc_t        initAddr( const char* addrStr, portNumber_t portNumber, struct sockaddr_in* retAddrPtr );
       
       rc_t        addrToString( const struct sockaddr_in* addr, char* buf, unsigned bufN=INET_ADDRSTRLEN );
       

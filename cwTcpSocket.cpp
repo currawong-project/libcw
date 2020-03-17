@@ -39,13 +39,13 @@ namespace cw
         int                fdH;
         unsigned           createFlags;
         unsigned           flags;
-        unsigned           recvBufByteCnt;
         struct sockaddr_in sockaddr;
         char               ntopBuf[ INET_ADDRSTRLEN+1 ]; // use INET6_ADDRSTRLEN for IPv6
         char               hnameBuf[ HOST_NAME_MAX+1 ];
       } socket_t;
 
-      inline socket_t* _handleToPtr( handle_t h ) { return handleToPtr<handle_t,socket_t>(h); }
+      inline socket_t* _handleToPtr( handle_t h )
+      { return handleToPtr<handle_t,socket_t>(h); }
 
       rc_t _destroy( socket_t* p )
       {
@@ -77,7 +77,7 @@ namespace cw
       }
 
 
-      rc_t _initAddr( socket_t* p, const char* addrStr, portNumber_t portNumber, struct sockaddr_in* retAddrPtr )
+      rc_t _initAddr( const char* addrStr, portNumber_t portNumber, struct sockaddr_in* retAddrPtr )
       {
         memset(retAddrPtr,0,sizeof(struct sockaddr_in));
 
@@ -108,7 +108,7 @@ namespace cw
         rc_t               rc;
 
         // create the remote address		
-        if((rc = _initAddr(p, remoteAddr, remotePort,  &addr )) != kOkRC )
+        if((rc = _initAddr( remoteAddr, remotePort,  &addr )) != kOkRC )
           return rc;
 		
         errno = 0;
@@ -317,7 +317,7 @@ cw::rc_t cw::net::socket::create(
   }
   
   // create the 32 bit local address		
-  if((rc = _initAddr(p, localAddr, port,  &p->sockaddr )) != kOkRC )
+  if((rc = _initAddr( localAddr, port,  &p->sockaddr )) != kOkRC )
     goto errLabel;
 
   // bind the socket to a local address/port	
@@ -522,10 +522,9 @@ cw::rc_t cw::net::socket::send( handle_t h, const void* data, unsigned dataByteC
 cw::rc_t cw::net::socket::send( handle_t h, const void* data, unsigned dataByteCnt, const char* remoteAddr, portNumber_t remotePort )
 {
   rc_t               rc;
-  socket_t*          p = _handleToPtr(h);
   struct sockaddr_in addr;
 
-  if((rc = _initAddr(p,remoteAddr,remotePort,&addr)) != kOkRC )
+  if((rc = _initAddr(remoteAddr,remotePort,&addr)) != kOkRC )
     return rc;
   
   return send( h, data, dataByteCnt, &addr );
@@ -683,10 +682,9 @@ cw::rc_t cw::net::socket::get_mac( handle_t h, unsigned char outBuf[6], struct s
   return _get_info(p->sockH, outBuf, addr, netInterfaceName );
 }
 
-cw::rc_t cw::net::socket::initAddr( handle_t h, const char* addrStr, portNumber_t portNumber, struct sockaddr_in* retAddrPtr )
+cw::rc_t cw::net::socket::initAddr( const char* addrStr, portNumber_t portNumber, struct sockaddr_in* retAddrPtr )
 {
-  socket_t* p = _handleToPtr(h);
-  return _initAddr(p,addrStr,portNumber,retAddrPtr);
+  return _initAddr(addrStr,portNumber,retAddrPtr);
 }
       
 cw::rc_t cw::net::socket::addrToString( const struct sockaddr_in* addr, char* buf, unsigned bufN )
