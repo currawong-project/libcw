@@ -16,30 +16,30 @@ namespace cw
 
   typedef enum
   {
-   kOkRC = 0,
-   kObjAllocFailRC,    // an object allocation failed
-   kObjFreeFailRC,     // an object free failed
-   kInvalidOpRC,       // the current state does not support the operation
-   kInvalidArgRC,      
-   kInvalidIdRC,       // an identifer was found to be invalid
-   kOpenFailRC,
-   kCloseFailRC,
-   kWriteFailRC,
-   kReadFailRC,
-   kFlushFailRC,
-   kSeekFailRC,
-   kEofRC,
-   kResourceNotAvailableRC,
-   kMemAllocFailRC,
-   kGetAttrFailRC,
-   kSetAttrFailRC,
-   kTimeOutRC,
-   kProtocolErrorRC,
-   kOpFailRC,
-   kSyntaxErrorRC,
-   kBufTooSmallRC,
-   kAssertFailRC,  // used with cwLogFatal
-   kBaseAppRC
+   kOkRC = 0,               // 0 
+   kObjAllocFailRC,         // 1 - an object allocation failed
+   kObjFreeFailRC,          // 2 - an object free failed
+   kInvalidOpRC,            // 3 - the current state does not support the operation
+   kInvalidArgRC,           // 4 -
+   kInvalidIdRC,            // 5 - an identifer was found to be invalid
+   kOpenFailRC,             // 6    
+   kCloseFailRC,            // 7
+   kWriteFailRC,            // 8
+   kReadFailRC,             // 9
+   kFlushFailRC,            // 10
+   kSeekFailRC,             // 11
+   kEofRC,                  // 12
+   kResourceNotAvailableRC, // 13
+   kMemAllocFailRC,         // 14
+   kGetAttrFailRC,          // 15
+   kSetAttrFailRC,          // 16 
+   kTimeOutRC,              // 17 
+   kProtocolErrorRC,        // 18
+   kOpFailRC,               // 19
+   kSyntaxErrorRC,          // 20
+   kBufTooSmallRC,          // 21
+   kAssertFailRC,           // 22 - used with cwLogFatal
+   kBaseAppRC               // 23
   } cwRC_t;
 
   typedef unsigned rc_t;
