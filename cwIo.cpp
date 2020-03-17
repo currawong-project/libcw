@@ -188,12 +188,14 @@ namespace cw
             break;
           }
 
+          /*
           // create the serial port object
           if((rc = serialPortSrv::create( r->serialH, r->device, r->baudRate, r->flags, _serialPortCb, p, r->pollPeriodMs )) != kOkRC )
           {
             rc = cwLogError(rc,"Serial port create failed on record index:%i.", i );
             break;
           }
+          */
         }
       }
 
