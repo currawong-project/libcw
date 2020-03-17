@@ -13,6 +13,7 @@
 #include "cwWebSockSvr.h"
 #include "cwSerialPort.h"
 #include "cwSerialPortSrv.h"
+#include "cwSocket.h"
 #include "cwMidi.h"
 #include "cwTime.h"
 #include "cwMidiPort.h"
@@ -203,6 +204,33 @@ void socketSrvTcpTest( cw::object_t* cfg, int argc, const char* argv[] )
   }
 }
 
+void sockServerTest( cw::object_t* cfg, int argc, const char* argv[] )
+{
+  if( argc >= 2 )
+  {
+    unsigned short localPort  = atoi(argv[1]);
+
+    printf("local port:%i\n", localPort );
+
+    cw::socksrv::testServer( localPort );
+  }
+  
+}
+
+void sockClientTest( cw::object_t* cfg, int argc, const char* argv[] )
+{
+  if( argc >= 4 )
+  {
+    unsigned short localPort  = atoi(argv[1]);
+    const char*    remoteIp   = argv[2];
+    unsigned short remotePort = atoi(argv[3]);
+
+    printf("local:%i to remote:%s %i\n", localPort, remoteIp, remotePort);
+    
+    cw::socksrv::testClient(localPort, remoteIp, remotePort );
+  }
+}
+
 void socketMdnsTest( cw::object_t* cfg, int argc, const char* argv[] )
 {
   cw::net::mdns::test();
@@ -288,6 +316,9 @@ int main( int argc, const char* argv[] )
    { "socketTcp", socketTestTcp },
    { "socketSrvUdp", socketSrvUdpTest },
    { "socketSrvTcp", socketSrvTcpTest },
+   { "sockServer", sockServerTest },
+   { "sockClient", sockClientTest },
+   
    { "socketMdns", socketMdnsTest },
    { "dnssd",  dnsSdTest },
    { "eucon",  euConTest },
