@@ -218,11 +218,10 @@ namespace cw
       {
         rc_t               rc        = kOkRC;
         char*              formatStr = nullptr;
-        socket::handle_t   sockH     = srv::socketHandle( p->tcpH );
         struct sockaddr_in hostAddr;
 
         // get the 32bit host address 
-        if((rc = initAddr( sockH, p->hostIpAddr, p->hostPort, &hostAddr )) != kOkRC )
+        if((rc = socket::initAddr(  p->hostIpAddr, p->hostPort, &hostAddr )) != kOkRC )
           return rc;
         
         // Get the service 'TXT' fields in the format expected by dns_sd

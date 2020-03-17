@@ -1126,7 +1126,7 @@ bool tcpReceiveCallback( void* arg )
         
         struct sockaddr_in addr;
         
-        if((rc = socket::initAddr( sockH, "192.168.0.68", 4325, &addr )) != kOkRC )
+        if((rc = socket::initAddr(  "192.168.0.68", 4325, &addr )) != kOkRC )
         {
           error(&p->mdns,"Get inet address failed.");
           goto errLabel;
@@ -1166,7 +1166,7 @@ bool tcpReceiveCallback( void* arg )
         
         struct sockaddr_in addr;
         
-        if((rc = socket::initAddr( sockH, "192.168.0.68", 4325, &addr )) != kOkRC )
+        if((rc = socket::initAddr( "192.168.0.68", 4325, &addr )) != kOkRC )
         {
           error(&p->mdns,"Get inet address failed.");
           goto errLabel;
