@@ -97,9 +97,9 @@ namespace cw
       // if attempt to read the port succeeded ...
       if((n =read( p->_deviceH, b, bN )) != -1 )
       {        
-        readN_Ref += n;
+        readN_Ref = n;
 
-        if( buf == nullptr || bufByteN == 0 )
+        if( n>0 && p->_cbFunc != nullptr &&  (buf == nullptr || bufByteN == 0) )
           p->_cbFunc( p->_cbArg, p->_userId, b, n );
         
       }
@@ -159,9 +159,14 @@ namespace cw
         // interate through the ports looking for the ones which have data waiting ...
         for(unsigned i=0; p!=nullptr; p=p->_link,++i)
           if( p->_pollfd->revents & POLLIN )
+          {
+            unsigned actualReadN = 0;
             // ... then read the data
-            if((rc = _receive( d, p, readN_Ref, buf, bufByteN )) != kOkRC )
+            if((rc = _receive( d, p, actualReadN, buf, bufByteN )) != kOkRC )
                 return rc;
+
+            readN_Ref += actualReadN;
+          }
         
       }
   
