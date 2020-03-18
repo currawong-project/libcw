@@ -17,8 +17,9 @@ namespace cw
     } cbId_t;
 
 
-    // userId is the id assigned to a socket created with kStreamFl | kListenFl    
-    // connId is an automatically id which is assigned to represent the remote endpoint which is connected to 'userId'.
+    
+    // userId is the id assigned to the receiving socket
+    // connId is an automatically assigned id which represents the remote endpoint which is connected to 'userId'.
     typedef void (*callbackFunc_t)( void* cbArg, cbId_t cbId, unsigned userId, unsigned connId, const void* byteA, unsigned byteN, struct sockaddr_in* srcAddr );
 
     enum
@@ -131,9 +132,8 @@ namespace cw
     rc_t start( handle_t h );
     rc_t stop(  handle_t h );
 
-    rc_t test(        sock::portNumber_t localPort, const char* remoteAddrIp, sock::portNumber_t remotePort );
-    rc_t testServer(  sock::portNumber_t localPort );
-    rc_t testClient(  sock::portNumber_t localPort, const char* remoteAddrIp, sock::portNumber_t remotePort );
+    rc_t test(        sock::portNumber_t localPort, const char* remoteAddrIp, sock::portNumber_t remotePort, unsigned flags=0 );
+    rc_t testMain(  bool tcpFl, sock::portNumber_t localPort, const char* remoteAddrIp=nullptr, sock::portNumber_t remotePort=sock::kInvalidPortNumber );
   }    
   
 }

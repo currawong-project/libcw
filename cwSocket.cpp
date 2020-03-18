@@ -415,7 +415,7 @@ namespace cw
 
       // ... and connect this socket to the remote address/port
       if( connect(s->sockH, (struct sockaddr*)&addr, sizeof(addr)) == cwSOCKET_SYS_ERR )
-        return cwLogSysError(kOpFailRC, errno, "Socket connect failed." );
+        return cwLogSysError(kOpFailRC, errno, "Socket connect to %s:%i failed.", cwStringNullGuard(remoteAddr), remotePort );
 
       s->flags = cwSetFlag(s->flags,kIsConnectedFl);
 
@@ -817,7 +817,7 @@ cw::rc_t cw::sock::send( handle_t h, unsigned userId, unsigned connId, const voi
     return rc;
 
   // If this a pre-connected socket ...
-  if( cwIsFlag(s->flags,kIsConnectedFl) )
+  if(  cwIsFlag(s->flags,kIsConnectedFl) )
   {
     if( ::send( s->sockH, data, dataByteCnt, 0 ) == cwSOCKET_SYS_ERR )
       rc = cwLogSysError(kOpFailRC,errno,"Send failed.");
@@ -1094,14 +1094,14 @@ namespace cw
       return true;
     }
 
-    void _socketCbFunc( void* cbArg, sock::cbId_t cbId, unsigned userId, unsigned connId, const void* byteA, unsigned byteN, struct sockaddr_in* srcAddr )
+    void _socketTestCbFunc( void* cbArg, sock::cbId_t cbId, unsigned userId, unsigned connId, const void* byteA, unsigned byteN, struct sockaddr_in* srcAddr )
     {
       rc_t rc;
-      char buf[ INET_ADDRSTRLEN+1 ];
+      char addr[ INET_ADDRSTRLEN+1 ];
       
-      if((rc = sock::addrToString( srcAddr, buf, INET_ADDRSTRLEN )) == kOkRC )
+      if((rc = sock::addrToString( srcAddr, addr, INET_ADDRSTRLEN )) == kOkRC )
       {
-        printf("user:%i %s %s\n", userId, (const char*)byteA, buf );
+        printf("from user:%i conn:%i at %s : %s ", userId, connId, addr, (const char*)byteA );
       }
     }
      
@@ -1166,24 +1166,30 @@ cw::rc_t cw::socksrv::stop(  handle_t h )
   return thread::pause( p->thH );
 }
 
-cw::rc_t cw::socksrv::test(  sock::portNumber_t localPort, const char* remoteAddrIp, sock::portNumber_t remotePort )
+cw::rc_t cw::socksrv::test(  sock::portNumber_t localPort, const char* remoteAddrIp, sock::portNumber_t remotePort, unsigned flags )
 {
-  handle_t h;
-  rc_t     rc           = kOkRC;
-  unsigned timeOutMs    = 50;
-  unsigned recvBufByteN = 2048;
-  unsigned maxSocketN   = 10;
-  unsigned userId       = 10;
-  unsigned sockFlags    = sock::kNonBlockingFl;
-
-  const unsigned sbufN  = 31;
+  handle_t       h;
+  rc_t           rc           = kOkRC;
+  unsigned       timeOutMs    = 50;
+  unsigned       recvBufByteN = 2048;
+  unsigned       maxSocketN   = 10;
+  unsigned       userId       = 10;
+  unsigned       sockFlags    = sock::kNonBlockingFl | flags;
+  bool           serverFl     = remoteAddrIp == nullptr;
+  const unsigned sbufN        = 31;
   char           sbuf[ sbufN+1 ];
 
-  // create the socket server
+  if( serverFl )
+    printf("Server listening on port: %i\n", localPort );
+  else
+    printf("Client connecting to server %s:%i\n", remoteAddrIp,remotePort);
+    
+
+  // create the socket manager
   if((rc = createMgrSrv(h, timeOutMs, recvBufByteN, maxSocketN )) != kOkRC )
     return cwLogError(rc,"Socket server create failed.");
 
-  // start the socket server
+  // start the socket manager
   if((rc = start(h)) != kOkRC )
   {
     cwLogError(rc,"Socker server start failed.");
@@ -1191,13 +1197,13 @@ cw::rc_t cw::socksrv::test(  sock::portNumber_t localPort, const char* remoteAdd
   }
   
   // create a socket
-  if((rc = create( mgrHandle(h), userId, localPort, sockFlags, timeOutMs, _socketCbFunc, nullptr, remoteAddrIp, remotePort)) != kOkRC )
+  if((rc = create( mgrHandle(h), userId, localPort, sockFlags, timeOutMs, _socketTestCbFunc, nullptr, remoteAddrIp, remotePort)) != kOkRC )
   {
     cwLogError(rc,"Socket server socket create failed.");
     goto errLabel;
   }
 
-  printf("quit\n");
+  printf("'quit' to exit\n");
 
   // readline loop
   while( true )
@@ -1229,11 +1235,17 @@ cw::rc_t cw::socksrv::test(  sock::portNumber_t localPort, const char* remoteAdd
   return rcSelect(rc,rc1,rc2);
 }
 
-cw::rc_t cw::socksrv::testServer(  sock::portNumber_t localPort )
+cw::rc_t cw::socksrv::testMain(  bool tcpFl, sock::portNumber_t localPort, const char* remoteAddrIp, sock::portNumber_t remotePort )
 {
-  return test(localPort,nullptr,sock::kInvalidPortNumber);
-}
-cw::rc_t cw::socksrv::testClient(  sock::portNumber_t localPort, const char* remoteAddrIp, sock::portNumber_t remotePort )
-{
-  return test(localPort,remoteAddrIp,remotePort);
+  unsigned flags = 0;
+
+  if( tcpFl )
+  {
+    flags |= sock::kTcpFl | sock::kStreamFl | sock::kReuseAddrFl | sock::kReusePortFl;
+
+    if( remoteAddrIp == nullptr )
+      flags |= sock::kListenFl;
+  }
+  
+  return test(localPort,remoteAddrIp,remotePort,flags);
 }

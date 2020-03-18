@@ -204,31 +204,52 @@ void socketSrvTcpTest( cw::object_t* cfg, int argc, const char* argv[] )
   }
 }
 
-void sockServerTest( cw::object_t* cfg, int argc, const char* argv[] )
+void sockMgrTest( cw::object_t* cfg, int argc, const char* argv[] )
 {
-  if( argc >= 2 )
+  bool           tcpFl      = false;
+  unsigned short localPort  = 0;
+  const char*    remoteIp   = nullptr;
+  unsigned short remotePort = 0;
+
+  if( argc <3 )
   {
-    unsigned short localPort  = atoi(argv[1]);
-
-    printf("local port:%i\n", localPort );
-
-    cw::socksrv::testServer( localPort );
+    printf("Invalid argument count.");
+    printf("Usage: ./cw_rt <cfg_fn> 'udp | tcp' <localPort>  { <remote_ip> <remote_port> }\n");
+    goto errLabel;
   }
-  
-}
 
-void sockClientTest( cw::object_t* cfg, int argc, const char* argv[] )
-{
+
   if( argc >= 4 )
   {
-    unsigned short localPort  = atoi(argv[1]);
-    const char*    remoteIp   = argv[2];
-    unsigned short remotePort = atoi(argv[3]);
+    remoteIp   = argv[3];
 
-    printf("local:%i to remote:%s %i\n", localPort, remoteIp, remotePort);
+    if( argc >= 5 )          
+      remotePort = atoi(argv[4]);
     
-    cw::socksrv::testClient(localPort, remoteIp, remotePort );
   }
+
+  if( strcmp(argv[1],"tcp")!=0 && strcmp(argv[1],"udp")!=0 )
+  {
+    printf("The first argument must be 'udp' or 'tcp'\n");
+    goto errLabel;
+  }
+  
+  tcpFl     = strcmp(argv[1],"tcp")==0;
+  localPort = atoi(argv[2]);
+  
+  if( remoteIp != nullptr && remotePort == 0 )
+  {
+    printf("A remote adddress '%s' was given but no remote port was given.", remoteIp);
+    goto errLabel;
+  }
+
+  printf("style:%s local:%i to remote:%s %i\n", argv[1], localPort, cwStringNullGuard(remoteIp), remotePort);      
+
+  cw::socksrv::testMain( tcpFl, localPort, remoteIp, remotePort  );
+
+  errLabel:
+  
+  return;
 }
 
 void socketMdnsTest( cw::object_t* cfg, int argc, const char* argv[] )
@@ -316,8 +337,7 @@ int main( int argc, const char* argv[] )
    { "socketTcp", socketTestTcp },
    { "socketSrvUdp", socketSrvUdpTest },
    { "socketSrvTcp", socketSrvTcpTest },
-   { "sockServer", sockServerTest },
-   { "sockClient", sockClientTest },
+   { "sockMgrTest", sockMgrTest },
    
    { "socketMdns", socketMdnsTest },
    { "dnssd",  dnsSdTest },
