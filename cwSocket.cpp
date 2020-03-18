@@ -205,6 +205,9 @@ namespace cw
         rc = cwLogError(rc,"There are no available slots to 'accept' a new socket connection.");
         goto errLabel;
       }
+
+      printf("Socket: userId:%i connected.", s->userId);
+      
       
       // initialize the socket record
       cs = p->sockA + sockIdx;
@@ -226,6 +229,10 @@ namespace cw
       if((rc = addrToString( (const struct sockaddr_in*)&remoteAddr, cs->ntopBuf,  sizeof(cs->ntopBuf) )) != kOkRC )
         goto errLabel;      
 
+      if( s->cbFunc != nullptr )
+        s->cbFunc( s->cbArg, kConnectCbId, s->userId, s->connId, nullptr, 0, (const struct sockaddr_in*)&remoteAddr );
+
+      
     errLabel:
       if( rc != kOkRC )
         close(fd);
@@ -415,8 +422,17 @@ namespace cw
 
       // ... and connect this socket to the remote address/port
       if( connect(s->sockH, (struct sockaddr*)&addr, sizeof(addr)) == cwSOCKET_SYS_ERR )
-        return cwLogSysError(kOpFailRC, errno, "Socket connect to %s:%i failed.", cwStringNullGuard(remoteAddr), remotePort );
-
+      {
+        if( cwIsNotFlag(s->createFlags, kBlockingFl) && errno == EINPROGRESS )
+        {
+          // if the socket is non-blocking the connection will complete asynchronously
+        }
+        else
+        {
+          return cwLogSysError(kOpFailRC, errno, "Socket connect to %s:%i failed.", cwStringNullGuard(remoteAddr), remotePort );
+        }
+      }
+      
       s->flags = cwSetFlag(s->flags,kIsConnectedFl);
 
       return rc;
@@ -1094,7 +1110,7 @@ namespace cw
       return true;
     }
 
-    void _socketTestCbFunc( void* cbArg, sock::cbId_t cbId, unsigned userId, unsigned connId, const void* byteA, unsigned byteN, struct sockaddr_in* srcAddr )
+    void _socketTestCbFunc( void* cbArg, sock::cbId_t cbId, unsigned userId, unsigned connId, const void* byteA, unsigned byteN, const struct sockaddr_in* srcAddr )
     {
       rc_t rc;
       char addr[ INET_ADDRSTRLEN+1 ];

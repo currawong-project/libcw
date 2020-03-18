@@ -28,11 +28,17 @@
 
 1) Install libwebsockets.
 
+```
+    sudo dnf install g++ openssl-devel cmake
     cd sdk
     git clone https://libwebsockets.org/repo/libwebsockets
     cd libwebsockets
     mkdir build
     cd build
-    sudo dnf install openssl-devel cmake
     cmake -DCMAKE_INSTALL_PREFIX:PATH=/home/kevin/sdk/libwebsockets/build/out ..
+```
 
+2) Environment setup:
+
+    export LD_LIBRARY_PATH=~/sdk/libwebsockets/build/out/lib
+    
