@@ -24,3 +24,15 @@
 
 - implement kTcpFl in cwTcpSocket.cpp
 
+# Development Setup
+
+1) Install libwebsockets.
+
+    cd sdk
+    git clone https://libwebsockets.org/repo/libwebsockets
+    cd libwebsockets
+    mkdir build
+    cd build
+    sudo dnf install openssl-devel cmake
+    cmake -DCMAKE_INSTALL_PREFIX:PATH=/home/kevin/sdk/libwebsockets/build/out ..
+
