@@ -231,7 +231,7 @@ namespace cw
         goto errLabel;      
 
       if( s->cbFunc != nullptr )
-        s->cbFunc( s->cbArg, kConnectCbId, s->userId, s->connId, nullptr, 0, (const struct sockaddr_in*)&remoteAddr );
+        s->cbFunc( s->cbArg, kConnectCbId, s->userId, cs->connId, nullptr, 0, (const struct sockaddr_in*)&remoteAddr );
 
       
     errLabel:
@@ -359,6 +359,22 @@ namespace cw
 
         // interate through the ports looking for the ones which have data waiting ...
         for(unsigned i=0; i<p->sockN; ++i)
+        {
+          if( p->sockA[i].pollfd->revents & POLLERR )
+          {
+            printf("ERROR\n");
+          }
+
+          if( p->sockA[i].pollfd->revents & POLLHUP )
+          {
+            printf("HUP\n");
+          }
+
+          if( p->sockA[i].pollfd->revents & POLLNVAL )
+          {
+            printf("NVAL\n");
+          }
+          
           if( p->sockA[i].pollfd->revents & POLLIN )
           {
             unsigned actualReadN = 0;
@@ -384,7 +400,8 @@ namespace cw
             
             readN_Ref += actualReadN;
           }
-
+        }
+        
         p->sockN += newSockN;
       }
   
