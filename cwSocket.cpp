@@ -206,8 +206,7 @@ namespace cw
         goto errLabel;
       }
 
-      printf("Socket: userId:%i connected.", s->userId);
-      
+      printf("Socket: userId:%i connected.\n", s->userId);      
       
       // initialize the socket record
       cs = p->sockA + sockIdx;
@@ -1237,7 +1236,8 @@ cw::rc_t cw::socksrv::test(  sock::portNumber_t localPort, const char* remoteAdd
       printf("Sending:%s",sbuf);
 
       // send a message to the remote socket
-      sock::send( mgrHandle(h), userId, 0, sbuf, strlen(sbuf)+1 );
+      if( sock::send( mgrHandle(h), userId, 0, sbuf, strlen(sbuf)+1 ) != kOkRC )
+        printf("Send failed.");
 
       if( strcmp(sbuf,"quit\n") == 0)
         break;
