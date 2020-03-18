@@ -370,21 +370,20 @@ namespace cw
         // interate through the ports looking for the ones which have data waiting ...
         for(unsigned i=0; i<p->sockN; ++i)
         {
-          if( p->sockA[i].pollfd->revents & POLLHUP )
+          // if the socket was disconnected or is no longer valid
+          if( cwIsFlag(p->sockA[i].pollfd->revents,POLLHUP) || cwIsFlag(p->sockA[i].pollfd->revents,POLLNVAL) )
           {
-            printf("Socket userId:%i connId:%i disconnected.",p->sockA[i].userId,p->sockA[i].connId);
+            printf("Socket userId:%i connId:%i disconnected.\n",p->sockA[i].userId,p->sockA[i].connId);
             _closeSock(p,p->sockA+i);
             continue;
           }
+          
           if( p->sockA[i].pollfd->revents & POLLERR )
           {
-            printf("ERROR\n");
+            printf("ERROR on socket user id:%i conn id:%i\n",p->sockA[i].userId,p->sockA[i].connId);
           }
 
 
-          if( p->sockA[i].pollfd->revents & POLLNVAL )
-          {
-          }
           
           if( p->sockA[i].pollfd->revents & POLLIN )
           {
