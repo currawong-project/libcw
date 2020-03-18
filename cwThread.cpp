@@ -124,12 +124,18 @@ cw::rc_t cw::thread::create( handle_t& hRef, cbFunc_t func, void* funcArg, int s
     rc = cwLogSysError(kOpFailRC,sysRC,"Thread attribute init failed.");
   }
   else
+    /* 
+
+    // Creating the thread in a detached state should prevent it from leaking memory when 
+    // the thread is closed and pthread_join() is not called but it doesn't seem to work anymore ????
+
     if ((sysRC = pthread_attr_setdetachstate(&p->attr, PTHREAD_CREATE_DETACHED)) != 0)
     {
       p->stateId = kNotInitThId;
       rc = cwLogSysError(kOpFailRC,sysRC,"Thread set detach attribute failed.");
     }  
     else      
+    */
       if((sysRC = pthread_create(&p->pThreadH, &p->attr, _threadCallback, (void*)p )) != 0 )
       {
         p->stateId = kNotInitThId;
@@ -143,6 +149,7 @@ cw::rc_t cw::thread::create( handle_t& hRef, cbFunc_t func, void* funcArg, int s
 cw::rc_t cw::thread::destroy( handle_t& hRef )
 {
   rc_t rc = kOkRC;
+  int sysRC;
   
   if( !hRef.isValid() )
     return rc;
@@ -156,8 +163,12 @@ cw::rc_t cw::thread::destroy( handle_t& hRef )
   if((rc = _waitForState(p,kExitedThId)) != kOkRC )
     return  cwLogError(rc,"Thread timed out waiting for destroy.");
 
-  if( pthread_attr_destroy(&p->attr) != 0 )
-    rc = cwLogError(kOpFailRC,"Thread attribute destroy failed.");
+  // Block until the thread is actually fully cleaned up
+  if((sysRC = pthread_join(p->pThreadH,NULL)) != 0)
+    rc = cwLogSysError(kOpFailRC,sysRC,"Thread join failed.");
+      
+  //if( pthread_attr_destroy(&p->attr) != 0 )
+  //  rc = cwLogError(kOpFailRC,"Thread attribute destroy failed.");
     
   
   mem::release(p);
