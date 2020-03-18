@@ -92,6 +92,29 @@ namespace cw
     bool _sockIsOpen( sock_t* p )
     { return p->sockH != cwSOCKET_NULL_SOCK; }
 
+    void _unlinkChild( sock_t* s )
+    {
+      sock_t* ps  = s->parent;
+      sock_t* cs0 = nullptr;
+      for(sock_t* cs=ps->children; cs!=nullptr; cs=cs->children)
+      {
+        if( cs == s )
+        {
+          if( cs0 == nullptr )
+            ps->children = cs->children;
+          else
+            cs0->children = cs->children;
+          
+          cs->children = nullptr;
+          cs->parent   = nullptr;
+          
+          break;
+        }
+        
+        cs0 = cs;
+        
+      }   
+    }
     
     rc_t _closeSock( mgr_t* p, sock_t* s )
     {
@@ -108,11 +131,15 @@ namespace cw
         s->sockH = cwSOCKET_NULL_SOCK;		
       }
 
-      s->userId         = kInvalidId;
-      s->createFlags    = 0;
-      s->flags          = 0;
-      s->pollfd->events = 0;
-      s->pollfd->fd     = cwSOCKET_NULL_SOCK;
+      if( s->parent != nullptr )
+        _unlinkChild( s );
+
+      s->userId                    = kInvalidId;
+      s->createFlags               = 0;
+      s->flags                     = 0;
+      s->pollfd->events            = 0;
+      s->pollfd->fd                = cwSOCKET_NULL_SOCK;
+      s->remoteSockAddr.sin_family = AF_UNSPEC;
 
       return rc;      
     }
@@ -133,25 +160,6 @@ namespace cw
       mem::release(p->buf);
       mem::release(p);
       return rc;
-    }
-
-    void _unlinkChild( sock_t* s )
-    {
-      sock_t* ps  = s->parent;
-      sock_t* cs0 = nullptr;
-      for(sock_t* cs=ps->children; cs!=nullptr; cs=cs->children)
-      {
-        if( cs == s )
-        {
-          if( cs0 == nullptr )
-            ps->children = cs->children;
-          else
-            cs0->children = cs->children;
-        }
-        
-        cs0 = cs;
-        
-      }   
     }
 
     rc_t  _locateAvailSlot( mgr_t* p, unsigned sockN, unsigned& availIdx_Ref, unsigned& sockN_Ref )
@@ -250,6 +258,8 @@ namespace cw
       ssize_t  bytesReadN = 0;
       struct sockaddr_in sockaddr;
       socklen_t sizeOfFromAddr = 0;
+
+      memset(&sockaddr,0,sizeof(sockaddr));
       
       // clear the count of actual bytes read 
       readN_Ref = 0;     
@@ -284,7 +294,7 @@ namespace cw
         if( bytesReadN > 0 && s->cbFunc != nullptr  && (buf==nullptr || bufByteN==0) )
         {
           // if no src addr was given (because this is a TCP socket) then use the connected remote socket
-          if( fromAddr == nullptr )
+          if( fromAddr == nullptr && s->remoteSockAddr.sin_family != AF_UNSPEC)
             fromAddr = &s->remoteSockAddr;
           
           s->cbFunc( s->cbArg, kReceiveCbId, s->userId, s->connId, b, bytesReadN, fromAddr );
@@ -360,19 +370,20 @@ namespace cw
         // interate through the ports looking for the ones which have data waiting ...
         for(unsigned i=0; i<p->sockN; ++i)
         {
+          if( p->sockA[i].pollfd->revents & POLLHUP )
+          {
+            printf("Socket userId:%i connId:%i disconnected.",p->sockA[i].userId,p->sockA[i].connId);
+            _closeSock(p,p->sockA+i);
+            continue;
+          }
           if( p->sockA[i].pollfd->revents & POLLERR )
           {
             printf("ERROR\n");
           }
 
-          if( p->sockA[i].pollfd->revents & POLLHUP )
-          {
-            printf("HUP\n");
-          }
 
           if( p->sockA[i].pollfd->revents & POLLNVAL )
           {
-            printf("NVAL\n");
           }
           
           if( p->sockA[i].pollfd->revents & POLLIN )
@@ -560,8 +571,9 @@ cw::rc_t cw::sock::createMgr( handle_t& hRef, unsigned recvBufByteN, unsigned ma
   
   for(unsigned i=0; i<p->sockMaxN; ++i)
   {
-    p->sockA[i].sockH  = cwSOCKET_NULL_SOCK;
-    p->sockA[i].pollfd = p->pollfdA + i;
+    p->sockA[i].sockH                     = cwSOCKET_NULL_SOCK;
+    p->sockA[i].remoteSockAddr.sin_family = AF_UNSPEC;
+    p->sockA[i].pollfd                    = p->pollfdA + i;
   }
   
   hRef.set(p);
@@ -1137,17 +1149,19 @@ namespace cw
       return true;
     }
 
+    // Callback thread used by socksrv::test() below
     void _socketTestCbFunc( void* cbArg, sock::cbId_t cbId, unsigned userId, unsigned connId, const void* byteA, unsigned byteN, const struct sockaddr_in* srcAddr )
     {
       rc_t rc;
       char addr[ INET_ADDRSTRLEN+1 ];
 
       printf("type:%i user:%i conn:%i ", cbId, userId, connId );
-      
-      if((rc = sock::addrToString( srcAddr, addr, INET_ADDRSTRLEN )) == kOkRC )
-      {
-        printf("from  %s ", addr  );
-      }
+
+      if( srcAddr != nullptr )
+        if((rc = sock::addrToString( srcAddr, addr, INET_ADDRSTRLEN )) == kOkRC )
+        {
+          printf("from  %s ", addr  );
+        }
 
       if( byteA != nullptr )
         printf(" : %s ", (const char*)byteA);
@@ -1264,7 +1278,7 @@ cw::rc_t cw::socksrv::test(  sock::portNumber_t localPort, const char* remoteAdd
       printf("Sending:%s",sbuf);
 
       // send a message to the remote socket
-      if( sock::send( mgrHandle(h), userId, 0, sbuf, strlen(sbuf)+1 ) != kOkRC )
+      if( sock::send( mgrHandle(h), userId, -1, sbuf, strlen(sbuf)+1 ) != kOkRC )
         printf("Send failed.");
 
       if( strcmp(sbuf,"quit\n") == 0)
