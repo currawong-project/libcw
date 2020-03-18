@@ -43,7 +43,8 @@ namespace cw
       unsigned           flags;
       callbackFunc_t     cbFunc;
       void*              cbArg;
-      struct sockaddr_in sockaddr;
+      struct sockaddr_in localSockAddr;
+      struct sockaddr_in remoteSockAddr;
       char               ntopBuf[ INET_ADDRSTRLEN+1 ]; // use INET6_ADDRSTRLEN for IPv6
       char               hnameBuf[ HOST_NAME_MAX+1 ];
       struct pollfd*     pollfd;
@@ -212,9 +213,10 @@ namespace cw
       cs = p->sockA + sockIdx;
 
       cs->userId           = s->userId;
-      cs->connId           = s->connId++;
+      cs->connId           = s->nextConnId++;
       cs->sockH            = fd;
       cs->createFlags      = 0;
+      cs->remoteSockAddr   = *(struct sockaddr_in*)&remoteAddr;
       cs->cbFunc           = s->cbFunc;
       cs->cbArg            = s->cbArg;
       cs->pollfd           = p->pollfdA + sockIdx;
@@ -247,7 +249,8 @@ namespace cw
       unsigned bN     = bufByteN;
       ssize_t  bytesReadN = 0;
       struct sockaddr_in sockaddr;
-
+      socklen_t sizeOfFromAddr = 0;
+      
       // clear the count of actual bytes read 
       readN_Ref = 0;     
 
@@ -262,11 +265,12 @@ namespace cw
         bN = p->bufByteN;
       }
       
-      // if no src address buffer was given
-      if( fromAddr == nullptr )
-        fromAddr = &sockaddr;
-
-      socklen_t sizeOfFromAddr = sizeof(struct sockaddr_in);
+      // if no src address buffer was given and this is a UDP socket
+      if( fromAddr == nullptr && cwIsNotFlag(s->createFlags,kTcpFl) )
+      {
+        fromAddr       = &sockaddr;        
+        sizeOfFromAddr = sizeof(struct sockaddr_in);
+      }
   
       errno = 0;
 
@@ -278,7 +282,13 @@ namespace cw
 
         // if no return buffer was given and the socket has a callback function - then call it
         if( bytesReadN > 0 && s->cbFunc != nullptr  && (buf==nullptr || bufByteN==0) )
+        {
+          // if no src addr was given (because this is a TCP socket) then use the connected remote socket
+          if( fromAddr == nullptr )
+            fromAddr = &s->remoteSockAddr;
+          
           s->cbFunc( s->cbArg, kReceiveCbId, s->userId, s->connId, b, bytesReadN, fromAddr );
+        }
           
       }
       else
@@ -366,9 +376,8 @@ namespace cw
               
               newSockN += 1;
             }
-            else
+            else // otherwise it is a non-listening socket that is receiving data
             {                        
-              // ... then read the data
               if((rc = _receive( p, s, actualReadN, buf, bufByteN, fromAddr )) != kOkRC )
                 return rc;
             }
@@ -433,6 +442,8 @@ namespace cw
       }
       
       s->flags = cwSetFlag(s->flags,kIsConnectedFl);
+
+      s->remoteSockAddr = addr;
 
       return rc;
     }
@@ -693,18 +704,18 @@ cw::rc_t cw::sock::create( handle_t h,
   }
   
   // create the 32 bit local address		
-  if((rc = _initAddr( localAddr, port,  &s->sockaddr )) != kOkRC )
+  if((rc = _initAddr( localAddr, port,  &s->localSockAddr )) != kOkRC )
     goto errLabel;
 
   // bind the socket to a local address/port	
-  if( (bind( s->sockH, (struct sockaddr*)&s->sockaddr, sizeof(s->sockaddr))) == cwSOCKET_SYS_ERR )
+  if( (bind( s->sockH, (struct sockaddr*)&s->localSockAddr, sizeof(s->localSockAddr))) == cwSOCKET_SYS_ERR )
   {
     rc = cwLogSysError(kOpFailRC,errno,"Socket bind failed." );
     goto errLabel;
   }
 
   // get the local address as a string
-  if((rc = addrToString( &s->sockaddr, s->ntopBuf,  sizeof(s->ntopBuf) )) != kOkRC )
+  if((rc = addrToString( &s->localSockAddr, s->ntopBuf,  sizeof(s->ntopBuf) )) != kOkRC )
     goto errLabel;
   
   
@@ -1003,7 +1014,7 @@ unsigned    cw::sock::inetAddress( handle_t h, unsigned userId )
   if((rc = _getMgrAndSocket(h, userId, p, s )) != kOkRC )
     return 0;
 
-  return  s->sockaddr.sin_addr.s_addr;
+  return  s->localSockAddr.sin_addr.s_addr;
 }
 
 cw::sock::portNumber_t    cw::sock::port( handle_t h, unsigned userId )
@@ -1015,7 +1026,7 @@ cw::sock::portNumber_t    cw::sock::port( handle_t h, unsigned userId )
   if((rc = _getMgrAndSocket(h, userId, p, s )) != kOkRC )
     return rc;
   
-  return  ntohs(s->sockaddr.sin_port);
+  return  ntohs(s->localSockAddr.sin_port);
 }
 
 cw::rc_t cw::sock::peername( handle_t h, unsigned userId, struct sockaddr_in* addr )
