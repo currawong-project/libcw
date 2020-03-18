@@ -1114,11 +1114,18 @@ namespace cw
     {
       rc_t rc;
       char addr[ INET_ADDRSTRLEN+1 ];
+
+      printf("type:%i user:%i conn:%i ", cbId, userId, connId );
       
       if((rc = sock::addrToString( srcAddr, addr, INET_ADDRSTRLEN )) == kOkRC )
       {
-        printf("from user:%i conn:%i at %s : %s ", userId, connId, addr, (const char*)byteA );
+        printf("from  %s ", addr  );
       }
+
+      if( byteA != nullptr )
+        printf(" : %s ", (const char*)byteA);
+
+      printf("\n");
     }
      
   }
