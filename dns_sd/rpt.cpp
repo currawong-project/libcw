@@ -3,15 +3,16 @@
 
 #include "rpt.h"
 
+#define RPT_BUF_N 64
+char RPT_BUF[ RPT_BUF_N ];
+
 void vrpt( printCallback_t printCbFunc, const char* fmt, va_list vl )
 {
   if( printCbFunc != nullptr )
   {
-    const int bufN = 32;
-    char buf[bufN];
-    vsnprintf(buf,bufN,fmt,vl);
-    buf[bufN-1] = '\0';
-    printCbFunc(buf);
+    vsnprintf(RPT_BUF,RPT_BUF_N,fmt,vl);
+    RPT_BUF[RPT_BUF_N-1] = '\0';
+    printCbFunc(RPT_BUF);
   }
 }
 

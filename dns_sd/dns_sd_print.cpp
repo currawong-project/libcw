@@ -1,11 +1,13 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdarg.h>
+
 #ifdef cwLINUX
 #include <arpa/inet.h>
 #endif
 #ifdef ARDUINO
-#include <utility/util.h>
+#include <Ethernet.h>
+#include <utility/w5100.h>
 #endif
 
 #include "rpt.h"

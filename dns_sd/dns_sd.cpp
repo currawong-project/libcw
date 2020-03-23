@@ -7,7 +7,8 @@
 #endif
 
 #ifdef ARDUINO
-#include <utility/util.h>
+#include <Ethernet.h>
+#include <utility/w5100.h>
 #endif
 
 #include "rpt.h"

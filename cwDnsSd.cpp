@@ -145,7 +145,7 @@ namespace cw
 
         if( dataByteCnt > 0 )
         {
-          p->fdr->receive( data, dataByteCnt );  
+          p->fdr->receive_from_eucon( data, dataByteCnt );  
         }
 
         time::spec_t t1;
@@ -165,6 +165,12 @@ namespace cw
           p->cbCnt = 1;
         }
       }
+
+      // Called by 'fader' to send messages to change the state of the physical control.
+      void physControlCallback( void* arg, const uint8_t* buf, uint8_t bufByteN )
+      {
+      }
+
 
       void _pushTextRecdField( dnssd_t* p, const char* text )
       {
@@ -234,7 +240,7 @@ namespace cw
         p->dnsSd = new dns_sd(udpSendCallback,p,print_callback);
         
         // create the Surface logic object
-        p->fdr   = new fader(print_callback, p->hostMac, hostAddr.sin_addr.s_addr, tcpSendCallback, p, p->ticksPerHeartBeat );
+        p->fdr   = new fader(print_callback, p->hostMac, hostAddr.sin_addr.s_addr, tcpSendCallback, p, physControlCallback, p, p->ticksPerHeartBeat );
   
         // Setup the internal dnsSd object
         p->dnsSd->setup( p->serviceName, p->serviceType, p->serviceDomain, p->hostName, hostAddr.sin_addr.s_addr, p->hostPort, formatStr );
@@ -255,6 +261,7 @@ cw::rc_t cw::net::dnssd::createV(  handle_t& hRef, const char* name, const char*
   rc_t        rc              = kOkRC;
   unsigned    udpRecvBufByteN = 4096;
   unsigned    udpTimeOutMs    = 50;
+  unsigned    tcpRecvBufByteN = 4096;
   unsigned    tcpTimeOutMs    = 50;
   
   if((rc = destroy(hRef)) != kOkRC )
@@ -287,6 +294,8 @@ cw::rc_t cw::net::dnssd::createV(  handle_t& hRef, const char* name, const char*
   if((rc = set_multicast_time_to_live( socketHandle(p->udpH), 255 )) != kOkRC )
     goto errLabel;
 
+  p->tcpRecvBufByteN = tcpRecvBufByteN;
+  
   // create the service TCP socket server
   if((rc = srv::create(
         p->tcpH,
