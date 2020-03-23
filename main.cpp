@@ -5,17 +5,19 @@
 #include "cwFileSys.h"
 #include "cwTextBuf.h"
 #include "cwLex.h"
+#include "cwText.h"
 #include "cwNumericConvert.h"
 #include "cwObject.h"
 #include "cwThread.h"
-#include "cwText.h"
 #include "cwWebSock.h"
 #include "cwWebSockSvr.h"
 #include "cwSerialPort.h"
 #include "cwSerialPortSrv.h"
 #include "cwSocket.h"
-#include "cwMidi.h"
+#include "cwUi.h"
+#include "cwUiTest.h"
 #include "cwTime.h"
+#include "cwMidi.h"
 #include "cwMidiPort.h"
 #include "cwAudioDevice.h"
 #include "cwAudioDeviceTest.h"
@@ -61,6 +63,43 @@ template<typename T0, typename T1, typename... ARGS>
 }
 
 
+template< typename T0 >
+  unsigned fmt_data( char* buf, unsigned n, T0 t0 )
+{
+  return cw::toText(buf, n, t0);
+}
+
+template<>
+  unsigned fmt_data( char* buf, unsigned n, const char* v )
+{
+  return cw::toText(buf,n,v);
+}
+
+unsigned to_text_base(char*, unsigned n, unsigned i )
+{ return i; }
+
+template<typename T0, typename T1, typename... ARGS>
+  unsigned to_text_base( char* buf, unsigned  n, unsigned i, T0 t0, T1 t1, ARGS&&... args)
+{
+  i += fmt_data(buf+i, n-i, t0);
+  i += fmt_data(buf+i, n-i, t1);
+  
+  if( i >= n )
+    return i;
+
+  return to_text_base(buf,n,i,std::forward<ARGS>(args)...);
+}
+
+template< typename... ARGS>
+  unsigned to_text(const char* prefix, char* buf, unsigned  n, ARGS&&... args)
+{
+  unsigned i = cw::toText(buf, n, prefix );
+
+  return to_text_base(buf,n,i,std::forward<ARGS>(args)...);
+}
+
+
+
 using namespace std;
 
 
@@ -73,6 +112,12 @@ void variadicTplTest( cw::object_t* cfg, int argc, const char* argv[] )
   printf("get: %i %i %i",v0,v1,v2);
   
   printf("\n");
+
+  const int bufN = 32;
+  char buf[bufN];
+  buf[0] = '\0';
+  unsigned n = to_text("prefix: ",buf,bufN,"a",1,"b",3.2,"hi","ho");
+  printf("%i : %s\n",n,buf);
 }
 
 
@@ -252,6 +297,11 @@ void sockMgrTest( cw::object_t* cfg, int argc, const char* argv[] )
   return;
 }
 
+void uiTest( cw::object_t* cfg, int argc, const char* argv[] )
+{
+  cw::ui::test();
+}
+
 void socketMdnsTest( cw::object_t* cfg, int argc, const char* argv[] )
 {
   cw::net::mdns::test();
@@ -338,7 +388,7 @@ int main( int argc, const char* argv[] )
    { "socketSrvUdp", socketSrvUdpTest },
    { "socketSrvTcp", socketSrvTcpTest },
    { "sockMgrTest", sockMgrTest },
-   
+   { "uiTest", uiTest },
    { "socketMdns", socketMdnsTest },
    { "dnssd",  dnsSdTest },
    { "eucon",  euConTest },
