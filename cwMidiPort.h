@@ -1,6 +1,7 @@
 #ifndef cwMidiPort_H
 #define cwMidiPort_H
 
+#include "cwMidiDecls.h"
 
 namespace cw
 {
@@ -37,13 +38,13 @@ namespace cw
       rc_t     create(  handle_t& hRef, unsigned devIdx, unsigned portIdx, cbFunc_t cbFunc, void* cbArg, unsigned bufByteCnt );
       rc_t     destroy( handle_t& hRef );
       unsigned errorCount( handle_t h );
-      void     parseMidiData(    handle_t h, const time::spec_t* timestamp, const byte_t* buf, unsigned bufByteCnt );
+      void     parseMidiData(    handle_t h, const time::spec_t* timestamp, const uint8_t* buf, unsigned bufByteCnt );
 
       // The following two functions are intended to be used togetther.
       // Use midiTriple() to insert pre-parsed msg's to the output buffer,
       // and then use transmit() to send the buffer via the parsers callback function.
       // Set the data bytes to 0xff if they are not used by the message.
-      rc_t midiTriple( handle_t h, const time::spec_t* timestamp, byte_t status, byte_t d0, byte_t d1 );
+      rc_t midiTriple( handle_t h, const time::spec_t* timestamp, uint8_t status, uint8_t d0, uint8_t d1 );
       rc_t transmit(    handle_t h ); 
 
       // Install/Remove additional callbacks.
@@ -79,8 +80,8 @@ namespace cw
       unsigned    portCount(  handle_t h, unsigned devIdx, unsigned flags );
       const char* portName(   handle_t h, unsigned devIdx, unsigned flags, unsigned portIdx );
       unsigned    portNameToIndex( handle_t h, unsigned devIdx, unsigned flags, const char* portName );
-      rc_t        send(       handle_t h, unsigned devIdx, unsigned portIdx, byte_t st, byte_t d0, byte_t d1 );
-      rc_t        sendData(   handle_t h, unsigned devIdx, unsigned portIdx, const byte_t* dataPtr, unsigned byteCnt );
+      rc_t        send(       handle_t h, unsigned devIdx, unsigned portIdx, uint8_t st, uint8_t d0, uint8_t d1 );
+      rc_t        sendData(   handle_t h, unsigned devIdx, unsigned portIdx, const uint8_t* dataPtr, unsigned byteCnt );
 
       // Set devIdx to -1 to assign the callback to all devices.
       // Set portIdx to -1 to assign the callback to all ports on the specified devices.

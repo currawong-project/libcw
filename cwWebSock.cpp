@@ -25,19 +25,20 @@ namespace cw
 
     typedef struct websock_str
     {
-      cbFunc_t               _cbFunc;
-      void*                  _cbArg;
+      cbFunc_t               _cbFunc;                  //
+      void*                  _cbArg;                   //
       struct lws_context*    _ctx           = nullptr; //  
       struct lws_protocols*  _protocolA     = nullptr; // Websocket internal protocol state array
-      unsigned               _protocolN     = 0; // Count of protocol records in _protocolA[].
-      unsigned               _nextSessionId = 0; // Next session id.
-      unsigned               _connSessionN  = 0; // Count of connected sessions.
+      unsigned               _protocolN     = 0;       // Count of protocol records in _protocolA[].
+      unsigned               _nextSessionId = 0;       // Next session id.
+      unsigned               _connSessionN  = 0;       // Count of connected sessions.
       struct lws_http_mount* _mount         = nullptr; //
       MpScNbQueue<msg_t>*    _q; // Thread safe, non-blocking, protocol independent msg queue.
       
     } websock_t;
 
-    inline websock_t* _handleToPtr(handle_t h){ return handleToPtr<handle_t,websock_t>(h); }
+    inline websock_t* _handleToPtr(handle_t h)
+    { return handleToPtr<handle_t,websock_t>(h); }
 
 
     // Internal session record.

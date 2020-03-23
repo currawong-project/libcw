@@ -2,6 +2,7 @@
 #include "cwLog.h"
 #include "cwCommonImpl.h"
 #include "cwMem.h"
+#include "cwTime.h"
 #include "cwMidi.h"
 
 namespace cw {
@@ -9,8 +10,8 @@ namespace cw {
     
     typedef struct statusDesc_str
     {
-      byte_t   status;
-      byte_t  byteCnt;
+      uint8_t   status;
+      uint8_t  byteCnt;
       const char*     label;
     } statusDesc_t;
 
@@ -84,7 +85,7 @@ namespace cw {
 
 //====================================================================================================
 
-const char* cw::midi::statusToLabel( byte_t status )
+const char* cw::midi::statusToLabel( uint8_t status )
 {
   unsigned i;
 
@@ -102,7 +103,7 @@ const char* cw::midi::statusToLabel( byte_t status )
   return _statusDescArray[i].label; 
 }
 
-const char*   cw::midi::metaStatusToLabel( byte_t metaStatus )
+const char*   cw::midi::metaStatusToLabel( uint8_t metaStatus )
 {
   int i;
   for(i=0; _metaStatusDescArray[i].status != kInvalidMetaMdId; ++i)
@@ -112,7 +113,7 @@ const char*   cw::midi::metaStatusToLabel( byte_t metaStatus )
   return _metaStatusDescArray[i].label; 
 }
 
-const char* cw::midi::pedalLabel( byte_t d0 )
+const char* cw::midi::pedalLabel( uint8_t d0 )
 {
   int i;
   for(i=0; _pedalLabel[i].status != kInvalidMidiByte; ++i)
@@ -122,7 +123,7 @@ const char* cw::midi::pedalLabel( byte_t d0 )
   return _pedalLabel[i].label;
 }
 
-cw::midi::byte_t cw::midi::statusToByteCount( byte_t status )
+uint8_t cw::midi::statusToByteCount( uint8_t status )
 {
   unsigned i;
 
@@ -142,7 +143,7 @@ cw::midi::byte_t cw::midi::statusToByteCount( byte_t status )
   return 0; 
 }
 
-unsigned      cw::midi::to14Bits( byte_t d0, byte_t d1 )
+unsigned      cw::midi::to14Bits( uint8_t d0, uint8_t d1 )
 {
   unsigned val = d0;
   val <<= 7;
@@ -150,26 +151,26 @@ unsigned      cw::midi::to14Bits( byte_t d0, byte_t d1 )
   return val;
 }
 
-void          cw::midi::split14Bits( unsigned v, byte_t& d0Ref, byte_t& d1Ref )
+void          cw::midi::split14Bits( unsigned v, uint8_t& d0Ref, uint8_t& d1Ref )
 {
   d0Ref = (v & 0x3f80) >> 7;
   d1Ref = v & 0x7f;
 }
 
-int           cw::midi::toPbend(  byte_t d0, byte_t d1 )
+int           cw::midi::toPbend(  uint8_t d0, uint8_t d1 )
 {
   int v = to14Bits(d0,d1);
   return v - 8192;
 }
 
-void          cw::midi::splitPbend( int v, byte_t& d0Ref, byte_t& d1Ref )
+void          cw::midi::splitPbend( int v, uint8_t& d0Ref, uint8_t& d1Ref )
 {
   unsigned uv = v + 8192;
   split14Bits(uv,d0Ref,d1Ref);
 }
 
 //====================================================================================================
-const char*     cw::midi::midiToSciPitch( byte_t pitch, char* label, unsigned labelCharCnt )
+const char*     cw::midi::midiToSciPitch( uint8_t pitch, char* label, unsigned labelCharCnt )
 {
   static char buf[ kMidiSciPitchCharCnt ];
 
@@ -214,7 +215,7 @@ const char*     cw::midi::midiToSciPitch( byte_t pitch, char* label, unsigned la
 }
 
 
-cw::midi::byte_t    cw::midi::sciPitchToMidiPitch( char pitch, int acc, int octave )
+uint8_t    cw::midi::sciPitchToMidiPitch( char pitch, int acc, int octave )
 {
   int idx = -1;
   
@@ -240,7 +241,7 @@ cw::midi::byte_t    cw::midi::sciPitchToMidiPitch( char pitch, int acc, int octa
 
 }
 
-cw::midi::byte_t    cw::midi::sciPitchToMidi( const char* sciPitchStr )
+uint8_t    cw::midi::sciPitchToMidi( const char* sciPitchStr )
 {
   const char* cp      = sciPitchStr;
   bool        sharpFl = false;

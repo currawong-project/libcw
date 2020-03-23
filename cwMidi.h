@@ -77,8 +77,6 @@ namespace cw
     };
 
 
-    typedef unsigned char   byte_t;
-    typedef struct timespec timestamp_t;
     
     //===============================================================================================
     // Utility Functions
@@ -103,42 +101,24 @@ namespace cw
     template< typename T> bool isPedalDown( T s, T d0, T d1 )  { return ( cmMidiIsPedal(s,d0) && (d1)>=64 ); }
     template< typename T> bool isPedalUp(   T s, T d0, T d1 )  { return ( cmMidiIsPedal(s,d0) && (d1)<64  ); }
 
+
     
-    const char*   statusToLabel(     byte_t status );
-    const char*   metaStatusToLabel( byte_t metaStatus );
-    const char*   pedalLabel(        byte_t d0 );
+    const char*   statusToLabel(     uint8_t status );
+    const char*   metaStatusToLabel( uint8_t metaStatus );
+    const char*   pedalLabel(        uint8_t d0 );
 
     // Returns kInvalidMidiByte if status is not a valid status byte
-    byte_t  statusToByteCount( byte_t status );
+    uint8_t  statusToByteCount( uint8_t status );
 
-    unsigned      to14Bits( byte_t d0, byte_t d1 );
-    void          split14Bits( unsigned v, byte_t& d0Ref, byte_t& d1Ref );
-    int           toPbend(  byte_t d0, byte_t d1 );
-    void          splitPbend( int v, byte_t& d0Ref, byte_t& d1Ref ); 
+    unsigned      to14Bits( uint8_t d0, uint8_t d1 );
+    void          split14Bits( unsigned v, uint8_t& d0Ref, uint8_t& d1Ref );
+    int           toPbend(  uint8_t d0, uint8_t d1 );
+    void          splitPbend( int v, uint8_t& d0Ref, uint8_t& d1Ref ); 
 
     //===============================================================================================
     // MIDI Communication data types
     //
 
-    typedef struct  msg_str
-    {
-      //unsigned     deltaUs; // time since last MIDI msg in microseconds
-      timestamp_t timeStamp;
-      byte_t status;  // midi status byte
-      byte_t d0;      // midi data byte 0
-      byte_t d1;      // midi data byte 1
-      byte_t pad;
-    } msg_t;
-
-    typedef struct packet_str
-    {
-      void*         cbDataPtr; // application supplied reference value from mdParserCreate()
-      unsigned      devIdx;    // the device the msg originated from
-      unsigned      portIdx;   // the port index on the source device
-      msg_t*        msgArray;  // pointer to an array of 'msgCnt' mdMsg records or NULL if sysExMsg is non-NULL
-      byte_t*       sysExMsg;  // pointer to a sys-ex msg or NULL if msgArray is non-NULL (see note below)
-      unsigned      msgCnt;    // count of mdMsg records or sys-ex bytes
-    } packet_t;
 
     // Notes: If the sys-ex message can be contained in a single msg then
     // then the first msg byte is kSysExMdId and the last is kSysComEoxMdId.
@@ -150,12 +130,12 @@ namespace cw
     // buffer is returned. If label[] is given the it
     // should have at least 5 (kMidiPitchCharCnt) char's (including the terminating zero).
     // If 'pitch' is outside of the range 0-127 then a blank string is returned.
-    const char*    midiToSciPitch( byte_t pitch, char* label, unsigned labelCharCnt );
+    const char*    midiToSciPitch( uint8_t pitch, char* label, unsigned labelCharCnt );
 
     // Convert a scientific pitch to MIDI pitch.  acc == 1 == sharp, acc == -1 == flat.
     // The pitch character must be in the range 'A' to 'G'. Upper or lower case is valid.
     // Return kInvalidMidiPitch if the arguments are not valid. 
-    byte_t    sciPitchToMidiPitch( char pitch, int acc, int octave );
+    uint8_t    sciPitchToMidiPitch( char pitch, int acc, int octave );
 
 
     // Scientific pitch string: [A-Ga-g][#b][#] where  # may be -1 to 9.
@@ -163,7 +143,7 @@ namespace cw
     // scientific pitch string. This function will convert C-1 to G9 to 
     // valid MIDI pitch values 0 to 127.  Scientific pitch strings outside
     // of this range will be returned as kInvalidMidiPitch.   
-    byte_t    sciPitchToMidi( const char* sciPitchStr );
+    uint8_t    sciPitchToMidi( const char* sciPitchStr );
 
   }
 }

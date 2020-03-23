@@ -1,47 +1,18 @@
 #ifndef cwSocket_H
 #define cwSocket_H
 
+#include "cwSocketDecls.h"
 
 namespace cw
 {
   namespace sock
   {
     typedef handle< struct mgr_str > handle_t;
-    typedef uint16_t portNumber_t;
-
-    typedef enum
-    {
-     kReceiveCbId,
-     kConnectCbId,
-     kDisconnectCbId
-    } cbId_t;
-
-
     
     // userId is the id assigned to the receiving socket
     // connId is an automatically assigned id which represents the remote endpoint which is connected to 'userId'.
     typedef void (*callbackFunc_t)( void* cbArg, cbId_t cbId, unsigned userId, unsigned connId, const void* byteA, unsigned byteN, const struct sockaddr_in* srcAddr );
 
-    enum
-    {
-     kNonBlockingFl   = 0x000,  // Create a non-blocking socket.
-     kBlockingFl      = 0x001,  // Create a blocking socket.
-     kTcpFl           = 0x002,  // Create a TCP socket rather than a UDP socket.
-     kBroadcastFl     = 0x004,  //
-     kReuseAddrFl     = 0x008,  //
-     kReusePortFl     = 0x010,  //
-     kMultiCastTtlFl  = 0x020,  //
-     kMultiCastLoopFl = 0x040,  //
-     kListenFl        = 0x080,  // Use this socket to listen for incoming connections
-     kStreamFl        = 0x100,  // Connected stream (not Datagram)
-    };
-
-    enum
-    {
-     // port 0 is reserved by and is therefore a convenient invalid port number
-     kInvalidPortNumber = 0 
-    };
-    
     rc_t createMgr(  handle_t& hRef, unsigned recvBufByteN, unsigned maxSocketN );
     rc_t destroyMgr( handle_t& hRef );
 

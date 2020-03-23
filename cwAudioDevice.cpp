@@ -112,19 +112,19 @@ cw::rc_t cw::audio::device::registerDriver( handle_t h, driver_t* drv )
   return kOkRC;
 }
 
-unsigned cw::audio::device::deviceCount( handle_t h )
+unsigned cw::audio::device::count( handle_t h )
 {
   device_t* p = _handleToPtr(h);
   return p->nextDrvIdx;  
 }
 
-unsigned      cw::audio::device::deviceLabelToIndex( handle_t h, const char* label )
+unsigned      cw::audio::device::labelToIndex( handle_t h, const char* label )
 {
-  unsigned n = deviceCount(h);
+  unsigned n = count(h);
   unsigned i;
   for(i=0; i<n; ++i)
   {
-    const char* s = deviceLabel(h,i);
+    const char* s = device::label(h,i);
     if( textCompare(s,label)==0)
       return i;
   }
@@ -132,7 +132,7 @@ unsigned      cw::audio::device::deviceLabelToIndex( handle_t h, const char* lab
 }
 
 
-const char* cw::audio::device::deviceLabel( handle_t h, unsigned devIdx )
+const char* cw::audio::device::label( handle_t h, unsigned devIdx )
 {
   drv_t* d;
   if((d = _indexToDriver(h,devIdx)) != nullptr )
@@ -140,7 +140,7 @@ const char* cw::audio::device::deviceLabel( handle_t h, unsigned devIdx )
   return nullptr;
 }
 
-unsigned cw::audio::device::deviceChannelCount( handle_t h, unsigned devIdx, bool inputFl )
+unsigned cw::audio::device::channelCount( handle_t h, unsigned devIdx, bool inputFl )
 {
   drv_t* d;
   if((d = _indexToDriver(h,devIdx)) != nullptr )
@@ -148,7 +148,7 @@ unsigned cw::audio::device::deviceChannelCount( handle_t h, unsigned devIdx, boo
   return 0;
 }
 
-double cw::audio::device::deviceSampleRate( handle_t h, unsigned devIdx )
+double cw::audio::device::sampleRate( handle_t h, unsigned devIdx )
 {
   drv_t* d;
   if((d = _indexToDriver(h,devIdx)) != nullptr )
@@ -156,7 +156,7 @@ double cw::audio::device::deviceSampleRate( handle_t h, unsigned devIdx )
   return 0;
 }
 
-unsigned cw::audio::device::deviceFramesPerCycle( handle_t h, unsigned devIdx, bool inputFl )
+unsigned cw::audio::device::framesPerCycle( handle_t h, unsigned devIdx, bool inputFl )
 {
   drv_t* d;
   if((d = _indexToDriver(h,devIdx)) != nullptr )
@@ -164,7 +164,7 @@ unsigned cw::audio::device::deviceFramesPerCycle( handle_t h, unsigned devIdx, b
   return 0;
 }
 
-cw::rc_t  cw::audio::device::deviceSetup( handle_t h, unsigned devIdx, double sr, unsigned frmPerCycle, cbFunc_t cb, void* cbData )
+cw::rc_t  cw::audio::device::setup( handle_t h, unsigned devIdx, double sr, unsigned frmPerCycle, cbFunc_t cb, void* cbData )
 {
   drv_t* d;
   if((d = _indexToDriver(h,devIdx)) != nullptr )
@@ -172,7 +172,7 @@ cw::rc_t  cw::audio::device::deviceSetup( handle_t h, unsigned devIdx, double sr
   return kInvalidArgRC;
 }
 
-cw::rc_t  cw::audio::device::deviceStart( handle_t h, unsigned devIdx )
+cw::rc_t  cw::audio::device::start( handle_t h, unsigned devIdx )
 {
   drv_t* d;
   if((d = _indexToDriver(h,devIdx)) != nullptr )
@@ -180,7 +180,7 @@ cw::rc_t  cw::audio::device::deviceStart( handle_t h, unsigned devIdx )
   return kInvalidArgRC;
 }
 
-cw::rc_t  cw::audio::device::deviceStop( handle_t h, unsigned devIdx )
+cw::rc_t  cw::audio::device::stop( handle_t h, unsigned devIdx )
 {
   drv_t* d;
   if((d = _indexToDriver(h,devIdx)) != nullptr )
@@ -188,7 +188,7 @@ cw::rc_t  cw::audio::device::deviceStop( handle_t h, unsigned devIdx )
   return kInvalidArgRC;
 }
 
-bool  cw::audio::device::deviceIsStarted(handle_t h, unsigned devIdx )
+bool  cw::audio::device::isStarted(handle_t h, unsigned devIdx )
 {
   drv_t* d;
   if((d = _indexToDriver(h,devIdx)) != nullptr )
@@ -196,7 +196,7 @@ bool  cw::audio::device::deviceIsStarted(handle_t h, unsigned devIdx )
   return false;  
 }
 
-void cw::audio::device::deviceRealTimeReport( handle_t h, unsigned devIdx )
+void cw::audio::device::realTimeReport( handle_t h, unsigned devIdx )
 {
   drv_t* d;
   if((d = _indexToDriver(h,devIdx)) != nullptr )
@@ -205,13 +205,13 @@ void cw::audio::device::deviceRealTimeReport( handle_t h, unsigned devIdx )
 
 void cw::audio::device::report( handle_t h )
 {
-  for(unsigned i=0; i<deviceCount(h); ++i)
+  for(unsigned i=0; i<count(h); ++i)
   {
     cwLogInfo( "%8.1f in:%i (%i) out:%i (%i) %s",
-      deviceSampleRate(h,i),
-      deviceChannelCount(h,i,true),  deviceFramesPerCycle(h,i,true),
-      deviceChannelCount(h,i,false), deviceFramesPerCycle(h,i,false),
-      deviceLabel(h,i));
+      sampleRate(h,i),
+      channelCount(h,i,true), framesPerCycle(h,i,true),
+      channelCount(h,i,false), framesPerCycle(h,i,false),
+      label(h,i));
   }
   
 }

@@ -2,8 +2,8 @@
 #include "cwLog.h"
 #include "cwCommonImpl.h"
 #include "cwMem.h"
-#include "cwMidi.h"
 #include "cwTime.h"
+#include "cwMidi.h"
 #include "cwTextBuf.h"
 
 #include "cwMidiPort.h"
@@ -43,11 +43,11 @@ namespace cw
 
         unsigned      state;          // parser state id
         unsigned      errCnt;         // accumlated error count
-        byte_t  status;         // running status
-        byte_t  data0;          // data byte 0
+        uint8_t  status;         // running status
+        uint8_t  data0;          // data byte 0
         unsigned      dataCnt;        // data byte cnt for current status 
         unsigned      dataIdx;        // index (0 or 1) of next data byte
-        byte_t* buf;            // output buffer
+        uint8_t* buf;            // output buffer
         unsigned      bufByteCnt;     // output buffer byte cnt
         unsigned      bufIdx;         // next output buffer index
         unsigned      msgCnt;         // count of channel messages in the buffer
@@ -95,7 +95,7 @@ namespace cw
 
       }
 
-      void _cmMpParserStoreChMsg( parser_t* p, const time::spec_t* timeStamp,  byte_t d )
+      void _cmMpParserStoreChMsg( parser_t* p, const time::spec_t* timeStamp,  uint8_t d )
       {
         // if there is not enough room left in the buffer then transmit
         // the current messages
@@ -176,7 +176,7 @@ cw::rc_t cw::midi::parser::create( handle_t& hRef, unsigned devIdx, unsigned por
   //p->cbChain->cbDataPtr = cbDataPtr;
   //p->cbChain->linkPtr   = NULL;
   p->cbChain           = NULL;
-  p->buf               = mem::allocZ<byte_t>( bufByteCnt );
+  p->buf               = mem::allocZ<uint8_t>( bufByteCnt );
   p->bufByteCnt        = bufByteCnt;
   p->bufIdx            = 0;
   p->msgCnt            = 0;
@@ -227,7 +227,7 @@ unsigned    cw::midi::parser::errorCount( handle_t h )
 }
 
 
-void cw::midi::parser::parseMidiData( handle_t h, const time::spec_t* timeStamp, const byte_t* iBuf, unsigned iByteCnt )
+void cw::midi::parser::parseMidiData( handle_t h, const time::spec_t* timeStamp, const uint8_t* iBuf, unsigned iByteCnt )
 {
   
   parser_t* p = _handleToPtr(h);
@@ -235,8 +235,8 @@ void cw::midi::parser::parseMidiData( handle_t h, const time::spec_t* timeStamp,
   if( p == NULL )
     return;
   
-  const byte_t* ip = iBuf;
-  const byte_t* ep  = iBuf + iByteCnt;
+  const uint8_t* ip = iBuf;
+  const uint8_t* ep  = iBuf + iByteCnt;
 
   for(; ip < ep; ++ip )
   {
@@ -354,11 +354,11 @@ void cw::midi::parser::parseMidiData( handle_t h, const time::spec_t* timeStamp,
  
 }
 
-cw::rc_t  cw::midi::parser::midiTriple(   handle_t h, const time::spec_t* timeStamp, byte_t status, byte_t d0, byte_t d1 )
+cw::rc_t  cw::midi::parser::midiTriple(   handle_t h, const time::spec_t* timeStamp, uint8_t status, uint8_t d0, uint8_t d1 )
 {
   rc_t rc = kOkRC;
   parser_t* p = _handleToPtr(h);
-  byte_t mb = 0xff; // a midi triple may never have a status of 0xff
+  uint8_t mb = 0xff; // a midi triple may never have a status of 0xff
 
   if( d0 == 0xff )
     p->dataCnt = 0;

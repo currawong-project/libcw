@@ -25,11 +25,7 @@ namespace  cw
       typedef struct
       {
         unsigned      bufCnt;         // 2=double buffering 3=triple buffering
-        unsigned      chIdx;          // first test channel
-        //unsigned      chCnt;          // count of channels to test
         unsigned      framesPerCycle; // DSP frames per cycle
-        unsigned      bufFrmCnt;      // count of DSP frames used by the audio buffer  (bufCnt * framesPerCycle)
-        unsigned      bufSmpCnt;      // count of samples used by the audio buffer     (chCnt  * bufFrmCnt)
         unsigned      inDevIdx;       // input device index
         unsigned      outDevIdx;      // output device index
         double        srate;          // audio sample rate
@@ -51,8 +47,6 @@ namespace  cw
           "-r <srate> -c <chcnt> -b <bufcnt> -f <frmcnt> -i <idevidx> -o <odevidx> -t -p -h \n"
           "\n"
           "-r <srate> = sample rate\n"
-          "-a <chidx> = first channel\n"
-          "-c <chcnt> = audio channels\n"
           "-b <bufcnt> = count of buffers\n"
           "-f <frmcnt> = count of samples per buffer\n"
           "-i <idevidx> = input device index\n"
@@ -119,16 +113,10 @@ cw::rc_t cw::audio::device::test( int argc, const char** argv )
   if( _cmApGetOpt(argc,argv,"-h",0,true) )
     _cmApPrintUsage();
 
-
-  runFl            = _cmApGetOpt(argc,argv,"-p",0,true)?false:true;
+  runFl            = _cmApGetOpt(argc,argv,"-p",0,true) ? false : true;
   r.srate          = _cmApGetOpt(argc,argv,"-r",44100);
-  //r.chIdx          = _cmApGetOpt(argc,argv,"-a",0);
-  //r.chCnt          = _cmApGetOpt(argc,argv,"-c",2);
   r.bufCnt         = _cmApGetOpt(argc,argv,"-b",3);
   r.framesPerCycle = _cmApGetOpt(argc,argv,"-f",512);
-  //r.bufFrmCnt      = (r.bufCnt*r.framesPerCycle);
-  //r.bufSmpCnt      = (r.chCnt  * r.bufFrmCnt);
-  //r.logCnt         = 100; 
   r.meterMs        = 50;
 
   r.inDevIdx   = _cmGlobalInDevIdx  = _cmApGetOpt(argc,argv,"-i",0);   
@@ -161,9 +149,9 @@ cw::rc_t cw::audio::device::test( int argc, const char** argv )
   }
   
   // report the current audio device configuration
-  for(i=0; i<deviceCount(h); ++i)
+  for(i=0; i<device::count(h); ++i)
   {
-    cwLogInfo("%i [in: chs=%i frames=%i] [out: chs=%i frames=%i] srate:%8.1f %s",i,deviceChannelCount(h,i,true),deviceFramesPerCycle(h,i,true),deviceChannelCount(h,i,false),deviceFramesPerCycle(h,i,false),deviceSampleRate(h,i),deviceLabel(h,i));
+    cwLogInfo("%i [in: chs=%i frames=%i] [out: chs=%i frames=%i] srate:%8.1f %s",i,device::channelCount(h,i,true),framesPerCycle(h,i,true),channelCount(h,i,false),framesPerCycle(h,i,false),sampleRate(h,i),label(h,i));
   }
   
   // report the current audio devices using the audio port interface function
@@ -172,29 +160,29 @@ cw::rc_t cw::audio::device::test( int argc, const char** argv )
   if( runFl )
   {
     // initialize the audio bufer
-    buf::create( r.audioBufH, deviceCount(h), r.meterMs );
+    buf::create( r.audioBufH, device::count(h), r.meterMs );
 
     // setup the buffer for the output device
-    buf::setup( r.audioBufH, r.outDevIdx, r.srate, r.framesPerCycle, r.bufCnt, deviceChannelCount(h,r.outDevIdx,true), r.framesPerCycle, deviceChannelCount(h,r.outDevIdx,false), r.framesPerCycle );
+    buf::setup( r.audioBufH, r.outDevIdx, r.srate, r.framesPerCycle, r.bufCnt, channelCount(h,r.outDevIdx,true), r.framesPerCycle, channelCount(h,r.outDevIdx,false), r.framesPerCycle );
 
     // setup the buffer for the input device
     //if( r.inDevIdx != r.outDevIdx )
-    buf::setup( r.audioBufH, r.inDevIdx, r.srate, r.framesPerCycle, r.bufCnt, deviceChannelCount(h,r.inDevIdx,true), r.framesPerCycle, deviceChannelCount(h,r.inDevIdx,false), r.framesPerCycle ); 
+    buf::setup( r.audioBufH, r.inDevIdx, r.srate, r.framesPerCycle, r.bufCnt, channelCount(h,r.inDevIdx,true), r.framesPerCycle, channelCount(h,r.inDevIdx,false), r.framesPerCycle ); 
 
     // setup an output device
-    if(deviceSetup(h, r.outDevIdx,r.srate,r.framesPerCycle,_cmApPortCb2,&r) != kOkRC )
+    if(setup(h, r.outDevIdx,r.srate,r.framesPerCycle,_cmApPortCb2,&r) != kOkRC )
       cwLogInfo("Out device setup failed.");
     else
       // setup an input device
-      if( deviceSetup(h, r.inDevIdx,r.srate,r.framesPerCycle,_cmApPortCb2,&r) != kOkRC )
+      if( setup(h, r.inDevIdx,r.srate,r.framesPerCycle,_cmApPortCb2,&r) != kOkRC )
         cwLogInfo("In device setup failed.");
       else
         // start the input device
-        if( deviceStart(h, r.inDevIdx) != kOkRC )
+        if( start(h, r.inDevIdx) != kOkRC )
           cwLogInfo("In device start failed.");
         else
           // start the output device
-          if( deviceStart(h, r.outDevIdx) != kOkRC )
+          if( start(h, r.outDevIdx) != kOkRC )
             cwLogInfo("Out Device start failed.");
           else
             cwLogInfo("Setup complete!");
@@ -208,7 +196,7 @@ cw::rc_t cw::audio::device::test( int argc, const char** argv )
     char c;
     while((c=getchar()) != 'q')
     {
-      deviceRealTimeReport(h, r.outDevIdx );
+      realTimeReport(h, r.outDevIdx );
 
       switch(c)
       {
@@ -241,13 +229,13 @@ cw::rc_t cw::audio::device::test( int argc, const char** argv )
     }
 
     // stop the input device
-    if( deviceIsStarted(h,r.inDevIdx) )
-      if( deviceStop(h,r.inDevIdx) != kOkRC )
+    if( isStarted(h,r.inDevIdx) )
+      if( stop(h,r.inDevIdx) != kOkRC )
         cwLogInfo("In device stop failed.");
 
     // stop the output device
-    if( deviceIsStarted(h,r.outDevIdx) )
-      if( deviceStop(h,r.outDevIdx) != kOkRC )
+    if( isStarted(h,r.outDevIdx) )
+      if( stop(h,r.outDevIdx) != kOkRC )
         cwLogInfo("Out device stop failed.");
   }
 

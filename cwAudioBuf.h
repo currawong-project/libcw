@@ -29,8 +29,10 @@
 //      out - outgoing samples are filled with a 1k sine tone
 //)
 
-#ifndef cmApBuf_H
-#define cmApBuf_H
+#ifndef cwAudioBuf_H
+#define cwAudioBuf_H
+
+#include "cwAudioBufDecls.h"
 
 namespace cw
 {
@@ -113,7 +115,7 @@ namespace cw
       // Return the meter window period as set by initialize()
       unsigned meterMs(handle_t h);
   
-      // Set the meter update period. THis function limits the value to between 10 and 1000.
+      // Set the meter update period. This function limits the value to between 10 and 1000.
       void     setMeterMs( handle_t h, unsigned meterMs );
 
       // Returns the channel count set via setup().
@@ -211,7 +213,8 @@ namespace cw
       // 3) This function just returns audio information it does not
       // change any internal states.
       // 4) The timestamp pointers are optional.
-      void getIO(   handle_t h, unsigned iDevIdx, sample_t* iBufArray[], unsigned iBufChCnt, time::spec_t* iTimeStampPtr, 
+      void getIO(   handle_t h,
+        unsigned iDevIdx, sample_t* iBufArray[], unsigned iBufChCnt, time::spec_t* iTimeStampPtr, 
         unsigned oDevIdx, sample_t* oBufArray[], unsigned oBufChCnt, time::spec_t* oTimeStampPtr );
 
 

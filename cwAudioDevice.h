@@ -22,36 +22,14 @@
 #ifndef cwAudioDevice_H
 #define cwAudioDevice_H
 
+#include "cwAudioDeviceDecls.h"
+
 namespace cw
 {
   namespace audio
   {
     namespace device
     {
-      typedef float sample_t;
-
-      // audioPacket_t flags
-      enum
-      {
-       kInterleavedApFl = 0x01,  // The audio samples are interleaved.
-       kFloatApFl       = 0x02   // The audio samples are single precision floating point values.
-      };
-
-      // Audio packet record used by the audioPacket_t callback.
-      // Audio ports send and receive audio using this data structure. 
-      typedef struct
-      {
-        unsigned     devIdx;         // device associated with packet
-        unsigned     begChIdx;       // first device channel 
-        unsigned     chCnt;          // count of channels
-        unsigned     audioFramesCnt; // samples per channel (see note below)
-        unsigned     bitsPerSample;  // bits per sample word
-        unsigned     flags;          // kInterleavedApFl | kFloatApFl
-        void*        audioBytesPtr;  // pointer to sample data
-        void*        cbArg;          // user defined argument passed in via deviceSetup()
-        time::spec_t timeStamp;      // Packet time stamp.
-      }  audioPacket_t; 
-
 
       // Audio port callback signature. 
       // inPktArray[inPktCnt] are full packets of audio coming from the ADC to the application.
@@ -94,12 +72,12 @@ namespace cw
         
       rc_t registerDriver( handle_t h, driver_t* drv );
 
-      unsigned    deviceCount(          handle_t h );
-      unsigned    deviceLabelToIndex(   handle_t h, const char* label );
-      const char* deviceLabel(          handle_t h, unsigned devIdx );
-      unsigned    deviceChannelCount(   handle_t h, unsigned devIdx, bool inputFl );
-      double      deviceSampleRate(     handle_t h, unsigned devIdx );
-      unsigned    deviceFramesPerCycle( handle_t h, unsigned devIdx, bool inputFl );
+      unsigned    count(          handle_t h );
+      unsigned    labelToIndex(   handle_t h, const char* label );
+      const char* label(          handle_t h, unsigned devIdx );
+      unsigned    channelCount(   handle_t h, unsigned devIdx, bool inputFl );
+      double      sampleRate(     handle_t h, unsigned devIdx );
+      unsigned    framesPerCycle( handle_t h, unsigned devIdx, bool inputFl );
       
       // Configure a device.  
       // All devices must be setup before they are started.
@@ -111,7 +89,7 @@ namespace cw
       // If the device is started when this function is called then it will be 
       // automatically stopped and then restarted following the reconfiguration.
       // If the reconfiguration fails then the device may not be restared.
-      rc_t        deviceSetup(
+      rc_t        setup(
         handle_t h,
         unsigned devIdx,
         double   sr,
@@ -119,10 +97,10 @@ namespace cw
         cbFunc_t cb,
         void*    cbData );
       
-      rc_t        deviceStart(          handle_t h, unsigned devIdx );
-      rc_t        deviceStop(           handle_t h, unsigned devIdx );
-      bool        deviceIsStarted(      handle_t h, unsigned devIdx );
-      void        deviceRealTimeReport( handle_t h, unsigned devIdx );
+      rc_t        start(          handle_t h, unsigned devIdx );
+      rc_t        stop(           handle_t h, unsigned devIdx );
+      bool        isStarted(      handle_t h, unsigned devIdx );
+      void        realTimeReport( handle_t h, unsigned devIdx );
 
       void report( handle_t h );      
     }

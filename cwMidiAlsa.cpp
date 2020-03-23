@@ -2,8 +2,8 @@
 #include "cwLog.h"
 #include "cwCommonImpl.h"
 #include "cwMem.h"
-#include "cwMidi.h"
 #include "cwTime.h"
+#include "cwMidi.h"
 #include "cwTextBuf.h"
 #include "cwMidiPort.h"
 #include "cwThread.h"
@@ -111,7 +111,7 @@ namespace cw
       }
 
 
-      void _cmMpSplit14Bits( unsigned v, byte_t* d0, byte_t* d1 )
+      void _cmMpSplit14Bits( unsigned v, uint8_t* d0, uint8_t* d1 )
       {
         *d0 = (v & 0x3f80) >> 7;
         *d1 = v & 0x7f;
@@ -156,9 +156,9 @@ namespace cw
 
             unsigned     microSecs1     = (ev->time.time.tv_sec * 1000000) + (ev->time.time.tv_nsec/1000);
             //unsigned     deltaMicroSecs = p->prvTimeMicroSecs==0 ? 0 : microSecs1 - p->prvTimeMicroSecs;
-            byte_t d0             = 0xff;
-            byte_t d1             = 0xff;
-            byte_t status         = 0;
+            uint8_t d0             = 0xff;
+            uint8_t d1             = 0xff;
+            uint8_t status         = 0;
 
             switch(ev->type)
             {
@@ -244,7 +244,7 @@ namespace cw
 
             if( status != 0 )
             {
-              byte_t ch = ev->data.note.channel;
+              uint8_t ch = ev->data.note.channel;
               time::spec_t ts;
               ts.tv_sec  = p->baseTimeStamp.tv_sec  + ev->time.time.tv_sec;
               ts.tv_nsec = p->baseTimeStamp.tv_nsec + ev->time.time.tv_nsec;
@@ -709,7 +709,7 @@ const char*    cw::midi::device::portName(   handle_t h, unsigned devIdx, unsign
 }
 
 
-cw::rc_t  cw::midi::device::send( handle_t h, unsigned devIdx, unsigned portIdx, byte_t status, byte_t d0, byte_t d1 )
+cw::rc_t  cw::midi::device::send( handle_t h, unsigned devIdx, unsigned portIdx, uint8_t status, uint8_t d0, uint8_t d1 )
 {
   rc_t            rc = kOkRC;
   snd_seq_event_t ev;
@@ -797,7 +797,7 @@ cw::rc_t  cw::midi::device::send( handle_t h, unsigned devIdx, unsigned portIdx,
   return rc;
 }
 
-cw::rc_t      cw::midi::device::sendData( handle_t h, unsigned devIdx, unsigned portIdx, const byte_t* dataPtr, unsigned byteCnt )
+cw::rc_t      cw::midi::device::sendData( handle_t h, unsigned devIdx, unsigned portIdx, const uint8_t* dataPtr, unsigned byteCnt )
 {
   return cwLogError(kInvalidOpRC,"cmMpDeviceSendData() has not yet been implemented for ALSA.");
 }

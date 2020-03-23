@@ -26,29 +26,14 @@ need to make the protocol state queue thread-safe.
 
  */
 
+#include "cwWebSockDecls.h"
 
 namespace cw
 {
 
   namespace websock
   {
-    typedef handle<struct websock_str> handle_t;
-
-    typedef struct protocol_str
-    {
-      const char* label;       // unique label identifying this protocol
-      unsigned    id;          // unique id identifying this protocol
-      unsigned    rcvBufByteN; // larger rcv'd packages will be broken into multiple parts
-      unsigned    xmtBufByteN; // larger xmt'd packages are broken into multiple parts
-    } protocol_t;
-
-    typedef enum
-    {
-     kConnectTId,
-     kDisconnectTId,
-     kMessageTId
-    } msgTypeId_t;
-    
+    typedef handle<struct websock_str> handle_t;    
 
     typedef void (*cbFunc_t)( void* cbArg, unsigned protocolId, unsigned connectionId, msgTypeId_t msg_type, const void* msg, unsigned byteN );
 
