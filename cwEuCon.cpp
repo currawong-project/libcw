@@ -444,7 +444,8 @@ namespace cw
             switch( p->protoState )
             {
               case kWaitForBeat_1_Id:
-                if( hdr == 3 )
+                //if( hdr == 3 )
+                if( hdr == 0x0b )
                 {
                   p->protoState = kWaitForHandshake_2_Id;
                   _sendHandshake_1( socketHandle(p->tcpH) );
