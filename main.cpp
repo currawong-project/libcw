@@ -259,7 +259,7 @@ void sockMgrTest( cw::object_t* cfg, int argc, const char* argv[] )
   if( argc <3 )
   {
     printf("Invalid argument count.");
-    printf("Usage: ./cw_rt <cfg_fn> 'udp | tcp' <localPort>  { <remote_ip> <remote_port> }\n");
+    printf("Usage: ./cw_rt <cfg_fn> sockMgrTest 'udp | tcp' <localPort>  { <remote_ip> <remote_port> }\n");
     goto errLabel;
   }
 
