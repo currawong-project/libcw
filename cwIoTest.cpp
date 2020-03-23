@@ -2,6 +2,8 @@
 #include "cwLog.h"
 #include "cwCommonImpl.h"
 #include "cwMem.h"
+#include "cwTime.h"
+#include "cwMidiDecls.h"
 #include "cwMidi.h"
 #include "cwIo.h"
 #include "cwIoTest.h"

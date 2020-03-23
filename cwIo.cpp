@@ -3,11 +3,13 @@
 #include "cwCommonImpl.h"
 #include "cwMem.h"
 #include "cwText.h"
-#include "cwTime.h"
 #include "cwTextBuf.h"
+
+#include "cwIo.h"
+
 #include "cwMidi.h"
 #include "cwMidiPort.h"
-#include "cwIo.h"
+
 
 #include "cwObject.h"
 
@@ -298,14 +300,14 @@ namespace cw
         if( r->enableFl )
         {
           // get the hardware device index
-          if((r->devIdx = audio::device::deviceLabelToIndex( p->audioH, r->device)) == kInvalidIdx )
+          if((r->devIdx = audio::device::labelToIndex( p->audioH, r->device)) == kInvalidIdx )
           {
             rc = cwLogError(rc,"Unable to locate the audio hardware device:'%s'.", r->device);
             goto errLabel;
           }
 
           // setup the device based on the configuration
-          if((rc = audio::device::deviceSetup(p->audioH,r->devIdx,r->srate,r->dspFrameCnt,_audioDeviceCallback,p)) != kOkRC )
+          if((rc = audio::device::setup(p->audioH,r->devIdx,r->srate,r->dspFrameCnt,_audioDeviceCallback,p)) != kOkRC )
           {
             rc = cwLogError(rc,"Unable to setup the audio hardware device:'%s'.", r->device);
             goto errLabel;
@@ -513,7 +515,7 @@ unsigned cw::io::midiDevicePortIndex( handle_t h, unsigned devIdx, bool inputFl,
   return midi::device::portNameToIndex( p->midiH, devIdx, inputFl ? midi::kInMpFl : midi::kOutMpFl, portName );
 }
       
-cw::rc_t cw::io::midiDeviceSend( handle_t h, unsigned devIdx, unsigned portIdx, midi::byte_t status, midi::byte_t d0, midi::byte_t d1 )
+cw::rc_t cw::io::midiDeviceSend( handle_t h, unsigned devIdx, unsigned portIdx, uint8_t status, uint8_t d0, uint8_t d1 )
 {
   rc_t rc = kOkRC;
   //io_t* p = _handleToPtr(h);
@@ -549,19 +551,19 @@ cw::rc_t    cw::io::audioDeviceStart(          handle_t h, unsigned devIdx )
 {
   io_t* p = _handleToPtr(h);
   assert( devIdx < p->audioCfgN );
-  return audio::device::deviceStart( p->audioH, p->audioCfgA[ devIdx ].devIdx ); 
+  return audio::device::start( p->audioH, p->audioCfgA[ devIdx ].devIdx ); 
 }
 
 cw::rc_t    cw::io::audioDeviceStop(           handle_t h, unsigned devIdx )
 {
   io_t* p = _handleToPtr(h);
   assert( devIdx < p->audioCfgN );
-  return audio::device::deviceStop( p->audioH, p->audioCfgA[ devIdx ].devIdx );
+  return audio::device::stop( p->audioH, p->audioCfgA[ devIdx ].devIdx );
 }
 
 bool        cw::io::audioDeviceIsStarted(      handle_t h, unsigned devIdx )
 {
   io_t* p = _handleToPtr(h);
   assert( devIdx < p->audioCfgN );
-  return audio::device::deviceIsStarted( p->audioH, p->audioCfgA[ devIdx ].devIdx );
+  return audio::device::isStarted( p->audioH, p->audioCfgA[ devIdx ].devIdx );
 }
