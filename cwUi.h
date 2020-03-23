@@ -1,0 +1,89 @@
+#ifndef cwUI_H
+#define cwUI_H
+
+#include "cwUiDecls.h"
+
+namespace cw
+{
+  namespace ui
+  {
+    typedef handle<struct ui_str> handle_t;
+
+    enum
+    {
+     kHttpProtocolId = 1,
+     kUiProtocolId   = 2
+    };
+    
+    typedef enum
+    {
+     kInvalidOpId,
+     kConnectOpId,
+     kInitOpId,
+     kValueOpId,
+     kDisconnectOpId
+    } opId_t;
+
+    typedef enum
+    {
+     kInvalidTId,
+     kBoolTId,
+     kIntTId,
+     kUIntTId,
+     kFloatTId,
+     kDoubleTId,
+     kStringTId
+    } dtypeId_t;
+
+    typedef struct
+    {
+      dtypeId_t tid;
+      union
+      {
+        bool        b;
+        int         i;
+        unsigned    u;
+        float       f;
+        double      d;
+        const char* s;
+      } u;
+    } value_t;
+
+    typedef rc_t (*uiCallback_t)( void* cbArg, unsigned connId, opId_t opId, unsigned parentAppId, unsigned uuId, unsigned appId, const value_t* value );
+    
+    rc_t createUi(  handle_t& h,
+      unsigned     port,
+      uiCallback_t cbFunc,
+      void*        cbArg,
+      const char*  physRootDir,
+      const char*  dfltPageFn       = "index.html",
+      unsigned     websockTimeOutMs = 50,
+      unsigned     rcvBufByteN      = 1024,
+      unsigned     xmtBufByteN      = 1024);
+    
+    rc_t destroyUi( handle_t& h );
+
+    rc_t start( handle_t h );
+    rc_t stop(  handle_t h );
+
+    unsigned    findElementAppId( handle_t h, unsigned parentUuId, const char* jsId );
+    unsigned    findElementUuId(   handle_t h, unsigned parentUuId, const char* jsId );
+    unsigned    findElementUuId(   handle_t h, unsigned parentUuId, unsigned appId );
+    const char* findElementJsId(   handle_t h, unsigned uuId ); 
+    
+    rc_t createDiv(      handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* jsId, unsigned appId, const char* clas, const char* title );
+    rc_t createTitle(    handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* jsId, unsigned appId, const char* clas, const char* title );
+    rc_t createButton(   handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* jsId, unsigned appId, const char* clas, const char* title );
+    rc_t createCheck(    handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* jsId, unsigned appId, const char* clas, const char* title, bool value );
+    rc_t createSelect(   handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* jsId, unsigned appId, const char* clas, const char* title );
+    rc_t createOption(   handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* jsId, unsigned appId, const char* clas, const char* title );
+    rc_t createString(   handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* jsId, unsigned appId, const char* clas, const char* title, const char* value );
+    rc_t createNumber(   handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* jsId, unsigned appId, const char* clas, const char* title, double value, double minValue, double maxValue, double stepValue, unsigned decPl );
+    rc_t createProgress( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* jsId, unsigned appId, const char* clas, const char* title, double value, double minValue, double maxValue );
+    rc_t createText(     handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* jsId, unsigned appId, const char* clas, const char* title );
+
+  }
+}
+
+
+#endif
