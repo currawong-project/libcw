@@ -75,7 +75,7 @@ namespace cw
     rc_t string_to_number( const char* s, T& valueRef )
   {
     if( s == nullptr )
-      valueRef = 0;
+      valueRef = 0;  // BUG BUG BUG why is this not an error ????
     else
     {
       errno = 0;
@@ -93,7 +93,7 @@ namespace cw
     rc_t string_to_number<double>( const char* s, double& valueRef )
   {
     if( s == nullptr )
-      valueRef = 0;
+      valueRef = 0;    // BUG BUG BUG why is this not an error ????
     else
     {
       errno = 0;
@@ -117,10 +117,31 @@ namespace cw
     return numeric_convert(d,valueRef);
   }
 
+  template < > inline
+    rc_t string_to_number<bool>( const char* s, bool& valueRef )
+  {
+    s = nextNonWhiteChar(s);
+    
+    if( s == nullptr )
+      valueRef = false;  // BUG BUG BUG why is this not an error ????
+    else
+    {
+      if( strncmp( "true", s, 4) == 0 )
+        valueRef = true;
+      else
+        if( strncmp( "false", s, 5) == 0 )
+          valueRef = false;
+        else
+          return cwLogError(kOpFailRC,"String to number conversion failed on '%s'.", cwStringNullGuard(s));
+    }
+    return kOkRC;
+  }
+  
 
   template< typename T >
     void number_to_string( const T& v, const char* fmt, char* buf, int bufN  )
   { snprintf(buf,bufN,fmt,v); }
+
   
 }
 #endif
