@@ -306,7 +306,7 @@ namespace cw
       enum
       {
        kSendHandshake_0_Id,     // send [0x0a, ...]
-       kWaitForBeat_1_Id,       // wait for first heart beat -> then send [0x0c ...]
+       kWaitForHandshake_1_Id,       // wait for first heart beat -> then send [0x0c ...]
        kWaitForHandshake_2_Id,  // wait for [0x0d ...] -> then send response_3_a
        kResponse_3_A_Id,
        kResponse_3_B_Id,
@@ -421,7 +421,7 @@ namespace cw
                   _sendHandshake_0( sockH, label );
                   
                   // FENCE
-                  p->protoState = kWaitForBeat_1_Id;
+                  p->protoState = kWaitForHandshake_1_Id;
                 }
               }
             }
@@ -443,13 +443,12 @@ namespace cw
 
             switch( p->protoState )
             {
-              case kWaitForBeat_1_Id:
-                //if( hdr == 3 )
+              case kWaitForHandshake_1_Id:
                 if( hdr == 0x0b )
                 {
                   p->protoState = kWaitForHandshake_2_Id;
                   _sendHandshake_1( socketHandle(p->tcpH) );
-                  printf("Rcvd Beat - sent 0xc\n");
+                  printf("Rcvd HS 1 - sent 0xb\n");
                 }
                 break;
 
@@ -457,7 +456,7 @@ namespace cw
                 if( hdr == 0x0d )
                 {
                   p->protoState = kResponse_3_A_Id;
-                  printf("Rcvd 0xd\n");
+                  printf("Rcvd HS 2 - 0xd\n");
                 }
                 break;
 
