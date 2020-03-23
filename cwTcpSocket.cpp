@@ -574,9 +574,11 @@ cw::rc_t cw::net::socket::select_receive(handle_t h, char* buf, unsigned bufByte
   fd_set         rdSet;
   struct timeval timeOut;
 
+  int fd = p->fdH != cwSOCKET_NULL_SOCK ? p->fdH : p->sockH;
+      
   // setup the select() call
   FD_ZERO(&rdSet);
-  FD_SET(p->sockH, &rdSet );
+  FD_SET(fd, &rdSet );
 		
   timeOut.tv_sec 	= timeOutMs/1000;
   timeOut.tv_usec = (timeOutMs - (timeOut.tv_sec * 1000)) * 1000;
@@ -586,7 +588,7 @@ cw::rc_t cw::net::socket::select_receive(handle_t h, char* buf, unsigned bufByte
   
   // NOTE; select() takes the highest socket value plus one of all the sockets in all the sets.
 		
-  switch( select(p->sockH+1,&rdSet,NULL,NULL,&timeOut) )
+  switch( select(fd+1,&rdSet,NULL,NULL,&timeOut) )
   {
     case -1:  // error
       if( errno != EINTR )
@@ -598,7 +600,7 @@ cw::rc_t cw::net::socket::select_receive(handle_t h, char* buf, unsigned bufByte
       break;
 			
     case 1:   // (> 0) count of ready descripters
-      if( FD_ISSET(p->sockH,&rdSet) )
+      if( FD_ISSET(fd,&rdSet) )
       {
         socklen_t addrByteCnt = fromAddr==nullptr ? 0 : sizeof(*fromAddr);
         ssize_t   retByteCnt;
@@ -606,7 +608,7 @@ cw::rc_t cw::net::socket::select_receive(handle_t h, char* buf, unsigned bufByte
         errno = 0;
 
         // recv the incoming msg into buf[]
-        if(( retByteCnt = recvfrom( p->sockH, buf, bufByteCnt, 0, (struct sockaddr*)fromAddr, &addrByteCnt )) == cwSOCKET_SYS_ERR )
+        if(( retByteCnt = recvfrom( fd, buf, bufByteCnt, 0, (struct sockaddr*)fromAddr, &addrByteCnt )) == cwSOCKET_SYS_ERR )
         {
           switch( errno )
           {
