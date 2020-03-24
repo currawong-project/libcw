@@ -60,6 +60,7 @@ namespace cw
     void (*free)( struct object_str* o );
     rc_t (*value)( const struct object_str* o, unsigned tid, void* dst );
     void (*print)( const struct object_str* o, print_ctx_t& c );
+    unsigned( *to_string)( const struct object_str* o, char* buf, unsigned bufByteN );
   } objType_t;
 
 
@@ -145,7 +146,7 @@ namespace cw
       return rc;
     }
    
-    
+    unsigned to_string( char* buf, unsigned bufByteN ) const;
     void print(const print_ctx_t* c=NULL) const;
     
   } object_t;

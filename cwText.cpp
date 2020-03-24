@@ -88,7 +88,13 @@ unsigned toText( char* buf, unsigned bufN, char v )
 }
 
 unsigned cw::toText( char* buf, unsigned bufN, bool v )
-{ return toText( buf, bufN, v ? "true" : "failse" );  }
+{ return toText( buf, bufN, v ? "true" : "false" );  }
+
+unsigned cw::toText( char* buf, unsigned bufN, char v )
+{ return snprintf(buf,bufN, "%c", v ); }
+
+unsigned cw::toText( char* buf, unsigned bufN, unsigned char v )
+{ return snprintf(buf,bufN, "%c", v ); }
 
 unsigned cw::toText( char* buf, unsigned bufN, unsigned short v )
 { return snprintf(buf,bufN,"%i",v); }
@@ -101,6 +107,12 @@ unsigned cw::toText( char* buf, unsigned bufN, unsigned int v  )
 
 unsigned cw::toText( char* buf, unsigned bufN, int v )
 { return snprintf(buf,bufN,"%i",v); }
+
+unsigned cw::toText( char* buf, unsigned bufN, unsigned long long v  )
+{ return snprintf(buf,bufN,"%lli",v); }
+
+unsigned cw::toText( char* buf, unsigned bufN, long long v )
+{ return snprintf(buf,bufN,"%lli",v); }
 
 unsigned cw::toText( char* buf, unsigned bufN, float v )
 { return snprintf(buf,bufN,"%f",v); }

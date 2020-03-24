@@ -38,6 +38,8 @@ namespace cw
   unsigned toText( char* buf, unsigned bufN, short v );
   unsigned toText( char* buf, unsigned bufN, unsigned int v  );
   unsigned toText( char* buf, unsigned bufN, int v );
+  unsigned toText( char* buf, unsigned bufN, unsigned long long v  );
+  unsigned toText( char* buf, unsigned bufN, long long v );
   unsigned toText( char* buf, unsigned bufN, float v );
   unsigned toText( char* buf, unsigned bufN, double v );
   unsigned toText( char* buf, unsigned bufN, const char* v );

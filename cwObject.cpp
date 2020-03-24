@@ -176,30 +176,106 @@ namespace cw
   {
     _objTypePrintDict(o,c);
   }
+
+  
+  unsigned _objTypeToStringNull(   const object_t* o, char* buf, unsigned n ) { return snprintf(buf,n,"NULL "); }
+  unsigned _objTypeToStringError(  const object_t* o, char* buf, unsigned n ) { return snprintf(buf,n,"Error "); }
+  unsigned _objTypeToStringChar(   const object_t* o, char* buf, unsigned n ) { return toText(buf,n,o->u.c); }
+  unsigned _objTypeToStringInt8(   const object_t* o, char* buf, unsigned n ) { return toText(buf,n,o->u.i8); }
+  unsigned _objTypeToStringUInt8(  const object_t* o, char* buf, unsigned n ) { return toText(buf,n,o->u.u8); }
+  unsigned _objTypeToStringInt16(  const object_t* o, char* buf, unsigned n ) { return toText(buf,n,o->u.i16); }
+  unsigned _objTypeToStringUInt16( const object_t* o, char* buf, unsigned n ) { return toText(buf,n,o->u.u16); }
+  unsigned _objTypeToStringInt32(  const object_t* o, char* buf, unsigned n ) { return toText(buf,n,o->u.i32); }
+  unsigned _objTypeToStringUInt32( const object_t* o, char* buf, unsigned n ) { return toText(buf,n,o->u.u32); }
+  unsigned _objTypeToStringInt64(  const object_t* o, char* buf, unsigned n ) { assert(0); /*return toText(buf,n,o->u.i64);*/ }
+  unsigned _objTypeToStringUInt64( const object_t* o, char* buf, unsigned n ) { assert(0); /*return toText(buf,n,o->u.u64);*/ }
+  unsigned _objTypeToStringBool(   const object_t* o, char* buf, unsigned n ) { return toText(buf,n,o->u.b); }
+  unsigned _objTypeToStringFloat(  const object_t* o, char* buf, unsigned n ) { return toText(buf,n,o->u.f); }
+  unsigned _objTypeToStringDouble( const object_t* o, char* buf, unsigned n ) { return toText(buf,n,o->u.d); }
+  unsigned _objTypeToStringVect(   const object_t* o, char* buf, unsigned n ) { return snprintf(buf,n,"<vect>"); }
+
+  unsigned _objTypeToStringString( const object_t* o, char* buf, unsigned n )
+  {
+    unsigned i = snprintf(buf,n,"\"");
     
+    i += toText(buf+i,n-i,o->u.str);
+    
+    return i + snprintf(buf+i,n-i,"\"");
+  }
+  
+  unsigned _objTypeToStringPair(   const object_t* o, char* buf, unsigned n )
+  {
+    unsigned i = o->u.children->type->to_string(o->u.children,buf,n);
+    i += snprintf(buf+i,n-i," : ");
+    return i + o->u.children->sibling->type->to_string(o->u.children->sibling,buf+i,n-i);    
+  }
+  
+  unsigned _objTypeToStringList( const object_t* o, char* buf, unsigned n )
+  {
+    unsigned i = snprintf(buf,n," [ ");
+    
+    for(const object_t* ch=o->u.children; ch!=nullptr; ch=ch->sibling)
+    {
+
+      i += ch->type->to_string(ch,buf+i,n-i);
+
+      if( ch->sibling != nullptr )
+        i += snprintf(buf+i,n-i,", ");
+      
+    }
+
+    i += snprintf(buf+i,n-i," ] ");
+
+    return i;
+  }
+  
+  unsigned _objTypeToStringDict( const object_t* o, char* buf, unsigned n )
+  {
+
+    unsigned i = snprintf(buf,n," { " );
+    
+    for(const object_t* ch=o->u.children; ch!=nullptr; ch=ch->sibling)
+    {      
+      i += ch->type->to_string(ch,buf+i,n-i);
+      
+      if( ch->sibling != nullptr )
+        i += snprintf(buf+i,n-i,", ");
+    }
+    
+    i += snprintf(buf+i,n-i," } ");
+
+    return i;
+  }
+  
+  unsigned _objTypeToStringRoot( const object_t* o, char* buf, unsigned n )
+  {
+    return _objTypeToStringDict(o,buf,n);
+  }
+
+  
   objType_t _objTypeArray[] =
   {
-   { kNullTId,    "null",      0,                                _objTypeFree, _objTypeValueFromNonValue, _objTypePrintNull },
-   { kErrorTId,   "error",     0,                                _objTypeFree, _objTypeValueFromNonValue, _objTypePrintError },
-   { kCharTId,    "char",      0,                                _objTypeFree, _objTypeValueFromChar,     _objTypePrintChar },
-   { kInt8TId,    "int8",      0,                                _objTypeFree, _objTypeValueFromInt8,     _objTypePrintInt8 },
-   { kUInt8TId,   "uint8",     0,                                _objTypeFree, _objTypeValueFromUInt8,    _objTypePrintUInt8 },
-   { kInt16TId,   "int16",     0,                                _objTypeFree, _objTypeValueFromInt16,    _objTypePrintInt16 },
-   { kUInt16TId,  "uint16",    0,                                _objTypeFree, _objTypeValueFromUInt16,   _objTypePrintUInt16 },
-   { kInt32TId,   "int32",     0,                                _objTypeFree, _objTypeValueFromInt32,    _objTypePrintInt32 },
-   { kUInt32TId,  "uint32",    0,                                _objTypeFree, _objTypeValueFromUInt32,   _objTypePrintUInt32 },
-   { kInt64TId,   "int64",     0,                                _objTypeFree, _objTypeValueFromInt64,    _objTypePrintInt64 },
-   { kUInt64TId,  "uint64",    0,                                _objTypeFree, _objTypeValueFromUInt64,   _objTypePrintUInt64 },
-   { kBoolTId,    "bool",      0,                                _objTypeFree, _objTypeValueFromBool,     _objTypePrintBool },
-   { kFloatTId,   "float",     0,                                _objTypeFree, _objTypeValueFromFloat,    _objTypePrintFloat },
-   { kDoubleTId,  "double",    0,                                _objTypeFree, _objTypeValueFromDouble,   _objTypePrintDouble },
-   { kStringTId,  "string",    0,                                _objTypeFreeString, _objTypeValueFromString, _objTypePrintString },
-   { kVectTId,    "vect",      0,                                _objTypeFree, _objTypeValueFromVect,     _objTypePrintVect },
-   { kPairTId,    "pair",      kContainerFl | kValueContainerFl, _objTypeFree, _objTypeValueFromNonValue, _objTypePrintPair },
-   { kListTId,    "list",      kContainerFl | kValueContainerFl, _objTypeFree, _objTypeValueFromNonValue, _objTypePrintList },
-   { kDictTId,    "dict",      kContainerFl,                     _objTypeFree, _objTypeValueFromNonValue, _objTypePrintDict },
-   { kRootTId,    "root",      kContainerFl | kValueContainerFl, _objTypeFree, _objTypeValueFromNonValue, _objTypePrintRoot },
-   { kInvalidTId, "<invalid>", 0, nullptr }   
+   { kNullTId,    "null",      0,                                _objTypeFree,       _objTypeValueFromNonValue, _objTypePrintNull,   _objTypeToStringNull },
+   { kErrorTId,   "error",     0,                                _objTypeFree,       _objTypeValueFromNonValue, _objTypePrintError,  _objTypeToStringError },
+   { kCharTId,    "char",      0,                                _objTypeFree,       _objTypeValueFromChar,     _objTypePrintChar,   _objTypeToStringChar },
+   { kInt8TId,    "int8",      0,                                _objTypeFree,       _objTypeValueFromInt8,     _objTypePrintInt8,   _objTypeToStringInt8 },
+   { kUInt8TId,   "uint8",     0,                                _objTypeFree,       _objTypeValueFromUInt8,    _objTypePrintUInt8,  _objTypeToStringUInt8 },
+   { kInt16TId,   "int16",     0,                                _objTypeFree,       _objTypeValueFromInt16,    _objTypePrintInt16,  _objTypeToStringInt16 },
+   { kUInt16TId,  "uint16",    0,                                _objTypeFree,       _objTypeValueFromUInt16,   _objTypePrintUInt16, _objTypeToStringUInt16 },
+   { kInt32TId,   "int32",     0,                                _objTypeFree,       _objTypeValueFromInt32,    _objTypePrintInt32,  _objTypeToStringInt32 },
+   { kUInt32TId,  "uint32",    0,                                _objTypeFree,       _objTypeValueFromUInt32,   _objTypePrintUInt32, _objTypeToStringUInt32 },
+   { kInt64TId,   "int64",     0,                                _objTypeFree,       _objTypeValueFromInt64,    _objTypePrintInt64,  _objTypeToStringInt64 },
+   { kUInt64TId,  "uint64",    0,                                _objTypeFree,       _objTypeValueFromUInt64,   _objTypePrintUInt64, _objTypeToStringUInt64 },
+   { kBoolTId,    "bool",      0,                                _objTypeFree,       _objTypeValueFromBool,     _objTypePrintBool,   _objTypeToStringBool },
+   { kFloatTId,   "float",     0,                                _objTypeFree,       _objTypeValueFromFloat,    _objTypePrintFloat,  _objTypeToStringFloat },
+   { kDoubleTId,  "double",    0,                                _objTypeFree,       _objTypeValueFromDouble,   _objTypePrintDouble, _objTypeToStringDouble },
+   { kStringTId,  "string",    0,                                _objTypeFreeString, _objTypeValueFromString,   _objTypePrintString, _objTypeToStringString },
+   { kVectTId,    "vect",      0,                                _objTypeFree,       _objTypeValueFromVect,     _objTypePrintVect,   _objTypeToStringVect },
+   { kPairTId,    "pair",      kContainerFl | kValueContainerFl, _objTypeFree,       _objTypeValueFromNonValue, _objTypePrintPair,   _objTypeToStringPair },
+   { kListTId,    "list",      kContainerFl | kValueContainerFl, _objTypeFree,       _objTypeValueFromNonValue, _objTypePrintList,   _objTypeToStringList },
+   { kDictTId,    "dict",      kContainerFl,                     _objTypeFree,       _objTypeValueFromNonValue, _objTypePrintDict,   _objTypeToStringDict },
+   { kRootTId,    "root",      kContainerFl | kValueContainerFl, _objTypeFree,       _objTypeValueFromNonValue, _objTypePrintRoot,   _objTypeToStringRoot },
+   { kInvalidTId, "<invalid>", 0,                                nullptr,            nullptr,                   nullptr,             nullptr }   
   };
 
 
@@ -388,7 +464,10 @@ const struct cw::object_str* cw::object_t::list_ele( unsigned idx ) const
   return nullptr;
 }
 
-
+unsigned cw::object_t::to_string( char* buf, unsigned bufByteN ) const
+{
+  return type->to_string(this,buf,bufByteN );
+}
 
 void cw::object_t::print(const print_ctx_t* c) const
 {
