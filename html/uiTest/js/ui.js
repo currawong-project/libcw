@@ -484,7 +484,7 @@ function ws_on_msg( jsonMsg )
   switch( d.op )
   {
     case 'create':
-    for (const ele_type in d.value)
+    for (const ele_type in d.children)
     {
       ui_create( d.parent, ele_type, d.value[ele_type] )
       //console.log(`${ele_type}: ${d.value[ele_type]}`);

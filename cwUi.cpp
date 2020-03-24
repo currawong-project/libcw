@@ -157,7 +157,7 @@ namespace cw
       
       newEle = _createEle( p, parentEle, appId, jsId );
 
-      unsigned i = snprintf( buf, bufN, "{ \"op\":\"create\", \"parent\":\"%s\", \"value\":{ \"%s\":{ \"jsId\":\"%s\", \"appId\":%i, \"uuId\":%i, \"class\":\"%s\", \"title\":\"%s\" ", parentJsId, eleTypeStr, jsId, appId, newEle->uuId, clas, title );
+      unsigned i = snprintf( buf, bufN, "{ \"op\":\"create\", \"parent\":\"%s\", \"children\":{ \"%s\":{ \"jsId\":\"%s\", \"appId\":%i, \"uuId\":%i, \"class\":\"%s\", \"title\":\"%s\" ", parentJsId, eleTypeStr, jsId, appId, newEle->uuId, clas, title );
 
       i = format_attributes(buf, bufN, i, std::forward<ARGS>(args)...);
 
