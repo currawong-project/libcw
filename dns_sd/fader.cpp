@@ -1,3 +1,4 @@
+#include "config.h"
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -6,7 +7,7 @@
 #include "rpt.h"
 #include "fader.h"
 
-#ifdef cwLINUX
+#ifdef OS_LINUX
 #include <arpa/inet.h>
 #endif
 

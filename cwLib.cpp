@@ -5,7 +5,7 @@
 #include "cwFileSys.h"
 #include "cwLib.h"
 
-#ifdef cwLINUX
+#ifdef OS_LINUX
 
 #include <dlfcn.h>
 

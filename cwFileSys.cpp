@@ -5,7 +5,7 @@
 #include "cwCommonImpl.h"
 #include "cwMem.h"
 
-#ifdef cwLINUX
+#ifdef OS_LINUX
 #include <libgen.h> // basename() dirname()
 #include <sys/stat.h>
 #include <dirent.h> // opendir()/readdir()

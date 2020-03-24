@@ -1,8 +1,9 @@
+#include "config.h"
 #include <stdio.h>
 #include <stdint.h>
 #include <stdarg.h>
 
-#ifdef cwLINUX
+#ifdef OS_LINUX
 #include <arpa/inet.h>
 #endif
 #ifdef ARDUINO

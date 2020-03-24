@@ -1,8 +1,9 @@
+#include "config.h"
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
 
-#ifdef cwLINUX
+#ifdef OS_LINUX
 #include <arpa/inet.h>
 #endif
 

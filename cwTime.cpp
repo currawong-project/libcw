@@ -3,7 +3,7 @@
 #include "cwCommonImpl.h"
 #include "cwTime.h"
 
-#ifdef cwOSX
+#ifdef OS_OSX
 
 #include <mach/mach.h>
 #include <mach/mach_time.h>
@@ -40,7 +40,7 @@ void cw::time::get( spec_t& t )
 
 #endif
 
-#ifdef cwLINUX
+#ifdef OS_LINUX
 void cw::time::get( spec_t& t )
 { clock_gettime(CLOCK_REALTIME,&t); }
 #endif

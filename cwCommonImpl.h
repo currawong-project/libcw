@@ -1,7 +1,7 @@
 #ifndef cwCommonImpl_H
 #define cwCommonImpl_H
 
-
+#include "config.h"
 #include <cstdlib>
 #include <cstring>
 #include <cassert>
@@ -16,7 +16,7 @@
 #include <limits>     // std::numeric_limits<
 #include <atomic>
 
-#if defined(cwLINUX) || defined(cwOSX)
+#if defined(OS_LINUX) || defined(OS_OSX)
 #define cwPOSIX_FILE_SYS
 #include <time.h>         // timespec
 #include <netinet/in.h>	  // struct sockaddr_in

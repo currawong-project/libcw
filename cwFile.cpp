@@ -6,7 +6,7 @@
 #include "cwText.h"
 #include "cwFile.h"
 
-#ifdef cwLINUX
+#ifdef OS_LINUX
 #include <sys/stat.h>
 #endif
 
