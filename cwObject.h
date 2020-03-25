@@ -94,6 +94,7 @@ namespace cw
     } u;
 
 
+    void unlink();
     void free();
     unsigned child_count() const;
 
@@ -121,9 +122,16 @@ namespace cw
     rc_t value( char*& v ) const;
 
     const char* pair_label() const;
+    
     const struct object_str* pair_value() const;
-    const struct object_str* find( const char* label ) const;
+    struct       object_str* pair_value();
+
+    // Search for the pair label 'label'.
+    const struct object_str* find( const char* label, bool recurseFl=true ) const;
+    struct       object_str* find( const char* label, bool recurseFl=true );
+    
     const struct object_str* list_ele( unsigned idx ) const;
+    struct       object_str* list_ele( unsigned idx );
 
     template< typename T >
       rc_t get( const char* label, T& v  ) const

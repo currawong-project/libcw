@@ -376,8 +376,40 @@ namespace cw
 }
 
 
+void cw::object_t::unlink()
+{
+  // if this node has no parent then there it is not part of a tree
+  // and therefore cannot be unlinked
+  if( parent == nullptr )
+    return;
+  
+  object_t* c0 = nullptr;
+  object_t* c = parent->u.children;
+  for(; c!=nullptr; c=c->sibling)
+  {
+    if( c == this )
+    {
+      if( c0 == nullptr )
+        parent->u.children = c->sibling;
+      else
+        c0->sibling = c->sibling;
+
+      c->parent  = nullptr;
+      c->sibling = nullptr;
+      return;
+    }
+    c0 = c;
+  }
+
+  // if a child has a parent then it must be in that parent's child list
+  cwAssert(0);
+  
+}
+
 void cw::object_t::free()
 {
+  unlink();
+  
   if( is_container() )
   {
     object_t* o1 = nullptr;
@@ -435,7 +467,16 @@ const struct cw::object_str* cw::object_t::pair_value() const
   return nullptr;
 }
 
-const struct cw::object_str* cw::object_t::find( const char* label ) const
+struct cw::object_str* cw::object_t::pair_value() 
+{
+  cwAssert( is_pair() );
+  if( is_pair() )
+    return u.children->sibling;
+  return nullptr;
+}
+
+
+const struct cw::object_str* cw::object_t::find( const char* label, bool recurseFl ) const
 {
   if( is_container() )
   {
@@ -445,11 +486,17 @@ const struct cw::object_str* cw::object_t::find( const char* label ) const
         return o->pair_value();
 
       const object_t* ch;
-      if((ch = o->find(label)) != nullptr )
-        return ch;
+      if( recurseFl )
+        if((ch = o->find(label)) != nullptr )
+          return ch;
     }     
   }  
   return nullptr;
+}
+
+struct cw::object_str* cw::object_t::find( const char* label, bool recurseFl ) 
+{
+  return const_cast<struct object_str*>(((const object_t*)this)->find(label,recurseFl));
 }
 
 const struct cw::object_str* cw::object_t::list_ele( unsigned idx ) const
@@ -463,6 +510,12 @@ const struct cw::object_str* cw::object_t::list_ele( unsigned idx ) const
   }
   return nullptr;
 }
+
+struct cw::object_str* cw::object_t::list_ele( unsigned idx )
+{
+  return const_cast<struct object_str*>(((const object_t*)this)->list_ele(idx));
+}
+
 
 unsigned cw::object_t::to_string( char* buf, unsigned bufByteN ) const
 {
