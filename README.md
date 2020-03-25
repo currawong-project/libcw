@@ -1,6 +1,7 @@
 
 # To Do
 
+- UI needs a special UUID (not kInvalidId) to specify the 'root' UI element. See note in cwUi._createFromObj()
 - Look at 'BUG' warnings in cwNumericConvert.h.
 - cwObject must be able to parse without dynamic memory allocation into a fixed buffer
 - cwObject must be able to be composed without dynamic memory allocation or from a fixed buffer.

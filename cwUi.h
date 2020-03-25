@@ -70,7 +70,9 @@ namespace cw
     unsigned    findElementUuId(   handle_t h, unsigned parentUuId, const char* jsId );
     unsigned    findElementUuId(   handle_t h, unsigned parentUuId, unsigned appId );
     const char* findElementJsId(   handle_t h, unsigned uuId ); 
-    
+
+    rc_t createFromFile( handle_t h, const char* fn,    unsigned parentUuId=kInvalidId);
+    rc_t createFromText( handle_t h, const char* text,  unsigned parentUuId=kInvalidId);
     rc_t createDiv(      handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* jsId, unsigned appId, const char* clas, const char* title );
     rc_t createTitle(    handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* jsId, unsigned appId, const char* clas, const char* title );
     rc_t createButton(   handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* jsId, unsigned appId, const char* clas, const char* title );

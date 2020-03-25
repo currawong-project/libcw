@@ -8,6 +8,7 @@
 #include "cwUi.h"
 #include "cwText.h"
 #include "cwNumericConvert.h"
+#include "cwObject.h"
 
 namespace cw
 {
@@ -173,7 +174,33 @@ namespace cw
       return rc;
     }
 
-    
+
+    rc_t  _createFromObj( ui_t* p, object_t* o, unsigned parentUuId )     
+    {
+      rc_t      rc = kOkRC;
+      object_t* pid;
+
+      // BUG BUG BUG - if kInvalidId is used both to indicate a NULL valid
+      // and the root object then there is no way to override the parent
+      // that is coded into the file with the root object.  A special
+      // rootId needs to be created.
+      
+      if((pid = o->find("parent",false)) != nullptr  && parentUuId == kInvalidId )
+      {
+        // get the parent JS id from the cfg object
+
+        // get the parent uuid from the JS id (verify that there is no ambiguity)
+
+        // delete the 'parent' pair
+      }
+
+      // form the msg string
+
+      // send the msg string
+
+      return rc;
+    }
+
     ele_t* _parse_value_msg( ui_t* p, value_t& valueRef, const char* msg )
     {
       rc_t     rc      = kOkRC;
@@ -427,7 +454,51 @@ const char* cw::ui::findElementJsId( handle_t h, unsigned uuId )
   return _findEleJsId(p,uuId);
 }
 
+
+cw::rc_t cw::ui::createFromFile( handle_t  h, const char* fn,    unsigned parentUuId)
+{
+  ui_t*     p  = _handleToPtr(h);
+  rc_t      rc = kOkRC;
+  object_t* o  = nullptr;
+  
+  if((rc = objectFromFile( fn, o )) != kOkRC )
+    goto errLabel;
     
+  if((rc = _createFromObj( p, o, parentUuId )) != kOkRC )
+    goto errLabel;
+
+ errLabel:
+  if(rc != kOkRC )
+    rc = cwLogError(rc,"UI from configuration the file '%s' failed.", cwStringNullGuard(fn));
+
+  if( o != nullptr )
+    o->free();
+  
+  return rc;
+}
+
+cw::rc_t cw::ui::createFromText( handle_t h, const char* text,  unsigned parentUuId)
+{
+  ui_t*     p  = _handleToPtr(h);
+  rc_t      rc = kOkRC;
+  object_t* o  = nullptr;
+  
+  if((rc = objectFromString( text, o )) != kOkRC )
+    goto errLabel;
+    
+  if((rc = _createFromObj( p, o, parentUuId )) != kOkRC )
+    goto errLabel;
+
+ errLabel:
+  if(rc != kOkRC )
+    rc = cwLogError(rc,"UI from configuration the string '%s' failed.", cwStringNullGuard(text));
+
+  if( o != nullptr )
+    o->free();
+  
+  return rc;
+}
+   
 cw::rc_t cw::ui::createDiv( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* jsId, unsigned appId, const char* clas, const char* title  )
 { return _createOneEle( _handleToPtr(h), uuIdRef, "div", parentUuId, jsId, appId, clas, title ); }
 
