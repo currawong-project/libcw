@@ -16,6 +16,7 @@ namespace cw
     typedef struct msg_str
     {
       unsigned        protocolId; // Protocol associated with this msg.
+      unsigned        sessionId;  // Session Id that this msg should be sent to or kInvalidId if it should be sent to all sessions.
       unsigned char*  msg;        // Msg data array.
       unsigned        msgByteN;   // Count of bytes in msg[].
       unsigned        msgId;      // The msgId assigned when this msg is addded to the protocol state msg queue.
@@ -91,7 +92,7 @@ namespace cw
           break;
 
         case LWS_CALLBACK_ESTABLISHED:
-          cwLogInfo("Websocket connection opened\n");
+          cwLogInfo("Websocket session:%i opened: \n",thisPtr->_nextSessionId);
 
           sess->id                = thisPtr->_nextSessionId++;
           sess->protocolId        = proto->id;
@@ -119,8 +120,6 @@ namespace cw
 
         case LWS_CALLBACK_SERVER_WRITEABLE:
           {
-            //printf("writable: sess:%i proto:%s\n",sess->id,proto->name);
-
             msg_t* m1 = protoState->endMsg;
             cwAssert(m1 != nullptr);
 
@@ -129,28 +128,29 @@ namespace cw
             {
               msg_t* m = m1->link;
           
-              //printf("writing: %i %i : %i %i\n",m->msgId,sess->nextMsgId,m->sessionN,protoState->sessionN);
-
               // if this msg has not already been sent to this session
               if( m->msgId >= sess->nextMsgId )
               {
 
-                // Send the msg to  this session            
-                // Note: msgByteN should not include LWS_PRE
-                int lws_result = lws_write(wsi, m->msg + LWS_PRE , m->msgByteN, LWS_WRITE_TEXT);
-            
-                // if the write failed
-                if(lws_result < (int)m->msgByteN)
+                // if the msg sessiond id is not valid or matches this session id ...
+                if( m->sessionId == kInvalidId || m->sessionId == sess->id )
                 {
-                  cwLogError(kWriteFailRC,"Websocket error: %d on write", lws_result);
-                  return -1;
-                }
-                else            // otherwise the write succeeded
-                {
-                  sess->nextMsgId  = m->msgId + 1;
-                  m->sessionN     += 1;
-                }
+                  // ... then send the msg to  this session            
+                  // Note: msgByteN should not include LWS_PRE
+                  int lws_result = lws_write(wsi, m->msg + LWS_PRE , m->msgByteN, LWS_WRITE_TEXT);
             
+                  // if the write failed
+                  if(lws_result < (int)m->msgByteN)
+                  {
+                    cwLogError(kWriteFailRC,"Websocket error: %d on write", lws_result);
+                    return -1;
+                  }
+                }
+              
+                // at this point the write  succeeded or this session was skipped
+                sess->nextMsgId  = m->msgId + 1;
+                m->sessionN     += 1;
+                            
                 break;
               }
           
@@ -378,7 +378,7 @@ cw::rc_t cw::websock::destroy( handle_t& h )
 }
 
 
-cw::rc_t cw::websock::send(handle_t h,  unsigned protocolId, const void* msg, unsigned byteN )
+cw::rc_t cw::websock::send(handle_t h,  unsigned protocolId, unsigned sessionId, const void* msg, unsigned byteN )
 {
   rc_t rc = kOkRC;
   
@@ -387,6 +387,7 @@ cw::rc_t cw::websock::send(handle_t h,  unsigned protocolId, const void* msg, un
   memcpy(m->msg,msg,byteN);
   m->msgByteN   = byteN;
   m->protocolId = protocolId;
+  m->sessionId = sessionId;
 
   websock_t* p = _handleToPtr(h);
   p->_q->push(m);
@@ -394,7 +395,7 @@ cw::rc_t cw::websock::send(handle_t h,  unsigned protocolId, const void* msg, un
   return rc;
 }
 
-cw::rc_t cw::websock::sendV( handle_t h, unsigned protocolId, const char* fmt, va_list vl0 )
+cw::rc_t cw::websock::sendV( handle_t h, unsigned protocolId, unsigned sessionId, const char* fmt, va_list vl0 )
 {
   rc_t rc = kOkRC;
   va_list vl1;
@@ -405,17 +406,17 @@ cw::rc_t cw::websock::sendV( handle_t h, unsigned protocolId, const char* fmt, v
 
   unsigned n = vsnprintf(buf,bufN+1,fmt,vl1);
  
-  rc = send(h,protocolId,buf,n);
+  rc = send(h,protocolId,sessionId,buf,n);
   
   va_end(vl1);
  return rc;
 }
 
-cw::rc_t cw::websock::sendF( handle_t h, unsigned protocolId, const char* fmt, ... )
+cw::rc_t cw::websock::sendF( handle_t h, unsigned protocolId, unsigned sessionId, const char* fmt, ... )
 {
   va_list vl;
   va_start(vl,fmt);
-  rc_t rc = sendV(h,protocolId,fmt,vl);
+  rc_t rc = sendV(h,protocolId,sessionId,fmt,vl);
   va_end(vl);
   return rc;
 }

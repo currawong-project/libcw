@@ -35,7 +35,7 @@ namespace cw
   {
     typedef handle<struct websock_str> handle_t;    
 
-    typedef void (*cbFunc_t)( void* cbArg, unsigned protocolId, unsigned connectionId, msgTypeId_t msg_type, const void* msg, unsigned byteN );
+    typedef void (*cbFunc_t)( void* cbArg, unsigned protocolId, unsigned sessionId, msgTypeId_t msg_type, const void* msg, unsigned byteN );
 
     rc_t create(
       handle_t&         h,
@@ -49,10 +49,10 @@ namespace cw
 
     rc_t destroy( handle_t& h );
 
-    //
-    rc_t send(  handle_t h, unsigned protocolId, const void* msg, unsigned byteN );
-    rc_t sendV( handle_t h, unsigned protocolId, const char* fmt, va_list vl );
-    rc_t sendF( handle_t h, unsigned protocolId, const char* fmt, ... );
+    // Set 'sessionId' to kInvalid 
+    rc_t send(  handle_t h, unsigned protocolId, unsigned sessionId, const void* msg, unsigned byteN );
+    rc_t sendV( handle_t h, unsigned protocolId, unsigned sessionId, const char* fmt, va_list vl );
+    rc_t sendF( handle_t h, unsigned protocolId, unsigned sessionId, const char* fmt, ... );
 
     // Call periodically from the same thread to send/recv messages.
     rc_t exec( handle_t h, unsigned timeOutMs );

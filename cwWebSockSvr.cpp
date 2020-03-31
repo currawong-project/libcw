@@ -134,20 +134,27 @@ namespace cw
   
   // Note that this function is called from context of the websockSrv internal thread
   // and from within the websockExec() call.
-  void websockCb( void* cbArg, unsigned protocolId, unsigned connectionId, websock::msgTypeId_t msg_type, const void* vmsg, unsigned byteN )
+  void websockCb( void* cbArg, unsigned protocolId, unsigned sessionId, websock::msgTypeId_t msg_type, const void* vmsg, unsigned byteN )
   {
     appCtx_t*   app = static_cast<appCtx_t*>(cbArg);
     const char* msg = static_cast<const char*>(vmsg);
     
-    printf("protcol:%i connection:%i type:%i bytes:%i %.*s\n",protocolId,connectionId, msg_type, byteN, byteN, msg);
+    cwLogInfo("protcol:%i connection:%i type:%i bytes:%i %.*s ",protocolId,sessionId, msg_type, byteN, byteN, msg);
 
 
     if( msg_type == websock::kMessageTId )
     {
       if( textCompare(msg,"quit",4) == 0)
         app->quitFl              = true;
-
-      websock::send(app->wsH, app->protocolId, vmsg, byteN );
+      else
+        if( textCompare(msg,"bcast",5) == 0 )
+        {
+          sessionId = kInvalidId;           // send msg to all sessions
+          vmsg = ((const char*)(vmsg)) + 6; // remove the 'bcast' prefix
+          byteN -=6;
+        }
+      
+      websock::send(app->wsH, app->protocolId, sessionId, vmsg, byteN );
     }
     
     
@@ -159,10 +166,10 @@ cw::rc_t cw::websockSrvTest()
 {
   rc_t                 rc;
   websockSrv::handle_t h;
-  const char*          physRootDir    = "/home/kevin/src/cw_rt/html/websockSrvTest";
+  const char*          physRootDir    = "/home/kevin/src/cwtest/src/libcw/html/websockSrvTest";
   const char*          dfltHtmlPageFn = "test_websocket.html";
   unsigned             timeOutMs      = 50;
-  int                  port           = 7681;
+  int                  port           = 5687;
   unsigned             rcvBufByteN    = 128;
   unsigned             xmtBufByteN    = 128;
   appCtx_t             appCtx;
@@ -180,6 +187,7 @@ cw::rc_t cw::websockSrvTest()
   };
 
   unsigned protocolN = sizeof(protocolA)/sizeof(protocolA[0]);
+
   
   if((rc = websockSrv::create( h, websockCb, &appCtx, physRootDir, dfltHtmlPageFn, port, protocolA, protocolN, timeOutMs )) != kOkRC )
     return rc;
