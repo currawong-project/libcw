@@ -1,5 +1,6 @@
 var _ws = null;
-var _dfltParentId = "uiDivId";
+var _rootJsId = "uiDivId";
+var _nextEleId   = 0;
 
 function set_app_title( suffix, className )
 {
@@ -164,8 +165,6 @@ function uiNumberSet( r )
 }
 
 
-function dom_id_to_ele( id )
-{ return document.getElementById(id); }
 
 function dom_child_by_id( parentEle, child_id )
 {
@@ -194,11 +193,6 @@ function dom_set_option_by_text( ele_id, text )
   }
 }
 
-function dom_set_checkbox( ele_id, fl )
-{ dom_id_to_ele(ele_id).checked = fl }
-
-function dom_get_checkbox( ele_id )
-{ return dom_id_to_ele(ele_id).checked }
 
 
 function dom_set_number( ele_id, val )
@@ -206,14 +200,53 @@ function dom_set_number( ele_id, val )
   dom_id_to_ele(ele_id).value = val
 }
 
+
+//==============================================================================
+
+function dom_id_to_ele( id )
+{ return document.getElementById(id); }
+
+function dom_set_checkbox( ele_id, fl )
+{ dom_id_to_ele(ele_id).checked = fl }
+
+function dom_get_checkbox( ele_id )
+{ return dom_id_to_ele(ele_id).checked }
+
+function dom_create_ele( ele_type )
+{
+  ele = document.createElement(ele_type);
+  ele.id      = _nextEleId;
+  _nextEleId += 1;
+}
+
+//==============================================================================
+
 function ui_error( msg )
 {
   console.log("Error: " + msg )
 }
 
+function ui_send_value( ele, typeId, value )
+{
+  if( ele.hasOwnProperty('uuId') )
+    ws_send("value " + ele.uuId + " " + typeId + " : " + value)
+  else
+    ui_error("A value msg send failed because the value had no UuId.");
+  
+}
+
+function ui_send_bool_value(   ele, value ) { ui_send_value(ele,'b',value); }
+function ui_send_int_value(    ele, value ) { ui_send_value(ele,'i',value); }
+function ui_send_string_value( ele, value ) { ui_send_value(ele,'s',value); }
+
+function ui_send_register( ele )
+{
+    ws_send("register " + ele.parentJsId + " " + ele.jsId + " " + ele.id + " " + ele.uuId + " " + ele.appId )
+}
+
 function ui_print_children( eleId )
 {
-  var childrenL = document.getElementById(eleId).children
+  var childrenL = dom_id_to_ele(eleId).children
     
   for(var i=0; i<childrenL.length; i++)
   {      
@@ -224,9 +257,9 @@ function ui_print_children( eleId )
 function ui_get_parent( parentId )
 {
   if( parentId==null || parentId.trim().length == 0 )
-    parentId = _dfltParentId
+    parentId = _rootJsId
   
-  parent_ele = document.getElementById(parentId);
+  parent_ele = dom_id_to_ele(parentId);
   
   if( parent_ele == null )
   {
@@ -240,16 +273,26 @@ function ui_get_parent( parentId )
 function ui_create_ele( parent_ele, ele_type, d )
 {
   // create the ctl object
-  var ele = document.createElement(ele_type);
+  var ele = dom_create_ele(ele_type);
 
   if( ele == null )
     ui_error("'%s' element create failed.", ele_type);
   else
   {
-    ele.id    = d.jsId;
-    ele.uuId  = d.uuId;
-    ele.appId = d.appId;
+    ele.jsId       = d.jsId;
+    
+    ele.parentJsId = d.parentJsId;
+    
+    ele.uuId  = d.hasOwnProperty("uuId")  ? d.uuId  : null
+    
+    ele.appId = d.hasOwnProperty("appId") ? d.appId : null
+
+    console.log("Created: " + ele_type  + " parent:" + d.parentJsId + " id:" + ele.id + " appId:" + ele.appId + " uuId:" + ele.uuId)
+    
     parent_ele.appendChild(ele);
+
+    ui_send_register( ele );
+    
   }
   return ele
 }
@@ -257,7 +300,7 @@ function ui_create_ele( parent_ele, ele_type, d )
 function ui_create_ctl( parent_ele, ele_type, label, d )
 {
   // create an enclosing div
-  var div_ele = document.createElement("div");
+  var div_ele = dom_create_ele("div");
 
   div_ele.className = d.clas;
 
@@ -268,7 +311,7 @@ function ui_create_ctl( parent_ele, ele_type, label, d )
   // if label is not null then create an enclosing 'label' element
   if( label != null )
   {
-    label_ele = document.createElement("label");
+    label_ele = dom_create_ele("label");
 
     label_ele.innerHTML = label;
 
@@ -283,12 +326,11 @@ function ui_create_div( parent_ele, d )
 {
   var div_ele =  ui_create_ele( parent_ele, "div", d );
 
-
   if( div_ele != null )
   {
     div_ele.className = d.clas
     
-    var p_ele = document.createElement("p")
+    var p_ele = dom_create_ele("p")
     
     if( d.title != null && d.title.length > 0 )
       p_ele.innerHTML = d.title
@@ -296,7 +338,7 @@ function ui_create_div( parent_ele, d )
     div_ele.appendChild( p_ele )
   }
   
-  return div_ele
+  return div_ele;
 }
 
 function ui_create_title( parent_ele, d )
@@ -311,10 +353,10 @@ function ui_create_button( parent_ele, d )
   if( ele != null )
   {
     ele.innerHTML = d.title;
-    ele.onclick   = function() { _ws.send("value " + this.uuId + " i : 1"); }
+    ele.onclick   = function() { ui_send_int_value(this,1); }
   }
   
-  return ele
+  return ele;
 }
 
 function ui_create_check( parent_ele, d )
@@ -327,15 +369,14 @@ function ui_create_check( parent_ele, d )
 
     dom_set_checkbox(ele.id, d.value );    
     
-    ele.onclick = function() {  _ws.send("value" + this.uuId + " b : " + dom_get_checkbox(this.id)); }
+    ele.onclick = function() {  ui_send_bool_value(this,dom_get_checkbox(this.id)); }
   }
+  return ele;
 }
 
 function ui_on_select( ele )
 {
-  var s = "value " + ele.uuId + " i : " + ele.options[ ele.selectedIndex ].appId
-
-   _ws.send( s );
+  ui_send_int_value(ele,ele.options[ ele.selectedIndex ].appId);
 }
 
 function ui_create_select( parent_ele, d )
@@ -365,7 +406,7 @@ function ui_create_string( parent_ele, d )
   if( ele != null )
   {
     ele.value = d.value;
-    ele.addEventListener('keyup', function(e) { if(e.keyCode===13){  _ws.send("value" + this.uuId + " s : " + this.value + "\0");} } );
+    ele.addEventListener('keyup', function(e) { if(e.keyCode===13){  ui_send_string_value(this, this.value); }} );
   }
 }
 
@@ -377,7 +418,9 @@ function ui_number_keyup( e )
     var ele = dom_id_to_ele(e.target.id)
     console.log(ele.value)
     if( ele != null )
-      _ws.send("value" + ele.uuId + " i : " + ele.value);
+    {
+      ui_send_int_value(ele,ele.value);
+    }
   }
 }
 
@@ -394,7 +437,7 @@ function ui_create_number( parent_ele, d )
     ele.decpl     = d.decpl;
     ele.addEventListener('keyup', ui_number_keyup );
   }
-  
+  return ele;
 }
 
 function ui_set_progress( ele_id, value )
@@ -415,70 +458,130 @@ function ui_create_progress( parent_ele, d )
     ele.minValue = d.min;
     ui_set_progress( ele.id, d.value );
   }
+  return ele
 }
 
 
 function ui_create( parentId, ele_type, d )
 {
   var parent_ele  = ui_get_parent(parentId);
+  var ele = null;
   
   if( parent_ele != null )
   {
+    d.parentJsId = parentId
+    
     switch( ele_type )
     {
       case "div":
-      ui_create_div( parent_ele, d )
+      ele = ui_create_div( parent_ele, d )
       break;
 
       case "title":
-      ui_create_title( parent_ele, d )
+      ele = ui_create_title( parent_ele, d )
       break;
 
       case "button":
-      ui_create_button( parent_ele, d )
+      ele = ui_create_button( parent_ele, d )
       break;
 
       case "check":
-      ui_create_check( parent_ele, d )
+      ele = ui_create_check( parent_ele, d )
       break;
 
       case "select":
-      ui_create_select( parent_ele, d );
+      ele = ui_create_select( parent_ele, d );
       break;
 
       case "option":
-      ui_create_option( parent_ele, d );
+      ele = ui_create_option( parent_ele, d );
       break;
 
       case "string":
-      ui_create_string( parent_ele, d );
+      ele = ui_create_string( parent_ele, d );
       break;
 
       case "number":
-      ui_create_number( parent_ele, d );
+      ele = ui_create_number( parent_ele, d );
       break;
 
       case "progress":
-      ui_create_progress( parent_ele, d );
+      ele = ui_create_progress( parent_ele, d );
       break;
       
       default:
       ui_error("Unknown UI element type: " + ele_type )
     }
+
+    if( d.hasOwnProperty("children") )
+    {
+      for (const ele_type in d.children)
+	ui_create( d.jsId, ele_type, d.children[ele_type] )
+    }
   }
 }
 
 
-function ws_send( d )
+function ui_uuid_to_ele( uuId, ele=null )
 {
-  s = JSON.stringify(d)
+  if( ele == null )
+    ele = dom_id_to_ele( _rootJsId )
+  
+  if( ele.hasOwnProperty('uuId') )
+  {
+    if( ele.uuId == uuId )
+      return ele
+
+    for(var i=0; i<ele.childElementCount; ++i)
+      ui_uuid_to_ele( uuId, ele.children[i] )
+  }
+
+  ui_error("The element with uuid: " + uuId + " was not found.")
+  
+  return null
+}
+
+
+// Do breadth first search for ele's without uuId's
+function ui_next_ele_to_register( parentEle )
+{
+  for(var i=0; i<parentEle.childElementCount; ++i)
+  {
+    var ele = parentEle.children[i]
+    
+    if( ele.hasOwnProperty('uuId') && ele.uuId==null)
+      return ele
+  }
+
+  for(var i=0; i<parentEle.childElementCount; ++i)
+  {
+    var ele = ui_next_ele_to_register( parentEle.children[i])
+    
+    if( ele != null )
+      return ele
+  }
+  
+  return null
+}
+
+// 
+function ui_set_app_uuId( d )
+{
+  console.log(d)
+}
+
+
+function ws_send( s )
+{
   //console.log(s)
-  _ws.send(s)
+  
+  _ws.send(s+"\0")
 }
 
 function ws_on_msg( jsonMsg )
 {
-  //console.log(jsonMsg)
+  console.log(jsonMsg)
+  
   d = JSON.parse(jsonMsg.data);
 
   switch( d.op )
@@ -486,12 +589,18 @@ function ws_on_msg( jsonMsg )
     case 'create':
     for (const ele_type in d.children)
     {
-      ui_create( d.parent, ele_type, d.value[ele_type] )
+      ui_create( d.parent, ele_type, d.children[ele_type] )
       //console.log(`${ele_type}: ${d.value[ele_type]}`);
       
-    }
-    
+    }    
     break;
+
+    case 'set_app_id':
+    ui_set_app_uuId(d)
+    break;
+
+    default:
+    ui_error("Unknown UI operation. " + d.op )
   }
 
 }
@@ -507,12 +616,35 @@ function ws_on_close()
   set_app_title( "Disconnected", "title_disconnected" );
 }
 
+function ws_form_url(urlSuffix)
+{
+  var pcol;
+  var u = document.URL;
+
+  pcol = "ws://";
+  if (u.substring(0, 4) === "http")
+    u = u.substr(7);
+
+  u = u.split("/");
+
+  return pcol + u[0] + "/" + urlSuffix;
+}
+
 function main()
 {
-  _ws = new WebSocket("ws://127.0.0.1:5687/","ui_protocol")
+  rootEle = dom_id_to_ele(_rootJsId);
+  rootEle.uuId = 0;
+  rootEle.id = _nextEleId;
+  _nextEleId += 1;
+
+  console.log(ws_form_url(""))
+  
+  _ws = new WebSocket(ws_form_url(""),"ui_protocol")
   
   _ws.onmessage    = ws_on_msg
   _ws.onopen       = ws_on_open 
-  _ws.onclose      = ws_on_close; 
+  _ws.onclose      = ws_on_close;
+
+  
 }
 
