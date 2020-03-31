@@ -1229,21 +1229,40 @@ cw::rc_t cw::socksrv::stop(  handle_t h )
   return thread::pause( p->thH );
 }
 
-cw::rc_t cw::socksrv::test(  sock::portNumber_t localPort, const char* remoteAddrIp, sock::portNumber_t remotePort, unsigned flags )
+cw::rc_t cw::socksrv::test(  const char* localNicDevice, sock::portNumber_t localPort, const char* remoteAddrIp, sock::portNumber_t remotePort, unsigned flags )
 {
-  handle_t       h;
-  rc_t           rc           = kOkRC;
-  unsigned       timeOutMs    = 50;
-  unsigned       recvBufByteN = 2048;
-  unsigned       maxSocketN   = 10;
-  unsigned       userId       = 10;
-  unsigned       sockFlags    = sock::kNonBlockingFl | flags;
-  bool           serverFl     = remoteAddrIp == nullptr;
-  const unsigned sbufN        = 31;
-  char           sbuf[ sbufN+1 ];
+  handle_t            h;
+  rc_t                rc           = kOkRC;
+  unsigned            timeOutMs    = 50;
+  unsigned            recvBufByteN = 2048;
+  unsigned            maxSocketN   = 10;
+  unsigned            userId       = 10;
+  unsigned            sockFlags    = sock::kNonBlockingFl | flags;
+  bool                serverFl     = remoteAddrIp == nullptr;
+  const char*         localIpAddrPtr = nullptr;
+  char                localIpAddr[ INET_ADDRSTRLEN+1 ];
+  const unsigned      sbufN        = 31;
+  char                sbuf[ sbufN+1 ];
 
+  // if a local device was given
+  if( localNicDevice != nullptr )
+  {
+    struct sockaddr_in  localAddr;
+    unsigned char      mac[6];
+
+    // get the IP address of the device
+    if((rc = sock::get_info(localNicDevice, mac, nullptr, 0, &localAddr )) != kOkRC )
+      return cwLogError(rc,"Unable to obtain the local address information for the device:'%s'.",localNicDevice);
+
+    // convert the IP address to a string
+    if((rc = sock::addrToString( &localAddr, localIpAddr, INET_ADDRSTRLEN )) != kOkRC )
+      return cwLogError(rc,"Unable to convert the local address to a string for device:'%s'.",localNicDevice);
+    
+    localIpAddrPtr = localIpAddr;
+  }
+  
   if( serverFl )
-    printf("Server listening on port: %i\n", localPort );
+    printf("Server listening on %s port: %i\n", localIpAddrPtr==nullptr ? "" : localIpAddrPtr, localPort );
   else
     printf("Client connecting to server %s:%i\n", remoteAddrIp,remotePort);
     
@@ -1260,7 +1279,7 @@ cw::rc_t cw::socksrv::test(  sock::portNumber_t localPort, const char* remoteAdd
   }
   
   // create a socket
-  if((rc = create( mgrHandle(h), userId, localPort, sockFlags, timeOutMs, _socketTestCbFunc, nullptr, remoteAddrIp, remotePort)) != kOkRC )
+  if((rc = create( mgrHandle(h), userId, localPort, sockFlags, timeOutMs, _socketTestCbFunc, nullptr, remoteAddrIp, remotePort, localIpAddrPtr)) != kOkRC )
   {
     cwLogError(rc,"Socket server socket create failed.");
     goto errLabel;
@@ -1299,7 +1318,7 @@ cw::rc_t cw::socksrv::test(  sock::portNumber_t localPort, const char* remoteAdd
   return rcSelect(rc,rc1,rc2);
 }
 
-cw::rc_t cw::socksrv::testMain(  bool tcpFl, sock::portNumber_t localPort, const char* remoteAddrIp, sock::portNumber_t remotePort )
+cw::rc_t cw::socksrv::testMain(  bool tcpFl, const char* localNicDevice, sock::portNumber_t localPort, const char* remoteAddrIp, sock::portNumber_t remotePort )
 {
   unsigned flags = 0;
 
@@ -1311,5 +1330,5 @@ cw::rc_t cw::socksrv::testMain(  bool tcpFl, sock::portNumber_t localPort, const
       flags |= sock::kListenFl;
   }
   
-  return test(localPort,remoteAddrIp,remotePort,flags);
+  return test(localNicDevice,localPort,remoteAddrIp,remotePort,flags);
 }
