@@ -39,7 +39,13 @@ namespace cw
   enum
   {
    kValueContainerFl = 0x01,  // root,pair, or list are the only legal value containers
-   kContainerFl = 0x02
+   kContainerFl      = 0x02,
+  };
+  
+  enum
+  {
+   kNoRecurseFl    = 0x01,
+   kOptionalFl     = 0x02
   };
 
   struct object_str;
@@ -120,6 +126,7 @@ namespace cw
     rc_t value( float&  v ) const;
     rc_t value( double& v ) const;
     rc_t value( char*& v ) const;
+    rc_t value( const char*& v ) const;
 
     const char* pair_label() const;
     
@@ -127,18 +134,28 @@ namespace cw
     struct       object_str* pair_value();
 
     // Search for the pair label 'label'.
-    const struct object_str* find( const char* label, bool recurseFl=true ) const;
-    struct       object_str* find( const char* label, bool recurseFl=true );
+    // Return a pointer to the pair value associated with a given pair label.
+    // Set flags to kNoRecurseFl to not recurse into the object in search of the label.
+    const struct object_str* find( const char* label, unsigned flags=0 ) const;
+    struct       object_str* find( const char* label, unsigned flags=0 );
     
     const struct object_str* list_ele( unsigned idx ) const;
     struct       object_str* list_ele( unsigned idx );
 
+    // Set flag  'kNoRecurseFl' to no recurse into the object in search of the value.
+    // Set flag  'kOptional' if the label is optional and may not exist.
     template< typename T >
-      rc_t get( const char* label, T& v  ) const
+      rc_t get( const char* label, T& v, unsigned flags=0  ) const
     {
       const struct object_str* o;
-      if((o = find(label)) == NULL )
-        return cwLogError(kInvalidIdRC,"The pair label '%s' could not be found.",cwStringNullGuard(label));
+      if((o = find(label, flags)) == nullptr )
+      {
+        if( cwIsNotFlag(flags, kOptionalFl) )
+          return cwLogError(kInvalidIdRC,"The pair label '%s' could not be found.",cwStringNullGuard(label));
+        
+        return kLabelNotFoundRC;
+        
+      }
       return o->value(v);
     }
     
@@ -159,9 +176,19 @@ namespace cw
     
   } object_t;
 
-
-
-
+  object_t* newObject( std::uint8_t  v, object_t* parent=nullptr);
+  object_t* newObject( std::int8_t   v, object_t* parent=nullptr);
+  object_t* newObject( std::int16_t  v, object_t* parent=nullptr);
+  object_t* newObject( std::uint16_t v, object_t* parent=nullptr);
+  object_t* newObject( std::int32_t  v, object_t* parent=nullptr);
+  object_t* newObject( std::uint32_t v, object_t* parent=nullptr);
+  object_t* newObject( std::int64_t  v, object_t* parent=nullptr);
+  object_t* newObject( std::uint64_t v, object_t* parent=nullptr);
+  object_t* newObject( bool          v, object_t* parent=nullptr);
+  object_t* newObject( float         v, object_t* parent=nullptr);
+  object_t* newObject( double        v, object_t* parent=nullptr);      
+  object_t* newObject( const char*   v, object_t* parent=nullptr);
+  
   rc_t objectFromString( const char* s, object_t*& objRef );
   rc_t objectFromFile( const char* fn, object_t*& objRef );
   void objectPrintTypes( object_t* o );

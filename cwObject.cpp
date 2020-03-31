@@ -89,7 +89,14 @@ namespace cw
   { return cwLogError(kInvalidArgRC, "There is no conversion from '%s' to '%s'.", _objTypeIdToLabel(tid), o->type->label); }
   
   rc_t _objTypeValueFromString(   const object_t* o, unsigned tid, void* dst )
-  { return _objTypeValueFromNonValue(o,tid,dst); }
+  {
+    if( tid == kStringTId )
+    {
+      *(char**)dst = o->u.str;
+      return kOkRC;
+    }
+    return _objTypeValueFromNonValue(o,tid,dst);
+  }
   
   rc_t _objTypeValueFromVect(     const object_t* o, unsigned tid, void* dst )
   { return _objTypeValueFromNonValue(o,tid,dst); }
@@ -348,19 +355,22 @@ namespace cw
   {
     if( newNode == nullptr )
       return nullptr;
-    
-    object_t* child = parent->u.children;
 
-    if( parent->u.children == nullptr )
-      parent->u.children = newNode;
-    else
+    if( parent != nullptr )
     {
-      while( child->sibling != nullptr )
-        child = child->sibling;
+      object_t* child = parent->u.children;
 
-      child->sibling = newNode;
+      if( parent->u.children == nullptr )
+        parent->u.children = newNode;
+      else
+      {
+        while( child->sibling != nullptr )
+          child = child->sibling;
+
+        child->sibling = newNode;
+      }
     }
-
+      
     newNode->parent = parent;
     return newNode;
   }
@@ -450,6 +460,7 @@ cw::rc_t cw::object_t::value( uint64_t& v ) const { return type->value(this,kUIn
 cw::rc_t cw::object_t::value( float&  v )   const { return type->value(this,kFloatTId,&v); }
 cw::rc_t cw::object_t::value( double& v )   const { return type->value(this,kDoubleTId,&v); }
 cw::rc_t cw::object_t::value( char*& v )    const { return type->value(this,kStringTId,&v); }
+cw::rc_t cw::object_t::value( const char*& v ) const { return type->value(this,kStringTId,&v); }
 
 const char* cw::object_t::pair_label() const
 {
@@ -476,7 +487,7 @@ struct cw::object_str* cw::object_t::pair_value()
 }
 
 
-const struct cw::object_str* cw::object_t::find( const char* label, bool recurseFl ) const
+const struct cw::object_str* cw::object_t::find( const char* label, unsigned flags ) const
 {
   if( is_container() )
   {
@@ -486,7 +497,7 @@ const struct cw::object_str* cw::object_t::find( const char* label, bool recurse
         return o->pair_value();
 
       const object_t* ch;
-      if( recurseFl )
+      if( cwIsNotFlag(flags,kNoRecurseFl) )
         if((ch = o->find(label)) != nullptr )
           return ch;
     }     
@@ -494,9 +505,9 @@ const struct cw::object_str* cw::object_t::find( const char* label, bool recurse
   return nullptr;
 }
 
-struct cw::object_str* cw::object_t::find( const char* label, bool recurseFl ) 
+struct cw::object_str* cw::object_t::find( const char* label, unsigned flags ) 
 {
-  return const_cast<struct object_str*>(((const object_t*)this)->find(label,recurseFl));
+  return const_cast<struct object_str*>(((const object_t*)this)->find(label,flags));
 }
 
 const struct cw::object_str* cw::object_t::list_ele( unsigned idx ) const
@@ -530,7 +541,41 @@ void cw::object_t::print(const print_ctx_t* c) const
   type->print(this,ctx); 
 }
 
+cw::object_t* cw::newObject( std::uint8_t v, object_t* parent)
+{ return _objCreateValueNode<uint8_t>( parent, v ); }
 
+cw::object_t* cw::newObject( std::int8_t v, object_t* parent)
+{ return _objCreateValueNode<int8_t>( parent, v ); }
+
+cw::object_t* cw::newObject( std::uint16_t v, object_t* parent)
+{ return _objCreateValueNode<uint16_t>( parent, v ); }
+
+cw::object_t* cw::newObject( std::int16_t v, object_t* parent)
+{ return _objCreateValueNode<int16_t>( parent, v ); }
+
+cw::object_t* cw::newObject( std::uint32_t v, object_t* parent)
+{ return _objCreateValueNode<uint32_t>( parent, v ); }
+
+cw::object_t* cw::newObject( std::int32_t v, object_t* parent)
+{ return _objCreateValueNode<int32_t>( parent, v ); }
+
+cw::object_t* cw::newObject( std::uint64_t v, object_t* parent)
+{ return _objCreateValueNode<uint64_t>( parent, v ); }
+
+cw::object_t* cw::newObject( std::int64_t v, object_t* parent)
+{ return _objCreateValueNode<uint64_t>( parent, v ); }
+
+cw::object_t* cw::newObject( bool v, object_t* parent)
+{ return _objCreateValueNode<bool>( parent, v ); }
+
+cw::object_t* cw::newObject( float v, object_t* parent)
+{ return _objCreateValueNode<float>( parent, v ); }
+
+cw::object_t* cw::newObject( double v, object_t* parent)
+{ return _objCreateValueNode<double>( parent, v ); }
+ 
+cw::object_t* cw::newObject( const char* v, object_t* parent)
+{ return _objCreateValueNode<const char*>( parent, v ); }
 
 cw::rc_t cw::objectFromString( const char* s, object_t*& objRef )
 {
@@ -557,8 +602,6 @@ cw::rc_t cw::objectFromString( const char* s, object_t*& objRef )
   // main parser loop
   while((lexId = lex::getNextToken(lexH)) != lex::kErrorLexTId && (lexId != lex::kEofLexTId) && (rc == kOkRC))
   {
-
-    //printf("Lex:%s\n",lexIdToLabel(lexH,lexId));
     
     switch( lexId )
     {
@@ -648,6 +691,15 @@ cw::rc_t cw::objectFromString( const char* s, object_t*& objRef )
       cnp = cnp->parent;
 
     
+  }
+
+  // if the root has only one child then make the child the root
+  if( root != nullptr && root->child_count() == 1 )
+  {
+    cnp = root->u.children;
+    cnp->unlink();
+    root->free();
+    root = cnp;
   }
   
   objRef = root;
