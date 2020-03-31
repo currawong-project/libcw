@@ -38,8 +38,10 @@ namespace cw
    kOpFailRC,               // 19
    kSyntaxErrorRC,          // 20
    kBufTooSmallRC,          // 21
-   kAssertFailRC,           // 22 - used with cwLogFatal
-   kBaseAppRC               // 23
+   kLabelNotFoundRC,        // 22 - use by cwObject to indicate that an optional value does not exist.
+   kDuplicateRC,            // 23 - an invalid duplicate was detected
+   kAssertFailRC,           // 24 - used with cwLogFatal
+   kBaseAppRC               // 25
   } cwRC_t;
 
   typedef unsigned rc_t;
