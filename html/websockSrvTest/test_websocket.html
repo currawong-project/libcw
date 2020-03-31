@@ -10,9 +10,13 @@
     <br>
     
     Outgoing text message to the server.
-    
     <input type="text" id="msgTextId" cols=40 rows=1>
-    <button id="sendBtnId", onclick="sendmsg();">Send</button>
+    <button id="sendBtnId", onclick="sendmsg('');">Send</button>
+    <button id="sendAllBtnId", onclick="sendmsg('bcast');">Broadcast</button>
+    <br>
+    Send - loopback to this client
+    <br>
+    Broadcast - transmit to all clients
     <br>
     <button id="quitBtnId", onclick="sendquit();">Quit</button>
   </body>
@@ -28,7 +32,35 @@
       return new WebSocket(urlpath, protocol);
     }
 
-    subscriber_ws = new_ws("ws://localhost:7681/", "websocksrv_test_protocol");
+    function get_appropriate_ws_url(extra_url)
+    {
+      var pcol;
+      var u = document.URL;
+
+      /*
+       * We open the websocket encrypted if this page came on an
+       * https:// url itself, otherwise unencrypted
+       */
+
+      if (u.substring(0, 5) === "https") {
+	pcol = "wss://";
+	u = u.substr(8);
+      } else {
+	pcol = "ws://";
+	if (u.substring(0, 4) === "http")
+	  u = u.substr(7);
+      }
+
+      u = u.split("/");
+
+      /* + "/xxx" bit is for IE10 workaround */
+
+      return pcol + u[0] + "/" + extra_url;
+    }
+
+    url = get_appropriate_ws_url("");
+
+    subscriber_ws = new_ws(url, "websocksrv_test_protocol");
     try {
       subscriber_ws.onopen = function()
       {
@@ -38,7 +70,9 @@
 
       subscriber_ws.onmessage = function got_packet(msg)
       {
-	document.getElementById("r").value     = document.getElementById("r").value + msg.data + "\n";
+	console.log("rcv1:"+msg.data)
+	
+	document.getElementById("r").value     = document.getElementById("r").value + " 1:" + msg.data + "\n";
 	document.getElementById("r").scrollTop = document.getElementById("r").scrollHeight;
       } 
 
@@ -53,7 +87,9 @@
       alert('<p>Error' + exception);  
     }
 
-    publisher_ws = new_ws("ws://localhost:7681//publisher", "websocksrv_test_protocol");
+    url = get_appropriate_ws_url("publisher");
+    
+    publisher_ws = new_ws(url, "websocksrv_test_protocol");
     try {
       
       publisher_ws.onopen =    function()
@@ -64,7 +100,11 @@
       
       publisher_ws.onmessage = function got_packet(msg)
       {
-	console.log("rcv:"+msg.data)
+	console.log("rcv2:"+msg.data)
+	
+	document.getElementById("r").value     = document.getElementById("r").value + " 2: "+msg.data + "\n";
+	document.getElementById("r").scrollTop = document.getElementById("r").scrollHeight;
+	
       }
       
       publisher_ws.onclose =   function()
@@ -78,9 +118,13 @@
       alert('<p>Error' + exception);  
     }
 
-    function sendmsg()
+    function sendmsg( arg )
     {
       var val = document.getElementById("msgTextId").value
+
+      if( arg === "bcast" )
+	val = "bcast "+val;
+      
       publisher_ws.send(val);
       document.getElementById("msgTextId").value = "";
     }
