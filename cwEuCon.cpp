@@ -419,6 +419,7 @@ namespace cw
                   
                   // Send the initial handshake to the Surface
                   _sendHandshake_0( sockH, label );
+                  printf("Sent HS-0: 0x0a\n");
                   
                   // FENCE
                   p->protoState = kWaitForHandshake_1_Id;
@@ -448,7 +449,7 @@ namespace cw
                 {
                   p->protoState = kWaitForHandshake_2_Id;
                   _sendHandshake_1( socketHandle(p->tcpH) );
-                  printf("Rcvd HS 1 - sent 0xb\n");
+                  printf("Rcvd (0x0b) HS 1  - sent 0x0c\n");
                 }
                 break;
 
@@ -456,7 +457,7 @@ namespace cw
                 if( hdr == 0x0d )
                 {
                   p->protoState = kResponse_3_A_Id;
-                  printf("Rcvd HS 2 - 0xd\n");
+                  printf("Rcvd (0x0d) HS 2 - Sending setup data\n");
                 }
                 break;
 
