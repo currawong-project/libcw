@@ -81,6 +81,7 @@ namespace cw
 
       buf = _fileToBuf(h,nn,bufByteCntPtr);
 
+      return buf;
     errLabel:
       close(h);
   
