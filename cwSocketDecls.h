@@ -9,10 +9,10 @@ namespace cw
 
     typedef enum
     {
-     kReceiveCbId,
      kConnectCbId,
-     kDisconnectCbId
-    } cbId_t;
+     kReceiveCbId,
+     kDisconnectCbId,     
+    } cbOpId_t;
 
 
     

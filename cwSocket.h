@@ -11,7 +11,7 @@ namespace cw
     
     // userId is the id assigned to the receiving socket
     // connId is an automatically assigned id which represents the remote endpoint which is connected to 'userId'.
-    typedef void (*callbackFunc_t)( void* cbArg, cbId_t cbId, unsigned userId, unsigned connId, const void* byteA, unsigned byteN, const struct sockaddr_in* srcAddr );
+    typedef void (*callbackFunc_t)( void* cbArg, cbOpId_t cbId, unsigned userId, unsigned connId, const void* byteA, unsigned byteN, const struct sockaddr_in* srcAddr );
 
     rc_t createMgr(  handle_t& hRef, unsigned recvBufByteN, unsigned maxSocketN );
     rc_t destroyMgr( handle_t& hRef );

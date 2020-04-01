@@ -53,7 +53,7 @@ namespace cw
 
     typedef struct socket_msg_str
     {
-      sock::cbId_t              cbId;
+      sock::cbOpId_t              cbId;
       unsigned                  userId;
       unsigned                  connId;
       const void*               byteA;

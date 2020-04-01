@@ -138,7 +138,7 @@ namespace cw
       s->createFlags               = 0;
       s->flags                     = 0;
       s->pollfd->events            = 0;
-      s->pollfd->fd                = cwSOCKET_NULL_SOCK;
+      s->pollfd->fd                = cwSOCKET_NULL_SOCK; // poll() ignores records when fd < 0
       s->remoteSockAddr.sin_family = AF_UNSPEC;
 
       return rc;      
@@ -186,6 +186,12 @@ namespace cw
       return kOkRC;
     }
 
+    void _callback( sock_t* s, cbOpId_t opId, const struct sockaddr_in* srcAddr=nullptr, const void* buf=nullptr, unsigned bufByteN=0 )
+    {
+      if( s->cbFunc != nullptr )
+        s->cbFunc( s->cbArg, opId, s->userId, s->connId, buf, bufByteN, srcAddr );
+    }
+
     rc_t _accept( mgr_t* p, sock_t* s, unsigned sockN )      
     {
       rc_t                    rc       = kOkRC;
@@ -215,8 +221,6 @@ namespace cw
         goto errLabel;
       }
 
-      printf("Socket: userId:%i connected.\n", s->userId);      
-      
       // initialize the socket record
       cs = p->sockA + sockIdx;
 
@@ -238,9 +242,7 @@ namespace cw
       if((rc = addrToString( (const struct sockaddr_in*)&remoteAddr, cs->ntopBuf,  sizeof(cs->ntopBuf) )) != kOkRC )
         goto errLabel;      
 
-      if( s->cbFunc != nullptr )
-        s->cbFunc( s->cbArg, kConnectCbId, s->userId, cs->connId, nullptr, 0, (const struct sockaddr_in*)&remoteAddr );
-
+      _callback( cs, kConnectCbId, (const struct sockaddr_in*)&remoteAddr);
       
     errLabel:
       if( rc != kOkRC )
@@ -296,8 +298,8 @@ namespace cw
           // if no src addr was given (because this is a TCP socket) then use the connected remote socket
           if( fromAddr == nullptr && s->remoteSockAddr.sin_family != AF_UNSPEC)
             fromAddr = &s->remoteSockAddr;
-          
-          s->cbFunc( s->cbArg, kReceiveCbId, s->userId, s->connId, b, bytesReadN, fromAddr );
+
+          _callback( s, kReceiveCbId, fromAddr, b, bytesReadN );
         }
           
       }
@@ -314,6 +316,8 @@ namespace cw
               cwLogWarning("Socket Disconnected.");
         
             s->flags = cwClrFlag(s->flags,kIsConnectedFl);
+
+            _callback( s, kDisconnectCbId );
         }
     
         return cwLogSysError(kOpFailRC,errno,"recvfrom() failed.");
@@ -358,7 +362,9 @@ namespace cw
 
       // block waiting for data on one of the ports
       if((sysRC = ::poll(pfd,pfdN,timeOutMs)) == 0)
+      {
         rc = kTimeOutRC;
+      }
       else
       {
         unsigned newSockN = 0;
@@ -373,17 +379,18 @@ namespace cw
           // if the socket was disconnected or is no longer valid
           if( cwIsFlag(p->sockA[i].pollfd->revents,POLLHUP) || cwIsFlag(p->sockA[i].pollfd->revents,POLLNVAL) )
           {
-            printf("Socket userId:%i connId:%i disconnected.\n",p->sockA[i].userId,p->sockA[i].connId);
+            _callback( p->sockA + i, kDisconnectCbId );
+            
             _closeSock(p,p->sockA+i);
             continue;
           }
-          
+
+          // if an error occured on this socket
           if( p->sockA[i].pollfd->revents & POLLERR )
           {
-            printf("ERROR on socket user id:%i conn id:%i\n",p->sockA[i].userId,p->sockA[i].connId);
+            cwLogError(kOpFailRC,"ERROR on socket user id:%i conn id:%i\n",p->sockA[i].userId,p->sockA[i].connId);
+            // TODO: should the socket be closed? marked as disconnected? 
           }
-
-
           
           if( p->sockA[i].pollfd->revents & POLLIN )
           {
@@ -1149,7 +1156,7 @@ namespace cw
     }
 
     // Callback thread used by socksrv::test() below
-    void _socketTestCbFunc( void* cbArg, sock::cbId_t cbId, unsigned userId, unsigned connId, const void* byteA, unsigned byteN, const struct sockaddr_in* srcAddr )
+    void _socketTestCbFunc( void* cbArg, sock::cbOpId_t cbId, unsigned userId, unsigned connId, const void* byteA, unsigned byteN, const struct sockaddr_in* srcAddr )
     {
       rc_t rc;
       char addr[ INET_ADDRSTRLEN+1 ];
