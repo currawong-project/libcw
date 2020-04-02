@@ -251,7 +251,7 @@ namespace cw
       return rc;
     }
 
-    // Called to read the serial device when data is known to be waiting.
+    // Called to read the socket when data is known to be waiting.
     rc_t _receive( mgr_t* p, sock_t* s, unsigned& readN_Ref, void* buf=nullptr, unsigned bufByteN=0, struct sockaddr_in* fromAddr=nullptr )
     {
       rc_t     rc     = kOkRC;
@@ -371,7 +371,7 @@ namespace cw
         
         // ::poll() encountered a system exception
         if( sysRC < 0 )
-          return cwLogSysError(kReadFailRC,errno,"Poll failed on serial port.");
+          return cwLogSysError(kReadFailRC,errno,"Poll failed on socket.");
 
         // interate through the ports looking for the ones which have data waiting ...
         for(unsigned i=0; i<p->sockN; ++i)
