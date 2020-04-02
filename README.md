@@ -1,6 +1,7 @@
 
 # To Do
 
+- Fix the time functions to make them more convenient and C++ish.
 - implement floating point UI numbers
 - UI needs a special UUID (not kInvalidId) to specify the 'root' UI element. See note in cwUi._createFromObj()
 - Look at 'BUG' warnings in cwNumericConvert.h.
