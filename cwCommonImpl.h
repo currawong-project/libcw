@@ -15,6 +15,7 @@
 #include <utility>    // std::forward
 #include <limits>     // std::numeric_limits<
 #include <atomic>
+#include <cstdint>
 
 #if defined(OS_LINUX) || defined(OS_OSX)
 #define cwPOSIX_FILE_SYS
