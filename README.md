@@ -1,6 +1,7 @@
 
 # To Do
 
+- Any socket function which takes a IP/port address should have a version which also takes a sockaddr_in*.
 - Fix the time functions to make them more convenient and C++ish.
 - implement floating point UI numbers
 - UI needs a special UUID (not kInvalidId) to specify the 'root' UI element. See note in cwUi._createFromObj()
