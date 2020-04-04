@@ -571,21 +571,24 @@ namespace cw
             return cwLogError(kOpFailRC,"The fader bank index %i failed.", fbIndex );          
         }
 
-        // convert the fromAddr to a string
-        if((rc = sock::addrToString( fromAddr, fbIP, INET_ADDRSTRLEN)) != kOkRC )
-          return cwLogError(rc,"IP address to string conversion failed.", fbIndex);
+        if( fb->protoState == kSendHandshake_0_Id )
+        {
+          // convert the fromAddr to a string
+          if((rc = sock::addrToString( fromAddr, fbIP, INET_ADDRSTRLEN)) != kOkRC )
+            return cwLogError(rc,"IP address to string conversion failed.", fbIndex);
         
-        // create the TCP socket
-        if((rc = sock::create( p->sockMgrH, fb->sockUserId, sock::kInvalidPortNumber, tcpFlags, p->sockTimeOutMs, _tcpCallback, p, fbIP, p->faderTcpPort )) != kOkRC )
-          return cwLogError(rc,"The TCP socket for fader bank index %i failed. ", fbIndex);
+          // create the TCP socket
+          if((rc = sock::create( p->sockMgrH, fb->sockUserId, sock::kInvalidPortNumber, tcpFlags, p->sockTimeOutMs, _tcpCallback, p, fbIP, p->faderTcpPort )) != kOkRC )
+            return cwLogError(rc,"The TCP socket for fader bank index %i failed. ", fbIndex);
 
-        fb->remoteAddr = fromAddr->sin_addr.s_addr;
+          fb->remoteAddr = fromAddr->sin_addr.s_addr;
         
-        // Send the initial handshake to the fader bank
-        _sendHandshake_0( fb );
+          // Send the initial handshake to the fader bank
+          _sendHandshake_0( fb );
 
-        fb->protoState = kWaitForHandshake_1_Id;
-
+          fb->protoState = kWaitForHandshake_1_Id;
+        }
+        
         return rc;
       }
 
@@ -608,7 +611,6 @@ namespace cw
           // if this a 'MC Mix' DNS-SD SRV reply
           if( strncmp(label, name+1, strlen(label)) == 0 )
           {
-
             unsigned n = strlen(label);
             
             if((rc = _on_McMix_DNS_SD_TXT( p, name+n+1, name[0]-n, fromAddr )) != kOkRC )
