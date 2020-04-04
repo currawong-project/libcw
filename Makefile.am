@@ -1,49 +1,47 @@
-dir = src/libcw
-
 libcwHDR =
 libcwSRC =
 
-libcwHDR += $(dir)/cwCommon.h $(dir)/cwCommonImpl.h   $(dir)/cwMem.h   $(dir)/cwLog.h    $(dir)/cwUtility.h
-libcwSRC +=                   $(dir)/cwCommonImpl.cpp $(dir)/cwMem.cpp $(dir)/cwLog.cpp  $(dir)/cwUtility.cpp
+libcwHDR += src/libcw/cwCommon.h src/libcw/cwCommonImpl.h   src/libcw/cwMem.h   src/libcw/cwLog.h    src/libcw/cwUtility.h
+libcwSRC +=                   src/libcw/cwCommonImpl.cpp src/libcw/cwMem.cpp src/libcw/cwLog.cpp  src/libcw/cwUtility.cpp
 
-libcwHDR += $(dir)/cwFileSys.h   $(dir)/cwText.h   $(dir)/cwFile.h    $(dir)/cwTime.h   $(dir)/cwLex.h   $(dir)/cwNumericConvert.h 
-libcwSRC += $(dir)/cwFileSys.cpp $(dir)/cwText.cpp $(dir)/cwFile.cpp  $(dir)/cwTime.cpp $(dir)/cwLex.cpp
+libcwHDR += src/libcw/cwFileSys.h   src/libcw/cwText.h   src/libcw/cwFile.h    src/libcw/cwTime.h   src/libcw/cwLex.h   src/libcw/cwNumericConvert.h 
+libcwSRC += src/libcw/cwFileSys.cpp src/libcw/cwText.cpp src/libcw/cwFile.cpp  src/libcw/cwTime.cpp src/libcw/cwLex.cpp
 
-libcwHDR += $(dir)/cwObject.h   $(dir)/cwObjectTemplate.h $(dir)/cwTextBuf.h    
-libcwSRC += $(dir)/cwObject.cpp                           $(dir)/cwTextBuf.cpp
+libcwHDR += src/libcw/cwObject.h   src/libcw/cwObjectTemplate.h src/libcw/cwTextBuf.h    
+libcwSRC += src/libcw/cwObject.cpp                           src/libcw/cwTextBuf.cpp
 
-libcwHDR += $(dir)/cwThread.h    $(dir)/cwMutex.h   $(dir)/cwMpScNbQueue.h
-libcwSRC += $(dir)/cwThread.cpp  $(dir)/cwMutex.cpp 
+libcwHDR += src/libcw/cwThread.h    src/libcw/cwMutex.h   src/libcw/cwMpScNbQueue.h
+libcwSRC += src/libcw/cwThread.cpp  src/libcw/cwMutex.cpp 
 
-libcwHDR += $(dir)/cwWebSock.h   $(dir)/cwWebSockSvr.h    $(dir)/cwLib.h
-libcwSRC += $(dir)/cwWebSock.cpp $(dir)/cwWebSockSvr.cpp  $(dir)/cwLib.cpp
+libcwHDR += src/libcw/cwWebSock.h   src/libcw/cwWebSockSvr.h    src/libcw/cwLib.h
+libcwSRC += src/libcw/cwWebSock.cpp src/libcw/cwWebSockSvr.cpp  src/libcw/cwLib.cpp
 
-libcwHDR += $(dir)/cwUiDecls.h $(dir)/cwUi.h   $(dir)/cwUiTest.h
-libcwSRC +=                    $(dir)/cwUi.cpp $(dir)/cwUiTest.cpp
+libcwHDR += src/libcw/cwUiDecls.h src/libcw/cwUi.h   src/libcw/cwUiTest.h
+libcwSRC +=                    src/libcw/cwUi.cpp src/libcw/cwUiTest.cpp
 
-libcwHDR += $(dir)/cwSerialPortDecls.h $(dir)/cwSerialPort.h    $(dir)/cwSerialPortSrv.h
-libcwSRC +=                            $(dir)/cwSerialPort.cpp  $(dir)/cwSerialPortSrv.cpp
+libcwHDR += src/libcw/cwSerialPortDecls.h src/libcw/cwSerialPort.h    src/libcw/cwSerialPortSrv.h
+libcwSRC +=                            src/libcw/cwSerialPort.cpp  src/libcw/cwSerialPortSrv.cpp
 
-libcwHDR += $(dir)/cwMidiDecls.h $(dir)/cwMidi.h   $(dir)/cwMidiPort.h
-libcwSRC +=                      $(dir)/cwMidi.cpp $(dir)/cwMidiPort.cpp $(dir)/cwMidiAlsa.cpp
+libcwHDR += src/libcw/cwMidiDecls.h src/libcw/cwMidi.h   src/libcw/cwMidiPort.h
+libcwSRC +=                      src/libcw/cwMidi.cpp src/libcw/cwMidiPort.cpp src/libcw/cwMidiAlsa.cpp
 
-libcwHDR += $(dir)/cwAudioDeviceDecls.h $(dir)/cwAudioDevice.h   $(dir)/cwAudioDeviceAlsa.h
-libcwSRC +=                             $(dir)/cwAudioDevice.cpp $(dir)/cwAudioDeviceAlsa.cpp $(dir)/cwAudioDeviceTest.cpp
+libcwHDR += src/libcw/cwAudioDeviceDecls.h src/libcw/cwAudioDevice.h   src/libcw/cwAudioDeviceAlsa.h
+libcwSRC +=                             src/libcw/cwAudioDevice.cpp src/libcw/cwAudioDeviceAlsa.cpp src/libcw/cwAudioDeviceTest.cpp
 
-libcwHDR += $(dir)/cwAudioBufDecls.h $(dir)/cwAudioBuf.h
-libcwSRC +=                          $(dir)/cwAudioBuf.cpp
+libcwHDR += src/libcw/cwAudioBufDecls.h src/libcw/cwAudioBuf.h
+libcwSRC +=                          src/libcw/cwAudioBuf.cpp
 
-libcwHDR += $(dir)/cwSocketDecls.h $(dir)/cwSocket.h
-libcwSRC +=                        $(dir)/cwSocket.cpp
+libcwHDR += src/libcw/cwSocketDecls.h src/libcw/cwSocket.h
+libcwSRC +=                        src/libcw/cwSocket.cpp
 
-libcwHDR += $(dir)/cwIo.h   $(dir)/cwIoTest.h 
-libcwSRC += $(dir)/cwIo.cpp $(dir)/cwIoTest.cpp
+libcwHDR += src/libcw/cwIo.h   src/libcw/cwIoTest.h 
+libcwSRC += src/libcw/cwIo.cpp src/libcw/cwIoTest.cpp
 
 
-libcwHDR += $(dir)/cwTcpSocket.h   $(dir)/cwTcpSocketSrv.h   $(dir)/cwTcpSocketTest.h   
-libcwSRC += $(dir)/cwTcpSocket.cpp $(dir)/cwTcpSocketSrv.cpp $(dir)/cwTcpSocketTest.cpp
+libcwHDR += src/libcw/cwTcpSocket.h   src/libcw/cwTcpSocketSrv.h   src/libcw/cwTcpSocketTest.h   
+libcwSRC += src/libcw/cwTcpSocket.cpp src/libcw/cwTcpSocketSrv.cpp src/libcw/cwTcpSocketTest.cpp
 
-libcwHDR += $(dir)/cwMdns.h   $(dir)/cwEuCon.h   $(dir)/cwDnsSd.h   $(dir)/dns_sd/dns_sd.h   $(dir)/dns_sd/dns_sd_print.h   $(dir)/dns_sd/dns_sd_const.h  $(dir)/dns_sd/fader.h     $(dir)/dns_sd/rpt.h
-libcwSRC += $(dir)/cwMdns.cpp $(dir)/cwEuCon.cpp $(dir)/cwDnsSd.cpp $(dir)/dns_sd/dns_sd.cpp $(dir)/dns_sd/dns_sd_print.cpp                        $(dir)/dns_sd/fader.cpp   $(dir)/dns_sd/rpt.cpp
+libcwHDR += src/libcw/cwMdns.h   src/libcw/cwEuCon.h   src/libcw/cwDnsSd.h   src/libcw/dns_sd/dns_sd.h   src/libcw/dns_sd/dns_sd_print.h   src/libcw/dns_sd/dns_sd_const.h  src/libcw/dns_sd/fader.h     src/libcw/dns_sd/rpt.h
+libcwSRC += src/libcw/cwMdns.cpp src/libcw/cwEuCon.cpp src/libcw/cwDnsSd.cpp src/libcw/dns_sd/dns_sd.cpp src/libcw/dns_sd/dns_sd_print.cpp                        src/libcw/dns_sd/fader.cpp   src/libcw/dns_sd/rpt.cpp
 
 

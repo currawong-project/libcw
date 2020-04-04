@@ -328,10 +328,11 @@ namespace cw
 
       typedef struct eucon_str
       {
-        sock::handle_t sockMgrH;
-        fbank_t*       fbankL;
-        unsigned       maxFaderBankN;
-        unsigned       sockTimeOutMs;
+        sock::handle_t sockMgrH;        // socket mgr handle
+        fbank_t*       fbankL;          // List of fader banks
+        unsigned       maxFaderBankN;   // maximum number of fader banks
+        unsigned       sockTimeOutMs;   // socket time out
+        unsigned       faderTcpPort;    // Fader TCP port TODO: we shouuld be getting this from the MDNS SRV record
         
       } eucon_t;
 
@@ -353,10 +354,18 @@ namespace cw
         rc_t rc0;
         
         fbank_t* fb = p->fbankL;
-        for(; fb!=nullptr; fb=fb->link)
+        while( fb!=nullptr )
+        {
+          fbank_t* fb0 = fb->link;
+          
           if((rc0 = _destroyFBank(p,fb)) != kOkRC )
             rc = rc0;;
 
+          mem::release(fb);
+          
+          fb = fb0;
+        }
+        
         if( p->sockMgrH.isValid() )
           if((rc = sock::destroyMgr(p->sockMgrH)) != kOkRC )
             return rc;
@@ -459,7 +468,8 @@ namespace cw
           cwLogError(kOpFailRC,"Fader bank not found. TCP message not delivered.");
           return;
         }
-        
+
+        // 
         if( data!=nullptr && dataByteCnt >= 4 )
         {
           //printHex(data,dataByteCnt);
@@ -473,7 +483,7 @@ namespace cw
               {
                 fb->protoState = kWaitForHandshake_2_Id;
                 _sendHandshake_1( fb );
-                printf("Rcvd (0x0b) HS 1  - sent 0x0c\n");
+                printf("%i : Rcvd (0x0b) HS 1  - sent 0x0c\n", fb->fbIndex);
               }
               break;
 
@@ -481,7 +491,7 @@ namespace cw
               if( hdr == 0x0d )
               {
                 fb->protoState = kResponse_3_A_Id;
-                printf("Rcvd (0x0d) HS 2 - Sending setup data\n");
+                printf("%i : Rcvd (0x0d) HS 2 - Sending setup data\n",fb->fbIndex);
               }
               break;
 
@@ -511,7 +521,7 @@ namespace cw
             break;
 
           case kRunning_Id:
-            printf("Rcv: %i : ",dataByteCnt );
+            printf("%i : Rcv: %i : ",fb->fbIndex, dataByteCnt );
             for(unsigned i=0; i<dataByteCnt; ++i)
               printf("0x%02x ",((uint8_t*)data)[i]);
             printf("\n");
@@ -527,16 +537,14 @@ namespace cw
           //unsigned ms = time::elapsedMs( &p->t0, &t1 );
           //printf("cb: %i %i\n",p->cbCnt,ms);
         }
-      }      
+      }
 
-      
-      rc_t _on_McMix_DNS_SD_SRV( eucon_t* p, const char* numberText, unsigned numberTextCharN, const struct sockaddr_in* fromAddr )
+      rc_t _on_McMix_DNS_SD_TXT( eucon_t* p, const char* numberText, unsigned numberTextCharN, const struct sockaddr_in* fromAddr )
       {
         rc_t               rc         = kOkRC;
         unsigned           tcpFlags   = sock::kTcpFl | sock::kBlockingFl | sock::kStreamFl | sock::kReuseAddrFl | sock::kReusePortFl;
         fbank_t*           fb         = nullptr;
         unsigned           fbIndex    = 0;
-        sock::portNumber_t fbPort     = fromAddr->sin_port;
         char               fbIP[ INET_ADDRSTRLEN+1 ];
 
         // copy the "MC Mix" suffix number into a zero terminated string
@@ -550,7 +558,7 @@ namespace cw
         
         // validate the value
         if( !(0 < fbIndex && fbIndex <= p->maxFaderBankN ) )
-          return cwLogError(kInvalidArgRC,"The fader bank index %i is not valid.", fbIndex );
+          return cwLogError(kInvalidArgRC,"The fader bank number %i is not valid.", fbIndex );
 
         // convert fbIndex to a zero based index        
         fbIndex -= 1; 
@@ -563,21 +571,24 @@ namespace cw
             return cwLogError(kOpFailRC,"The fader bank index %i failed.", fbIndex );          
         }
 
-        // convert the fromAddr to a string
-        if((rc = sock::addrToString( fromAddr, fbIP, INET_ADDRSTRLEN)) != kOkRC )
-          return cwLogError(rc,"IP address to string conversion failed.", fbIndex);
+        if( fb->protoState == kSendHandshake_0_Id )
+        {
+          // convert the fromAddr to a string
+          if((rc = sock::addrToString( fromAddr, fbIP, INET_ADDRSTRLEN)) != kOkRC )
+            return cwLogError(rc,"IP address to string conversion failed.", fbIndex);
         
-        // create the TCP socket
-        if((rc = sock::create( p->sockMgrH, fb->sockUserId, sock::kInvalidPortNumber, tcpFlags, p->sockTimeOutMs, _tcpCallback, p, fbIP, fbPort )) != kOkRC )
-          return cwLogError(rc,"The TCP socket for fader bank index %i failed. ", fbIndex);
+          // create the TCP socket
+          if((rc = sock::create( p->sockMgrH, fb->sockUserId, sock::kInvalidPortNumber, tcpFlags, p->sockTimeOutMs, _tcpCallback, p, fbIP, p->faderTcpPort )) != kOkRC )
+            return cwLogError(rc,"The TCP socket for fader bank index %i failed. ", fbIndex);
 
-        fb->remoteAddr = fromAddr->sin_addr.s_addr;
+          fb->remoteAddr = fromAddr->sin_addr.s_addr;
         
-        // Send the initial handshake to the fader bank
-        _sendHandshake_0( fb );
+          // Send the initial handshake to the fader bank
+          _sendHandshake_0( fb );
 
-        fb->protoState = kWaitForHandshake_1_Id;
-
+          fb->protoState = kWaitForHandshake_1_Id;
+        }
+        
         return rc;
       }
 
@@ -595,15 +606,14 @@ namespace cw
           const char* name  = (const char*)(u+6);
           const char* label = "MC Mix - ";
 
-          printf("%.*s|%li\n", name[0], name+1, strlen(label) );
+          printf("%.*s|%i\n", name[0], name+1, strlen(label) );
 
           // if this a 'MC Mix' DNS-SD SRV reply
           if( strncmp(label, name+1, strlen(label)) == 0 )
           {
-
-            unsigned n = strlen(label) + 1;
+            unsigned n = strlen(label);
             
-            if((rc = _on_McMix_DNS_SD_SRV( p, name+n, name[0]-n, fromAddr )) != kOkRC )
+            if((rc = _on_McMix_DNS_SD_TXT( p, name+n+1, name[0]-n, fromAddr )) != kOkRC )
               cwLogError(rc,"%.*s initialization failed.",name[0],name+1);
             
           }
@@ -655,6 +665,7 @@ cw::rc_t cw::net::eucon::create( handle_t& hRef, const args_t& args )
 
   p->maxFaderBankN = args.maxFaderBankN;
   p->sockTimeOutMs = args.sockTimeOutMs;
+  p->faderTcpPort  = args.faderTcpPort;
   hRef.set(p);
   
  errLabel:
@@ -710,6 +721,7 @@ bool quitFl = false;
 
 void sighandler(int sig)
 {
+  printf("Signal caught!\n");
   quitFl = true;
 }
 
@@ -724,14 +736,15 @@ cw::rc_t cw::net::eucon::test()
   args.mdnsPort      = 5353;
   args.sockTimeOutMs = 50;
   args.maxFaderBankN = 8;
+  args.faderTcpPort       = 49168;
   args.maxSockN      = 50;
+ 
 
-  cw::log::createGlobal();
-
-  // create the EuCon controller
+  // Create the EuCon controller
   if((rc = create(  h, args )) != kOkRC )
     return cwLogError(rc,"Unable to create EuCon server.");
 
+  cwLogInfo("EuCon controller waiting ...");
   while( !quitFl )
   {
     exec(h,args.sockTimeOutMs);
