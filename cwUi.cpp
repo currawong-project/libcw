@@ -285,7 +285,7 @@ namespace cw
     {
       rc_t            rc = kOkRC;
       const object_t* oo;
-      ele_t*          parent_ele;
+      //ele_t*          parent_ele;
       const char*     jsId;
 
       // find the parent pair
@@ -304,7 +304,7 @@ namespace cw
       //}
 
       
-      
+      return rc;
  
     }
 

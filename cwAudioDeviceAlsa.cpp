@@ -166,7 +166,7 @@ namespace cw
             case SND_PCM_STATE_PAUSED:       return "paused";
             case SND_PCM_STATE_SUSPENDED:    return "suspended";
             case SND_PCM_STATE_DISCONNECTED: return "disconnected";
-            case SND_PCM_STATE_PRIVATE1:     return "private1";
+              //case SND_PCM_STATE_PRIVATE1:     return "private1";
 
           }
           return "<invalid>";
@@ -491,7 +491,7 @@ namespace cw
             case SND_PCM_STATE_DRAINING:
             case SND_PCM_STATE_PAUSED:
             case SND_PCM_STATE_DISCONNECTED:
-            case SND_PCM_STATE_PRIVATE1:
+              //case SND_PCM_STATE_PRIVATE1:
               //case SND_PCM_STATE_LAST:
               break;
           }
@@ -872,7 +872,7 @@ namespace cw
                     case SND_PCM_STATE_DRAINING:
                     case SND_PCM_STATE_PAUSED:
                     case SND_PCM_STATE_DISCONNECTED:
-                    case SND_PCM_STATE_PRIVATE1:
+                      //case SND_PCM_STATE_PRIVATE1:
                       continue;
 
                     case SND_PCM_STATE_RUNNING:
