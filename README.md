@@ -1,4 +1,5 @@
 
+
 # To Do
 
 - Any socket function which takes a IP/port address should have a version which also takes a sockaddr_in*.
@@ -53,7 +54,24 @@ The 'appId' is assigned by the UI server when the JS client regsiters the contro
 Client sends 'init' message.        
 Server sends 'create' messages.      
 Client sends 'register' messages.   
-Server send' 'id_assign' messages. 
+Server send' 'id_assign' messages.
+
+# sockaddr_in reference
+
+
+    #include <netinet/in.h>
+
+    struct sockaddr_in {
+        short            sin_family;   // e.g. AF_INET
+        unsigned short   sin_port;     // e.g. htons(3490)
+        struct in_addr   sin_addr;     // see struct in_addr, below
+        char             sin_zero[8];  // zero this if you want to
+    };
+
+struct in_addr {
+    unsigned long s_addr;  // load with inet_aton()
+};
+
 
 
 # Development Setup
@@ -74,3 +92,15 @@ Server send' 'id_assign' messages.
 
     export LD_LIBRARY_PATH=~/sdk/libwebsockets/build/out/lib
 
+# Raspberry Pi Build Notes:
+
+    cd sdk
+    mkdir libwebsockets
+    cmake -DCMAKE_INSTALL_PREFIX:PATH=/home/pi/sdk/libwebsockets/build/out -DLWS_WITH_SSL=OFF ..
+    make
+    sudo make install
+
+    apt install libasound2-dev
+
+
+    
