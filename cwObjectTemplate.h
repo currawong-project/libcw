@@ -12,6 +12,7 @@ namespace cw
   template< typename T >
     object_t* _objSetLeafValue( object_t* obj,  T value )
   {
+    cwLogError(kObjAllocFailRC,"Unhandled object type at leaf node.");
     return NULL;
   }
   
@@ -25,15 +26,78 @@ namespace cw
     return obj;
   }
 
+  template<> object_t* _objSetLeafValue<uint8_t>( object_t* obj,  uint8_t value )
+  {
+    if( obj != NULL )
+    {  
+      obj->u.u8 = value;
+      obj->type = _objIdToType(kUInt8TId);
+    }
+    return obj;
+  }
+
+
+  template<> object_t* _objSetLeafValue<int16_t>( object_t* obj,  int16_t value )
+  {
+    if( obj != NULL )
+    {  
+      obj->u.i16 = value;
+      obj->type = _objIdToType(kInt16TId);
+    }
+    return obj;
+  }
+
+  template<> object_t* _objSetLeafValue<uint16_t>( object_t* obj,  uint16_t value )
+  {
+    if( obj != NULL )
+    {  
+      obj->u.u16 = value;
+      obj->type = _objIdToType(kUInt16TId);
+    }
+    return obj;
+  }
+
+
   template<> object_t* _objSetLeafValue<int32_t>( object_t* obj,  int32_t value )
   {
     if( obj != NULL )
     {  
       obj->u.i32 = value;
-      obj->type  = _objIdToType(kInt32TId);
+      obj->type = _objIdToType(kInt32TId);
     }
     return obj;
   }
+
+  template<> object_t* _objSetLeafValue<uint32_t>( object_t* obj,  uint32_t value )
+  {
+    if( obj != NULL )
+    {  
+      obj->u.u32 = value;
+      obj->type = _objIdToType(kUInt32TId);
+    }
+    return obj;
+  }
+  
+  template<> object_t* _objSetLeafValue<int64_t>( object_t* obj,  int64_t value )
+  {
+    if( obj != NULL )
+    {  
+      obj->u.i64 = value;
+      obj->type = _objIdToType(kInt64TId);
+    }
+    return obj;
+  }
+
+  template<> object_t* _objSetLeafValue<uint64_t>( object_t* obj,  uint64_t value )
+  {
+    if( obj != NULL )
+    {  
+      obj->u.u64 = value;
+      obj->type = _objIdToType(kUInt64TId);
+    }
+    return obj;
+  }
+
   
   template<> object_t* _objSetLeafValue<double>( object_t* obj,  double value )
   {
@@ -64,10 +128,21 @@ namespace cw
     }
     return obj;
   }
+
+  template<> object_t* _objSetLeafValue<const char*>( object_t* obj,  const char* value )
+  {
+    if( obj != NULL )
+    {  
+      obj->u.str = (char*)value;
+      obj->type  = _objIdToType(kCStringTId);
+    }
+    return obj;
+  }
   
   template< typename T >
     object_t*_objCreateValueNode( object_t* obj,  T value, const char* msg=nullptr, unsigned flags=0 )
   {
+    cwLogError(kObjAllocFailRC,"Unhandled type at value node.");
     return NULL;
   }
 
@@ -104,9 +179,24 @@ namespace cw
   template<> object_t* _objCreateValueNode< char*>( object_t* parent, char* value, const char* msg, unsigned flags )
   { return _objAppendLeftMostNode( parent, _objSetLeafValue( _objAllocate(), value ) ); }
 
+  template<> object_t* _objCreateValueNode<const char*>( object_t* parent, const char* value, const char* msg, unsigned flags )
+  { return _objAppendLeftMostNode( parent, _objSetLeafValue( _objAllocate(), value ) ); }
+  
   template<> object_t* _objCreateValueNode<bool>( object_t* parent, bool value, const char* msg, unsigned flags )
   { return _objAppendLeftMostNode( parent, _objSetLeafValue( _objAllocate(), value ) ); }
 
+
+  template< typename T >
+    object_t*_objCreatePairNode( object_t* parentObj,  const char* label, const T& value, const char* msg=nullptr, unsigned flags=0 )
+  {
+    object_t* pair = _objAppendLeftMostNode(parentObj, _objAllocate( kPairTId, parentObj) );
+
+    _objCreateValueNode<const char*>( pair, label, msg, flags );
+    return _objCreateValueNode<T>( pair, value, msg, flags );
+
+  }
+
+  
   template< typename T >
   rc_t getObjectValue( const T& src, unsigned tid, void* dst, const char* typeLabel )
   {

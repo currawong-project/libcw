@@ -173,7 +173,7 @@ namespace cw
       // for each serial port cfg
       for(unsigned i=0; i<p->serialN; ++i)
       {
-        const object_t* e = cfgL->list_ele(i);
+        const object_t* e = cfgL->child_ele(i);
         serialPort_t*   r = p->serialA + i;
         
         if( e == nullptr )
@@ -281,7 +281,7 @@ namespace cw
       for(unsigned i=0; i<p->audioCfgN; ++i)
       {
         audioCfg_t* r = p->audioCfgA + i;
-        if((node = deviceL->list_ele(i)) == nullptr )
+        if((node = deviceL->child_ele(i)) == nullptr )
         {
           if(( rc = node->getv(
                 "enableFl",    r->enableFl,

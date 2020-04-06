@@ -23,11 +23,12 @@ namespace cw
    kDoubleTId  = 0x00001000,
    kBoolTId    = 0x00002000,
    kStringTId  = 0x00004000,
-   kVectTId    = 0x00008000,
-   kPairTId    = 0x00010000,
-   kListTId    = 0x00020000,
-   kDictTId    = 0x00040000,
-   kRootTId    = 0x00080000,
+   kCStringTId = 0x00008000,  // static string (don't delete)
+   kVectTId    = 0x00010000,
+   kPairTId    = 0x00020000,
+   kListTId    = 0x00040000,
+   kDictTId    = 0x00080000,
+   kRootTId    = 0x00100000,
 
    kHexFl      = 0x10000000,
    kIdentFl    = 0x20000000
@@ -139,8 +140,8 @@ namespace cw
     const struct object_str* find( const char* label, unsigned flags=0 ) const;
     struct       object_str* find( const char* label, unsigned flags=0 );
     
-    const struct object_str* list_ele( unsigned idx ) const;
-    struct       object_str* list_ele( unsigned idx );
+    const struct object_str* child_ele( unsigned idx ) const;
+    struct       object_str* child_ele( unsigned idx );
 
     // Set flag  'kNoRecurseFl' to no recurse into the object in search of the value.
     // Set flag  'kOptional' if the label is optional and may not exist.
@@ -170,7 +171,11 @@ namespace cw
         rc = getv(std::forward<ARGS>(args)...);
       return rc;
     }
-   
+
+    template< typename T >
+      struct object_str* insertPair( const char* label, const T& v )
+    {  return newPairObject(label, v, this); }
+    
     unsigned to_string( char* buf, unsigned bufByteN ) const;
     void print(const print_ctx_t* c=NULL) const;
     
@@ -187,7 +192,23 @@ namespace cw
   object_t* newObject( bool          v, object_t* parent=nullptr);
   object_t* newObject( float         v, object_t* parent=nullptr);
   object_t* newObject( double        v, object_t* parent=nullptr);      
+  object_t* newObject( char*         v, object_t* parent=nullptr);
   object_t* newObject( const char*   v, object_t* parent=nullptr);
+
+  // Return a pointer to the value node.
+  object_t* newPairObject( const char* label, std::uint8_t  v, object_t* parent=nullptr);
+  object_t* newPairObject( const char* label, std::int8_t   v, object_t* parent=nullptr);
+  object_t* newPairObject( const char* label, std::int16_t  v, object_t* parent=nullptr);
+  object_t* newPairObject( const char* label, std::uint16_t v, object_t* parent=nullptr);
+  object_t* newPairObject( const char* label, std::int32_t  v, object_t* parent=nullptr);
+  object_t* newPairObject( const char* label, std::uint32_t v, object_t* parent=nullptr);
+  object_t* newPairObject( const char* label, std::int64_t  v, object_t* parent=nullptr);
+  object_t* newPairObject( const char* label, std::uint64_t v, object_t* parent=nullptr);
+  object_t* newPairObject( const char* label, bool          v, object_t* parent=nullptr);
+  object_t* newPairObject( const char* label, float         v, object_t* parent=nullptr);
+  object_t* newPairObject( const char* label, double        v, object_t* parent=nullptr);      
+  object_t* newPairObject( const char* label, char*         v, object_t* parent=nullptr);
+  object_t* newPairObject( const char* label, const char*   v, object_t* parent=nullptr);
   
   rc_t objectFromString( const char* s, object_t*& objRef );
   rc_t objectFromFile( const char* fn, object_t*& objRef );

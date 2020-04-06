@@ -86,7 +86,9 @@ namespace cw
   rc_t _objTypeValueFromBool(     const object_t* o, unsigned tid, void* dst ) { return getObjectValue(o->u.b,tid,dst,o->type->label); }
 
   rc_t _objTypeValueFromNonValue( const object_t* o, unsigned tid, void* dst )
-  { return cwLogError(kInvalidArgRC, "There is no conversion from '%s' to '%s'.", _objTypeIdToLabel(tid), o->type->label); }
+  {
+    return cwLogError(kInvalidArgRC, "There is no conversion from '%s' to '%s'.", _objTypeIdToLabel(tid), o->type->label);
+  }
   
   rc_t _objTypeValueFromString(   const object_t* o, unsigned tid, void* dst )
   {
@@ -124,8 +126,8 @@ namespace cw
   void _objTypePrintUInt16( const object_t* o, print_ctx_t& c ) { printf("%i",o->u.u16); }
   void _objTypePrintInt32(  const object_t* o, print_ctx_t& c ) { printf("%i",o->u.i32); }
   void _objTypePrintUInt32( const object_t* o, print_ctx_t& c ) { printf("%i",o->u.u32); }
-  void _objTypePrintInt64(  const object_t* o, print_ctx_t& c ) { printf("%lli",o->u.i64); }
-  void _objTypePrintUInt64( const object_t* o, print_ctx_t& c ) { printf("%lli",o->u.u64); }
+  void _objTypePrintInt64(  const object_t* o, print_ctx_t& c ) { printf("%li",o->u.i64); }
+  void _objTypePrintUInt64( const object_t* o, print_ctx_t& c ) { printf("%li",o->u.u64); }
   void _objTypePrintBool(   const object_t* o, print_ctx_t& c ) { printf("%s",o->u.b ? "true" : "false"); }
   void _objTypePrintFloat(  const object_t* o, print_ctx_t& c ) { printf("%f",o->u.f); }
   void _objTypePrintDouble( const object_t* o, print_ctx_t& c ) { printf("%f",o->u.d); }
@@ -277,6 +279,7 @@ namespace cw
    { kFloatTId,   "float",     0,                                _objTypeFree,       _objTypeValueFromFloat,    _objTypePrintFloat,  _objTypeToStringFloat },
    { kDoubleTId,  "double",    0,                                _objTypeFree,       _objTypeValueFromDouble,   _objTypePrintDouble, _objTypeToStringDouble },
    { kStringTId,  "string",    0,                                _objTypeFreeString, _objTypeValueFromString,   _objTypePrintString, _objTypeToStringString },
+   { kCStringTId, "cstring",   0,                                _objTypeFree,       _objTypeValueFromString,   _objTypePrintString, _objTypeToStringString },
    { kVectTId,    "vect",      0,                                _objTypeFree,       _objTypeValueFromVect,     _objTypePrintVect,   _objTypeToStringVect },
    { kPairTId,    "pair",      kContainerFl | kValueContainerFl, _objTypeFree,       _objTypeValueFromNonValue, _objTypePrintPair,   _objTypeToStringPair },
    { kListTId,    "list",      kContainerFl | kValueContainerFl, _objTypeFree,       _objTypeValueFromNonValue, _objTypePrintList,   _objTypeToStringList },
@@ -460,7 +463,7 @@ cw::rc_t cw::object_t::value( uint64_t& v ) const { return type->value(this,kUIn
 cw::rc_t cw::object_t::value( float&  v )   const { return type->value(this,kFloatTId,&v); }
 cw::rc_t cw::object_t::value( double& v )   const { return type->value(this,kDoubleTId,&v); }
 cw::rc_t cw::object_t::value( char*& v )    const { return type->value(this,kStringTId,&v); }
-cw::rc_t cw::object_t::value( const char*& v ) const { return type->value(this,kStringTId,&v); }
+cw::rc_t cw::object_t::value( const char*& v ) const { return type->value(this,kCStringTId,&v); }
 
 const char* cw::object_t::pair_label() const
 {
@@ -510,9 +513,9 @@ struct cw::object_str* cw::object_t::find( const char* label, unsigned flags )
   return const_cast<struct object_str*>(((const object_t*)this)->find(label,flags));
 }
 
-const struct cw::object_str* cw::object_t::list_ele( unsigned idx ) const
+const struct cw::object_str* cw::object_t::child_ele( unsigned idx ) const
 {
-  if( is_list() )
+  if( is_container() )
   {
     unsigned i = 0;
     for(object_t* o=u.children; o!=nullptr; o=o->sibling,++i)
@@ -522,9 +525,9 @@ const struct cw::object_str* cw::object_t::list_ele( unsigned idx ) const
   return nullptr;
 }
 
-struct cw::object_str* cw::object_t::list_ele( unsigned idx )
+struct cw::object_str* cw::object_t::child_ele( unsigned idx )
 {
-  return const_cast<struct object_str*>(((const object_t*)this)->list_ele(idx));
+  return const_cast<struct object_str*>(((const object_t*)this)->child_ele(idx));
 }
 
 
@@ -574,8 +577,52 @@ cw::object_t* cw::newObject( float v, object_t* parent)
 cw::object_t* cw::newObject( double v, object_t* parent)
 { return _objCreateValueNode<double>( parent, v ); }
  
+cw::object_t* cw::newObject( char* v, object_t* parent)
+{ return _objCreateValueNode<const char*>( parent, v ); }
+
 cw::object_t* cw::newObject( const char* v, object_t* parent)
 { return _objCreateValueNode<const char*>( parent, v ); }
+
+
+cw::object_t* cw::newPairObject( const char* label, std::uint8_t v, object_t* parent)
+{ return _objCreatePairNode<uint8_t>( parent, label, v ); }
+
+cw::object_t* cw::newPairObject( const char* label, std::int8_t v, object_t* parent)
+{ return _objCreatePairNode<int8_t>( parent, label, v ); }
+
+cw::object_t* cw::newPairObject( const char* label, std::uint16_t v, object_t* parent)
+{ return _objCreatePairNode<uint16_t>( parent, label, v ); }
+
+cw::object_t* cw::newPairObject( const char* label, std::int16_t v, object_t* parent)
+{ return _objCreatePairNode<int16_t>( parent, label, v ); }
+
+cw::object_t* cw::newPairObject( const char* label, std::uint32_t v, object_t* parent)
+{ return _objCreatePairNode<uint32_t>( parent, label, v ); }
+
+cw::object_t* cw::newPairObject( const char* label, std::int32_t v, object_t* parent)
+{ return _objCreatePairNode<int32_t>( parent, label, v ); }
+
+cw::object_t* cw::newPairObject( const char* label, std::uint64_t v, object_t* parent)
+{ return _objCreatePairNode<uint64_t>( parent, label, v ); }
+
+cw::object_t* cw::newPairObject( const char* label, std::int64_t v, object_t* parent)
+{ return _objCreatePairNode<uint64_t>( parent, label, v ); }
+
+cw::object_t* cw::newPairObject( const char* label, bool v, object_t* parent)
+{ return _objCreatePairNode<bool>( parent, label, v ); }
+
+cw::object_t* cw::newPairObject( const char* label, float v, object_t* parent)
+{ return _objCreatePairNode<float>( parent, label, v ); }
+
+cw::object_t* cw::newPairObject( const char* label, double v, object_t* parent)
+{ return _objCreatePairNode<double>( parent, label, v ); }
+ 
+cw::object_t* cw::newPairObject( const char* label, char* v, object_t* parent)
+{ return _objCreatePairNode<const char*>( parent, label, v ); }
+
+cw::object_t* cw::newPairObject( const char* label, const char* v, object_t* parent)
+{ return _objCreatePairNode<const char*>( parent, label, v ); }
+
 
 cw::rc_t cw::objectFromString( const char* s, object_t*& objRef )
 {
