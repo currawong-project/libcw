@@ -19,7 +19,7 @@ namespace cw
       struct appIdMapRecd_str* link;
       unsigned                 parentAppId;
       unsigned                 appId;
-      char*                    jsId;
+      char*                    eleName;
     } appIdMapRecd_t;
       
     
@@ -28,7 +28,7 @@ namespace cw
       struct ele_str* parent;  // pointer to parent ele - or nullptr if this ele is attached to the root ui ele
       unsigned        uuId;    // UI unique id - automatically generated and unique among all elements that are part of this ui_t object.
       unsigned        appId;   // application assigned id - application assigned id
-      char*           jsId;    // javascript id
+      char*           eleName;    // javascript id
     } ele_t;
     
     typedef struct ui_str
@@ -52,7 +52,7 @@ namespace cw
       for(unsigned i=0; i<p->eleN; ++i)
       {
         ele_t* e = p->eleA[i];
-        printf("%15s u:%i : u:%i a:%i %s\n",e->parent==nullptr?"<null>" : e->parent->jsId,e->parent==nullptr? -1 :e->parent->uuId,e->uuId,e->appId,e->jsId);
+        printf("%15s u:%i : u:%i a:%i %s\n",e->parent==nullptr?"<null>" : e->parent->eleName,e->parent==nullptr? -1 :e->parent->uuId,e->uuId,e->appId,e->eleName);
       }
     }
     
@@ -66,7 +66,7 @@ namespace cw
 
       for(unsigned i=0; i<p->eleN; ++i)
       {
-        mem::release(p->eleA[i]->jsId);
+        mem::release(p->eleA[i]->eleName);
         mem::release(p->eleA[i]);
       }
 
@@ -74,22 +74,23 @@ namespace cw
       while( m!=nullptr )
       {
         appIdMapRecd_t* m0 = m->link;
-        mem::release(m->jsId);
+        mem::release(m->eleName);
         mem::release(m);
         m = m0;
       }
 
       mem::release(p->eleA);
+      mem::release(p->buf);      
       mem::release(p);
 
       return rc;
     }
 
-    appIdMapRecd_t* _findAppIdMap( ui_t* p, unsigned parentAppId, const char* jsId )
+    appIdMapRecd_t* _findAppIdMap( ui_t* p, unsigned parentAppId, const char* eleName )
     {
       appIdMapRecd_t* m = p->appIdMap;
       for(; m != nullptr; m=m->link)
-        if( m->parentAppId==parentAppId && textCompare(jsId,m->jsId)==0 )
+        if( m->parentAppId==parentAppId && textCompare(eleName,m->eleName)==0 )
           return m;
       return nullptr;
     }
@@ -103,42 +104,42 @@ namespace cw
       return nullptr;
     }
     
-    rc_t _allocAppIdMap( ui_t* p, unsigned parentAppId, unsigned appId, const char* jsId )
+    rc_t _allocAppIdMap( ui_t* p, unsigned parentAppId, unsigned appId, const char* eleName )
     {
       rc_t rc = kOkRC;
 
-      // The 'jsId' must be valid (or there is no reason to create the map.
-      // (since it will ultimately be used to locate the appId give the parentAppId and jsId)
-      if( jsId == nullptr || strlen(jsId) == 0 )
-        return cwLogError(kInvalidIdRC,"Registered parent/child app id's must have a valid 'jsId'.");
+      // The 'eleName' must be valid (or there is no reason to create the map.
+      // (since it will ultimately be used to locate the appId give the parentAppId and eleName)
+      if( eleName == nullptr || strlen(eleName) == 0 )
+        return cwLogError(kInvalidIdRC,"Registered parent/child app id's must have a valid 'eleName'.");
 
       // verify that the parent/child pair is unique
       if( _findAppIdMap(p,parentAppId,appId) != nullptr )
-        return cwLogError(kDuplicateRC,"An attempt was made to register a duplicate parent/child appid pair. parentId:%i appId:%i jsId:'%s'.",parentAppId,appId,cwStringNullGuard(jsId));
+        return cwLogError(kDuplicateRC,"An attempt was made to register a duplicate parent/child appid pair. parentId:%i appId:%i eleName:'%s'.",parentAppId,appId,cwStringNullGuard(eleName));
 
       // verify that the parent/js pair is unique
-      if( _findAppIdMap(p,parentAppId,jsId) != nullptr )
-        return cwLogError(kDuplicateRC,"An attempt was made to register a duplicate parent app id/js id pair. parentId:%i appId:%i jsId:'%s'.",parentAppId,appId,cwStringNullGuard(jsId));
+      if( _findAppIdMap(p,parentAppId,eleName) != nullptr )
+        return cwLogError(kDuplicateRC,"An attempt was made to register a duplicate parent app id/js id pair. parentId:%i appId:%i eleName:'%s'.",parentAppId,appId,cwStringNullGuard(eleName));
               
       // allocate and link in a new appId map record
       appIdMapRecd_t* m = mem::allocZ<appIdMapRecd_t>();
       m->parentAppId = parentAppId;
       m->appId       = appId;
-      m->jsId        = mem::duplStr(jsId);
+      m->eleName     = mem::duplStr(eleName);
       m->link        = p->appIdMap;
       p->appIdMap    = m;
 
       return rc;
     }
 
-    ele_t* _createEle( ui_t* p, ele_t* parent, unsigned appId, const char* jsId )
+    ele_t* _createEle( ui_t* p, ele_t* parent, unsigned appId, const char* eleName )
     {
       ele_t* e = mem::allocZ<ele_t>();
       e->parent  = parent;
       e->uuId    = p->eleN;
       e->appId   = appId;
-      e->jsId    = mem::duplStr(jsId);
-
+      e->eleName    = mem::duplStr(eleName);
+      
       if( p->eleN == p->eleAllocN )
       {
         p->eleAllocN += 100;
@@ -147,6 +148,15 @@ namespace cw
 
       p->eleA[ p->eleN ] = e;
       p->eleN += 1;
+
+      // if the given appId was not valid ...
+      if( appId == kInvalidId && parent != nullptr )
+      {
+        appIdMapRecd_t* m;
+        // ... then try to look it up from the appIdMap.
+        if((m = _findAppIdMap( p, parent->appId, eleName)) != nullptr )
+          e->appId = m->appId;
+      }
       
       return e;
     }
@@ -163,33 +173,57 @@ namespace cw
       return p->eleA[ uuId ];
     }
 
-    // Given a parent UuId and a javascript id find the associated ele
-    ele_t* _parentUuId_JsId_ToEle( ui_t* p, unsigned parentUuId, const char* jsId, bool errorFl=true )
+    ele_t* _eleNameToEle( ui_t* p, const char* eleName, bool errorFl=true )
     {
       for(unsigned i=0; i<p->eleN; ++i)
-        if( ((p->eleA[i]->parent==nullptr && parentUuId == kRootUuId) || (p->eleA[i]->parent != nullptr && parentUuId == p->eleA[i]->parent->uuId)) &&  (strcmp(p->eleA[i]->jsId,jsId) == 0))
+        if( textCompare(p->eleA[i]->eleName,eleName) == 0 )
           return p->eleA[i];
+      
+      if( errorFl )
+        cwLogError(kInvalidIdRC,"The element with eleName:%s not found.",cwStringNullGuard(eleName));
+      
+      return nullptr;
+    }
+
+    // Given a parent UuId and a eleName find the associated ele
+    ele_t* _parentUuId_EleName_ToEle( ui_t* p, unsigned parentUuId, const char* eleName, bool errorFl=true )
+    {
+      // if we are looking for the root 
+      if( (parentUuId==kRootUuId || parentUuId == kInvalidId) && textCompare(eleName,"uiDivId")==0 )
+      {
+        for(unsigned i=0; i<p->eleN; ++i)
+          if( p->eleA[i]->parent==nullptr && p->eleA[i]->uuId==kRootUuId)
+            return p->eleA[i];
+        
+      }
+      else // we are looking for an elment which is not the root
+      {
+        for(unsigned i=0; i<p->eleN; ++i)
+          if( ((p->eleA[i]->parent==nullptr && parentUuId == kRootUuId) || (p->eleA[i]->parent != nullptr && parentUuId == p->eleA[i]->parent->uuId)) &&  (textCompare(p->eleA[i]->eleName,eleName) == 0))
+            return p->eleA[i];
+      }
+        
           
       if( errorFl )
-        cwLogError(kInvalidIdRC,"The element with parent uuid:%i and jsId:%s is not found.",parentUuId,jsId);
+        cwLogError(kInvalidIdRC,"The element with parent uuid:%i and eleName:%s is not found.",parentUuId,eleName);
       
       return nullptr;
     }
     
-    unsigned _findElementUuId( ui_t* p, const char* jsId )
+    unsigned _findElementUuId( ui_t* p, const char* eleName )
     {
       for(unsigned i=0; i<p->eleN; ++i)
-        if( strcmp(p->eleA[i]->jsId,jsId) == 0 )
+        if( strcmp(p->eleA[i]->eleName,eleName) == 0 )
           return p->eleA[i]->uuId;
   
       return kInvalidId;
     }
 
-    const char* _findEleJsId( ui_t* p, unsigned uuId )
+    const char* _findEleEleName( ui_t* p, unsigned uuId )
     {
       for(unsigned i=0; i<p->eleN; ++i)
         if( p->eleA[i]->uuId == uuId )
-          return p->eleA[i]->jsId;
+          return p->eleA[i]->eleName;
       
       return nullptr;
     }
@@ -234,11 +268,10 @@ namespace cw
     }
     
     template< typename... ARGS>
-      rc_t _createOneEle( ui_t* p, unsigned& uuIdRef, const char* eleTypeStr, unsigned wsSessId, unsigned parentUuId, const char* jsId, unsigned appId, const char* clas, const char* title, ARGS&&... args )
+      rc_t _createOneEle( ui_t* p, unsigned& uuIdRef, const char* eleTypeStr, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, ARGS&&... args )
     {
-      // { op:create, parent:my_parent_id, value:{ button:{ jsId:my_jsId, appId:appId, uuId:uuId, class:clas, title:'my title' } }
+      // { op:create, parent:my_parent_id, value:{ button:{ eleName:my_eleName, appId:appId, uuId:uuId, class:clas, title:'my title' } }
       rc_t           rc         = kOkRC;
-      const char*    parentJsId = "";
       ele_t*         newEle     = nullptr;
       ele_t*         parentEle  = nullptr;
       //const unsigned bufN       = 1024;   // TODO: use preallocated buffer 
@@ -253,20 +286,19 @@ namespace cw
       if(( parentEle =  _uuIdToEle(p, parentUuId )) == nullptr )
         return cwLogError( kInvalidArgRC, "Unable to locate the parent element (id:%i).", parentUuId );
 
-      // get the parent jsId
-      parentJsId = parentEle->jsId;
-      
       // create the local representation of the new element
-      newEle = _createEle( p, parentEle, appId, jsId );
+      newEle = _createEle( p, parentEle, appId, eleName );
 
       // form the create json message string
-      unsigned i = snprintf( p->buf, p->bufN, "{ \"op\":\"create\", \"parent\":\"%s\", \"children\":{ \"%s\":{ \"jsId\":\"%s\", \"appId\":%i, \"uuId\":%i, \"class\":\"%s\", \"title\":\"%s\" ", parentJsId, eleTypeStr, jsId, appId, newEle->uuId, clas, title );
+      //unsigned i = snprintf( p->buf, p->bufN, "{ \"op\":\"create\", \"parent\":\"%s\", \"children\":{ \"%s\":{ \"eleName\":\"%s\", \"appId\":%i, \"uuId\":%i, \"class\":\"%s\", \"title\":\"%s\" ", parentEleName, eleTypeStr, eleName, appId, newEle->uuId, clas, title );
+      unsigned i = snprintf( p->buf, p->bufN, "{ \"op\":\"create\", \"parentUuId\":\"%i\", \"type\":\"%s\", \"eleName\":\"%s\", \"appId\":\"%i\", \"uuId\":%i, \"class\":\"%s\", \"title\":\"%s\" ", parentEle->uuId, eleTypeStr, eleName, appId, newEle->uuId, clas, title );
+      
 
       // add the UI specific attributes
       i += format_attributes(p->buf+i, p->bufN-i, 0, std::forward<ARGS>(args)...);
 
       // terminate the message
-      i += toText(p->buf+i, p->bufN-i, "}}}");
+      i += toText(p->buf+i, p->bufN-i, "}");
 
       if( i >= p->bufN )
         return cwLogError(kBufTooSmallRC,"The UI message formatting buffer is too small. (size:%i bytes)", p->bufN);
@@ -281,92 +313,168 @@ namespace cw
       return rc;
     }
 
-    rc_t _decorateObj( ui_t* p, object_t* o )
+    ele_t* _findOrCreateEle( ui_t* p, ele_t* parentEle, const char* eleName )
     {
-      rc_t            rc = kOkRC;
-      const object_t* oo;
-      //ele_t*          parent_ele;
-      const char*     jsId;
+      ele_t* ele;
+      if((ele = _parentUuId_EleName_ToEle( p, parentEle->uuId, eleName, false )) == nullptr )
+        ele = _createEle(p, parentEle, kInvalidId, eleName );
 
-      // find the parent pair
-      if((oo = o->find( "parent", kNoRecurseFl | kOptionalFl)) != nullptr )
-      {
-      }
-
-      // find the parent JsId
-      if((rc = oo->value(jsId)) != kOkRC )
-      {
-      }
-
-      // find the parent element
-      //if((parent_ele = _jsIdToEle( p, jsId )) == nullptr )
-      //{
-      //}
-
-      
-      return rc;
- 
+      return ele;
     }
 
+    rc_t _createElementsFromChildList( ui_t* p, object_t* po, unsigned wsSessId, ele_t* parentEle );
 
-    rc_t  _createFromObj( ui_t* p, object_t* o, unsigned wsSessId, unsigned parentUuId )     
+    // 
+    rc_t _createEleFromRsrsc( ui_t* p, ele_t* parentEle, const char* eleType, object_t* o, unsigned wsSessId )
     {
-      rc_t        rc         = kOkRC;
-      const char* parentJsId = "";
-      const int   kBufN      = 512; // TODO: preallocate this buffer as part of ui_t.
-      char        buf0[ kBufN ];
-      char        buf1[ kBufN ];
+      rc_t      rc      = kOkRC;
+      object_t* co      = nullptr;
+      ele_t*    ele     = nullptr;
+      char*     eleName = nullptr;
 
-      // if a parentUuid was given ...
-      if( parentUuId != kInvalidId )
+      if( !o->is_dict() )
+        return cwLogError(kSyntaxErrorRC,"All ui element resource records must be dictionaries.");
+      
+      // if this object has a 'children' list then unlink it an save it for later
+      if((co = o->find("children", kNoRecurseFl | kOptionalFl)) != nullptr )
       {
-        // ... then find the associated JS id
-        if((parentJsId = _findEleJsId( p, parentUuId )) == nullptr )
-          return cwLogError(kInvalidIdRC, "The JS id associated with the uuid '%i' could not be found for an resource object.", parentUuId );
+        co = co->parent;
+        co->unlink();
       }
-      else // if no parentUuid was given then look for one in the resource
+
+      // get the ui ele name
+      if((rc = o->get("name",eleName)) != kOkRC )
       {
-        // get the parent JS id from the cfg object
-        rc = o->get("parent",parentJsId,kNoRecurseFl | kOptionalFl);
-        
-        switch(rc)
+        rc = cwLogError(rc,"The UI element name could not be read.");
+        goto errLabel;
+      }
+      
+      // get or create the ele record to associate with this ele
+      if((ele = _findOrCreateEle( p, parentEle, eleName )) == nullptr )
+      {
+        rc = cwLogError(kOpFailRC,"The local element '%s' could not be created.",cwStringNullGuard(eleName));
+        goto errLabel;
+      }
+
+      if( o->insertPair("uuId",ele->uuId) == nullptr )
+      {
+        rc = cwLogError(kOpFailRC,"The 'uuid' node insertion failed on UI element '%s'.",cwStringNullGuard(eleName));
+        goto errLabel;
+      }
+
+      if( ele->appId != kInvalidId )
+      {
+        if( o->insertPair("appId",ele->appId) == nullptr )
         {
-          case kOkRC:
-            // get a pointer to the jsId from the local list (the copy in the object is about to be deleted)
-            parentJsId = _findEleJsId( p, _findElementUuId(p,parentJsId));
-            
-            //remove the parent link
-            o->find("parent")->parent->free();
-            break;
-            
-          case kLabelNotFoundRC:
-            parentJsId = _findEleJsId( p, kRootUuId );
-            break;
-            
-          default:
-            rc = cwLogError(rc,"The resource object parent id '%s' could not be found.", parentJsId );
-            goto errLabel;
+          rc = cwLogError(kOpFailRC,"The 'appId' node insertion failed on UI element '%s'.",cwStringNullGuard(eleName));
+          goto errLabel;
         }
+      } 
+
+      if( o->insertPair("parentUuId",parentEle->uuId) == nullptr )
+      {
+        rc = cwLogError(kOpFailRC,"The 'parentUuId' node insertion failed on UI element '%s'.",cwStringNullGuard(eleName));
+        goto errLabel;
+      }
+          
+      if( o->insertPair("op","create") == nullptr )
+      {
+        rc = cwLogError(kOpFailRC,"The 'op' node insertion failed on UI element '%s'.",cwStringNullGuard(eleName));
+        goto errLabel;
       }
 
-      // form the msg string from the resource
-      if( o->to_string( buf0, kBufN ) >= kBufN )
-        return cwLogError(kBufTooSmallRC,"The resource object string buffer is too small (buf bytes:%i).",kBufN);
+      if( o->insertPair("type",eleType) == nullptr )
+      {
+        rc = cwLogError(kOpFailRC,"The 'eleType' node insertion failed on UI element '%s'.",cwStringNullGuard(eleName));
+        goto errLabel;
+      }
 
-      printf("buf0: %s\n",buf0);
-      if( snprintf( buf1, kBufN, "{ \"op\":\"create\", \"parent\":\"%s\", \"children\":%s }", parentJsId, buf0 ) >= kBufN )
-        return cwLogError(kBufTooSmallRC,"The resource object string buffer is too small (buf bytes:%i).",kBufN);
-        
-        
-      // send the msg string
-      printf("buf1: %s\n",buf1);
+      if( o->to_string(p->buf,p->bufN) >= p->bufN )
+      {
+        rc = cwLogError(kOpFailRC,"Conversion to JSON string failed on UI element '%s'.",cwStringNullGuard(eleName));
+        goto errLabel;
+      }
 
-      rc =  _websockSend( p, wsSessId, buf1 );
-
+      printf("%s\n",p->buf);
+     
+      if((rc =  _websockSend( p, wsSessId, p->buf )) != kOkRC )
+      {
+        rc = cwLogError(rc,"The creation request send failed on UI element '%s'.", cwStringNullGuard(eleName));
+        goto errLabel;
+      }
+     
       
+      // if this element has a list of children then create them here
+      if( co != nullptr )
+        rc = _createElementsFromChildList(p, co->pair_value(), wsSessId, ele );
+
+
     errLabel:
+      if( co != nullptr )
+        co->free();
+
       return rc;
     }
+    
+    // 'od' is an object dictionary where each pair in the dictionary has
+    // the form: 'eleType':{ <object> }    
+    rc_t _createElementsFromChildList( ui_t* p, object_t* po, unsigned wsSessId, ele_t* parentEle )
+    {
+      rc_t rc = kOkRC;
+      
+      if( !po->is_dict() )
+        return cwLogError(kSyntaxErrorRC,"All UI resource elements must be containers.");
+            
+      unsigned childN = po->child_count();
+
+      for(unsigned i=0; i<childN; ++i)
+      {
+        object_t* o = po->child_ele(i);
+        
+        if( !o->is_pair() )
+          return cwLogError(kSyntaxErrorRC,"All object dictionary children must be pairs.");
+
+        if((rc = _createEleFromRsrsc(p, parentEle, o->pair_label(), o->pair_value(), wsSessId )) != kOkRC )
+          return rc;
+        
+      }
+      
+      return rc;
+    }
+
+    rc_t _createFromObj( ui_t* p, object_t* o, unsigned wsSessId, unsigned parentUuId )
+    {
+      rc_t        rc        = kOkRC;
+      object_t*   po        = nullptr;
+      ele_t*      parentEle = nullptr;
+      char*       eleName   = nullptr;
+
+      // locate the the 'parent' ele name value object
+      if((po = o->find("parent",kNoRecurseFl | kOptionalFl)) == nullptr )
+        return cwLogError(kSyntaxErrorRC,"UI resources must have a root 'parent' value.");
+      
+
+      // get the parent element name
+      if((rc = po->value(eleName)) != kOkRC )
+        return cwLogError(kOpFailRC,"The root 'parent' value could not be accessed.");
+        
+      // find the parent element
+      if((parentEle = _parentUuId_EleName_ToEle( p, parentUuId, eleName )) == nullptr )
+        return cwLogError(kSyntaxErrorRC,"A parent UI element named '%s' could not be found.",cwStringNullGuard(eleName));
+      
+      // unlink the 'parent' pair
+      po = po->parent;
+      
+      po->unlink();
+      
+      rc =  _createElementsFromChildList( p, o, wsSessId, parentEle );
+
+      po->free();
+
+      return rc;
+    }
+
+
 
     ele_t* _parse_value_msg( ui_t* p, value_t& valueRef, const char* msg )
     {
@@ -449,7 +557,7 @@ namespace cw
     {
       rc_t rc = kOkRC;
       
-      unsigned i = snprintf(p->buf,p->bufN,"{ \"op\":\"set_app_id\", \"parentUuId\":%i, \"jsId\":\"%s\", \"appId\":%i, \"uuId\":%i }", ele->parent->uuId, ele->jsId, ele->parent->appId, ele->appId );
+      unsigned i = snprintf(p->buf,p->bufN,"{ \"op\":\"set_app_id\", \"parentUuId\":%i, \"eleName\":\"%s\", \"appId\":%i, \"uuId\":%i }", ele->parent->uuId, ele->eleName, ele->parent->appId, ele->appId );
 
       if( i >= p->bufN )
         return cwLogError(kBufTooSmallRC,"The 'app_id' msg formatting buffer is too small (%i bytes).", p->bufN);
@@ -475,10 +583,10 @@ namespace cw
 
       const char* s0  = nextNonWhiteChar(msg + strlen("register"));
       
-      const char* jsId = nextNonWhiteChar(nextWhiteChar(s0));
+      const char* eleName = nextNonWhiteChar(nextWhiteChar(s0));
 
       // verifity the message tokens
-      if( s0 == nullptr || jsId == nullptr )
+      if( s0 == nullptr || eleName == nullptr )
       {
         cwLogError(kSyntaxErrorRC, "'register' msg format error: '%s' is not a valid message.", cwStringNullGuard(msg) );
         goto errLabel;
@@ -499,15 +607,15 @@ namespace cw
       }
 
       // if the child element does not already exist
-      if(( ele = _parentUuId_JsId_ToEle( p, parentUuId, jsId, false )) == nullptr )
+      if(( ele = _parentUuId_EleName_ToEle( p, parentUuId, eleName, false )) == nullptr )
       {
-        // look up the parent/jsId pair map
-        appIdMapRecd_t* m = _findAppIdMap( p, parentEle->appId, jsId );
+        // look up the parent/eleName pair map
+        appIdMapRecd_t* m = _findAppIdMap( p, parentEle->appId, eleName );
 
         // create the ele 
-        ele = _createEle( p, parentEle, m==nullptr ? kInvalidId : m->appId, jsId );
+        ele = _createEle( p, parentEle, m==nullptr ? kInvalidId : m->appId, eleName );
 
-        printf("creating: parent uuid:%i js:%s \n", parentUuId,jsId);
+        printf("creating: parent uuid:%i js:%s \n", parentUuId,eleName);
 
         // notify the app of the new ele's uuid and appId
         if( m != nullptr )
@@ -516,7 +624,7 @@ namespace cw
       }
       else
       {
-        printf("parent uuid:%i js:%s already exists.\n", parentUuId,jsId);
+        printf("parent uuid:%i js:%s already exists.\n", parentUuId,eleName);
       }
 
       if( ele != nullptr )
@@ -585,10 +693,6 @@ namespace cw
                 // Pass on the 'init' msg to the app.
                 p->cbFunc( p->cbArg, wsSessId, opId, kInvalidId, kInvalidId, kInvalidId, nullptr );
 
-                // The UI is initialized - begin the id update process
-                if(  _websockSend( p, wsSessId, "{ \"op\":\"begin_app_id_update\" }" ) != kOkRC )
-                  cwLogError(kOpFailRC,"'begin_app_id_update' transmit failed.");
-                
                 break;
                 
               case kValueOpId:
@@ -684,7 +788,7 @@ cw::rc_t cw::ui::createUi(
   p->bufN      = fmtBufByteN;
 
   // create the root element
-  if((ele = _createEle(p, nullptr, kRootEleAppId, "uiDivId" )) == nullptr || ele->uuId != kRootUuId )
+  if((ele = _createEle(p, nullptr, kRootAppId, "uiDivId" )) == nullptr || ele->uuId != kRootUuId )
   {
     cwLogError(kOpFailRC,"The UI root element creation failed.");
     goto errLabel;
@@ -739,22 +843,22 @@ cw::rc_t cw::ui::destroyUi( handle_t& h )
   return rc;
 }
 
-unsigned cw::ui::findElementAppId(  handle_t h, unsigned parentUuId, const char* jsId )
+unsigned cw::ui::findElementAppId(  handle_t h, unsigned parentUuId, const char* eleName )
 {
   ui_t* p = _handleToPtr(h);
   
   for(unsigned i=0; i<p->eleN; ++i)
-    if( p->eleA[i]->parent->uuId==parentUuId && strcmp(p->eleA[i]->jsId,jsId) == 0 )
+    if( p->eleA[i]->parent->uuId==parentUuId && strcmp(p->eleA[i]->eleName,eleName) == 0 )
       return p->eleA[i]->appId;
   return kInvalidId;
 }
 
-unsigned cw::ui::findElementUuId( handle_t h, unsigned parentUuId, const char* jsId )
+unsigned cw::ui::findElementUuId( handle_t h, unsigned parentUuId, const char* eleName )
 {
   ui_t*  p = _handleToPtr(h);
   ele_t* ele;
 
-  if((ele = _parentUuId_JsId_ToEle(p, parentUuId, jsId )) != nullptr )
+  if((ele = _parentUuId_EleName_ToEle(p, parentUuId, eleName )) != nullptr )
     return ele->uuId;
   
   return kInvalidId;
@@ -770,17 +874,17 @@ unsigned cw::ui::findElementUuId( handle_t h, unsigned parentUuId, unsigned appI
   return kInvalidId;
 }
 
-const char* cw::ui::findElementJsId( handle_t h, unsigned uuId )
+const char* cw::ui::findElementName( handle_t h, unsigned uuId )
 {
   ui_t* p = _handleToPtr(h);
-  return _findEleJsId(p,uuId);
+  return _findEleEleName(p,uuId);
 }
 
-unsigned cw::ui::findElementUuId( handle_t h, const char* jsId )
+unsigned cw::ui::findElementUuId( handle_t h, const char* eleName )
 {
   ui_t* p = _handleToPtr(h);
   
-  return _findElementUuId(p,jsId);
+  return _findElementUuId(p,eleName);
 }
 
 
@@ -830,34 +934,34 @@ cw::rc_t cw::ui::createFromText( handle_t h, const char* text, unsigned wsSessId
   return rc;
 }
    
-cw::rc_t cw::ui::createDiv( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* jsId, unsigned appId, const char* clas, const char* title  )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "div", wsSessId, parentUuId, jsId, appId, clas, title ); }
+cw::rc_t cw::ui::createDiv( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title  )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "div", wsSessId, parentUuId, eleName, appId, clas, title ); }
 
-cw::rc_t cw::ui::createTitle( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* jsId, unsigned appId, const char* clas, const char* title )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "option", wsSessId, parentUuId, jsId, appId, clas, title ); }
+cw::rc_t cw::ui::createTitle( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "option", wsSessId, parentUuId, eleName, appId, clas, title ); }
 
-cw::rc_t cw::ui::createButton( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* jsId, unsigned appId, const char* clas, const char* title  )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "button", wsSessId, parentUuId, jsId, appId, clas, title ); }
+cw::rc_t cw::ui::createButton( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title  )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "button", wsSessId, parentUuId, eleName, appId, clas, title ); }
 
-cw::rc_t cw::ui::createCheck( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* jsId, unsigned appId, const char* clas, const char* title, bool value  )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "check", wsSessId, parentUuId, jsId, appId, clas, title, "value", value ); }
+cw::rc_t cw::ui::createCheck( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, bool value  )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "check", wsSessId, parentUuId, eleName, appId, clas, title, "value", value ); }
 
-cw::rc_t cw::ui::createSelect( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* jsId, unsigned appId, const char* clas, const char* title )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "select", wsSessId, parentUuId, jsId, appId, clas, title ); }
+cw::rc_t cw::ui::createSelect( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "select", wsSessId, parentUuId, eleName, appId, clas, title ); }
 
-cw::rc_t cw::ui::createOption( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* jsId, unsigned appId, const char* clas, const char* title )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "option", wsSessId, parentUuId, jsId, appId, clas, title ); }
+cw::rc_t cw::ui::createOption( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "option", wsSessId, parentUuId, eleName, appId, clas, title ); }
 
-cw::rc_t cw::ui::createString( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* jsId, unsigned appId, const char* clas, const char* title, const char* value )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "string", wsSessId, parentUuId, jsId, appId, clas, title, "value", value ); }
+cw::rc_t cw::ui::createString( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, const char* value )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "string", wsSessId, parentUuId, eleName, appId, clas, title, "value", value ); }
 
-cw::rc_t cw::ui::createNumber( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* jsId, unsigned appId, const char* clas, const char* title, double value, double minValue, double maxValue, double stepValue, unsigned decpl )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "number", wsSessId, parentUuId, jsId, appId, clas, title, "value", value, "min", minValue, "max", maxValue, "step", stepValue, "decpl", decpl ); }
+cw::rc_t cw::ui::createNumber( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double value, double minValue, double maxValue, double stepValue, unsigned decpl )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "number", wsSessId, parentUuId, eleName, appId, clas, title, "value", value, "min", minValue, "max", maxValue, "step", stepValue, "decpl", decpl ); }
 
-cw::rc_t cw::ui::createProgress(  handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* jsId, unsigned appId, const char* clas, const char* title, double value, double minValue, double maxValue )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "progress", wsSessId, parentUuId, jsId, appId, clas, title, "value", value, "min", minValue, "max", maxValue ); }
+cw::rc_t cw::ui::createProgress(  handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double value, double minValue, double maxValue )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "progress", wsSessId, parentUuId, eleName, appId, clas, title, "value", value, "min", minValue, "max", maxValue ); }
 
-cw::rc_t cw::ui::createText(   handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* jsId, unsigned appId, const char* clas, const char* title )
+cw::rc_t cw::ui::createText(   handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
 {
   rc_t rc= kOkRC;
   return rc;
@@ -871,7 +975,7 @@ cw::rc_t cw::ui::registerAppIds(  handle_t h, const appIdMap_t* map, unsigned ma
   rc_t  rc = kOkRC;
 
   for(unsigned i=0; i<mapN; ++i)
-    if((rc = _allocAppIdMap( p, map[i].parentAppId, map[i].appId, map[i].jsId )) != kOkRC )
+    if((rc = _allocAppIdMap( p, map[i].parentAppId, map[i].appId, map[i].eleName )) != kOkRC )
       return rc;
   
   return rc;

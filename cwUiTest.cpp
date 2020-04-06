@@ -28,7 +28,11 @@ namespace cw
      kOption3Id,
      kStringId,
      kNumberId,
-     kProgressId
+     kProgressId,
+
+     kPanelDivId,
+     kPanelBtnId,
+     kPanelCheckId
     };
 
     rc_t _uiTestCreateUi( ui_test_t* p, unsigned wsSessId )
@@ -37,6 +41,15 @@ namespace cw
       unsigned uuid    = kInvalidId;
       unsigned selUuId = kInvalidId;
       unsigned divUuId = kInvalidId;
+
+      appIdMap_t mapA[] =
+      {
+       { ui::kRootAppId, kPanelDivId, "panelDivId" },
+       { ui::kPanelDivId, kPanelBtnId, "myBtn1Id" },
+       { ui::kPanelDivId, kPanelCheckId, "myCheck1Id" },
+      };
+
+      registerAppIds(p->uiH, mapA, sizeof(mapA)/sizeof(mapA[0]));
 
       if((rc = createDiv( p->uiH, divUuId, wsSessId, kInvalidId, "myDivId", kDivId, "divClass", "My Panel" )) != kOkRC )
         goto errLabel;
