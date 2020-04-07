@@ -162,13 +162,13 @@ namespace cw
       return rc;
     }
 
-    rc_t  _locateAvailSlot( mgr_t* p, unsigned sockN, unsigned& availIdx_Ref, unsigned& sockN_Ref )
+    // Locate an available slot in p->sockA and return the index of the slot in availIdxRef.
+    rc_t  _locateAvailSlot( mgr_t* p, unsigned& availIdx_Ref )
     {
       availIdx_Ref = kInvalidIdx;
-      sockN_Ref    = sockN;
       
       // locate an avail. socket between 0:sockN
-      for(unsigned i=0; i<sockN; ++i)
+      for(unsigned i=0; i<p->sockN; ++i)
         if( !_sockIsOpen(p->sockA + i) )
         {
           availIdx_Ref = i;
@@ -176,12 +176,12 @@ namespace cw
         }
 
       // Be sure all slots are not already in use.
-      if( sockN >= p->sockMaxN )
+      if( p->sockN >= p->sockMaxN )
         return cwLogError(kResourceNotAvailableRC,"All socket slots are in use.");
 
       // Expand the slot array to accommodate another socket
-      availIdx_Ref = sockN;
-      sockN_Ref    = sockN + 1;
+      availIdx_Ref  = p->sockN;
+      p->sockN     += 1;
 
       return kOkRC;
     }
@@ -192,13 +192,12 @@ namespace cw
         s->cbFunc( s->cbArg, opId, s->userId, s->connId, buf, bufByteN, srcAddr );
     }
 
-    rc_t _accept( mgr_t* p, sock_t* s, unsigned sockN )      
+    rc_t _accept( mgr_t* p, sock_t* s )      
     {
       rc_t                    rc       = kOkRC;
       struct sockaddr_storage remoteAddr;                      
       socklen_t               sin_size = sizeof(remoteAddr);
       int                     fd;
-      unsigned                newSockN = p->sockN;
       unsigned                sockIdx  = kInvalidIdx;
       sock_t*                 cs       = nullptr;
       
@@ -215,7 +214,7 @@ namespace cw
       }
 
       // ... then find an available socket record
-      if((rc =  _locateAvailSlot(p, sockN, sockIdx, newSockN )) != kOkRC )
+      if((rc =  _locateAvailSlot(p, sockIdx )) != kOkRC )
       {
         rc = cwLogError(rc,"There are no available slots to 'accept' a new socket connection.");
         goto errLabel;
@@ -327,7 +326,8 @@ namespace cw
     }
 
 
-    // Block devices waiting for data on a port. If userId is valid then wait for data on a specific port otherwise
+    // Block on devices waiting for data on a port.
+    // If userId is valid then wait for data on a specific port otherwise
     // wait for data on all ports.
     rc_t _poll( mgr_t* p, unsigned timeOutMs, unsigned& readN_Ref, unsigned userId=kInvalidId, void* buf=nullptr, unsigned bufByteN=0, struct sockaddr_in* fromAddr=nullptr )
     {
@@ -367,14 +367,15 @@ namespace cw
       }
       else
       {
-        unsigned newSockN = 0;
-        
         // ::poll() encountered a system exception
         if( sysRC < 0 )
           return cwLogSysError(kReadFailRC,errno,"Poll failed on socket.");
 
-        // interate through the ports looking for the ones which have data waiting ...
-        for(unsigned i=0; i<p->sockN; ++i)
+        // store the current sockA[] size because p->sockN may change inside the loop
+        unsigned sockN = p->sockN;
+        
+        // interate through the ports looking for the sockets which have data waiting ...
+        for(unsigned i=0; i<sockN; ++i)
         {
           // if the socket was disconnected or is no longer valid
           if( cwIsFlag(p->sockA[i].pollfd->revents,POLLHUP) || cwIsFlag(p->sockA[i].pollfd->revents,POLLNVAL) )
@@ -389,6 +390,7 @@ namespace cw
           if( p->sockA[i].pollfd->revents & POLLERR )
           {
             cwLogError(kOpFailRC,"ERROR on socket user id:%i conn id:%i\n",p->sockA[i].userId,p->sockA[i].connId);
+            
             // TODO: should the socket be closed? marked as disconnected? 
           }
           
@@ -403,11 +405,10 @@ namespace cw
             {
               rc_t rc0;
 
-              // accept an new connection to this socket
-              if((rc0 =  _accept( p, s, p->sockN+newSockN)) != kOkRC )
+              // accept a new connection to this socket
+              if((rc0 =  _accept( p, s)) != kOkRC )
                 rc = rc0;
               
-              newSockN += 1;
             }
             else // otherwise it is a non-listening socket that is receiving data
             {                        
@@ -418,8 +419,6 @@ namespace cw
             readN_Ref += actualReadN;
           }
         }
-        
-        p->sockN += newSockN;
       }
   
       return rc;      
@@ -628,7 +627,7 @@ cw::rc_t cw::sock::create( handle_t h,
   {
     unsigned sockIdx;
     // ... then find an available socket record
-    if((rc =  _locateAvailSlot(p, p->sockN, sockIdx, p->sockN )) != kOkRC )
+    if((rc =  _locateAvailSlot(p, sockIdx )) != kOkRC )
       return rc;
 
     s = p->sockA + sockIdx;    
