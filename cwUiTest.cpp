@@ -2,6 +2,8 @@
 #include "cwLog.h"
 #include "cwCommonImpl.h"
 #include "cwMem.h"
+#include "cwThread.h"
+#include "cwWebSock.h"
 #include "cwUi.h"
 #include "cwUiTest.h"
 
@@ -12,8 +14,9 @@ namespace cw
   {
     typedef struct ui_test_str
     {
-      handle_t    uiH;
       const char* uiCfgFn;
+      srv::handle_t wsUiSrvH;
+
     } ui_test_t;
 
     enum
@@ -43,45 +46,48 @@ namespace cw
       unsigned divUuId = kInvalidId;
 
       appIdMap_t mapA[] =
-      {
-       { ui::kRootAppId, kPanelDivId, "panelDivId" },
-       { ui::kPanelDivId, kPanelBtnId, "myBtn1Id" },
-       { ui::kPanelDivId, kPanelCheckId, "myCheck1Id" },
-      };
+        {
+         { ui::kRootAppId, kPanelDivId, "panelDivId" },
+         { ui::kPanelDivId, kPanelBtnId, "myBtn1Id" },
+         { ui::kPanelDivId, kPanelCheckId, "myCheck1Id" },
+        };
+      
+      handle_t uiH = srv::uiHandle(p->wsUiSrvH);
 
-      registerAppIds(p->uiH, mapA, sizeof(mapA)/sizeof(mapA[0]));
+      
+      registerAppIds(uiH, mapA, sizeof(mapA)/sizeof(mapA[0]));
 
-      if((rc = createDiv( p->uiH, divUuId, wsSessId, kInvalidId, "myDivId", kDivId, "divClass", "My Panel" )) != kOkRC )
+      if((rc = createDiv( uiH, divUuId, wsSessId, kInvalidId, "myDivId", kDivId, "divClass", "My Panel" )) != kOkRC )
         goto errLabel;
       
-      if((rc = createButton( p->uiH, uuid, wsSessId, divUuId, "myBtnId", kBtnId, "btnClass", "Push Me" )) != kOkRC )
+      if((rc = createButton( uiH, uuid, wsSessId, divUuId, "myBtnId", kBtnId, "btnClass", "Push Me" )) != kOkRC )
         goto errLabel;
 
-      if((rc = createCheck( p->uiH, uuid, wsSessId, divUuId, "myCheckId", kCheckId, "checkClass", "Check Me", true )) != kOkRC )
+      if((rc = createCheck( uiH, uuid, wsSessId, divUuId, "myCheckId", kCheckId, "checkClass", "Check Me", true )) != kOkRC )
         goto errLabel;
       
-      if((rc = createSelect( p->uiH, selUuId, wsSessId, divUuId, "mySelId", kSelectId, "selClass", "Select" )) != kOkRC )
+      if((rc = createSelect( uiH, selUuId, wsSessId, divUuId, "mySelId", kSelectId, "selClass", "Select" )) != kOkRC )
         goto errLabel;
 
-      if((rc = createOption( p->uiH, uuid, wsSessId, selUuId, "myOpt0Id", kOption0Id, "optClass", "Option 0" )) != kOkRC )
+      if((rc = createOption( uiH, uuid, wsSessId, selUuId, "myOpt0Id", kOption0Id, "optClass", "Option 0" )) != kOkRC )
         goto errLabel;
 
-      if((rc = createOption( p->uiH, uuid, wsSessId, selUuId, "myOpt1Id", kOption1Id, "optClass", "Option 1" )) != kOkRC )
+      if((rc = createOption( uiH, uuid, wsSessId, selUuId, "myOpt1Id", kOption1Id, "optClass", "Option 1" )) != kOkRC )
         goto errLabel;
       
-      if((rc = createOption( p->uiH, uuid, wsSessId, selUuId, "myOpt2Id", kOption2Id, "optClass", "Option 2" )) != kOkRC )
+      if((rc = createOption( uiH, uuid, wsSessId, selUuId, "myOpt2Id", kOption2Id, "optClass", "Option 2" )) != kOkRC )
         goto errLabel;
 
-      if((rc = createString( p->uiH, uuid, wsSessId, divUuId, "myStringId", kStringId, "stringClass", "String", "a string value" )) != kOkRC )
+      if((rc = createString( uiH, uuid, wsSessId, divUuId, "myStringId", kStringId, "stringClass", "String", "a string value" )) != kOkRC )
         goto errLabel;
       
-      if((rc = createNumber( p->uiH, uuid, wsSessId, divUuId, "myNumberId", kNumberId, "numberClass", "Number", 10, 0, 100, 1, 0 )) != kOkRC )
+      if((rc = createNumber( uiH, uuid, wsSessId, divUuId, "myNumberId", kNumberId, "numberClass", "Number", 10, 0, 100, 1, 0 )) != kOkRC )
         goto errLabel;
       
-      if((rc = createProgress(  p->uiH, uuid, wsSessId, divUuId, "myProgressId", kProgressId, "progressClass", "Progress", 5, 0, 10 )) != kOkRC )
+      if((rc = createProgress(  uiH, uuid, wsSessId, divUuId, "myProgressId", kProgressId, "progressClass", "Progress", 5, 0, 10 )) != kOkRC )
         goto errLabel;
 
-      if((rc = createFromFile( p->uiH, p->uiCfgFn, wsSessId )) != kOkRC )
+      if((rc = createFromFile( uiH, p->uiCfgFn, wsSessId )) != kOkRC )
         goto errLabel;
       
     errLabel:
@@ -140,10 +146,6 @@ namespace cw
           _uiTestCreateUi(p,wsSessId);
           break;
 
-        case kRegisterOpId:
-          break;
-
-
         case kValueOpId:
           _handleUiValueMsg( p, wsSessId, parentAppId, uuId, appId, v );
           break;
@@ -167,17 +169,21 @@ cw::rc_t cw::ui::test( )
   int            port             = 5687;
   unsigned       rcvBufByteN      = 2048;
   unsigned       xmtBufByteN      = 2048;
+  unsigned       fmtBufByteN      = 4096;
   unsigned       websockTimeOutMs = 50;
   const unsigned sbufN            = 31;
   char           sbuf[ sbufN+1 ];  
-  ui_test_t*     ui = mem::allocZ<ui_test_t>();
+  ui_test_t*     app = mem::allocZ<ui_test_t>();
 
-  ui->uiCfgFn = "/home/kevin/src/cwtest/src/libcw/html/uiTest/ui.cfg";
-    
-  if((rc = createUi(ui->uiH, port, _uiTestCallback, ui, physRootDir, dfltPageFn, websockTimeOutMs, rcvBufByteN, xmtBufByteN )) != kOkRC )
+  app->uiCfgFn = "/home/kevin/src/cwtest/src/libcw/html/uiTest/ui.cfg";
+
+  // create the UI server
+  if((rc = srv::create(app->wsUiSrvH, port, physRootDir, app, _uiTestCallback, nullptr, dfltPageFn, websockTimeOutMs, rcvBufByteN, xmtBufByteN, fmtBufByteN )) != kOkRC )
     return rc;
-
-  if((rc = start(ui->uiH)) != kOkRC )
+  
+  
+  // start the UI server
+  if((rc = srv::start(app->wsUiSrvH)) != kOkRC )
     goto errLabel;
 
   
@@ -198,10 +204,10 @@ cw::rc_t cw::ui::test( )
 
  errLabel:
   rc_t rc1 = kOkRC;
-  if( ui->uiH.isValid() )
-    rc1 = destroyUi(ui->uiH);
+  if( app->wsUiSrvH.isValid() )
+    rc1 = srv::destroy(app->wsUiSrvH);
   
-  mem::release(ui);
+  mem::release(app);
   
   return rcSelect(rc,rc1);   
 }

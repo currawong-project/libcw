@@ -33,12 +33,13 @@ namespace cw
     
     typedef struct ui_str
     {
-      websockSrv::handle_t wssH;      // websock server handle
       unsigned             eleAllocN; // size of eleA[]
       unsigned             eleN;      // count of ele's in use
       ele_t**              eleA;      // eleA[ eleAllocN ] 
-      uiCallback_t         cbFunc;    // app. cb func
-      void*                cbArg;     // app. cb func arg.
+      uiCallback_t         uiCbFunc;    // app. cb func
+      void*                uiCbArg;     // app. cb func arg.
+      sendCallback_t       sendCbFunc;
+      void*                sendCbArg;
       appIdMapRecd_t*      appIdMap;  // map of application parent/child/js id's
       char*                buf;       // buf[bufN] output message formatting buffer
       unsigned             bufN;      //
@@ -60,10 +61,6 @@ namespace cw
     {
       rc_t rc = kOkRC;
       
-      if( p->wssH.isValid() )
-        if((rc = websockSrv::destroy(p->wssH)) != kOkRC )
-          return rc;
-
       for(unsigned i=0; i<p->eleN; ++i)
       {
         mem::release(p->eleA[i]->eleName);
@@ -230,7 +227,16 @@ namespace cw
 
     rc_t _websockSend( ui_t* p, unsigned wsSessId, const char* msg )
     {
-      return websock::send( websockSrv::websockHandle( p->wssH ), kUiProtocolId, wsSessId, msg, strlen(msg) );
+      rc_t rc = kOkRC;
+      
+      //return websock::send( websockSrv::websockHandle( p->wssH ), kUiProtocolId, wsSessId, msg, strlen(msg) );
+      if( p->sendCbFunc != nullptr )
+      {
+        unsigned msgByteN = msg==nullptr ? 0 : strlen(msg);
+        return p->sendCbFunc( p->sendCbArg, wsSessId, msg, msgByteN );
+      }
+      
+      return rc;
     }
 
 
@@ -243,7 +249,7 @@ namespace cw
     
     // Override format_attribute_data() for char. string data so that strings are wrapped in quotes.
     template<>
-    unsigned format_attribute_data( char* buf, unsigned n, const char* t )
+      unsigned format_attribute_data( char* buf, unsigned n, const char* t )
     {
       unsigned i = 0;
       i += toText(buf+i, n-i, "\"" );
@@ -475,7 +481,7 @@ namespace cw
     }
 
 
-
+    // value message format: 'value' <uuid> <value_data_type> ':' <value>
     ele_t* _parse_value_msg( ui_t* p, value_t& valueRef, const char* msg )
     {
       rc_t     rc      = kOkRC;
@@ -553,90 +559,6 @@ namespace cw
       return ele;
     }
 
-    rc_t _send_app_id_msg( ui_t* p, unsigned wsSessId, ele_t* ele )
-    {
-      rc_t rc = kOkRC;
-      
-      unsigned i = snprintf(p->buf,p->bufN,"{ \"op\":\"set_app_id\", \"parentUuId\":%i, \"eleName\":\"%s\", \"appId\":%i, \"uuId\":%i }", ele->parent->uuId, ele->eleName, ele->parent->appId, ele->appId );
-
-      if( i >= p->bufN )
-        return cwLogError(kBufTooSmallRC,"The 'app_id' msg formatting buffer is too small (%i bytes).", p->bufN);
-
-      if((rc =  _websockSend( p, wsSessId, p->buf )) != kOkRC )
-        return cwLogError(rc,"'app_id' msg transmission failed.");
-     
-      return rc;
-    }
-
-    ele_t* _handle_register_msg( ui_t* p, unsigned wsSessId, const char* msg )
-    {
-      printf("%s\n",msg);
-      return nullptr;
-    }
-    
-    ele_t* _handle_register_msg0( ui_t* p, unsigned wsSessId, const char* msg )
-    {
-      rc_t        rc           = kOkRC;
-      unsigned    parentUuId   = kInvalidId;
-      ele_t*      parentEle    = nullptr;
-      ele_t*      ele          = nullptr;
-
-      const char* s0  = nextNonWhiteChar(msg + strlen("register"));
-      
-      const char* eleName = nextNonWhiteChar(nextWhiteChar(s0));
-
-      // verifity the message tokens
-      if( s0 == nullptr || eleName == nullptr )
-      {
-        cwLogError(kSyntaxErrorRC, "'register' msg format error: '%s' is not a valid message.", cwStringNullGuard(msg) );
-        goto errLabel;
-      }
-
-      // verify the parentUuId parsing
-      if((rc = string_to_number<unsigned>(s0,parentUuId)) != kOkRC )
-      {
-        cwLogError(kSyntaxErrorRC, "'register' msg parentUuId format error: '%s' does not contain a valid parentUuId.", cwStringNullGuard(msg) );
-        goto errLabel;
-      }
-      
-      // get the parent ele
-      if((parentEle = _uuIdToEle( p, parentUuId)) == nullptr )
-      {
-        cwLogError(kInvalidIdRC,"UI register msg parent element not found.");
-        goto errLabel;
-      }
-
-      // if the child element does not already exist
-      if(( ele = _parentUuId_EleName_ToEle( p, parentUuId, eleName, false )) == nullptr )
-      {
-        // look up the parent/eleName pair map
-        appIdMapRecd_t* m = _findAppIdMap( p, parentEle->appId, eleName );
-
-        // create the ele 
-        ele = _createEle( p, parentEle, m==nullptr ? kInvalidId : m->appId, eleName );
-
-        printf("creating: parent uuid:%i js:%s \n", parentUuId,eleName);
-
-        // notify the app of the new ele's uuid and appId
-        if( m != nullptr )
-          _send_app_id_msg( p, wsSessId, ele );
-        
-      }
-      else
-      {
-        printf("parent uuid:%i js:%s already exists.\n", parentUuId,eleName);
-      }
-
-      if( ele != nullptr )
-        _send_app_id_msg( p, wsSessId, ele );
-      
-      return ele;
-      
-    errLabel:
-      return nullptr;
-    }
-      
-
     opId_t _labelToOpId( const char* label )
     {
       typedef struct
@@ -646,146 +568,55 @@ namespace cw
       } map_t;
 
       map_t mapA[] = 
-      {
-       { kConnectOpId,        "connect" },
-       { kInitOpId,           "init" },
-       { kValueOpId,          "value" },
-       { kRegisterOpId,       "register" },       
-       { kDisconnectOpId,     "disconnect" },
-       { kEndAppIdUpdateOpId, "end_app_id_update" },
-       { kInvalidOpId,        "<invalid>" },       
-      };
+        {
+         { kConnectOpId,        "connect" },
+         { kInitOpId,           "init" },
+         { kValueOpId,          "value" },
+         { kDisconnectOpId,     "disconnect" },
+         { kInvalidOpId,        "<invalid>" },       
+        };
 
       for(unsigned i=0; mapA[i].id != kInvalidOpId; ++i)
         if( textCompare(label,mapA[i].label,strlen(mapA[i].label)) == 0 )
           return mapA[i].id;
 
       return kInvalidOpId;
-
-    
-    }
-    
-    void _websockCb( void* cbArg, unsigned protocolId, unsigned wsSessId, websock::msgTypeId_t msg_type, const void* msg, unsigned byteN )
-    {
-      ui_t*    p              = (ui_t*)cbArg;
-      opId_t   opId           = kInvalidOpId;
-      value_t  value;
-      
-      switch( msg_type )
-      {
-        case websock::kConnectTId:
-          opId = kConnectOpId;
-          break;
-          
-        case websock::kDisconnectTId:
-          opId = kDisconnectOpId;
-          break;
-          
-        case websock::kMessageTId:
-          {
-            ele_t* ele;
-
-            opId = _labelToOpId((const char*)msg);
-
-            switch( opId )
-            {
-              case kInitOpId:
-                // Pass on the 'init' msg to the app.
-                p->cbFunc( p->cbArg, wsSessId, opId, kInvalidId, kInvalidId, kInvalidId, nullptr );
-
-                break;
-                
-              case kValueOpId:
-                if((ele = _parse_value_msg(p, value, (const char*)msg )) == nullptr )
-                  cwLogError(kOpFailRC,"UI Value message parse failed.");
-                else
-                {
-                  unsigned parentEleAppId = ele->parent == nullptr ? kInvalidId : ele->parent->appId;
-
-                  p->cbFunc( p->cbArg, wsSessId, opId, parentEleAppId, ele->uuId, ele->appId, &value );
-                  
-                }
-                break;
-
-                
-              case kRegisterOpId:
-                _handle_register_msg(p, wsSessId, (const char*)msg );
-                break;
-
-              case kEndAppIdUpdateOpId:
-                _print_eles( p );
-                cwLogInfo("App Id Update Complete.");
-                break;
-                
-
-              case kInvalidOpId:
-                cwLogError(kInvalidIdRC,"The UI received a NULL op. id.");
-                break;
-
-              default:
-                cwLogError(kInvalidIdRC,"The UI received an unknown op. id.");
-                break;
-                
-            } // switch opId
-            
-          } // kMessageTId
-          break;
-
-        default:
-          cwLogError(kInvalidOpRC,"Unknown websock message type:%i.", msg_type );
-          return;
-      }
-
-
-        
     }
   }
 }
 
-cw::rc_t cw::ui::createUi(
-  handle_t&    h,
-  unsigned     port,
-  uiCallback_t cbFunc,
-  void*        cbArg,
-  const char*  physRootDir,
-  const char*  dfltPageFn,
-  unsigned     websockTimeOutMs,  
-  unsigned     rcvBufByteN,
-  unsigned     xmtBufByteN,
-  unsigned     fmtBufByteN)
+cw::rc_t cw::ui::create(
+  handle_t&       h,
+  sendCallback_t  sendCbFunc,
+  void*           sendCbArg,
+  uiCallback_t    uiCbFunc,
+  void*           uiCbArg,
+  unsigned        fmtBufByteN )
 {
   rc_t rc = kOkRC;
   ele_t* ele;
   
-  websock::protocol_t protocolA[] =
-    {
-     { "http",        kHttpProtocolId,          0,           0 },
-     { "ui_protocol", kUiProtocolId,  rcvBufByteN, xmtBufByteN }
-    };
-
-  unsigned protocolN = sizeof(protocolA)/sizeof(protocolA[0]);
-  
-  if((rc = destroyUi(h)) != kOkRC )
+  if((rc = destroy(h)) != kOkRC )
     return rc;
 
-  if( cbFunc == nullptr )
+  if( sendCbFunc == nullptr )
+    return cwLogError(kInvalidArgRC,"The UI send callback function must be a valid pointer.");
+  
+  if( uiCbFunc == nullptr )
     return cwLogError(kInvalidArgRC,"The UI callback function must be a valid pointer.");
 
   ui_t* p      = mem::allocZ<ui_t>();
 
-  if((rc = websockSrv::create(p->wssH, _websockCb, p, physRootDir, dfltPageFn, port, protocolA, protocolN, websockTimeOutMs )) != kOkRC )
-  {
-    cwLogError(rc,"Internal websock server creation failed.");
-    goto errLabel;
-  }
 
-  p->eleAllocN = 100;
-  p->eleA      = mem::allocZ<ele_t*>( p->eleAllocN );
-  p->eleN      = 0;
-  p->cbFunc    = cbFunc;
-  p->cbArg     = cbArg;
-  p->buf       = mem::allocZ<char>(fmtBufByteN);
-  p->bufN      = fmtBufByteN;
+  p->eleAllocN  = 100;
+  p->eleA       = mem::allocZ<ele_t*>( p->eleAllocN );
+  p->eleN       = 0;
+  p->uiCbFunc   = uiCbFunc;
+  p->uiCbArg    = uiCbArg;
+  p->sendCbFunc = sendCbFunc;
+  p->sendCbArg  = sendCbArg;
+  p->buf        = mem::allocZ<char>(fmtBufByteN);
+  p->bufN       = fmtBufByteN;
 
   // create the root element
   if((ele = _createEle(p, nullptr, kRootAppId, "uiDivId" )) == nullptr || ele->uuId != kRootUuId )
@@ -806,29 +637,8 @@ cw::rc_t cw::ui::createUi(
   return rc;
 }
 
-cw::rc_t cw::ui::start( handle_t h )
-{
-  rc_t  rc = kOkRC;
-  ui_t* p  = _handleToPtr(h);
 
-  if((rc = websockSrv::start(p->wssH)) != kOkRC )
-    rc = cwLogError(rc,"Internal websock server start failed.");
-
-  return rc;  
-}
-
-cw::rc_t cw::ui::stop( handle_t h )
-{
-  rc_t  rc = kOkRC;
-  ui_t* p  = _handleToPtr(h);
-
-  if((rc = websockSrv::pause(p->wssH)) != kOkRC )
-    rc = cwLogError(rc,"Internal websock server stop failed.");
-
-  return rc;
-}
-
-cw::rc_t cw::ui::destroyUi( handle_t& h )
+cw::rc_t cw::ui::destroy( handle_t& h )
 {
   rc_t rc = kOkRC;
   if( !h.isValid() )
@@ -840,6 +650,58 @@ cw::rc_t cw::ui::destroyUi( handle_t& h )
 
   h.clear();
   
+  return rc;
+}
+
+
+cw::rc_t cw::ui::onConnect( handle_t h, unsigned wsSessId )
+{
+  return kOkRC;
+}
+
+cw::rc_t cw::ui::onDisconnect( handle_t h, unsigned wsSessId )
+{
+  return kOkRC;
+}
+
+cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* msg, unsigned msgByteN )
+{
+  rc_t    rc   = kOkRC;
+  ui_t*   p    = _handleToPtr(h);
+  opId_t  opId = _labelToOpId((const char*)msg);
+  value_t value;
+  ele_t*  ele;
+
+  switch( opId )
+  {
+    case kInitOpId:
+      // Pass on the 'init' msg to the app.
+      p->uiCbFunc( p->uiCbArg, wsSessId, opId, kInvalidId, kInvalidId, kInvalidId, nullptr );
+
+      break;
+                
+    case kValueOpId:
+      if((ele = _parse_value_msg(p, value, (const char*)msg )) == nullptr )
+        cwLogError(kOpFailRC,"UI Value message parse failed.");
+      else
+      {
+        unsigned parentEleAppId = ele->parent == nullptr ? kInvalidId : ele->parent->appId;
+
+        p->uiCbFunc( p->uiCbArg, wsSessId, opId, parentEleAppId, ele->uuId, ele->appId, &value );
+                  
+      }
+      break;
+
+    case kInvalidOpId:
+      cwLogError(kInvalidIdRC,"The UI received a NULL op. id.");
+      break;
+
+    default:
+      cwLogError(kInvalidIdRC,"The UI received an unknown op. id.");
+      break;
+                
+  } // switch opId
+
   return rc;
 }
 
@@ -983,5 +845,321 @@ cw::rc_t cw::ui::registerAppIds(  handle_t h, const appIdMap_t* map, unsigned ma
 
 
 
+namespace cw
+{
+  namespace ui
+  {
+    namespace ws
+    {
+      typedef struct ui_ws_str
+      {
+        websock::handle_t wsH;
+        ui::handle_t      uiH;
+        void*             cbArg;
+        uiCallback_t      uiCbFunc;
+        websock::cbFunc_t wsCbFunc;
+        unsigned          wsTimeOutMs;
+      } ui_ws_t;
+
+      ui_ws_t* _handleToPtr( handle_t h )
+      { return handleToPtr<handle_t,ui_ws_t>(h); }
+      
+      rc_t _destroy( ui_ws_t* p )
+      {
+        rc_t rc;
+        
+        if((rc = ui::destroy(p->uiH)) != kOkRC )
+          return rc;
+
+        if((rc = websock::destroy(p->wsH)) != kOkRC )
+          return rc;
+
+        mem::release(p);
+
+        return rc;
+      }
+
+      void _webSockCb( void* cbArg, unsigned protocolId, unsigned sessionId, websock::msgTypeId_t msg_type, const void* msg, unsigned byteN )
+      {
+        ui_ws_t* p = static_cast<ui_ws_t*>(cbArg);
+
+        switch( msg_type )
+        {
+          case websock::kConnectTId:
+            ui::onConnect(p->uiH,sessionId);
+            break;
+            
+          case websock::kDisconnectTId:
+            ui::onDisconnect(p->uiH,sessionId);
+            break;
+          
+          case websock::kMessageTId:
+            ui::onReceive(p->uiH,sessionId,msg,byteN);
+            break;
+            
+          default:
+            cwLogError(kInvalidIdRC,"An invalid websock msgTypeId (%i) was encountered",msg_type);
+        }
+      }
+
+      rc_t _webSockSend( void* cbArg, unsigned wsSessId, const void* msg, unsigned msgByteN )
+      {
+        ui_ws_t* p = static_cast<ui_ws_t*>(cbArg);
+        return websock::send( p->wsH, kUiProtocolId, wsSessId, msg, msgByteN );
+      }
+      
+    }
+  }
+}
+
+cw::rc_t cw::ui::ws::create(  handle_t& h,
+  unsigned          port,
+  const char*       physRootDir,
+  void*             cbArg,
+  uiCallback_t      uiCbFunc,
+  websock::cbFunc_t wsCbFunc,
+  const char*       dfltPageFn,
+  unsigned          websockTimeOutMs,
+  unsigned          rcvBufByteN,
+  unsigned          xmtBufByteN,
+  unsigned          fmtBufByteN )
+{
+  rc_t rc = kOkRC;
+
+  if((rc = destroy(h)) != kOkRC )
+    return rc;
+
+  ui_ws_t* p = mem::allocZ<ui_ws_t>();
+
+  websock::protocol_t protocolA[] =
+    {
+     { "http",        kHttpProtocolId,          0,           0 },
+     { "ui_protocol", kUiProtocolId,  rcvBufByteN, xmtBufByteN }
+    };
+
+  unsigned          protocolN = sizeof(protocolA)/sizeof(protocolA[0]);
+  websock::cbFunc_t wsCbF     = wsCbFunc==nullptr ? _webSockCb : wsCbFunc;
+  void*             wsCbA     = wsCbFunc==nullptr ? p          : cbArg;
+  
+  // create the websocket
+  if((rc = websock::create(p->wsH, wsCbF, wsCbA, physRootDir, dfltPageFn, port, protocolA, protocolN )) != kOkRC )
+  {
+    cwLogError(rc,"UI Websock create failed.");
+    goto errLabel;
+  }
+
+  // create the ui
+  if((rc = ui::create(p->uiH, _webSockSend, p, uiCbFunc, cbArg, fmtBufByteN )) != kOkRC )
+  {
+    cwLogError(rc,"UI object create failed.");
+    goto errLabel;
+  }
+
+  p->cbArg       = cbArg;
+  p->uiCbFunc    = uiCbFunc;
+  p->wsCbFunc    = wsCbFunc;
+  p->wsTimeOutMs = websockTimeOutMs;
+
+  h.set(p);
+  
+ errLabel:
+  if( rc != kOkRC )
+    _destroy(p);
+    
+  return rc;
+}
+
+cw::rc_t cw::ui::ws::destroy( handle_t& h )
+{
+  rc_t rc = kOkRC;
+  ui_ws_t* p = nullptr;
+  
+  if( !h.isValid() )
+    return rc;
+
+  p = _handleToPtr(h);
+  
+  if((rc = _destroy(p)) != kOkRC )
+    return rc;
+
+  h.clear();
+  
+  return rc;
+}
+      
+cw::rc_t cw::ui::ws::exec( handle_t h, unsigned timeOutMs )
+{
+  rc_t     rc = kOkRC;
+  ui_ws_t* p  = _handleToPtr(h);
+
+  if((rc = websock::exec( p->wsH, p->wsTimeOutMs )) != kOkRC)
+    cwLogError(rc,"The UI websock execution failed.");
+    
+        
+  return rc;
+}
+
+cw::rc_t cw::ui::ws::onReceive( handle_t h, unsigned protocolId, unsigned sessionId, websock::msgTypeId_t msg_type, const void* msg, unsigned byteN )
+{
+  ui_ws_t* p = _handleToPtr(h);
+  _webSockCb( p, protocolId, sessionId, msg_type, msg, byteN );
+  return kOkRC;
+}
+
+cw::websock::handle_t cw::ui::ws::websockHandle( handle_t h )
+{
+  ui_ws_t* p  = _handleToPtr(h);
+  return p->wsH;
+}
+
+cw::ui::handle_t cw::ui::ws::uiHandle( handle_t h )
+{
+  ui_ws_t* p  = _handleToPtr(h);
+  return p->uiH;
+}
+
+
 
  
+namespace cw
+{
+  namespace ui
+  {
+    namespace srv
+    {
+      typedef struct ui_ws_srv_str
+      {
+        ws::handle_t     wsUiH;
+        thread::handle_t thH;
+        unsigned         wsTimeOutMs;
+      } ui_ws_srv_t;
+
+      ui_ws_srv_t* _handleToPtr(handle_t h )
+      { return handleToPtr<handle_t,ui_ws_srv_t>(h); }
+
+      rc_t _destroy( ui_ws_srv_t* p )
+      {
+        rc_t rc;
+        if((rc = thread::destroy(p->thH)) != kOkRC )
+          return rc;
+        
+        if((rc = ws::destroy(p->wsUiH)) != kOkRC )
+          return rc;
+
+        mem::release(p);
+
+        return rc;
+      }
+
+      bool _threadCallback( void* arg )
+      {
+        ui_ws_srv_t* p = static_cast<ui_ws_srv_t*>(arg);
+        rc_t rc;
+        
+        if((rc = ws::exec(p->wsUiH,p->wsTimeOutMs)) != kOkRC )
+        {
+          cwLogError(rc,"Websocket UI exec failed.");
+        }
+
+        return true;
+      }
+    }
+  }
+}
+
+cw::rc_t cw::ui::srv::create(  handle_t& h,
+  unsigned          port,
+  const char*       physRootDir,
+  void*             cbArg,
+  uiCallback_t      uiCbFunc,
+  websock::cbFunc_t wsCbFunc,
+  const char*       dfltPageFn,
+  unsigned          websockTimeOutMs,
+  unsigned          rcvBufByteN,
+  unsigned          xmtBufByteN,
+  unsigned          fmtBufByteN )
+{
+  rc_t rc = kOkRC;
+  if((rc = destroy(h)) != kOkRC )
+    return rc;
+
+  ui_ws_srv_t* p = mem::allocZ<ui_ws_srv_t>();
+  
+  if((rc = ws::create(p->wsUiH, port, physRootDir, cbArg, uiCbFunc, wsCbFunc, dfltPageFn, websockTimeOutMs, rcvBufByteN, xmtBufByteN, fmtBufByteN )) != kOkRC )
+  {
+    cwLogError(rc,"The websock UI creationg failed.");
+    goto errLabel;
+  }
+
+  if((rc = thread::create( p->thH, _threadCallback, p )) != kOkRC )
+  {
+    cwLogError(rc,"The websock UI server thread create failed.");
+    goto errLabel;
+  }
+
+  p->wsTimeOutMs = websockTimeOutMs;
+
+  h.set(p);
+  
+ errLabel:
+  if( rc != kOkRC )
+    _destroy(p);
+
+  return rc;
+}
+
+cw::rc_t cw::ui::srv::destroy( handle_t& h )
+{
+  rc_t rc = kOkRC;
+  
+  if( !h.isValid() )
+    return rc;
+
+  ui_ws_srv_t* p = _handleToPtr(h);
+
+  if((rc = _destroy(p)) != kOkRC )
+    return rc;
+
+  h.clear();
+
+  return rc;
+}
+
+cw::rc_t cw::ui::srv::start( handle_t h )
+{
+  ui_ws_srv_t* p = _handleToPtr(h);
+  rc_t         rc;
+  
+  if((rc = thread::unpause(p->thH)) != kOkRC )
+    cwLogError(rc,"WebockUI server thread start failed.");
+  return rc;
+}
+
+cw::rc_t cw::ui::srv::stop( handle_t h )
+{
+  ui_ws_srv_t* p = _handleToPtr(h);
+  rc_t         rc;
+  
+  if((rc = thread::pause(p->thH, thread::kPauseFl | thread::kWaitFl )) != kOkRC )
+    cwLogError(rc,"WebockUI server thread stop failed.");
+  
+  return rc;
+}
+
+cw::thread::handle_t  cw::ui::srv::threadHandle( handle_t h )
+{
+  ui_ws_srv_t* p = _handleToPtr(h);
+  return p->thH;
+}
+
+cw::websock::handle_t cw::ui::srv::websockHandle( handle_t h )
+{
+  ui_ws_srv_t* p = _handleToPtr(h);
+  return ws::websockHandle(p->wsUiH);
+}
+
+cw::ui::handle_t      cw::ui::srv::uiHandle( handle_t h )
+{
+  ui_ws_srv_t* p = _handleToPtr(h);
+  return ws::uiHandle(p->wsUiH);
+}
