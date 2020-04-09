@@ -166,7 +166,9 @@ namespace cw
             case SND_PCM_STATE_PAUSED:       return "paused";
             case SND_PCM_STATE_SUSPENDED:    return "suspended";
             case SND_PCM_STATE_DISCONNECTED: return "disconnected";
-              //case SND_PCM_STATE_PRIVATE1:     return "private1";
+#if defined(OS_64)  // SND_PCM_STATE_PRIVATE1 is not defined on Rasp. Pi. which also happens to be 32bit OS.                                   
+            case SND_PCM_STATE_PRIVATE1:     return "private1";
+#endif              
 
           }
           return "<invalid>";
@@ -491,7 +493,9 @@ namespace cw
             case SND_PCM_STATE_DRAINING:
             case SND_PCM_STATE_PAUSED:
             case SND_PCM_STATE_DISCONNECTED:
-              //case SND_PCM_STATE_PRIVATE1:
+#if defined(OS_64)  // SND_PCM_STATE_PRIVATE1 is not defined on Rasp. Pi. which also happens to be 32bit OS.                      
+              case SND_PCM_STATE_PRIVATE1:
+#endif              
               //case SND_PCM_STATE_LAST:
               break;
           }
@@ -872,7 +876,9 @@ namespace cw
                     case SND_PCM_STATE_DRAINING:
                     case SND_PCM_STATE_PAUSED:
                     case SND_PCM_STATE_DISCONNECTED:
-                      //case SND_PCM_STATE_PRIVATE1:
+#if defined(OS_64) // SND_PCM_STATE_PRIVATE1 is not defined on Rasp. Pi. which also happens to be 32bit OS.                      
+                      case SND_PCM_STATE_PRIVATE1:
+#endif                      
                       continue;
 
                     case SND_PCM_STATE_RUNNING:
