@@ -126,8 +126,8 @@ namespace cw
   void _objTypePrintUInt16( const object_t* o, print_ctx_t& c ) { printf("%i",o->u.u16); }
   void _objTypePrintInt32(  const object_t* o, print_ctx_t& c ) { printf("%i",o->u.i32); }
   void _objTypePrintUInt32( const object_t* o, print_ctx_t& c ) { printf("%i",o->u.u32); }
-  void _objTypePrintInt64(  const object_t* o, print_ctx_t& c ) { printf("%li",o->u.i64); }
-  void _objTypePrintUInt64( const object_t* o, print_ctx_t& c ) { printf("%li",o->u.u64); }
+  void _objTypePrintInt64(  const object_t* o, print_ctx_t& c ) { printf("%" PRIx64 ,o->u.i64); }
+  void _objTypePrintUInt64( const object_t* o, print_ctx_t& c ) { printf("%" PRIx64 ,o->u.u64); }
   void _objTypePrintBool(   const object_t* o, print_ctx_t& c ) { printf("%s",o->u.b ? "true" : "false"); }
   void _objTypePrintFloat(  const object_t* o, print_ctx_t& c ) { printf("%f",o->u.f); }
   void _objTypePrintDouble( const object_t* o, print_ctx_t& c ) { printf("%f",o->u.d); }
