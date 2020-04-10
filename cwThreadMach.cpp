@@ -37,6 +37,9 @@ namespace cw
         }
       }
 
+      mem::release(p->threadA);
+      mem::release(p);
+
       return rc;
       
     }
@@ -68,6 +71,8 @@ cw::rc_t cw::thread_mach::create( handle_t& hRef, threadFunc_t threadFunc, void*
     }
   }
 
+  hRef.set(p);
+  
  errLabel:
   if( rc != kOkRC )
     _destroy(p);
