@@ -161,14 +161,17 @@ namespace cw
     }
     
     rc_t getv() const { return kOkRC; } 
-    
+
+    // getv("label0",v0,"label1",v1, ... )
     template< typename T0, typename T1, typename... ARGS >
       rc_t getv( T0 label, T1& valRef, ARGS&&... args ) const
     {
       rc_t rc;
 
       if((rc = get(label,valRef)) == kOkRC )
-        rc = getv(std::forward<ARGS>(args)...);
+        if((rc = getv(std::forward<ARGS>(args)...)) != kOkRC )
+          cwLogError(rc,"getv() failed for the pair label:'%s'.",cwStringNullGuard(label));
+      
       return rc;
     }
 

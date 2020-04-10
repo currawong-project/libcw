@@ -89,9 +89,26 @@ namespace cw
   {
     return cwLogError(kInvalidArgRC, "There is no conversion from '%s' to '%s'.", _objTypeIdToLabel(tid), o->type->label);
   }
+
+  rc_t _objTypeValueFromCString(   const object_t* o, unsigned tid, void* dst )
+  {
+    if( tid == kCStringTId )
+    {
+      *(const char**)dst = o->u.str;
+      return kOkRC;
+    }
+    return _objTypeValueFromNonValue(o,tid,dst);
+  }
   
   rc_t _objTypeValueFromString(   const object_t* o, unsigned tid, void* dst )
   {
+    // When objects are parsed all strings are non-const. therefore when a string is retrieved
+    // from an object the string will always be non-const - but the type of the variable
+    // to receive the value may be const - we detect this here and redirect to the 'const char*'
+    // version of the function.
+    if( tid == kCStringTId )
+      return _objTypeValueFromCString(o,tid,dst);
+    
     if( tid == kStringTId )
     {
       *(char**)dst = o->u.str;
@@ -99,6 +116,7 @@ namespace cw
     }
     return _objTypeValueFromNonValue(o,tid,dst);
   }
+
   
   rc_t _objTypeValueFromVect(     const object_t* o, unsigned tid, void* dst )
   { return _objTypeValueFromNonValue(o,tid,dst); }
@@ -279,7 +297,7 @@ namespace cw
    { kFloatTId,   "float",     0,                                _objTypeFree,       _objTypeValueFromFloat,    _objTypePrintFloat,  _objTypeToStringFloat },
    { kDoubleTId,  "double",    0,                                _objTypeFree,       _objTypeValueFromDouble,   _objTypePrintDouble, _objTypeToStringDouble },
    { kStringTId,  "string",    0,                                _objTypeFreeString, _objTypeValueFromString,   _objTypePrintString, _objTypeToStringString },
-   { kCStringTId, "cstring",   0,                                _objTypeFree,       _objTypeValueFromString,   _objTypePrintString, _objTypeToStringString },
+   { kCStringTId, "cstring",   0,                                _objTypeFree,       _objTypeValueFromCString,  _objTypePrintString, _objTypeToStringString },
    { kVectTId,    "vect",      0,                                _objTypeFree,       _objTypeValueFromVect,     _objTypePrintVect,   _objTypeToStringVect },
    { kPairTId,    "pair",      kContainerFl | kValueContainerFl, _objTypeFree,       _objTypeValueFromNonValue, _objTypePrintPair,   _objTypeToStringPair },
    { kListTId,    "list",      kContainerFl | kValueContainerFl, _objTypeFree,       _objTypeValueFromNonValue, _objTypePrintList,   _objTypeToStringList },
@@ -763,8 +781,12 @@ cw::rc_t cw::objectFromFile( const char* fn, object_t*& objRef )
   rc_t     rc         = kOkRC;
   unsigned bufByteCnt = 0;
   char*    buf        = NULL;
+
+  objRef = nullptr;
   
-  if(( buf = file::fnToStr(fn, &bufByteCnt)) != NULL )
+  if(( buf = file::fnToStr(fn, &bufByteCnt)) == NULL )
+    rc = cwLogError(kOpFailRC,"File to text buffer conversion failed on '%s'.",cwStringNullGuard(fn));
+  else
   {
     rc = objectFromString( buf, objRef );
     mem::release(buf);
