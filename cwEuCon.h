@@ -35,19 +35,31 @@ namespace cw
     // for incoming information from the FaderBankArray.
     rc_t exec(   handle_t h, unsigned sockTimeOutMs );
 
-    // Are messages waiting 
+    // Are messages from the physical control or from
+    // from the EuCon controller waiting to be read
+    // by the client application.
     bool  areMsgsWaiting( handle_t h );
 
+    // msg flags
     enum
     {
-     kFaderValueTId,
-     kMuteValueTId,
-     kTouchValueTId
+     kWriteValueFl = 0,
+     kReadValueFl  = 1
     };
+
+    // msg tid
+    enum
+    {
+     kFaderValueTId = 8, // set/get a fader value
+     kMuteValueTId,      // set/get a mute value
+     kTouchValueTId,     // set/get a touch value
+     kSendStateTId       // get the state of a channel
+    };
+
     
     typedef struct msg_str
     {
-      unsigned msgTId;
+      unsigned flags;
       unsigned channel;
       union
       {
@@ -59,12 +71,13 @@ namespace cw
     
     typedef void (*msgCallback_t)( void* cbArg, const msg_t* msg );
     
-    // Switches the internal double buffer and calls back with the parsed messages.
+    // Callback with messages for the client application.
     rc_t  getMsgs( handle_t h, msgCallback_t cbFunc, void* cbArg );
 
 
-    // Send a message to a physical control
-    rc_t sendCtlMsg( handle_t h, unsigned ctlTId, unsigned channel, unsigned ivalue, float fvalue );
+    // Send a message to the EuCon manager or to a physical control.
+    // Note that flags is formed by <msgTId> | <msgFlags>
+    rc_t sendMsg( handle_t h, unsigned flags, unsigned channel, unsigned ivalue, float fvalue );
     
     
     rc_t test();
