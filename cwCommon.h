@@ -41,7 +41,8 @@ namespace cw
    kLabelNotFoundRC,        // 22 - use by cwObject to indicate that an optional value does not exist.
    kDuplicateRC,            // 23 - an invalid duplicate was detected
    kAssertFailRC,           // 24 - used with cwLogFatal
-   kBaseAppRC               // 25
+   kInvalidDataTypeRC,      // 25
+   kBaseAppRC               // 26
   } cwRC_t;
 
   typedef unsigned rc_t;

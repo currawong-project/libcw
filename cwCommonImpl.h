@@ -21,6 +21,7 @@
 #define cwPOSIX_FILE_SYS
 #include <time.h>         // timespec
 #include <netinet/in.h>	  // struct sockaddr_in
+#include <unistd.h>       // close()
 #define cwPathSeparatorChar '/'
 #endif
 
