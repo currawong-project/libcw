@@ -716,13 +716,14 @@ cw::rc_t cw::eucon::exec( handle_t h, unsigned sockTimeOutMs )
 
 bool  cw::eucon::areMsgsWaiting( handle_t h )
 {
-  eucon_t* p = _handleToPtr(h);
+  //eucon_t* p = _handleToPtr(h);
+  return false;
 }
         
 cw::rc_t  cw::eucon::getMsgs( handle_t h, msgCallback_t cbFunc, void* cbArg )
 {
   rc_t     rc = kOkRC;
-  eucon_t* p  = _handleToPtr(h);
+  //eucon_t* p  = _handleToPtr(h);
 
   return rc;
 }
@@ -731,7 +732,7 @@ cw::rc_t  cw::eucon::getMsgs( handle_t h, msgCallback_t cbFunc, void* cbArg )
 cw::rc_t cw::eucon::sendCtlMsg( handle_t h, unsigned ctlTId, unsigned channel, unsigned ivalue, float fvalue )
 {
   rc_t     rc = kOkRC;
-  eucon_t* p  = _handleToPtr(h);
+  //eucon_t* p  = _handleToPtr(h);
   
   return rc;
 }
