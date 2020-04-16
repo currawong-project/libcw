@@ -311,7 +311,8 @@ namespace cw
     };
 
     struct eucon_str;
-      
+
+    // FBank object
     typedef struct fbank_str
     {
       struct eucon_str*    eucon;
@@ -324,14 +325,14 @@ namespace cw
       uint32_t             remoteAddr;
     } fbank_t;
 
+    // EuCon manager object
     typedef struct eucon_str
     {
-      sock::handle_t sockMgrH;        // socket mgr handle
-      fbank_t*       fbankL;          // List of fader banks
-      unsigned       maxFaderBankN;   // maximum number of fader banks
-      unsigned       sockTimeOutMs;   // socket time out
-      unsigned       faderTcpPort;    // Fader TCP port TODO: we shouuld be getting this from the MDNS SRV record
-        
+      sock::handle_t     sockMgrH;      // socket mgr handle
+      fbank_t*           fbankL;        // List of fader banks
+      unsigned           maxFaderBankN; // maximum number of fader banks
+      unsigned           sockTimeOutMs; // socket time out
+      unsigned           faderTcpPort;  // Fader TCP port TODO: we shouuld be getting this from the MDNS SRV record      
     } eucon_t;
 
     inline eucon_t* _handleToPtr( handle_t h )
@@ -729,7 +730,7 @@ cw::rc_t  cw::eucon::getMsgs( handle_t h, msgCallback_t cbFunc, void* cbArg )
 }
 
 
-cw::rc_t cw::eucon::sendCtlMsg( handle_t h, unsigned ctlTId, unsigned channel, unsigned ivalue, float fvalue )
+cw::rc_t cw::eucon::sendMsg( handle_t h, unsigned flags, unsigned channel, unsigned ivalue, float fvalue )
 {
   rc_t     rc = kOkRC;
   //eucon_t* p  = _handleToPtr(h);
