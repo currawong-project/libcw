@@ -99,7 +99,7 @@ cw::rc_t cw::spsc_buf::copyIn( handle_t h, const void* iBuf, unsigned iN )
   {
 
     // if there is space between w and the EOB to accept the write  ...
-    if( iN <= e-w )
+    if( iN <= (unsigned)(e-w) )
     {
       n0 = iN;  // fill the space after w
 
@@ -122,7 +122,7 @@ cw::rc_t cw::spsc_buf::copyIn( handle_t h, const void* iBuf, unsigned iN )
   }
   else // r > w  : r is in front of w (the write will not split)
   {
-    if(  iN < r - w )
+    if(  iN < (unsigned)(r - w) )
     {
       n0 = iN; 
     }
