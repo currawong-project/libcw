@@ -23,6 +23,7 @@ namespace cw
       sock::portNumber_t faderTcpPort;   // Fader TCP port (e.g. 49168)
       unsigned           maxSockN;       // maximum number of socket to allow in the socket manager
       unsigned           maxFaderBankN;  // maximum number of fader banks to support
+      unsigned           heartBeatPeriodMs; // time between heart-beat messages from/to the fader banks
     } args_t;
 
     // Create the EuCon simulation manager.
