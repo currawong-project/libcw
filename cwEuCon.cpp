@@ -382,8 +382,8 @@ namespace cw
     {
       rc_t rc = kOkRC;
       
-      if((rc = sock::destroy(fb->eucon->sockMgrH, fb->sockUserId)) != kOkRC )
-        rc = cwLogError(rc,"Socket destroy failed on disconnect attempt on fader bank index:%i.",fb->fbIndex);
+      //if((rc = sock::destroy(fb->eucon->sockMgrH, fb->sockUserId)) != kOkRC )
+      //  rc = cwLogError(rc,"Socket destroy failed on disconnect attempt on fader bank index:%i.",fb->fbIndex);
         
       fb->protoState = kSendHandshake_0_Id;
 
@@ -398,7 +398,7 @@ namespace cw
       // send the initial handshake 
       if((rc = sock::send( fb->eucon->sockMgrH, fb->sockUserId, kInvalidId, buf, bufByteN )) != kOkRC )
       {
-        rc = cwLogError(rc,"TCP '%s' send failed on fader bank index:%i. Disconnecting.",fb->fbIndex);
+        rc = cwLogError(rc,"TCP send failed on fader bank index:%i proto:%i Disconnecting.",fb->fbIndex,fb->protoState);
 
         _disconnect(fb);
       }
@@ -549,8 +549,8 @@ namespace cw
           
       }
 
-      
-      time::futureMs(fb->nextRecvHbTs,fb->eucon->heartBeatPeriodMs+1000);
+      //printf("fbi: %i : proto:%i rcv\n",fb->fbIndex,fb->protoState);
+      time::futureMs(fb->nextRecvHbTs,fb->eucon->heartBeatPeriodMs*2);
         
     }
 
@@ -598,6 +598,8 @@ namespace cw
 
         fb->remoteAddr = fromAddr->sin_addr.s_addr;
 
+        time::futureMs(fb->nextRecvHbTs,fb->eucon->heartBeatPeriodMs*2);
+        
         // Send the initial handshake to the fader bank
         _sendHandshake_0( fb );
 
@@ -735,7 +737,7 @@ cw::rc_t cw::eucon::exec( handle_t h, unsigned sockTimeOutMs )
   
   // check the health of each fader bank
   for(fbank_t* fb = p->fbankL; fb!=nullptr; fb=fb->link)
-    if( fb->protoState == kRunning_Id )
+    if( fb->protoState != kSendHandshake_0_Id )
     {
 
       // has it been more than 'heartBeatPerioMs' millisecnods since we received a msg from this fader bank
