@@ -126,6 +126,7 @@ namespace cw
     rc_t value( uint64_t& v ) const;
     rc_t value( float&  v ) const;
     rc_t value( double& v ) const;
+    rc_t value( bool& v ) const;
     rc_t value( char*& v ) const;
     rc_t value( const char*& v ) const;
 

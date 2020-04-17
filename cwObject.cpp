@@ -480,6 +480,7 @@ cw::rc_t cw::object_t::value( int64_t&  v ) const { return type->value(this,kInt
 cw::rc_t cw::object_t::value( uint64_t& v ) const { return type->value(this,kUInt64TId,&v); }
 cw::rc_t cw::object_t::value( float&  v )   const { return type->value(this,kFloatTId,&v); }
 cw::rc_t cw::object_t::value( double& v )   const { return type->value(this,kDoubleTId,&v); }
+cw::rc_t cw::object_t::value( bool& v )     const { return type->value(this,kBoolTId,&v); }
 cw::rc_t cw::object_t::value( char*& v )    const { return type->value(this,kStringTId,&v); }
 cw::rc_t cw::object_t::value( const char*& v ) const { return type->value(this,kCStringTId,&v); }
 

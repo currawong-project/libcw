@@ -625,7 +625,7 @@ cw::rc_t cw::net::socket::select_receive(handle_t h, char* buf, unsigned bufByte
         else
         {
           // check for overflow
-          if( retByteCnt == bufByteCnt )
+          if( retByteCnt == (ssize_t)bufByteCnt )
             rc = cwLogError(kBufTooSmallRC,"The receive buffer requires more than %i bytes.",bufByteCnt);
 
           if( recvByteCntRef != nullptr )
