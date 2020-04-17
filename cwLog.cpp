@@ -127,6 +127,7 @@ void  cw::log::defaultOutput( void* arg, unsigned level, const char* text )
 {
   FILE* f = level >= kWarning_LogLevel ? stderr : stdout;
   fprintf(f,"%s",text);
+  fflush(f);
 }
 
 void cw::log::defaultFormatter( void* cbArg, logOutputCbFunc_t outFunc, void* outCbArg, unsigned level, const char* function, const char* filename, unsigned lineno, int sys_errno, rc_t rc, const char* msg )
