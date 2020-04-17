@@ -539,22 +539,18 @@ namespace cw
           fb->protoState = kRunning_Id;
           // set the initial next heart-beat times for this fader bank
           time::futureMs(fb->nextSendHbTs,fb->eucon->heartBeatPeriodMs);
-          time::futureMs(fb->nextRecvHbTs,fb->eucon->heartBeatPeriodMs*2);
           break;
 
-        case kRunning_Id:
-
-          // if this is a heart-beat
-          if( ((uint8_t*)data)[0] == 0x03 )
-            time::futureMs(fb->nextRecvHbTs,fb->eucon->heartBeatPeriodMs+1000);
-
-          
+        case kRunning_Id:          
           printf("%i : Rcv: %i : ",fb->fbIndex, dataByteCnt );
           for(unsigned i=0; i<dataByteCnt; ++i)
             printf("0x%02x ",((uint8_t*)data)[i]);
           printf("\n");
           
       }
+
+      
+      time::futureMs(fb->nextRecvHbTs,fb->eucon->heartBeatPeriodMs+1000);
         
     }
 
@@ -624,8 +620,9 @@ namespace cw
       {
         const char* name  = (const char*)(u+6);
         const char* label = "MC Mix - ";
-
-        printf("%.*s|%i\n", name[0], name+1, strlen(label) );
+        unsigned    sn    = strlen(label);
+        
+        printf("%.*s|%i\n", name[0], name+1, sn );
 
         // if this a 'MC Mix' DNS-SD SRV reply
         if( strncmp(label, name+1, strlen(label)) == 0 )
@@ -736,17 +733,18 @@ cw::rc_t cw::eucon::exec( handle_t h, unsigned sockTimeOutMs )
   // get the current time
   time::get(t0);
 
+  
   // check the health of each fader bank
   for(fbank_t* fb = p->fbankL; fb!=nullptr; fb=fb->link)
     if( fb->protoState == kRunning_Id )
     {
-      // has it been more than 'heartBeatPerioMs' millisecnods since we received a heart beat from this fader bank
+
+      // has it been more than 'heartBeatPerioMs' millisecnods since we received a msg from this fader bank
       if( time::isGTE( t0, fb->nextRecvHbTs ) )
       {
         cwLogInfo("Missed heart-beat disconnecting fader bank index %i.",fb->fbIndex );
         _disconnect(fb);
       }
-
       // is it time to send a heart-beat to this fader bank
       if( time::isGTE( t0, fb->nextSendHbTs ) )
       {        
