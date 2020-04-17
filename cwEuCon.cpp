@@ -621,7 +621,6 @@ namespace cw
         const char* name  = (const char*)(u+6);
         const char* label = "MC Mix - ";
         unsigned    sn    = strlen(label);
-        
         printf("%.*s|%i\n", name[0], name+1, sn );
 
         // if this a 'MC Mix' DNS-SD SRV reply
