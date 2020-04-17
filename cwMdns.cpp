@@ -1099,7 +1099,7 @@ bool tcpReceiveCallback( void* arg )
             case 2:            
               {
                 time::get(t1);
-                if( time::elapsedMs( &app->t0, &t1 ) >= 4000 )
+                if( time::elapsedMs( app->t0, t1 ) >= 4000 )
                 {
                   send_heart_beat(app,sockH);
                   app->t0 = t1;

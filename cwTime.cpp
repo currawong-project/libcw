@@ -47,25 +47,25 @@ void cw::time::get( spec_t& t )
 
 // this assumes that the seconds have been normalized to a recent start time
 // so as to avoid overflow
-unsigned cw::time::elapsedMicros( const spec_t* t0, const spec_t* t1 )
+unsigned cw::time::elapsedMicros( const spec_t& t0, const spec_t& t1 )
 {
   // convert seconds to usecs
-  long u0 = t0->tv_sec * 1000000;
-  long u1 = t1->tv_sec * 1000000;
+  long u0 = t0.tv_sec * 1000000;
+  long u1 = t1.tv_sec * 1000000;
 
   // convert nanoseconds to usec
-  u0 += t0->tv_nsec / 1000;
-  u1 += t1->tv_nsec / 1000;
+  u0 += t0.tv_nsec / 1000;
+  u1 += t1.tv_nsec / 1000;
 
   // take diff between t1 and t0
   return u1 - u0;
 }
 
-unsigned cw::time::elapsedMs( const spec_t*  t0, const spec_t* t1 )
+unsigned cw::time::elapsedMs( const spec_t&  t0, const spec_t& t1 )
 { return elapsedMicros(t0,t1)/1000; }
 
 
-unsigned cw::time::absElapsedMicros( const spec_t*  t0, const spec_t* t1 )
+unsigned cw::time::absElapsedMicros( const spec_t&  t0, const spec_t& t1 )
 {
   if( isLTE(t0,t1) )
     return elapsedMicros(t0,t1);
@@ -73,7 +73,7 @@ unsigned cw::time::absElapsedMicros( const spec_t*  t0, const spec_t* t1 )
   return elapsedMicros(t1,t0);
 }
 
-int cw::time::diffMicros( const spec_t*  t0, const spec_t* t1 )
+int cw::time::diffMicros( const spec_t&  t0, const spec_t& t1 )
 {
   if( isLTE(t0,t1) )
     return elapsedMicros(t0,t1);
@@ -81,38 +81,38 @@ int cw::time::diffMicros( const spec_t*  t0, const spec_t* t1 )
   return -((int)elapsedMicros(t1,t0));
 }
 
-bool cw::time::isLTE( const spec_t* t0, const spec_t* t1 )
+bool cw::time::isLTE( const spec_t& t0, const spec_t& t1 )
 {
-  if( t0->tv_sec  < t1->tv_sec )
+  if( t0.tv_sec  < t1.tv_sec )
     return true;
 
-  if( t0->tv_sec == t1->tv_sec )
-    return t0->tv_nsec <= t1->tv_nsec;
+  if( t0.tv_sec == t1.tv_sec )
+    return t0.tv_nsec <= t1.tv_nsec;
 
   return false; 
 }
 
-bool cw::time::isGTE( const spec_t* t0, const spec_t* t1 )
+bool cw::time::isGTE( const spec_t& t0, const spec_t& t1 )
 {
-  if( t0->tv_sec  > t1->tv_sec )
+  if( t0.tv_sec  > t1.tv_sec )
     return true;
 
-  if( t0->tv_sec == t1->tv_sec )
-    return t0->tv_nsec >= t1->tv_nsec;
+  if( t0.tv_sec == t1.tv_sec )
+    return t0.tv_nsec >= t1.tv_nsec;
 
   return false;   
 }
 
-bool cw::time::isEqual( const spec_t* t0, const spec_t* t1 )
-{ return t0->tv_sec==t1->tv_sec && t0->tv_nsec==t1->tv_nsec; }
+bool cw::time::isEqual( const spec_t& t0, const spec_t& t1 )
+{ return t0.tv_sec==t1.tv_sec && t0.tv_nsec==t1.tv_nsec; }
 
-bool cw::time::isZero( const spec_t* t0 )
-{ return t0->tv_sec==0  && t0->tv_nsec==0; }
+bool cw::time::isZero( const spec_t& t0 )
+{ return t0.tv_sec==0  && t0.tv_nsec==0; }
 
-void cw::time::setZero( spec_t* t0 )
+void cw::time::setZero( spec_t& t0 )
 {
-  t0->tv_sec = 0;
-  t0->tv_nsec = 0;
+  t0.tv_sec = 0;
+  t0.tv_nsec = 0;
 }
 
 

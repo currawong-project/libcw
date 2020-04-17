@@ -150,7 +150,7 @@ namespace cw
 
         time::spec_t t1;
         time::get(t1);
-        unsigned ms = time::elapsedMs( &p->t0, &t1 );
+        unsigned ms = time::elapsedMs( p->t0, t1 );
         if( ms > 50 )
         {
           p->cbCnt+=1;
