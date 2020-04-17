@@ -782,8 +782,11 @@ cw::rc_t cw::sock::destroy( handle_t h, unsigned userId )
   sock_t* s;
 
   if((rc = _getMgrAndSocket(h, userId, p, s )) != kOkRC )
+  {
+    cwLogWarning("Socket destroy failed. The socket %i could not be found.",userId);
     return rc;
-
+  }
+  
   if((rc = _closeSock(p,s)) != kOkRC )
     return rc;
   
