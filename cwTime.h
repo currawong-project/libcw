@@ -57,6 +57,8 @@ namespace cw
     // Advance the current time by 'ms' milliseconds;
     rc_t futureMs( spec_t& ts, unsigned ms );
 
+    rc_t test();
+
     //)
 
   }

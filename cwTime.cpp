@@ -157,3 +157,21 @@ cw::rc_t cw::time::futureMs( spec_t& ts, unsigned ms )
 
   return rc;   
 }
+
+
+cw::rc_t cw::time::test()
+{
+
+  spec_t t0,t1;
+
+  get(t0);
+
+  futureMs(t1,1000);
+
+  unsigned dMs = elapsedMs(t0,t1);
+
+  printf("dMs:%i\n",dMs);
+
+  return kOkRC;
+  
+}
