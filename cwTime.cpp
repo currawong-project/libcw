@@ -170,7 +170,7 @@ cw::rc_t cw::time::test()
 
   unsigned dMs = elapsedMs(t0,t1);
 
-  printf("dMs:%i\n",dMs);
+  printf("dMs:%i : GTE:%i LTE:%i\n",dMs, isGTE(t0,t1), isLTE(t0,t1) );
 
   return kOkRC;
   
