@@ -13,8 +13,8 @@ libcwSRC += src/libcw/cwObject.cpp                              src/libcw/cwText
 libcwHDR += src/libcw/cwThread.h    src/libcw/cwMutex.h   src/libcw/cwThreadMach.h      
 libcwSRC += src/libcw/cwThread.cpp  src/libcw/cwMutex.cpp src/libcw/cwThreadMach.cpp
 
-libcwHDR += src/libcw/cwMpScNbQueue.h src/libcw/cwSpScBuf.h
-libcwSRC +=                           src/libcw/cwSpScBuf.cpp
+libcwHDR += src/libcw/cwMpScNbQueue.h src/libcw/cwSpScBuf.h   src/libcw/cwSpScQueueTmpl.h
+libcwSRC +=                           src/libcw/cwSpScBuf.cpp src/libcw/cwSpScQueueTmpl.cpp
 
 
 libcwHDR += src/libcw/cwWebSock.h   src/libcw/cwWebSockSvr.h    src/libcw/cwLib.h
