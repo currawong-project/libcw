@@ -21,13 +21,8 @@ namespace cw
       mem::release(_aV);
     }
 
-    T* get()
-    {
-      unsigned wi = _wi.load( std::memory_order_relaxed );
-      return _aV + wi;
-    }
 
-    rc_t publish()
+    T* get()
     {
       unsigned ri = _ri.load( std::memory_order_acquire );
       unsigned wi = _wi.load( std::memory_order_relaxed ); // _wi is written in this thread 
@@ -38,14 +33,20 @@ namespace cw
       // there must always be at least one empty element because
       // wi can never be advanced to equal ri.
       if( n >= _aN-1 )
-        return kBufTooSmallRC;
+        return nullptr;
 
+      return _aV + wi;
+    }
+
+    void publish()
+    {
+      unsigned wi = _wi.load( std::memory_order_relaxed ); // _wi is written in this thread 
+      
       wi = (wi+1) % _aN;
 
       // advance the write position
       _wi.store( wi, std::memory_order_release );
     
-      return kOkRC;
     }
 
     T* pop()
