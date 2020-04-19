@@ -10,31 +10,27 @@ namespace cw
   public:
     spScQueueTmpl( unsigned eleN )
     {
-      _aV  = mem::allocZ<T*>(eleN);
-      _mem = mem::allocZ<T>(eleN);
-      _wi.load(std::memory_order_release);
-      _ri.load(std::memory_order_release);
-      
-      for(unsigned i=0; i<eleN; ++i)
-        _aV[i] = _mem + i;
+      _aN  = eleN;
+      _aV = mem::allocZ<T>(eleN);
+      _wi.store(0,std::memory_order_release);
+      _ri.store(0,std::memory_order_release);      
     }
 
     virtual ~spScQueueTmpl()
     {
       mem::release(_aV);
-      mem::release(_mem);
     }
 
     T* get()
     {
       unsigned wi = _wi.load( std::memory_order_relaxed );
-      return _aV[wi];
+      return _aV + wi;
     }
 
-    rc_t push( T* v )
+    rc_t publish()
     {
       unsigned ri = _ri.load( std::memory_order_acquire );
-      unsigned wi = _wi.load( std::memory_order_relaxed );
+      unsigned wi = _wi.load( std::memory_order_relaxed ); // _wi is written in this thread 
 
       // calc. the count of full elements
       unsigned n =  wi >= ri ? wi-ri : (_aN-ri) + wi;
@@ -44,11 +40,9 @@ namespace cw
       if( n >= _aN-1 )
         return kBufTooSmallRC;
 
-      // store the new element
-      _aV[wi] = v;
-
       wi = (wi+1) % _aN;
-    
+
+      // advance the write position
       _wi.store( wi, std::memory_order_release );
     
       return kOkRC;
@@ -64,7 +58,7 @@ namespace cw
       if( n == 0 )
         return nullptr;
 
-      T* v = _aV[ri];
+      T* v = _aV + ri;
 
       ri = (ri+1) % _aN;
 
@@ -78,8 +72,7 @@ namespace cw
     
   private:
     unsigned              _aN = 0;
-    T**                   _aV = nullptr;
-    T*                    _mem;
+    T*                    _aV = nullptr;
     std::atomic<unsigned> _wi;   
     std::atomic<unsigned> _ri;
 

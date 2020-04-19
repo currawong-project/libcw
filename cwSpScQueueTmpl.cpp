@@ -34,6 +34,7 @@ namespace cw
     unsigned  iter;           // execution counter
     unsigned  msgN;           // count of msg's processed
     shared_t* share;          // shared variables
+    uint8_t   prevId; 
   } ctx_t;
 
 
@@ -57,7 +58,7 @@ namespace cw
         m->checksum += m->data[i];
       }
 
-      c->share->q->push(m);
+      c->share->q->publish();
 
       c->msgN++;
 
@@ -84,7 +85,16 @@ namespace cw
       
       if( curCheckSum != m->checksum )
         cwLogError(kOpFailRC,"Checksum mismatch.0x%x != 0x%x ",curCheckSum,m->checksum);
-      
+      else
+      {
+        uint8_t id = c->prevId + 1;
+        if( id != m->data[0] )
+          cwLogInfo("drop ");
+        
+        c->prevId = m->data[0];
+      }
+
+      c->msgN++;
     }
 
     c->iter++;
