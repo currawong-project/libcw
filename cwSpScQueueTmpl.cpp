@@ -77,7 +77,7 @@ namespace cw
       c->share->readyFl.store(true,std::memory_order_release);
     }
       
-    if((m = c->share->q->pop()) != nullptr )
+    while((m = c->share->q->pop()) != nullptr )
     {
       uint8_t curCheckSum = 0;
       for(unsigned i=0; i<kDataByteN; ++i)
@@ -163,7 +163,7 @@ cw::rc_t cw::testSpScQueueTmpl()
     goto errLabel;
   }
 
-  sleepMs(5000);
+  sleepMs(60 * 1000);
 
  errLabel:
   if((rc0 = thread_mach::destroy(h)) != kOkRC )
