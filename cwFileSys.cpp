@@ -9,6 +9,7 @@
 #include <libgen.h> // basename() dirname()
 #include <sys/stat.h>
 #include <dirent.h> // opendir()/readdir()
+#include <wordexp.h>
 #endif
 
 namespace cw
@@ -201,6 +202,66 @@ char* cw::filesys::makeFn(  const char* dir, const char* fn, const char* ext, ..
   char* fnOut = filesys::vMakeFn(dir,fn,ext,vl);
   va_end(vl);
   return fnOut;
+}
+
+char* cw::filesys::expandPath( const char* dir )
+{
+  rc_t      rc     = kOkRC;
+  int       sysRC  = 0;
+  int       flags  = WRDE_NOCMD;
+  char*     newDir = nullptr;
+  wordexp_t res;
+
+  memset(&res,0,sizeof(res));
+  
+  if((sysRC = wordexp(dir,&res,flags)) != 0)
+  {
+    switch(sysRC)
+    {
+      case WRDE_BADCHAR:
+        rc = cwLogError(kOpFailRC,"Bad character.");
+        break;
+        
+      case WRDE_BADVAL:
+        rc = cwLogError(kOpFailRC,"Bad value.");
+        break;
+        
+      case WRDE_CMDSUB:
+        rc = cwLogError(kOpFailRC,"Command substitution forbidden.");
+        break;
+        
+      case WRDE_NOSPACE:
+        rc = cwLogError(kOpFailRC,"Mem. alloc failed.");
+        break;
+        
+      case WRDE_SYNTAX:
+        rc = cwLogError(kOpFailRC,"Syntax error..");
+        break;   
+    }
+
+    goto errLabel;
+  }
+
+  if( res.we_wordc > 1 )
+  {
+    rc = cwLogError(kOpFailRC,"Unexpected word expansion count: %i.", res.we_wordc );
+    goto errLabel;
+  }
+
+  if( res.we_wordc == 1 )
+    newDir = mem::duplStr(res.we_wordv[0]);
+  else
+    newDir = mem::duplStr(dir);
+  
+ errLabel:
+  if( rc != kOkRC )
+    rc = cwLogError(rc,"Path expansion failed.");
+
+  wordfree(&res);
+
+  
+  return newDir;
+  
 }
 
 

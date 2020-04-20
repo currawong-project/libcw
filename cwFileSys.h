@@ -20,9 +20,12 @@ namespace cw
     // 'dirPrefixStr' and the file name.
     // Terminate var arg's directory list with a  nullptr. 
     //
-    // The returned string must be released by a call to memRelease() or memFree().
+    // The returned string must be released by a call to mem::release() or mem::free().
     char* vMakeFn( const char* dir, const char* fn, const char* ext, va_list vl );
     char* makeFn(  const char* dir, const char* fn, const char* ext, ... );
+
+
+    char* expandPath( const char* dir );
 
 
     // Parse a path into its parts:
