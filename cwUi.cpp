@@ -5,10 +5,11 @@
 #include "cwThread.h"
 #include "cwWebSock.h"
 #include "cwWebSockSvr.h"
-#include "cwUi.h"
 #include "cwText.h"
 #include "cwNumericConvert.h"
 #include "cwObject.h"
+
+#include "cwUi.h"
 
 namespace cw
 {
@@ -749,6 +750,29 @@ unsigned cw::ui::findElementUuId( handle_t h, const char* eleName )
   return _findElementUuId(p,eleName);
 }
 
+cw::rc_t cw::ui::createFromObject( handle_t  h, const object_t* o,  unsigned wsSessId,  unsigned parentUuId,  const char* eleName )
+{
+  ui_t*     p  = _handleToPtr(h);
+  rc_t      rc = kOkRC;
+
+  if( eleName != nullptr )
+    if((o = o->find(eleName)) == nullptr )
+    {
+      rc = cwLogError(kSyntaxErrorRC,"Unable to locate the 'engine' sub-configuration.");
+      goto errLabel;
+    }
+  
+  
+ if((rc = _createFromObj( p, o, wsSessId, parentUuId )) != kOkRC )
+    goto errLabel;
+
+ errLabel:
+  if(rc != kOkRC )
+    rc = cwLogError(rc,"UI instantiation from object failed.", cwStringNullGuard(fn));
+
+ return rc;
+}
+
 
 cw::rc_t cw::ui::createFromFile( handle_t  h, const char* fn,  unsigned wsSessId,  unsigned parentUuId)
 {
@@ -969,6 +993,7 @@ cw::rc_t cw::ui::ws::create(  handle_t& h,
   return rc;
 }
 
+
 cw::rc_t cw::ui::ws::destroy( handle_t& h )
 {
   rc_t rc = kOkRC;
@@ -1107,6 +1132,27 @@ cw::rc_t cw::ui::srv::create(  handle_t& h,
 
   return rc;
 }
+
+cw::rc_t cw::ui::srv::create( handle_t& h,
+  const args_t&     args,
+  void*             cbArg,
+  uiCallback_t      uiCbFunc,
+  websock::cbFunc_t wsCbFunc )
+{
+  return create(h,
+    args.port,
+    args.physRootDir,
+    cbArg,
+    uiCbFunc,
+    wsCbFunc,
+    args.dfltHtmlPageFn,
+    args.timeOutMs,
+    args.recvBufByteN,
+    args.xmitBufByteN,
+    args.fmtBufByteN );
+}
+      
+
 
 cw::rc_t cw::ui::srv::destroy( handle_t& h )
 {

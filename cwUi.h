@@ -80,18 +80,19 @@ namespace cw
     // Return the uuid of the first matching 'eleName'.
     unsigned    findElementUuId( handle_t h, const char* eleName );
 
-    rc_t createFromFile( handle_t h, const char* fn,    unsigned wsSessId, unsigned parentUuId=kInvalidId);
-    rc_t createFromText( handle_t h, const char* text,  unsigned wsSessId, unsigned parentUuId=kInvalidId);
-    rc_t createDiv(      handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
-    rc_t createTitle(    handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
-    rc_t createButton(   handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
-    rc_t createCheck(    handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, bool value );
-    rc_t createSelect(   handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
-    rc_t createOption(   handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
-    rc_t createString(   handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, const char* value );
-    rc_t createNumber(   handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double value, double minValue, double maxValue, double stepValue, unsigned decPl );
-    rc_t createProgress( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double value, double minValue, double maxValue );
-    rc_t createText(     handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
+    rc_t createFromObject( handle_t h, const object_t* o, unsigned wsSessId, unsigned parentUuId=kInvalidId, const char* eleName=nullptr);
+    rc_t createFromFile(   handle_t h, const char* fn,    unsigned wsSessId, unsigned parentUuId=kInvalidId);
+    rc_t createFromText(   handle_t h, const char* text,  unsigned wsSessId, unsigned parentUuId=kInvalidId);
+    rc_t createDiv(        handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
+    rc_t createTitle(      handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
+    rc_t createButton(     handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
+    rc_t createCheck(      handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, bool value );
+    rc_t createSelect(     handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
+    rc_t createOption(     handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
+    rc_t createString(     handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, const char* value );
+    rc_t createNumber(     handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double value, double minValue, double maxValue, double stepValue, unsigned decPl );
+    rc_t createProgress(   handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double value, double minValue, double maxValue );
+    rc_t createText(       handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
 
     typedef struct appIdMap_str
     {
@@ -139,7 +140,24 @@ namespace cw
     namespace srv
     {
 
+      typedef struct args_str
+      {
+        const char* physRootDir;
+        const char* dfltHtmlPageFn;
+        unsigned    port;
+        unsigned    timeOutMs;
+        unsigned    recvBufByteN;
+        unsigned    xmitBufByteN;
+        unsigned    fmtBufByteN;
+      } args_t;
+      
       typedef handle<struct ui_ws_srv_str> handle_t;
+
+      rc_t create( handle_t& h,
+        const args_t&     args,
+        void*             cbArg,
+        uiCallback_t      uiCbFunc,
+        websock::cbFunc_t wsCbFunc = nullptr );
       
       rc_t create(  handle_t& h,
         unsigned          port,
@@ -152,6 +170,7 @@ namespace cw
         unsigned          rcvBufByteN      = 1024,
         unsigned          xmtBufByteN      = 1024,
         unsigned          fmtBufByteN      = 4096 );
+
 
       rc_t destroy( handle_t& h );
 
