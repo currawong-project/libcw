@@ -2,6 +2,7 @@
 #include "cwLog.h"
 #include "cwCommonImpl.h"
 #include "cwMem.h"
+#include "cwFileSys.h"
 #include "cwWebSock.h"
 #include "cwMpScNbQueue.h"
 
@@ -332,10 +333,10 @@ cw::rc_t cw::websock::create(
   p->_mount = mem::allocZ<struct lws_http_mount>(1);
   p->_mount->mountpoint     = slash;
   p->_mount->mountpoint_len = strlen(slash);
-  p->_mount->origin         = mem::allocStr(physRootDir); // physical directory assoc'd with http "/"
+  p->_mount->origin         = filesys::expandPath(physRootDir); // physical directory assoc'd with http "/"
   p->_mount->def            = mem::allocStr(dfltHtmlPageFn);
   p->_mount->origin_protocol= LWSMPRO_FILE;
-  
+
   memset(&info,0,sizeof(info));
   info.port      = port;
   info.mounts    = p->_mount;
