@@ -4,6 +4,7 @@
 #include "cwMem.h"
 #include "cwThread.h"
 #include "cwWebSock.h"
+#include "cwObject.h"
 #include "cwUi.h"
 #include "cwUiTest.h"
 

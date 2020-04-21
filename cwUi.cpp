@@ -298,7 +298,7 @@ namespace cw
 
       // form the create json message string
       //unsigned i = snprintf( p->buf, p->bufN, "{ \"op\":\"create\", \"parent\":\"%s\", \"children\":{ \"%s\":{ \"eleName\":\"%s\", \"appId\":%i, \"uuId\":%i, \"class\":\"%s\", \"title\":\"%s\" ", parentEleName, eleTypeStr, eleName, appId, newEle->uuId, clas, title );
-      unsigned i = snprintf( p->buf, p->bufN, "{ \"op\":\"create\", \"parentUuId\":\"%i\", \"type\":\"%s\", \"eleName\":\"%s\", \"appId\":\"%i\", \"uuId\":%i, \"class\":\"%s\", \"title\":\"%s\" ", parentEle->uuId, eleTypeStr, eleName, appId, newEle->uuId, clas, title );
+      unsigned i = snprintf( p->buf, p->bufN, "{ \"op\":\"create\", \"parentUuId\":\"%i\", \"type\":\"%s\", \"eleName\":\"%s\", \"appId\":\"%i\", \"uuId\":%i, \"className\":\"%s\", \"title\":\"%s\" ", parentEle->uuId, eleTypeStr, eleName, appId, newEle->uuId, clas, title );
       
 
       // add the UI specific attributes
@@ -763,7 +763,7 @@ cw::rc_t cw::ui::createFromObject( handle_t  h, const object_t* o,  unsigned wsS
   if( eleName != nullptr )
     if((o = o->find(eleName)) == nullptr )
     {
-      rc = cwLogError(kSyntaxErrorRC,"Unable to locate the 'engine' sub-configuration.");
+      rc = cwLogError(kSyntaxErrorRC,"Unable to locate the '%s' sub-configuration.",cwStringNullGuard(eleName));
       goto errLabel;
     }
   
@@ -773,7 +773,7 @@ cw::rc_t cw::ui::createFromObject( handle_t  h, const object_t* o,  unsigned wsS
 
  errLabel:
   if(rc != kOkRC )
-    rc = cwLogError(rc,"UI instantiation from object failed.", cwStringNullGuard(fn));
+    rc = cwLogError(rc,"UI instantiation from object failed.");
 
  return rc;
 }
