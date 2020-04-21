@@ -329,15 +329,16 @@ namespace cw
       return ele;
     }
 
-    rc_t _createElementsFromChildList( ui_t* p, object_t* po, unsigned wsSessId, ele_t* parentEle );
+    rc_t _createElementsFromChildList( ui_t* p, const object_t* po, unsigned wsSessId, ele_t* parentEle );
 
     // 
-    rc_t _createEleFromRsrsc( ui_t* p, ele_t* parentEle, const char* eleType, object_t* o, unsigned wsSessId )
+    rc_t _createEleFromRsrsc( ui_t* p, ele_t* parentEle, const char* eleType, const object_t* srcObj, unsigned wsSessId )
     {
       rc_t      rc      = kOkRC;
       object_t* co      = nullptr;
       ele_t*    ele     = nullptr;
       char*     eleName = nullptr;
+      object_t* o       = srcObj->duplicate(); // duplicate the rsrc object so that we can modify it.
 
       if( !o->is_dict() )
         return cwLogError(kSyntaxErrorRC,"All ui element resource records must be dictionaries.");
@@ -420,12 +421,15 @@ namespace cw
       if( co != nullptr )
         co->free();
 
+      if( o != nullptr )
+        o->free();
+
       return rc;
     }
     
     // 'od' is an object dictionary where each pair in the dictionary has
     // the form: 'eleType':{ <object> }    
-    rc_t _createElementsFromChildList( ui_t* p, object_t* po, unsigned wsSessId, ele_t* parentEle )
+    rc_t _createElementsFromChildList( ui_t* p, const object_t* po, unsigned wsSessId, ele_t* parentEle )
     {
       rc_t rc = kOkRC;
       
@@ -436,23 +440,25 @@ namespace cw
 
       for(unsigned i=0; i<childN; ++i)
       {
-        object_t* o = po->child_ele(i);
+        const object_t* o = po->child_ele(i);
         
         if( !o->is_pair() )
           return cwLogError(kSyntaxErrorRC,"All object dictionary children must be pairs.");
 
-        if((rc = _createEleFromRsrsc(p, parentEle, o->pair_label(), o->pair_value(), wsSessId )) != kOkRC )
-          return rc;
+        // skip pairs whose value is not a dict
+        if( o->pair_value()->is_dict() )
+          if((rc = _createEleFromRsrsc(p, parentEle, o->pair_label(), o->pair_value(), wsSessId )) != kOkRC )
+            return rc;
         
       }
       
       return rc;
     }
 
-    rc_t _createFromObj( ui_t* p, object_t* o, unsigned wsSessId, unsigned parentUuId )
+    rc_t _createFromObj( ui_t* p, const object_t* o, unsigned wsSessId, unsigned parentUuId )
     {
       rc_t        rc        = kOkRC;
-      object_t*   po        = nullptr;
+      const object_t*   po        = nullptr;
       ele_t*      parentEle = nullptr;
       char*       eleName   = nullptr;
 
@@ -460,7 +466,6 @@ namespace cw
       if((po = o->find("parent",kNoRecurseFl | kOptionalFl)) == nullptr )
         return cwLogError(kSyntaxErrorRC,"UI resources must have a root 'parent' value.");
       
-
       // get the parent element name
       if((rc = po->value(eleName)) != kOkRC )
         return cwLogError(kOpFailRC,"The root 'parent' value could not be accessed.");
@@ -470,13 +475,13 @@ namespace cw
         return cwLogError(kSyntaxErrorRC,"A parent UI element named '%s' could not be found.",cwStringNullGuard(eleName));
       
       // unlink the 'parent' pair
-      po = po->parent;
+      //po = po->parent;
       
-      po->unlink();
+      //po->unlink();
       
       rc =  _createElementsFromChildList( p, o, wsSessId, parentEle );
 
-      po->free();
+      //po->free();
 
       return rc;
     }
