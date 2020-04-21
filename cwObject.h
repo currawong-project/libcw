@@ -68,6 +68,8 @@ namespace cw
     rc_t (*value)( const struct object_str* o, unsigned tid, void* dst );
     void (*print)( const struct object_str* o, print_ctx_t& c );
     unsigned( *to_string)( const struct object_str* o, char* buf, unsigned bufByteN );
+    struct object_str* (*duplicate)( const struct object_str* src, struct object_str* parent );
+    
   } objType_t;
 
 
@@ -182,6 +184,7 @@ namespace cw
     
     unsigned to_string( char* buf, unsigned bufByteN ) const;
     void print(const print_ctx_t* c=NULL) const;
+    struct object_str* duplicate() const;
     
   } object_t;
 
