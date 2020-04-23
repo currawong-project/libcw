@@ -123,7 +123,7 @@ namespace cw
       appIdMapRecd_t* m = mem::allocZ<appIdMapRecd_t>();
       m->parentAppId = parentAppId;
       m->appId       = appId;
-      m->eleName     = mem::duplStr(eleName);
+      m->eleName     = eleName==nullptr ? nullptr : mem::duplStr(eleName);
       m->link        = p->appIdMap;
       p->appIdMap    = m;
 
@@ -136,7 +136,7 @@ namespace cw
       e->parent  = parent;
       e->uuId    = p->eleN;
       e->appId   = appId;
-      e->eleName    = mem::duplStr(eleName);
+      e->eleName    = eleName==nullptr ? nullptr : mem::duplStr(eleName);
       
       if( p->eleN == p->eleAllocN )
       {
@@ -211,7 +211,7 @@ namespace cw
     unsigned _findElementUuId( ui_t* p, const char* eleName )
     {
       for(unsigned i=0; i<p->eleN; ++i)
-        if( strcmp(p->eleA[i]->eleName,eleName) == 0 )
+        if( textCompare(p->eleA[i]->eleName,eleName) == 0 )
           return p->eleA[i]->uuId;
   
       return kInvalidId;
@@ -298,7 +298,7 @@ namespace cw
 
       // form the create json message string
       //unsigned i = snprintf( p->buf, p->bufN, "{ \"op\":\"create\", \"parent\":\"%s\", \"children\":{ \"%s\":{ \"eleName\":\"%s\", \"appId\":%i, \"uuId\":%i, \"class\":\"%s\", \"title\":\"%s\" ", parentEleName, eleTypeStr, eleName, appId, newEle->uuId, clas, title );
-      unsigned i = snprintf( p->buf, p->bufN, "{ \"op\":\"create\", \"parentUuId\":\"%i\", \"type\":\"%s\", \"eleName\":\"%s\", \"appId\":\"%i\", \"uuId\":%i, \"className\":\"%s\", \"title\":\"%s\" ", parentEle->uuId, eleTypeStr, eleName, appId, newEle->uuId, clas, title );
+      unsigned i = snprintf( p->buf, p->bufN, "{ \"op\":\"create\", \"parentUuId\":\"%i\", \"type\":\"%s\", \"eleName\":\"%s\", \"appId\":\"%i\", \"uuId\":%i, \"className\":\"%s\", \"title\":\"%s\" ", parentEle->uuId, eleTypeStr, eleName==nullptr ? "" : eleName, appId, newEle->uuId, clas, title );
       
 
       // add the UI specific attributes
@@ -737,7 +737,9 @@ unsigned cw::ui::findElementUuId( handle_t h, unsigned parentUuId, unsigned appI
   ui_t* p = _handleToPtr(h);
   
   for(unsigned i=0; i<p->eleN; ++i)
-    if( p->eleA[i]->parent->uuId==parentUuId && p->eleA[i]->appId == appId )
+    if(((p->eleA[i]->parent==nullptr && parentUuId==kRootUuId) ||
+        (p->eleA[i]->parent!=nullptr && p->eleA[i]->parent->uuId==parentUuId))
+      && p->eleA[i]->appId == appId )
       return p->eleA[i]->uuId;
   return kInvalidId;
 }
