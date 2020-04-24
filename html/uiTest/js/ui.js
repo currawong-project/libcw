@@ -301,7 +301,7 @@ function ui_create_ctl( parent_ele, ele_type, label, d, dfltEleClassName )
     // create an enclosing div
     var div_ele = dom_create_ele("div");
 
-    div_ele.className = dfltEleClassName + "Div"
+    div_ele.className = "uiCtlDiv " + dfltEleClassName + "Div"
 
     parent_ele.appendChild( div_ele );
     
@@ -317,7 +317,7 @@ function ui_create_ctl( parent_ele, ele_type, label, d, dfltEleClassName )
 	div_ele.appendChild(label_ele)    
     }
 
-    return ui_create_ele( label_ele, ele_type, d, dfltEleClassName );
+    return ui_create_ele( div_ele, ele_type, d, dfltEleClassName );
 }
 
 function ui_set_class_name( ele, d, dfltClassName )
@@ -336,12 +336,15 @@ function ui_create_div( parent_ele, d )
 
     if( div_ele != null )
     {
-	var p_ele = dom_create_ele("p")
 	
 	if( d.title != null && d.title.length > 0 )
+	{
+	    var p_ele = dom_create_ele("p")
+	    
 	    p_ele.innerHTML = d.title
 	
-	div_ele.appendChild( p_ele )
+	    div_ele.appendChild( p_ele )
+	}
     }
     
     return div_ele;

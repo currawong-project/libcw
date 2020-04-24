@@ -1,4 +1,7 @@
 
+body {
+    background-color: LightCyan;
+}
 
 .title_disconnected {
     color: red;
@@ -7,3 +10,58 @@
 .title_connected {
     color: green;
 }
+
+input, label, button, select {
+    font-family: sans-serif;
+    font-size: 10px;
+    height: 20px;
+}
+
+
+div {
+    /*border: 1px solid black;    */
+    background-color: LightSteelBlue;
+}
+
+div p {
+    font-family: sans-serif;
+    font-size: 12px;
+    margin-top: 2px;
+    margin-bottom: 2px;
+    background-color: LightSteelBlue;
+}
+
+label {
+    /*border: 1px solid red;*/
+    width: 50px;
+    padding-left: 10px;
+    margin-top: 3px;
+}
+
+
+.uiCtlDiv {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    background-color: LightBlue;
+}
+
+.uiCtlDiv input {
+    background-color: PowderBlue;
+}
+
+.uiNumberDiv input {
+    width: 50px;
+}
+
+.panel {
+    background-color: LightBlue;
+}
+.row  {
+    
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    background-color: LightBlue;
+}
+
