@@ -44,6 +44,7 @@ namespace cw
       appIdMapRecd_t*      appIdMap;  // map of application parent/child/js id's
       char*                buf;       // buf[bufN] output message formatting buffer
       unsigned             bufN;      //
+      bool                 initFl;    // This UI has been initialized.
     } ui_t;
 
     ui_t* _handleToPtr( handle_t h )
@@ -106,6 +107,11 @@ namespace cw
     {
       rc_t rc = kOkRC;
 
+      // if this UI has already been initialized then don't accept more appIdMaps
+      // because they will duplicate those from earlier sessions.
+      if( p->initFl )
+        return rc;
+
       // The 'eleName' must be valid (or there is no reason to create the map.
       // (since it will ultimately be used to locate the appId give the parentAppId and eleName)
       if( eleName == nullptr || strlen(eleName) == 0 )
@@ -118,7 +124,7 @@ namespace cw
       // verify that the parent/js pair is unique
       if( _findAppIdMap(p,parentAppId,eleName) != nullptr )
         return cwLogError(kDuplicateRC,"An attempt was made to register a duplicate parent app id/js id pair. parentId:%i appId:%i eleName:'%s'.",parentAppId,appId,cwStringNullGuard(eleName));
-              
+      
       // allocate and link in a new appId map record
       appIdMapRecd_t* m = mem::allocZ<appIdMapRecd_t>();
       m->parentAppId = parentAppId;
@@ -128,35 +134,6 @@ namespace cw
       p->appIdMap    = m;
 
       return rc;
-    }
-
-    ele_t* _createEle( ui_t* p, ele_t* parent, unsigned appId, const char* eleName )
-    {
-      ele_t* e = mem::allocZ<ele_t>();
-      e->parent  = parent;
-      e->uuId    = p->eleN;
-      e->appId   = appId;
-      e->eleName    = eleName==nullptr ? nullptr : mem::duplStr(eleName);
-      
-      if( p->eleN == p->eleAllocN )
-      {
-        p->eleAllocN += 100;
-        p->eleA       = mem::resizeZ<ele_t*>(p->eleA,p->eleAllocN);
-      }
-
-      p->eleA[ p->eleN ] = e;
-      p->eleN += 1;
-
-      // if the given appId was not valid ...
-      if( appId == kInvalidId && parent != nullptr )
-      {
-        appIdMapRecd_t* m;
-        // ... then try to look it up from the appIdMap.
-        if((m = _findAppIdMap( p, parent->appId, eleName)) != nullptr )
-          e->appId = m->appId;
-      }
-      
-      return e;
     }
 
     // Given a uuId return a pointer to the associated element.
@@ -240,6 +217,44 @@ namespace cw
       return rc;
     }
 
+    ele_t* _createEle( ui_t* p, ele_t* parent, unsigned appId, const char* eleName )
+    {
+      ele_t* e = mem::allocZ<ele_t>();
+      e->parent  = parent;
+      e->uuId    = p->eleN;
+      e->appId   = appId;
+      e->eleName    = eleName==nullptr ? nullptr : mem::duplStr(eleName);
+      
+      if( p->eleN == p->eleAllocN )
+      {
+        p->eleAllocN += 100;
+        p->eleA       = mem::resizeZ<ele_t*>(p->eleA,p->eleAllocN);
+      }
+
+      p->eleA[ p->eleN ] = e;
+      p->eleN += 1;
+
+      // if the given appId was not valid ...
+      if( appId == kInvalidId && parent != nullptr )
+      {
+        appIdMapRecd_t* m;
+        // ... then try to look it up from the appIdMap.
+        if((m = _findAppIdMap( p, parent->appId, eleName)) != nullptr )
+          e->appId = m->appId;
+      }
+      
+      return e;
+    }
+
+    ele_t* _findOrCreateEle( ui_t* p, ele_t* parentEle, const char* eleName, unsigned appId=kInvalidId )
+    {
+      ele_t* ele;
+      if((ele = _parentUuId_EleName_ToEle( p, parentEle->uuId, eleName, false )) == nullptr )
+        ele = _createEle(p, parentEle, appId, eleName );
+
+      return ele;
+    }
+    
 
     // Print the attribute data value.
     template< typename T0 >
@@ -294,7 +309,7 @@ namespace cw
         return cwLogError( kInvalidArgRC, "Unable to locate the parent element (id:%i).", parentUuId );
 
       // create the local representation of the new element
-      newEle = _createEle( p, parentEle, appId, eleName );
+      newEle = _findOrCreateEle( p, parentEle, eleName, appId );
 
       // form the create json message string
       //unsigned i = snprintf( p->buf, p->bufN, "{ \"op\":\"create\", \"parent\":\"%s\", \"children\":{ \"%s\":{ \"eleName\":\"%s\", \"appId\":%i, \"uuId\":%i, \"class\":\"%s\", \"title\":\"%s\" ", parentEleName, eleTypeStr, eleName, appId, newEle->uuId, clas, title );
@@ -320,14 +335,6 @@ namespace cw
       return rc;
     }
 
-    ele_t* _findOrCreateEle( ui_t* p, ele_t* parentEle, const char* eleName )
-    {
-      ele_t* ele;
-      if((ele = _parentUuId_EleName_ToEle( p, parentEle->uuId, eleName, false )) == nullptr )
-        ele = _createEle(p, parentEle, kInvalidId, eleName );
-
-      return ele;
-    }
 
     rc_t _createElementsFromChildList( ui_t* p, const object_t* po, unsigned wsSessId, ele_t* parentEle );
 
@@ -343,7 +350,7 @@ namespace cw
       if( !o->is_dict() )
         return cwLogError(kSyntaxErrorRC,"All ui element resource records must be dictionaries.");
       
-      // if this object has a 'children' list then unlink it an save it for later
+      // if this object has a 'children' list then unlink it and save it for later
       if((co = o->find("children", kNoRecurseFl | kOptionalFl)) != nullptr )
       {
         co = co->parent;
@@ -403,8 +410,6 @@ namespace cw
         goto errLabel;
       }
 
-      //printf("%s\n",p->buf);
-     
       if((rc =  _websockSend( p, wsSessId, p->buf )) != kOkRC )
       {
         rc = cwLogError(rc,"The creation request send failed on UI element '%s'.", cwStringNullGuard(eleName));
@@ -413,9 +418,13 @@ namespace cw
      
       
       // if this element has a list of children then create them here
-      if( co != nullptr )
-        rc = _createElementsFromChildList(p, co->pair_value(), wsSessId, ele );
-
+      if( co != nullptr || textCompare(eleType,"div")==0 )
+      {
+        // Note that 'div's need not have an explicit 'children' node.
+        // Any child node of a 'div' with a dictionary as a value is a child control.
+        const object_t* childL = co!=nullptr ? co->pair_value() : srcObj;
+        rc = _createElementsFromChildList(p, childL, wsSessId, ele );
+      }
 
     errLabel:
       if( co != nullptr )
@@ -739,7 +748,7 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* msg, unsi
     case kInitOpId:
       // Pass on the 'init' msg to the app.
       p->uiCbFunc( p->uiCbArg, wsSessId, opId, kInvalidId, kInvalidId, kInvalidId, nullptr );
-
+      p->initFl = true;
       break;
                 
     case kValueOpId:
