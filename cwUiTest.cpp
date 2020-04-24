@@ -15,9 +15,9 @@ namespace cw
   {
     typedef struct ui_test_str
     {
-      const char* uiCfgFn;
+      const char*   uiCfgFn;
       srv::handle_t wsUiSrvH;
-
+      
       bool     appCheckFl;
       unsigned appSelectIndex;
       int      appInteger;
@@ -68,7 +68,7 @@ namespace cw
 
       if((rc = createDiv( uiH, divUuId, wsSessId, kInvalidId, "myDivId", kDivId, "divClass", "My Panel" )) != kOkRC )
         goto errLabel;
-      
+
       if((rc = createButton( uiH, uuid, wsSessId, divUuId, "myBtnId", kBtnId, "btnClass", "Push Me" )) != kOkRC )
         goto errLabel;
 
@@ -190,11 +190,11 @@ namespace cw
       switch( opId )
       {
         case kConnectOpId:
-          cwLogInfo("Connect: wsSessId:%i.",wsSessId);
+          cwLogInfo("UI Test Connect: wsSessId:%i.",wsSessId);
           break;
           
         case kDisconnectOpId:
-          cwLogInfo("Disconnect: wsSessId:%i.",wsSessId);          
+          cwLogInfo("UI Test Disconnect: wsSessId:%i.",wsSessId);          
           break;
           
         case kInitOpId:
