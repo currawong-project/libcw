@@ -18,6 +18,13 @@ namespace cw
       const char* uiCfgFn;
       srv::handle_t wsUiSrvH;
 
+      bool     appCheckFl;
+      unsigned appSelectIndex;
+      int      appInteger;
+      float    appFloat;
+      int      appProgress;
+      char*    appString;
+      
     } ui_test_t;
 
     enum
@@ -31,7 +38,8 @@ namespace cw
      kOption2Id,
      kOption3Id,
      kStringId,
-     kNumberId,
+     kIntegerId,
+     kFloatId,
      kProgressId,
 
      kPanelDivId,
@@ -82,7 +90,10 @@ namespace cw
       if((rc = createString( uiH, uuid, wsSessId, divUuId, "myStringId", kStringId, "stringClass", "String", "a string value" )) != kOkRC )
         goto errLabel;
       
-      if((rc = createNumber( uiH, uuid, wsSessId, divUuId, "myNumberId", kNumberId, "numberClass", "Number", 10, 0, 100, 1, 0 )) != kOkRC )
+      if((rc = createNumber( uiH, uuid, wsSessId, divUuId, "myIntegerId", kIntegerId, "integerClass", "Integer", 10, 0, 100, 1, 0 )) != kOkRC )
+        goto errLabel;
+
+      if((rc = createNumber( uiH, uuid, wsSessId, divUuId, "myFloatId", kFloatId, "floatClass", "Float", 10.0, 0.53, 100.97, 1.0, 5 )) != kOkRC )
         goto errLabel;
       
       if((rc = createProgress(  uiH, uuid, wsSessId, divUuId, "myProgressId", kProgressId, "progressClass", "Progress", 5, 0, 10 )) != kOkRC )
@@ -107,26 +118,69 @@ namespace cw
 
         case kCheckId:
           printf("Check:%i\n", v->u.b);
+          p->appCheckFl = v->u.b;
           break;
 
         case kSelectId:
           printf("Selected: optionId:%i\n", v->u.i);
+          p->appSelectIndex = v->u.i;
           break;
 
         case kStringId:
           printf("String: %s\n",v->u.s);
-
-        case kNumberId:
-          if( v->tid == kIntTId )
-            printf("Number: %i\n",v->u.i);
-          else
-            printf("Number: %f\n",v->u.d);
+          mem::release(p->appString);
+          if( v->u.s != nullptr )
+            p->appString = mem::duplStr(v->u.s);
+          break;
+          
+        case kIntegerId:
+          printf("Integer: %i\n",v->u.i);
+          p->appInteger = v->u.i;
+          break;
+          
+        case kFloatId:
+          printf("Float: %f\n",v->u.f);
+          p->appFloat = v->u.f;
           
       }
 
       return rc;
     }
+
+    rc_t _handleUiEchoMsg( ui_test_t* p, unsigned wsSessId, unsigned parentAppId, unsigned  uuId, unsigned appId )
+    {
+      rc_t rc = kOkRC;
+      
+      switch( appId )
+      {
+        case kCheckId:
+          sendValueBool( uiHandle( p->wsUiSrvH ), wsSessId, uuId, p->appCheckFl );
+          break;
+
+        case kSelectId:
+          sendValueInt( uiHandle( p->wsUiSrvH ), wsSessId, uuId, p->appSelectIndex );
+          break;
+
+        case kStringId:
+          sendValueString( uiHandle( p->wsUiSrvH ), wsSessId, uuId, p->appString );
+          break;
+          
+        case kIntegerId:
+          sendValueInt( uiHandle( p->wsUiSrvH ), wsSessId, uuId, p->appInteger );
+          break;
+
+        case kFloatId:
+          sendValueFloat( uiHandle( p->wsUiSrvH ), wsSessId, uuId, p->appFloat );
+          break;
+          
+        case kProgressId:
+          sendValueInt( uiHandle( p->wsUiSrvH ), wsSessId, uuId, p->appProgress );
+          break;
+      }
+      return rc;
+    }
     
+
 
     // This function is called by the websocket with messages comring from a remote UI.
     rc_t _uiTestCallback( void* cbArg, unsigned wsSessId, opId_t opId, unsigned parentAppId, unsigned uuId, unsigned appId, const value_t* v )
@@ -140,7 +194,7 @@ namespace cw
           break;
           
         case kDisconnectOpId:
-          cwLogInfo("Disconnect: wsSessId:%i.",wsSessId);
+          cwLogInfo("Disconnect: wsSessId:%i.",wsSessId);          
           break;
           
         case kInitOpId:
@@ -151,6 +205,10 @@ namespace cw
           _handleUiValueMsg( p, wsSessId, parentAppId, uuId, appId, v );
           break;
 
+        case kEchoOpId:
+          _handleUiEchoMsg( p, wsSessId, parentAppId, uuId, appId );
+          break;
+          
         case kInvalidOpId:
           // fall through
         default:
@@ -175,6 +233,15 @@ cw::rc_t cw::ui::test( )
   const unsigned sbufN            = 31;
   char           sbuf[ sbufN+1 ];  
   ui_test_t*     app = mem::allocZ<ui_test_t>();
+
+
+  app->appCheckFl     = true;
+  app->appSelectIndex = 1;
+  app->appInteger     = 5;
+  app->appFloat       = 2.56;
+  app->appProgress    = 7;
+  app->appString      = mem::duplStr("fooz");
+  
 
   app->uiCfgFn = "/home/kevin/src/cwtest/src/libcw/html/uiTest/ui.cfg";
 
@@ -207,7 +274,8 @@ cw::rc_t cw::ui::test( )
   rc_t rc1 = kOkRC;
   if( app->wsUiSrvH.isValid() )
     rc1 = srv::destroy(app->wsUiSrvH);
-  
+
+  mem::release(app->appString);
   mem::release(app);
   
   return rcSelect(rc,rc1);   

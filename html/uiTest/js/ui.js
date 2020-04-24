@@ -232,8 +232,13 @@ function ui_send_value( ele, typeId, value )
 
 function ui_send_bool_value(   ele, value ) { ui_send_value(ele,'b',value); }
 function ui_send_int_value(    ele, value ) { ui_send_value(ele,'i',value); }
+function ui_send_float_value(   ele, value ) { ui_send_value(ele,'f',value); }
 function ui_send_string_value( ele, value ) { ui_send_value(ele,'s',value); }
 
+function ui_send_echo( ele )
+{
+    ws_send("echo " + ele.id ) 
+}
 
 function ui_print_children( eleId )
 {
@@ -261,7 +266,7 @@ function ui_get_parent( parentId )
 }
 
 
-function ui_create_ele( parent_ele, ele_type, d )
+function ui_create_ele( parent_ele, ele_type, d, dfltClassName )
 {
     // create the ctl object
     var ele = dom_create_ele(ele_type);
@@ -272,12 +277,17 @@ function ui_create_ele( parent_ele, ele_type, d )
     {
 	ele.id = d.uuId;
 
+	if(d.hasOwnProperty('className') )
+	    ele.className = d.className;
+	else
+	    ele.className = dfltClassName;
+
 	if(d.hasOwnProperty('appId'))
 	    ele.appId = d.appId;
 	else
 	    ele.appId = null;
-	
-	console.log("Created: " + ele_type  + " parent:" + d.parentUuId + " id:" + ele.id + " appId:" + ele.appId)
+
+	//console.log("Created: " + ele_type  + " parent:" + d.parentUuId + " id:" + ele.id + " appId:" + ele.appId)
 	
 	parent_ele.appendChild(ele);
 
@@ -286,12 +296,12 @@ function ui_create_ele( parent_ele, ele_type, d )
     return ele
 }
 
-function ui_create_ctl( parent_ele, ele_type, label, d )
+function ui_create_ctl( parent_ele, ele_type, label, d, dfltEleClassName )
 {
     // create an enclosing div
     var div_ele = dom_create_ele("div");
 
-    div_ele.className = d.clas;
+    div_ele.className = dfltEleClassName + "Div"
 
     parent_ele.appendChild( div_ele );
     
@@ -307,18 +317,25 @@ function ui_create_ctl( parent_ele, ele_type, label, d )
 	div_ele.appendChild(label_ele)    
     }
 
-    return ui_create_ele( label_ele, ele_type, d );
+    return ui_create_ele( label_ele, ele_type, d, dfltEleClassName );
 }
 
+function ui_set_class_name( ele, d, dfltClassName )
+{
+    if( d.hasOwnProperty("className") )
+	ele.className = d.className;
+    else
+	ele.className = dfltClassName
+
+    return ele
+}
 
 function ui_create_div( parent_ele, d )
 {
-    var div_ele =  ui_create_ele( parent_ele, "div", d );
+    var div_ele =  ui_create_ele( parent_ele, "div", d, "uiDiv" );
 
     if( div_ele != null )
     {
-	div_ele.className = d.clas
-	
 	var p_ele = dom_create_ele("p")
 	
 	if( d.title != null && d.title.length > 0 )
@@ -332,12 +349,12 @@ function ui_create_div( parent_ele, d )
 
 function ui_create_title( parent_ele, d )
 {
-    return ui_create_ele( parent_ele, "label", d );
+    return ui_create_ele( parent_ele, "label", d, "uiTitle" );
 }
 
 function ui_create_button( parent_ele, d )
 {
-    var ele = ui_create_ctl( parent_ele, "button", null, d );
+    var ele = ui_create_ctl( parent_ele, "button", null, d, "uiButton" );
 
     if( ele != null )
     {
@@ -350,7 +367,7 @@ function ui_create_button( parent_ele, d )
 
 function ui_create_check( parent_ele, d )
 {
-    var ele = ui_create_ctl( parent_ele, "input", d.title, d )
+    var ele = ui_create_ctl( parent_ele, "input", d.title, d, "uiCheck" )
     
     if( ele != null )
     {
@@ -370,18 +387,18 @@ function ui_on_select( ele )
 
 function ui_create_select( parent_ele, d )
 {
-    var sel_ele = ui_create_ctl( parent_ele, "select", d.title, d );
+    var sel_ele = ui_create_ctl( parent_ele, "select", d.title, d, "uiSelect" );
     sel_ele.onchange = function() { ui_on_select(this) }
     return sel_ele;
 }
 
 function ui_create_option( parent_ele, d )
 {
-    var opt_ele = ui_create_ele( parent_ele, "option", d );
+    var opt_ele = ui_create_ele( parent_ele, "option", d, "uiOption" );
 
     if( opt_ele != null )
     {
-	opt_ele.className = d.clas;
+	opt_ele.className = d.className;
 	opt_ele.innerHTML = d.title;
     }
     
@@ -390,13 +407,15 @@ function ui_create_option( parent_ele, d )
 
 function ui_create_string( parent_ele, d )
 {
-    var ele = ui_create_ctl( parent_ele, "input", d.title, d );
+    var ele = ui_create_ctl( parent_ele, "input", d.title, d, "uiString" );
 
     if( ele != null )
     {
 	ele.value = d.value;
 	ele.addEventListener('keyup', function(e) { if(e.keyCode===13){  ui_send_string_value(this, this.value); }} );
     }
+
+    return ele;
 }
 
 function ui_number_keyup( e )
@@ -414,14 +433,21 @@ function ui_number_keyup( e )
 		val = Number.parseInt(ele.value)
 	    else
 		val = Number.parseFloat(ele.value)
-	    
+
 	    if( !(ele.minValue<=val && val<=ele.maxValue))
 		ele.style.borderColor = "red"
 	    else	
 	    {
 		ele.style.borderColor = ""
-		
-		ui_send_int_value(ele,ele.value);
+
+		if( ele.decpl == 0 )
+		{
+		    ui_send_int_value(ele,ele.value);
+		}
+		else
+		{
+		    ui_send_float_value(ele,ele.value);
+		}
 	    }
 	}
     }
@@ -429,7 +455,7 @@ function ui_number_keyup( e )
 
 function ui_create_number( parent_ele, d )
 {
-    var ele = ui_create_ctl( parent_ele, "input", d.title, d );
+    var ele = ui_create_ctl( parent_ele, "input", d.title, d, "uiNumber" );
     
     if( ele != null )
     {
@@ -452,7 +478,7 @@ function ui_set_progress( ele_id, value )
 
 function ui_create_progress( parent_ele, d )
 {
-    var ele = ui_create_ctl( parent_ele, "progress", d.title, d );
+    var ele = ui_create_ctl( parent_ele, "progress", d.title, d, "uiProgress" );
 
     if( ele != null )
     {
@@ -464,6 +490,62 @@ function ui_create_progress( parent_ele, d )
     return ele
 }
 
+function ui_set_value( d )
+{
+    console.log(d)
+    var ele = dom_id_to_ele(d.uuId.toString())
+
+    if( ele == null )
+	console.log("ele not found");
+    else
+	if( !ele.hasOwnProperty("uiEleType") )
+	    console.log("No type");
+    
+    if( ele != null && ele.hasOwnProperty("uiEleType"))
+    {
+	console.log("found: "+ele.uiEleType)
+	
+	switch( ele.uiEleType )
+	{
+	    case "div":
+	    break;
+
+	    case "title":
+	    ele.innerHTML = d.value
+	    break;
+
+	    case "button":	    
+	    break;
+
+	    case "check":
+	    console.log(d)
+	    dom_set_checkbox(ele.id,d.value)
+	    break;
+
+	    case "select":
+	    ele.selectedIndex = d.value
+	    break;
+
+	    case "option":
+	    break;
+
+	    case "string":
+	    ele.value = d.value
+	    break;
+
+	    case "number":
+	    ele.value = d.value
+	    break;
+
+	    case "progress":
+	    ele.value = d.value
+	    break;
+	    
+	    default:
+	    ui_error("Unknown UI element type: " + d.type )
+	}
+    }
+}
 
 function ui_create( d )
 {
@@ -521,6 +603,12 @@ function ui_create( d )
 	    ui_error("Unknown UI element type: " + d.type )
 	}
 
+	if( ele != null )
+	{
+	    ele.uiEleType = d.type;
+	    ui_send_echo(ele);
+	}
+
     }
 }
 
@@ -546,7 +634,10 @@ function ws_on_msg( jsonMsg )
 	ui_create( d )
 	break;
 
-
+	case 'value':
+	ui_set_value( d )
+	break;
+	
 	default:
 	ui_error("Unknown UI operation. " + d.op )
     }

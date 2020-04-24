@@ -310,7 +310,7 @@ namespace cw
       if( i >= p->bufN )
         return cwLogError(kBufTooSmallRC,"The UI message formatting buffer is too small. (size:%i bytes)", p->bufN);
 
-      printf("%s\n",p->buf);
+      //printf("%s\n",p->buf);
 
       // send the message 
       rc =  _websockSend( p, wsSessId, p->buf );
@@ -403,7 +403,7 @@ namespace cw
         goto errLabel;
       }
 
-      printf("%s\n",p->buf);
+      //printf("%s\n",p->buf);
      
       if((rc =  _websockSend( p, wsSessId, p->buf )) != kOkRC )
       {
@@ -565,6 +565,31 @@ namespace cw
       return ele;
     }
 
+    ele_t* _parse_echo_msg(  ui_t* p, const char* msg )
+    {
+      unsigned eleUuId = kInvalidId;
+      ele_t* ele = nullptr;
+      
+      if( sscanf(msg, "echo %i",&eleUuId) != 1 )
+      {
+        cwLogError(kSyntaxErrorRC,"Invalid message from UI: '%s'.", msg );
+        goto errLabel;
+      }
+
+
+      // locate the element record
+      if((ele = _uuIdToEle( p, eleUuId )) == nullptr )
+      {
+        cwLogError(kInvalidIdRC,"UI message elment not found.");
+        goto errLabel;
+      }
+
+    errLabel:
+      
+      return ele;
+      
+    }
+
     opId_t _labelToOpId( const char* label )
     {
       typedef struct
@@ -578,6 +603,7 @@ namespace cw
          { kConnectOpId,        "connect" },
          { kInitOpId,           "init" },
          { kValueOpId,          "value" },
+         { kEchoOpId,           "echo" },
          { kDisconnectOpId,     "disconnect" },
          { kInvalidOpId,        "<invalid>" },       
         };
@@ -588,6 +614,32 @@ namespace cw
 
       return kInvalidOpId;
     }
+
+    template< typename T >
+      rc_t _sendValue( ui_t* p, unsigned wsSessId, unsigned uuId, const char* vFmt, const T& value, int vbufN=32 )
+    {
+      rc_t rc = kOkRC;
+      
+      if( p->sendCbFunc != nullptr )
+      {
+        const char* mFmt = "{ \"op\":\"value\", \"uuId\":%i, \"value\":%s }";
+        const int   mbufN = 128;
+        char        vbuf[vbufN];
+        char        mbuf[mbufN];
+    
+        if( snprintf(vbuf,vbufN,vFmt,value) >= vbufN-1 )
+          return cwLogError(kBufTooSmallRC,"The value msg buffer is too small.");
+
+        if( snprintf(mbuf,mbufN,mFmt,uuId,vbuf) >= mbufN-1 )
+          return cwLogError(kBufTooSmallRC,"The msg buffer is too small.");
+
+        p->sendCbFunc(p->sendCbArg,wsSessId,mbuf,strlen(mbuf));
+      }
+
+      return rc;
+    }
+
+    
   }
 }
 
@@ -662,11 +714,15 @@ cw::rc_t cw::ui::destroy( handle_t& h )
 
 cw::rc_t cw::ui::onConnect( handle_t h, unsigned wsSessId )
 {
+  ui_t* p = _handleToPtr(h);
+  p->uiCbFunc( p->uiCbArg, wsSessId, kConnectOpId, kInvalidId, kInvalidId, kInvalidId, nullptr );
   return kOkRC;
 }
 
 cw::rc_t cw::ui::onDisconnect( handle_t h, unsigned wsSessId )
 {
+  ui_t* p = _handleToPtr(h);
+  p->uiCbFunc( p->uiCbArg, wsSessId, kDisconnectOpId, kInvalidId, kInvalidId, kInvalidId, nullptr );
   return kOkRC;
 }
 
@@ -694,6 +750,18 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* msg, unsi
         unsigned parentEleAppId = ele->parent == nullptr ? kInvalidId : ele->parent->appId;
 
         p->uiCbFunc( p->uiCbArg, wsSessId, opId, parentEleAppId, ele->uuId, ele->appId, &value );
+                  
+      }
+      break;
+
+    case kEchoOpId:
+      if((ele = _parse_echo_msg(p,(const char*)msg)) == nullptr )
+        cwLogError(kOpFailRC,"UI Echo message parse failed.");
+      else
+      {
+        unsigned parentEleAppId = ele->parent == nullptr ? kInvalidId : ele->parent->appId;
+
+        p->uiCbFunc( p->uiCbArg, wsSessId, opId, parentEleAppId, ele->uuId, ele->appId, nullptr );
                   
       }
       break;
@@ -874,7 +942,43 @@ cw::rc_t cw::ui::registerAppIds(  handle_t h, const appIdMap_t* map, unsigned ma
   return rc;
 }
 
+cw::rc_t cw::ui::sendValueBool( handle_t h, unsigned wsSessId, unsigned uuId, bool value )
+{
+  ui_t* p  = _handleToPtr(h);
+  return _sendValue<int>(p,wsSessId,uuId,"%i",value?1:0);
+}
 
+cw::rc_t cw::ui::sendValueInt( handle_t h, unsigned wsSessId, unsigned uuId, int value )
+{
+  ui_t* p  = _handleToPtr(h);
+  return _sendValue<int>(p,wsSessId,uuId,"%i",value);  
+}
+
+cw::rc_t cw::ui::sendValueUInt( handle_t h, unsigned wsSessId, unsigned uuId, unsigned value )
+{
+  ui_t* p  = _handleToPtr(h);
+  return _sendValue<unsigned>(p,wsSessId,uuId,"%i",value);
+}
+
+cw::rc_t cw::ui::sendValueFloat( handle_t h, unsigned wsSessId, unsigned uuId, float value )
+{
+  ui_t* p  = _handleToPtr(h);
+  return _sendValue<float>(p,wsSessId,uuId,"%f",value);
+  
+}
+
+cw::rc_t cw::ui::sendValueDouble( handle_t h, unsigned wsSessId, unsigned uuId, double value )
+{
+  ui_t* p  = _handleToPtr(h);
+  return _sendValue<double>(p,wsSessId,uuId,"%f",value);
+}
+
+cw::rc_t cw::ui::sendValueString( handle_t h, unsigned wsSessId, unsigned uuId, const char* value )
+{
+  ui_t* p  = _handleToPtr(h);
+  // +10 allows for extra value buffer space for double quotes and slashed
+  return _sendValue<const char*>(p,wsSessId,uuId,"\"%s\"",value,strlen(value)+10);
+}
 
 namespace cw
 {
@@ -898,11 +1002,11 @@ namespace cw
       rc_t _destroy( ui_ws_t* p )
       {
         rc_t rc;
-        
-        if((rc = ui::destroy(p->uiH)) != kOkRC )
-          return rc;
 
         if((rc = websock::destroy(p->wsH)) != kOkRC )
+          return rc;
+        
+        if((rc = ui::destroy(p->uiH)) != kOkRC )
           return rc;
 
         mem::release(p);

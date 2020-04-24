@@ -21,6 +21,7 @@ namespace cw
      kConnectOpId,
      kInitOpId,
      kValueOpId,
+     kEchoOpId,
      kDisconnectOpId
     } opId_t;
 
@@ -104,7 +105,13 @@ namespace cw
     // Register parent/child/name app id's 
     rc_t registerAppIds(  handle_t h, const appIdMap_t* map, unsigned mapN );
 
-
+    rc_t sendValueBool(   handle_t h, unsigned wsSessId, unsigned uuId, bool value );
+    rc_t sendValueInt(    handle_t h, unsigned wsSessId, unsigned uuId, int value );
+    rc_t sendValueUInt(   handle_t h, unsigned wsSessId, unsigned uuId, unsigned value );
+    rc_t sendValueFloat(  handle_t h, unsigned wsSessId, unsigned uuId, float value );
+    rc_t sendValueDouble( handle_t h, unsigned wsSessId, unsigned uuId, double value );
+    rc_t sendValueString( handle_t h, unsigned wsSessId, unsigned uuId, const char* value );
+    
     namespace ws
     {
       typedef handle<struct ui_ws_str> handle_t;
@@ -134,6 +141,8 @@ namespace cw
       
       websock::handle_t websockHandle( handle_t h );
       ui::handle_t      uiHandle( handle_t h );
+
+
       
     }
 
