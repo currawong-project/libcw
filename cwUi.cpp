@@ -47,7 +47,6 @@ namespace cw
       appIdMapRecd_t*      appIdMap;  // map of application parent/child/js id's
       char*                buf;       // buf[bufN] output message formatting buffer
       unsigned             bufN;      //
-      bool                 initFl;    // This UI has been initialized.
       
       unsigned*            sessA;
       unsigned             sessN;
@@ -115,11 +114,6 @@ namespace cw
     rc_t _allocAppIdMap( ui_t* p, unsigned parentAppId, unsigned appId, const char* eleName )
     {
       rc_t rc = kOkRC;
-
-      // if this UI has already been initialized then don't accept more appIdMaps
-      // because they will duplicate those from earlier sessions.
-      if( p->initFl )
-        return rc;
 
       // The 'eleName' must be valid (or there is no reason to create the map.
       // (since it will ultimately be used to locate the appId give the parentAppId and eleName)
@@ -233,7 +227,7 @@ namespace cw
       e->uuId    = p->eleN;
       e->appId   = appId;
       e->eleName    = eleName==nullptr ? nullptr : mem::duplStr(eleName);
-      
+
       if( p->eleN == p->eleAllocN )
       {
         p->eleAllocN += 100;
@@ -251,14 +245,29 @@ namespace cw
         if((m = _findAppIdMap( p, parent->appId, eleName)) != nullptr )
           e->appId = m->appId;
       }
-      
+
+      printf("uuid:%i appId:%i %s\n", e->uuId,e->appId,cwStringNullGuard(e->eleName));
+       
       return e;
     }
 
     ele_t* _findOrCreateEle( ui_t* p, ele_t* parentEle, const char* eleName, unsigned appId=kInvalidId )
     {
-      ele_t* ele;
-      if((ele = _parentUuId_EleName_ToEle( p, parentEle->uuId, eleName, false )) == nullptr )
+      ele_t* ele = nullptr;
+
+      // if an ele name was given
+      if( eleName != nullptr )
+      {
+        // check for an existing child of parentEle with the same name
+        ele = _parentUuId_EleName_ToEle( p, parentEle->uuId, eleName, false );
+
+        // if a child with the same name does exist but has a different id then
+        // ignore the match and create a new element
+        if( ele != nullptr && appId != kInvalidId && ele->appId != appId )
+          ele = nullptr;
+      }
+      
+      if(ele == nullptr )
         ele = _createEle(p, parentEle, appId, eleName );
 
       return ele;
@@ -730,6 +739,7 @@ cw::rc_t cw::ui::destroy( handle_t& h )
   return rc;
 }
 
+
 unsigned        cw::ui::sessionIdCount(handle_t h)
 {
   ui_t* p = _handleToPtr(h);
@@ -796,7 +806,6 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* msg, unsi
     case kInitOpId:
       // Pass on the 'init' msg to the app.
       p->uiCbFunc( p->uiCbArg, wsSessId, opId, kInvalidId, kInvalidId, kInvalidId, nullptr );
-      p->initFl = true;
       break;
                 
     case kValueOpId:
