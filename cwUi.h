@@ -22,6 +22,7 @@ namespace cw
      kInitOpId,
      kValueOpId,
      kEchoOpId,
+     kIdleOpId,
      kDisconnectOpId
     } opId_t;
 
@@ -68,6 +69,9 @@ namespace cw
       unsigned       fmtBufByteN = 4096 );
     
     rc_t destroy( handle_t& h );
+
+    unsigned        sessionIdCount(handle_t h);
+    const unsigned* sessionIdArray(handle_t h);
 
     rc_t onConnect(    handle_t h, unsigned wsSessId );
     rc_t onDisconnect( handle_t h, unsigned wsSessId );

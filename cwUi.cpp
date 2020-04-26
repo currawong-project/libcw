@@ -15,6 +15,9 @@ namespace cw
 {
   namespace ui
   {
+
+    
+    
     typedef struct appIdMapRecd_str
     {
       struct appIdMapRecd_str* link;
@@ -29,7 +32,7 @@ namespace cw
       struct ele_str* parent;  // pointer to parent ele - or nullptr if this ele is attached to the root ui ele
       unsigned        uuId;    // UI unique id - automatically generated and unique among all elements that are part of this ui_t object.
       unsigned        appId;   // application assigned id - application assigned id
-      char*           eleName;    // javascript id
+      char*           eleName; // javascript id
     } ele_t;
     
     typedef struct ui_str
@@ -45,6 +48,11 @@ namespace cw
       char*                buf;       // buf[bufN] output message formatting buffer
       unsigned             bufN;      //
       bool                 initFl;    // This UI has been initialized.
+      
+      unsigned*            sessA;
+      unsigned             sessN;
+      unsigned             sessAllocN;
+      
     } ui_t;
 
     ui_t* _handleToPtr( handle_t h )
@@ -78,6 +86,7 @@ namespace cw
         m = m0;
       }
 
+      mem::release(p->sessA);
       mem::release(p->eleA);
       mem::release(p->buf);      
       mem::release(p);
@@ -613,6 +622,7 @@ namespace cw
          { kInitOpId,           "init" },
          { kValueOpId,          "value" },
          { kEchoOpId,           "echo" },
+         { kIdleOpId,           "idle" },
          { kDisconnectOpId,     "disconnect" },
          { kInvalidOpId,        "<invalid>" },       
         };
@@ -720,10 +730,34 @@ cw::rc_t cw::ui::destroy( handle_t& h )
   return rc;
 }
 
+unsigned        cw::ui::sessionIdCount(handle_t h)
+{
+  ui_t* p = _handleToPtr(h);
+  return p->sessN;
+}
+
+const unsigned* cw::ui::sessionIdArray(handle_t h)
+{
+  ui_t* p = _handleToPtr(h);
+  return p->sessA;
+}
+
 
 cw::rc_t cw::ui::onConnect( handle_t h, unsigned wsSessId )
 {
   ui_t* p = _handleToPtr(h);
+
+  // if the session id array is full ...
+  if( p->sessN == p->sessAllocN )
+  {
+    // ... then expand it
+    p->sessAllocN += 16;
+    p->sessA = mem::resizeZ<unsigned>(p->sessA,p->sessAllocN);
+  }
+
+  // append the new session id
+  p->sessA[p->sessN++] = wsSessId;
+  
   p->uiCbFunc( p->uiCbArg, wsSessId, kConnectOpId, kInvalidId, kInvalidId, kInvalidId, nullptr );
   return kOkRC;
 }
@@ -731,7 +765,21 @@ cw::rc_t cw::ui::onConnect( handle_t h, unsigned wsSessId )
 cw::rc_t cw::ui::onDisconnect( handle_t h, unsigned wsSessId )
 {
   ui_t* p = _handleToPtr(h);
+
   p->uiCbFunc( p->uiCbArg, wsSessId, kDisconnectOpId, kInvalidId, kInvalidId, kInvalidId, nullptr );
+
+  // erase the disconnected session id by shrinking the array
+  for(unsigned i=0; i<p->sessN; ++i)
+    if( p->sessA[i] == wsSessId )
+    {
+      for(; i+1<p->sessN; ++i)
+        p->sessA[i] = p->sessA[i+1];
+      
+      p->sessN -= 1;
+      break;
+    }
+    
+  
   return kOkRC;
 }
 
@@ -770,9 +818,12 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* msg, unsi
       {
         unsigned parentEleAppId = ele->parent == nullptr ? kInvalidId : ele->parent->appId;
 
-        p->uiCbFunc( p->uiCbArg, wsSessId, opId, parentEleAppId, ele->uuId, ele->appId, nullptr );
-                  
+        p->uiCbFunc( p->uiCbArg, wsSessId, opId, parentEleAppId, ele->uuId, ele->appId, nullptr );               
       }
+      break;
+
+    case kIdleOpId:
+      p->uiCbFunc( p->uiCbArg, kInvalidId, opId, kInvalidId, kInvalidId, kInvalidId, nullptr );                     
       break;
 
     case kInvalidOpId:
@@ -1139,7 +1190,9 @@ cw::rc_t cw::ui::ws::exec( handle_t h, unsigned timeOutMs )
 
   if((rc = websock::exec( p->wsH, p->wsTimeOutMs )) != kOkRC)
     cwLogError(rc,"The UI websock execution failed.");
-    
+
+  // make the idle callback
+  ui::onReceive( p->uiH, kInvalidId, "idle", strlen("idle") );
         
   return rc;
 }
