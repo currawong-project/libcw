@@ -371,11 +371,13 @@ namespace cw
     // 
     rc_t _createEleFromRsrsc( ui_t* p, ele_t* parentEle, const char* eleType, const object_t* srcObj, unsigned wsSessId )
     {
-      rc_t      rc      = kOkRC;
-      object_t* co      = nullptr;
-      ele_t*    ele     = nullptr;
-      char*     eleName = nullptr;
-      object_t* o       = srcObj->duplicate(); // duplicate the rsrc object so that we can modify it.
+      rc_t        rc          = kOkRC;
+      object_t*   co          = nullptr;
+      ele_t*      ele         = nullptr;
+      char*       eleName     = nullptr;
+      object_t*   o           = srcObj->duplicate(); // duplicate the rsrc object so that we can modify it.
+      const char* divAliasA[] = { "row","col","panel",nullptr };
+      bool        divAliasFl  = false;
 
       if( !o->is_dict() )
         return cwLogError(kSyntaxErrorRC,"All ui element resource records must be dictionaries.");
@@ -401,12 +403,14 @@ namespace cw
         goto errLabel;
       }
 
+      // insert the UuId node
       if( o->insertPair("uuId",ele->uuId) == nullptr )
       {
         rc = cwLogError(kOpFailRC,"The 'uuid' node insertion failed on UI element '%s'.",cwStringNullGuard(eleName));
         goto errLabel;
       }
 
+      // Insert the appId node
       if( ele->appId != kInvalidId )
       {
         if( o->insertPair("appId",ele->appId) == nullptr )
@@ -416,39 +420,52 @@ namespace cw
         }
       } 
 
+      // Insert the parentId node
       if( o->insertPair("parentUuId",parentEle->uuId) == nullptr )
       {
         rc = cwLogError(kOpFailRC,"The 'parentUuId' node insertion failed on UI element '%s'.",cwStringNullGuard(eleName));
         goto errLabel;
       }
-          
+
+      // Insert the 'op':'create' operation node
       if( o->insertPair("op","create") == nullptr )
       {
         rc = cwLogError(kOpFailRC,"The 'op' node insertion failed on UI element '%s'.",cwStringNullGuard(eleName));
         goto errLabel;
       }
 
+      // Insert the 'type':'<ele_type>' node
       if( o->insertPair("type",eleType) == nullptr )
       {
         rc = cwLogError(kOpFailRC,"The 'eleType' node insertion failed on UI element '%s'.",cwStringNullGuard(eleName));
         goto errLabel;
       }
 
+      // Convert the object to a JSON string
       if( o->to_string(p->buf,p->bufN) >= p->bufN )
       {
         rc = cwLogError(kOpFailRC,"Conversion to JSON string failed on UI element '%s'.",cwStringNullGuard(eleName));
         goto errLabel;
       }
 
+      // Send the JSON msg to the browser
       if((rc =  _websockSend( p, wsSessId, p->buf )) != kOkRC )
       {
         rc = cwLogError(rc,"The creation request send failed on UI element '%s'.", cwStringNullGuard(eleName));
         goto errLabel;
       }
-     
+
+      // is this element a 'div' alias?
+      for(unsigned i=0; divAliasA[i]!=nullptr; ++i)
+        if( textCompare(divAliasA[i],eleType) == 0 )
+        {
+          divAliasFl = true;
+          break;
+        }
+      
       
       // if this element has a list of children then create them here
-      if( co != nullptr || textCompare(eleType,"div")==0 )
+      if( co != nullptr || divAliasFl )
       {
         // Note that 'div's need not have an explicit 'children' node.
         // Any child node of a 'div' with a dictionary as a value is a child control.

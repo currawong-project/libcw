@@ -320,16 +320,6 @@ function ui_create_ctl( parent_ele, ele_type, label, d, dfltEleClassName )
     return ui_create_ele( div_ele, ele_type, d, dfltEleClassName );
 }
 
-function ui_set_class_name( ele, d, dfltClassName )
-{
-    if( d.hasOwnProperty("className") )
-	ele.className = d.className;
-    else
-	ele.className = dfltClassName
-
-    return ele
-}
-
 function ui_create_div( parent_ele, d )
 {
     var div_ele =  ui_create_ele( parent_ele, "div", d, "uiDiv" );
@@ -349,6 +339,40 @@ function ui_create_div( parent_ele, d )
     
     return div_ele;
 }
+
+function ui_create_panel_div( parent_ele, d )
+{
+    d.type = "div"
+    var div_ele =  ui_create_div( parent_ele, d );
+
+    if( !d.hasOwnProperty('className') )
+	div_ele.className = "uiPanel"
+
+    return div_ele
+}
+
+function ui_create_row_div( parent_ele, d )
+{
+    d.type = "div"
+    var div_ele =  ui_create_div( parent_ele, d );
+
+    if( !d.hasOwnProperty('className') )
+	div_ele.className = "uiPanel"
+
+    return div_ele
+}
+
+function ui_create_col_div( parent_ele, d )
+{
+    d.type = "div"
+    var div_ele =  ui_create_div( parent_ele, d );
+
+    if( !d.hasOwnProperty('className') )
+	div_ele.className = "uiPanel"
+
+    return div_ele
+}
+
 
 function ui_create_title( parent_ele, d )
 {
@@ -568,6 +592,18 @@ function ui_create( d )
 	{
 	    case "div":
 	    ele = ui_create_div( parent_ele, d )
+	    break;
+
+	    case "panel":
+	    ele = ui_create_panel_div( parent_ele, d )
+	    break;
+
+	    case "row":
+	    ele = ui_create_row_div( parent_ele, d )
+	    break;
+
+	    case "col":
+	    ele = ui_create_col_div( parent_ele, d )
 	    break;
 
 	    case "title":
