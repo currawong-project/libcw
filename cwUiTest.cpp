@@ -54,17 +54,11 @@ namespace cw
       unsigned selUuId = kInvalidId;
       unsigned divUuId = kInvalidId;
 
-      appIdMap_t mapA[] =
-        {
-         { ui::kRootAppId, kPanelDivId, "panelDivId" },
-         { ui::kPanelDivId, kPanelBtnId, "myBtn1Id" },
-         { ui::kPanelDivId, kPanelCheckId, "myCheck1Id" },
-        };
       
       handle_t uiH = srv::uiHandle(p->wsUiSrvH);
 
       
-      registerAppIds(uiH, mapA, sizeof(mapA)/sizeof(mapA[0]));
+      //registerAppIdMap(uiH, mapA, sizeof(mapA)/sizeof(mapA[0]));
 
       if((rc = createDiv( uiH, divUuId, wsSessId, kInvalidId, "myDivId", kDivId, "divClass", "My Panel" )) != kOkRC )
         goto errLabel;
@@ -234,7 +228,15 @@ cw::rc_t cw::ui::test( )
   char           sbuf[ sbufN+1 ];  
   ui_test_t*     app = mem::allocZ<ui_test_t>();
 
+  appIdMap_t mapA[] =
+    {
+     { kRootAppId, kPanelDivId, "panelDivId" },
+     { kPanelDivId, kPanelBtnId, "myBtn1Id" },
+     { kPanelDivId, kPanelCheckId, "myCheck1Id" },
+    };
 
+  unsigned mapN = sizeof(mapA)/sizeof(mapA[0]);
+  
   app->appCheckFl     = true;
   app->appSelectIndex = 1;
   app->appInteger     = 5;
@@ -246,7 +248,7 @@ cw::rc_t cw::ui::test( )
   app->uiCfgFn = "/home/kevin/src/cwtest/src/libcw/html/uiTest/ui.cfg";
 
   // create the UI server
-  if((rc = srv::create(app->wsUiSrvH, port, physRootDir, app, _uiTestCallback, nullptr, dfltPageFn, websockTimeOutMs, rcvBufByteN, xmtBufByteN, fmtBufByteN )) != kOkRC )
+  if((rc = srv::create(app->wsUiSrvH, port, physRootDir, app, _uiTestCallback, mapA, mapN, nullptr, dfltPageFn, websockTimeOutMs, rcvBufByteN, xmtBufByteN, fmtBufByteN )) != kOkRC )
     return rc;
   
   

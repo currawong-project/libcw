@@ -139,6 +139,18 @@ namespace cw
       return rc;
     }
 
+    rc_t _registerAppIdMap(  ui_t* p, const appIdMap_t* map, unsigned mapN )
+    {
+      rc_t  rc = kOkRC;
+      
+      if( map != nullptr )
+        for(unsigned i=0; i<mapN; ++i)
+          if((rc = _allocAppIdMap( p, map[i].parentAppId, map[i].appId, map[i].eleName )) != kOkRC )
+            return rc;
+  
+      return rc;
+    }
+    
     // Given a uuId return a pointer to the associated element.
     ele_t* _uuIdToEle( ui_t* p, unsigned uuId, bool errorFl=true )
     {
@@ -672,12 +684,14 @@ namespace cw
 }
 
 cw::rc_t cw::ui::create(
-  handle_t&       h,
-  sendCallback_t  sendCbFunc,
-  void*           sendCbArg,
-  uiCallback_t    uiCbFunc,
-  void*           uiCbArg,
-  unsigned        fmtBufByteN )
+  handle_t&         h,
+  sendCallback_t    sendCbFunc,
+  void*             sendCbArg,
+  uiCallback_t      uiCbFunc,
+  void*             uiCbArg,
+  const appIdMap_t* appIdMapA,
+  unsigned          appIdMapN,
+  unsigned          fmtBufByteN )
 {
   rc_t rc = kOkRC;
   ele_t* ele;
@@ -711,7 +725,12 @@ cw::rc_t cw::ui::create(
     goto errLabel;
   }
 
+  // register any suppled appId maps
+  if((rc = _registerAppIdMap(p,appIdMapA,appIdMapN)) != kOkRC )
+    goto errLabel;
+  
   h.set(p);
+
 
  errLabel:
 
@@ -999,16 +1018,9 @@ cw::rc_t cw::ui::createText(   handle_t h, unsigned& uuIdRef, unsigned wsSessId,
 
 
 
-cw::rc_t cw::ui::registerAppIds(  handle_t h, const appIdMap_t* map, unsigned mapN )
+cw::rc_t cw::ui::registerAppIdMap(  handle_t h, const appIdMap_t* map, unsigned mapN )
 {
-  ui_t* p  = _handleToPtr(h);
-  rc_t  rc = kOkRC;
-
-  for(unsigned i=0; i<mapN; ++i)
-    if((rc = _allocAppIdMap( p, map[i].parentAppId, map[i].appId, map[i].eleName )) != kOkRC )
-      return rc;
-  
-  return rc;
+  return _registerAppIdMap( _handleToPtr(h), map, mapN);
 }
 
 cw::rc_t cw::ui::sendValueBool( handle_t h, unsigned wsSessId, unsigned uuId, bool value )
@@ -1121,6 +1133,8 @@ cw::rc_t cw::ui::ws::create(  handle_t& h,
   const char*       physRootDir,
   void*             cbArg,
   uiCallback_t      uiCbFunc,
+  const appIdMap_t* appIdMapA,
+  unsigned          appIdMapN,
   websock::cbFunc_t wsCbFunc,
   const char*       dfltPageFn,
   unsigned          websockTimeOutMs,
@@ -1153,7 +1167,7 @@ cw::rc_t cw::ui::ws::create(  handle_t& h,
   }
 
   // create the ui
-  if((rc = ui::create(p->uiH, _webSockSend, p, uiCbFunc, cbArg, fmtBufByteN )) != kOkRC )
+  if((rc = ui::create(p->uiH, _webSockSend, p, uiCbFunc, cbArg, appIdMapA, appIdMapN, fmtBufByteN )) != kOkRC )
   {
     cwLogError(rc,"UI object create failed.");
     goto errLabel;
@@ -1279,6 +1293,8 @@ cw::rc_t cw::ui::srv::create(  handle_t& h,
   const char*       physRootDir,
   void*             cbArg,
   uiCallback_t      uiCbFunc,
+  const appIdMap_t* appIdMapA,
+  unsigned          appIdMapN,
   websock::cbFunc_t wsCbFunc,
   const char*       dfltPageFn,
   unsigned          websockTimeOutMs,
@@ -1292,7 +1308,7 @@ cw::rc_t cw::ui::srv::create(  handle_t& h,
 
   ui_ws_srv_t* p = mem::allocZ<ui_ws_srv_t>();
   
-  if((rc = ws::create(p->wsUiH, port, physRootDir, cbArg, uiCbFunc, wsCbFunc, dfltPageFn, websockTimeOutMs, rcvBufByteN, xmtBufByteN, fmtBufByteN )) != kOkRC )
+  if((rc = ws::create(p->wsUiH, port, physRootDir, cbArg, uiCbFunc, appIdMapA, appIdMapN, wsCbFunc, dfltPageFn, websockTimeOutMs, rcvBufByteN, xmtBufByteN, fmtBufByteN )) != kOkRC )
   {
     cwLogError(rc,"The websock UI creationg failed.");
     goto errLabel;
@@ -1319,6 +1335,8 @@ cw::rc_t cw::ui::srv::create( handle_t& h,
   const args_t&     args,
   void*             cbArg,
   uiCallback_t      uiCbFunc,
+  const appIdMap_t* appIdMapA,
+  unsigned          appIdMapN,        
   websock::cbFunc_t wsCbFunc )
 {
   return create(h,
@@ -1326,6 +1344,8 @@ cw::rc_t cw::ui::srv::create( handle_t& h,
     args.physRootDir,
     cbArg,
     uiCbFunc,
+    appIdMapA,
+    appIdMapN,
     wsCbFunc,
     args.dfltHtmlPageFn,
     args.timeOutMs,

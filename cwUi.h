@@ -58,15 +58,25 @@ namespace cw
       } u;
     } value_t;
 
+    typedef struct appIdMap_str
+    {
+      unsigned    parentAppId;
+      unsigned    appId;
+      const char* eleName;   
+    } appIdMap_t;
+    
     typedef rc_t (*uiCallback_t)(   void* cbArg, unsigned wsSessId, opId_t opId, unsigned parentAppId, unsigned uuId, unsigned appId, const value_t* value );
     typedef rc_t (*sendCallback_t)( void* cbArg, unsigned wsSessId, const void* msg, unsigned msgByteN );
       
-    rc_t create(  handle_t& h,
-      sendCallback_t sendCbFunc,
-      void*          sendCbArg,
-      uiCallback_t   uiCbFunc,
-      void*          uiCbArg,
-      unsigned       fmtBufByteN = 4096 );
+    rc_t create(
+      handle_t&         h,
+      sendCallback_t    sendCbFunc,
+      void*             sendCbArg,
+      uiCallback_t      uiCbFunc,
+      void*             uiCbArg,
+      const appIdMap_t* appIdMapA   = nullptr,
+      unsigned          appIdMapN   = 0,
+      unsigned          fmtBufByteN = 4096 );
     
     rc_t destroy( handle_t& h );
 
@@ -99,15 +109,8 @@ namespace cw
     rc_t createProgress(   handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double value, double minValue, double maxValue );
     rc_t createText(       handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
 
-    typedef struct appIdMap_str
-    {
-      unsigned    parentAppId;
-      unsigned    appId;
-      const char* eleName;   
-    } appIdMap_t;
-
     // Register parent/child/name app id's 
-    rc_t registerAppIds(  handle_t h, const appIdMap_t* map, unsigned mapN );
+    rc_t registerAppIdMap(  handle_t h, const appIdMap_t* map, unsigned mapN );
 
     rc_t sendValueBool(   handle_t h, unsigned wsSessId, unsigned uuId, bool value );
     rc_t sendValueInt(    handle_t h, unsigned wsSessId, unsigned uuId, int value );
@@ -124,8 +127,10 @@ namespace cw
         unsigned          port,
         const char*       physRootDir,
         void*             cbArg,
-        uiCallback_t      uiCbFunc, 
-        websock::cbFunc_t wsCbFunc         = nullptr,
+        uiCallback_t      uiCbFunc,
+        const appIdMap_t* appIdMapA        = nullptr,
+        unsigned          appIdMapN        = 0,
+        websock::cbFunc_t wsCbFunc         = nullptr,        
         const char*       dfltPageFn       = "index.html",        
         unsigned          websockTimeOutMs = 50,
         unsigned          rcvBufByteN      = 1024,
@@ -170,13 +175,17 @@ namespace cw
         const args_t&     args,
         void*             cbArg,
         uiCallback_t      uiCbFunc,
-        websock::cbFunc_t wsCbFunc = nullptr );
+        const appIdMap_t* appIdMapA = nullptr,
+        unsigned          appIdMapN = 0,        
+        websock::cbFunc_t wsCbFunc  = nullptr );
       
       rc_t create(  handle_t& h,
         unsigned          port,
         const char*       physRootDir,
         void*             cbArg,
         uiCallback_t      uiCbFunc,
+        const appIdMap_t* appIdMapA        = nullptr,
+        unsigned          appIdMapN        = 0,        
         websock::cbFunc_t wsCbFunc         = nullptr,
         const char*       dfltPageFn       = "index.html",
         unsigned          websockTimeOutMs = 50,
