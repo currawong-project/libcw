@@ -423,7 +423,8 @@ namespace cw
       // get the ui ele name
       if((rc = o->get("name",eleName, cw::kNoRecurseFl | cw::kOptionalFl)) != kOkRC )
       {
-        if( rc == kLabelNotFoundRC && divAliasFl )
+        // div's and titles don't need a 'name'
+        if( rc == kLabelNotFoundRC && (divAliasFl || textCompare(eleType,"title")==0) )
           rc = kOkRC;
         else
         {

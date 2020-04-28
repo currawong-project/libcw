@@ -4,8 +4,8 @@ var _nextEleId   = 0;
 
 function set_app_title( suffix, className )
 {
-    var ele = document.getElementById('appTitleId');
-    ele.innerHTML = "UI Test:" + suffix
+    var ele = document.getElementById('connectTitleId');
+    ele.innerHTML = suffix
     ele.className = className
 }
 
@@ -376,7 +376,14 @@ function ui_create_col_div( parent_ele, d )
 
 function ui_create_title( parent_ele, d )
 {
-    return ui_create_ele( parent_ele, "label", d, "uiTitle" );
+    var ele = ui_create_ele( parent_ele, "label", d, "uiTitle" );
+    
+    if( ele != null )
+    {
+	ele.innerHTML = d.title;
+    }
+    
+    return ele;
 }
 
 function ui_create_button( parent_ele, d )

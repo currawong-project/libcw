@@ -3,6 +3,7 @@ body {
     background-color: LightCyan;
 }
 
+
 .title_disconnected {
     color: red;
 }
@@ -58,7 +59,7 @@ label {
     background-color: LightBlue;
 }
 
-.uiRow  {    
+.uiRow {    
     display: flex;
     flex-direction: row;
     align-items: center;
