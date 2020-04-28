@@ -232,6 +232,8 @@ namespace cw
       return rc;
     }
 
+    
+    
     ele_t* _createEle( ui_t* p, ele_t* parent, unsigned appId, const char* eleName )
     {
       ele_t* e = mem::allocZ<ele_t>();
@@ -253,8 +255,20 @@ namespace cw
       if( appId == kInvalidId && parent != nullptr )
       {
         appIdMapRecd_t* m;
+
+        // Go up the tree looking for the first parent with a valid appId
+        // This is useful to cover the situation where the parent is an unamed div (e.g. row, col, panel)
+        // and the appIdMap gives the panel name as the parent.
+        unsigned parentAppId = parent->appId;
+        for(const ele_t* par=parent; par!=nullptr; par=par->parent)
+          if( par->appId != kInvalidId )
+          {
+            parentAppId = par->appId;
+            break;
+          }
+
         // ... then try to look it up from the appIdMap.
-        if((m = _findAppIdMap( p, parent->appId, eleName)) != nullptr )
+        if((m = _findAppIdMap(p, parentAppId, eleName)) != nullptr )
           e->appId = m->appId;
       }
 
@@ -273,7 +287,7 @@ namespace cw
         // check for an existing child of parentEle with the same name
         ele = _parentUuId_EleName_ToEle( p, parentEle->uuId, eleName, false );
 
-        // if a child with the same name does exist but has a different id then
+        // if a child with the same name does exist but has a different app id then
         // ignore the match and create a new element
         if( ele != nullptr && appId != kInvalidId && ele->appId != appId )
           ele = nullptr;
@@ -376,7 +390,7 @@ namespace cw
       ele_t*      ele         = nullptr;
       char*       eleName     = nullptr;
       object_t*   o           = srcObj->duplicate(); // duplicate the rsrc object so that we can modify it.
-      const char* divAliasA[] = { "row","col","panel",nullptr };
+      const char* divAliasA[] = { "div","row","col","panel",nullptr };  // all these types are div's
       bool        divAliasFl  = false;
 
       if( !o->is_dict() )
@@ -389,13 +403,27 @@ namespace cw
         co->unlink();
       }
 
+      // is this element a 'div' alias?
+      for(unsigned i=0; divAliasA[i]!=nullptr; ++i)
+        if( textCompare(divAliasA[i],eleType) == 0 )
+        {
+          divAliasFl = true;
+          break;
+        }
+            
       // get the ui ele name
-      if((rc = o->get("name",eleName)) != kOkRC )
+      if((rc = o->get("name",eleName, cw::kNoRecurseFl | cw::kOptionalFl)) != kOkRC )
       {
-        rc = cwLogError(rc,"The UI element name could not be read.");
-        goto errLabel;
+        if( rc == kLabelNotFoundRC && divAliasFl )
+          rc = kOkRC;
+        else
+        {
+          rc = cwLogError(rc,"The UI element name could not be read.");
+        
+          goto errLabel;
+        }
       }
-      
+
       // get or create the ele record to associate with this ele
       if((ele = _findOrCreateEle( p, parentEle, eleName )) == nullptr )
       {
@@ -455,14 +483,6 @@ namespace cw
         goto errLabel;
       }
 
-      // is this element a 'div' alias?
-      for(unsigned i=0; divAliasA[i]!=nullptr; ++i)
-        if( textCompare(divAliasA[i],eleType) == 0 )
-        {
-          divAliasFl = true;
-          break;
-        }
-      
       
       // if this element has a list of children then create them here
       if( co != nullptr || divAliasFl )
@@ -742,7 +762,7 @@ cw::rc_t cw::ui::create(
     goto errLabel;
   }
 
-  // register any suppled appId maps
+  // register any supplied appId maps
   if((rc = _registerAppIdMap(p,appIdMapA,appIdMapN)) != kOkRC )
     goto errLabel;
   
