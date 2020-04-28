@@ -237,6 +237,15 @@ namespace cw
     ele_t* _createEle( ui_t* p, ele_t* parent, unsigned appId, const char* eleName )
     {
       ele_t* e = mem::allocZ<ele_t>();
+
+      // got up the tree looking for a parent with a valid appId
+      ele_t* par = parent;
+      while( par != nullptr && par->appId == kInvalidId )
+        par = par->parent;
+
+      if( par != nullptr )
+        parent = par;
+      
       e->parent  = parent;
       e->uuId    = p->eleN;
       e->appId   = appId;
@@ -272,7 +281,7 @@ namespace cw
           e->appId = m->appId;
       }
 
-      printf("uuid:%i appId:%i %s\n", e->uuId,e->appId,cwStringNullGuard(e->eleName));
+      printf("uuid:%i appId:%i par-uuid:%i %s\n", e->uuId,e->appId,e->parent==nullptr ? -1 : e->parent->uuId, cwStringNullGuard(e->eleName));
        
       return e;
     }

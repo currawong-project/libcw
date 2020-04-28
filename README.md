@@ -25,6 +25,15 @@ This is easy to reproduce by simply decreasing the size of the buffers in the pr
 
 - numeric_convert() in cwNumericConvert.h could be made more efficient using type_traits.
 
+- numeric_convert() d_min is NOT zero, it's smallest positive number, this fails when src == 0.
+  min value is now set to zero.
+
+- The UI app id map should be validated after the UI is created.
+In otherwords the parent/child pairs shoud actually exists.
+
+- Add an ui::appIdToUuId() that returns the first matching appId, and then
+optionally looks for duplicates as an error checking scheme. 
+
 - thread needs setters and getters for internal variables
 
 - change cwMpScNbQueue so that it does not require 'new'.
