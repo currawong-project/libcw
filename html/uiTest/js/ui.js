@@ -150,7 +150,7 @@ function uiNumberSet( r )
 {
     var ele;
 
-    console.log("ele_id:" + r.ele_id + " parent_id:" + r.parent_id + " value:" + r.value)
+    //console.log("ele_id:" + r.ele_id + " parent_id:" + r.parent_id + " value:" + r.value)
     
     if((ele = document.getElementById(r.parent_id)) != null)
     {
@@ -357,7 +357,7 @@ function ui_create_row_div( parent_ele, d )
     var div_ele =  ui_create_div( parent_ele, d );
 
     if( !d.hasOwnProperty('className') )
-	div_ele.className = "uiPanel"
+	div_ele.className = "uiRow"
 
     return div_ele
 }
@@ -368,7 +368,7 @@ function ui_create_col_div( parent_ele, d )
     var div_ele =  ui_create_div( parent_ele, d );
 
     if( !d.hasOwnProperty('className') )
-	div_ele.className = "uiPanel"
+	div_ele.className = "uiCol"
 
     return div_ele
 }
@@ -400,23 +400,60 @@ function ui_create_check( parent_ele, d )
     {
 	ele.type = "checkbox";
 
-	dom_set_checkbox(ele.id, d.value );    
-	
 	ele.onclick = function() {  ui_send_bool_value(this,dom_get_checkbox(this.id)); }
+
+	if( !d.hasOwnProperty('value') )
+	    ui_send_echo(ele)
+	else
+	{
+	    dom_set_checkbox(ele.id, d.value );
+	    ui_send_bool_value(ele,dom_get_checkbox(ele.id))
+	}
+
     }
     return ele;
 }
 
+//
+// Note: The value of a 'select' widget is always set by the 'appId'
+// of the selected 'option'.  Likewise the 'appId' of the selected
+// option is returned as the value of the select widget.
+//
 function ui_on_select( ele )
 {
     ui_send_int_value(ele,ele.options[ ele.selectedIndex ].appId);
 }
 
+function ui_select_set_from_option_app_id( sel_ele, option_appId )
+{
+    var i;
+    for(i=0; i<sel_ele.options.length; ++i)
+	if( sel_ele.options[i].appId == option_appId )
+        {
+	    sel_ele.selectedIndex = i;
+	    return;
+        }
+
+    ui_error("Select option index not found.");    
+}
+
 function ui_create_select( parent_ele, d )
 {
-    var sel_ele = ui_create_ctl( parent_ele, "select", d.title, d, "uiSelect" );
-    sel_ele.onchange = function() { ui_on_select(this) }
-    return sel_ele;
+    var ele = ui_create_ctl( parent_ele, "select", d.title, d, "uiSelect" );
+    ele.onchange = function() { ui_on_select(this) }
+
+    if( !d.hasOwnProperty('value') )
+    {
+	ui_send_echo(ele)
+    }
+    else
+    {
+	// Note that d.value is the appId of the default selected option
+	ele.defaultOptionAppId = d.value; 
+	ui_send_int_value(ele,ele.defaultOptionAppId)
+    }
+    
+    return ele;
 }
 
 function ui_create_option( parent_ele, d )
@@ -425,8 +462,22 @@ function ui_create_option( parent_ele, d )
 
     if( opt_ele != null )
     {
-	opt_ele.className = d.className;
+	if(d.hasOwnProperty('className'))
+	    opt_ele.className = d.className;
+
 	opt_ele.innerHTML = d.title;
+
+	// d.value, if it exists, is a boolean indicating that this is the default option
+	var fl0 = d.hasOwnProperty('value') && d.value != 0;
+
+	// The parent 'select' element may also have been given the app id of the default option
+	// (and this option may be it)
+	var fl1 = parent_ele.hasOwnProperty('defaultOptionAppId') && parent_ele.defaultOptionAppId == ele.appId;
+    
+	if(fl0 || fl1 )
+	{
+	    parent_ele.selectedIndex = parent_ele.options.length-1;
+	}
     }
     
     return opt_ele;
@@ -438,8 +489,16 @@ function ui_create_string( parent_ele, d )
 
     if( ele != null )
     {
-	ele.value = d.value;
 	ele.addEventListener('keyup', function(e) { if(e.keyCode===13){  ui_send_string_value(this, this.value); }} );
+
+	if( !d.hasOwnProperty('value') )
+	    ui_send_echo(ele);
+	else
+	{
+	    ele.value  = d.value;
+	    ui_send_string_value(ele,ele.value)
+	}
+	    
     }
 
     return ele;
@@ -453,7 +512,7 @@ function ui_number_keyup( e )
 
 	if( ele != null )
 	{
-	    console.log("min:"+ele.minValue+" max:"+ele.maxValue)
+	    //console.log("min:"+ele.minValue+" max:"+ele.maxValue)
 
 	    var val = 0;
 	    if( ele.decpl == 0 )
@@ -468,13 +527,9 @@ function ui_number_keyup( e )
 		ele.style.borderColor = ""
 
 		if( ele.decpl == 0 )
-		{
 		    ui_send_int_value(ele,ele.value);
-		}
 		else
-		{
 		    ui_send_float_value(ele,ele.value);
-		}
 	    }
 	}
     }
@@ -486,12 +541,25 @@ function ui_create_number( parent_ele, d )
     
     if( ele != null )
     {
-	ele.value     = d.value;
 	ele.maxValue  = d.max;
 	ele.minValue  = d.min;
 	ele.stepValue = d.step;
 	ele.decpl     = d.decpl;
 	ele.addEventListener('keyup', ui_number_keyup );
+
+	if( d.hasOwnProperty('value') && d.min <= d.value && d.value <= d.max )
+	{
+	    
+	    ele.value     = d.value;
+	    if( d.decpl == 0 )
+		ui_send_int_value( ele, ele.value )
+	    else
+		ui_send_float_value( ele, ele.value )
+	}
+	else
+	{
+	    ui_send_echo(ele);
+	}
     }
     return ele;
 }
@@ -512,14 +580,21 @@ function ui_create_progress( parent_ele, d )
 	ele.max      = 100;
 	ele.maxValue = d.max;
 	ele.minValue = d.min;
-	ui_set_progress( ele.id, d.value );
+	if( !d.hasOwnProperty('value') )
+	    ui_send_echo(ele);
+	else
+	{
+	    ui_set_progress( ele.id, d.value );
+	    ui_send_int_value( ele, ele.value );
+	}
+ 
     }
     return ele
 }
 
 function ui_set_value( d )
 {
-    console.log(d)
+    //console.log(d)
     var ele = dom_id_to_ele(d.uuId.toString())
 
     if( ele == null )
@@ -530,7 +605,7 @@ function ui_set_value( d )
     
     if( ele != null && ele.hasOwnProperty("uiEleType"))
     {
-	console.log("found: "+ele.uiEleType)
+	//console.log("found: "+ele.uiEleType)
 	
 	switch( ele.uiEleType )
 	{
@@ -545,12 +620,11 @@ function ui_set_value( d )
 	    break;
 
 	    case "check":
-	    console.log(d)
 	    dom_set_checkbox(ele.id,d.value)
 	    break;
 
 	    case "select":
-	    ele.selectedIndex = d.value
+	    ui_select_set_from_option_app_id(ele,d.value)
 	    break;
 
 	    case "option":
@@ -645,7 +719,6 @@ function ui_create( d )
 	if( ele != null )
 	{
 	    ele.uiEleType = d.type;
-	    ui_send_echo(ele);
 	}
 
     }

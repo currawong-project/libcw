@@ -17,13 +17,19 @@ namespace cw
     {
       const char*   uiCfgFn;
       srv::handle_t wsUiSrvH;
+
+      std::atomic<bool> quitFl;
       
       bool     appCheckFl;
-      unsigned appSelectIndex;
+      unsigned appSelOptAppId;
       int      appInteger;
       float    appFloat;
       int      appProgress;
       char*    appString;
+      bool     appCheck1Fl;
+      bool     appCheck2Fl;
+      float    appNumb;
+      unsigned appSelId;
       
     } ui_test_t;
 
@@ -43,8 +49,15 @@ namespace cw
      kProgressId,
 
      kPanelDivId,
-     kPanelBtnId,
-     kPanelCheckId
+     kPanelBtn1Id,
+     kPanelCheck1Id,
+     kPanelBtn2Id,
+     kPanelCheck2Id,
+     kPanelFloaterId,
+     kSelId,
+     kOpt1Id,
+     kOpt2Id,
+     kOpt3Id
     };
 
     rc_t _uiTestCreateUi( ui_test_t* p, unsigned wsSessId )
@@ -63,7 +76,7 @@ namespace cw
       if((rc = createDiv( uiH, divUuId, wsSessId, kInvalidId, "myDivId", kDivId, "divClass", "My Panel" )) != kOkRC )
         goto errLabel;
 
-      if((rc = createButton( uiH, uuid, wsSessId, divUuId, "myBtnId", kBtnId, "btnClass", "Push Me" )) != kOkRC )
+      if((rc = createButton( uiH, uuid, wsSessId, divUuId, "myBtnId", kBtnId, "btnClass", "Quit" )) != kOkRC )
         goto errLabel;
 
       if((rc = createCheck( uiH, uuid, wsSessId, divUuId, "myCheckId", kCheckId, "checkClass", "Check Me", true )) != kOkRC )
@@ -100,14 +113,31 @@ namespace cw
       return rc;
     }
 
+    void _print_state( ui_test_t* p )
+    {
+      printf("check:%i sel:%i int:%i flt:%f prog:%i str:%s chk1:%i chk2:%i numb:%f sel:%i\n",
+        p->appCheckFl,
+        p->appSelOptAppId,
+        p->appInteger,
+        p->appFloat,
+        p->appProgress,
+        p->appString,
+        p->appCheck1Fl,
+        p->appCheck2Fl,
+        p->appNumb,
+        p->appSelId);
+    }
+
+    
+
     rc_t _handleUiValueMsg( ui_test_t* p, unsigned wsSessId, unsigned parentAppId, unsigned uuId, unsigned appId, const value_t* v )
     {
       rc_t rc = kOkRC;
       
       switch( appId )
       {
-        case kBtnId:   
-          printf("Click!\n");
+        case kBtnId:
+          p->quitFl.store(true);
           break;
 
         case kCheckId:
@@ -116,8 +146,8 @@ namespace cw
           break;
 
         case kSelectId:
-          printf("Selected: optionId:%i\n", v->u.i);
-          p->appSelectIndex = v->u.i;
+          printf("Selected: option appId:%i\n", v->u.i);
+          p->appSelOptAppId = v->u.i;
           break;
 
         case kStringId:
@@ -135,7 +165,37 @@ namespace cw
         case kFloatId:
           printf("Float: %f\n",v->u.f);
           p->appFloat = v->u.f;
+
+
+        case kPanelBtn1Id:
+          printf("Button 1\n");
+          _print_state(p);
+          break;
           
+        case kPanelCheck1Id:
+          printf("check 1: %i\n",v->u.b);
+          p->appCheck1Fl = v->u.b;
+          break;
+          
+        case kPanelBtn2Id:
+          printf("Button 2\n");
+          _print_state(p);
+          break;
+          
+        case kPanelCheck2Id:
+          printf("check 1: %i\n",v->u.b);
+          p->appCheck1Fl = v->u.b;
+          break;
+          
+        case kPanelFloaterId:
+          printf("numb: %f\n",v->u.f);
+          p->appNumb = v->u.f;
+          break;
+
+        case kSelId:
+          printf("sel: %i\n",v->u.i);
+          p->appSelId = v->u.i;
+          break;
       }
 
       return rc;
@@ -152,7 +212,7 @@ namespace cw
           break;
 
         case kSelectId:
-          sendValueInt( uiHandle( p->wsUiSrvH ), wsSessId, uuId, p->appSelectIndex );
+          sendValueInt( uiHandle( p->wsUiSrvH ), wsSessId, uuId, p->appSelOptAppId );
           break;
 
         case kStringId:
@@ -169,6 +229,22 @@ namespace cw
           
         case kProgressId:
           sendValueInt( uiHandle( p->wsUiSrvH ), wsSessId, uuId, p->appProgress );
+          break;
+
+        case kPanelCheck1Id:
+          sendValueBool( uiHandle( p->wsUiSrvH ), wsSessId, uuId, p->appCheck1Fl);
+          break;
+          
+        case kPanelCheck2Id:
+          sendValueBool( uiHandle( p->wsUiSrvH ), wsSessId, uuId, p->appCheck2Fl);
+          break;
+          
+        case kPanelFloaterId:
+          sendValueFloat( uiHandle( p->wsUiSrvH ), wsSessId, uuId, p->appNumb );
+          break;
+
+        case kSelId:
+          sendValueInt( uiHandle( p->wsUiSrvH ), wsSessId, uuId, p->appSelId );
           break;
       }
       return rc;
@@ -224,25 +300,37 @@ cw::rc_t cw::ui::test( )
   unsigned       xmtBufByteN      = 2048;
   unsigned       fmtBufByteN      = 4096;
   unsigned       websockTimeOutMs = 50;
-  const unsigned sbufN            = 31;
-  char           sbuf[ sbufN+1 ];  
   ui_test_t*     app = mem::allocZ<ui_test_t>();
+
+  app->quitFl.store(false);
 
   appIdMap_t mapA[] =
     {
-     { kRootAppId, kPanelDivId, "panelDivId" },
-     { kPanelDivId, kPanelBtnId, "myBtn1Id" },
-     { kPanelDivId, kPanelCheckId, "myCheck1Id" },
+     { kRootAppId,  kPanelDivId,     "panelDivId" },
+     { kPanelDivId, kPanelBtn1Id,    "myBtn1Id" },
+     { kPanelDivId, kPanelCheck1Id,  "myCheck1Id" },
+     { kPanelDivId, kPanelBtn2Id,    "myBtn2Id" },
+     { kPanelDivId, kPanelCheck2Id,  "myCheck2Id" },
+     { kPanelDivId, kPanelFloaterId, "myFloater" },
+     { kPanelDivId, kSelId,          "mySel" },
+     { kSelId,      kOpt1Id,         "myOpt1" },
+     { kSelId,      kOpt2Id,         "myOpt2" },
+     { kSelId,      kOpt3Id,         "myOpt3" },
+     
     };
 
   unsigned mapN = sizeof(mapA)/sizeof(mapA[0]);
   
   app->appCheckFl     = true;
-  app->appSelectIndex = 1;
+  app->appSelOptAppId = kOption1Id;
   app->appInteger     = 5;
   app->appFloat       = 2.56;
   app->appProgress    = 7;
   app->appString      = mem::duplStr("fooz");
+  app->appCheck1Fl    = false;
+  app->appCheck2Fl    = true;
+  app->appNumb        = 1.23;
+  app->appSelId       = kOpt3Id;
   
 
   app->uiCfgFn = "/home/kevin/src/cwtest/src/libcw/html/uiTest/ui.cfg";
@@ -260,16 +348,9 @@ cw::rc_t cw::ui::test( )
   printf("'quit' to exit\n");
 
   // readline loop
-  while( true )
+  while( !app->quitFl.load()  )
   {
-    printf("? ");
-    if( std::fgets(sbuf,sbufN,stdin) == sbuf )
-    {
-      printf("Sending:%s",sbuf);
-
-      if( strcmp(sbuf,"quit\n") == 0)
-        break;
-    }
+    sleepMs(50);
   }
 
  errLabel:
