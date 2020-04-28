@@ -787,6 +787,12 @@ cw::rc_t cw::objectFromString( const char* s, object_t*& objRef )
         _objSyntaxError(lexH,"Unknown token type (%i) in text.", int(lexId) );
     }
 
+    if( cnp == nullptr )
+    {
+      rc = _objSyntaxError( lexH, "Node parse failed." );
+      goto errLabel;
+    }
+
     // if this is a pair node and it now has both values 
     // then make the parent 'object' the current node
     if( cnp->is_pair() && cnp->child_count()==2 )
