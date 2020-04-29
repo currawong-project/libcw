@@ -366,7 +366,7 @@ namespace cw
 
       // form the create json message string
       //unsigned i = snprintf( p->buf, p->bufN, "{ \"op\":\"create\", \"parent\":\"%s\", \"children\":{ \"%s\":{ \"eleName\":\"%s\", \"appId\":%i, \"uuId\":%i, \"class\":\"%s\", \"title\":\"%s\" ", parentEleName, eleTypeStr, eleName, appId, newEle->uuId, clas, title );
-      unsigned i = snprintf( p->buf, p->bufN, "{ \"op\":\"create\", \"parentUuId\":\"%i\", \"type\":\"%s\", \"eleName\":\"%s\", \"appId\":\"%i\", \"uuId\":%i, \"className\":\"%s\", \"title\":\"%s\" ", parentEle->uuId, eleTypeStr, eleName==nullptr ? "" : eleName, appId, newEle->uuId, clas, title );
+      unsigned i = snprintf( p->buf, p->bufN, "{ \"op\":\"create\", \"parentUuId\":\"%i\", \"type\":\"%s\", \"eleName\":\"%s\", \"appId\":\"%i\", \"uuId\":%i, \"className\":\"%s\", \"title\":\"%s\" ", parentEle->uuId, eleTypeStr, eleName==nullptr ? "" : eleName, appId, newEle->uuId, clas==nullptr ? " " : clas, title==nullptr ? " " : title );
       
 
       // add the UI specific attributes
@@ -1034,7 +1034,7 @@ cw::rc_t cw::ui::createDiv( handle_t h, unsigned& uuIdRef, unsigned wsSessId, un
 { return _createOneEle( _handleToPtr(h), uuIdRef, "div", wsSessId, parentUuId, eleName, appId, clas, title ); }
 
 cw::rc_t cw::ui::createTitle( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "option", wsSessId, parentUuId, eleName, appId, clas, title ); }
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "title", wsSessId, parentUuId, eleName, appId, clas, title ); }
 
 cw::rc_t cw::ui::createButton( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title  )
 { return _createOneEle( _handleToPtr(h), uuIdRef, "button", wsSessId, parentUuId, eleName, appId, clas, title ); }

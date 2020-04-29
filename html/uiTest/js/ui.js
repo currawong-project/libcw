@@ -310,11 +310,16 @@ function ui_create_ctl( parent_ele, ele_type, label, d, dfltEleClassName )
     // if label is not null then create an enclosing 'label' element
     if( label != null )
     {
-	label_ele = dom_create_ele("label");
+	label = label.trim();
 
-	label_ele.innerHTML = label;
+	if( label.length > 0)
+	{
+	    label_ele = dom_create_ele("label");
 
-	div_ele.appendChild(label_ele)    
+	    label_ele.innerHTML = label;
+	    
+	    div_ele.appendChild(label_ele)
+	}
     }
 
     return ui_create_ele( div_ele, ele_type, d, dfltEleClassName );
@@ -327,13 +332,18 @@ function ui_create_div( parent_ele, d )
     if( div_ele != null )
     {
 	
-	if( d.title != null && d.title.length > 0 )
+	if( d.title !=  null )
 	{
-	    var p_ele = dom_create_ele("p")
+	    var title = d.title.trim()
+
+	    if( title.length > 0 )
+	    {
+		var p_ele = dom_create_ele("p")
 	    
-	    p_ele.innerHTML = d.title
+		p_ele.innerHTML = title
 	
-	    div_ele.appendChild( p_ele )
+		div_ele.appendChild( p_ele )
+	    }
 	}
     }
     
