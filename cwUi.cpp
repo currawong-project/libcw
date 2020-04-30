@@ -281,7 +281,7 @@ namespace cw
           e->appId = m->appId;
       }
 
-      printf("uuid:%i appId:%i par-uuid:%i %s\n", e->uuId,e->appId,e->parent==nullptr ? -1 : e->parent->uuId, cwStringNullGuard(e->eleName));
+      //printf("uuid:%i appId:%i par-uuid:%i %s\n", e->uuId,e->appId,e->parent==nullptr ? -1 : e->parent->uuId, cwStringNullGuard(e->eleName));
        
       return e;
     }
@@ -959,6 +959,16 @@ unsigned cw::ui::findElementUuId( handle_t h, const char* eleName )
   
   return _findElementUuId(p,eleName);
 }
+
+unsigned  cw::ui::findElementAppId(  handle_t h, unsigned uuId )
+{
+  ui_t* p = _handleToPtr(h);
+  
+  ele_t* ele = _uuIdToEle( p, uuId );
+
+  return ele==nullptr ? kInvalidId : ele->uuId;
+}
+
 
 cw::rc_t cw::ui::createFromObject( handle_t  h, const object_t* o,  unsigned wsSessId,  unsigned parentUuId,  const char* eleName )
 {

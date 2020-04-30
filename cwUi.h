@@ -91,6 +91,7 @@ namespace cw
     unsigned    findElementUuId(   handle_t h, unsigned parentUuId, const char* eleName );
     unsigned    findElementUuId(   handle_t h, unsigned parentUuId, unsigned appId );
     const char* findElementName(   handle_t h, unsigned uuId );
+    unsigned    findElementAppId(  handle_t h, unsigned uuId );
     
     // Return the uuid of the first matching 'eleName'.
     unsigned    findElementUuId( handle_t h, const char* eleName );
