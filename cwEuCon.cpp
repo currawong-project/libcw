@@ -395,7 +395,6 @@ namespace cw
     {
       rc_t rc = kOkRC;
         
-      // send the initial handshake 
       if((rc = sock::send( fb->eucon->sockMgrH, fb->sockUserId, kInvalidId, buf, bufByteN )) != kOkRC )
       {
         rc = cwLogError(rc,"TCP send failed on fader bank index:%i proto:%i Disconnecting.",fb->fbIndex,fb->protoState);
@@ -457,6 +456,73 @@ namespace cw
       return nullptr;        
     }
 
+
+    // Heatbeat: 0x03 0x00 0x00 0x00
+    // 
+    // channel    status    zero      value
+    // --------- --------- --------- ---------
+    // 0x00 0x01 0x00 0x00 0x00 0x00 0x02 0x0b  fader
+    // 0x00 0x01 0x02 0x00 0x00 0x00 0x00 0x01  mute
+    // 0x00 0x01 0x00 0x01 0x00 0x00 0x00 0x00  touch
+    // 0x00 0x01 0x04 0x00 0x00 0x00 0x00 0x00  ping
+
+  
+    void _app_msg_decode(eucon_t* p, fbank_t* fb, const uint8_t* buf, unsigned bufByteN )
+    {
+      unsigned bi = 0;
+      
+      while( bi<bufByteN )
+      {
+          char    type = 'U';
+          uint16_t numb = 0;
+          uint16_t id = 0;
+          unsigned incr = 8;
+          
+          if( buf[bi] == 0x03 )
+          {
+            type='H';
+            incr = 4;
+          }
+          else
+          {
+            uint16_t* v = (uint16_t*)(buf+bi);
+            id = ntohs(v[1]);
+            numb = ntohs(v[3]);
+            
+            switch(id )
+            {
+              case 0x00:
+                type = 'F';
+                break;
+                
+              case 0x01:
+                type = 'T';
+                break;
+
+              case 0x200:
+                type = 'M';
+                break;
+
+              case 0x400:
+                type = 'P';
+                _send_response(fb,(const char*)(buf+bi),8);
+                break;
+
+              default:
+                incr = 1;
+                
+            }
+          }
+          if( type != 'F' && type != 'H' )
+            printf("%i %c (0x%x) %i (0x%x)\n",fb->fbIndex,type,id,numb,numb);
+
+          bi += incr;
+      }
+      
+      
+      
+    }
+    
     void _tcpCallback( void* arg, sock::cbOpId_t cbOpId, unsigned userId, unsigned connId, const void* data, unsigned dataByteCnt, const struct sockaddr_in* fromAddr )
     {
       eucon_t* p = static_cast<eucon_t*>(arg);
@@ -541,12 +607,15 @@ namespace cw
           time::futureMs(fb->nextSendHbTs,fb->eucon->heartBeatPeriodMs);
           break;
 
-        case kRunning_Id:          
-          printf("%i : Rcv: %i : ",fb->fbIndex, dataByteCnt );
-          for(unsigned i=0; i<dataByteCnt; ++i)
-            printf("0x%02x ",((uint8_t*)data)[i]);
-          printf("\n");
+        case kRunning_Id:
+          {
+            _app_msg_decode(p, fb, (const uint8_t*)data, dataByteCnt );
           
+            //printf("%i : Rcv: %i : ",fb->fbIndex, dataByteCnt );
+            //for(unsigned i=0; i<dataByteCnt; ++i)
+            //  printf("0x%02x ",((uint8_t*)data)[i]);
+            //printf("\n");
+          }
       }
 
       //printf("fbi: %i : proto:%i rcv\n",fb->fbIndex,fb->protoState);
