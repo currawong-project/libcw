@@ -15,6 +15,7 @@
 #include "cwNumericConvert.h"
 
 #include "dns_sd/dns_sd_const.h"
+#include "cwEuConDecls.h"
 
 #define HEART_BEAT "\x04\x00\x00\x00"
 
@@ -335,7 +336,7 @@ namespace cw
       fbank_t*           fbankL;        // List of fader banks
       unsigned           maxFaderBankN; // maximum number of fader banks
       unsigned           sockTimeOutMs; // socket time out
-      unsigned           faderTcpPort;  // Fader TCP port TODO: we shouuld be getting this from the MDNS SRV record
+      unsigned           fdrTcpPort;    // Fader TCP port TODO: we shouuld be getting this from the MDNS SRV record
       unsigned           heartBeatPeriodMs;
     } eucon_t;
 
@@ -415,6 +416,39 @@ namespace cw
     { return _send_response(fb,RESPONSE_2,sizeof(RESPONSE_2)-1); }
 
 
+    rc_t _send_app_msg( fbank_t* fb, uint16_t chIdx, uint16_t msgTypeId, uint16_t value )
+    {
+      if( fb->protoState != kRunning_Id )
+        return kOkRC;
+      
+      typedef struct fields_str
+      {
+        uint16_t channel;
+        uint16_t typeId;
+        uint16_t zero;
+        uint16_t value;
+      } fields_t;
+      
+      typedef struct
+      {
+        union
+        {
+          uint8_t buf[8];
+          fields_t f;
+        } u;
+      } buf_t;
+
+      uint16_t v = value;
+
+      buf_t b;
+      b.u.f.channel = chIdx;
+      b.u.f.typeId  = msgTypeId;
+      b.u.f.zero    = 0;
+      b.u.f.value   = ((v & 0xff00) >> 8) + ((v & 0x00ff) << 8);
+      
+      return _send_response(fb,(char*)(b.u.buf),sizeof(b.u.buf));
+    }
+
     fbank_t* _createFBank( eucon_t* p, unsigned fbIndex )
     {
       fbank_t* fb = mem::allocZ<fbank_t>();
@@ -473,12 +507,13 @@ namespace cw
       
       while( bi<bufByteN )
       {
-          char    type = 'U';
+          char     type = 'U';
           uint16_t numb = 0;
-          uint16_t id = 0;
+          uint16_t id   = 0;
           unsigned incr = 8;
-          
-          if( buf[bi] == 0x03 )
+
+          // if this is a heartbeat msg
+          if( buf[bi] == kChHb_EuProtoId )
           {
             type='H';
             incr = 4;
@@ -491,19 +526,19 @@ namespace cw
             
             switch(id )
             {
-              case 0x00:
+              case kFPosnEuconId:
                 type = 'F';
                 break;
                 
-              case 0x01:
+              case kTouchEuconId:
                 type = 'T';
                 break;
 
-              case 0x200:
+              case kMuteEuconId:
                 type = 'M';
                 break;
 
-              case 0x400:
+              case kPingEuconId:
                 type = 'P';
                 _send_response(fb,(const char*)(buf+bi),8);
                 break;
@@ -513,7 +548,7 @@ namespace cw
                 
             }
           }
-          if( type != 'F' && type != 'H' )
+          if(  type != 'H' )
             printf("%i %c (0x%x) %i (0x%x)\n",fb->fbIndex,type,id,numb,numb);
 
           bi += incr;
@@ -563,19 +598,19 @@ namespace cw
         switch( fb->protoState )
         {
           case kWaitForHandshake_1_Id:
-            if( hdr == 0x0b )
+            if( hdr == kHs1_b_EuProtoId )
             {
               fb->protoState = kWaitForHandshake_2_Id;
               _sendHandshake_1( fb );
-              printf("%i : Rcvd (0x0b) HS 1  - sent 0x0c\n", fb->fbIndex);
+              cwLogInfo("%i : Rcvd (0x0b) HS 1  - sent 0x0c\n", fb->fbIndex);
             }
             break;
 
           case kWaitForHandshake_2_Id:
-            if( hdr == 0x0d )
+            if( hdr == kHs3_d_EuProtoId )
             {
               fb->protoState = kResponse_3_A_Id;
-              printf("%i : Rcvd (0x0d) HS 2 - Sending setup data\n",fb->fbIndex);
+              cwLogInfo("%i : Rcvd (0x0d) HS 2 - Sending setup data\n",fb->fbIndex);
             }
             break;
 
@@ -662,7 +697,7 @@ namespace cw
           return cwLogError(rc,"IP address to string conversion failed.", fbIndex);
         
         // create the TCP socket
-        if((rc = sock::create( p->sockMgrH, fb->sockUserId, sock::kInvalidPortNumber, tcpFlags, p->sockTimeOutMs, _tcpCallback, p, fbIP, p->faderTcpPort )) != kOkRC )
+        if((rc = sock::create( p->sockMgrH, fb->sockUserId, sock::kInvalidPortNumber, tcpFlags, p->sockTimeOutMs, _tcpCallback, p, fbIP, p->fdrTcpPort )) != kOkRC )
           return cwLogError(rc,"The TCP socket for fader bank index %i failed. ", fbIndex);
 
         fb->remoteAddr = fromAddr->sin_addr.s_addr;
@@ -751,7 +786,7 @@ cw::rc_t cw::eucon::create( handle_t& hRef, const args_t& args )
 
   p->maxFaderBankN     = args.maxFaderBankN;
   p->sockTimeOutMs     = args.sockTimeOutMs;
-  p->faderTcpPort      = args.faderTcpPort;
+  p->fdrTcpPort      = args.fdrTcpPort;
   p->heartBeatPeriodMs = args.heartBeatPeriodMs;
   hRef.set(p);
   
@@ -842,11 +877,20 @@ cw::rc_t  cw::eucon::getMsgs( handle_t h, msgCallback_t cbFunc, void* cbArg )
 }
 
 
-cw::rc_t cw::eucon::sendMsg( handle_t h, unsigned flags, unsigned channel, unsigned ivalue, float fvalue )
+cw::rc_t cw::eucon::sendMsg( handle_t h, unsigned fbIndex, unsigned fbChIndex, unsigned msgTypeId, unsigned value )
 {
   rc_t     rc = kOkRC;
-  //eucon_t* p  = _handleToPtr(h);
-  
+
+  eucon_t* p  = _handleToPtr(h);
+
+  fbank_t* fb = p->fbankL;
+  while( fb != nullptr )
+    if( fb->fbIndex == fbIndex )
+    {
+      rc = _send_app_msg(fb, fbChIndex, msgTypeId, value );
+      break;
+    }
+
   return rc;
 }
     
@@ -930,7 +974,7 @@ cw::rc_t cw::eucon::test()
   args.mdnsPort      = 5353;
   args.sockTimeOutMs = 50;
   args.maxFaderBankN = 8;
-  args.faderTcpPort  = 49168;
+  args.fdrTcpPort  = 49168;
   args.maxSockN      = 50;
   args.heartBeatPeriodMs = 4000;
 

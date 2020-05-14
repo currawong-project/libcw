@@ -5,6 +5,7 @@ namespace cw
 {
   namespace eucon
   {
+
     enum
     {
      kUdpSockUserId=1,
@@ -16,13 +17,13 @@ namespace cw
     
     typedef struct args_str
     {
-      unsigned           recvBufByteN;   // Socket receive buffer size
-      const char*        mdnsIP;         // MDNS IP (always: "224.0.0.251")
-      sock::portNumber_t mdnsPort;       // MDNS port (always 5353)
-      unsigned           sockTimeOutMs;  // socket poll time out in milliseconds (also determines the cwEuCon update rate)
-      sock::portNumber_t faderTcpPort;   // Fader TCP port (e.g. 49168)
-      unsigned           maxSockN;       // maximum number of socket to allow in the socket manager
-      unsigned           maxFaderBankN;  // maximum number of fader banks to support
+      unsigned           recvBufByteN;      // Socket receive buffer size
+      const char*        mdnsIP;            // MDNS IP (always: "224.0.0.251")
+      sock::portNumber_t mdnsPort;          // MDNS port (always 5353)
+      unsigned           sockTimeOutMs;     // socket poll time out in milliseconds (also determines the cwEuCon update rate)
+      sock::portNumber_t fdrTcpPort;        // Fader TCP port (e.g. 49168)
+      unsigned           maxSockN;          // maximum number of socket to allow in the socket manager
+      unsigned           maxFaderBankN;     // maximum number of fader banks to support
       unsigned           heartBeatPeriodMs; // time between heart-beat messages from/to the fader banks
     } args_t;
 
@@ -78,7 +79,7 @@ namespace cw
 
     // Send a message to the EuCon manager or to a physical control.
     // Note that flags is formed by <msgTId> | <msgFlags>
-    rc_t sendMsg( handle_t h, unsigned flags, unsigned channel, unsigned ivalue, float fvalue );
+    rc_t sendMsg( handle_t h, unsigned fbIndex, unsigned fbChIndex, unsigned msgTypeId, unsigned value );
     
     
     rc_t test();
