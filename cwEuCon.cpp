@@ -510,7 +510,9 @@ namespace cw
           char     type = 'U';
           uint16_t numb = 0;
           uint16_t id   = 0;
+          uint16_t ch   = 0;
           unsigned incr = 8;
+          
 
           // if this is a heartbeat msg
           if( buf[bi] == kChHb_EuProtoId )
@@ -521,7 +523,8 @@ namespace cw
           else
           {
             uint16_t* v = (uint16_t*)(buf+bi);
-            id = ntohs(v[1]);
+            ch   = ntohs(v[0]);
+            id   = ntohs(v[1]);
             numb = ntohs(v[3]);
             
             switch(id )
@@ -549,7 +552,7 @@ namespace cw
             }
           }
           if(  type != 'H' )
-            printf("%i %c (0x%x) %i (0x%x)\n",fb->fbIndex,type,id,numb,numb);
+            printf("%i %i : %c (0x%x) %i (0x%x)\n",fb->fbIndex, ch, type,id,numb,numb);
 
           bi += incr;
       }
