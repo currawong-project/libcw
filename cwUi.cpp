@@ -1061,6 +1061,9 @@ cw::rc_t cw::ui::createOption( handle_t h, unsigned& uuIdRef, unsigned wsSessId,
 cw::rc_t cw::ui::createString( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, const char* value )
 { return _createOneEle( _handleToPtr(h), uuIdRef, "string", wsSessId, parentUuId, eleName, appId, clas, title, "value", value ); }
 
+cw::rc_t cw::ui::createNumber( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double value, unsigned decpl )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "numb_disp", wsSessId, parentUuId, eleName, appId, clas, title, "value", value, "decpl", decpl ); }
+
 cw::rc_t cw::ui::createNumber( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double value, double minValue, double maxValue, double stepValue, unsigned decpl )
 { return _createOneEle( _handleToPtr(h), uuIdRef, "number", wsSessId, parentUuId, eleName, appId, clas, title, "value", value, "min", minValue, "max", maxValue, "step", stepValue, "decpl", decpl ); }
 
