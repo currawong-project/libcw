@@ -315,6 +315,11 @@ namespace cw
 
     struct eucon_str;
 
+    typedef struct
+    {
+      bool muteFl;      
+    } ch_t;
+
     // FBank object
     typedef struct fbank_str
     {
@@ -327,6 +332,8 @@ namespace cw
       time::spec_t         nextSendHbTs;
       struct fbank_str*    link;
       uint32_t             remoteAddr;
+      ch_t*                chA;
+      unsigned             chN;
     } fbank_t;
 
     // EuCon manager object
@@ -458,7 +465,10 @@ namespace cw
       fb->sockUserId = kBaseSockUserId + fbIndex;
       fb->protoState = kSendHandshake_0_Id;
       fb->link       = p->fbankL;
+      fb->chN        = 8;
+      fb->chA        = mem::allocZ<ch_t>(fb->chN);
       p->fbankL      = fb;
+      
 
       return fb;
         
@@ -507,11 +517,11 @@ namespace cw
       
       while( bi<bufByteN )
       {
-          char     type = 'U';
-          uint16_t numb = 0;
-          uint16_t id   = 0;
-          uint16_t ch   = 0;
-          unsigned incr = 8;
+          char     type  = 'U';
+          uint16_t numb  = 0;
+          uint16_t id    = 0;
+          uint16_t chIdx = 0;
+          unsigned incr  = 8;
           
 
           // if this is a heartbeat msg
@@ -523,9 +533,9 @@ namespace cw
           else
           {
             uint16_t* v = (uint16_t*)(buf+bi);
-            ch   = ntohs(v[0]);
-            id   = ntohs(v[1]);
-            numb = ntohs(v[3]);
+            chIdx = ntohs(v[0]);
+            id    = ntohs(v[1]);
+            numb  = ntohs(v[3]);
             
             switch(id )
             {
@@ -538,7 +548,14 @@ namespace cw
                 break;
 
               case kMuteEuconId:
-                type = 'M';
+                {
+                  type = 'M';
+                  
+                  fb->chA[chIdx].muteFl = !fb->chA[chIdx].muteFl;
+                  
+                  if(_send_app_msg(fb, chIdx, kMuteEuconId, !fb->chA[chIdx].muteFl ) != kOkRC )
+                    cwLogError(kOpFailRC,"Send mute msg failed.");
+                }
                 break;
 
               case kPingEuconId:
@@ -552,13 +569,10 @@ namespace cw
             }
           }
           if(  type != 'H' )
-            printf("%i %i : %c (0x%x) %i (0x%x)\n",fb->fbIndex, ch, type,id,numb,numb);
+            printf("%i %i : %c (0x%x) %i (0x%x)\n",fb->fbIndex, chIdx, type,id,numb,numb);
 
           bi += incr;
       }
-      
-      
-      
     }
     
     void _tcpCallback( void* arg, sock::cbOpId_t cbOpId, unsigned userId, unsigned connId, const void* data, unsigned dataByteCnt, const struct sockaddr_in* fromAddr )
@@ -743,8 +757,7 @@ namespace cw
         }
       }
     }      
-  }
-  
+  } 
 }
 
 
@@ -812,8 +825,7 @@ cw::rc_t cw::eucon::destroy( handle_t& hRef )
     return rc;
   
   hRef.clear();
-  return rc;
-  
+  return rc;  
 }
 
 cw::rc_t cw::eucon::exec( handle_t h, unsigned sockTimeOutMs )
