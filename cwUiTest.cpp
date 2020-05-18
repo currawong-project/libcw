@@ -94,16 +94,16 @@ namespace cw
       if((rc = createOption( uiH, uuid, wsSessId, selUuId, "myOpt2Id", kOption2Id, "optClass", "Option 2" )) != kOkRC )
         goto errLabel;
 
-      if((rc = createString( uiH, uuid, wsSessId, divUuId, "myStringId", kStringId, "stringClass", "String", "a string value" )) != kOkRC )
+      if((rc = createStr( uiH, uuid, wsSessId, divUuId, "myStringId", kStringId, "stringClass", "String", "a string value" )) != kOkRC )
         goto errLabel;
       
-      if((rc = createNumber( uiH, uuid, wsSessId, divUuId, "myIntegerId", kIntegerId, "integerClass", "Integer", 10, 0, 100, 1, 0 )) != kOkRC )
+      if((rc = createNumb( uiH, uuid, wsSessId, divUuId, "myIntegerId", kIntegerId, "integerClass", "Integer", 0, 100, 1, 0, 10 )) != kOkRC )
         goto errLabel;
 
-      if((rc = createNumber( uiH, uuid, wsSessId, divUuId, "myFloatId", kFloatId, "floatClass", "Float", 10.0, 0.53, 100.97, 1.0, 5 )) != kOkRC )
+      if((rc = createNumb( uiH, uuid, wsSessId, divUuId, "myFloatId", kFloatId, "floatClass", "Float", 0.53, 100.97, 1.0, 5, 10.0 )) != kOkRC )
         goto errLabel;
       
-      if((rc = createProgress(  uiH, uuid, wsSessId, divUuId, "myProgressId", kProgressId, "progressClass", "Progress", 5, 0, 10 )) != kOkRC )
+      if((rc = createProg(  uiH, uuid, wsSessId, divUuId, "myProgressId", kProgressId, "progressClass", "Progress", 0, 10, 5 )) != kOkRC )
         goto errLabel;
 
       if((rc = createFromFile( uiH, p->uiCfgFn, wsSessId )) != kOkRC )
