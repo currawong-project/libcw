@@ -21,10 +21,11 @@ namespace cw
     enum
     {
      
-     kFPosnEuconId = 0x0000,
-     kTouchEuconId = 0x0001,
-     kMuteEuconId  = 0x0200,
-     kPingEuconId  = 0x0800
+     kFPosnEuconId   = 0x0000,
+     kTouchEuconId   = 0x0001,
+     kEucMuteEuconId = 0x0201,  // mute Euc->Fdr
+     kFdrMuteEuconId = 0x0200,  // mute Fdr->Euc
+     kPingEuconId    = 0x0800
     };
   }
 }
