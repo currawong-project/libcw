@@ -547,13 +547,13 @@ namespace cw
                 type = 'T';
                 break;
 
-              case kMuteEuconId:
+              case kFdrMuteEuconId:
                 {
                   type = 'M';
                   
                   fb->chA[chIdx].muteFl = !fb->chA[chIdx].muteFl;
                   
-                  if(_send_app_msg(fb, chIdx, kMuteEuconId, !fb->chA[chIdx].muteFl ) != kOkRC )
+                  if(_send_app_msg(fb, chIdx, kEucMuteEuconId, !fb->chA[chIdx].muteFl ) != kOkRC )
                     cwLogError(kOpFailRC,"Send mute msg failed.");
                 }
                 break;
