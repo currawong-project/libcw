@@ -6,27 +6,45 @@ namespace cw
 
   namespace mem
   {
-    void* _alloc( void* p, unsigned n, bool zeroFl );
+    enum
+    {
+     kZeroNewFl = 0x01, // zero only the expanded (new) space during a resize() operation
+     kZeroAllFl = 0x02  // zero all the space during a resize operation
+    };
+      
+    void* _alloc( void* p, unsigned n, unsigned flags );
+    void* _allocDupl( const void* p, unsigned byteN );
+    void* _allocDupl( const void* p );
   
     char* allocStr( const char* );
-    void* allocDupl( const void* p, unsigned byteN );
-    void* allocDupl( const void* p );
     void  free( void* );
 
     unsigned byteCount( const void* p );
   
     template<typename T>
       void release(T& p) { ::cw::mem::free(p); p=nullptr; }
-  
-    template<typename T>
-      T* allocZ(unsigned n=1) { return static_cast<T*>(_alloc(nullptr,n*sizeof(T),true)); }
 
     template<typename T>
-      T* alloc(unsigned n=1) { return static_cast<T*>(_alloc(nullptr,n*sizeof(T),false)); }
+      T* alloc(unsigned n, unsigned flags) { return static_cast<T*>(_alloc(nullptr,n*sizeof(T),flags)); }
+    
+    template<typename T>
+      T* allocZ(unsigned n=1) { return alloc<T>(n,kZeroAllFl); }
 
     template<typename T>
-      T* resizeZ(T* p, unsigned n=1) { return static_cast<T*>(_alloc(p,n*sizeof(T),true)); }
+      T* alloc(unsigned n=1) { return alloc<T>(n,0); }
 
+    template<typename T>
+      T* resize(T* p, unsigned n, unsigned flags) { return static_cast<T*>(_alloc(p,n*sizeof(T),flags)); }
+        
+    // zero the newly allocated space but leave the initial space unchanged.
+    template<typename T>
+      T* resizeZ(T* p, unsigned n=1) { return resize<T>(p,n,kZeroNewFl); }
+
+    template<typename T>
+      T* resize(T* p, unsigned n=1) { return resize<T>(p,n,0); }
+
+    template<typename T>
+      T* allocDupl(const T* p, unsigned eleN ) { return (T*)_allocDupl(p,eleN*sizeof(T)); }
 
     template<typename T>
       size_t _textLength(const T* s )
@@ -105,8 +123,32 @@ namespace cw
       return s0;
     }
 
+    template<typename T>
+      T* appendStr( T* s0, const T* s1 )
+    {
+      if( s1 == nullptr || strlen(s1)== 0 )
+        return s0;
+
+      if( s0 == nullptr )
+        return duplStr(s1);
+
+    
+      size_t s0n = _textLength(s0);
+      size_t s1n = _textLength(s1);
+      size_t sn  = s0n + s1n;
+
+      T* s = alloc<T>(sn+1);
+      strcpy(s,s0);
+      strcpy(s+s0n,s1);
+
+      free(s0);
+      
+      return s;
+    }
+
+
     template<typename C>
-      C* printf(C* p0, const char* fmt, va_list vl0 )
+      C* _printf(C* p0, bool appendFl, const char* fmt, va_list vl0 )
     {
       va_list vl1;
       va_copy(vl1,vl0);
@@ -129,10 +171,18 @@ namespace cw
     
       va_end(vl1);
 
-      return reallocStr(p0,buf);
+      return appendFl ? appendStr(p0,buf) : reallocStr(p0,buf);
     }
 
-  
+    template<typename C>
+      C* printf(C* p0, const char* fmt, va_list vl0 )
+    { return _printf(p0,false,fmt,vl0); }
+
+    template<typename C>
+      C* printp(C* p0, const char* fmt, va_list vl0 )
+    { return _printf(p0,true,fmt,vl0); }
+
+    
     template<typename C>
       C* printf(C* p0, const char* fmt, ... )
     {
@@ -142,7 +192,17 @@ namespace cw
       va_end(vl);
       return p1;
     }
-  
+
+    template<typename C>
+      C* printp(C* p0, const char* fmt, ... )
+    {
+      va_list vl;
+      va_start(vl,fmt);
+      C* p1 = printp(p0,fmt,vl);
+      va_end(vl);
+      return p1;
+    }
+    
   }
   
 }

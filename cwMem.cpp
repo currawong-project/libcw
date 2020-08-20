@@ -4,7 +4,7 @@
 #include "cwMem.h"
 
 
-void* cw::mem::_alloc( void* p0, unsigned n, bool zeroFl )
+void* cw::mem::_alloc( void* p0, unsigned n, unsigned flags )
   {
     void*    p   = nullptr;     // ptr to new block
     unsigned p0N = 0;           // size of existing block
@@ -34,9 +34,14 @@ void* cw::mem::_alloc( void* p0, unsigned n, bool zeroFl )
       mem::free(p0);  // free the existing block
     }
 
-    // if requested zero the block
-    if( zeroFl )
-      memset(((char*)p)+p0N,0,n-p0N);
+
+    // zero all memory
+    if( cwIsFlag(flags, kZeroAllFl))
+      memset(((char*)p),0,n);
+    else
+      // zero the exapnded memory but leave existing memory unchanged
+      if( cwIsFlag(flags, kZeroNewFl ))
+        memset(((char*)p)+p0N,0,n-p0N);
 
     // get pointer to base of new block
     unsigned* p1 = static_cast<unsigned*>(p);
@@ -70,7 +75,7 @@ char* cw::mem::allocStr( const char* s )
   return s1;
 }
 
-void* cw::mem::allocDupl( const void* p0, unsigned byteN )
+void* cw::mem::_allocDupl( const void* p0, unsigned byteN )
 {
   if( p0 == nullptr || byteN == 0 )
     return nullptr;
@@ -80,9 +85,9 @@ void* cw::mem::allocDupl( const void* p0, unsigned byteN )
   return p1;
 }
 
-void* cw::mem::allocDupl( const void* p )
+void* cw::mem::_allocDupl( const void* p )
 {
-  return allocDupl(p,byteCount(p));
+  return _allocDupl(p,byteCount(p));
 }
 
 
