@@ -160,32 +160,32 @@ namespace cw
     // Binary Array Reading Functions
     // Each of these functions reads a block of binary data from a file.
     // The advantage to using these functions over fileRead() is only that they are type specific.
-    rc_t readChar(   handle_t h, char*           buf, unsigned cnt );
-    rc_t readUChar(  handle_t h, unsigned char*  buf, unsigned cnt );
-    rc_t readShort(  handle_t h, short*          buf, unsigned cnt );
-    rc_t readUShort( handle_t h, unsigned short* buf, unsigned cnt );
-    rc_t readLong(   handle_t h, long*           buf, unsigned cnt );
-    rc_t readULong(  handle_t h, unsigned long*  buf, unsigned cnt );
-    rc_t readInt(    handle_t h, int*            buf, unsigned cnt );
-    rc_t readUInt(   handle_t h, unsigned int*   buf, unsigned cnt );
-    rc_t readFloat(  handle_t h, float*          buf, unsigned cnt );
-    rc_t readDouble( handle_t h, double*         buf, unsigned cnt );
-    rc_t readBool(   handle_t h, bool*           buf, unsigned cnt );
+    rc_t readChar(   handle_t h, char*           buf, unsigned cnt=1 );
+    rc_t readUChar(  handle_t h, unsigned char*  buf, unsigned cnt=1 );
+    rc_t readShort(  handle_t h, short*          buf, unsigned cnt=1 );
+    rc_t readUShort( handle_t h, unsigned short* buf, unsigned cnt=1 );
+    rc_t readLong(   handle_t h, long*           buf, unsigned cnt=1 );
+    rc_t readULong(  handle_t h, unsigned long*  buf, unsigned cnt=1 );
+    rc_t readInt(    handle_t h, int*            buf, unsigned cnt=1 );
+    rc_t readUInt(   handle_t h, unsigned int*   buf, unsigned cnt=1 );
+    rc_t readFloat(  handle_t h, float*          buf, unsigned cnt=1 );
+    rc_t readDouble( handle_t h, double*         buf, unsigned cnt=1 );
+    rc_t readBool(   handle_t h, bool*           buf, unsigned cnt=1 );
 
     // Binary Array Writing Functions
     // Each of these functions writes an array to a binary file.
     // The advantage to using functions rather than fileWrite() is only that they are type specific.
-    rc_t writeChar(   handle_t h, const char*           buf, unsigned cnt );
-    rc_t writeUChar(  handle_t h, const unsigned char*  buf, unsigned cnt );
-    rc_t writeShort(  handle_t h, const short*          buf, unsigned cnt );
-    rc_t writeUShort( handle_t h, const unsigned short* buf, unsigned cnt );
-    rc_t writeLong(   handle_t h, const long*           buf, unsigned cnt );
-    rc_t writeULong(  handle_t h, const unsigned long*  buf, unsigned cnt );
-    rc_t writeInt(    handle_t h, const int*            buf, unsigned cnt );
-    rc_t writeUInt(   handle_t h, const unsigned int*   buf, unsigned cnt );
-    rc_t writeFloat(  handle_t h, const float*          buf, unsigned cnt );
-    rc_t writeDouble( handle_t h, const double*         buf, unsigned cnt );
-    rc_t writeBool(   handle_t h, const bool*           buf, unsigned cnt );
+    rc_t writeChar(   handle_t h, const char*           buf, unsigned cnt=1 );
+    rc_t writeUChar(  handle_t h, const unsigned char*  buf, unsigned cnt=1 );
+    rc_t writeShort(  handle_t h, const short*          buf, unsigned cnt=1 );
+    rc_t writeUShort( handle_t h, const unsigned short* buf, unsigned cnt=1 );
+    rc_t writeLong(   handle_t h, const long*           buf, unsigned cnt=1 );
+    rc_t writeULong(  handle_t h, const unsigned long*  buf, unsigned cnt=1 );
+    rc_t writeInt(    handle_t h, const int*            buf, unsigned cnt=1 );
+    rc_t writeUInt(   handle_t h, const unsigned int*   buf, unsigned cnt=1 );
+    rc_t writeFloat(  handle_t h, const float*          buf, unsigned cnt=1 );
+    rc_t writeDouble( handle_t h, const double*         buf, unsigned cnt=1 );
+    rc_t writeBool(   handle_t h, const bool*           buf, unsigned cnt=1 );
 
     // Write a string to a file as <N> <char0> <char1> ... <char(N-1)>
     // where N is the count of characters in the string.
