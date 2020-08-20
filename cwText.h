@@ -30,7 +30,12 @@ namespace cw
   // or nullptr if 's' is null.
   const char* nextNonWhiteCharEOS( const char* s );
 
+  // Join s0 and s1 to form one long string.  Release the returned string with mem::free()
+  char* textJoin( const char* s0, const char* s1 );
 
+  // Realloc s0 and append s1.
+  char* textAppend( char* s0, const char* s1 );
+  
   unsigned toText( char* buf, unsigned bufN, bool v );
   unsigned toText( char* buf, unsigned bufN, unsigned char v );
   unsigned toText( char* buf, unsigned bufN, char v );

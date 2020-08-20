@@ -30,7 +30,23 @@ namespace cw
 
     return eosFl ? s : nullptr;
   }
+  /*
+  unsigned _toText( char* buf, unsigned bufN, unsigned char v )
+  {
+    if( bufN < 1 )
+      return 0;
+    buf[0] = v;
+    return 1;
+  }
 
+  unsigned _toText( char* buf, unsigned bufN, char v )
+  {
+    if( bufN < 1 )
+      return 0;
+    buf[0] = v;
+    return 1;
+  }
+  */
   
 }
 
@@ -71,21 +87,36 @@ const char* cw::nextNonWhiteCharEOS( const char* s )
 { return _nextNonWhiteChar(s,true); }
 
 
-unsigned toText( char* buf, unsigned bufN, unsigned char v )
+char* cw::textJoin( const char* s0, const char* s1 )
 {
-  if( bufN < 1 )
-    return 0;
-  buf[0] = v;
-  return 1;
+  if( s0 == nullptr && s1 == nullptr )
+    return nullptr;
+  
+  unsigned s0n = textLength(s0);
+  unsigned s1n = textLength(s1);
+  unsigned sn  = s0n + s1n + 1;
+
+  char* s = mem::alloc<char>(sn+1);
+  s[0] = 0;
+  
+  if( s0 != nullptr )
+    strcpy(s,mem::duplStr(s0));
+
+  if( s0 != nullptr && s1 != nullptr )
+    strcpy(s + strlen(s0), mem::duplStr(s1) );
+
+  return s;
 }
 
-unsigned toText( char* buf, unsigned bufN, char v )
+char* cw::textAppend( char* s0,  const char* s1 )
 {
-  if( bufN < 1 )
-    return 0;
-  buf[0] = v;
-  return 1;
+  if( s0 == nullptr && s1==nullptr)
+    return nullptr;
+
+  return mem::appendStr(s0,s1);
 }
+
+
 
 unsigned cw::toText( char* buf, unsigned bufN, bool v )
 { return toText( buf, bufN, v ? "true" : "false" );  }
