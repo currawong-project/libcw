@@ -4,6 +4,8 @@ libcwSRC =
 libcwHDR += src/libcw/cwCommon.h src/libcw/cwCommonImpl.h   src/libcw/cwMem.h   src/libcw/cwLog.h    src/libcw/cwUtility.h
 libcwSRC +=                      src/libcw/cwCommonImpl.cpp src/libcw/cwMem.cpp src/libcw/cwLog.cpp  src/libcw/cwUtility.cpp
 
+libcwHDR += src/libcw/cwMtx.h
+
 libcwHDR += src/libcw/cwFileSys.h   src/libcw/cwText.h   src/libcw/cwFile.h    src/libcw/cwTime.h   src/libcw/cwLex.h   src/libcw/cwNumericConvert.h 
 libcwSRC += src/libcw/cwFileSys.cpp src/libcw/cwText.cpp src/libcw/cwFile.cpp  src/libcw/cwTime.cpp src/libcw/cwLex.cpp
 
@@ -16,6 +18,8 @@ libcwSRC += src/libcw/cwThread.cpp  src/libcw/cwMutex.cpp src/libcw/cwThreadMach
 libcwHDR += src/libcw/cwMpScNbQueue.h src/libcw/cwSpScBuf.h   src/libcw/cwSpScQueueTmpl.h
 libcwSRC +=                           src/libcw/cwSpScBuf.cpp src/libcw/cwSpScQueueTmpl.cpp
 
+libcwHDR += src/libcw/cwSvg.h
+libcwSRC += src/libcw/cwSvg.cpp
 
 libcwHDR += src/libcw/cwWebSock.h   src/libcw/cwWebSockSvr.h    src/libcw/cwLib.h
 libcwSRC += src/libcw/cwWebSock.cpp src/libcw/cwWebSockSvr.cpp  src/libcw/cwLib.cpp
@@ -49,3 +53,5 @@ libcwHDR += src/libcw/cwMdns.h   src/libcw/cwEuCon.h   src/libcw/cwDnsSd.h   src
 libcwSRC += src/libcw/cwMdns.cpp src/libcw/cwEuCon.cpp src/libcw/cwDnsSd.cpp src/libcw/dns_sd/dns_sd.cpp src/libcw/dns_sd/dns_sd_print.cpp                                  src/libcw/dns_sd/fader.cpp   src/libcw/dns_sd/rpt.cpp
 
 
+libcwHDR += src/libcw/cwDataSets.h
+libcwSRC += src/libcw/cwDataSets.cpp
