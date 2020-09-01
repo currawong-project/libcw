@@ -5,6 +5,7 @@ libcwHDR += src/libcw/cwCommon.h src/libcw/cwCommonImpl.h   src/libcw/cwMem.h   
 libcwSRC +=                      src/libcw/cwCommonImpl.cpp src/libcw/cwMem.cpp src/libcw/cwLog.cpp  src/libcw/cwUtility.cpp
 
 libcwHDR += src/libcw/cwMtx.h
+libcwSRC += src/libcw/cwMtx.cpp
 
 libcwHDR += src/libcw/cwFileSys.h   src/libcw/cwText.h   src/libcw/cwFile.h    src/libcw/cwTime.h   src/libcw/cwLex.h   src/libcw/cwNumericConvert.h 
 libcwSRC += src/libcw/cwFileSys.cpp src/libcw/cwText.cpp src/libcw/cwFile.cpp  src/libcw/cwTime.cpp src/libcw/cwLex.cpp
@@ -18,8 +19,8 @@ libcwSRC += src/libcw/cwThread.cpp  src/libcw/cwMutex.cpp src/libcw/cwThreadMach
 libcwHDR += src/libcw/cwMpScNbQueue.h src/libcw/cwSpScBuf.h   src/libcw/cwSpScQueueTmpl.h
 libcwSRC +=                           src/libcw/cwSpScBuf.cpp src/libcw/cwSpScQueueTmpl.cpp
 
-libcwHDR += src/libcw/cwSvg.h
-libcwSRC += src/libcw/cwSvg.cpp
+libcwHDR += src/libcw/cwSvg.h   src/libcw/cwAudioFile.h
+libcwSRC += src/libcw/cwSvg.cpp src/libcw/cwAudioFile.cpp
 
 libcwHDR += src/libcw/cwWebSock.h   src/libcw/cwWebSockSvr.h    src/libcw/cwLib.h
 libcwSRC += src/libcw/cwWebSock.cpp src/libcw/cwWebSockSvr.cpp  src/libcw/cwLib.cpp
