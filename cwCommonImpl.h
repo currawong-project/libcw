@@ -27,6 +27,47 @@
 
 #define cwStringNullGuard(s) ((s)==nullptr ? "" : (s))
 
+  // Perform byte swapping on 16 bit values.
+#define cwSwap16(x) \
+  (((((unsigned short)(x)) & 0x00ff) << 8) | ((((unsigned short)(x)) & 0xff00) >> 8))
+
+#ifdef OS_LINUX
+#include <byteswap.h>  // gcc specific
+#include <unistd.h>
+
+  // Perform byte swapping on 32 bit values on systems were <byteswap.h> is available.
+#define cwSwap32(x) (bswap_32(x))
+
+  // Perform byte swapping on 64 bit values on systems were <byteswap.h> is  available.
+#define cwSwap64(x) (bswap_64(x))
+
+
+#endif
+
+
+#ifdef OS_OSX
+#include <unistd.h>
+
+  // Perform byte swapping on 32 bit values on systems were <byteswap.h> is not available.
+#define cwSwap32(x)                             \
+  ((((unsigned)((x) & 0x000000FF)) << 24) |   \
+    (((unsigned)((x) & 0x0000FF00)) << 8) |   \
+    (((unsigned)((x) & 0x00FF0000)) >> 8) |   \
+    (((unsigned)((x) & 0xFF000000)) >> 24))
+
+  // Perform byte swapping on 64 bit values on systems were <byteswap.h> is not available.
+#define cwSwap64(x)                                 \
+  (((((unsigned long long)(x))<<56) & 0xFF00000000000000ULL)  |   \
+    ((((unsigned long long)(x))<<40) & 0x00FF000000000000ULL)  |  \
+    ((((unsigned long long)(x))<<24) & 0x0000FF0000000000ULL)  |  \
+    ((((unsigned long long)(x))<< 8) & 0x000000FF00000000ULL)  |  \
+    ((((unsigned long long)(x))>> 8) & 0x00000000FF000000ULL)  |  \
+    ((((unsigned long long)(x))>>24) & 0x0000000000FF0000ULL)  |  \
+    ((((unsigned long long)(x))>>40) & 0x000000000000FF00ULL)  |  \
+    ((((unsigned long long)(x))>>56) & 0x00000000000000FFULL))
+
+#endif
+
 
 #define cwAllFlags(f,m)  (((f) & (m)) == (m))                    // Test if all of a group 'm' of binary flags in 'f' are set.
 #define cwIsFlag(f,m)    (((f) & (m)) ? true : false)            // Test if any one of a the bits in 'm' is also set in 'f'.
@@ -44,6 +85,9 @@
 
 
 #define cwCountOf(a) (sizeof(a)/sizeof(a[0]))
+
+
+
 
 // Taken from here:
 // https://groups.google.com/forum/#!topic/comp.std.c/d-6Mj5Lko_s
@@ -91,6 +135,23 @@ namespace cw
 
   
 #define cwAssert(cond) while(1){ if(!(cond)){ cwLogFatal(kAssertFailRC,"Assert failed on condition:%s",#cond ); } break; }
+
+
+  
+  
+  template< typename T>
+    bool is_int(const T& x)
+  { return false; }
+  
+  template<> inline bool is_int<signed   char>(      const signed   char& x )      { return true; }
+  template<> inline bool is_int<unsigned char>(      const unsigned char& x )      { return true; }
+  template<> inline bool is_int<signed   short>(     const signed   short& x )     { return true; }
+  template<> inline bool is_int<unsigned short>(     const unsigned short& x )     { return true; }
+  template<> inline bool is_int<signed   long>(      const signed   long& x )      { return true; }
+  template<> inline bool is_int<unsigned long>(      const unsigned long& x )      { return true; }
+  template<> inline bool is_int<signed long long>(   const signed   long long& x ) { return true; }
+  template<> inline bool is_int<unsigned long long>( const unsigned long long& x ) { return true; }
+  
   
 
   template< typename H, typename T >

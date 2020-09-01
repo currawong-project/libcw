@@ -9,6 +9,7 @@ namespace cw
     typedef enum
     {
      kInvalid_LogLevel,
+     kPrint_LogLevel,
      kDebug_LogLevel,
      kInfo_LogLevel,
      kWarning_LogLevel,
@@ -50,6 +51,9 @@ namespace cw
 #define cwLogVDebugH(h,rc,fmt, vl) cw::log::msg( h, cw::log::kDebug_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, rc, fmt, vl )
 #define cwLogDebugH( h,rc,fmt,...) cw::log::msg( h, cw::log::kDebug_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, rc, fmt, ##__VA_ARGS__ )
 
+#define cwLogVPrintH(h,fmt, vl) cw::log::msg( h, cw::log::kPrint_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, cw::kOkRC, fmt, vl )
+#define cwLogPrintH( h,fmt,...) cw::log::msg( h, cw::log::kPrint_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, cw::kOkRC, fmt, ##__VA_ARGS__ )
+
 #define cwLogVInfoH(h,fmt, vl) cw::log::msg( h, cw::log::kInfo_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, cw::kOkRC, fmt, vl )
 #define cwLogInfoH( h,fmt,...) cw::log::msg( h, cw::log::kInfo_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, cw::kOkRC, fmt, ##__VA_ARGS__ )
 
@@ -83,6 +87,8 @@ namespace cw
 
 #endif
 
+#define cwLogVPrint(fmt, vl)       cwLogVPrintH( cw::log::globalHandle(), (fmt), (vl) )
+#define cwLogPrint( fmt,...)       cwLogPrintH(  cw::log::globalHandle(), (fmt), ##__VA_ARGS__ )
 
 #define cwLogVInfo(fmt, vl)       cwLogVInfoH( cw::log::globalHandle(), (fmt), (vl) )
 #define cwLogInfo( fmt,...)       cwLogInfoH(  cw::log::globalHandle(), (fmt), ##__VA_ARGS__ )

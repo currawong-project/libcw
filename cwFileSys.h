@@ -25,6 +25,7 @@ namespace cw
     char* makeFn(  const char* dir, const char* fn, const char* ext, ... );
 
 
+    // The returned string must be released by a call to mem::release() or mem::free().
     char* expandPath( const char* dir );
 
 
@@ -74,7 +75,9 @@ namespace cw
     // number of records in the returned array.
     dirEntry_t* dirEntries( const char* dirStr, unsigned includeFlags, unsigned* dirEntryCntRef );
 
-    
+
+
+    rc_t makeDir( const char* dirStr );
   }
   
 }

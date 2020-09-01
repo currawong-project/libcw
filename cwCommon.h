@@ -42,7 +42,9 @@ namespace cw
    kDuplicateRC,            // 23 - an invalid duplicate was detected
    kAssertFailRC,           // 24 - used with cwLogFatal
    kInvalidDataTypeRC,      // 25
-   kBaseAppRC               // 26
+   kFileNotFoundRC,         // 26
+   kTestFailRC,             // 27
+   kBaseAppRC               // 28
   } cwRC_t;
 
   typedef unsigned rc_t;

@@ -131,7 +131,8 @@ namespace cw
     rc_t value( bool& v ) const;
     rc_t value( char*& v ) const;
     rc_t value( const char*& v ) const;
-
+    rc_t value( const struct object_str*& v) const {v=this; return kOkRC; }
+      
     const char* pair_label() const;
     
     const struct object_str* pair_value() const;
@@ -142,6 +143,10 @@ namespace cw
     // Set flags to kNoRecurseFl to not recurse into the object in search of the label.
     const struct object_str* find( const char* label, unsigned flags=0 ) const;
     struct       object_str* find( const char* label, unsigned flags=0 );
+    
+    const struct object_str* find_child( const char* label ) const { return find(label,kNoRecurseFl); }
+    struct       object_str* find_child( const char* label )       { return find(label,kNoRecurseFl); }
+
     
     const struct object_str* child_ele( unsigned idx ) const;
     struct       object_str* child_ele( unsigned idx );
@@ -185,7 +190,7 @@ namespace cw
     unsigned to_string( char* buf, unsigned bufByteN ) const;
     void print(const print_ctx_t* c=NULL) const;
     struct object_str* duplicate() const;
-    
+
   } object_t;
 
   object_t* newObject( std::uint8_t  v, object_t* parent=nullptr);
@@ -220,6 +225,7 @@ namespace cw
   rc_t objectFromString( const char* s, object_t*& objRef );
   rc_t objectFromFile( const char* fn, object_t*& objRef );
   void objectPrintTypes( object_t* o );
+
 
 }
 

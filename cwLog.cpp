@@ -22,6 +22,7 @@ namespace cw
 
     idLabelPair_t logLevelLabelArray[] =
     {
+     { kPrint_LogLevel, "" },
      { kDebug_LogLevel,   "debug" },
      { kInfo_LogLevel,    "info" },
      { kWarning_LogLevel, "warning" },
@@ -168,16 +169,29 @@ void cw::log::defaultFormatter( void* cbArg, logOutputCbFunc_t outFunc, void* ou
   if( level < kWarning_LogLevel )
     rcStr = "";
 
-  // levelStr, msg,sys_msg, rc, function, lineno, filename 
-  const char* fmt = "%s: %s %s %s %s\n";
+  if( level == kPrint_LogLevel )
+  {
+    const char* fmt = "%s";
+    int  n = snprintf(nullptr,0,fmt,msg);
+    cwAssert(n != -1);
+    char s[n+1];
+    int m = snprintf(s,n+1,fmt,msg);
+    cwAssert(m==n);
+    outFunc(outCbArg,level,s);     
+  }
+  else
+  {
+    // levelStr, msg,sys_msg, rc, function, lineno, filename 
+    const char* fmt = "%s: %s %s %s %s\n";
 
-  int  n = snprintf(nullptr,0,fmt,levelStr,msg,syStr,rcStr,loStr);
-  cwAssert(n != -1);
-  char s[n+1];
-  int m = snprintf(s,n+1,fmt,levelStr,msg,syStr,rcStr,loStr);
-  cwAssert(m==n);
-
-  outFunc(outCbArg,level,s);     
+    int  n = snprintf(nullptr,0,fmt,levelStr,msg,syStr,rcStr,loStr);
+    cwAssert(n != -1);
+    char s[n+1];
+    int m = snprintf(s,n+1,fmt,levelStr,msg,syStr,rcStr,loStr);
+    cwAssert(m==n);
+    outFunc(outCbArg,level,s);     
+  }
+  
 }
 
 

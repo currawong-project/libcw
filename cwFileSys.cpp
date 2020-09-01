@@ -656,3 +656,10 @@ cw::filesys::dirEntry_t* cw::filesys::dirEntries( const char* dirStr, unsigned f
   return r.rp;
 }
 
+cw::rc_t cw::filesys::makeDir( const char* dirStr )
+{
+  if( mkdir(dirStr, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) != 0 )
+    return cwLogSysError( kOpFailRC, errno, "The attempt to create the directory '%s' failed.",dirStr);
+
+  return kOkRC;
+}
