@@ -164,14 +164,7 @@ namespace cw
     // Change the sample rate value in the header.  Note that this function does not resample the audio
     // signal it simply changes the value of the sample rate in the header.
     rc_t        setSrate( const char* audioFn, unsigned srate );
-
-    // Generate a sine tone and write it to a file.
-    rc_t        sine( const char* fn, double srate, unsigned bits, double hz, double gain, double secs );
-
-    // Mix a set of audio files.
-    rc_t        mix( const char* fnV[], const float* gainV, unsigned srcN, const char* outFn, unsigned outBits );
-    rc_t        mix( const object_t* cfg );
-
+    
     // Testing and example routine for functions in .h.
     // Also see cmProcTest.c readWriteTest()
     rc_t        test( const object_t* cfg );

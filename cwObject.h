@@ -151,8 +151,8 @@ namespace cw
     const struct object_str* child_ele( unsigned idx ) const;
     struct       object_str* child_ele( unsigned idx );
 
-    // Set flag  'kNoRecurseFl' to no recurse into the object in search of the value.
-    // Set flag  'kOptional' if the label is optional and may not exist.
+    // Set flag  'kNoRecurseFl' to not recurse into the object in search of the value.
+    // Set flag  'kOptionalFl' if the label is optional and may not exist.
     template< typename T >
       rc_t get( const char* label, T& v, unsigned flags=0  ) const
     {
@@ -168,21 +168,33 @@ namespace cw
       return o->value(v);
     }
     
-    rc_t getv() const { return kOkRC; } 
+    rc_t _getv(unsigned flags) const { return kOkRC; } 
+
+    // getv("label0",v0,"label1",v1, ... )
+    template< typename T0, typename T1, typename... ARGS >
+      rc_t _getv( unsigned flags, T0 label, T1& valRef, ARGS&&... args ) const
+    {
+      rc_t rc = get(label,valRef,flags);
+
+      // if no error occurred ....
+      if( rc == kOkRC || (rc == kLabelNotFoundRC && cwIsFlag(flags,kOptionalFl)))
+        rc =  _getv(flags, std::forward<ARGS>(args)...); // ... recurse
+      else
+        rc = cwLogError(rc,"object parse failed for the pair label:'%s'.",cwStringNullGuard(label));
+
+      return rc;
+    }
 
     // getv("label0",v0,"label1",v1, ... )
     template< typename T0, typename T1, typename... ARGS >
       rc_t getv( T0 label, T1& valRef, ARGS&&... args ) const
-    {
-      rc_t rc;
+    { return _getv(0,label,valRef,args...); }
 
-      if((rc = get(label,valRef)) == kOkRC )
-        if((rc = getv(std::forward<ARGS>(args)...)) != kOkRC )
-          cwLogError(rc,"getv() failed for the pair label:'%s'.",cwStringNullGuard(label));
-      
-      return rc;
-    }
-
+    // getv("label0",v0,"label1",v1, ... ) where all values are optional
+    template< typename T0, typename T1, typename... ARGS >
+      rc_t getv_opt( T0 label, T1& valRef, ARGS&&... args ) const
+    { return _getv(kOptionalFl,label,valRef,args...); }
+    
     template< typename T >
       struct object_str* insertPair( const char* label, const T& v )
     {  return newPairObject(label, v, this); }

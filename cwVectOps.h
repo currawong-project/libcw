@@ -1,0 +1,257 @@
+#ifndef cwVectOps_h
+#define cwVectOps_h
+
+
+namespace cw
+{
+  namespace vop
+  {
+    template< typename T0 >
+      void print( const T0* v0, unsigned n, const char* fmt, const char* label=nullptr )
+    {
+      if( label != nullptr )
+        printf("%s : ",label);
+      
+      for(unsigned i=0; i<n; ++i)
+        printf(fmt,v0[i]);
+      printf("\n");
+    }
+
+
+    template< typename T0, typename T1 >
+      bool is_equal( const T0* v0, const T1* v1, unsigned n )
+    {
+      for(unsigned i=0; i<n; ++i)
+        if( v0[i] != v1[i] )
+          return false;
+      
+      return true;
+    }
+    
+    template< typename T0, typename T1 >
+      void copy( T0* v0, const T1* v1, unsigned n )
+    {
+      for(unsigned i=0; i<n; ++i)
+        v0[i] = v1[i];
+    }
+    
+    template< typename T0, typename T1 >
+      void fill( T0* v, unsigned n, const T1& value=0 )
+    {
+      for(unsigned i=0; i<n; ++i)
+        v[i] = value;
+    }
+
+    template< typename T >
+      void zero( T* v, unsigned n )
+    { fill(v,n,0); }
+
+
+    template< typename T >
+      unsigned arg_max( const T* v, unsigned n )
+    {
+      if( n == 0 )
+        return kInvalidIdx;
+
+      unsigned mi = 0;
+      
+      for(unsigned i=1; i<n; ++i)
+        if( v[i] > v[mi])
+          mi = i;
+      
+      return mi;
+    }
+
+    template< typename T >
+      unsigned arg_min( const T* v, unsigned n )
+    {
+      if( n == 0 )
+        return kInvalidIdx;
+
+      unsigned mi = 0;
+      
+      for(unsigned i=1; i<n; ++i)
+        if( v[i] < v[mi])
+          mi = i;
+      
+      return mi;
+    }
+
+    
+    template< typename T >
+      const T max( const T* v, unsigned n )
+    {
+      unsigned mi;
+      if((mi = arg_max(v,n)) == kInvalidIdx )
+        return std::numeric_limits<T>::max();
+      return v[mi];
+    }
+
+    template< typename T >
+      const T min( const T* v, unsigned n )
+    {
+      unsigned mi;
+      if((mi = arg_min(v,n)) == kInvalidIdx )
+        return std::numeric_limits<T>::max();
+      return v[mi];
+    }
+    
+    template< typename T0, typename T1 >
+      T0 mac( const T0* v0, const T1* v1, unsigned n )
+    {
+      T0 acc = 0;
+      for(unsigned i=0; i<n; ++i)
+        acc += v0[i] * v1[i];
+      return acc;
+    }
+    
+    template< typename T >
+      T cumsum( const T* v, unsigned n )
+    {
+      T y = 0;
+      for(unsigned i=0; i<n; ++i)
+        y += v[i];
+
+      return y;
+    }
+
+    template< typename T >
+      T cumprod( const T* v, unsigned n )
+    {
+      T y = 1;
+      for(unsigned i=0; i<n; ++i)
+        y *= v[i];
+      return y;
+    }
+
+    template< typename T0, typename T1 >
+      void mul( T0* v0, const T1* v1, unsigned n )
+    {
+      for(unsigned i=0; i<n; ++i)
+        v0[i] *= v1[i];
+    }
+
+    template< typename T0, typename T1 >
+      void mul( T0* y0, const T0* v0, const T1* v1, unsigned n )
+    {
+      for(unsigned i=0; i<n; ++i)
+        y0[i] = v0[i] * v1[i];
+    }
+
+    
+    template< typename T0, typename T1 >
+      void mul( T0* v0, const T1& scalar, unsigned n )
+    {
+      for(unsigned i=0; i<n; ++i)
+        v0[i] *= scalar;
+    }
+
+    template< typename T0, typename T1 >
+      void mul( T0* y0, const T0* v0, const T1& scalar, unsigned n )
+    {
+      for(unsigned i=0; i<n; ++i)
+        y0[i] = v0[i] * scalar;
+    }
+    
+    template< typename T0, typename T1 >
+      void add( T0* v0, const T1* v1, unsigned n )
+    {
+      for(unsigned i=0; i<n; ++i)
+        v0[i] += v1[i];
+    }
+
+    template< typename T0, typename T1 >
+      void add( T0* y0, const T0* v0, const T1* v1, unsigned n )
+    {
+      for(unsigned i=0; i<n; ++i)
+        y0[i] = v0[i] + v1[i];
+    }
+
+    template< typename T0, typename T1 >
+      void add( T0* v0, const T1& scalar, unsigned n )
+    {
+      for(unsigned i=0; i<n; ++i)
+        v0[i] += scalar;
+    }
+
+    template< typename T0, typename T1 >
+      void add( T0* y0, const T0* v0, const T1& scalar, unsigned n )
+    {
+      for(unsigned i=0; i<n; ++i)
+        y0[i] = v0[i] + scalar;
+    }
+
+    template< typename T0, typename T1 >
+      void div( T0* v0, const T1* v1, unsigned n )
+    {
+      for(unsigned i=0; i<n; ++i)
+        v0[i] /= v1[i];
+    }
+
+    template< typename T0, typename T1 >
+      void div( T0* y0, const T0* v0, const T1* v1, unsigned n )
+    {
+      for(unsigned i=0; i<n; ++i)
+        y0[i] = v0[i] / v1[i];
+    }
+
+    template< typename T0, typename T1 >
+      void div( T0* v0, const T1& scalar, unsigned n )
+    {
+      for(unsigned i=0; i<n; ++i)
+        v0[i] /= scalar;
+    }
+
+    template< typename T0, typename T1 >
+      void div( T0* y0, const T0* v0, const T1& scalar, unsigned n )
+    {
+      for(unsigned i=0; i<n; ++i)
+        y0[i] = v0[i] / scalar;
+    }
+    
+    template< typename T0, typename T1 >
+      void sub( T0* v0, const T1* v1, unsigned n )
+    {
+      for(unsigned i=0; i<n; ++i)
+        v0[i] -= v1[i];
+    }
+
+    template< typename T0, typename T1 >
+      void sub( T0* y0, const T0* v0, const T1* v1, unsigned n )
+    {
+      for(unsigned i=0; i<n; ++i)
+        y0[i] = v0[i] / v1[i];
+    }
+
+    template< typename T0, typename T1 >
+      void sub( T0* v0, const T1& scalar, unsigned n )
+    {
+      for(unsigned i=0; i<n; ++i)
+        v0[i] -= scalar;
+    }
+
+    template< typename T0, typename T1 >
+      void sub( T0* y0, const T0* v0, const T1& scalar, unsigned n )
+    {
+      for(unsigned i=0; i<n; ++i)
+        y0[i] = v0[i] / scalar;
+    }
+
+    // Fill y[0:min(n,cnt)] with values {beg,beg+step,beg+2*step .... beg+(cnt-1)*step}}
+    template< typename T >
+      void seq( T* y, unsigned n, const T& beg, const T& cnt, const T& step=1 )
+    {
+      if( cnt < n )
+        n = cnt;
+
+      T v = beg;
+      for(unsigned i=0; i<n; ++i, v+=step)
+        y[i] = v;
+    }
+
+    
+  }
+}
+
+
+#endif

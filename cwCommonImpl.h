@@ -139,18 +139,6 @@ namespace cw
 
   
   
-  template< typename T>
-    bool is_int(const T& x)
-  { return false; }
-  
-  template<> inline bool is_int<signed   char>(      const signed   char& x )      { return true; }
-  template<> inline bool is_int<unsigned char>(      const unsigned char& x )      { return true; }
-  template<> inline bool is_int<signed   short>(     const signed   short& x )     { return true; }
-  template<> inline bool is_int<unsigned short>(     const unsigned short& x )     { return true; }
-  template<> inline bool is_int<signed   long>(      const signed   long& x )      { return true; }
-  template<> inline bool is_int<unsigned long>(      const unsigned long& x )      { return true; }
-  template<> inline bool is_int<signed long long>(   const signed   long long& x ) { return true; }
-  template<> inline bool is_int<unsigned long long>( const unsigned long long& x ) { return true; }
   
   
 
