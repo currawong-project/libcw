@@ -38,11 +38,17 @@ endif
 libcwHDR += src/libcw/cwSerialPortDecls.h src/libcw/cwSerialPort.h    src/libcw/cwSerialPortSrv.h
 libcwSRC +=                               src/libcw/cwSerialPort.cpp  src/libcw/cwSerialPortSrv.cpp
 
-libcwHDR += src/libcw/cwMidiDecls.h src/libcw/cwMidi.h   src/libcw/cwMidiPort.h
-libcwSRC +=                         src/libcw/cwMidi.cpp src/libcw/cwMidiPort.cpp src/libcw/cwMidiAlsa.cpp
+libcwHDR += src/libcw/cwMidiDecls.h src/libcw/cwMidi.h     
+libcwSRC +=                         src/libcw/cwMidi.cpp    
 
-libcwHDR += src/libcw/cwAudioDeviceDecls.h src/libcw/cwAudioDevice.h   src/libcw/cwAudioDeviceAlsa.h
-libcwSRC +=                                src/libcw/cwAudioDevice.cpp src/libcw/cwAudioDeviceAlsa.cpp src/libcw/cwAudioDeviceTest.cpp
+libcwHDR += src/libcw/cwAudioDeviceDecls.h src/libcw/cwAudioDevice.h   
+libcwSRC += src/libcw/cwAudioDevice.cpp
+
+if cwALSA
+
+libcwHDR += src/libcw/cwMidiPort.h                            src/libcw/cwAudioDeviceAlsa.h                                    
+libcwSRC += src/libcw/cwMidiPort.cpp src/libcw/cwMidiAlsa.cpp src/libcw/cwAudioDeviceAlsa.cpp src/libcw/cwAudioDeviceTest.cpp
+endif
 
 libcwHDR += src/libcw/cwAudioBufDecls.h src/libcw/cwAudioBuf.h
 libcwSRC +=                             src/libcw/cwAudioBuf.cpp
