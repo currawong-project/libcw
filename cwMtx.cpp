@@ -3,6 +3,7 @@
 #include "cwCommonImpl.h"
 #include "cwMem.h"
 #include "cwObject.h"
+#include "cwVectOps.h"
 #include "cwMtx.h"
 
 
@@ -95,8 +96,13 @@ cw::rc_t cw::mtx::test( const object_t* cfg )
   d_t* mtx1 = nullptr;
   d_t* mtx2 = nullptr;
   d_t* mtx3 = nullptr;
+  d_t* mtx4 = nullptr;
   d_t* mtx_y0   = nullptr;
   d_t* mtx_y1   = nullptr;
+  d_t* mtx_y2   = nullptr;
+  d_t* mtx_y3   = nullptr;
+  d_t* mtx_y4   = nullptr;
+  d_t* mtx_y5   = nullptr;
   d_t  y;
   
   const object_t* m0 = cfg->find("m0");
@@ -115,6 +121,10 @@ cw::rc_t cw::mtx::test( const object_t* cfg )
   if( m3 != nullptr )
     mtx3 = allocCfg<double>(m3);
 
+  const object_t* m4 = cfg->find("m4");
+  if( m4 != nullptr )
+    mtx4 = allocCfg<double>(m4);
+  
   const object_t* y0 = cfg->find("y0");
   if( y0 != nullptr )
     mtx_y0 = allocCfg<double>(y0);
@@ -123,7 +133,7 @@ cw::rc_t cw::mtx::test( const object_t* cfg )
   if( y1 != nullptr )
     mtx_y1 = allocCfg<double>(y1);
   
-  unsigned n = offset(mtx1,1,1);
+  unsigned n = offset(*mtx1,1,1);
   printf("offset: %i\n",n);
   
   
@@ -131,6 +141,7 @@ cw::rc_t cw::mtx::test( const object_t* cfg )
   report(*mtx1,"m1");
   report(*mtx2,"m2");
   report(*mtx3,"m3");
+  report(*mtx4,"m4");
   report(*mtx_y0,"y0");
   report(*mtx_y1,"y1");
 
@@ -152,13 +163,48 @@ cw::rc_t cw::mtx::test( const object_t* cfg )
     if( !is_equal(*mtx_y1,y) )
       rc = cwLogError(kTestFailRC,"Test 1 fail.");
   }
+
+
+  
+  transpose(*mtx0);
+  report(*mtx0,"m0");
+  mtx_y2 = join(0,*mtx0,*mtx4);
+  if( mtx_y2 != nullptr )
+    report(*mtx_y2,"y2");
+
+  report(*mtx0,"m0");
+  report(*mtx4,"m4");
+  mtx_y3 = join(1,*mtx0,*mtx4);
+  if( mtx_y3 != nullptr )
+    report(*mtx_y3,"y3");
+
+
+  mtx_y4 = slice_alias(*mtx_y3,0,0,1);
+  if( mtx_y4 != nullptr )
+  {
+    report(*mtx_y4,"y4 - slice");
+
+    ele(*mtx_y4,2) = 1;
+    ele(*mtx_y4,3) = 2;
+    report(*mtx_y4,"y4 - mod");
+  
+  
+    mtx_y5 = alloc_one_hot(*mtx_y4);
+    if( mtx_y5 != nullptr )
+      report(*mtx_y5,"y5 -(one_hot(y4))");
+  }
   
   release(mtx0);
   release(mtx1);
   release(mtx2);
   release(mtx3);
+  release(mtx4);
   release(mtx_y0);
   release(mtx_y1);
+  release(mtx_y2);
+  release(mtx_y3);
+  release(mtx_y4);
+  release(mtx_y5);
   release(y);
   return rc;
 }
