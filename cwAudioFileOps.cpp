@@ -369,13 +369,13 @@ namespace cw
         }
 
         xArgL[i].arg            = argL + i;
-        xArgL[i].srcFrmIdx      = floor(argL[i].srcBegSec *     srate_Ref);
-        xArgL[i].srcFrmN        = floor(argL[i].srcEndSec * srate_Ref) - xArgL[i].srcFrmIdx;
+        xArgL[i].srcFrmIdx      = floor(argL[i].srcBegSec     * srate_Ref);
+        xArgL[i].srcFrmN        = floor(argL[i].srcEndSec     * srate_Ref) - xArgL[i].srcFrmIdx;
         xArgL[i].srcFadeInFrmN  = floor(argL[i].srcBegFadeSec * srate_Ref);
         xArgL[i].srcFadeOutFrmN = floor(argL[i].srcEndFadeSec * srate_Ref);
-        xArgL[i].dstFrmIdx      = floor(argL[i].dstBegSec *     srate_Ref);
+        xArgL[i].dstFrmIdx      = floor(argL[i].dstBegSec     * srate_Ref);
                   
-        chN_Ref         = std::max( chN_Ref,        xArgL[i].afInfo.chCnt );
+        chN_Ref        = std::max( chN_Ref,        xArgL[i].afInfo.chCnt );
         maxSrcFrmN_Ref = std::max( maxSrcFrmN_Ref, xArgL[i].srcFrmN );
 
         dstFrmN_Ref = std::max( dstFrmN_Ref, xArgL[i].dstFrmIdx + xArgL[i].srcFrmN );
@@ -461,14 +461,15 @@ namespace cw
 
 cw::rc_t cw::afop::cutAndMix( const char* dstFn, unsigned dstBits, const char* srcDir, const cutMixArg_t* argL, unsigned argN )
 {
-  rc_t         rc       = kOkRC;
-  unsigned     dstChN   = 0;
-  double       dstSrate = 0;
+  rc_t         rc         = kOkRC;
+  unsigned     dstChN     = 0;
+  double       dstSrate   = 0;
   unsigned     dstFrmN    = 0;
   unsigned     maxSrcFrmN = 0;
   float*       dstV       = nullptr;
-  float*       srcV     = nullptr;
+  float*       srcV       = nullptr;
   _cutMixArg_t xArgL[ argN ];
+  memset( &xArgL, 0, sizeof(xArgL));
 
   // open each of the source files
   if((rc = _cutAndMixOpen( srcDir, argL, xArgL, argN, dstChN, dstSrate, dstFrmN, maxSrcFrmN )) != kOkRC )
@@ -491,7 +492,7 @@ cw::rc_t cw::afop::cutAndMix( const char* dstFn, unsigned dstBits, const char* s
     // for each source file
     for(unsigned i = 0; i<argN; ++i)
     {
-      unsigned chIdx = 0;
+      unsigned chIdx         = 0;
       unsigned actualFrmN    = 0;
       unsigned srcFrmN       = xArgL[i].srcFrmN;
       unsigned srcChN        = xArgL[i].afInfo.chCnt;
@@ -499,7 +500,7 @@ cw::rc_t cw::afop::cutAndMix( const char* dstFn, unsigned dstBits, const char* s
       // read the source segment
       if((rc = audiofile::getFloat( xArgL[i].srcFn, xArgL[i].srcFrmIdx, srcFrmN, chIdx, srcChN, srcChBufL, &actualFrmN, nullptr)) != kOkRC )
       {
-        cwLogError(rc,"Read source file '%s'.", xArgL[i].srcFn );
+        cwLogError(rc,"Error reading source audio file '%s'.", xArgL[i].srcFn );
         goto errLabel;
       }
 
@@ -565,8 +566,6 @@ cw::rc_t cw::afop::cutAndMix( const object_t* cfg )
     unsigned argN = argNodeL->child_count(); 
     cutMixArg_t argL[ argN ];
         
-    printf("cm: %s %s %f\n",dstFn,srcDir,crossFadeSec);
-    
     // for each source file
     for(i=0; i<argNodeL->child_count(); ++i)
     {
@@ -591,7 +590,7 @@ cw::rc_t cw::afop::cutAndMix( const object_t* cfg )
         }
       }
 
-      printf("cm beg:%f end:%f dst:%f %s\n", argL[i].srcBegSec, argL[i].srcEndSec, argL[i].dstBegSec, argL[i].srcFn );
+      //printf("cm beg:%f end:%f dst:%f %s\n", argL[i].srcBegSec, argL[i].srcEndSec, argL[i].dstBegSec, argL[i].srcFn );
       
     }
 
@@ -617,9 +616,14 @@ cw::rc_t cw::afop::cutAndMix( const object_t* cfg )
 
 cw::rc_t cw::afop::parallelMix( const char* dstFn, unsigned dstBits, const char* srcDir, const parallelMixArg_t* argL, unsigned argN )
 {
-  cutMixArg_t cmArgL[ argN ];
+  // Note that the length of each source clip is extended by 'fadeOutSec' to overlap with the first 'fadeOutSec'
+  // milliseconds of the following clip.  The output start time of each source clip is therefore the same
+  // as it's input start time.
+  
   double fadeInSec = 0;
-  double dstBegSec = 0;
+  cutMixArg_t cmArgL[ argN ];
+  memset(&cmArgL,0,sizeof(cmArgL));
+  
   for(unsigned i=0; i<argN; ++i)
   {
     cmArgL[i].srcFn          = argL[i].srcFn;
@@ -627,9 +631,8 @@ cw::rc_t cw::afop::parallelMix( const char* dstFn, unsigned dstBits, const char*
     cmArgL[i].srcEndSec      = argL[i].srcEndSec + argL[i].fadeOutSec;
     cmArgL[i].srcBegFadeSec  = fadeInSec;
     cmArgL[i].srcEndFadeSec  = argL[i].fadeOutSec;
-    cmArgL[i].dstBegSec      = dstBegSec;
+    cmArgL[i].dstBegSec      = argL[i].srcBegSec;
     
-    dstBegSec               += argL[i].srcEndSec - argL[i].srcBegSec;
     fadeInSec                = argL[i].fadeOutSec;
   }
 
@@ -647,8 +650,6 @@ cw::rc_t cw::afop::parallelMix( const object_t* cfg )
   const object_t* argNodeL    = nullptr;
   unsigned        i;
 
-  printf("PARALLEL-MIX\n");
-  
   // read the top level cfg record
   if((rc = cfg->getv("dstFn",dstFn,"dstBits",dstBits,"srcDir",srcDir,"argL",argNodeL)) != kOkRC )
     goto errLabel;
@@ -662,8 +663,6 @@ cw::rc_t cw::afop::parallelMix( const object_t* cfg )
     unsigned argN = argNodeL->child_count(); 
     parallelMixArg_t argL[ argN ];
         
-    printf("%s %s\n",dstFn,srcDir);
-    
     // for each source file
     for(i=0; i<argNodeL->child_count(); ++i)
     {
@@ -685,7 +684,7 @@ cw::rc_t cw::afop::parallelMix( const object_t* cfg )
         */
       }
 
-      printf("beg:%f end:%f dst:%f %s\n", argL[i].srcBegSec, argL[i].srcEndSec, argL[i].fadeOutSec, argL[i].srcFn );
+      //printf("beg:%f end:%f fade:%f %s\n", argL[i].srcBegSec, argL[i].srcEndSec, argL[i].fadeOutSec, argL[i].srcFn );
       
     }
 
@@ -694,10 +693,7 @@ cw::rc_t cw::afop::parallelMix( const object_t* cfg )
 
     // call cross-fader
     if((rc = parallelMix( afDstFn, dstBits, afSrcDir, argL, argN )) != kOkRC )
-    {
-      rc = cwLogError(rc,"Parallel mix failed.");
       goto errLabel;
-    }
 
   }
 
@@ -705,7 +701,7 @@ cw::rc_t cw::afop::parallelMix( const object_t* cfg )
   mem::release(afSrcDir);
   mem::release(afDstFn);
   if( rc != kOkRC )
-    rc = cwLogError(rc,"Crossfade failed.");
+    rc = cwLogError(rc,"Parallel-mix failed.");
   return rc;
 }
 
