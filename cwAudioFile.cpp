@@ -964,7 +964,7 @@ namespace cw
     {
       rc_t rc;
 
-      if((rc = open( h, fn, afInfoPtr )) != kOkRC )
+      if((rc = open( h, fn, afInfoPtr )) == kOkRC )
         if( begFrmIdx > 0 )
           rc = seek( h, begFrmIdx );
        
