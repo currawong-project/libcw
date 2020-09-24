@@ -616,12 +616,10 @@ cw::rc_t cw::afop::cutAndMix( const object_t* cfg )
 
 cw::rc_t cw::afop::parallelMix( const char* dstFn, unsigned dstBits, const char* srcDir, const parallelMixArg_t* argL, unsigned argN )
 {
-  // Note that the length of each source clip is extended by 'fadeOutSec' to overlap with the first 'fadeOutSec'
-  // milliseconds of the following clip.  The output start time of each source clip is therefore the same
-  // as it's input start time.
   
   double fadeInSec = 0;
   cutMixArg_t cmArgL[ argN ];
+  double dstBegSec = 0;
   memset(&cmArgL,0,sizeof(cmArgL));
   
   for(unsigned i=0; i<argN; ++i)
@@ -631,8 +629,9 @@ cw::rc_t cw::afop::parallelMix( const char* dstFn, unsigned dstBits, const char*
     cmArgL[i].srcEndSec      = argL[i].srcEndSec + argL[i].fadeOutSec;
     cmArgL[i].srcBegFadeSec  = fadeInSec;
     cmArgL[i].srcEndFadeSec  = argL[i].fadeOutSec;
-    cmArgL[i].dstBegSec      = argL[i].srcBegSec;
-    
+    cmArgL[i].dstBegSec      = dstBegSec;
+
+    dstBegSec               += argL[i].srcEndSec - argL[i].srcBegSec;
     fadeInSec                = argL[i].fadeOutSec;
   }
 
