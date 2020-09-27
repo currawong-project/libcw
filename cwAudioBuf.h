@@ -232,7 +232,7 @@ namespace cw
       void report( handle_t h );
 
       // Run a buffer usage simulation to test the class. cmAudioPortTest.c calls this function.
-      void test();
+      rc_t test();
 
       //)
 
