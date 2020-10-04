@@ -8,6 +8,8 @@
 #include "cwUtility.h"
 #include "cwFileSys.h"
 #include "cwAudioFileOps.h"
+#include "cwVectOps.h"
+#include "cwDsp.h"
 
 cw::rc_t     cw::afop::sine( const char* fn, double srate, unsigned bits, double hz, double gain, double secs )
 {
@@ -374,7 +376,10 @@ namespace cw
         xArgL[i].srcFadeInFrmN  = floor(argL[i].srcBegFadeSec * srate_Ref);
         xArgL[i].srcFadeOutFrmN = floor(argL[i].srcEndFadeSec * srate_Ref);
         xArgL[i].dstFrmIdx      = floor(argL[i].dstBegSec     * srate_Ref);
-                  
+
+        //printf("cm beg:%f end:%f dst:%f gain:%f %s\n", argL[i].srcBegSec, argL[i].srcEndSec, argL[i].dstBegSec, argL[i].gain, argL[i].srcFn );
+      
+        
         chN_Ref        = std::max( chN_Ref,        xArgL[i].afInfo.chCnt );
         maxSrcFrmN_Ref = std::max( maxSrcFrmN_Ref, xArgL[i].srcFrmN );
 
@@ -482,7 +487,7 @@ cw::rc_t cw::afop::cutAndMix( const char* dstFn, unsigned dstBits, const char* s
     dstV = mem::allocZ<float>(dstFrmN*dstChN); // output signal buffer
     srcV  = mem::alloc<float>(maxSrcFrmN*dstChN); // source signal buffer
 
-    // create the src read buffer
+    // create the src read/ dst write buffer
     for(unsigned i=0; i<dstChN; ++i)
     {
       dstChBufL[i] = dstV + (i*dstFrmN);
@@ -496,7 +501,8 @@ cw::rc_t cw::afop::cutAndMix( const char* dstFn, unsigned dstBits, const char* s
       unsigned actualFrmN    = 0;
       unsigned srcFrmN       = xArgL[i].srcFrmN;
       unsigned srcChN        = xArgL[i].afInfo.chCnt;
-      
+
+
       // read the source segment
       if((rc = audiofile::getFloat( xArgL[i].srcFn, xArgL[i].srcFrmIdx, srcFrmN, chIdx, srcChN, srcChBufL, &actualFrmN, nullptr)) != kOkRC )
       {
@@ -515,7 +521,7 @@ cw::rc_t cw::afop::cutAndMix( const char* dstFn, unsigned dstBits, const char* s
         for(unsigned k = 0; k<srcFrmN; ++k)
         {
           assert( xArgL[i].dstFrmIdx + k < dstFrmN );
-          dstChBufL[j][ xArgL[i].dstFrmIdx + k ] += srcChBufL[j][k];
+          dstChBufL[j][ xArgL[i].dstFrmIdx + k ] += xArgL[i].arg->gain * srcChBufL[j][k];
         }
       
     }
@@ -582,15 +588,16 @@ cw::rc_t cw::afop::cutAndMix( const object_t* cfg )
         argL[i].dstBegSec     = argL[i].srcBegSec; // By default the src is moved to the same location 
         argL[i].srcBegFadeSec = crossFadeSec; // By default the beg/end fade is the global fade time. 
         argL[i].srcEndFadeSec = crossFadeSec;
+        argL[i].gain          = 1;
 
         // parse the optional parameters
-        if((rc = o->getv_opt("dstBegSec", argL[i].dstBegSec, "srcBegFadeSec", argL[i].srcBegFadeSec, "srcEndFadeSec", argL[i].srcEndFadeSec  )) != kOkRC )
+        if((rc = o->getv_opt("dstBegSec", argL[i].dstBegSec, "srcBegFadeSec", argL[i].srcBegFadeSec, "srcEndFadeSec", argL[i].srcEndFadeSec, "gain", argL[i].gain  )) != kOkRC )
         {
           rc = cwLogError(kInvalidArgRC,"Invalid crossfade optional argument at argument index %i.",i);
         }
       }
 
-      //printf("cm beg:%f end:%f dst:%f %s\n", argL[i].srcBegSec, argL[i].srcEndSec, argL[i].dstBegSec, argL[i].srcFn );
+      //printf("cm beg:%f end:%f dst:%f gain:%f %s\n", argL[i].srcBegSec, argL[i].srcEndSec, argL[i].dstBegSec, argL[i].gain, argL[i].srcFn );
       
     }
 
@@ -630,6 +637,7 @@ cw::rc_t cw::afop::parallelMix( const char* dstFn, unsigned dstBits, const char*
     cmArgL[i].srcBegFadeSec  = fadeInSec;
     cmArgL[i].srcEndFadeSec  = argL[i].fadeOutSec;
     cmArgL[i].dstBegSec      = dstBegSec;
+    cmArgL[i].gain           = argL[i].gain;
 
     dstBegSec               += argL[i].srcEndSec - argL[i].srcBegSec;
     fadeInSec                = argL[i].fadeOutSec;
@@ -670,17 +678,17 @@ cw::rc_t cw::afop::parallelMix( const object_t* cfg )
       // parse the non-optional parameters
       if((rc = o->getv("srcBegSec", argL[i].srcBegSec, "srcEndSec", argL[i].srcEndSec, "fadeOutSec", argL[i].fadeOutSec, "srcFn", argL[i].srcFn  )) != kOkRC )
       {
-        rc = cwLogError(kInvalidArgRC,"Invalid crossfade argument at argument index %i.",i);
+        rc = cwLogError(kInvalidArgRC,"Invalid xform app argument at argument index %i.",i);
       }
       else
       {
-        /*
+        argL[i].gain = 1;
+        
         // parse the optional parameters
-        if((rc = o->getv_opt("dstBegSec", argL[i].dstBegSec, "srcBegFadeSec", argL[i].srcBegFadeSec, "srcEndFadeSec", argL[i].srcEndFadeSec  )) != kOkRC )
+        if((rc = o->getv_opt("gain", argL[i].gain  )) != kOkRC )
         {
-          rc = cwLogError(kInvalidArgRC,"Invalid crossfade optional argument at argument index %i.",i);
+          rc = cwLogError(kInvalidArgRC,"Invalid xform app optional argument at argument index %i.",i);
         }
-        */
       }
 
       //printf("beg:%f end:%f fade:%f %s\n", argL[i].srcBegSec, argL[i].srcEndSec, argL[i].fadeOutSec, argL[i].srcFn );
@@ -703,6 +711,220 @@ cw::rc_t cw::afop::parallelMix( const object_t* cfg )
     rc = cwLogError(rc,"Parallel-mix failed.");
   return rc;
 }
+
+cw::rc_t cw::afop::transformApp( const object_t* cfg )
+{
+  rc_t            rc        = kOkRC;
+  const char*     srcDir    = nullptr;
+  const char*     dryFn     = nullptr;
+  const char*     dstPreFn  = nullptr;
+  const char*     dstRevFn  = nullptr;
+  unsigned        dstBits   = 16;
+  const object_t* argNodeL  = nullptr;
+  const char*     irFn      = nullptr;
+  double          irScale   = 1;
+
+  char* expSrcDir   = nullptr;
+  char* expDryFn    = nullptr;
+  char* expDstPreFn = nullptr;  
+  char* expDstRevFn = nullptr;  
+  char* expIrFn     = nullptr;
+  
+  unsigned        i;
+
+  // read the top level cfg record
+  if((rc = cfg->getv("dstPreFn",dstPreFn,"dstRevFn",dstRevFn,"dstBits",dstBits,"srcDir",srcDir,"argL",argNodeL,"dryFn",dryFn,"irFn",irFn,"irScale",irScale)) != kOkRC )
+    goto errLabel;
+
+
+  expSrcDir   = filesys::expandPath(srcDir);
+  expDryFn    = filesys::expandPath(dryFn);
+  expDstPreFn = filesys::expandPath(dstPreFn);
+  expDstRevFn = filesys::expandPath(dstRevFn);
+  expIrFn     = filesys::expandPath(irFn);
+
+
+  if( argNodeL == nullptr )
+  {
+    rc = cwLogError(kInvalidArgRC,"No crossfades were specified.");
+  }
+  else
+  {
+    unsigned argN = argNodeL->child_count() * 2; 
+    parallelMixArg_t argL[ argN ];
+        
+    // for each source file
+    for(i=0; i<argNodeL->child_count(); ++i)
+    {
+      const object_t* o = argNodeL->child_ele(i);
+
+      unsigned j = i*2;
+
+      // parse the non-optional parameters
+      if((rc = o->getv("srcBegSec", argL[j].srcBegSec, "srcEndSec", argL[j].srcEndSec, "fadeOutSec", argL[j].fadeOutSec, "srcFn", argL[j].srcFn  )) != kOkRC )
+      {
+        rc = cwLogError(kInvalidArgRC,"Invalid xform app argument at argument index %i.",i);
+      }
+      else
+      {
+        argL[j].gain = 1;
+        
+        // parse the optional parameters
+        if((rc = o->getv_opt("wetGain", argL[j].gain  )) != kOkRC )
+        {
+          rc = cwLogError(kInvalidArgRC,"Invalid xform app optional argument at argument index %i.",i);
+        }
+      }
+
+      // expand the source file name
+      argL[j].srcFn  = filesys::makeFn(expSrcDir, argL[j].srcFn, NULL, NULL);
+
+      // form the dry file name
+      argL[j+1]       = argL[j];
+      argL[j+1].srcFn = expDryFn;
+      argL[j+1].gain  = 1.0 - argL[j].gain;
+    }
+
+    // call cross-fader
+    rc = parallelMix( expDstPreFn, dstBits, "", argL, argN );
+
+    for(unsigned i=0; i<argN; i+=2)
+      mem::release( const_cast<char*&>(argL[i].srcFn));
+
+    if( rc == kOkRC )
+      rc = convolve( expDstRevFn, dstBits, expDstPreFn, expIrFn, irScale );        
+
+  }
+
+ errLabel:
+
+  
+  
+  mem::release(expSrcDir);
+  mem::release(expDryFn);
+  mem::release(expDstPreFn);
+  mem::release(expDstRevFn);
+  mem::release(expIrFn);
+  
+  if( rc != kOkRC )
+    rc = cwLogError(rc,"Parallel-mix failed.");
+  return rc;
+  
+}
+
+
+
+cw::rc_t cw::afop::convolve( const char* dstFn, unsigned dstBits, const char* srcFn, const char* impulseResponseFn, float irScale )
+{
+  rc_t              rc     = kOkRC;
+  float**           hChBuf = nullptr;
+  unsigned          hChN   = 0;
+  unsigned          hFrmN  = 0;
+  double            hSrate = 0;
+  float**           xChBuf = nullptr;
+  unsigned          xChN   = 0;
+  unsigned          xFrmN  = 0;
+  audiofile::info_t info;
+
+  audiofile::reportInfo(impulseResponseFn);
+  audiofile::reportInfo(srcFn);
+
+  // read the impulse response audio file
+  if((rc = audiofile::allocFloatBuf(impulseResponseFn, hChBuf, hChN, hFrmN, info)) != kOkRC )
+  {
+    rc = cwLogError(rc,"The impulse audio file read failed on '%s'.", cwStringNullGuard(impulseResponseFn));
+    goto errLabel;
+  }
+
+  hSrate = info.srate;
+
+  // read the source audio file
+  if((rc = audiofile::allocFloatBuf(srcFn, xChBuf, xChN, xFrmN, info)) != kOkRC )
+  {
+    rc = cwLogError(rc,"The source audio file read failed on '%s'.", cwStringNullGuard(srcFn));
+    goto errLabel;
+  }
+
+  // the sample rate of impulse response and src audio signals must be the same
+  if( hSrate != info.srate )
+  {
+    rc = cwLogError(kInvalidArgRC,"The soure file sample rate %f does not match the impulse response sample rate %f.",info.srate,hSrate);    
+  }
+  else
+  {
+    // allocate the output buffer
+    float*   yChBuf[ xChN ];
+    unsigned yFrmN = xFrmN + hFrmN;
+    for(unsigned i=0; i<xChN; ++i)
+      yChBuf[i] = mem::allocZ<float>( yFrmN );
+
+    //printf("xFrmN:%i xChN:%i hFrmN:%i hChN:%i yFrmN:%i\n",xFrmN,xChN,hFrmN,hChN,yFrmN);
+
+    // scale the impulse response
+    for(unsigned i=0; i<hChN; ++i)
+      vop::mul( hChBuf[i], irScale, hFrmN );
+
+    // for each source channel
+    for(unsigned i=0; i<xChN  && rc == kOkRC; ++i)
+    {
+      unsigned j = i >= hChN ? 0 : i; // select the impulse response channel
+
+      // convolve this channel with the impulse response and store into the output buffer
+      rc = dsp::convolve::apply( xChBuf[i], xFrmN, hChBuf[j], hFrmN, yChBuf[i], yFrmN );
+    }
+
+    // write the output file.
+    if( rc == kOkRC )
+      rc = audiofile::writeFileFloat( dstFn, info.srate, dstBits, yFrmN, xChN, yChBuf);
+       
+
+    // release the output buffer
+    for(unsigned i=0; i<xChN; ++i)
+      mem::release( yChBuf[i] );    
+  }
+  
+ errLabel:
+  if(rc != kOkRC )
+    cwLogError(rc,"Audio file convolve failed.");
+  
+  audiofile::freeFloatBuf(hChBuf, hChN );
+  audiofile::freeFloatBuf(xChBuf, xChN );
+
+  return rc;
+}
+
+cw::rc_t cw::afop::convolve( const object_t* cfg )
+{
+  rc_t            rc       = kOkRC;
+  const char*     srcFn    = nullptr;
+  const char*     dstFn    = nullptr;
+  const char*     irFn     = nullptr;
+  float           irScale   = 1.0;
+  unsigned        dstBits  = 16;
+  
+
+  // read the top level cfg record
+  if((rc = cfg->getv("dstFn",dstFn,"dstBits",dstBits,"srcFn",srcFn,"irFn",irFn,"irScale",irScale)) != kOkRC )
+  {
+    cwLogError(rc,"convolve() arg. parse failed.");
+  }
+  else
+  {
+    char* sFn = filesys::expandPath(srcFn);
+    char* dFn = filesys::expandPath(dstFn);
+    char* iFn = filesys::expandPath(irFn);
+
+    rc = convolve( dFn, dstBits, sFn, iFn, irScale );
+    
+    mem::release(sFn);
+    mem::release(dFn);
+    mem::release(iFn);
+  }
+
+  
+  return rc;
+}
+
 
 
 cw::rc_t cw::afop::test( const object_t* cfg )
