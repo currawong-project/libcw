@@ -121,3 +121,56 @@ void cw::doubleToX80(double val, unsigned char rate[10])
     *p++ = (u_char)(0xFF & (mant0));
 
 }
+
+
+bool		cw::isPowerOfTwo( unsigned x )
+{
+  return !( (x < 2) || (x & (x-1)) );
+}
+
+unsigned 	cw::nextPowerOfTwo(	unsigned val )
+{
+  unsigned i;
+	unsigned mask = 1;
+	unsigned msb 	= 0;
+	unsigned cnt	= 0;
+	
+	// if val is a power of two return it
+	if( isPowerOfTwo(val) )
+		return val;
+
+	// next pow of zero is 2
+	if( val == 0 )
+		return 2;
+	
+	// if the next power of two can't be represented in 32 bits
+	if( val > 0x80000000)
+  {
+    assert(0);
+		return 0;
+	}
+
+	// find most sig. bit that is set - the number with only the next msb set is next pow 2 
+	for(i=0; i<31; i++,mask<<=1)
+		if( mask & val )
+		{
+			msb = i;
+			cnt++;
+		}
+				
+	return 1 << (msb + 1);	
+}
+
+unsigned cw::nearestPowerOfTwo( unsigned i )
+{
+  unsigned vh = nextPowerOfTwo(i);
+
+  if( vh == 2 )
+    return vh;
+
+  unsigned vl = vh / 2;
+
+  if( vh - i < i - vl )
+    return vh;
+  return vl;
+}
