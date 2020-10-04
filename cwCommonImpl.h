@@ -16,6 +16,9 @@
 #include <limits>     // std::numeric_limits<
 #include <atomic>
 #include <cstdint>
+#include <cmath>
+#include <complex>
+
 
 #if defined(OS_LINUX) || defined(OS_OSX)
 #define cwPOSIX_FILE_SYS
@@ -175,7 +178,13 @@ namespace cw
   void sleepMs( unsigned ms ); // sleep milliseconds
   void sleepUs( unsigned us ); // sleep seconds
   void sleepNs( unsigned ns ); // sleep nanoseconds
-  
+
+  template< typename T >
+    bool is_even( const T& t )
+  {
+    assert( is_integral(t) );
+    return (t % 2) == 0;
+  }
   
 }
 
