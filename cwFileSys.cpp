@@ -4,6 +4,7 @@
 #include "cwFileSys.h"
 #include "cwCommonImpl.h"
 #include "cwMem.h"
+#include "cwString.h"
 
 #ifdef OS_LINUX
 #include <libgen.h> // basename() dirname()
@@ -213,7 +214,7 @@ char* cw::filesys::expandPath( const char* dir )
   wordexp_t res;
 
   memset(&res,0,sizeof(res));
-  
+
   if((sysRC = wordexp(dir,&res,flags)) != 0)
   {
     switch(sysRC)
@@ -242,16 +243,19 @@ char* cw::filesys::expandPath( const char* dir )
     goto errLabel;
   }
 
-  if( res.we_wordc > 1 )
+  switch( res.we_wordc )
   {
-    rc = cwLogError(kOpFailRC,"Unexpected word expansion count: %i.", res.we_wordc );
-    goto errLabel;
+    case 0:
+      newDir = str::dupl(dir);
+      break;
+      
+    case 1:
+      newDir = str::dupl(res.we_wordv[0]);
+      break;
+      
+    default:
+      newDir = str::join(" ", (const char**)res.we_wordv, res.we_wordc );
   }
-
-  if( res.we_wordc == 1 )
-    newDir = mem::duplStr(res.we_wordv[0]);
-  else
-    newDir = mem::duplStr(dir);
   
  errLabel:
   if( rc != kOkRC )
