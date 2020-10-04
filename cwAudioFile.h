@@ -129,6 +129,10 @@ namespace cw
     rc_t     getSumFloat(  const char* fn, unsigned begFrmIdx, unsigned frmCnt, unsigned chIdx, unsigned chCnt, float**  buf, unsigned* actualFrmCntPtr, info_t* afInfoPtr);
     rc_t     getSumDouble( const char* fn, unsigned begFrmIdx, unsigned frmCnt, unsigned chIdx, unsigned chCnt, double** buf, unsigned* actualFrmCntPtr, info_t* afInfoPtr);
 
+    // Allocate a buffer and read the file into it
+    rc_t     allocFloatBuf( const char* fn, float**& chBufRef, unsigned& chCntRef, unsigned& frmCntRef, info_t& afInfoPtrRef, unsigned begFrmIdx=0, unsigned frmCnt=0, unsigned chIdx=0, unsigned chCnt=0 );
+    rc_t     freeFloatBuf( float** floatBufRef, unsigned chCnt );
+    
     // Sample Writing Functions
     rc_t    writeInt(    handle_t h, unsigned frmCnt, unsigned chCnt, int**    bufPtrPtr );
     rc_t    writeFloat(  handle_t h, unsigned frmCnt, unsigned chCnt, float**  bufPtrPtr );

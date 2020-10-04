@@ -77,7 +77,8 @@ namespace cw
           fclose(p->fp);
           p->fp = nullptr;
         }
-        
+
+        mem::release(p->fn);
         mem::release(p);
         
       }
@@ -1296,6 +1297,62 @@ cw::rc_t     cw::audiofile::getSumFloat(  const char* fn, unsigned begFrmIdx, un
 cw::rc_t     cw::audiofile::getSumDouble( const char* fn, unsigned begFrmIdx, unsigned frmCnt, unsigned chIdx, unsigned chCnt, double** buf, unsigned* actualFrmCntPtr, info_t* afInfoPtr )
 { return _getDouble( fn, begFrmIdx, frmCnt, chIdx, chCnt, buf, actualFrmCntPtr, afInfoPtr, true ); }
 
+cw::rc_t     cw::audiofile::allocFloatBuf( const char* fn, float**& chBufRef, unsigned& chCntRef, unsigned& frmCntRef, info_t& afInfo, unsigned begFrmIdx, unsigned frmCnt, unsigned chIdx, unsigned chCnt )
+{
+  rc_t rc;
+
+  unsigned actualFrmCnt = 0;
+  
+  frmCntRef = 0;
+  chCntRef  = 0;
+  
+  if((rc = getInfo(fn, &afInfo )) != kOkRC )
+    goto errLabel;
+    
+  if( chCnt == 0 )
+    chCnt = afInfo.chCnt;
+  else
+  {
+    if( chIdx + chCnt > afInfo.chCnt )
+    {
+      cwLogError(kInvalidArgRC,"Requested channel indexes %i to %i exceeds available channel count %i.",chIdx,chIdx+chCnt-1,afInfo,chCnt);
+      goto errLabel;
+    }        
+  }
+
+  if( frmCnt == 0 )
+    frmCnt = afInfo.frameCnt;
+ 
+  if( begFrmIdx + frmCnt > afInfo.frameCnt )
+  {
+    cwLogError(kInvalidArgRC,"Requested frames %i to %i exceeds available frame count %i.",begFrmIdx,begFrmIdx+frmCnt,afInfo.frameCnt);
+    goto errLabel;
+  }
+ 
+  chBufRef = mem::allocZ< float* >(chCnt);
+  for(unsigned i=0; i<chCnt; ++i)
+    chBufRef[i] = mem::alloc<float>(frmCnt);
+        
+  
+  if((rc = getFloat(fn, begFrmIdx, frmCnt, chIdx, chCnt, chBufRef, &actualFrmCnt, nullptr)) != kOkRC )
+    goto errLabel;
+
+  frmCntRef = actualFrmCnt;
+  chCntRef  = chCnt;
+  
+ errLabel:
+  if( rc != kOkRC )
+    cwLogError(rc,"Audio file allocFloat() failed.");
+  return rc;
+}
+
+cw::rc_t    cw::audiofile::freeFloatBuf( float** floatBuf, unsigned chCnt )
+{
+  for(unsigned i=0; i<chCnt; ++i)
+    mem::release(floatBuf[i]);
+  mem::release(floatBuf);
+  return kOkRC;
+}
 
 
 cw::rc_t    cw::audiofile::writeInt(    handle_t h, unsigned frmCnt, unsigned chCnt, int** srcPtrPtr )
@@ -1622,6 +1679,21 @@ void   cw::audiofile::printInfo( const info_t* infoPtr, log::handle_t logH )
   cwLogPrintH(logH,"Bext time high:%i low:%i  0x%x%x\n",infoPtr->bextRecd.timeRefHigh,infoPtr->bextRecd.timeRefLow, infoPtr->bextRecd.timeRefHigh,infoPtr->bextRecd.timeRefLow);
 
 }
+
+cw::rc_t cw::audiofile::reportInfo( const char* audioFn )
+{
+  rc_t   rc;
+  info_t info;
+  
+  if((rc = getInfo(audioFn,&info)) != kOkRC )
+    return rc;
+
+  printInfo(&info,log::globalHandle());
+  return rc;
+  
+}
+
+
 
 cw::rc_t     cw::audiofile::report( handle_t h, log::handle_t logH, unsigned frmIdx, unsigned frmCnt )
 {
