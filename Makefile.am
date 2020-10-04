@@ -4,8 +4,8 @@ libcwSRC =
 libcwHDR += src/libcw/cwCommon.h src/libcw/cwCommonImpl.h   src/libcw/cwMem.h   src/libcw/cwLog.h    src/libcw/cwUtility.h
 libcwSRC +=                      src/libcw/cwCommonImpl.cpp src/libcw/cwMem.cpp src/libcw/cwLog.cpp  src/libcw/cwUtility.cpp
 
-libcwHDR += src/libcw/cwVectOps.h src/libcw/cwMtx.h
-libcwSRC +=                        src/libcw/cwMtx.cpp
+libcwHDR += src/libcw/cwString.h   src/libcw/cwVectOps.h src/libcw/cwMtx.h
+libcwSRC += src/libcw/cwString.cpp                       src/libcw/cwMtx.cpp
 
 libcwHDR += src/libcw/cwFileSys.h   src/libcw/cwText.h   src/libcw/cwFile.h    src/libcw/cwTime.h   src/libcw/cwLex.h   src/libcw/cwNumericConvert.h 
 libcwSRC += src/libcw/cwFileSys.cpp src/libcw/cwText.cpp src/libcw/cwFile.cpp  src/libcw/cwTime.cpp src/libcw/cwLex.cpp
@@ -58,6 +58,9 @@ libcwSRC +=                           src/libcw/cwSocket.cpp
 
 libcwHDR += src/libcw/cwTcpSocket.h   src/libcw/cwTcpSocketSrv.h   src/libcw/cwTcpSocketTest.h   
 libcwSRC += src/libcw/cwTcpSocket.cpp src/libcw/cwTcpSocketSrv.cpp src/libcw/cwTcpSocketTest.cpp
+
+libcwHDR += src/libcw/cwDsp.h
+libcwSRC += src/libcw/cwDsp.cpp
 
 if cwWEBSOCK
 libcwHDR += src/libcw/cwIo.h   src/libcw/cwIoTest.h 
