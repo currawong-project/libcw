@@ -22,8 +22,8 @@ libcwSRC += src/libcw/cwThread.cpp  src/libcw/cwMutex.cpp src/libcw/cwThreadMach
 libcwHDR += src/libcw/cwMpScNbQueue.h src/libcw/cwSpScBuf.h   src/libcw/cwSpScQueueTmpl.h
 libcwSRC +=                           src/libcw/cwSpScBuf.cpp src/libcw/cwSpScQueueTmpl.cpp
 
-libcwHDR += src/libcw/cwSvg.h   src/libcw/cwAudioFile.h     src/libcw/cwAudioFileOps.h
-libcwSRC += src/libcw/cwSvg.cpp src/libcw/cwAudioFile.cpp   src/libcw/cwAudioFileOps.cpp
+libcwHDR += src/libcw/cwAudioFile.h     src/libcw/cwAudioFileOps.h
+libcwSRC += src/libcw/cwAudioFile.cpp   src/libcw/cwAudioFileOps.cpp
 
 if cwWEBSOCK
 libcwHDR += src/libcw/cwWebSock.h   src/libcw/cwWebSockSvr.h
@@ -70,6 +70,9 @@ endif
 libcwHDR += src/libcw/cwMdns.h   src/libcw/cwEuCon.h   src/libcw/cwDnsSd.h   src/libcw/dns_sd/dns_sd.h   src/libcw/dns_sd/dns_sd_print.h   src/libcw/dns_sd/dns_sd_const.h  src/libcw/dns_sd/fader.h     src/libcw/dns_sd/rpt.h
 libcwSRC += src/libcw/cwMdns.cpp src/libcw/cwEuCon.cpp src/libcw/cwDnsSd.cpp src/libcw/dns_sd/dns_sd.cpp src/libcw/dns_sd/dns_sd_print.cpp                                  src/libcw/dns_sd/fader.cpp   src/libcw/dns_sd/rpt.cpp
 
+if cwWEB
 
-libcwHDR += src/libcw/cwDataSets.h
-libcwSRC += src/libcw/cwDataSets.cpp
+else
+libcwHDR += src/libcw/cwSvg.h    src/libcw/cwDataSets.h
+libcwSRC += src/libcw/cwSvg.cpp  src/libcw/cwDataSets.cpp
+endif
