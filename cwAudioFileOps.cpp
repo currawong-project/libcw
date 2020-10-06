@@ -636,7 +636,8 @@ cw::rc_t cw::afop::parallelMix( const char* dstFn, unsigned dstBits, const char*
     cmArgL[i].srcEndSec      = argL[i].srcEndSec + argL[i].fadeOutSec;
     cmArgL[i].srcBegFadeSec  = fadeInSec;
     cmArgL[i].srcEndFadeSec  = argL[i].fadeOutSec;
-    cmArgL[i].dstBegSec      = dstBegSec;
+    //cmArgL[i].dstBegSec      = dstBegSec;
+    cmArgL[i].dstBegSec      = argL[i].srcBegSec - argL[0].srcBegSec;
     cmArgL[i].gain           = argL[i].gain;
 
     dstBegSec               += argL[i].srcEndSec - argL[i].srcBegSec;
