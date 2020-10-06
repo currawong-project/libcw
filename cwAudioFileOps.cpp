@@ -722,6 +722,7 @@ cw::rc_t cw::afop::transformApp( const object_t* cfg )
   const char*     dstRevFn  = nullptr;
   unsigned        dstBits   = 16;
   const object_t* argNodeL  = nullptr;
+  bool            irEnableFl=false;
   const char*     irFn      = nullptr;
   double          irScale   = 1;
 
@@ -734,7 +735,7 @@ cw::rc_t cw::afop::transformApp( const object_t* cfg )
   unsigned        i;
 
   // read the top level cfg record
-  if((rc = cfg->getv("dstPreFn",dstPreFn,"dstRevFn",dstRevFn,"dstBits",dstBits,"srcDir",srcDir,"argL",argNodeL,"dryFn",dryFn,"irFn",irFn,"irScale",irScale)) != kOkRC )
+  if((rc = cfg->getv("dstPreFn",dstPreFn,"dstRevFn",dstRevFn,"dstBits",dstBits,"srcDir",srcDir,"argL",argNodeL,"dryFn",dryFn,"irEnableFl",irEnableFl,"irFn",irFn,"irScale",irScale)) != kOkRC )
     goto errLabel;
 
 
@@ -792,7 +793,7 @@ cw::rc_t cw::afop::transformApp( const object_t* cfg )
     for(unsigned i=0; i<argN; i+=2)
       mem::release( const_cast<char*&>(argL[i].srcFn));
 
-    if( rc == kOkRC )
+    if( rc == kOkRC && irEnableFl )
       rc = convolve( expDstRevFn, dstBits, expDstPreFn, expIrFn, irScale );        
 
   }
