@@ -743,7 +743,6 @@ cw::rc_t cw::afop::transformApp( const object_t* cfg )
   expDryFn    = filesys::expandPath(dryFn);
   expDstPreFn = filesys::expandPath(dstPreFn);
   expDstRevFn = filesys::expandPath(dstRevFn);
-  expIrFn     = filesys::expandPath(irFn);
 
 
   if( argNodeL == nullptr )
@@ -794,8 +793,10 @@ cw::rc_t cw::afop::transformApp( const object_t* cfg )
       mem::release( const_cast<char*&>(argL[i].srcFn));
 
     if( rc == kOkRC && irEnableFl )
+    {
+      expIrFn     = filesys::expandPath(irFn);
       rc = convolve( expDstRevFn, dstBits, expDstPreFn, expIrFn, irScale );        
-
+    }
   }
 
  errLabel:
@@ -809,7 +810,7 @@ cw::rc_t cw::afop::transformApp( const object_t* cfg )
   mem::release(expIrFn);
   
   if( rc != kOkRC )
-    rc = cwLogError(rc,"Parallel-mix failed.");
+    rc = cwLogError(rc,"Transform-app failed.");
   return rc;
   
 }
