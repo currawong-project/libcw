@@ -87,6 +87,17 @@ namespace cw
 
   rc_t _objTypeValueFromNonValue( const object_t* o, unsigned tid, void* dst )
   {
+    switch(tid)
+    {
+      case kCStringTId:
+        *(const char**)dst = nullptr;
+        return kOkRC;
+        
+      case kStringTId:
+        *(char**)dst = nullptr;
+        return kOkRC;
+    }
+    
     return cwLogError(kInvalidArgRC, "There is no conversion from '%s' to '%s'.", _objTypeIdToLabel(tid), o->type->label);
   }
 
@@ -97,6 +108,7 @@ namespace cw
       *(const char**)dst = o->u.str;
       return kOkRC;
     }
+
     return _objTypeValueFromNonValue(o,tid,dst);
   }
   
@@ -114,6 +126,13 @@ namespace cw
       *(char**)dst = o->u.str;
       return kOkRC;
     }
+
+    if( tid == kNullTId )
+    {
+      *(char**)dst = nullptr;
+      return kOkRC;
+    }
+    
     return _objTypeValueFromNonValue(o,tid,dst);
   }
 

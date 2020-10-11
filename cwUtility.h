@@ -7,7 +7,12 @@ namespace cw
   
   double   x80ToDouble( unsigned char s[10] );
   void     doubleToX80( double v, unsigned char s[10] );
+
+  bool		  isPowerOfTwo( unsigned x );
+  unsigned  nextPowerOfTwo(	unsigned val );
+  unsigned  nearestPowerOfTwo( unsigned val );
     
+  
 }
 
 #endif

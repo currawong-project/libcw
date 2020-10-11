@@ -923,8 +923,9 @@ void cw::audio::buf::report(handle_t h)
 
 /// [cwAudioBufExample]
 
-void cw::audio::buf::test()
+cw::rc_t cw::audio::buf::test()
 {
+  rc_t     rc             = kOkRC;
   unsigned devIdx         = 0;
   unsigned devCnt         = 1 ;
   unsigned dspFrameCnt    = 10;
@@ -1021,6 +1022,8 @@ void cw::audio::buf::test()
   cwLogInfo("\n");
 
   destroy(h);
+  
+  return rc;
 }
 
 /// [cwAudioBufExample]

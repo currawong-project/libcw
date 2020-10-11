@@ -1590,7 +1590,7 @@ void cw::audio::device::alsa::deviceRealTimeReport(struct driver_str* drv, unsig
 //)
 
 //[
-void        cw::audio::device::alsa::report( handle_t h )
+cw::rc_t        cw::audio::device::alsa::report( handle_t h )
 {
   alsa_t*  p = _handleToPtr(h);
   unsigned i;
@@ -1603,17 +1603,21 @@ void        cw::audio::device::alsa::report( handle_t h )
   }
 
   snd_config_update_free_global();
+
+  return kOkRC;
 }
 
-void cw::audio::device::alsa::report()
+cw::rc_t cw::audio::device::alsa::report()
 {
+  rc_t rc = kOkRC;
   handle_t h;
   driver_t* d;
   if( create(h,d) == kOkRC )
   {
-    report(h);
+    rc = report(h);
     destroy(h);
   }
+  return rc;
 }
 
 //]

@@ -249,6 +249,38 @@ namespace cw
         y[i] = v;
     }
 
+    template< typename T >
+      T seq( T* dbp, unsigned dn, const T& beg, const T& incr )
+    {
+      const T* dep = dbp + dn;
+      unsigned i = 0;
+      for(; dbp<dep; ++i)
+        *dbp++ = beg + (incr*i);
+      return beg + (incr*i);
+    }
+    
+
+    template< typename T >
+      unsigned phasor( T* y, unsigned n, T srate, T hz, unsigned init_idx=0 )
+    {
+      for(unsigned i=init_idx; i<n; ++i)
+        y[i] = (M_PI*2*hz*i) / srate;
+
+      return init_idx + n;
+    }
+
+    template< typename T >
+      unsigned sine( T* y, unsigned n, T srate, T hz, unsigned init_idx=0 )
+    {
+      init_idx = phasor(y,n,srate,hz,init_idx);
+
+      for(unsigned i=0; i<n; ++i)
+        y[i] = sin(y[i]);
+      
+      return init_idx;
+    }
+    
+
     
   }
 }

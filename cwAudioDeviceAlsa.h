@@ -26,8 +26,8 @@ namespace cw
         bool        deviceIsStarted(      struct driver_str* drv, unsigned devIdx );
         void        deviceRealTimeReport( struct driver_str* drv, unsigned devIdx );
         
-        void        report(handle_t h );
-        void        report();
+        rc_t        report(handle_t h );
+        rc_t        report();
       }
     }
   }
