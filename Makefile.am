@@ -68,5 +68,5 @@ libcwHDR += src/libcw/cwMdns.h   src/libcw/cwEuCon.h   src/libcw/cwDnsSd.h   src
 libcwSRC += src/libcw/cwMdns.cpp src/libcw/cwEuCon.cpp src/libcw/cwDnsSd.cpp src/libcw/dns_sd/dns_sd.cpp src/libcw/dns_sd/dns_sd_print.cpp                                  src/libcw/dns_sd/fader.cpp   src/libcw/dns_sd/rpt.cpp
 
 
-libcwHDR += src/libcw/cwDataSets.h
-libcwSRC += src/libcw/cwDataSets.cpp
+# libcwHDR += src/libcw/cwDataSets.h
+# libcwSRC += src/libcw/cwDataSets.cpp
