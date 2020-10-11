@@ -1,7 +1,12 @@
 #ifndef cwDsp_H
 #define cwDsp_H
 
+#ifdef cwFFTW
 #include <fftw3.h>
+#else
+#include "cwFFT.h"
+#endif
+
 #include <type_traits>
 
 namespace cw
@@ -185,7 +190,6 @@ namespace cw
     //---------------------------------------------------------------------------------------------------------------------------------
     // FFT
     //
-    
     namespace fft
     {
 
@@ -264,7 +268,7 @@ namespace cw
           fftw_free(p->cplxV);
         }
 
-        p->u.dplan = nullptr;
+        //p->u.dplan = nullptr;
         mem::release(p->magV);
         mem::release(p->phsV);
         mem::release(p);
@@ -398,7 +402,7 @@ namespace cw
           fftw_free(p->cplxV);
         }
 
-        p->u.dplan = nullptr;
+        //p->u.dplan = nullptr;
         mem::release(p);
         
         return kOkRC;
@@ -576,9 +580,7 @@ namespace cw
       rc_t test();
         
       
-    }
-
-    
+    }    
     
   }
 }
