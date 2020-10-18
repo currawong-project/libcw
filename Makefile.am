@@ -48,6 +48,12 @@ if cwALSA
 
 libcwHDR += src/libcw/cwMidiPort.h                            src/libcw/cwAudioDeviceAlsa.h                                    
 libcwSRC += src/libcw/cwMidiPort.cpp src/libcw/cwMidiAlsa.cpp src/libcw/cwAudioDeviceAlsa.cpp src/libcw/cwAudioDeviceTest.cpp
+
+if cwWEBSOCK
+libcwHDR += src/libcw/cwIo.h   src/libcw/cwIoTest.h 
+libcwSRC += src/libcw/cwIo.cpp src/libcw/cwIoTest.cpp
+endif
+
 endif
 
 libcwHDR += src/libcw/cwAudioBufDecls.h src/libcw/cwAudioBuf.h
@@ -62,10 +68,6 @@ libcwSRC += src/libcw/cwTcpSocket.cpp src/libcw/cwTcpSocketSrv.cpp src/libcw/cwT
 libcwHDR += src/libcw/cwDsp.h
 libcwSRC += src/libcw/cwDsp.cpp
 
-if cwWEBSOCK
-libcwHDR += src/libcw/cwIo.h   src/libcw/cwIoTest.h 
-libcwSRC += src/libcw/cwIo.cpp src/libcw/cwIoTest.cpp
-endif
 
 libcwHDR += src/libcw/cwMdns.h   src/libcw/cwEuCon.h   src/libcw/cwDnsSd.h   src/libcw/dns_sd/dns_sd.h   src/libcw/dns_sd/dns_sd_print.h   src/libcw/dns_sd/dns_sd_const.h  src/libcw/dns_sd/fader.h     src/libcw/dns_sd/rpt.h
 libcwSRC += src/libcw/cwMdns.cpp src/libcw/cwEuCon.cpp src/libcw/cwDnsSd.cpp src/libcw/dns_sd/dns_sd.cpp src/libcw/dns_sd/dns_sd_print.cpp                                  src/libcw/dns_sd/fader.cpp   src/libcw/dns_sd/rpt.cpp
@@ -76,3 +78,10 @@ else
 # libcwHDR += src/libcw/cwSvg.h    src/libcw/cwDataSets.h
 # libcwSRC += src/libcw/cwSvg.cpp  src/libcw/cwDataSets.cpp
 endif
+
+if cwFFTW
+else
+libcwHDR += src/libcw/cwFFT.h
+libcwSRC += src/libcw/cwFFT.cpp
+endif
+
