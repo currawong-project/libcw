@@ -6,6 +6,10 @@ namespace cw
 {
   namespace vop
   {
+    //==================================================================================================================
+    // Input / Output
+    //
+    
     template< typename T0 >
       void print( const T0* v0, unsigned n, const char* fmt, const char* label=nullptr )
     {
@@ -18,16 +22,10 @@ namespace cw
     }
 
 
-    template< typename T0, typename T1 >
-      bool is_equal( const T0* v0, const T1* v1, unsigned n )
-    {
-      for(unsigned i=0; i<n; ++i)
-        if( v0[i] != v1[i] )
-          return false;
-      
-      return true;
-    }
     
+    //==================================================================================================================
+    // Move,fill,copy
+    //
     template< typename T0, typename T1 >
       void copy( T0* v0, const T1* v1, unsigned n )
     {
@@ -47,6 +45,22 @@ namespace cw
     { fill(v,n,0); }
 
 
+    //==================================================================================================================
+    // Compare
+    //
+    template< typename T0, typename T1 >
+      bool is_equal( const T0* v0, const T1* v1, unsigned n )
+    {
+      for(unsigned i=0; i<n; ++i)
+        if( v0[i] != v1[i] )
+          return false;
+      
+      return true;
+    }
+
+    //==================================================================================================================
+    // Min,max
+    //
     template< typename T >
       unsigned arg_max( const T* v, unsigned n )
     {
@@ -105,25 +119,9 @@ namespace cw
       return acc;
     }
     
-    template< typename T >
-      T cumsum( const T* v, unsigned n )
-    {
-      T y = 0;
-      for(unsigned i=0; i<n; ++i)
-        y += v[i];
-
-      return y;
-    }
-
-    template< typename T >
-      T cumprod( const T* v, unsigned n )
-    {
-      T y = 1;
-      for(unsigned i=0; i<n; ++i)
-        y *= v[i];
-      return y;
-    }
-
+    //==================================================================================================================
+    // Arithmetic
+    //
     template< typename T0, typename T1 >
       void mul( T0* v0, const T1* v1, unsigned n )
     {
@@ -237,6 +235,9 @@ namespace cw
         y0[i] = v0[i] / scalar;
     }
 
+    //==================================================================================================================
+    // Sequence generators
+    //
     // Fill y[0:min(n,cnt)] with values {beg,beg+step,beg+2*step .... beg+(cnt-1)*step}}
     template< typename T >
       void seq( T* y, unsigned n, const T& beg, const T& cnt, const T& step=1 )
@@ -249,6 +250,16 @@ namespace cw
         y[i] = v;
     }
 
+    // Same as Matlab linspace() v[i] = i * (limit-1)/n
+    template< typename T >
+      T* linspace( T* y, unsigned yN, T base, T limit )
+    {
+      unsigned i = 0;
+      for(; i<yN; ++i)
+        y[i] = base + i*(limit-base)/(yN-1);
+      return y;
+    }
+
     template< typename T >
       T seq( T* dbp, unsigned dn, const T& beg, const T& incr )
     {
@@ -258,7 +269,32 @@ namespace cw
         *dbp++ = beg + (incr*i);
       return beg + (incr*i);
     }
+
+    template< typename T >
+      T cumsum( const T* v, unsigned n )
+    {
+      T y = 0;
+      for(unsigned i=0; i<n; ++i)
+        y += v[i];
+
+      return y;
+    }
+
+    template< typename T >
+      T cumprod( const T* v, unsigned n )
+    {
+      T y = 1;
+      for(unsigned i=0; i<n; ++i)
+        y *= v[i];
+      return y;
+    }
+
+
     
+    
+    //==================================================================================================================
+    // Signal Processing
+    //
 
     template< typename T >
       unsigned phasor( T* y, unsigned n, T srate, T hz, unsigned init_idx=0 )
