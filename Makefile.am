@@ -75,8 +75,8 @@ libcwSRC += src/libcw/cwMdns.cpp src/libcw/cwEuCon.cpp src/libcw/cwDnsSd.cpp src
 if cwWEB
 
 else
-# libcwHDR += src/libcw/cwSvg.h    src/libcw/cwDataSets.h
-# libcwSRC += src/libcw/cwSvg.cpp  src/libcw/cwDataSets.cpp
+ libcwHDR += src/libcw/cwSvg.h    src/libcw/cwDataSets.h
+ libcwSRC += src/libcw/cwSvg.cpp  src/libcw/cwDataSets.cpp
 endif
 
 if cwFFTW

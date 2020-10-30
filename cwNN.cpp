@@ -5,70 +5,115 @@
 #include "cwFile.h"
 #include "cwNN.h"
 
+/*
+
+
+
+
+ */
 
 namespace cw
 {
   namespace nn
   {
     
-    template< typename R >
-    struct input_str
+
+    typedef struct layer_desc_str
     {
-      R*        x;
-      unsigned  dimN;
-      unsigned* dimV;
-    };
-    
-    typedef struct dense_str
+      unsigned        layerTId;
+      unsigned        activationId;
+      unsigned        weightInitId;
+      unsigned        biasInitId;
+    } layer_desc_t;
+
+    typedef struct network_desc_str
     {
-      unsigned  xN;   // count of neurons in src layer
-      unsigned  yN;   // count of neurons in this layer
-      
-      real_t*   wM;     // wM[ xN, yN ]  weight matrix
-      real_t*   bV;     // bV[ yN ]      bias vector
-
-
-      real_t*   yV;   // scaled input + bias
-      real_t*   aV;   // activation output
-      real_t*   dV;   // contribution to cost for each neurode
-      real_t*   gV;   // C gradient wrt weight at each neurode
-
-      
-    } dense_t;
+      layer_desc_t* layers;
+      unsigned      layerN;
+    } network_desc_t;
     
     typedef struct layer_str
     {
+      const layer_desc_t* desc;
+      const mtx::d_t*     iM;
+      mtx::d_t            wM;
+      mtx::d_t            aM;
     } layer_t;
     
     typedef struct nn_str
     {
-      
+      const network_desc_t* desc;
+      layer_t*              layerL;
     } nn_t;
 
 
-    void _mtx_mul( R* z, R* m, R* x, unsigned mN, unsigned mM )
+    nn_t* _allocNet( nn_t* nn, const object_t& nnCfg, unsigned inNodeN )
     {
     }
 
-    void _add( R* y, R* x, unsigned n )
+    nn_t* _initNet( nn_t* nn )
     {
     }
 
-    void _activation( dense_t* l )
+    rc_t _netForward( nn_t* p )
+    {
+      
+    }
+
+    rc_t _netReverse( nn_t* )
     {
     }
 
-    void _dense_forward( dense_t* l0, dense_t* l1 )
-    {
-      assert( l1->wM.dimV[1] == l0->yN );
-      assert( l1->wM.dimV[0] == l1->yN );
-      _mtx_mult( l1->zV, l1->wM.base, l0->aV, l0->yN, l1->yN );
-      _add( l1->zV, l1->bV, l1->yN );
 
-      _activation(l1)
+    rc_t _batchUpdate( const mtx::d_t& ds, const train_args_t& args, unsigned ttlTrainExampleN )
+    {
     }
+
+    rc_t train( handle_t h, dataset::handle_t dsH, const train_args_t& args )
+    {
+      mtx::d_t ds_mtx;
+      mtx::d_t label_mtx;
+      unsigned trainExampleN = dataset::example_count(dsH);
+      unsigned batchPerEpoch = trainExampleN/args.batchN;
+      
+
+      for(unsigned i=0; i<epochN; ++i)
+      {
+        for(unsigned j=0;  j<batchsPerEpoch; ++j)
+        {
+          dataset::batchd(dsH, j, ds_mtx, label_mtx,args.batchN, batchPerEpoch);
+          
+          _batchUpdate(ds_mtx,args,ttlTrainExampleN);
+          
+        }
+      }
+
+      
+    }
+
+
     
   }
+
+  rc_t test( const char* cfgFn, const char* projLabel )
+  {
+    object_t* cfg = nullptr;
+    rc_t      rc  = kOkRC;
+    
+    if((rc = objectFromFile( cfgFn, cfg )) != kOkRC )
+    {
+      
+    }
+
+    
+
+  errLabel:
+    if( cfg != nullptr )
+      cfg->free();
+    
+    return rc;
+  }
+
 }
 
 

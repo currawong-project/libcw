@@ -15,9 +15,9 @@ namespace cw
 
     enum
     {
-     kInputLayerId,
-     kDenseLayerId,
-     kConv1DConvId
+     kInputLayerTId,
+     kDenseLayerTId,
+     kConv1DConvTId
     };
 
     enum
@@ -27,33 +27,28 @@ namespace cw
      kNormalInitId
     };
 
-    typedef struct layer_args_str
-    {
-      unsigned        typeId;
-      unsigned        actId;
-      unsigned        weightInitId;
-      unsigned        biasInitId;
-      unsigned        dimN;
-      const unsigned* dimV;
-    } layer_args_t;
 
-    typedef struct network_args_str
-    {
-      layer_args_t* layers;
-      unsigned      layerN;
-    } network_args_t;
-
-
-    rc_t parse_args( const object_t& o, network_args_t& args );
     
-    rc_t create(  handle_t& h, const network_args_t& args );
+    typedef struct train_args_str
+    {
+      unsigned epochN;
+      unsigned batchN;
+      double eta;
+      double lambda;
+      
+    } train_args_t;
+
+
+    
+    rc_t create(  handle_t& h, const object_t& cfg );
     rc_t destroy( handle_t& h );
 
-    template< typename R >
-      rc_t train( handle_t h, unsigned epochN, unsigned batchN, const dataset<R>& trainDs );
+    rc_t train( handle_t h, dataset::handle_t dsH, const train_args_t& args );
 
-    template< typename R >
-      rc_t infer( handle_t h, const dataset<R>& ds );
+    rc_t test( handle_t h, dataset::handle_t dsH );
+
+
+    rc_t test( const char* mnistDir );
   }
 }
 
