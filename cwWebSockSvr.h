@@ -31,7 +31,7 @@ namespace cw {
 
   }
 
-  rc_t websockSrvTest();
+  rc_t websockSrvTest( const object_t* cfg );
 }
 
 #endif

@@ -12,10 +12,10 @@ namespace cw
   {
     typedef struct spsc_buf_str
     {
-      uint8_t*              buf;
-      unsigned              bufByteN;
       std::atomic<uint8_t*> w;    // write ptr
       std::atomic<uint8_t*> r;    // read ptr 
+      uint8_t*              buf;
+      unsigned              bufByteN;
     } spsc_buf_t;
 
     // Note: r==w indicates an empty buffer.
@@ -57,13 +57,13 @@ cw::rc_t cw::spsc_buf::create( handle_t& hRef, unsigned bufByteN )
     return rc;
 
   spsc_buf_t* p = mem::allocZ<spsc_buf_t>();
+
   p->buf        = mem::allocZ<uint8_t>(bufByteN);
   p->bufByteN   = bufByteN;
-  p->w          = p->buf;
-  p->r          = p->buf;
-
+  p->w.store(p->buf);
+  p->r.store(p->buf);
   hRef.set(p);
-    
+
   return rc;
 }
 
@@ -387,13 +387,15 @@ cw::rc_t cw::spsc_buf::test()
   ctxArray[0].share = &share;
   ctxArray[1].id    = 1;
   ctxArray[1].share = &share;
-  
+
   share.readyFl.store(false,std::memory_order_release);
 
   // create the SPSC buffer
   if((rc = create( share.h, bufByteN )) != kOkRC )
+  {
     return cwLogError(rc,"spsc_buf create failed.");
-
+  }
+  
   // create the thread machine 
   if((rc = thread_mach::create( h, _threadFunc, ctxArray, sizeof(ctx_t), ctxArrayN )) != kOkRC )
   {
@@ -407,9 +409,9 @@ cw::rc_t cw::spsc_buf::test()
     cwLogError(rc,"Thread machine start failed.");
     goto errLabel;
   }
-
+  
   sleepMs(5000);
-
+ 
  errLabel:
   if((rc0 = thread_mach::destroy(h)) != kOkRC )
     cwLogError(rc0,"Thread machine destroy failed.");
