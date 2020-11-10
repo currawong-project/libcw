@@ -6,17 +6,17 @@
 
 void* cw::mem::_alloc( void* p0, unsigned n, unsigned flags )
   {
-    void*    p   = nullptr;     // ptr to new block
-    unsigned p0N = 0;           // size of existing block
+    void*     p    = nullptr;   // ptr to new block
+    unsigned  p0N  = 0;         // size of existing block
     unsigned* p0_1 = nullptr;   // pointer to base of existing block
 
-    n += sizeof(unsigned); // add space for the size of the block
+    n += 2*sizeof(unsigned); // add space for the size of the block
     
     // if there is no existing block
     if( p0 != nullptr )
     {
       // get a pointer to the base of the exsting block
-      p0_1 = ((unsigned*)p0) - 1;
+      p0_1 = ((unsigned*)p0) - 2;
       
       p0N = p0_1[0]; // get size of existing block
 
@@ -49,7 +49,13 @@ void* cw::mem::_alloc( void* p0, unsigned n, unsigned flags )
     p1[0] = n; // set size of new block
 
     // advance past the block size and return
-    return p1+1;    
+    return p1+2;    
+    
+    /*
+    n += 8;
+    char* p = (char*)calloc(1,n);
+    return p+8;
+    */
   }
 
 
@@ -96,6 +102,6 @@ void cw::mem::free( void* p )
 {
   if( p != nullptr)
   {
-    ::free(static_cast<unsigned*>(p)-1);
+    ::free(static_cast<unsigned*>(p)-2);
   }
 }

@@ -163,6 +163,7 @@ cw::rc_t cw::testSpScQueueTmpl()
     goto errLabel;
   }
 
+  cwLogInfo("running for 1 minute ...");
   sleepMs(60 * 1000);
 
  errLabel:

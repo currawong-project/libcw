@@ -4,8 +4,10 @@
 #include "cwMem.h"
 #include "cwWebSock.h"
 #include "cwThread.h"
+#include "cwObject.h"
 #include "cwWebSockSvr.h"
 #include "cwText.h"
+#include "cwFileSys.h"
 
 namespace cw
 {
@@ -71,6 +73,8 @@ cw::rc_t cw::websockSrv::create(
   
   p->_timeOutMs = timeOutMs;
 
+  cwLogInfo("Listening on port:%i root dir:%s default page:%s\n", port, cwStringNullGuard(physRootDir), cwStringNullGuard(dfltHtmlPageFn));
+  
   h.set(p);
     
  errLabel:
@@ -162,12 +166,12 @@ namespace cw
  
 }
 
-cw::rc_t cw::websockSrvTest()
+cw::rc_t cw::websockSrvTest( const object_t* cfg )
 {
   rc_t                 rc;
   websockSrv::handle_t h;
-  const char*          physRootDir    = "/home/kevin/src/cwtest/src/libcw/html/websockSrvTest";
-  const char*          dfltHtmlPageFn = "test_websocket.html";
+  const char*          physRootDirArg    = nullptr; //"/home/kevin/src/cwtest/src/libcw/html/websockSrvTest";
+  const char*          dfltHtmlPageFn = nullptr; //"test_websocket.html";
   unsigned             timeOutMs      = 50;
   int                  port           = 5687;
   unsigned             rcvBufByteN    = 128;
@@ -186,6 +190,11 @@ cw::rc_t cw::websockSrvTest()
    { "websocksrv_test_protocol",kWebsockSrvProtocolId,rcvBufByteN,xmtBufByteN}
   };
 
+
+  if((rc = cfg->getv("physRootDir",physRootDirArg,"dfltHtmlPageFn",dfltHtmlPageFn)) != kOkRC )
+    return cwLogError(rc,"Args parse failed.");
+    
+  char* physRootDir = cw::filesys::expandPath(physRootDirArg);
   unsigned protocolN = sizeof(protocolA)/sizeof(protocolA[0]);
 
   

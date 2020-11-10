@@ -273,13 +273,12 @@ char* cw::filesys::expandPath( const char* dir )
 cw::filesys::pathPart_t* cw::filesys::pathParts( const char* pathStr )
 {
   unsigned           n  = 0;    // char's in pathStr
-  unsigned           dn = 0;    // char's in the dir part
-  unsigned           fn = 0;    // char's in the name part
-  unsigned           en = 0;    // char's in the ext part
-  char*              cp = nullptr;
-  pathPart_t* rp = nullptr;
-
-
+  unsigned    dn  = 0;          // char's in the dir part
+  unsigned    fn  = 0;          // char's in the name part
+  unsigned    en  = 0;          // char's in the ext part
+  char*       cp  = nullptr;
+  pathPart_t* rp  = nullptr;
+  
   if( pathStr==nullptr )
     return nullptr;
 
@@ -301,7 +300,7 @@ cw::filesys::pathPart_t* cw::filesys::pathParts( const char* pathStr )
   if( n == 0 )
     return nullptr;
   
-
+  
   char buf[n+1];
   buf[n] = 0;
 
@@ -352,13 +351,13 @@ cw::filesys::pathPart_t* cw::filesys::pathParts( const char* pathStr )
   n = sizeof(pathPart_t) + dn + fn + en + 3;
 
   // alloc memory
-  if((rp = mem::allocZ<pathPart_t>( n )) == nullptr )
+  if((rp = (pathPart_t*)mem::allocZ<char>( n )) == nullptr )
   {
     cwLogError( kMemAllocFailRC, "Unable to allocate the file system path part record for '%s'.",pathStr);
-    return nullptr;
+    goto errLabel;
   }
   
-  // set the return pointers for ecmh of the parts
+  // set the return pointers for each of the parts
   rp->dirStr = (const char* )(rp + 1);
   rp->fnStr  = rp->dirStr + dn + 1;
   rp->extStr = rp->fnStr  + fn + 1;
@@ -375,7 +374,7 @@ cw::filesys::pathPart_t* cw::filesys::pathParts( const char* pathStr )
     // Get the trailing word again.
     // pathStr must be copied into a buf because basename() may
     // is allowed to change the values in its arg.
-    strncpy(buf,pathStr,n);
+    strcpy(buf,pathStr);
     cp = basename(buf);
 
     
@@ -405,6 +404,7 @@ cw::filesys::pathPart_t* cw::filesys::pathParts( const char* pathStr )
   if( en == 0 )
     rp->extStr = nullptr;
 
+ errLabel:
   return rp;
 }
 

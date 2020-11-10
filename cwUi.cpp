@@ -3,11 +3,11 @@
 #include "cwCommonImpl.h"
 #include "cwMem.h"
 #include "cwThread.h"
+#include "cwObject.h"
 #include "cwWebSock.h"
 #include "cwWebSockSvr.h"
 #include "cwText.h"
 #include "cwNumericConvert.h"
-#include "cwObject.h"
 
 #include "cwUi.h"
 
