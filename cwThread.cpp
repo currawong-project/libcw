@@ -29,7 +29,7 @@ namespace cw
       void*     funcArg;
       unsigned  stateMicros;
       unsigned  pauseMicros;
-      unsigned  sleepMicros = 15000;
+      unsigned  sleepMicros;
       pthread_attr_t attr;
       
     } thread_t;
@@ -50,6 +50,8 @@ namespace cw
           break;
         
         sleepUs( p->sleepMicros );
+        
+        waitTimeMicroSecs += p->sleepMicros;
 
       }while( waitTimeMicroSecs < p->stateMicros );
       
@@ -133,6 +135,7 @@ cw::rc_t cw::thread::create( handle_t& hRef, cbFunc_t func, void* funcArg, int s
   p->stateMicros = stateMicros;
   p->pauseMicros = pauseMicros;
   p->stateId     = kPausedThId;
+  p->sleepMicros = 15000;
 
   if((sysRC = pthread_attr_init(&p->attr)) != 0)
   {
