@@ -172,6 +172,19 @@ namespace cw
     rc_t readDouble( handle_t h, double*         buf, unsigned cnt=1 );
     rc_t readBool(   handle_t h, bool*           buf, unsigned cnt=1 );
 
+    inline rc_t read(   handle_t h, char&           x ){ return readChar(h,&x);   }
+    inline rc_t read(  handle_t h, unsigned char&  x ){ return readUChar(h,&x);  }
+    inline rc_t read(  handle_t h, short&          x ){ return readShort(h,&x);  }
+    inline rc_t read( handle_t h, unsigned short& x ){ return readUShort(h,&x); }
+    inline rc_t read(   handle_t h, long&           x ){ return readLong(h,&x);   }
+    inline rc_t read(  handle_t h, unsigned long&  x ){ return readULong(h,&x);  }
+    inline rc_t read(    handle_t h, int&            x ){ return readInt(h,&x);    }
+    inline rc_t read(   handle_t h, unsigned int&   x ){ return readUInt(h,&x);   }
+    inline rc_t read(  handle_t h, float&          x ){ return readFloat(h,&x);  }
+    inline rc_t read( handle_t h, double&         x ){ return readDouble(h,&x); }
+    inline rc_t read(   handle_t h, bool&           x ){ return readBool(h,&x);   }
+
+    
     // Binary Array Writing Functions
     // Each of these functions writes an array to a binary file.
     // The advantage to using functions rather than fileWrite() is only that they are type specific.
@@ -187,6 +200,19 @@ namespace cw
     rc_t writeDouble( handle_t h, const double*         buf, unsigned cnt=1 );
     rc_t writeBool(   handle_t h, const bool*           buf, unsigned cnt=1 );
 
+    inline rc_t write(   handle_t h, const char&           x ) { return writeChar(h,&x);   }
+    inline rc_t write(  handle_t h, const unsigned char&  x ) { return writeUChar(h,&x);  }
+    inline rc_t write(  handle_t h, const short&          x ) { return writeShort(h,&x);  }
+    inline rc_t write( handle_t h, const unsigned short& x ) { return writeUShort(h,&x); }
+    inline rc_t write(   handle_t h, const long&           x ) { return writeLong(h,&x);   }
+    inline rc_t write(  handle_t h, const unsigned long&  x ) { return writeULong(h,&x);  }
+    inline rc_t write(    handle_t h, const int&            x ) { return writeInt(h,&x);    }
+    inline rc_t write(   handle_t h, const unsigned int&   x ) { return writeUInt(h,&x);   }
+    inline rc_t write(  handle_t h, const float&          x ) { return writeFloat(h,&x);  }
+    inline rc_t write( handle_t h, const double&         x ) { return writeDouble(h,&x); }
+    inline rc_t write(   handle_t h, const bool&           x ) { return writeBool(h,&x);   }
+
+    
     // Write a string to a file as <N> <char0> <char1> ... <char(N-1)>
     // where N is the count of characters in the string.
     rc_t writeStr( handle_t h, const char* s );

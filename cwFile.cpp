@@ -208,7 +208,12 @@ cw::rc_t cw::file::read(    handle_t h, void* buf, unsigned bufByteCnt )
   
   errno = 0;
   if( fread(buf,bufByteCnt,1,p->fp) != 1 )
+  {
+    if( feof( p->fp ) != 0 )
+      return kEofRC;
+    
     return cwLogSysError(kReadFailRC,errno,"File read failed on '%s'.", cwStringNullGuard(p->fnStr));
+  }
 
   return kOkRC;
 }
