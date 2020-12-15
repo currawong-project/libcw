@@ -7,7 +7,8 @@ namespace cw
   {
     namespace device
     {
-      rc_t test( int argc, const char** argv );
+      rc_t test( const object_t* cfg );
+      rc_t test_tone( const object_t* cfg );
       rc_t report();
     }
   }  

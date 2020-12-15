@@ -7,6 +7,7 @@
 #include "cwAudioDevice.h"
 #include "cwAudioBuf.h"
 #include "cwAudioDeviceAlsa.h"
+#include "cwObject.h"
 #include "cwAudioDeviceTest.h"
 
 namespace  cw
@@ -24,62 +25,45 @@ namespace  cw
       // audio port callback functions.
       typedef struct
       {
+        const char*   inDevLabel;     // Input audio device label
+        const char*   outDevLabel;    // Output audio device label
         unsigned      bufCnt;         // 2=double buffering 3=triple buffering
         unsigned      framesPerCycle; // DSP frames per cycle
-        unsigned      inDevIdx;       // input device index
-        unsigned      outDevIdx;      // output device index
         double        srate;          // audio sample rate
         unsigned      meterMs;        // audio meter buffer length
         
+        unsigned      inDevIdx;       // input device index
+        unsigned      outDevIdx;      // output device index
+        
         unsigned      iCbCnt;         // count the callback
         unsigned      oCbCnt;
+
+        double        amHz;      // ampl. modulation frequency
+        double        amPhs;     //                  phase
+        double        amMaxGain; //                  max gain.
 
         buf::handle_t audioBufH;
       } cmApPortTestRecd;
 
 
-
-      // print the usage message for cmAudioPortTest.c
-      void _cmApPrintUsage()
+      rc_t _cmApGetCfg( cmApPortTestRecd* r, const object_t* cfg )
       {
-        char msg[] =
-          "cmApPortTest() command switches\n"
-          "-r <srate> -c <chcnt> -b <bufcnt> -f <frmcnt> -i <idevidx> -o <odevidx> -t -p -h \n"
-          "\n"
-          "-r <srate> = sample rate\n"
-          "-b <bufcnt> = count of buffers\n"
-          "-f <frmcnt> = count of samples per buffer\n"
-          "-i <idevidx> = input device index\n"
-          "-o <odevidx> = output device index\n"
-          "-p = print report but do not start audio devices\n"
-          "-h = print this usage message\n";
+        rc_t rc;
 
-        cwLogInfo(msg);
+        r->bufCnt         = 3;
+        r->srate          = 48000;
+        r->framesPerCycle = 512;
+        r->meterMs        = 50;
+        r->amHz           = 0;
+        r->amMaxGain      = 0.8;
+        
+        if((rc = cfg->getv_opt("inDev",r->inDevLabel,"outDev",r->outDevLabel,"srate",r->srate,"bufN",r->bufCnt,"framesPerCycle",r->framesPerCycle,"meterMs",r->meterMs,"amHz",r->amHz,"amMaxGain",r->amMaxGain)) != kOkRC )
+          return cwLogError(rc,"The audio device configuration is invalid.");
+
+        return rc;
       }
 
-      // Get a command line option. Note that if 'boolFl' is set to 'true' then the function simply
-      // returns '1'.  This is used to handle arguments whose presense indicates a positive boolean
-      // flag. For example -h (help) indicates that the usage data should be printed - it needs no other argument.
-      int _cmApGetOpt( int argc, const char* argv[], const char* label, int defaultVal, bool boolFl=false )
-      {
-        int i = 0;
-        for(; i<argc; ++i)
-          if( strcmp(label,argv[i]) == 0 )
-          {
-            if(boolFl)
-              return 1;
-
-            if( i == (argc-1) )
-              return defaultVal;
-
-            return atoi(argv[i+1]);
-          }
-  
-        return defaultVal;
-      }
-
-      unsigned _cmGlobalInDevIdx  = 0;
-      unsigned _cmGlobalOutDevIdx = 0;
+      
 
       void _cmApPortCb2( void* arg, audioPacket_t* inPktArray, unsigned inPktCnt, audioPacket_t* outPktArray, unsigned outPktCnt )
       {
@@ -90,8 +74,17 @@ namespace  cw
 
         for(unsigned i=0; i<outPktCnt; ++i)
           static_cast<cmApPortTestRecd*>(outPktArray[i].cbArg)->oCbCnt++;
+
+        if( p->amHz > 0 && outPktCnt > 0 )
+        {
+          unsigned sampleFrameN = outPktArray[0].audioFramesCnt;
+          
+          double amGain = p->amMaxGain * (cos( p->amPhs ) + 1.0) / 2;
+          p->amPhs += p->amHz * sampleFrameN *  M_PI / p->srate;
+          buf::setGain( p->audioBufH, p->outDevIdx, -1, buf::kOutFl, amGain);
+        }
         
-        buf::inputToOutput( p->audioBufH, _cmGlobalInDevIdx, _cmGlobalOutDevIdx );
+        buf::inputToOutput( p->audioBufH, p->inDevIdx, p->outDevIdx );
 
         buf::update( p->audioBufH, inPktArray, inPktCnt, outPktArray, outPktCnt );
       }
@@ -100,7 +93,7 @@ namespace  cw
 }
 
 // Audio Port testing function
-cw::rc_t cw::audio::device::test( int argc, const char** argv )
+cw::rc_t cw::audio::device::test( const object_t* cfg )
 {
   cmApPortTestRecd  r;
   unsigned          i;
@@ -110,49 +103,59 @@ cw::rc_t cw::audio::device::test( int argc, const char** argv )
   alsa::handle_t    alsaH;
   bool              runFl = true;
 
-  if( _cmApGetOpt(argc,argv,"-h",0,true) )
-    _cmApPrintUsage();
-
-  runFl            = _cmApGetOpt(argc,argv,"-p",0,true) ? false : true;
-  r.srate          = _cmApGetOpt(argc,argv,"-r",44100);
-  r.bufCnt         = _cmApGetOpt(argc,argv,"-b",3);
-  r.framesPerCycle = _cmApGetOpt(argc,argv,"-f",512);
-  r.meterMs        = 50;
-
-  r.inDevIdx   = _cmGlobalInDevIdx  = _cmApGetOpt(argc,argv,"-i",0);   
-  r.outDevIdx  = _cmGlobalOutDevIdx = _cmApGetOpt(argc,argv,"-o",0); 
-  r.iCbCnt     = 0;
-  r.oCbCnt     = 0;
+  r.oCbCnt = 0;
+  r.iCbCnt = 0;
+  r.amPhs  = 0;
   
-  //cwLogInfo("Program cfg: %s in:%i out:%i chidx:%i chs:%i bufs=%i frm=%i rate=%f",runFl?"exec":"rpt",r.inDevIdx,r.outDevIdx,r.chIdx,r.chCnt,r.bufCnt,r.framesPerCycle,r.srate);
-
   
   // initialize the audio device interface  
   if((rc = create(h)) != kOkRC )
   {
-    cwLogInfo("Initialize failed.");
+    cwLogError(rc,"Initialize failed.");
     goto errLabel;
   }
 
   // initialize the ALSA device driver interface
   if((rc = alsa::create(alsaH, drv )) != kOkRC )
   {
-    cwLogInfo("ALSA initialize failed.");
+    cwLogError(rc,"ALSA initialize failed.");
     goto errLabel;
   }
 
   // register the ALSA device driver with the audio interface
   if((rc = registerDriver( h, drv )) != kOkRC )
   {
-    cwLogInfo("ALSA driver registration failed.");
+    cwLogError(rc,"ALSA driver registration failed.");
     goto errLabel;
   }
-  
+
   // report the current audio device configuration
   for(i=0; i<device::count(h); ++i)
   {
     cwLogInfo("%i [in: chs=%i frames=%i] [out: chs=%i frames=%i] srate:%8.1f %s",i,device::channelCount(h,i,true),framesPerCycle(h,i,true),channelCount(h,i,false),framesPerCycle(h,i,false),sampleRate(h,i),label(h,i));
   }
+
+  if( cfg == nullptr )
+    goto errLabel;
+  
+  if((rc = _cmApGetCfg(&r, cfg )) != kOkRC )
+    goto errLabel;
+
+  // get the input device index
+  if((r.inDevIdx = labelToIndex(h,r.inDevLabel)) == kInvalidIdx )
+  {
+    rc = cwLogError(kInvalidIdRC,"The input audio device '%s' could not be found.", r.inDevLabel );
+    goto errLabel;
+  }
+
+  // get the output device index
+  if((r.outDevIdx = labelToIndex(h,r.outDevLabel)) == kInvalidIdx )
+  {
+    rc = cwLogError(kInvalidIdRC,"The output audio device '%s' could not be found.", r.outDevLabel );
+    goto errLabel;
+  }
+
+  cwLogInfo("In:%i %s Out:%i %s iCh:%i oCh:%i sr:%f bufN:%i FpC:%i meterMs:%i",r.inDevIdx,r.inDevLabel,r.outDevIdx,r.outDevLabel,channelCount(h,r.inDevIdx,true),channelCount(h,r.outDevIdx,false),r.srate,r.bufCnt,r.framesPerCycle,r.meterMs);
   
   // report the current audio devices using the audio port interface function
   //report(h);
@@ -166,9 +169,12 @@ cw::rc_t cw::audio::device::test( int argc, const char** argv )
     buf::setup( r.audioBufH, r.outDevIdx, r.srate, r.framesPerCycle, r.bufCnt, channelCount(h,r.outDevIdx,true), r.framesPerCycle, channelCount(h,r.outDevIdx,false), r.framesPerCycle );
 
     // setup the buffer for the input device
-    //if( r.inDevIdx != r.outDevIdx )
-    buf::setup( r.audioBufH, r.inDevIdx, r.srate, r.framesPerCycle, r.bufCnt, channelCount(h,r.inDevIdx,true), r.framesPerCycle, channelCount(h,r.inDevIdx,false), r.framesPerCycle ); 
+    if( r.inDevIdx != r.outDevIdx )
+      buf::setup( r.audioBufH, r.inDevIdx, r.srate, r.framesPerCycle, r.bufCnt, channelCount(h,r.inDevIdx,true), r.framesPerCycle, channelCount(h,r.inDevIdx,false), r.framesPerCycle ); 
 
+
+    buf::report( r.audioBufH );
+    
     // setup an output device
     if(setup(h, r.outDevIdx,r.srate,r.framesPerCycle,_cmApPortCb2,&r) != kOkRC )
       cwLogInfo("Out device setup failed.");
@@ -182,10 +188,11 @@ cw::rc_t cw::audio::device::test( int argc, const char** argv )
           cwLogInfo("In device start failed.");
         else
           // start the output device
-          if( start(h, r.outDevIdx) != kOkRC )
-            cwLogInfo("Out Device start failed.");
-          else
-            cwLogInfo("Setup complete!");
+          if( r.outDevIdx != r.inDevIdx )            
+            if( start(h, r.outDevIdx) != kOkRC )
+              cwLogInfo("Out Device start failed.");
+
+    
     
     
     cwLogInfo("q=quit O/o output tone, I/i input tone, P/p pass M/m meter s=buf report");
@@ -260,10 +267,16 @@ cw::rc_t cw::audio::device::test( int argc, const char** argv )
 
 /// [cmAudioPortExample]
 
+
+cw::rc_t cw::audio::device::test_tone( const object_t* cfg )
+{
+  rc_t rc = kOkRC;
+  return rc;
+}
+
 cw::rc_t cw::audio::device::report()
 {
-  const char* argv[] = { "-p" };
-  return test(0,argv);   
+  return test(nullptr);
 }
 
 
