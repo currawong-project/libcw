@@ -849,8 +849,14 @@ void cw::audio::buf::inputToOutput( handle_t h, unsigned iDevIdx, unsigned oDevI
   unsigned    iChCnt   = channelCount( h, iDevIdx, kInFl  );
   unsigned    oChCnt   = channelCount( h, oDevIdx, kOutFl );
   unsigned    chCnt    = iChCnt < oChCnt ? iChCnt : oChCnt;
-  
   unsigned    i;
+
+  if( chCnt == 0 )
+  {
+    cwLogWarning("Both input and output devices must have a non-zero channel count in the call to audio::buf::inputToOutput().");
+    return;
+  }
+  
 
   sample_t* iBufPtrArray[ iChCnt ];
   sample_t* oBufPtrArray[ oChCnt ];
@@ -905,7 +911,7 @@ void cw::audio::buf::report(handle_t h)
       sample_t m   = 0;
       for(k=0; k<ip->chCnt; ++k)
       {
-        cmApCh* cp = ip->chArray + i;
+        cmApCh* cp = ip->chArray + k;
         ii += cp->ii;
         oi += cp->oi;
         fn += cp->fn;
