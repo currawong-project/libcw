@@ -97,7 +97,7 @@ namespace cw
     rc_t image( handle_t h, const float* xM, unsigned rowN, unsigned colN, unsigned pixSize, unsigned cmapId );
 
     // Write the SVG file.
-    enum { kStandAloneFl=0x01, kPanZoomFl=0x02, kGenCssFileFl=0x04, kGenInlineStyleFl=0x08, kDrawFrameFl=0x10 };
+    enum { kStandAloneFl=0x01, kPanZoomFl=0x02, kGenCssFileFl=0x04 };
     rc_t write( handle_t h, const char* outFn, const char* cssFn, unsigned flags, double bordL=5, double bordT=5, double bordR=5, double bordB=5 );
 
     rc_t test( const char* outFn, const char* cssFn );

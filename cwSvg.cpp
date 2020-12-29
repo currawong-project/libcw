@@ -738,9 +738,7 @@ cw::rc_t cw::svg::write( handle_t h, const char* outFn, const char* cssFn, unsig
   ele_t* e                = p->eleL;
   bool   standAloneFl     = cwIsFlag(flags,kStandAloneFl); 
   bool   panZoomFl        = cwIsFlag(flags,kPanZoomFl);
-  //bool   genInlineStyleFl = cwIsFlag(flags,kGenInlineStyleFl);
   bool   genCssFileFl     = cwIsFlag(flags,kGenCssFileFl) && cssFn!=nullptr;
-  //bool   drawFrameFl      = cwIsFlag(flags,kDrawFrameFl);
 
   file::handle_t fH;
 
