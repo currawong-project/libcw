@@ -152,8 +152,13 @@ namespace cw
         unsigned         byteOffset; // Byte offset of the value of this field in the current record buffer.
         unsigned         byteN;      // Size of this field in bytes.
       } col_t;
+
+
+      enum {
+        kShuffleFl = 0x01
+      };
       
-      rc_t create(  handle_t& h, const char* fn );
+      rc_t create(  handle_t& h, const char* fn, unsigned cacheBufByteN, unsigned flags=kShuffleFl );
       rc_t destroy( handle_t& h );
 
       unsigned     column_count( handle_t h );
@@ -178,7 +183,7 @@ namespace cw
       // Read the next record.
       rc_t read( handle_t h, unsigned recordIdx=kInvalidIdx );
 
-      // Read a column value.
+      // Get a column value from the last record returned by 'read()'.
       //
       // vRef = Pointer to the value vector.
       // nRef = Count of elements in value vector.
@@ -222,8 +227,7 @@ namespace cw
         unsigned        rankN;           // dimV[ rankN ] Rank of this column
       } colMap_t;
 
-      
-      rc_t create(  handle_t& hRef, const char* fn, unsigned maxBatchN );
+      rc_t create(  handle_t& hRef, const char* fn, unsigned maxBatchN, unsigned cacheByteN, unsigned flags=rdr::kShuffleFl );
       rc_t destroy( handle_t& hRef );
 
       // Create a field and assign it a column.
@@ -249,8 +253,7 @@ namespace cw
       rc_t get( handle_t h, unsigned fieldId, const float*&  fV_Ref, const unsigned*& fNV_Ref ); 
       rc_t get( handle_t h, unsigned fieldId, const double*& fV_Ref, const unsigned*& fNV_Ref );
 
-      // Returns col position and geometry data from each record returned by the last
-      // call to read().
+      // Returns col position and geometry data from each record returned by the last call to read().
       // Returns colMapV_Ref[batchN][columnN].
       rc_t column_map( handle_t h, unsigned fieldId, colMap_t const * const *& colMapV_Ref );
 
@@ -268,6 +271,11 @@ namespace cw
     namespace mnist
     {
       typedef handle<struct mnist_str> handle_t;
+
+      enum {
+        kPixelRowN = 28,
+        kPixelColN = 28
+      };
 
       rc_t create( handle_t& h, const char* inDir );
       rc_t destroy( handle_t& h );
