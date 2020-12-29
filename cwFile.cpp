@@ -20,6 +20,7 @@ namespace cw
     {
       FILE* fp;
       char* fnStr;
+      rc_t  lastRC;
     } this_t;
 
 
@@ -96,9 +97,10 @@ namespace cw
         *bufByteCntPtr = 0;
 
         if( !feof(p->fp ) )
-          return cwLogSysError(kReadFailRC,errno,"File read line failed");
-    
-        return kReadFailRC;
+          return p->lastRC = cwLogSysError(kReadFailRC,errno,"File read line failed");
+
+        p->lastRC = kEofRC;
+        return kEofRC;
       }
 
       return kOkRC;
@@ -170,7 +172,7 @@ cw::rc_t cw::file::open( handle_t& hRef, const char* fn, unsigned flags )
     errno                        = 0;
     if((p->fp = fopen(fn,mode)) == nullptr )
     {
-      rc_t rc = cwLogSysError(kOpenFailRC,errno,"File open failed on file:'%s'.",cwStringNullGuard(fn));
+      rc_t rc = p->lastRC = cwLogSysError(kOpenFailRC,errno,"File open failed on file:'%s'.",cwStringNullGuard(fn));
       mem::release(p);
       return rc;
     }
@@ -181,7 +183,7 @@ cw::rc_t cw::file::open( handle_t& hRef, const char* fn, unsigned flags )
   return kOkRC;
 }
 
-cw::rc_t cw::file::close(   handle_t& hRef )
+cw::rc_t cw::file::close( handle_t& hRef )
 {
   if( isValid(hRef) == false )
     return kOkRC;
@@ -191,7 +193,7 @@ cw::rc_t cw::file::close(   handle_t& hRef )
   errno                = 0;
   if( p->fp != nullptr )
     if( fclose(p->fp) != 0 )
-      return cwLogSysError(kCloseFailRC,errno,"File close failed on '%s'.", cwStringNullGuard(p->fnStr));
+      return p->lastRC = cwLogSysError(kCloseFailRC,errno,"File close failed on '%s'.", cwStringNullGuard(p->fnStr));
   
   mem::release(p);
   hRef.clear();
@@ -202,20 +204,31 @@ cw::rc_t cw::file::close(   handle_t& hRef )
 bool       cw::file::isValid( handle_t h )
 { return h.isValid(); }
 
-cw::rc_t cw::file::read(    handle_t h, void* buf, unsigned bufByteCnt )
+cw::rc_t  cw::file::lastRC( handle_t h )
 {
-  this_t* p = _handleToPtr(h);
+  this_t*  p = _handleToPtr(h);
+  return p->lastRC;  
+}
+
+cw::rc_t cw::file::read(    handle_t h, void* buf, unsigned bufByteCnt, unsigned* actualByteCntRef )
+{
+  rc_t     rc            = kOkRC;
+  this_t*  p             = _handleToPtr(h);
+  unsigned actualByteCnt = 0;
   
   errno = 0;
-  if( fread(buf,bufByteCnt,1,p->fp) != 1 )
+  if(( actualByteCnt = fread(buf,1,bufByteCnt,p->fp)) != bufByteCnt )
   {
     if( feof( p->fp ) != 0 )
-      return kEofRC;
-    
-    return cwLogSysError(kReadFailRC,errno,"File read failed on '%s'.", cwStringNullGuard(p->fnStr));
+      rc = p->lastRC = kEofRC;
+    else
+      rc= p->lastRC = cwLogSysError(kReadFailRC,errno,"File read failed on '%s'.", cwStringNullGuard(p->fnStr));
   }
 
-  return kOkRC;
+  if( actualByteCntRef != nullptr )
+    *actualByteCntRef = actualByteCnt;
+  
+  return rc;
 }
 
 cw::rc_t cw::file::write(   handle_t h, const void* buf, unsigned bufByteCnt )
@@ -224,7 +237,7 @@ cw::rc_t cw::file::write(   handle_t h, const void* buf, unsigned bufByteCnt )
   
   errno = 0;
   if( fwrite(buf,bufByteCnt,1,p->fp) != 1 )
-    return cwLogSysError(kWriteFailRC,errno,"File write failed on '%s'.", cwStringNullGuard(p->fnStr));
+    return p->lastRC = cwLogSysError(kWriteFailRC,errno,"File write failed on '%s'.", cwStringNullGuard(p->fnStr));
 
   return kOkRC;
 }
@@ -249,6 +262,9 @@ cw::rc_t cw::file::seek(    handle_t h, enum seekFlags_t flags, int offsByteCnt 
   if( fseek(p->fp,offsByteCnt,fileflags) != 0 )
     return cwLogSysError(kSeekFailRC,errno,"File seek failed on '%s'",cwStringNullGuard(p->fnStr));
 
+  // if the seek succeeded then override any previous error state
+  p->lastRC = kOkRC;
+
   return kOkRC;
 }
 
@@ -260,7 +276,7 @@ cw::rc_t cw::file::tell( handle_t h, long* offsPtr )
   errno              = 0;
 
   if((*offsPtr = ftell(p->fp)) == -1)
-    return cwLogSysError(kOpFailRC,errno,"File tell failed on '%s'.", cwStringNullGuard(p->fnStr));
+    return p->lastRC = cwLogSysError(kOpFailRC,errno,"File tell failed on '%s'.", cwStringNullGuard(p->fnStr));
   return kOkRC;
 }
 
@@ -273,20 +289,20 @@ unsigned   cw::file::byteCount(  handle_t h )
 {
   struct stat sr;
   int         f;
-  this_t*     p = _handleToPtr(h);
+  this_t*     p       = _handleToPtr(h);
   const char errMsg[] = "File byte count request failed.";
 
   errno = 0;
 
   if((f = fileno(p->fp)) == -1)
   {
-    cwLogSysError(kInvalidOpRC,errno,"%s because fileno() failed on '%s'.",errMsg,cwStringNullGuard(p->fnStr));
+    p->lastRC = cwLogSysError(kInvalidOpRC,errno,"%s because fileno() failed on '%s'.",errMsg,cwStringNullGuard(p->fnStr));
     return 0;
   }
   
   if(fstat(f,&sr) == -1)
   {
-    cwLogSysError(kInvalidOpRC,errno,"%s because fstat() failed on '%s'.",errMsg,cwStringNullGuard(p->fnStr));
+    p->lastRC = cwLogSysError(kInvalidOpRC,errno,"%s because fstat() failed on '%s'.",errMsg,cwStringNullGuard(p->fnStr));
     return 0;
   }
 
@@ -782,7 +798,7 @@ cw::rc_t cw::file::print(   handle_t h, const char* text )
 
   errno = 0;
   if( fputs(text,p->fp) < 0 )
-    return cwLogSysError(kOpFailRC,errno,"File print failed on '%s'.", cwStringNullGuard(name(h)));
+    return p->lastRC = cwLogSysError(kOpFailRC,errno,"File print failed on '%s'.", cwStringNullGuard(name(h)));
 
   return kOkRC;
 }
@@ -793,7 +809,7 @@ cw::rc_t cw::file::vPrintf( handle_t h, const char* fmt, va_list vl )
   this_t* p = _handleToPtr(h);
   
   if( vfprintf(p->fp,fmt,vl) < 0 )
-    return cwLogSysError(kOpFailRC,errno,"File print failed on '%s'.", cwStringNullGuard(name(h)));
+    return p->lastRC = cwLogSysError(kOpFailRC,errno,"File print failed on '%s'.", cwStringNullGuard(name(h)));
   
   return kOkRC;
 }

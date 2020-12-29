@@ -41,8 +41,12 @@ namespace cw
     // Return true if the file handle is associated with an open file.
     bool       isValid( handle_t h );
 
+    // Get the last error RC.
+    rc_t  lastRC( handle_t h );
+
     // Read a block bytes from a file. Equivalent to fread().
-    rc_t read(    handle_t h, void* buf, unsigned bufByteCnt );
+    // 'actualByteCntRef is always the smae as bufByteCnt unless an error occurs or EOF is encountered.
+    rc_t read(    handle_t h, void* buf, unsigned bufByteCnt, unsigned* actualByteCntRef=nullptr );
 
     // Write a block of bytes to a file. Equivalent to fwrite().
     rc_t write(   handle_t h, const void* buf, unsigned bufByteCnt );
@@ -219,7 +223,7 @@ namespace cw
 
     // Read a string back from a file as written by fileWriteStr().
     // Note that the string will by string will be dynamically allocated
-    // and threfore must eventually be released via cmMemFree().
+    // and threfore must eventually be released via mem::free().
     // If maxCharN is set to zero then the default maximum string
     // length is 16384.  Note that this limit is used to prevent
     // corrupt files from generating excessively long strings.
