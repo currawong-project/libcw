@@ -215,6 +215,9 @@ cw::rc_t cw::file::read(    handle_t h, void* buf, unsigned bufByteCnt, unsigned
   rc_t     rc            = kOkRC;
   this_t*  p             = _handleToPtr(h);
   unsigned actualByteCnt = 0;
+
+  if( p->lastRC != kOkRC )
+    return p->lastRC;
   
   errno = 0;
   if(( actualByteCnt = fread(buf,1,bufByteCnt,p->fp)) != bufByteCnt )
@@ -234,6 +237,9 @@ cw::rc_t cw::file::read(    handle_t h, void* buf, unsigned bufByteCnt, unsigned
 cw::rc_t cw::file::write(   handle_t h, const void* buf, unsigned bufByteCnt )
 {
   this_t* p = _handleToPtr(h);
+
+  if( p->lastRC != kOkRC )
+    return p->lastRC;
   
   errno = 0;
   if( fwrite(buf,bufByteCnt,1,p->fp) != 1 )

@@ -46,9 +46,11 @@ namespace cw
 
     // Read a block bytes from a file. Equivalent to fread().
     // 'actualByteCntRef is always the smae as bufByteCnt unless an error occurs or EOF is encountered.
+    // This function checks lastRC() as a precondition and only proceeds if it is not set.
     rc_t read(    handle_t h, void* buf, unsigned bufByteCnt, unsigned* actualByteCntRef=nullptr );
 
     // Write a block of bytes to a file. Equivalent to fwrite().
+    // This function checks lastRC() as a precondition and only proceeds if it is not set.
     rc_t write(   handle_t h, const void* buf, unsigned bufByteCnt );
   
     enum seekFlags_t 
@@ -162,8 +164,8 @@ namespace cw
     rc_t getLineAuto( handle_t h, char** bufPtrPtr, unsigned* bufByteCntPtr );
 
     // Binary Array Reading Functions
-    // Each of these functions reads a block of binary data from a file.
-    // The advantage to using these functions over fileRead() is only that they are type specific.
+    // Each of these functions reads a block of binary data from a file and is a wrapper around file::read(h,buf,bufN).
+    // The advantage to using these functions over file::read() is only that they are type specific.
     rc_t readChar(   handle_t h, char*           buf, unsigned cnt=1 );
     rc_t readUChar(  handle_t h, unsigned char*  buf, unsigned cnt=1 );
     rc_t readShort(  handle_t h, short*          buf, unsigned cnt=1 );
@@ -190,7 +192,7 @@ namespace cw
 
     
     // Binary Array Writing Functions
-    // Each of these functions writes an array to a binary file.
+    // Each of these functions writes an array to a binary file and is a wrapper around file::write(h,buf,bufN)
     // The advantage to using functions rather than fileWrite() is only that they are type specific.
     rc_t writeChar(   handle_t h, const char*           buf, unsigned cnt=1 );
     rc_t writeUChar(  handle_t h, const unsigned char*  buf, unsigned cnt=1 );
