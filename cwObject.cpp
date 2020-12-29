@@ -57,18 +57,18 @@ namespace cw
 
 
   void _objTypeNullToString(   object_t* o, char* buf, unsigned bufN ) { snprintf(buf,bufN,"%s","NULL");  }
-  void _objTypeCharToString(   object_t* o, char* buf, unsigned bufN ) { number_to_string<char>(o->u.c,"%c",buf,bufN); }
-  void _objTypeInt8ToString(   object_t* o, char* buf, unsigned bufN ) { number_to_string<int8_t>(o->u.i8,"%i",buf,bufN); }
-  void _objTypeUInt8ToString(  object_t* o, char* buf, unsigned bufN ) { number_to_string<uint8_t>(o->u.u8,"%i",buf,bufN); }
-  void _objTypeInt16ToString(  object_t* o, char* buf, unsigned bufN ) { number_to_string<int16_t>(o->u.i16,"%i",buf,bufN); }
-  void _objTypeUInt16ToString( object_t* o, char* buf, unsigned bufN ) { number_to_string<uint16_t>(o->u.u16,"%i",buf,bufN); } 
-  void _objTypeInt32ToString(  object_t* o, char* buf, unsigned bufN ) { number_to_string<int32_t>(o->u.i32,"%i",buf,bufN); }
-  void _objTypeUInt32ToString( object_t* o, char* buf, unsigned bufN ) { number_to_string<uint32_t>(o->u.u32,"%i",buf,bufN); }
-  void _objTypeInt64ToString(  object_t* o, char* buf, unsigned bufN ) { number_to_string<int64_t>(o->u.i64,"%i",buf,bufN); }
-  void _objTypeUInt64ToString( object_t* o, char* buf, unsigned bufN ) { number_to_string<uint64_t>(o->u.u64,"%i",buf,bufN); }
-  void _objTypeBoolToString(   object_t* o, char* buf, unsigned bufN ) { number_to_string<bool>(o->u.b,"%i",buf,bufN); }
-  void _objTypeFloatToString(  object_t* o, char* buf, unsigned bufN ) { number_to_string<float>(o->u.f,"%f",buf,bufN); }
-  void _objTypeDoubleToString( object_t* o, char* buf, unsigned bufN ) { number_to_string<double>(o->u.d,"%f",buf,bufN); }
+  void _objTypeCharToString(   object_t* o, char* buf, unsigned bufN ) { number_to_string<char>(o->u.c,buf,bufN,"%c"); }
+  void _objTypeInt8ToString(   object_t* o, char* buf, unsigned bufN ) { number_to_string<int8_t>(o->u.i8,buf,bufN,"%i"); }
+  void _objTypeUInt8ToString(  object_t* o, char* buf, unsigned bufN ) { number_to_string<uint8_t>(o->u.u8,buf,bufN,"%i"); }
+  void _objTypeInt16ToString(  object_t* o, char* buf, unsigned bufN ) { number_to_string<int16_t>(o->u.i16,buf,bufN,"%i"); }
+  void _objTypeUInt16ToString( object_t* o, char* buf, unsigned bufN ) { number_to_string<uint16_t>(o->u.u16,buf,bufN,"%i"); } 
+  void _objTypeInt32ToString(  object_t* o, char* buf, unsigned bufN ) { number_to_string<int32_t>(o->u.i32,buf,bufN,"%i"); }
+  void _objTypeUInt32ToString( object_t* o, char* buf, unsigned bufN ) { number_to_string<uint32_t>(o->u.u32,buf,bufN,"%i"); }
+  void _objTypeInt64ToString(  object_t* o, char* buf, unsigned bufN ) { number_to_string<int64_t>(o->u.i64,buf,bufN,"%i"); }
+  void _objTypeUInt64ToString( object_t* o, char* buf, unsigned bufN ) { number_to_string<uint64_t>(o->u.u64,buf,bufN,"%i"); }
+  void _objTypeBoolToString(   object_t* o, char* buf, unsigned bufN ) { number_to_string<bool>(o->u.b,buf,bufN,"%i"); }
+  void _objTypeFloatToString(  object_t* o, char* buf, unsigned bufN ) { number_to_string<float>(o->u.f,buf,bufN,"%f"); }
+  void _objTypeDoubleToString( object_t* o, char* buf, unsigned bufN ) { number_to_string<double>(o->u.d,buf,bufN,"%f"); }
   void _objTypeStringToString( object_t* o, char* buf, unsigned bufN ) { snprintf(buf,bufN,"%s",o->u.str); }
 
   

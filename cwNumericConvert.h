@@ -136,12 +136,21 @@ namespace cw
     }
     return kOkRC;
   }
-  
 
   template< typename T >
-    void number_to_string( const T& v, const char* fmt, char* buf, int bufN  )
-  { snprintf(buf,bufN,fmt,v); }
+    int number_to_string( const T& v, char* buf, int bufN, const char* fmt=nullptr  )
+  { return snprintf(buf,bufN,fmt,v); }
 
+  template < > inline
+  int number_to_string( const int&      v, char* buf, int bufN, const char* fmt ) { return snprintf(buf,bufN,fmt==nullptr ? "%i" : fmt, v);  }
+  
+  template < > inline
+  int number_to_string( const unsigned& v, char* buf, int bufN, const char* fmt ) { return snprintf(buf,bufN,fmt==nullptr ? "%i" : fmt, v);  }
+  
+  template < > inline
+  int number_to_string( const double&   v, char* buf, int bufN, const char* fmt ) { return snprintf(buf,bufN,fmt==nullptr ? "%f" : fmt, v);  }
+
+  
   
 }
 #endif
