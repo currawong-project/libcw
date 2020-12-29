@@ -16,100 +16,84 @@ namespace cw
      kBaseUserColorMapId
     };
 
-    typedef enum
-    {
-     kStrokeColorArgId   = 0x01,
-     kStrokeWidthArgId   = 0x02,
-     kStrokeOpacityArgId = 0x04,
-     kFillColorArgId     = 0x08,
-     kFillOpacityArgId   = 0x10
-    } argId_t;
-
-    enum
-    {
-     kRectCssId,
-     kLineCssId,
-     kPLineCssId,
-     kTextCssId,
-     kBaseCssId
-    };
-
-
     rc_t create(  handle_t& h );
     rc_t destroy( handle_t& h );
 
     rc_t install_color_map( handle_t h, const unsigned* colorV, unsigned colorN, unsigned colorId=kBaseUserColorMapId );
 
-    rc_t install_css(
-      handle_t    h,
-      unsigned    cssClassId,
-      const char* cssClass       = nullptr,
-      unsigned    strokeColor    = 0,
-      unsigned    strokeWidth    = 1,
-      unsigned    fillColor      = 0xffffff,      
-      unsigned    strokeOpacity  = 1.0,
-      double      fillOpacity    = 1.0 );
-
     void     offset( handle_t h, double dx, double dy );
     unsigned color( handle_t h, unsigned colorMapId, double colorMin, double colorMax, double colorValue );
     unsigned color( handle_t h, unsigned colorMapId, unsigned colorIdx );
     
-    rc_t _set_attr( handle_t h, argId_t id, const int& value );
-    rc_t _set_attr( handle_t h, argId_t id, double value );
+    rc_t _set_attr( handle_t h, const char* selectorStr, const char* attrLabel, const char*     value, const char* suffix );
+    rc_t _set_attr( handle_t h, const char* selectorStr, const char* attrLabel, const unsigned& value, const char* suffix );
+    rc_t _set_attr( handle_t h, const char* selectorStr, const char* attrLabel, const int&      value, const char* suffix );
+    rc_t _set_attr( handle_t h, const char* selectorStr, const char* attrLabel, const double&   value, const char* suffix );
     
-    inline rc_t _parse_attr( handle_t h ){ return kOkRC; }
+    inline rc_t _parse_attr( handle_t h, const char* selectorStr ){ return kOkRC; }
     
-    template<typename T0, typename T1, typename ...ARGS>
-      rc_t _parse_attr( handle_t h, T0 id, T1 val, ARGS&&... args )
+    template<typename T, typename ...ARGS>
+      rc_t _parse_attr( handle_t h, const char* selectorStr, const char* attrLabel, const T& val, const char* suffix, ARGS&&... args )
     {
       rc_t rc;
-      if((rc = _set_attr(h, id,val)) == kOkRC )        
-        rc =_parse_attr( h, std::forward<ARGS>(args)...);
+      if((rc = _set_attr(h, selectorStr, attrLabel, val, suffix)) == kOkRC )        
+        rc =_parse_attr( h, selectorStr, std::forward<ARGS>(args)...);
       
       return rc;
     }
 
-    rc_t _rect( handle_t h, double x,  double y,  double ww, double hh, unsigned cssClassId );
+    // Install a CSS selector record.
+    // Style attributes are encoded as triples "<label>" <value> "<suffix>".
+    // Color values are encoded with the <suffix> = "rgb"
+    template< typename ...ARGS>
+    rc_t install_css( handle_t h, const char* selectorStr, ARGS&&... args )
+    { return _parse_attr( h, selectorStr, std::forward<ARGS>(args)...); }
+
+    rc_t _rect( handle_t h, double x,  double y,  double ww, double hh );
 
     // Draw a rectangle.  The variable arg. list must be <argId>,<value> pairs.
+    // All attributes assigned here will be encoded inside the SVG element tag.
+    // Attributes are encoded as triples "<label>" <value> "<suffix>".
+    // Color values are encoded with the <suffix> = "rgb"
     template<typename ...ARGS>
-      rc_t rect(  handle_t h, double x,  double y,  double ww, double hh, unsigned cssClassId, ARGS&&... args  )
+    rc_t rect(  handle_t h, double x,  double y,  double ww, double hh, ARGS&&... args  )
     {
-      _rect( h, x, y, ww, hh, cssClassId );
-      return _parse_attr( h, std::forward<ARGS>(args)...);
+      _rect( h, x, y, ww, hh );
+      return _parse_attr( h, nullptr, std::forward<ARGS>(args)...);
     }
 
-    rc_t _line( handle_t h, double x0,  double y0,  double x1, double y1, unsigned cssClassId );
+    rc_t _line( handle_t h, double x0,  double y0,  double x1, double y1 );
     
+
     // Draw a line.  The variable arg. list must be <argId>,<value> pairs.
     template<typename ...ARGS>
-      rc_t line(  handle_t h, double x0,  double y0,  double x1, double y1, unsigned cssClassId=kLineCssId, ARGS&&... args  )
+    rc_t line(  handle_t h, double x0,  double y0,  double x1, double y1, ARGS&&... args  )
     {
-      _line( h, x0, y0, x1, y1, cssClassId );
-      return _parse_attr( h, std::forward<ARGS>(args)...);
+      _line( h, x0, y0, x1, y1 );
+      return _parse_attr( h, nullptr, std::forward<ARGS>(args)...);
     }
 
-    rc_t _pline( handle_t h, const double* yV,  unsigned n,  const double* xV, unsigned cssClassId );
+    rc_t _pline( handle_t h, const double* yV,  unsigned n,  const double* xV );
     
-    // Draw a poly-line.  The variable arg. list must be <argId>,<value> pairs.
+    // Draw a poly-line.  The variable arg. list must be <argId>,<value> pairs. Set xV to nullptr to use index as x.
     template<typename ...ARGS>
-      rc_t pline(  handle_t h, const double* yV,  unsigned n,  const double* xV=nullptr, unsigned cssClassId=kPLineCssId, ARGS&&... args  )
+    rc_t pline(  handle_t h, const double* yV,  unsigned n,  const double* xV, ARGS&&... args  )
     {
-      _pline( h, yV, n, xV, cssClassId );
-      return _parse_attr( h, std::forward<ARGS>(args)...);
+      _pline( h, yV, n, xV );
+      return _parse_attr( h, nullptr, std::forward<ARGS>(args)...);
     }
     
-    rc_t _text( handle_t h, double x, double y, const char* text, unsigned cssClassId );      
+    rc_t _text( handle_t h, double x, double y, const char* text );      
     
     // Draw text.  The variable arg. list must be <argId>,<value> pairs.
     template<typename ...ARGS>
-      rc_t text(  handle_t h, double x,  double y, const char* text, unsigned cssClassId=kTextCssId, ARGS&&... args )
+    rc_t text(  handle_t h, double x,  double y, const char* text, ARGS&&... args )
     {
-      _text( h, x, y, text, cssClassId );
-      return _parse_attr( h, std::forward<ARGS>(args)...);
+      _text( h, x, y, text );
+      return _parse_attr( h, nullptr, std::forward<ARGS>(args)...);
     }
 
-
+    
     rc_t image( handle_t h, const float* xM, unsigned rowN, unsigned colN, unsigned pixSize, unsigned cmapId );
 
     // Write the SVG file.

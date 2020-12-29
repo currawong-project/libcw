@@ -5,6 +5,7 @@
 #include "cwFile.h"
 #include "cwSvg.h"
 #include "cwText.h"
+#include "cwNumericConvert.h"
 
 namespace cw
 {
@@ -15,40 +16,40 @@ namespace cw
      kLineTId,
      kPLineTId,
      kRectTId,
-     kTextTId
+     kTextTId,
+     kPixelTId
     };
 
+    // Attribute record used for CSS and SVG element attributes
     typedef struct attr_str
     {
-      unsigned        strokeColor;
-      unsigned        strokeWidth;
-      double          strokeOpacity;
-      unsigned        fillColor;
-      double          fillOpacity;
+      char*            label;
+      char*            value;
+      struct attr_str* link;
     } attr_t;
 
+    // CSS selector record with attribute list
     typedef struct css_str
     {
-      unsigned        id;
-      char*           label;
-      attr_t          attr;
+      char*           selectorStr;
+      attr_t*         attrL;
       struct css_str* link;
     } css_t;
-    
+
+    // SVG element record
     typedef struct ele_str
     {
-      unsigned        typeId;
-      double          x0;
-      double          y0;
-      double          x1;
+      unsigned        typeId;  // kLineTId,kRectPId,...
+      attr_t*         attrL;   // element attributes (e.g. id, class)
+      css_t*          css;     // style attributes
+      double          x0;      // left,top
+      double          y0;     
+      double          x1;      // right,bot
       double          y1;
       char*           text;
-      double*         xV;
+      double*         xV;      // poly line coords
       double*         yV;
       unsigned        yN;
-      attr_t          attr;
-      unsigned        cssClassId;
-      unsigned        flags;      
       struct ele_str* link;
     } ele_t;
 
@@ -62,22 +63,41 @@ namespace cw
 
     typedef struct svg_str
     {
-      unsigned        strokeColorIdx;
-      unsigned        strokeWidth;
-      unsigned        fillColorIdx;
-
-      css_t*       cssL;
-      color_map_t* cmapL;
-      ele_t*       eleL;
-
-      double dx;
-      double dy;
-
-      ele_t* curEle;
+      css_t*       cssL;        // CSS selector records
+      color_map_t* cmapL;       // Color maps
+      ele_t*       eleL;        // SVG elements
+      
+      double       dx;          // Offset new elements by this amount
+      double       dy;
+      
+      ele_t*       curEle;      // Last SVG element allocated
     } svg_t;
 
     inline svg_t* _handleToPtr(handle_t h )
     { return handleToPtr<handle_t,svg_t>(h); }
+
+    void _destroy_attr_list( attr_t* a )
+    {
+      while( a != nullptr )
+      {
+        attr_t* a0 = a->link;
+        mem::release(a->label);
+        mem::release(a->value);
+        mem::release(a);
+        a = a0;
+      }      
+    }
+
+    void _destroy_css( css_t* r )
+    {
+      if( r != nullptr )
+      {
+        mem::release(r->selectorStr);
+      
+        _destroy_attr_list(r->attrL);
+        mem::release(r);
+      }
+    }
     
     rc_t _destroy( struct svg_str* p )
     {
@@ -88,6 +108,8 @@ namespace cw
         mem::release(e->text);
         mem::release(e->xV);
         mem::release(e->yV);
+        _destroy_attr_list(e->attrL);
+        _destroy_css(e->css);
         mem::release(e);
         e = e0;
       }
@@ -105,8 +127,7 @@ namespace cw
       while( r != nullptr )
       {
         css_t* r0 = r->link;
-        mem::release(r->label);
-        mem::release(r);
+        _destroy_css(r);
         r = r0;
       }
 
@@ -156,7 +177,7 @@ namespace cw
 
     rc_t _install_gray_scale_cmap( svg_t* p )
     {
-      unsigned  colorN = 255;
+      unsigned  colorN = 256;
       unsigned* colorV = mem::allocZ<unsigned>(colorN);
 
       for(unsigned i=0; i<colorN; ++i)
@@ -177,7 +198,7 @@ namespace cw
 
     rc_t _install_heat_cmap( svg_t* p )
     {
-      unsigned  colorN  = 255;
+      unsigned  colorN  = 256;
       unsigned* colorV  = mem::allocZ<unsigned>(colorN);
       double    rV[]    = { 0.0, 0.0, 1.0, 1.0 };
       double    gV[]    = { 1.0, 0.0, 0.0, 1.0 };
@@ -198,34 +219,8 @@ namespace cw
       return _install_cmap( p, kHeatColorMapId, colorV, colorN );      
     }
 
-
-    rc_t _install_css(
-      svg_t*      p,
-      unsigned    cssClassId,
-      const char* cssClassLabel,
-      unsigned    strokeColor   = 0,
-      unsigned    strokeWidth   = 1,
-      unsigned    fillColor     = 0xffffff,      
-      unsigned    strokeOpacity = 1.0,
-      double      fillOpacity   = 1.0 )
-    {
-      css_t* r = mem::allocZ<css_t>(1);
-
-      r->id                 = cssClassId;
-      r->label              = mem::duplStr(cssClassLabel==nullptr?" ":cssClassLabel);
-      r->attr.strokeColor   = strokeColor;
-      r->attr.strokeWidth   = strokeWidth;
-      r->attr.strokeOpacity = strokeOpacity;
-      r->attr.fillColor     = fillColor;
-      r->attr.fillOpacity   = fillOpacity;
-
-      r->link = p->cssL;
-      p->cssL = r;
-
-      return kOkRC;
-    }
     
-    rc_t _insert( svg_t* p, unsigned typeId, double x, double y, double w, double h, unsigned cssClassId, const char* text, const double* yV=nullptr, unsigned yN=0, const double* xV=nullptr  )
+    rc_t _insert( svg_t* p, unsigned typeId, double x, double y, double w, double h, const char* text, const double* yV=nullptr, unsigned yN=0, const double* xV=nullptr  )
     {
       rc_t rc = kOkRC;
       
@@ -237,7 +232,6 @@ namespace cw
       e->x1             = x+w;
       e->y1             = y+h;
       e->text           = mem::duplStr(text);
-      e->cssClassId     = cssClassId;
       e->yV             = yN>0 && yV!=nullptr ? mem::allocDupl<double>(yV,yN) : nullptr;
       e->xV             = yN>0 && xV!=nullptr ? mem::allocDupl<double>(xV,yN) : nullptr;
       e->yN             = yN;
@@ -393,76 +387,147 @@ namespace cw
       }
     }
 
+    // Write a HTML element attribute list
+    char* _print_ele_attr_list( const attr_t* attrL, char*& s )
+    {
+      for(const attr_t* a=attrL; a!=nullptr; a=a->link)
+        s = mem::printp(s,"%s=\"%s\" ",a->label,a->value);
+      return s;
+    }
+    
+    // Write a CSS record attribute list
+    char* _print_css_attr_list( const attr_t* attrL, char*& s )
+    {
+      for(const attr_t* a=attrL; a!=nullptr; a=a->link)
+        s = mem::printp(s,"%s: %s;",a->label,a->value);
+      return s;
+    }
+
+    // Print a CSS record
+    char* _print_css( const css_t* r, char*& s )
+    {
+      char* s0 = nullptr;
+      s0 = _print_css_attr_list( r->attrL, s0 );
+      s = mem::printp(s,"%s { %s }\n", r->selectorStr, s0 );
+      mem::release(s0);
+      return s;
+    }
+    
+    char* _print_css_list( svg_t* p, char*& s )
+    {
+      for( const css_t* r=p->cssL; r!=nullptr; r=r->link)
+        s = _print_css(r,s);
+
+      return s;
+    }
+
     rc_t _writeCssFile( svg_t* p, const char* fn )
     {
       rc_t           rc;
       file::handle_t fH;
-      css_t*         r;
-      
+      char*          s;
+
+      if( p->cssL == nullptr )
+        return kOkRC;
+
       if((rc = file::open(fH,fn,file::kWriteFl)) != kOkRC )
         return cwLogError(rc,"CSS file create failed on '%s'.",cwStringNullGuard(fn));
 
-      for(r=p->cssL; r!=nullptr; r=r->link)
-      {
-        file::printf(fH,".%s {\nstroke:#%06x;\nfill:#%06x;\nstroke-width:%i;\nstroke-opacity:%f;\nfill-opacity:%f\n}\n",
-          r->label,r->attr.strokeColor,r->attr.fillColor,r->attr.strokeWidth,r->attr.strokeOpacity,r->attr.fillOpacity);
-      }
+      s = _print_css_list(p,s);
 
+      file::printf(fH,"%s\n",s);
+      
+      mem::release(s);
       file::close(fH);
       return rc;
     }
 
-    css_t* _cssIdToRecd( svg_t* p, unsigned cssClassId )
+    css_t* _cssSelectorToRecd( svg_t* p, const char* selectorStr )
     {
       css_t* r = p->cssL;
       for(; r!=nullptr; r=r->link)
-        if( r->id == cssClassId )
+        if( strcmp(selectorStr,r->selectorStr)==0 )
           return r;
 
       return nullptr;
     }
 
-    rc_t _allocStyleString( svg_t* p, const ele_t* e, bool genInlineFl, char*& s )
+    css_t* _cssCreate( svg_t* p )
     {
-      s = nullptr;
-      
-      css_t* r;
-      if((r = _cssIdToRecd(p,e->cssClassId)) == nullptr )
-        return cwLogError(kGetAttrFailRC,"Unable to locate SVG class id %i.", e->cssClassId );
-
-      if( genInlineFl || e->flags != 0 )
-      {
-        attr_t a;
-        
-        a.strokeColor   =  cwIsFlag(e->flags,kStrokeColorArgId)     ? e->attr.strokeColor   : r->attr.strokeColor;
-        a.strokeOpacity =  cwIsFlag(e->flags,kStrokeOpacityArgId)   ? e->attr.strokeOpacity : r->attr.strokeOpacity;
-        a.strokeWidth   =  cwIsFlag(e->flags,kStrokeWidthArgId)     ? e->attr.strokeWidth   : r->attr.strokeWidth;
-        a.fillColor     =  cwIsFlag(e->flags,kFillColorArgId)       ? e->attr.fillColor     : r->attr.fillColor;
-        a.fillOpacity   =  cwIsFlag(e->flags,kFillOpacityArgId)     ? e->attr.fillOpacity   : r->attr.fillOpacity;
-        
-        s = mem::printf(s,"style=\"stroke:#%06x;fill:#%06x;stroke-width:%i;stroke-opacity:%f;fill-opacity:%f\"",a.strokeColor,a.fillColor,a.strokeWidth,a.strokeOpacity,a.fillOpacity);
-      }
-      else
-      {
-        s = mem::printf(s,"class=\"%s\"",r->label);
-      }
-
-      return kOkRC;
+      return  mem::allocZ<css_t>();
     }
 
-    char* _write_pline(char* bodyStr, ele_t* e, const char* styleStr)
+    css_t* _cssFindOrCreate( svg_t* p, const char* selectorStr  )
     {
-      if( e->yN == 0 )
-        return bodyStr;
-  
-      bodyStr = mem::printp(bodyStr,"<polyline points=\"");
-      for(unsigned i=0; i<e->yN; ++i)
-        bodyStr = mem::printp(bodyStr,"%f,%f ", e->xV[i], e->yV[i] );
-  
-      return mem::printp(bodyStr,"\" %s />",styleStr);
+      css_t* r;
+      if((r = _cssSelectorToRecd(p,selectorStr)) == nullptr )
+      {
+        r              = _cssCreate(p);
+        r->selectorStr = mem::duplStr(selectorStr);
+        r->link        = p->cssL;
+        p->cssL        = r;
+      }
+      
+      return r;
+    }
+
+    char*  _cssGenUniqueIdLabel( svg_t* p )
+    {
+      unsigned i = 0;
+      const unsigned bufN = 64;
+      char buf[ bufN + 1];
+      do
+        {
+          snprintf(buf,bufN,"#id_%i",i);
+
+          if( _cssSelectorToRecd(p,buf) == nullptr )
+            return mem::duplStr(buf);
+
+          i += 1;
+        }while(1);
+
+      return nullptr;
+    }
+
+    template< typename T >
+    rc_t _set_attr_int( handle_t h, const char* selectorStr, const char* attrLabel, const T& value, const char* suffix )
+    {
+      const int bufN = 64;
+      char buf[ bufN + 1 ];
+
+      if( suffix == nullptr )
+        suffix = "";
+      else
+      {
+        if( strcmp(suffix,"rgb") == 0 )
+        {
+          snprintf(buf,bufN,"#%06x",value);
+        }
+        else
+        {
+          snprintf(buf,bufN,"%i%s",value,suffix);
+        }
+      }
+      
+      return _set_attr( h, selectorStr, attrLabel, buf, nullptr );
     }
 
     
+    rc_t _write_pline(file::handle_t fH, ele_t* e, const char* styleStr)
+    {
+      rc_t rc = kOkRC;
+      
+      if( e->yN == 0 )
+        return rc;
+  
+      file::printf(fH,"<polyline points=\"");
+      for(unsigned i=0; i<e->yN; ++i)
+        if((rc = file::printf(fH,"%f,%f ", e->xV[i], e->yV[i] )) != kOkRC)
+          return rc;
+          
+  
+      return file::printf(fH,"\" %s />\n", styleStr);
+    }
   }
 }
 
@@ -472,21 +537,12 @@ cw::rc_t cw::svg::create(  handle_t& h )
   if((rc = destroy(h)) != kOkRC )
     return rc;
 
-  svg_t* p = mem::allocZ<svg_t>(1);
-
-  p->strokeColorIdx = kInvalidIdx;
-  p->strokeWidth    = 1;
-  p->fillColorIdx   = kInvalidIdx;
+  svg_t* p = mem::allocZ<svg_t>();
 
   _install_basic_eight_cmap(p);
   _install_gray_scale_cmap(p);
   _install_inv_gray_scale_cmap(p);
   _install_heat_cmap(p);
-
-  _install_css(p, kRectCssId, "rect" );
-  _install_css(p, kLineCssId, "line" );
-  _install_css(p, kPLineCssId,"pline" );
-  _install_css(p, kTextCssId, "text",0,1,0 );
   
   h.set(p);
 
@@ -512,20 +568,6 @@ cw::rc_t cw::svg::destroy( handle_t& h )
 cw::rc_t cw::svg::install_color_map( handle_t h, const unsigned* colorV, unsigned colorN, unsigned id )
 { return _install_cmap( _handleToPtr(h), id, mem::allocDupl<unsigned>(colorV,colorN), colorN ); }
 
-cw::rc_t cw::svg::install_css(
-      handle_t    h,
-      unsigned    cssClassId,
-      const char* cssClassLabel,
-      unsigned    strokeColor,
-      unsigned    strokeWidth,
-      unsigned    fillColor,      
-      unsigned    strokeOpacity,
-      double      fillOpacity )
-{
-  svg_t* p = _handleToPtr(h);
-  return _install_css(p, cssClassId, cssClassLabel, strokeColor, strokeWidth, fillColor, strokeOpacity, fillOpacity );
-}
-
 void cw::svg::offset( handle_t h, double dx, double dy )
 {
   svg_t* p = _handleToPtr(h);
@@ -544,7 +586,7 @@ unsigned cw::svg::color( handle_t h, unsigned colorMapId, double colorMin, doubl
   }
 
   double   c   =  std::min( colorMax, std::max( colorMin, colorValue ) );
-  unsigned idx = cm->colorN * (c - colorMin)/(colorMax - colorMin);
+  unsigned idx = (cm->colorN-1) * (c - colorMin)/(colorMax - colorMin);
 
   assert(idx<cm->colorN);
   
@@ -563,78 +605,123 @@ unsigned cw::svg::color( handle_t h, unsigned colorMapId, unsigned colorIdx )
   return cm->colorV[colorIdx];
 }
 
-cw::rc_t cw::svg::_set_attr( handle_t h, argId_t id, const int& value )
+cw::rc_t cw::svg::_set_attr( handle_t h, const char* selectorStr, const char* attrLabel, const char* value, const char* suffix )
 {
-  rc_t   rc = kOkRC;
-  svg_t* p  = _handleToPtr(h);
-  
-  switch( id )
-  {
-    case kStrokeColorArgId:   p->curEle->attr.strokeColor = value; break;
-    case kStrokeWidthArgId:   p->curEle->attr.strokeWidth = value; break;
-    case kFillColorArgId:     p->curEle->attr.fillColor   = value; break;
-    default:
-      rc = cwLogError(kSetAttrFailRC,"Unknown SVG attribute id: %i", id);
-  }
+  svg_t* p    = _handleToPtr(h);
+  css_t* r    = nullptr;
+  int    bufN = 64;
+  char   buf[ bufN + 1 ];
 
-  if( rc == kOkRC )
-    p->curEle->flags |= id;
-  
-  return rc;
-}
 
-cw::rc_t cw::svg::_set_attr( handle_t h, argId_t id, double value )
-{
-  rc_t   rc = kOkRC;
-  svg_t* p  = _handleToPtr(h);
-  
-  switch( id )
+  if( suffix != nullptr )
   {
-    case kStrokeOpacityArgId: p->curEle->attr.strokeOpacity = value; break;
-    case kFillOpacityArgId: p->curEle->attr.fillOpacity = value; break;
-    default:
-      rc = cwLogError(kSetAttrFailRC,"Unknown SVG attribute id: %i", id);
+    snprintf(buf,bufN,"%s%s",value,suffix);
+    value = buf;
   }
   
-  if( rc == kOkRC )
-    p->curEle->flags |= id;
-  
-  return rc;
+  // allocate and fill the CSS attribute record
+  attr_t* a = mem::allocZ<attr_t>();
+  a->label  = mem::duplStr(attrLabel);
+  a->value  = mem::duplStr(value);
+
+  // if a selector is given then find or create a CSS selector record
+  if( selectorStr != nullptr )    
+    r = _cssFindOrCreate(p,selectorStr);
+  else
+  {  
+    // 'id' and 'class' attributes are always added to the ele attribute list ...
+    if( strcmp(attrLabel,"id")!=0 && strcmp(attrLabel,"class")!=0 )
+    {
+      // ... otherwise the attributes are added to the ele style list
+      if( p->curEle->css == nullptr )
+        p->curEle->css = _cssCreate(p);
+      r = p->curEle->css;
+    }
+  }
+
+  if( r != nullptr )
+  {
+    a->link   = r->attrL;
+    r->attrL  = a;
+  }
+  else
+  {
+    a->link          = p->curEle->attrL;
+    p->curEle->attrL = a;      
+  }
+  return kOkRC;    
 }
 
-cw::rc_t cw::svg::_rect( handle_t h, double x,  double y,  double ww, double hh, unsigned cssClassId )
+
+
+cw::rc_t cw::svg::_set_attr( handle_t h, const char* selectorStr, const char* attrLabel, const unsigned& value, const char* suffix )
 {
-  svg_t* p = _handleToPtr(h);
-  return _insert( p, kRectTId, x, y, ww, hh, cssClassId, nullptr);  
+  return _set_attr_int(h,selectorStr,attrLabel,value,suffix);
 }
 
-cw::rc_t cw::svg::_line( handle_t h, double x0,  double y0,  double x1, double y1, unsigned cssClassId )
+cw::rc_t cw::svg::_set_attr( handle_t h, const char* selectorStr, const char* attrLabel, const int& value, const char* suffix )
 {
-  svg_t* p = _handleToPtr(h);
-  return _insert( p, kLineTId, x0, y0, x1-x0, y1-y0, cssClassId, nullptr);  
+  return _set_attr_int(h,selectorStr,attrLabel,value,suffix);
 }
 
-cw::rc_t cw::svg::_pline( handle_t h, const double* yV,  unsigned n,  const double* xV, unsigned cssClassId )
+cw::rc_t cw::svg::_set_attr( handle_t h, const char* selectorStr, const char* attrLabel, const double& value, const char* suffix )
 {
-  svg_t* p = _handleToPtr(h);
-  return _insert( p, kPLineTId, 0,0,0,0, cssClassId, nullptr, yV, n, xV);    
+  const int bufN = 32;
+  char buf[ bufN+1 ];
+  number_to_string(value,buf,bufN);
+  return _set_attr(h,selectorStr,attrLabel,buf,suffix);
 }
 
-cw::rc_t cw::svg::_text( handle_t h, double x, double y, const char* text, unsigned cssClassId )
+cw::rc_t cw::svg::_rect( handle_t h, double x,  double y,  double ww, double hh )
 {
   svg_t* p = _handleToPtr(h);
-  return _insert( p, kTextTId, x, y, 0, 0, cssClassId, text);  
+  return _insert( p, kRectTId, x, y, ww, hh, nullptr);  
+}
+
+cw::rc_t cw::svg::_line( handle_t h, double x0,  double y0,  double x1, double y1 )
+{
+  svg_t* p = _handleToPtr(h);
+  return _insert( p, kLineTId, x0, y0, x1-x0, y1-y0, nullptr);  
+}
+
+cw::rc_t cw::svg::_pline( handle_t h, const double* yV,  unsigned n,  const double* xV )
+{
+  svg_t* p = _handleToPtr(h);
+  return _insert( p, kPLineTId, 0,0,0,0, nullptr, yV, n, xV);    
+}
+
+cw::rc_t cw::svg::_text( handle_t h, double x, double y, const char* text )
+{
+  svg_t* p = _handleToPtr(h);
+  return _insert( p, kTextTId, x, y, 0, 0, text);  
 }
 
 cw::rc_t cw::svg::image( handle_t h, const float* xM, unsigned rowN, unsigned colN, unsigned pixSize, unsigned cmapId )
 {
+  svg_t* p       = _handleToPtr(h);
+  char*  idLabel = _cssGenUniqueIdLabel(p);
+
+  _parse_attr( h, idLabel,
+    "width",          pixSize, "px",
+    "height",         pixSize, "px",
+    "stroke-width",   1,       "px",
+    "stroke-opacity", 1.0,     nullptr,
+    "fill-opacity",   1.0,     nullptr );
+  
   for(unsigned i=0; i<rowN; ++i)
     for(unsigned j=0; j<colN; ++j)
     {
-      int c = color( h, cmapId, 0, 1, xM[j*colN + i + 1] );
-      rect(h, i*pixSize, j*pixSize, pixSize, pixSize, kRectCssId, kFillColorArgId, c, kStrokeColorArgId, c );
+      int       c    = color( h, cmapId, 0, 1, xM[j*colN + i + 1] );
+
+      _insert(p, kPixelTId, i*pixSize, j*pixSize, pixSize, pixSize, nullptr  );
+      _set_attr( h, nullptr, "stroke", c, "rgb" );
+      _set_attr( h, nullptr, "fill",   c, "rgb" );
+      _set_attr( h, nullptr, "id", idLabel+1, nullptr );
+      
     }
 
+  mem::release(idLabel);
+  
   return kOkRC;
 }
   
@@ -645,13 +732,13 @@ cw::rc_t cw::svg::write( handle_t h, const char* outFn, const char* cssFn, unsig
   double svgWidth         = 0;
   double svgHeight        = 0;
   char*  cssStr           = nullptr;
+  char*  styleStr        = nullptr;
   char*  fileHdr          = nullptr;
   char*  svgHdr           = nullptr;
-  char*  bodyStr          = nullptr;
   ele_t* e                = p->eleL;
   bool   standAloneFl     = cwIsFlag(flags,kStandAloneFl); 
   bool   panZoomFl        = cwIsFlag(flags,kPanZoomFl);
-  bool   genInlineStyleFl = cwIsFlag(flags,kGenInlineStyleFl);
+  //bool   genInlineStyleFl = cwIsFlag(flags,kGenInlineStyleFl);
   bool   genCssFileFl     = cwIsFlag(flags,kGenCssFileFl) && cssFn!=nullptr;
   //bool   drawFrameFl      = cwIsFlag(flags,kDrawFrameFl);
 
@@ -671,6 +758,7 @@ cw::rc_t cw::svg::write( handle_t h, const char* outFn, const char* cssFn, unsig
     "<head>\n"
     "<meta charset=\"utf-8\">\n"
     "%s"
+    "<style>%s</style>\n"
     "%s\n"
     "</head>\n"
     "<body onload=\"doOnLoad()\">\n";
@@ -678,21 +766,27 @@ cw::rc_t cw::svg::write( handle_t h, const char* outFn, const char* cssFn, unsig
   char svgFmt[] = "<svg id=\"mysvg\" width=\"%f\" height=\"%f\">\n";
   char cssFmt[] = "<link rel=\"stylesheet\" type=\"text/css\" href=\"%s\">\n";
 
-  double max_y = _size(p, svgWidth, svgHeight );
-
-  _flipY( p, max_y );
+  //double max_y = _size(p, svgWidth, svgHeight );
+  //_flipY( p, max_y );
+  _size(p,svgWidth,svgHeight);
 
   _offsetEles(p, bordR, bordT );
   
   svgWidth  += bordR + bordL;
   svgHeight += bordT + bordB;
 
-  if( genCssFileFl )
-    _writeCssFile( p, cssFn );
+
+  if( p->cssL != nullptr )
+  {
+    if( genCssFileFl )
+      _writeCssFile( p, cssFn );
+    else
+      styleStr = _print_css_list(p,styleStr);
+  }
 
   cssStr  = mem::printf(cssStr,cssFn==nullptr ? "%s" : cssFmt, cssFn==nullptr ? " " : cssFn);
 
-  fileHdr = mem::printf(fileHdr, standAloneFmt, cssStr, panZoomFl ? panZoomHdr : "");
+  fileHdr = mem::printf(fileHdr,standAloneFmt, cssStr, styleStr==nullptr ? "" : styleStr, panZoomFl ? panZoomHdr : "");
   
   svgHdr  = mem::printf(svgHdr,"%s%s", standAloneFl ? fileHdr : "", svgFmt);
 
@@ -700,88 +794,113 @@ cw::rc_t cw::svg::write( handle_t h, const char* outFn, const char* cssFn, unsig
 
   mem::release(svgHdr);
   mem::release(cssStr);
+  mem::release(styleStr);
 
-  for(; e!=NULL; e=e->link)
-  {
-    char* styleStr = nullptr;
-    
-    if((rc = _allocStyleString( p, e, genInlineStyleFl, styleStr )) != kOkRC )
-      goto errLabel;
-    
-    switch( e->typeId )
-    {
-      case kRectTId:
-        bodyStr = mem::printp(bodyStr,"<rect x=\"%f\" y=\"%f\" width=\"%f\" height=\"%f\" %s/>\n",e->x0,e->y0,e->x1-e->x0,e->y1-e->y0,styleStr);
-        break;
-        
-      case kLineTId:
-        bodyStr = mem::printp(bodyStr,"<line x1=\"%f\" y1=\"%f\" x2=\"%f\" y2=\"%f\"  %s/>\n",e->x0,e->y0,e->x1,e->y1,styleStr);
-        break;
 
-      case kPLineTId:
-        bodyStr = _write_pline(bodyStr,e,styleStr);
-        break;
-        
-      case kTextTId:
-        bodyStr = mem::printp(bodyStr,"<text x=\"%f\" y=\"%f\"  %s>%s</text>\n",e->x0,e->y0, styleStr,e->text);
-        break;
-    }
-    
-    mem::release(styleStr);
-  }
-
-  if( (bodyStr = textAppend(bodyStr,"</svg>\n")) == NULL )
-  {
-    rc = cwLogError(kMemAllocFailRC,"File suffix write failed.");
-    goto errLabel;
-  }
-  
-  if( standAloneFl )
-    bodyStr = textAppend(bodyStr,"</body>\n</html>\n");
-  
   if((rc = file::open(fH,outFn,file::kWriteFl)) != kOkRC )
   {
     rc = cwLogError(rc,"SVG file create failed for '%s'.",cwStringNullGuard(outFn));
     goto errLabel;
   }
 
-  fileHdr = textAppend(fileHdr,bodyStr);
-  
-  if((rc = file::printf(fH,fileHdr)) != kOkRC )
-  {    
-    rc = cwLogError(rc,"SVG file write failed on '%s'.",outFn);
+  if((rc = file::printf(fH,"%s",fileHdr)) != kOkRC )
     goto errLabel;
+
+  for(; e!=NULL; e=e->link)
+  {
+    char* dStyleStr = nullptr;
+
+    if( e->css != nullptr )
+      dStyleStr = mem::printf(dStyleStr, "style=\"%s\" ",_print_css_attr_list(e->css->attrL,dStyleStr));
+
+    if( e->attrL != nullptr )
+      dStyleStr = mem::printp(dStyleStr,"%s",_print_ele_attr_list(e->attrL,dStyleStr) );
+    
+    const char* styleStr  = dStyleStr==nullptr ? "" : dStyleStr;
+        
+    switch( e->typeId )
+    {
+      case kRectTId:
+        rc = file::printf(fH,"<rect x=\"%f\" y=\"%f\" width=\"%f\" height=\"%f\" %s/>\n",e->x0,e->y0,e->x1-e->x0,e->y1-e->y0,styleStr);
+        break;
+
+      case kPixelTId:
+        rc = file::printf(fH,"<rect x=\"%f\" y=\"%f\" %s/>\n",e->x0,e->y0,e->x1-e->x0,e->y1-e->y0,styleStr);
+      break;
+      
+      case kLineTId:
+        rc = file::printf(fH,"<line x1=\"%f\" y1=\"%f\" x2=\"%f\" y2=\"%f\"  %s/>\n",e->x0,e->y0,e->x1,e->y1,styleStr);
+        break;
+
+      case kPLineTId:
+        rc = _write_pline(fH,e,styleStr);
+        break;
+        
+      case kTextTId:
+        rc   = file::printf(fH,"<text x=\"%f\" y=\"%f\"  %s>%s</text>\n",e->x0,e->y0, styleStr,e->text);
+        break;
+    }
+
+    mem::release(dStyleStr);
+
+    if( rc != kOkRC )
+      goto errLabel;
   }
 
+  if( (rc = file::printf(fH,"</svg>\n")) != kOkRC )
+  {
+    rc = cwLogError(kMemAllocFailRC,"File suffix write failed.");
+    goto errLabel;
+  }
+  
+  if( standAloneFl )
+    rc = file::printf(fH,"</body>\n</html>\n");
+  
+
  errLabel:
-    file::close(fH);
+
+  if( rc != kOkRC )
+    rc = cwLogError(rc,"SVG file write failed.");
+  file::close(fH);
 
     mem::release(fileHdr);
-    mem::release(bodyStr);
   
     return rc;  
 }
 
 cw::rc_t cw::svg::test( const char* outFn, const char* cssFn )
 {
-
-  rc_t rc = kOkRC;
-
+  rc_t     rc = kOkRC;
   handle_t h;
+  
   if((rc = create(h)) != kOkRC )
     cwLogError(rc,"SVG Test failed on create.");
 
 
   double yV[] = { 0, 10, 30, 60, 90 };
+  double xV[] = { 0, 40, 60, 40, 10 };
   unsigned yN = cwCountOf(yV);
-  
-  rect(h,  0,  0, 100, 100, kRectCssId, kFillColorArgId, 0x7f7f7f );
-  line(h,  0,  0, 100, 100, kLineCssId, kStrokeColorArgId, 0xff0000 );
-  line(h,  0,100, 100,   0, kLineCssId, kStrokeColorArgId, 0x00ff00, kStrokeWidthArgId, 3, kStrokeOpacityArgId, 0.5 );
-  pline(h, yV, yN );
-  text(h, 10, 10, "foo");
 
-  write(h,outFn, cssFn, kStandAloneFl | kGenCssFileFl, 10,10,10,10);
+  install_css(h,"#my_rect","fill-opacity",0.25,nullptr);
+
+  rect(h,  0,  0, 100, 100, "fill",   0x7f7f7f, "rgb", "id", "my_rect", nullptr );
+  line(h,  0,  0, 100, 100, "stroke", 0xff0000, "rgb" );
+  line(h,  0,100, 100,   0, "stroke", 0x00ff00, "rgb", "stroke-width", 3, "px", "stroke-opacity", 0.5, nullptr );
+  pline(h, yV, yN,  xV,  "stroke", 0x0, "rgb", "fill-opacity", 0.25, nullptr );
+  text(h, 10, 10, "foo" );
+  
+  float imgM[] = {
+    0.0f, 0.5f, 1.0f,
+    0.5f, 0.0f, 0.5f,
+    1.0f, 1.0f, 0.0f,
+    0.5f, 0.0f, 1.0f };
+
+  offset( h, 10, 200 );
+  image(h, imgM, 4, 3, 20, kInvGrayScaleColorMapId );
+  
+
+  write(h,outFn, cssFn, kStandAloneFl, 10,10,10,10);
+  
   if((rc = destroy(h)) != kOkRC )
     cwLogError(rc,"SVG destroy failed.");
   
