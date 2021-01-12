@@ -3,8 +3,9 @@
 #include "cwCommonImpl.h"
 #include "cwMem.h"
 #include "cwFileSys.h"
+#include "cwMutex.h"
 #include "cwWebSock.h"
-#include "cwMpScNbQueue.h"
+#include "cwMpScQueue.h"
 
 #include <libwebsockets.h>
 
@@ -35,7 +36,7 @@ namespace cw
       unsigned               _nextSessionId = 0;       // Next session id.
       unsigned               _connSessionN  = 0;       // Count of connected sessions.
       struct lws_http_mount* _mount         = nullptr; //
-      MpScNbQueue<msg_t>*    _q; // Thread safe, non-blocking, protocol independent msg queue.
+      MpScQueue<msg_t>*    _q; // Thread safe, non-blocking, protocol independent msg queue.
 
       lws_pollfd* _pollfdA;     // socket handle array used by poll()
       int         _pollfdMaxN;
@@ -444,7 +445,7 @@ cw::rc_t cw::websock::create(
   info.mounts    = p->_mount;
   info.protocols = p->_protocolA;
 
-  p->_q = new MpScNbQueue<msg_t>();
+  p->_q = new MpScQueue<msg_t>();
   p->_cbFunc = cbFunc;
   p->_cbArg  = cbArg;
 
