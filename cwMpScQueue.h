@@ -47,8 +47,11 @@ namespace cw
         // Note that the elements of the queue are only accessed from the end of the queue (tail).
         // New nodes can therefore safely be updated in two steps:
 
+        node_t* prev = _head;
+        _head        = new_node;
+        
         // 1. Atomically set _head to the new node and return 'old-head'
-        node_t* prev   = _head.exchange(new_node,std::memory_order_acq_rel);  
+        //node_t* prev   = _head.exchange(new_node,std::memory_order_acq_rel);  
 
         // Note that at this point only the new node may have the 'old-head' as it's predecssor.
         // Other threads may therefore safely interrupt at this point.
