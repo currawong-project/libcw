@@ -320,6 +320,7 @@ namespace cw
 
                 if((err = snd_pcm_close(pcmH)) < 0)
                   _alsaSetupError(err,inputFl,drp,"Error closing PCM handle");
+
               }
             }
           }
@@ -411,6 +412,9 @@ namespace cw
           p->devAllocCnt = 0;
           p->devCnt      = 0;
 
+          //https://stackoverflow.com/questions/13478861/alsa-mem-leak
+          snd_config_update_free_global();
+          
           mem::release(p);
 
           return rc;            
@@ -970,8 +974,7 @@ namespace cw
               if((err = snd_pcm_open(&pcmH,drp->nameStr, inputFl ? SND_PCM_STREAM_CAPTURE : SND_PCM_STREAM_PLAYBACK, 0)) < 0 )
                 rc = _alsaSetupError(err,inputFl,drp,"Unable to open the PCM handle");
               else
-              {		
-
+              {
                 snd_pcm_hw_params_t* hwParams;
                 snd_pcm_sw_params_t* swParams;
 
@@ -1602,6 +1605,7 @@ cw::rc_t        cw::audio::device::alsa::report( handle_t h )
     _devReport(p->devArray + i );
   }
 
+  //https://stackoverflow.com/questions/13478861/alsa-mem-leak
   snd_config_update_free_global();
 
   return kOkRC;
