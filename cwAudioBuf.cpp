@@ -279,6 +279,8 @@ cw::rc_t cw::audio::buf::destroy( handle_t& hRef )
   
   p->devCnt          = 0;
 
+  mem::release( p );
+  
   return kOkRC;
 }
 
