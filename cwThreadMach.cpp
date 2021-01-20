@@ -12,32 +12,60 @@ namespace cw
     typedef struct thread_str
     {
       thread::handle_t thH;
+      threadFunc_t     func;
       void*            arg;
+      struct thread_str* link;
     } thread_t;
     
     typedef struct thread_mach_str
     {
-      thread_t* threadA;
-      unsigned  threadN;
+      thread_t* threadL;
     } thread_mach_t;
 
     thread_mach_t* _handleToPtr( handle_t h )
     { return handleToPtr<handle_t,thread_mach_t>(h); }
 
+    rc_t _add( thread_mach_t* p, threadFunc_t func, void* arg )
+    {
+      rc_t rc = kOkRC;
+
+      thread_t* t = mem::allocZ<thread_t>();
+
+      if((rc = thread::create(t->thH, func, arg )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Thread create failed.");
+        goto errLabel;
+      }
+      
+      t->func   = func;
+      t->arg    = arg;
+      t->link   = p->threadL;
+      p->threadL = t;
+      
+    errLabel:
+      if( rc != kOkRC )
+        mem::release(t);
+      
+      return rc;
+    }
+
     rc_t _destroy( thread_mach_t* p )
     {
       rc_t rc = kOkRC;
-      
-      for(unsigned i=0; i<p->threadN; ++i)
+      thread_t* t=p->threadL;
+      while( t != nullptr )
       {
-        if((rc = destroy(p->threadA[i].thH)) != kOkRC )
+        thread_t* t0 = t->link;
+        if((rc = destroy(t->thH)) != kOkRC )
         {
-          rc = cwLogError(rc,"Thread at index %i destroy failed.",i);
+          rc = cwLogError(rc,"Thread destroy failed.");
           break;
         }
+
+        mem::release(t);
+        t = t0;
       }
 
-      mem::release(p->threadA);
       mem::release(p);
 
       return rc;
@@ -55,20 +83,15 @@ cw::rc_t cw::thread_mach::create( handle_t& hRef, threadFunc_t threadFunc, void*
     return rc;
 
   thread_mach_t* p  = mem::allocZ<thread_mach_t>();
-  p->threadA        = mem::allocZ<thread_t>(threadN);
-  p->threadN        = threadN;
 
-  uint8_t* ctxA = static_cast<uint8_t*>(contextArray);
+  uint8_t* ctxA = reinterpret_cast<uint8_t*>(contextArray);
   
   for(unsigned i=0; i<threadN;  ++i)
   {
-    p->threadA[i].arg = ctxA + (i*contexRecdByteN);
+    void* arg = ctxA + (i*contexRecdByteN);
 
-    if((rc = thread::create(p->threadA[i].thH, threadFunc, p->threadA[i].arg )) != kOkRC )
-    {
-      rc = cwLogError(rc,"Thread at index %i create failed.",i);
+    if((rc = _add(p, threadFunc, arg)) != kOkRC )
       goto errLabel;
-    }
   }
 
   hRef.set(p);
@@ -78,6 +101,12 @@ cw::rc_t cw::thread_mach::create( handle_t& hRef, threadFunc_t threadFunc, void*
     _destroy(p);
   
   return rc;
+}
+
+cw::rc_t cw::thread_mach::add( handle_t h, threadFunc_t threadFunc, void* arg )
+{
+  thread_mach_t* p = _handleToPtr(h);
+  return _add(p,threadFunc,arg);
 }
 
 cw::rc_t cw::thread_mach::destroy( handle_t& hRef )
@@ -101,9 +130,9 @@ cw::rc_t cw::thread_mach::start( handle_t h )
   rc_t rc0;
   
   thread_mach_t* p = _handleToPtr(h);
-  for(unsigned i=0; i<p->threadN; ++i)
-    if((rc0 = thread::unpause( p->threadA[i].thH )) != kOkRC )
-      rc = cwLogError(rc0,"Thread at index %i start failed.", i );
+  for(thread_t* t=p->threadL; t!=nullptr; t=t->link)
+    if((rc0 = thread::unpause( t->thH )) != kOkRC )
+      rc = cwLogError(rc0,"Thread start failed.");
   
   return rc;
 }
@@ -114,9 +143,19 @@ cw::rc_t cw::thread_mach::stop( handle_t h )
   rc_t rc0;
   
   thread_mach_t* p = _handleToPtr(h);
-  for(unsigned i=0; i<p->threadN; ++i)
-    if((rc0 = thread::pause( p->threadA[i].thH, thread::kPauseFl | thread::kWaitFl )) != kOkRC )
-      rc = cwLogError(rc0,"Thread at index %i stop failed.", i );
+  for(thread_t* t=p->threadL; t!=nullptr; t=t->link)
+    if((rc0 = thread::pause( t->thH, thread::kPauseFl | thread::kWaitFl )) != kOkRC )
+      rc = cwLogError(rc0,"Thread stop failed.");
   
   return rc;
+}
+
+bool cw::thread_mach::is_shutdown( handle_t h )
+{
+  thread_mach_t* p = _handleToPtr(h);
+  for(thread_t* t=p->threadL; t!=nullptr; t=t->link)
+    if( thread::state(t->thH) != thread::kExitedThId )
+      return false;
+
+  return true;
 }
