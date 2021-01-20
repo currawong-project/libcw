@@ -67,13 +67,13 @@ namespace  cw
 
       void _cmApPortCb2( void* arg, audioPacket_t* inPktArray, unsigned inPktCnt, audioPacket_t* outPktArray, unsigned outPktCnt )
       {
-        cmApPortTestRecd* p = static_cast<cmApPortTestRecd*>(arg);
+        cmApPortTestRecd* p = reinterpret_cast<cmApPortTestRecd*>(arg);
         
         for(unsigned i=0; i<inPktCnt; ++i)
-          static_cast<cmApPortTestRecd*>(inPktArray[i].cbArg)->iCbCnt++;
+          reinterpret_cast<cmApPortTestRecd*>(inPktArray[i].cbArg)->iCbCnt++;
 
         for(unsigned i=0; i<outPktCnt; ++i)
-          static_cast<cmApPortTestRecd*>(outPktArray[i].cbArg)->oCbCnt++;
+          reinterpret_cast<cmApPortTestRecd*>(outPktArray[i].cbArg)->oCbCnt++;
 
         if( p->amHz > 0 && outPktCnt > 0 )
         {
