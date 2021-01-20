@@ -14,8 +14,13 @@ namespace cw
     rc_t lock(    handle_t h );
     rc_t unlock(  handle_t h );
 
+    // Set 'lockThenWaitFl' if the function should lock the mutex prior to waiting.
+    // If 'lockThenWaitFl' is false then the function assumes the mutex is already locked
+    // and directly waits. If 'lockThenWaitFl' is set and the mutex is not already locked
+    // then the result is undefined.
     rc_t waitOnCondVar( handle_t h, bool lockThenWaitFl, unsigned timeOutMs );
 
+    rc_t signalCondVar( handle_t h);
   }
 }
   

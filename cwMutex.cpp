@@ -27,10 +27,10 @@ namespace cw
       int sysRC;
     
       if((sysRC = pthread_cond_destroy(&p->cvar)) != 0)
-        cwLogSysError(kObjFreeFailRC,sysRC,"Thread condition var. destroy failed.");
+        rc = cwLogSysError(kObjFreeFailRC,sysRC,"Thread condition var. destroy failed.");
       else
         if((sysRC = pthread_mutex_destroy(&p->mutex)) != 0)
-          cwLogSysError(kObjFreeFailRC,sysRC,"Thread mutex destroy failed.");
+          rc = cwLogSysError(kObjFreeFailRC,sysRC,"Thread mutex destroy failed.");
         else
           mem::release(p);
     
@@ -53,6 +53,8 @@ cw::rc_t cw::mutex::create(  handle_t& h )
   else
     if((sysRC = pthread_cond_init(&p->cvar,NULL)) != 0 )
       cwLogSysError(kObjAllocFailRC,sysRC,"Thread Condition var. create failed.");
+
+  h.set(p);
   
   return rc;
 }
@@ -155,3 +157,17 @@ cw::rc_t cw::mutex::waitOnCondVar( handle_t h, bool lockThenWaitFl, unsigned tim
   
   
 }
+
+cw::rc_t cw::mutex::signalCondVar( handle_t h)
+{
+
+  rc_t     rc = kOkRC;
+  mutex_t* p  = _handleToPtr(h);
+
+  int sysRC;
+  if((sysRC = pthread_cond_signal(&p->cvar)) != 0 )
+    rc = cwLogSysError(kOpFailRC,sysRC,"Thread cond var. signaling failed.");
+  
+  return rc;
+}
+
