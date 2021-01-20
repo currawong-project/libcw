@@ -143,7 +143,7 @@ namespace cw
   void _objTypePrintIndent( const char* text, unsigned indent, const char* indentStr=" " )
   {
     for(unsigned i=0; i<indent; ++i)
-      printf(indentStr);
+      printf("%s",indentStr);
     printf("%s",text); 
   }
 
@@ -151,7 +151,7 @@ namespace cw
   {
     _objTypePrintIndent(" ",c.indent,indentStr);
     o->type->print(o,c);
-    printf(eolStr);
+    printf("%s",eolStr);
   }
   
   void _objTypePrintNull(   const object_t* o, print_ctx_t& c ) { printf("NULL "); }
