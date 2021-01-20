@@ -6,7 +6,7 @@ namespace cw
 {
   namespace io
   {
-    rc_t test();
+    rc_t test( const object_t* cfg);
   }
 }
 

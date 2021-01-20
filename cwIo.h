@@ -6,6 +6,7 @@
 #include "cwSerialPortDecls.h"
 #include "cwAudioDeviceDecls.h"
 #include "cwSocketDecls.h"
+#include "cwUiDecls.h"
 
 namespace cw
 {
@@ -20,7 +21,8 @@ namespace cw
      kMidiTId,
      kAudioTId,
      kSockTid,
-     kWebSockTId
+     kWebSockTId,
+     kUiTId
     };
 
     typedef struct serial_msg_str
@@ -37,23 +39,37 @@ namespace cw
 
     typedef audio::device::sample_t sample_t;
 
+    typedef struct audio_group_dev_str
+    {
+      const char*                 name;    // Audio device name
+      unsigned                    devIdx;  // Audio device index
+      unsigned                    chCnt;   // Count of audio channels on this device
+      unsigned                    cbCnt;   // Count of device driver callbacks
+      std::atomic_uint            readyCnt;// Used internally do not read or write.        
+      struct audio_group_dev_str* link;    // 
+    } audio_group_dev_t;
+    
     typedef struct audio_msg_str
     {
-      unsigned      iDevIdx;
-      sample_t**    iBufArray;
-      unsigned      iBufChCnt;
-      time::spec_t* iTimeStampPtr;
+      unsigned           groupId;       // Unique group id
+      double             srate;         // Group sample rate.
+      unsigned           dspFrameCnt;   // Count of samples in each buffer pointed to by iBufArray[] and oBufArray[]
       
-      unsigned      oDevIdx;
-      sample_t**     oBufArray;
-      unsigned      oBufChCnt;
-      time::spec_t* oTimeStampPtr;
+      sample_t**         iBufArray;     // Array of ptrs to buffers of size bufSmpCnt
+      unsigned           iBufChCnt;     // Count of elements in iBufArray[]
+      time::spec_t*      iTimeStampPtr; // 
+      audio_group_dev_t* iDevL;         // Linked list of input devices which map directly to channels in iBufArray[]
+      
+      sample_t**         oBufArray;     //
+      unsigned           oBufChCnt;     //
+      time::spec_t*      oTimeStampPtr; //
+      audio_group_dev_t* oDevL;         // Linked list of output devices which map directly to channels in oBufArray[]
       
     } audio_msg_t;
 
     typedef struct socket_msg_str
     {
-      sock::cbOpId_t              cbId;
+      sock::cbOpId_t            cbId;
       unsigned                  userId;
       unsigned                  connId;
       const void*               byteA;
@@ -61,36 +77,62 @@ namespace cw
       const struct sockaddr_in* srcAddr;
     } socket_msg_t;
 
+    typedef struct ui_msg_str
+    {
+      ui::opId_t         opId;
+      unsigned           wsSessId;
+      unsigned           parentAppId;
+      unsigned           uuId;
+      unsigned           appId;
+      const ui::value_t* value;
+    } ui_msg_t;
+
     typedef struct msg_str
     {
       unsigned tid;
       union
       {
-        const serial_msg_t*  serial;
-        const midi_msg_t*    midi;
-        const audio_msg_t    audio;
-        const socket_msg_t   sock;
+        serial_msg_t*  serial;
+        midi_msg_t*    midi;
+        audio_msg_t*   audio;
+        socket_msg_t*  sock;
+        ui_msg_t      ui;
       } u;
     } msg_t;
     
-    typedef void(*cbFunc_t)( void* arg, const msg_t* m );
+    typedef rc_t (*cbFunc_t)( void* arg, const msg_t* m );
       
     rc_t create(
-      handle_t&   h,
-      const char* cfgStr,      // configuration information as text
-      cbFunc_t    cbFunc,
-      void*       cbArg,
-      const char* cfgLabel="io" );
+      handle_t&             h,
+      const object_t*       cfg, // configuration object
+      cbFunc_t              cbFunc,
+      void*                 cbArg,
+      const ui::appIdMap_t* mapA = nullptr,
+      unsigned              mapN = 0,
+      const char*           cfgLabel = "io" );
     
     rc_t destroy( handle_t& h );
 
     rc_t start( handle_t h );
     rc_t pause( handle_t h );
+    rc_t stop(  handle_t h );
+    rc_t exec(  handle_t h );
+    bool isShuttingDown( handle_t h );
+
+    //----------------------------------------------------------------------------------------------------------
+    //
+    // Serial
+    //
 
     unsigned    serialDeviceCount( handle_t h );
     const char* serialDeviceName(  handle_t h, unsigned devIdx );
     unsigned    serialDeviceIndex( handle_t h, const char* name );
     rc_t        serialDeviceSend(  handle_t h, unsigned devIdx, const void* byteA, unsigned byteN );
+    
+    //----------------------------------------------------------------------------------------------------------
+    //
+    // MIDI
+    //
     
     unsigned    midiDeviceCount(     handle_t h );
     const char* midiDeviceName(      handle_t h, unsigned devIdx );
@@ -101,6 +143,11 @@ namespace cw
     rc_t        midiDeviceSend(      handle_t h, unsigned devIdx, unsigned portIdx, uint8_t status, uint8_t d0, uint8_t d1 );
 
 
+    //----------------------------------------------------------------------------------------------------------
+    //
+    // Audio
+    //
+    
     unsigned    audioDeviceCount(          handle_t h );
     unsigned    audioDeviceLabelToIndex(   handle_t h, const char* label );
     const char* audioDeviceLabel(          handle_t h, unsigned devIdx );
@@ -122,21 +169,28 @@ namespace cw
     sample_t    audioDeviceChannelMeter(   handle_t h, unsigned devIdx, unsigned chIdx, unsigned dirFl );
     rc_t        audioDeviceChannelSetGain( handle_t h, unsigned devIdx, unsigned chIdx, unsigned dirFl, double gain );
     double      audioDeviceChannelGain(    handle_t h, unsigned devIdx, unsigned chIdx, unsigned dirFl );
-    
-    rc_t        audioDeviceStart(          handle_t h, unsigned devIdx );
-    rc_t        audioDeviceStop(           handle_t h, unsigned devIdx );
-    bool        audioDeviceIsStarted(      handle_t h, unsigned devIdx );
+
+    unsigned    audioGroupCount( handle_t h );
+    const char* audioGroupLabel( handle_t h, unsigned groupIdx );
+    unsigned    audioGroupId(    handle_t h, unsigned groupIdx );
+    rc_t        audioGroupSetId( handle_t h, unsigned groupIdx, unsigned groupId );
 
     
+    //----------------------------------------------------------------------------------------------------------
+    //
+    // Socket
+    //
+    
     rc_t socketSetup( handle_t h, unsigned timeOutMs, unsigned recvBufByteN, unsigned maxSocketN );
+    
     rc_t socketCreate(
-      handle_t       h,
-      unsigned       userId,
-      short          port,
-      unsigned       flags,
-      const char*    remoteAddr = nullptr,
-      sock::portNumber_t   remotePort = sock::kInvalidPortNumber,
-      const char*    localAddr  = nullptr );
+      handle_t           h,
+      unsigned           userId,
+      short              port,
+      unsigned           flags,
+      const char*        remoteAddr = nullptr,
+      sock::portNumber_t remotePort = sock::kInvalidPortNumber,
+      const char*        localAddr  = nullptr );
 
     rc_t socketDestroy( handle_t h, unsigned userId );
     
@@ -150,9 +204,58 @@ namespace cw
     rc_t socketSend(    handle_t h, unsigned userId, const void* data, unsigned dataByteCnt, const char* remoteAddr, sock::portNumber_t port );
 
     
-      
-      
 
+    //----------------------------------------------------------------------------------------------------------
+    //
+    // UI
+    //
+
+
+    // Find id's associated with elements.
+    unsigned    uiFindElementAppId(  handle_t h, unsigned parentUuId, const char* eleName );  
+    unsigned    uiFindElementUuId(   handle_t h, unsigned parentUuId, const char* eleName );
+    unsigned    uiFindElementUuId(   handle_t h, unsigned parentUuId, unsigned appId );
+    const char* uiFindElementName(   handle_t h, unsigned uuId );
+    unsigned    uiFindElementAppId(  handle_t h, unsigned uuId );
+    
+    // Return the uuid of the first matching 'eleName'.
+    unsigned    uiFindElementUuId( handle_t h, const char* eleName );
+
+    rc_t uiCreateFromObject( handle_t h, const object_t* o, unsigned wsSessId, unsigned parentUuId=kInvalidId, const char* eleName=nullptr);
+    rc_t uiCreateFromFile(   handle_t h, const char* fn,    unsigned wsSessId, unsigned parentUuId=kInvalidId);
+    rc_t uiCreateFromText(   handle_t h, const char* text,  unsigned wsSessId, unsigned parentUuId=kInvalidId);
+    rc_t uiCreateDiv(        handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
+    rc_t uiCreateTitle(      handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
+    rc_t uiCreateButton(     handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
+    
+    // Create check: w/o value. The value will be read from the engine via the UI 'echo' event.
+    // Create check: w/ value. The value will be sent to the engine as the new value of the associated varaible.
+    rc_t uiCreateCheck(      handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
+    rc_t uiCreateCheck(      handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, bool value );
+    
+    rc_t uiCreateSelect(     handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
+    rc_t uiCreateOption(     handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
+    
+    rc_t uiCreateStr(        handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
+    rc_t uiCreateStr(        handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, const char* value );
+    
+    rc_t uiCreateNumbDisplay(handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, unsigned decPl );    
+    rc_t uiCreateNumbDisplay(handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, unsigned decPl, double value );
+    
+    rc_t uiCreateNumb(       handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double minValue, double maxValue, double stepValue, unsigned decPl );
+    rc_t uiCreateNumb(       handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double minValue, double maxValue, double stepValue, unsigned decPl, double value );
+    
+    rc_t uiCreateProg(       handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double minValue, double maxValue );
+    rc_t uiCreateProg(       handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double minValue, double maxValue, double value );
+    
+    rc_t uiCreateText(       handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
+
+    // Register parent/child/name app id's 
+    rc_t uiRegisterAppIdMap(  handle_t h, const ui::appIdMap_t* map, unsigned mapN );
+    
+    // Send a value to the user interface
+    template< typename T >
+      rc_t      uiValueToUI( handle_t h, unsigned wsSessId, unsigned uuId, const T& value );
     
     
   }
