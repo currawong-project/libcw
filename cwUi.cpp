@@ -2,6 +2,7 @@
 #include "cwLog.h"
 #include "cwCommonImpl.h"
 #include "cwMem.h"
+#include "cwFileSys.h"
 #include "cwThread.h"
 #include "cwObject.h"
 #include "cwWebSock.h"
@@ -37,13 +38,14 @@ namespace cw
     
     typedef struct ui_str
     {
-      unsigned             eleAllocN; // size of eleA[]
-      unsigned             eleN;      // count of ele's in use
-      ele_t**              eleA;      // eleA[ eleAllocN ] 
+      unsigned             eleAllocN;   // size of eleA[]
+      unsigned             eleN;        // count of ele's in use
+      ele_t**              eleA;        // eleA[ eleAllocN ] 
       uiCallback_t         uiCbFunc;    // app. cb func
       void*                uiCbArg;     // app. cb func arg.
       sendCallback_t       sendCbFunc;
       void*                sendCbArg;
+      object_t*            uiRsrc;    // default ui resource object
       appIdMapRecd_t*      appIdMap;  // map of application parent/child/js id's
       char*                buf;       // buf[bufN] output message formatting buffer
       unsigned             bufN;      //
@@ -87,7 +89,8 @@ namespace cw
 
       mem::release(p->sessA);
       mem::release(p->eleA);
-      mem::release(p->buf);      
+      mem::release(p->buf);
+      p->uiRsrc->free();
       mem::release(p);
 
       return rc;
@@ -543,10 +546,10 @@ namespace cw
 
     rc_t _createFromObj( ui_t* p, const object_t* o, unsigned wsSessId, unsigned parentUuId )
     {
-      rc_t        rc        = kOkRC;
-      const object_t*   po        = nullptr;
-      ele_t*      parentEle = nullptr;
-      char*       eleName   = nullptr;
+      rc_t            rc        = kOkRC;
+      const object_t* po        = nullptr;
+      ele_t*          parentEle = nullptr;
+      char*           eleName   = nullptr;
 
       // locate the the 'parent' ele name value object
       if((po = o->find("parent",kNoRecurseFl | kOptionalFl)) == nullptr )
@@ -726,6 +729,15 @@ namespace cw
       return rc;
     }
 
+    // Instantiate any resource elements refered to by the ui cfg 'uiCfgFn'.
+    rc_t _initDefaultUiRsrc( ui_t* p, unsigned wsSessId )
+    {
+      rc_t rc = kOkRC;
+      if( p->uiRsrc != nullptr )
+        if((rc = _createFromObj( p, p->uiRsrc, wsSessId, kInvalidId )) != kOkRC )
+          rc = cwLogError(rc,"Default UI creation failed.");
+      return rc;
+    }
     
   }
 }
@@ -736,6 +748,7 @@ cw::rc_t cw::ui::create(
   void*             sendCbArg,
   uiCallback_t      uiCbFunc,
   void*             uiCbArg,
+  const object_t*   uiRsrc,
   const appIdMap_t* appIdMapA,
   unsigned          appIdMapN,
   unsigned          fmtBufByteN )
@@ -764,7 +777,8 @@ cw::rc_t cw::ui::create(
   p->sendCbArg  = sendCbArg;
   p->buf        = mem::allocZ<char>(fmtBufByteN);
   p->bufN       = fmtBufByteN;
-
+  p->uiRsrc     = uiRsrc == nullptr ? nullptr : uiRsrc->duplicate();
+  
   // create the root element
   if((ele = _createEle(p, nullptr, kRootAppId, "uiDivId" )) == nullptr || ele->uuId != kRootUuId )
   {
@@ -870,6 +884,9 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* msg, unsi
   switch( opId )
   {
     case kInitOpId:
+      // if the app cfg included a reference to a UI resource file then instantiate it here
+      _initDefaultUiRsrc( p, wsSessId );
+      
       // Pass on the 'init' msg to the app.
       p->uiCbFunc( p->uiCbArg, wsSessId, opId, kInvalidId, kInvalidId, kInvalidId, nullptr );
       break;
@@ -1203,11 +1220,81 @@ namespace cw
   }
 }
 
+cw::rc_t cw::ui::ws::parseArgs(  const object_t& o, args_t& args, const char* object_label )
+{
+  rc_t rc = kOkRC;
+  const object_t* op = &o;
+  char* uiCfgFn = nullptr;
+  
+  memset(&args,0,sizeof(args));
+
+  // if no 'ui' cfg record was given then skip
+  if( object_label == nullptr )
+    op = &o;
+  else
+    if((op = o.find(object_label)) == nullptr )
+      return cwLogError(kLabelNotFoundRC,"The ui configuration label '%s' was not found.", cwStringNullGuard(object_label));
+  
+  if((rc = op->getv(
+        "physRootDir", args.physRootDir, "dfltPageFn", args.dfltPageFn, "port", args.port, "rcvBufByteN", args.rcvBufByteN,
+        "xmtBufByteN", args.xmtBufByteN, "fmtBufByteN", args.fmtBufByteN, "websockTimeOutMs", args.wsTimeOutMs, "uiCfgFn", uiCfgFn )) != kOkRC )
+  {
+    rc = cwLogError(rc,"'ui' cfg. parse failed.");
+  }
+
+  // if a default UI resource script was given then convert it into an object
+  if( uiCfgFn != nullptr )
+  {
+    char* fn = filesys::makeFn(  args.physRootDir, uiCfgFn, nullptr, nullptr );
+
+    if((rc = objectFromFile(fn,args.uiRsrc)) != kOkRC )
+      rc = cwLogError(rc,"An error occurred while parsing the UI resource script in '%s'.", cwStringNullGuard(uiCfgFn));
+
+    mem::release(fn);
+  }
+  
+  return rc;
+}
+
+cw::rc_t cw::ui::ws::releaseArgs( args_t& args )
+{
+  if( args.uiRsrc != nullptr )
+    args.uiRsrc->free();
+  return kOkRC;
+}
+
+cw::rc_t cw::ui::ws::create( handle_t& h,
+  const args_t&     args,
+  void*             cbArg,
+  uiCallback_t      uiCbFunc,
+  const object_t*   uiRsrc,
+  const appIdMap_t* appIdMapA,
+  unsigned          appIdMapN,
+  websock::cbFunc_t wsCbFunc  )
+{
+  return create(h,
+    args.port,
+    args.physRootDir,
+    cbArg,
+    uiCbFunc,
+    uiRsrc,
+    appIdMapA,
+    appIdMapN,
+    wsCbFunc,
+    args.dfltPageFn,
+    args.wsTimeOutMs,
+    args.rcvBufByteN,
+    args.xmtBufByteN,
+    args.fmtBufByteN );
+}
+
+  
 cw::rc_t cw::ui::ws::create(  handle_t& h,
   unsigned          port,
   const char*       physRootDir,
   void*             cbArg,
   uiCallback_t      uiCbFunc,
+  const object_t*   uiRsrc,
   const appIdMap_t* appIdMapA,
   unsigned          appIdMapN,
   websock::cbFunc_t wsCbFunc,
@@ -1242,7 +1329,7 @@ cw::rc_t cw::ui::ws::create(  handle_t& h,
   }
 
   // create the ui
-  if((rc = ui::create(p->uiH, _webSockSend, p, uiCbFunc, cbArg, appIdMapA, appIdMapN, fmtBufByteN )) != kOkRC )
+  if((rc = ui::create(p->uiH, _webSockSend, p, uiCbFunc, cbArg, uiRsrc, appIdMapA, appIdMapN, fmtBufByteN )) != kOkRC )
   {
     cwLogError(rc,"UI object create failed.");
     goto errLabel;
@@ -1281,7 +1368,7 @@ cw::rc_t cw::ui::ws::destroy( handle_t& h )
   return rc;
 }
       
-cw::rc_t cw::ui::ws::exec( handle_t h, unsigned timeOutMs )
+cw::rc_t cw::ui::ws::exec( handle_t h )
 {
   rc_t     rc = kOkRC;
   ui_ws_t* p  = _handleToPtr(h);
@@ -1327,7 +1414,6 @@ namespace cw
       {
         ws::handle_t     wsUiH;
         thread::handle_t thH;
-        unsigned         wsTimeOutMs;
       } ui_ws_srv_t;
 
       ui_ws_srv_t* _handleToPtr(handle_t h )
@@ -1352,7 +1438,7 @@ namespace cw
         ui_ws_srv_t* p = static_cast<ui_ws_srv_t*>(arg);
         rc_t rc;
         
-        if((rc = ws::exec(p->wsUiH,p->wsTimeOutMs)) != kOkRC )
+        if((rc = ws::exec(p->wsUiH)) != kOkRC )
         {
           cwLogError(rc,"Websocket UI exec failed.");
         }
@@ -1368,6 +1454,7 @@ cw::rc_t cw::ui::srv::create(  handle_t& h,
   const char*       physRootDir,
   void*             cbArg,
   uiCallback_t      uiCbFunc,
+  const object_t*   uiRsrc,
   const appIdMap_t* appIdMapA,
   unsigned          appIdMapN,
   websock::cbFunc_t wsCbFunc,
@@ -1383,7 +1470,7 @@ cw::rc_t cw::ui::srv::create(  handle_t& h,
 
   ui_ws_srv_t* p = mem::allocZ<ui_ws_srv_t>();
   
-  if((rc = ws::create(p->wsUiH, port, physRootDir, cbArg, uiCbFunc, appIdMapA, appIdMapN, wsCbFunc, dfltPageFn, websockTimeOutMs, rcvBufByteN, xmtBufByteN, fmtBufByteN )) != kOkRC )
+  if((rc = ws::create(p->wsUiH, port, physRootDir, cbArg, uiCbFunc, uiRsrc,appIdMapA, appIdMapN, wsCbFunc, dfltPageFn, websockTimeOutMs, rcvBufByteN, xmtBufByteN, fmtBufByteN )) != kOkRC )
   {
     cwLogError(rc,"The websock UI creationg failed.");
     goto errLabel;
@@ -1395,8 +1482,6 @@ cw::rc_t cw::ui::srv::create(  handle_t& h,
     goto errLabel;
   }
 
-  p->wsTimeOutMs = websockTimeOutMs;
-
   h.set(p);
   
  errLabel:
@@ -1407,7 +1492,7 @@ cw::rc_t cw::ui::srv::create(  handle_t& h,
 }
 
 cw::rc_t cw::ui::srv::create( handle_t& h,
-  const args_t&     args,
+  const ws::args_t&     args,
   void*             cbArg,
   uiCallback_t      uiCbFunc,
   const appIdMap_t* appIdMapA,
@@ -1419,13 +1504,14 @@ cw::rc_t cw::ui::srv::create( handle_t& h,
     args.physRootDir,
     cbArg,
     uiCbFunc,
+    args.uiRsrc,
     appIdMapA,
     appIdMapN,
     wsCbFunc,
-    args.dfltHtmlPageFn,
-    args.timeOutMs,
-    args.recvBufByteN,
-    args.xmitBufByteN,
+    args.dfltPageFn,
+    args.wsTimeOutMs,
+    args.rcvBufByteN,
+    args.xmtBufByteN,
     args.fmtBufByteN );
 }
       

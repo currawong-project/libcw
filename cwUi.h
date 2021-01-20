@@ -9,63 +9,14 @@ namespace cw
   {
     typedef handle<struct ui_str> handle_t;
 
-    enum
-    {
-     kHttpProtocolId = 1,
-     kUiProtocolId   = 2
-    };
-    
-    typedef enum
-    {
-     kInvalidOpId,
-     kConnectOpId,
-     kInitOpId,
-     kValueOpId,
-     kEchoOpId,
-     kIdleOpId,
-     kDisconnectOpId
-    } opId_t;
 
-    typedef enum
-    {
-     kInvalidTId,
-     kBoolTId,
-     kIntTId,
-     kUIntTId,
-     kFloatTId,
-     kDoubleTId,
-     kStringTId
-    } dtypeId_t;
-
-
-    enum
-    {
-     kRootUuId = 0,
-     kRootAppId,
-    };
-
-    typedef struct
-    {
-      dtypeId_t tid;
-      union
-      {
-        bool        b;
-        int         i;
-        unsigned    u;
-        float       f;
-        double      d;
-        const char* s;
-      } u;
-    } value_t;
-
-    typedef struct appIdMap_str
-    {
-      unsigned    parentAppId;
-      unsigned    appId;
-      const char* eleName;   
-    } appIdMap_t;
-    
+    // Callback for application notification.
+    // (e.g. the GUI changed the value of a UI element)
     typedef rc_t (*uiCallback_t)(   void* cbArg, unsigned wsSessId, opId_t opId, unsigned parentAppId, unsigned uuId, unsigned appId, const value_t* value );
+
+    // Callback with messages for the GUI as JSON strings
+    // { "op":"create", "type":<>, "appId":<>, "parentUuId":<>, "name":<> (type specific fields) }
+    // { "op":""value", "uuid":<> "value":<> }
     typedef rc_t (*sendCallback_t)( void* cbArg, unsigned wsSessId, const void* msg, unsigned msgByteN );
       
     rc_t create(
@@ -74,6 +25,7 @@ namespace cw
       void*             sendCbArg,
       uiCallback_t      uiCbFunc,
       void*             uiCbArg,
+      const object_t*   uiRsrc      = nullptr,
       const appIdMap_t* appIdMapA   = nullptr,
       unsigned          appIdMapN   = 0,
       unsigned          fmtBufByteN = 4096 );
@@ -87,7 +39,7 @@ namespace cw
     rc_t onDisconnect( handle_t h, unsigned wsSessId );
     rc_t onReceive(    handle_t h, unsigned wsSessId, const void* msg, unsigned byteN );
 
-    unsigned    findElementAppId(  handle_t h, unsigned parentUuId, const char* eleName );
+    unsigned    findElementAppId(  handle_t h, unsigned parentUuId, const char* eleName );  
     unsigned    findElementUuId(   handle_t h, unsigned parentUuId, const char* eleName );
     unsigned    findElementUuId(   handle_t h, unsigned parentUuId, unsigned appId );
     const char* findElementName(   handle_t h, unsigned uuId );
@@ -124,6 +76,7 @@ namespace cw
     // Register parent/child/name app id's 
     rc_t registerAppIdMap(  handle_t h, const appIdMap_t* map, unsigned mapN );
 
+    // Send a value from the application to the UI via a JSON messages.
     rc_t sendValueBool(   handle_t h, unsigned wsSessId, unsigned uuId, bool value );
     rc_t sendValueInt(    handle_t h, unsigned wsSessId, unsigned uuId, int value );
     rc_t sendValueUInt(   handle_t h, unsigned wsSessId, unsigned uuId, unsigned value );
@@ -135,11 +88,36 @@ namespace cw
     {
       typedef handle<struct ui_ws_str> handle_t;
 
+      typedef struct args_str
+      {
+        const char*     physRootDir;
+        const char*     dfltPageFn;
+        object_t*       uiRsrc;
+        unsigned        port;
+        unsigned        rcvBufByteN;
+        unsigned        xmtBufByteN;
+        unsigned        fmtBufByteN;
+        unsigned        wsTimeOutMs;        
+      } args_t;
+
+      rc_t parseArgs( const object_t& o, args_t& args, const char* object_label=nullptr );
+      rc_t releaseArgs( args_t& args );
+
+      rc_t create( handle_t& h,
+        const args_t&     args,
+        void*             cbArg,
+        uiCallback_t      uiCbFunc,
+        const object_t*   uiRsrc           = nullptr,
+        const appIdMap_t* appIdMapA        = nullptr,
+        unsigned          appIdMapN        = 0,
+        websock::cbFunc_t wsCbFunc         = nullptr );
+
       rc_t create(  handle_t& h,
         unsigned          port,
         const char*       physRootDir,
         void*             cbArg,
         uiCallback_t      uiCbFunc,
+        const object_t*   uiRsrc           = nullptr,
         const appIdMap_t* appIdMapA        = nullptr,
         unsigned          appIdMapN        = 0,
         websock::cbFunc_t wsCbFunc         = nullptr,        
@@ -153,7 +131,7 @@ namespace cw
 
       // This function should be called periodically to send and receive
       // queued messages to and from the websocket.
-      rc_t exec( handle_t h, unsigned timeOutMs );
+      rc_t exec( handle_t h );
 
       // This function executes the internal default websock callback function.
       // It is useful if the user provides a custom websock callback function
@@ -170,23 +148,12 @@ namespace cw
     namespace srv
     {
 
-      typedef struct args_str
-      {
-        const char* physRootDir;
-        const char* dfltHtmlPageFn;
-        unsigned    port;
-        unsigned    timeOutMs;
-        unsigned    recvBufByteN;
-        unsigned    xmitBufByteN;
-        unsigned    fmtBufByteN;
-      } args_t;
-      
       typedef handle<struct ui_ws_srv_str> handle_t;
 
       rc_t create( handle_t& h,
-        const args_t&     args,
+        const ws::args_t&     args,
         void*             cbArg,
-        uiCallback_t      uiCbFunc,
+        uiCallback_t      uiCbFunc,        
         const appIdMap_t* appIdMapA = nullptr,
         unsigned          appIdMapN = 0,        
         websock::cbFunc_t wsCbFunc  = nullptr );
@@ -196,6 +163,7 @@ namespace cw
         const char*       physRootDir,
         void*             cbArg,
         uiCallback_t      uiCbFunc,
+        const object_t*   uiRsrc           = nullptr,
         const appIdMap_t* appIdMapA        = nullptr,
         unsigned          appIdMapN        = 0,        
         websock::cbFunc_t wsCbFunc         = nullptr,

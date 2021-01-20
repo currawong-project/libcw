@@ -15,11 +15,13 @@ namespace cw
   {
     typedef struct ui_test_str
     {
-      const char*   uiCfgFn;
-      srv::handle_t wsUiSrvH;
+      
+      //const char*   uiCfgFn;   // Resource file name
+      srv::handle_t wsUiSrvH;  // 
 
       std::atomic<bool> quitFl;
-      
+
+      // Application values
       bool     appCheckFl;
       unsigned appSelOptAppId;
       int      appInteger;
@@ -33,8 +35,10 @@ namespace cw
       
     } ui_test_t;
 
+    // Application Id's for UI elements
     enum
     {
+      // Programatically created UI elements
      kDivId,
      kBtnId,
      kCheckId,
@@ -48,6 +52,7 @@ namespace cw
      kFloatId,
      kProgressId,
 
+     // Resource Based elements
      kPanelDivId,
      kPanelBtn1Id,
      kPanelCheck1Id,
@@ -70,8 +75,7 @@ namespace cw
       
       handle_t uiH = srv::uiHandle(p->wsUiSrvH);
 
-      
-      //registerAppIdMap(uiH, mapA, sizeof(mapA)/sizeof(mapA[0]));
+      // Create a UI elements programatically.
 
       if((rc = createDiv( uiH, divUuId, wsSessId, kInvalidId, "myDivId", kDivId, "divClass", "My Panel" )) != kOkRC )
         goto errLabel;
@@ -106,8 +110,8 @@ namespace cw
       if((rc = createProg(  uiH, uuid, wsSessId, divUuId, "myProgressId", kProgressId, "progressClass", "Progress", 0, 10, 5 )) != kOkRC )
         goto errLabel;
 
-      if((rc = createFromFile( uiH, p->uiCfgFn, wsSessId )) != kOkRC )
-        goto errLabel;
+      //if((rc = createFromFile( uiH, p->uiCfgFn, wsSessId )) != kOkRC )
+      //  goto errLabel;
       
     errLabel:
       return rc;
@@ -290,20 +294,12 @@ namespace cw
   }
 }
 
-cw::rc_t cw::ui::test( )
+cw::rc_t cw::ui::test( const object_t* cfg )
 {
-  rc_t           rc               = kOkRC;
-  const char*    physRootDir      = "/home/kevin/src/cwtest/src/libcw/html/uiTest";
-  const char*    dfltPageFn       = "index.html";
-  int            port             = 5687;
-  unsigned       rcvBufByteN      = 2048;
-  unsigned       xmtBufByteN      = 2048;
-  unsigned       fmtBufByteN      = 4096;
-  unsigned       websockTimeOutMs = 50;
-  ui_test_t*     app = mem::allocZ<ui_test_t>();
-
-  app->quitFl.store(false);
-
+  rc_t           rc   = kOkRC;
+  ui::ws::args_t args = {};
+  
+  // Application Id's for the resource based UI elements.
   appIdMap_t mapA[] =
     {
      { kRootAppId,  kPanelDivId,     "panelDivId" },
@@ -316,11 +312,28 @@ cw::rc_t cw::ui::test( )
      { kSelId,      kOpt1Id,         "myOpt1" },
      { kSelId,      kOpt2Id,         "myOpt2" },
      { kSelId,      kOpt3Id,         "myOpt3" },
-     
     };
 
   unsigned mapN = sizeof(mapA)/sizeof(mapA[0]);
+  ui_test_t*     app = mem::allocZ<ui_test_t>();
+
+  if( cfg == nullptr )
+  {
+    cwLogError(kInvalidArgRC,"ui::test() was not passed a valid cfg. object.");
+    goto errLabel;
+  }
   
+  if((rc = parseArgs(*cfg, args )) != kOkRC )
+  {
+    cwLogError(rc,"UI parse args failed in ui::test()");
+    goto errLabel;
+  }
+  
+  
+  
+  app->quitFl.store(false);
+
+  // Initial values for the test applications
   app->appCheckFl     = true;
   app->appSelOptAppId = kOption1Id;
   app->appInteger     = 5;
@@ -333,10 +346,10 @@ cw::rc_t cw::ui::test( )
   app->appSelId       = kOpt3Id;
   
 
-  app->uiCfgFn = "/home/kevin/src/cwtest/src/libcw/html/uiTest/ui.cfg";
+  //app->uiCfgFn = "/home/kevin/src/cwtest/src/libcw/html/uiTest/ui.cfg";
 
   // create the UI server
-  if((rc = srv::create(app->wsUiSrvH, port, physRootDir, app, _uiTestCallback, mapA, mapN, nullptr, dfltPageFn, websockTimeOutMs, rcvBufByteN, xmtBufByteN, fmtBufByteN )) != kOkRC )
+  if((rc = srv::create(app->wsUiSrvH, args, app, _uiTestCallback, mapA, mapN, nullptr )) != kOkRC )
     return rc;
   
   
@@ -354,6 +367,8 @@ cw::rc_t cw::ui::test( )
   }
 
  errLabel:
+  ui::ws::releaseArgs(args);
+  
   rc_t rc1 = kOkRC;
   if( app->wsUiSrvH.isValid() )
     rc1 = srv::destroy(app->wsUiSrvH);
