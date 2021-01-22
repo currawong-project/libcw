@@ -45,8 +45,9 @@ namespace cw
     const char* findElementName(   handle_t h, unsigned uuId );
     unsigned    findElementAppId(  handle_t h, unsigned uuId );
     
-    // Return the uuid of the first matching 'eleName'.
+    // Return the uuid of the first matching 'eleName' or 'appId'.
     unsigned    findElementUuId( handle_t h, const char* eleName );
+    unsigned    findElementUuId( handle_t h, unsigned appId );
 
     rc_t createFromObject( handle_t h, const object_t* o, unsigned wsSessId, unsigned parentUuId=kInvalidId, const char* eleName=nullptr);
     rc_t createFromFile(   handle_t h, const char* fn,    unsigned wsSessId, unsigned parentUuId=kInvalidId);
@@ -77,6 +78,7 @@ namespace cw
     rc_t registerAppIdMap(  handle_t h, const appIdMap_t* map, unsigned mapN );
 
     // Send a value from the application to the UI via a JSON messages.
+    // Set wsSessId to kInvalidId to send to all sessions.
     rc_t sendValueBool(   handle_t h, unsigned wsSessId, unsigned uuId, bool value );
     rc_t sendValueInt(    handle_t h, unsigned wsSessId, unsigned uuId, int value );
     rc_t sendValueUInt(   handle_t h, unsigned wsSessId, unsigned uuId, unsigned value );

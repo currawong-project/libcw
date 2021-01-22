@@ -212,6 +212,15 @@ namespace cw
       return kInvalidId;
     }
 
+    unsigned _findElementUuId( ui_t* p, unsigned appId )
+    {
+      for(unsigned i=0; i<p->eleN; ++i)
+        if( p->eleA[i]->appId == appId )
+          return p->eleA[i]->uuId;
+  
+      return kInvalidId;
+    }
+    
     const char* _findEleEleName( ui_t* p, unsigned uuId )
     {
       for(unsigned i=0; i<p->eleN; ++i)
@@ -229,7 +238,15 @@ namespace cw
       if( p->sendCbFunc != nullptr )
       {
         unsigned msgByteN = msg==nullptr ? 0 : strlen(msg);
-        return p->sendCbFunc( p->sendCbArg, wsSessId, msg, msgByteN );
+
+        if( wsSessId != kInvalidId )
+          rc = p->sendCbFunc( p->sendCbArg, wsSessId, msg, msgByteN );
+        else
+          {
+            for(unsigned i=0; i<p->sessN; ++i)
+              rc = p->sendCbFunc( p->sendCbArg, p->sessA[i], msg, msgByteN );
+            
+          }
       }
       
       return rc;
@@ -723,7 +740,8 @@ namespace cw
         if( snprintf(mbuf,mbufN,mFmt,uuId,vbuf) >= mbufN-1 )
           return cwLogError(kBufTooSmallRC,"The msg buffer is too small.");
 
-        p->sendCbFunc(p->sendCbArg,wsSessId,mbuf,strlen(mbuf));
+        //p->sendCbFunc(p->sendCbArg,wsSessId,mbuf,strlen(mbuf));
+        _websockSend(p,wsSessId,mbuf);
       }
 
       return rc;
@@ -976,6 +994,14 @@ unsigned cw::ui::findElementUuId( handle_t h, const char* eleName )
   
   return _findElementUuId(p,eleName);
 }
+
+unsigned cw::ui::findElementUuId( handle_t h, unsigned appId )
+{
+  ui_t* p = _handleToPtr(h);
+  
+  return _findElementUuId(p,appId);  
+}
+
 
 unsigned  cw::ui::findElementAppId(  handle_t h, unsigned uuId )
 {
