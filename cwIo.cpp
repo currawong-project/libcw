@@ -57,20 +57,21 @@ namespace cw
 
     typedef struct audioDev_str
     {
-      bool               enableFl; // 
-      char*              devName;  //
-      unsigned           devIdx;   //
-      unsigned           iCbCnt;   // Count the audio driver in/out callbacks
-      unsigned           oCbCnt;   //
-      audioGroup_t*      iGroup;   // Audio group points for this device
+      bool               enableFl; // True if this device was enabled by the user
+      const char*        label;    // User label
+      const char*        devName;  // System device name
+      unsigned           devIdx;   // AudioDevice interface device index
+      audioGroup_t*      iGroup;   // Audio group pointers for this device
       audioGroup_t*      oGroup;   //
-      audio_group_dev_t* iagd;     // audio group device record assoc'd with this
-      audio_group_dev_t* oagd;
+      audio_group_dev_t* iagd;     // Audio group device record assoc'd with this device
+      audio_group_dev_t* oagd;     //
     } audioDev_t;
 
     typedef struct io_str
     {
       std::atomic<bool>             quitFl;
+
+      time::spec_t                  t0;
       
       cbFunc_t                      cbFunc;
       void*                         cbArg;
@@ -88,6 +89,9 @@ namespace cw
       audio::device::alsa::handle_t alsaH;
       audio::buf::handle_t          audioBufH;
       unsigned                      audioThreadTimeOutMs;
+      unsigned                      audioMeterDevEnabledN;
+      unsigned                      audioMeterCbPeriodMs;
+      time::spec_t                  audioMeterNextTime;
       
       audioDev_t*                   audioDevA;
       unsigned                      audioDevN;
@@ -105,153 +109,11 @@ namespace cw
     io_t* _handleToPtr( handle_t h )
     { return handleToPtr<handle_t,io_t>(h); }
 
-    // Start or stop all the audio devices in p->audioDevA[]
-    rc_t _audioDeviceStartStop( io_t* p, bool startFl )
-    {
-      rc_t rc = kOkRC;
-      
-      for(unsigned i=0; i<p->audioDevN; ++i)
-        if( p->audioDevA[i].enableFl )
-        {
-          rc_t rc0 = kOkRC;
-          if( startFl )
-            rc0 = audio::device::start( p->audioH, p->audioDevA[i].devIdx );
-          else
-            rc0 = audio::device::stop( p->audioH, p->audioDevA[i].devIdx );
-
-          if(rc0 != kOkRC )
-            rc = cwLogError(rc0,"The audio device: %s failed to %s.", cwStringNullGuard(p->audioDevA[i].devName), startFl ? "start" : "stop");
-
-        }      
-
-      return rc;
-    }
-
-
-    // Release all resource associated with a group-device record.
-    void _audioGroupDestroyDevs( audio_group_dev_t* agd )
-    {
-      while( agd != nullptr )
-      {
-        audio_group_dev_t* agd0 = agd->link;
-        mem::release(agd);
-        agd = agd0;
-      }
-    }
-
-    // Release all resource associated with all audio group records
-    rc_t _audioGroupDestroyAll( io_t* p )
-    {
-      rc_t rc = kOkRC;
-
-      for(unsigned i=0; i<p->audioGroupN; ++i)
-      {
-        audioGroup_t* ag = p->audioGroupA + i;
-        _audioGroupDestroyDevs( ag->msg.iDevL );
-        _audioGroupDestroyDevs( ag->msg.oDevL );
-        mem::release(ag->msg.iBufArray);
-        mem::release(ag->msg.oBufArray);
-
-        mutex::unlock( ag->mutexH );
-        mutex::destroy( ag->mutexH );
-      }
-
-      mem::release(p->audioGroupA);
-      p->audioGroupN = 0;
-      return rc;
-    }
-
-    rc_t _audioDestroy( io_t* p )
-    {
-      rc_t rc = kOkRC;
-
-      // stop each device - this will stop the callbacks to _audioDeviceCallback()
-      if((rc = _audioDeviceStartStop(p,false)) != kOkRC )
-      {
-        rc = cwLogError(rc,"Audio device stop failed.");
-        goto errLabel;
-      }
-
-
-      if((rc = audio::device::alsa::destroy(p->alsaH)) != kOkRC )
-      {
-        rc = cwLogError(rc,"ALSA sub-system shutdown failed.");
-        goto errLabel;
-      }
-      
-            
-      if((rc = audio::device::destroy(p->audioH)) != kOkRC )
-      {
-        rc = cwLogError(rc,"Audio device sub-system shutdown failed.");
-        goto errLabel;
-      }
-
-      
-      if((rc = audio::buf::destroy(p->audioBufH)) != kOkRC )
-      {
-        rc = cwLogError(rc,"Audio buffer release failed.");
-        goto errLabel;
-      }
-
-      if((rc = _audioGroupDestroyAll(p)) != kOkRC )
-      {
-        rc = cwLogError(rc,"Audio group release failed.");        
-        goto errLabel;
-      }
-      
-      mem::free(p->audioDevA);
-      p->audioDevN = 0;
-
-    errLabel:
-
-      if(rc != kOkRC )
-        rc = cwLogError(rc,"Audio sub-system shutdown failed.");
-      
-      return rc;
-      
-    }
-
     
-    rc_t _destroy( io_t* p )
-    {
-      rc_t rc = kOkRC;
-
-      // stop thread callbacks
-      if((rc = thread_mach::destroy(p->threadMachH)) != kOkRC )
-        return rc;
-
-      for(unsigned i=0; i<p->serialN; ++i)
-        serialPortSrv::destroy( p->serialA[i].serialH );
-
-      mem::free(p->serialA);
-      p->serialN = 0;
-
-      // TODO: clean up the audio system more systematically
-      // by first stopping all the devices and then
-      // reversing the creating process.
-      
-      _audioDestroy(p);
-
-      midi::device::destroy(p->midiH);
-
-      
-      for(unsigned i=0; i<p->uiMapN; ++i)
-        mem::free(const_cast<char*>(p->uiMapA[i].eleName));
-      mem::release(p->uiMapA);
-      p->uiMapN = 0;
-
-      ui::ws::destroy(p->wsUiH);
-
-      // free the cfg object 
-      if( p->cfg != nullptr )
-        p->cfg->free();
-
-      
-      
-      mem::release(p);
-
-      return rc;
-    }
+    //----------------------------------------------------------------------------------------------------------
+    //
+    // Serial
+    //    
   
     void _serialPortCb( void* arg, const void* byteA, unsigned byteN )
     {
@@ -366,6 +228,10 @@ namespace cw
     }
 
 
+    //----------------------------------------------------------------------------------------------------------
+    //
+    // MIDI
+    //
     void _midiCallback( const midi::packet_t* pktArray, unsigned pktCnt )
     {
       unsigned i,j;
@@ -403,6 +269,181 @@ namespace cw
       return rc;
     }
 
+    //----------------------------------------------------------------------------------------------------------
+    //
+    // Audio
+    //
+
+    // Start or stop all the audio devices in p->audioDevA[]
+    rc_t _audioDeviceStartStop( io_t* p, bool startFl )
+    {
+      rc_t rc = kOkRC;
+      
+      for(unsigned i=0; i<p->audioDevN; ++i)
+        if( p->audioDevA[i].enableFl )
+        {
+          rc_t rc0 = kOkRC;
+          if( startFl )
+            rc0 = audio::device::start( p->audioH, p->audioDevA[i].devIdx );
+          else
+            rc0 = audio::device::stop( p->audioH, p->audioDevA[i].devIdx );
+
+          if(rc0 != kOkRC )
+            rc = cwLogError(rc0,"The audio device: %s failed to %s.", cwStringNullGuard(p->audioDevA[i].devName), startFl ? "start" : "stop");
+
+        }      
+
+      return rc;
+    }
+
+
+    // Release all resource associated with a group-device record.
+    void _audioGroupDestroyDevs( audio_group_dev_t* agd )
+    {
+      while( agd != nullptr )
+      {
+        audio_group_dev_t* agd0 = agd->link;
+        mem::release(agd->meterA);
+        mem::release(agd);
+        agd = agd0;
+      }
+    }
+
+    // Release all resource associated with all audio group records
+    rc_t _audioGroupDestroyAll( io_t* p )
+    {
+      rc_t rc = kOkRC;
+
+      for(unsigned i=0; i<p->audioGroupN; ++i)
+      {
+        audioGroup_t* ag = p->audioGroupA + i;
+        _audioGroupDestroyDevs( ag->msg.iDevL );
+        _audioGroupDestroyDevs( ag->msg.oDevL );
+        mem::release(ag->msg.iBufArray);
+        mem::release(ag->msg.oBufArray);
+
+        mutex::unlock( ag->mutexH );  // the mutex is expected to be locked at this point
+        mutex::destroy( ag->mutexH );
+      }
+
+      mem::release(p->audioGroupA);
+      p->audioGroupN = 0;
+      return rc;
+    }
+
+    rc_t _audioDestroy( io_t* p )
+    {
+      rc_t rc = kOkRC;
+
+      // stop each device - this will stop the callbacks to _audioDeviceCallback()
+      if((rc = _audioDeviceStartStop(p,false)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Audio device stop failed.");
+        goto errLabel;
+      }
+
+
+      if((rc = audio::device::alsa::destroy(p->alsaH)) != kOkRC )
+      {
+        rc = cwLogError(rc,"ALSA sub-system shutdown failed.");
+        goto errLabel;
+      }
+      
+            
+      if((rc = audio::device::destroy(p->audioH)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Audio device sub-system shutdown failed.");
+        goto errLabel;
+      }
+
+      
+      if((rc = audio::buf::destroy(p->audioBufH)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Audio buffer release failed.");
+        goto errLabel;
+      }
+
+      if((rc = _audioGroupDestroyAll(p)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Audio group release failed.");        
+        goto errLabel;
+      }
+      
+      mem::free(p->audioDevA);
+      p->audioDevN = 0;
+
+    errLabel:
+
+      if(rc != kOkRC )
+        rc = cwLogError(rc,"Audio sub-system shutdown failed.");
+      
+      return rc;
+      
+    }
+
+    
+    // Are either input or output meter enabled on this audio devices.
+    // Set flags to kInFl or kOutput to select inut or output meters.
+    // Set both flags to check if either input or output meters are enabled.
+    bool _audioDeviceIsMeterEnabled( audioDev_t* ad, unsigned flags )
+    {
+      return (cwIsFlag(flags,kInFl ) && ad->iagd!=nullptr && cwIsFlag(ad->iagd->flags,kMeterFl))
+        ||   (cwIsFlag(flags,kOutFl) && ad->oagd!=nullptr && cwIsFlag(ad->oagd->flags,kMeterFl));
+    }
+
+    
+    void _audioGroupDeviceUpdateMeter( io_t* p, audio_group_dev_t* agd, unsigned flags )
+    {
+      for(unsigned i=0; i<agd->chCnt; ++i)
+        agd->meterA[i] = audio::buf::meter( p->audioBufH, agd->devIdx, i, flags + audio::buf::kMeterFl );
+    }
+
+    rc_t _audioDeviceMeterCallback( io_t* p, audio_group_dev_t* agd )
+    {
+      msg_t m;
+      m.tid        = kAudioMeterTId;
+      m.u.audioGroupDev = agd;
+      return p->cbFunc(p->cbArg,&m);
+      
+    }
+    
+    rc_t _audioDeviceUpdateMeters( io_t* p )
+    {
+      rc_t rc = kOkRC;
+      
+      for(unsigned i=0; i<p->audioDevN; ++i)
+      {
+        audioDev_t* ad = p->audioDevA + i;
+        
+        if( ad->iagd != nullptr && cwIsFlag(ad->iagd->flags,kMeterFl))
+        {
+          _audioGroupDeviceUpdateMeter( p, ad->iagd, audio::buf::kInFl  );
+          _audioDeviceMeterCallback( p, ad->iagd );
+        }
+
+        if( ad->oagd != nullptr && cwIsFlag(ad->oagd->flags,kMeterFl))
+        {
+          _audioGroupDeviceUpdateMeter( p, ad->oagd, audio::buf::kOutFl  );
+          _audioDeviceMeterCallback( p, ad->oagd );
+        }
+      }
+      return rc;
+    }
+
+    rc_t _audioDeviceProcessMeters( io_t* p )
+    {
+      rc_t rc = kOkRC;
+      
+      if( time::isGTE(p->t0,p->audioMeterNextTime) )
+      {
+        rc = _audioDeviceUpdateMeters(p);
+        p->audioMeterNextTime = p->t0;
+        time::advanceMs(p->audioMeterNextTime,p->audioMeterCbPeriodMs);
+      }
+      return rc;
+    }
+    
+
     bool _audioGroupBufIsReady( io_t* p, audioGroup_t* ag, bool inputFl )
     {
       audio_group_dev_t* agd =  inputFl ? ag->msg.iDevL : ag->msg.oDevL;      
@@ -417,9 +458,9 @@ namespace cw
     enum { kAudioGroupGetBuf, kAudioGroupAdvBuf };
     void _audioGroupProcSampleBufs( io_t* p, audioGroup_t* ag, unsigned processTypeId, unsigned inputFl  )
     {
-      sample_t** bufArray      = inputFl ? ag->msg.iBufArray : ag->msg.oBufArray;
-      unsigned   bufArrayChCnt = inputFl ? ag->msg.iBufChCnt : ag->msg.oBufChCnt;
-      audio_group_dev_t* agd   = inputFl ? ag->msg.iDevL     : ag->msg.oDevL;
+      sample_t** bufArray      = inputFl ? ag->msg.iBufArray   : ag->msg.oBufArray;
+      unsigned   bufArrayChCnt = inputFl ? ag->msg.iBufChCnt   : ag->msg.oBufChCnt;
+      audio_group_dev_t* agd   = inputFl ? ag->msg.iDevL       : ag->msg.oDevL;
       unsigned   audioBufFlags = inputFl ? audio::buf::kInFl : audio::buf::kOutFl;
       
       unsigned chIdx = 0;
@@ -448,7 +489,7 @@ namespace cw
     bool _audioGroupThreadFunc( void* arg )
     {
       rc_t rc = kOkRC;
-      
+
       audioGroup_t* ag = reinterpret_cast<audioGroup_t*>(arg);
 
       // block on the cond. var
@@ -473,28 +514,33 @@ namespace cw
         {
           _audioGroupProcSampleBufs( ag->p, ag, kAudioGroupGetBuf, true );
           _audioGroupProcSampleBufs( ag->p, ag, kAudioGroupGetBuf, false );
-        
+
           ag->p->cbFunc(ag->p->cbArg,&msg);
 
           _audioGroupProcSampleBufs( ag->p, ag, kAudioGroupAdvBuf, true );
           _audioGroupProcSampleBufs( ag->p, ag, kAudioGroupAdvBuf, false );
+
         }
+
       }
+
+     
       return true;
     }
     
     // Given a device index return the associated audioDev_t record.
-    audioDev_t* _audioDeviceIndexToRecd( io_t* p, unsigned devIdx )
+    audioDev_t* _audioDeviceIndexToRecd( io_t* p, unsigned devIdx, bool reportMissingFl=true )
     {
       for(unsigned i=0; i<p->audioDevN; ++i)
         if( p->audioDevA[i].devIdx == devIdx )
           return p->audioDevA + i;
-      
+
+      cwLogError(kInvalidArgRC,"A device with index %i could not be found.",devIdx);
       return nullptr;
     }
 
     
-    // Add a audioGroup pointer to groupA[] and return the new count of elements in the array.
+    // Add an audioGroup pointer to groupA[] and return the new count of elements in the array.
     unsigned _audioDeviceUpdateGroupArray( audioGroup_t** groupA, unsigned groupN, unsigned curGroupN, audioGroup_t* ag )
     {
       if( ag != nullptr )
@@ -535,7 +581,7 @@ namespace cw
         if( audio::buf::isDeviceReady( p->audioBufH, devIdx, audio::buf::kInFl) )
         {
           // atomic incr  - note that the ordering doesn't matter because the update does not control access to any other variables from another thread
-          std::atomic_store_explicit(&ad->iagd->readyCnt, ad->iagd->readyCnt++,  std::memory_order_relaxed); 
+          std::atomic_store_explicit(&ad->iagd->readyCnt, ad->iagd->readyCnt+1,  std::memory_order_relaxed); 
           curGroupN = _audioDeviceUpdateGroupArray( groupA, groupN, curGroupN, ad->iGroup ); 
           ad->iagd->cbCnt += 1; // update the callback count for this device
         }
@@ -544,7 +590,7 @@ namespace cw
       {    
         if( audio::buf::isDeviceReady( p->audioBufH, devIdx, audio::buf::kOutFl ) )
         {
-          std::atomic_store_explicit(&ad->oagd->readyCnt, ad->oagd->readyCnt++, std::memory_order_relaxed); // atomic incr  
+          std::atomic_store_explicit(&ad->oagd->readyCnt, ad->oagd->readyCnt+1, std::memory_order_relaxed); // atomic incr  
           curGroupN = _audioDeviceUpdateGroupArray( groupA, groupN, curGroupN, ad->oGroup );
           ad->oagd->cbCnt += 1;
         }          
@@ -561,7 +607,7 @@ namespace cw
     {
       // are all devices in this group ready to  provide/accept new audio data
       for(; agd!=nullptr; agd=agd->link)
-        if( std::atomic_load_explicit(&agd->readyCnt, std::memory_order_acquire) > 0  ) // ACQUIRE
+        if( std::atomic_load_explicit(&agd->readyCnt, std::memory_order_acquire) == 0  ) // ACQUIRE
           return false;
 
       return true;
@@ -584,12 +630,13 @@ namespace cw
       for(unsigned i=0; i<groupN; ++i)
       {
         audioGroup_t* ag = groupA[i];
+
         if( _audioGroupIsReady( ag->msg.iDevL ) && _audioGroupIsReady( ag->msg.oDevL ) )
         {
           // we now know the group is ready and so the ready count maybe decremented on each  device 
           _audioGroupDecrReadyCount( ag->msg.iDevL);
           _audioGroupDecrReadyCount( ag->msg.oDevL);
-          
+
           // notify the audio group thread that all devices are ready by signaling the condition var that it is blocked on
           mutex::signalCondVar(ag->mutexH);
 
@@ -625,6 +672,7 @@ namespace cw
 
       // groupA[] contains the set of groups which may have been made ready during this callback
       _audioGroupNotifyIfReady( p, groupA, curGroupN );
+
     }
 
 
@@ -635,9 +683,13 @@ namespace cw
       rc_t               rc      = kOkRC;
       audio_group_dev_t* new_agd = mem::allocZ<audio_group_dev_t>();
       
-      new_agd->name   = ad->devName;
+      new_agd->label  = ad->label;
+      new_agd->devName= ad->devName;
       new_agd->devIdx = ad->devIdx;
+      new_agd->flags  = inputFl ? kInFl : kOutFl;
       new_agd->chCnt  = chCnt;
+      new_agd->chIdx  = inputFl ? ag->msg.iBufChCnt : ag->msg.oBufChCnt;
+      new_agd->meterA = mem::allocZ<sample_t>(chCnt);
 
       audio_group_dev_t*& agd = inputFl ? ag->msg.iDevL : ag->msg.oDevL;
       
@@ -700,6 +752,7 @@ namespace cw
         {
           if(( rc = node->getv(
                 "enableFl",    p->audioGroupA[i].enableFl,
+                "label",       p->audioGroupA[i].msg.label,
                 "id",          p->audioGroupA[i].msg.groupId,
                 "srate",       p->audioGroupA[i].msg.srate,
                 "dspFrameCnt", p->audioGroupA[i].msg.dspFrameCnt )) != kOkRC )
@@ -715,6 +768,9 @@ namespace cw
             goto errLabel;
           }
 
+          // Lock the mutex so that it is already locked when it is used to block the audio thread
+          // This avoids having to use logic in the thread callback to lock it on the first entry
+          // while not locking it on all following entries.
           if((rc = mutex::lock(p->audioGroupA[i].mutexH)) != kOkRC )
           {
             rc = cwLogError(rc,"Error locking audio group mutex.");
@@ -784,6 +840,7 @@ namespace cw
         {
           if(( rc = node->getv(
                 "enableFl",       ad->enableFl,
+                "label",          ad->label,
                 "inGroupId",      inGroupId,
                 "outGroupId",     outGroupId,
                 "device",         ad->devName,
@@ -862,14 +919,21 @@ namespace cw
             goto errLabel;
           }
 
+             
           if( iag != nullptr )
+          {            
             if((rc = _audioGroupAddDevice( iag, true, ad, iChCnt )) != kOkRC )
               goto errLabel;
+          }
 
+          
           if( oag != nullptr )
+          {
             if((rc = _audioGroupAddDevice( oag, false, ad, oChCnt )) != kOkRC )
               goto errLabel;
-
+            
+          }
+          
           // set the device group pointers
           ad->iGroup = iag;
           ad->oGroup = oag;
@@ -891,10 +955,10 @@ namespace cw
         audioGroup_t* ag = p->audioGroupA + i;
 
         if( ag->msg.iBufChCnt )
-          ag->msg.iBufArray = mem::allocZ<sample_t*>( ag->msg.iBufChCnt );
+          ag->msg.iBufArray   = mem::allocZ<sample_t*>( ag->msg.iBufChCnt );
         
         if( ag->msg.oBufChCnt )
-          ag->msg.oBufArray = mem::allocZ<sample_t*>( ag->msg.oBufChCnt );          
+          ag->msg.oBufArray   = mem::allocZ<sample_t*>( ag->msg.oBufChCnt );
       }
       
       return rc;
@@ -903,7 +967,6 @@ namespace cw
     rc_t _audioDeviceParseConfig( io_t* p, const object_t* cfg )
     {
       rc_t            rc          = kOkRC;
-      unsigned        meterMs     = 50;
       const object_t* node        = nullptr;
       
       // get the audio port node
@@ -911,14 +974,14 @@ namespace cw
         return cwLogError(kSyntaxErrorRC,"Unable to locate the 'audio' configuration node.");
 
       // get the meterMs value
-      if((rc = node->getv("meterMs", meterMs, "threadTimeOutMs", p->audioThreadTimeOutMs )) != kOkRC )
+      if((rc = node->getv("meterMs", p->audioMeterCbPeriodMs, "threadTimeOutMs", p->audioThreadTimeOutMs )) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"Audio 'meterMs' or 'dspFrameCnt' parse failed.");
         goto errLabel;
       }
 
       // initialize the audio buffer
-      if((rc = audio::buf::create( p->audioBufH, audio::device::count(p->audioH), meterMs )) != kOkRC )
+      if((rc = audio::buf::create( p->audioBufH, audio::device::count(p->audioH), p->audioMeterCbPeriodMs )) != kOkRC )
       {
         rc = cwLogError(rc,"Audio device buffer failed.");
         goto errLabel;
@@ -987,6 +1050,10 @@ namespace cw
       return rc;
     }
 
+    //----------------------------------------------------------------------------------------------------------
+    //
+    // UI
+    //
 
     // This function is called by the websocket with messages comring from a remote UI.
     rc_t _uiCallback( void* cbArg, unsigned wsSessId, ui::opId_t opId, unsigned parentAppId, unsigned uuId, unsigned appId, const ui::value_t* v )
@@ -1063,10 +1130,87 @@ namespace cw
     }
     
 
+    //----------------------------------------------------------------------------------------------------------
+    //
+    // IO
+    //
+    
+    rc_t _destroy( io_t* p )
+    {
+      rc_t rc = kOkRC;
+
+      // stop thread callbacks
+      if((rc = thread_mach::destroy(p->threadMachH)) != kOkRC )
+        return rc;
+
+      for(unsigned i=0; i<p->serialN; ++i)
+        serialPortSrv::destroy( p->serialA[i].serialH );
+
+      mem::free(p->serialA);
+      p->serialN = 0;
+
+      // TODO: clean up the audio system more systematically
+      // by first stopping all the devices and then
+      // reversing the creating process.
+      
+      _audioDestroy(p);
+
+      midi::device::destroy(p->midiH);
+
+      
+      for(unsigned i=0; i<p->uiMapN; ++i)
+        mem::free(const_cast<char*>(p->uiMapA[i].eleName));
+      mem::release(p->uiMapA);
+      p->uiMapN = 0;
+
+      ui::ws::destroy(p->wsUiH);
+
+      // free the cfg object 
+      if( p->cfg != nullptr )
+        p->cfg->free();
+
+      
+      
+      mem::release(p);
+
+      return rc;
+    }
+
+    rc_t _audioDeviceParams( handle_t h, unsigned devIdx, unsigned flags, io_t*& pRef, audioDev_t*& adRef, unsigned& audioBufFlagsRef )
+    {
+      rc_t rc = kOkRC;
+  
+      pRef  = _handleToPtr(h);
+  
+      if((adRef = _audioDeviceIndexToRecd(pRef,devIdx)) == nullptr )
+        rc = kInvalidArgRC;
+      else
+      {
+        audioBufFlagsRef = 0;
+        if( cwIsFlag(flags,kInFl) )
+          audioBufFlagsRef += audio::buf::kInFl;
+    
+        if( cwIsFlag(flags,kOutFl) )
+          audioBufFlagsRef += audio::buf::kOutFl;
+
+        if( cwIsFlag(flags,kEnableFl) )
+          audioBufFlagsRef += audio::buf::kEnableFl;
+    
+      }
+
+      return rc;
+    }
+
+    
+    
   }
 }
 
 
+//----------------------------------------------------------------------------------------------------------
+//
+// IO
+//
 
 cw::rc_t cw::io::create(
   handle_t&             h,
@@ -1081,7 +1225,7 @@ cw::rc_t cw::io::create(
   
   if((rc = destroy(h)) != kOkRC )
     return rc;
-  
+
   // create the io_t object
   io_t* p = mem::allocZ<io_t>();
 
@@ -1113,6 +1257,9 @@ cw::rc_t cw::io::create(
   p->cbFunc = cbFunc;
   p->cbArg  = cbArg;
   p->quitFl.store(false);
+  time::get(p->t0);  
+  
+
     
   h.set(p);
   
@@ -1167,11 +1314,14 @@ cw::rc_t cw::io::exec( handle_t h )
 {
   rc_t rc = kOkRC;
   io_t* p = _handleToPtr(h);
+  
   if( p->wsUiH.isValid() )    
     rc = ui::ws::exec(p->wsUiH );
 
-  // if the application quit flag is set then signal that the main thread needs to exit
-  
+  time::get(p->t0);
+
+  if( p->audioMeterDevEnabledN ) 
+    _audioDeviceProcessMeters(p);
   
   return rc;
 }
@@ -1280,22 +1430,221 @@ cw::rc_t cw::io::midiDeviceSend( handle_t h, unsigned devIdx, unsigned portIdx, 
 unsigned    cw::io::audioDeviceCount(          handle_t h )
 {
   io_t* p = _handleToPtr(h);
-  return audio::device::count(p->audioH);
+  return p->audioDevN;
 }
 
 unsigned    cw::io::audioDeviceLabelToIndex(   handle_t h, const char* label )
 {
   io_t* p = _handleToPtr(h);
-  return audio::device::labelToIndex(p->audioH,label);
+  for(unsigned i=0; i<p->audioDevN; ++i)
+    if( textCompare(label,p->audioDevA[i].label) == 0 )
+      return p->audioDevA[i].devIdx;
+
+  return kInvalidIdx;
+  //return audio::device::labelToIndex(p->audioH,label);
 }
 
-const char* cw::io::audioDeviceLabel(          handle_t h, unsigned devIdx )
+const char* cw::io::audioDeviceName( handle_t h, unsigned devIdx )
 {
   io_t* p = _handleToPtr(h);
-  assert( devIdx < audioDeviceCount(h) );
-  return audio::device::label(p->audioH,devIdx);
+  audioDev_t* ad;
+  
+  if((ad = _audioDeviceIndexToRecd(p, devIdx )) == nullptr )
+    return nullptr;
+
+  return ad->devName;  
 }
 
+double cw::io::audioDeviceSampleRate( handle_t h, unsigned devIdx )
+{
+  io_t* p = _handleToPtr(h);
+  return audio::device::sampleRate(p->audioH, devIdx );
+}
+
+unsigned cw::io::audioDeviceFramesPerCycle( handle_t h, unsigned devIdx )
+{
+  io_t* p = _handleToPtr(h);
+  audioDev_t* ad;
+   
+  if((ad = _audioDeviceIndexToRecd(p, devIdx )) == nullptr )
+    return audio::device::framesPerCycle(p->audioH, devIdx, ad->iGroup != nullptr );
+
+  return 0;
+}
+
+unsigned cw::io::audioDeviceChannelCount(   handle_t h, unsigned devIdx, unsigned inOrOutFlag )
+{
+  io_t* p = _handleToPtr(h);
+  
+  return audio::device::channelCount(p->audioH, devIdx, inOrOutFlag & kInFl );
+}
+
+cw::rc_t cw::io::audioDeviceEnableMeters( handle_t h, unsigned devIdx, unsigned inOutEnaFlags )
+{
+  rc_t        rc            = kOkRC;
+  io_t*       p             = nullptr;
+  audioDev_t* ad            = nullptr;
+  unsigned    audioBufFlags = 0;
+  
+  if((rc = _audioDeviceParams( h, devIdx, inOutEnaFlags, p, ad, audioBufFlags )) != kOkRC )
+    rc = cwLogError(rc,"Enable tone failed.");
+  else    
+  {
+    bool     enaFl       = inOutEnaFlags & kEnableFl;
+    bool     enaState0Fl = _audioDeviceIsMeterEnabled(ad, kInFl | kOutFl);
+    
+    audioBufFlags += audio::buf::kMeterFl;
+
+
+    if( inOutEnaFlags & kInFl )
+      ad->iagd->flags = cwEnaFlag(ad->iagd->flags,kMeterFl,enaFl);
+
+    if( inOutEnaFlags & kOutFl )
+      ad->oagd->flags = cwEnaFlag(ad->oagd->flags,kMeterFl,enaFl);
+    
+    audio::buf::setFlag( p->audioBufH, devIdx, kInvalidIdx, audioBufFlags );
+    
+    bool enaState1Fl= _audioDeviceIsMeterEnabled(ad, kInFl | kOutFl);
+
+    if( enaState1Fl and !enaState0Fl )
+      p->audioMeterDevEnabledN += 1;
+    else
+      if( p->audioMeterDevEnabledN > 0 && !enaState1Fl && enaState0Fl )
+        p->audioMeterDevEnabledN -= 1;
+   
+  }
+
+  if( rc != kOkRC )
+     rc = cwLogError(rc,"Enable meters failed.");
+   
+  return rc;
+}
+
+
+const cw::io::sample_t* cw::io::audioDeviceMeters( handle_t h, unsigned devIdx, unsigned& chCntRef, unsigned inOrOutFlag )
+{
+  rc_t rc = kOkRC;
+  io_t* p = _handleToPtr(h);
+  sample_t* meterA;
+  
+  audioDev_t* ad;
+  if((ad = _audioDeviceIndexToRecd(p,devIdx)) == nullptr )
+    rc = kInvalidArgRC;
+  else
+  {
+    bool               inputFl = inOrOutFlag & kInFl;
+    audio_group_dev_t* agd     = inputFl ? ad->iagd     : ad->oagd;
+    unsigned           flags   = inputFl ? audio::buf::kInFl : audio::buf::kOutFl;
+    
+    if( !cwIsFlag(agd->flags,kMeterFl) )
+      rc = cwLogError(kInvalidArgRC,"The %s meters on device %s are not enabled.", inputFl ? "input" : "output", cwStringNullGuard(ad->label));
+    else
+    {
+      _audioGroupDeviceUpdateMeter(p, agd, flags );
+      
+      meterA   = agd->meterA;
+      chCntRef = agd->chCnt;
+    }
+    
+  }
+
+  if( rc != kOkRC )
+    rc = cwLogError(rc,"Get meters failed.");
+  
+  return meterA;
+}
+
+
+cw::rc_t cw::io::audioDeviceEnableTone( handle_t h, unsigned devIdx, unsigned inOutEnaFlags )
+{
+  rc_t        rc            = kOkRC;
+  io_t*       p             = nullptr;
+  audioDev_t* ad            = nullptr;
+  unsigned    audioBufFlags = 0;
+  
+  if((rc = _audioDeviceParams( h, devIdx, inOutEnaFlags, p, ad, audioBufFlags )) != kOkRC )
+    rc = cwLogError(rc,"Enable tone failed.");
+  else    
+  {
+    audioBufFlags += audio::buf::kToneFl;
+    audio::buf::setFlag( p->audioBufH, devIdx, kInvalidIdx, audioBufFlags );        
+  }
+  
+  return rc;
+}
+
+cw::rc_t cw::io::audioDeviceToneFlags( handle_t h, unsigned devIdx, unsigned inOrOutFlag,  bool* toneFlA, unsigned chCnt )
+{
+
+  rc_t        rc            = kOkRC;
+  io_t*       p             = nullptr;
+  audioDev_t* ad            = nullptr;
+  unsigned    audioBufFlags = 0;
+  
+  if((rc = _audioDeviceParams( h, devIdx, inOrOutFlag, p, ad, audioBufFlags )) != kOkRC )
+    rc = cwLogError(rc,"Enable tone failed.");
+  else    
+  {
+    audioBufFlags += audio::buf::kToneFl;
+    audio::buf::toneFlags( p->audioBufH, devIdx, audioBufFlags, toneFlA, chCnt );
+  }
+  
+  return rc;
+}
+
+cw::rc_t cw::io::audioDeviceEnableMute( handle_t h, unsigned devIdx, unsigned inOutEnaFlags )
+{
+  rc_t        rc            = kOkRC;
+  io_t*       p             = nullptr;
+  audioDev_t* ad            = nullptr;
+  unsigned    audioBufFlags = 0;
+  
+  if((rc = _audioDeviceParams( h, devIdx, inOutEnaFlags, p, ad, audioBufFlags )) != kOkRC )
+    rc = cwLogError(rc,"Enable mute failed.");
+  else    
+  {
+    audioBufFlags += audio::buf::kMuteFl;
+    audio::buf::setFlag( p->audioBufH, devIdx, kInvalidIdx, audioBufFlags );        
+  }
+  
+  return rc;
+}
+
+cw::rc_t cw::io::audioDeviceMuteFlags( handle_t h, unsigned devIdx, unsigned inOrOutFlag,  bool* muteFlA, unsigned chCnt )
+{
+  rc_t        rc            = kOkRC;
+  io_t*       p             = nullptr;
+  audioDev_t* ad            = nullptr;
+  unsigned    audioBufFlags = 0;
+  
+  if((rc = _audioDeviceParams( h, devIdx, inOrOutFlag, p, ad, audioBufFlags )) != kOkRC )
+    rc = cwLogError(rc,"Enable mute failed.");
+  else    
+  {
+    audioBufFlags += audio::buf::kMuteFl;
+    audio::buf::muteFlags( p->audioBufH, devIdx, audioBufFlags, muteFlA, chCnt );
+  }
+  
+  return rc;
+}
+
+
+cw::rc_t cw::io::audioDeviceSetGain( handle_t h, unsigned devIdx, unsigned inOrOutFlags, double gain )
+{
+  rc_t        rc            = kOkRC;
+  io_t*       p             = nullptr;
+  audioDev_t* ad            = nullptr;
+  unsigned    audioBufFlags = 0;
+  
+  if((rc = _audioDeviceParams( h, devIdx, inOrOutFlags, p, ad, audioBufFlags )) != kOkRC )
+    rc = cwLogError(rc,"Set gain failed.");
+  else    
+  {
+    audio::buf::setGain( p->audioBufH, devIdx, kInvalidIdx, audioBufFlags, gain );
+  }
+  
+  return rc;
+}
 
 
 //----------------------------------------------------------------------------------------------------------
@@ -1358,6 +1707,15 @@ unsigned    cw::io::uiFindElementUuId( handle_t h, const char* eleName )
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
     return ui::findElementUuId(uiH, eleName );
+  return kInvalidId;  
+}
+
+unsigned    cw::io::uiFindElementUuId( handle_t h, unsigned appId )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    return ui::findElementUuId(uiH, appId );
   return kInvalidId;  
 }
 
@@ -1539,5 +1897,59 @@ cw::rc_t cw::io::uiRegisterAppIdMap(  handle_t h, const ui::appIdMap_t* map, uns
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
     rc  = ui::registerAppIdMap(uiH,map,mapN);
   return rc;  
+}
+
+cw::rc_t cw::io::uiSendValue(   handle_t h, unsigned wsSessId, unsigned uuId, bool value )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::sendValueBool(uiH, wsSessId, uuId, value );
+  return rc;
+}
+
+cw::rc_t cw::io::uiSendValue(    handle_t h, unsigned wsSessId, unsigned uuId, int value )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::sendValueInt(uiH, wsSessId, uuId, value );
+  return rc;
+}
+
+cw::rc_t cw::io::uiSendValue(   handle_t h, unsigned wsSessId, unsigned uuId, unsigned value )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::sendValueUInt(uiH, wsSessId, uuId, value );
+  return rc;
+}
+
+cw::rc_t cw::io::uiSendValue(  handle_t h, unsigned wsSessId, unsigned uuId, float value )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::sendValueFloat(uiH, wsSessId, uuId, value );
+  return rc;
+}
+
+cw::rc_t cw::io::uiSendValue( handle_t h, unsigned wsSessId, unsigned uuId, double value )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::sendValueDouble(uiH, wsSessId, uuId, value );
+  return rc;
+}
+
+cw::rc_t cw::io::uiSendValue( handle_t h, unsigned wsSessId, unsigned uuId, const char* value )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::sendValueString(uiH, wsSessId, uuId, value );
+  return rc;
 }
 

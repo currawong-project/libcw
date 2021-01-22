@@ -17,9 +17,20 @@ namespace cw
 
     enum
     {
+      kDisableFl = 0x00,
+      kEnableFl  = 0x01,
+      kInFl      = 0x02,
+      kOutFl     = 0x04,
+
+      kMeterFl   = 0x08
+    };
+    
+    enum
+    {
      kSerialTId,
      kMidiTId,
      kAudioTId,
+     kAudioMeterTId,
      kSockTid,
      kWebSockTId,
      kUiTId
@@ -41,21 +52,28 @@ namespace cw
 
     typedef struct audio_group_dev_str
     {
-      const char*                 name;    // Audio device name
+      const char*                 label;   // User label
+      const char*                 devName; // Audio device name
       unsigned                    devIdx;  // Audio device index
-      unsigned                    chCnt;   // Count of audio channels on this device
+      unsigned                    flags;   //  kInFl | kOutFl | kMeterFl
+      unsigned                    chIdx;   // First channel of this device in i/oBufArray
+      unsigned                    chCnt;   // Count of audio channels on this device      
       unsigned                    cbCnt;   // Count of device driver callbacks
-      std::atomic_uint            readyCnt;// Used internally do not read or write.        
+      sample_t*                   meterA;  // Meter values for this device.
+      
+      std::atomic_uint            readyCnt;// Used internally do not read or write.
+
       struct audio_group_dev_str* link;    // 
     } audio_group_dev_t;
     
     typedef struct audio_msg_str
     {
-      unsigned           groupId;       // Unique group id
+      const char*        label;         // User provided label
+      unsigned           groupId;       // User provided group id
       double             srate;         // Group sample rate.
       unsigned           dspFrameCnt;   // Count of samples in each buffer pointed to by iBufArray[] and oBufArray[]
       
-      sample_t**         iBufArray;     // Array of ptrs to buffers of size bufSmpCnt
+      sample_t**         iBufArray;     // Array of iBufChCnt ptrs to buffers of size bufSmpCnt
       unsigned           iBufChCnt;     // Count of elements in iBufArray[]
       time::spec_t*      iTimeStampPtr; // 
       audio_group_dev_t* iDevL;         // Linked list of input devices which map directly to channels in iBufArray[]
@@ -92,11 +110,12 @@ namespace cw
       unsigned tid;
       union
       {
-        serial_msg_t*  serial;
-        midi_msg_t*    midi;
-        audio_msg_t*   audio;
-        socket_msg_t*  sock;
-        ui_msg_t      ui;
+        serial_msg_t*      serial;
+        midi_msg_t*        midi;
+        audio_msg_t*       audio;
+        audio_group_dev_t* audioGroupDev; // audioMeterTId
+        socket_msg_t*      sock;
+        ui_msg_t           ui;
       } u;
     } msg_t;
     
@@ -148,33 +167,20 @@ namespace cw
     // Audio
     //
     
-    unsigned    audioDeviceCount(          handle_t h );
-    unsigned    audioDeviceLabelToIndex(   handle_t h, const char* label );
-    const char* audioDeviceLabel(          handle_t h, unsigned devIdx );
-    rc_t        audioDeviceSetup(
-      handle_t h,
-      unsigned devIdx,
-      double   srate,
-      unsigned framesPerDeviceCycle,
-      unsigned devBufBufN,
-      unsigned framesPerDspCycle,
-      unsigned inputFlags,
-      unsigned outputFlags );
-    
-    unsigned    audioDeviceChannelCount(   handle_t h, unsigned devIdx, unsigned dirFl );
-    double      audioDeviceSampleRate(     handle_t h, unsigned devIdx );
-    unsigned    audioDeviceFramesPerCycle( handle_t h, unsigned devIdx );
-    unsigned    audioDeviceChannelFlags(   handle_t h, unsigned devIdx, unsigned chIdx, unsigned dirFl );
-    rc_t        audioDeviceChannelSetFlags(handle_t h, unsigned devidx, unsigned chIdx, unsigned dirFl, unsigned flags );
-    sample_t    audioDeviceChannelMeter(   handle_t h, unsigned devIdx, unsigned chIdx, unsigned dirFl );
-    rc_t        audioDeviceChannelSetGain( handle_t h, unsigned devIdx, unsigned chIdx, unsigned dirFl, double gain );
-    double      audioDeviceChannelGain(    handle_t h, unsigned devIdx, unsigned chIdx, unsigned dirFl );
-
-    unsigned    audioGroupCount( handle_t h );
-    const char* audioGroupLabel( handle_t h, unsigned groupIdx );
-    unsigned    audioGroupId(    handle_t h, unsigned groupIdx );
-    rc_t        audioGroupSetId( handle_t h, unsigned groupIdx, unsigned groupId );
-
+    unsigned        audioDeviceCount(          handle_t h );
+    unsigned        audioDeviceLabelToIndex(   handle_t h, const char* label );
+    const char*     audioDeviceName(           handle_t h, unsigned devIdx );
+    double          audioDeviceSampleRate(     handle_t h, unsigned devIdx );
+    unsigned        audioDeviceFramesPerCycle( handle_t h, unsigned devIdx );
+    unsigned        audioDeviceChannelCount(   handle_t h, unsigned devIdx, unsigned inOrOutFlag );
+    rc_t            audioDeviceEnableMeters(   handle_t h, unsigned devIdx, unsigned inOutEnaFlags );
+    const sample_t* audioDeviceMeters(         handle_t h, unsigned devIdx, unsigned& chCntRef, unsigned inOrOutFlag );
+    rc_t            audioDeviceEnableTone(     handle_t h, unsigned devidx, unsigned inOutEnaFlags );
+    rc_t            audioDeviceToneFlags(      handle_t h, unsigned devIdx, unsigned inOrOutFlag,  bool* toneFlA, unsigned chCnt );
+    rc_t            audioDeviceEnableMute(     handle_t h, unsigned devidx, unsigned inOutEnaFlags );
+    rc_t            audioDeviceMuteFlags(      handle_t h, unsigned devIdx, unsigned inOrOutFlag,  bool* muteFlA, unsigned chCnt );
+    rc_t            audioDeviceSetGain(        handle_t h, unsigned devidx, unsigned inOrOutFlags, double gain );
+   
     
     //----------------------------------------------------------------------------------------------------------
     //
@@ -220,6 +226,7 @@ namespace cw
     
     // Return the uuid of the first matching 'eleName'.
     unsigned    uiFindElementUuId( handle_t h, const char* eleName );
+    unsigned    uiFindElementUuId( handle_t h, unsigned appId );
 
     rc_t uiCreateFromObject( handle_t h, const object_t* o, unsigned wsSessId, unsigned parentUuId=kInvalidId, const char* eleName=nullptr);
     rc_t uiCreateFromFile(   handle_t h, const char* fn,    unsigned wsSessId, unsigned parentUuId=kInvalidId);
@@ -253,9 +260,14 @@ namespace cw
     // Register parent/child/name app id's 
     rc_t uiRegisterAppIdMap(  handle_t h, const ui::appIdMap_t* map, unsigned mapN );
     
-    // Send a value to the user interface
-    template< typename T >
-      rc_t      uiValueToUI( handle_t h, unsigned wsSessId, unsigned uuId, const T& value );
+    // Send a value from the application to the UI.
+    rc_t uiSendValue( handle_t h, unsigned wsSessId, unsigned uuId, bool value );
+    rc_t uiSendValue( handle_t h, unsigned wsSessId, unsigned uuId, int value );
+    rc_t uiSendValue( handle_t h, unsigned wsSessId, unsigned uuId, unsigned value );
+    rc_t uiSendValue( handle_t h, unsigned wsSessId, unsigned uuId, float value );
+    rc_t uiSendValue( handle_t h, unsigned wsSessId, unsigned uuId, double value );
+    rc_t uiSendValue( handle_t h, unsigned wsSessId, unsigned uuId, const char* value );
+
     
     
   }
