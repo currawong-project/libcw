@@ -5,6 +5,7 @@
 #include "cwTime.h"
 #include "cwTextBuf.h"
 #include "cwAudioDevice.h"
+#include "cwAudioBufDecls.h"
 #include "cwAudioBuf.h"
 
 /*
@@ -216,26 +217,43 @@ namespace cw
 
         }
       
-      } 
+      }
 
-void _theBufCalcTimeStamp( double srate, const time::spec_t* baseTimeStamp, unsigned frmCnt, time::spec_t* retTimeStamp )
-{
-  if( retTimeStamp == NULL )
-    return;
+      void _setFlag( audioBuf_t* p, unsigned devIdx, unsigned chIdx, unsigned flags, unsigned ioIdx )
+      {
 
-  double   secs      = frmCnt / srate;
-  unsigned int_secs  = floor(secs);
-  double   frac_secs = secs - int_secs;
+        bool     enableFl = flags & kEnableFl ? true : false; 
+        unsigned i        = chIdx != kInvalidIdx ? chIdx   : 0;
+        unsigned n        = chIdx != kInvalidIdx ? chIdx+1 : p->devArray[devIdx].ioArray[ioIdx].chCnt;
+  
+        for(; i<n; ++i)
+        {
+          cmApCh*  cp  = p->devArray[devIdx].ioArray[ioIdx].chArray + i;
+          cp->fl = cwEnaFlag(cp->fl, flags & (kChFl|kToneFl|kMeterFl|kMuteFl|kPassFl), enableFl );
+    
+        }
+   
+      }
+      
 
-  retTimeStamp->tv_nsec = floor(baseTimeStamp->tv_nsec + frac_secs * 1000000000);
-  retTimeStamp->tv_sec = baseTimeStamp->tv_sec  + int_secs;
+      void _theBufCalcTimeStamp( double srate, const time::spec_t* baseTimeStamp, unsigned frmCnt, time::spec_t* retTimeStamp )
+      {
+        if( retTimeStamp == NULL )
+          return;
 
-  if( retTimeStamp->tv_nsec > 1000000000 )
-  {
-    retTimeStamp->tv_nsec -= 1000000000;
-    retTimeStamp->tv_sec  += 1;
-  }
-}
+        double   secs      = frmCnt / srate;
+        unsigned int_secs  = floor(secs);
+        double   frac_secs = secs - int_secs;
+
+        retTimeStamp->tv_nsec = floor(baseTimeStamp->tv_nsec + frac_secs * 1000000000);
+        retTimeStamp->tv_sec = baseTimeStamp->tv_sec  + int_secs;
+
+        if( retTimeStamp->tv_nsec > 1000000000 )
+        {
+          retTimeStamp->tv_nsec -= 1000000000;
+          retTimeStamp->tv_sec  += 1;
+        }
+      }
 
 
     }
@@ -558,21 +576,16 @@ unsigned cw::audio::buf::channelCount( handle_t h, unsigned devIdx, unsigned fla
 
 void cw::audio::buf::setFlag( handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags )
 {
-  
   if( devIdx == kInvalidIdx )
     return;
 
   audioBuf_t* p = _handleToPtr(h);
-  unsigned idx      = flags & kInFl     ? kInApIdx : kOutApIdx;
-  bool     enableFl = flags & kEnableFl ? true : false; 
-  unsigned i        = chIdx != kInvalidIdx ? chIdx   : 0;
-  unsigned n        = chIdx != kInvalidIdx ? chIdx+1 : p->devArray[devIdx].ioArray[idx].chCnt;
-  
-  for(; i<n; ++i)
-  {
-    cmApCh*  cp  = p->devArray[devIdx].ioArray[idx].chArray + i;
-    cp->fl = cwEnaFlag(cp->fl, flags & (kChFl|kToneFl|kMeterFl|kMuteFl|kPassFl), enableFl );
-  }
+
+  if( flags & kInFl )
+    _setFlag( p, devIdx, chIdx, flags, kInApIdx );
+
+  if( flags & kOutFl )
+    _setFlag( p, devIdx, chIdx, flags, kOutApIdx );
   
 }  
 
@@ -599,11 +612,28 @@ void  cw::audio::buf::enableTone(   handle_t h, unsigned devIdx, unsigned chIdx,
 bool  cw::audio::buf::isToneEnabled(   handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags )
 { return isFlag(h,devIdx,chIdx,flags | kToneFl); }
 
+void  cw::audio::buf::toneFlags(    handle_t h, unsigned devIdx, unsigned flags, bool* enableFlA, unsigned chCnt )
+{
+  chCnt = std::min( chCnt, channelCount(h,devIdx,flags));
+  
+  for(unsigned i=0; i<chCnt; ++i)
+    enableFlA[i] = isFlag(h, devIdx, i, flags | kToneFl); 
+}
+
+
 void  cw::audio::buf::enableMute(   handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags )
 { setFlag(h,devIdx,chIdx,flags | kMuteFl); }
 
 bool  cw::audio::buf::isMuteEnabled(   handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags )
 { return isFlag(h,devIdx,chIdx,flags | kMuteFl); }
+
+void  cw::audio::buf::muteFlags(    handle_t h, unsigned devIdx, unsigned flags, bool* muteFlA, unsigned chCnt )
+{
+  chCnt = std::min( chCnt, channelCount(h,devIdx,flags));
+  
+  for(unsigned i=0; i<chCnt; ++i)
+    muteFlA[i] = isFlag(h, devIdx, i, flags | kToneFl); 
+}
 
 void  cw::audio::buf::enablePass(   handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags )
 { setFlag(h,devIdx,chIdx,flags | kPassFl); }
@@ -647,10 +677,25 @@ double cw::audio::buf::gain( handle_t h, unsigned devIdx, unsigned chIdx, unsign
 {
   if( devIdx == kInvalidIdx )
     return 0;
+  
   audioBuf_t* p = _handleToPtr(h);
 
   unsigned idx   = flags & kInFl  ? kInApIdx : kOutApIdx;
   return  p->devArray[devIdx].ioArray[idx].chArray[chIdx].gain;  
+}
+
+void   cw::audio::buf::gain( handle_t h, unsigned devIdx, unsigned flags, double* gainA, unsigned gainN )
+{
+  if( devIdx == kInvalidIdx )
+    return;
+  
+  audioBuf_t* p   = _handleToPtr(h);
+  unsigned    idx = flags & kInFl  ? kInApIdx : kOutApIdx;
+  unsigned    n   = std::min(gainN,channelCount(h,devIdx,flags));
+
+  for(unsigned i=0; i<n; ++i)
+    gainA[i] = p->devArray[devIdx].ioArray[idx].chArray[i].gain;
+
 }
 
 
@@ -811,8 +856,6 @@ void cw::audio::buf::advance( handle_t h, unsigned devIdx, unsigned flags )
       cmApCh* cp = ioPtr->chArray + i;
       cp->oi     = (cp->oi + ioPtr->dspFrameCnt) % ioPtr->n;
       atomicUIntDecr(&cp->fn,ioPtr->dspFrameCnt);
-
-      
     }
 
     // count the number of samples input from this device
@@ -830,7 +873,6 @@ void cw::audio::buf::advance( handle_t h, unsigned devIdx, unsigned flags )
       cmApCh* cp = ioPtr->chArray + i;
       cp->ii     = (cp->ii + ioPtr->dspFrameCnt) % ioPtr->n;
       atomicUIntIncr(&cp->fn,ioPtr->dspFrameCnt);
-
     }
 
     // count the number of samples output from this device

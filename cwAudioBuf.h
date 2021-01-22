@@ -45,7 +45,21 @@ namespace cw
 
       typedef device::sample_t            sample_t;
       typedef handle<struct audioBuf_str> handle_t;
-      
+
+      // Channel flags
+      enum
+      {
+       kInFl     = 0x01,  //< Identify an input channel
+       kOutFl    = 0x02,  //< Identify an output channel
+       kEnableFl = 0x04,  //< Set to enable a channel, Clear to disable. 
+
+       kChFl     = 0x08,  //< Used to enable/disable a channel
+       kMuteFl   = 0x10,  //< Mute this channel
+       kToneFl   = 0x20,  //< Generate a tone on this channel
+       kMeterFl  = 0x40,  //< Turn meter's on/off
+       kPassFl   = 0x80   //< Pass input channels throught to the output. Must use getIO() to implement this functionality.
+  
+      };
 
       // Allocate and initialize an audio buffer.
       // devCnt - count of devices this buffer will handle.
@@ -97,21 +111,6 @@ namespace cw
         device::audioPacket_t* outPktArray, //< empty audio packet for outgoing audio (to DAC)  
         unsigned               outPktCnt);  //< count of outgoing audio packets
                              
-      // Channel flags
-      enum
-      {
-       kInFl     = 0x01,  //< Identify an input channel
-       kOutFl    = 0x02,  //< Identify an output channel
-       kEnableFl = 0x04,  //< Set to enable a channel, Clear to disable. 
-
-       kChFl     = 0x08,  //< Used to enable/disable a channel
-       kMuteFl   = 0x10,  //< Mute this channel
-       kToneFl   = 0x20,  //< Generate a tone on this channel
-       kMeterFl  = 0x40,  //< Turn meter's on/off
-       kPassFl   = 0x80   //< Pass input channels throught to the output. Must use getIO() to implement this functionality.
-  
-      };
-
       // Return the meter window period as set by initialize()
       unsigned meterMs(handle_t h);
   
@@ -122,7 +121,7 @@ namespace cw
       unsigned channelCount( handle_t h, unsigned devIdx, unsigned flags );
 
       // Set chIdx to -1 to enable all channels on this device.
-      // Set flags to {kInFl | kOutFl} | {kChFl | kToneFl | kMeterFl} | { kEnableFl=on | 0=off }  
+      // Set flags to kInFl | kOutFl | {kChFl | kToneFl | kMeterFl} | { kEnableFl=on | 0=off }  
       void setFlag( handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags );
   
       // Return true if the the flags is set.
@@ -141,6 +140,7 @@ namespace cw
 
       // Returns true if an input/output tone is enabled on the specified device.
       bool  isToneEnabled(handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags );
+      void  toneFlags(    handle_t h, unsigned devIdx, unsigned flags, bool* enableFlA, unsigned enableFlN );
 
       // Mute a specified channel.
       // Set chIdx to -1 to apply the change to all channels on this device.
@@ -148,7 +148,8 @@ namespace cw
       void  enableMute(   handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags );
 
       // Returns true if an input/output channel is muted on the specified device.
-      bool  isMuteEnabled(handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags );
+      bool  isMuteEnabled(handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags );      
+      void  muteFlags(    handle_t h, unsigned devIdx, unsigned flags, bool* muteFlA, unsigned muteFlN );
 
       // Set the specified channel to pass through.
       // Set chIdx to -1 to apply the change to all channels on this device.
@@ -175,7 +176,9 @@ namespace cw
 
       // Return the current gain seting for the specified channel.
       double gain( handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags ); 
+      void   gain( handle_t h, unsigned devIdx, unsigned flags, double* gainA, unsigned gainN ); 
 
+      
       // Get the meter and fault status of the channel input or output channel array of a device.
       // Set 'flags' to { kInFl | kOutFl }.
       // The returns value is the count of channels actually written to meterArray.
