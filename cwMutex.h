@@ -18,6 +18,11 @@ namespace cw
     // If 'lockThenWaitFl' is false then the function assumes the mutex is already locked
     // and directly waits. If 'lockThenWaitFl' is set and the mutex is not already locked
     // then the result is undefined.
+    //
+    // Note that this function does NOT check for 'spurious wakeups' - when
+    // the condition var. returns (w/ the mutex locked) even though it was
+    // not acutally signals. If it matters to the application then it must
+    // provide this logic.
     rc_t waitOnCondVar( handle_t h, bool lockThenWaitFl, unsigned timeOutMs );
 
     rc_t signalCondVar( handle_t h);
