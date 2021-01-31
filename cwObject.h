@@ -115,6 +115,7 @@ namespace cw
     inline bool is_pair()      const { return type != nullptr && type->id == kPairTId; }
     inline bool is_dict()      const { return type != nullptr && type->id == kDictTId; }
     inline bool is_list()      const { return type != nullptr && type->id == kListTId; }
+    inline bool is_type( unsigned tid ) const { return type != nullptr && type->id == tid; }
 
     rc_t value( void* dst, unsigned dstTypeId );
     rc_t value( char& v ) const;
