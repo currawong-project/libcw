@@ -657,7 +657,25 @@ cw::audio::buf::sample_t cw::audio::buf::meter(handle_t h, unsigned devIdx, unsi
   unsigned            idx = flags & kInFl  ? kInApIdx : kOutApIdx;
   const cmApCh*       cp  = p->devArray[devIdx].ioArray[idx].chArray + chIdx;
   return _cmApMeterValue(cp);  
-} 
+}
+
+void  cw::audio::buf::meter(handle_t h, unsigned devIdx, unsigned flags, sample_t* meterA, unsigned meterN )
+{
+  if( devIdx == kInvalidIdx )
+    return;
+  
+  audioBuf_t* p   = _handleToPtr(h);
+  unsigned    idx = flags & kInFl ? kInApIdx : kOutApIdx;
+  unsigned    n   = std::min(meterN,channelCount(h,devIdx,flags));
+
+  for(unsigned i=0; i<n; ++i)
+  {
+    const cmApCh*  cp  = p->devArray[devIdx].ioArray[idx].chArray + i;
+    meterA[i] = _cmApMeterValue(cp);
+  }
+  
+}
+
 
 void cw::audio::buf::setGain( handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags, double gain )
 {

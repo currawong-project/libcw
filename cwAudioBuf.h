@@ -170,6 +170,7 @@ namespace cw
       // Return the meter value for the requested channel.
       // Set flags to kInFl | kOutFl.
       sample_t meter(handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags );
+      void     meter(handle_t h, unsigned devIdx, unsigned flags, sample_t* meterA, unsigned meterN ); 
 
       // Set chIdx to -1 to apply the gain to all channels on the specified device.
       void setGain( handle_t h, unsigned devIdx, unsigned chIdx, unsigned flags, double gain );
