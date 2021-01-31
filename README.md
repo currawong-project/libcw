@@ -2,6 +2,16 @@
 
 # To Do
 
+- Should a warning be issued by audioBuf functions which return a set of values:
+muteFlags(),toneFlags(), gain( ... gainA) but where the size of the dest array
+does not match the actual number of channesl?
+
+- Document the meaning and way that id's and names/labels are used,
+and intended to be used, and found by UI. As it is they are confusing.
+
+
+
+
 - Any socket function which takes a IP/port address should have a version which also takes a sockaddr_in*.
 - Fix the time functions to make them more convenient and C++ish.
 - implement floating point UI numbers
