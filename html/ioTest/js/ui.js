@@ -1,6 +1,8 @@
 var _ws = null;
 var _rootId = "0";
 var _nextEleId   = 0;
+var _focusId = null;
+var _focusVal = null;
 
 function set_app_title( suffix, className )
 {
@@ -334,7 +336,7 @@ function ui_create_div( parent_ele, d )
 	
 	if( d.title !=  null )
 	{
-	    var title = d.title.trim()
+	    var title = d.title //.trim()
 
 	    if( title.length > 0 )
 	    {
@@ -500,6 +502,21 @@ function ui_create_option( parent_ele, d )
     return opt_ele;
 }
 
+function _ui_on_focus( ele )
+{
+    _focusId=ele.id;
+    _focusVal=ele.value;
+}
+
+function _ui_on_string_blur( ele )
+{
+    if( ele.id == _focusId )
+    {
+	if( ele.value != _focusVal )
+	    ui_send_string_value(ele,ele.value)
+    }
+}
+
 function ui_create_string( parent_ele, d )
 {
     var ele = ui_create_ctl( parent_ele, "input", d.title, d, "uiString" );
@@ -507,6 +524,8 @@ function ui_create_string( parent_ele, d )
     if( ele != null )
     {
 	ele.addEventListener('keyup', function(e) { if(e.keyCode===13){  ui_send_string_value(this, this.value); }} );
+	ele.addEventListener('focus', function(e) { _ui_on_focus(this); } );
+	ele.addEventListener('blur',  function(e) { _ui_on_string_blur(this); }  );
 
 	if( !d.hasOwnProperty('value') )
 	    ui_send_echo(ele);
@@ -521,6 +540,40 @@ function ui_create_string( parent_ele, d )
     return ele;
 }
 
+function _ui_send_number( ele )
+{
+    var val = 0;
+    if( ele.decpl == 0 )
+	val = Number.parseInt(ele.value)
+    else
+	val = Number.parseFloat(ele.value)
+
+    if( !(ele.minValue<=val && val<=ele.maxValue))
+	ele.style.borderColor = "red"
+    else	
+    {
+	ele.style.borderColor = ""
+
+	if( ele.decpl == 0 )
+	    ui_send_int_value(ele,ele.value);
+	else
+	    ui_send_float_value(ele,ele.value);
+    }
+    
+}
+
+function _ui_on_number_blur( ele )
+{
+    if( ele.id == _focusId )
+    {
+	if( ele.value != _focusVal )
+	{
+	    _ui_send_number(ele)
+	}
+	
+    }
+}
+
 function ui_number_keyup( e )
 {
     if( e.keyCode===13 )
@@ -530,24 +583,7 @@ function ui_number_keyup( e )
 	if( ele != null )
 	{
 	    //console.log("min:"+ele.minValue+" max:"+ele.maxValue)
-
-	    var val = 0;
-	    if( ele.decpl == 0 )
-		val = Number.parseInt(ele.value)
-	    else
-		val = Number.parseFloat(ele.value)
-
-	    if( !(ele.minValue<=val && val<=ele.maxValue))
-		ele.style.borderColor = "red"
-	    else	
-	    {
-		ele.style.borderColor = ""
-
-		if( ele.decpl == 0 )
-		    ui_send_int_value(ele,ele.value);
-		else
-		    ui_send_float_value(ele,ele.value);
-	    }
+	    _ui_send_number(ele)
 	}
     }
 }
@@ -563,6 +599,8 @@ function ui_create_number( parent_ele, d )
 	ele.stepValue = d.step;
 	ele.decpl     = d.decpl;
 	ele.addEventListener('keyup', ui_number_keyup );
+	ele.addEventListener('focus', function(e) { _ui_on_focus(this); } );
+	ele.addEventListener('blur',  function(e) { _ui_on_number_blur(this); }  );
 
 	if( d.hasOwnProperty('value') && d.min <= d.value && d.value <= d.max )
 	{
@@ -615,7 +653,7 @@ function ui_set_value( d )
     var ele = dom_id_to_ele(d.uuId.toString())
 
     if( ele == null )
-	console.log("ele not found");
+	console.log("ele not found: uuid: "+d.uuId);
     else
 	if( !ele.hasOwnProperty("uiEleType") )
 	    console.log("No type");
