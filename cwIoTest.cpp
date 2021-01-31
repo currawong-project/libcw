@@ -9,6 +9,8 @@
 #include "cwUiDecls.h"
 #include "cwIo.h"
 #include "cwIoTest.h"
+#include "cwIoSocketChat.h"
+#include "cwIoAudioPanel.h"
 
 namespace cw
 {
@@ -20,15 +22,7 @@ namespace cw
       // Resource Based elements
       kPanelDivId = 1000,
       kQuitBtnId,
-      kPanelBtn1Id,
-      kPanelCheck1Id,
-      kPanelBtn2Id,
-      kPanelCheck2Id,
-      kPanelFloaterId,
-      kSelId,
-      kOpt1Id,
-      kOpt2Id,
-      kOpt3Id,
+      kReportBtnId,
 
       kInMeterDivId,
       kOutMeterDivId,
@@ -40,8 +34,6 @@ namespace cw
       kOutGainBaseId  = 7000,  kOutGainMaxId = 7999,
       kOutToneBaseId  = 8000,  kOutToneMaxId = 8999,
       kOutMuteBaseId  = 9000,  kOutMuteMaxId = 9999
-     
-      
     };
 
     // Application Id's for the resource based UI elements.
@@ -49,17 +41,7 @@ namespace cw
     {
       { ui::kRootAppId,  kPanelDivId, "panelDivId" },
       { kPanelDivId, kQuitBtnId,      "quitBtnId" },
-      /*
-      { kPanelDivId, kPanelBtn1Id,    "myBtn1Id" },
-      { kPanelDivId, kPanelCheck1Id,  "myCheck1Id" },
-      { kPanelDivId, kPanelBtn2Id,    "myBtn2Id" },
-      { kPanelDivId, kPanelCheck2Id,  "myCheck2Id" },
-      { kPanelDivId, kPanelFloaterId, "myFloater" },
-      { kPanelDivId, kSelId,          "mySel" },
-      { kSelId,      kOpt1Id,         "myOpt1" },
-      { kSelId,      kOpt2Id,         "myOpt2" },
-      { SelId,      kOpt3Id,         "myOpt3" },     
-      */
+      { kPanelDivId, kReportBtnId,    "reportBtnId" },
     };
 
     unsigned mapN = sizeof(mapA)/sizeof(mapA[0]);
@@ -67,69 +49,17 @@ namespace cw
     // Application object
     typedef struct app_str
     {
+      sock_chat::handle_t sockChat0H;
+      sock_chat::handle_t sockChat1H;
+      audio_panel::handle_t audioPanelH;
       handle_t ioH;
     } app_t;
 
     
 
-    rc_t _uiCreateMeters( app_t* app, unsigned wsSessId, unsigned chCnt, bool inputFl )
-    {
-      rc_t rc = kOkRC;
-      unsigned    parentUuId  = ui::kRootAppId;
-      unsigned    divUuId     = kInvalidId;
-      unsigned    titleUuId   = kInvalidId;
-      const char* title       = inputFl ? "Input"        : "Output";
-      const char* divEleName  = inputFl ? "inMeterId"    : "outMeterId";
-      unsigned    divAppId    = inputFl ? kInMeterDivId  : kOutMeterDivId;
-      unsigned    baseMeterId = inputFl ? kInMeterBaseId : kOutMeterBaseId;
-      unsigned    baseToneId  = inputFl ? kInToneBaseId  : kOutToneBaseId;
-      unsigned    baseMuteId  = inputFl ? kInMuteBaseId  : kOutMuteBaseId;
-      unsigned    baseGainId  = inputFl ? kInGainBaseId  : kOutGainBaseId;
-      unsigned    colUuId;
-      unsigned    uuid;
-
-      uiCreateTitle(app->ioH, titleUuId, wsSessId, parentUuId, nullptr,    kInvalidId, nullptr, title );
-      uiCreateDiv(  app->ioH, divUuId,   wsSessId, parentUuId, divEleName, divAppId,   "uiRow", nullptr );
-
-      uiCreateDiv(  app->ioH, colUuId, wsSessId, divUuId, nullptr, kInvalidId, "uiCol", nullptr );        
-      uiCreateTitle(app->ioH, uuid,    wsSessId, colUuId, nullptr, kInvalidId, nullptr, "Tone" );
-      uiCreateTitle(app->ioH, uuid,    wsSessId, colUuId, nullptr, kInvalidId, nullptr, "Mute" );
-      uiCreateTitle(app->ioH, uuid,    wsSessId, colUuId, nullptr, kInvalidId, nullptr, "Gain" );
-      uiCreateTitle(app->ioH, uuid,    wsSessId, colUuId, nullptr, kInvalidId, nullptr, "Meter" );
-      
-      for(unsigned i=0; i<chCnt; ++i)
-      {
-        unsigned chLabelN = 32;
-        char     chLabel[ chLabelN+1 ];
-        snprintf(chLabel,chLabelN,"%i",i+1);
-        
-        uiCreateDiv(  app->ioH, colUuId, wsSessId, divUuId, nullptr, kInvalidId, "uiCol", chLabel );        
-        uiCreateCheck(app->ioH, uuid,    wsSessId, colUuId, nullptr, baseToneId  + i, "checkClass", nullptr, false );
-        uiCreateCheck(app->ioH, uuid,    wsSessId, colUuId, nullptr, baseMuteId  + i, "checkClass", nullptr, false );
-        uiCreateNumb( app->ioH, uuid,    wsSessId, colUuId, nullptr, baseGainId  + i, "floatClass", nullptr,    0.0, 3.0, 0.001, 3, 0 );
-        uiCreateNumb( app->ioH, uuid,    wsSessId, colUuId, nullptr, baseMeterId + i, "floatClass", nullptr, -100.0, 100, 1, 2, 0 );
-      } 
-      
-      return rc;
-    }
-    
-    rc_t _uiCreateMeterPanel( app_t* app, unsigned wsSessId )
-    {
-      unsigned devIdx = audioDeviceLabelToIndex( app->ioH, "main");
-      unsigned iChCnt = audioDeviceChannelCount( app->ioH, devIdx, kInFl);
-      unsigned oChCnt = audioDeviceChannelCount( app->ioH, devIdx, kOutFl);
-      
-      _uiCreateMeters( app, wsSessId, iChCnt, true );
-      _uiCreateMeters( app, wsSessId, oChCnt, false );
-
-      return kOkRC;
-    }
-
     rc_t _onUiInit(app_t* app, const ui_msg_t& m )
     {
       rc_t rc = kOkRC;
-
-      _uiCreateMeterPanel(app,m.wsSessId);
       
       return rc;
     }
@@ -143,29 +73,12 @@ namespace cw
         case kQuitBtnId:
           io::stop( app->ioH );
           break;
+
+        case kReportBtnId:
+          io::report( app->ioH );
+          break;
       }
 
-      if( kInMeterBaseId <= m.appId && m.appId < kInMeterMaxId )
-      {
-        
-      }
-      else
-        
-      if( kInGainBaseId <= m.appId && m.appId < kInGainMaxId )
-      {
-      }
-      else
-        
-      if( kInToneBaseId <= m.appId && m.appId < kInToneMaxId )
-      {
-      }
-      else
-        
-      if( kInMuteBaseId <= m.appId && m.appId < kInMuteMaxId )
-      {
-      }
-      
-      
       return rc;
     }
     
@@ -243,19 +156,21 @@ namespace cw
       return rc;      
     }
 
-    rc_t _audioMeterCb( app_t* app, const audio_group_dev_t* agd )
-    {
-      unsigned baseAppId = cwIsFlag(agd->flags,kInFl) ? kInMeterBaseId : kOutMeterBaseId;
-      for(unsigned i=0; i<agd->chCnt; ++i)
-        uiSendValue(  app->ioH, kInvalidId, uiFindElementUuId(app->ioH,baseAppId+i), agd->meterA[i] );
-      return kOkRC;
-    }
 
     // The main application callback
     rc_t testCb( void* arg, const msg_t* m )
     {
       rc_t rc = kOkRC;
       app_t* app = reinterpret_cast<app_t*>(arg);
+
+      if( app->sockChat0H.isValid() )
+        sock_chat::exec( app->sockChat0H, *m );
+      
+      if( app->sockChat1H.isValid() )
+        sock_chat::exec( app->sockChat1H, *m );
+
+      if( app->audioPanelH.isValid() )
+        audio_panel::exec( app->audioPanelH, *m );
       
       switch( m->tid )
       {
@@ -271,11 +186,9 @@ namespace cw
           break;
 
         case kAudioMeterTId:
-          if( m->u.audioGroupDev != nullptr )
-            rc = _audioMeterCb(app,m->u.audioGroupDev);
           break;
           
-        case kSockTid:
+        case kSockTId:
           break;
           
         case kWebSockTId:
@@ -293,10 +206,10 @@ namespace cw
       return rc;
     }
     
-    void report( handle_t h )
+    void _report( handle_t h )
     {
       for(unsigned i=0; i<serialDeviceCount(h); ++i)
-        printf("serial: %s\n", serialDeviceName(h,i));
+        printf("serial: %s\n", serialDeviceLabel(h,i));
 
       for(unsigned i=0; i<midiDeviceCount(h); ++i)
         for(unsigned j=0; j<2; ++j)
@@ -319,36 +232,75 @@ namespace cw
 cw::rc_t cw::io::test( const object_t* cfg )
 {
   rc_t rc;
-  app_t app = {}; 
-  
+  app_t app = {};
+
+  enum
+  {
+    kSocket0BaseId    = 30000,
+    kSocket1BaseId    = 31000,
+    kAudioPanelBaseId = 32000
+  };
+
+  // create the io framework instance
   if((rc = create(app.ioH,cfg,testCb,&app,mapA,mapN)) != kOkRC )
     return rc;
 
-  //report(app.ioH);
+  // create a socket chat app 
+  if((rc = sock_chat::create(app.sockChat0H,app.ioH,"sock0",kSocket0BaseId)) != kOkRC )
+  {
+    rc = cwLogError(rc,"sock chat app create failed");
+    goto errLabel;
+  }
 
-  if((rc = start(app.ioH)) != kOkRC )
-    cwLogError(rc,"Test app start failed.");
+  // create a socket chat app 
+  if((rc = sock_chat::create(app.sockChat1H,app.ioH,"sock1",kSocket1BaseId)) != kOkRC )
+  {
+    rc = cwLogError(rc,"sock chat app create failed");
+    goto errLabel;
+  }
+
+  // create the audio panel application
+  if((rc = audio_panel::create(app.audioPanelH, app.ioH, kAudioPanelBaseId)) != kOkRC )
+  {
+    rc = cwLogError(rc,"Audio panel manager create failed.");
+    goto errLabel;
+  }
   else
   {
+  }
+  
+  //report(app.ioH);
+
+  // start the io framework instance
+  if((rc = start(app.ioH)) != kOkRC )
+  {
+    rc = cwLogError(rc,"Test app start failed.");
+    goto errLabel;
     
+  }
+  else
+  {
+  // 
     unsigned devIdx = audioDeviceLabelToIndex(app.ioH, "main");
     if( devIdx == kInvalidIdx )
       cwLogError(kOpFailRC, "Unable to locate the requested audio device.");
     else
     {
-      audioDeviceEnableMeters( app.ioH, devIdx, kInFl  | kOutFl | kEnableFl );
+      //audioDeviceEnableMeters( app.ioH, devIdx, kInFl  | kOutFl | kEnableFl );
       //audioDeviceEnableTone( app.ioH,   devIdx, kOutFl |          kEnableFl );
     }
-    
-    
-    while( !isShuttingDown(app.ioH))
-    {
-      exec(app.ioH);
-      sleepMs(50);
-    }
+  }
+  
+  // execuite the io framework
+  while( !isShuttingDown(app.ioH))
+  {
+    exec(app.ioH);
+    sleepMs(50);
   }
 
-  
+ errLabel:
+  sock_chat::destroy(app.sockChat0H);
+  sock_chat::destroy(app.sockChat1H);
   destroy(app.ioH);
   printf("ioTest Done.\n");
   return rc;
