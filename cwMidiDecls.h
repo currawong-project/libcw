@@ -17,12 +17,12 @@ namespace cw
 
     typedef struct packet_str
     {
-      void*         cbDataPtr; // application supplied reference value from mdParserCreate()
-      unsigned      devIdx;    // the device the msg originated from
-      unsigned      portIdx;   // the port index on the source device
-      msg_t*        msgArray;  // pointer to an array of 'msgCnt' mdMsg records or NULL if sysExMsg is non-NULL
-      uint8_t*       sysExMsg;  // pointer to a sys-ex msg or NULL if msgArray is non-NULL (see note below)
-      unsigned      msgCnt;    // count of mdMsg records or sys-ex bytes
+      void*         cbDataPtr; // Application supplied reference value from mdParserCreate()
+      unsigned      devIdx;    // The device the msg originated from
+      unsigned      portIdx;   // The port index on the source device
+      msg_t*        msgArray;  // Pointer to an array of 'msgCnt' mdMsg records or NULL if sysExMsg is non-NULL
+      uint8_t*      sysExMsg;  // Pointer to a sys-ex msg or NULL if msgArray is non-NULL (see note below)
+      unsigned      msgCnt;    // Count of mdMsg records or sys-ex bytes
     } packet_t;
   }
 }
