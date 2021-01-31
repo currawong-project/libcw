@@ -446,7 +446,7 @@ namespace cw
                 }
         
 
-                printf("EPIPE %c %i %i %i\n",dirCh,drp->devIdx,drp->oCbCnt,line);
+                cwLogInfo("EPIPE %c %i %i %i",dirCh,drp->devIdx,drp->oCbCnt,line);
 
                 break;
               }
@@ -457,7 +457,7 @@ namespace cw
                 if((err = snd_pcm_recover( pcmH, err, silentFl )) < 0 )
                   _alsaSetupError(err,inputFl,drp,"recover failed.");
 
-                printf("audio port impl ESTRPIPE:%c\n",dirCh);
+                cwLogInfo("audio port impl ESTRPIPE:%c",dirCh);
                 break;
               }
 
@@ -547,7 +547,7 @@ namespace cw
                 normN += 1;
           }
 
-          printf("%i z:%i n:%i : %f %i : %s\n", n, zeroN, normN, facc/(n/2), iacc/(n/2), devNameStr);
+          cwLogInfo("%i z:%i n:%i : %f %i : %s", n, zeroN, normN, facc/(n/2), iacc/(n/2), devNameStr);
           
         }
 
@@ -1153,7 +1153,8 @@ namespace cw
 
                   p->pollfdsCnt += incrFdsCnt;
                 }
-                printf("%s %s period:%i %i buffer:%i bits:%i sig_bits:%i\n",inputFl?"in ":"out",drp->nameStr,(unsigned)periodFrameCnt,(unsigned)actFpC,(unsigned)bufferFrameCnt,bits,sig_bits);
+                
+                cwLogInfo("%s %s period:%i %i buffer:%i bits:%i sig_bits:%i",inputFl?"in ":"out",drp->nameStr,(unsigned)periodFrameCnt,(unsigned)actFpC,(unsigned)bufferFrameCnt,bits,sig_bits);
 
               } // end if async
 
