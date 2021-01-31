@@ -13,6 +13,9 @@ namespace cw
     // connId is an automatically assigned id which represents the remote endpoint which is connected to 'userId'.
     typedef void (*callbackFunc_t)( void* cbArg, cbOpId_t cbId, unsigned userId, unsigned connId, const void* byteA, unsigned byteN, const struct sockaddr_in* srcAddr );
 
+    // maxSocketN is the maximum number of socket connections this manager will create.
+    // This includes sockets created throught the create() method as well as connections
+    // created through 'accept()'  
     rc_t createMgr(  handle_t& hRef, unsigned recvBufByteN, unsigned maxSocketN );
     rc_t destroyMgr( handle_t& hRef );
 
