@@ -31,7 +31,7 @@ namespace cw
      kMidiTId,
      kAudioTId,
      kAudioMeterTId,
-     kSockTid,
+     kSockTId,
      kWebSockTId,
      kUiTId
     };
@@ -52,7 +52,8 @@ namespace cw
 
     typedef struct audio_group_dev_str
     {
-      const char*                 label;   // User label
+      const char*                 label;   // User supplied label
+      unsigned                    userId;  // User supplied id
       const char*                 devName; // Audio device name
       unsigned                    devIdx;  // Audio device index
       unsigned                    flags;   //  kInFl | kOutFl | kMeterFl
@@ -61,7 +62,7 @@ namespace cw
       unsigned                    cbCnt;   // Count of device driver callbacks
       sample_t*                   meterA;  // Meter values for this device.
       
-      std::atomic_uint            readyCnt;// Used internally do not read or write.
+      std::atomic_uint            readyCnt;// Used internally
 
       struct audio_group_dev_str* link;    // 
     } audio_group_dev_t;
@@ -69,7 +70,8 @@ namespace cw
     typedef struct audio_msg_str
     {
       const char*        label;         // User provided label
-      unsigned           groupId;       // User provided group id
+      unsigned           groupIndex;    // System supplied group index
+      unsigned           userId;        // User id
       double             srate;         // Group sample rate.
       unsigned           dspFrameCnt;   // Count of samples in each buffer pointed to by iBufArray[] and oBufArray[]
       
@@ -88,6 +90,7 @@ namespace cw
     typedef struct socket_msg_str
     {
       sock::cbOpId_t            cbId;
+      unsigned                  sockIdx;
       unsigned                  userId;
       unsigned                  connId;
       const void*               byteA;
@@ -137,6 +140,7 @@ namespace cw
     rc_t stop(  handle_t h );
     rc_t exec(  handle_t h );
     bool isShuttingDown( handle_t h );
+    void report( handle_t h );
 
     //----------------------------------------------------------------------------------------------------------
     //
@@ -144,8 +148,8 @@ namespace cw
     //
 
     unsigned    serialDeviceCount( handle_t h );
-    const char* serialDeviceName(  handle_t h, unsigned devIdx );
-    unsigned    serialDeviceIndex( handle_t h, const char* name );
+    const char* serialDeviceLabel( handle_t h, unsigned devIdx );
+    unsigned    serialDeviceIndex( handle_t h, const char* label );
     rc_t        serialDeviceSend(  handle_t h, unsigned devIdx, const void* byteA, unsigned byteN );
     
     //----------------------------------------------------------------------------------------------------------
@@ -169,6 +173,8 @@ namespace cw
     
     unsigned        audioDeviceCount(          handle_t h );
     unsigned        audioDeviceLabelToIndex(   handle_t h, const char* label );
+    rc_t            audioDeviceSetUserId(      handle_t h, unsigned devIdx, unsigned userId );
+    bool            audioDeviceIsEnabled(      handle_t h, unsigned devIdx );
     const char*     audioDeviceName(           handle_t h, unsigned devIdx );
     double          audioDeviceSampleRate(     handle_t h, unsigned devIdx );
     unsigned        audioDeviceFramesPerCycle( handle_t h, unsigned devIdx );
@@ -179,36 +185,47 @@ namespace cw
     rc_t            audioDeviceToneFlags(      handle_t h, unsigned devIdx, unsigned inOrOutFlag,  bool* toneFlA, unsigned chCnt );
     rc_t            audioDeviceEnableMute(     handle_t h, unsigned devidx, unsigned inOutEnaFlags );
     rc_t            audioDeviceMuteFlags(      handle_t h, unsigned devIdx, unsigned inOrOutFlag,  bool* muteFlA, unsigned chCnt );
-    rc_t            audioDeviceSetGain(        handle_t h, unsigned devidx, unsigned inOrOutFlags, double gain );
-   
+    rc_t            audioDeviceSetGain(        handle_t h, unsigned devIdx, unsigned inOrOutFlag, double gain );
+    rc_t            audioDeviceGain(           handle_t h, unsigned devIdx, unsigned inOrOutFlag, double* gainA, unsigned chCnt );
+
+    unsigned        audioGroupCount(         handle_t h );
+    unsigned        audioGroupLabelToIndex(  handle_t h, const char* label );
+    const char*     audioGroupLabel(         handle_t h, unsigned groupIdx );
+    bool            audioGroupIsEnabled(     handle_t h, unsigned groupIdx );
+    unsigned        audioGroupUserId(        handle_t h, unsigned groupIdx );
+    rc_t            audioGroupSetUserId(     handle_t h, unsigned groupIdx, unsigned userId );
+    double          audioGroupSampleRate(    handle_t h, unsigned groupIdx );
+    unsigned        audioGroupDspFrameCount( handle_t h, unsigned groupIdx );
     
     //----------------------------------------------------------------------------------------------------------
     //
     // Socket
     //
-    
-    rc_t socketSetup( handle_t h, unsigned timeOutMs, unsigned recvBufByteN, unsigned maxSocketN );
-    
-    rc_t socketCreate(
-      handle_t           h,
-      unsigned           userId,
-      short              port,
-      unsigned           flags,
-      const char*        remoteAddr = nullptr,
-      sock::portNumber_t remotePort = sock::kInvalidPortNumber,
-      const char*        localAddr  = nullptr );
 
-    rc_t socketDestroy( handle_t h, unsigned userId );
+    unsigned           socketCount(        handle_t h );
+    unsigned           socketLabelToIndex( handle_t h, const char* label );
+    unsigned           socketUserId(       handle_t h, unsigned sockIdx );
+    rc_t               socketSetUserId(    handle_t h, unsigned sockIdx, unsigned userId );
+    const char*        socketLabel(        handle_t h, unsigned sockIdx );
+    const char*        socketHostName(     handle_t h, unsigned sockIdx );
+    const char*        socketIpAddress(    handle_t h, unsigned sockIdx );
+    unsigned           socketInetAddress(  handle_t h, unsigned sockIdx );
+    sock::portNumber_t socketPort(         handle_t h, unsigned sockIdx );
+    rc_t               socketPeername(     handle_t h, unsigned sockIdx, struct sockaddr_in* addr );
+    
+    
     
     // Send to the remote endpoint represented by connId over a connected socket.
+    // 'connId' is an id, assigned by the framework, of a remote connected endpoint
+    // attached to a receiving local socket. It is passed to the application as part
+    // of the incoming data callback.
     // If 'connId' is kInvalidId then this data is sent to all connected endpoints.
-    rc_t socketSend(    handle_t h, unsigned userId, unsigned connId, const void* data, unsigned dataByteN );
+    rc_t socketSend(    handle_t h, unsigned sockIdx, unsigned connId, const void* data, unsigned dataByteCnt );
     
     // Send a message to a specific remote node over an unconnected UDP socket.
     // Use the function initAddr() to setup the 'sockaddr_in';
-    rc_t socketSend(    handle_t h, unsigned userId, const void* data, unsigned dataByteCnt, const struct sockaddr_in* remoteAddr );
-    rc_t socketSend(    handle_t h, unsigned userId, const void* data, unsigned dataByteCnt, const char* remoteAddr, sock::portNumber_t port );
-
+    rc_t socketSend(    handle_t h, unsigned sockIdx, const void* data, unsigned dataByteCnt, const struct sockaddr_in* remoteAddr );
+    rc_t socketSend(    handle_t h, unsigned sockIdx, const void* data, unsigned dataByteCnt, const char* remoteAddr, sock::portNumber_t remotePort );
     
 
     //----------------------------------------------------------------------------------------------------------
@@ -224,7 +241,7 @@ namespace cw
     const char* uiFindElementName(   handle_t h, unsigned uuId );
     unsigned    uiFindElementAppId(  handle_t h, unsigned uuId );
     
-    // Return the uuid of the first matching 'eleName'.
+    // Return the uuid of the first matching 'eleName' or 'appId'.
     unsigned    uiFindElementUuId( handle_t h, const char* eleName );
     unsigned    uiFindElementUuId( handle_t h, unsigned appId );
 

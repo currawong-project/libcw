@@ -25,6 +25,8 @@
 #include "cwAudioBuf.h"
 #include "cwAudioDeviceAlsa.h"
 
+#include "cwSocket.h"
+
 #include "cwWebSock.h"
 #include "cwUi.h"
 
@@ -38,7 +40,7 @@ namespace cw
     
     typedef struct serialPort_str
     {
-      char*                   name;
+      char*                   label;
       char*                   device;
       unsigned                baudRate;
       unsigned                flags;
@@ -48,7 +50,7 @@ namespace cw
 
     typedef struct audioGroup_str
     {
-      bool                   enableFl;
+      bool                   enableFl;      
       audio_msg_t            msg;
       mutex::handle_t        mutexH;
       unsigned               threadTimeOutMs;
@@ -59,13 +61,23 @@ namespace cw
     {
       bool               enableFl; // True if this device was enabled by the user
       const char*        label;    // User label
-      const char*        devName;  // System device name
+      unsigned           userId;   // User id
+      char*              devName;  // System device name
       unsigned           devIdx;   // AudioDevice interface device index
       audioGroup_t*      iGroup;   // Audio group pointers for this device
       audioGroup_t*      oGroup;   //
       audio_group_dev_t* iagd;     // Audio group device record assoc'd with this device
       audio_group_dev_t* oagd;     //
     } audioDev_t;
+
+    typedef struct socket_str
+    {
+      bool     enableFl;
+      char*    label;
+      unsigned sockA_index;
+      unsigned userId;
+      
+    } socket_t;
 
     typedef struct io_str
     {
@@ -84,6 +96,12 @@ namespace cw
       unsigned                      serialN;
       
       midi::device::handle_t        midiH;
+
+      socket_t*                     sockA;
+      unsigned                      sockN;
+      sock::handle_t                sockH;
+      unsigned                      sockThreadTimeOutMs;
+      
       
       audio::device::handle_t       audioH;
       audio::device::alsa::handle_t alsaH;
@@ -137,7 +155,7 @@ namespace cw
         };
              
       if((rc = e.getv(
-            "name",         port->name,
+            "label",        port->label,
             "device",       port->device,
             "baud",         port->baudRate,
             "bits",         bits,
@@ -269,6 +287,207 @@ namespace cw
       return rc;
     }
 
+    //------------------------------------------------------------------------------------------------
+    //
+    // Socket
+    //
+
+    socket_t* _socketIndexToRecd( io_t* p, unsigned sockIdx )
+    {
+      if( sockIdx >= p->sockN )
+        cwLogError(kInvalidArgRC,"Invalid socket index (%i >= %i)", sockIdx, p->sockN);
+      return p->sockA + sockIdx;
+    }
+    
+    bool _socketThreadFunc( void* arg )
+    {
+      rc_t     rc        = kOkRC;
+      io_t*    p         = reinterpret_cast<io_t*>(arg);
+      unsigned readByteN = 0;
+      
+      if((rc = receive_all(p->sockH, p->sockThreadTimeOutMs, readByteN)) != kOkRC )
+      {
+        if( rc != kTimeOutRC )
+          cwLogWarning("Socket receive_all() failed.");
+      }
+      
+
+      return true;
+    }
+    
+    void _socketCallback( void* cbArg, sock::cbOpId_t cbId, unsigned sockArray_index, unsigned connId, const void* byteA, unsigned byteN, const struct sockaddr_in* srcAddr )
+    {
+      io_t* p = reinterpret_cast<io_t*>(cbArg);
+
+      if( sockArray_index >= p->sockN )
+        cwLogError(kInvalidArgRC,"The socket index '%i' outside range (0-%i).", sockArray_index, p->sockN );
+      else
+      {
+        socket_msg_t sm;
+        sm.cbId    = cbId;
+        sm.sockIdx = sockArray_index,
+        sm.userId  = p->sockA[ sockArray_index ].userId;
+        sm.connId  = connId;
+        sm.byteA   = byteA;
+        sm.byteN   = byteN;
+        sm.srcAddr = srcAddr;
+
+        msg_t m;
+        m.tid    = kSockTId;
+        m.u.sock = &sm;
+
+        p->cbFunc( p->cbArg, &m );
+      }
+    }
+    
+    
+    rc_t _socketParseAttrs( const object_t* attrL, unsigned& flagsRef )
+    {
+      rc_t            rc    = kOkRC;
+      const object_t* node  = nullptr;
+
+      idLabelPair_t attrA[] =
+        {
+          { .id=sock::kNonBlockingFl,   .label="non_blocking"   }, // Create a non-blocking socket.
+          { .id=sock::kBlockingFl,      .label="blocking"       }, // Create a blocking socket.
+          { .id=sock::kTcpFl,           .label="tcp"            }, // Create a TCP socket rather than a UDP socket.
+          { .id=0,                      .label="udp"            }, //
+          { .id=sock::kBroadcastFl,     .label="broadcast"      }, //
+          { .id=sock::kReuseAddrFl,     .label="reuse_addr"     }, //
+          { .id=sock::kReusePortFl,     .label="reuse_port"     }, //
+          { .id=sock::kMultiCastTtlFl,  .label="multicast_ttl"  }, //
+          { .id=sock::kMultiCastLoopFl, .label="multicast_loop" }, //
+          { .id=sock::kListenFl,        .label="listen"         }, // Use this socket to listen for incoming connections
+          { .id=sock::kStreamFl,        .label="stream"         }, // Connected stream (vs. Datagram)
+          { .id=0,                      .label=nullptr,         }
+        };
+
+      flagsRef = 0;
+      
+      for(unsigned j=0; j<attrL->child_count(); ++j)
+        if((node = attrL->child_ele(j)) != nullptr && node->is_type( kStringTId ) )
+        {
+          unsigned k;
+          for(k=0; attrA[k].label != nullptr; ++k)
+            if( textCompare(attrA[k].label, node->u.str) == 0 )
+            {
+              flagsRef += attrA[k].id;
+              break;
+            }
+
+          if( attrA[k].label == nullptr )
+          {
+            rc = cwLogError(kInvalidArgRC,"The attribute label '%s'.",cwStringNullGuard(node->u.str));
+          }
+        }
+
+      return rc;
+    }
+
+    rc_t _socketParseConfig( io_t* p, const object_t* cfg )
+    {
+      const object_t* node           = nullptr;
+      rc_t            rc             = kOkRC;
+      unsigned        maxSocketCnt   = 10;
+      unsigned        recvBufByteCnt = 4096;
+      const object_t* socketL        = nullptr;
+      
+      // get the socket configuration node
+      if((node = cfg->find("socket")) == nullptr )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"Unable to locate the 'socket' configuration node.");
+        goto errLabel;
+      }
+
+      // get the required socket arguments
+      if(( rc = node->getv(
+            "maxSocketCnt",       maxSocketCnt,
+            "recvBufByteCnt",     recvBufByteCnt,
+            "threadTimeOutMs",    p->sockThreadTimeOutMs,
+            "socketL",            socketL )) != kOkRC )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"Unable to parse the 'socket' configuration node.");
+        goto errLabel;
+      }
+
+      // THe max socket count must be at least as large as the number of defined sockets
+      maxSocketCnt = std::max(p->sockN,maxSocketCnt);
+
+      // create the socket control array
+      p->sockN = socketL->child_count();
+      p->sockA = mem::allocZ<socket_t>(p->sockN);
+
+      // create the socket manager
+      if((rc = sock::createMgr( p->sockH, recvBufByteCnt, maxSocketCnt )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Socket manager creation failed.");
+        goto errLabel;
+      }
+
+      // parse each socket configuration
+      for(unsigned i=0; i<p->sockN; ++i)
+      {
+        if((node = socketL->child_ele(i)) != nullptr )
+        {
+          unsigned        port       = sock::kInvalidPortNumber;
+          unsigned        timeOutMs  = 50; 
+          const object_t* attrL      = nullptr;
+          char*           remoteAddr = nullptr;
+          unsigned        remotePort = sock::kInvalidPortNumber;
+          char*           localAddr  = nullptr;
+          unsigned        flags      = 0;
+
+          // parse the required arguments
+          if(( rc = node->getv(
+                "enableFl",  p->sockA[i].enableFl,
+                "label",     p->sockA[i].label,
+                "port",      port,
+                "timeOutMs", timeOutMs,
+                "attrL",     attrL )) != kOkRC )
+          {
+            rc = cwLogError(rc,"Error parsing required socket cfg record at index:%i",i);
+            goto errLabel;
+          }
+
+          // parse the optional arguments
+          if((rc = node->getv_opt(
+                "userId",     p->sockA[i].userId,
+                "remoteAddr", remoteAddr,
+                "remotePort", remotePort,
+                "localAddr",  localAddr)) != kOkRC )
+          {
+            rc = cwLogError(rc,"Error parsing optional socket cfg record at index:%i",i);
+            goto errLabel;
+          }
+
+          // parse the socket attribute list
+          if((rc = _socketParseAttrs( attrL, flags )) != kOkRC )
+            goto errLabel;
+
+          // create the socket object
+          if((rc = create( p->sockH, i, port, flags, timeOutMs, _socketCallback, p, remoteAddr, remotePort, localAddr )) != kOkRC )
+          {
+            rc = cwLogError(rc,"Socket create failed.");
+            goto errLabel;
+          }
+          
+        }
+      }
+
+      // create the audio group thread
+      if((rc = thread_mach::add(p->threadMachH,_socketThreadFunc,p)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Error creating socket thread.");
+        goto errLabel;
+      }
+      
+
+    errLabel:
+      return rc;
+    }
+    
+
+    
     //----------------------------------------------------------------------------------------------------------
     //
     // Audio
@@ -368,6 +587,9 @@ namespace cw
         rc = cwLogError(rc,"Audio group release failed.");        
         goto errLabel;
       }
+
+      for(unsigned i=0; i<p->audioDevN; ++i)
+        mem::release( p->audioDevA[i].devName );
       
       mem::free(p->audioDevA);
       p->audioDevN = 0;
@@ -392,54 +614,54 @@ namespace cw
     }
 
     
-    void _audioGroupDeviceUpdateMeter( io_t* p, audio_group_dev_t* agd, unsigned flags )
-    {
-      for(unsigned i=0; i<agd->chCnt; ++i)
-        agd->meterA[i] = audio::buf::meter( p->audioBufH, agd->devIdx, i, flags + audio::buf::kMeterFl );
-    }
-
-    rc_t _audioDeviceMeterCallback( io_t* p, audio_group_dev_t* agd )
-    {
-      msg_t m;
-      m.tid        = kAudioMeterTId;
-      m.u.audioGroupDev = agd;
-      return p->cbFunc(p->cbArg,&m);
-      
-    }
-    
-    rc_t _audioDeviceUpdateMeters( io_t* p )
+    rc_t _audioGroupDeviceProcessMeter( io_t* p, audio_group_dev_t* agd, unsigned audioBufFlags )
     {
       rc_t rc = kOkRC;
-      
-      for(unsigned i=0; i<p->audioDevN; ++i)
+      if( agd != nullptr && cwIsFlag(agd->flags,kMeterFl))
       {
-        audioDev_t* ad = p->audioDevA + i;
-        
-        if( ad->iagd != nullptr && cwIsFlag(ad->iagd->flags,kMeterFl))
-        {
-          _audioGroupDeviceUpdateMeter( p, ad->iagd, audio::buf::kInFl  );
-          _audioDeviceMeterCallback( p, ad->iagd );
-        }
+        msg_t m;
+        m.tid             = kAudioMeterTId;
+        m.u.audioGroupDev = agd;
 
-        if( ad->oagd != nullptr && cwIsFlag(ad->oagd->flags,kMeterFl))
-        {
-          _audioGroupDeviceUpdateMeter( p, ad->oagd, audio::buf::kOutFl  );
-          _audioDeviceMeterCallback( p, ad->oagd );
-        }
+        // get the current meter values from the audioBuf
+        audio::buf::meter(p->audioBufH, agd->devIdx, audioBufFlags, agd->meterA, agd->chCnt );
+
+        // callback the application with the current meter values
+        rc = p->cbFunc(p->cbArg,&m);
+        
       }
+
       return rc;
     }
-
+    
     rc_t _audioDeviceProcessMeters( io_t* p )
     {
       rc_t rc = kOkRC;
-      
+
+      // if it is time to execute the next meter update
       if( time::isGTE(p->t0,p->audioMeterNextTime) )
       {
-        rc = _audioDeviceUpdateMeters(p);
+        for(unsigned i=0; i<p->audioDevN; ++i)
+          if( p->audioDevA[i].enableFl )
+          {
+            audioDev_t* ad = p->audioDevA + i;
+            rc_t rc0;
+
+            // update the input meters
+            if((rc0 = _audioGroupDeviceProcessMeter( p, ad->iagd,  audio::buf::kInFl )) != kOkRC )
+              rc = rc0;
+
+            // update the output meters
+            if((rc0 = _audioGroupDeviceProcessMeter( p, ad->oagd,  audio::buf::kOutFl )) != kOkRC )
+              rc = rc0;          
+          }
+
+
+        // schedule the next meter update
         p->audioMeterNextTime = p->t0;
         time::advanceMs(p->audioMeterNextTime,p->audioMeterCbPeriodMs);
       }
+      
       return rc;
     }
     
@@ -519,11 +741,8 @@ namespace cw
 
           _audioGroupProcSampleBufs( ag->p, ag, kAudioGroupAdvBuf, true );
           _audioGroupProcSampleBufs( ag->p, ag, kAudioGroupAdvBuf, false );
-
         }
-
       }
-
      
       return true;
     }
@@ -535,10 +754,37 @@ namespace cw
         if( p->audioDevA[i].devIdx == devIdx )
           return p->audioDevA + i;
 
-      cwLogError(kInvalidArgRC,"A device with index %i could not be found.",devIdx);
+      if( reportMissingFl)
+        cwLogError(kInvalidArgRC,"A device with index %i could not be found.",devIdx);
+      
       return nullptr;
     }
 
+    // Given a device name return the associated audioDev_t record.
+    audioDev_t* _audioDeviceNameToRecd( io_t* p, const char* devName, bool reportMissingFl=true)
+    {
+      for(unsigned i=0; i<p->audioDevN; ++i)
+        if( textCompare(p->audioDevA[i].devName, devName ) == 0 )
+          return p->audioDevA + i;
+
+      if( reportMissingFl )
+        cwLogError(kInvalidArgRC,"A device named '%s' was not found.", cwStringNullGuard(devName) );
+      
+      return nullptr;
+    }
+
+    // Given a user label return the associated audioDev_t record.
+    audioDev_t* _audioDeviceLabelToRecd( io_t* p, const char* label, bool reportMissingFl=true )
+    {
+      for(unsigned i=0; i<p->audioDevN; ++i)
+        if( textCompare(label,p->audioDevA[i].label) == 0 )
+          return p->audioDevA + i;
+
+      if( reportMissingFl )
+        cwLogError(kInvalidArgRC,"An audio device with label '%s' could not be found.",cwStringNullGuard(label));
+
+      return nullptr;
+    }
     
     // Add an audioGroup pointer to groupA[] and return the new count of elements in the array.
     unsigned _audioDeviceUpdateGroupArray( audioGroup_t** groupA, unsigned groupN, unsigned curGroupN, audioGroup_t* ag )
@@ -684,6 +930,7 @@ namespace cw
       audio_group_dev_t* new_agd = mem::allocZ<audio_group_dev_t>();
       
       new_agd->label  = ad->label;
+      new_agd->userId = ad->userId;
       new_agd->devName= ad->devName;
       new_agd->devIdx = ad->devIdx;
       new_agd->flags  = inputFl ? kInFl : kOutFl;
@@ -722,15 +969,42 @@ namespace cw
     }
 
     // Given an audio group id return the associated audio group.
-    audioGroup_t* _audioGroupFromId( io_t* p, unsigned groupId )
+    audioGroup_t* _audioGroupFromId( io_t* p, unsigned userId, bool reportMissingFl=true )
     {
       for(unsigned i=0; i<p->audioGroupN; ++i)
-        if( p->audioGroupA[i].msg.groupId == groupId )
+        if( p->audioGroupA[i].msg.userId == userId )
           return p->audioGroupA + i;
 
+      if( reportMissingFl )
+        cwLogError(kInvalidArgRC,"An audio group with user id %i could not be found.", userId );
+      
       return nullptr;
     }
 
+    audioGroup_t* _audioGroupFromIndex( io_t* p, unsigned groupIdx, bool reportMissingFl=true )
+    {
+      if( groupIdx < p->audioGroupN )
+        return p->audioGroupA + groupIdx;
+
+      if( reportMissingFl )
+        cwLogError(kInvalidArgRC,"'%i' is not a valid audio group index.",groupIdx);
+      
+      return nullptr;
+    }
+
+    // Given an audio group id return the associated audio group.
+    audioGroup_t* _audioGroupFromLabel( io_t* p, const char* label, bool reportMissingFl=true )
+    {
+      for(unsigned i=0; i<p->audioGroupN; ++i)
+        if( textCompare(p->audioGroupA[i].msg.label, label) == 0 )
+          return p->audioGroupA + i;
+
+      if( reportMissingFl )
+        cwLogError(kInvalidArgRC,"An audio group with labe '%s' could not be found.", label );
+      
+      return nullptr;
+    }
+    
     
     // Create the audio group records by parsing the cfg. audio.groupL[] list.
     rc_t _audioDeviceParseAudioGroupList( io_t* p, const object_t* c )
@@ -753,7 +1027,7 @@ namespace cw
           if(( rc = node->getv(
                 "enableFl",    p->audioGroupA[i].enableFl,
                 "label",       p->audioGroupA[i].msg.label,
-                "id",          p->audioGroupA[i].msg.groupId,
+                "id",          p->audioGroupA[i].msg.userId,
                 "srate",       p->audioGroupA[i].msg.srate,
                 "dspFrameCnt", p->audioGroupA[i].msg.dspFrameCnt )) != kOkRC )
           {
@@ -786,6 +1060,7 @@ namespace cw
 
           p->audioGroupA[i].p                = p;
           p->audioGroupA[i].threadTimeOutMs  = p->audioThreadTimeOutMs;
+          p->audioGroupA[i].msg.groupIndex   = i;
           
         }
       }
@@ -793,8 +1068,6 @@ namespace cw
     errLabel:
       return rc;
     }
-      
-
       
     // Create the audio device records by parsing the cfg audio.deviceL[] list.
     rc_t _audioDeviceParseAudioDeviceList( io_t* p, const object_t* cfg )
@@ -810,51 +1083,80 @@ namespace cw
       }
 
       // create an audio device cfg list
-      p->audioDevN = deviceL_Node->child_count();
+      p->audioDevN = audio::device::count(p->audioH);
       p->audioDevA = mem::allocZ<audioDev_t>(p->audioDevN);
 
-      // fill in the audio device cfg list
+      // Initial audioDev record setup
       for(unsigned i=0; i<p->audioDevN; ++i)
       {
-        audioDev_t*   ad          = p->audioDevA + i;
-        unsigned      framesPerCycle = 0;
-        unsigned      cycleCnt   = 0;
-        
-        audioGroup_t* iag        = nullptr;
-        audioGroup_t* oag        = nullptr;
-        
-        double        israte     = 0;
-        double        osrate     = 0;
-        double        srate      = 0;
+        p->audioDevA[i].devName = mem::duplStr(audio::device::label(p->audioH,i));
+        p->audioDevA[i].devIdx  = i;
+        p->audioDevA[i].userId  = kInvalidId;
+      }
 
-        unsigned      iDspFrameCnt = 0;
-        unsigned      oDspFrameCnt = 0;
-        unsigned      dspFrameCnt  = 0;
+      // fill in the audio device cfg list
+      for(unsigned i=0; i<deviceL_Node->child_count(); ++i)
+      {
+        audioDev_t*   ad             = nullptr; //p->audioDevA + i;
+        bool          enableFl       = false;
+        char*         userLabel      = nullptr;
+        unsigned      userId         = kInvalidId;
+        char*         devName        = nullptr;
+        unsigned      framesPerCycle = 0;
+        unsigned      cycleCnt       = 0;
         
-        unsigned      inGroupId  = kInvalidId;
-        unsigned      outGroupId = kInvalidId;
+        audioGroup_t* iag            = nullptr;
+        audioGroup_t* oag            = nullptr;
+        
+        double        israte         = 0;
+        double        osrate         = 0;
+        double        srate          = 0;
+        
+        unsigned      iDspFrameCnt   = 0;
+        unsigned      oDspFrameCnt   = 0;
+        unsigned      dspFrameCnt    = 0;
+        
+        char*         inGroupLabel   = nullptr;
+        char*         outGroupLabel  = nullptr;
+        
         
         const object_t* node;
         
         if((node = deviceL_Node->child_ele(i)) != nullptr )
         {
           if(( rc = node->getv(
-                "enableFl",       ad->enableFl,
-                "label",          ad->label,
-                "inGroupId",      inGroupId,
-                "outGroupId",     outGroupId,
-                "device",         ad->devName,
+                "enableFl",       enableFl,
+                "label",          userLabel,
+                "device",         devName,
                 "framesPerCycle", framesPerCycle,
                 "cycleCnt",       cycleCnt )) != kOkRC )
           {
-            rc = cwLogError(rc,"Error parsing audio cfg record at index:%i",i);
+            rc = cwLogError(rc,"Error parsing required audio cfg record at index:%i",i);
             goto errLabel;
-          }          
-        }
+          }
 
+
+          if((rc = node->getv_opt(
+                "userId",     userId,
+                "inGroup",    inGroupLabel,
+                "outGroup",   outGroupLabel )) != kOkRC )
+          {
+            rc = cwLogError(rc,"Error parsing optional audio cfg record at index:%i",i);
+            goto errLabel;
+          }
+          
+        }
+        
         // if the configuration is enabled
-        if( ad->enableFl )
+        if( enableFl )
         {
+          // locate the record assoc'd with devName
+          if((ad = _audioDeviceNameToRecd(p,devName)) == nullptr )
+          {
+            rc = kInvalidArgRC;
+            goto errLabel;
+          }
+          
           // get the hardware device index
           if((ad->devIdx = audio::device::labelToIndex( p->audioH, ad->devName)) == kInvalidIdx )
           {
@@ -868,18 +1170,20 @@ namespace cw
           
 
           // get the ingroup
-          if((iag = _audioGroupFromId(p, inGroupId )) != nullptr )
-          {
-            israte       = iag->msg.srate;
-            iDspFrameCnt = iag->msg.dspFrameCnt;
-          }
+          if( inGroupLabel != nullptr )
+            if((iag = _audioGroupFromLabel(p, inGroupLabel )) != nullptr )
+            {            
+              israte       = iag->msg.srate;
+              iDspFrameCnt = iag->msg.dspFrameCnt;
+            }
 
-          // get the outgroup 
-          if((oag = _audioGroupFromId(p, outGroupId)) != nullptr )
-          {
-            osrate       = oag->msg.srate;
-            oDspFrameCnt = oag->msg.dspFrameCnt;
-          }
+          // get the outgroup
+          if( outGroupLabel != nullptr )
+            if((oag = _audioGroupFromLabel(p, outGroupLabel)) != nullptr )
+            {
+              osrate       = oag->msg.srate;
+              oDspFrameCnt = oag->msg.dspFrameCnt;
+            }
           
           // in-srate an out-srate must be equal or one must be 0
           if( osrate==0 || israte==0 || osrate==israte )
@@ -889,7 +1193,7 @@ namespace cw
           }
           else
           {
-            rc = cwLogError(kInvalidArgRC,"The device '%s' belongs to two groups (id:%i and id:%i) at different sample rates (%f != %f).", cwStringNullGuard(ad->devName), inGroupId, outGroupId, israte, osrate );
+            rc = cwLogError(kInvalidArgRC,"The device '%s' belongs to two groups (%s and %s) at different sample rates (%f != %f).", cwStringNullGuard(ad->devName), cwStringNullGuard(inGroupLabel), cwStringNullGuard(outGroupLabel), israte, osrate );
             goto errLabel;
           }
 
@@ -901,7 +1205,7 @@ namespace cw
           }
           else
           {
-            rc = cwLogError(kInvalidArgRC,"The device '%s' belongs to two groups (id:%i and id:%i) width different dspFrameCnt values (%i != %i).", cwStringNullGuard(ad->devName), inGroupId, outGroupId, iDspFrameCnt, oDspFrameCnt );
+            rc = cwLogError(kInvalidArgRC,"The device '%s' belongs to two groups (%s and %s) width different dspFrameCnt values (%i != %i).", cwStringNullGuard(ad->devName), cwStringNullGuard(inGroupLabel), cwStringNullGuard(outGroupLabel), iDspFrameCnt, oDspFrameCnt );
             goto errLabel;
           }
           
@@ -919,24 +1223,26 @@ namespace cw
             goto errLabel;
           }
 
-             
+          // if an input group was assigned to this device then create a assoc'd audio_group_dev_t
           if( iag != nullptr )
           {            
             if((rc = _audioGroupAddDevice( iag, true, ad, iChCnt )) != kOkRC )
               goto errLabel;
           }
-
           
+          // if an output group was assigned to this device then create a assoc'd audio_group_dev_t
           if( oag != nullptr )
           {
             if((rc = _audioGroupAddDevice( oag, false, ad, oChCnt )) != kOkRC )
-              goto errLabel;
-            
+              goto errLabel;            
           }
           
           // set the device group pointers
-          ad->iGroup = iag;
-          ad->oGroup = oag;
+          ad->enableFl = enableFl;
+          ad->label    = userLabel;
+          ad->userId   = userId;
+          ad->iGroup   = iag;
+          ad->oGroup   = oag;
             
         }
       }
@@ -964,7 +1270,7 @@ namespace cw
       return rc;
     }
 
-    rc_t _audioDeviceParseConfig( io_t* p, const object_t* cfg )
+    rc_t _audioParseConfig( io_t* p, const object_t* cfg )
     {
       rc_t            rc          = kOkRC;
       const object_t* node        = nullptr;
@@ -1013,7 +1319,7 @@ namespace cw
     }
 
 
-    rc_t _audioDeviceCreate( io_t* p, const object_t* c )
+    rc_t _audioCreate( io_t* p, const object_t* c )
     {      
       rc_t                     rc       = kOkRC;
       audio::device::driver_t* audioDrv = nullptr;
@@ -1040,7 +1346,7 @@ namespace cw
       }
 
       // read the configuration information and setup the audio hardware
-      if((rc = _audioDeviceParseConfig( p, c )) != kOkRC )
+      if((rc = _audioParseConfig( p, c )) != kOkRC )
       {
         rc = cwLogError(rc,"Audio device configuration failed.");
         goto errLabel;
@@ -1157,6 +1463,7 @@ namespace cw
 
       midi::device::destroy(p->midiH);
 
+      mem::release(p->sockA);
       
       for(unsigned i=0; i<p->uiMapN; ++i)
         mem::free(const_cast<char*>(p->uiMapA[i].eleName));
@@ -1246,7 +1553,11 @@ cw::rc_t cw::io::create(
     goto errLabel;
 
   // create the Audio device interface
-  if((rc = _audioDeviceCreate(p,p->cfg)) != kOkRC )
+  if((rc = _audioCreate(p,p->cfg)) != kOkRC )
+    goto errLabel;
+
+  // create the Socket manager
+  if((rc= _socketParseConfig(p, p->cfg )) != kOkRC )
     goto errLabel;
   
   // create the UI interface
@@ -1336,6 +1647,25 @@ bool cw::io::isShuttingDown( handle_t h )
   //return thread_mach::is_shutdown(p->threadMachH);
 }
 
+void cw::io::report( handle_t h )
+{
+  for(unsigned i=0; i<serialDeviceCount(h); ++i)
+    printf("serial: %s\n", serialDeviceLabel(h,i));
+
+  for(unsigned i=0; i<midiDeviceCount(h); ++i)
+    for(unsigned j=0; j<2; ++j)
+    {
+      bool     inputFl = j==0;
+      unsigned m       = midiDevicePortCount(h,i,inputFl);
+      for(unsigned k=0; k<m; ++k)
+        printf("midi: %s: %s : %s\n", inputFl ? "in ":"out", midiDeviceName(h,i), midiDevicePortName(h,i,inputFl,k));
+        
+    }
+
+  for(unsigned i=0; i<audioDeviceCount(h); ++i)
+    printf("audio: %s\n", audioDeviceName(h,i));
+  
+}
 
 
 //----------------------------------------------------------------------------------------------------------
@@ -1349,17 +1679,17 @@ unsigned cw::io::serialDeviceCount( handle_t h )
   return p->serialN;
 }
 
-const char* cw::io::serialDeviceName(  handle_t h, unsigned devIdx )
+const char* cw::io::serialDeviceLabel(  handle_t h, unsigned devIdx )
 {
   io_t* p = _handleToPtr(h);
-  return p->serialA[devIdx].name;
+  return p->serialA[devIdx].label;
 }
 
-unsigned cw::io::serialDeviceIndex( handle_t h, const char* name )
+unsigned cw::io::serialDeviceIndex( handle_t h, const char* label )
 {
   io_t* p = _handleToPtr(h);
   for(unsigned i=0; i<p->serialN; ++i)
-    if( textCompare(name,p->serialA[i].name) == 0 )
+    if( textCompare(label,p->serialA[i].label) == 0 )
       return i;
 
   return kInvalidIdx;
@@ -1435,18 +1765,48 @@ unsigned    cw::io::audioDeviceCount(          handle_t h )
 
 unsigned    cw::io::audioDeviceLabelToIndex(   handle_t h, const char* label )
 {
-  io_t* p = _handleToPtr(h);
-  for(unsigned i=0; i<p->audioDevN; ++i)
-    if( textCompare(label,p->audioDevA[i].label) == 0 )
-      return p->audioDevA[i].devIdx;
+  io_t*       p = _handleToPtr(h);
+  audioDev_t* ad;
+  
+  if((ad = _audioDeviceLabelToRecd(p,label)) != nullptr )
+    return ad->devIdx;
 
   return kInvalidIdx;
-  //return audio::device::labelToIndex(p->audioH,label);
 }
+
+cw::rc_t  cw::io::audioDeviceSetUserId( handle_t h, unsigned devIdx, unsigned userId )
+{
+  io_t*       p = _handleToPtr(h);
+  audioDev_t* ad;
+  
+  if((ad = _audioDeviceIndexToRecd(p,devIdx)) != nullptr )
+  {
+    ad->userId = userId;
+    
+    if( ad->iagd != nullptr )
+      ad->iagd->userId = userId;
+    
+    if( ad->oagd != nullptr )
+      ad->oagd->userId = userId;
+  }
+
+  return kInvalidArgRC;  
+}
+
+bool  cw::io::audioDeviceIsEnabled( handle_t h, unsigned devIdx )
+{
+  io_t*       p = _handleToPtr(h);
+  audioDev_t* ad;
+  if((ad = _audioDeviceIndexToRecd(p,devIdx)) != nullptr )
+    return ad->enableFl;
+  
+  return false;
+}
+
 
 const char* cw::io::audioDeviceName( handle_t h, unsigned devIdx )
 {
-  io_t* p = _handleToPtr(h);
+  io_t*       p = _handleToPtr(h);
   audioDev_t* ad;
   
   if((ad = _audioDeviceIndexToRecd(p, devIdx )) == nullptr )
@@ -1534,14 +1894,11 @@ const cw::io::sample_t* cw::io::audioDeviceMeters( handle_t h, unsigned devIdx, 
   {
     bool               inputFl = inOrOutFlag & kInFl;
     audio_group_dev_t* agd     = inputFl ? ad->iagd     : ad->oagd;
-    unsigned           flags   = inputFl ? audio::buf::kInFl : audio::buf::kOutFl;
     
     if( !cwIsFlag(agd->flags,kMeterFl) )
       rc = cwLogError(kInvalidArgRC,"The %s meters on device %s are not enabled.", inputFl ? "input" : "output", cwStringNullGuard(ad->label));
     else
     {
-      _audioGroupDeviceUpdateMeter(p, agd, flags );
-      
       meterA   = agd->meterA;
       chCntRef = agd->chCnt;
     }
@@ -1582,7 +1939,7 @@ cw::rc_t cw::io::audioDeviceToneFlags( handle_t h, unsigned devIdx, unsigned inO
   unsigned    audioBufFlags = 0;
   
   if((rc = _audioDeviceParams( h, devIdx, inOrOutFlag, p, ad, audioBufFlags )) != kOkRC )
-    rc = cwLogError(rc,"Enable tone failed.");
+    rc = cwLogError(rc,"Get tone flags failed.");
   else    
   {
     audioBufFlags += audio::buf::kToneFl;
@@ -1618,7 +1975,7 @@ cw::rc_t cw::io::audioDeviceMuteFlags( handle_t h, unsigned devIdx, unsigned inO
   unsigned    audioBufFlags = 0;
   
   if((rc = _audioDeviceParams( h, devIdx, inOrOutFlag, p, ad, audioBufFlags )) != kOkRC )
-    rc = cwLogError(rc,"Enable mute failed.");
+    rc = cwLogError(rc,"Get mute flags failed.");
   else    
   {
     audioBufFlags += audio::buf::kMuteFl;
@@ -1629,14 +1986,14 @@ cw::rc_t cw::io::audioDeviceMuteFlags( handle_t h, unsigned devIdx, unsigned inO
 }
 
 
-cw::rc_t cw::io::audioDeviceSetGain( handle_t h, unsigned devIdx, unsigned inOrOutFlags, double gain )
+cw::rc_t cw::io::audioDeviceSetGain( handle_t h, unsigned devIdx, unsigned inOrOutFlag, double gain )
 {
   rc_t        rc            = kOkRC;
   io_t*       p             = nullptr;
   audioDev_t* ad            = nullptr;
   unsigned    audioBufFlags = 0;
   
-  if((rc = _audioDeviceParams( h, devIdx, inOrOutFlags, p, ad, audioBufFlags )) != kOkRC )
+  if((rc = _audioDeviceParams( h, devIdx, inOrOutFlag, p, ad, audioBufFlags )) != kOkRC )
     rc = cwLogError(rc,"Set gain failed.");
   else    
   {
@@ -1646,12 +2003,226 @@ cw::rc_t cw::io::audioDeviceSetGain( handle_t h, unsigned devIdx, unsigned inOrO
   return rc;
 }
 
+cw::rc_t cw::io::audioDeviceGain( handle_t h, unsigned devIdx, unsigned inOrOutFlag, double* gainA, unsigned chCnt )
+{
+  rc_t        rc            = kOkRC;
+  io_t*       p             = nullptr;
+  audioDev_t* ad            = nullptr;
+  unsigned    audioBufFlags = 0;
+  
+  if((rc = _audioDeviceParams( h, devIdx, inOrOutFlag, p, ad, audioBufFlags )) != kOkRC )
+    rc = cwLogError(rc,"Get gain failed.");
+  else    
+  {
+    audioBufFlags += audio::buf::kMuteFl;
+    audio::buf::gain( p->audioBufH, devIdx, audioBufFlags, gainA, chCnt );
+  }
+  
+  return rc;
+}
+
+unsigned cw::io::audioGroupCount( handle_t h )
+{
+  io_t* p = _handleToPtr(h);
+  return p->audioGroupN;
+}
+
+unsigned cw::io::audioGroupLabelToIndex(  handle_t h, const char* label )
+{
+  audioGroup_t* ag;
+  io_t*         p = _handleToPtr(h);
+
+  if((ag = _audioGroupFromLabel(p,label)) == nullptr )
+    return kInvalidIdx;
+
+  return ag->msg.groupIndex; 
+}
+  
+const char* cw::io::audioGroupLabel( handle_t h, unsigned groupIdx )
+{
+  audioGroup_t* ag;
+  io_t*         p = _handleToPtr(h);
+  if((ag = _audioGroupFromIndex( p, groupIdx )) != nullptr )
+    return ag->msg.label;
+  return nullptr;
+}
+
+bool cw::io::audioGroupIsEnabled( handle_t h, unsigned groupIdx )
+{
+  audioGroup_t* ag;
+  io_t*         p = _handleToPtr(h);
+  if((ag = _audioGroupFromIndex( p, groupIdx )) != nullptr )
+    return ag->enableFl;
+  return false;
+}
+
+unsigned cw::io::audioGroupUserId( handle_t h, unsigned groupIdx )
+{
+  audioGroup_t* ag;
+  io_t*         p = _handleToPtr(h);
+  if((ag = _audioGroupFromIndex( p, groupIdx )) != nullptr )
+    return ag->msg.userId;
+  return kInvalidIdx;
+}
+
+cw::rc_t cw::io::audioGroupSetUserId( handle_t h, unsigned groupIdx, unsigned userId )
+{
+  audioGroup_t* ag;
+  io_t*         p = _handleToPtr(h);
+  if((ag = _audioGroupFromIndex( p, groupIdx )) != nullptr )
+    ag->msg.userId = userId;
+  
+  return kInvalidArgRC;
+}
+
+double cw::io::audioGroupSampleRate(    handle_t h, unsigned groupIdx )
+{
+  audioGroup_t* ag;
+  io_t*         p = _handleToPtr(h);
+  if((ag = _audioGroupFromIndex( p, groupIdx )) != nullptr )
+    return ag->msg.srate;
+  return 0;
+}
+
+unsigned cw::io::audioGroupDspFrameCount( handle_t h, unsigned groupIdx )
+{
+  audioGroup_t* ag;
+  io_t*         p = _handleToPtr(h);
+  if((ag = _audioGroupFromIndex( p, groupIdx )) != nullptr )
+    return ag->msg.dspFrameCnt;
+  return 0;
+}
 
 //----------------------------------------------------------------------------------------------------------
 //
 // Socket
 //
 
+
+unsigned cw::io::socketCount(        handle_t h )
+{
+  io_t* p = _handleToPtr(h);
+  return p->sockN;
+}
+
+unsigned cw::io::socketLabelToIndex( handle_t h, const char* label )
+{
+  io_t* p = _handleToPtr(h);
+  for(unsigned i=0; i<p->sockN; ++i)
+    if( textCompare(p->sockA[i].label,label) == 0 )
+      return i;
+
+  cwLogError(kInvalidArgRC,"'%s' is not a valid socket label.", cwStringNullGuard(label));
+  return kInvalidIdx;
+}
+
+unsigned cw::io::socketUserId( handle_t h, unsigned sockIdx )
+{
+  io_t* p = _handleToPtr(h);
+  socket_t* s;
+  if((s = _socketIndexToRecd(p,sockIdx)) == nullptr )
+    return kInvalidId;
+
+  return s->userId;
+}
+
+cw::rc_t cw::io::socketSetUserId( handle_t h, unsigned sockIdx, unsigned userId )
+{
+  io_t* p = _handleToPtr(h);
+  socket_t* s;
+  if((s = _socketIndexToRecd(p,sockIdx)) == nullptr )
+    return kInvalidArgRC;
+
+  s->userId = userId;
+  return kOkRC;  
+}
+
+const char*  cw::io::socketLabel( handle_t h, unsigned sockIdx )
+{
+  io_t* p = _handleToPtr(h);
+  socket_t* s;
+  if((s = _socketIndexToRecd(p,sockIdx)) == nullptr )
+    return nullptr;
+
+  return s->label;
+}
+
+const char*  cw::io::socketHostName(     handle_t h, unsigned sockIdx )
+{
+  io_t* p = _handleToPtr(h);
+  socket_t* s;
+  if((s = _socketIndexToRecd(p,sockIdx)) == nullptr )
+    return nullptr;
+
+  return sock::hostName( p->sockH, s->userId );
+}
+
+const char*  cw::io::socketIpAddress(    handle_t h, unsigned sockIdx )
+{
+  io_t* p = _handleToPtr(h);
+  socket_t* s;
+  if((s = _socketIndexToRecd(p,sockIdx)) == nullptr )
+    return nullptr;
+
+  return sock::ipAddress( p->sockH, s->userId );
+}
+
+unsigned  cw::io::socketInetAddress(  handle_t h, unsigned sockIdx )
+{
+  io_t* p = _handleToPtr(h);
+  socket_t* s;
+  if((s = _socketIndexToRecd(p,sockIdx)) == nullptr )
+    return 0;
+
+  return sock::inetAddress( p->sockH, s->userId );
+}
+
+cw::sock::portNumber_t cw::io::socketPort( handle_t h, unsigned sockIdx )
+{
+  io_t* p = _handleToPtr(h);
+  socket_t* s;
+  if((s = _socketIndexToRecd(p,sockIdx)) == nullptr )
+    return sock::kInvalidPortNumber;
+
+  return sock::port( p->sockH, s->userId );  
+}
+
+cw::rc_t cw::io::socketPeername( handle_t h, unsigned sockIdx, struct sockaddr_in* addr )
+{
+  io_t* p = _handleToPtr(h);
+  socket_t* s;
+  if((s = _socketIndexToRecd(p,sockIdx)) == nullptr )
+    return kInvalidArgRC;
+
+  return sock::peername( p->sockH, s->userId, addr );
+}
+
+cw::rc_t cw::io::socketSend(    handle_t h, unsigned sockIdx, unsigned connId, const void* data, unsigned dataByteCnt )
+{
+  io_t* p = _handleToPtr(h);
+  socket_t* s;
+  if((s = _socketIndexToRecd(p,sockIdx)) == nullptr )
+    return kInvalidArgRC;
+  return sock::send(p->sockH, s->userId, connId, data, dataByteCnt );
+}
+
+cw::rc_t cw::io::socketSend(    handle_t h, unsigned sockIdx, const void* data, unsigned dataByteCnt, const struct sockaddr_in* remoteAddr )
+{
+  io_t* p = _handleToPtr(h);
+  socket_t* s;
+  if((s = _socketIndexToRecd(p,sockIdx)) == nullptr )
+    return kInvalidArgRC;
+  return sock::send(p->sockH, s->userId, data, dataByteCnt, remoteAddr );
+}
+
+cw::rc_t cw::io::socketSend(    handle_t h, unsigned sockIdx, const void* data, unsigned dataByteCnt, const char* remoteAddr, sock::portNumber_t remotePort )
+{
+  io_t* p = _handleToPtr(h);
+  socket_t* s;
+  if((s = _socketIndexToRecd(p,sockIdx)) == nullptr )
+    return kInvalidArgRC;
+  return sock::send(p->sockH, s->userId, data, dataByteCnt, remoteAddr, remotePort );
+}
 
 //----------------------------------------------------------------------------------------------------------
 //
