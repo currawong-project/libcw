@@ -650,7 +650,7 @@ namespace cw
           break;
 
         case 's':
-          if((valueRef.u.s = nextNonWhiteChar(s)) == nullptr )
+          if((valueRef.u.s = nextNonWhiteChar(s)) != nullptr )
             valueRef.tid = kStringTId;
           break;
           

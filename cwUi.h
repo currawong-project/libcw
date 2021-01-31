@@ -48,10 +48,39 @@ namespace cw
     // Return the uuid of the first matching 'eleName' or 'appId'.
     unsigned    findElementUuId( handle_t h, const char* eleName );
     unsigned    findElementUuId( handle_t h, unsigned appId );
+    
 
+    // Create multiple UI elements from an object_t representation.
     rc_t createFromObject( handle_t h, const object_t* o, unsigned wsSessId, unsigned parentUuId=kInvalidId, const char* eleName=nullptr);
     rc_t createFromFile(   handle_t h, const char* fn,    unsigned wsSessId, unsigned parentUuId=kInvalidId);
     rc_t createFromText(   handle_t h, const char* text,  unsigned wsSessId, unsigned parentUuId=kInvalidId);
+
+    //
+    // Create Sincgle UI elements on the UI instance identified by wsSessId.
+    //
+    // uuIdRef:    Returns the automatically generated id for this element.
+    //             It is unique across all elements associated with this ui::handle.
+    //             Note that this id is NOT generated per wsSession, it is only generated
+    //             the first time a particular element of this ui::handle is created.
+    //
+    // wsSessId:   Identifies a particular instance (websock session) of the UI.
+    //             Multiple instances of a UI may exist for a single application instance each will have a unique wsSessId.
+    //             Set this value to kInvalidId to create this element on all existing websock sessions.  Note that this is
+    //             an unusual use since UI elements are usually created when new sessions are connected and therefore
+    //             a specific wsSessId is available.
+    //
+    // parentUuId: uuid of parent element that the new element will be a child of.
+    //
+    // eleName:    (optional) HTML ele id of the new element.
+    //
+    // appId:      (optional) Application id. This is the application variable which this UI element represents.
+    //             This id is generally the same across all UI instances.
+    //
+    // clas:       (optional) HTML class of the new element
+    //
+    // title:      (optional) Visible Text label associated with this element.
+    //
+
     rc_t createDiv(        handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
     rc_t createTitle(      handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
     rc_t createButton(     handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
