@@ -22,8 +22,8 @@ libcwSRC += src/libcw/cwThread.cpp  src/libcw/cwMutex.cpp src/libcw/cwThreadMach
 libcwHDR += src/libcw/cwMpScNbQueue.h src/libcw/cwSpScBuf.h   src/libcw/cwSpScQueueTmpl.h
 libcwSRC +=                           src/libcw/cwSpScBuf.cpp src/libcw/cwSpScQueueTmpl.cpp
 
-libcwHDR += src/libcw/cwAudioFile.h     src/libcw/cwAudioFileOps.h
-libcwSRC += src/libcw/cwAudioFile.cpp   src/libcw/cwAudioFileOps.cpp
+libcwHDR += src/libcw/cwAudioFile.h     src/libcw/cwAudioFileOps.h    src/libcw/cwMidiFile.h
+libcwSRC += src/libcw/cwAudioFile.cpp   src/libcw/cwAudioFileOps.cpp  src/libcw/cwMidiFile.cpp
 
 if cwWEBSOCK
 libcwHDR += src/libcw/cwWebSock.h   src/libcw/cwWebSockSvr.h
