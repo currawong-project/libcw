@@ -3,6 +3,7 @@
 #include "cwCommonImpl.h"
 #include "cwMem.h"
 #include "cwFile.h"
+#include "cwText.h"
 #include "cwObject.h"
 #include "cwAudioFile.h"
 #include "cwUtility.h"
@@ -42,6 +43,37 @@ cw::rc_t cw::afop::sine( const object_t* cfg )
   rc        = sine( afn, srate, bits, hz, gain, secs );
   mem::release(afn);
   
+  return rc;
+}
+
+cw::rc_t cw::afop::clicks(const char* fn, double srate, unsigned bits, double secs, const unsigned* clickSmpOffsArray, unsigned clickSmpOffsN, double clickAmp, double decay, double burstMs )
+{
+  rc_t     rc    = kOkRC;
+  unsigned xN    = srate * secs;
+  float*   x     = mem::alloc<float>(xN);
+  unsigned bN    = srate * burstMs / 1000.0;
+  unsigned chCnt = 1;
+  float    b[ bN ];
+
+  for(unsigned i=0; i<bN; ++i)
+    b[i] = clickAmp * (float)rand()/RAND_MAX;
+
+  for(unsigned i=0; i<clickSmpOffsN; ++i)
+  {
+    unsigned smp_idx = clickSmpOffsArray[i] * srate / 1000.0;
+    if( smp_idx >= xN )
+      return cwLogError(kInvalidArgRC,"Click index %i (%f secs) is greater than the signal length: %i (%f secs).", smp_idx, smp_idx/srate, xN, secs );
+
+    for(unsigned j=0; j<bN && smp_idx+j < xN; ++j)
+      x[smp_idx+j] = b[j];
+  }
+
+  for(unsigned i=1; i<xN; ++i)    
+    x[i] = decay*x[i-1] + (1.0-decay)*x[i];
+  
+  if((rc = audiofile::writeFileFloat(fn, srate, bits, xN, chCnt, &x)) != kOkRC)
+    return rc;
+
   return rc;
 }
 
@@ -928,6 +960,87 @@ cw::rc_t cw::afop::convolve( const object_t* cfg )
   return rc;
 }
 
+cw::rc_t cw::afop::generate( const object_t* cfg )
+{
+  rc_t rc = kOkRC;
+
+  const char*     dstFn    = nullptr;
+  char*           outFn    = nullptr;
+  unsigned        dstBits  = 16;
+  double          dstSrate = 48000;
+  double          dstSecs  = 1.0;
+  const char*     opLabel  = nullptr;
+  const object_t* sineNode = nullptr;
+  const object_t* clickNode= nullptr;
+  
+  // read the top level cfg record
+  if((rc = cfg->getv("dstFn",dstFn,"dstBits",dstBits,"dstSrate",dstSrate,"dstSecs",dstSecs,"op",opLabel,"sine",sineNode,"click",clickNode)) != kOkRC )
+  {
+    cwLogError(rc,"generate() arg. parse failed.");
+  }
+  else
+  {
+
+    outFn = filesys::expandPath(dstFn);
+    
+    if( textCompare(opLabel,"sine") == 0 )
+    {
+      double gain = 1.0;
+      double hz   = 100.0;
+      if((rc = sineNode->getv("gain",gain,"hertz",hz)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Error parsing generator 'sine' parameters.");
+        goto errLabel;
+      }
+      else
+      {
+        if((rc = sine( dstFn, dstSrate, dstBits, hz, gain, dstSecs)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Sine generator failed..");
+          goto errLabel;          
+        }
+      }
+    }
+    
+    if( textCompare(opLabel,"click") == 0 )
+    {
+      double          gain  = 1.0;
+      double          decay = 0.7;
+      const object_t* msL   = nullptr;
+
+      if((rc = clickNode->getv("gain",gain,"decay",decay,"msL",msL)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Error parsing generator 'click' parameters.");
+        goto errLabel;
+      }
+      else
+      {
+        unsigned msA_N = msL->child_count();
+        unsigned msA[ msA_N ];
+        
+        for(unsigned i=0; i<msA_N; ++i)
+          if((rc = msL->child_ele(i)->value( msA[i] )) != kOkRC )
+          {
+            rc = cwLogError(rc,"Error parsing generator 'click' msL[] values.");
+            goto errLabel;
+          }
+
+        if((rc = clicks( outFn, dstSrate, dstBits, dstSecs, msA, msA_N, gain, -decay )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Error generating click audio file.");
+          goto errLabel;
+        }
+
+      }
+    }
+  }
+  
+ errLabel:
+
+  mem::release(outFn);
+  
+  return rc;
+}
 
 
 cw::rc_t cw::afop::test( const object_t* cfg )

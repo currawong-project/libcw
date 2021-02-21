@@ -10,6 +10,12 @@ namespace cw
     rc_t sine( const char* fn, double srate, unsigned bits, double hz, double gain, double secs );
     rc_t sine( const object_t* cfg );
 
+    // Generate clicks (unit impulses) at the sample locations.
+    rc_t clicks( const char* fn, double srate, unsigned bits, double secs, const unsigned* clickSmpOffsArray, unsigned clickSmpOffsetN, double clickAmp = 0.9, double decay=0.7, double burstMs=10 );
+
+    // Parse the 'generate' paramter configuration and generate a file.
+    rc_t generate( const object_t* cfg );
+
     // Mix a set of audio files.
     rc_t mix( const char* fnV[], const float* gainV, unsigned srcN, const char* outFn, unsigned outBits );
     rc_t mix( const object_t* cfg );
@@ -47,8 +53,10 @@ namespace cw
     rc_t parallelMix( const char* dstFn, unsigned dstBits, const char* srcDir, const parallelMixArg_t* argL, unsigned argN );
     rc_t parallelMix( const object_t* cfg );
 
+    // Currawong on-line transform application 
     rc_t transformApp( const object_t* cfg );
 
+    // Convolve an impulse response from 'impulseRespnseFn' with 'srcFn'.
     rc_t convolve( const char* dstFn, unsigned dstBits, const char* srcFn, const char* impulseResponseFn, float irScale=1 );
     rc_t convolve( const object_t* cfg );
 
