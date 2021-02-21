@@ -233,8 +233,8 @@ namespace cw
   unsigned _objTypeToStringUInt16( const object_t* o, char* buf, unsigned n ) { return toText(buf,n,o->u.u16); }
   unsigned _objTypeToStringInt32(  const object_t* o, char* buf, unsigned n ) { return toText(buf,n,o->u.i32); }
   unsigned _objTypeToStringUInt32( const object_t* o, char* buf, unsigned n ) { return toText(buf,n,o->u.u32); }
-  unsigned _objTypeToStringInt64(  const object_t* o, char* buf, unsigned n ) { assert(0); /*return toText(buf,n,o->u.i64);*/ }
-  unsigned _objTypeToStringUInt64( const object_t* o, char* buf, unsigned n ) { assert(0); /*return toText(buf,n,o->u.u64);*/ }
+  unsigned _objTypeToStringInt64(  const object_t* o, char* buf, unsigned n ) { assert(0); /*return toText(buf,n,o->u.i64);*/ return kInvalidOpRC; }
+  unsigned _objTypeToStringUInt64( const object_t* o, char* buf, unsigned n ) { assert(0); /*return toText(buf,n,o->u.u64);*/ return kInvalidOpRC; }
   unsigned _objTypeToStringBool(   const object_t* o, char* buf, unsigned n ) { return toText(buf,n,o->u.b); }
   unsigned _objTypeToStringFloat(  const object_t* o, char* buf, unsigned n ) { return toText(buf,n,o->u.f); }
   unsigned _objTypeToStringDouble( const object_t* o, char* buf, unsigned n ) { return toText(buf,n,o->u.d); }
@@ -325,7 +325,7 @@ namespace cw
   object_t* _objTypeDuplDouble( const struct object_str* src, struct object_str* parent ) { return _objCreateValueNode<double >(parent,src->u.d  ); }
   object_t* _objTypeDuplString( const struct object_str* src, struct object_str* parent ) { return _objCreateValueNode<char*  >(parent,mem::duplStr(src->u.str)); }
   object_t* _objTypeDuplCString(const struct object_str* src, struct object_str* parent ) { return _objCreateValueNode<const char*>(parent,mem::duplStr(src->u.str));}    
-  object_t* _objTypeDuplVect(   const struct object_str* src, struct object_str* parent ) { assert(0); }
+  object_t* _objTypeDuplVect(   const struct object_str* src, struct object_str* parent ) { assert(0); return nullptr; }
   object_t* _objTypeDuplPair(   const struct object_str* src, struct object_str* parent ) {  return _objTypeDuplContainer(src,parent); }
   object_t* _objTypeDuplList(   const struct object_str* src, struct object_str* parent ) {  return _objTypeDuplContainer(src,parent); }
   object_t* _objTypeDuplDict(   const struct object_str* src, struct object_str* parent ) {  return _objTypeDuplContainer(src,parent); }

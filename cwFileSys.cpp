@@ -299,111 +299,112 @@ cw::filesys::pathPart_t* cw::filesys::pathParts( const char* pathStr )
   // if pathStr is empty
   if( n == 0 )
     return nullptr;
-  
-  
-  char buf[n+1];
-  buf[n] = 0;
-
-  // Get the last word (which may be a file name) from pathStr.
-  // (pathStr must be copied into a buf because basename()
-  // is allowed to change the values in its arg.)
-  strncpy(buf,pathStr,n);
-  cp = basename(buf);
-  
-  if( cp != nullptr )
-  {
-    char* ep;
-    // does the last word have a period in it
-    if( (ep = strchr(cp,'.')) != nullptr )
-    {
-      *ep = 0;         // end the file name at the period
-      ++ep;            // set the ext marker
-      en = strlen(ep); // get the length of the ext
-    }  
-
-    fn = strlen(cp); //get the length of the file name
-  }
-
-  // Get the directory part.
-  // ( pathStr must be copied into a buf because dirname()
-  // is allowed to change the values in its arg.)
-  strncpy(buf,pathStr,n);
-  
-  // if the last char in pathStr[] is '/' then the whole string is a dir.
-  // (this is not the answer that dirname() and basename() would give).
-  if( pathStr[n-1] == cwPathSeparatorChar )
-  {
-    fn = 0;
-    en = 0;
-    dn = n;
-    cp = buf;    
-  }
   else
-  {    
-    cp = dirname(buf);
-  }
-
-
-  if( cp != nullptr  )
-    dn = strlen(cp);
-
-  // get the total size of the returned memory. (add 3 for ecmh possible terminating zero)
-  n = sizeof(pathPart_t) + dn + fn + en + 3;
-
-  // alloc memory
-  if((rp = (pathPart_t*)mem::allocZ<char>( n )) == nullptr )
   {
-    cwLogError( kMemAllocFailRC, "Unable to allocate the file system path part record for '%s'.",pathStr);
-    goto errLabel;
-  }
   
-  // set the return pointers for each of the parts
-  rp->dirStr = (const char* )(rp + 1);
-  rp->fnStr  = rp->dirStr + dn + 1;
-  rp->extStr = rp->fnStr  + fn + 1;
+    char buf[n+1];
+    buf[n] = 0;
 
-
-  // if there is a directory part
-  if( dn>0 )
-    strcpy((char*)rp->dirStr,cp);
-  else
-    rp->dirStr = nullptr;
-  
-  if( fn || en )
-  {
-    // Get the trailing word again.
-    // pathStr must be copied into a buf because basename() may
-    // is allowed to change the values in its arg.
-    strcpy(buf,pathStr);
+    // Get the last word (which may be a file name) from pathStr.
+    // (pathStr must be copied into a buf because basename()
+    // is allowed to change the values in its arg.)
+    strncpy(buf,pathStr,n);
     cp = basename(buf);
-
-    
+  
     if( cp != nullptr )
     {
-      
       char* ep;
+      // does the last word have a period in it
       if( (ep = strchr(cp,'.')) != nullptr )
       {
-        *ep = 0;
-        ++ep;
+        *ep = 0;         // end the file name at the period
+        ++ep;            // set the ext marker
+        en = strlen(ep); // get the length of the ext
+      }  
 
-        cwAssert( strlen(ep) == en );
-        strcpy((char*)rp->extStr,ep);
-      }
+      fn = strlen(cp); //get the length of the file name
+    }
+
+    // Get the directory part.
+    // ( pathStr must be copied into a buf because dirname()
+    // is allowed to change the values in its arg.)
+    strncpy(buf,pathStr,n);
+  
+    // if the last char in pathStr[] is '/' then the whole string is a dir.
+    // (this is not the answer that dirname() and basename() would give).
+    if( pathStr[n-1] == cwPathSeparatorChar )
+    {
+      fn = 0;
+      en = 0;
+      dn = n;
+      cp = buf;    
+    }
+    else
+    {    
+      cp = dirname(buf);
+    }
+
+
+    if( cp != nullptr  )
+      dn = strlen(cp);
+
+    // get the total size of the returned memory. (add 3 for ecmh possible terminating zero)
+    n = sizeof(pathPart_t) + dn + fn + en + 3;
+
+    // alloc memory
+    if((rp = (pathPart_t*)mem::allocZ<char>( n )) == nullptr )
+    {
+      cwLogError( kMemAllocFailRC, "Unable to allocate the file system path part record for '%s'.",pathStr);
+      goto errLabel;
+    }
+  
+    // set the return pointers for each of the parts
+    rp->dirStr = (const char* )(rp + 1);
+    rp->fnStr  = rp->dirStr + dn + 1;
+    rp->extStr = rp->fnStr  + fn + 1;
+
+
+    // if there is a directory part
+    if( dn>0 )
+      strcpy((char*)rp->dirStr,cp);
+    else
+      rp->dirStr = nullptr;
+  
+    if( fn || en )
+    {
+      // Get the trailing word again.
+      // pathStr must be copied into a buf because basename() may
+      // is allowed to change the values in its arg.
+      strcpy(buf,pathStr);
+      cp = basename(buf);
+
+    
+      if( cp != nullptr )
+      {
+      
+        char* ep;
+        if( (ep = strchr(cp,'.')) != nullptr )
+        {
+          *ep = 0;
+          ++ep;
+
+          cwAssert( strlen(ep) == en );
+          strcpy((char*)rp->extStr,ep);
+        }
       
 
-      cwAssert( strlen(cp) == fn );
-      if(fn)
-        strcpy((char*)rp->fnStr,cp);
+        cwAssert( strlen(cp) == fn );
+        if(fn)
+          strcpy((char*)rp->fnStr,cp);
+      }
     }
+
+    if( fn == 0 )
+      rp->fnStr = nullptr;
+
+    if( en == 0 )
+      rp->extStr = nullptr;
   }
-
-  if( fn == 0 )
-    rp->fnStr = nullptr;
-
-  if( en == 0 )
-    rp->extStr = nullptr;
-
  errLabel:
   return rp;
 }
