@@ -145,7 +145,10 @@ namespace cw
       if( cwIsFlag(flags,kDuplDataFl) )
       {
         assert( aliasFl == false );
-        memcpy(m->base,base, eleN*sizeof(T) );
+        assert( base != nullptr );
+        
+        if( base != nullptr )
+          memcpy(m->base,base, eleN*sizeof(T) );
       }
 
       m->flags = flags;
