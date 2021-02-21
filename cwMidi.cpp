@@ -62,6 +62,7 @@ namespace cw {
      { kMarkerMdId,    0xff, "mark"  },
      { kCuePointMdId,  0xff, "cue"   },
      { kMidiChMdId,     1, "chan"  },
+     { kMidiPortMdId,   1, "port"  },
      { kEndOfTrkMdId,   0, "eot"   },
      { kTempoMdId,      3, "tempo" },
      { kSmpteMdId,      5, "smpte" },

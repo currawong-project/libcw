@@ -60,6 +60,7 @@ namespace cw
      kMarkerMdId      = 0x06,
      kCuePointMdId    = 0x07,
      kMidiChMdId      = 0x20,
+     kMidiPortMdId    = 0x21,
      kEndOfTrkMdId    = 0x2f,
      kTempoMdId       = 0x51,
      kSmpteMdId       = 0x54,
@@ -86,20 +87,20 @@ namespace cw
     template< typename T> bool isChStatus( T s ) { return  (kNoteOffMdId <= (s) && (s) <  kSysExMdId); }
 
     template< typename T> bool isNoteOn( T s )        { return ( kNoteOnMdId <= (s) && (s) <= (kNoteOnMdId + kMidiChCnt) ); }
-    template< typename T> bool isNoteOff( T s, T d1 ) { return ( (cmMidiIsNoteOn(s) && (d1)==0) || (kNoteOffMdId <= (s) && (s) <= (kNoteOffMdId + kMidiChCnt)) ); }
+    template< typename T> bool isNoteOff( T s, T d1 ) { return ( (isNoteOn(s) && (d1)==0) || (kNoteOffMdId <= (s) && (s) <= (kNoteOffMdId + kMidiChCnt)) ); }
     template< typename T> bool isCtl( T s )           { return ( kCtlMdId <= (s) && (s) <= (kCtlMdId + kMidiChCnt) ); }
 
     template< typename T> bool isSustainPedal(     T s, T d0 )      { return ( kCtlMdId <= (s) && (s) <= (kCtlMdId + kMidiChCnt) && (d0)== kSustainCtlMdId ); }
-    template< typename T> bool isSustainPedalDown( T s, T d0, T d1) { return ( cmMidiIsSustainPedal(s,d0) && (d1)>=64 ); }
-    template< typename T> bool isSustainPedalUp(   T s, T d0, T d1) { return ( cmMidiIsSustainPedal(s,d0) && (d1)<64 ); }
+    template< typename T> bool isSustainPedalDown( T s, T d0, T d1) { return ( isSustainPedal(s,d0) && (d1)>=64 ); }
+    template< typename T> bool isSustainPedalUp(   T s, T d0, T d1) { return ( isSustainPedal(s,d0) && (d1)<64 ); }
   
     template< typename T> bool isSostenutoPedal(     T s, T d0 )      { return ( kCtlMdId <= (s) && (s) <= (kCtlMdId + kMidiChCnt) && (d0)== kSostenutoCtlMdId ); }
-    template< typename T> bool isSostenutoPedalDown( T s, T d0, T d1) { return ( cmMidiIsSostenutoPedal(s,d0) && (d1)>=64 ); }
-    template< typename T> bool isSostenutoPedalUp(   T s, T d0, T d1) { return ( cmMidiIsSostenutoPedal(s,d0) && (d1)<64 ); }
+    template< typename T> bool isSostenutoPedalDown( T s, T d0, T d1) { return ( isSostenutoPedal(s,d0) && (d1)>=64 ); }
+    template< typename T> bool isSostenutoPedalUp(   T s, T d0, T d1) { return ( isSostenutoPedal(s,d0) && (d1)<64 ); }
 
     template< typename T> bool isPedal(     T s, T d0 )        { return ( kCtlMdId <= (s) && (s) <= (kCtlMdId + kMidiChCnt) && (d0)>=kSustainCtlMdId && (d0)<=kLegatoCtlMdId ); }
-    template< typename T> bool isPedalDown( T s, T d0, T d1 )  { return ( cmMidiIsPedal(s,d0) && (d1)>=64 ); }
-    template< typename T> bool isPedalUp(   T s, T d0, T d1 )  { return ( cmMidiIsPedal(s,d0) && (d1)<64  ); }
+    template< typename T> bool isPedalDown( T s, T d0, T d1 )  { return ( isPedal(s,d0) && (d1)>=64 ); }
+    template< typename T> bool isPedalUp(   T s, T d0, T d1 )  { return ( isPedal(s,d0) && (d1)<64  ); }
 
 
     
