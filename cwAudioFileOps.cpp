@@ -12,6 +12,155 @@
 #include "cwVectOps.h"
 #include "cwDsp.h"
 
+namespace cw
+{
+  namespace afop
+  {
+    typedef struct _cutMixArg_str
+    {
+      const cutMixArg_t*  arg;
+      char*               srcFn;
+      unsigned            srcFrmIdx;
+      unsigned            srcFrmN;
+      unsigned            srcFadeInFrmN;
+      unsigned            srcFadeOutFrmN;
+      unsigned            dstFrmIdx;
+      audiofile::handle_t afH;
+      audiofile::info_t   afInfo;
+    } _cutMixArg_t;
+    
+    rc_t _cutAndMixOpen( const char* srcDir, const cutMixArg_t* argL, _cutMixArg_t* xArgL, unsigned argN, unsigned& chN_Ref, double& srate_Ref, unsigned& dstFrmN_Ref, unsigned& maxSrcFrmN_Ref )
+    {
+      rc_t rc = kOkRC;
+
+      maxSrcFrmN_Ref  = 0;
+      chN_Ref         = 0;
+      
+      for(unsigned i = 0; i<argN; ++i)
+      {
+        // create the source audio file name
+        xArgL[i].srcFn = filesys::makeFn(srcDir, argL[i].srcFn, NULL, NULL);
+
+
+        // get the audio file info
+        if((rc = audiofile::open( xArgL[i].afH, xArgL[i].srcFn, &xArgL[i].afInfo )) != kOkRC )
+        {
+          rc = cwLogError(rc, "Unable to obtain info for the source audio file: '%s'.", cwStringNullGuard(xArgL[i].srcFn));
+          goto errLabel;
+        }
+
+        // get the system sample rate from the first file
+        if( i == 0 )
+          srate_Ref = xArgL[i].afInfo.srate;
+
+        // if the file sample rate does not match the system sample rate
+        if( srate_Ref != xArgL[i].afInfo.srate )
+        {
+          rc = cwLogError(kInvalidArgRC,"'%s' sample rate %f does not match the system sample rate %f.", xArgL[i].srcFn, xArgL[i].afInfo.srate, srate_Ref );
+          goto errLabel;
+        }
+
+        // verify the source file begin/end time 
+        if( argL[i].srcBegSec > argL[i].srcEndSec )
+        {
+          rc = cwLogError(kInvalidArgRC,"The end time is prior to the begin time on source file '%s'.", xArgL[i].srcFn);
+          goto errLabel;
+        }
+
+        xArgL[i].arg            = argL + i;
+        xArgL[i].srcFrmIdx      = floor(argL[i].srcBegSec     * srate_Ref);
+        xArgL[i].srcFrmN        = floor(argL[i].srcEndSec     * srate_Ref) - xArgL[i].srcFrmIdx;
+        xArgL[i].srcFadeInFrmN  = floor(argL[i].srcBegFadeSec * srate_Ref);
+        xArgL[i].srcFadeOutFrmN = floor(argL[i].srcEndFadeSec * srate_Ref);
+        xArgL[i].dstFrmIdx      = floor(argL[i].dstBegSec     * srate_Ref);
+
+        //printf("cm beg:%f end:%f dst:%f gain:%f %s\n", argL[i].srcBegSec, argL[i].srcEndSec, argL[i].dstBegSec, argL[i].gain, argL[i].srcFn );
+      
+        
+        chN_Ref        = std::max( chN_Ref,        xArgL[i].afInfo.chCnt );
+        maxSrcFrmN_Ref = std::max( maxSrcFrmN_Ref, xArgL[i].srcFrmN );
+
+        dstFrmN_Ref = std::max( dstFrmN_Ref, xArgL[i].dstFrmIdx + xArgL[i].srcFrmN );
+        
+      }
+
+    errLabel:
+      return rc;
+    }
+
+    rc_t _cutAndMixClose( _cutMixArg_t* xArgL, unsigned argN )
+    {
+      rc_t rc = kOkRC;
+      
+      for(unsigned i = 0; i<argN; ++i)
+      {
+
+        if((rc = audiofile::close( xArgL[i].afH )) != kOkRC )
+        {
+          rc = cwLogError(kOpFailRC,"'%s' file closed.", xArgL[i].srcFn );
+          goto errLabel;
+            
+        }
+          
+        mem::release( xArgL[i].srcFn );
+      }
+      
+    errLabel:
+      return rc;
+    }
+
+    enum { kLinearFadeFl = 0x01, kEqualPowerFadeFl=0x02, kFadeInFl=0x04, kFadeOutFl=0x08 };
+
+    void _fadeOneChannel( float* xV, unsigned frmN, unsigned fadeFrmN, unsigned flags )
+    {
+      int i0,d,offs;
+      
+      if( cwIsFlag(flags,kFadeInFl ) )
+      {
+        // count forward
+        i0   = 0;
+        d    = 1;
+        offs = 0;
+      }
+      else
+      {
+        // count backward
+        i0 = (int)fadeFrmN;
+        d    = -1;
+        offs = frmN-fadeFrmN;
+      }
+
+      // do a linear fade
+      if( cwIsFlag(flags,kLinearFadeFl) )
+      {
+        for(int i = i0,j=0; j<(int)fadeFrmN; i+=d,++j )
+        {
+          assert(0 <= offs+j && offs+j < (int)frmN );
+          xV[offs+j] *= ((float)i) / fadeFrmN;
+        }
+      }
+      else                      // do an equal power fade
+      {
+        for(int i = i0,j=0; j<(int)fadeFrmN; i+=d,++j )
+        {
+          assert(0 <= offs+j && offs+j < (int)frmN );
+          xV[offs+j] *= std::sqrt(((float)i) / fadeFrmN);
+        }
+      } 
+    }
+
+    
+    void _fadeAllChannels( float* chBufL[], unsigned chN, unsigned frmN, unsigned fadeFrmN, unsigned flags )
+    {
+      fadeFrmN = std::min(frmN,fadeFrmN);
+
+      for(unsigned i=0; i<chN; ++i)        
+        _fadeOneChannel(chBufL[i],frmN,fadeFrmN,flags);
+    }
+  }
+}
+
+
 cw::rc_t     cw::afop::sine( const char* fn, double srate, unsigned bits, double hz, double gain, double secs )
 {
   rc_t     rc    = kOkRC;
@@ -230,7 +379,7 @@ cw::rc_t       cw::afop::mix( const object_t* cfg )
   return rc;
 }
 
-cw::rc_t  cw::afop::selectToFile( const char* srcFn, double begSec, double endSec, unsigned outBits, const char* outDir, const char* outFn )
+cw::rc_t  cw::afop::selectToFile( const char* srcFn, double beg0Sec, double beg1Sec, double end0Sec, double end1Sec, unsigned outBits, const char* outDir, const char* outFn )
 {
   rc_t                rc     = kOkRC;
   char*               iFn    = filesys::expandPath(srcFn);
@@ -240,62 +389,93 @@ cw::rc_t  cw::afop::selectToFile( const char* srcFn, double begSec, double endSe
   audiofile::handle_t iH;
   audiofile::handle_t oH;
   
+  //
+  if( beg1Sec < beg0Sec )
+  {
+    rc = cwLogError(kInvalidArgRC,"Invalid fade in time selection. Begin fade time (%f) is greater than end fade time (%f). ", beg0Sec, beg1Sec );
+    goto errLabel;
+  }
+
+  // 
+  if( end1Sec != -1 && end1Sec < end0Sec )
+  {
+    rc = cwLogError(kInvalidArgRC,"Invalid fade out time selection. Begin fade time (%f) is greater than end fade time (%f). ", end0Sec, end1Sec );
+    goto errLabel;
+  }
+
+  //
+  if( beg1Sec > end0Sec )
+  {
+    rc = cwLogError(kInvalidArgRC,"Invalid time selection. Begin time (%f) is greater than end time (%f). ", beg1Sec, end0Sec );
+    goto errLabel;
+  }
+
   // open the source file
   if((rc = audiofile::open( iH, iFn, &info )) != kOkRC )
     goto errLabel;
 
-  // 
-  if( begSec >= endSec )
-  {
-    rc = cwLogError(kInvalidArgRC,"Invalid time selection. Begin time (%f) is greater than end time (%f). ", begSec, endSec );
-    goto errLabel;
-  }
-  
   // create the output file
   if((rc = audiofile::create( oH, oFn, info.srate, outBits, info.chCnt)) != kOkRC )
     goto errLabel;
   else
   {
-    unsigned       begFrmIdx     = (unsigned)floor(begSec * info.srate);
-    unsigned       endFrmIdx     = endSec==-1 ? info.frameCnt : (unsigned)floor(endSec * info.srate);
-    unsigned       ttlFrmN       = endFrmIdx - begFrmIdx;
+    unsigned       beg0FrmIdx    = (unsigned)floor(beg0Sec * info.srate);
+    unsigned       beg1FrmIdx    = (unsigned)floor(beg1Sec * info.srate);
+    unsigned       end0FrmIdx    = (unsigned)floor(end0Sec * info.srate);
+    unsigned       end1FrmIdx    = end1Sec==-1 ? info.frameCnt : (unsigned)floor(end1Sec * info.srate);
+    unsigned       ttlFrmN       = end1FrmIdx - beg0FrmIdx;
     unsigned       actualBufFrmN = 0;
-    const unsigned bufFrmN       = 8196; // read/write buffer size
-    float          buf[ bufFrmN*info.chCnt ];
     float*         chBuf[ info.chCnt ];
 
+    beg0FrmIdx = std::max(0u,std::min(beg0FrmIdx,info.frameCnt));
+    beg1FrmIdx = std::max(0u,std::min(beg1FrmIdx,info.frameCnt));
+    end0FrmIdx = std::max(0u,std::min(end0FrmIdx,info.frameCnt));
+    end1FrmIdx = std::max(0u,std::min(end1FrmIdx,info.frameCnt));
+
+    
+    cwLogInfo("beg:%f %f end: %f %f : src:%s dst:%s", beg0Sec,beg1Sec,end0Sec,end1Sec,iFn,oFn);
+
+    // Seek to the start of the read location
+    if((rc = audiofile::seek( iH, beg0FrmIdx )) != kOkRC )
+      goto errLabel;
+    
+    
     // set up the read/write channel buffer
     for(unsigned i = 0; i<info.chCnt; ++i)
-      chBuf[i]     = buf + i*bufFrmN;
+      chBuf[i] = mem::alloc<float>(ttlFrmN);
 
-    // seek to first frame
-    if((rc = audiofile::seek(iH,begFrmIdx)) != kOkRC )
-      goto errLabel;
-
-    // for each read/write buffer in the selected region
-    for(unsigned curFrmN=0; curFrmN<ttlFrmN; curFrmN += actualBufFrmN )
+    // read the audio file
+    if((rc = audiofile::readFloat(  iH, ttlFrmN, 0, info.chCnt, chBuf, &actualBufFrmN)) != kOkRC )
     {
+      rc = cwLogError(kOpFailRC,"Read failed on file '%s'.", iFn );
+      goto errLabel;
+    }
 
-      // read a buffer of audio from the source.
-      if((rc = audiofile::readFloat( iH, bufFrmN, 0, info.chCnt, chBuf, &actualBufFrmN)) != kOkRC )
-      {
-        rc = cwLogError(kOpFailRC,"Read failed on source '%s'.", iFn );
-        goto errLabel;
-      }
 
-      // if this buffer would write more frames than the total frame count
-      // then decrease the count of samples in chBuf[]
-      if( curFrmN + actualBufFrmN > ttlFrmN )
-        actualBufFrmN -= ttlFrmN - curFrmN;
-
-      // write the buffer to the output file
-      if((rc = audiofile::writeFloat(oH, actualBufFrmN, info.chCnt, chBuf )) != kOkRC )
-      {
-        rc = cwLogError(kOpFailRC,"Write failed on output file '%s'.", oFn );
-        goto errLabel;
-      }
     
-    }    
+    
+    // if there is a fade-in then generate it
+    if( beg1FrmIdx > beg0FrmIdx )
+      _fadeAllChannels( chBuf, info.chCnt, ttlFrmN, beg1FrmIdx-beg0FrmIdx, kLinearFadeFl | kFadeInFl );
+
+    // if there is a fade-out then generate it
+    if( end1FrmIdx > end0FrmIdx )
+    {
+      float*  fadeChBuf[ info.chCnt ];
+      for(unsigned i = 0; i<info.chCnt; ++i)
+        fadeChBuf[i] = chBuf[i] + actualBufFrmN - (end1FrmIdx - end0FrmIdx);
+      
+      _fadeAllChannels( fadeChBuf, info.chCnt, ttlFrmN, end1FrmIdx-end0FrmIdx, kLinearFadeFl | kFadeOutFl );
+    }
+    
+    // write the buffer to the output file
+    if((rc = audiofile::writeFloat(oH, actualBufFrmN, info.chCnt, chBuf )) != kOkRC )
+    {
+      rc = cwLogError(kOpFailRC,"Write failed on output file '%s'.", oFn );
+      goto errLabel;
+    }
+    
+        
   }
     
  errLabel:
@@ -312,187 +492,69 @@ cw::rc_t  cw::afop::selectToFile( const char* srcFn, double begSec, double endSe
 
 cw::rc_t       cw::afop::selectToFile( const object_t* cfg )
 {
-  rc_t            rc      = kOkRC;
-  const object_t* selectL = nullptr;
-  const char*     oDir    = nullptr;
-  unsigned        outBits = 16;
+  rc_t            rc            = kOkRC;
+  const object_t* selectL       = nullptr;
+  const char*     oDir          = nullptr;
+  const char*     src0Fn        = nullptr;
+  double          fadeInSec     = 0;
+  double          fadeOutSec    = 0;
+  bool            fadeInPreFl   = false;
+  bool            fadeOutPostFl = false;
+  unsigned        outBits       = 16;
+  
 
   // read the top level cfg record
   if((rc = cfg->getv("outDir",oDir,"outBits",outBits,"selectL",selectL)) != kOkRC )
-    goto errLabel;
+    goto errLabel;  
   else
-  {
-    unsigned selN = selectL->child_count();
-
-    for(unsigned i=0; i<selN; ++i)
+    if((rc = cfg->getv_opt("srcFn",src0Fn,"fadeInSec",fadeInSec,"fadeOutSec",fadeOutSec,"fadeInPreFl",fadeInPreFl,"fadeOutPreFl",fadeOutPostFl)) != kOkRC )
+      goto errLabel;
+    else
     {
-      double      begSec = 0;
-      double      endSec = -1;
-      const char* dstFn = nullptr;
-      const char* srcFn  = nullptr;
+      unsigned selN = selectL->child_count();
 
-      if((rc = selectL->child_ele(i)->getv("begSec",begSec,"endSec",endSec,"dst",dstFn, "src",srcFn)) != kOkRC )
+      for(unsigned i=0; i<selN; ++i)
       {
-        rc = cwLogError(kSyntaxErrorRC,"'Select to file' index %i syntax error.");
-        goto errLabel;
+        double      begSec = 0;
+        double      endSec = -1;
+        const char* dstFn = nullptr;
+        const char* src1Fn  = nullptr;
+
+        if((rc = selectL->child_ele(i)->getv("begSec",begSec,"endSec",endSec,"dst",dstFn)) != kOkRC )
+        {
+          rc = cwLogError(kSyntaxErrorRC,"Argument error in 'select to file' index %i syntax error.");
+          goto errLabel;
+        }
+
+        
+        if((rc = selectL->child_ele(i)->getv_opt("src",src1Fn)) != kOkRC )
+        {
+          rc = cwLogError(kSyntaxErrorRC,"Optional argument parse error in 'select to file' index %i syntax error.");
+          goto errLabel;
+        }
+
+        if( src0Fn == nullptr && src1Fn == nullptr )
+        {
+          rc = cwLogError(kInvalidArgRC,"selection at index %i does not have a source file.",i);
+          goto errLabel;
+        }
+
+        double beg0Sec = fadeInPreFl   ? std::max(0.0,begSec-fadeInSec)  : begSec;
+        double beg1Sec = fadeInPreFl   ? begSec                          : begSec + fadeInSec;
+        double end0Sec = fadeOutPostFl ? endSec                          : std::max(0.0,endSec - fadeOutSec);
+        double end1Sec = fadeOutPostFl ? endSec+fadeOutSec               : endSec;
+
+        beg1Sec = std::max(beg0Sec,beg1Sec);
+        end1Sec = std::max(end0Sec,end1Sec);
+        
+        if((rc = selectToFile( src1Fn==nullptr ? src0Fn : src1Fn, beg0Sec, beg1Sec, end0Sec, end1Sec, outBits, oDir, dstFn )) != kOkRC )
+          goto errLabel;
+      
       }
-      
-      if((rc = selectToFile( srcFn, begSec, endSec, outBits, oDir, dstFn )) != kOkRC )
-        goto errLabel;
-      
     }
-  }
   
  errLabel:
   return rc;
-}
-
-namespace cw
-{
-  namespace afop
-  {
-    typedef struct _cutMixArg_str
-    {
-      const cutMixArg_t*  arg;
-      char*               srcFn;
-      unsigned            srcFrmIdx;
-      unsigned            srcFrmN;
-      unsigned            srcFadeInFrmN;
-      unsigned            srcFadeOutFrmN;
-      unsigned            dstFrmIdx;
-      audiofile::handle_t afH;
-      audiofile::info_t   afInfo;
-    } _cutMixArg_t;
-    
-    rc_t _cutAndMixOpen( const char* srcDir, const cutMixArg_t* argL, _cutMixArg_t* xArgL, unsigned argN, unsigned& chN_Ref, double& srate_Ref, unsigned& dstFrmN_Ref, unsigned& maxSrcFrmN_Ref )
-    {
-      rc_t rc = kOkRC;
-
-      maxSrcFrmN_Ref  = 0;
-      chN_Ref         = 0;
-      
-      for(unsigned i = 0; i<argN; ++i)
-      {
-        // create the source audio file name
-        xArgL[i].srcFn = filesys::makeFn(srcDir, argL[i].srcFn, NULL, NULL);
-
-
-        // get the audio file info
-        if((rc = audiofile::open( xArgL[i].afH, xArgL[i].srcFn, &xArgL[i].afInfo )) != kOkRC )
-        {
-          rc = cwLogError(rc, "Unable to obtain info for the source audio file: '%s'.", cwStringNullGuard(xArgL[i].srcFn));
-          goto errLabel;
-        }
-
-        // get the system sample rate from the first file
-        if( i == 0 )
-          srate_Ref = xArgL[i].afInfo.srate;
-
-        // if the file sample rate does not match the system sample rate
-        if( srate_Ref != xArgL[i].afInfo.srate )
-        {
-          rc = cwLogError(kInvalidArgRC,"'%s' sample rate %f does not match the system sample rate %f.", xArgL[i].srcFn, xArgL[i].afInfo.srate, srate_Ref );
-          goto errLabel;
-        }
-
-        // verify the source file begin/end time 
-        if( argL[i].srcBegSec > argL[i].srcEndSec )
-        {
-          rc = cwLogError(kInvalidArgRC,"The end time is prior to the begin time on source file '%s'.", xArgL[i].srcFn);
-          goto errLabel;
-        }
-
-        xArgL[i].arg            = argL + i;
-        xArgL[i].srcFrmIdx      = floor(argL[i].srcBegSec     * srate_Ref);
-        xArgL[i].srcFrmN        = floor(argL[i].srcEndSec     * srate_Ref) - xArgL[i].srcFrmIdx;
-        xArgL[i].srcFadeInFrmN  = floor(argL[i].srcBegFadeSec * srate_Ref);
-        xArgL[i].srcFadeOutFrmN = floor(argL[i].srcEndFadeSec * srate_Ref);
-        xArgL[i].dstFrmIdx      = floor(argL[i].dstBegSec     * srate_Ref);
-
-        //printf("cm beg:%f end:%f dst:%f gain:%f %s\n", argL[i].srcBegSec, argL[i].srcEndSec, argL[i].dstBegSec, argL[i].gain, argL[i].srcFn );
-      
-        
-        chN_Ref        = std::max( chN_Ref,        xArgL[i].afInfo.chCnt );
-        maxSrcFrmN_Ref = std::max( maxSrcFrmN_Ref, xArgL[i].srcFrmN );
-
-        dstFrmN_Ref = std::max( dstFrmN_Ref, xArgL[i].dstFrmIdx + xArgL[i].srcFrmN );
-        
-      }
-
-    errLabel:
-      return rc;
-    }
-
-    rc_t _cutAndMixClose( _cutMixArg_t* xArgL, unsigned argN )
-    {
-      rc_t rc = kOkRC;
-      
-      for(unsigned i = 0; i<argN; ++i)
-      {
-
-        if((rc = audiofile::close( xArgL[i].afH )) != kOkRC )
-        {
-          rc = cwLogError(kOpFailRC,"'%s' file closed.", xArgL[i].srcFn );
-          goto errLabel;
-            
-        }
-          
-        mem::release( xArgL[i].srcFn );
-      }
-      
-    errLabel:
-      return rc;
-    }
-
-    enum { kLinearFadeFl = 0x01, kEqualPowerFadeFl=0x02, kFadeInFl=0x04, kFadeOutFl=0x08 };
-
-    void _fadeOneChannel( float* xV, unsigned frmN, unsigned fadeFrmN, unsigned flags )
-    {
-      int i0,d,offs;
-      
-      if( cwIsFlag(flags,kFadeInFl ) )
-      {
-        // count forward
-        i0   = 0;
-        d    = 1;
-        offs = 0;
-      }
-      else
-      {
-        // count backward
-        i0 = (int)fadeFrmN;
-        d    = -1;
-        offs = frmN-fadeFrmN;
-      }
-
-      // do a linear fade
-      if( cwIsFlag(flags,kLinearFadeFl) )
-      {
-        for(int i = i0,j=0; j<(int)fadeFrmN; i+=d,++j )
-        {
-          assert(0 <= offs+j && offs+j < (int)frmN );
-          xV[offs+j] *= ((float)i) / fadeFrmN;
-        }
-      }
-      else                      // do an equal power fade
-      {
-        for(int i = i0,j=0; j<(int)fadeFrmN; i+=d,++j )
-        {
-          assert(0 <= offs+j && offs+j < (int)frmN );
-          xV[offs+j] *= std::sqrt(((float)i) / fadeFrmN);
-        }
-      } 
-    }
-
-    
-    void _fadeAllChannels( float* chBufL[], unsigned chN, unsigned frmN, unsigned fadeFrmN, unsigned flags )
-    {
-      fadeFrmN = std::min(frmN,fadeFrmN);
-
-      for(unsigned i=0; i<chN; ++i)        
-        _fadeOneChannel(chBufL[i],frmN,fadeFrmN,flags);
-    }
-  }
 }
 
 

@@ -21,7 +21,7 @@ namespace cw
     rc_t mix( const object_t* cfg );
 
     // Copy a time selection to an audio output file.
-    rc_t selectToFile( const char* srcFn, double begSec, double endSec, unsigned outBits, const char* outDir, const char* outFn );
+    rc_t selectToFile( const char* srcFn, double beg0Sec, double beg1Sec, double end0Sec, double end1Sec, unsigned outBits, const char* outDir, const char* outFn );
     rc_t selectToFile( const object_t* cfg );
 
     
