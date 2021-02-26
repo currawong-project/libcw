@@ -434,6 +434,7 @@ cw::rc_t  cw::afop::selectToFile( const char* srcFn, double beg0Sec, double beg1
 
     
     cwLogInfo("beg:%f %f end: %f %f : src:%s dst:%s", beg0Sec,beg1Sec,end0Sec,end1Sec,iFn,oFn);
+    cwLogInfo("beg:%f %f end: %f %f", beg0FrmIdx/info.srate,beg1FrmIdx/info.srate,end0FrmIdx/info.srate,end1FrmIdx/info.srate);
 
     // Seek to the start of the read location
     if((rc = audiofile::seek( iH, beg0FrmIdx )) != kOkRC )
@@ -450,8 +451,6 @@ cw::rc_t  cw::afop::selectToFile( const char* srcFn, double beg0Sec, double beg1
       rc = cwLogError(kOpFailRC,"Read failed on file '%s'.", iFn );
       goto errLabel;
     }
-
-
     
     
     // if there is a fade-in then generate it
@@ -496,64 +495,80 @@ cw::rc_t       cw::afop::selectToFile( const object_t* cfg )
   const object_t* selectL       = nullptr;
   const char*     oDir          = nullptr;
   const char*     src0Fn        = nullptr;
+  char*           markerFn      = nullptr;
   double          fadeInSec     = 0;
   double          fadeOutSec    = 0;
   bool            fadeInPreFl   = false;
   bool            fadeOutPostFl = false;
   unsigned        outBits       = 16;
-  
+  file::handle_t  markerFh;
 
   // read the top level cfg record
   if((rc = cfg->getv("outDir",oDir,"outBits",outBits,"selectL",selectL)) != kOkRC )
     goto errLabel;  
-  else
-    if((rc = cfg->getv_opt("srcFn",src0Fn,"fadeInSec",fadeInSec,"fadeOutSec",fadeOutSec,"fadeInPreFl",fadeInPreFl,"fadeOutPreFl",fadeOutPostFl)) != kOkRC )
+
+  if((rc = cfg->getv_opt("srcFn",src0Fn,"markerFn",markerFn,"fadeInSec",fadeInSec,"fadeOutSec",fadeOutSec,"fadeInPreFl",fadeInPreFl,"fadeOutPreFl",fadeOutPostFl)) != kOkRC )
       goto errLabel;
-    else
+
+  
+  if( markerFn != nullptr )
+  {    
+    if((rc = file::open(markerFh, markerFn, file::kWriteFl )) != kOkRC )
     {
-      unsigned selN = selectL->child_count();
-
-      for(unsigned i=0; i<selN; ++i)
-      {
-        double      begSec = 0;
-        double      endSec = -1;
-        const char* dstFn = nullptr;
-        const char* src1Fn  = nullptr;
-
-        if((rc = selectL->child_ele(i)->getv("begSec",begSec,"endSec",endSec,"dst",dstFn)) != kOkRC )
-        {
-          rc = cwLogError(kSyntaxErrorRC,"Argument error in 'select to file' index %i syntax error.");
-          goto errLabel;
-        }
-
-        
-        if((rc = selectL->child_ele(i)->getv_opt("src",src1Fn)) != kOkRC )
-        {
-          rc = cwLogError(kSyntaxErrorRC,"Optional argument parse error in 'select to file' index %i syntax error.");
-          goto errLabel;
-        }
-
-        if( src0Fn == nullptr && src1Fn == nullptr )
-        {
-          rc = cwLogError(kInvalidArgRC,"selection at index %i does not have a source file.",i);
-          goto errLabel;
-        }
-
-        double beg0Sec = fadeInPreFl   ? std::max(0.0,begSec-fadeInSec)  : begSec;
-        double beg1Sec = fadeInPreFl   ? begSec                          : begSec + fadeInSec;
-        double end0Sec = fadeOutPostFl ? endSec                          : std::max(0.0,endSec - fadeOutSec);
-        double end1Sec = fadeOutPostFl ? endSec+fadeOutSec               : endSec;
-
-        beg1Sec = std::max(beg0Sec,beg1Sec);
-        end1Sec = std::max(end0Sec,end1Sec);
-        
-        if((rc = selectToFile( src1Fn==nullptr ? src0Fn : src1Fn, beg0Sec, beg1Sec, end0Sec, end1Sec, outBits, oDir, dstFn )) != kOkRC )
-          goto errLabel;
-      
-      }
+      rc = cwLogError(rc,"Marker file '%s' create failed.", cwStringNullGuard(markerFn));
+      goto errLabel;
     }
+  }
+      
+  for(unsigned i=0; i<selectL->child_count(); ++i)
+  {
+    double      begSec = 0;
+    double      endSec = -1;
+    const char* dstFn = nullptr;
+    const char* src1Fn  = nullptr;
+
+    if((rc = selectL->child_ele(i)->getv("begSec",begSec,"endSec",endSec,"dst",dstFn)) != kOkRC )
+    {
+      rc = cwLogError(kSyntaxErrorRC,"Argument error in 'select to file' index %i syntax error.");
+      goto errLabel;
+    }
+
+        
+    if((rc = selectL->child_ele(i)->getv_opt("src",src1Fn)) != kOkRC )
+    {
+      rc = cwLogError(kSyntaxErrorRC,"Optional argument parse error in 'select to file' index %i syntax error.");
+      goto errLabel;
+    }
+
+    if( src0Fn == nullptr && src1Fn == nullptr )
+    {
+      rc = cwLogError(kInvalidArgRC,"selection at index %i does not have a source file.",i);
+      goto errLabel;
+    }
+
+    double beg0Sec = fadeInPreFl     ? std::max(0.0,begSec-fadeInSec)  : begSec;
+    double beg1Sec = fadeInPreFl     ? begSec                          : begSec + fadeInSec;
+    double end0Sec = fadeOutPostFl   ? std::max(0.0,endSec - fadeOutSec) : endSec;
+    double end1Sec = fadeOutPostFl   ? endSec : endSec+fadeOutSec;
+
+    beg1Sec = std::max(beg0Sec,beg1Sec);
+    end1Sec = std::max(end0Sec,end1Sec);
+
+    if( markerFh.isValid() )
+    {
+      file::printf(markerFh,"%f\t%f\t%i\n",begSec,begSec,i+1);
+    }
+        
+    if((rc = selectToFile( src1Fn==nullptr ? src0Fn : src1Fn, beg0Sec, beg1Sec, end0Sec, end1Sec, outBits, oDir, dstFn )) != kOkRC )
+      goto errLabel;
+  }
   
  errLabel:
+
+  if( markerFh.isValid() )
+  {
+    file::close(markerFh);
+  }
   return rc;
 }
 
@@ -680,7 +695,7 @@ cw::rc_t cw::afop::cutAndMix( const object_t* cfg )
       {
         
         argL[i].dstBegSec     = argL[i].srcBegSec; // By default the src is moved to the same location 
-        argL[i].srcBegFadeSec = crossFadeSec; // By default the beg/end fade is the global fade time. 
+        argL[i].srcBegFadeSec = crossFadeSec;      // By default the beg/end fade is the global fade time. 
         argL[i].srcEndFadeSec = crossFadeSec;
         argL[i].gain          = 1;
 
