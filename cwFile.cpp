@@ -112,10 +112,11 @@ namespace cw
 
 cw::rc_t cw::file::open( handle_t& hRef, const char* fn, unsigned flags )
 {
-  char mode[] = "/0/0/0";
-  this_t* p   = nullptr;
-  rc_t    rc;
-
+  this_t* p      = nullptr;
+  char*   exp_fn = nullptr;
+  rc_t    rc     = kOkRC;
+  char mode[]    = "/0/0/0";
+  
   if((rc = close(hRef)) != kOkRC )
     return rc;
 
@@ -153,34 +154,44 @@ cw::rc_t cw::file::open( handle_t& hRef, const char* fn, unsigned flags )
         fn  = "stdin";
       }
 
-
-  if( fn == nullptr )
+  // verify the filename is not empty
+  if( fn == nullptr || strlen(fn)==0 )
     return cwLogError(kInvalidArgRC,"File object allocation failed due to empty file name.");
 
+  
+  
   unsigned byteCnt = sizeof(this_t) + strlen(fn) + 1;
 
+  // create the file object
   if((p = mem::allocZ<this_t>(byteCnt)) == nullptr )
     return cwLogError(kOpFailRC,"File object allocation failed for file '%s'.",cwStringNullGuard(fn));
 
+  // copy  in the file name
   p->fnStr = (char*)(p+1);
   strcpy(p->fnStr,fn);
-  
+
+  // if a special file was requestd
   if( sfp != nullptr )
     p->fp = sfp;
-  else
+  else 
   {
-    errno                        = 0;
-    if((p->fp = fopen(fn,mode)) == nullptr )
-    {
-      rc_t rc = p->lastRC = cwLogSysError(kOpenFailRC,errno,"File open failed on file:'%s'.",cwStringNullGuard(fn));
-      mem::release(p);
-      return rc;
-    }
+    exp_fn = filesys::expandPath(fn);
+    errno = 0;
+    
+    if((p->fp = fopen(exp_fn,mode)) == nullptr )
+      rc = p->lastRC = cwLogSysError(kOpenFailRC,errno,"File open failed on file:'%s'.",cwStringNullGuard(fn));
+
+    mem::release(exp_fn);
+    
   }
  
-  hRef.set(p);
 
-  return kOkRC;
+  if( rc != kOkRC )
+    mem::release(p);
+  else
+    hRef.set(p);
+  
+  return rc;
 }
 
 cw::rc_t cw::file::close( handle_t& hRef )
