@@ -37,6 +37,16 @@ namespace cw
   {
 
     struct io_str;
+
+    typedef struct timer_str
+    {
+      struct io_str*    io;
+      bool              deletedFl;
+      bool              startedFl;
+      char*             label;
+      unsigned          id;
+      unsigned          periodMicroSec;
+    } timer_t;
     
     typedef struct serialPort_str
     {
@@ -91,6 +101,9 @@ namespace cw
       thread_mach::handle_t         threadMachH;
       
       object_t*                     cfg;
+
+      timer_t*                      timerA;
+      unsigned                      timerN;
       
       serialPort_t*                 serialA;
       unsigned                      serialN;
@@ -127,6 +140,99 @@ namespace cw
     io_t* _handleToPtr( handle_t h )
     { return handleToPtr<handle_t,io_t>(h); }
 
+    //----------------------------------------------------------------------------------------------------------
+    //
+    // Timer
+    //
+    bool _timerThreadCb( void* arg )
+    {
+      timer_t* t = (timer_t*)arg;
+
+      sleepUs( t->periodMicroSec );
+
+      if( t->startedFl && !t->deletedFl )
+      {
+        msg_t       m;        
+        timer_msg_t tm;
+        
+        tm.id     = t->id;
+        m.tid     = kTimerTId;
+        m.u.timer = &tm;
+        t->io->cbFunc( t->io->cbArg, &m );
+      }
+
+      return !t->deletedFl;
+    }
+
+    rc_t _timerCreate( io_t* p, const char* label, unsigned id, unsigned periodMicroSec )
+    {
+      rc_t     rc = kOkRC;
+      timer_t* t  = nullptr;
+
+      // look for a deleted timer
+      for(unsigned i=0; i<p->timerN; ++i)
+        if( p->timerA[i].deletedFl )
+        {
+          t = p->timerA + i;
+          break;
+        }
+
+      // if no deleted timer was found
+      if( t == nullptr )
+      {
+        // reallocate the timer array with an additional slot
+        timer_t* tA = mem::allocZ< timer_t >( p->timerN + 1 );
+        for(unsigned i=0; i<p->timerN; ++i)
+          tA[i] = p->timerA[i];
+
+        // keep a pointer to the empty slot
+        t = tA + p->timerN;
+
+        // update the timer array
+        mem::release( p->timerA );
+        p->timerA = tA;
+        p->timerN = p->timerN + 1;
+      }
+        
+      assert( t != nullptr );
+
+      t->io             = p;
+      t->label          = mem::duplStr(label);
+      t->id             = id;
+      t->periodMicroSec = periodMicroSec;
+
+      if((rc = thread_mach::add(p->threadMachH,_timerThreadCb,t)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Timer thread assignment failed.");        
+      }
+
+      return rc;
+    }
+
+    timer_t* _timerIndexToPtr( io_t* p, unsigned timerIdx )
+    {
+      if( timerIdx >= p->timerN || p->timerA[ timerIdx ].deletedFl == true )
+      {
+        cwLogError(kInvalidIdRC,"The timer index '%i' is invalid.", timerIdx );
+        return nullptr;
+      }
+
+      return p->timerA + timerIdx;
+    }
+
+    rc_t    _timerStart( io_t* p, unsigned timerIdx, bool startFl )
+    {
+      rc_t     rc = kOkRC;
+      timer_t* t  = _timerIndexToPtr(p,timerIdx);
+
+      if( t == nullptr )
+        rc = kInvalidIdRC;
+      else
+        p->timerA[ timerIdx ].startedFl = startFl;
+    
+      return rc;
+    }
+    
     
     //----------------------------------------------------------------------------------------------------------
     //
@@ -252,19 +358,28 @@ namespace cw
     //
     void _midiCallback( const midi::packet_t* pktArray, unsigned pktCnt )
     {
-      unsigned i,j;
+      unsigned i;
       for(i=0; i<pktCnt; ++i)
       {
-        const midi::packet_t* pkt = pktArray + i;
-        
-        //io_t* p = reinterpret_cast<io_t*>(pkt->cbDataPtr);
+        msg_t                 m;
+        midi_msg_t            mm;
+        const midi::packet_t* pkt = pktArray + i;        
+        io_t*                 p   = reinterpret_cast<io_t*>(pkt->cbDataPtr);
 
-        for(j=0; j<pkt->msgCnt; ++j)
+        
+        mm.pkt   = pkt;
+        m.tid    = kMidiTId;
+        m.u.midi = &mm;
+
+        p->cbFunc( p->cbArg, &m );
+
+        /*
+        for(unsigned j=0; j<pkt->msgCnt; ++j)
           if( pkt->msgArray != NULL )
             printf("io midi cb: %ld %ld 0x%x %i %i\n", pkt->msgArray[j].timeStamp.tv_sec, pkt->msgArray[j].timeStamp.tv_nsec, pkt->msgArray[j].status,pkt->msgArray[j].d0, pkt->msgArray[j].d1);
           else
             printf("io midi cb: 0x%x ",pkt->sysExMsg[j]);
-
+        */
       }
     }
     
@@ -474,12 +589,13 @@ namespace cw
         }
       }
 
-      // create the audio group thread
-      if((rc = thread_mach::add(p->threadMachH,_socketThreadFunc,p)) != kOkRC )
-      {
-        rc = cwLogError(rc,"Error creating socket thread.");
-        goto errLabel;
-      }
+      // create the socket thread
+      if( p->sockN > 0 )
+        if((rc = thread_mach::add(p->threadMachH,_socketThreadFunc,p)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Error creating socket thread.");
+          goto errLabel;
+        }
       
 
     errLabel:
@@ -1449,6 +1565,9 @@ namespace cw
       if((rc = thread_mach::destroy(p->threadMachH)) != kOkRC )
         return rc;
 
+      mem::free(p->timerA);
+      p->timerN = 0;
+
       for(unsigned i=0; i<p->serialN; ++i)
         serialPortSrv::destroy( p->serialA[i].serialH );
 
@@ -1539,6 +1658,8 @@ cw::rc_t cw::io::create(
   // duplicate the cfg object so that we can maintain pointers into its elements without
   // any chance that they will be delted before the application completes
   p->cfg = o->duplicate();
+  p->cbFunc = cbFunc;
+  p->cbArg  = cbArg;
 
   // create the the thread machine
   if((rc = thread_mach::create( p->threadMachH )) != kOkRC )
@@ -1565,13 +1686,9 @@ cw::rc_t cw::io::create(
     goto errLabel;
   
 
-  p->cbFunc = cbFunc;
-  p->cbArg  = cbArg;
   p->quitFl.store(false);
   time::get(p->t0);  
   
-
-    
   h.set(p);
   
  errLabel:
@@ -1667,6 +1784,113 @@ void cw::io::report( handle_t h )
   
 }
 
+//----------------------------------------------------------------------------------------------------------
+//
+// Timer
+//
+
+cw::rc_t    cw::io::timerCreate( handle_t h, const char* label, unsigned id, unsigned periodMicroSec )
+{
+  io_t* p = _handleToPtr(h);
+  return  _timerCreate(p, label, id, periodMicroSec );
+
+}
+
+cw::rc_t    cw::io::timerDestroy( handle_t h, unsigned timerIdx )
+{
+  io_t*    p = _handleToPtr(h);
+  timer_t* t = _timerIndexToPtr( p, timerIdx );
+
+  if( t != nullptr )
+  {
+    t->startedFl = false;
+    t->deletedFl = true;
+  }
+  
+  return t==nullptr ? kInvalidIdRC : kOkRC;
+}
+
+unsigned    cw::io::timerCount( handle_t h )
+{
+  io_t* p = _handleToPtr(h);
+  return p->timerN;
+}
+
+unsigned    cw::io::timerLabelToIndex( handle_t h, const char* label )
+{
+  io_t* p = _handleToPtr(h);
+  for(unsigned i=0; i<p->timerN; ++i)
+    if( !p->timerA[i].deletedFl && strcmp(label,p->timerA[i].label) == 0 )
+      return i;
+  
+  return kInvalidIdx;
+}
+
+unsigned    cw::io::timerIdToIndex(         handle_t h, unsigned timerId )
+{
+  io_t* p = _handleToPtr(h);
+  for(unsigned i=0; i<p->timerN; ++i)
+  {
+    timer_t* t = p->timerA + i;
+    if( !t->deletedFl && t->id == timerId )
+      return i;    
+  }
+
+  return kInvalidIdx;
+}
+
+
+const char* cw::io::timerLabel(             handle_t h, unsigned timerIdx )
+{
+  io_t*    p = _handleToPtr(h);
+  timer_t* t = _timerIndexToPtr( p, timerIdx );
+  
+  return t==nullptr ? nullptr : t->label;    
+}
+
+unsigned    cw::io::timerId(                handle_t h, unsigned timerIdx )
+{
+  io_t*    p = _handleToPtr(h);
+  timer_t* t = _timerIndexToPtr( p, timerIdx );
+  
+  return t==nullptr ? kInvalidId : t->id;    
+}
+
+unsigned    cw::io::timerPeriodMicroSec(    handle_t h, unsigned timerIdx )
+{
+  io_t*    p = _handleToPtr(h);
+  timer_t* t = _timerIndexToPtr( p, timerIdx );
+  
+  return t==nullptr ? 0 : t->periodMicroSec;    
+}
+
+cw::rc_t    cw::io::timerSetPeriodMicroSec( handle_t h, unsigned timerIdx, unsigned periodMicroSec )
+{
+  rc_t     rc = kOkRC;
+  io_t*    p  = _handleToPtr(h);
+  timer_t* t  = _timerIndexToPtr(p, timerIdx);
+
+  if( t == nullptr )
+    rc = kInvalidIdRC;
+  else
+    p->timerA[ timerIdx ].periodMicroSec = periodMicroSec;
+    
+  return rc;
+}
+
+cw::rc_t    cw::io::timerStart( handle_t h, unsigned timerIdx )
+{
+  io_t*    p  = _handleToPtr(h);
+  return _timerStart( p, timerIdx, true );
+}
+
+cw::rc_t    cw::io::timerStop( handle_t h, unsigned timerIdx )
+{
+  io_t*    p  = _handleToPtr(h);
+  return _timerStart( p, timerIdx, false );
+}
+
+
 
 //----------------------------------------------------------------------------------------------------------
 //
@@ -1746,10 +1970,8 @@ unsigned cw::io::midiDevicePortIndex( handle_t h, unsigned devIdx, bool inputFl,
       
 cw::rc_t cw::io::midiDeviceSend( handle_t h, unsigned devIdx, unsigned portIdx, uint8_t status, uint8_t d0, uint8_t d1 )
 {
-  rc_t rc = kOkRC;
-  //io_t* p = _handleToPtr(h);
-  //return midi::device::send( p->midiH, devIdx, portIdx, status, d0, d1 );
-  return rc;
+  io_t* p = _handleToPtr(h);
+  return midi::device::send( p->midiH, devIdx, portIdx, status, d0, d1 );
 }
 
 //----------------------------------------------------------------------------------------------------------

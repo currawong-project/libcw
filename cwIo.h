@@ -27,15 +27,21 @@ namespace cw
     
     enum
     {
-     kSerialTId,
-     kMidiTId,
-     kAudioTId,
-     kAudioMeterTId,
-     kSockTId,
-     kWebSockTId,
-     kUiTId
+      kTimerTId,
+      kSerialTId,
+      kMidiTId,
+      kAudioTId,
+      kAudioMeterTId,
+      kSockTId,
+      kWebSockTId,
+      kUiTId
     };
 
+    typedef struct timer_msg_str
+    {
+      unsigned id;
+    } timer_msg_t;
+    
     typedef struct serial_msg_str
     {
       unsigned    devId;
@@ -45,7 +51,7 @@ namespace cw
 
     typedef struct midi_msg_str
     {
-      midi::packet_t* pkt;
+      const midi::packet_t* pkt;
     } midi_msg_t;
 
     typedef audio::device::sample_t sample_t;
@@ -113,6 +119,7 @@ namespace cw
       unsigned tid;
       union
       {
+        timer_msg_t*       timer;
         serial_msg_t*      serial;
         midi_msg_t*        midi;
         audio_msg_t*       audio;
@@ -142,6 +149,25 @@ namespace cw
     bool isShuttingDown( handle_t h );
     void report( handle_t h );
 
+
+    //----------------------------------------------------------------------------------------------------------
+    //
+    // Timer
+    //
+    
+    rc_t        timerCreate(            handle_t h, const char* label, unsigned id, unsigned periodMicroSec );
+    rc_t        timerDestroy(           handle_t h, unsigned timerIdx );
+    
+    unsigned    timerCount(             handle_t h );
+    unsigned    timerLabelToIndex(      handle_t h, const char* label );
+    unsigned    timerIdToIndex(         handle_t h, unsigned timerId );
+    const char* timerLabel(             handle_t h, unsigned timerIdx );
+    unsigned    timerId(                handle_t h, unsigned timerIdx );
+    unsigned    timerPeriodMicroSec(    handle_t h, unsigned timerIdx );
+    rc_t        timerSetPeriodMicroSec( handle_t h, unsigned timerIdx, unsigned periodMicroSec );
+    rc_t        timerStart(             handle_t h, unsigned timerIdx );
+    rc_t        timerStop(              handle_t h, unsigned timerIdx );
+    
     //----------------------------------------------------------------------------------------------------------
     //
     // Serial
@@ -278,6 +304,7 @@ namespace cw
     rc_t uiRegisterAppIdMap(  handle_t h, const ui::appIdMap_t* map, unsigned mapN );
     
     // Send a value from the application to the UI.
+    // Set wsSessId to kInvalidId to send to all sessions.
     rc_t uiSendValue( handle_t h, unsigned wsSessId, unsigned uuId, bool value );
     rc_t uiSendValue( handle_t h, unsigned wsSessId, unsigned uuId, int value );
     rc_t uiSendValue( handle_t h, unsigned wsSessId, unsigned uuId, unsigned value );
