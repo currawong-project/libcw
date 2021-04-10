@@ -140,9 +140,11 @@ char* cw::filesys::vMakeFn( const char* dir, const char* fn, const char* ext, va
     n += strlen(ext) + 1;  // add 1 for period
 
   // get length of all var args dir's
-  while( (dp = va_arg(vl,const char*)) != nullptr )
+  while( (dp = va_arg(vl_t,const char*)) != nullptr )
     n += strlen(dp) + 1;  // add 1 for ending sep
 
+  va_end(vl_t);
+  
   // add 1 for terminating zero and allocate memory
 
   if((rp = mem::allocZ<char>( n+1 )) == nullptr )
@@ -150,8 +152,6 @@ char* cw::filesys::vMakeFn( const char* dir, const char* fn, const char* ext, va
     rc = cwLogError(kMemAllocFailRC,"Unable to allocate file name memory.");
     goto errLabel;
   }
-
-  va_copy(vl,vl_t);
 
   rp[n] = 0;
   rp[0] = 0;
@@ -204,6 +204,43 @@ char* cw::filesys::makeFn(  const char* dir, const char* fn, const char* ext, ..
   va_end(vl);
   return fnOut;
 }
+
+
+char* cw::filesys::vMakeVersionedFn(const char* dir, const char* fn_prefix, const char* ext, va_list vl )
+{
+  char*          fn          = nullptr;
+  const unsigned max_version = 1024;
+  
+  for(unsigned version = 0; version<max_version; ++version)
+  {
+    char name[ PATH_MAX ];
+    va_list vl0;
+    va_copy(vl0,vl);
+    
+    snprintf(name,PATH_MAX,"%s_%i",fn_prefix,version);
+
+    fn = vMakeFn( dir, name, ext, vl0 );
+    
+    va_end(vl0);
+    
+    if( !isFile(fn) )
+      break;
+
+    mem::release(fn);
+  }
+
+  return fn;
+}
+
+char* cw::filesys::makeVersionedFn( const char* dir, const char* fn_prefix, const char* ext, ... )
+{
+  va_list vl;
+  va_start(vl,ext);
+  char* fnOut = filesys::vMakeVersionedFn(dir,fn_prefix,ext,vl);
+  va_end(vl);
+  return fnOut;  
+}
+
 
 char* cw::filesys::expandPath( const char* dir )
 {
@@ -663,8 +700,17 @@ cw::filesys::dirEntry_t* cw::filesys::dirEntries( const char* dirStr, unsigned f
 
 cw::rc_t cw::filesys::makeDir( const char* dirStr )
 {
-  if( mkdir(dirStr, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) != 0 )
-    return cwLogSysError( kOpFailRC, errno, "The attempt to create the directory '%s' failed.",dirStr);
 
+  if( str::len(dirStr) == 0 )
+    return kOkRC;
+  
+  char* s  = filesys::expandPath(dirStr);
+
+  if( !isDir(s) )
+    if( mkdir(s, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) != 0 )
+      return cwLogSysError( kOpFailRC, errno, "The attempt to create the directory '%s' failed.",dirStr);
+
+  mem::release(s);
+  
   return kOkRC;
 }

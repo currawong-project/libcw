@@ -24,6 +24,9 @@ namespace cw
     char* vMakeFn( const char* dir, const char* fn, const char* ext, va_list vl );
     char* makeFn(  const char* dir, const char* fn, const char* ext, ... );
 
+    char* vMakeVersionedFn(const char* dir, const char* fn_prefix, const char* ext, va_list vl );
+    char* makeVersionedFn( const char* dir, const char* fn_prefix, const char* ext, ... );
+
 
     // The returned string must be released by a call to mem::release() or mem::free().
     char* expandPath( const char* dir );
