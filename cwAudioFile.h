@@ -22,7 +22,7 @@ namespace cw
      kWavAfFl         = 0x02,    // this is a WAV file 
      kSwapAfFl        = 0x04,    // file header bytes must be swapped
      kAifcAfFl        = 0x08,    // this is an AIFC file
-     kSwapSamplesAfFl = 0x10     // file sample bytes must be swapped
+     kSwapSamplesAfFl = 0x10,    // file sample bytes must be swapped
     };
 
 
@@ -75,7 +75,8 @@ namespace cw
     
 
     rc_t open( handle_t& h, const char* fn, info_t* info );
-    
+
+    // Set bits to 0 to write the file in IEEE float format.
     rc_t create( handle_t& h, const char* fn, double srate, unsigned bits, unsigned chN );
     
     rc_t close( handle_t& h );
@@ -134,13 +135,15 @@ namespace cw
     rc_t     freeFloatBuf( float** floatBufRef, unsigned chCnt );
     
     // Sample Writing Functions
-    rc_t    writeInt(    handle_t h, unsigned frmCnt, unsigned chCnt, int**    bufPtrPtr );
-    rc_t    writeFloat(  handle_t h, unsigned frmCnt, unsigned chCnt, float**  bufPtrPtr );
-    rc_t    writeDouble( handle_t h, unsigned frmCnt, unsigned chCnt, double** bufPtrPtr );
+    rc_t    writeInt(    handle_t h, unsigned frmCnt, unsigned chCnt, const int* const*    bufPtrPtr );
+    rc_t    writeFloat(  handle_t h, unsigned frmCnt, unsigned chCnt, const float* const*  bufPtrPtr );
+    rc_t    writeDouble( handle_t h, unsigned frmCnt, unsigned chCnt, const double* const* bufPtrPtr );
 
-    rc_t    writeFileInt(    const char* fn, double srate, unsigned bit, unsigned frmCnt, unsigned chCnt, int**    bufPtrPtr);
-    rc_t    writeFileFloat(  const char* fn, double srate, unsigned bit, unsigned frmCnt, unsigned chCnt, float**  bufPtrPtr);
-    rc_t    writeFileDouble( const char* fn, double srate, unsigned bit, unsigned frmCnt, unsigned chCnt, double** bufPtrPtr);
+    // File Writing Functions
+    // Set 'bit' to 0 to write the file in IEEE float format.
+    rc_t    writeFileInt(    const char* fn, double srate, unsigned bit, unsigned frmCnt, unsigned chCnt, const int* const *    bufPtrPtr);
+    rc_t    writeFileFloat(  const char* fn, double srate, unsigned bit, unsigned frmCnt, unsigned chCnt, const float* const*  bufPtrPtr);
+    rc_t    writeFileDouble( const char* fn, double srate, unsigned bit, unsigned frmCnt, unsigned chCnt, const double* const* bufPtrPtr);
 
     
     // Scan an entire audio file and return the minimum, maximum and mean sample value.

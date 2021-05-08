@@ -42,13 +42,28 @@ namespace cw
      kWavChkId     = 'EVAW',
     };
 
-    enum { kWriteAudioGutsFl=0x01 };
+    enum
+    {
+      kWriteAudioGutsFl = 0x01,
+      kWriteFloatFl     = 0x02
+    };
+
+    enum
+    {
+      kIntegerFmtId = 1,
+      kFloatFmtId   = 3,
+      kBitsPerByte  = 8,
+      
+      kMax24Bits   = 0x007fffff,
+      kMax16Bits   = 0x00007fff,
+      kMax32Bits   = 0x7fffffff
+    }; 
 
     typedef struct audiofile_str
     {
       FILE*          fp;
-      info_t         info;      // audio file details 
-      unsigned       curFrmIdx; // current frame offset 
+      info_t         info;        // audio file details 
+      unsigned       curFrmIdx;   // current frame offset 
       unsigned       fileByteCnt; // file byte cnt 
       unsigned       smpByteOffs; // byte offset of the first sample
       marker_t*      markArray;
@@ -373,11 +388,12 @@ namespace cw
       p->info.chCnt = chCnt;
       p->info.bits  = bits;
       p->info.srate = srate;
+      p->flags      = fmtId == kFloatFmtId ? kWriteFloatFl : 0;
 
       // if the 'data' chunk was read before the 'fmt' chunk then info.frameCnt 
       // holds the number of bytes in the data chunk
       if( p->info.frameCnt != 0 )
-        p->info.frameCnt = p->info.frameCnt / (p->info.chCnt * p->info.bits/8);
+        p->info.frameCnt = p->info.frameCnt / (p->info.chCnt * (p->info.bits/kBitsPerByte));
 
       return rc;
     }
@@ -386,7 +402,7 @@ namespace cw
     {
       // if the 'fmt' chunk was read before the 'data' chunk then info.chCnt is non-zero
       if( p->info.chCnt != 0 )
-        p->info.frameCnt = chkByteCnt / (p->info.chCnt * p->info.bits/8);
+        p->info.frameCnt = chkByteCnt / (p->info.chCnt * (p->info.bits/kBitsPerByte));
       else
         p->info.frameCnt = chkByteCnt;
 
@@ -544,7 +560,7 @@ namespace cw
       doubleToX80( p->info.srate, srateX80 );  
 
       unsigned hdrByteCnt  = 54;
-      unsigned ssndByteCnt = 8 + (p->info.chCnt * p->info.frameCnt * (p->info.bits/8));
+      unsigned ssndByteCnt = 8 + (p->info.chCnt * p->info.frameCnt * (p->info.bits/kBitsPerByte));
       unsigned formByteCnt = hdrByteCnt + ssndByteCnt - 8;
       unsigned commByteCnt = 18;
       unsigned ssndSmpOffs = 0;
@@ -583,8 +599,8 @@ namespace cw
       unsigned frmCnt        = p->info.frameCnt;
       short    bits          = p->info.bits;
       unsigned srate         = p->info.srate;
-      short    fmtId         = 1;
-      unsigned bytesPerSmp   = bits/8;
+      short    fmtId         = p->flags & kWriteFloatFl ? kFloatFmtId : kIntegerFmtId;
+      unsigned bytesPerSmp   = bits/kBitsPerByte;
       unsigned hdrByteCnt    = 36;
       unsigned fmtByteCnt    = 16;
       unsigned blockAlignCnt = chCnt * bytesPerSmp;
@@ -674,13 +690,16 @@ namespace cw
       rc_t    rc = kOkRC;
       af_t* p  = _handleToPtr(h);
 
+      //if( p->flags & kWriteFloatFl )
+      //  return cwLogError(kOpFailRC,"Conversion from floating point samples to integer output is not implemented.");
+
       if( chIdx+chCnt > p->info.chCnt )
         return cwLogError(kInvalidArgRC,"Invalid channel index on read. %i > %i",chIdx+chCnt,chCnt);
 
       if( actualFrmCntPtr != NULL )
         *actualFrmCntPtr = 0;
 
-      unsigned       bps            = p->info.bits / 8;       // bytes per sample
+      unsigned       bps            = p->info.bits / kBitsPerByte;       // bytes per sample
       unsigned       bpf            = bps * p->info.chCnt;    // bytes per file frame
       unsigned       bufFrmCnt      = std::min(totalFrmCnt,(unsigned)cwAudioFile_MAX_FRAME_READ_CNT);
       unsigned       bytesPerBuf    = bufFrmCnt * bpf;
@@ -842,7 +861,6 @@ namespace cw
       if( actualFrmCntPtr != NULL )
         *actualFrmCntPtr = 0;
 
-
       unsigned         totalReadCnt = 0;
       unsigned         bufFrmCnt    = std::min( totalFrmCnt, (unsigned)cwAudioFile_MAX_FRAME_READ_CNT );
       unsigned         bufSmpCnt    = bufFrmCnt * chCnt;
@@ -864,7 +882,7 @@ namespace cw
         default:
           return cwLogError(kInvalidArgRC,"Audio file invalid sample word size:%i bits.",p->info.bits);
       }
-
+      
       double         dblMaxSmpVal = fltMaxSmpVal;
 
       // initialize the audio ptr buffers
@@ -877,7 +895,6 @@ namespace cw
 
         if( fbuf != NULL )
           fPtrBuf[i] = fbuf[i];
-
       }
 
       // 
@@ -886,61 +903,116 @@ namespace cw
         unsigned actualReadFrmCnt = 0;
         frmCnt = std::min( p->info.frameCnt - p->curFrmIdx, std::min( totalFrmCnt-totalReadCnt, bufFrmCnt ) );
 
-        // fill the integer audio buffer from the file
+        // Fill the integer audio buffer from the file.
+        // Note that the input format may be float but this is ok since there size is the same and _readInt() does not processes the values.
         if((rc = _readInt( h, frmCnt, chIdx, chCnt, ptrBuf, &actualReadFrmCnt, false )) != kOkRC )
           return rc;
 
         if( actualFrmCntPtr != NULL )
           *actualFrmCntPtr += actualReadFrmCnt;
 
-        // convert the integer buffer to floating point
+        // Convert the integer buffer to floating point
         for(i=0; i<chCnt; ++i)
         {
 
-          int* sp = ptrBuf[i];
-
-          if( fbuf != NULL )
+          // if the input is already in float format
+          if( p->flags & kWriteFloatFl )
           {
-
-            float* dp  = fPtrBuf[i];
-            float* ep = dp + frmCnt;
-
-            if( sumFl )
+            float* sp = (float*)ptrBuf[i];
+            
+            // if output is in float (not double) format
+            if( fbuf != NULL )
             {
-              for(; dp<ep; ++dp,++sp)
-                *dp += ((float)*sp) / fltMaxSmpVal;
+              float* dp  = fPtrBuf[i];
+              float* ep = dp + frmCnt;
 
+              if( sumFl )
+              {
+                for(; dp<ep; ++dp,++sp)
+                  *dp +=  *sp;
+
+              }
+              else
+              {
+                for(; dp<ep; ++dp,++sp)
+                  *dp = *sp;
+              }
+
+              assert( dp <= fbuf[i] + totalFrmCnt );
+
+              fPtrBuf[i] = dp;
             }
-            else
+            else // uf output is in double (not float) format
             {
-              for(; dp<ep; ++dp,++sp)
-                *dp = ((float)*sp) / fltMaxSmpVal;
+
+              double* dp = dPtrBuf[i];
+              double* ep = dp + frmCnt;
+
+              if( sumFl )
+              {
+                for(; dp<ep; ++dp,++sp)
+                  *dp += ((double)*sp);                
+              }
+              else
+              {
+                for(; dp<ep; ++dp,++sp)
+                  *dp = ((double)*sp);      
+              }
+
+              assert( dp <= dbuf[i] + totalFrmCnt );
+              dPtrBuf[i] = dp;
+              
+              
             }
-
-            assert( dp <= fbuf[i] + totalFrmCnt );
-
-            fPtrBuf[i] = dp;
+            
           }
-          else
+          else // if input is an integer format (not float format)
           {
-            double* dp = dPtrBuf[i];
-            double* ep = dp + frmCnt;
-
-            if( sumFl )
+            int* sp = ptrBuf[i];
+            
+            // if output is float (not double)
+            if( fbuf != NULL )
             {
-              for(; dp<ep; ++dp,++sp)
-                *dp += ((double)*sp) / dblMaxSmpVal;                
-            }
-            else
-            {
-              for(; dp<ep; ++dp,++sp)
-                *dp = ((double)*sp) / dblMaxSmpVal;      
-            }
 
-            assert( dp <= dbuf[i] + totalFrmCnt );
-            dPtrBuf[i] = dp;
+              float* dp  = fPtrBuf[i];
+              float* ep = dp + frmCnt;
+
+              if( sumFl )
+              {
+                for(; dp<ep; ++dp,++sp)
+                  *dp += ((float)*sp) / fltMaxSmpVal;
+
+              }
+              else
+              {
+                for(; dp<ep; ++dp,++sp)
+                  *dp = ((float)*sp) / fltMaxSmpVal;
+              }
+
+              assert( dp <= fbuf[i] + totalFrmCnt );
+
+              fPtrBuf[i] = dp;
+            }
+            else // output is double (not float)
+            {
+              double* dp = dPtrBuf[i];
+              double* ep = dp + frmCnt;
+
+              if( sumFl )
+              {
+                for(; dp<ep; ++dp,++sp)
+                  *dp += ((double)*sp) / dblMaxSmpVal;                
+              }
+              else
+              {
+                for(; dp<ep; ++dp,++sp)
+                  *dp = ((double)*sp) / dblMaxSmpVal;      
+              }
+
+              assert( dp <= dbuf[i] + totalFrmCnt );
+              dPtrBuf[i] = dp;
+            }
           }
-      
         }
       }
 
@@ -1011,6 +1083,225 @@ namespace cw
       return rc;
     }
 
+    rc_t _write_samples_to_file( af_t* p, unsigned bytesPerSmp, unsigned bufSmpCnt, void* buf )
+    {
+      rc_t rc = kOkRC;
+      
+      if( fwrite( buf, bufSmpCnt*bytesPerSmp, 1, p->fp ) != 1)
+        rc = cwLogError(kWriteFailRC,"Audio file write failed on '%s'.",cwStringNullGuard(p->fn));
+
+      return rc;
+    }
+
+
+    //
+    //   Write 8 bit samples
+    //
+
+    // sample writer: int->uint8_t
+    rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const int* sbuf, int8_t* dbuf )
+    {
+      for(unsigned i=0; i<bufSmpCnt; ++i)
+        dbuf[i] =  (((long)sbuf[i]*255) / ((long)INT_MAX - INT_MIN)) + 127;
+       return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);
+    }
+
+    // sample writer:  float->uint8_t
+    rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const float* sbuf, int8_t* dbuf )
+    {
+      for(unsigned i=0; i<bufSmpCnt; ++i)
+        dbuf[i] =  (uint8_t)(sbuf[i] * 128) + 127; 
+       return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);      
+    }
+
+    // sample writer:  double->uint8_t    
+    rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const double* sbuf, int8_t* dbuf )
+    {
+      for(unsigned i=0; i<bufSmpCnt; ++i)
+        dbuf[i] =  (uint8_t)(sbuf[i] * 128) + 127; 
+       return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);      
+    }
+
+
+    //
+    //   Write 16 bit samples
+    //
+    
+    // sample writer: int->short
+    rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const int* sbuf, short* dbuf )
+    {
+      for(unsigned i=0; i<bufSmpCnt; ++i)
+        dbuf[i] =  ((long)sbuf[i]*2*SHRT_MAX) / ((long)INT_MAX - INT_MIN);
+       return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);
+    }
+
+    // sample writer: float->short
+    rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const float* sbuf, short* dbuf )
+    {
+      for(unsigned i=0; i<bufSmpCnt; ++i)
+        dbuf[i] =  (short)(sbuf[i] * SHRT_MAX);
+       return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);      
+    }
+
+    // sample writer: double->short    
+    rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const double* sbuf, short* dbuf )
+    {
+      for(unsigned i=0; i<bufSmpCnt; ++i)
+        dbuf[i] =  (short)(sbuf[i] * SHRT_MAX);
+       return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);      
+    }
+
+
+    //
+    //   Write 24 bit samples
+    //
+
+    inline void int_to_24( int v, uint8_t* d )
+    {
+      uint8_t* s = (uint8_t*)(&v);
+      
+      d[0] = s[0];
+      d[1] = s[1];
+      d[2] = s[2];
+    }
+
+    // sample writer: int->int24
+    rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const int* sbuf, uint32_t* dbuf )
+    {
+      uint8_t* dbp = (uint8_t*)dbuf;
+      
+      for(unsigned i=0; i<bufSmpCnt; dbp+=3, ++i)
+        int_to_24(sbuf[i],dbp);
+      
+      return _write_samples_to_file(p,3,bufSmpCnt,dbuf);
+    }
+
+    // sample writer: float->int24
+    rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const float* sbuf, uint32_t* dbuf )
+    {
+      uint8_t* dbp = (uint8_t*)dbuf;
+      
+      for(unsigned i=0; i<bufSmpCnt; dbp+=3, ++i)
+      {
+        int ismp = sbuf[i]*kMax24Bits;
+        int_to_24(ismp,dbp);
+      }
+      
+      return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);      
+    }
+
+    // sample writer: double->int24    
+    rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const double* sbuf, uint32_t* dbuf )
+    {
+      uint8_t* dbp = (uint8_t*)dbuf;
+      
+      for(unsigned i=0; i<bufSmpCnt; dbp+=3, ++i)
+      {
+        int ismp = sbuf[i]*kMax24Bits;
+        int_to_24(ismp,dbp);
+      }
+      return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);      
+    }
+    
+    
+    //
+    //   Write 32 bit samples
+    //
+    
+    // sample writer: int->int
+    rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const int* sbuf, int* dbuf )
+    {
+      return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);
+    }
+
+    // float->int
+    rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const float* sbuf, int* dbuf )
+    {
+      for(unsigned i=0; i<bufSmpCnt; ++i)
+        dbuf[i] =  (int)(sbuf[i] * INT_MAX);
+      return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);      
+    }
+
+    // double->int    
+    rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const double* sbuf, int* dbuf )
+    {
+      for(unsigned i=0; i<bufSmpCnt; ++i)
+        dbuf[i] =  (int)(sbuf[i] * INT_MAX);
+      return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);      
+    }
+
+    //
+    //   Write float samples
+    //
+    
+    // int->float
+    rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const int* sbuf, float* dbuf )
+    {
+      for(unsigned i=0; i<bufSmpCnt; ++i)
+        dbuf[i] = sbuf[i]/INT_MAX;
+      return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);
+    }
+
+    // float->float
+    rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const float* sbuf, float* dbuf )
+    {
+      memcpy(dbuf,sbuf,bufSmpCnt*sizeof(float));
+      return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);      
+    }
+
+    // double->float    
+    rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const double* sbuf, float* dbuf )
+    {
+      for(unsigned i=0; i<bufSmpCnt; ++i)
+        dbuf[i] =  (float)(sbuf[i]);
+      return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);      
+    }
+
+    
+    
+    template< typename S, typename D >
+    rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const S* sbuf, D* dbuf)
+    {
+      return cwLogError(kInvalidDataTypeRC,"The source and desintation sample types are not supported by the audio file writer.");
+    }
+
+    template< typename S, typename D >
+    rc_t _write_audio( af_t* p, unsigned srcBufFrmCnt, unsigned chCnt, const S* const * srcPtrPtr )
+    {
+      rc_t rc = kOkRC;
+      
+      // Determine the size of the temporary buffer used for deinterleaving, type conversion and file writing
+      unsigned bufFrmCnt = std::min(srcBufFrmCnt,4096u);
+      unsigned bufSmpCnt = bufFrmCnt*chCnt;
+
+      // allocate the temp. buffers
+      S sbuf[ bufSmpCnt ];
+      D dbuf[ bufSmpCnt ];
+
+      // for each frame in the source
+      for(unsigned sfi=0; sfi<srcBufFrmCnt; )
+      {
+        // copy as many samples as are available into the temp. buffer
+        unsigned copyFrmN = std::min( bufFrmCnt, srcBufFrmCnt - sfi );
+
+        // deinterleave the source channel signal arrays into the temp buffer
+        for(unsigned fi=0,si=0; fi<copyFrmN; ++fi)
+          for(unsigned sci=0; sci<chCnt; ++sci,++si)
+            sbuf[si] = srcPtrPtr[sci][sfi+fi];
+          
+        // convert the sample data types and write the result to the output file
+        if((rc = _write_samples(p,copyFrmN*chCnt,sbuf,dbuf)) != kOkRC )
+          break;
+
+        p->info.frameCnt += copyFrmN;
+        sfi              += copyFrmN;
+        
+      }
+      
+      return rc;
+    }
+    
+    /*
     rc_t    _writeRealSamples( handle_t h, unsigned frmCnt, unsigned chCnt, const void*  srcPtrPtr, unsigned realSmpByteCnt )
     {
       rc_t  rc = kOkRC;
@@ -1093,6 +1384,7 @@ namespace cw
 
       return rc;
     }
+    */
     
     void _test( const char* audioFn )
     {
@@ -1181,12 +1473,13 @@ cw::rc_t cw::audiofile::create( handle_t& h, const char* fn, double srate, unsig
   }
   else
   {
+    
     p->fn            = mem::duplStr( fn );
     p->info.srate    = srate;
-    p->info.bits     = bits;
+    p->info.bits     = bits==0 ? sizeof(float)*kBitsPerByte : bits;
     p->info.chCnt    = chCnt;
     p->info.frameCnt = 0;
-    p->flags         = kWriteAudioGutsFl;
+    p->flags         = kWriteAudioGutsFl + (bits==0 ? kWriteFloatFl : 0);
     
     // set the swap flags
     bool swapFl = cwIsFlag(p->info.flags,kWavAfFl) ?  _cmWavSwapFl :  _cmAifSwapFl;
@@ -1250,7 +1543,7 @@ cw::rc_t     cw::audiofile::seek(       handle_t h, unsigned frmIdx )
   rc_t  rc = kOkRC;
   af_t* p  = _handleToPtr(h);
   
-  if((rc = _seek(p,p->smpByteOffs + (frmIdx * p->info.chCnt * (p->info.bits/8)), SEEK_SET)) != kOkRC )
+  if((rc = _seek(p,p->smpByteOffs + (frmIdx * p->info.chCnt * (p->info.bits/kBitsPerByte)), SEEK_SET)) != kOkRC )
     return rc;
 
   p->curFrmIdx = frmIdx;
@@ -1355,11 +1648,11 @@ cw::rc_t    cw::audiofile::freeFloatBuf( float** floatBuf, unsigned chCnt )
 }
 
 
-cw::rc_t    cw::audiofile::writeInt(    handle_t h, unsigned frmCnt, unsigned chCnt, int** srcPtrPtr )
+cw::rc_t    cw::audiofile::writeInt(    handle_t h, unsigned frmCnt, unsigned chCnt, const int* const* srcPtrPtr )
 {
   rc_t     rc          = kOkRC;
   af_t*    p           = _handleToPtr(h);
-  unsigned bytesPerSmp = p->info.bits / 8;
+  unsigned bytesPerSmp = p->info.bits / kBitsPerByte;
   unsigned bufFrmCnt   = 1024;
   unsigned bufByteCnt  = bufFrmCnt * bytesPerSmp;
   unsigned ci;
@@ -1484,11 +1777,78 @@ cw::rc_t    cw::audiofile::writeInt(    handle_t h, unsigned frmCnt, unsigned ch
 }
 
 
-cw::rc_t    cw::audiofile::writeFloat(  handle_t h, unsigned frmCnt, unsigned chCnt, float**  bufPtrPtr )
-{ return _writeRealSamples(h,frmCnt,chCnt,bufPtrPtr,sizeof(float)); }
+cw::rc_t    cw::audiofile::writeFloat(  handle_t h, unsigned frmCnt, unsigned chCnt, const float* const* srcPtrPtr )
+{
+  rc_t  rc = kOkRC;
+  af_t* p  = _handleToPtr(h);
+  
+  if( p->flags & kWriteFloatFl )
+    rc = _write_audio<float,float>( p, frmCnt, chCnt, srcPtrPtr );
+  else
+  {
+    switch(p->info.bits)
+    {
+      case 8:
+        rc = _write_audio<float,uint8_t>( p, frmCnt, chCnt, srcPtrPtr );
+        break;
+          
+      case 16:
+        rc = _write_audio<float,short>( p, frmCnt, chCnt, srcPtrPtr );            
+        break;
+          
+      case 24:
+        break;
+        
+      case 32:
+        rc = _write_audio<float,int>( p, frmCnt, chCnt, srcPtrPtr );
+        break;
 
-cw::rc_t    cw::audiofile::writeDouble( handle_t h, unsigned frmCnt, unsigned chCnt, double** bufPtrPtr )
-{ return _writeRealSamples(h,frmCnt,chCnt,bufPtrPtr,sizeof(double)); }
+      default:
+        cwLogError(kInvalidArgRC,"Invalid bit depth:%i",p->info.bits);
+    }
+  }
+
+  return rc;
+  
+  //return _writeRealSamples(h,frmCnt,chCnt,bufPtrPtr,sizeof(float));
+}
+
+cw::rc_t    cw::audiofile::writeDouble( handle_t h, unsigned frmCnt, unsigned chCnt, const double* const* srcPtrPtr )
+{
+  rc_t  rc = kOkRC;
+  af_t* p  = _handleToPtr(h);
+  
+  if( p->flags & kWriteFloatFl )
+    rc = _write_audio<double,float>( p, frmCnt, chCnt, srcPtrPtr );
+  else
+  {
+    switch(p->info.bits)
+    {
+      case 8:
+        rc = _write_audio<double,uint8_t>( p, frmCnt, chCnt, srcPtrPtr );
+        break;
+          
+      case 16:
+        rc = _write_audio<double,short>( p, frmCnt, chCnt, srcPtrPtr );            
+        break;
+          
+      case 24:
+        break;
+        
+      case 32:
+        rc = _write_audio<double,int>( p, frmCnt, chCnt, srcPtrPtr );
+        break;
+        
+      default:
+        cwLogError(kInvalidArgRC,"Invalid bit depth:%i",p->info.bits);
+        
+    }
+  }
+
+  return rc;
+  
+  //return _writeRealSamples(h,frmCnt,chCnt,bufPtrPtr,sizeof(double));
+}
 
 
 
@@ -1547,11 +1907,11 @@ cw::rc_t    cw::audiofile::minMaxMean( handle_t h, unsigned chIdx, float* minPtr
 
 }
 
-cw::rc_t    cw::audiofile::writeFileInt(    const char* fn, double srate, unsigned bits, unsigned frmCnt, unsigned chCnt, int**  bufPtrPtr )
+cw::rc_t    cw::audiofile::writeFileInt(    const char* fn, double srate, unsigned bits, unsigned frmCnt, unsigned chCnt, const int* const*  bufPtrPtr )
 {
   rc_t     rc;
   handle_t h;
-  
+
   if(( rc = create(h,fn,srate,bits,chCnt)) != kOkRC )
   {
     rc = writeInt( h, frmCnt, chCnt, bufPtrPtr );
@@ -1562,7 +1922,7 @@ cw::rc_t    cw::audiofile::writeFileInt(    const char* fn, double srate, unsign
   return rc;  
 }
 
-cw::rc_t    cw::audiofile::writeFileFloat(  const char* fn, double srate, unsigned bits, unsigned frmCnt, unsigned chCnt, float**  bufPtrPtr )
+cw::rc_t    cw::audiofile::writeFileFloat(  const char* fn, double srate, unsigned bits, unsigned frmCnt, unsigned chCnt, const float* const*  bufPtrPtr )
 {
   rc_t     rc;
   handle_t h;
@@ -1577,7 +1937,7 @@ cw::rc_t    cw::audiofile::writeFileFloat(  const char* fn, double srate, unsign
   return rc;  
 }
 
-cw::rc_t    cw::audiofile::writeFileDouble( const char* fn, double srate, unsigned bits, unsigned frmCnt, unsigned chCnt, double** bufPtrPtr )
+cw::rc_t    cw::audiofile::writeFileDouble( const char* fn, double srate, unsigned bits, unsigned frmCnt, unsigned chCnt, const double* const* bufPtrPtr )
 {
   rc_t     rc;
   handle_t h;
