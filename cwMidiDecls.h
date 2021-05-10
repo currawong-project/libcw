@@ -7,7 +7,6 @@ namespace cw
   {
     typedef struct  msg_str
     {
-      //unsigned     deltaUs; // time since last MIDI msg in microseconds
       time::spec_t timeStamp;
       uint8_t status;  // midi status byte
       uint8_t d0;      // midi data byte 0
