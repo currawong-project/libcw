@@ -241,6 +241,68 @@ char* cw::filesys::makeVersionedFn( const char* dir, const char* fn_prefix, cons
   return fnOut;  
 }
 
+char* cw::filesys::replaceDirectory( const char* fn0, const char* dir  )
+{
+  pathPart_t* pp = nullptr;
+  char*       fn = nullptr;
+  
+  if((pp = pathParts( fn0 )) == nullptr )
+  {
+    cwLogError(kOpFailRC,"File name parse failed.");
+    return nullptr;
+  }
+
+  if((fn = makeFn( dir, pp->fnStr, pp->extStr)) == nullptr )
+  {
+    cwLogError(kOpFailRC,"Unable to replace directory.");
+  }
+
+  mem::release(pp);
+  return fn;
+  
+}
+
+char* cw::filesys::replaceFilename(  const char* fn0, const char* name )
+{
+  pathPart_t* pp = nullptr;
+  char*       fn = nullptr;
+  
+  if((pp = pathParts( fn0 )) == nullptr )
+  {
+    cwLogError(kOpFailRC,"File name parse failed.");
+    return nullptr;
+  }
+
+  if((fn = makeFn( pp->dirStr, name, pp->extStr)) == nullptr )
+  {
+    cwLogError(kOpFailRC,"Unable to replace file name.");
+  }
+
+  mem::release(pp);
+  return fn;
+}
+
+char* cw::filesys::replaceExtension( const char* fn0, const char* ext  )
+{
+  pathPart_t* pp = nullptr;
+  char*       fn = nullptr;
+  
+  if((pp = pathParts( fn0 )) == nullptr )
+  {
+    cwLogError(kOpFailRC,"File name parse failed.");
+    return nullptr;
+  }
+
+  if((fn = makeFn( pp->dirStr, pp->fnStr, ext)) == nullptr )
+  {
+    cwLogError(kOpFailRC,"Unable to replace file extension.");
+  }
+
+  mem::release(pp);
+  return fn;
+}
+
+
 
 char* cw::filesys::expandPath( const char* dir )
 {

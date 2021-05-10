@@ -27,6 +27,12 @@ namespace cw
     char* vMakeVersionedFn(const char* dir, const char* fn_prefix, const char* ext, va_list vl );
     char* makeVersionedFn( const char* dir, const char* fn_prefix, const char* ext, ... );
 
+    // Replace the directory/name/extension part of a complete path.
+    // The returned string must be release by a call to mem::release() or mem::free().
+    char* replaceDirectory( const char* fn, const char* dir  );
+    char* replaceFilename(  const char* fn, const char* name );
+    char* replaceExtension( const char* fn, const char* ext  );
+
 
     // The returned string must be released by a call to mem::release() or mem::free().
     char* expandPath( const char* dir );
@@ -44,7 +50,7 @@ namespace cw
 
     // Given a file name decompose it into a directory string, file name string and file extension string.
     // The returned record and the strings it points to are contained in a single block of
-    // memory which must be released by a call to memRelease() or memFree()
+    // memory which must be released by a call to mem::release() or mem::free()
     pathPart_t* pathParts( const char* pathNameStr );
 
     // Flags used by dirEntries 'includeFlags' parameter.
