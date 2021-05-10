@@ -283,7 +283,10 @@ cw::rc_t cw::io::test( const object_t* cfg )
   // 
     unsigned devIdx = audioDeviceLabelToIndex(app.ioH, "main");
     if( devIdx == kInvalidIdx )
+    {
       cwLogError(kOpFailRC, "Unable to locate the requested audio device.");
+      goto errLabel;
+    }
     else
     {
       //audioDeviceEnableMeters( app.ioH, devIdx, kInFl  | kOutFl | kEnableFl );
