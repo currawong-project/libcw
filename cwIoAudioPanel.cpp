@@ -269,6 +269,7 @@ cw::rc_t cw::io::audio_panel::create(  handle_t& hRef, io::handle_t ioH, unsigne
 
   audio_panel_t* p = mem::allocZ<audio_panel_t>();
 
+  p->ioH = ioH;
 
   // create the audio panels for each audio device
   for(unsigned i=0; i<audioDeviceCount(ioH); ++i)
@@ -285,7 +286,6 @@ cw::rc_t cw::io::audio_panel::create(  handle_t& hRef, io::handle_t ioH, unsigne
 
 
   
-  p->ioH = ioH;
   hRef.set(p);
 
  errLabel:
