@@ -656,6 +656,12 @@ function ui_create_number_display( parent_ele, d )
 
 }
 
+function ui_create_text_display( parent_ele, d )
+{
+    return ui_create_ctl( parent_ele, "label", d.title, d, "uiTextDisp" );
+}
+
+
 function ui_set_progress( ele_id, value )
 {
     var ele = dom_id_to_ele(ele_id);
@@ -687,6 +693,7 @@ function ui_create_progress( parent_ele, d )
 function ui_set_value( d )
 {
     //console.log(d)
+    
     var eleId = d.uuId.toString()
     var ele = dom_id_to_ele(eleId)
 
@@ -811,6 +818,10 @@ function ui_create( d )
 
 	    case "numb_disp":
 	    ele = ui_create_number_display( parent_ele, d );
+	    break;
+
+	    case "text_disp":
+	    ele = ui_create_text_display( parent_ele, d );
 	    break;
 
 	    case "progress":
