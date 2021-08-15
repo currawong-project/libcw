@@ -713,19 +713,20 @@ namespace cw
 
 cw::filesys::dirEntry_t* cw::filesys::dirEntries( const char* dirStr, unsigned filterFlags, unsigned* dirEntryCntPtr )
 {
-  rc_t          rc = kOkRC;
+  rc_t     rc = kOkRC;
   deRecd_t r;
 
   memset(&r,0,sizeof(r));
-  //r.p           = _cmFileSysHandleToPtr(h);
   r.filterFlags = filterFlags;
 
   cwAssert( dirEntryCntPtr != NULL );
   *dirEntryCntPtr = 0;
+
+  char* inDirStr  = filesys::expandPath(dirStr);
   
   for(r.passIdx=0; r.passIdx<2; ++r.passIdx)
   {
-    if((rc = _dirGetEntries( &r, dirStr )) != kOkRC )
+    if((rc = _dirGetEntries( &r, inDirStr )) != kOkRC )
       goto errLabel;
 
     if( r.passIdx == 0 && r.dataByteCnt>0 )
@@ -756,6 +757,8 @@ cw::filesys::dirEntry_t* cw::filesys::dirEntries( const char* dirStr, unsigned f
 
     r.rp = NULL;
   }
+
+  mem::release(inDirStr);
 
   return r.rp;
 }
