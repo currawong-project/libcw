@@ -45,7 +45,8 @@ namespace cw
    kFileNotFoundRC,         // 26
    kTestFailRC,             // 27
    kInvalidStateRC,         // 28
-   kBaseAppRC               // 29
+   kTypeMismatchRC,         // 29
+   kBaseAppRC               // 30
   } cwRC_t;
 
   typedef unsigned rc_t;

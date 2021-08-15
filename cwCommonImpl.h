@@ -18,7 +18,7 @@
 #include <cstdint>
 #include <cmath>
 #include <complex>
-
+#include <type_traits>
 
 #if defined(OS_LINUX) || defined(OS_OSX)
 #define cwPOSIX_FILE_SYS
@@ -158,7 +158,10 @@ namespace cw
     const char* label;
   } idLabelPair_t;
 
+  // Return nullptr if id is not found.
   const char* idToLabel( const idLabelPair_t* array, unsigned id, unsigned eolId );
+  
+  // Returns eolId if the id is not found.
   unsigned    labelToId( const idLabelPair_t* array, const char* label, unsigned eolId );
 
 
@@ -182,7 +185,7 @@ namespace cw
   template< typename T >
     bool is_even( const T& t )
   {
-    assert( is_integral(t) );
+    //assert( std::is_integral<T>(t) );
     return (t % 2) == 0;
   }
 
