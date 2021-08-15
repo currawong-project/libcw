@@ -9,8 +9,10 @@
 #include "cwUtility.h"
 #include "cwFileSys.h"
 #include "cwAudioFileOps.h"
+#include "cwMath.h"
 #include "cwVectOps.h"
 #include "cwDsp.h"
+#include "cwAudioTransforms.h"
 
 namespace cw
 {
