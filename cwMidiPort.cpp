@@ -41,16 +41,16 @@ namespace cw
   
         packet_t  pkt;
 
-        unsigned      state;          // parser state id
-        unsigned      errCnt;         // accumlated error count
-        uint8_t  status;         // running status
-        uint8_t  data0;          // data byte 0
-        unsigned      dataCnt;        // data byte cnt for current status 
-        unsigned      dataIdx;        // index (0 or 1) of next data byte
-        uint8_t* buf;            // output buffer
-        unsigned      bufByteCnt;     // output buffer byte cnt
-        unsigned      bufIdx;         // next output buffer index
-        unsigned      msgCnt;         // count of channel messages in the buffer
+        unsigned state;         // parser state id
+        unsigned errCnt;        // accumlated error count
+        uint8_t  status;        // running status
+        uint8_t  data0;         // data byte 0
+        unsigned dataCnt;       // data byte cnt for current status 
+        unsigned dataIdx;       // index (0 or 1) of next data byte
+        uint8_t* buf;           // output buffer
+        unsigned bufByteCnt;    // output buffer byte cnt
+        unsigned bufIdx;        // next output buffer index
+        unsigned msgCnt;        // count of channel messages in the buffer
       } parser_t;
 
       parser_t* _handleToPtr( handle_t h ) 
@@ -520,10 +520,14 @@ namespace cw
 
           for(j=0; j<p->msgCnt; ++j)
             if( p->msgArray != NULL )
-              printf("%ld %ld 0x%x %i %i\n", p->msgArray[j].timeStamp.tv_sec, p->msgArray[j].timeStamp.tv_nsec, p->msgArray[j].status,p->msgArray[j].d0, p->msgArray[j].d1);
+            {
+              if( ((p->msgArray[j].status & 0xf0) == kNoteOnMdId) && (p->msgArray[j].d1>0))
+                printf("%ld %ld 0x%x %i %i\n", p->msgArray[j].timeStamp.tv_sec, p->msgArray[j].timeStamp.tv_nsec, p->msgArray[j].status,p->msgArray[j].d0, p->msgArray[j].d1);
+            }
             else
+            {
               printf("0x%x ",p->sysExMsg[j]);
-
+            }
         }
       }
     } // device
