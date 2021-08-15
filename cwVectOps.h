@@ -9,16 +9,40 @@ namespace cw
     //==================================================================================================================
     // Input / Output
     //
-    
+
     template< typename T0 >
-      void print( const T0* v0, unsigned n, const char* fmt, const char* label=nullptr )
+    void print( const T0* v0, unsigned n, const char* fmt, const char* label=nullptr, unsigned colN=0 )
     {
+      bool newline_fl = false;
+      
       if( label != nullptr )
+      {
         printf("%s : ",label);
+        if( colN && n > colN )
+        {
+          printf("\n");
+          newline_fl = true;
+        }
+      }
+      
+      if( colN == 0 )
+        colN = n;
       
       for(unsigned i=0; i<n; ++i)
+      {
         printf(fmt,v0[i]);
-      printf("\n");
+
+        newline_fl = false;
+        
+        if( (n+1) % colN == 0 )
+        {
+          printf("\n");
+          newline_fl = true;
+        }
+      }
+
+      if( !newline_fl )
+        printf("\n");
     }
 
 
@@ -118,6 +142,7 @@ namespace cw
         acc += v0[i] * v1[i];
       return acc;
     }
+
     
     //==================================================================================================================
     // Arithmetic
@@ -194,17 +219,17 @@ namespace cw
     }
 
     template< typename T0, typename T1 >
-      void div( T0* v0, const T1& scalar, unsigned n )
+      void div( T0* v0, const T1& denom, unsigned n )
     {
       for(unsigned i=0; i<n; ++i)
-        v0[i] /= scalar;
+        v0[i] /= denom;
     }
 
     template< typename T0, typename T1 >
-      void div( T0* y0, const T0* v0, const T1& scalar, unsigned n )
+      void div( T0* y0, const T0* v0, const T1& denom, unsigned n )
     {
       for(unsigned i=0; i<n; ++i)
-        y0[i] = v0[i] / scalar;
+        y0[i] = v0[i] / denom;
     }
     
     template< typename T0, typename T1 >
@@ -240,7 +265,7 @@ namespace cw
     //
     // Fill y[0:min(n,cnt)] with values {beg,beg+step,beg+2*step .... beg+(cnt-1)*step}}
     template< typename T >
-      void seq( T* y, unsigned n, const T& beg, const T& cnt, const T& step=1 )
+      void seq( T* y, unsigned n, const T& beg, const T& cnt, const T& step )
     {
       if( cnt < n )
         n = cnt;
@@ -260,6 +285,7 @@ namespace cw
       return y;
     }
 
+    // Fill y[0:dn] with [beg+0,beg+1, ... beg+dn]
     template< typename T >
       T seq( T* dbp, unsigned dn, const T& beg, const T& incr )
     {
@@ -271,7 +297,7 @@ namespace cw
     }
 
     template< typename T >
-      T cumsum( const T* v, unsigned n )
+      T sum( const T* v, unsigned n )
     {
       T y = 0;
       for(unsigned i=0; i<n; ++i)
@@ -281,7 +307,7 @@ namespace cw
     }
 
     template< typename T >
-      T cumprod( const T* v, unsigned n )
+      T prod( const T* v, unsigned n )
     {
       T y = 1;
       for(unsigned i=0; i<n; ++i)
@@ -290,7 +316,28 @@ namespace cw
     }
 
 
-    
+    template< typename T0, typename T1 >
+    T0 sum_sq_diff( const T0* v0, const T1* v1, unsigned n )
+    {
+      T0 sum = 0;
+      for(unsigned i=0; i<n; ++i)
+        sum += (v0[i]-v1[i]) * (v0[i]-v1[i]);
+
+      return sum;
+    }
+
+
+    //==================================================================================================================
+    // Statistics
+    //
+    template< typename T >
+    T mean( const T* v, unsigned n )
+    {
+      if( n == 0 )
+        return 0;
+
+      return sum(v,n)/n;
+    }
     
     //==================================================================================================================
     // Signal Processing
@@ -314,6 +361,46 @@ namespace cw
         y[i] = sin(y[i]);
       
       return init_idx;
+    }
+
+    template< typename T >
+    T* ampl_to_db( T* dbp, const T* sbp, unsigned dn, T minDb=-1000 )
+    {
+      T  minVal = pow(10.0,minDb/20.0);
+      T* dp     = dbp;
+      T* ep     = dp + dn;
+
+      for(; dp<ep; ++dp,++sbp)
+        *dp = *sbp<minVal ? minDb : 20.0 * log10(*sbp);
+      return dbp;
+      
+    }
+
+    template< typename T >
+    T* db_to_ampl( T* dbp, const T* sbp, unsigned dn, T minDb=-1000 )
+    {
+      T* dp = dbp;
+      T* ep = dp + dn;
+      for(; dp<ep; ++dp,++sbp)
+        *dp = pow(10.0,*sbp/20.0);
+      return dbp;
+      
+    }
+
+
+    template< typename T >
+    T rms( const T* x, unsigned xN )
+    {
+      T rms = 0;
+      if( xN > 0 )
+      {
+        T x0[ xN ];
+        mul(x0,x,x,xN);
+        rms = std::sqrt(sum(x0,xN)/(T)xN);
+        
+      }
+      return rms;  
+        
     }
     
 
