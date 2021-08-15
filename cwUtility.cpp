@@ -36,6 +36,7 @@ void cw::printHex( const void* buf, unsigned bufByteN, bool asciiFl )
   }  
 }
 
+#ifdef NOT_DEF
 
 // TODO: rewrite to avoid copying
 // this code comes via csound source ...
@@ -174,3 +175,5 @@ unsigned cw::nearestPowerOfTwo( unsigned i )
     return vh;
   return vl;
 }
+
+#endif

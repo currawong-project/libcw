@@ -5,7 +5,7 @@
 #include "cwFile.h"
 #include "cwObject.h"
 #include "cwAudioFile.h"
-#include "cwUtility.h"
+#include "cwMath.h"
 #include "cwFileSys.h"
 
 // #define _24to32_aif( p ) ((int)( ((p[0]>127?255:0) << 24) + (((int)p[0]) << 16) +  (((int)p[1]) <<8) + p[2]))  // no-swap equivalent
@@ -179,7 +179,7 @@ namespace cw
       if((rc = _read(p,s,10,1)) != kOkRC )
         return rc;
 
-      *x80Ptr = x80ToDouble(s);
+      *x80Ptr = math::x80ToDouble(s);
       return kOkRC;
     }
 
@@ -557,7 +557,7 @@ namespace cw
       rc_t        rc = kOkRC;
       unsigned char srateX80[10];
  
-      doubleToX80( p->info.srate, srateX80 );  
+      math::doubleToX80( p->info.srate, srateX80 );  
 
       unsigned hdrByteCnt  = 54;
       unsigned ssndByteCnt = 8 + (p->info.chCnt * p->info.frameCnt * (p->info.bits/kBitsPerByte));
