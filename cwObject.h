@@ -115,6 +115,7 @@ namespace cw
     inline bool is_pair()      const { return type != nullptr && type->id == kPairTId; }
     inline bool is_dict()      const { return type != nullptr && type->id == kDictTId; }
     inline bool is_list()      const { return type != nullptr && type->id == kListTId; }
+    inline bool is_string()    const { return type != nullptr && (type->id == kStringTId || type->id == kCStringTId); }
     inline bool is_type( unsigned tid ) const { return type != nullptr && type->id == tid; }
 
     rc_t value( void* dst, unsigned dstTypeId );
@@ -181,7 +182,7 @@ namespace cw
       if( rc == kOkRC || (rc == kLabelNotFoundRC && cwIsFlag(flags,kOptionalFl)))
         rc =  _getv(flags, std::forward<ARGS>(args)...); // ... recurse
       else
-        rc = cwLogError(rc,"object parse failed for the pair label:'%s'.",cwStringNullGuard(label));
+        rc = cwLogError(rc,"Object parse failed for the pair label:'%s'.",cwStringNullGuard(label));
 
       return rc;
     }
