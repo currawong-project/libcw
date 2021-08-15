@@ -3,6 +3,7 @@
 #include "cwCommonImpl.h"
 #include "cwMem.h"
 #include "cwUtility.h"
+#include "cwMath.h"
 #include "cwVectOps.h"
 #include "cwDsp.h"
 
@@ -21,7 +22,9 @@ cw::rc_t cw::dsp::fft::test()
   real_t   srate = xN;
   real_t   hz    = 1;
   real_t   xV[xN];
-  struct ptr_str<real_t>* p = create<real_t>(xN,flags);
+  struct obj_str<real_t>* p = nullptr;
+
+  create<real_t>(p,xN,flags);
   
   if(p != nullptr )
   {
@@ -54,21 +57,21 @@ cw::rc_t cw::dsp::ifft::test()
 {
   typedef double real_t;
   
-  struct fft::ptr_str<real_t>* ft  = nullptr;
-  struct ptr_str<real_t>*      ift = nullptr;
+  struct fft::obj_str<real_t>* ft  = nullptr;
+  struct obj_str<real_t>*      ift = nullptr;
   rc_t                         rc  = kOkRC;
   unsigned                     xN  = 16;
   real_t                       xV[xN];
 
-  if( (ft = fft::create<real_t>(xN,fft::kToPolarFl)) == nullptr )
+  if( (rc = fft::create<real_t>(ft,xN,fft::kToPolarFl)) != kOkRC )
   {
-    rc = cwLogError(kOpFailRC,"FFT procedure allocation failed.");
+    rc = cwLogError(rc,"FFT procedure allocation failed.");
     goto errLabel;
   }
 
-  if((ift = create<real_t>(fft::bin_count(ft))) == nullptr )
+  if((rc = create<real_t>(ift, fft::bin_count(ft))) != kOkRC )
   {
-    rc = cwLogError(kOpFailRC,"IFFT procedure allocation failed.");
+    rc = cwLogError(rc,"IFFT procedure allocation failed.");
     goto errLabel;
   }
   
@@ -78,7 +81,7 @@ cw::rc_t cw::dsp::ifft::test()
   fft::exec(ft,xV,xN);
 
 
-  exec(ift, fft::magn(ft), fft::phase(ft) );
+  exec_polar(ift, fft::magn(ft), fft::phase(ft) );
 
   vop::print( xV,          xN,               "%f ", "sin " );
   vop::print( magn(ft),  fft::bin_count(ft), "%f ", "mag " );
@@ -111,7 +114,9 @@ cw::rc_t cw::dsp::convolve::test()
   // correct output from apply: real_t zV[] = { 1.,  0.5, 0.25,0.1, 1.05,0.5, 0.25,0.1, 1.05,0.5, 0.25,0.1, 0.05,0.0,   0.0 };
   
    
-  ptr_str<real_t>* p = create(hV,hN,xN);
+  obj_str<real_t>* p = nullptr;
+
+  create(p,hV,hN,xN);
 
   exec(p,xV,xN);
 

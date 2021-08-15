@@ -24,17 +24,18 @@ namespace cw
       T kaiser_beta_from_sidelobe_reject(  const T& sidelobeRejectDb )
     { 
       double beta;
-		
-      if( sidelobeRejectDb < 13.26 )
-        sidelobeRejectDb = 13.26;
+      T slrDb = sidelobeRejectDb;
+      
+      if( slrDb < 13.26 )
+        slrDb = 13.26;
       else
-        if( sidelobeRejectDb > 120.0)
-          sidelobeRejectDb = 120.0; 
+        if( slrDb > 120.0)
+          slrDb = 120.0; 
 
-      if( sidelobeRejectDb < 60.0 )
-        beta = (0.76609 * pow(sidelobeRejectDb - 13.26,0.4))  + (0.09834*(sidelobeRejectDb-13.26));
+      if( slrDb < 60.0 )
+        beta = (0.76609 * pow(slrDb - 13.26,0.4))  + (0.09834*(slrDb-13.26));
       else
-        beta = 0.12438 * (sidelobeRejectDb + 6.3);
+        beta = 0.12438 * (slrDb + 6.3);
     
       return beta;
     }
@@ -49,7 +50,7 @@ namespace cw
     {
       bool	   zeroFl 	= false;
       int		   M		    = 0;
-      double	 den		  = cmBessel0(beta);	// wnd func denominator
+      double	 den		  = math::bessel0<T>(beta);	// wnd func denominator
       int		   cnt		  = n;
       int      i;
 
@@ -73,7 +74,7 @@ namespace cw
       {		
         double v0 = (double)(i - M);
 
-        double num = cmBessel0(beta * sqrt(1.0 - ((v0*v0)/Msqrd)));
+        double num = math::bessel0(beta * sqrt(1.0 - ((v0*v0)/Msqrd)));
 			
         dbp[i] = (T)(num/den);
       }								 
@@ -158,9 +159,11 @@ namespace cw
       unsigned     n    = dn/2;
       T incr = 1.0/n;
 
-      seq(dbp,n,0,incr);
+      T v0 = 0;
+      T v1 = 1;
+      vop::seq(dbp,n,v0,incr);
 
-      seq(dbp+n,dn-n,1,-incr);
+      vop::seq(dbp+n,dn-n,v1,-incr);
 
       return dbp;
     }
@@ -200,7 +203,7 @@ namespace cw
       };
       
       template< typename T >
-        struct ptr_str
+        struct obj_str
       {
         unsigned         flags;
         
@@ -222,9 +225,9 @@ namespace cw
       };
 
       template< typename T >
-        struct ptr_str<T>* create( unsigned xN, unsigned flags=kToPolarFl )
+      rc_t create( struct obj_str<T>*& p, unsigned xN, unsigned flags=kToPolarFl )
       {
-        struct ptr_str<T>* p = mem::allocZ< ptr_str<T> >(1);
+        p = mem::allocZ< obj_str<T> >(1);
         
         p->flags = flags;
         p->inN   = xN;
@@ -246,11 +249,11 @@ namespace cw
           p->u.dplan = fftw_plan_dft_r2c_1d((int)xN, (double*)p->inV, reinterpret_cast<fftw_complex*>(p->cplxV), FFTW_MEASURE );          
         }
 
-        return p;        
+        return kOkRC;        
       }
 
       template< typename T >
-        rc_t destroy( struct ptr_str<T>*& p )
+        rc_t destroy( struct obj_str<T>*& p )
       {
         if( p == nullptr )
           return kOkRC;
@@ -278,7 +281,7 @@ namespace cw
       
       
       template< typename T >
-        rc_t exec( struct ptr_str<T>* p, const T* xV, unsigned xN )
+        rc_t exec( struct obj_str<T>* p, const T* xV, unsigned xN )
       {
         rc_t   rc = kOkRC;
 
@@ -326,13 +329,13 @@ namespace cw
       }
 
       template< typename T >
-        unsigned bin_count( ptr_str<T>* p ) { return p->binN; }
+        unsigned bin_count( obj_str<T>* p ) { return p->binN; }
       
       template< typename T >
-        const T* magn( ptr_str<T>* p ) { return p->magV; }
+        const T* magn( obj_str<T>* p ) { return p->magV; }
       
       template< typename T >
-        const T* phase( ptr_str<T>* p ) { return p->phsV; }
+        const T* phase( obj_str<T>* p ) { return p->phsV; }
       
       rc_t test();      
     }
@@ -344,7 +347,7 @@ namespace cw
     {
 
       template< typename T >
-        struct ptr_str
+        struct obj_str
       {
         T               *outV;        
         std::complex<T> *cplxV;
@@ -360,9 +363,9 @@ namespace cw
       };
       
       template< typename T >
-        struct ptr_str<T>* create( unsigned binN )
+      rc_t create( struct obj_str<T>*& p, unsigned binN )
       {
-        struct ptr_str<T>* p = mem::allocZ< ptr_str<T> >(1);
+        p = mem::allocZ< obj_str<T> >(1);
         
         p->binN  = binN;
         p->outN  = (binN-1)*2;
@@ -380,11 +383,11 @@ namespace cw
           p->u.dplan  = fftw_plan_dft_c2r_1d((int)p->outN, reinterpret_cast<fftw_complex*>(p->cplxV), (double*)p->outV, FFTW_BACKWARD | FFTW_MEASURE );          
         }
 
-        return p;
+        return kOkRC;;
       }
 
       template< typename T >
-        rc_t destroy( struct ptr_str<T>*& p )
+        rc_t destroy( struct obj_str<T>*& p )
       {
         if( p == nullptr )
           return kOkRC;
@@ -410,9 +413,8 @@ namespace cw
 
       
       template< typename T >
-        rc_t exec( struct ptr_str<T>* p, const T* magV, const T* phsV )
+        rc_t exec_polar( struct obj_str<T>* p, const T* magV, const T* phsV )
       {
-
         rc_t    rc    = kOkRC;
 
         if( magV != nullptr && phsV != nullptr )
@@ -433,10 +435,35 @@ namespace cw
       }
 
       template< typename T >
-        unsigned out_count( struct ptr_str<T>* p ) { return p->outN; }
+        rc_t exec_rect( struct obj_str<T>* p, const T* iV, const T* rV )
+      {
+        rc_t rc = kOkRC;
+
+        if( iV != nullptr && rV != nullptr )
+        {
+          unsigned i,j;
+          
+          for(i=0; i<p->binN; ++i)
+            p->cplxV[i] = std::complex(rV[i], iV[i]);
+
+          for(i=p->outN-1,j=1; j<p->binN-1; --i,++j)
+            p->cplxV[i] = std::complex(rV[j], iV[j]);
+          
+          if( std::is_same<T,float>::value )
+            fftwf_execute(p->u.fplan);
+          else
+            fftw_execute(p->u.dplan);          
+        }
+        
+        
+        return rc;
+      }
+      
+      template< typename T >
+        unsigned out_count( struct obj_str<T>* p ) { return p->outN; }
 
       template< typename T >
-        const T* out( struct ptr_str<T>* p ) { return p->outV; }
+        const T* out( struct obj_str<T>* p ) { return p->outV; }
       
       
       rc_t test();         
@@ -449,10 +476,10 @@ namespace cw
     {
 
       template< typename T >
-        struct ptr_str
+        struct obj_str
       {
-        struct fft::ptr_str<T>*  ft;
-        struct ifft::ptr_str<T>* ift;
+        struct fft::obj_str<T>*  ft;
+        struct ifft::obj_str<T>* ift;
 
         std::complex<T>*   hV;
         unsigned           hN;
@@ -464,17 +491,18 @@ namespace cw
       };
 
       template< typename T >
-        struct ptr_str<T>* create(const T* hV, unsigned hN, unsigned procSmpN, T hScale=1 )
+      rc_t create(struct obj_str<T>*& p, const T* hV, unsigned hN, unsigned procSmpN, T hScale=1 )
       {
-        struct ptr_str<T>* p = mem::allocZ<struct ptr_str<T>>(1);
+        p = mem::allocZ<struct obj_str<T>>(1);
 
-        unsigned cN   = nextPowerOfTwo( hN + procSmpN - 1 );
+        unsigned cN   = math::nextPowerOfTwo( hN + procSmpN - 1 );
         
-        p->ft = fft::create<T>(cN,0);
+        fft::create<T>(p->ft,cN,0);
 
         unsigned binN = fft::bin_count( p->ft );
 
-        p->ift  = ifft::create<T>(binN);        
+        ifft::create<T>(p->ift, binN);
+        
         p->hN   = hN;
         p->hV   = mem::allocZ< std::complex<T> >(binN);
         p->outV = mem::allocZ<T>( cN );
@@ -489,11 +517,11 @@ namespace cw
 
         printf("procN:%i cN:%i hN:%i binN:%i outN:%i\n", procSmpN, cN, hN, binN, p->outN );
         
-        return p;
+        return kOkRC;
       }
 
       template< typename T >
-        rc_t destroy( struct ptr_str<T>*& pRef )
+        rc_t destroy( struct obj_str<T>*& pRef )
       {
         if( pRef == nullptr )
           return kOkRC;
@@ -507,7 +535,7 @@ namespace cw
       }
 
       template< typename T >
-        rc_t exec( struct ptr_str<T>* p, const T* xV, unsigned xN )
+        rc_t exec( struct obj_str<T>* p, const T* xV, unsigned xN )
       {
         // take FT of input signal
         fft::exec(  p->ft, xV, xN );
@@ -517,7 +545,7 @@ namespace cw
           p->ift->cplxV[i] = p->hV[i] * p->ft->cplxV[i];
 
         // take the IFFT of the convolved spectrum
-        ifft::exec<T>(p->ift,nullptr,nullptr);
+        ifft::exec_polar<T>(p->ift,nullptr,nullptr);
 
         // sum with previous impulse response tail
         vop::add( p->outV,  (const T*)p->olaV, (const T*)p->ift->outV, p->outN-1 );
@@ -535,9 +563,11 @@ namespace cw
         rc_t apply( const T* xV, unsigned xN, const T* hV, unsigned hN, T* yV, unsigned yN, T hScale=1 )
       {
         unsigned    procSmpN = std::min(xN,hN);
-        ptr_str<T> *p        = create(hV,hN,procSmpN,hScale);
+        obj_str<T> *p        = nullptr;
         unsigned    yi       = 0;
 
+        create(p,hV,hN,procSmpN,hScale);
+        
         //printf("procSmpN:%i\n",procSmpN);
         
         for(unsigned xi=0; xi<xN && yi<yN; xi+=procSmpN )
