@@ -24,7 +24,8 @@ namespace cw
    kCommaLexTId,
    kTrueLexTId,
    kFalseLexTId,
-   kNullLexTId
+   kNullLexTId,
+   kSegmentedIdLexTId,  // id with embedded periods
   };
 
   idLabelPair_t _objTokenArray[] =
@@ -42,6 +43,18 @@ namespace cw
   
   };
 
+  unsigned _lexSegmentedIdMatcher( const char* cp, unsigned cn )
+  {
+      unsigned i = 0;
+      if( isalpha(cp[0]) || (cp[0]== '_'))
+      {
+        i = 1;
+        for(; i<cn; ++i)
+          if( !isalnum(cp[i]) && (cp[i] != '_') && (cp[i] != '.') )
+            break;
+      }
+      return i;    
+  }
 
   
   void _objTypeFree( object_t* o )
@@ -720,6 +733,13 @@ cw::rc_t cw::objectFromString( const char* s, object_t*& objRef )
       goto errLabel;
     }
 
+  // register the segmented token matcher
+  if((rc = lex::registerMatcher( lexH, kSegmentedIdLexTId, _lexSegmentedIdMatcher)) != kOkRC )
+  {
+      rc = cwLogError(rc,"Object lexer token matcher registration failed");
+      goto errLabel;
+  }
+
   // main parser loop
   while((lexId = lex::getNextToken(lexH)) != lex::kErrorLexTId && (lexId != lex::kEofLexTId) && (rc == kOkRC))
   {
@@ -782,6 +802,7 @@ cw::rc_t cw::objectFromString( const char* s, object_t*& objRef )
         _objAppendLeftMostNode( cnp, _objAllocate( kNullTId, cnp ));
         break;        
 
+      case kSegmentedIdLexTId:
       case lex::kIdentLexTId:
       case lex::kQStrLexTId:
         {
