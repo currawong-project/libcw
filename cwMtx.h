@@ -705,7 +705,7 @@ namespace cw
     // Return the count of elements in the matrix
     template< typename T >
       unsigned ele_count( const struct mtx_str<T>& x )
-    { return vop::cumprod(x.dimV,x.dimN); }
+    { return vop::prod(x.dimV,x.dimN); }
 
     
     template< typename T >
