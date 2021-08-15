@@ -40,7 +40,7 @@ namespace cw
     //       and avoid the double conversion
     double d_min = 0; // std::numeric_limits<DST_t>::min() return smallest positive number which then fails this test when 'src' is zero.
     double d_max = std::numeric_limits<DST_t>::max();
-    if( d_min <= (double)src && (double)src <= d_max )
+    if( (double)src <= d_max )
       dst = src;
     else
       return cwLogError(kInvalidArgRC,"Numeric conversion failed. The source value is outside the range of the destination value. min:%f max:%f src:%f",d_min,d_max,(double)src );
