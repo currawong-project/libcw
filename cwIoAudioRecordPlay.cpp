@@ -43,6 +43,11 @@ namespace cw
       bool           recordFl;
       bool           startedFl;
       
+      unsigned*      audioInChMapA;
+      unsigned       audioInChMapN;
+      unsigned*      audioOutChMapA;
+      unsigned       audioOutChMapN;
+      
     } audio_record_play_t;
 
     audio_record_play_t* _handleToPtr( handle_t h )
@@ -85,6 +90,10 @@ namespace cw
     rc_t _destroy( audio_record_play_t* p )
     {
       _am_audio_free_list(p);
+      p->audioInChMapN = 0;
+      p->audioOutChMapN = 0;
+      mem::release(p->audioInChMapA);
+      mem::release(p->audioOutChMapA);
       mem::release(p->audioFile);
       mem::release(p);
       return kOkRC;
@@ -93,6 +102,38 @@ namespace cw
     rc_t _parseCfg(audio_record_play_t* p, const object_t& cfg )
     {
       rc_t rc = kOkRC;
+
+      const object_t* audioInChMapL  = nullptr;
+      const object_t* audioOutChMapL = nullptr;
+
+      if((rc = cfg.getv_opt("audio_in_ch_map",  audioInChMapL,
+                            "audio_out_ch_map", audioOutChMapL)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Parse cfg failed.");
+        goto errLabel;          
+      }
+
+      if( audioInChMapL != nullptr )
+      {
+        p->audioInChMapN = audioInChMapL->child_count();
+        p->audioInChMapA = mem::allocZ<unsigned>( p->audioInChMapN );
+
+        for(unsigned i=0; i<p->audioInChMapN; ++i)
+          audioInChMapL->child_ele(i)->value(p->audioInChMapA[i]);
+      }
+
+
+      if( audioOutChMapL != nullptr )
+      {
+        p->audioOutChMapN = audioOutChMapL->child_count();
+        p->audioOutChMapA = mem::allocZ<unsigned>( p->audioOutChMapN );
+
+        for(unsigned i=0; i<p->audioOutChMapN; ++i)
+          audioOutChMapL->child_ele(i)->value(p->audioOutChMapA[i]);
+      }
+      
+
+    errLabel:
       return rc;
     }
 
@@ -123,12 +164,19 @@ namespace cw
 
     void _audio_record( audio_record_play_t* p, const io::audio_msg_t& asrc )
     {
-      am_audio_t* a  = _am_audio_alloc(asrc.dspFrameCnt,asrc.iBufChCnt);
-        
-      for(unsigned chIdx=0; chIdx<asrc.iBufChCnt; ++chIdx)
-        memcpy(a->audioBuf + chIdx*asrc.dspFrameCnt, asrc.iBufArray[chIdx], asrc.dspFrameCnt * sizeof(sample_t));
+      unsigned chCnt = p->audioInChMapN==0 ? asrc.iBufChCnt : p->audioInChMapN;
+      am_audio_t* a  = _am_audio_alloc(asrc.dspFrameCnt,chCnt);
 
-      a->chCnt        = asrc.iBufChCnt;
+      chCnt = std::min( chCnt, asrc.iBufChCnt );
+        
+      for(unsigned chIdx=0; chIdx<chCnt; ++chIdx)
+      {
+        unsigned srcChIdx = p->audioInChMapA == nullptr ? chIdx : p->audioInChMapA[chIdx];
+        
+        memcpy(a->audioBuf + chIdx*asrc.dspFrameCnt, asrc.iBufArray[ srcChIdx ], asrc.dspFrameCnt * sizeof(sample_t));
+      }
+      
+      a->chCnt        = chCnt;
       a->dspFrameCnt  = asrc.dspFrameCnt;
 
       if( p->audioEnd != nullptr )
@@ -160,15 +208,24 @@ namespace cw
         if((a = _am_audio_from_sample_index(p, p->curFrameIdx, sample_offs )) == nullptr )
           break;
 
-        unsigned    n    = std::min(a->dspFrameCnt - sample_offs, adst.dspFrameCnt );
-        unsigned    chN  = std::min(a->chCnt, adst.oBufChCnt );
+        unsigned n  = std::min(a->dspFrameCnt - sample_offs, adst.dspFrameCnt );
+
+
+        // TODO: Verify that this is correct - it looks like sample_offs should have to be incremented
         
-        for(unsigned i=0; i<chN; ++i)
-          memcpy( adst.oBufArray[i] + adst_idx, a->audioBuf + sample_offs, n * sizeof(sample_t));
+        for(unsigned i=0; i<a->chCnt; ++i)
+        {
+          unsigned dstChIdx = p->audioOutChMapA != nullptr && i < p->audioOutChMapN ? p->audioOutChMapA[i] : i;
+
+          if( dstChIdx < adst.oBufChCnt )
+            memcpy( adst.oBufArray[ dstChIdx ] + adst_idx, a->audioBuf + sample_offs, n * sizeof(sample_t));
+        }
 
         p->curFrameIdx += n;
         adst_idx       += n;
       }
+
+      // TODO: zero unused channels
 
       if( adst_idx < adst.dspFrameCnt )
         for(unsigned i=0; i<adst.oBufChCnt; ++i)

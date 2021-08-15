@@ -8,6 +8,7 @@
 #include "cwTime.h"
 #include "cwMidiDecls.h"
 #include "cwMidi.h"
+#include "cwMidiFile.h"
 #include "cwUiDecls.h"
 #include "cwIo.h"
 #include "cwIoMidiRecordPlay.h"
@@ -51,7 +52,9 @@ namespace cw
       bool           thruFl;
       
       time::spec_t   play_time;                
-      time::spec_t   start_time;        
+      time::spec_t   start_time;
+
+      bool pedalFl;
     
     } midi_record_play_t;
 
@@ -111,6 +114,57 @@ namespace cw
       p->msgArrayOutIdx = next_idx;
     }
 
+
+    // Read the am_midi_msg_t records from a file written by _midi_write()
+    // If msgArrayCntRef==0 and msgArrayRef==NULL then an array will be allocated and it is up
+    // to the caller to release it, otherwise the msgArrayCntRef should be set to the count
+    // of available records in msgArrayRef[].  Note the if there are more records in the file
+    // than there are record in msgArrayRef[] then a warning will be issued and only
+    // msgArrayCntRef records will be returned.
+    cw::rc_t _am_file_read( const char* fn, unsigned& msgArrayCntRef, am_midi_msg_t*& msgArrayRef )
+    {
+      rc_t           rc = kOkRC;
+      unsigned       n  = 0;
+      file::handle_t fH;
+        
+      if((rc = file::open(fH,fn,file::kReadFl)) != kOkRC )
+      {
+        rc = cwLogError(kOpenFailRC,"Unable to locate the AM file: '%s'.", fn );
+        goto errLabel;
+      }
+
+      if((rc = file::read(fH,n)) != kOkRC )
+      {
+        rc = cwLogError(kReadFailRC,"Header read failed on Audio-MIDI file: '%s'.", fn );
+        goto errLabel;
+      }
+
+      if( msgArrayCntRef == 0 || msgArrayRef == nullptr )
+      {
+        msgArrayRef = mem::allocZ<am_midi_msg_t>(n);        
+      }
+      else
+      {
+        if( n > msgArrayCntRef )
+        {
+          cwLogWarning("The count of message in Audio-MIDI file '%s' reduced from %i to %i.", fn, n, msgArrayCntRef );
+          n = msgArrayCntRef;
+        }
+      }
+      
+      if((rc = file::read(fH,msgArrayRef,n*sizeof(am_midi_msg_t))) != kOkRC )
+      {
+        rc = cwLogError(kReadFailRC,"Data read failed on Audio-MIDI file: '%s'.", fn );
+        goto errLabel;
+      }
+
+      msgArrayCntRef = n;
+
+    errLabel:
+        
+      return rc;        
+    }
+    
     rc_t _midi_read( midi_record_play_t* p, const char* fn )
     {
       rc_t           rc = kOkRC;
@@ -193,6 +247,70 @@ namespace cw
       return rc;
     }
 
+    rc_t _midi_file_write( const char* fn, const am_midi_msg_t* msgArray, unsigned msgArrayCnt )
+    {
+      rc_t                 rc                 = kOkRC;
+      const unsigned       midiFileTrackCnt   = 1;
+      const unsigned       midiFileTicksPerQN = 192;
+      const unsigned       midiFileTempoBpm   = 120;
+      const unsigned       midiFileTrkIdx     = 0;
+      file::handle_t       fH;
+      midi::file::handle_t mfH;
+      time::spec_t         t0;      
+
+
+      if( msgArrayCnt == 0 )
+      {
+        cwLogWarning("Nothing to write.");
+        return rc;
+      }
+
+      if((rc = midi::file::create( mfH, midiFileTrackCnt,  midiFileTicksPerQN )) != kOkRC )
+      {
+        rc = cwLogError(rc,"MIDI file create failed. File:'%s'", cwStringNullGuard(fn));
+        goto errLabel;                  
+      }
+
+      if((rc = midi::file::insertTrackTempoMsg( mfH, midiFileTrkIdx, 0, midiFileTempoBpm )) != kOkRC )
+      {
+        rc = cwLogError(rc,"MIDI file tempo message insert failed. File:'%s'", cwStringNullGuard(fn));
+        goto errLabel;                  
+      }
+
+      t0 = msgArray[0].timestamp;
+      
+      for(unsigned i=0; i<msgArrayCnt; ++i)
+      {
+
+        double secs = time::elapsedMicros( t0, msgArray[i].timestamp ) / 1000000.0;
+        unsigned atick = secs * midiFileTicksPerQN * midiFileTempoBpm / 60.0;
+        
+        if((rc = insertTrackChMsg( mfH, midiFileTrkIdx, atick, msgArray[i].ch + msgArray[i].status, msgArray[i].d0, msgArray[i].d1 )) != kOkRC )
+        {
+          rc = cwLogError(rc,"MIDI file message insert failed. File: '%s'.",cwStringNullGuard(fn));
+          goto errLabel;                  
+          
+        }
+
+      }
+      
+      if((rc = midi::file::write( mfH, fn )) != kOkRC )
+      {
+        rc = cwLogError(rc,"MIDI file write failed on '%s'.",cwStringNullGuard(fn));
+        goto errLabel;                  
+      }
+
+      if((rc = midi::file::close( mfH )) != kOkRC )
+      {
+        rc = cwLogError(rc,"MIDI file close failed on '%s'.",cwStringNullGuard(fn));
+        goto errLabel;                  
+      }
+
+    errLabel:
+      return rc;
+    }
+
+    
     void _print_midi_msg( const am_midi_msg_t* mm )
     {
       printf("%i %i : %10i : %2i 0x%02x 0x%02x 0x%02x\n", mm->devIdx, mm->portIdx, mm->microsec, mm->ch, mm->status, mm->d0, mm->d1 );
@@ -240,6 +358,8 @@ namespace cw
         io::midiDeviceSend( p->ioH, p->midiOutDevIdx, p->midiOutPortIdx, midi::kCtlMdId, midi::kSostenutoCtlMdId, 0 );
         // soft pedal
         io::midiDeviceSend( p->ioH, p->midiOutDevIdx, p->midiOutPortIdx, midi::kCtlMdId, 67, 0 );
+
+        p->pedalFl = false;
 
       }
 
@@ -341,7 +461,25 @@ namespace cw
 
             //_print_midi_msg(mm);
 
-            io::midiDeviceSend( p->ioH, p->midiOutDevIdx, p->midiOutPortIdx, mm->status + mm->ch, mm->d0, mm->d1 );
+            bool skipFl = false;
+            
+            if( mm->status == midi::kCtlMdId && (mm->d0 == midi::kSustainCtlMdId || mm->d0 == midi::kSostenutoCtlMdId || mm->d0 == midi::kSoftPedalCtlMdId ) )
+            {
+              // if the pedal is down
+              if( p->pedalFl )
+              {
+                skipFl = mm->d1 > 64;
+                p->pedalFl = false;
+              }
+              else
+              {
+                skipFl = mm->d1 <= 64;
+                p->pedalFl = true;
+              }
+            }
+
+            if( !skipFl )
+              io::midiDeviceSend( p->ioH, p->midiOutDevIdx, p->midiOutPortIdx, mm->status + mm->ch, mm->d0, mm->d1 );
             
             _set_midi_msg_next_play_index(p, p->msgArrayOutIdx+1 );
 
@@ -424,6 +562,7 @@ cw::rc_t cw::midi_record_play::start( handle_t h )
 {
   midi_record_play_t* p = _handleToPtr(h);
   p->startedFl = true;
+  p->pedalFl = false;
 
   time::get(p->start_time);
         
@@ -540,3 +679,79 @@ cw::rc_t  cw::midi_record_play::exec( handle_t h, const io::msg_t& m )
   return rc;
 }
 
+
+
+cw::rc_t cw::midi_record_play::am_to_midi_file( const char* am_filename, const char* midi_filename )
+{  
+  rc_t           rc          = kOkRC;
+  unsigned       msgArrayCnt = 0;
+  am_midi_msg_t* msgArray    = nullptr;
+
+  if((rc = _am_file_read( am_filename, msgArrayCnt, msgArray )) != kOkRC )
+  {
+    rc = cwLogError(rc,"Unable to read AM file '%s'.", cwStringNullGuard(am_filename));
+    goto errLabel;
+  }
+
+  if((rc = _midi_file_write( midi_filename, msgArray, msgArrayCnt )) != kOkRC )
+  {
+    rc = cwLogError(rc,"Unable to write AM file '%s' to '%s'.", cwStringNullGuard(am_filename),cwStringNullGuard(midi_filename));
+    goto errLabel;
+  }
+
+ errLabel:
+  mem::release(msgArray);
+
+  return rc;
+  
+}
+
+cw::rc_t cw::midi_record_play::am_to_midi_dir( const char* inDir )
+{  
+  rc_t                 rc            = kOkRC;
+  filesys::dirEntry_t* dirEntryArray = nullptr;
+  unsigned             dirEntryCnt   = 0;
+  
+  if(( dirEntryArray = dirEntries( inDir, filesys::kDirFsFl, &dirEntryCnt )) == nullptr )
+    goto errLabel;
+
+  for(unsigned i=0; i<dirEntryCnt; ++i)
+  {
+    printf("0x%x %s\n", dirEntryArray[i].flags, dirEntryArray[i].name);
+  }
+  
+ errLabel:
+  mem::release(dirEntryArray);
+  
+  return rc;  
+}
+
+cw::rc_t cw::midi_record_play::am_to_midi_file( const object_t* cfg )
+{
+  rc_t        rc    = kOkRC;
+  const char* inDir = nullptr;
+  //
+  if( cfg == nullptr )
+  {
+    rc = cwLogError(kInvalidArgRC,"AM to MIDI file: No input directory.");
+    goto errLabel;
+  }
+
+  //
+  if((rc = cfg->getv("inDir",inDir)) != kOkRC )
+  {
+    rc = cwLogError(rc,"AM to MIDI file: Unable to parse input arg's.");
+    goto errLabel;
+  }
+
+  //
+  if((rc = am_to_midi_dir(inDir)) != kOkRC )
+  {
+    rc = cwLogError(rc,"AM to MIDI file conversion on directory:'%s' failed.", cwStringNullGuard(inDir));
+    goto errLabel;
+  }
+
+ errLabel:
+  return rc;
+  
+}

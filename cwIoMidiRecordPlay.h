@@ -28,7 +28,11 @@ namespace cw
     unsigned event_count( handle_t h );
     unsigned event_index( handle_t h );
     rc_t exec( handle_t h, const io::msg_t& msg );
-    
+
+
+    rc_t am_to_midi_file( const char* am_filename, const char* midi_filename );
+    rc_t am_to_midi_dir( const char* inDir );
+    rc_t am_to_midi_file( const object_t* cfg );
     
   }
 }

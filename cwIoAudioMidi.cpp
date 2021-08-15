@@ -11,6 +11,19 @@
 #include "cwUiDecls.h"
 #include "cwIo.h"
 #include "cwIoAudioMidi.h"
+#include "cwAudioFile.h"
+
+/*
+
+TODO:
+0. Check for leaks with valgrind 
+1. Add audio recording
+2. Add audio metering panel
+3. Turn into a reusable component.
+
+
+ */
+
 
 namespace cw
 {
@@ -32,6 +45,10 @@ namespace cw
         kStopBtnId,
         kClearBtnId,
         kMsgCntId,
+        
+        kAudioRecordCheckId,
+        kAudioSecsId,
+                
         kSaveBtnId,
         kOpenBtnId,
         kFnStringId
@@ -51,11 +68,15 @@ namespace cw
         { kPanelDivId,     kIoReportBtnId,  "ioReportBtnId" },
         { kPanelDivId,     kReportBtnId,    "reportBtnId" },
         
-        { kPanelDivId,     kRecordCheckId,  "recordCheckId" },
-        { kPanelDivId,     kStartBtnId,     "startBtnId" },
-        { kPanelDivId,     kStopBtnId,      "stopBtnId" },
-        { kPanelDivId,     kClearBtnId,     "clearBtnId" },
-        { kPanelDivId,     kMsgCntId,       "msgCntId" },
+        { kPanelDivId,     kRecordCheckId,      "recordCheckId" },
+        { kPanelDivId,     kAudioRecordCheckId, "audioRecordCheckId" },
+        { kPanelDivId,     kStartBtnId,         "startBtnId" },
+        { kPanelDivId,     kStopBtnId,          "stopBtnId" },
+        { kPanelDivId,     kClearBtnId,         "clearBtnId" },
+        { kPanelDivId,     kMsgCntId,           "msgCntId" },
+
+        { kPanelDivId,     kAudioRecordCheckId, "audioRecordCheckId" },
+        { kPanelDivId,     kAudioSecsId,        "audioSecsId" },
         
         { kPanelDivId,     kSaveBtnId,      "saveBtnId" },
         { kPanelDivId,     kOpenBtnId,      "openBtnId" },
@@ -67,10 +88,11 @@ namespace cw
 
       typedef struct am_audio_str
       {
-        time::spec_t timestamp;
-        unsigned     chCnt;
-        
-        
+        time::spec_t         timestamp;
+        unsigned             chCnt;
+        unsigned             dspFrameCnt;
+        struct am_audio_str* link;
+        sample_t             audioBuf[]; // [[ch0:dspFramCnt][ch1:dspFrmCnt]] total: chCnt*dspFrameCnt samples
       } am_audio_t;
 
       typedef struct am_midi_msg_str
@@ -108,11 +130,20 @@ namespace cw
         
         time::spec_t   start_time;        
         unsigned       midiFilterCnt;
+
+        am_audio_t*    audioBeg;       // first in a chain of am_audio_t audio buffers
+        am_audio_t*    audioEnd;       // last in a chain of am_audio_t audio buffers
+        
+        am_audio_t*    audioFile;      // one large audio buffer holding the last loaded audio file
+
+        double         audioSrate;
+        bool           audioRecordFl;
+        unsigned       audioSmpIdx;
         
         bool           recordFl;
         bool           startedFl;
         
-        handle_t       ioH;
+        io::handle_t       ioH;
       } app_t;
       
       rc_t _parseCfg(app_t* app, const object_t* cfg )
@@ -160,7 +191,6 @@ namespace cw
           rc = cwLogError(kInvalidArgRC,"The MIDI output port: '%s' was not found.", cwStringNullGuard(app->midiOutPortLabel) );
         }
 
-        printf("MIDI DEV: %i PORT:%i\n",app->midiOutDevIdx,app->midiOutPortIdx);
 
         return rc;
       }
@@ -196,7 +226,16 @@ namespace cw
           _set_midi_msg_next_play_index(app,0);
           io::timerStart( app->ioH, io::timerIdToIndex(app->ioH, kAmMidiTimerId) );
           time::get(app->play_time);
-        }        
+        }
+
+        if( app->audioRecordFl )
+        {
+        }
+        else
+        {
+          app->audioSmpIdx = 0;
+        }
+
       }
 
       void _on_stop_btn( app_t* app )
@@ -226,7 +265,7 @@ namespace cw
         cwLogInfo("Runtime: %5.2f seconds.", time::elapsedMs(app->start_time,t1)/1000.0 );
       }
 
-      rc_t _read_midi( app_t* app )
+      rc_t _midi_read( app_t* app )
       {
         rc_t  rc = kOkRC;
         char* fn = filesys::makeFn(  app->record_dir, app->filename, NULL, NULL );
@@ -267,7 +306,7 @@ namespace cw
         return rc;        
       }
       
-      rc_t _write_midi( app_t* app )
+      rc_t _midi_write( app_t* app )
       {
         rc_t           rc = kOkRC;
         char*          fn = nullptr;
@@ -335,6 +374,300 @@ namespace cw
         }
       }
 
+      am_audio_t* _am_audio_alloc( unsigned dspFrameCnt, unsigned chCnt )
+      {
+        unsigned    sample_byte_cnt = chCnt * dspFrameCnt * sizeof(sample_t);        
+        void*       vp              = mem::alloc<uint8_t>( sizeof(am_audio_t) + sample_byte_cnt );
+        am_audio_t* a               = (am_audio_t*)vp;
+        
+        a->chCnt       = chCnt;
+        a->dspFrameCnt = dspFrameCnt;
+        
+        return a;
+      }
+
+      am_audio_t* _am_audio_from_sample_index( app_t* app, unsigned sample_idx, unsigned& sample_offs_ref )
+      {
+        unsigned    n = 0;
+        am_audio_t* a = app->audioBeg;
+
+        if( app->audioBeg == nullptr )
+          return nullptr;
+        
+        for(; a!=nullptr; a=a->link)
+        {
+          if( n < sample_idx )
+          {
+            sample_offs_ref = sample_idx - n;
+            return a;
+          }
+
+          n += a->dspFrameCnt;
+        }
+          
+        return nullptr;
+      }
+
+      void _audio_file_buffer( app_t* app, io::audio_msg_t& adst )
+      {
+        unsigned    sample_offs = 0;
+        am_audio_t* a           = _am_audio_from_sample_index(app, app->audioSmpIdx, sample_offs );
+        unsigned    copy_n_0      = std::min(a->dspFrameCnt - sample_offs, adst.dspFrameCnt );
+        unsigned    chN         = std::min(a->chCnt, adst.oBufChCnt );
+
+        for(unsigned i=0; i<chN; ++i)
+          memcpy( adst.oBufArray[i], a->audioBuf + sample_offs, copy_n_0 * sizeof(sample_t));
+
+        app->audioSmpIdx += copy_n_0;
+
+        if( copy_n_0 < adst.dspFrameCnt )
+        {
+          a  = _am_audio_from_sample_index(app, app->audioSmpIdx, sample_offs );
+        
+          unsigned copy_n_1 = std::min(a->dspFrameCnt - sample_offs, adst.dspFrameCnt - copy_n_0 );
+        
+          for(unsigned i=0; i<chN; ++i)
+            memcpy( adst.oBufArray[i] + copy_n_0, a->audioBuf + sample_offs, copy_n_1 * sizeof(sample_t));
+        }
+      }
+
+      void _audio_record( app_t* app, const io::audio_msg_t& asrc )
+      {
+        am_audio_t* a  = _am_audio_alloc(asrc.dspFrameCnt,asrc.iBufChCnt);
+        
+        for(unsigned chIdx=0; chIdx<asrc.iBufChCnt; ++chIdx)
+          memcpy(a->audioBuf + chIdx*asrc.dspFrameCnt, asrc.iBufArray[chIdx], asrc.dspFrameCnt * sizeof(sample_t));
+
+        app->audioEnd->link = a;   // link the new audio record to the end of the audio sample buffer chain
+        app->audioEnd       = a;   // make the new audio record the last ele. of the chain
+
+        // if this is the first ele of the chain
+        if( app->audioBeg == nullptr )
+        {
+          app->audioBeg   = a;
+          app->audioSrate = asrc.srate; 
+        }
+      }
+
+      void _audio_play( app_t* app, io::audio_msg_t& adst )
+      {
+        if( app->audioFile == nullptr )
+          return;
+
+        if( app->audioSmpIdx >= app->audioFile->dspFrameCnt )
+          return;
+
+        unsigned chCnt   = std::min( adst.oBufChCnt,   app->audioFile->chCnt );
+        unsigned copy_n  = std::min( adst.dspFrameCnt, app->audioFile->dspFrameCnt - app->audioSmpIdx);
+        unsigned extra_n = adst.dspFrameCnt - copy_n;
+        unsigned i;
+        
+        for(i=0; i<chCnt; ++i)
+        {
+          memcpy(adst.oBufArray + i*adst.dspFrameCnt,          app->audioFile->audioBuf + i*app->audioFile->dspFrameCnt, copy_n  * sizeof(sample_t));
+          memset(adst.oBufArray + i*adst.dspFrameCnt + copy_n, 0,                                                        extra_n * sizeof(sample_t));
+        }
+      }
+
+      void _audio_through( app_t* app, io::audio_msg_t& m )
+      {
+        unsigned chN     = std::min(m.iBufChCnt,m.oBufChCnt);
+        unsigned byteCnt = m.dspFrameCnt * sizeof(sample_t);
+
+        // Copy the input to the output
+        for(unsigned i=0; i<chN; ++i)
+          if( m.oBufArray[i] != NULL )
+          {      
+            // the input channel is not disabled
+            if( m.iBufArray[i] != NULL )
+            {
+              for(unsigned j=0; j<m.dspFrameCnt; ++j )
+                m.oBufArray[i][j] =  m.iBufArray[i][j];
+            }
+            else
+            {
+              // the input channel is disabled but the output is not - so fill the output with zeros
+              memset(m.oBufArray[i], 0, byteCnt);
+            }
+          }
+      }
+      
+      rc_t _audio_write_as_wav( app_t* app )
+      {
+        rc_t                rc = kOkRC;
+        audiofile::handle_t afH;
+        char*               fn = nullptr;
+
+        // if there is no audio to write
+        if( app->audioBeg == nullptr )
+          return rc;
+
+        // form the filename
+        if((fn = filesys::makeVersionedFn(  app->record_dir, app->record_fn, "wav", NULL )) == nullptr )
+        {
+          rc = cwLogError(kOpFailRC,"Unable to form versioned filename in '%s' with prefix: '%s' and extension: '%s'.",
+                          cwStringNullGuard(app->record_dir),
+                          cwStringNullGuard(app->record_fn),
+                          cwStringNullGuard("wav"));
+        }
+
+        // create an audio file
+        if((rc = audiofile::create( afH, fn, app->audioSrate, 16, app->audioBeg->chCnt )) != kOkRC )
+        {
+          cwLogError(rc,"Audio file create failed.");
+          goto errLabel;
+        }
+
+        // write each buffer 
+        for(am_audio_t* a=app->audioBeg; a!=nullptr; a=a->link)
+        {
+          float* chBufArray[ a->chCnt ];
+          for(unsigned i=0; i<a->chCnt; ++i)
+            chBufArray[i] = a->audioBuf + (i*a->dspFrameCnt);
+            
+          if((rc = writeFloat( afH, a->dspFrameCnt, a->chCnt, (const float**)chBufArray )) != kOkRC )
+          {
+            cwLogError(rc,"An error occurred while writing and audio buffer.");
+            goto errLabel;
+          }
+        }
+        
+      errLabel:
+
+        // close the audio file
+        if((rc == audiofile::close(afH)) != kOkRC )
+        {
+          cwLogError(rc,"Audio file close failed.");
+          goto errLabel;
+        }
+        
+        mem::free(fn);
+        return rc;
+      }
+
+      rc_t _audio_write_buffer_times( app_t* app )
+      {
+        rc_t           rc = kOkRC;
+        char*          fn = nullptr;
+        am_audio_t*    a0 = app->audioBeg;
+        file::handle_t fH;
+        
+        // if there is no audio to write
+        if( app->audioBeg == nullptr )
+          return rc;
+
+        // form the filename
+        if((fn = filesys::makeVersionedFn(  app->record_dir, app->record_fn, "txt", NULL )) == nullptr )
+        {
+          rc = cwLogError(kOpFailRC,"Unable to form versioned filename in '%s' with prefix: '%s' and extension: '%s'.",
+                          cwStringNullGuard(app->record_dir),
+                          cwStringNullGuard(app->record_fn),
+                          cwStringNullGuard("wav"));
+        }
+
+        // create the file
+        if((rc = file::open(fH,fn,file::kWriteFl)) != kOkRC )
+        {
+          cwLogError(rc,"Create audio buffer time file failed.");
+          goto errLabel;
+        }
+
+        file::print(fH,"{ [\n");
+        
+        // write each buffer
+        for(am_audio_t* a=app->audioBeg; a!=nullptr; a=a->link)
+        {
+          unsigned elapsed_us = time::elapsedMicros( a0->timestamp, a->timestamp );
+          file::printf(fH,"{ elapsed_us:%i chCnt:%i frameCnt:%i }\n", elapsed_us, a->chCnt, a->dspFrameCnt );
+          a0 = a;
+        }
+
+        file::print(fH,"] }\n");
+
+        // close the file
+        if((rc = file::close(fH)) != kOkRC )
+        {
+          cwLogError(rc,"Close the audio buffer time file.");
+          goto errLabel;
+        }
+
+      errLabel:
+        mem::release(fn);
+        
+        return rc;        
+      }
+
+      rc_t _audio_read( app_t* app )
+      {
+        rc_t                 rc = kOkRC;
+        char*                fn = nullptr;
+        filesys::pathPart_t* pp = nullptr;
+        audiofile::handle_t  afH;
+        audiofile::info_t    af_info;
+        
+        
+        if((fn = filesys::makeFn(  app->record_dir, app->filename, NULL, NULL )) != nullptr )
+        {
+          rc = cwLogError(kOpFailRC,"Unable to form the audio file:%s",fn);
+          goto errLabel;
+        }
+
+        if((pp = filesys::pathParts(fn)) != nullptr )
+        {
+          rc = cwLogError(kOpFailRC,"Unable to parse audio file name:%s",fn);
+          goto errLabel;
+        }
+        
+        mem::release(fn);
+        
+        if((fn = filesys::makeFn( app->record_dir, pp->fnStr, "wav", NULL )) != nullptr )
+        {
+          rc = cwLogError(kOpFailRC,"Unable form audio file wav name:%s",fn);
+          goto errLabel;          
+        }
+        
+        if((rc = audiofile::open(afH, fn, &af_info)) != kOkRC )
+        {
+          rc = cwLogError(kOpFailRC,"Audio file '%s' open failed.",fn);
+          goto errLabel;         
+        }
+        
+        if((app->audioFile = _am_audio_alloc(af_info.frameCnt,af_info.chCnt)) != nullptr )
+        {
+          rc = cwLogError(kOpFailRC,"Allocate audio buffer (%i samples) failed.",af_info.frameCnt*af_info.chCnt);
+          goto errLabel;
+        }
+        else
+        {
+          unsigned audioFrameCnt = 0;
+          float* chArray[ af_info.chCnt ];
+          
+          for(unsigned i=0; i<af_info.chCnt; ++i)
+            chArray[i] = app->audioFile->audioBuf + (i*af_info.frameCnt);
+          
+          if((rc = audiofile::readFloat(afH, af_info.frameCnt, 0, af_info.chCnt, chArray, &audioFrameCnt)) != kOkRC )
+          {
+            rc = cwLogError(kOpFailRC,"Audio file read failed.");
+            goto errLabel;
+          }
+
+          double audioSecs = (double)af_info.frameCnt / af_info.srate;
+          io::uiSendValue( app->ioH, kInvalidId, uiFindElementUuId(app->ioH,kAudioSecsId), audioSecs );
+
+        }
+        
+      errLabel:
+        if((rc = audiofile::close(afH)) != kOkRC )
+        {
+          rc = cwLogError(kOpFailRC,"Audio file close failed.");
+          goto errLabel;
+        }
+        
+        mem::release(pp);
+        mem::release(fn);
+        return rc;
+      }      
+      
       rc_t _onUiInit(app_t* app, const ui_msg_t& m )
       {
         rc_t rc = kOkRC;
@@ -361,17 +694,25 @@ namespace cw
             break;
 
           case kSaveBtnId:
-            _write_midi(app);
+            _midi_write(app);
+            _audio_write_as_wav(app);
+            _audio_write_buffer_times(app);
             break;
 
           case kOpenBtnId:
             printf("open btn\n");
-            _read_midi(app);
+            _midi_read(app);
+            _audio_read(app);
             break;
 
           case kRecordCheckId:
             cwLogInfo("Record:%i",m.value->u.b);
             app->recordFl = m.value->u.b;
+            break;
+
+          case kAudioRecordCheckId:
+            cwLogInfo("Audio Record:%i",m.value->u.b);
+            app->audioRecordFl = m.value->u.b;
             break;
             
           case kStartBtnId:
@@ -558,30 +899,25 @@ namespace cw
         return rc;
       }
       
-      rc_t audioCb( app_t* app, const audio_msg_t& m )
+      rc_t audioCb( app_t* app, audio_msg_t& m )
       {
         rc_t rc = kOkRC;
 
-        unsigned chN     = std::min(m.iBufChCnt,m.oBufChCnt);
-        unsigned byteCnt = m.dspFrameCnt * sizeof(sample_t);
-
-        // Copy the input to the output
-        for(unsigned i=0; i<chN; ++i)
-          if( m.oBufArray[i] != NULL )
-          {      
-            // the input channel is not disabled
-            if( m.iBufArray[i] != NULL )
-            {
-              for(unsigned j=0; j<m.dspFrameCnt; ++j )
-                m.oBufArray[i][j] =  m.iBufArray[i][j];
-            }
-            else
-            {
-              // the input channel is disabled but the output is not - so fill the output with zeros
-              memset(m.oBufArray[i], 0, byteCnt);
-            }
+        if( app->startedFl )
+        {
+          if( app->audioRecordFl )
+          {
+            if( m.iBufChCnt > 0 )
+              _audio_record(app,m);
+            
+            if( m.oBufChCnt > 0 )
+              _audio_play(app,m);
           }
-      
+
+          
+        }
+
+        
         return rc;      
       }
 
@@ -631,32 +967,11 @@ namespace cw
         }
 
         return rc;
-      }
-    
-      void _report( handle_t h )
-      {
-        for(unsigned i=0; i<serialDeviceCount(h); ++i)
-          printf("serial: %s\n", serialDeviceLabel(h,i));
-
-        for(unsigned i=0; i<midiDeviceCount(h); ++i)
-          for(unsigned j=0; j<2; ++j)
-          {
-            bool     inputFl = j==0;
-            unsigned m       = midiDevicePortCount(h,i,inputFl);
-            for(unsigned k=0; k<m; ++k)
-              printf("midi: %s: %s : %s\n", inputFl ? "in ":"out", midiDeviceName(h,i), midiDevicePortName(h,i,inputFl,k));
-        
-          }
-
-        for(unsigned i=0; i<audioDeviceCount(h); ++i)
-          printf("audio: %s\n", audioDeviceName(h,i));
-            
-      }
-
-      
+      }          
     }
   }
 }
+
 
 cw::rc_t cw::io::audio_midi::main( const object_t* cfg )
 {
