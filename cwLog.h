@@ -109,4 +109,26 @@ namespace cw
 #define cwLogFatal( rc,fmt,...)   cwLogFatalH( cw::log::globalHandle(),  (rc), (fmt), ##__VA_ARGS__ )
 
 
+// This log level is intended for debugging individual modules.
+// By defining cwLOG_MODULE prior to cwLog.h in a given module these logging lines will be enabled.
+#ifdef cwLOG_MODULE
+
+#define cwLogVModRC(rc,fmt, vl) cwLogVInfoH( cw::log::globalhandle(), (rc), (fmt), (vl) )
+#define cwLogModRC( rc,fmt,...) cwLogInfoH(  cw::log::globalHandle(), (rc), (fmt), ##__VA_ARGS__ )
+
+#define cwLogVMod(fmt, vl)      cwLogVInfoH( cw::log::globalHandle(), cw::kOkRC, (fmt), (vl) )
+#define cwLogMod( fmt,...)      cwLogInfoH(  cw::log::globalHandle(), cw::kOkRC, (fmt), ##__VA_ARGS__ )
+
+#else
+
+#define cwLogVModRC(rc,fmt, vl)
+#define cwLogModRC( rc,fmt,...)
+
+#define cwLogVMod(fmt, vl)
+#define cwLogMod( fmt,...)
+
+#endif
+
+
+
 #endif

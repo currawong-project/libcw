@@ -6,6 +6,8 @@
 #include "cwAudioFile.h"
 #include "cwVectOps.h"
 #include "cwMtx.h"
+
+#include "cwDspTypes.h" // real_t, sample_t
 #include "cwFlow.h"
 #include "cwFlowTypes.h"
 #include "cwFlowProc.h"
@@ -14,6 +16,7 @@
 #include "cwMath.h"
 #include "cwDsp.h"
 #include "cwAudioTransforms.h"
+#include "cwDspTransforms.h"
 
 namespace cw
 {
@@ -31,8 +34,6 @@ namespace cw
         
       } inst_t;
 
-      
-    
 
       rc_t create( instance_t* ctx )
       {
@@ -83,6 +84,8 @@ namespace cw
     {
       enum
       {
+        kFnamePId,
+        kEofFlPId,
         kOutPId
       };
       
@@ -101,20 +104,14 @@ namespace cw
         inst_t* inst = mem::allocZ<inst_t>();
         ctx->userPtr = inst;
 
-        // get the audio filename
-        if((rc = ctx->arg_cfg->getv("fn",inst->filename)) != kOkRC )
+        // Register variable and get their current value
+        if((rc = var_register_and_get( ctx, kAnyChIdx,
+                                       kFnamePId, "fname", inst->filename,
+                                       kEofFlPId, "eofFl", inst->eofFl )) != kOkRC )
         {
-          rc = cwLogError(kInvalidArgRC,"The audio input file has no 'fn' argument.");
           goto errLabel;
         }
 
-        // get the 'eof' flag
-        if((rc = ctx->arg_cfg->getv_opt("eof",inst->eofFl)) != kOkRC )
-        {
-          rc = cwLogError(kInvalidArgRC,"The audio input file has no 'fn' argument.");
-          goto errLabel;
-        }
-        
         // open the audio file
         if((rc = audiofile::open(inst->afH,inst->filename,&info)) != kOkRC )
         {
@@ -125,7 +122,7 @@ namespace cw
         cwLogInfo("Audio '%s' srate:%f chs:%i frames:%i %f seconds.",inst->filename,info.srate,info.chCnt,info.frameCnt, info.frameCnt/info.srate );
 
         // create one output audio buffer
-        rc = var_abuf_create( ctx, "out", kOutPId, kAnyChIdx, info.srate, info.chCnt, ctx->ctx->framesPerCycle );
+        rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, info.srate, info.chCnt, ctx->ctx->framesPerCycle );
 
       errLabel:
         return rc;
@@ -162,7 +159,7 @@ namespace cw
 
 
         // verify that a source buffer exists
-        if((rc = var_abuf_get(ctx,"out",kAnyChIdx,abuf)) != kOkRC )
+        if((rc = var_get(ctx,kOutPId,kAnyChIdx,abuf)) != kOkRC )
         {
           rc = cwLogError(kInvalidStateRC,"The audio file instance '%s' does not have a valid audio output buffer.",ctx->label);
         }
@@ -175,7 +172,7 @@ namespace cw
             
           rc  = readFloat(inst->afH, abuf->frameN, 0, abuf->chN, chBuf, &actualFrameN );
           
-          if( inst->eofFl && actualFrameN == 0)
+          if( inst->eofFl && actualFrameN == 0)            
             rc = kEofRC;
         }
         
@@ -186,7 +183,8 @@ namespace cw
         .create = create,
         .destroy = destroy,
         .value   = value,
-        .exec = exec
+        .exec = exec,
+        .report = nullptr
       };
       
     }
@@ -201,13 +199,15 @@ namespace cw
     {
       enum
       {
-        kInPId
+        kInPId,
+        kFnamePId
       };
       
       typedef struct
       {
         audiofile::handle_t afH;
-        const char*         filename;        
+        const char*         filename;
+        unsigned            durSmpN;
       } inst_t;
       
       rc_t create( instance_t* ctx )
@@ -215,20 +215,14 @@ namespace cw
         rc_t          rc            = kOkRC;                 //
         unsigned      audioFileBits = 0;                     // set audio file sample format to 'float32'.
         inst_t*       inst          = mem::allocZ<inst_t>(); //
-        abuf_t*       src_abuf      = nullptr;
+        const abuf_t*       src_abuf      = nullptr;
         ctx->userPtr = inst;
 
-        // get the audio filename
-        if((rc = ctx->arg_cfg->getv("fn",inst->filename)) != kOkRC )
+        // Register variables and get their current value
+        if((rc = var_register_and_get( ctx, kAnyChIdx,
+                                       kFnamePId, "fname", inst->filename,
+                                       kInPId,    "in",    src_abuf)) != kOkRC )
         {
-          rc = cwLogError(kInvalidArgRC,"The audio input file has no 'fn' argument.");
-          goto errLabel;
-        }
-        
-        // verify that a source buffer exists
-        if((rc = var_abuf_get(ctx,"in",kAnyChIdx,src_abuf)) != kOkRC )
-        {
-          rc = cwLogError(kInvalidStateRC,"The audio file instance '%s' does not have a valid input connection.",ctx->label);
           goto errLabel;
         }
 
@@ -239,8 +233,6 @@ namespace cw
           goto errLabel;
         }
 
-        rc = var_init( ctx, kAnyChIdx, kInPId, "in", src_abuf);
-        
       errLabel:
         return rc;
       }
@@ -275,7 +267,7 @@ namespace cw
         inst_t*       inst   = (inst_t*)ctx->userPtr;
         const abuf_t* src_abuf = nullptr;
 
-        if((rc = var_abuf_get(ctx,"in",kAnyChIdx,src_abuf)) != kOkRC )
+        if((rc = var_get(ctx,kInPId,kAnyChIdx,src_abuf)) != kOkRC )
           rc = cwLogError(kInvalidStateRC,"The audio file instance '%s' does not have a valid input connection.",ctx->label);
         else
         {
@@ -286,6 +278,12 @@ namespace cw
         
           if((rc = audiofile::writeFloat(inst->afH, src_abuf->frameN, src_abuf->chN, chBuf )) != kOkRC )
             rc = cwLogError(rc,"Audio file write failed on instance: '%s'.", ctx->label );
+
+          // print a minutes counter
+          inst->durSmpN += src_abuf->frameN;          
+          if( inst->durSmpN % ((unsigned)src_abuf->srate*60) == 0 )
+            printf("%5.1f %s\n", inst->durSmpN/(src_abuf->srate*60));
+          
         }
         
         return rc;
@@ -295,7 +293,8 @@ namespace cw
         .create = create,
         .destroy = destroy,
         .value = value,
-        .exec = exec
+        .exec = exec,
+        .report = nullptr
       };
       
     }
@@ -310,12 +309,16 @@ namespace cw
 
       enum {
         kInPId,
+        kHopSmpNPId,
+        kWndSmpNPId,
+        kHzFlPId,
         kOutPId
       };
       
       typedef struct
       {
         pv_t**   pvA;       // pvA[ srcBuf.chN ]
+        unsigned pvN;
         unsigned wndSmpN;
         unsigned hopSmpN;
         bool     hzFl;
@@ -330,32 +333,19 @@ namespace cw
         inst_t*       inst   = mem::allocZ<inst_t>();
         ctx->userPtr = inst;
 
-        // get the wnd/hop sample count
-        if((rc = ctx->arg_cfg->getv("wndSmpCnt",inst->wndSmpN,
-                                    "hopSmpCnt",inst->hopSmpN )) != kOkRC )
+        if((rc = var_register_and_get( ctx, kAnyChIdx,
+                                       kInPId, "in", srcBuf,
+                                       kHopSmpNPId, "hopSmpN", inst->hopSmpN,
+                                       kWndSmpNPId, "wndSmpN", inst->wndSmpN,
+                                       kHzFlPId,    "hzFl",    inst->hzFl )) != kOkRC )
         {
-          rc = cwLogError(kSyntaxErrorRC,"PV Analysis required parameters parse failed on instance '%s'.",ctx->label);
-          goto errLabel;
-        }
-
-        // get the optional arg's.
-        if((rc = ctx->arg_cfg->getv_opt("hzFl",inst->hzFl)) != kOkRC )
-        {
-          rc = cwLogError(kSyntaxErrorRC,"PV Analysis optional parameters parse failed on instance '%s'.",ctx->label);
-          goto errLabel;          
-        }
-        
-        // verify that a source buffer exists
-        if((rc = var_abuf_get(ctx,"in", kAnyChIdx, srcBuf )) != kOkRC )
-        {
-          rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",ctx->label);
           goto errLabel;
         }
         else
         {
-
           flags  = inst->hzFl ? dsp::pv_anl::kCalcHzPvaFl : dsp::pv_anl::kNoCalcHzPvaFl;
-          inst->pvA = mem::allocZ<pv_t*>( srcBuf->chN );  // allocate pv channel array
+          inst->pvN = srcBuf->chN;
+          inst->pvA = mem::allocZ<pv_t*>( inst->pvN );  // allocate pv channel array
           const sample_t* magV[ srcBuf->chN ];
           const sample_t* phsV[ srcBuf->chN ];
           const sample_t* hzV[  srcBuf->chN ];
@@ -374,11 +364,12 @@ namespace cw
             hzV[i]  = inst->pvA[i]->hzV;
           }
 
-          if((rc = var_init( ctx, kAnyChIdx, kInPId, "in", srcBuf )) != kOkRC )
+          if((rc = var_register( ctx, kAnyChIdx, kInPId, "in" )) != kOkRC )
             goto errLabel;
           
           // create the fbuf 'out'
-          rc = var_fbuf_create( ctx, "out", kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, inst->pvA[0]->binCnt, inst->pvA[0]->hopSmpCnt, magV, phsV, hzV );
+          rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, inst->pvA[0]->binCnt, inst->pvA[0]->hopSmpCnt, magV, phsV, hzV );
+        
         }
         
       errLabel:
@@ -390,6 +381,11 @@ namespace cw
         rc_t rc = kOkRC;
 
         inst_t* inst = (inst_t*)ctx->userPtr;
+        
+        for(unsigned i=0; i<inst->pvN; ++i)
+           destroy(inst->pvA[i]);
+        
+        mem::release(inst->pvA);
         mem::release(inst);
         
         return rc;
@@ -409,14 +405,14 @@ namespace cw
         fbuf_t*       dstBuf = nullptr;
 
         // verify that a source buffer exists
-        if((rc = var_abuf_get(ctx,"in", kAnyChIdx, srcBuf )) != kOkRC )
+        if((rc = var_get(ctx,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
         {
           rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",ctx->label);
           goto errLabel;
         }
 
         // verify that the dst buffer exits
-        if((rc = var_fbuf_get(ctx,"out", kAnyChIdx, dstBuf)) != kOkRC )
+        if((rc = var_get(ctx,kOutPId, kAnyChIdx, dstBuf)) != kOkRC )
         {
           rc = cwLogError(rc,"The instance '%s' does not have a valid output.",ctx->label);
           goto errLabel;
@@ -425,11 +421,17 @@ namespace cw
         // for each input channel
         for(unsigned i=0; i<srcBuf->chN; ++i)
         {
+          dstBuf->readyFlV[i] = false;
+          
           // call the PV analysis processor
-          dsp::pv_anl::exec( inst->pvA[i], srcBuf->buf + i*srcBuf->frameN, srcBuf->frameN );
+          if( dsp::pv_anl::exec( inst->pvA[i], srcBuf->buf + i*srcBuf->frameN, srcBuf->frameN ) )
+          {
+            // rescale the frequency domain magnitude
+            vop::mul(dstBuf->magV[i], dstBuf->binN/2, dstBuf->binN);
+            
+            dstBuf->readyFlV[i] = true;
 
-          // rescale the frequency domain magnitude
-          vop::mul(dstBuf->magV[i], dstBuf->binN/2, dstBuf->binN);
+          }
         }
 
       errLabel:
@@ -440,7 +442,8 @@ namespace cw
         .create  = create,
         .destroy = destroy,
         .value   = value,
-        .exec    = exec
+        .exec    = exec,
+        .report  = nullptr
       };  
     }    
 
@@ -461,6 +464,7 @@ namespace cw
       typedef struct
       {
         pv_t**   pvA;     // pvA[ srcBuf.chN ]
+        unsigned pvN;
         unsigned wndSmpN; //  
         unsigned hopSmpN; //
         bool     hzFl;    //
@@ -474,18 +478,16 @@ namespace cw
         inst_t*       inst   = mem::allocZ<inst_t>();
         ctx->userPtr = inst;
 
-        
-        // verify that a source buffer exists
-        if((rc = var_fbuf_get(ctx,"in", kAnyChIdx, srcBuf )) != kOkRC )
+        if((rc = var_register_and_get( ctx, kAnyChIdx,kInPId, "in", srcBuf)) != kOkRC )
         {
-          rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",ctx->label);
           goto errLabel;
         }
         else
         {
 
           // allocate pv channel array
-          inst->pvA = mem::allocZ<pv_t*>( srcBuf->chN );  
+          inst->pvN = srcBuf->chN;
+          inst->pvA = mem::allocZ<pv_t*>( inst->pvN );  
 
           // create a pv anlaysis object for each input channel
           for(unsigned i=0; i<srcBuf->chN; ++i)
@@ -499,11 +501,11 @@ namespace cw
             }
           }
 
-          if((rc = var_init( ctx, kAnyChIdx, kInPId, "in", srcBuf )) != kOkRC )
+          if((rc = var_register( ctx, kAnyChIdx, kInPId, "in" )) != kOkRC )
             goto errLabel;
 
           // create the abuf 'out'
-          rc = var_abuf_create( ctx, "out", kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, ctx->ctx->framesPerCycle );
+          rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, ctx->ctx->framesPerCycle );
         }
         
       errLabel:
@@ -515,6 +517,10 @@ namespace cw
         rc_t rc = kOkRC;
 
         inst_t* inst = (inst_t*)ctx->userPtr;
+        for(unsigned i=0; i<inst->pvN; ++i)
+          destroy(inst->pvA[i]);
+        
+        mem::release(inst->pvA);
         mem::release(inst);
         
         return rc;
@@ -534,18 +540,23 @@ namespace cw
         abuf_t*       dstBuf = nullptr;
         
         // get the src buffer
-        if((rc = var_fbuf_get(ctx,"in", kAnyChIdx, srcBuf )) != kOkRC )
+        if((rc = var_get(ctx,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
           goto errLabel;
 
         // get the dst buffer
-        if((rc = var_abuf_get(ctx,"out", kAnyChIdx, dstBuf)) != kOkRC )
+        if((rc = var_get(ctx,kOutPId, kAnyChIdx, dstBuf)) != kOkRC )
           goto errLabel;
         
         for(unsigned i=0; i<srcBuf->chN; ++i)
         {
-          dsp::pv_syn::exec( inst->pvA[i], srcBuf->magV[i], srcBuf->phsV[i] );
-
-          abuf_set_channel( dstBuf, i, inst->pvA[i]->ola->outV, inst->pvA[i]->ola->hopSmpCnt );
+          if( srcBuf->readyFlV[i] )
+            dsp::pv_syn::exec( inst->pvA[i], srcBuf->magV[i], srcBuf->phsV[i] );
+          
+          const sample_t* ola_out = dsp::ola::execOut(inst->pvA[i]->ola);
+          if( ola_out != nullptr )
+            abuf_set_channel( dstBuf, i, ola_out, inst->pvA[i]->ola->procSmpCnt );
+          
+          //abuf_set_channel( dstBuf, i, inst->pvA[i]->ola->outV, dstBuf->frameN );
         }
         
 
@@ -557,7 +568,8 @@ namespace cw
         .create  = create,
         .destroy = destroy,
         .value   = value,
-        .exec    = exec
+        .exec    = exec,
+        .report  = nullptr
       };      
     }
 
@@ -585,6 +597,7 @@ namespace cw
       typedef struct
       {
         spec_dist_t** sdA;
+        unsigned sdN;
       } inst_t;
     
 
@@ -597,7 +610,7 @@ namespace cw
         ctx->userPtr = inst;
 
         // verify that a source buffer exists
-        if((rc = var_fbuf_get(ctx,"in", kAnyChIdx, srcBuf )) != kOkRC )
+        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",srcBuf )) != kOkRC )
         {
           rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",ctx->label);
           goto errLabel;
@@ -605,12 +618,15 @@ namespace cw
         else
         {
           // allocate pv channel array
-          inst->sdA = mem::allocZ<spec_dist_t*>( srcBuf->chN );  
+          inst->sdN = srcBuf->chN;
+          inst->sdA = mem::allocZ<spec_dist_t*>( inst->sdN );  
 
           const sample_t* magV[ srcBuf->chN ];
           const sample_t* phsV[ srcBuf->chN ];
           const sample_t*  hzV[ srcBuf->chN ];
-          
+
+          //if((rc = var_register(ctx, kAnyChIdx, kInPId, "in")) != kOkRC )
+          //  goto errLabel;
         
           // create a spec_dist object for each input channel
           for(unsigned i=0; i<srcBuf->chN; ++i)
@@ -626,14 +642,15 @@ namespace cw
             phsV[i] = inst->sdA[i]->outPhsV;
             hzV[i]  = nullptr;
 
-            if((rc = var_init( ctx, i,
-                               kInPId,      "in",       srcBuf,
-                               kCeilingPId, "ceiling",  30.0f,
-                               kExpoPId,    "expo",      3.0f,
-                               kThreshPId,  "thresh",   54.0f,
-                               kUprSlopePId,"uprSlope", -0.7f,
-                               kLwrSlopePId,"lwrSlope",  2.0f,
-                               kMixPId,     "mix",       0.0f )) != kOkRC )
+            spec_dist_t* sd = inst->sdA[i];
+
+            if((rc = var_register_and_get( ctx, i,
+                                           kCeilingPId,  "ceiling",  sd->ceiling,
+                                           kExpoPId,     "expo",     sd->expo,
+                                           kThreshPId,   "thresh",   sd->thresh,
+                                           kUprSlopePId, "upr",      sd->uprSlope,
+                                           kLwrSlopePId, "lwr",      sd->lwrSlope,
+                                           kMixPId,      "mix",      sd->mix )) != kOkRC )
             {
               goto errLabel;
             }
@@ -641,7 +658,7 @@ namespace cw
           }
           
           // create the output buffer
-          if((rc = var_fbuf_create( ctx, "out", kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, srcBuf->binN, srcBuf->hopSmpN, magV, phsV, hzV )) != kOkRC )
+          if((rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, srcBuf->binN, srcBuf->hopSmpN, magV, phsV, hzV )) != kOkRC )
             goto errLabel;
         }
         
@@ -654,6 +671,10 @@ namespace cw
         rc_t rc = kOkRC;
 
         inst_t* inst = (inst_t*)ctx->userPtr;
+        for(unsigned i=0; i<inst->sdN; ++i)
+          destroy(inst->sdA[i]);
+        
+        mem::release(inst->sdA);
         mem::release(inst);
         
         return rc;
@@ -661,7 +682,24 @@ namespace cw
       
       rc_t value( instance_t* ctx, variable_t* var )
       {
-        rc_t rc = kOkRC;
+        rc_t    rc   = kOkRC;
+        inst_t* inst = (inst_t*)ctx->userPtr;
+
+        if( var->chIdx != kAnyChIdx && var->chIdx < inst->sdN )
+        {
+          switch( var->vid )
+          {
+            case kCeilingPId:  var_get( var, inst->sdA[ var->chIdx ]->ceiling );  break;
+            case kExpoPId:     var_get( var, inst->sdA[ var->chIdx ]->expo );     break;
+            case kThreshPId:   var_get( var, inst->sdA[ var->chIdx ]->thresh );   break;
+            case kUprSlopePId: var_get( var, inst->sdA[ var->chIdx ]->uprSlope ); break;
+            case kLwrSlopePId: var_get( var, inst->sdA[ var->chIdx ]->lwrSlope ); break;
+            case kMixPId:      var_get( var, inst->sdA[ var->chIdx ]->mix );      break;
+            default:
+              cwLogWarning("Unhandled variable id '%i' on instance: %s.", var->vid, ctx->label );
+          }
+        }
+        
         return rc;
       }
 
@@ -671,23 +709,30 @@ namespace cw
         inst_t*       inst   = (inst_t*)ctx->userPtr;
         const fbuf_t* srcBuf = nullptr;
         fbuf_t*       dstBuf = nullptr;
+        unsigned      chN    = 0;
         
         // get the src buffer
-        if((rc = var_fbuf_get(ctx,"in", kAnyChIdx, srcBuf )) != kOkRC )
+        if((rc = var_get(ctx,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
           goto errLabel;
 
         // get the dst buffer
-        if((rc = var_fbuf_get(ctx,"out", kAnyChIdx, dstBuf)) != kOkRC )
+        if((rc = var_get(ctx,kOutPId, kAnyChIdx, dstBuf)) != kOkRC )
           goto errLabel;
-        
-        for(unsigned i=0; i<srcBuf->chN; ++i)
-        {
-          dsp::spec_dist::exec( inst->sdA[i], srcBuf->magV[i], srcBuf->phsV[i], srcBuf->binN );
 
-          //if( i == 0 )
-          //  printf("%f %f\n", vop::sum(srcBuf->magV[i],srcBuf->binN), vop::sum(dstBuf->magV[i], dstBuf->binN) );
+        chN = std::min(srcBuf->chN,inst->sdN);
+                
+        for(unsigned i=0; i<chN; ++i)
+        {
+          dstBuf->readyFlV[i] = false;
+          if( srcBuf->readyFlV[i] )
+          {          
+            dsp::spec_dist::exec( inst->sdA[i], srcBuf->magV[i], srcBuf->phsV[i], srcBuf->binN );
+
+            dstBuf->readyFlV[i] = true;
+            //If == 0 )
+            //  printf("%f %f\n", vop::sum(srcBuf->magV[i],srcBuf->binN), vop::sum(dstBuf->magV[i], dstBuf->binN) );
+          }
         }
-        
 
       errLabel:
         return rc;
@@ -697,10 +742,200 @@ namespace cw
         .create  = create,
         .destroy = destroy,
         .value   = value,
-        .exec    = exec
+        .exec    = exec,
+        .report  = nullptr
       };      
     }
 
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // Compressor
+    //
+    namespace compressor
+    {
+
+      enum
+      {       
+        kInPId,
+        kBypassPId,
+        kInGainPId,
+        kThreshPId,
+        kRatioPId,
+        kAtkMsPId,
+        kRlsMsPId,
+        kWndMsPId,
+        kMaxWndMsPId,
+        kOutGainPId,
+        kOutPId,
+        kEnvPId
+      };
+
+
+      typedef dsp::compressor::obj_t compressor_t;
+      
+      typedef struct
+      {
+        compressor_t** cmpA;
+        unsigned       cmpN;
+      } inst_t;
+    
+
+      rc_t create( instance_t* ctx )
+      {
+        rc_t          rc     = kOkRC;
+        const abuf_t* srcBuf = nullptr; //
+        inst_t*       inst   = mem::allocZ<inst_t>();
+        
+        ctx->userPtr = inst;
+
+        // verify that a source buffer exists
+        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",srcBuf )) != kOkRC )
+        {
+          rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",ctx->label);
+          goto errLabel;
+        }
+        else
+        {
+          // allocate pv channel array
+          inst->cmpN = srcBuf->chN;
+          inst->cmpA = mem::allocZ<compressor_t*>( inst->cmpN );  
+        
+          // create a compressor object for each input channel
+          for(unsigned i=0; i<srcBuf->chN; ++i)
+          {
+            real_t igain, maxWnd_ms, wnd_ms, thresh, ratio, atk_ms, rls_ms, ogain, bypassFl;
+
+
+            // get the compressor variable values
+            if((rc = var_register_and_get( ctx, i,
+                                           kBypassPId,   "bypass",    bypassFl,
+                                           kInGainPId,   "igain",     igain,
+                                           kThreshPId,   "thresh",    thresh,
+                                           kRatioPId,    "ratio",     ratio,
+                                           kAtkMsPId,    "atk_ms",    atk_ms,
+                                           kRlsMsPId,    "rls_ms",    rls_ms,
+                                           kWndMsPId,    "wnd_ms",    wnd_ms,
+                                           kMaxWndMsPId, "maxWnd_ms", maxWnd_ms,
+                                           kOutGainPId,  "ogain",     ogain )) != kOkRC )
+            {
+              goto errLabel;
+            }
+
+            // create the compressor instance
+            if((rc = dsp::compressor::create( inst->cmpA[i], srcBuf->srate, srcBuf->frameN, igain, maxWnd_ms, wnd_ms, thresh, ratio, atk_ms, rls_ms, ogain, bypassFl)) != kOkRC )
+            {
+              rc = cwLogError(kOpFailRC,"The 'compressor' object create failed on the instance '%s'.",ctx->label);
+              goto errLabel;
+            }
+                
+          }
+          
+          // create the output audio buffer
+          if((rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, srcBuf->frameN )) != kOkRC )
+            goto errLabel;
+        }
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( instance_t* ctx )
+      {
+        rc_t rc = kOkRC;
+
+        inst_t* inst = (inst_t*)ctx->userPtr;
+        for(unsigned i=0; i<inst->cmpN; ++i)
+          destroy(inst->cmpA[i]);
+        
+        mem::release(inst->cmpA);
+        mem::release(inst);
+        
+        return rc;
+      }
+      
+      rc_t value( instance_t* ctx, variable_t* var )
+      {
+        rc_t    rc   = kOkRC;
+        inst_t* inst = (inst_t*)ctx->userPtr;
+        real_t  tmp;
+
+        if( var->chIdx != kAnyChIdx && var->chIdx < inst->cmpN )
+        {
+          
+          switch( var->vid )
+          {
+            case kBypassPId:   var_get( var, inst->cmpA[ var->chIdx ]->bypassFl );  break;
+            case kInGainPId:   var_get( var, inst->cmpA[ var->chIdx ]->inGain );    break;
+            case kOutGainPId:  var_get( var, inst->cmpA[ var->chIdx ]->outGain );   break;
+            case kRatioPId:    var_get( var, inst->cmpA[ var->chIdx ]->ratio_num ); break;
+            case kThreshPId:   var_get( var, inst->cmpA[ var->chIdx ]->threshDb );  break;
+            case kAtkMsPId:    var_get( var, tmp ); set_attack_ms(inst->cmpA[ var->chIdx ],  tmp ); break;
+            case kRlsMsPId:    var_get( var, tmp ); set_release_ms(inst->cmpA[ var->chIdx ], tmp ); break;
+            case kWndMsPId:    var_get( var, tmp ); set_rms_wnd_ms(inst->cmpA[ var->chIdx ], tmp ); break;
+            default:
+              cwLogWarning("Unhandled variable id '%i' on instance: %s.", var->vid, ctx->label );
+          }
+        }
+        
+        
+        return rc;
+      }
+
+      rc_t exec( instance_t* ctx )
+      {
+        rc_t          rc     = kOkRC;
+        inst_t*       inst   = (inst_t*)ctx->userPtr;
+        const abuf_t* srcBuf = nullptr;
+        abuf_t*       dstBuf = nullptr;
+        unsigned      chN    = 0;
+        
+        // get the src buffer
+        if((rc = var_get(ctx,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
+          goto errLabel;
+
+        // get the dst buffer
+        if((rc = var_get(ctx,kOutPId, kAnyChIdx, dstBuf)) != kOkRC )
+          goto errLabel;
+
+        chN = std::min(srcBuf->chN,inst->cmpN);
+       
+        for(unsigned i=0; i<chN; ++i)
+        {
+          dsp::compressor::exec( inst->cmpA[i], srcBuf->buf + i*srcBuf->frameN, dstBuf->buf + i*srcBuf->frameN, srcBuf->frameN );
+        }
+
+        
+        
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t report( instance_t* ctx )
+      {
+        rc_t rc = kOkRC;
+        inst_t* inst = (inst_t*)ctx->userPtr;
+        for(unsigned i=0; i<inst->cmpN; ++i)
+        {
+          compressor_t* c = inst->cmpA[i];
+          cwLogInfo("%s ch:%i : sr:%f bypass:%i procSmpN:%i igain:%f threshdb:%f ratio:%f atkSmp:%i rlsSmp:%i ogain:%f rmsWndN:%i maxRmsWndN%i",
+                    ctx->label,i,c->srate,c->bypassFl,c->procSmpCnt,c->inGain,c->threshDb,c->ratio_num,c->atkSmp,c->rlsSmp,c->outGain,c->rmsWndCnt,c->rmsWndAllocCnt
+                    );
+        }
+        
+        return rc;
+      }
+
+      class_members_t members = {
+        .create  = create,
+        .destroy = destroy,
+        .value   = value,
+        .exec    = exec,
+        .report  = report
+      };      
+    }
+
+    
     
   }
 }

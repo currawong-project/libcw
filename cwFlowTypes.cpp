@@ -6,6 +6,7 @@
 #include "cwObject.h"
 #include "cwVectOps.h"
 #include "cwMtx.h"
+#include "cwDspTypes.h" // real_t, sample_t
 #include "cwFlowTypes.h"
 
 
@@ -18,21 +19,19 @@ namespace cw
       { kBoolTFl, "bool" },
       { kUIntTFl, "uint" },
       { kIntTFl,  "int", },
-      { kRealTFl, "real" },
-      { kF32TFl,  "float"},
-      { kF64TFl,  "double"},
+      { kFloatTFl,  "float"},
+      { kRealTFl,   "real"},
+      { kDoubleTFl,  "double"},
       
       { kBoolMtxTFl, "bool_mtx" },
       { kUIntMtxTFl, "uint_mtx" },
       { kIntMtxTFl,  "int_mtx"  },
-      { kRealMtxTFl, "real_mtx" },
-      { kF32MtxTFl,  "float_mtx" },
-      { kF64MtxTFl,  "double_mtx" },
+      { kFloatMtxTFl,  "float_mtx" },
+      { kDoubleMtxTFl,  "double_mtx" },
       
       { kABufTFl,   "audio" },
       { kFBufTFl,   "spectrum" },
       { kStringTFl, "string" },
-      { kFNameTFl,  "fname" },
       { kTimeTFl,   "time" },
       { kInvalidTFl, nullptr }
     };
@@ -60,9 +59,8 @@ namespace cw
         case kBoolTFl:
         case kUIntTFl:
         case kIntTFl:
-        case kRealTFl:
-        case kF32TFl:
-        case kF64TFl:
+        case kFloatTFl:
+        case kDoubleTFl:
           break;
           
         case kABufTFl:
@@ -77,20 +75,15 @@ namespace cw
         case kBoolMtxTFl:
         case kUIntMtxTFl:
         case kIntMtxTFl:
-        case kRealMtxTFl:
-        case kF32MtxTFl:
-        case kF64MtxTFl:
+        case kFloatMtxTFl:
+        case kDoubleMtxTFl:
           assert(0); // not implemeneted
           break;
           
         case kStringTFl:
           mem::release( v->u.s );
           break;
-          
-        case kFNameTFl:
-          mem::release( v->u.fname );
-          break;
-          
+                    
         case kTimeTFl:
           assert(0);
           break;
@@ -103,6 +96,58 @@ namespace cw
       v->flags = kInvalidTFl;
     }
 
+    void _value_duplicate( value_t& dst, const value_t& src )
+    {
+        
+      switch( src.flags & kTypeMask )
+      {
+        case kInvalidTFl:
+          break;
+          
+        case kBoolTFl:
+        case kUIntTFl:
+        case kIntTFl:
+        case kFloatTFl:
+        case kDoubleTFl:
+          dst = src;
+          break;
+          
+        case kABufTFl:
+          
+          dst.u.abuf = src.u.abuf == nullptr ? nullptr : abuf_duplicate(src.u.abuf);
+          dst.flags = src.flags;
+          break;
+          
+        case kFBufTFl:
+          dst.u.fbuf = src.u.fbuf == nullptr ? nullptr : fbuf_duplicate(src.u.fbuf);
+          dst.flags = src.flags;
+          break;
+
+          
+        case kBoolMtxTFl:
+        case kUIntMtxTFl:
+        case kIntMtxTFl:
+        case kFloatMtxTFl:
+        case kDoubleMtxTFl:
+          assert(0); // not implemeneted
+          break;
+          
+        case kStringTFl:
+          dst.u.s = mem::duplStr( dst.u.s );
+          dst.flags = src.flags;
+          break;
+                    
+        case kTimeTFl:
+          assert(0);
+          break;
+
+        default:
+          assert(0);
+          break;
+      }
+
+    }
+    
     void _value_print( const value_t* v )
     {
       if( v == nullptr )
@@ -116,24 +161,33 @@ namespace cw
         case kBoolTFl:  printf("%s ", v->u.b ? "True" : "False" ); break;          
         case kUIntTFl:  printf("%i ", v->u.u ); break;
         case kIntTFl:   printf("%i ", v->u.i ); break;          
-        case kRealTFl:  printf("%f ", v->u.r ); break;
-        case kF32TFl:   printf("%f ", v->u.f ); break;
-        case kF64TFl:   printf("%f ", v->u.d ); break;
-        case kABufTFl:  printf("abuf: chN:%i frameN:%i srate:%8.1f ", v->u.abuf->chN, v->u.abuf->frameN, v->u.abuf->srate ); break;
-        case kFBufTFl:  printf("fbuf: chN:%i binN:%i hopSmpN:%i srate:%8.1f", v->u.fbuf->chN, v->u.fbuf->binN, v->u.fbuf->hopSmpN, v->u.fbuf->srate ); break;
-
+        case kFloatTFl: printf("%f ", v->u.f ); break;
+        case kDoubleTFl:printf("%f ", v->u.d ); break;
+        case kABufTFl:
+          if( v->u.abuf == nullptr )
+            printf("abuf: <null>");
+          else
+            printf("abuf: chN:%i frameN:%i srate:%8.1f ", v->u.abuf->chN, v->u.abuf->frameN, v->u.abuf->srate ); 
+          break;
+          
+        case kFBufTFl:
+          if( v->u.fbuf == nullptr )
+            printf("fbuf: <null>");
+          else
+            printf("fbuf: chN:%i binN:%i hopSmpN:%i srate:%8.1f", v->u.fbuf->chN, v->u.fbuf->binN, v->u.fbuf->hopSmpN, v->u.fbuf->srate );
+          break;
           
         case kBoolMtxTFl:
         case kUIntMtxTFl:
         case kIntMtxTFl:
-        case kRealMtxTFl:
-        case kF32MtxTFl:
-        case kF64MtxTFl:
+        case kFloatMtxTFl:
+        case kDoubleMtxTFl:
           assert(0); // not implemeneted
           break;
           
-        case kStringTFl: printf("%s ", v->u.s); break;
-        case kFNameTFl:  printf("%s ", v->u.fname); break;
+        case kStringTFl:
+          printf("%s ", v->u.s);
+          break;
            
         case kTimeTFl:
           assert(0);
@@ -145,41 +199,227 @@ namespace cw
       }
 
     }
+    
 
-    rc_t _var_get( instance_t* inst, unsigned vid, unsigned chIdx, unsigned typeFl, const char* typeLabel, variable_t*& varRef )
+    rc_t _val_get( const value_t* val, bool& valRef )
     {
-      rc_t     rc  = kOkRC;
-      unsigned idx = kInvalidIdx;
-
-      varRef = nullptr;
-
-      if((rc = var_map_id_to_index(inst, vid, chIdx, idx )) == kOkRC || idx == kInvalidIdx )
+      rc_t rc = kOkRC;
+      switch( val->flags & kTypeMask )
       {
-        variable_t* var = inst->varMapA[idx];
-  
-        if( !cwIsFlag(var->varDesc->type,typeFl ) )
-        {
-          rc = cwLogError(kTypeMismatchRC,"Instance:%s variable:%s is not a %s.",inst->label,var->label,typeLabel);
-          goto errLabel;
-        }
-
-        varRef = var;
+        case kBoolTFl:   valRef = val->u.b; break;
+        case kUIntTFl:   valRef = val->u.u!=0; break;
+        case kIntTFl:    valRef = val->u.i!=0; break;
+        case kFloatTFl:  valRef = val->u.f!=0; break;
+        case kDoubleTFl: valRef = val->u.d!=0; break;
+        default:
+          rc = cwLogError(kTypeMismatchRC,"The type 0x%x could not be converted to a bool.");
       }
+      return rc;
+    }
+    
+    rc_t _val_get( const value_t* val, uint_t& valRef )
+    {
+      rc_t rc = kOkRC;
+      switch( val->flags & kTypeMask )
+      {
+        case kBoolTFl:   valRef = val->u.b ? 1 : 0; break;
+        case kUIntTFl:   valRef = val->u.u; break;
+        case kIntTFl:    valRef = val->u.i; break;
+        case kFloatTFl:  valRef = (uint_t)val->u.f; break;
+        case kDoubleTFl: valRef = (uint_t)val->u.d; break;
+        default:
+          rc = cwLogError(kTypeMismatchRC,"The type 0x%x could not be converted to a uint_t.");
+      }
+      return rc;
+    }
       
-    errLabel:
+    rc_t _val_get( const value_t* val, int_t& valRef )
+    {
+      rc_t rc = kOkRC;
+      switch( val->flags & kTypeMask )
+      {
+        case kBoolTFl:   valRef = val->u.b ? 1 : 0; break;
+        case kUIntTFl:   valRef = (int_t)val->u.u; break;
+        case kIntTFl:    valRef = val->u.i; break;
+        case kFloatTFl:  valRef = (int_t)val->u.f; break;
+        case kDoubleTFl: valRef = (int_t)val->u.d; break;
+        default:
+          rc = cwLogError(kTypeMismatchRC,"The type 0x%x could not be converted to a int_t.");
+      }
       return rc;
     }
 
-    
-    variable_t* _var_find( instance_t* inst, const char* label, unsigned chIdx )
+    rc_t _val_get( const value_t* val, float& valRef )
     {
+      rc_t rc = kOkRC;
+      switch( val->flags & kTypeMask )
+      {
+        case kBoolTFl:   valRef = val->u.b ? 1 : 0; break;
+        case kUIntTFl:   valRef = (float)val->u.u; break;
+        case kIntTFl:    valRef = (float)val->u.i; break;
+        case kFloatTFl:  valRef = (float)val->u.f; break;
+        case kDoubleTFl: valRef = (float)val->u.d; break;
+        default:
+          rc = cwLogError(kTypeMismatchRC,"The type 0x%x could not be converted to a float.");
+      }
+      return rc;
+    }
+
+    rc_t _val_get( const value_t* val, double& valRef )
+    {
+      rc_t rc = kOkRC;
+      switch( val->flags & kTypeMask )
+      {
+        case kBoolTFl:   valRef = val->u.b ? 1 : 0; break;
+        case kUIntTFl:   valRef = (double)val->u.u; break;
+        case kIntTFl:    valRef = (double)val->u.i; break;
+        case kFloatTFl:  valRef = (double)val->u.f; break;
+        case kDoubleTFl: valRef =         val->u.d; break;
+        default:
+          rc = cwLogError(kTypeMismatchRC,"The type 0x%x could not be converted to a double.");
+      }
+      return rc;
+    }
+
+    rc_t _val_get( const value_t* val, const char*& valRef )
+    {
+      rc_t rc = kOkRC;
+      if( cwIsFlag(val->flags & kTypeMask, kStringTFl) )
+        valRef = val->u.s;
+      else
+      {
+        rc = cwLogError(kTypeMismatchRC,"The type 0x%x could not be converted to a string.");
+        valRef = nullptr;
+      }
+      
+      return rc;
+    }
+
+    rc_t _val_get( value_t* val, abuf_t*& valRef )
+    {
+      rc_t rc = kOkRC;
+      if( cwIsFlag(val->flags & kTypeMask, kABufTFl) )
+        valRef = val->u.abuf;
+      else
+      {
+        rc = cwLogError(kTypeMismatchRC,"The type 0x%x could not be converted to an abuf_t.");
+        valRef = nullptr;
+      }
+      return rc;
+    }
+
+    rc_t _val_get( value_t* val, const abuf_t*& valRef )
+    {
+      abuf_t* non_const_val;
+      rc_t rc = kOkRC;
+      if((rc = _val_get(val,non_const_val)) == kOkRC )
+        valRef = non_const_val;
+      return rc;        
+    }
+
+    rc_t _val_get( value_t* val, fbuf_t*& valRef )
+    {
+      rc_t rc = kOkRC;
+      if( cwIsFlag(val->flags & kTypeMask, kFBufTFl) )
+        valRef = val->u.fbuf;
+      else
+      {
+        valRef = nullptr;
+        rc = cwLogError(kTypeMismatchRC,"The type 0x%x could not be converted to an fbuf_t.");
+      }
+      return rc;
+    }
+
+    rc_t _val_get( value_t* val, const fbuf_t*& valRef )
+    {
+      fbuf_t* non_const_val;
+      rc_t rc = kOkRC;
+      if((rc = _val_get(val,non_const_val)) == kOkRC )
+        valRef = non_const_val;
+      return rc;        
+    }
+    
+
+    rc_t _var_find_to_set( instance_t* inst, unsigned vid, unsigned chIdx, unsigned typeFl, variable_t*& varRef )
+    {
+      rc_t rc = kOkRC;
+      varRef = nullptr;
+
+      // 
+      if((rc = var_find(inst,vid,chIdx,varRef)) == kOkRC )
+      {
+        // validate the type of the variable against the description
+        if( !cwIsFlag(varRef->varDesc->type,typeFl ) )
+          rc = cwLogError(kTypeMismatchRC,"Type mismatch. Instance:%s variable:%s with type 0x%x does not match requested type:0x%x.",varRef->inst->label,varRef->label,varRef->varDesc->type,typeFl);
+    
+      }
+
+      return rc;
+    }
+   
+
+    // Variable lookup: Exact match on vid and chIdx
+    rc_t _var_find_on_vid_and_ch( instance_t* inst, unsigned vid, unsigned chIdx, variable_t*& varRef )
+    {
+      varRef = nullptr;
+      
+      for(variable_t* var = inst->varL; var!=nullptr; var=var->var_link)
+      {
+        // the variable vid and chIdx should form a unique pair
+        if( var->vid==vid && var->chIdx == chIdx )
+        {
+          varRef = var;
+          return kOkRC;
+        }
+      }
+      return cwLogError(kInvalidIdRC,"The variable matching id:%i ch:%i on instance '%s' could not be found.", vid, chIdx, inst->label);
+    }
+
+    // Variable lookup: Exact match on label and chIdx
+    variable_t* _var_find_on_label_and_ch( instance_t* inst, const char* var_label, unsigned chIdx )
+    {
+      for(variable_t* var = inst->varL; var!=nullptr; var=var->var_link)
+      {
+        // the variable vid and chIdx should form a unique pair
+        if( textCompare(var->label,var_label)==0 && var->chIdx == chIdx )
+          return var;
+      }
+      
+      return nullptr;
+    }
+    
+    
+    // Find a variable: If an exact match on label,chIdx is found this is returned.
+    // Otherwise if the arg 'chIdx' is a numeric channel idx the 'any' var is returned.
+    //           if the arg 'chIdx' is 'any' then the 'any' or the lowest numeric channel is returned
+    variable_t* _var_find_best( instance_t* inst, const char* label, unsigned chIdx )
+    {
+      /*
+      variable_t* v0 = nullptr;
       variable_t* var  = inst->varL;
   
-      for(; var!=nullptr; var=var->link)
-        if( textCompare(var->label,label) == 0 && (var->chIdx==chIdx || var->chIdx==kAnyChIdx || (chIdx==kAnyChIdx && var->chIdx==0)))
-          return var;
-      return nullptr;
-  
+      for(; var!=nullptr; var=var->var_link)
+        if( textCompare(var->label,label) == 0 )
+        {
+          // if the channel matches exactly - return this var
+          if( var->chIdx == chIdx )
+            return var;
+
+          // if we encounter a var with 'any' channel - store this we will keep looking because we may still find an exact match
+          if( var->chIdx == kAnyChIdx )
+            v0 = var;
+          else
+            // if 'any' was requested then try to get ch==0 but a non-zero channel will suffice otherwise
+            if( chIdx == kAnyChIdx )
+              if( v0 == nullptr || var->chIdx < v0->chIdx )
+                v0 = var;
+        }
+      
+      return v0;
+      */
+      
+      return _var_find_on_label_and_ch(inst,label,chIdx);
+      
     }
 
     rc_t _validate_var_assignment( variable_t* var, unsigned typeFl )
@@ -189,7 +429,7 @@ namespace cw
       
       if( !cwIsFlag(var->varDesc->type, typeFl ) )
         return cwLogError(kTypeMismatchRC, "The variable '%s' on instance '%s' is not a  '%s'.", var->label, var->inst->label, _typeFlagToLabel( typeFl ));
-      
+
       return kOkRC;
     }
 
@@ -204,6 +444,22 @@ namespace cw
       
       return rc;
     }
+
+    rc_t _var_set( variable_t* var, bool val )
+    {
+      rc_t rc;
+      if((rc = _validate_var_assignment( var, kBoolTFl )) != kOkRC )
+        return rc;
+      
+      _value_release(&var->local_value);
+      var->local_value.u.b   = val;
+      var->local_value.flags = kBoolTFl;
+      var->value             = &var->local_value;
+
+      cwLogMod("%s.%s ch:%i %i (bool).",var->inst->label,var->label,var->chIdx,val);
+
+      return _var_broadcast_new_value( var );        
+    }
     
     rc_t _var_set( variable_t* var, unsigned val )
     {
@@ -212,10 +468,12 @@ namespace cw
         return rc;
       
       _value_release(&var->local_value);
-      var->local_value.u.u = val;
-      var->local_value.flags  = kUIntTFl;
-      var->value = &var->local_value;
+      var->local_value.u.u   = val;
+      var->local_value.flags = kUIntTFl;
+      var->value             = &var->local_value;
 
+      cwLogMod("%s.%s ch:%i %i (uint_t).",var->inst->label,var->label,var->chIdx,val);
+      
       return _var_broadcast_new_value( var );
         
     }
@@ -231,20 +489,56 @@ namespace cw
       var->local_value.flags  = kIntTFl;
       var->value = &var->local_value;
 
+      cwLogMod("%s.%s ch:%i %i (int_t).",var->inst->label,var->label,var->chIdx,val);
+      
       return _var_broadcast_new_value( var );      
     }
     
-    rc_t _var_set( variable_t* var, real_t val )
+    rc_t _var_set( variable_t* var, float val )
     {
       rc_t rc;
-      if((rc = _validate_var_assignment( var, kRealTFl )) != kOkRC )
+      if((rc = _validate_var_assignment( var, kFloatTFl )) != kOkRC )
         return rc;
       
       _value_release(&var->local_value);
-      var->local_value.u.r = val;
-      var->local_value.flags  = kRealTFl;
+      var->local_value.u.f = val;
+      var->local_value.flags  = kFloatTFl;
       var->value = &var->local_value;
 
+      cwLogMod("%s.%s ch:%i %f (float).",var->inst->label,var->label,var->chIdx,val);
+        
+      return _var_broadcast_new_value( var );      
+    }
+
+    rc_t _var_set( variable_t* var, double val )
+    {
+      rc_t rc;
+      if((rc = _validate_var_assignment( var, kDoubleTFl )) != kOkRC )
+        return rc;
+      
+      _value_release(&var->local_value);
+      var->local_value.u.d = val;
+      var->local_value.flags  = kDoubleTFl;
+      var->value = &var->local_value;
+
+      cwLogMod("%s.%s ch:%i %f (double).",var->inst->label,var->label,var->chIdx,val);
+      
+      return _var_broadcast_new_value( var );      
+    }
+    
+    rc_t _var_set( variable_t* var, const char* val )
+    {
+      rc_t rc;
+      if((rc = _validate_var_assignment( var, kStringTFl )) != kOkRC )
+        return rc;
+      
+      _value_release(&var->local_value);
+      var->local_value.u.s = mem::duplStr(val);
+      var->local_value.flags  = kStringTFl;
+      var->value = &var->local_value;
+
+      cwLogMod("%s.%s ch:%i %s (string).",var->inst->label,var->label,var->chIdx,cwStringNullGuard(val));
+      
       return _var_broadcast_new_value( var );      
     }
     
@@ -259,6 +553,8 @@ namespace cw
       var->local_value.flags  = kABufTFl;
       var->value = &var->local_value;
 
+      cwLogMod("%s.%s ch:%i %s (abuf).",var->inst->label,var->label,var->chIdx,abuf==nullptr ? "null" : "valid");
+      
       return _var_broadcast_new_value( var );
       
     }
@@ -273,36 +569,79 @@ namespace cw
       var->local_value.u.fbuf = fbuf;
       var->local_value.flags  = kFBufTFl;
       var->value = &var->local_value;
+
+      cwLogMod("%s.%s ch:%i %s (fbuf).",var->inst->label,var->label,var->chIdx,fbuf==nullptr ? "null" : "valid");
       
       return _var_broadcast_new_value( var );
     }
 
-    const preset_t* _preset_find( class_desc_t* cd, const char* preset_label )
+    template< typename T >
+    rc_t _var_set_driver( variable_t* var, T value )
     {
-      const preset_t* pr;
-      for(pr=cd->presetL; pr!=nullptr; pr=pr->link)
-        if( textCompare(pr->label,preset_label) == 0 )
-          return pr;
+      rc_t rc;
 
-      return nullptr;
+      // if this assignment targets a specific channel ...
+      if( var->chIdx != kAnyChIdx )
+      {
+        rc = _var_set(var,value); // ...  then set it alone
+      }
+      else // ... otherwise set all channels.
+      {
+        for(; var!=nullptr; var=var->ch_link)
+          if((rc = _var_set(var,value)) != kOkRC )
+            break;
+      }
+
+      return rc;
     }
+
+
     
-    rc_t _preset_set_var_value( instance_t* inst, const char* var_label, unsigned chIdx, const object_t* value )
+    rc_t  _var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, abuf_t* abuf )
+    {
+      rc_t rc;
+      variable_t* var = nullptr;
+      if((rc = var_register_and_set( inst, var_label, vid, chIdx, var)) != kOkRC )
+        return rc;
+
+      if( var != nullptr )
+        _var_set_driver( var, abuf );
+
+      return rc;
+    }
+
+    rc_t  _var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, fbuf_t* fbuf )
+    {
+      rc_t rc;
+      variable_t* var = nullptr;
+      if((rc = var_register_and_set( inst, var_label, vid, chIdx, var)) != kOkRC )
+        return rc;
+
+      if( var != nullptr )
+        _var_set_driver( var, fbuf );
+
+      return rc;
+    }
+
+    rc_t _set_var_value_from_cfg( variable_t* var, const object_t* value )
     {
       rc_t rc = kOkRC;
-      variable_t* var = nullptr;
 
-      // get the variable
-      if((rc = var_get( inst, var_label, chIdx, var )) != kOkRC )
-        goto errLabel;
-        
       switch( var->varDesc->type & kTypeMask )
       {
+        case kBoolTFl:
+          {
+            bool v;
+            if((rc = value->value(v)) == kOkRC )
+              rc = _var_set_driver( var, v );
+          }
+          break;
+          
         case kUIntTFl:
           {
             unsigned v;
             if((rc = value->value(v)) == kOkRC )
-              rc = _var_set( var, v );
+              rc = _var_set_driver( var, v );
           }
           break;
           
@@ -310,18 +649,34 @@ namespace cw
           {
             int v;
             if((rc = value->value(v)) == kOkRC )
-              rc = _var_set( var, v );
+              rc = _var_set_driver( var, v );
           }
           break;
           
-        case kRealTFl:
+        case kFloatTFl:
           {
-            real_t v;
+            float v;
             if((rc = value->value(v)) == kOkRC )
-              rc = _var_set( var, v );
+              rc = _var_set_driver( var, v );
+          }
+          break;
+
+        case kDoubleTFl:
+          {
+            double v;
+            if((rc = value->value(v)) == kOkRC )
+              rc = _var_set_driver( var, v );
           }
           break;
           
+        case kStringTFl:
+          {
+            const char* v;
+            if((rc = value->value(v)) == kOkRC )
+              rc = _var_set_driver( var, v );
+          }
+          break;
+
         default:
           rc = cwLogError(kOpFailRC,"The variable type 0x%x cannot yet be set via a preset.", var->varDesc->type );
           goto errLabel;
@@ -329,10 +684,173 @@ namespace cw
 
     errLabel:
       if( rc != kOkRC )
+        rc = cwLogError(kSyntaxErrorRC,"The %s.%s could not extract a type:%s from a configuration value.",var->inst->label,var->label,_typeFlagToLabel(var->varDesc->type & kTypeMask));
+      return rc;
+      
+    }
+
+    rc_t  _var_map_id_to_index(  instance_t* inst, unsigned vid, unsigned chIdx, unsigned& idxRef )
+    {
+      unsigned idx = vid * inst->varMapChN + (chIdx == kAnyChIdx ? 0 : chIdx);
+
+      // verify that the map idx is valid
+      if( idx >= inst->varMapN )
+        return cwLogError(kAssertFailRC,"The variable map positioning location %i is out of the range % on instance '%s' vid:%i ch:%i.", idx, inst->varMapN, inst->label,vid,chIdx);
+
+      idxRef = idx;
+  
+      return kOkRC;
+    }
+
+    rc_t  _var_map_label_to_index(  instance_t* inst, const char* var_label, unsigned chIdx, unsigned& idxRef )
+    {
+      rc_t        rc  = kOkRC;
+      variable_t* var = nullptr;
+  
+      idxRef = kInvalidIdx;
+      if((rc = var_find(inst, var_label, chIdx, var )) == kOkRC)
+        rc = _var_map_id_to_index( inst, var->vid, chIdx, idxRef );
+     
+      return rc;
+    }
+
+    rc_t _var_add_to_ch_list( instance_t* inst, variable_t* new_var )
+    {
+      rc_t rc = kOkRC;
+      
+      variable_t* base_var = nullptr;
+      variable_t* v0 = nullptr;
+      variable_t* v1 = nullptr;
+      
+      if( new_var->chIdx == kAnyChIdx )
+        return kOkRC;
+      
+      if((base_var = _var_find_on_label_and_ch( inst, new_var->label, kAnyChIdx )) == nullptr )
+      {
+        rc = cwLogError(kInvalidStateRC,"The base channel variable does not exist for '%s.%s'. This is an illegal state.", inst->label, new_var->label );
+        goto errLabel;
+      }
+
+      // insert v0 in order by channel number
+      for(v0=base_var,v1=base_var->ch_link; v1!=nullptr; v1=v1->ch_link)
+      {
+        if( v1->chIdx > new_var->chIdx )
+          break;
+        v0 = v1;
+      }
+
+      // the new var channel index should never match the previous or next channel index
+      assert( v0->chIdx != new_var->chIdx && (v1==nullptr || v1->chIdx != new_var->chIdx ) );
+
+      new_var->ch_link = v1;
+      v0->ch_link      = new_var;
+      
+      
+    errLabel:
+      return rc;
+      
+    }
+
+    // Create a variable and set it's value from 'value_cfg'.
+    // If 'value_cfg' is null then use the value from var->varDesc->val_cfg.
+    rc_t _var_create( instance_t* inst, const char* var_label, unsigned id, unsigned chIdx, const object_t* value_cfg, variable_t*& varRef )
+    {
+      rc_t        rc  = kOkRC;
+      variable_t* var = nullptr;
+      var_desc_t* vd  = nullptr;
+      
+      varRef = nullptr;
+
+      // if this var already exists - it can't be created again
+      if((var = _var_find_on_label_and_ch(inst,var_label,chIdx)) != nullptr )
+      {
+        rc = cwLogError(kInvalidStateRC,"The variable '%s' ch:%i has already been created on the instance: '%s'.",var_label,chIdx,inst->label);
+        goto errLabel;
+      }
+
+      // locate the var desc
+      if((vd = var_desc_find( inst->class_desc, var_label)) == nullptr )
+      {
+        rc = cwLogError(kInvalidIdRC,"Unable to locate the variable '%s' in class '%s'.", var_label, inst->class_desc->label );
+        goto errLabel;
+      }
+
+      // create the var
+      var = mem::allocZ<variable_t>();
+
+      var->varDesc = vd;
+      var->inst    = inst;
+      var->label   = mem::duplStr(var_label);
+      var->vid     = id;
+      var->chIdx   = chIdx;
+      var->value   = nullptr;
+
+      // if no value was given then set the value to the value given in the class
+      if( value_cfg == nullptr )
+        value_cfg = var->varDesc->val_cfg;
+
+      // if value_cfg is valid set the variable value
+      if( value_cfg != nullptr )
+        if((rc = _set_var_value_from_cfg( var, value_cfg )) != kOkRC )
+          goto errLabel;
+
+      var->var_link  = inst->varL;
+      inst->varL = var;
+
+      // link the new var into the ch_link list
+      if((rc = _var_add_to_ch_list(inst, var )) != kOkRC )
+        goto errLabel;
+
+
+    errLabel:
+      if( rc != kOkRC )
+      {
+        _var_destroy(var);
+        cwLogError(kOpFailRC,"Variable creation failed on '%s.%s' ch:%i.", inst->label, var_label, chIdx );
+      }
+      else
+      {
+        varRef = var;
+        cwLogMod("Created var: %s.%s ch:%i.", inst->label, var_label, chIdx );
+      }
+      
+      return rc;
+    }
+
+    void _var_print( const variable_t* var )
+    {
+      const char* local_label = var->value==nullptr || var->value == &var->local_value ? "local" : "     ";
+    
+      printf("  %20s id:%4i ch:%3i : %s  : ", var->label, var->vid, var->chIdx, local_label );
+    
+      if( var->value == nullptr )
+        _value_print( &var->local_value );
+      else
+        _value_print( var->value );
+
+      printf("\n");    
+    }
+    
+    
+    rc_t _preset_set_var_value( instance_t* inst, const char* var_label, unsigned chIdx, const object_t* value )
+    {
+      rc_t rc = kOkRC;
+      variable_t* var = nullptr;
+
+      // get the variable
+      if((rc = var_find( inst, var_label, chIdx, var )) != kOkRC )
+        goto errLabel;
+        
+      rc = _set_var_value_from_cfg( var, value );
+      
+    errLabel:
+      if( rc != kOkRC )
         rc = cwLogError(rc,"The value of instance:%s variable:%s could not be set via a preset.", inst->label, var_label );
 
       return rc;
     }
+
+
     
   }
 }
@@ -357,6 +875,12 @@ void  cw::flow::abuf_destroy( abuf_t* abuf )
   mem::release(abuf->buf);
   mem::release(abuf);
 }
+
+cw::flow::abuf_t*  cw::flow::abuf_duplicate( const abuf_t* src )
+{
+  return abuf_create( src->srate, src->chN, src->frameN );
+}
+
 
 cw::rc_t  cw::flow::abuf_set_channel( abuf_t* abuf, unsigned chIdx, const sample_t* v, unsigned vN )
 {
@@ -392,6 +916,7 @@ cw::flow::fbuf_t*  cw::flow::fbuf_create( srate_t srate, unsigned chN, unsigned 
   f->magV    = mem::allocZ<sample_t*>(chN);
   f->phsV    = mem::allocZ<sample_t*>(chN);
   f->hzV     = mem::allocZ<sample_t*>(chN);
+  f->readyFlV= mem::allocZ<bool>(chN);
 
   if( magV != nullptr || phsV != nullptr || hzV != nullptr )
   {
@@ -429,8 +954,22 @@ void cw::flow::fbuf_destroy( fbuf_t* fbuf )
   mem::release( fbuf->phsV);
   mem::release( fbuf->hzV);
   mem::release( fbuf->buf);
+  mem::release( fbuf->readyFlV);
   mem::release( fbuf);
 }
+
+cw::flow::fbuf_t*  cw::flow::fbuf_duplicate( const fbuf_t* src )
+{
+  fbuf_t* fbuf = fbuf_create( src->srate, src->chN, src->binN, src->hopSmpN );
+  for(unsigned i=0; i<fbuf->chN; ++i)
+  {
+    vop::copy( fbuf->magV[i], src->magV[i], fbuf->binN );
+    vop::copy( fbuf->phsV[i], src->phsV[i], fbuf->binN );
+    vop::copy( fbuf->hzV[i],  src->hzV[i],  fbuf->binN );    
+  }
+  return fbuf;
+}
+
 
 unsigned cw::flow::value_type_label_to_flag( const char* s )
 {
@@ -468,7 +1007,7 @@ cw::rc_t cw::flow::var_desc_find( class_desc_t* cd, const char* label, var_desc_
 }
 
 
-void cw::flow::class_desc_print( flow_t* p )
+void cw::flow::class_dict_print( flow_t* p )
 {
   for(unsigned i=0; i<p->classDescN; ++i)
   {
@@ -510,75 +1049,156 @@ cw::rc_t cw::flow::instance_find( flow_t* p, const char* inst_label, instance_t*
   return cwLogError(kInvalidArgRC,"The instance '%s' was not found.", inst_label );
 }
 
+
 void cw::flow::instance_print( instance_t* inst )
 {
   printf("%s\n", inst->label);
-  for(variable_t* var = inst->varL; var!=nullptr; var=var->link)
-  {
-    printf("  %20s id:%4i ch:%3i : ", var->label, var->vid, var->chIdx );
-    _value_print( var->value );
-    printf("\n");
-  }
-}
+  for(variable_t* var = inst->varL; var!=nullptr; var=var->var_link)
+    if( var->chIdx == kAnyChIdx )
+      for(variable_t* v0 = var; v0!=nullptr; v0=v0->ch_link)
+        _var_print(v0);      
+  
+  if( inst->class_desc->members->report )
+    inst->class_desc->members->report( inst );
+    
 
-
-cw::rc_t cw::flow::var_create( instance_t* inst, const char* var_label, unsigned id, unsigned chIdx, variable_t*& varRef )
-{
-  rc_t rc = kOkRC;
-  
-  varRef = nullptr;
-  
-  variable_t* var = nullptr;
-
-  // if this var already exists then just update its id
-  if( var_exists(inst,var_label,chIdx) )
-  {
-    rc = cwLogError(kInvalidStateRC,"The variable '%s' has already been created on the instance: '%s'.",var_label,inst->label);
-    goto errLabel;
-  }
-  
-  var = mem::allocZ<variable_t>();
-  
-  if((var->varDesc = var_desc_find( inst->class_desc, var_label)) == nullptr )
-  {
-    rc = cwLogError(kInvalidIdRC,"Unable to locate the variable '%s' in class '%s'.", var_label, inst->class_desc->label );
-    goto errLabel;
-  }
-
-  var->inst  = inst;
-  var->label = mem::duplStr(var_label);
-  var->vid   = id;
-  var->chIdx = chIdx;
-  var->value = nullptr;
-  var->link  = inst->varL;
-  inst->varL = var;
-  
-  
- errLabel:
-
-  if(rc != kOkRC )
-    rc = cwLogError(kOpFailRC,"Creation failed for variable '%s' on instance '%s'.", var_label, inst->label );
-  else
-    varRef = var;
-  
-  return kOkRC;
 }
 
 void cw::flow::_var_destroy( variable_t* var )
 {
-  _value_release(&var->local_value);
-  mem::release(var->label);
-  mem::release(var);
+  if( var != nullptr )
+  {
+    _value_release(&var->local_value);
+    mem::release(var->label);
+    mem::release(var);
+  }
+}
+
+
+cw::rc_t cw::flow::var_create( instance_t* inst, const char* var_label, unsigned id, unsigned chIdx, const object_t* value_cfg, variable_t*& varRef )
+{
+  rc_t rc = kOkRC;
+ 
+  rc = _var_create( inst, var_label, id, chIdx, value_cfg, varRef );
+
+  return rc;
+}
+
+cw::rc_t  cw::flow::var_channelize( instance_t* inst, const char* var_label, unsigned chIdx, const object_t* value_cfg, variable_t*& varRef )
+{
+  rc_t        rc  = kOkRC;
+  variable_t* var = nullptr;
+  variable_t* base_var = nullptr;
+  varRef = nullptr;
+
+  if((base_var = _var_find_on_label_and_ch( inst, var_label, kAnyChIdx)) == nullptr)
+  {
+    rc = cwLogError(kInvalidStateRC,"The base ('any') channel variable could not be located on '%s.%s'.",inst->label,var_label);
+    goto errLabel;
+  }
+
+  
+  // locate the variable with the stated chIdx
+  var = _var_find_on_label_and_ch( inst, var_label, chIdx );
+  
+
+  // 'src' variables cannot be channelized
+  if( cwIsFlag(base_var->varDesc->flags,kSrcVarFl) )
+  {
+    rc = cwLogError(rc,"'src' variables cannot be channelized.");
+    goto errLabel;
+  }
+
+  // if the requested var was not found then create a new variable with the requested channel index
+  if( var == nullptr && chIdx != kAnyChIdx )
+  {
+    // create the channelized var
+    if((rc = _var_create( inst, var_label, kInvalidId, chIdx, value_cfg, var )) != kOkRC )
+      goto errLabel;
+
+    // if no value was set then set the value from the 'any' channel
+    if( value_cfg == nullptr )
+    {
+      // Set the value of the new variable to the value of the 'any' channel
+      _value_duplicate( var->local_value, base_var->local_value );
+
+      // If the 'any' channel value was set to point to it's local value then do same with this value
+      if( &base_var->local_value == base_var->value )
+        var->value = &var->local_value;
+    }
+    
+  }
+  else
+  {
+    
+    // a correctly channelized var was found - but we still may need to set the value
+    if( value_cfg != nullptr )
+    {
+      rc = _set_var_value_from_cfg( var, value_cfg );
+    }
+    else
+    {
+      cwLogWarning("An existing var (%s.%s ch:%i) was specified for channelizing but no value was provided.", inst->label, var_label, chIdx );
+    }
+  }
+
+  assert( var != nullptr );
+  varRef = var;
+  
+ errLabel:
+  if( rc != kOkRC )
+    rc = cwLogError(rc,"Channelize failed for variable '%s' on instance '%s' ch:%i.", var_label, inst->label, chIdx );
+  
+  return rc;
 }
 
 bool cw::flow::var_exists( instance_t* inst, const char* label, unsigned chIdx )
-{ return _var_find(inst,label,chIdx) != nullptr; }
+{ return _var_find_on_label_and_ch(inst,label,chIdx) != nullptr; }
 
-cw::rc_t cw::flow::var_get( instance_t* inst, const char* label, unsigned chIdx, variable_t*& vRef )
+
+cw::rc_t cw::flow::var_find( instance_t* inst, unsigned vid, unsigned chIdx, variable_t*& varRef )
+{
+  rc_t        rc  = kOkRC;
+  unsigned    idx = kInvalidIdx;
+  variable_t* var = nullptr;
+      
+  varRef = nullptr;
+
+  // if the varMapA[] has not yet been formed (we are inside the instance constructor) then do a slow lookup of the variable
+  if( inst->varMapA == nullptr )
+  {
+    if((rc = _var_find_on_vid_and_ch(inst,vid,chIdx,var)) != kOkRC )
+      goto errLabel;
+  }
+  else
+  {
+    // otherwise do a fast lookup using inst->varMapA[]
+    if((rc = _var_map_id_to_index(inst, vid, chIdx, idx )) == kOkRC && (idx != kInvalidIdx ))
+      var = inst->varMapA[idx];
+    else
+    {
+      rc = cwLogError(kInvalidIdRC,"The index of variable vid:%i chIdx:%i on instance '%s' could not be calculated and the variable value could not be retrieved.", vid, chIdx, inst->label);
+      goto errLabel;
+    }
+  }
+
+  // if we get here var must be non-null
+  assert( var != nullptr && rc == kOkRC );
+  varRef = var;
+  
+ errLabel:
+      
+  return rc;
+}
+
+
+
+cw::rc_t cw::flow::var_find( instance_t* inst, const char* label, unsigned chIdx, variable_t*& vRef )
 {
   variable_t* var;
-
-  if((var = _var_find(inst,label,chIdx)) != nullptr )
+  vRef = nullptr;
+  
+  if((var = _var_find_best(inst,label,chIdx)) != nullptr )
   {
     vRef = var;
     return kOkRC;
@@ -587,298 +1207,131 @@ cw::rc_t cw::flow::var_get( instance_t* inst, const char* label, unsigned chIdx,
   return cwLogError(kInvalidIdRC,"The instance '%s' does not have a variable named '%s'.", inst->label, label );  
 }
 
-cw::rc_t cw::flow::var_get( instance_t* inst, const char* label, unsigned chIdx, const variable_t*& vRef )
+cw::rc_t cw::flow::var_find( instance_t* inst, const char* label, unsigned chIdx, const variable_t*& vRef )
 {
   variable_t* v = nullptr;
-  rc_t rc = var_get(inst,label,chIdx,v);
+  rc_t        rc = var_find(inst,label,chIdx,v);
   vRef = v;
   return rc;
 }
 
-cw::rc_t cw::flow::value_get(    instance_t* inst, const char* label, unsigned chIdx, value_t*& vRef )
+
+cw::rc_t cw::flow::var_register( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, const object_t* value_cfg, variable_t*& varRef )
 {
-  variable_t* var = nullptr;
-  rc_t rc = kOkRC;
-  if((rc = var_get( inst, label, chIdx, var )) != kOkRC )
-    return rc;
-
-  vRef = var->value;
-  return rc;
-}
-
-cw::rc_t cw::flow::value_get(    instance_t* inst, const char* label, unsigned chIdx, const value_t*& vRef )
-{
-  value_t* v = nullptr;
-  rc_t rc = value_get( inst, label, chIdx, v );
-  vRef = v;
-  return rc;
-}
-
-cw::rc_t        cw::flow::var_abuf_create( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, unsigned frameN )
-{
-  rc_t        rc;
-  abuf_t*     abuf = nullptr;
-  variable_t* var = nullptr;
-  
-  if((rc = var_create( inst, var_label, vid, chIdx, var)) != kOkRC )
-    return rc;
-      
-  if((abuf = abuf_create( srate, chN, frameN )) == nullptr )
-    return cwLogError(kOpFailRC,"abuf create failed on instance:'%s' variable:'%s'.", inst->label, var_label);
-
-  rc = _var_set( var, abuf );
-  
-  return rc;
-}
-
-cw::rc_t cw::flow::var_fbuf_create( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, unsigned binN, unsigned hopSmpN, const sample_t** magV, const sample_t** phsV, const sample_t** hzV )
-{
-  rc_t        rc;
-  fbuf_t*     fbuf = nullptr;
-  variable_t* var = nullptr;
-  
-  if((rc = var_create( inst, var_label, vid, chIdx, var)) != kOkRC )
-    return rc;
-      
-  if((fbuf = fbuf_create( srate, chN, binN, hopSmpN, magV, phsV, hzV )) == nullptr )
-    return cwLogError(kOpFailRC,"fbuf create failed on instance:'%s' variable:'%s'.", inst->label, var_label);
-
-  rc = _var_set( var, fbuf );
-  
-  return rc;
-}
-
-cw::rc_t cw::flow::var_abuf_get( instance_t* inst, const char* var_label, unsigned chIdx, abuf_t*& abufRef )
-{
-  rc_t rc = kOkRC;
-  value_t* val;
-  if((rc = value_get(inst,var_label,chIdx,val)) != kOkRC )
-    goto errLabel;
-
-  if( !value_is_abuf(val))
-  {
-    rc = cwLogError(kTypeMismatchRC,"The variable '%' on instance '%s' is not an abuf.");
-    goto errLabel;
-  }
-  
- errLabel:
-  if( rc == kOkRC )
-    abufRef = val->u.abuf;
-  else
-    rc = cwLogError(rc,"No abuf was retrieved from variable: '%s' instance: '%s'", var_label, inst->label );
-  
-  return rc;  
-}
-
-cw::rc_t cw::flow::var_abuf_get( instance_t* inst, const char* var_label, unsigned chIdx, const abuf_t*& abufRef )
-{
-  rc_t rc;
-  abuf_t* abuf;
-  abufRef = (rc = var_abuf_get( inst, var_label, chIdx, abuf)) == kOkRC ? abuf : nullptr;
-  return rc;
-}
-
-cw::rc_t cw::flow::var_fbuf_get( instance_t* inst, const char* var_label, unsigned chIdx, fbuf_t*& fbufRef )
-{
-  rc_t rc = kOkRC;
-  value_t* val;
-  if((rc = value_get(inst,var_label,chIdx,val)) != kOkRC )
-    goto errLabel;
-
-  if( !value_is_fbuf(val))
-  {
-    rc = cwLogError(kTypeMismatchRC,"The variable '%' on instance '%s' is not an fbuf.");
-    goto errLabel;
-  }
-  
- errLabel:
-  if( rc == kOkRC )
-    fbufRef = val->u.fbuf;
-  else
-    rc = cwLogError(rc,"No fbuf was retrieved from variable: '%s' instance: '%s'", var_label, inst->label );
-  
-  return rc;    
-}
-
-cw::rc_t cw::flow::var_fbuf_get( instance_t* inst, const char* var_label, unsigned chIdx, const fbuf_t*& fbufRef )
-{
-  rc_t rc;
-  fbuf_t* fbuf;
-  fbufRef = (rc = var_fbuf_get( inst, var_label, chIdx, fbuf)) == kOkRC ? fbuf : nullptr;
-  return rc;
-}
-
-cw::rc_t cw::flow::var_init( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, variable_t*& varRef )
-{
+  rc_t        rc  = kOkRC;
   variable_t* var = nullptr;
 
   varRef = nullptr;
 
-  // if the variable already exists then update the vid, and set the returned variable to null.
-  if((var = _var_find(inst,var_label,chIdx)) != nullptr)
+  // TODO: check for duplicate 'vid'-'chIdx' pairs on this instance
+  // The concatenation of 'vid' and 'chIdx' should be unique 
+
+  // if an exact match to label/chIdx was found
+  if((var = _var_find_on_label_and_ch(inst,var_label,chIdx)) != nullptr )
   {
-    var->vid = vid;
-    return kOkRC;  // NOTE: when returning here 'varRef' should be NULL
+    // if a value was given - then update the value
+    if( value_cfg != nullptr )
+      if((rc = _set_var_value_from_cfg( var, value_cfg )) != kOkRC )
+        goto errLabel;    
   }
+  else // an exact match was not found - channelize the variable
+  {
+    if((rc = var_channelize(inst,var_label,chIdx,value_cfg,var)) != kOkRC )
+      goto errLabel;
+  }
+
+  var->vid = vid;
+  varRef   = var;
   
-  return var_create( inst, var_label, vid, chIdx, varRef);
-}
-
-cw::rc_t  cw::flow::var_init( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, unsigned value )
-{
-  rc_t rc;
-  variable_t* var = nullptr;
-  if((rc = var_init( inst, var_label, vid, chIdx, var)) != kOkRC )
-    return rc;
-
-  if( var != nullptr )
-    _var_set( var, value );
-
+ errLabel:
+  if( rc != kOkRC )
+    rc = cwLogError(rc,"Registration failed on variable '%s' instance '%s' ch: %i.", var_label, inst->label, chIdx);
+  
   return rc;
 }
 
-cw::rc_t  cw::flow::var_init( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, int value )
+
+cw::rc_t cw::flow::var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, variable_t*& varRef )
 {
-  rc_t rc;
-  variable_t* var = nullptr;
-  if((rc = var_init( inst, var_label, vid, chIdx, var)) != kOkRC )
-    return rc;
-
-  if( var != nullptr )
-    _var_set( var, value );
-
-  return rc;
+  return var_register( inst, var_label, vid, chIdx, nullptr, varRef );
 }
 
-cw::rc_t  cw::flow::var_init( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, real_t value )
-{
-  rc_t rc;
-  variable_t* var = nullptr;
-  if((rc = var_init( inst, var_label, vid, chIdx, var)) != kOkRC )
-    return rc;
-
-  if( var != nullptr )
-    _var_set( var, value );
-
-  return rc;
-}
-
-cw::rc_t  cw::flow::var_init( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, const abuf_t* abuf )
+cw::rc_t        cw::flow::var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, unsigned frameN )
 {
   rc_t rc = kOkRC;
-  variable_t* var;
-
-  if((var =  _var_find(inst,var_label,chIdx)) != nullptr )
-    var->vid = vid;
-  else
-    rc = var_abuf_create(inst, var_label, vid, chIdx, abuf->srate, abuf->chN, abuf->frameN );
-
-  return rc;
-}
-
-cw::rc_t  cw::flow::var_init( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, const fbuf_t* fbuf )
-{
-  rc_t        rc = kOkRC;
-  variable_t* var;
-  if((var    = _var_find(inst,var_label,chIdx)) != nullptr )
-    var->vid = vid;
-  else
-    rc = var_fbuf_create(inst, var_label, vid, chIdx, fbuf->srate, fbuf->chN, fbuf->binN, fbuf->hopSmpN );
-
-  return rc;
-}
-
-cw::rc_t  cw::flow::var_map_id_to_index(  instance_t* inst, unsigned vid, unsigned chIdx, unsigned& idxRef )
-{
-  unsigned idx = vid * inst->varMapChN + (chIdx == kAnyChIdx ? 0 : chIdx);
-
-  // verify that the map idx is valid
-  if( idx >= inst->varMapN )
-    return cwLogError(kAssertFailRC,"The variable map positioning location %i is out of the range % on instance '%s' vid:%i ch:%i.", idx, inst->varMapN, inst->label,vid,chIdx);
-
-  idxRef = idx;
+  abuf_t* abuf;
   
-  return kOkRC;
+  if((abuf = abuf_create( srate, chN, frameN )) == nullptr )
+    return cwLogError(kOpFailRC,"abuf create failed on instance:'%s' variable:'%s'.", inst->label, var_label);
+
+  if((rc = _var_register_and_set( inst, var_label, vid, chIdx, abuf )) != kOkRC )
+    abuf_destroy(abuf);
+
+  return rc;
 }
 
-cw::rc_t  cw::flow::var_map_label_to_index(  instance_t* inst, const char* var_label, unsigned chIdx, unsigned& idxRef )
+cw::rc_t cw::flow::var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, unsigned binN, unsigned hopSmpN, const sample_t** magV, const sample_t** phsV, const sample_t** hzV )
+{
+  rc_t rc = kOkRC;
+  fbuf_t* fbuf;
+  if((fbuf = fbuf_create( srate, chN, binN, hopSmpN, magV, phsV, hzV )) == nullptr )
+    return cwLogError(kOpFailRC,"fbuf create failed on instance:'%s' variable:'%s'.", inst->label, var_label);
+
+  if((rc = _var_register_and_set( inst, var_label, vid, chIdx, fbuf )) != kOkRC )
+    fbuf_destroy(fbuf);
+
+  return rc;
+}
+
+
+cw::rc_t  cw::flow::var_get( const variable_t* var, bool& valRef )
+{ return _val_get(var->value,valRef); }
+
+cw::rc_t  cw::flow::var_get( const variable_t* var, uint_t& valRef )
+{ return _val_get(var->value,valRef); }
+
+cw::rc_t  cw::flow::var_get( const variable_t* var, int_t& valRef )
+{ return _val_get(var->value,valRef); }
+
+cw::rc_t  cw::flow::var_get( const variable_t* var, float& valRef )
+{ return _val_get(var->value,valRef); }
+
+cw::rc_t  cw::flow::var_get( const variable_t* var, double& valRef )
+{ return _val_get(var->value,valRef); }
+
+cw::rc_t  cw::flow::var_get( const variable_t* var, const char*& valRef )
+{ return _val_get(var->value,valRef); }
+
+cw::rc_t  cw::flow::var_get( const variable_t* var, const abuf_t*& valRef )
+{ return _val_get(var->value,valRef); }
+
+cw::rc_t  cw::flow::var_get( variable_t* var, abuf_t*& valRef )
+{ return _val_get(var->value,valRef); }
+
+cw::rc_t  cw::flow::var_get( const variable_t* var, const fbuf_t*& valRef )
+{ return _val_get(var->value,valRef); }
+
+cw::rc_t  cw::flow::var_get( variable_t* var, fbuf_t*& valRef )
+{ return _val_get(var->value,valRef); }
+
+cw::rc_t cw::flow::var_set( instance_t* inst, unsigned vid, unsigned chIdx, bool val )
 {
   rc_t        rc  = kOkRC;
   variable_t* var = nullptr;
   
-  idxRef = kInvalidIdx;
-  if((rc = var_get(inst, var_label, chIdx, var )) == kOkRC)
-     rc = var_map_id_to_index( inst, var->vid, chIdx, idxRef );
-     
-  return rc;
+  if((rc = _var_find_to_set(inst, vid, chIdx, kBoolTFl, var )) == kOkRC )
+    _var_set_driver( var, val );
+  
+  return rc;    
 }
-
-
-cw::rc_t cw::flow::var_get( instance_t* inst, unsigned vid, unsigned chIdx, uint_t& valRef )
-{
-  rc_t        rc  = kOkRC;
-  variable_t* var = nullptr;
-  
-  if((rc = _var_get(inst, vid, chIdx, kUIntTFl, "uint_t", var )) != kOkRC )
-    return rc;
-  
-  valRef = var->value->u.u;
-
-  return rc;
-}
-
-cw::rc_t cw::flow::var_get( instance_t* inst, unsigned vid, unsigned chIdx, int_t& valRef )
-{
-  rc_t        rc  = kOkRC;
-  variable_t* var = nullptr;
-  
-  if((rc = _var_get(inst, vid, chIdx, kIntTFl, "int_t", var )) == kOkRC )
-    valRef = var->value->u.i;
-
-  return rc;
-} 
-
-cw::rc_t cw::flow::var_get( instance_t* inst, unsigned vid, unsigned chIdx, real_t& valRef )
-{
-  rc_t        rc  = kOkRC;
-  variable_t* var = nullptr;
-  
-  if((rc = _var_get(inst, vid, chIdx, kRealTFl, "real_t", var )) == kOkRC )
-    valRef = var->value->u.r;
-  
-  return rc;
-}
-
-cw::rc_t cw::flow::var_get( instance_t* inst, unsigned vid, unsigned chIdx, abuf_t*& valRef )    
-{
-  rc_t        rc  = kOkRC;
-  variable_t* var = nullptr;
-  
-  if((rc = _var_get(inst, vid, chIdx, kABufTFl, "abuf_t", var )) == kOkRC )
-    valRef = var->value->u.abuf;
-  
-  return rc;
-}
-
-cw::rc_t cw::flow::var_get( instance_t* inst, unsigned vid, unsigned chIdx, fbuf_t*& valRef )
-{
-  rc_t        rc  = kOkRC;
-  variable_t* var = nullptr;
-  
-  if((rc = _var_get(inst, vid, chIdx, kFBufTFl, "fbuf_t", var )) == kOkRC )
-    valRef = var->value->u.fbuf;
-  
-  return rc;  
-}
-
 
 cw::rc_t cw::flow::var_set( instance_t* inst, unsigned vid, unsigned chIdx, uint_t val )
 {
   rc_t        rc  = kOkRC;
   variable_t* var = nullptr;
   
-  if((rc = _var_get(inst, vid, chIdx, kUIntTFl, "uint_t", var )) == kOkRC )
-    _var_set( var, val );
+  if((rc = _var_find_to_set(inst, vid, chIdx, kUIntTFl, var )) == kOkRC )
+    _var_set_driver( var, val );
   
   return rc;    
 }
@@ -888,132 +1341,52 @@ cw::rc_t cw::flow::var_set( instance_t* inst, unsigned vid, unsigned chIdx, int_
   rc_t        rc  = kOkRC;
   variable_t* var = nullptr;
   
-  if((rc = _var_get(inst, vid, chIdx, kIntTFl, "int_t", var )) == kOkRC )
-    _var_set( var, val );
+  if((rc = _var_find_to_set(inst, vid, chIdx, kIntTFl, var )) == kOkRC )
+    _var_set_driver( var, val );
   
   return rc;    
 }
 
-cw::rc_t cw::flow::var_set( instance_t* inst, unsigned vid, unsigned chIdx, real_t val )
+cw::rc_t cw::flow::var_set( instance_t* inst, unsigned vid, unsigned chIdx, float val )
 {
   rc_t        rc  = kOkRC;
   variable_t* var = nullptr;
   
-  if((rc = _var_get(inst, vid, chIdx, kRealTFl, "real_t", var )) == kOkRC )
-    _var_set( var, val );
+  if((rc = _var_find_to_set(inst, vid, chIdx, kFloatTFl, var )) == kOkRC )
+    _var_set_driver( var, val );
   
   return rc;    
 }
 
-
-cw::rc_t   cw::flow::var_set( instance_t* inst, const char* var_label, unsigned chIdx, uint_t val )
+cw::rc_t cw::flow::var_set( instance_t* inst, unsigned vid, unsigned chIdx, double val )
 {
   rc_t        rc  = kOkRC;
   variable_t* var = nullptr;
-
-  if((rc = var_get(inst, var_label, chIdx, var)) == kOkRC )
-    rc = var_set( inst, var->vid, chIdx, val );
-  return rc;
+  
+  if((rc = _var_find_to_set(inst, vid, chIdx, kDoubleTFl, var )) == kOkRC )
+    _var_set_driver( var, val );
+  
+  return rc;    
 }
 
-cw::rc_t   cw::flow::var_set( instance_t* inst, const char* var_label, unsigned chIdx, int_t val )
+cw::rc_t cw::flow::var_set( instance_t* inst, unsigned vid, unsigned chIdx, const char* val )
 {
   rc_t        rc  = kOkRC;
   variable_t* var = nullptr;
-
-  if((rc = var_get(inst, var_label, chIdx, var)) == kOkRC )
-    rc = var_set( inst, var->vid, chIdx, val );
-  return rc;
+  
+  if((rc = _var_find_to_set(inst, vid, chIdx, kStringTFl, var )) == kOkRC )
+    _var_set_driver( var, val );
+  
+  return rc;    
 }
 
-cw::rc_t   cw::flow::var_set( instance_t* inst, const char* var_label, unsigned chIdx, real_t val )
+const cw::flow::preset_t* cw::flow::class_preset_find( class_desc_t* cd, const char* preset_label )
 {
-  rc_t        rc  = kOkRC;
-  variable_t* var = nullptr;
-
-  if((rc = var_get(inst, var_label, chIdx, var)) == kOkRC )
-    rc = var_set( inst, var->vid, chIdx, val );
-  return rc;
-}
-
-
-cw::rc_t  cw::flow::apply_preset( instance_t* inst, const char* preset_label )
-{
-  rc_t            rc = kOkRC;
   const preset_t* pr;
-
-  // locate the requestd preset record
-  if((pr = _preset_find(inst->class_desc, preset_label)) == nullptr )
-  {
-    rc = cwLogError(kInvalidIdRC,"The preset '%s' could not be found for the instance '%s'.", preset_label, inst->label);
-    goto errLabel;
-  }
-
-  // validate the syntax of the preset record
-  if( !pr->cfg->is_dict() )
-  {
-    rc = cwLogError(kSyntaxErrorRC,"The preset record '%s' on class '%s' is not a dictionary.", preset_label, inst->class_desc->label );
-    goto errLabel;
-  }
-
-  // for each variable
-  for(unsigned i=0; i<pr->cfg->child_count(); ++i)
-  {
-    const object_t* value_list  = pr->cfg->child_ele(i)->pair_value();
-    const char*     value_label = pr->cfg->child_ele(i)->pair_label();
-
-    unsigned preset_valueN = value_list->child_count();
-    unsigned inst_chN      = inst->varMapChN;
-
-    if( preset_valueN == 0 )
-      continue;
-
-    enum { kOneToOneAlgoId, kOneToManyAlgoId, kModuloAlgoId, kRepeatLastAlgoId };
-
-    unsigned algo_id = kModuloAlgoId;
-
-    if( preset_valueN == inst_chN )
-      algo_id = kOneToOneAlgoId;
-    else      
-      if( preset_valueN == 1 && inst_chN >= 1 )
-        algo_id = kOneToManyAlgoId;
-      else
-        algo_id = kModuloAlgoId;
-
-    // for each value in this variables value list/ each var channel on the inst
-    for(unsigned chIdx=0; chIdx<inst->varMapChN; ++chIdx)
-    {
-      if( var_exists( inst, value_label, chIdx ) )
-      {
-        unsigned value_list_idx = 0;
-        
-        switch( algo_id )
-        {
-          case kOneToOneAlgoId:
-            value_list_idx = chIdx;
-            break;
-            
-          case kOneToManyAlgoId:
-            value_list_idx = 0;
-            break;
-            
-          case kModuloAlgoId:
-            value_list_idx = chIdx % value_list->child_count();
-            break;
-            
-          default:
-            assert(0);
-        }
-
-        // set the value of the preset
-        if((rc = _preset_set_var_value( inst, value_label, chIdx, value_list->child_ele(value_list_idx) )) != kOkRC)
-          break;
-        
-      } // if exitst
-    } // for varMapN
-  } // for value_list
-
- errLabel:
+  for(pr=cd->presetL; pr!=nullptr; pr=pr->link)
+    if( textCompare(pr->label,preset_label) == 0 )
+      return pr;
   
-  return rc;
+  return nullptr;
 }
+

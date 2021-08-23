@@ -25,8 +25,8 @@ libcwSRC +=                           src/libcw/cwSpScBuf.cpp src/libcw/cwSpScQu
 libcwHDR += src/libcw/cwAudioFile.h     src/libcw/cwMidiFile.h
 libcwSRC += src/libcw/cwAudioFile.cpp   src/libcw/cwMidiFile.cpp
 
-libcwHDR += src/libcw/cwAudioFileOps.h    src/libcw/cwAudioTransforms.h   src/libcw/cwAudioFileProc.h    src/libcw/cwPvAudioFileProc.h
-libcwSRC += src/libcw/cwAudioFileOps.cpp  src/libcw/cwAudioTransforms.cpp src/libcw/cwAudioFileProc.cpp  src/libcw/cwPvAudioFileProc.cpp
+libcwHDR += src/libcw/cwAudioFileOps.h    src/libcw/cwAudioTransforms.h   src/libcw/cwDspTransforms.h   src/libcw/cwAudioFileProc.h    src/libcw/cwPvAudioFileProc.h
+libcwSRC += src/libcw/cwAudioFileOps.cpp  src/libcw/cwAudioTransforms.cpp src/libcw/cwDspTransforms.cpp src/libcw/cwAudioFileProc.cpp  src/libcw/cwPvAudioFileProc.cpp
 
 libcwHDR += src/libcw/cwFlow.h    src/libcw/cwFlowTypes.h     src/libcw/cwFlowProc.h
 libcwSRC += src/libcw/cwFlow.cpp  src/libcw/cwFlowTypes.cpp   src/libcw/cwFlowProc.cpp
