@@ -346,6 +346,7 @@ namespace cw
         return kOkRC;
       }
 
+      // Returns true if there are 'wndSmpCnt' available samples at outV[] otherwise returns false.
       template< typename sample_t >
       bool exec( struct obj_str<sample_t>* p, const sample_t* sp, unsigned sn )
       {
@@ -721,6 +722,7 @@ namespace cw
       }
       
     } 
+
     
     //---------------------------------------------------------------------------------------------------------------------------------
     // Spectral Distortion
@@ -1107,6 +1109,8 @@ namespace cw
       }
       
     }
+
+
     
     rc_t test( const cw::object_t* args );
     
