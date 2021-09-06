@@ -52,6 +52,11 @@ optionally looks for duplicates as an error checking scheme.
 
 - change file names to match object names
 
+- Replace 24 bit read/write in cwAudioFile.cpp
+
+- Remove Audio file operations that have been superceded by 'flow' framework.
+
+
 - (DONE) change all NULL's to nullptr
 
 - (DONE) implement kTcpFl in cwTcpSocket.cpp
@@ -123,3 +128,82 @@ struct in_addr {
 
 
     
+# Flow Notes:
+
+- Add a version of var_register() that both registers and returns the value of the variable.
+
+- When a variable has a variant with a numberic channel should the 'all' channel variant be removed?
+
+- Check for duplicate 'vid'-'chIdx' pairs in var_regster().
+  (The concatenation of 'vid' and 'chIdx' should be unique 
+
+
+- When a proc. goes into exec state there should be a guarantee that all registered variables
+can be successfully read. No error checking should be required.
+
+(How about source variables? these can never be written.)
+
+- Make an example of a repeating input port.  For example a mixer than takes
+audio input from multiple processors.
+
+- Make an example of a proc that has a generic port which allows any type, or a collection of
+specific types, to pass through. For example a 'selector' (n inputs, 1 output) or a router
+(1 signal to n outputs)
+
+- Create a master cross-fader.
+
+
+Flow Instance Creation:
+-----------------------
+
+1. Create all vars from the class description and initially set their
+value to the default value given in the class.  chIdx=kAnyChIdx.
+
+Note that all vars must be included in the class description.
+
+
+2. Apply the preset record from the class description according to the
+label given in the instance definition. 
+
+If the variable valures are given as a scalar then the existing
+variable is simply given a new value.
+
+If the variable values are given as a list then new variables 
+records will be created with explicit channels based on the
+index of the value in the list. This is referred
+to as 'channelizing' the variable because the variable will then
+be represented by multiple physical variable records - one for each channel.
+This means that all variables will have their initial record, with the chIdx set to 'any',
+and then they may also have further variable records will for each explicit
+channel number. The complete list of channelized variable record 
+is kept, in channel order, using the 'ch_link' links with the base of the list
+on the 'any' record.
+
+3. Apply the variable values defined in the instance 'args' record.
+This application is treated similarly to the 'class' 
+preset. If the variable value is presented in a list then
+the value is assigned to a specific channel if the channel
+already exists then the value is simply replaced, if the
+channel does not exist then the variable is 'channelized'.
+
+4. The varaibles listed in the 'in' list of the instance cfg.
+are connected to their source variables.
+
+5. The custom class constructor is run for the instance.
+
+Within the custom class constructor the variables to be used by the
+instance are 'registered' via var_register().  Registering
+a variable allows the variable to be assigned a constant
+id with which the instance can access the variable very efficiently.
+
+If the channel associated with the registered variable does not
+yet exist for the variable then a channelized variable is first created
+before registering the variable.
+
+6. The internal variable id map is created to implement  fast
+access to registered variables.
+
+
+
+
+

@@ -200,7 +200,8 @@ namespace cw
       enum
       {
         kInPId,
-        kFnamePId
+        kFnamePId,
+        kBitsPId
       };
       
       typedef struct
@@ -215,12 +216,13 @@ namespace cw
         rc_t          rc            = kOkRC;                 //
         unsigned      audioFileBits = 0;                     // set audio file sample format to 'float32'.
         inst_t*       inst          = mem::allocZ<inst_t>(); //
-        const abuf_t*       src_abuf      = nullptr;
+        const abuf_t* src_abuf      = nullptr;
         ctx->userPtr = inst;
 
         // Register variables and get their current value
         if((rc = var_register_and_get( ctx, kAnyChIdx,
                                        kFnamePId, "fname", inst->filename,
+                                       kBitsPId,  "bits",  audioFileBits,
                                        kInPId,    "in",    src_abuf)) != kOkRC )
         {
           goto errLabel;
@@ -282,7 +284,7 @@ namespace cw
           // print a minutes counter
           inst->durSmpN += src_abuf->frameN;          
           if( inst->durSmpN % ((unsigned)src_abuf->srate*60) == 0 )
-            printf("%5.1f %s\n", inst->durSmpN/(src_abuf->srate*60));
+            printf("%5.1f min\n", inst->durSmpN/(src_abuf->srate*60));
           
         }
         
