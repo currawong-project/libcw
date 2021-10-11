@@ -156,6 +156,16 @@ namespace cw
       return rc;      
     }
 
+    rc_t serialCb( app_t* app, const serial_msg_t* m )
+    {
+      if( m->byteN > 0 && m->dataA != nullptr  )
+      {
+        for(unsigned i=0; i<m->byteN; ++i)
+          printf("%c",((const char*)m->dataA)[i]);
+      }
+      return kOkRC;
+    }
+    
 
     // The main application callback
     rc_t testCb( void* arg, const msg_t* m )
@@ -175,6 +185,7 @@ namespace cw
       switch( m->tid )
       {
         case kSerialTId:
+          serialCb(app,m->u.serial);
           break;
           
         case kMidiTId:

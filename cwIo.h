@@ -44,7 +44,8 @@ namespace cw
     
     typedef struct serial_msg_str
     {
-      unsigned    devId;
+      const char* label;  // label from cfg
+      unsigned    userId; // defaults to index into internal serial cfg. array - reset vial serialDeviceSetId().
       const void* dataA;
       unsigned    byteN;
     } serial_msg_t;
@@ -174,8 +175,11 @@ namespace cw
     //
 
     unsigned    serialDeviceCount( handle_t h );
-    const char* serialDeviceLabel( handle_t h, unsigned devIdx );
     unsigned    serialDeviceIndex( handle_t h, const char* label );
+    const char* serialDeviceLabel( handle_t h, unsigned devIdx );
+    unsigned    serialDeviceId(    handle_t h, unsigned devIdx );
+    void        serialDeviceSetId( handle_t h, unsigned devIdx, unsigned id );
+    
     rc_t        serialDeviceSend(  handle_t h, unsigned devIdx, const void* byteA, unsigned byteN );
     
     //----------------------------------------------------------------------------------------------------------

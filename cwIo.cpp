@@ -50,11 +50,11 @@ namespace cw
     
     typedef struct serialPort_str
     {
-      char*                   label;
+      char*                   label;    
+      unsigned                userId;
       char*                   device;
       unsigned                baudRate;
       unsigned                flags;
-      unsigned                pollPeriodMs;      
       serialPortSrv::handle_t serialH;
     } serialPort_t;
 
@@ -107,6 +107,7 @@ namespace cw
       
       serialPort_t*                 serialA;
       unsigned                      serialN;
+      serialPortSrv::handle_t       serialPortSrvH;
       
       midi::device::handle_t        midiH;
 
@@ -239,13 +240,32 @@ namespace cw
     // Serial
     //    
   
-    void _serialPortCb( void* arg, const void* byteA, unsigned byteN )
+    void _serialPortCb( void* arg, unsigned serialCfgIdx, const void* byteA, unsigned byteN )
     {
-      //io_t* p = reinterpret_cast<io_t*>(arg);
+      const io_t* p = (const io_t*)arg;
+
+      if( serialCfgIdx > p->serialN )
+        cwLogError(kAssertFailRC,"The serial cfg index %i is out of range %i in serial port callback.", serialCfgIdx, p->serialN );
+      else
+      {      
+        const serialPort_t* sp = p->serialA + serialCfgIdx;
+        msg_t m;
+        serial_msg_t sm;
+        sm.label  = sp->label;
+        sm.userId = sp->userId;
+        sm.dataA  = byteA;
+        sm.byteN  = byteN;
+        
+        m.tid      = kSerialTId;
+        m.u.serial = &sm;
+
+        p->cbFunc( p->cbArg, &m );
+      }
       
     }
 
-    rc_t _serialPortParseCfg( const object_t& e, serialPort_t* port )
+
+    rc_t _serialPortParseCfg( const object_t& e, serialPort_t* port, bool& enableFlRef )
     {
       rc_t        rc          = kOkRC;
       char*       parityLabel = nullptr;
@@ -261,13 +281,13 @@ namespace cw
         };
              
       if((rc = e.getv(
-            "label",        port->label,
-            "device",       port->device,
-            "baud",         port->baudRate,
-            "bits",         bits,
-            "stop",         stop,
-            "parity",       parityLabel,
-            "pollPeriodMs", port->pollPeriodMs )) != kOkRC )
+                      "enable_flag",  enableFlRef,
+                      "label",        port->label,
+                      "device",       port->device,
+                      "baud",         port->baudRate,
+                      "bits",         bits,
+                      "stop",         stop,
+                      "parity",       parityLabel )) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"Serial configuration parse failed.");
       }
@@ -307,20 +327,40 @@ namespace cw
         
     rc_t _serialPortCreate( io_t* p, const object_t* c )
     {
-      rc_t            rc   = kOkRC;
-      const object_t* cfgL = nullptr;
+      rc_t            rc           = kOkRC;
+      const object_t* cfg          = nullptr;
+      const object_t* port_array   = nullptr;
+      unsigned        pollPeriodMs = 50;
+      unsigned        recvBufByteN = 512;
 
       // get the serial port list node
-      if((cfgL = c->find("serial")) == nullptr || !cfgL->is_list())
-        return cwLogError(kSyntaxErrorRC,"Unable to locate the 'serial' configuration list.");
+      if((cfg = c->find("serial")) == nullptr)
+        return cwLogError(kSyntaxErrorRC,"Unable to locate the 'serial' configuration.");
 
-      p->serialN = cfgL->child_count();
+      // the serial header values
+      if((rc = cfg->getv("pollPeriodMs", pollPeriodMs,
+                         "recvBufByteN", recvBufByteN,
+                         "array",        port_array)) != kOkRC )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"Serial cfg header parse failed.");
+        goto errLabel;
+      }
+
+      p->serialN = port_array->child_count();
       p->serialA = mem::allocZ<serialPort_t>(p->serialN);
+
+      
+      // create the serial server
+      if((rc = serialPortSrv::create(p->serialPortSrvH,pollPeriodMs,recvBufByteN)) != kOkRC )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"Serial port server failed.");
+        goto errLabel;
+      }
       
       // for each serial port cfg
       for(unsigned i=0; i<p->serialN; ++i)
       {
-        const object_t* e = cfgL->child_ele(i);
+        const object_t* e = port_array->child_ele(i);
         serialPort_t*   r = p->serialA + i;
         
         if( e == nullptr )
@@ -330,24 +370,52 @@ namespace cw
         }
         else
         {
+          bool enableFl = false;
+          
           // parse the cfg record
-          if((rc = _serialPortParseCfg(*e,r)) != kOkRC )
+          if((rc = _serialPortParseCfg(*e,r,enableFl)) != kOkRC )
           {
             rc = cwLogError(rc,"Serial configuration parse failed on record index:%i.", i );
             break;
           }
 
-          /*
-          // create the serial port object
-          if((rc = serialPortSrv::create( r->serialH, r->device, r->baudRate, r->flags, _serialPortCb, p, r->pollPeriodMs )) != kOkRC )
+          if( enableFl )
           {
-            rc = cwLogError(rc,"Serial port create failed on record index:%i.", i );
-            break;
+            r->userId = i; // default the serial port userId to the index into serialA[]
+
+            serialPort::handle_t spH = serialPortSrv::serialHandle(p->serialPortSrvH);
+
+          
+            // create the serial port object
+            if((rc = serialPort::createPort( spH, i, r->device, r->baudRate, r->flags, _serialPortCb, p )) != kOkRC )
+            {
+              rc = cwLogError(rc,"Serial port create failed on record index:%i.", i );
+              break;
+            }
           }
-          */
         }
       }
 
+    errLabel:
+      return rc;
+    }
+
+    void _serialPortDestroy( io_t* p )
+    {
+      serialPortSrv::destroy(p->serialPortSrvH);
+                            
+      mem::free(p->serialA);
+      p->serialN = 0;
+      
+    }
+
+    rc_t _serialPortStart( io_t* p )
+    {
+      rc_t rc;
+      
+      if((rc =serialPortSrv::start( p->serialPortSrvH )) != kOkRC )
+        rc = cwLogError(rc,"The serial port server start failed.");
+      
       return rc;
     }
 
@@ -1568,16 +1636,8 @@ namespace cw
       mem::free(p->timerA);
       p->timerN = 0;
 
-      for(unsigned i=0; i<p->serialN; ++i)
-        serialPortSrv::destroy( p->serialA[i].serialH );
+      _serialPortDestroy(p);
 
-      mem::free(p->serialA);
-      p->serialN = 0;
-
-      // TODO: clean up the audio system more systematically
-      // by first stopping all the devices and then
-      // reversing the creating process.
-      
       _audioDestroy(p);
 
       midi::device::destroy(p->midiH);
@@ -1657,7 +1717,7 @@ cw::rc_t cw::io::create(
 
   // duplicate the cfg object so that we can maintain pointers into its elements without
   // any chance that they will be delted before the application completes
-  p->cfg = o->duplicate();
+  p->cfg    = o->duplicate();
   p->cbFunc = cbFunc;
   p->cbArg  = cbArg;
 
@@ -1721,6 +1781,8 @@ cw::rc_t cw::io::start( handle_t h )
   io_t* p = _handleToPtr(h);
 
   _audioDeviceStartStop(p,true);
+
+  _serialPortStart(p);
   
   return thread_mach::start( p->threadMachH );
 }
@@ -1903,12 +1965,6 @@ unsigned cw::io::serialDeviceCount( handle_t h )
   return p->serialN;
 }
 
-const char* cw::io::serialDeviceLabel(  handle_t h, unsigned devIdx )
-{
-  io_t* p = _handleToPtr(h);
-  return p->serialA[devIdx].label;
-}
-
 unsigned cw::io::serialDeviceIndex( handle_t h, const char* label )
 {
   io_t* p = _handleToPtr(h);
@@ -1918,6 +1974,26 @@ unsigned cw::io::serialDeviceIndex( handle_t h, const char* label )
 
   return kInvalidIdx;
 }
+
+const char* cw::io::serialDeviceLabel(  handle_t h, unsigned devIdx )
+{
+  io_t* p = _handleToPtr(h);
+  return p->serialA[devIdx].label;
+}
+
+
+unsigned    cw::io::serialDeviceId(    handle_t h, unsigned devIdx )
+{
+  io_t* p = _handleToPtr(h);
+  return p->serialA[devIdx].userId;
+}
+
+void        cw::io::serialDeviceSetId( handle_t h, unsigned devIdx, unsigned id )
+{
+  io_t* p = _handleToPtr(h);
+  p->serialA[devIdx].userId = id;
+}
+
 
 cw::rc_t cw::io::serialDeviceSend(  handle_t h, unsigned devIdx, const void* byteA, unsigned byteN )
 {
