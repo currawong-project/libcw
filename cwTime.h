@@ -53,11 +53,17 @@ namespace cw
 
     rc_t now( spec_t& ts );
 
+    void subtractMicros( spec_t& ts, unsigned us );
+    
     // Advance 'ts' by 'ms' milliseconds.
     void advanceMs( spec_t& ts, unsigned ms );
 
     // Advance the current time by 'ms' milliseconds;
     rc_t futureMs( spec_t& ts, unsigned ms );
+
+    void secondsToSpec(      spec_t& ts, unsigned sec );
+    void millisecondsToSpec( spec_t& ts, unsigned ms );
+    void microsecondsToSpec( spec_t& ts, unsigned us );
 
     rc_t test();
 

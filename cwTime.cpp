@@ -142,6 +142,35 @@ cw::rc_t cw::time::now( spec_t& ts )
   return rc;
 }
 
+void cw::time::subtractMicros( spec_t& ts, unsigned micros )
+{
+  
+  unsigned rem_us = micros % 1000000;  // fractional seconds in microseconds
+  unsigned rem_ns = rem_us * 1000;     // fractional seconds in nanoseconds
+
+  // if the fractional micros is greater than the fractional nano's
+  if( rem_ns > ts.tv_nsec )
+  {
+    // subtract the fractional nano's from the fractional micros
+    // (this sets the fractional nano's to 0)
+    rem_ns    -= ts.tv_nsec;
+    
+    // convert the remaining fractional micros to the fractional nano's
+    ts.tv_nsec = 1000000000 - rem_ns;
+    
+    // subtract the carry
+    ts.tv_sec -= 1;
+  }
+  else 
+  {
+    ts.tv_nsec -= rem_ns;
+  }
+
+  assert( ts.tv_sec > micros / 1000000 );
+  
+  ts.tv_sec -= micros / 1000000;
+  
+}
 
 void cw::time::advanceMs( spec_t& ts, unsigned ms )
 {
@@ -171,6 +200,29 @@ cw::rc_t cw::time::futureMs( spec_t& ts, unsigned ms )
   return rc;   
 }
 
+void cw::time::secondsToSpec(      spec_t& ts, unsigned sec )
+{
+  ts.tv_sec  = sec;
+  ts.tv_nsec = 0;  
+}
+
+void cw::time::millisecondsToSpec( spec_t& ts, unsigned ms )
+{
+  unsigned sec = ms/1000;
+  unsigned ns  = (ms - (sec*1000)) * 1000000;
+  
+  ts.tv_sec  = sec;
+  ts.tv_nsec = ns;  
+}
+
+void cw::time::microsecondsToSpec( spec_t& ts, unsigned us )
+{
+  unsigned sec = us/1000000;
+  unsigned ns  = (us - (sec*1000000)) * 1000;
+  
+  ts.tv_sec  = sec;
+  ts.tv_nsec = ns;  
+}
 
 cw::rc_t cw::time::test()
 {
@@ -185,6 +237,18 @@ cw::rc_t cw::time::test()
 
   printf("dMs:%i : GTE:%i LTE:%i\n",dMs, isGTE(t0,t1), isLTE(t0,t1) );
 
+  
+  microsecondsToSpec( t0, 2500000 );        // 2.5 seconds
+  printf("%li %li\n",t0.tv_sec,t0.tv_nsec);
+  subtractMicros( t0, 750000 );             // subtract .75 seconds
+  printf("%li %li\n",t0.tv_sec,t0.tv_nsec);
+  subtractMicros( t0, 500000 );             // subtract .5 seconds
+  printf("%li %li\n",t0.tv_sec,t0.tv_nsec);
+
+  
+
   return kOkRC;
   
 }
+
+
