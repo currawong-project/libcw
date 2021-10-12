@@ -137,14 +137,14 @@ namespace cw {
         unsigned    colUuId;
         unsigned    uuid;
 
-        uiCreateTitle(p->ioH, titleUuId, wsSessId, parentUuId, nullptr,    kInvalidId, nullptr, title );
+        uiCreateLabel(p->ioH, titleUuId, wsSessId, parentUuId, nullptr,    kInvalidId, nullptr, title );
         uiCreateDiv(  p->ioH, divUuId,   wsSessId, parentUuId, divEleName, d->baseAppId + divAppId,   "uiRow", nullptr );
 
         uiCreateDiv(  p->ioH, colUuId, wsSessId, divUuId, nullptr, kInvalidId, "uiCol", nullptr );        
-        uiCreateTitle(p->ioH, uuid,    wsSessId, colUuId, nullptr, kInvalidId, nullptr, "Tone" );
-        uiCreateTitle(p->ioH, uuid,    wsSessId, colUuId, nullptr, kInvalidId, nullptr, "Mute" );
-        uiCreateTitle(p->ioH, uuid,    wsSessId, colUuId, nullptr, kInvalidId, nullptr, "Gain" );
-        uiCreateTitle(p->ioH, uuid,    wsSessId, colUuId, nullptr, kInvalidId, nullptr, "Meter" );
+        uiCreateLabel(p->ioH, uuid,    wsSessId, colUuId, nullptr, kInvalidId, nullptr, "Tone" );
+        uiCreateLabel(p->ioH, uuid,    wsSessId, colUuId, nullptr, kInvalidId, nullptr, "Mute" );
+        uiCreateLabel(p->ioH, uuid,    wsSessId, colUuId, nullptr, kInvalidId, nullptr, "Gain" );
+        uiCreateLabel(p->ioH, uuid,    wsSessId, colUuId, nullptr, kInvalidId, nullptr, "Meter" );
       
         for(unsigned i=0; i<chCnt; ++i)
         {
@@ -333,7 +333,7 @@ cw::rc_t cw::io::audio_panel::exec(  handle_t h, const msg_t& m )
       break;
 
     case kAudioMeterTId:
-      printf("."); fflush(stdout);
+      //printf("."); fflush(stdout);
       if( m.u.audioGroupDev != nullptr )
         rc = _audioMeterCb(p,*m.u.audioGroupDev);
       break;
