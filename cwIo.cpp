@@ -2624,12 +2624,12 @@ cw::rc_t cw::io::uiCreateDiv(        handle_t h, unsigned& uuIdRef, unsigned wsS
   return rc;  
 }
 
-cw::rc_t cw::io::uiCreateTitle(      handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
+cw::rc_t cw::io::uiCreateLabel(      handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc  = ui::createTitle(uiH,uuIdRef,wsSessId,parentUuId,eleName,appId,clas,title);
+    rc  = ui::createLabel(uiH,uuIdRef,wsSessId,parentUuId,eleName,appId,clas,title);
   return rc;  
 }
 
@@ -2750,14 +2750,33 @@ cw::rc_t cw::io::uiCreateProg(       handle_t h, unsigned& uuIdRef, unsigned wsS
   return rc;  
 }
 
-cw::rc_t cw::io::uiCreateText(       handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
+cw::rc_t cw::io::uiCreateLog(       handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc  = ui::createText(uiH,uuIdRef,wsSessId,parentUuId,eleName,appId,clas,title);
+    rc  = ui::createLog(uiH,uuIdRef,wsSessId,parentUuId,eleName,appId,clas,title);
   return rc;  
 }
+
+cw::rc_t cw::io::uiSetNumbRange( handle_t h, unsigned wsSessId, unsigned uuId, double minValue, double maxValue, double stepValue, unsigned decPl, double value )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::setNumbRange(uiH,wsSessId,uuId,minValue,maxValue,stepValue,decPl,value);
+  return rc;
+}
+
+cw::rc_t cw::io::uiSetProgRange( handle_t h, unsigned wsSessId, unsigned uuId, double minValue, double maxValue, double value )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::setProgRange(uiH,wsSessId,uuId,minValue,maxValue,value);
+  return rc;
+}
+
 
 cw::rc_t cw::io::uiRegisterAppIdMap(  handle_t h, const ui::appIdMap_t* map, unsigned mapN )
 {

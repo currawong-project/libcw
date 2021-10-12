@@ -82,7 +82,7 @@ namespace cw
     //
 
     rc_t createDiv(        handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
-    rc_t createTitle(      handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
+    rc_t createLabel(      handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
     rc_t createButton(     handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
     
     // Create check: w/o value. The value will be read from the engine via the UI 'echo' event.
@@ -101,8 +101,12 @@ namespace cw
     rc_t createNumb(       handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double minValue, double maxValue, double stepValue, unsigned decPl, double value );
     rc_t createProg(       handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double minValue, double maxValue );
     rc_t createProg(       handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double minValue, double maxValue, double value );
-    rc_t createText(       handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
+    rc_t createLog(        handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
 
+    rc_t setNumbRange( handle_t h, unsigned wsSessId, unsigned uuId, double minValue, double maxValue, double stepValue, unsigned decPl, double value );
+    rc_t setProgRange( handle_t h, unsigned wsSessId, unsigned uuId, double minValue, double maxValue, double value );
+    rc_t setLogLine(   handle_t h, unsigned wsSessId, unsigned uuId, const char* text );
+    
     // Register parent/child/name app id's 
     rc_t registerAppIdMap(  handle_t h, const appIdMap_t* map, unsigned mapN );
 
@@ -114,6 +118,8 @@ namespace cw
     rc_t sendValueFloat(  handle_t h, unsigned wsSessId, unsigned uuId, float value );
     rc_t sendValueDouble( handle_t h, unsigned wsSessId, unsigned uuId, double value );
     rc_t sendValueString( handle_t h, unsigned wsSessId, unsigned uuId, const char* value );
+
+    
     
     namespace ws
     {

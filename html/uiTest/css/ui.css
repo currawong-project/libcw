@@ -40,6 +40,7 @@ label {
 }
 
 
+
 .uiCtlDiv {
     display: flex;
     flex-direction: row;
@@ -73,3 +74,37 @@ label {
     background-color: LightBlue;
 }
 
+
+/* outer log div - contains the log label and the log scroller */
+.uiLogDiv {
+    display: flex;
+    flex-direction: column;
+
+    align-items: flex-start;     /* left justify */
+    align-content: flex-stretch; /* fill horizontal space */
+    
+}
+
+.uiLogDiv label {
+    width: 100%;
+}
+
+
+/* log scroller */
+.uiLog {
+    display:flex;
+    flex-direction: column;
+
+    height: 150px;
+    overflow-x: hidden; /* 'hidden' to remove scroll bar */
+    overflow-y: scroll; 
+    width: 100%;
+
+    background-color: PowderBlue;
+    
+}
+
+/* The log text */
+.uiLog pre {
+	
+}

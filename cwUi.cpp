@@ -444,7 +444,7 @@ namespace cw
       if((rc = o->get("name",eleName, cw::kNoRecurseFl | cw::kOptionalFl)) != kOkRC )
       {
         // div's and titles don't need a 'name'
-        if( rc == kLabelNotFoundRC && (divAliasFl || textCompare(eleType,"title")==0) )
+        if( rc == kLabelNotFoundRC && (divAliasFl || textCompare(eleType,"label")==0) )
           rc = kOkRC;
         else
         {
@@ -1086,8 +1086,8 @@ cw::rc_t cw::ui::createFromText( handle_t h, const char* text, unsigned wsSessId
 cw::rc_t cw::ui::createDiv( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title  )
 { return _createOneEle( _handleToPtr(h), uuIdRef, "div", wsSessId, parentUuId, eleName, appId, clas, title ); }
 
-cw::rc_t cw::ui::createTitle( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "title", wsSessId, parentUuId, eleName, appId, clas, title ); }
+cw::rc_t cw::ui::createLabel( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "label", wsSessId, parentUuId, eleName, appId, clas, title ); }
 
 cw::rc_t cw::ui::createButton( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title  )
 { return _createOneEle( _handleToPtr(h), uuIdRef, "button", wsSessId, parentUuId, eleName, appId, clas, title ); }
@@ -1128,9 +1128,94 @@ cw::rc_t cw::ui::createProg(  handle_t h, unsigned& uuIdRef, unsigned wsSessId, 
 cw::rc_t cw::ui::createProg(  handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double minValue, double maxValue, double value )
 { return _createOneEle( _handleToPtr(h), uuIdRef, "progress", wsSessId, parentUuId, eleName, appId, clas, title, "value", value, "min", minValue, "max", maxValue ); }
 
-cw::rc_t cw::ui::createText(   handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
+cw::rc_t cw::ui::createLog(   handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "log", wsSessId, parentUuId, eleName, appId, clas, title);  }
+
+cw::rc_t cw::ui::setNumbRange( handle_t h, unsigned wsSessId, unsigned uuId, double minValue, double maxValue, double stepValue, unsigned decPl, double value )
 {
-  rc_t rc= kOkRC;
+  rc_t rc = kOkRC;
+  ui_t* p = _handleToPtr(h);
+  
+  const char* mFmt = "{ \"op\":\"set\", \"uuId\":%i, \"min\":%f, \"max\":%f, \"step\":%f, \"decpl\":%i, \"value\":%f }";
+  const int   mbufN = 256;
+  char        mbuf[mbufN];
+  
+  if( snprintf(mbuf,mbufN,mFmt,uuId,minValue,maxValue,stepValue,decPl,value) >= mbufN-1 )
+    return cwLogError(kBufTooSmallRC,"The msg buffer is too small.");
+  
+  rc = _websockSend(p,wsSessId,mbuf);
+
+  return rc;
+}
+
+cw::rc_t cw::ui::setProgRange( handle_t h, unsigned wsSessId, unsigned uuId, double minValue, double maxValue, double value )
+{
+  rc_t rc = kOkRC;  
+  ui_t* p = _handleToPtr(h);
+  
+  const char* mFmt = "{ \"op\":\"set\", \"uuId\":%i, \"min\":%f, \"max\":%f, \"value\":%f }";
+  const int   mbufN = 256;
+  char        mbuf[mbufN];
+      
+  if( snprintf(mbuf,mbufN,mFmt,uuId,minValue,maxValue,value) >= mbufN-1 )
+    return cwLogError(kBufTooSmallRC,"The msg buffer is too small.");
+  
+  rc = _websockSend(p,wsSessId,mbuf);
+
+  return rc;
+}
+
+cw::rc_t cw::ui::setLogLine(   handle_t h, unsigned wsSessId, unsigned uuId, const char* text )
+{
+  rc_t rc = kOkRC;
+
+  unsigned    n = 0;
+  const char* c = text;
+  for(; *c; ++c )
+    if( *c == '\n')
+      ++n;
+
+  if( n == 0 )
+    rc = sendValueString(h,wsSessId,uuId,text);
+  else
+  {
+    int sn = textLength(text);
+    sn += n + 1;
+    
+    char s[ sn ];
+    unsigned i,j;
+    for( i=0,j=0; text[i]; ++i,++j)
+    {
+      char ch        = text[i];
+      bool escape_fl = true;
+      
+      switch( ch )
+      {
+      case '\\': ch='\\'; break;
+      case '\b': ch='b'; break;
+      case '\f': ch='f'; break;
+      case '\n': ch='n'; break;
+      case '\r': ch='r'; break;
+      case '\t': ch='t'; break;
+      default:
+        escape_fl = false;
+        break;
+      }
+
+      if( escape_fl )
+        s[j++] = '\\';
+      
+      s[j] = ch;
+    }
+    
+    s[sn-1] = 0;
+
+    printf("%s %s\n",text,s);
+    
+    rc = sendValueString(h,wsSessId,uuId,s);
+
+  }
+  
   return rc;
 }
 

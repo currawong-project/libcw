@@ -32,6 +32,9 @@ namespace cw
       bool     appCheck2Fl;
       float    appNumb;
       unsigned appSelId;
+
+      unsigned myPanelUuId;
+      unsigned logUuId;
       
     } ui_test_t;
 
@@ -51,6 +54,7 @@ namespace cw
      kIntegerId,
      kFloatId,
      kProgressId,
+     kLogId,
 
      // Resource Based elements
      kPanelDivId,
@@ -70,23 +74,22 @@ namespace cw
       rc_t     rc      = kOkRC;
       unsigned uuid    = kInvalidId;
       unsigned selUuId = kInvalidId;
-      unsigned divUuId = kInvalidId;
 
       
       handle_t uiH = srv::uiHandle(p->wsUiSrvH);
 
       // Create a UI elements programatically.
 
-      if((rc = createDiv( uiH, divUuId, wsSessId, kInvalidId, "myDivId", kDivId, "divClass", "My Panel" )) != kOkRC )
+      if((rc = createDiv( uiH, p->myPanelUuId, wsSessId, kInvalidId, "myDivId", kDivId, "divClass", "My Panel" )) != kOkRC )
         goto errLabel;
 
-      if((rc = createButton( uiH, uuid, wsSessId, divUuId, "myBtnId", kBtnId, "btnClass", "Quit" )) != kOkRC )
+      if((rc = createButton( uiH, uuid, wsSessId, p->myPanelUuId, "myBtnId", kBtnId, "btnClass", "Quit" )) != kOkRC )
         goto errLabel;
 
-      if((rc = createCheck( uiH, uuid, wsSessId, divUuId, "myCheckId", kCheckId, "checkClass", "Check Me", true )) != kOkRC )
+      if((rc = createCheck( uiH, uuid, wsSessId, p->myPanelUuId, "myCheckId", kCheckId, "checkClass", "Check Me", true )) != kOkRC )
         goto errLabel;
       
-      if((rc = createSelect( uiH, selUuId, wsSessId, divUuId, "mySelId", kSelectId, "selClass", "Select" )) != kOkRC )
+      if((rc = createSelect( uiH, selUuId, wsSessId, p->myPanelUuId, "mySelId", kSelectId, "selClass", "Select" )) != kOkRC )
         goto errLabel;
 
       if((rc = createOption( uiH, uuid, wsSessId, selUuId, "myOpt0Id", kOption0Id, "optClass", "Option 0" )) != kOkRC )
@@ -98,16 +101,20 @@ namespace cw
       if((rc = createOption( uiH, uuid, wsSessId, selUuId, "myOpt2Id", kOption2Id, "optClass", "Option 2" )) != kOkRC )
         goto errLabel;
 
-      if((rc = createStr( uiH, uuid, wsSessId, divUuId, "myStringId", kStringId, "stringClass", "String", "a string value" )) != kOkRC )
+      if((rc = createStr( uiH, uuid, wsSessId, p->myPanelUuId, "myStringId", kStringId, "stringClass", "String", "a string value" )) != kOkRC )
         goto errLabel;
       
-      if((rc = createNumb( uiH, uuid, wsSessId, divUuId, "myIntegerId", kIntegerId, "integerClass", "Integer", 0, 100, 1, 0, 10 )) != kOkRC )
+      if((rc = createNumb( uiH, uuid, wsSessId, p->myPanelUuId, "myIntegerId", kIntegerId, "integerClass", "Integer", 0, 100, 1, 0, 10 )) != kOkRC )
         goto errLabel;
 
-      if((rc = createNumb( uiH, uuid, wsSessId, divUuId, "myFloatId", kFloatId, "floatClass", "Float", 0.53, 100.97, 1.0, 5, 10.0 )) != kOkRC )
+      if((rc = createNumb( uiH, uuid, wsSessId, p->myPanelUuId, "myFloatId", kFloatId, "floatClass", "Float", 0.53, 100.97, 1.0, 5, 10.0 )) != kOkRC )
         goto errLabel;
       
-      if((rc = createProg(  uiH, uuid, wsSessId, divUuId, "myProgressId", kProgressId, "progressClass", "Progress", 0, 10, 5 )) != kOkRC )
+      if((rc = createProg(  uiH, uuid, wsSessId, p->myPanelUuId, "myProgressId", kProgressId, "progressClass", "Progress", 0, 10, 5 )) != kOkRC )
+        goto errLabel;
+
+      
+      if((rc = createLog( uiH, p->logUuId, wsSessId, p->myPanelUuId, "myLogId", kLogId, "logClass", "My Log (click toggles auto-scroll)" )) != kOkRC )
         goto errLabel;
 
       //if((rc = createFromFile( uiH, p->uiCfgFn, wsSessId )) != kOkRC )
@@ -132,7 +139,19 @@ namespace cw
         p->appSelId);
     }
 
-    
+
+    rc_t  _insert_log_line( ui_test_t* p, unsigned wsSessId, const char* text )
+    {
+      
+      rc_t rc = kOkRC;
+      
+      handle_t uiH = srv::uiHandle(p->wsUiSrvH);
+
+      //rc = ui::sendValueString( uiH, wsSessId, p->logUuId, text );
+      rc = ui::setLogLine( uiH, wsSessId, p->logUuId, text );
+
+      return rc;
+    }
 
     rc_t _handleUiValueMsg( ui_test_t* p, unsigned wsSessId, unsigned parentAppId, unsigned uuId, unsigned appId, const value_t* v )
     {
@@ -147,6 +166,7 @@ namespace cw
         case kCheckId:
           printf("Check:%i\n", v->u.b);
           p->appCheckFl = v->u.b;
+          _insert_log_line( p, wsSessId, "check!\n" );
           break;
 
         case kSelectId:
@@ -162,8 +182,14 @@ namespace cw
           break;
           
         case kIntegerId:
-          printf("Integer: %i\n",v->u.i);
-          p->appInteger = v->u.i;
+          {
+            printf("Integer: %i\n",v->u.i);
+            p->appInteger = v->u.i;
+          
+            handle_t uiH = srv::uiHandle(p->wsUiSrvH);
+            unsigned progUuId = findElementUuId(   uiH, p->myPanelUuId, kProgressId );
+            sendValueInt(   uiH, wsSessId, progUuId, v->u.i );
+          }
           break;
           
         case kFloatId:
