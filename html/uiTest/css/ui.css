@@ -87,6 +87,8 @@ label {
 
 .uiLogDiv label {
     width: 100%;
+    background-color: LightSteelBlue;
+
 }
 
 
@@ -96,8 +98,8 @@ label {
     flex-direction: column;
 
     height: 150px;
-    overflow-x: hidden; /* 'hidden' to remove scroll bar */
-    overflow-y: scroll; 
+    overflow-x: hidden; /* 'hidden' to remove x scroll bar */
+    overflow-y: auto; 
     width: 100%;
 
     background-color: PowderBlue;
@@ -105,6 +107,34 @@ label {
 }
 
 /* The log text */
-.uiLog pre {
-	
+.uiLog pre {	
+}
+
+
+/* outer list div - contains the list label and the list scroller */
+.uiListDiv {
+    display: flex;
+    flex-direction: column;
+
+    align-items: flex-start;     /* left justify */
+    align-content: flex-stretch; /* fill horizontal space */
+    
+}
+
+.uiListDiv label {
+    width: 100%;
+    background-color: LightSteelBlue;
+
+}
+
+.uiList {
+    display:flex;
+    flex-direction: column;
+    
+    height: 100px;
+    overflow-x: hidden; /* 'hidden' to remove scroll bar */
+    overflow-y: auto; 
+    width: 100%;
+
+    background-color: PowderBlue;    
 }
