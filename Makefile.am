@@ -62,6 +62,9 @@ libcwSRC += src/libcw/cwIo.cpp src/libcw/cwIoTest.cpp   src/libcw/cwIoSocketChat
 libcwHDR += src/libcw/cwIoMidiRecordPlay.h    src/libcw/cwIoAudioRecordPlay.h   src/libcw/cwIoAudioMidiApp.h
 libcwSRC += src/libcw/cwIoMidiRecordPlay.cpp  src/libcw/cwIoAudioRecordPlay.cpp src/libcw/cwIoAudioMidiApp.cpp
 
+libcwHDR += src/libcw/cwIoPresetSelApp.h     src/libcw/cwPianoScore.h
+libcwSRC += src/libcw/cwIoPresetSelApp.cpp   src/libcw/cwPianoScore.cpp
+
 endif
 
 
