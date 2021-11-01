@@ -336,7 +336,7 @@ function ui_create_div( parent_ele, d )
 	
 	if( d.title !=  null )
 	{
-	    var title = d.title //.trim()
+	    var title = d.title.trim()
 
 	    if( title.length > 0 )
 	    {
@@ -386,9 +386,9 @@ function ui_create_col_div( parent_ele, d )
 }
 
 
-function ui_create_title( parent_ele, d )
+function ui_create_label( parent_ele, d )
 {
-    var ele = ui_create_ele( parent_ele, "label", d, "uiTitle" );
+    var ele = ui_create_ele( parent_ele, "label", d, "uiLabel" );
     
     if( ele != null )
     {
@@ -502,7 +502,7 @@ function ui_create_option( parent_ele, d )
     return opt_ele;
 }
 
-function _ui_on_focus( ele )
+function _ui_on_string_focus( ele )
 {
     _focusId=ele.id;
     _focusVal=ele.value;
@@ -524,7 +524,7 @@ function ui_create_string( parent_ele, d )
     if( ele != null )
     {
 	ele.addEventListener('keyup', function(e) { if(e.keyCode===13){  ui_send_string_value(this, this.value); }} );
-	ele.addEventListener('focus', function(e) { _ui_on_focus(this); } );
+	ele.addEventListener('focus', function(e) { _ui_on_string_focus(this); } );
 	ele.addEventListener('blur',  function(e) { _ui_on_string_blur(this); }  );
 
 	if( !d.hasOwnProperty('value') )
@@ -540,53 +540,6 @@ function ui_create_string( parent_ele, d )
     return ele;
 }
 
-function _ui_send_number( ele )
-{
-    var val = 0;
-    if( ele.decpl == 0 )
-	val = Number.parseInt(ele.value)
-    else
-	val = Number.parseFloat(ele.value)
-
-    if( !(ele.minValue<=val && val<=ele.maxValue))
-	ele.style.borderColor = "red"
-    else	
-    {
-	ele.style.borderColor = ""
-
-	if( ele.decpl == 0 )
-	    ui_send_int_value(ele,ele.value);
-	else
-	    ui_send_float_value(ele,ele.value);
-    }
-    
-}
-
-function _ui_on_number_blur( ele )
-{
-    if( ele.id == _focusId )
-    {
-	if( ele.value != _focusVal )
-	{
-	    _ui_send_number(ele)
-	}
-	
-    }
-}
-
-function ui_number_keyup( e )
-{
-    if( e.keyCode===13 )
-    {
-	var ele = dom_id_to_ele(e.target.id)
-
-	if( ele != null )
-	{
-	    //console.log("min:"+ele.minValue+" max:"+ele.maxValue)
-	    _ui_send_number(ele)
-	}
-    }
-}
 
 function ui_create_number( parent_ele, d )
 {
@@ -662,11 +615,17 @@ function ui_create_text_display( parent_ele, d )
 }
 
 
-function ui_set_progress( ele_id, value )
+function ui_set_progress( ele, value )
 {
     var ele = dom_id_to_ele(ele_id);
 
     ele.value = Math.round( ele.max * (value - ele.minValue) / (ele.maxValue - ele.minValue));
+}
+
+function _ui_set_prog_range( ele, d )
+{
+    ele.maxValue = d.max;
+    ele.minValue = d.min;    
 }
 
 function ui_create_progress( parent_ele, d )
@@ -676,19 +635,73 @@ function ui_create_progress( parent_ele, d )
     if( ele != null )
     {
 	ele.max      = 100;
-	ele.maxValue = d.max;
-	ele.minValue = d.min;
+	_ui_set_prog_range(ele,d)
+	
 	if( !d.hasOwnProperty('value') )
 	    ui_send_echo(ele);
 	else
 	{
-	    ui_set_progress( ele.id, d.value );
+	    ui_set_progress( ele, d.value );
 	    ui_send_int_value( ele, ele.value );
 	}
  
     }
     return ele
 }
+
+function ui_set_prog_range( ele, d )
+{
+    _ui_set_prog_range(ele,d)
+    if( d.hasOwnProperty('value'))
+	ui_set_progress(ele,d.value)	
+}
+
+function _on_log_click( evt )
+{
+    var pre_ele = dom_id_to_ele(evt.target.id)
+
+    pre_ele.auto_scroll_flag = !pre_ele.auto_scroll_flag;
+}
+	     
+function ui_create_log( parent_ele, d )
+{
+
+    // create a containing div with the label
+    d.className = "uiLog"
+    var log_ele  = ui_create_ctl( parent_ele, "div", d.title, d, "uiLog" )
+
+    // add a <pre> to the containing div
+    var ele = dom_create_ele("pre")
+    
+    ele.id      = log_ele.id + "_pre"  
+    ele.onclick = _on_log_click;
+    ele.auto_scroll_flag = true;
+    
+    log_ele.appendChild(ele)
+
+    return log_ele
+}
+
+function ui_set_log_text( ele, value )
+{
+    var child_id = ele.id + "_pre"
+
+    for(var i=0; i<ele.children.length; ++i)
+    {
+	var pre_ele = ele.children[i]
+	if( pre_ele.id == child_id )
+	{
+	    pre_ele.innerHTML += value
+
+	    if(pre_ele.auto_scroll_flag)		
+		ele.scrollTop = pre_ele.clientHeight
+	    
+	    break;
+	}
+    }
+    
+}
+
 
 function ui_set_value( d )
 {
@@ -716,7 +729,7 @@ function ui_set_value( d )
 	    case "div":
 	    break;
 
-	    case "title":
+	    case "label":
 	    ele.innerHTML = d.value
 	    break;
 
@@ -747,11 +760,45 @@ function ui_set_value( d )
 	    break;
 	    
 	    case "progress":
-	    ele.value = d.value
+	    ui_set_progress( ele, d.value )
+	    //ele.value = d.value
 	    break;
+	    
+	    case "log":
+	    ui_set_log_text( ele, d.value )
+	    break
 	    
 	    default:
 	    ui_error("Unknown UI element type: " + d.type )
+	}
+    }
+}
+
+function ui_set( d )
+{
+    //console.log(d)
+    var ele = dom_id_to_ele(d.uuId.toString())
+
+    if( ele == null )
+	console.log("ele not found");
+    else
+	if( !ele.hasOwnProperty("uiEleType") )
+	    console.log("No type");
+    
+    if( ele != null && ele.hasOwnProperty("uiEleType"))
+    {
+	//console.log("found: "+ele.uiEleType)
+	
+	switch( ele.uiEleType )
+	{
+	    case "number":
+	    ui_set_number_range(ele, d)
+	    break;
+
+	    case "progress":
+	    ui_set_prog_range(ele, d)
+	    break;
+
 	}
     }
 }
@@ -788,8 +835,8 @@ function ui_create( d )
 	    ele = ui_create_col_div( parent_ele, d )
 	    break;
 
-	    case "title":
-	    ele = ui_create_title( parent_ele, d )
+	    case "label":
+	    ele = ui_create_label( parent_ele, d )
 	    break;
 
 	    case "button":
@@ -828,6 +875,10 @@ function ui_create( d )
 	    ele = ui_create_progress( parent_ele, d );
 	    break;
 	    
+	    case "log":
+	    ele = ui_create_log( parent_ele, d );
+	    break;
+	    
 	    default:
 	    ui_error("Unknown UI element type: " + d.type )
 	}
@@ -864,6 +915,10 @@ function ws_on_msg( jsonMsg )
 
 	case 'value':
 	ui_set_value( d )
+	break;
+
+	case 'set':
+	ui_set( d )
 	break;
 	
 	default:
