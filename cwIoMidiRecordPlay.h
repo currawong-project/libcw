@@ -7,11 +7,26 @@ namespace cw
   namespace midi_record_play
   {
     typedef handle< struct midi_record_play_str > handle_t;
+
+    typedef struct midi_msg_str
+    {
+      unsigned      id;
+      time::spec_t  timestamp;
+      uint8_t       ch;
+      uint8_t       status;
+      uint8_t       d0;
+      uint8_t       d1;      
+    } midi_msg_t;
+
+
+    typedef void (*event_callback_t)( void* arg, unsigned id, const time::spec_t timestamp, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 );
     
-    rc_t create( handle_t& hRef, io::handle_t ioH, const object_t& cfg );
+    
+    rc_t create( handle_t& hRef, io::handle_t ioH, const object_t& cfg, event_callback_t cb=nullptr, void* cb_arg=nullptr );
     rc_t destroy( handle_t& hRef );
-    
-    rc_t start( handle_t h );
+
+    // Set rewindFl to play from start, otherwise play from current output location.
+    rc_t start( handle_t h, bool rewindFl=true );
     rc_t stop( handle_t h );
     bool is_started( handle_t h );
     
@@ -25,11 +40,15 @@ namespace cw
 
     rc_t save( handle_t h, const char* fn );
     rc_t open( handle_t h, const char* fn );
+    rc_t load( handle_t h, const midi_msg_t* msg, unsigned msg_count );
+
+    rc_t seek( handle_t h, time::spec_t timestamp );
+    
     unsigned event_count( handle_t h );
     unsigned event_index( handle_t h );
     rc_t exec( handle_t h, const io::msg_t& msg );
 
-
+    // Convert an audio-midi file to a MIDI file
     rc_t am_to_midi_file( const char* am_filename, const char* midi_filename );
     rc_t am_to_midi_dir( const char* inDir );
     rc_t am_to_midi_file( const object_t* cfg );

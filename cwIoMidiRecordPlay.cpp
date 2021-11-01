@@ -22,13 +22,14 @@ namespace cw
     {
       unsigned      devIdx;
       unsigned      portIdx;
+      unsigned      microsec;
+
+      unsigned      id;
       time::spec_t  timestamp;
       uint8_t       ch;
       uint8_t       status;
       uint8_t       d0;
       uint8_t       d1;
-
-      unsigned microsec;
         
     } am_midi_msg_t;
   
@@ -55,6 +56,9 @@ namespace cw
       time::spec_t   start_time;
 
       bool pedalFl;
+
+      event_callback_t cb;
+      void*            cb_arg;
     
     } midi_record_play_t;
 
@@ -100,6 +104,36 @@ namespace cw
     errLabel:
       return rc;
     }
+
+
+    
+    rc_t _event_callback( midi_record_play_t* p, unsigned id, const time::spec_t timestamp, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
+    {
+      io::midiDeviceSend( p->ioH, p->midiOutDevIdx, p->midiOutPortIdx, status + ch, d0, d1 );
+
+      if( p->cb )
+        p->cb( p->cb_arg, id, timestamp, ch, status, d0, d1 );
+
+      return kOkRC;
+    }
+
+    rc_t _transmit_msg( midi_record_play_t* p, const am_midi_msg_t* am )
+    {
+      return _event_callback( p, am->id, am->timestamp, am->ch, am->status, am->d0, am->d1 );
+    }
+
+    rc_t _transmit_ctl(  midi_record_play_t* p, unsigned ch, unsigned ctlId, unsigned ctlVal )
+    {
+      time::spec_t ts = {0};
+      return _event_callback( p, kInvalidId, ts, ch, midi::kCtlMdId, ctlId, ctlVal );
+    }
+    
+    rc_t _transmit_pedal( midi_record_play_t* p, unsigned ch, unsigned pedalCtlId, bool pedalDownFl )
+    {
+      return _transmit_ctl( p, ch, pedalCtlId, pedalDownFl ? 127 : 0);
+    }
+
+
 
     void _set_midi_msg_next_index( midi_record_play_t* p, unsigned next_idx )
     {
@@ -353,12 +387,14 @@ namespace cw
         // TODO: should work for all channels
 
         // all notes off
-        io::midiDeviceSend( p->ioH, p->midiOutDevIdx, p->midiOutPortIdx, midi::kCtlMdId, 123, 0 );
-        io::midiDeviceSend( p->ioH, p->midiOutDevIdx, p->midiOutPortIdx, midi::kCtlMdId, midi::kSustainCtlMdId, 0 );
-        io::midiDeviceSend( p->ioH, p->midiOutDevIdx, p->midiOutPortIdx, midi::kCtlMdId, midi::kSostenutoCtlMdId, 0 );
-        // soft pedal
-        io::midiDeviceSend( p->ioH, p->midiOutDevIdx, p->midiOutPortIdx, midi::kCtlMdId, 67, 0 );
+        _transmit_ctl(   p, 0, 121, 0 ); // reset all controllers
+        _transmit_ctl(   p, 0, 123, 0 ); // all notes off
+        _transmit_ctl(   p, 0,   0, 0 ); // switch to bank 0
 
+        // send pgm change 0
+        time::spec_t ts = {0};
+        _event_callback( p, kInvalidId, ts, 0, midi::kPgmMdId, 0, 0 );
+        
         p->pedalFl = false;
 
       }
@@ -368,7 +404,7 @@ namespace cw
       return rc;
     }
 
-    rc_t _midi_callback( midi_record_play_t* p, const io::midi_msg_t& m )
+    rc_t _midi_receive( midi_record_play_t* p, const io::midi_msg_t& m )
     {
       rc_t                  rc  = kOkRC;
       const midi::packet_t* pkt = m.pkt;
@@ -376,14 +412,16 @@ namespace cw
       // for each midi msg
       for(unsigned j=0; j<pkt->msgCnt; ++j)
       {
-          
         // if this is a sys-ex msg
         if( pkt->msgArray == NULL )
         {
-          // this is a sys ex msg use: pkt->sysExMsg[j]
         }
         else // this is a triple
         {
+
+          //if( !midi::isPedal(pkt->msgArray[j].status,pkt->msgArray[j].d0) )
+          //  printf("0x%x 0x%x 0x%x\n", pkt->msgArray[j].status, pkt->msgArray[j].d0, pkt->msgArray[j].d1 );
+          
           if( p->recordFl && p->startedFl )
           {
 
@@ -402,7 +440,8 @@ namespace cw
 
               if( midi::isChStatus(mm->status) )
               {
-              
+
+                am->id        = p->msgArrayInIdx;
                 am->devIdx    = pkt->devIdx;
                 am->portIdx   = pkt->portIdx;
                 am->timestamp = mm->timeStamp;
@@ -416,8 +455,10 @@ namespace cw
                 p->msgArrayInIdx += 1;
 
                 if( p->thruFl )
-                  io::midiDeviceSend( p->ioH, p->midiOutDevIdx, p->midiOutPortIdx, am->status + am->ch, am->d0, am->d1 );
-
+                {
+                  _transmit_msg( p, am );
+                  //io::midiDeviceSend( p->ioH, p->midiOutDevIdx, p->midiOutPortIdx, am->status + am->ch, am->d0, am->d1 );
+                }
 
                 // send msg count
                 //io::uiSendValue( p->ioH, kInvalidId, uiFindElementUuId(p->ioH,kMsgCntId), p->msgArrayInIdx );                  
@@ -441,7 +482,6 @@ namespace cw
       return rc;
     }
 
-
     rc_t _timer_callback(midi_record_play_t* p, io::timer_msg_t& m)
       {
         rc_t rc = kOkRC;
@@ -462,7 +502,9 @@ namespace cw
             //_print_midi_msg(mm);
 
             bool skipFl = false;
-            
+
+            /*
+            // if this is a pedal message
             if( mm->status == midi::kCtlMdId && (mm->d0 == midi::kSustainCtlMdId || mm->d0 == midi::kSostenutoCtlMdId || mm->d0 == midi::kSoftPedalCtlMdId ) )
             {
               // if the pedal is down
@@ -477,10 +519,12 @@ namespace cw
                 p->pedalFl = true;
               }
             }
-
-            if( !skipFl )
-              io::midiDeviceSend( p->ioH, p->midiOutDevIdx, p->midiOutPortIdx, mm->status + mm->ch, mm->d0, mm->d1 );
+            */
             
+            if( !skipFl )
+            {
+              _transmit_msg( p, mm );
+            }
             _set_midi_msg_next_play_index(p, p->msgArrayOutIdx+1 );
 
             // if all MIDI messages have been played
@@ -498,7 +542,7 @@ namespace cw
   }
 }
 
-cw::rc_t cw::midi_record_play::create( handle_t& hRef, io::handle_t ioH, const object_t& cfg )
+cw::rc_t cw::midi_record_play::create( handle_t& hRef, io::handle_t ioH, const object_t& cfg, event_callback_t cb, void* cb_arg )
 {
   midi_record_play_t* p = nullptr;
   rc_t rc;
@@ -512,6 +556,8 @@ cw::rc_t cw::midi_record_play::create( handle_t& hRef, io::handle_t ioH, const o
     goto errLabel;
 
   p->ioH = ioH;
+  p->cb  = cb;
+  p->cb_arg = cb_arg;
   
   if((p->midiOutDevIdx = io::midiDeviceIndex(p->ioH,p->midiOutDevLabel)) == kInvalidIdx )
   {
@@ -558,7 +604,7 @@ cw::rc_t cw::midi_record_play::destroy( handle_t& hRef )
   return rc;
 }
 
-cw::rc_t cw::midi_record_play::start( handle_t h )
+cw::rc_t cw::midi_record_play::start( handle_t h, bool rewindFl )
 {
   midi_record_play_t* p = _handleToPtr(h);
   p->startedFl = true;
@@ -572,9 +618,18 @@ cw::rc_t cw::midi_record_play::start( handle_t h )
   }
   else
   {
-    _set_midi_msg_next_play_index(p,0);
-    io::timerStart( p->ioH, io::timerIdToIndex(p->ioH, kMidiRecordPlayTimerId) );
     time::get(p->play_time);
+    
+    if( rewindFl )
+      _set_midi_msg_next_play_index(p,0);
+    else
+    {
+      // Set the begin play time back by the time offset of the current output event.
+      // This will cause that event to be played back immediately.
+      time::subtractMicros(p->play_time, p->msgArray[ p->msgArrayOutIdx ].microsec );
+    }
+    
+    io::timerStart( p->ioH, io::timerIdToIndex(p->ioH, kMidiRecordPlayTimerId) );
   }
 
   return kOkRC;
@@ -641,6 +696,92 @@ cw::rc_t cw::midi_record_play::open( handle_t h, const char* fn )
   return _midi_read(p,fn);
 }
 
+cw::rc_t cw::midi_record_play::load( handle_t h, const midi_msg_t* msg, unsigned msg_count )
+{
+  rc_t                rc = kOkRC;
+  midi_record_play_t* p  = _handleToPtr(h);
+  
+  if( msg_count > p->msgArrayN )
+  {  
+    mem::release(p->msgArray);
+    p->msgArray = mem::allocZ<am_midi_msg_t>( msg_count );
+    p->msgArrayN = msg_count;
+  }
+
+  for(unsigned i=0; i<msg_count; ++i)
+  {
+    p->msgArray[i].id        = msg[i].id;
+    p->msgArray[i].timestamp = msg[i].timestamp;
+    p->msgArray[i].ch        = msg[i].ch;
+    p->msgArray[i].status    = msg[i].status;
+    p->msgArray[i].d0        = msg[i].d0;
+    p->msgArray[i].d1        = msg[i].d1;
+    p->msgArray[i].devIdx    = p->midiOutDevIdx;
+    p->msgArray[i].portIdx   = p->midiOutPortIdx;
+    p->msgArray[i].microsec  = time::elapsedMicros(p->msgArray[0].timestamp,p->msgArray[i].timestamp);
+  }
+
+  p->msgArrayInIdx =  msg_count;
+  p->msgArrayOutIdx = 0;
+    
+  return rc;
+}
+
+cw::rc_t cw::midi_record_play::seek( handle_t h, time::spec_t seek_timestamp )
+{
+  rc_t rc           = kOkRC;
+  bool damp_down_fl = false;  // TODO: track pedals on all channels
+  bool sost_down_fl = false;
+  bool soft_down_fl = false;
+
+  midi_record_play_t* p = _handleToPtr(h);
+      
+  for(unsigned i=0; i<p->msgArrayInIdx; ++i)
+  {
+    am_midi_msg_t* mm = p->msgArray + i;
+
+    if( time::isLTE(seek_timestamp,mm->timestamp) )
+    {
+      p->msgArrayOutIdx = i;
+
+      _transmit_pedal( p, mm->ch, midi::kSustainCtlMdId,   damp_down_fl );
+      _transmit_pedal( p, mm->ch, midi::kSostenutoCtlMdId, sost_down_fl );
+      _transmit_pedal( p, mm->ch, midi::kSoftPedalCtlMdId, soft_down_fl );
+      
+      //io::midiDeviceSend( p->ioH, p->midiOutDevIdx, p->midiOutPortIdx, mm->status + mm->ch, midi::kSustainCtlMdId,   damp_down_fl ? 127 : 0 );
+      //io::midiDeviceSend( p->ioH, p->midiOutDevIdx, p->midiOutPortIdx, mm->status + mm->ch, midi::kSostenutoCtlMdId, sost_down_fl ? 127 : 0 );
+      //io::midiDeviceSend( p->ioH, p->midiOutDevIdx, p->midiOutPortIdx, mm->status + mm->ch, midi::kSoftPedalCtlMdId, soft_down_fl ? 127 : 0 );
+      break;
+    }
+
+    if( mm->status == midi::kCtlMdId )
+    {
+      switch( mm->d0 )
+      {
+      case midi::kSustainCtlMdId:
+        damp_down_fl = mm->d1 > 64;
+        break;
+            
+      case midi::kSostenutoCtlMdId:
+        sost_down_fl = mm->d1 > 64;
+        break;
+            
+      case midi::kSoftPedalCtlMdId:
+        soft_down_fl = mm->d1 > 64;
+        break;
+            
+      default:
+        break;
+      }
+    }
+        
+  }
+
+  return rc;
+      
+}
+
+
 unsigned cw::midi_record_play::event_count( handle_t h )
 {
   midi_record_play_t* p  = _handleToPtr(h);    
@@ -668,7 +809,7 @@ cw::rc_t  cw::midi_record_play::exec( handle_t h, const io::msg_t& m )
     
   case io::kMidiTId:
     if( m.u.midi != nullptr )
-      _midi_callback(p,*m.u.midi);
+      _midi_receive(p,*m.u.midi);
     break;
 
   default:
