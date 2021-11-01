@@ -35,6 +35,8 @@ namespace cw
 
       unsigned myPanelUuId;
       unsigned logUuId;
+
+      const object_t* listEleCfg;
       
     } ui_test_t;
 
@@ -43,7 +45,6 @@ namespace cw
     {
       // Programatically created UI elements
      kDivId,
-     kBtnId,
      kCheckId,
      kSelectId,
      kOption0Id,
@@ -57,6 +58,7 @@ namespace cw
      kLogId,
 
      // Resource Based elements
+     kQuitBtnId,
      kPanelDivId,
      kPanelBtn1Id,
      kPanelCheck1Id,
@@ -66,7 +68,8 @@ namespace cw
      kSelId,
      kOpt1Id,
      kOpt2Id,
-     kOpt3Id
+     kOpt3Id,
+     kListId
     };
 
     rc_t _uiTestCreateUi( ui_test_t* p, unsigned wsSessId )
@@ -81,9 +84,6 @@ namespace cw
       // Create a UI elements programatically.
 
       if((rc = createDiv( uiH, p->myPanelUuId, wsSessId, kInvalidId, "myDivId", kDivId, "divClass", "My Panel" )) != kOkRC )
-        goto errLabel;
-
-      if((rc = createButton( uiH, uuid, wsSessId, p->myPanelUuId, "myBtnId", kBtnId, "btnClass", "Quit" )) != kOkRC )
         goto errLabel;
 
       if((rc = createCheck( uiH, uuid, wsSessId, p->myPanelUuId, "myCheckId", kCheckId, "checkClass", "Check Me", true )) != kOkRC )
@@ -117,9 +117,6 @@ namespace cw
       if((rc = createLog( uiH, p->logUuId, wsSessId, p->myPanelUuId, "myLogId", kLogId, "logClass", "My Log (click toggles auto-scroll)" )) != kOkRC )
         goto errLabel;
 
-      //if((rc = createFromFile( uiH, p->uiCfgFn, wsSessId )) != kOkRC )
-      //  goto errLabel;
-      
     errLabel:
       return rc;
     }
@@ -140,17 +137,27 @@ namespace cw
     }
 
 
-    rc_t  _insert_log_line( ui_test_t* p, unsigned wsSessId, const char* text )
+    rc_t _insert_list_ele( ui_test_t* p, unsigned wsSessId )
     {
-      
-      rc_t rc = kOkRC;
-      
-      handle_t uiH = srv::uiHandle(p->wsUiSrvH);
+      rc_t     rc   = kOkRC;
 
-      //rc = ui::sendValueString( uiH, wsSessId, p->logUuId, text );
-      rc = ui::setLogLine( uiH, wsSessId, p->logUuId, text );
+      if( p->listEleCfg != nullptr )
+      {
+        handle_t uiH       = srv::uiHandle(p->wsUiSrvH);
+        unsigned listUuId  = findElementUuId( uiH, kListId );
 
+        printf("list uuid:%i\n",listUuId);
+
+        rc = createFromObject( uiH, p->listEleCfg, wsSessId, listUuId );        
+      }
+      
       return rc;
+    }
+
+
+    rc_t _insert_log_line( ui_test_t* p, unsigned wsSessId, const char* text )
+    {
+      return ui::setLogLine( srv::uiHandle(p->wsUiSrvH), wsSessId, p->logUuId, text );
     }
 
     rc_t _handleUiValueMsg( ui_test_t* p, unsigned wsSessId, unsigned parentAppId, unsigned uuId, unsigned appId, const value_t* v )
@@ -159,7 +166,7 @@ namespace cw
       
       switch( appId )
       {
-        case kBtnId:
+        case kQuitBtnId:
           p->quitFl.store(true);
           break;
 
@@ -205,6 +212,8 @@ namespace cw
         case kPanelCheck1Id:
           printf("check 1: %i\n",v->u.b);
           p->appCheck1Fl = v->u.b;
+          ui::report( srv::uiHandle(p->wsUiSrvH) );
+
           break;
           
         case kPanelBtn2Id:
@@ -215,6 +224,7 @@ namespace cw
         case kPanelCheck2Id:
           printf("check 1: %i\n",v->u.b);
           p->appCheck1Fl = v->u.b;
+          _insert_list_ele( p, wsSessId );
           break;
           
         case kPanelFloaterId:
@@ -298,7 +308,7 @@ namespace cw
           break;
           
         case kInitOpId:
-          _uiTestCreateUi(p,wsSessId);
+          //_uiTestCreateUi(p,wsSessId);
           break;
 
         case kValueOpId:
@@ -328,6 +338,7 @@ cw::rc_t cw::ui::test( const object_t* cfg )
   // Application Id's for the resource based UI elements.
   appIdMap_t mapA[] =
     {
+     { kRootAppId,  kQuitBtnId,      "myQuitBtnId" },
      { kRootAppId,  kPanelDivId,     "panelDivId" },
      { kPanelDivId, kPanelBtn1Id,    "myBtn1Id" },
      { kPanelDivId, kPanelCheck1Id,  "myCheck1Id" },
@@ -338,6 +349,8 @@ cw::rc_t cw::ui::test( const object_t* cfg )
      { kSelId,      kOpt1Id,         "myOpt1" },
      { kSelId,      kOpt2Id,         "myOpt2" },
      { kSelId,      kOpt3Id,         "myOpt3" },
+     { kPanelDivId, kListId,         "myListId" }
+
     };
 
   unsigned mapN = sizeof(mapA)/sizeof(mapA[0]);
@@ -355,8 +368,6 @@ cw::rc_t cw::ui::test( const object_t* cfg )
     goto errLabel;
   }
   
-  
-  
   app->quitFl.store(false);
 
   // Initial values for the test applications
@@ -370,6 +381,9 @@ cw::rc_t cw::ui::test( const object_t* cfg )
   app->appCheck2Fl    = true;
   app->appNumb        = 1.23;
   app->appSelId       = kOpt3Id;
+
+  if((rc = cfg->getv( "listEle", app->listEleCfg )) != kOkRC )
+    rc = cwLogError( rc, "The list element cfg. was not found.");
   
 
   //app->uiCfgFn = "/home/kevin/src/cwtest/src/libcw/html/uiTest/ui.cfg";

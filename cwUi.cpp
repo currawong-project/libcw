@@ -34,6 +34,9 @@ namespace cw
       unsigned        uuId;    // UI unique id - automatically generated and unique among all elements that are part of this ui_t object.
       unsigned        appId;   // application assigned id - application assigned id
       char*           eleName; // javascript id
+
+      object_t*       attr;
+      
     } ele_t;
     
     typedef struct ui_str
@@ -50,7 +53,7 @@ namespace cw
       char*                buf;       // buf[bufN] output message formatting buffer
       unsigned             bufN;      //
       
-      unsigned*            sessA;
+      unsigned*            sessA;     // sessA[ sessN ] array of wsSessId's
       unsigned             sessN;
       unsigned             sessAllocN;
       
@@ -252,9 +255,10 @@ namespace cw
       return rc;
     }
 
-    
-    
-    ele_t* _createEle( ui_t* p, ele_t* parent, unsigned appId, const char* eleName )
+
+    // Create the base element record.  The attributes mut be filled in by the calling function.
+    // Note that if 'appId' is kInvalidId then this function will attempt to lookup the appId in p->appIdMap[].
+    ele_t* _createBaseEle( ui_t* p, ele_t* parent, unsigned appId, const char* eleName, const char* eleTypeStr=nullptr, const char* eleClass=nullptr, const char* eleTitle=nullptr )
     {
       ele_t* e = mem::allocZ<ele_t>();
 
@@ -269,8 +273,19 @@ namespace cw
       e->parent  = parent;
       e->uuId    = p->eleN;
       e->appId   = appId;
-      e->eleName    = eleName==nullptr ? nullptr : mem::duplStr(eleName);
+      e->eleName = eleName==nullptr ? nullptr : mem::duplStr(eleName);
+      e->attr    = newObjectDict();
+      
+      if( eleTypeStr != nullptr )
+        e->attr->insertPair("type",eleTypeStr);
+      
+      if( eleClass != nullptr )
+        e->attr->insertPair("class",eleClass);
 
+      if( eleTitle != nullptr )
+        e->attr->insertPair("title",eleTitle);
+
+      
       if( p->eleN == p->eleAllocN )
       {
         p->eleAllocN += 100;
@@ -306,6 +321,7 @@ namespace cw
       return e;
     }
 
+    
     ele_t* _findOrCreateEle( ui_t* p, ele_t* parentEle, const char* eleName, unsigned appId=kInvalidId )
     {
       ele_t* ele = nullptr;
@@ -323,7 +339,7 @@ namespace cw
       }
       
       if(ele == nullptr )
-        ele = _createEle(p, parentEle, appId, eleName );
+        ele = _createBaseEle(p, parentEle, appId, eleName );
 
       return ele;
     }
@@ -361,6 +377,48 @@ namespace cw
       
       return format_attributes(buf,n,i,std::forward<ARGS>(args)...);      
     }
+
+
+    // terminating condition for format_attributes()
+    void create_attributes( ele_t* e )
+    {  }
+    
+    template<typename T, typename... ARGS>
+      void create_attributes(ele_t* e, const char* label, T value, ARGS&&... args)
+    {
+      e->attr->insertPair(label,value);
+      
+      create_attributes(e,std::forward<ARGS>(args)...);      
+    }
+
+    
+    template< typename... ARGS>
+    rc_t _createOneEle1( ui_t* p, unsigned& uuIdRef, const char* eleTypeStr, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, ARGS&&... args )
+    {
+      rc_t           rc         = kOkRC;
+      ele_t*         newEle     = nullptr;
+      ele_t*         parentEle  = nullptr;
+      
+      uuIdRef = kInvalidId;
+
+      if( parentUuId == kInvalidId )
+        parentUuId = kRootUuId;
+      
+      // get the parent element
+      if(( parentEle =  _uuIdToEle(p, parentUuId )) == nullptr )
+        return cwLogError( kInvalidArgRC, "Unable to locate the parent element (id:%i).", parentUuId );
+
+      // create the base element
+      newEle = _createBaseEle(p, parentEle, appId, eleName, eleTypeStr, clas, title );
+
+      // create the attributes
+      create_attributes(newEle, std::forward<ARGS>(args)...);
+
+      uuIdRef = newEle->uuId;
+
+      return rc;
+    }
+
     
     template< typename... ARGS>
       rc_t _createOneEle( ui_t* p, unsigned& uuIdRef, const char* eleTypeStr, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, ARGS&&... args )
@@ -407,7 +465,6 @@ namespace cw
       
       return rc;
     }
-
 
     rc_t _createElementsFromChildList( ui_t* p, const object_t* po, unsigned wsSessId, ele_t* parentEle );
 
@@ -798,7 +855,7 @@ cw::rc_t cw::ui::create(
   p->uiRsrc     = uiRsrc == nullptr ? nullptr : uiRsrc->duplicate();
   
   // create the root element
-  if((ele = _createEle(p, nullptr, kRootAppId, "uiDivId" )) == nullptr || ele->uuId != kRootUuId )
+  if((ele = _createBaseEle(p, nullptr, kRootAppId, "uiDivId" )) == nullptr || ele->uuId != kRootUuId )
   {
     cwLogError(kOpFailRC,"The UI root element creation failed.");
     goto errLabel;
@@ -1015,18 +1072,29 @@ unsigned  cw::ui::findElementAppId(  handle_t h, unsigned uuId )
 
 cw::rc_t cw::ui::createFromObject( handle_t  h, const object_t* o,  unsigned wsSessId,  unsigned parentUuId,  const char* eleName )
 {
-  ui_t*     p  = _handleToPtr(h);
-  rc_t      rc = kOkRC;
-
+  ui_t*  p         = _handleToPtr(h);
+  rc_t   rc        = kOkRC;
+  
+  //ele_t* parentEle = nullptr;
+  
   if( eleName != nullptr )
     if((o = o->find(eleName)) == nullptr )
     {
       rc = cwLogError(kSyntaxErrorRC,"Unable to locate the '%s' sub-configuration.",cwStringNullGuard(eleName));
       goto errLabel;
     }
+
+  //if((parentEle = _uuIdToEle(p, parentUuId)) == nullptr )
+  //{
+  //  rc = cwLogError(kInvalidIdRC,"Unable to locate the parent element.");
+  //  goto errLabel;
+  // }
   
+  //if((rc = _createElementsFromChildList( p, o, wsSessId, parentEle )) != kOkRC )
+  // goto errLabel;
+
   
- if((rc = _createFromObj( p, o, wsSessId, parentUuId )) != kOkRC )
+  if((rc = _createFromObj( p, o, wsSessId, parentUuId )) != kOkRC )
     goto errLabel;
 
  errLabel:
@@ -1130,6 +1198,10 @@ cw::rc_t cw::ui::createProg(  handle_t h, unsigned& uuIdRef, unsigned wsSessId, 
 
 cw::rc_t cw::ui::createLog(   handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
 { return _createOneEle( _handleToPtr(h), uuIdRef, "log", wsSessId, parentUuId, eleName, appId, clas, title);  }
+
+cw::rc_t cw::ui::createList( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "list", wsSessId, parentUuId, eleName, appId, clas, title);  }
+
 
 cw::rc_t cw::ui::setNumbRange( handle_t h, unsigned wsSessId, unsigned uuId, double minValue, double maxValue, double stepValue, unsigned decPl, double value )
 {
@@ -1263,6 +1335,25 @@ cw::rc_t cw::ui::sendValueString( handle_t h, unsigned wsSessId, unsigned uuId, 
   // +10 allows for extra value buffer space for double quotes and slashed
   return _sendValue<const char*>(p,wsSessId,uuId,"\"%s\"",value,strlen(value)+10);
 }
+
+void cw::ui::report( handle_t h )
+{
+  ui_t* p  = _handleToPtr(h);
+
+  for(unsigned i=0; i<p->eleN; ++i)
+  {
+    const ele_t* e = p->eleA[i];
+    
+    unsigned    parUuId    = e->parent==NULL ? kInvalidId : e->parent->uuId;
+    unsigned    parAppId   = e->parent==NULL ? kInvalidId : e->parent->appId;
+    const char* parEleName = e->parent==NULL || e->parent->eleName == NULL ? "" : e->parent->eleName;
+    
+    printf("uu:%5i app:%5i %20s : parent uu:%5i app:%5i %20s\n", e->uuId, e->appId, e->eleName == NULL ? "" : e->eleName, parUuId, parAppId, parEleName );
+  }
+  
+}
+
+
 
 namespace cw
 {
@@ -1511,7 +1602,6 @@ cw::ui::handle_t cw::ui::ws::uiHandle( handle_t h )
   ui_ws_t* p  = _handleToPtr(h);
   return p->uiH;
 }
-
 
 
  

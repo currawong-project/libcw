@@ -32,11 +32,16 @@ namespace cw
     
     rc_t destroy( handle_t& h );
 
-    unsigned        sessionIdCount(handle_t h);
-    const unsigned* sessionIdArray(handle_t h);
+    unsigned        sessionIdCount(handle_t h);  // Count of connected remote UI's
+    const unsigned* sessionIdArray(handle_t h);  // Array of 'sessionIdCount()' remote UI id's
 
+    // A new remote UI was connected
     rc_t onConnect(    handle_t h, unsigned wsSessId );
+    
+    // A UI was disconnected
     rc_t onDisconnect( handle_t h, unsigned wsSessId );
+
+    // Receive a msg from a remote UI
     rc_t onReceive(    handle_t h, unsigned wsSessId, const void* msg, unsigned byteN );
 
     unsigned    findElementAppId(  handle_t h, unsigned parentUuId, const char* eleName );  
@@ -102,6 +107,7 @@ namespace cw
     rc_t createProg(       handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double minValue, double maxValue );
     rc_t createProg(       handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double minValue, double maxValue, double value );
     rc_t createLog(        handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
+    rc_t createList(       handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
 
     rc_t setNumbRange( handle_t h, unsigned wsSessId, unsigned uuId, double minValue, double maxValue, double stepValue, unsigned decPl, double value );
     rc_t setProgRange( handle_t h, unsigned wsSessId, unsigned uuId, double minValue, double maxValue, double value );
@@ -119,6 +125,8 @@ namespace cw
     rc_t sendValueDouble( handle_t h, unsigned wsSessId, unsigned uuId, double value );
     rc_t sendValueString( handle_t h, unsigned wsSessId, unsigned uuId, const char* value );
 
+    void report( handle_t h );
+    
     
     
     namespace ws
@@ -177,9 +185,6 @@ namespace cw
       
       websock::handle_t websockHandle( handle_t h );
       ui::handle_t      uiHandle( handle_t h );
-
-
-      
     }
 
     namespace srv
