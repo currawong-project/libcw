@@ -240,6 +240,11 @@ namespace cw
               case SND_SEQ_EVENT_SENSING:   status = kSysRtSenseMdId; break;
               case SND_SEQ_EVENT_RESET:     status = kSysRtResetMdId; break;
 
+              case SND_SEQ_EVENT_SYSEX: 
+                //printf("Sysex: %i\n",ev->data.ext.len);
+                break;
+                
+
             }
 
             if( status != 0 )
@@ -248,7 +253,7 @@ namespace cw
               time::spec_t ts;
               ts.tv_sec  = p->baseTimeStamp.tv_sec  + ev->time.time.tv_sec;
               ts.tv_nsec = p->baseTimeStamp.tv_nsec + ev->time.time.tv_nsec;
-              if( ts.tv_nsec > 1000000000 )
+              while( ts.tv_nsec > 1000000000 )
               {
                 ts.tv_nsec -= 1000000000;
                 ts.tv_sec  += 1;
