@@ -220,6 +220,8 @@ namespace cw
   object_t* newObject( double        v, object_t* parent=nullptr);      
   object_t* newObject( char*         v, object_t* parent=nullptr);
   object_t* newObject( const char*   v, object_t* parent=nullptr);
+  object_t* newObjectDict( object_t* parent=nullptr );
+  object_t* newObjectList( object_t* parent=nullptr );
 
   // Return a pointer to the value node.
   object_t* newPairObject( const char* label, std::uint8_t  v, object_t* parent=nullptr);

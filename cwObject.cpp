@@ -670,6 +670,11 @@ cw::object_t* cw::newObject( char* v, object_t* parent)
 cw::object_t* cw::newObject( const char* v, object_t* parent)
 { return _objCreateValueNode<const char*>( parent, v ); }
 
+cw::object_t* cw::newObjectDict( object_t* parent )
+{ return _objAllocate( kDictTId, parent); }
+    
+cw::object_t* cw::newObjectList( object_t* parent )
+{ return _objAllocate( kListTId, parent ); }
 
 cw::object_t* cw::newPairObject( const char* label, std::uint8_t v, object_t* parent)
 { return _objCreatePairNode<uint8_t>( parent, label, v ); }
