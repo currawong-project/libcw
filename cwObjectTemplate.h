@@ -122,8 +122,10 @@ namespace cw
   template<> object_t* _objSetLeafValue< char*>( object_t* obj,  char* value )
   {
     if( obj != NULL )
-    {  
-      obj->u.str = value;
+    {
+      //mem::release(obj->u.str);
+      obj->u.str = value == nullptr ? nullptr : mem::duplStr(value);
+      //obj->u.str = value;
       obj->type  = _objIdToType(kStringTId);
     }
     return obj;
@@ -131,12 +133,8 @@ namespace cw
 
   template<> object_t* _objSetLeafValue<const char*>( object_t* obj,  const char* value )
   {
-    if( obj != NULL )
-    {  
-      obj->u.str = (char*)value;
-      obj->type  = _objIdToType(kCStringTId);
-    }
-    return obj;
+    // cast 'const char*'  to 'char*'
+    return _objSetLeafValue<char*>(obj,(char*)value);
   }
   
   template< typename T >

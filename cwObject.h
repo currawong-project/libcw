@@ -103,8 +103,15 @@ namespace cw
     } u;
 
 
+    // Unlink this node from it's parents and siblings.
     void unlink();
+
+    // free all resource associated with this object.
     void free();
+
+    // Append the child node to this objects child list.
+    rc_t append_child( struct object_str* child );
+    
     unsigned child_count() const;
 
     // Value containers are parents of leaf nodes. (A dictionary is not a value container because it's children are pairs with are not leaf nodes.)
@@ -148,7 +155,6 @@ namespace cw
     
     const struct object_str* find_child( const char* label ) const { return find(label,kNoRecurseFl); }
     struct       object_str* find_child( const char* label )       { return find(label,kNoRecurseFl); }
-
     
     const struct object_str* child_ele( unsigned idx ) const;
     struct       object_str* child_ele( unsigned idx );
@@ -198,11 +204,17 @@ namespace cw
     { return _getv(kOptionalFl,label,valRef,args...); }
     
     template< typename T >
-      struct object_str* insertPair( const char* label, const T& v )
+      struct object_str* insert_pair( const char* label, const T& v )
     {  return newPairObject(label, v, this); }
-    
+
+
+    // convert this object to a string
     unsigned to_string( char* buf, unsigned bufByteN ) const;
+
+    // print this object
     void print(const print_ctx_t* c=NULL) const;
+
+    // duplicate this object
     struct object_str* duplicate() const;
 
   } object_t;
@@ -220,8 +232,8 @@ namespace cw
   object_t* newObject( double        v, object_t* parent=nullptr);      
   object_t* newObject( char*         v, object_t* parent=nullptr);
   object_t* newObject( const char*   v, object_t* parent=nullptr);
-  object_t* newObjectDict( object_t* parent=nullptr );
-  object_t* newObjectList( object_t* parent=nullptr );
+  object_t* newDictObject( object_t* parent=nullptr );
+  object_t* newListObject( object_t* parent=nullptr );
 
   // Return a pointer to the value node.
   object_t* newPairObject( const char* label, std::uint8_t  v, object_t* parent=nullptr);

@@ -39,8 +39,7 @@ namespace cw
    { kTrueLexTId,   "true"},
    { kFalseLexTId,  "false"},
    { kNullLexTId,   "null" },
-   { lex::kErrorLexTId,""}
-  
+   { lex::kErrorLexTId,""}  
   };
 
   unsigned _lexSegmentedIdMatcher( const char* cp, unsigned cn )
@@ -336,8 +335,8 @@ namespace cw
   object_t* _objTypeDuplBool(   const struct object_str* src, struct object_str* parent ) { return _objCreateValueNode<bool   >(parent,src->u.b  ); }
   object_t* _objTypeDuplFloat(  const struct object_str* src, struct object_str* parent ) { return _objCreateValueNode<float  >(parent,src->u.f  ); }
   object_t* _objTypeDuplDouble( const struct object_str* src, struct object_str* parent ) { return _objCreateValueNode<double >(parent,src->u.d  ); }
-  object_t* _objTypeDuplString( const struct object_str* src, struct object_str* parent ) { return _objCreateValueNode<char*  >(parent,mem::duplStr(src->u.str)); }
-  object_t* _objTypeDuplCString(const struct object_str* src, struct object_str* parent ) { return _objCreateValueNode<const char*>(parent,mem::duplStr(src->u.str));}    
+  object_t* _objTypeDuplString( const struct object_str* src, struct object_str* parent ) { return _objCreateValueNode<char*  >(parent,src->u.str); }
+  object_t* _objTypeDuplCString(const struct object_str* src, struct object_str* parent ) { return _objCreateValueNode<const char*>(parent,src->u.str);}    
   object_t* _objTypeDuplVect(   const struct object_str* src, struct object_str* parent ) { assert(0); return nullptr; }
   object_t* _objTypeDuplPair(   const struct object_str* src, struct object_str* parent ) {  return _objTypeDuplContainer(src,parent); }
   object_t* _objTypeDuplList(   const struct object_str* src, struct object_str* parent ) {  return _objTypeDuplContainer(src,parent); }
@@ -362,7 +361,7 @@ namespace cw
    { kFloatTId,   "float",     0,                                _objTypeFree,       _objTypeValueFromFloat,    _objTypePrintFloat,  _objTypeToStringFloat,  _objTypeDuplFloat },
    { kDoubleTId,  "double",    0,                                _objTypeFree,       _objTypeValueFromDouble,   _objTypePrintDouble, _objTypeToStringDouble, _objTypeDuplDouble },
    { kStringTId,  "string",    0,                                _objTypeFreeString, _objTypeValueFromString,   _objTypePrintString, _objTypeToStringString, _objTypeDuplString },
-   { kCStringTId, "cstring",   0,                                _objTypeFree,       _objTypeValueFromCString,  _objTypePrintString, _objTypeToStringString, _objTypeDuplCString },
+   { kCStringTId, "cstring",   0,                                _objTypeFreeString, _objTypeValueFromCString,  _objTypePrintString, _objTypeToStringString, _objTypeDuplCString },
    { kVectTId,    "vect",      0,                                _objTypeFree,       _objTypeValueFromVect,     _objTypePrintVect,   _objTypeToStringVect,   _objTypeDuplVect },
    { kPairTId,    "pair",      kContainerFl | kValueContainerFl, _objTypeFree,       _objTypeValueFromNonValue, _objTypePrintPair,   _objTypeToStringPair,   _objTypeDuplPair },
    { kListTId,    "list",      kContainerFl | kValueContainerFl, _objTypeFree,       _objTypeValueFromNonValue, _objTypePrintList,   _objTypeToStringList,   _objTypeDuplList },
@@ -444,6 +443,8 @@ namespace cw
 
     if( parent != nullptr )
     {
+      assert( parent->is_container() );
+      
       object_t* child = parent->u.children;
 
       if( parent->u.children == nullptr )
@@ -498,8 +499,7 @@ void cw::object_t::unlink()
   }
 
   // if a child has a parent then it must be in that parent's child list
-  cwAssert(0);
-  
+  cwAssert(0);  
 }
 
 void cw::object_t::free()
@@ -517,6 +517,15 @@ void cw::object_t::free()
   }
   
   type->free(this);
+}
+
+cw::rc_t cw::object_t::append_child( struct object_str* child )
+{
+  if( !is_container() )
+    return cwLogError(kInvalidDataTypeRC,"The parent of a child object node must be a 'container'.");
+  
+  _objAppendLeftMostNode( this, child );
+  return kOkRC;
 }
 
 
@@ -670,10 +679,10 @@ cw::object_t* cw::newObject( char* v, object_t* parent)
 cw::object_t* cw::newObject( const char* v, object_t* parent)
 { return _objCreateValueNode<const char*>( parent, v ); }
 
-cw::object_t* cw::newObjectDict( object_t* parent )
+cw::object_t* cw::newDictObject( object_t* parent )
 { return _objAllocate( kDictTId, parent); }
     
-cw::object_t* cw::newObjectList( object_t* parent )
+cw::object_t* cw::newListObject( object_t* parent )
 { return _objAllocate( kListTId, parent ); }
 
 cw::object_t* cw::newPairObject( const char* label, std::uint8_t v, object_t* parent)
@@ -815,13 +824,16 @@ cw::rc_t cw::objectFromString( const char* s, object_t*& objRef )
           // if the parent is an object then this string must be a pair label
           if( cnp->is_dict() )
             cnp = _objAppendLeftMostNode( cnp, _objAllocate( kPairTId, cnp ));
-               
+
+          unsigned n = lex::tokenCharCount(lexH);
+          char s[ n + 1 ];
+          memcpy(s,lex::tokenText(lexH),n);
+          s[n] = 0;
           
-          char*    v       = mem::duplStr(lex::tokenText(lexH),lex::tokenCharCount(lexH));
-          unsigned identFl = lexId == lex::kIdentLexTId ? kIdentFl    : 0;
+          //char*    v       = mem::duplStr(lex::tokenText(lexH),lex::tokenCharCount(lexH));
+          unsigned identFl = lexId == lex::kIdentLexTId ? kIdentFl    : 0;          
           
-          
-          _objCreateValueNode<char*>( cnp, v, "string", identFl );
+          _objCreateValueNode<char*>( cnp, s, "string", identFl );
         }
         break;
 
