@@ -72,7 +72,7 @@ namespace cw
      kListId
     };
 
-    rc_t _uiTestCreateUi( ui_test_t* p, unsigned wsSessId )
+    rc_t uiTestCreateUi( ui_test_t* p, unsigned wsSessId=kInvalidId )
     {
       rc_t     rc      = kOkRC;
       unsigned uuid    = kInvalidId;
@@ -241,6 +241,7 @@ namespace cw
       return rc;
     }
 
+    // 
     rc_t _handleUiEchoMsg( ui_test_t* p, unsigned wsSessId, unsigned parentAppId, unsigned  uuId, unsigned appId )
     {
       rc_t rc = kOkRC;
@@ -292,7 +293,7 @@ namespace cw
     
 
 
-    // This function is called by the websocket with messages comring from a remote UI.
+    // This function is called by the websocket with messages coming from a remote UI.
     rc_t _uiTestCallback( void* cbArg, unsigned wsSessId, opId_t opId, unsigned parentAppId, unsigned uuId, unsigned appId, const value_t* v )
     {
       ui_test_t* p = (ui_test_t*)cbArg;
@@ -391,15 +392,17 @@ cw::rc_t cw::ui::test( const object_t* cfg )
   // create the UI server
   if((rc = srv::create(app->wsUiSrvH, args, app, _uiTestCallback, mapA, mapN, nullptr )) != kOkRC )
     return rc;
-  
+
+  if((rc = uiTestCreateUi( app )) != kOkRC )
+    goto errLabel;
+
+  //ui::report( srv::uiHandle(app->wsUiSrvH) );
   
   // start the UI server
   if((rc = srv::start(app->wsUiSrvH)) != kOkRC )
     goto errLabel;
 
   
-  printf("'quit' to exit\n");
-
   // readline loop
   while( !app->quitFl.load()  )
   {

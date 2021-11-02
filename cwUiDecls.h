@@ -14,12 +14,12 @@ namespace cw
     typedef enum
     {
      kInvalidOpId,
-     kConnectOpId,   // A new user interface instance was connected
-     kInitOpId,      // A user interface instance was created and is available (new ui elements can now be added)
-     kValueOpId,     // Used by the user interface instance to send a value of a ui element to the application.
-     kEchoOpId,      // Used by the user interface instance to request the current value of a ui element from the application.
-     kIdleOpId,      // The application is idle and waiting for the next event from the ui instance.
-     kDisconnectOpId // A user interface instance was disconnected
+     kConnectOpId,   // A new remote user interface was connected
+     kInitOpId,      // A remote user interface instance was created and is available. It needs to be updated with the current state of the UI from the server.
+     kValueOpId,     // The value of a remote user interface control changed. Send this value to the application engine.
+     kEchoOpId,      // A remote user interface is requesting an application engine value. The the current value of a ui element must be sent to the remote UI.
+     kIdleOpId,      // The application (UI server) is idle and waiting for the next event from a remote UI.
+     kDisconnectOpId // A reemot user interface was disconnected. 
     } opId_t;
 
     typedef enum

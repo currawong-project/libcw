@@ -44,9 +44,11 @@ namespace cw
     // Receive a msg from a remote UI
     rc_t onReceive(    handle_t h, unsigned wsSessId, const void* msg, unsigned byteN );
 
+    // Locate an element whose parent uuid is 'parentUuId' with a child named 'eleName'. 
     unsigned    findElementAppId(  handle_t h, unsigned parentUuId, const char* eleName );  
-    unsigned    findElementUuId(   handle_t h, unsigned parentUuId, const char* eleName );
+    unsigned    findElementUuId(   handle_t h, unsigned parentUuId, const char* eleName );    
     unsigned    findElementUuId(   handle_t h, unsigned parentUuId, unsigned appId );
+
     const char* findElementName(   handle_t h, unsigned uuId );
     unsigned    findElementAppId(  handle_t h, unsigned uuId );
     
