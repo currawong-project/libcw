@@ -108,7 +108,8 @@ namespace cw
     if( obj != nullptr )
     {
       // The object value is about to be overwritten so be sure it is deallocated first.
-      obj->type->free_value(obj);
+      if( obj->type != nullptr )
+        obj->type->free_value(obj);
 
       // Set the object value and type id.
       obj = _objSetLeafValue(obj,v);
