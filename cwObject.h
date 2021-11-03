@@ -39,13 +39,17 @@ namespace cw
   
   enum
   {
-   kValueContainerFl = 0x01,  // root,pair, or list are the only legal value containers
-   kContainerFl      = 0x02,
+    // Value containers children are leaf-nodes: root,pair, or list are the only legal value containers.
+    // Nnote that a dictionary is not a value container because it's children are pairs.
+    kValueContainerFl = 0x01,
+    
+    // This node contains other nodes
+    kContainerFl      = 0x02,  
   };
   
   enum
   {
-   kNoRecurseFl    = 0x01,
+   kRecurseFl      = 0x01,
    kOptionalFl     = 0x02
   };
 
@@ -64,10 +68,21 @@ namespace cw
     const char* label;
     unsigned    flags;
 
+    // Deallocate the the object body and value.
     void (*free)( struct object_str* o );
+
+    // Deallocate the object value but not the object body
+    void (*free_value)( struct object_str* o );
+
     rc_t (*value)( const struct object_str* o, unsigned tid, void* dst );
+
+    // Print the object.
     void (*print)( const struct object_str* o, print_ctx_t& c );
+
+    // Convert the object to a string and return the length of the string.
     unsigned( *to_string)( const struct object_str* o, char* buf, unsigned bufByteN );
+
+    // Duplicate 'src'.
     struct object_str* (*duplicate)( const struct object_str* src, struct object_str* parent );
     
   } objType_t;
@@ -141,7 +156,25 @@ namespace cw
     rc_t value( char*& v ) const;
     rc_t value( const char*& v ) const;
     rc_t value( const struct object_str*& v) const {v=this; return kOkRC; }
-      
+
+
+    // Note that these setters will change the type of the object to match the value 'v'.
+    // They do not convert 'v' to the current type of the object.
+    rc_t set_value( char v );
+    rc_t set_value( int8_t  v );
+    rc_t set_value( uint8_t v );
+    rc_t set_value( int16_t  v );
+    rc_t set_value( uint16_t v );
+    rc_t set_value( int32_t  v );
+    rc_t set_value( uint32_t v );
+    rc_t set_value( int64_t  v );
+    rc_t set_value( uint64_t v );
+    rc_t set_value( float  v );
+    rc_t set_value( double v );
+    rc_t set_value( bool v );
+    rc_t set_value( char* v );
+    rc_t set_value( const char* v );
+    
     const char* pair_label() const;
     
     const struct object_str* pair_value() const;
@@ -149,17 +182,17 @@ namespace cw
 
     // Search for the pair label 'label'.
     // Return a pointer to the pair value associated with a given pair label.
-    // Set flags to kNoRecurseFl to not recurse into the object in search of the label.
+    // Set flags to kRecurseFl to recurse into the object in search of the label.
     const struct object_str* find( const char* label, unsigned flags=0 ) const;
     struct       object_str* find( const char* label, unsigned flags=0 );
     
-    const struct object_str* find_child( const char* label ) const { return find(label,kNoRecurseFl); }
-    struct       object_str* find_child( const char* label )       { return find(label,kNoRecurseFl); }
+    const struct object_str* find_child( const char* label ) const { return find(label); }
+    struct       object_str* find_child( const char* label )       { return find(label); }
     
     const struct object_str* child_ele( unsigned idx ) const;
     struct       object_str* child_ele( unsigned idx );
 
-    // Set flag  'kNoRecurseFl' to not recurse into the object in search of the value.
+    // Set flag  'kRecurseFl' to recurse into the object in search of the value.
     // Set flag  'kOptionalFl' if the label is optional and may not exist.
     template< typename T >
       rc_t get( const char* label, T& v, unsigned flags=0  ) const
@@ -186,7 +219,7 @@ namespace cw
 
       // if no error occurred ....
       if( rc == kOkRC || (rc == kLabelNotFoundRC && cwIsFlag(flags,kOptionalFl)))
-        rc =  _getv(flags, std::forward<ARGS>(args)...); // ... recurse
+        rc =  _getv(flags, std::forward<ARGS>(args)...); // ... recurse to find next label/value pair
       else
         rc = cwLogError(rc,"Object parse failed for the pair label:'%s'.",cwStringNullGuard(label));
 
@@ -208,6 +241,17 @@ namespace cw
     {  return newPairObject(label, v, this); }
 
 
+    template< typename T>
+    rc_t set( const char* label, const T& value )
+    {
+      struct object_str* pair_value;
+      if((pair_value = find_child(label)) == nullptr )
+        return cwLogError(kInvalidIdRC,"Set failed the object dictionary label '%s' could not be found.",label);
+      
+      return pair_value->set_value( value );
+    }
+
+    
     // convert this object to a string
     unsigned to_string( char* buf, unsigned bufByteN ) const;
 

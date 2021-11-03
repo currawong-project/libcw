@@ -12,123 +12,88 @@ namespace cw
   template< typename T >
     object_t* _objSetLeafValue( object_t* obj,  T value )
   {
-    cwLogError(kObjAllocFailRC,"Unhandled object type at leaf node.");
-    return NULL;
+    cwLogError(kAssertFailRC,"Unhandled object type at leaf node.");
+    return nullptr;
   }
   
   template<> object_t* _objSetLeafValue<int8_t>( object_t* obj,  int8_t value )
   {
-    if( obj != NULL )
-    {  
-      obj->u.i8 = value;
-      obj->type = _objIdToType(kInt8TId);
-    }
+    obj->u.i8 = value;
+    obj->type = _objIdToType(kInt8TId);
     return obj;
   }
 
   template<> object_t* _objSetLeafValue<uint8_t>( object_t* obj,  uint8_t value )
   {
-    if( obj != NULL )
-    {  
-      obj->u.u8 = value;
-      obj->type = _objIdToType(kUInt8TId);
-    }
+    obj->u.u8 = value;
+    obj->type = _objIdToType(kUInt8TId);
     return obj;
   }
 
 
   template<> object_t* _objSetLeafValue<int16_t>( object_t* obj,  int16_t value )
   {
-    if( obj != NULL )
-    {  
-      obj->u.i16 = value;
-      obj->type = _objIdToType(kInt16TId);
-    }
+    obj->u.i16 = value;
+    obj->type = _objIdToType(kInt16TId);
     return obj;
   }
 
   template<> object_t* _objSetLeafValue<uint16_t>( object_t* obj,  uint16_t value )
   {
-    if( obj != NULL )
-    {  
-      obj->u.u16 = value;
-      obj->type = _objIdToType(kUInt16TId);
-    }
+    obj->u.u16 = value;
+    obj->type = _objIdToType(kUInt16TId);
     return obj;
   }
 
 
   template<> object_t* _objSetLeafValue<int32_t>( object_t* obj,  int32_t value )
   {
-    if( obj != NULL )
-    {  
-      obj->u.i32 = value;
-      obj->type = _objIdToType(kInt32TId);
-    }
+    obj->u.i32 = value;
+    obj->type = _objIdToType(kInt32TId);
     return obj;
   }
 
   template<> object_t* _objSetLeafValue<uint32_t>( object_t* obj,  uint32_t value )
   {
-    if( obj != NULL )
-    {  
-      obj->u.u32 = value;
-      obj->type = _objIdToType(kUInt32TId);
-    }
+    obj->u.u32 = value;
+    obj->type = _objIdToType(kUInt32TId);
     return obj;
   }
   
   template<> object_t* _objSetLeafValue<int64_t>( object_t* obj,  int64_t value )
   {
-    if( obj != NULL )
-    {  
-      obj->u.i64 = value;
-      obj->type = _objIdToType(kInt64TId);
-    }
+    obj->u.i64 = value;
+    obj->type = _objIdToType(kInt64TId);
     return obj;
   }
 
   template<> object_t* _objSetLeafValue<uint64_t>( object_t* obj,  uint64_t value )
   {
-    if( obj != NULL )
-    {  
-      obj->u.u64 = value;
-      obj->type = _objIdToType(kUInt64TId);
-    }
+    obj->u.u64 = value;
+    obj->type = _objIdToType(kUInt64TId);
     return obj;
   }
 
   
   template<> object_t* _objSetLeafValue<double>( object_t* obj,  double value )
   {
-    if( obj != NULL )
-    {  
-      obj->u.d  = value;
-      obj->type = _objIdToType(kDoubleTId);
-    }
+    obj->u.d  = value;
+    obj->type = _objIdToType(kDoubleTId);
     return obj;
   }
 
   template<> object_t* _objSetLeafValue<bool>( object_t* obj,  bool value )
   {
-    if( obj != NULL )
-    {  
-      obj->u.b  = value;
-      obj->type = _objIdToType(kBoolTId);
-    }
+    obj->u.b  = value;
+    obj->type = _objIdToType(kBoolTId);
     return obj;
   }
 
   template<> object_t* _objSetLeafValue< char*>( object_t* obj,  char* value )
   {
-    if( obj != NULL )
-    {
-      //mem::release(obj->u.str);
       obj->u.str = value == nullptr ? nullptr : mem::duplStr(value);
-      //obj->u.str = value;
       obj->type  = _objIdToType(kStringTId);
-    }
-    return obj;
+      return obj;
   }
 
   template<> object_t* _objSetLeafValue<const char*>( object_t* obj,  const char* value )
@@ -136,7 +101,23 @@ namespace cw
     // cast 'const char*'  to 'char*'
     return _objSetLeafValue<char*>(obj,(char*)value);
   }
-  
+
+  template< typename T >
+  object_t* _objCallSetLeafValue( object_t* obj, const T& v )
+  {
+    if( obj != nullptr )
+    {
+      // The object value is about to be overwritten so be sure it is deallocated first.
+      obj->type->free_value(obj);
+
+      // Set the object value and type id.
+      obj = _objSetLeafValue(obj,v);
+    }
+    
+    return obj;
+  }
+
+                              
   template< typename T >
     object_t*_objCreateValueNode( object_t* obj,  T value, const char* msg=nullptr, unsigned flags=0 )
   {
@@ -145,43 +126,43 @@ namespace cw
   }
 
   template<> object_t* _objCreateValueNode<uint8_t>( object_t* parent,  uint8_t value, const char* msg, unsigned flags )
-  { return _objAppendLeftMostNode( parent, _objSetLeafValue( _objAllocate(), value ) ); }
+  { return _objAppendLeftMostNode( parent, _objCallSetLeafValue( _objAllocate(), value ) ); }
   
   template<> object_t* _objCreateValueNode<int8_t>( object_t* parent,  int8_t value, const char* msg, unsigned flags )
-  { return _objAppendLeftMostNode( parent, _objSetLeafValue( _objAllocate(), value ) ); }
+  { return _objAppendLeftMostNode( parent, _objCallSetLeafValue( _objAllocate(), value ) ); }
 
   template<> object_t* _objCreateValueNode<uint16_t>( object_t* parent,  uint16_t value, const char* msg, unsigned flags )
-  { return _objAppendLeftMostNode( parent, _objSetLeafValue( _objAllocate(), value ) ); }
+  { return _objAppendLeftMostNode( parent, _objCallSetLeafValue( _objAllocate(), value ) ); }
   
   template<> object_t* _objCreateValueNode<int16_t>( object_t* parent,  int16_t value, const char* msg, unsigned flags )
-  { return _objAppendLeftMostNode( parent, _objSetLeafValue( _objAllocate(), value ) ); }
+  { return _objAppendLeftMostNode( parent, _objCallSetLeafValue( _objAllocate(), value ) ); }
 
   template<> object_t* _objCreateValueNode<uint32_t>( object_t* parent,  uint32_t value, const char* msg, unsigned flags )
-  { return _objAppendLeftMostNode( parent, _objSetLeafValue( _objAllocate(), value ) ); }
+  { return _objAppendLeftMostNode( parent, _objCallSetLeafValue( _objAllocate(), value ) ); }
   
   template<> object_t* _objCreateValueNode<int32_t>( object_t* parent,  int32_t value, const char* msg, unsigned flags )
-  { return _objAppendLeftMostNode( parent, _objSetLeafValue( _objAllocate(), value ) ); }
+  { return _objAppendLeftMostNode( parent, _objCallSetLeafValue( _objAllocate(), value ) ); }
 
   template<> object_t* _objCreateValueNode<uint64_t>( object_t* parent,  uint64_t value, const char* msg, unsigned flags )
-  { return _objAppendLeftMostNode( parent, _objSetLeafValue( _objAllocate(), value ) ); }
+  { return _objAppendLeftMostNode( parent, _objCallSetLeafValue( _objAllocate(), value ) ); }
   
   template<> object_t* _objCreateValueNode<int64_t>( object_t* parent,  int64_t value, const char* msg, unsigned flags )
-  { return _objAppendLeftMostNode( parent, _objSetLeafValue( _objAllocate(), value ) ); }
+  { return _objAppendLeftMostNode( parent, _objCallSetLeafValue( _objAllocate(), value ) ); }
   
   template<> object_t* _objCreateValueNode<float>( object_t* parent,  float value, const char* msg, unsigned flags )
-  { return _objAppendLeftMostNode( parent, _objSetLeafValue( _objAllocate(), value ) ); }
+  { return _objAppendLeftMostNode( parent, _objCallSetLeafValue( _objAllocate(), value ) ); }
   
   template<> object_t* _objCreateValueNode<double>( object_t* parent,  double value, const char* msg, unsigned flags )
-  { return _objAppendLeftMostNode( parent, _objSetLeafValue( _objAllocate(), value ) ); }
+  { return _objAppendLeftMostNode( parent, _objCallSetLeafValue( _objAllocate(), value ) ); }
 
   template<> object_t* _objCreateValueNode< char*>( object_t* parent, char* value, const char* msg, unsigned flags )
-  { return _objAppendLeftMostNode( parent, _objSetLeafValue( _objAllocate(), value ) ); }
+  { return _objAppendLeftMostNode( parent, _objCallSetLeafValue( _objAllocate(), value ) ); }
 
   template<> object_t* _objCreateValueNode<const char*>( object_t* parent, const char* value, const char* msg, unsigned flags )
-  { return _objAppendLeftMostNode( parent, _objSetLeafValue( _objAllocate(), value ) ); }
+  { return _objAppendLeftMostNode( parent, _objCallSetLeafValue( _objAllocate(), value ) ); }
   
   template<> object_t* _objCreateValueNode<bool>( object_t* parent, bool value, const char* msg, unsigned flags )
-  { return _objAppendLeftMostNode( parent, _objSetLeafValue( _objAllocate(), value ) ); }
+  { return _objAppendLeftMostNode( parent, _objCallSetLeafValue( _objAllocate(), value ) ); }
 
 
   template< typename T >

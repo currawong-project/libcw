@@ -57,13 +57,21 @@ namespace cw
 
   
   void _objTypeFree( object_t* o )
-  { mem::release(o); }
+  {
+    o->type->free_value(o);
+    mem::release(o);
+  }
   
-  void _objTypeFreeString( object_t* o )
+  
+  void _objTypeFreeValue( object_t* o )
+  {}
+
+  void _objTypeFreeValueString( object_t* o )
   {
     mem::release( o->u.str );
-    _objTypeFree(o);
   }
+
+
   
   const char* _objTypeIdToLabel( objTypeId_t tid );
 
@@ -346,28 +354,28 @@ namespace cw
   
   objType_t _objTypeArray[] =
   {
-   { kNullTId,    "null",      0,                                _objTypeFree,       _objTypeValueFromNonValue, _objTypePrintNull,   _objTypeToStringNull,   _objTypeDuplNull },
-   { kErrorTId,   "error",     0,                                _objTypeFree,       _objTypeValueFromNonValue, _objTypePrintError,  _objTypeToStringError,  _objTypeDuplError },
-   { kCharTId,    "char",      0,                                _objTypeFree,       _objTypeValueFromChar,     _objTypePrintChar,   _objTypeToStringChar,   _objTypeDuplChar },
-   { kInt8TId,    "int8",      0,                                _objTypeFree,       _objTypeValueFromInt8,     _objTypePrintInt8,   _objTypeToStringInt8,   _objTypeDuplInt8 },
-   { kUInt8TId,   "uint8",     0,                                _objTypeFree,       _objTypeValueFromUInt8,    _objTypePrintUInt8,  _objTypeToStringUInt8,  _objTypeDuplUInt8 },
-   { kInt16TId,   "int16",     0,                                _objTypeFree,       _objTypeValueFromInt16,    _objTypePrintInt16,  _objTypeToStringInt16,  _objTypeDuplInt16 },
-   { kUInt16TId,  "uint16",    0,                                _objTypeFree,       _objTypeValueFromUInt16,   _objTypePrintUInt16, _objTypeToStringUInt16, _objTypeDuplUInt16 },
-   { kInt32TId,   "int32",     0,                                _objTypeFree,       _objTypeValueFromInt32,    _objTypePrintInt32,  _objTypeToStringInt32,  _objTypeDuplInt32 },
-   { kUInt32TId,  "uint32",    0,                                _objTypeFree,       _objTypeValueFromUInt32,   _objTypePrintUInt32, _objTypeToStringUInt32, _objTypeDuplUInt32 },
-   { kInt64TId,   "int64",     0,                                _objTypeFree,       _objTypeValueFromInt64,    _objTypePrintInt64,  _objTypeToStringInt64,  _objTypeDuplInt64 },
-   { kUInt64TId,  "uint64",    0,                                _objTypeFree,       _objTypeValueFromUInt64,   _objTypePrintUInt64, _objTypeToStringUInt64, _objTypeDuplUInt64 },
-   { kBoolTId,    "bool",      0,                                _objTypeFree,       _objTypeValueFromBool,     _objTypePrintBool,   _objTypeToStringBool,   _objTypeDuplBool },
-   { kFloatTId,   "float",     0,                                _objTypeFree,       _objTypeValueFromFloat,    _objTypePrintFloat,  _objTypeToStringFloat,  _objTypeDuplFloat },
-   { kDoubleTId,  "double",    0,                                _objTypeFree,       _objTypeValueFromDouble,   _objTypePrintDouble, _objTypeToStringDouble, _objTypeDuplDouble },
-   { kStringTId,  "string",    0,                                _objTypeFreeString, _objTypeValueFromString,   _objTypePrintString, _objTypeToStringString, _objTypeDuplString },
-   { kCStringTId, "cstring",   0,                                _objTypeFreeString, _objTypeValueFromCString,  _objTypePrintString, _objTypeToStringString, _objTypeDuplCString },
-   { kVectTId,    "vect",      0,                                _objTypeFree,       _objTypeValueFromVect,     _objTypePrintVect,   _objTypeToStringVect,   _objTypeDuplVect },
-   { kPairTId,    "pair",      kContainerFl | kValueContainerFl, _objTypeFree,       _objTypeValueFromNonValue, _objTypePrintPair,   _objTypeToStringPair,   _objTypeDuplPair },
-   { kListTId,    "list",      kContainerFl | kValueContainerFl, _objTypeFree,       _objTypeValueFromNonValue, _objTypePrintList,   _objTypeToStringList,   _objTypeDuplList },
-   { kDictTId,    "dict",      kContainerFl,                     _objTypeFree,       _objTypeValueFromNonValue, _objTypePrintDict,   _objTypeToStringDict,   _objTypeDuplDict },
-   { kRootTId,    "root",      kContainerFl | kValueContainerFl, _objTypeFree,       _objTypeValueFromNonValue, _objTypePrintRoot,   _objTypeToStringRoot,   _objTypeDuplRoot },
-   { kInvalidTId, "<invalid>", 0,                                nullptr,            nullptr,                   nullptr,             nullptr,              nullptr }   
+   { kNullTId,    "null",      0,                                _objTypeFree,  _objTypeFreeValue,       _objTypeValueFromNonValue, _objTypePrintNull,   _objTypeToStringNull,   _objTypeDuplNull },
+   { kErrorTId,   "error",     0,                                _objTypeFree,  _objTypeFreeValue,       _objTypeValueFromNonValue, _objTypePrintError,  _objTypeToStringError,  _objTypeDuplError },
+   { kCharTId,    "char",      0,                                _objTypeFree,  _objTypeFreeValue,       _objTypeValueFromChar,     _objTypePrintChar,   _objTypeToStringChar,   _objTypeDuplChar },
+   { kInt8TId,    "int8",      0,                                _objTypeFree,  _objTypeFreeValue,       _objTypeValueFromInt8,     _objTypePrintInt8,   _objTypeToStringInt8,   _objTypeDuplInt8 },
+   { kUInt8TId,   "uint8",     0,                                _objTypeFree,  _objTypeFreeValue,       _objTypeValueFromUInt8,    _objTypePrintUInt8,  _objTypeToStringUInt8,  _objTypeDuplUInt8 },
+   { kInt16TId,   "int16",     0,                                _objTypeFree,  _objTypeFreeValue,       _objTypeValueFromInt16,    _objTypePrintInt16,  _objTypeToStringInt16,  _objTypeDuplInt16 },
+   { kUInt16TId,  "uint16",    0,                                _objTypeFree,  _objTypeFreeValue,       _objTypeValueFromUInt16,   _objTypePrintUInt16, _objTypeToStringUInt16, _objTypeDuplUInt16 },
+   { kInt32TId,   "int32",     0,                                _objTypeFree,  _objTypeFreeValue,       _objTypeValueFromInt32,    _objTypePrintInt32,  _objTypeToStringInt32,  _objTypeDuplInt32 },
+   { kUInt32TId,  "uint32",    0,                                _objTypeFree,  _objTypeFreeValue,       _objTypeValueFromUInt32,   _objTypePrintUInt32, _objTypeToStringUInt32, _objTypeDuplUInt32 },
+   { kInt64TId,   "int64",     0,                                _objTypeFree,  _objTypeFreeValue,       _objTypeValueFromInt64,    _objTypePrintInt64,  _objTypeToStringInt64,  _objTypeDuplInt64 },
+   { kUInt64TId,  "uint64",    0,                                _objTypeFree,  _objTypeFreeValue,       _objTypeValueFromUInt64,   _objTypePrintUInt64, _objTypeToStringUInt64, _objTypeDuplUInt64 },
+   { kBoolTId,    "bool",      0,                                _objTypeFree,  _objTypeFreeValue,       _objTypeValueFromBool,     _objTypePrintBool,   _objTypeToStringBool,   _objTypeDuplBool },
+   { kFloatTId,   "float",     0,                                _objTypeFree,  _objTypeFreeValue,       _objTypeValueFromFloat,    _objTypePrintFloat,  _objTypeToStringFloat,  _objTypeDuplFloat },
+   { kDoubleTId,  "double",    0,                                _objTypeFree,  _objTypeFreeValue,       _objTypeValueFromDouble,   _objTypePrintDouble, _objTypeToStringDouble, _objTypeDuplDouble },
+   { kStringTId,  "string",    0,                                _objTypeFree,  _objTypeFreeValueString, _objTypeValueFromString,   _objTypePrintString, _objTypeToStringString, _objTypeDuplString },
+   { kCStringTId, "cstring",   0,                                _objTypeFree,  _objTypeFreeValueString, _objTypeValueFromCString,  _objTypePrintString, _objTypeToStringString, _objTypeDuplCString },
+   { kVectTId,    "vect",      0,                                _objTypeFree,  _objTypeFreeValue,       _objTypeValueFromVect,     _objTypePrintVect,   _objTypeToStringVect,   _objTypeDuplVect },
+   { kPairTId,    "pair",      kContainerFl | kValueContainerFl, _objTypeFree,  _objTypeFreeValue,       _objTypeValueFromNonValue, _objTypePrintPair,   _objTypeToStringPair,   _objTypeDuplPair },
+   { kListTId,    "list",      kContainerFl | kValueContainerFl, _objTypeFree,  _objTypeFreeValue,       _objTypeValueFromNonValue, _objTypePrintList,   _objTypeToStringList,   _objTypeDuplList },
+   { kDictTId,    "dict",      kContainerFl,                     _objTypeFree,  _objTypeFreeValue,       _objTypeValueFromNonValue, _objTypePrintDict,   _objTypeToStringDict,   _objTypeDuplDict },
+   { kRootTId,    "root",      kContainerFl | kValueContainerFl, _objTypeFree,  _objTypeFreeValue,       _objTypeValueFromNonValue, _objTypePrintRoot,   _objTypeToStringRoot,   _objTypeDuplRoot },
+   { kInvalidTId, "<invalid>", 0,                                nullptr,       nullptr,                 nullptr,                   nullptr,             nullptr,              nullptr }   
   };
 
 
@@ -470,6 +478,15 @@ namespace cw
     return nullptr;            
   }
 
+  template< typename T >
+  rc_t _objSetValue( object_t* obj, const T& v )
+  {
+    cw::rc_t rc = kOkRC;
+    if(_objCallSetLeafValue( obj, v ) == nullptr)
+      rc = cwLogError(kOpFailRC,"Object value assignment failed.");
+    return rc;
+  }
+  
 }
 
 
@@ -558,6 +575,25 @@ cw::rc_t cw::object_t::value( bool& v )     const { return type->value(this,kBoo
 cw::rc_t cw::object_t::value( char*& v )    const { return type->value(this,kStringTId,&v); }
 cw::rc_t cw::object_t::value( const char*& v ) const { return type->value(this,kCStringTId,&v); }
 
+
+
+cw::rc_t cw::object_t::set_value( char v )     { return _objSetValue(this,v); }
+cw::rc_t cw::object_t::set_value( int8_t  v )  { return _objSetValue(this,v); }
+cw::rc_t cw::object_t::set_value( uint8_t v )  { return _objSetValue(this,v); }
+cw::rc_t cw::object_t::set_value( int16_t  v ) { return _objSetValue(this,v); }
+cw::rc_t cw::object_t::set_value( uint16_t v ) { return _objSetValue(this,v); }
+cw::rc_t cw::object_t::set_value( int32_t  v ) { return _objSetValue(this,v); }
+cw::rc_t cw::object_t::set_value( uint32_t v ) { return _objSetValue(this,v); }
+cw::rc_t cw::object_t::set_value( int64_t  v ) { return _objSetValue(this,v); }
+cw::rc_t cw::object_t::set_value( uint64_t v ) { return _objSetValue(this,v); }
+cw::rc_t cw::object_t::set_value( float  v )   { return _objSetValue(this,v); }
+cw::rc_t cw::object_t::set_value( double v )   { return _objSetValue(this,v); }
+cw::rc_t cw::object_t::set_value( bool v )     { return _objSetValue(this,v); }
+cw::rc_t cw::object_t::set_value( char* v )    { return _objSetValue(this,v); }
+cw::rc_t cw::object_t::set_value( const char* v ) { return _objSetValue(this,v); }
+
+  
+
 const char* cw::object_t::pair_label() const
 {
   cwAssert( is_pair() );
@@ -593,7 +629,7 @@ const struct cw::object_str* cw::object_t::find( const char* label, unsigned fla
         return o->pair_value();
 
       const object_t* ch;
-      if( cwIsNotFlag(flags,kNoRecurseFl) )
+      if( cwIsFlag(flags,kRecurseFl) )
         if((ch = o->find(label)) != nullptr )
           return ch;
     }     
