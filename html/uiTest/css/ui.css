@@ -138,3 +138,7 @@ label {
 
     background-color: PowderBlue;    
 }
+
+.uiSelected {
+    border: 1px solid red;
+}

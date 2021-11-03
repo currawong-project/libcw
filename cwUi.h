@@ -12,7 +12,7 @@ namespace cw
 
     // Callback for application notification.
     // (e.g. the GUI changed the value of a UI element)
-    typedef rc_t (*uiCallback_t)(   void* cbArg, unsigned wsSessId, opId_t opId, unsigned parentAppId, unsigned uuId, unsigned appId, const value_t* value );
+    typedef rc_t (*uiCallback_t)(   void* cbArg, unsigned wsSessId, opId_t opId, unsigned parentAppId, unsigned uuId, unsigned appId, unsigned chanId, const value_t* value );
 
     // Callback with messages for the GUI as JSON strings
     // { "op":"create", "type":<>, "appId":<>, "parentUuId":<>, "name":<> (type specific fields) }
@@ -58,9 +58,11 @@ namespace cw
     
 
     // Create multiple UI elements from an object_t representation.
-    rc_t createFromObject( handle_t h, const object_t* o, unsigned wsSessId, unsigned parentUuId=kInvalidId, const char* eleName=nullptr);
-    rc_t createFromFile(   handle_t h, const char* fn,    unsigned wsSessId, unsigned parentUuId=kInvalidId);
-    rc_t createFromText(   handle_t h, const char* text,  unsigned wsSessId, unsigned parentUuId=kInvalidId);
+    // The channel id of all elements created from the object will be assigned 'chanId'.
+    // The 'fieldName' string identifies
+    rc_t createFromObject( handle_t h, const object_t* o, unsigned parentUuId=kInvalidId, unsigned chanId=kInvalidId, const char* fieldName=nullptr);
+    rc_t createFromFile(   handle_t h, const char* fn,    unsigned parentUuId=kInvalidId, unsigned chanId=kInvalidId);
+    rc_t createFromText(   handle_t h, const char* text,  unsigned parentUuId=kInvalidId, unsigned chanId=kInvalidId);
 
     //
     // Create Sincgle UI elements on the UI instance identified by wsSessId.
@@ -88,45 +90,54 @@ namespace cw
     // title:      (optional) Visible Text label associated with this element.
     //
 
-    rc_t createDiv(        handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
-    rc_t createLabel(      handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
-    rc_t createButton(     handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
+    rc_t createDiv(        handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
+    rc_t createLabel(      handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
+    rc_t createButton(     handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
     
     // Create check: w/o value. The value will be read from the engine via the UI 'echo' event.
-    rc_t createCheck(      handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
+    rc_t createCheck(      handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
 
     // Create check: w/ value. The value will be sent to the engine as the new value of the associated varaible.
-    rc_t createCheck(      handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, bool value );
+    rc_t createCheck(      handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, bool value );
     
-    rc_t createSelect(     handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
-    rc_t createOption(     handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
-    rc_t createStr(        handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
-    rc_t createStr(        handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, const char* value );
-    rc_t createNumbDisplay(handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, unsigned decPl );    
-    rc_t createNumbDisplay(handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, unsigned decPl, double value );    
-    rc_t createNumb(       handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double minValue, double maxValue, double stepValue, unsigned decPl );
-    rc_t createNumb(       handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double minValue, double maxValue, double stepValue, unsigned decPl, double value );
-    rc_t createProg(       handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double minValue, double maxValue );
-    rc_t createProg(       handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double minValue, double maxValue, double value );
-    rc_t createLog(        handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
-    rc_t createList(       handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title );
+    rc_t createSelect(     handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
+    rc_t createOption(     handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
+    rc_t createStr(        handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
+    rc_t createStr(        handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, const char* value );
+    rc_t createNumbDisplay(handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, unsigned decPl );    
+    rc_t createNumbDisplay(handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, unsigned decPl, double value );    
+    rc_t createNumb(       handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, double minValue, double maxValue, double stepValue, unsigned decPl );
+    rc_t createNumb(       handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, double minValue, double maxValue, double stepValue, unsigned decPl, double value );
+    rc_t createProg(       handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, double minValue, double maxValue );
+    rc_t createProg(       handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, double minValue, double maxValue, double value );
+    rc_t createLog(        handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
+    rc_t createList(       handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
 
-    rc_t setNumbRange( handle_t h, unsigned wsSessId, unsigned uuId, double minValue, double maxValue, double stepValue, unsigned decPl, double value );
-    rc_t setProgRange( handle_t h, unsigned wsSessId, unsigned uuId, double minValue, double maxValue, double value );
-    rc_t setLogLine(   handle_t h, unsigned wsSessId, unsigned uuId, const char* text );
+    rc_t setNumbRange(   handle_t h, unsigned uuId, double minValue, double maxValue, double stepValue, unsigned decPl, double value );
+    rc_t setProgRange(   handle_t h, unsigned uuId, double minValue, double maxValue, double value );
+    rc_t setLogLine(     handle_t h, unsigned uuId, const char* text );
+    
+    rc_t setClickable(   handle_t h, unsigned uuId, bool clickableFl=true );
+    rc_t clearClickable( handle_t h, unsigned uuId );
+    bool isClickable(    handle_t h, unsigned uuId );
+    
+    rc_t setSelect(      handle_t h, unsigned uuId, bool enableFl=true );
+    rc_t clearSelect(    handle_t h, unsigned uuId );
+    bool isSelected(     handle_t h, unsigned uuId );
     
     // Register parent/child/name app id's 
     rc_t registerAppIdMap(  handle_t h, const appIdMap_t* map, unsigned mapN );
 
     // Send a value from the application to the UI via a JSON messages.
     // Set wsSessId to kInvalidId to send to all sessions.
-    rc_t sendValueBool(   handle_t h, unsigned wsSessId, unsigned uuId, bool value );
-    rc_t sendValueInt(    handle_t h, unsigned wsSessId, unsigned uuId, int value );
-    rc_t sendValueUInt(   handle_t h, unsigned wsSessId, unsigned uuId, unsigned value );
-    rc_t sendValueFloat(  handle_t h, unsigned wsSessId, unsigned uuId, float value );
-    rc_t sendValueDouble( handle_t h, unsigned wsSessId, unsigned uuId, double value );
-    rc_t sendValueString( handle_t h, unsigned wsSessId, unsigned uuId, const char* value );
+    rc_t sendValueBool(   handle_t h, unsigned uuId, bool value );
+    rc_t sendValueInt(    handle_t h, unsigned uuId, int value );
+    rc_t sendValueUInt(   handle_t h, unsigned uuId, unsigned value );
+    rc_t sendValueFloat(  handle_t h, unsigned uuId, float value );
+    rc_t sendValueDouble( handle_t h, unsigned uuId, double value );
+    rc_t sendValueString( handle_t h, unsigned uuId, const char* value );
 
+    
     void report( handle_t h );
     
     
@@ -147,7 +158,7 @@ namespace cw
         unsigned        wsTimeOutMs;        
       } args_t;
 
-      rc_t parseArgs( const object_t& o, args_t& args, const char* object_label=nullptr );
+      rc_t parseArgs( const object_t& o, args_t& args, const char* object_label="ui" );
       rc_t releaseArgs( args_t& args );
 
       rc_t create( handle_t& h,

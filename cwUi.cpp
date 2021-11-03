@@ -12,12 +12,13 @@
 
 #include "cwUi.h"
 
+#define UI_CLICKABLE_LABEL "clickable"
+#define UI_SELECT_LABEL    "select"
+
 namespace cw
 {
   namespace ui
   {
-
-    
     
     typedef struct appIdMapRecd_str
     {
@@ -33,9 +34,9 @@ namespace cw
       struct ele_str* parent;  // pointer to parent ele - or nullptr if this ele is attached to the root ui ele
       unsigned        uuId;    // UI unique id - automatically generated and unique among all elements that are part of this ui_t object.
       unsigned        appId;   // application assigned id - application assigned id
+      unsigned        chanId;  //
       char*           eleName; // javascript id
       object_t*       attr;    // attribute object
-      
     } ele_t;
     
     typedef struct ui_str
@@ -47,11 +48,11 @@ namespace cw
       void*                uiCbArg;     // app. cb func arg.
       sendCallback_t       sendCbFunc;
       void*                sendCbArg;
-      appIdMapRecd_t*      appIdMap;  // map of application parent/child/js id's
-      char*                buf;       // buf[bufN] output message formatting buffer
-      unsigned             bufN;      //
+      appIdMapRecd_t*      appIdMap;    // map of application parent/child/js id's
+      char*                buf;         // buf[bufN] output message formatting buffer
+      unsigned             bufN;        //
       
-      unsigned*            sessA;     // sessA[ sessN ] array of wsSessId's
+      unsigned*            sessA;       // sessA[ sessN ] array of wsSessId's
       unsigned             sessN;
       unsigned             sessAllocN;
       
@@ -182,33 +183,6 @@ namespace cw
       return nullptr;
     }
 
-    /*
-    // Given a parent UuId and a eleName find the associated ele
-    ele_t* _parentUuId_EleName_ToEle( ui_t* p, unsigned parentUuId, const char* eleName, bool errorFl=true )
-    {
-      // if we are looking for the root 
-      if( (parentUuId==kRootUuId || parentUuId == kInvalidId) && textCompare(eleName,"uiDivId")==0 )
-      {
-        for(unsigned i=0; i<p->eleN; ++i)
-          if( p->eleA[i]->parent==nullptr && p->eleA[i]->uuId==kRootUuId)
-            return p->eleA[i];
-        
-      }
-      else // we are looking for an elment which is not the root
-      {
-        for(unsigned i=0; i<p->eleN; ++i)
-          if( ((p->eleA[i]->parent==nullptr && parentUuId == kRootUuId) || (p->eleA[i]->parent != nullptr && parentUuId == p->eleA[i]->parent->uuId)) &&  (textCompare(p->eleA[i]->eleName,eleName) == 0))
-            return p->eleA[i];
-      }
-        
-          
-      if( errorFl )
-        cwLogError(kInvalidIdRC,"The element with parent uuid:%i and eleName:%s is not found.",parentUuId,eleName);
-      
-      return nullptr;
-    }
-    */
-    
     unsigned _findElementUuId( ui_t* p, const char* eleName )
     {
       for(unsigned i=0; i<p->eleN; ++i)
@@ -258,6 +232,47 @@ namespace cw
       return rc;
     }
 
+
+    // terminating condition for format_attributes()
+    void _create_attributes( ele_t* e )
+    {  }
+    
+    template<typename T, typename... ARGS>
+      void _create_attributes(ele_t* e, const char* label, T value, ARGS&&... args)
+    {
+      e->attr->insert_pair(label,value);
+      
+      _create_attributes(e,std::forward<ARGS>(args)...);      
+    }
+
+    bool _has_attribute( ele_t* e, const char* label )
+    { return e->attr->find_child(label) != nullptr; }
+
+    bool _get_attribute_bool( ele_t* e, const char* label )
+    {
+      bool value = false;
+      const object_t* pair_value;
+      if((pair_value = e->attr->find(label)) == nullptr )
+        return false;
+
+      pair_value->value(value);
+
+      return value;        
+    }
+
+    rc_t _set_attribute_bool( ele_t* e, const char* label, bool value )
+    {
+      object_t* pair_value;
+      if((pair_value = e->attr->find(label)) == nullptr )
+        _create_attributes(e,label,value);
+      else
+        pair_value->set_value(value);
+
+      return kOkRC;        
+      
+    }
+
+    
 
     // Convert the ele_t 'attr' object into the attributes for a JSON message.
     unsigned _format_attributes( char* buf, unsigned n, unsigned i, ele_t* ele )
@@ -333,13 +348,14 @@ namespace cw
 
     // Create the base element record.  The attributes mut be filled in by the calling function.
     // Note that if 'appId' is kInvalidId then this function will attempt to lookup the appId in p->appIdMap[].
-    ele_t* _createBaseEle( ui_t* p, ele_t* parent, unsigned appId, const char* eleName, const char* eleTypeStr=nullptr, const char* eleClass=nullptr, const char* eleTitle=nullptr )
+    ele_t* _createBaseEle( ui_t* p, ele_t* parent, unsigned appId, unsigned chanId, const char* eleName, const char* eleTypeStr=nullptr, const char* eleClass=nullptr, const char* eleTitle=nullptr )
     {
       ele_t* e = mem::allocZ<ele_t>();
 
       e->parent  = parent;
       e->uuId    = p->eleN;
       e->appId   = appId;
+      e->chanId  = chanId;
       e->eleName = eleName==nullptr ? nullptr : mem::duplStr(eleName);
       e->attr    = newDictObject();
       
@@ -389,21 +405,9 @@ namespace cw
     }
 
     
-    // terminating condition for format_attributes()
-    void create_attributes( ele_t* e )
-    {  }
-    
-    template<typename T, typename... ARGS>
-      void create_attributes(ele_t* e, const char* label, T value, ARGS&&... args)
-    {
-      e->attr->insert_pair(label,value);
-      
-      create_attributes(e,std::forward<ARGS>(args)...);      
-    }
-
     
     template< typename... ARGS>
-    rc_t _createOneEle( ui_t* p, unsigned& uuIdRef, const char* eleTypeStr, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, ARGS&&... args )
+    rc_t _createOneEle( ui_t* p, unsigned& uuIdRef, const char* eleTypeStr, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, ARGS&&... args )
     {
       rc_t           rc         = kOkRC;
       ele_t*         newEle     = nullptr;
@@ -419,10 +423,10 @@ namespace cw
         return cwLogError( kInvalidArgRC, "Unable to locate the parent element (id:%i).", parentUuId );
 
       // create the base element
-      newEle = _createBaseEle(p, parentEle, appId, eleName, eleTypeStr, clas, title );
+      newEle = _createBaseEle(p, parentEle, appId, chanId, eleName, eleTypeStr, clas, title );
 
       // create the attributes
-      create_attributes(newEle, std::forward<ARGS>(args)...);
+      _create_attributes(newEle, std::forward<ARGS>(args)...);
 
       uuIdRef = newEle->uuId;
 
@@ -448,9 +452,9 @@ namespace cw
       return divAliasFl;      
     }
 
-    rc_t _createElementsFromChildList( ui_t* p, const object_t* po, unsigned wsSessId, ele_t* parentEle );
+    rc_t _createElementsFromChildList( ui_t* p, const object_t* po, unsigned wsSessId, ele_t* parentEle, unsigned chanId );
     
-    rc_t _createEleFromRsrsc( ui_t* p, ele_t* parentEle, const char* eleType, const object_t* srcObj, unsigned wsSessId )
+    rc_t _createEleFromRsrsc( ui_t* p, ele_t* parentEle, const char* eleType, unsigned chanId, const object_t* srcObj, unsigned wsSessId )
     {
       rc_t        rc          = kOkRC;
       object_t*   co          = nullptr;
@@ -463,7 +467,7 @@ namespace cw
         return cwLogError(kSyntaxErrorRC,"All ui element resource records must be dictionaries.");
       
       // if this object has a 'children' list then unlink it and save it for later
-      if((co = o->find("children", kNoRecurseFl | kOptionalFl)) != nullptr )
+      if((co = o->find("children", kOptionalFl)) != nullptr )
       {
         co = co->parent;
         co->unlink();
@@ -472,7 +476,7 @@ namespace cw
       divAliasFl = _is_div_type(eleType);
             
       // get the ui ele name
-      if((rc = o->get("name",eleName, cw::kNoRecurseFl | cw::kOptionalFl)) != kOkRC )
+      if((rc = o->get("name",eleName, cw::kOptionalFl)) != kOkRC )
       {
         // div's and titles don't need a 'name'
         if( rc == kLabelNotFoundRC && (divAliasFl || textCompare(eleType,"label")==0) )
@@ -486,7 +490,7 @@ namespace cw
       }
       
       // get or create the ele record to associate with this ele
-      if((ele = _createBaseEle(p, parentEle, kInvalidId, eleName, eleType, nullptr, nullptr)) == nullptr )
+      if((ele = _createBaseEle(p, parentEle, kInvalidId, chanId, eleName, eleType, nullptr, nullptr)) == nullptr )
       {
         rc = cwLogError(kOpFailRC,"The local element '%s' could not be created.",cwStringNullGuard(eleName));
         goto errLabel;
@@ -495,17 +499,27 @@ namespace cw
       
       if( !divAliasFl )
       {
+        unsigned childN    = o->child_count();
+        unsigned child_idx = 0;
+        
         // transfer the attributes of this resource object to ele->attr
-        for(unsigned i=0; i<o->child_count(); ++i)
+        for(unsigned i=0; i<childN; ++i)
         {
-          object_t*   child      = o->child_ele(i);
+          object_t*   child      = o->child_ele(child_idx);
           const char* pair_label = child->pair_label();
+
+          //if( textCompare(eleType,"list")==0 )
+          //  printf("%i list: %s %i\n",i,pair_label,o->child_count());
         
           if( textCompare(pair_label,"name") != 0 && _is_div_type(pair_label)==false )
           {
             child->unlink();
             ele->attr->append_child(child);
-          }          
+          }
+          else
+          {
+            child_idx += 1;
+          }
         }
       }
 
@@ -517,7 +531,7 @@ namespace cw
         // Note that 'div's need not have an explicit 'children' node.
         // Any child node of a 'div' with a dictionary as a value is a child control.
         const object_t* childL = co!=nullptr ? co->pair_value() : srcObj;
-        rc = _createElementsFromChildList(p, childL, wsSessId, ele );
+        rc = _createElementsFromChildList(p, childL, wsSessId, ele, chanId );
       }
 
     errLabel:
@@ -534,7 +548,7 @@ namespace cw
     
     // 'od' is an object dictionary where each pair in the dictionary has
     // the form: 'eleType':{ <object> }    
-    rc_t _createElementsFromChildList( ui_t* p, const object_t* po, unsigned wsSessId, ele_t* parentEle )
+    rc_t _createElementsFromChildList( ui_t* p, const object_t* po, unsigned wsSessId, ele_t* parentEle, unsigned chanId )
     {
       rc_t rc = kOkRC;
       
@@ -553,7 +567,7 @@ namespace cw
         // skip pairs whose value is not a dict
         if( o->pair_value()->is_dict() )
         {
-          if((rc = _createEleFromRsrsc(p, parentEle, o->pair_label(), o->pair_value(), wsSessId )) != kOkRC )
+          if((rc = _createEleFromRsrsc(p, parentEle, o->pair_label(), chanId, o->pair_value(), wsSessId )) != kOkRC )
             return rc;
         }
       }
@@ -563,7 +577,7 @@ namespace cw
 
     // This functions assumes that the cfg object 'o' contains a field named: 'parent'
     // which contains the element name of the parent node.
-    rc_t _createFromObj( ui_t* p, const object_t* o, unsigned wsSessId, unsigned parentUuId )
+    rc_t _createFromObj( ui_t* p, const object_t* o, unsigned wsSessId, unsigned parentUuId, unsigned chanId )
     {
       rc_t            rc        = kOkRC;
       const object_t* po        = nullptr;
@@ -573,7 +587,7 @@ namespace cw
       if( parentUuId == kInvalidId )
       {
         // locate the the 'parent' ele name value object
-        if((po = o->find("parent",kNoRecurseFl | kOptionalFl)) == nullptr )
+        if((po = o->find("parent",kOptionalFl)) == nullptr )
           return cwLogError(kSyntaxErrorRC,"UI resources must have a root 'parent' value.");
       
         // get the parent element name
@@ -595,7 +609,7 @@ namespace cw
         return cwLogError(kSyntaxErrorRC,"A parent UI element named '%s' could not be found.",cwStringNullGuard(eleName));
 
       
-      rc =  _createElementsFromChildList( p, o, wsSessId, parentEle );
+      rc =  _createElementsFromChildList( p, o, wsSessId, parentEle, chanId );
 
       return rc;
     }
@@ -614,7 +628,7 @@ namespace cw
       
       if( msg == nullptr )
       {
-        cwLogWarning("Empty message received from UI.");
+        cwLogWarning("Empty 'value' message received from UI.");
         return nullptr;
       }
 
@@ -623,7 +637,7 @@ namespace cw
             
       if( s == nullptr || sscanf(msg, "value %i %c ",&eleUuId,&argType) != 2 )
       {
-        cwLogError(kSyntaxErrorRC,"Invalid message from UI: '%s'.", msg );
+        cwLogError(kSyntaxErrorRC,"Invalid 'value' message from UI: '%s'.", msg );
         goto errLabel;
       }
       
@@ -680,6 +694,37 @@ namespace cw
       return ele;
     }
 
+    ele_t* _parse_click_msg( ui_t* p, const char* msg )
+    {
+      ele_t*   ele     = nullptr;
+      unsigned eleUuId = kInvalidId;
+      
+      if( msg == nullptr )
+      {
+        cwLogWarning("Empty click message received from UI.");
+        return nullptr;
+      }
+
+      // 
+      if( sscanf(msg, "click %i ",&eleUuId) != 1 )
+      {
+        cwLogError(kSyntaxErrorRC,"Invalid 'click' message from UI: '%s'.", msg );
+        goto errLabel;
+      }
+      
+      // locate the element record
+      if((ele = _uuIdToEle( p, eleUuId )) == nullptr )
+      {
+        cwLogError(kInvalidIdRC,"UI message elment not found.");
+        goto errLabel;
+      }
+      
+    errLabel:
+
+      return ele;
+    }
+
+    
     ele_t* _parse_echo_msg(  ui_t* p, const char* msg )
     {
       unsigned eleUuId = kInvalidId;
@@ -718,6 +763,7 @@ namespace cw
          { kConnectOpId,        "connect" },
          { kInitOpId,           "init" },
          { kValueOpId,          "value" },
+         { kClickOpId,          "click" },
          { kEchoOpId,           "echo" },
          { kIdleOpId,           "idle" },
          { kDisconnectOpId,     "disconnect" },
@@ -732,13 +778,13 @@ namespace cw
     }
 
     template< typename T >
-      rc_t _sendValue( ui_t* p, unsigned wsSessId, unsigned uuId, const char* vFmt, const T& value, int vbufN=32 )
+    rc_t _sendValue( ui_t* p, unsigned wsSessId, unsigned uuId, const char* vFmt, const T& value, const char* opStr="value", int vbufN=32 )
     {
       rc_t rc = kOkRC;
       
       if( p->sendCbFunc != nullptr )
       {
-        const char* mFmt = "{ \"op\":\"value\", \"uuId\":%i, \"value\":%s }";
+        const char* mFmt = "{ \"op\":\"%s\", \"uuId\":%i, \"value\":%s }";
         const int   mbufN = 128;
         char        vbuf[vbufN];
         char        mbuf[mbufN];
@@ -746,7 +792,7 @@ namespace cw
         if( snprintf(vbuf,vbufN,vFmt,value) >= vbufN-1 )
           return cwLogError(kBufTooSmallRC,"The value msg buffer is too small.");
 
-        if( snprintf(mbuf,mbufN,mFmt,uuId,vbuf) >= mbufN-1 )
+        if( snprintf(mbuf,mbufN,mFmt,opStr,uuId,vbuf) >= mbufN-1 )
           return cwLogError(kBufTooSmallRC,"The msg buffer is too small.");
 
         //p->sendCbFunc(p->sendCbArg,wsSessId,mbuf,strlen(mbuf));
@@ -772,6 +818,48 @@ namespace cw
     errLabel:
       return rc;
     }
+
+    rc_t _setPropertyFlag( handle_t h, const char* propertyStr, unsigned uuId, bool enableFl )
+    {
+      ui_t* p = _handleToPtr(h);
+      rc_t rc = kOkRC;
+  
+      ele_t* ele = nullptr;
+      const char* mFmt = "{ \"op\":\"set\", \"type\":\"%s\", \"uuId\":%i, \"enableFl\":%i }";
+      const int   mbufN = 256;
+      char        mbuf[mbufN];
+      
+      if( snprintf(mbuf,mbufN,mFmt,propertyStr,uuId,enableFl?1:0) >= mbufN-1 )
+      {
+        rc = cwLogError(kBufTooSmallRC,"The msg buffer is too small.");
+        goto errLabel;
+      }
+  
+      if((ele = _uuIdToEle(p,uuId)) == nullptr )
+      {
+        rc = kInvalidIdRC;
+        goto errLabel;
+      }
+      
+      if((rc = _set_attribute_bool(ele,propertyStr,enableFl)) != kOkRC )
+      {
+        cwLogError(rc,"Property assignment failed.");
+        goto errLabel;
+      }
+
+      if((rc = _websockSend(p,kInvalidId,mbuf)) != kOkRC )
+      {
+        cwLogError(rc,"'%s' msg transmit failed.",propertyStr);
+        goto errLabel;
+      }
+
+    errLabel:
+      if( rc != kOkRC )
+        rc = cwLogError(rc,"Set '%s' failed.",propertyStr);
+  
+      return rc;
+    }
+    
     
   }
 }
@@ -813,7 +901,7 @@ cw::rc_t cw::ui::create(
   p->bufN       = fmtBufByteN;
   
   // create the root element
-  if((ele = _createBaseEle(p, nullptr, kRootAppId, "uiDivId" )) == nullptr || ele->uuId != kRootUuId )
+  if((ele = _createBaseEle(p, nullptr, kRootAppId, kInvalidId, "uiDivId" )) == nullptr || ele->uuId != kRootUuId )
   {
     cwLogError(kOpFailRC,"The UI root element creation failed.");
     goto errLabel;
@@ -824,7 +912,7 @@ cw::rc_t cw::ui::create(
     goto errLabel;
 
   if( uiRsrc != nullptr )
-    if((rc = _createFromObj( p, uiRsrc, kInvalidId, kRootUuId )) != kOkRC )
+    if((rc = _createFromObj( p, uiRsrc, kInvalidId, kRootUuId, kInvalidId )) != kOkRC )
       rc = cwLogError(rc,"Create from UI resource failed.");
 
   
@@ -886,7 +974,7 @@ cw::rc_t cw::ui::onConnect( handle_t h, unsigned wsSessId )
   // append the new session id
   p->sessA[p->sessN++] = wsSessId;
   
-  p->uiCbFunc( p->uiCbArg, wsSessId, kConnectOpId, kInvalidId, kInvalidId, kInvalidId, nullptr );
+  p->uiCbFunc( p->uiCbArg, wsSessId, kConnectOpId, kInvalidId, kInvalidId, kInvalidId, kInvalidId, nullptr );
   return kOkRC;
 }
 
@@ -894,7 +982,7 @@ cw::rc_t cw::ui::onDisconnect( handle_t h, unsigned wsSessId )
 {
   ui_t* p = _handleToPtr(h);
 
-  p->uiCbFunc( p->uiCbArg, wsSessId, kDisconnectOpId, kInvalidId, kInvalidId, kInvalidId, nullptr );
+  p->uiCbFunc( p->uiCbArg, wsSessId, kDisconnectOpId, kInvalidId, kInvalidId, kInvalidId, kInvalidId, nullptr );
 
   // erase the disconnected session id by shrinking the array
   for(unsigned i=0; i<p->sessN; ++i)
@@ -926,7 +1014,7 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* msg, unsi
       _onNewRemoteUi( p, wsSessId );
       
       // Pass on the 'init' msg to the app.
-      p->uiCbFunc( p->uiCbArg, wsSessId, opId, kInvalidId, kInvalidId, kInvalidId, nullptr );
+      p->uiCbFunc( p->uiCbArg, wsSessId, opId, kInvalidId, kInvalidId, kInvalidId, kInvalidId, nullptr );
       break;
                 
     case kValueOpId:
@@ -936,11 +1024,22 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* msg, unsi
       {
         unsigned parentEleAppId = ele->parent == nullptr ? kInvalidId : ele->parent->appId;
 
-        p->uiCbFunc( p->uiCbArg, wsSessId, opId, parentEleAppId, ele->uuId, ele->appId, &value );
+        p->uiCbFunc( p->uiCbArg, wsSessId, opId, parentEleAppId, ele->uuId, ele->appId, ele->chanId, &value );
                   
       }
       break;
 
+    case kClickOpId:
+      if((ele = _parse_click_msg(p, (const char*)msg )) == nullptr )
+        cwLogError(kOpFailRC,"UI Value message parse failed.");
+      else
+      {
+        unsigned parentEleAppId = ele->parent == nullptr ? kInvalidId : ele->parent->appId;
+
+        p->uiCbFunc( p->uiCbArg, wsSessId, opId, parentEleAppId, ele->uuId, ele->appId, ele->chanId, &value );
+      }
+      break;
+      
     case kEchoOpId:
       if((ele = _parse_echo_msg(p,(const char*)msg)) == nullptr )
         cwLogError(kOpFailRC,"UI Echo message parse failed.");
@@ -948,12 +1047,12 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* msg, unsi
       {
         unsigned parentEleAppId = ele->parent == nullptr ? kInvalidId : ele->parent->appId;
 
-        p->uiCbFunc( p->uiCbArg, wsSessId, opId, parentEleAppId, ele->uuId, ele->appId, nullptr );               
+        p->uiCbFunc( p->uiCbArg, wsSessId, opId, parentEleAppId, ele->uuId, ele->appId, ele->chanId,nullptr );               
       }
       break;
 
     case kIdleOpId:
-      p->uiCbFunc( p->uiCbArg, kInvalidId, opId, kInvalidId, kInvalidId, kInvalidId, nullptr );                     
+      p->uiCbFunc( p->uiCbArg, kInvalidId, opId, kInvalidId, kInvalidId, kInvalidId, kInvalidId, nullptr );                     
       break;
 
     case kInvalidOpId:
@@ -1034,21 +1133,21 @@ unsigned  cw::ui::findElementAppId(  handle_t h, unsigned uuId )
 }
 
 
-cw::rc_t cw::ui::createFromObject( handle_t  h, const object_t* o,  unsigned wsSessId,  unsigned parentUuId,  const char* eleName )
+cw::rc_t cw::ui::createFromObject( handle_t  h, const object_t* o,  unsigned parentUuId,  unsigned chanId, const char* fieldName )
 {
   ui_t*  p         = _handleToPtr(h);
   rc_t   rc        = kOkRC;
   
   //ele_t* parentEle = nullptr;
   
-  if( eleName != nullptr )
-    if((o = o->find(eleName)) == nullptr )
+  if( fieldName != nullptr )
+    if((o = o->find(fieldName)) == nullptr )
     {
-      rc = cwLogError(kSyntaxErrorRC,"Unable to locate the '%s' sub-configuration.",cwStringNullGuard(eleName));
+      rc = cwLogError(kSyntaxErrorRC,"Unable to locate the '%s' sub-configuration.",cwStringNullGuard(fieldName));
       goto errLabel;
     }
 
-  if((rc = _createFromObj( p, o, wsSessId, parentUuId )) != kOkRC )
+  if((rc = _createFromObj( p, o, kInvalidId, parentUuId, chanId )) != kOkRC )
     goto errLabel;
 
  errLabel:
@@ -1059,7 +1158,7 @@ cw::rc_t cw::ui::createFromObject( handle_t  h, const object_t* o,  unsigned wsS
 }
 
 
-cw::rc_t cw::ui::createFromFile( handle_t  h, const char* fn,  unsigned wsSessId,  unsigned parentUuId)
+cw::rc_t cw::ui::createFromFile( handle_t  h, const char* fn,  unsigned parentUuId, unsigned chanId)
 {
   ui_t*     p  = _handleToPtr(h);
   rc_t      rc = kOkRC;
@@ -1068,7 +1167,7 @@ cw::rc_t cw::ui::createFromFile( handle_t  h, const char* fn,  unsigned wsSessId
   if((rc = objectFromFile( fn, o )) != kOkRC )
     goto errLabel;
 
-  if((rc = _createFromObj( p, o, wsSessId, parentUuId )) != kOkRC )
+  if((rc = _createFromObj( p, o, kInvalidId, parentUuId, chanId )) != kOkRC )
     goto errLabel;
 
  errLabel:
@@ -1081,7 +1180,7 @@ cw::rc_t cw::ui::createFromFile( handle_t  h, const char* fn,  unsigned wsSessId
   return rc;
 }
 
-cw::rc_t cw::ui::createFromText( handle_t h, const char* text, unsigned wsSessId,  unsigned parentUuId)
+cw::rc_t cw::ui::createFromText( handle_t h, const char* text,  unsigned parentUuId, unsigned chanId )
 {
   ui_t*     p  = _handleToPtr(h);
   rc_t      rc = kOkRC;
@@ -1090,7 +1189,7 @@ cw::rc_t cw::ui::createFromText( handle_t h, const char* text, unsigned wsSessId
   if((rc = objectFromString( text, o )) != kOkRC )
     goto errLabel;
     
-  if((rc = _createFromObj( p, o, wsSessId, parentUuId )) != kOkRC )
+  if((rc = _createFromObj( p, o, kInvalidId, parentUuId, chanId )) != kOkRC )
     goto errLabel;
 
  errLabel:
@@ -1103,93 +1202,93 @@ cw::rc_t cw::ui::createFromText( handle_t h, const char* text, unsigned wsSessId
   return rc;
 }
    
-cw::rc_t cw::ui::createDiv( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title  )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "div", wsSessId, parentUuId, eleName, appId, clas, title ); }
+cw::rc_t cw::ui::createDiv( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title  )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "div", kInvalidId, parentUuId, eleName, appId, chanId, clas, title ); }
 
-cw::rc_t cw::ui::createLabel( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "label", wsSessId, parentUuId, eleName, appId, clas, title ); }
+cw::rc_t cw::ui::createLabel( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "label", kInvalidId, parentUuId, eleName, appId, chanId, clas, title ); }
 
-cw::rc_t cw::ui::createButton( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title  )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "button", wsSessId, parentUuId, eleName, appId, clas, title ); }
+cw::rc_t cw::ui::createButton( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title  )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "button", kInvalidId, parentUuId, eleName, appId, chanId, clas, title ); }
 
-cw::rc_t cw::ui::createCheck( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title  )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "check", wsSessId, parentUuId, eleName, appId, clas, title ); }
+cw::rc_t cw::ui::createCheck( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title  )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "check", kInvalidId, parentUuId, eleName, appId, chanId, clas, title ); }
 
-cw::rc_t cw::ui::createCheck( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, bool value  )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "check", wsSessId, parentUuId, eleName, appId, clas, title, "value", value ); }
+cw::rc_t cw::ui::createCheck( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, bool value  )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "check", kInvalidId, parentUuId, eleName, appId, chanId, clas, title, "value", value ); }
 
-cw::rc_t cw::ui::createSelect( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "select", wsSessId, parentUuId, eleName, appId, clas, title ); }
+cw::rc_t cw::ui::createSelect( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "select", kInvalidId, parentUuId, eleName, appId, chanId, clas, title ); }
 
-cw::rc_t cw::ui::createOption( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "option", wsSessId, parentUuId, eleName, appId, clas, title ); }
+cw::rc_t cw::ui::createOption( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "option", kInvalidId, parentUuId, eleName, appId, chanId, clas, title ); }
 
-cw::rc_t cw::ui::createStr( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "string", wsSessId, parentUuId, eleName, appId, clas, title ); }
+cw::rc_t cw::ui::createStr( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "string", kInvalidId, parentUuId, eleName, appId, chanId, clas, title ); }
 
-cw::rc_t cw::ui::createStr( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, const char* value )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "string", wsSessId, parentUuId, eleName, appId, clas, title, "value", value ); }
+cw::rc_t cw::ui::createStr( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, const char* value )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "string", kInvalidId, parentUuId, eleName, appId, chanId, clas, title, "value", value ); }
 
-cw::rc_t cw::ui::createNumbDisplay( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, unsigned decpl )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "numb_disp", wsSessId, parentUuId, eleName, appId, clas, title, "decpl", decpl ); }
+cw::rc_t cw::ui::createNumbDisplay( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, unsigned decpl )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "numb_disp", kInvalidId, parentUuId, eleName, appId, chanId, clas, title, "decpl", decpl ); }
 
-cw::rc_t cw::ui::createNumbDisplay( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, unsigned decpl, double value )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "numb_disp", wsSessId, parentUuId, eleName, appId, clas, title, "decpl", decpl, "value", value ); }
+cw::rc_t cw::ui::createNumbDisplay( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, unsigned decpl, double value )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "numb_disp", kInvalidId, parentUuId, eleName, appId, chanId, clas, title, "decpl", decpl, "value", value ); }
 
-cw::rc_t cw::ui::createNumb( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double minValue, double maxValue, double stepValue, unsigned decpl )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "number", wsSessId, parentUuId, eleName, appId, clas, title, "min", minValue, "max", maxValue, "step", stepValue, "decpl", decpl ); }
+cw::rc_t cw::ui::createNumb( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, double minValue, double maxValue, double stepValue, unsigned decpl )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "number", kInvalidId, parentUuId, eleName, appId, chanId, clas, title, "min", minValue, "max", maxValue, "step", stepValue, "decpl", decpl ); }
 
-cw::rc_t cw::ui::createNumb( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double minValue, double maxValue, double stepValue, unsigned decpl, double value )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "number", wsSessId, parentUuId, eleName, appId, clas, title, "min", minValue, "max", maxValue, "step", stepValue, "decpl", decpl, "value", value ); }
+cw::rc_t cw::ui::createNumb( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, double minValue, double maxValue, double stepValue, unsigned decpl, double value )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "number", kInvalidId, parentUuId, eleName, appId, chanId, clas, title, "min", minValue, "max", maxValue, "step", stepValue, "decpl", decpl, "value", value ); }
 
-cw::rc_t cw::ui::createProg(  handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double minValue, double maxValue )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "progress", wsSessId, parentUuId, eleName, appId, clas, title, "min", minValue, "max", maxValue ); }
+cw::rc_t cw::ui::createProg(  handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, double minValue, double maxValue )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "progress", kInvalidId, parentUuId, eleName, appId, chanId, clas, title, "min", minValue, "max", maxValue ); }
 
-cw::rc_t cw::ui::createProg(  handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double minValue, double maxValue, double value )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "progress", wsSessId, parentUuId, eleName, appId, clas, title, "value", value, "min", minValue, "max", maxValue ); }
+cw::rc_t cw::ui::createProg(  handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, double minValue, double maxValue, double value )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "progress", kInvalidId, parentUuId, eleName, appId, chanId, clas, title, "value", value, "min", minValue, "max", maxValue ); }
 
-cw::rc_t cw::ui::createLog(   handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "log", wsSessId, parentUuId, eleName, appId, clas, title);  }
+cw::rc_t cw::ui::createLog(   handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "log", kInvalidId, parentUuId, eleName, appId, chanId, clas, title);  }
 
-cw::rc_t cw::ui::createList( handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
-{ return _createOneEle( _handleToPtr(h), uuIdRef, "list", wsSessId, parentUuId, eleName, appId, clas, title);  }
+cw::rc_t cw::ui::createList( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "list", kInvalidId, parentUuId, eleName, appId, chanId, clas, title);  }
 
 
-cw::rc_t cw::ui::setNumbRange( handle_t h, unsigned wsSessId, unsigned uuId, double minValue, double maxValue, double stepValue, unsigned decPl, double value )
+cw::rc_t cw::ui::setNumbRange( handle_t h, unsigned uuId, double minValue, double maxValue, double stepValue, unsigned decPl, double value )
 {
   rc_t rc = kOkRC;
   ui_t* p = _handleToPtr(h);
   
-  const char* mFmt = "{ \"op\":\"set\", \"uuId\":%i, \"min\":%f, \"max\":%f, \"step\":%f, \"decpl\":%i, \"value\":%f }";
+  const char* mFmt = "{ \"op\":\"set\",  \"type\":\"number_range\", \"uuId\":%i, \"min\":%f, \"max\":%f, \"step\":%f, \"decpl\":%i, \"value\":%f }";
   const int   mbufN = 256;
   char        mbuf[mbufN];
   
   if( snprintf(mbuf,mbufN,mFmt,uuId,minValue,maxValue,stepValue,decPl,value) >= mbufN-1 )
     return cwLogError(kBufTooSmallRC,"The msg buffer is too small.");
   
-  rc = _websockSend(p,wsSessId,mbuf);
+  rc = _websockSend(p,kInvalidId,mbuf);
 
   return rc;
 }
 
-cw::rc_t cw::ui::setProgRange( handle_t h, unsigned wsSessId, unsigned uuId, double minValue, double maxValue, double value )
+cw::rc_t cw::ui::setProgRange( handle_t h, unsigned uuId, double minValue, double maxValue, double value )
 {
   rc_t rc = kOkRC;  
   ui_t* p = _handleToPtr(h);
   
-  const char* mFmt = "{ \"op\":\"set\", \"uuId\":%i, \"min\":%f, \"max\":%f, \"value\":%f }";
+  const char* mFmt = "{ \"op\":\"set\",  \"type\":\"progress_range\", \"uuId\":%i, \"min\":%f, \"max\":%f, \"value\":%f }";
   const int   mbufN = 256;
   char        mbuf[mbufN];
       
   if( snprintf(mbuf,mbufN,mFmt,uuId,minValue,maxValue,value) >= mbufN-1 )
     return cwLogError(kBufTooSmallRC,"The msg buffer is too small.");
   
-  rc = _websockSend(p,wsSessId,mbuf);
+  rc = _websockSend(p,kInvalidId,mbuf);
 
   return rc;
 }
 
-cw::rc_t cw::ui::setLogLine(   handle_t h, unsigned wsSessId, unsigned uuId, const char* text )
+cw::rc_t cw::ui::setLogLine(   handle_t h, unsigned uuId, const char* text )
 {
   rc_t rc = kOkRC;
 
@@ -1200,7 +1299,7 @@ cw::rc_t cw::ui::setLogLine(   handle_t h, unsigned wsSessId, unsigned uuId, con
       ++n;
 
   if( n == 0 )
-    rc = sendValueString(h,wsSessId,uuId,text);
+    rc = sendValueString(h,uuId,text);
   else
   {
     int sn = textLength(text);
@@ -1236,11 +1335,48 @@ cw::rc_t cw::ui::setLogLine(   handle_t h, unsigned wsSessId, unsigned uuId, con
 
     printf("%s %s\n",text,s);
     
-    rc = sendValueString(h,wsSessId,uuId,s);
+    rc = sendValueString(h,uuId,s);
 
   }
   
   return rc;
+}
+
+cw::rc_t cw::ui::setClickable( handle_t h, unsigned uuId, bool clickableFl )
+{ return _setPropertyFlag( h, UI_CLICKABLE_LABEL, uuId, clickableFl ); }
+
+cw::rc_t cw::ui::clearClickable( handle_t h, unsigned uuId )
+{ return setClickable(h,uuId,false); }
+
+bool cw::ui::isClickable( handle_t h, unsigned uuId )
+{
+  ui_t*  p           = _handleToPtr(h);
+  ele_t* ele         = nullptr;
+  bool   clickableFl = false;
+
+  if((ele = _uuIdToEle(p,uuId)) != nullptr )
+    clickableFl = _get_attribute_bool(ele,UI_CLICKABLE_LABEL);
+  
+  return clickableFl;   
+}
+
+
+cw::rc_t cw::ui::setSelect( handle_t h, unsigned uuId, bool enableFl )
+{ return _setPropertyFlag( h, UI_SELECT_LABEL, uuId, enableFl );   }
+
+cw::rc_t cw::ui::clearSelect( handle_t h, unsigned uuId )
+{ return setSelect(h,uuId,false); }
+
+bool cw::ui::isSelected( handle_t h, unsigned uuId )
+{
+  ui_t*  p        = _handleToPtr(h);
+  ele_t* ele      = nullptr;
+  bool   selectFl = false;
+
+  if((ele = _uuIdToEle(p,uuId)) != nullptr )
+    selectFl = _get_attribute_bool(ele,UI_SELECT_LABEL);
+  
+  return selectFl;   
 }
 
 
@@ -1250,42 +1386,42 @@ cw::rc_t cw::ui::registerAppIdMap(  handle_t h, const appIdMap_t* map, unsigned 
   return _registerAppIdMap( _handleToPtr(h), map, mapN);
 }
 
-cw::rc_t cw::ui::sendValueBool( handle_t h, unsigned wsSessId, unsigned uuId, bool value )
+cw::rc_t cw::ui::sendValueBool( handle_t h, unsigned uuId, bool value )
 {
   ui_t* p  = _handleToPtr(h);
-  return _sendValue<int>(p,wsSessId,uuId,"%i",value?1:0);
+  return _sendValue<int>(p,kInvalidId,uuId,"%i",value?1:0);
 }
 
-cw::rc_t cw::ui::sendValueInt( handle_t h, unsigned wsSessId, unsigned uuId, int value )
+cw::rc_t cw::ui::sendValueInt( handle_t h, unsigned uuId, int value )
 {
   ui_t* p  = _handleToPtr(h);
-  return _sendValue<int>(p,wsSessId,uuId,"%i",value);  
+  return _sendValue<int>(p,kInvalidId,uuId,"%i",value);  
 }
 
-cw::rc_t cw::ui::sendValueUInt( handle_t h, unsigned wsSessId, unsigned uuId, unsigned value )
+cw::rc_t cw::ui::sendValueUInt( handle_t h, unsigned uuId, unsigned value )
 {
   ui_t* p  = _handleToPtr(h);
-  return _sendValue<unsigned>(p,wsSessId,uuId,"%i",value);
+  return _sendValue<unsigned>(p,kInvalidId,uuId,"%i",value);
 }
 
-cw::rc_t cw::ui::sendValueFloat( handle_t h, unsigned wsSessId, unsigned uuId, float value )
+cw::rc_t cw::ui::sendValueFloat( handle_t h, unsigned uuId, float value )
 {
   ui_t* p  = _handleToPtr(h);
-  return _sendValue<float>(p,wsSessId,uuId,"%f",value);
+  return _sendValue<float>(p,kInvalidId,uuId,"%f",value);
   
 }
 
-cw::rc_t cw::ui::sendValueDouble( handle_t h, unsigned wsSessId, unsigned uuId, double value )
+cw::rc_t cw::ui::sendValueDouble( handle_t h, unsigned uuId, double value )
 {
   ui_t* p  = _handleToPtr(h);
-  return _sendValue<double>(p,wsSessId,uuId,"%f",value);
+  return _sendValue<double>(p,kInvalidId,uuId,"%f",value);
 }
 
-cw::rc_t cw::ui::sendValueString( handle_t h, unsigned wsSessId, unsigned uuId, const char* value )
+cw::rc_t cw::ui::sendValueString( handle_t h, unsigned uuId, const char* value )
 {
   ui_t* p  = _handleToPtr(h);
   // +10 allows for extra value buffer space for double quotes and slashed
-  return _sendValue<const char*>(p,wsSessId,uuId,"\"%s\"",value,strlen(value)+10);
+  return _sendValue<const char*>(p,kInvalidId,uuId,"\"%s\"",value,"value",strlen(value)+10);
 }
 
 void cw::ui::report( handle_t h )
@@ -1375,7 +1511,7 @@ namespace cw
       rc_t _webSockSend( void* cbArg, unsigned wsSessId, const void* msg, unsigned msgByteN )
       {
         ui_ws_t* p = static_cast<ui_ws_t*>(cbArg);
-        return websock::send( p->wsH, kUiProtocolId, wsSessId, msg, msgByteN );
+        return websock::send( p->wsH, kUiProtocolId, kInvalidId, msg, msgByteN );
       }
       
     }

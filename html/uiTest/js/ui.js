@@ -237,6 +237,14 @@ function ui_send_int_value(    ele, value ) { ui_send_value(ele,'i',value); }
 function ui_send_float_value(   ele, value ) { ui_send_value(ele,'f',value); }
 function ui_send_string_value( ele, value ) { ui_send_value(ele,'s',value); }
 
+function ui_send_click( ele )
+{
+    console.log("click " + ele.id )
+        
+    ws_send("click " + ele.id )  
+}
+
+
 function ui_send_echo( ele )
 {
     ws_send("echo " + ele.id ) 
@@ -267,6 +275,11 @@ function ui_get_parent( parentId )
     return parent_ele;  
 }
 
+function ui_on_click( ele, evt )
+{
+    ui_send_click(ele);
+    evt.stopPropagation();
+}
 
 function ui_create_ele( parent_ele, ele_type, d, dfltClassName )
 {
@@ -289,6 +302,9 @@ function ui_create_ele( parent_ele, ele_type, d, dfltClassName )
 	else
 	    ele.appId = null;
 
+	if( d.hasOwnProperty('clickable') )
+	    ui_set_clickable( ele, d.clickable );
+	
 	//console.log("Created: " + ele_type  + " parent:" + d.parentUuId + " id:" + ele.id + " appId:" + ele.appId)
 	
 	parent_ele.appendChild(ele);
@@ -777,6 +793,7 @@ function ui_create_log( parent_ele, d )
 function ui_create_list( parent_ele, d )
 {
     d.className = "uiList"
+    console.log(d)
     var list_ele  = ui_create_ctl( parent_ele, "div", d.title, d, "uiList" )
     
     return list_ele
@@ -848,10 +865,36 @@ function ui_set_value( d )
 	    break
 	    
 	    default:
-	    ui_error("Unknown UI element type: " + d.type )
+	    ui_error("Unknown UI element type on set value: " + d.type )
 	}
     }
 }
+
+function ui_set_select( ele, enableFl )
+{
+    let selectClassLabel = " uiSelected"
+    let isSelectSetFl    = ele.className.includes(selectClassLabel)
+
+    if( enableFl != isSelectSetFl )
+    {
+	if( enableFl )
+	    ele.className += selectClassLabel;
+	else
+	    ele.className = ele.className.replace(selectClassLabel, "");
+    }
+}
+
+
+function ui_set_clickable( ele, enableFl )
+{
+    ele.clickableFl = enableFl
+    
+    if(enableFl)
+	ele.onclick = function( evt ){ ui_on_click( this, evt ); }
+    else
+	ele.onclick = null
+}
+
 
 function ui_set( d )
 {
@@ -860,24 +903,26 @@ function ui_set( d )
 
     if( ele == null )
 	console.log("ele not found");
-    else
-	if( !ele.hasOwnProperty("uiEleType") )
-	    console.log("No type");
     
-    if( ele != null && ele.hasOwnProperty("uiEleType"))
+    if( ele != null)
     {
-	//console.log("found: "+ele.uiEleType)
-	
-	switch( ele.uiEleType )
+	switch( d.type )
 	{
-	    case "number":
+	    case "number_range":
 	    ui_set_number_range(ele, d)
 	    break;
 
-	    case "progress":
+	    case "progress_range":
 	    ui_set_prog_range(ele, d)
 	    break;
 
+	    case "select":
+	    ui_set_select(ele,d.enableFl)
+	    break
+
+	    case "clickable":
+	    ui_set_clickable(ele,d.enableFl)
+	    break
 	}
     }
 }

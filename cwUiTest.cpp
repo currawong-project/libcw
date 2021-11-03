@@ -77,44 +77,43 @@ namespace cw
       rc_t     rc      = kOkRC;
       unsigned uuid    = kInvalidId;
       unsigned selUuId = kInvalidId;
-
+      unsigned chanId  = 0;
       
       handle_t uiH = srv::uiHandle(p->wsUiSrvH);
 
       // Create a UI elements programatically.
 
-      if((rc = createDiv( uiH, p->myPanelUuId, wsSessId, kInvalidId, "myDivId", kDivId, "divClass", "My Panel" )) != kOkRC )
+      if((rc = createDiv( uiH, p->myPanelUuId,  kInvalidId, "myDivId", kDivId, chanId, "divClass", "My Panel" )) != kOkRC )
         goto errLabel;
 
-      if((rc = createCheck( uiH, uuid, wsSessId, p->myPanelUuId, "myCheckId", kCheckId, "checkClass", "Check Me", true )) != kOkRC )
+      if((rc = createCheck( uiH, uuid,  p->myPanelUuId, "myCheckId", kCheckId, chanId, "checkClass", "Check Me", true )) != kOkRC )
         goto errLabel;
       
-      if((rc = createSelect( uiH, selUuId, wsSessId, p->myPanelUuId, "mySelId", kSelectId, "selClass", "Select" )) != kOkRC )
+      if((rc = createSelect( uiH, selUuId,  p->myPanelUuId, "mySelId", kSelectId, chanId, "selClass", "Select" )) != kOkRC )
         goto errLabel;
 
-      if((rc = createOption( uiH, uuid, wsSessId, selUuId, "myOpt0Id", kOption0Id, "optClass", "Option 0" )) != kOkRC )
+      if((rc = createOption( uiH, uuid,  selUuId, "myOpt0Id", kOption0Id, chanId, "optClass", "Option 0" )) != kOkRC )
         goto errLabel;
 
-      if((rc = createOption( uiH, uuid, wsSessId, selUuId, "myOpt1Id", kOption1Id, "optClass", "Option 1" )) != kOkRC )
+      if((rc = createOption( uiH, uuid,  selUuId, "myOpt1Id", kOption1Id, chanId, "optClass", "Option 1" )) != kOkRC )
         goto errLabel;
       
-      if((rc = createOption( uiH, uuid, wsSessId, selUuId, "myOpt2Id", kOption2Id, "optClass", "Option 2" )) != kOkRC )
+      if((rc = createOption( uiH, uuid,  selUuId, "myOpt2Id", kOption2Id, chanId, "optClass", "Option 2" )) != kOkRC )
         goto errLabel;
 
-      if((rc = createStr( uiH, uuid, wsSessId, p->myPanelUuId, "myStringId", kStringId, "stringClass", "String", "a string value" )) != kOkRC )
+      if((rc = createStr( uiH, uuid,  p->myPanelUuId, "myStringId", kStringId, chanId, "stringClass", "String", "a string value" )) != kOkRC )
         goto errLabel;
       
-      if((rc = createNumb( uiH, uuid, wsSessId, p->myPanelUuId, "myIntegerId", kIntegerId, "integerClass", "Integer", 0, 100, 1, 0, 10 )) != kOkRC )
+      if((rc = createNumb( uiH, uuid,  p->myPanelUuId, "myIntegerId", kIntegerId, chanId, "integerClass", "Integer", 0, 100, 1, 0, 10 )) != kOkRC )
         goto errLabel;
 
-      if((rc = createNumb( uiH, uuid, wsSessId, p->myPanelUuId, "myFloatId", kFloatId, "floatClass", "Float", 0.53, 100.97, 1.0, 5, 10.0 )) != kOkRC )
+      if((rc = createNumb( uiH, uuid,  p->myPanelUuId, "myFloatId", kFloatId, chanId, "floatClass", "Float", 0.53, 100.97, 1.0, 5, 10.0 )) != kOkRC )
         goto errLabel;
       
-      if((rc = createProg(  uiH, uuid, wsSessId, p->myPanelUuId, "myProgressId", kProgressId, "progressClass", "Progress", 0, 10, 5 )) != kOkRC )
+      if((rc = createProg(  uiH, uuid,  p->myPanelUuId, "myProgressId", kProgressId, chanId, "progressClass", "Progress", 0, 10, 5 )) != kOkRC )
         goto errLabel;
-
       
-      if((rc = createLog( uiH, p->logUuId, wsSessId, p->myPanelUuId, "myLogId", kLogId, "logClass", "My Log (click toggles auto-scroll)" )) != kOkRC )
+      if((rc = createLog( uiH, p->logUuId,  p->myPanelUuId, "myLogId", kLogId, chanId, "logClass", "My Log (click toggles auto-scroll)" )) != kOkRC )
         goto errLabel;
 
     errLabel:
@@ -137,7 +136,7 @@ namespace cw
     }
 
 
-    rc_t _insert_list_ele( ui_test_t* p, unsigned wsSessId )
+    rc_t _insert_list_ele( ui_test_t* p )
     {
       rc_t     rc   = kOkRC;
 
@@ -148,16 +147,16 @@ namespace cw
 
         printf("list uuid:%i\n",listUuId);
 
-        rc = createFromObject( uiH, p->listEleCfg, wsSessId, listUuId );        
+        rc = createFromObject( uiH, p->listEleCfg,  listUuId, kInvalidId );        
       }
       
       return rc;
     }
 
 
-    rc_t _insert_log_line( ui_test_t* p, unsigned wsSessId, const char* text )
+    rc_t _insert_log_line( ui_test_t* p,  const char* text )
     {
-      return ui::setLogLine( srv::uiHandle(p->wsUiSrvH), wsSessId, p->logUuId, text );
+      return ui::setLogLine( srv::uiHandle(p->wsUiSrvH),  p->logUuId, text );
     }
 
     rc_t _handleUiValueMsg( ui_test_t* p, unsigned wsSessId, unsigned parentAppId, unsigned uuId, unsigned appId, const value_t* v )
@@ -173,7 +172,7 @@ namespace cw
         case kCheckId:
           printf("Check:%i\n", v->u.b);
           p->appCheckFl = v->u.b;
-          _insert_log_line( p, wsSessId, "check!\n" );
+          _insert_log_line( p, "check!\n" );
           break;
 
         case kSelectId:
@@ -195,7 +194,7 @@ namespace cw
           
             handle_t uiH = srv::uiHandle(p->wsUiSrvH);
             unsigned progUuId = findElementUuId(   uiH, p->myPanelUuId, kProgressId );
-            sendValueInt(   uiH, wsSessId, progUuId, v->u.i );
+            sendValueInt(   uiH, progUuId, v->u.i );
           }
           break;
           
@@ -224,7 +223,7 @@ namespace cw
         case kPanelCheck2Id:
           printf("check 1: %i\n",v->u.b);
           p->appCheck1Fl = v->u.b;
-          _insert_list_ele( p, wsSessId );
+          _insert_list_ele( p );
           break;
           
         case kPanelFloaterId:
@@ -249,43 +248,43 @@ namespace cw
       switch( appId )
       {
         case kCheckId:
-          sendValueBool( uiHandle( p->wsUiSrvH ), wsSessId, uuId, p->appCheckFl );
+          sendValueBool( uiHandle( p->wsUiSrvH ),  uuId, p->appCheckFl );
           break;
 
         case kSelectId:
-          sendValueInt( uiHandle( p->wsUiSrvH ), wsSessId, uuId, p->appSelOptAppId );
+          sendValueInt( uiHandle( p->wsUiSrvH ),  uuId, p->appSelOptAppId );
           break;
 
         case kStringId:
-          sendValueString( uiHandle( p->wsUiSrvH ), wsSessId, uuId, p->appString );
+          sendValueString( uiHandle( p->wsUiSrvH ),  uuId, p->appString );
           break;
           
         case kIntegerId:
-          sendValueInt( uiHandle( p->wsUiSrvH ), wsSessId, uuId, p->appInteger );
+          sendValueInt( uiHandle( p->wsUiSrvH ),  uuId, p->appInteger );
           break;
 
         case kFloatId:
-          sendValueFloat( uiHandle( p->wsUiSrvH ), wsSessId, uuId, p->appFloat );
+          sendValueFloat( uiHandle( p->wsUiSrvH ),  uuId, p->appFloat );
           break;
           
         case kProgressId:
-          sendValueInt( uiHandle( p->wsUiSrvH ), wsSessId, uuId, p->appProgress );
+          sendValueInt( uiHandle( p->wsUiSrvH ),  uuId, p->appProgress );
           break;
 
         case kPanelCheck1Id:
-          sendValueBool( uiHandle( p->wsUiSrvH ), wsSessId, uuId, p->appCheck1Fl);
+          sendValueBool( uiHandle( p->wsUiSrvH ),  uuId, p->appCheck1Fl);
           break;
           
         case kPanelCheck2Id:
-          sendValueBool( uiHandle( p->wsUiSrvH ), wsSessId, uuId, p->appCheck2Fl);
+          sendValueBool( uiHandle( p->wsUiSrvH ),  uuId, p->appCheck2Fl);
           break;
           
         case kPanelFloaterId:
-          sendValueFloat( uiHandle( p->wsUiSrvH ), wsSessId, uuId, p->appNumb );
+          sendValueFloat( uiHandle( p->wsUiSrvH ),  uuId, p->appNumb );
           break;
 
         case kSelId:
-          sendValueInt( uiHandle( p->wsUiSrvH ), wsSessId, uuId, p->appSelId );
+          sendValueInt( uiHandle( p->wsUiSrvH ),  uuId, p->appSelId );
           break;
       }
       return rc;
@@ -294,7 +293,7 @@ namespace cw
 
 
     // This function is called by the websocket with messages coming from a remote UI.
-    rc_t _uiTestCallback( void* cbArg, unsigned wsSessId, opId_t opId, unsigned parentAppId, unsigned uuId, unsigned appId, const value_t* v )
+    rc_t _uiTestCallback( void* cbArg, unsigned wsSessId, opId_t opId, unsigned parentAppId, unsigned uuId, unsigned appId, unsigned chanId, const value_t* v )
     {
       ui_test_t* p = (ui_test_t*)cbArg;
       
@@ -316,6 +315,17 @@ namespace cw
           _handleUiValueMsg( p, wsSessId, parentAppId, uuId, appId, v );
           break;
 
+        case kClickOpId:
+          {
+            printf("APP clicked. uu:%i app:%i ch:%i\n",uuId,appId,chanId);
+
+            handle_t uiH = srv::uiHandle(p->wsUiSrvH);
+            bool selectedFl = isSelected(uiH,uuId);
+            setSelect(   uiH, uuId, !selectedFl );
+          
+          }
+          break;
+          
         case kEchoOpId:
           _handleUiEchoMsg( p, wsSessId, parentAppId, uuId, appId );
           break;
