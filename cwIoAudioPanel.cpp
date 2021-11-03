@@ -127,6 +127,7 @@ namespace cw {
         unsigned    parentUuId  = ui::kRootAppId;
         unsigned    divUuId     = kInvalidId;
         unsigned    titleUuId   = kInvalidId;
+        unsigned    chanId      = kInvalidId;
         const char* title       = inputFl ? "Input"        : "Output";
         const char* divEleName  = inputFl ? "inMeterId"    : "outMeterId";
         unsigned    divAppId    = inputFl ? kInMeterDivId  : kOutMeterDivId;
@@ -137,14 +138,14 @@ namespace cw {
         unsigned    colUuId;
         unsigned    uuid;
 
-        uiCreateLabel(p->ioH, titleUuId, wsSessId, parentUuId, nullptr,    kInvalidId, nullptr, title );
-        uiCreateDiv(  p->ioH, divUuId,   wsSessId, parentUuId, divEleName, d->baseAppId + divAppId,   "uiRow", nullptr );
+        uiCreateLabel(p->ioH, titleUuId,  parentUuId, nullptr,    kInvalidId, chanId, nullptr, title );
+        uiCreateDiv(  p->ioH, divUuId,    parentUuId, divEleName, d->baseAppId + divAppId, chanId,  "uiRow", nullptr );
 
-        uiCreateDiv(  p->ioH, colUuId, wsSessId, divUuId, nullptr, kInvalidId, "uiCol", nullptr );        
-        uiCreateLabel(p->ioH, uuid,    wsSessId, colUuId, nullptr, kInvalidId, nullptr, "Tone" );
-        uiCreateLabel(p->ioH, uuid,    wsSessId, colUuId, nullptr, kInvalidId, nullptr, "Mute" );
-        uiCreateLabel(p->ioH, uuid,    wsSessId, colUuId, nullptr, kInvalidId, nullptr, "Gain" );
-        uiCreateLabel(p->ioH, uuid,    wsSessId, colUuId, nullptr, kInvalidId, nullptr, "Meter" );
+        uiCreateDiv(  p->ioH, colUuId,  divUuId, nullptr, kInvalidId, chanId,  "uiCol", nullptr );        
+        uiCreateLabel(p->ioH, uuid,     colUuId, nullptr, kInvalidId, chanId, nullptr, "Tone" );
+        uiCreateLabel(p->ioH, uuid,     colUuId, nullptr, kInvalidId, chanId, nullptr, "Mute" );
+        uiCreateLabel(p->ioH, uuid,     colUuId, nullptr, kInvalidId, chanId, nullptr, "Gain" );
+        uiCreateLabel(p->ioH, uuid,     colUuId, nullptr, kInvalidId, chanId, nullptr, "Meter" );
       
         for(unsigned i=0; i<chCnt; ++i)
         {
@@ -152,11 +153,11 @@ namespace cw {
           char     chLabel[ chLabelN+1 ];
           snprintf(chLabel,chLabelN,"%i",i+1);
         
-          uiCreateDiv(  p->ioH, colUuId, wsSessId, divUuId, nullptr, kInvalidId, "uiCol", chLabel );        
-          uiCreateCheck(p->ioH, uuid,    wsSessId, colUuId, nullptr, d->baseAppId + baseToneId  + i, "checkClass", nullptr, false );
-          uiCreateCheck(p->ioH, uuid,    wsSessId, colUuId, nullptr, d->baseAppId + baseMuteId  + i, "checkClass", nullptr, false );
-          uiCreateNumb( p->ioH, uuid,    wsSessId, colUuId, nullptr, d->baseAppId + baseGainId  + i, "floatClass", nullptr,    0.0, 3.0, 0.001, 3, 0 );
-          uiCreateNumb( p->ioH, uuid,    wsSessId, colUuId, nullptr, d->baseAppId + baseMeterId + i, "floatClass", nullptr, -100.0, 100, 1, 2, 0 );
+          uiCreateDiv(  p->ioH, colUuId,  divUuId, nullptr, kInvalidId, kInvalidId, "uiCol", chLabel );        
+          uiCreateCheck(p->ioH, uuid,     colUuId, nullptr, d->baseAppId + baseToneId  + i, i, "checkClass", nullptr, false );
+          uiCreateCheck(p->ioH, uuid,     colUuId, nullptr, d->baseAppId + baseMuteId  + i, i, "checkClass", nullptr, false );
+          uiCreateNumb( p->ioH, uuid,     colUuId, nullptr, d->baseAppId + baseGainId  + i, i, "floatClass", nullptr,    0.0, 3.0, 0.001, 3, 0 );
+          uiCreateNumb( p->ioH, uuid,     colUuId, nullptr, d->baseAppId + baseMeterId + i, i, "floatClass", nullptr, -100.0, 100, 1, 2, 0 );
         } 
       
         return rc;
@@ -170,8 +171,8 @@ namespace cw {
         
         for(; d!=nullptr; d=d->link)
         {
-          _create_meters( p, d, m.wsSessId, d->iChCnt, true );
-          _create_meters( p, d, m.wsSessId, d->oChCnt, false );
+          _create_meters( p, d, kInvalidId, d->iChCnt, true );
+          _create_meters( p, d, kInvalidId, d->oChCnt, false );
         }
         
         return rc;
@@ -250,7 +251,7 @@ namespace cw {
           for(unsigned i=0; i<chCnt; ++i)
           {
             unsigned appId = apd->baseAppId + meterAppId + i;
-            uiSendValue(  p->ioH, kInvalidId, uiFindElementUuId(p->ioH,appId), agd.meterA[i] );
+            uiSendValue(  p->ioH, uiFindElementUuId(p->ioH,appId), agd.meterA[i] );
           }
           return kOkRC;
           

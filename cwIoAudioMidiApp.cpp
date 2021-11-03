@@ -221,10 +221,10 @@ namespace cw
     errLabel:
       mem::release(fn);
 
-      io::uiSendValue( app->ioH, kInvalidId, uiFindElementUuId(app->ioH,kCurMidiEvtCntId),   midi_record_play::event_index(app->mrpH) );
-      io::uiSendValue( app->ioH, kInvalidId, uiFindElementUuId(app->ioH,kTotalMidiEvtCntId), midi_record_play::event_count(app->mrpH) );
-      io::uiSendValue( app->ioH, kInvalidId, uiFindElementUuId(app->ioH,kCurAudioSecsId),    audio_record_play::current_loc_seconds(app->arpH) );
-      io::uiSendValue( app->ioH, kInvalidId, uiFindElementUuId(app->ioH,kTotalAudioSecsId),  audio_record_play::duration_seconds(app->arpH) );
+      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId),   midi_record_play::event_index(app->mrpH) );
+      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kTotalMidiEvtCntId), midi_record_play::event_count(app->mrpH) );
+      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurAudioSecsId),    audio_record_play::current_loc_seconds(app->arpH) );
+      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kTotalAudioSecsId),  audio_record_play::duration_seconds(app->arpH) );
       
 
       return rc;
@@ -245,8 +245,8 @@ namespace cw
         goto errLabel;
       }
 
-      io::uiSendValue( app->ioH, kInvalidId, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), midi_record_play::event_index(app->mrpH) );
-      io::uiSendValue( app->ioH, kInvalidId, uiFindElementUuId(app->ioH,kCurAudioSecsId),  audio_record_play::current_loc_seconds(app->arpH) );
+      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), midi_record_play::event_index(app->mrpH) );
+      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurAudioSecsId),  audio_record_play::current_loc_seconds(app->arpH) );
       
     errLabel:
       return rc;
@@ -323,8 +323,8 @@ namespace cw
         goto errLabel;
       }
 
-      io::uiSendValue( app->ioH, kInvalidId, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), midi_record_play::event_index(app->mrpH) );
-      io::uiSendValue( app->ioH, kInvalidId, uiFindElementUuId(app->ioH,kCurAudioSecsId),  audio_record_play::current_loc_seconds(app->arpH) );
+      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), midi_record_play::event_index(app->mrpH) );
+      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurAudioSecsId),  audio_record_play::current_loc_seconds(app->arpH) );
       
       
     errLabel:
@@ -454,14 +454,14 @@ namespace cw
       {
         midi_record_play::exec( app->mrpH, *m );
         if( midi_record_play::is_started(app->mrpH) )
-          io::uiSendValue( app->ioH, kInvalidId, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), midi_record_play::event_index(app->mrpH) );
+          io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), midi_record_play::event_index(app->mrpH) );
       }
       
       if( app->arpH.isValid() )
       {
         audio_record_play::exec( app->arpH, *m );
         if( audio_record_play::is_started(app->arpH) )
-          io::uiSendValue( app->ioH, kInvalidId, uiFindElementUuId(app->ioH,kCurAudioSecsId), audio_record_play::current_loc_seconds(app->arpH) );
+          io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurAudioSecsId), audio_record_play::current_loc_seconds(app->arpH) );
       }
 
       switch( m->tid )

@@ -106,19 +106,17 @@ namespace cw
       
     } app_t;
 
-    rc_t _parseCfg(app_t* app, const object_t* cfg )
+    rc_t _parseCfg(app_t* app, const object_t* cfg, const object_t*& params_cfgRef )
     {
       rc_t rc = kOkRC;
 
-      const object_t* params  = nullptr;
-
-      if((rc = cfg->getv( "params", params)) != kOkRC )
+      if((rc = cfg->getv( "params", params_cfgRef)) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"Preset Select App 'params' cfg record not found.");
         goto errLabel;
       }
         
-      if((rc = params->getv( "record_dir",    app->record_dir,
+      if((rc = params_cfgRef->getv( "record_dir",    app->record_dir,
                              "record_folder", app->record_folder,
                              "record_fn_ext", app->record_fn_ext,
                              "score_fn",      app->scoreFn )) != kOkRC )
@@ -288,8 +286,8 @@ namespace cw
       
     errLabel:
 
-      io::uiSendValue( app->ioH, kInvalidId, uiFindElementUuId(app->ioH,kCurMidiEvtCntId),   midi_record_play::event_index(app->mrpH) );
-      io::uiSendValue( app->ioH, kInvalidId, uiFindElementUuId(app->ioH,kTotalMidiEvtCntId), midi_record_play::event_count(app->mrpH) );
+      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId),   midi_record_play::event_index(app->mrpH) );
+      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kTotalMidiEvtCntId), midi_record_play::event_count(app->mrpH) );
       
       return rc;
     }
@@ -310,7 +308,7 @@ namespace cw
       //  goto errLabel;
       //}
 
-      io::uiSendValue( app->ioH, kInvalidId, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), midi_record_play::event_index(app->mrpH) );
+      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), midi_record_play::event_index(app->mrpH) );
       //io::uiSendValue( app->ioH, kInvalidId, uiFindElementUuId(app->ioH,kCurAudioSecsId),  audio_record_play::current_loc_seconds(app->arpH) );
       
       errLabel:
@@ -364,7 +362,7 @@ namespace cw
           else
           {
             start( app->mrpH, false );
-            io::uiSendValue( app->ioH, kInvalidId, uiFindElementUuId(app->ioH,kCurMidiEvtCntId),   midi_record_play::event_index(app->mrpH) );
+            io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId),   midi_record_play::event_index(app->mrpH) );
           }
           break;
           
@@ -493,7 +491,7 @@ namespace cw
       {
         midi_record_play::exec( app->mrpH, *m );
         if( midi_record_play::is_started(app->mrpH) )
-          io::uiSendValue( app->ioH, kInvalidId, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), midi_record_play::event_index(app->mrpH) );
+          io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), midi_record_play::event_index(app->mrpH) );
       }
       
       /*
@@ -549,9 +547,10 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg )
 {
   rc_t rc;
   app_t app = {};
-
+  const object_t* params_cfg = nullptr;
+  
   // Parse the configuration
-  if((rc = _parseCfg(&app,cfg)) != kOkRC )
+  if((rc = _parseCfg(&app,cfg,params_cfg)) != kOkRC )
     goto errLabel;
         
   // create the io framework instance
@@ -562,7 +561,7 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg )
   }
 
   // create the MIDI record-play object
-  if((rc = midi_record_play::create(app.mrpH,app.ioH,*cfg,_midi_play_callback,&app)) != kOkRC )
+  if((rc = midi_record_play::create(app.mrpH,app.ioH,*params_cfg,_midi_play_callback,&app)) != kOkRC )
   {
     rc = cwLogError(rc,"MIDI record-play object create failed.");
     goto errLabel;

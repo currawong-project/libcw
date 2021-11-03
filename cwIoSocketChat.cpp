@@ -62,6 +62,7 @@ namespace cw {
       {
         rc_t     rc         = kOkRC;
         unsigned parentUuId = ui::kRootAppId;
+        unsigned chanId = kInvalidId;
         unsigned divUuId;
         unsigned uuid;
 
@@ -69,12 +70,12 @@ namespace cw {
         char s[sn+1];
         snprintf(s,sn,"Chat: %i", io::socketPort(p->ioH, p->sockIdx ));
         
-        uiCreateDiv(   p->ioH, divUuId,         m.wsSessId, parentUuId, nullptr, p->baseAppId + kUiDivAppId,        "uiCol",  s );
-        uiCreateStr(   p->ioH, uuid,            m.wsSessId, divUuId,    nullptr, p->baseAppId + kUiSendTextAppId,   "uiText", "Send" );
-        uiCreateStr(   p->ioH, uuid,            m.wsSessId, divUuId,    nullptr, p->baseAppId + kUiRemoteAddrAppId, "uiText", "Addr", "127.0.0.1" );
-        uiCreateNumb(  p->ioH, uuid,            m.wsSessId, divUuId,    nullptr, p->baseAppId + kUiRemotePortAppId, "uiNumb", "Port", 0, 0xffff, 1, 0, 0 );
-        uiCreateButton(p->ioH, uuid,            m.wsSessId, divUuId,    nullptr, p->baseAppId + kUiSendBtnAppId,    "uiBtn",  "Send" );
-        uiCreateStr(   p->ioH, p->recvTextUuId, m.wsSessId, divUuId,    nullptr, p->baseAppId + kUiRecvTextAppId,   "uiText", "Recv" );
+        uiCreateDiv(   p->ioH, divUuId,          parentUuId, nullptr, p->baseAppId + kUiDivAppId,        chanId, "uiCol",  s );
+        uiCreateStr(   p->ioH, uuid,             divUuId,    nullptr, p->baseAppId + kUiSendTextAppId,   chanId, "uiText", "Send" );
+        uiCreateStr(   p->ioH, uuid,             divUuId,    nullptr, p->baseAppId + kUiRemoteAddrAppId, chanId, "uiText", "Addr", "127.0.0.1" );
+        uiCreateNumb(  p->ioH, uuid,             divUuId,    nullptr, p->baseAppId + kUiRemotePortAppId, chanId, "uiNumb", "Port", 0, 0xffff, 1, 0, 0 );
+        uiCreateButton(p->ioH, uuid,             divUuId,    nullptr, p->baseAppId + kUiSendBtnAppId,    chanId, "uiBtn",  "Send" );
+        uiCreateStr(   p->ioH, p->recvTextUuId,  divUuId,    nullptr, p->baseAppId + kUiRecvTextAppId,   chanId, "uiText", "Recv" );
         
         return rc;
       }
@@ -145,21 +146,21 @@ namespace cw {
         {
           case kUiSendTextAppId:
             if( p->sendText )
-              io::uiSendValue( p->ioH, m.wsSessId, m.uuId, p->sendText );
+              io::uiSendValue( p->ioH,  m.uuId, p->sendText );
             break;
             
           case kUiRemoteAddrAppId:
             if( p->remoteAddr)
-              io::uiSendValue( p->ioH, m.wsSessId, m.uuId, p->remoteAddr );
+              io::uiSendValue( p->ioH,  m.uuId, p->remoteAddr );
             break;
             
           case kUiRecvTextAppId:
             if( p->recvText )
-              io::uiSendValue( p->ioH, m.wsSessId, m.uuId, p->recvText );
+              io::uiSendValue( p->ioH,  m.uuId, p->recvText );
             break;
             
           case kUiRemotePortAppId:
-            io::uiSendValue( p->ioH, m.wsSessId, m.uuId, p->remotePort );
+            io::uiSendValue( p->ioH,  m.uuId, p->remotePort );
             break;
 
           default:
@@ -218,7 +219,7 @@ namespace cw {
             if( m.byteA && p->sockIdx == m.sockIdx )
             {
               p->recvText = mem::duplStr((const char*)m.byteA);
-              io::uiSendValue(p->ioH, kInvalidId, p->recvTextUuId, (const char*)m.byteA );
+              io::uiSendValue(p->ioH, p->recvTextUuId, (const char*)m.byteA );
             }
             
             break;

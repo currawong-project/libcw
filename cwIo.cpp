@@ -455,8 +455,14 @@ namespace cw
     {
       rc_t     rc             = kOkRC;
       unsigned parserBufByteN = 1024;
-      
-      if((rc = c->getv(
+      const object_t* cfg = nullptr;
+
+      // get the MIDI port cfg
+      if((cfg = c->find("midi")) == nullptr)
+        return cwLogError(kSyntaxErrorRC,"Unable to locate the 'MIDI' configuration.");
+
+            
+      if((rc = cfg->getv(
             "parserBufByteN", parserBufByteN )) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"MIDI configuration parse failed.");
@@ -1478,14 +1484,14 @@ namespace cw
       }
 
       // parse the audio group list
-      if((rc = _audioDeviceParseAudioGroupList( p, cfg )) != kOkRC )
+      if((rc = _audioDeviceParseAudioGroupList( p, node )) != kOkRC )
       {
         rc = cwLogError(rc,"Parse audio group list.");
         goto errLabel;
       }
       
       // parse the audio device list
-      if((rc = _audioDeviceParseAudioDeviceList( p, cfg )) != kOkRC )
+      if((rc = _audioDeviceParseAudioDeviceList( p, node )) != kOkRC )
       {
         rc = cwLogError(rc,"Parse audio device list.");
         goto errLabel;
@@ -1546,13 +1552,13 @@ namespace cw
     //
 
     // This function is called by the websocket with messages comring from a remote UI.
-    rc_t _uiCallback( void* cbArg, unsigned wsSessId, ui::opId_t opId, unsigned parentAppId, unsigned uuId, unsigned appId, const ui::value_t* v )
+    rc_t _uiCallback( void* cbArg, unsigned wsSessId, ui::opId_t opId, unsigned parentAppId, unsigned uuId, unsigned appId, unsigned chanId, const ui::value_t* v )
     {
       io_t* p = (io_t*)cbArg;
       msg_t r;
       
       r.tid  = kUiTId;
-      r.u.ui = { .opId=opId, .wsSessId=wsSessId, .parentAppId=parentAppId, .uuId=uuId, .appId=appId, .value=v };
+      r.u.ui = { .opId=opId, .wsSessId=wsSessId, .parentAppId=parentAppId, .uuId=uuId, .appId=appId, .chanId=chanId, .value=v };
 
       return p->cbFunc(p->cbArg,&r);
     }
@@ -2588,192 +2594,192 @@ unsigned    cw::io::uiFindElementUuId( handle_t h, unsigned appId )
   return kInvalidId;  
 }
 
-cw::rc_t cw::io::uiCreateFromObject( handle_t h, const object_t* o, unsigned wsSessId, unsigned parentUuId, const char* eleName)
+cw::rc_t cw::io::uiCreateFromObject( handle_t h, const object_t* o, unsigned parentUuId, unsigned chanId, const char* eleName)
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc = ui::createFromObject(uiH,o,wsSessId,parentUuId,eleName);
+    rc = ui::createFromObject(uiH,o,parentUuId,chanId,eleName);
   return rc;
 }
 
-cw::rc_t cw::io::uiCreateFromFile(   handle_t h, const char* fn,    unsigned wsSessId, unsigned parentUuId)
+cw::rc_t cw::io::uiCreateFromFile(   handle_t h, const char* fn,    unsigned parentUuId, unsigned chanId)
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc = ui::createFromFile(uiH,fn,wsSessId,parentUuId);
+    rc = ui::createFromFile(uiH,fn,parentUuId,chanId);
   return rc;
 }
 
-cw::rc_t cw::io::uiCreateFromText(   handle_t h, const char* text,  unsigned wsSessId, unsigned parentUuId)
+cw::rc_t cw::io::uiCreateFromText(   handle_t h, const char* text,  unsigned parentUuId, unsigned chanId)
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc  = ui::createFromText(uiH,text,wsSessId,parentUuId);
+    rc  = ui::createFromText(uiH,text,parentUuId, chanId);
   return rc;
 }
 
-cw::rc_t cw::io::uiCreateDiv(        handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
+cw::rc_t cw::io::uiCreateDiv(        handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc  = ui::createDiv(uiH,uuIdRef,wsSessId,parentUuId,eleName,appId,clas,title);
+    rc  = ui::createDiv(uiH,uuIdRef,parentUuId,eleName,appId,chanId,clas,title);
   return rc;  
 }
 
-cw::rc_t cw::io::uiCreateLabel(      handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
+cw::rc_t cw::io::uiCreateLabel(      handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc  = ui::createLabel(uiH,uuIdRef,wsSessId,parentUuId,eleName,appId,clas,title);
+    rc  = ui::createLabel(uiH,uuIdRef,parentUuId,eleName,appId,chanId,clas,title);
   return rc;  
 }
 
-cw::rc_t cw::io::uiCreateButton(     handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
+cw::rc_t cw::io::uiCreateButton(     handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc  = ui::createButton(uiH,uuIdRef,wsSessId,parentUuId,eleName,appId,clas,title);
+    rc  = ui::createButton(uiH,uuIdRef,parentUuId,eleName,appId,chanId,clas,title);
   return rc;  
 }
 
-cw::rc_t cw::io::uiCreateCheck(      handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
+cw::rc_t cw::io::uiCreateCheck(      handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc  = ui::createCheck(uiH,uuIdRef,wsSessId,parentUuId,eleName,appId,clas,title);
+    rc  = ui::createCheck(uiH,uuIdRef,parentUuId,eleName,appId,chanId,clas,title);
   return rc;  
 }
 
-cw::rc_t cw::io::uiCreateCheck(      handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, bool value )
+cw::rc_t cw::io::uiCreateCheck(      handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, bool value )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc  = ui::createCheck(uiH,uuIdRef,wsSessId,parentUuId,eleName,appId,clas,title,value);
+    rc  = ui::createCheck(uiH,uuIdRef,parentUuId,eleName,appId,chanId,clas,title,value);
   return rc;  
 }
 
-cw::rc_t cw::io::uiCreateSelect(     handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
+cw::rc_t cw::io::uiCreateSelect(     handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc  = ui::createSelect(uiH,uuIdRef,wsSessId,parentUuId,eleName,appId,clas,title);
+    rc  = ui::createSelect(uiH,uuIdRef,parentUuId,eleName,appId,chanId,clas,title);
   return rc;  
 }
 
-cw::rc_t cw::io::uiCreateOption(     handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
+cw::rc_t cw::io::uiCreateOption(     handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc  = ui::createOption(uiH,uuIdRef,wsSessId,parentUuId,eleName,appId,clas,title);
+    rc  = ui::createOption(uiH,uuIdRef,parentUuId,eleName,appId,chanId,clas,title);
   return rc;  
 }
 
-cw::rc_t cw::io::uiCreateStr(        handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
+cw::rc_t cw::io::uiCreateStr(        handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc  = ui::createStr(uiH,uuIdRef,wsSessId,parentUuId,eleName,appId,clas,title);
+    rc  = ui::createStr(uiH,uuIdRef,parentUuId,eleName,appId,chanId,clas,title);
   return rc;  
 }
 
-cw::rc_t cw::io::uiCreateStr(        handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, const char* value )
+cw::rc_t cw::io::uiCreateStr(        handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, const char* value )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc  = ui::createStr(uiH,uuIdRef,wsSessId,parentUuId,eleName,appId,clas,title,value);
+    rc  = ui::createStr(uiH,uuIdRef,parentUuId,eleName,appId,chanId,clas,title,value);
   return rc;  
 }
 
-cw::rc_t cw::io::uiCreateNumbDisplay(handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, unsigned decPl )
+cw::rc_t cw::io::uiCreateNumbDisplay(handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, unsigned decPl )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc  = ui::createNumbDisplay(uiH,uuIdRef,wsSessId,parentUuId,eleName,appId,clas,title,decPl);
+    rc  = ui::createNumbDisplay(uiH,uuIdRef,parentUuId,eleName,appId,chanId,clas,title,decPl);
   return rc;  
 }
 
-cw::rc_t cw::io::uiCreateNumbDisplay(handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, unsigned decPl, double value )
+cw::rc_t cw::io::uiCreateNumbDisplay(handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, unsigned decPl, double value )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc  = ui::createNumbDisplay(uiH,uuIdRef,wsSessId,parentUuId,eleName,appId,clas,title,value);
+    rc  = ui::createNumbDisplay(uiH,uuIdRef,parentUuId,eleName,appId,chanId,clas,title,value);
   return rc;  
 }
 
-cw::rc_t cw::io::uiCreateNumb(       handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double minValue, double maxValue, double stepValue, unsigned decPl )
+cw::rc_t cw::io::uiCreateNumb(       handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, double minValue, double maxValue, double stepValue, unsigned decPl )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc  = ui::createNumb(uiH,uuIdRef,wsSessId,parentUuId,eleName,appId,clas,title,minValue,maxValue,stepValue,decPl);
+    rc  = ui::createNumb(uiH,uuIdRef,parentUuId,eleName,appId,chanId,clas,title,minValue,maxValue,stepValue,decPl);
   return rc;  
 }
 
-cw::rc_t cw::io::uiCreateNumb(       handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double minValue, double maxValue, double stepValue, unsigned decPl, double value )
+cw::rc_t cw::io::uiCreateNumb(       handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, double minValue, double maxValue, double stepValue, unsigned decPl, double value )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc  = ui::createNumb(uiH,uuIdRef,wsSessId,parentUuId,eleName,appId,clas,title,minValue,maxValue,stepValue,decPl,value);
+    rc  = ui::createNumb(uiH,uuIdRef,parentUuId,eleName,appId,chanId,clas,title,minValue,maxValue,stepValue,decPl,value);
   return rc;  
 }
 
-cw::rc_t cw::io::uiCreateProg(       handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double minValue, double maxValue )
+cw::rc_t cw::io::uiCreateProg(       handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, double minValue, double maxValue )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc  = ui::createProg(uiH,uuIdRef,wsSessId,parentUuId,eleName,appId,clas,title,minValue,maxValue);
+    rc  = ui::createProg(uiH,uuIdRef,parentUuId,eleName,appId,chanId,clas,title,minValue,maxValue);
   return rc;  
 }
   
-cw::rc_t cw::io::uiCreateProg(       handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title, double minValue, double maxValue, double value )
+cw::rc_t cw::io::uiCreateProg(       handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, double minValue, double maxValue, double value )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc  = ui::createProg(uiH,uuIdRef,wsSessId,parentUuId,eleName,appId,clas,title,minValue,maxValue,value);
+    rc  = ui::createProg(uiH,uuIdRef,parentUuId,eleName,appId,chanId,clas,title,minValue,maxValue,value);
   return rc;  
 }
 
-cw::rc_t cw::io::uiCreateLog(       handle_t h, unsigned& uuIdRef, unsigned wsSessId, unsigned parentUuId, const char* eleName, unsigned appId, const char* clas, const char* title )
+cw::rc_t cw::io::uiCreateLog(       handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc  = ui::createLog(uiH,uuIdRef,wsSessId,parentUuId,eleName,appId,clas,title);
+    rc  = ui::createLog(uiH,uuIdRef,parentUuId,eleName,appId,chanId,clas,title);
   return rc;  
 }
 
-cw::rc_t cw::io::uiSetNumbRange( handle_t h, unsigned wsSessId, unsigned uuId, double minValue, double maxValue, double stepValue, unsigned decPl, double value )
+cw::rc_t cw::io::uiSetNumbRange( handle_t h, unsigned uuId, double minValue, double maxValue, double stepValue, unsigned decPl, double value )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc = ui::setNumbRange(uiH,wsSessId,uuId,minValue,maxValue,stepValue,decPl,value);
+    rc = ui::setNumbRange(uiH,uuId,minValue,maxValue,stepValue,decPl,value);
   return rc;
 }
 
-cw::rc_t cw::io::uiSetProgRange( handle_t h, unsigned wsSessId, unsigned uuId, double minValue, double maxValue, double value )
+cw::rc_t cw::io::uiSetProgRange( handle_t h, unsigned uuId, double minValue, double maxValue, double value )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc = ui::setProgRange(uiH,wsSessId,uuId,minValue,maxValue,value);
+    rc = ui::setProgRange(uiH,uuId,minValue,maxValue,value);
   return rc;
 }
 
@@ -2787,57 +2793,57 @@ cw::rc_t cw::io::uiRegisterAppIdMap(  handle_t h, const ui::appIdMap_t* map, uns
   return rc;  
 }
 
-cw::rc_t cw::io::uiSendValue(   handle_t h, unsigned wsSessId, unsigned uuId, bool value )
+cw::rc_t cw::io::uiSendValue(   handle_t h, unsigned uuId, bool value )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc = ui::sendValueBool(uiH, wsSessId, uuId, value );
+    rc = ui::sendValueBool(uiH,  uuId, value );
   return rc;
 }
 
-cw::rc_t cw::io::uiSendValue(    handle_t h, unsigned wsSessId, unsigned uuId, int value )
+cw::rc_t cw::io::uiSendValue(    handle_t h, unsigned uuId, int value )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc = ui::sendValueInt(uiH, wsSessId, uuId, value );
+    rc = ui::sendValueInt(uiH,  uuId, value );
   return rc;
 }
 
-cw::rc_t cw::io::uiSendValue(   handle_t h, unsigned wsSessId, unsigned uuId, unsigned value )
+cw::rc_t cw::io::uiSendValue(   handle_t h, unsigned uuId, unsigned value )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc = ui::sendValueUInt(uiH, wsSessId, uuId, value );
+    rc = ui::sendValueUInt(uiH,  uuId, value );
   return rc;
 }
 
-cw::rc_t cw::io::uiSendValue(  handle_t h, unsigned wsSessId, unsigned uuId, float value )
+cw::rc_t cw::io::uiSendValue(  handle_t h, unsigned uuId, float value )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc = ui::sendValueFloat(uiH, wsSessId, uuId, value );
+    rc = ui::sendValueFloat(uiH,  uuId, value );
   return rc;
 }
 
-cw::rc_t cw::io::uiSendValue( handle_t h, unsigned wsSessId, unsigned uuId, double value )
+cw::rc_t cw::io::uiSendValue( handle_t h, unsigned uuId, double value )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc = ui::sendValueDouble(uiH, wsSessId, uuId, value );
+    rc = ui::sendValueDouble(uiH,  uuId, value );
   return rc;
 }
 
-cw::rc_t cw::io::uiSendValue( handle_t h, unsigned wsSessId, unsigned uuId, const char* value )
+cw::rc_t cw::io::uiSendValue( handle_t h, unsigned uuId, const char* value )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    rc = ui::sendValueString(uiH, wsSessId, uuId, value );
+    rc = ui::sendValueString(uiH,  uuId, value );
   return rc;
 }
 

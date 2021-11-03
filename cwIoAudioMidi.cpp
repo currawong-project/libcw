@@ -199,7 +199,7 @@ namespace cw
       {
         app->midiMsgArrayInIdx = next_idx;
         
-        io::uiSendValue( app->ioH, kInvalidId, uiFindElementUuId(app->ioH,kMsgCntId), app->midiMsgArrayInIdx );
+        io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kMsgCntId), app->midiMsgArrayInIdx );
 
       }
 
@@ -349,7 +349,7 @@ namespace cw
         }
 
         // update UI msg count
-        io::uiSendValue( app->ioH, kInvalidId, uiFindElementUuId(app->ioH,kMsgCntId), app->midiMsgArrayInIdx );
+        io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kMsgCntId), app->midiMsgArrayInIdx );
 
         file::close(fH);
 
@@ -652,7 +652,7 @@ namespace cw
           }
 
           double audioSecs = (double)af_info.frameCnt / af_info.srate;
-          io::uiSendValue( app->ioH, kInvalidId, uiFindElementUuId(app->ioH,kAudioSecsId), audioSecs );
+          io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kAudioSecsId), audioSecs );
 
         }
         
@@ -878,7 +878,7 @@ namespace cw
                   app->midiMsgArrayInIdx += 1;
 
                   // send msg count
-                  io::uiSendValue( app->ioH, kInvalidId, uiFindElementUuId(app->ioH,kMsgCntId), app->midiMsgArrayInIdx );                  
+                  io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kMsgCntId), app->midiMsgArrayInIdx );                  
                 }
               }
             }
