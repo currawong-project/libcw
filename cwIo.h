@@ -266,9 +266,9 @@ namespace cw
 
 
     // Find id's associated with elements.
-    unsigned    uiFindElementAppId(  handle_t h, unsigned parentUuId, const char* eleName );  
-    unsigned    uiFindElementUuId(   handle_t h, unsigned parentUuId, const char* eleName );
-    unsigned    uiFindElementUuId(   handle_t h, unsigned parentUuId, unsigned appId );
+    //unsigned    uiFindElementAppId(  handle_t h, unsigned parentUuId, const char* eleName );  
+    //unsigned    uiFindElementUuId(   handle_t h, unsigned parentUuId, const char* eleName );
+    //unsigned    uiFindElementUuId(   handle_t h, unsigned parentUuId, unsigned appId );
     const char* uiFindElementName(   handle_t h, unsigned uuId );
     unsigned    uiFindElementAppId(  handle_t h, unsigned uuId );
     

@@ -2539,7 +2539,7 @@ cw::rc_t cw::io::socketSend(    handle_t h, unsigned sockIdx, const void* data, 
 //
 // UI
 //
-
+/*
 unsigned    cw::io::uiFindElementAppId(  handle_t h, unsigned parentUuId, const char* eleName )
 {
   rc_t         rc;
@@ -2554,7 +2554,7 @@ unsigned    cw::io::uiFindElementUuId(   handle_t h, unsigned parentUuId, const 
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    return ui::findElementUuId(uiH, parentUuId, eleName );
+    return ui::parentAndNameToUuId(uiH, parentUuId, eleName );
   return kInvalidId;
 }
 
@@ -2566,7 +2566,7 @@ const char* cw::io::uiFindElementName(   handle_t h, unsigned uuId )
     return ui::findElementName(uiH, uuId );
   return nullptr;
 }
-
+*/
 unsigned    cw::io::uiFindElementAppId(  handle_t h, unsigned uuId )
 {
   rc_t         rc;
