@@ -50,7 +50,7 @@ namespace cw
      kOption0Id,
      kOption1Id,
      kOption2Id,
-     kOption3Id,
+     kOption3Id,     
      kStringId,
      kIntegerId,
      kFloatId,
@@ -59,6 +59,7 @@ namespace cw
 
      // Resource Based elements
      kQuitBtnId,
+     kUiRptBtnId,
      kPanelDivId,
      kPanelBtn1Id,
      kPanelCheck1Id,
@@ -169,6 +170,10 @@ namespace cw
           p->quitFl.store(true);
           break;
 
+        case kUiRptBtnId:
+          ui::report(srv::uiHandle(p->wsUiSrvH));
+          break;
+
         case kCheckId:
           printf("Check:%i\n", v->u.b);
           p->appCheckFl = v->u.b;
@@ -193,7 +198,7 @@ namespace cw
             p->appInteger = v->u.i;
           
             handle_t uiH = srv::uiHandle(p->wsUiSrvH);
-            unsigned progUuId = findElementUuId(   uiH, p->myPanelUuId, kProgressId );
+            unsigned progUuId = parentAndAppIdToUuId(   uiH, kDivId, kProgressId );
             sendValueInt(   uiH, progUuId, v->u.i );
           }
           break;
@@ -204,15 +209,29 @@ namespace cw
 
 
         case kPanelBtn1Id:
-          printf("Button 1\n");
-          _print_state(p);
+          {
+            handle_t uiH       = srv::uiHandle(p->wsUiSrvH);
+            unsigned btnUuId  = parentAndAppIdToUuId(   uiH, kPanelDivId, kPanelBtn2Id );
+            
+            printf("Button 1 %i\n",btnUuId);
+            _print_state(p);
+
+            
+            bool     enableFl = isEnabled( uiH, btnUuId );
+            setEnable( uiH, btnUuId, !enableFl );
+          }
           break;
           
         case kPanelCheck1Id:
-          printf("check 1: %i\n",v->u.b);
-          p->appCheck1Fl = v->u.b;
-          ui::report( srv::uiHandle(p->wsUiSrvH) );
-
+          {
+            printf("check 2: %i\n",v->u.b);
+            p->appCheck1Fl = v->u.b;
+            
+            handle_t uiH       = srv::uiHandle(p->wsUiSrvH);
+            unsigned progUuId  = parentAndAppIdToUuId( uiH,   kDivId, kProgressId );
+            bool     visibleFl = isVisible( uiH, progUuId );
+            setVisible( uiH, progUuId, !visibleFl );
+          }
           break;
           
         case kPanelBtn2Id:
@@ -235,6 +254,9 @@ namespace cw
           printf("sel: %i\n",v->u.i);
           p->appSelId = v->u.i;
           break;
+
+        default:
+          cwLogWarning("Unhandled value message: uuid:%i appId:%i\n",uuId,appId);
       }
 
       return rc;
@@ -360,6 +382,7 @@ cw::rc_t cw::ui::test( const object_t* cfg )
      { kSelId,      kOpt1Id,         "myOpt1" },
      { kSelId,      kOpt2Id,         "myOpt2" },
      { kSelId,      kOpt3Id,         "myOpt3" },
+     { kPanelDivId, kUiRptBtnId,     "uiRptBtnId"  },
      { kPanelDivId, kListId,         "myListId" }
 
     };

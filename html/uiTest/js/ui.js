@@ -870,18 +870,25 @@ function ui_set_value( d )
     }
 }
 
-function ui_set_select( ele, enableFl )
+function _ui_modify_class( ele, classLabelArg, enableFl )
 {
-    let selectClassLabel = " uiSelected"
-    let isSelectSetFl    = ele.className.includes(selectClassLabel)
+    let classLabel  = " " + classLabelArg; // prefix the class label with a space
+    
+    let isEnabledFl = ele.className.includes(classLabel)
 
-    if( enableFl != isSelectSetFl )
+    // if the class is not already enabled/disabled
+    if( enableFl != isEnabledFl )
     {
 	if( enableFl )
-	    ele.className += selectClassLabel;
+	    ele.className += classLabel;
 	else
-	    ele.className = ele.className.replace(selectClassLabel, "");
+	    ele.className = ele.className.replace(classLabel, "");
     }
+}
+
+function ui_set_select( ele, enableFl )
+{
+    _ui_modify_class("uiSelected")
 }
 
 
@@ -895,10 +902,35 @@ function ui_set_clickable( ele, enableFl )
 	ele.onclick = null
 }
 
+function ui_set_visible( ele, enableFl )
+{    
+    if(enableFl)
+    {
+	if(ele.hasOwnProperty("style_display") )
+	{
+	    ele.style.display = ele.style_display;
+	}
+	else
+	{
+	    ele.style.display = "block";
+	}
+    }
+    else
+    {
+	ele.style_display = ele.style.display;
+	ele.style.display = "none";
+    }
+}
+
+function ui_set_enable( ele, enableFl )
+{
+    ele.disabled = !enableFl
+}
+
 
 function ui_set( d )
 {
-    //console.log(d)
+    console.log(d)
     var ele = dom_id_to_ele(d.uuId.toString())
 
     if( ele == null )
@@ -923,6 +955,15 @@ function ui_set( d )
 	    case "clickable":
 	    ui_set_clickable(ele,d.enableFl)
 	    break
+
+	    case "visible":
+	    ui_set_visible(ele,d.enableFl)
+	    break
+
+	    case "enable":
+	    ui_set_enable(ele,d.enableFl)
+	    break
+	    
 	}
     }
 }

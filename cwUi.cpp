@@ -14,6 +14,8 @@
 
 #define UI_CLICKABLE_LABEL "clickable"
 #define UI_SELECT_LABEL    "select"
+#define UI_VISIBLE_LABEL   "visible"
+#define UI_ENABLE_LABEL    "enable"
 
 namespace cw
 {
@@ -31,7 +33,8 @@ namespace cw
     
     typedef struct ele_str
     {
-      struct ele_str* parent;  // pointer to parent ele - or nullptr if this ele is attached to the root ui ele
+      struct ele_str* parent;  // pointer to parent ele - or nullptr if this ele is the root ui ele
+      unsigned        parentAppId; 
       unsigned        uuId;    // UI unique id - automatically generated and unique among all elements that are part of this ui_t object.
       unsigned        appId;   // application assigned id - application assigned id
       unsigned        chanId;  //
@@ -351,13 +354,31 @@ namespace cw
     ele_t* _createBaseEle( ui_t* p, ele_t* parent, unsigned appId, unsigned chanId, const char* eleName, const char* eleTypeStr=nullptr, const char* eleClass=nullptr, const char* eleTitle=nullptr )
     {
       ele_t* e = mem::allocZ<ele_t>();
+      unsigned parentAppId = kInvalidId;
+      
+      // Go up the tree looking for the first parent with a valid appId
+      // This is useful to cover the situation where the parent is an unamed div (e.g. row, col, panel)
+      // and the appIdMap gives the panel name as the parent.
 
-      e->parent  = parent;
-      e->uuId    = p->eleN;
-      e->appId   = appId;
-      e->chanId  = chanId;
-      e->eleName = eleName==nullptr ? nullptr : mem::duplStr(eleName);
-      e->attr    = newDictObject();
+      if( parent != nullptr )
+      {
+        parentAppId = parent->appId;
+        for(const ele_t* par=parent; par!=nullptr; par=par->parent)
+          if( par->appId != kInvalidId )
+          {
+            parentAppId = par->appId;
+            break;
+          }
+      }
+      
+      
+      e->parent      = parent;
+      e->parentAppId = parentAppId;
+      e->uuId        = p->eleN;
+      e->appId       = appId;
+      e->chanId      = chanId;
+      e->eleName     = eleName==nullptr ? nullptr : mem::duplStr(eleName);
+      e->attr        = newDictObject();
       
       if( eleTypeStr != nullptr )
         e->attr->insert_pair("type",eleTypeStr);
@@ -368,6 +389,9 @@ namespace cw
       if( eleTitle != nullptr )
         e->attr->insert_pair("title",eleTitle);
 
+      // elements default to visible and enabled
+      e->attr->insert_pair("visible",true);
+      e->attr->insert_pair("enable",true);
       
       if( p->eleN == p->eleAllocN )
       {
@@ -382,20 +406,9 @@ namespace cw
       if( appId == kInvalidId && parent != nullptr )
       {
         appIdMapRecd_t* m;
-
-        // Go up the tree looking for the first parent with a valid appId
-        // This is useful to cover the situation where the parent is an unamed div (e.g. row, col, panel)
-        // and the appIdMap gives the panel name as the parent.
-        unsigned parentAppId = parent->appId;
-        for(const ele_t* par=parent; par!=nullptr; par=par->parent)
-          if( par->appId != kInvalidId )
-          {
-            parentAppId = par->appId;
-            break;
-          }
-
+        
         // ... then try to look it up from the appIdMap.
-        if((m = _findAppIdMap(p, parentAppId, eleName)) != nullptr )
+        if((m = _findAppIdMap(p, e->parentAppId, eleName)) != nullptr )
           e->appId = m->appId;
       }
 
@@ -1022,9 +1035,7 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* msg, unsi
         cwLogError(kOpFailRC,"UI Value message parse failed.");
       else
       {
-        unsigned parentEleAppId = ele->parent == nullptr ? kInvalidId : ele->parent->appId;
-
-        p->uiCbFunc( p->uiCbArg, wsSessId, opId, parentEleAppId, ele->uuId, ele->appId, ele->chanId, &value );
+        p->uiCbFunc( p->uiCbArg, wsSessId, opId, ele->parentAppId, ele->uuId, ele->appId, ele->chanId, &value );
                   
       }
       break;
@@ -1034,9 +1045,7 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* msg, unsi
         cwLogError(kOpFailRC,"UI Value message parse failed.");
       else
       {
-        unsigned parentEleAppId = ele->parent == nullptr ? kInvalidId : ele->parent->appId;
-
-        p->uiCbFunc( p->uiCbArg, wsSessId, opId, parentEleAppId, ele->uuId, ele->appId, ele->chanId, &value );
+        p->uiCbFunc( p->uiCbArg, wsSessId, opId, ele->parentAppId, ele->uuId, ele->appId, ele->chanId, &value );
       }
       break;
       
@@ -1045,9 +1054,7 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* msg, unsi
         cwLogError(kOpFailRC,"UI Echo message parse failed.");
       else
       {
-        unsigned parentEleAppId = ele->parent == nullptr ? kInvalidId : ele->parent->appId;
-
-        p->uiCbFunc( p->uiCbArg, wsSessId, opId, parentEleAppId, ele->uuId, ele->appId, ele->chanId,nullptr );               
+        p->uiCbFunc( p->uiCbArg, wsSessId, opId, ele->parentAppId, ele->uuId, ele->appId, ele->chanId,nullptr );               
       }
       break;
 
@@ -1068,35 +1075,35 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* msg, unsi
   return rc;
 }
 
-unsigned cw::ui::findElementAppId(  handle_t h, unsigned parentUuId, const char* eleName )
+unsigned cw::ui::findElementAppId(  handle_t h, unsigned parentAppId, const char* eleName )
 {
   ui_t* p = _handleToPtr(h);
   
   for(unsigned i=0; i<p->eleN; ++i)
-    if( p->eleA[i]->parent->uuId==parentUuId && strcmp(p->eleA[i]->eleName,eleName) == 0 )
+    if( p->eleA[i]->parentAppId==parentAppId && strcmp(p->eleA[i]->eleName,eleName) == 0 )
       return p->eleA[i]->appId;
   
   return kInvalidId;
 }
 
-unsigned cw::ui::findElementUuId( handle_t h, unsigned parentUuId, const char* eleName )
+unsigned cw::ui::parentAndNameToUuId( handle_t h, unsigned parentAppId, const char* eleName )
 {
   ui_t*  p = _handleToPtr(h);
 
   for(unsigned i=0; i<p->eleN; ++i)
-    if( p->eleA[i]->parent->uuId==parentUuId && strcmp(p->eleA[i]->eleName,eleName) == 0 )
+    if( p->eleA[i]->parentAppId==parentAppId && strcmp(p->eleA[i]->eleName,eleName) == 0 )
       return p->eleA[i]->uuId;
   
   return kInvalidId;
 }
 
-unsigned cw::ui::findElementUuId( handle_t h, unsigned parentUuId, unsigned appId )
+unsigned cw::ui::parentAndAppIdToUuId( handle_t h, unsigned parentAppId, unsigned appId )
 {
   ui_t* p = _handleToPtr(h);
   
   for(unsigned i=0; i<p->eleN; ++i)
-    if(((p->eleA[i]->parent==nullptr && parentUuId==kRootUuId) ||
-        (p->eleA[i]->parent!=nullptr && p->eleA[i]->parent->uuId==parentUuId))
+    if(((p->eleA[i]->parent==nullptr && parentAppId==kRootAppId) ||
+        (p->eleA[i]->parentAppId==parentAppId))
       && p->eleA[i]->appId == appId )
       return p->eleA[i]->uuId;
   return kInvalidId;
@@ -1379,6 +1386,42 @@ bool cw::ui::isSelected( handle_t h, unsigned uuId )
   return selectFl;   
 }
 
+cw::rc_t cw::ui::setVisible( handle_t h, unsigned uuId, bool enableFl )
+{ return _setPropertyFlag( h, UI_VISIBLE_LABEL, uuId, enableFl );   }
+
+cw::rc_t cw::ui::clearVisible( handle_t h, unsigned uuId )
+{ return setVisible(h,uuId,false); }
+
+bool cw::ui::isVisible( handle_t h, unsigned uuId )
+{
+  ui_t*  p         = _handleToPtr(h);
+  ele_t* ele       = nullptr;
+  bool   visibleFl = false;
+
+  if((ele = _uuIdToEle(p,uuId)) != nullptr )
+    visibleFl = _get_attribute_bool(ele,UI_VISIBLE_LABEL);
+  
+  return visibleFl;   
+}
+
+cw::rc_t cw::ui::setEnable( handle_t h, unsigned uuId, bool enableFl )
+{ return _setPropertyFlag( h, UI_ENABLE_LABEL, uuId, enableFl );   }
+
+cw::rc_t cw::ui::clearEnable( handle_t h, unsigned uuId )
+{ return setEnable(h,uuId,false); }
+
+bool cw::ui::isEnabled( handle_t h, unsigned uuId )
+{
+  ui_t*  p        = _handleToPtr(h);
+  ele_t* ele      = nullptr;
+  bool   enableFl = false;
+
+  if((ele = _uuIdToEle(p,uuId)) != nullptr )
+    enableFl = _get_attribute_bool(ele,UI_ENABLE_LABEL);
+  
+  return enableFl;   
+}
+
 
 
 cw::rc_t cw::ui::registerAppIdMap(  handle_t h, const appIdMap_t* map, unsigned mapN )
@@ -1433,10 +1476,9 @@ void cw::ui::report( handle_t h )
     const ele_t* e = p->eleA[i];
     
     unsigned    parUuId    = e->parent==NULL ? kInvalidId : e->parent->uuId;
-    unsigned    parAppId   = e->parent==NULL ? kInvalidId : e->parent->appId;
     const char* parEleName = e->parent==NULL || e->parent->eleName == NULL ? "" : e->parent->eleName;
     
-    printf("uu:%5i app:%5i %20s : parent uu:%5i app:%5i %20s ", e->uuId, e->appId, e->eleName == NULL ? "" : e->eleName, parUuId, parAppId, parEleName );
+    printf("uu:%5i app:%5i %20s : parent uu:%5i app:%5i %20s ", e->uuId, e->appId, e->eleName == NULL ? "" : e->eleName, parUuId, e->parentAppId, parEleName );
 
     for(unsigned i=0; i<e->attr->child_count(); ++i)
     {

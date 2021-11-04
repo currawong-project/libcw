@@ -45,9 +45,9 @@ namespace cw
     rc_t onReceive(    handle_t h, unsigned wsSessId, const void* msg, unsigned byteN );
 
     // Locate an element whose parent uuid is 'parentUuId' with a child named 'eleName'. 
-    unsigned    findElementAppId(  handle_t h, unsigned parentUuId, const char* eleName );  
-    unsigned    findElementUuId(   handle_t h, unsigned parentUuId, const char* eleName );    
-    unsigned    findElementUuId(   handle_t h, unsigned parentUuId, unsigned appId );
+    unsigned    findElementAppId(      handle_t h, unsigned parentAppId, const char* eleName );  
+    unsigned    parentAndNameToUuId(   handle_t h, unsigned parentAppId, const char* eleName );    
+    unsigned    parentAndAppIdToUuId(  handle_t h, unsigned parentAppId, unsigned appId );
 
     const char* findElementName(   handle_t h, unsigned uuId );
     unsigned    findElementAppId(  handle_t h, unsigned uuId );
@@ -124,6 +124,14 @@ namespace cw
     rc_t setSelect(      handle_t h, unsigned uuId, bool enableFl=true );
     rc_t clearSelect(    handle_t h, unsigned uuId );
     bool isSelected(     handle_t h, unsigned uuId );
+
+    rc_t setVisible(     handle_t h, unsigned uuId, bool enableFl=true );
+    rc_t clearVisible(   handle_t h, unsigned uuId );
+    bool isVisible(      handle_t h, unsigned uuId );
+    
+    rc_t setEnable(      handle_t h, unsigned uuId, bool enableFl=true );
+    rc_t clearEnable(    handle_t h, unsigned uuId );
+    bool isEnabled(      handle_t h, unsigned uuId );
     
     // Register parent/child/name app id's 
     rc_t registerAppIdMap(  handle_t h, const appIdMap_t* map, unsigned mapN );
