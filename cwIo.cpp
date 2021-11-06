@@ -2539,34 +2539,33 @@ cw::rc_t cw::io::socketSend(    handle_t h, unsigned sockIdx, const void* data, 
 //
 // UI
 //
-/*
-unsigned    cw::io::uiFindElementAppId(  handle_t h, unsigned parentUuId, const char* eleName )
+unsigned    cw::io::parentAndNameToAppId( handle_t h, unsigned parentAppId, const char* eleName )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    return ui::findElementAppId(uiH, parentUuId, eleName );
+    return ui::parentAndNameToAppId(uiH,parentAppId,eleName);
   return kInvalidId;
 }
 
-unsigned    cw::io::uiFindElementUuId(   handle_t h, unsigned parentUuId, const char* eleName )
+unsigned    cw::io::parentAndNameToUuId(  handle_t h, unsigned parentAppId, const char* eleName )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    return ui::parentAndNameToUuId(uiH, parentUuId, eleName );
+    return ui::parentAndNameToUuId(uiH,parentAppId,eleName);
   return kInvalidId;
 }
 
-const char* cw::io::uiFindElementName(   handle_t h, unsigned uuId )
+unsigned    cw::io::parentAndAppIdToUuId( handle_t h, unsigned parentAppId, unsigned appId )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    return ui::findElementName(uiH, uuId );
-  return nullptr;
+    return ui::parentAndAppIdToUuId(uiH,parentAppId,appId);
+  return kInvalidId;
 }
-*/
+
 unsigned    cw::io::uiFindElementAppId(  handle_t h, unsigned uuId )
 {
   rc_t         rc;
@@ -2576,23 +2575,42 @@ unsigned    cw::io::uiFindElementAppId(  handle_t h, unsigned uuId )
   return kInvalidId;  
 }
 
-unsigned    cw::io::uiFindElementUuId( handle_t h, const char* eleName )
+unsigned    cw::io::uiFindElementUuId( handle_t h, const char* eleName, unsigned chanId )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    return ui::findElementUuId(uiH, eleName );
+    return ui::findElementUuId(uiH, eleName, chanId );
   return kInvalidId;  
 }
 
-unsigned    cw::io::uiFindElementUuId( handle_t h, unsigned appId )
+unsigned    cw::io::uiFindElementUuId( handle_t h, unsigned appId, unsigned chanId )
 {
   rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
-    return ui::findElementUuId(uiH, appId );
+    return ui::findElementUuId(uiH, kInvalidId, appId, chanId );
   return kInvalidId;  
 }
+
+unsigned    cw::io::uiFindElementUuId( handle_t h, unsigned parentUuId, const char* eleName, unsigned chanId )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    return ui::findElementUuId(uiH, parentUuId, eleName, chanId );
+  return kInvalidId;  
+}
+
+unsigned    cw::io::uiFindElementUuId( handle_t h, unsigned parentUuId, unsigned appId, unsigned chanId )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    return ui::findElementUuId(uiH, parentUuId, appId, chanId );
+  return kInvalidId;  
+}
+
 
 cw::rc_t cw::io::uiCreateFromObject( handle_t h, const object_t* o, unsigned parentUuId, unsigned chanId, const char* eleName)
 {
@@ -2783,6 +2801,124 @@ cw::rc_t cw::io::uiSetProgRange( handle_t h, unsigned uuId, double minValue, dou
   return rc;
 }
 
+cw::rc_t cw::io::uiSetLogLine(     handle_t h, unsigned uuId, const char* text )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::setLogLine(uiH,uuId,text);
+  return rc;
+}
+    
+cw::rc_t cw::io::uiSetClickable(   handle_t h, unsigned uuId, bool clickableFl )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::setClickable(uiH,uuId,clickableFl);
+  return rc;
+}
+
+cw::rc_t cw::io::uiClearClickable( handle_t h, unsigned uuId )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::clearClickable(uiH,uuId);
+  return rc;
+}
+
+bool cw::io::uiIsClickable(    handle_t h, unsigned uuId )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    return ui::isClickable(uiH,uuId);
+  return false;
+}
+    
+cw::rc_t cw::io::uiSetSelect(      handle_t h, unsigned uuId, bool enableFl )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::setSelect(uiH,uuId,enableFl);
+  return rc;
+}
+
+cw::rc_t cw::io::uiClearSelect(    handle_t h, unsigned uuId )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::clearSelect(uiH,uuId);
+  return rc;
+}
+
+bool cw::io::uiIsSelected(     handle_t h, unsigned uuId )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    return ui::isSelected(uiH,uuId);
+  return false;
+}
+
+cw::rc_t cw::io::uiSetVisible(     handle_t h, unsigned uuId, bool enableFl )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::setVisible(uiH,uuId,enableFl);
+  return rc;
+}
+
+cw::rc_t cw::io::uiClearVisible(   handle_t h, unsigned uuId )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::clearVisible(uiH,uuId);
+  return rc;
+
+}
+
+bool cw::io::uiIsVisible(      handle_t h, unsigned uuId )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    return ui::isVisible(uiH,uuId);
+  return false;
+}
+    
+cw::rc_t cw::io::uiSetEnable(      handle_t h, unsigned uuId, bool enableFl )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::setEnable(uiH,uuId,enableFl);
+  return rc;
+}
+
+cw::rc_t cw::io::uiClearEnable(    handle_t h, unsigned uuId )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::clearEnable(uiH,uuId);
+  return rc;
+
+}
+
+bool cw::io::uiIsEnabled(      handle_t h, unsigned uuId )
+{  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    return ui::isEnabled(uiH,uuId);
+  return false;
+
+}
 
 cw::rc_t cw::io::uiRegisterAppIdMap(  handle_t h, const ui::appIdMap_t* map, unsigned mapN )
 {

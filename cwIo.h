@@ -266,16 +266,20 @@ namespace cw
 
 
     // Find id's associated with elements.
-    //unsigned    uiFindElementAppId(  handle_t h, unsigned parentUuId, const char* eleName );  
-    //unsigned    uiFindElementUuId(   handle_t h, unsigned parentUuId, const char* eleName );
-    //unsigned    uiFindElementUuId(   handle_t h, unsigned parentUuId, unsigned appId );
-    const char* uiFindElementName(   handle_t h, unsigned uuId );
-    unsigned    uiFindElementAppId(  handle_t h, unsigned uuId );
+    unsigned    parentAndNameToAppId( handle_t h, unsigned parentAppId, const char* eleName );  
+    unsigned    parentAndNameToUuId(  handle_t h, unsigned parentAppId, const char* eleName );    
+    unsigned    parentAndAppIdToUuId( handle_t h, unsigned parentAppId, unsigned appId );
+    const char* uiFindElementName(    handle_t h, unsigned uuId );
+    unsigned    uiFindElementAppId(   handle_t h, unsigned uuId );
     
     // Return the uuid of the first matching 'eleName' or 'appId'.
-    unsigned    uiFindElementUuId( handle_t h, const char* eleName );
-    unsigned    uiFindElementUuId( handle_t h, unsigned appId );
+    unsigned    uiFindElementUuId( handle_t h, const char* eleName, unsigned chanId=kInvalidId );
+    unsigned    uiFindElementUuId( handle_t h, unsigned    appId,   unsigned chanId=kInvalidId );
 
+    unsigned    uiFindElementUuId( handle_t h, unsigned parentUuId, const char* eleName, unsigned chanId=kInvalidId );
+    unsigned    uiFindElementUuId( handle_t h, unsigned parentUuId, unsigned    appId,   unsigned chanId=kInvalidId );
+
+    
     rc_t uiCreateFromObject( handle_t h, const object_t* o, unsigned parentUuId=kInvalidId, unsigned chanId=kInvalidId, const char* eleName=nullptr);
     rc_t uiCreateFromFile(   handle_t h, const char* fn,    unsigned parentUuId=kInvalidId, unsigned chanId=kInvalidId );
     rc_t uiCreateFromText(   handle_t h, const char* text,  unsigned parentUuId=kInvalidId, unsigned chanId=kInvalidId );
@@ -309,6 +313,24 @@ namespace cw
 
     rc_t uiSetNumbRange( handle_t h, unsigned uuId, double minValue, double maxValue, double stepValue, unsigned decPl, double value );
     rc_t uiSetProgRange( handle_t h, unsigned uuId, double minValue, double maxValue, double value );
+    rc_t uiSetLogLine(     handle_t h, unsigned uuId, const char* text );
+    
+    rc_t uiSetClickable(   handle_t h, unsigned uuId, bool clickableFl=true );
+    rc_t uiClearClickable( handle_t h, unsigned uuId );
+    bool uiIsClickable(    handle_t h, unsigned uuId );
+    
+    rc_t uiSetSelect(      handle_t h, unsigned uuId, bool enableFl=true );
+    rc_t uiClearSelect(    handle_t h, unsigned uuId );
+    bool uiIsSelected(     handle_t h, unsigned uuId );
+
+    rc_t uiSetVisible(     handle_t h, unsigned uuId, bool enableFl=true );
+    rc_t uiClearVisible(   handle_t h, unsigned uuId );
+    bool uiIsVisible(      handle_t h, unsigned uuId );
+    
+    rc_t uiSetEnable(      handle_t h, unsigned uuId, bool enableFl=true );
+    rc_t uiClearEnable(    handle_t h, unsigned uuId );
+    bool uiIsEnabled(      handle_t h, unsigned uuId );
+    
     
     // Register parent/child/name app id's 
     rc_t uiRegisterAppIdMap(  handle_t h, const ui::appIdMap_t* map, unsigned mapN );
