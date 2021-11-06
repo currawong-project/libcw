@@ -1,0 +1,31 @@
+
+
+.fragList {
+    border: 1px solid LightSteelBlue;
+    width: 900px;
+}
+
+.fragList label {
+    width: 50px;
+    background-color: LightBlue;
+}
+
+.fragList .uiNumbDisp {
+    width: 25px;
+}
+
+.fragPanel {
+    border: 1px solid LightSteelBlue;
+    padding-bottom: 5px;
+    padding-top: 5px;
+}
+
+.fragPresetCtl {
+    width: 50px;
+}
+
+.fragPresetCtl .uiNumber {
+    border: 1px solid LightSteelBlue;
+    width: 80%;
+}
+
