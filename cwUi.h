@@ -45,7 +45,7 @@ namespace cw
     rc_t onReceive(    handle_t h, unsigned wsSessId, const void* msg, unsigned byteN );
 
     // Locate an element whose parent uuid is 'parentUuId' with a child named 'eleName'. 
-    unsigned    findElementAppId(      handle_t h, unsigned parentAppId, const char* eleName );  
+    unsigned    parentAndNameToAppId(      handle_t h, unsigned parentAppId, const char* eleName );  
     unsigned    parentAndNameToUuId(   handle_t h, unsigned parentAppId, const char* eleName );    
     unsigned    parentAndAppIdToUuId(  handle_t h, unsigned parentAppId, unsigned appId );
 
@@ -53,8 +53,10 @@ namespace cw
     unsigned    findElementAppId(  handle_t h, unsigned uuId );
     
     // Return the uuid of the first matching 'eleName' or 'appId'.
-    unsigned    findElementUuId( handle_t h, const char* eleName );
-    unsigned    findElementUuId( handle_t h, unsigned appId );
+    unsigned    findElementUuId( handle_t h,                      const char* eleName, unsigned chanId = kInvalidId );
+    unsigned    findElementUuId( handle_t h,                      unsigned    appId,   unsigned chanId = kInvalidId );
+    unsigned    findElementUuId( handle_t h, unsigned parentUuId, const char* eleName, unsigned chanId = kInvalidId );
+    unsigned    findElementUuId( handle_t h, unsigned parentUuId, unsigned    appId,   unsigned chanId = kInvalidId );
     
 
     // Create multiple UI elements from an object_t representation.

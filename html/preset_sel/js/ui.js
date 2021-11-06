@@ -237,6 +237,14 @@ function ui_send_int_value(    ele, value ) { ui_send_value(ele,'i',value); }
 function ui_send_float_value(   ele, value ) { ui_send_value(ele,'f',value); }
 function ui_send_string_value( ele, value ) { ui_send_value(ele,'s',value); }
 
+function ui_send_click( ele )
+{
+    console.log("click " + ele.id )
+        
+    ws_send("click " + ele.id )  
+}
+
+
 function ui_send_echo( ele )
 {
     ws_send("echo " + ele.id ) 
@@ -267,6 +275,11 @@ function ui_get_parent( parentId )
     return parent_ele;  
 }
 
+function ui_on_click( ele, evt )
+{
+    ui_send_click(ele);
+    evt.stopPropagation();
+}
 
 function ui_create_ele( parent_ele, ele_type, d, dfltClassName )
 {
@@ -284,15 +297,28 @@ function ui_create_ele( parent_ele, ele_type, d, dfltClassName )
 	else
 	    ele.className = dfltClassName;
 
+	if(d.hasOwnProperty('addClassName') )
+	{
+	    ele.className += " " + d.addClassName
+	}
+	
 	if(d.hasOwnProperty('appId'))
 	    ele.appId = d.appId;
 	else
 	    ele.appId = null;
 
+	if( d.hasOwnProperty('clickable') )
+	    ui_set_clickable( ele, d.clickable );
+
+	if( d.hasOwnProperty('enable') )
+	    ui_set_enable( ele, d.enable )
+
 	//console.log("Created: " + ele_type  + " parent:" + d.parentUuId + " id:" + ele.id + " appId:" + ele.appId)
 	
 	parent_ele.appendChild(ele);
 
+	
+	
 	
     }
     return ele
@@ -355,10 +381,12 @@ function ui_create_div( parent_ele, d )
 function ui_create_panel_div( parent_ele, d )
 {
     d.type = "div"
-    var div_ele =  ui_create_div( parent_ele, d );
 
     if( !d.hasOwnProperty('className') )
-	div_ele.className = "uiPanel"
+	d.className = "uiPanel"
+    
+    var div_ele =  ui_create_div( parent_ele, d );
+
 
     return div_ele
 }
@@ -366,10 +394,12 @@ function ui_create_panel_div( parent_ele, d )
 function ui_create_row_div( parent_ele, d )
 {
     d.type = "div"
-    var div_ele =  ui_create_div( parent_ele, d );
 
     if( !d.hasOwnProperty('className') )
-	div_ele.className = "uiRow"
+	d.className = "uiRow"
+    
+    var div_ele =  ui_create_div( parent_ele, d );
+
 
     return div_ele
 }
@@ -377,10 +407,12 @@ function ui_create_row_div( parent_ele, d )
 function ui_create_col_div( parent_ele, d )
 {
     d.type = "div"
-    var div_ele =  ui_create_div( parent_ele, d );
 
     if( !d.hasOwnProperty('className') )
-	div_ele.className = "uiCol"
+	d.className = "uiCol"
+    
+    var div_ele =  ui_create_div( parent_ele, d );
+
 
     return div_ele
 }
@@ -650,6 +682,8 @@ function ui_create_number( parent_ele, d )
 
 function ui_set_number_display( ele_id, value )
 {
+    //console.log("Numb disp: " + ele_id + " " + value)
+    
     var ele = dom_id_to_ele(ele_id);
 
     if( typeof(value)=="number")
@@ -736,25 +770,6 @@ function _on_log_click( evt )
 
     pre_ele.auto_scroll_flag = !pre_ele.auto_scroll_flag;
 }
-	     
-function ui_create_log( parent_ele, d )
-{
-
-    // create a containing div with the label
-    d.className = "uiLog"
-    var log_ele  = ui_create_ctl( parent_ele, "div", d.title, d, "uiLog" )
-
-    // add a <pre> to the containing div
-    var ele = dom_create_ele("pre")
-    
-    ele.id      = log_ele.id + "_pre"  
-    ele.onclick = _on_log_click;
-    ele.auto_scroll_flag = true;
-    
-    log_ele.appendChild(ele)
-
-    return log_ele
-}
 
 function ui_set_log_text( ele, value )
 {
@@ -772,10 +787,34 @@ function ui_set_log_text( ele, value )
 	    
 	    break;
 	}
-    }
-    
+    }    
 }
 
+function ui_create_log( parent_ele, d )
+{
+    // create a containing div with the label
+    d.className = "uiLog"
+    var log_ele  = ui_create_ctl( parent_ele, "div", d.title, d, "uiLog" )
+
+    // add a <pre> to the containing div
+    var ele = dom_create_ele("pre")
+    
+    ele.id      = log_ele.id + "_pre"  
+    ele.onclick = _on_log_click;
+    ele.auto_scroll_flag = true;
+    
+    log_ele.appendChild(ele)
+
+    return log_ele
+}
+
+function ui_create_list( parent_ele, d )
+{
+    //console.log(d)
+    var list_ele  = ui_create_ctl( parent_ele, "div", d.title, d, "uiList" )
+    
+    return list_ele
+}
 
 function ui_set_value( d )
 {
@@ -843,10 +882,68 @@ function ui_set_value( d )
 	    break
 	    
 	    default:
-	    ui_error("Unknown UI element type: " + d.type )
+	    ui_error("Unknown UI element type on set value: " + d.type )
 	}
     }
 }
+
+function _ui_modify_class( ele, classLabelArg, enableFl )
+{
+    let classLabel  = " " + classLabelArg; // prefix the class label with a space
+    
+    let isEnabledFl = ele.className.includes(classLabel)
+
+    // if the class is not already enabled/disabled
+    if( enableFl != isEnabledFl )
+    {
+	if( enableFl )
+	    ele.className += classLabel;
+	else
+	    ele.className = ele.className.replace(classLabel, "");
+    }
+}
+
+function ui_set_select( ele, enableFl )
+{
+    _ui_modify_class("uiSelected")
+}
+
+
+function ui_set_clickable( ele, enableFl )
+{
+    ele.clickableFl = enableFl
+    
+    if(enableFl)
+	ele.onclick = function( evt ){ ui_on_click( this, evt ); }
+    else
+	ele.onclick = null
+}
+
+function ui_set_visible( ele, enableFl )
+{    
+    if(enableFl)
+    {
+	if(ele.hasOwnProperty("style_display") )
+	{
+	    ele.style.display = ele.style_display;
+	}
+	else
+	{
+	    ele.style.display = "block";
+	}
+    }
+    else
+    {
+	ele.style_display = ele.style.display;
+	ele.style.display = "none";
+    }
+}
+
+function ui_set_enable( ele, enableFl )
+{
+    ele.disabled = !enableFl
+}
+
 
 function ui_set( d )
 {
@@ -855,24 +952,35 @@ function ui_set( d )
 
     if( ele == null )
 	console.log("ele not found");
-    else
-	if( !ele.hasOwnProperty("uiEleType") )
-	    console.log("No type");
     
-    if( ele != null && ele.hasOwnProperty("uiEleType"))
+    if( ele != null)
     {
-	//console.log("found: "+ele.uiEleType)
-	
-	switch( ele.uiEleType )
+	switch( d.type )
 	{
-	    case "number":
+	    case "number_range":
 	    ui_set_number_range(ele, d)
 	    break;
 
-	    case "progress":
+	    case "progress_range":
 	    ui_set_prog_range(ele, d)
 	    break;
 
+	    case "select":
+	    ui_set_select(ele,d.enableFl)
+	    break
+
+	    case "clickable":
+	    ui_set_clickable(ele,d.enableFl)
+	    break
+
+	    case "visible":
+	    ui_set_visible(ele,d.enableFl)
+	    break
+
+	    case "enable":
+	    ui_set_enable(ele,d.enableFl)
+	    break
+	    
 	}
     }
 }
@@ -951,6 +1059,10 @@ function ui_create( d )
 
 	    case "log":
 	    ele = ui_create_log( parent_ele, d );
+	    break;
+
+	    case "list":
+	    ele = ui_create_list( parent_ele, d );
 	    break;
 	    
 	    default:

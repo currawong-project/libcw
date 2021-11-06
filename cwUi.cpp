@@ -21,6 +21,31 @@ namespace cw
 {
   namespace ui
   {
+    typedef struct ele_type_propery_str
+    {
+      const char* label;
+      bool        is_div_fl;
+    } ele_type_property_t;
+    
+    ele_type_property_t eleTypePropertyA[] =
+    {
+      { "div",       true  },
+      { "panel",     true  },
+      { "row",       true  },
+      { "col",       true  },
+      { "label",     false },
+      { "button",    false },
+      { "check",     false },
+      { "select",    false },
+      { "option",    false },
+      { "string",    false },
+      { "numb_disp", false },
+      { "number",    false },
+      { "progress",  false },
+      { "log",       false },
+      { "list",      false },
+      {  nullptr,    false },
+    };
     
     typedef struct appIdMapRecd_str
     {
@@ -33,8 +58,9 @@ namespace cw
     
     typedef struct ele_str
     {
-      struct ele_str* parent;  // pointer to parent ele - or nullptr if this ele is the root ui ele
-      unsigned        parentAppId; 
+      struct ele_str* phys_parent;    // pointer to actual parent ele - or nullptr if this ele is the root ui ele
+      struct ele_str* logical_parent; // pointer to the nearest ancestor that has a valid appId - this is useful to skip over unnamed containers like rows and columns
+      
       unsigned        uuId;    // UI unique id - automatically generated and unique among all elements that are part of this ui_t object.
       unsigned        appId;   // application assigned id - application assigned id
       unsigned        chanId;  //
@@ -69,7 +95,7 @@ namespace cw
       for(unsigned i=0; i<p->eleN; ++i)
       {
         ele_t* e = p->eleA[i];
-        printf("%15s u:%i : u:%i a:%i %s\n",e->parent==nullptr?"<null>" : e->parent->eleName,e->parent==nullptr? -1 :e->parent->uuId,e->uuId,e->appId,e->eleName);
+        printf("%15s u:%i : u:%i a:%i %s\n",e->phys_parent==nullptr?"<null>" : e->phys_parent->eleName,e->phys_parent==nullptr? -1 :e->phys_parent->uuId,e->uuId,e->appId,e->eleName);
       }
     }
     
@@ -103,6 +129,27 @@ namespace cw
 
       return rc;
     }
+
+    ele_type_property_t* _labelToEleTypeProperty( const char* label )
+    {
+      for(unsigned i=0; eleTypePropertyA[i].label != nullptr; ++i)
+        if( textIsEqual(eleTypePropertyA[i].label,label) )
+          return eleTypePropertyA + i;
+
+      return nullptr;
+    }
+
+    bool _isEleTypeDiv( const char* label )
+    {
+      ele_type_property_t* etp;
+      if((etp = _labelToEleTypeProperty(label)) == nullptr )
+        return false;
+
+      return etp->is_div_fl;
+    }
+
+    bool _isEleTypeLabel( const char* label )
+    { return _labelToEleTypeProperty(label) != nullptr; }
 
     appIdMapRecd_t* _findAppIdMap( ui_t* p, unsigned parentAppId, const char* eleName )
     {
@@ -186,21 +233,37 @@ namespace cw
       return nullptr;
     }
 
-    unsigned _findElementUuId( ui_t* p, const char* eleName )
+    unsigned _findElementUuId( ui_t* p, unsigned parentUuId, const char* eleName, unsigned chanId=kInvalidId )
     {
       for(unsigned i=0; i<p->eleN; ++i)
-        if( textCompare(p->eleA[i]->eleName,eleName) == 0 )
-          return p->eleA[i]->uuId;
-  
+        if( p->eleA[i]->logical_parent != nullptr ) // skip the root
+        {
+          if(( parentUuId == kInvalidId || p->eleA[i]->logical_parent->uuId         == parentUuId) &&
+             ( chanId     == kInvalidId || p->eleA[i]->chanId                       == chanId)     &&
+             (                             textCompare(p->eleA[i]->eleName,eleName) == 0)) 
+          {
+            return p->eleA[i]->uuId;
+          }
+        }
+      
       return kInvalidId;
     }
 
-    unsigned _findElementUuId( ui_t* p, unsigned appId )
+    unsigned _findElementUuId( ui_t* p, unsigned parentUuId, unsigned appId, unsigned chanId=kInvalidId )
     {
+      if( appId == kRootAppId )
+        return kRootUuId;
+      
       for(unsigned i=0; i<p->eleN; ++i)
-        if( p->eleA[i]->appId == appId )
-          return p->eleA[i]->uuId;
-  
+        if( p->eleA[i]->logical_parent != nullptr ) //skip the root
+        {
+          if( ( parentUuId       == kInvalidId || p->eleA[i]->logical_parent->uuId == parentUuId ) &&
+              ( chanId           == kInvalidId || p->eleA[i]->chanId               == chanId )     &&
+              p->eleA[i]->appId == appId  )
+          {
+              return p->eleA[i]->uuId;
+          }          
+        }
       return kInvalidId;
     }
     
@@ -300,11 +363,11 @@ namespace cw
       rc_t rc = kOkRC;
       
       assert( ele != nullptr );      
-      assert( ele->parent != nullptr );
+      assert( ele->phys_parent != nullptr );
 
       unsigned i = snprintf( p->buf, p->bufN,
                              "{ \"op\":\"create\", \"parentUuId\":\"%i\", \"eleName\":\"%s\", \"appId\":\"%i\", \"uuId\":%i ",
-                             ele->parent->uuId,
+                             ele->phys_parent->uuId,
                              ele->eleName==nullptr ? "" : ele->eleName,
                              ele->appId,
                              ele->uuId );
@@ -339,7 +402,7 @@ namespace cw
         // Note that this requires going through all the nodes and picking out the ones whose
         // parent uuid matches the current ele's uuid 
         for(unsigned i=0; i<p->eleN; ++i)
-          if( p->eleA[i]->uuId != kRootUuId && p->eleA[i]->uuId != ele->uuId && p->eleA[i]->parent->uuId == ele->uuId )
+          if( p->eleA[i]->uuId != kRootUuId && p->eleA[i]->uuId != ele->uuId && p->eleA[i]->phys_parent->uuId == ele->uuId )
             if((rc = _transmitTree(p,wsSessId,p->eleA[i]))!=kOkRC )
               break;
 
@@ -354,31 +417,32 @@ namespace cw
     ele_t* _createBaseEle( ui_t* p, ele_t* parent, unsigned appId, unsigned chanId, const char* eleName, const char* eleTypeStr=nullptr, const char* eleClass=nullptr, const char* eleTitle=nullptr )
     {
       ele_t* e = mem::allocZ<ele_t>();
-      unsigned parentAppId = kInvalidId;
+      ele_t* logical_parent = nullptr;
       
-      // Go up the tree looking for the first parent with a valid appId
+      // Go up the tree looking for the first parent with a valid appId.
+      // The logical parent is the first ancestor element that has a valid 'appId'.
       // This is useful to cover the situation where the parent is an unamed div (e.g. row, col, panel)
       // and the appIdMap gives the panel name as the parent.
 
       if( parent != nullptr )
       {
-        parentAppId = parent->appId;
-        for(const ele_t* par=parent; par!=nullptr; par=par->parent)
+        for(ele_t* par=parent; par!=nullptr; par=par->phys_parent)
           if( par->appId != kInvalidId )
           {
-            parentAppId = par->appId;
+            logical_parent = par;
             break;
           }
       }
+
+      assert( appId == kRootAppId || logical_parent != nullptr ); // because the root always has a valid appid
       
-      
-      e->parent      = parent;
-      e->parentAppId = parentAppId;
-      e->uuId        = p->eleN;
-      e->appId       = appId;
-      e->chanId      = chanId;
-      e->eleName     = eleName==nullptr ? nullptr : mem::duplStr(eleName);
-      e->attr        = newDictObject();
+      e->phys_parent    = parent;
+      e->logical_parent = logical_parent;
+      e->uuId           = p->eleN;
+      e->appId          = appId;
+      e->chanId         = chanId;
+      e->eleName        = eleName==nullptr ? nullptr : mem::duplStr(eleName);
+      e->attr           = newDictObject();
       
       if( eleTypeStr != nullptr )
         e->attr->insert_pair("type",eleTypeStr);
@@ -408,7 +472,7 @@ namespace cw
         appIdMapRecd_t* m;
         
         // ... then try to look it up from the appIdMap.
-        if((m = _findAppIdMap(p, e->parentAppId, eleName)) != nullptr )
+        if((m = _findAppIdMap(p, e->logical_parent->appId, eleName)) != nullptr )
           e->appId = m->appId;
       }
 
@@ -448,23 +512,6 @@ namespace cw
       return rc;
     }
 
-
-    bool _is_div_type( const char* eleType )
-    {
-      const char* divAliasA[] = { "div","row","col","panel",nullptr }; // all these types are div's
-      bool divAliasFl         = false;
-
-      // is this element a 'div' alias?
-      for(unsigned i=0; divAliasA[i]!=nullptr; ++i)
-        if( textCompare(divAliasA[i],eleType) == 0 )
-        {
-          divAliasFl = true;
-          break;
-        }
-
-      return divAliasFl;      
-    }
-
     rc_t _createElementsFromChildList( ui_t* p, const object_t* po, unsigned wsSessId, ele_t* parentEle, unsigned chanId );
     
     rc_t _createEleFromRsrsc( ui_t* p, ele_t* parentEle, const char* eleType, unsigned chanId, const object_t* srcObj, unsigned wsSessId )
@@ -486,7 +533,7 @@ namespace cw
         co->unlink();
       }
 
-      divAliasFl = _is_div_type(eleType);
+      divAliasFl = _isEleTypeDiv(eleType);
             
       // get the ui ele name
       if((rc = o->get("name",eleName, cw::kOptionalFl)) != kOkRC )
@@ -508,9 +555,7 @@ namespace cw
         rc = cwLogError(kOpFailRC,"The local element '%s' could not be created.",cwStringNullGuard(eleName));
         goto errLabel;
       }
-
-      
-      if( !divAliasFl )
+      else
       {
         unsigned childN    = o->child_count();
         unsigned child_idx = 0;
@@ -523,15 +568,14 @@ namespace cw
 
           //if( textCompare(eleType,"list")==0 )
           //  printf("%i list: %s %i\n",i,pair_label,o->child_count());
-        
-          if( textCompare(pair_label,"name") != 0 && _is_div_type(pair_label)==false )
+
+          // skip the 'name' attribute any child notes that refer to child elements
+          if( textIsEqual(pair_label,"name") || _isEleTypeLabel(pair_label) )
+            child_idx += 1;
+          else
           {
             child->unlink();
             ele->attr->append_child(child);
-          }
-          else
-          {
-            child_idx += 1;
           }
         }
       }
@@ -1035,7 +1079,7 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* msg, unsi
         cwLogError(kOpFailRC,"UI Value message parse failed.");
       else
       {
-        p->uiCbFunc( p->uiCbArg, wsSessId, opId, ele->parentAppId, ele->uuId, ele->appId, ele->chanId, &value );
+        p->uiCbFunc( p->uiCbArg, wsSessId, opId, ele->logical_parent->appId, ele->uuId, ele->appId, ele->chanId, &value );
                   
       }
       break;
@@ -1045,7 +1089,7 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* msg, unsi
         cwLogError(kOpFailRC,"UI Value message parse failed.");
       else
       {
-        p->uiCbFunc( p->uiCbArg, wsSessId, opId, ele->parentAppId, ele->uuId, ele->appId, ele->chanId, &value );
+        p->uiCbFunc( p->uiCbArg, wsSessId, opId, ele->logical_parent->appId, ele->uuId, ele->appId, ele->chanId, &value );
       }
       break;
       
@@ -1054,7 +1098,7 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* msg, unsi
         cwLogError(kOpFailRC,"UI Echo message parse failed.");
       else
       {
-        p->uiCbFunc( p->uiCbArg, wsSessId, opId, ele->parentAppId, ele->uuId, ele->appId, ele->chanId,nullptr );               
+        p->uiCbFunc( p->uiCbArg, wsSessId, opId, ele->logical_parent->appId, ele->uuId, ele->appId, ele->chanId,nullptr );               
       }
       break;
 
@@ -1075,12 +1119,12 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* msg, unsi
   return rc;
 }
 
-unsigned cw::ui::findElementAppId(  handle_t h, unsigned parentAppId, const char* eleName )
+unsigned cw::ui::parentAndNameToAppId(  handle_t h, unsigned parentAppId, const char* eleName )
 {
   ui_t* p = _handleToPtr(h);
   
   for(unsigned i=0; i<p->eleN; ++i)
-    if( p->eleA[i]->parentAppId==parentAppId && strcmp(p->eleA[i]->eleName,eleName) == 0 )
+    if( p->eleA[i]->logical_parent->appId==parentAppId && strcmp(p->eleA[i]->eleName,eleName) == 0 )
       return p->eleA[i]->appId;
   
   return kInvalidId;
@@ -1091,7 +1135,7 @@ unsigned cw::ui::parentAndNameToUuId( handle_t h, unsigned parentAppId, const ch
   ui_t*  p = _handleToPtr(h);
 
   for(unsigned i=0; i<p->eleN; ++i)
-    if( p->eleA[i]->parentAppId==parentAppId && strcmp(p->eleA[i]->eleName,eleName) == 0 )
+    if( p->eleA[i]->logical_parent->appId==parentAppId && strcmp(p->eleA[i]->eleName,eleName) == 0 )
       return p->eleA[i]->uuId;
   
   return kInvalidId;
@@ -1102,8 +1146,8 @@ unsigned cw::ui::parentAndAppIdToUuId( handle_t h, unsigned parentAppId, unsigne
   ui_t* p = _handleToPtr(h);
   
   for(unsigned i=0; i<p->eleN; ++i)
-    if(((p->eleA[i]->parent==nullptr && parentAppId==kRootAppId) ||
-        (p->eleA[i]->parentAppId==parentAppId))
+    if(((p->eleA[i]->phys_parent==nullptr && parentAppId==kRootAppId) ||
+        (p->eleA[i]->logical_parent->appId==parentAppId))
       && p->eleA[i]->appId == appId )
       return p->eleA[i]->uuId;
   return kInvalidId;
@@ -1115,21 +1159,6 @@ const char* cw::ui::findElementName( handle_t h, unsigned uuId )
   return _findEleEleName(p,uuId);
 }
 
-unsigned cw::ui::findElementUuId( handle_t h, const char* eleName )
-{
-  ui_t* p = _handleToPtr(h);
-  
-  return _findElementUuId(p,eleName);
-}
-
-unsigned cw::ui::findElementUuId( handle_t h, unsigned appId )
-{
-  ui_t* p = _handleToPtr(h);
-  
-  return _findElementUuId(p,appId);  
-}
-
-
 unsigned  cw::ui::findElementAppId(  handle_t h, unsigned uuId )
 {
   ui_t* p = _handleToPtr(h);
@@ -1138,6 +1167,35 @@ unsigned  cw::ui::findElementAppId(  handle_t h, unsigned uuId )
 
   return ele==nullptr ? kInvalidId : ele->uuId;
 }
+
+unsigned cw::ui::findElementUuId( handle_t h, const char* eleName, unsigned chanId )
+{
+  ui_t* p = _handleToPtr(h);
+  
+  return _findElementUuId(p,kInvalidId,eleName,chanId);
+}
+
+unsigned cw::ui::findElementUuId( handle_t h, unsigned appId, unsigned chanId )
+{
+  ui_t* p = _handleToPtr(h);
+  
+  return _findElementUuId(p,kInvalidId,appId,chanId);  
+}
+
+unsigned cw::ui::findElementUuId( handle_t h, unsigned parentUuId, const char* eleName, unsigned chanId )
+{
+  ui_t* p = _handleToPtr(h);
+  
+  return _findElementUuId(p,parentUuId, eleName,chanId);
+}
+
+unsigned cw::ui::findElementUuId( handle_t h, unsigned parentUuId, unsigned appId, unsigned chanId )
+{
+  ui_t* p = _handleToPtr(h);
+  
+  return _findElementUuId(p,parentUuId,appId,chanId);  
+}
+
 
 
 cw::rc_t cw::ui::createFromObject( handle_t  h, const object_t* o,  unsigned parentUuId,  unsigned chanId, const char* fieldName )
@@ -1475,10 +1533,10 @@ void cw::ui::report( handle_t h )
   {
     const ele_t* e = p->eleA[i];
     
-    unsigned    parUuId    = e->parent==NULL ? kInvalidId : e->parent->uuId;
-    const char* parEleName = e->parent==NULL || e->parent->eleName == NULL ? "" : e->parent->eleName;
+    unsigned    parUuId    = e->phys_parent==NULL ? kInvalidId : e->phys_parent->uuId;
+    const char* parEleName = e->phys_parent==NULL || e->phys_parent->eleName == NULL ? "" : e->phys_parent->eleName;
     
-    printf("uu:%5i app:%5i %20s : parent uu:%5i app:%5i %20s ", e->uuId, e->appId, e->eleName == NULL ? "" : e->eleName, parUuId, e->parentAppId, parEleName );
+    printf("uu:%5i app:%5i %20s : parent uu:%5i app:%5i %20s ", e->uuId, e->appId, e->eleName == NULL ? "" : e->eleName, parUuId, e->logical_parent->appId, parEleName );
 
     for(unsigned i=0; i<e->attr->child_count(); ++i)
     {
