@@ -70,10 +70,6 @@ int cw::textCompare( const char* s0, const char* s1, unsigned n)
   return strncmp(s0,s1,n);  
 }
 
-
-
-
-
 const char* cw::nextWhiteChar( const char* s )
 { return _nextWhiteChar(s,false); }
 
