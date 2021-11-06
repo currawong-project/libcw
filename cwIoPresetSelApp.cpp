@@ -14,6 +14,7 @@
 #include "cwIoMidiRecordPlay.h"
 #include "cwIoPresetSelApp.h"
 #include "cwPianoScore.h"
+#include "cwPresetSel.h"
 
 namespace cw
 {
@@ -42,7 +43,24 @@ namespace cw
       kLoadBtnId,
       kFnStringId,
 
-      kLocNumbId
+      kLocNumbId,
+
+      kInsertLocId,
+      kInsertBtnId,
+      kDeleteBtnId,
+
+      kFragListId,
+      kFragPanelId,
+      kFragEndLocId,
+      
+      kFragPresetRowId,
+      kFragPresetSelId,
+      kFragPresetOrderId,
+      
+      kFragGainId,
+      kFragWetDryGainId,
+      kFragFadeOutMsId
+      
       
     };
 
@@ -75,8 +93,20 @@ namespace cw
       { kPanelDivId,     kLoadBtnId,      "loadBtnId" },
       { kPanelDivId,     kFnStringId,     "filenameId" },
 
-      { kPanelDivId,     kLocNumbId,      "locNumbId" }
-        
+      { kPanelDivId,     kLocNumbId,      "locNumbId" },
+
+      { kPanelDivId,     kInsertLocId,    "insertLocId" },
+      { kPanelDivId,     kInsertBtnId,    "insertBtnId" },
+      { kDeleteBtnId,    kDeleteBtnId,    "deleteBtnId" },
+
+      { kPanelDivId,     kFragListId,       "fragListId" },
+      { kFragListId,     kFragPanelId,      "fragPanelId"},
+      { kFragPanelId,    kFragEndLocId,     "fragEndLocId" },
+      { kFragPanelId,    kFragPresetRowId,  "fragPresetRowId" },
+      { kFragPanelId,    kFragGainId,       "fragGainId" },
+      { kFragPanelId,    kFragWetDryGainId, "fragWetDryGainId" },
+      { kFragPanelId,    kFragFadeOutMsId,  "fragFadeOutMsId" }
+      
     };
 
     unsigned mapN = sizeof(mapA)/sizeof(mapA[0]);
@@ -89,20 +119,25 @@ namespace cw
     
     typedef struct app_str
     {
-      io::handle_t  ioH;
+      io::handle_t    ioH;
       
-      const char* record_dir;
-      const char* record_folder;
-      const char* record_fn_ext;
-      char*       directory;
-      const char* scoreFn;
+      const char*     record_dir;
+      const char*     record_folder;
+      const char*     record_fn_ext;
+      char*           directory;
+      const char*     scoreFn;
+      const object_t* frag_panel_cfg;
+      const object_t* presets_cfg;
       
       midi_record_play::handle_t  mrpH;
-      //audio_record_play::handle_t arpH;
 
       score::handle_t scoreH;
       loc_map_t*      locMap;
       unsigned        locMapN;
+
+      unsigned insertLoc; // last valid insert location id received from the GUI
+
+      preset_sel::handle_t psH;
       
     } app_t;
 
@@ -117,9 +152,11 @@ namespace cw
       }
         
       if((rc = params_cfgRef->getv( "record_dir",    app->record_dir,
-                             "record_folder", app->record_folder,
-                             "record_fn_ext", app->record_fn_ext,
-                             "score_fn",      app->scoreFn )) != kOkRC )
+                                    "record_folder", app->record_folder,
+                                    "record_fn_ext", app->record_fn_ext,
+                                    "score_fn",      app->scoreFn,
+                                    "frag_panel",    app->frag_panel_cfg,
+                                    "presets",       app->presets_cfg)) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"Preset Select App configuration parse failed.");
       }
@@ -129,6 +166,8 @@ namespace cw
         if((rc = filesys::makeDir(app->record_dir)) != kOkRC )
           rc = cwLogError(rc,"Unable to create the base output directory:%s.",cwStringNullGuard(app->record_dir));
 
+
+      app->insertLoc = kInvalidId; // initialize 'insertLoc' to be invalid
       
     errLabel:
       
@@ -137,6 +176,7 @@ namespace cw
 
     rc_t _free( app_t& app )      
     {
+      preset_sel::destroy(app.psH);
       mem::release(app.locMap);
       mem::release(app.directory);
       return kOkRC;
@@ -179,6 +219,94 @@ namespace cw
         printf("%s\n",buf);
       }
     }
+
+    void _update_event_ui( app_t* app )
+    {
+      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId),   midi_record_play::event_index(app->mrpH) );
+      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kTotalMidiEvtCntId), midi_record_play::event_count(app->mrpH) );
+    }
+    
+    template< typename T >
+    rc_t _update_frag_ui( app_t* app, unsigned fragId, unsigned psVarId, unsigned psPresetId, unsigned uiParentUuId, unsigned uiVarAppId, unsigned uiChanId,  T& valRef )
+    {
+      rc_t     rc             = kOkRC;
+      unsigned uuid           = kInvalidId;
+      
+      // Get the value from the data record
+      if((rc = preset_sel::get_value( app->psH, fragId, psVarId, psPresetId, valRef )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Unable to locate the preset value for var:5i preset:%i.",psVarId,psPresetId);
+        goto errLabel;
+      }
+
+      // Get the UI uuId
+      if(( uuid = io::uiFindElementUuId( app->ioH, uiParentUuId, uiVarAppId, uiChanId )) == kInvalidId )
+      {
+        rc = cwLogError(rc,"Unable to locate the UI uuid for appid:%i chanId:%i.", uiVarAppId, uiChanId );
+        goto errLabel;
+      }
+
+      // Send the value to the UI
+      if((rc = io::uiSendValue( app->ioH, uuid, valRef )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Transmission of fragment value failed.");
+        goto errLabel;
+      }
+
+    errLabel:
+      return rc;
+    }
+
+    rc_t _update_frag_ui(app_t* app, unsigned fragId )
+    {
+      // Notes: fragId == fragPanelUuId
+      //        uiChanId = endLoc for panel values
+      //     or uiChanId = preset_index for preset values
+
+      rc_t     rc            = kOkRC;
+      unsigned fragPanelUuId = fragId;
+      unsigned endLoc;
+      
+      if((rc = get_value( app->psH, fragId, preset_sel::kEndLocVarId, kInvalidId, endLoc )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Unable to get the 'end loc' value for fragment id:%i.",fragId);
+        goto errLabel;
+      }
+      else
+      {
+        bool     bValue;
+        unsigned uValue;
+        double   dValue;
+        unsigned uiChanId = endLoc;
+
+        
+        _update_frag_ui( app, fragId, preset_sel::kEndLocVarId,    kInvalidId, fragPanelUuId, kFragEndLocId,     uiChanId,  uValue );          
+        _update_frag_ui( app, fragId, preset_sel::kGainVarId,      kInvalidId, fragPanelUuId, kFragGainId,       uiChanId,  dValue );
+        _update_frag_ui( app, fragId, preset_sel::kFadeOutMsVarId, kInvalidId, fragPanelUuId, kFragFadeOutMsId,  uiChanId,  dValue );
+        _update_frag_ui( app, fragId, preset_sel::kWetGainVarId,   kInvalidId, fragPanelUuId, kFragWetDryGainId, uiChanId,  dValue );
+
+        // uuid of the frag preset row
+        unsigned fragPresetRowUuId = io::uiFindElementUuId( app->ioH, fragPanelUuId, kFragPresetRowId, uiChanId );
+        
+        for(unsigned preset_idx=0; preset_idx<preset_sel::preset_count(app->psH); ++preset_idx)
+        {
+          _update_frag_ui( app, fragId, preset_sel::kPresetSelectVarId, preset_idx, fragPresetRowUuId, kFragPresetSelId,   preset_idx,  bValue );          
+          _update_frag_ui( app, fragId, preset_sel::kPresetOrderVarId,  preset_idx, fragPresetRowUuId, kFragPresetOrderId, preset_idx,  uValue );          
+        }
+      
+      }
+      
+    errLabel:
+      return rc;
+    }
+
+    template< typename T>
+    rc_t _on_ui_frag_value( app_t* app, unsigned parentAppId, unsigned uuId, unsigned appId, unsigned chanId, const T& value )
+    {
+      rc_t rc = kOkRC;
+      return rc;
+    }
+    
     
     rc_t _on_ui_save( app_t* app )
     {
@@ -281,13 +409,17 @@ namespace cw
         mem::free(m);
         
       }
+      // enable the 'End Loc' number box since the score is loaded
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kInsertLocId ), true );
+
+      // update the current event and event count
+      _update_event_ui(app);
       
       cwLogInfo("'%s' loaded.",app->scoreFn);
       
     errLabel:
 
-      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId),   midi_record_play::event_index(app->mrpH) );
-      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kTotalMidiEvtCntId), midi_record_play::event_count(app->mrpH) );
+      _update_event_ui( app );
       
       return rc;
     }
@@ -345,40 +477,150 @@ namespace cw
       return rc;
     }
 
+    loc_map_t* _find_loc( app_t* app, unsigned loc )
+    {
+      unsigned i=0;
+      for(; i<app->locMapN; ++i)
+        if( app->locMap[i].loc == loc )
+          return app->locMap + i;
+      return nullptr;
+    }
+    
+    bool _is_loc_valid( app_t* app, unsigned loc )
+    {  return _find_loc(app,loc) != nullptr; }
+
     
     rc_t _on_ui_loc(app_t* app, unsigned loc)
     {
       rc_t rc = kOkRC;
-      unsigned i=0;
-      for(; i<app->locMapN; ++i)
-      {
-        if( app->locMap[i].loc == loc )
-        {
-          //  
-          if((rc = midi_record_play::seek( app->mrpH, app->locMap[i].timestamp )) != kOkRC )
-          {
-            rc = cwLogError(rc,"MIDI seek failed.");
-          }
-          else
-          {
-            start( app->mrpH, false );
-            io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId),   midi_record_play::event_index(app->mrpH) );
-          }
-          break;
-          
-        }     
-      }
-      
-      if( i == app->locMapN )
-        rc = cwLogError(kOpFailRC,"The location '%i' could not be found.",loc);
+      loc_map_t* map;
 
+      // locate the map record
+      if((map = _find_loc(app,loc)) == nullptr )
+      {
+        rc = cwLogError(kOpFailRC,"The location '%i' could not be found.",loc);
+        goto errLabel;
+      }
+
+      // seek the player to the requested loc
+      if((rc = midi_record_play::seek( app->mrpH, map->timestamp )) != kOkRC )
+      {
+        rc = cwLogError(rc,"MIDI seek failed.");
+        goto errLabel;
+      }
+
+      // start the player
+      start( app->mrpH, false );
+      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId),   midi_record_play::event_index(app->mrpH) );
+
+    errLabel:
       return rc;
+    }
+
+    
+    rc_t _create_frag_preset_ctl( app_t* app, unsigned fragPresetRowUuId, unsigned presetN, unsigned preset_idx )
+    {
+      rc_t        rc           = kOkRC;
+      unsigned    colUuId      = kInvalidId;
+      unsigned    uuId         = kInvalidId;
+      const char* nullEleName  = nullptr;
+      const char* nullClass    = nullptr;
+      unsigned    invalidAppId = kInvalidId;
+      unsigned    chanId       = preset_idx; // chanId is the preset id
+      const char* presetLabel  = preset_sel::preset_label( app->psH, preset_idx );
+        
+      assert( presetLabel != nullptr );
+
+      // preset control column container
+      if((rc = io::uiCreateDiv( app->ioH, colUuId, fragPresetRowUuId, nullEleName, invalidAppId, chanId, "col fragPresetCtl", nullptr )) != kOkRC )
+        goto errLabel;
+
+      // preset select check
+      if((rc = io::uiCreateCheck( app->ioH, uuId, colUuId, nullEleName, kFragPresetSelId, chanId, nullClass, presetLabel )) != kOkRC )
+        goto errLabel;
+
+      // preset order number
+      if((rc = io::uiCreateNumb( app->ioH, uuId,  colUuId, nullEleName, kFragPresetOrderId, chanId, nullClass, nullptr, 0, presetN, 1, 0 )) != kOkRC )
+        goto errLabel;
+
+
+    errLabel:
+      if(rc != kOkRC )
+        rc = cwLogError(rc,"Preset control index '%i' create failed.");
+      return rc;
+    }
+
+    rc_t _on_ui_insert_btn( app_t* app )
+    {
+      rc_t rc = kOkRC;
+      unsigned fragListUuId      = io::uiFindElementUuId( app->ioH, kFragListId );
+      unsigned fragChanId        = app->insertLoc;   // use the frag. endLoc as the channel id
+      unsigned fragPanelUuId     = kInvalidId;
+      unsigned fragEndLocUuId    = kInvalidId;
+      unsigned fragPresetRowUuId = kInvalidId;
+      unsigned presetN           = preset_sel::preset_count( app->psH );
+
+      // verify that frag panel resource object is initiailized
+      if( app->frag_panel_cfg == nullptr)
+      {
+        rc = cwLogError(kInvalidStateRC,"The fragment UI resource was not initialized.");
+        goto errLabel;
+      }
+
+      // verify that the insertion location is valid
+      if( app->insertLoc == kInvalidId )
+      {
+        rc = cwLogError(kInvalidIdRC,"The new fragment's 'End Loc' is not valid.");
+        goto errLabel;
+      }
+
+      // create the UI object
+      if((rc = io::uiCreateFromObject( app->ioH, app->frag_panel_cfg,  fragListUuId, fragChanId )) != kOkRC )
+      {
+        rc = cwLogError(rc,"The fragments UI object creation failed.");
+        goto errLabel;
+      }
+
+      // get the uuid's of the new fragment panel and the endloc number display
+      fragPanelUuId     = io::uiFindElementUuId( app->ioH, fragListUuId,  kFragPanelId,     fragChanId ); 
+      fragEndLocUuId    = io::uiFindElementUuId( app->ioH, fragPanelUuId, kFragEndLocId,    fragChanId );
+      fragPresetRowUuId = io::uiFindElementUuId( app->ioH, fragPanelUuId, kFragPresetRowId, fragChanId );
+
+      assert( fragPanelUuId     != kInvalidId );
+      assert( fragEndLocUuId    != kInvalidId );
+      assert( fragPresetRowUuId != kInvalidId );
+
+      // create each of the preset controls
+      for(unsigned preset_idx=0; preset_idx<presetN; ++preset_idx)
+        if((rc = _create_frag_preset_ctl(app, fragPresetRowUuId, presetN, preset_idx )) != kOkRC )
+          goto errLabel;
+      
+      // create the data record associated with the new fragment.
+      if((rc = preset_sel::create_fragment( app->psH, fragPanelUuId, app->insertLoc)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Fragment data record create failed.");
+        goto errLabel;
+      }
+
+      // update the fragment UI
+      _update_frag_ui(app, fragPanelUuId );
+      
+    errLabel:
+      return rc;
+          
     }
 
 
     rc_t _onUiInit(app_t* app, const io::ui_msg_t& m )
     {
       rc_t rc = kOkRC;
+
+      _update_event_ui(app);
+
+      const preset_sel::frag_t* f = preset_sel::get_fragment_base( app->psH );
+      for(; f!=nullptr; f=f->link)
+        _update_frag_ui( app, f->fragId );
+
       
       return rc;
     }
@@ -429,6 +671,49 @@ namespace cw
 
         case kLocNumbId:
           _on_ui_loc(app, m.value->u.i);
+          break;
+
+        case kInsertLocId:
+          {
+            unsigned insertLocId = m.value->u.u;
+            bool     enableFl    = _is_loc_valid(app,insertLocId);
+            unsigned insertBtnUuId = io::uiFindElementUuId( app->ioH, kInsertBtnId );
+            io::uiSetEnable( app->ioH, insertBtnUuId, enableFl );
+            if( enableFl )
+              app->insertLoc = insertLocId;
+            else
+            {
+              app->insertLoc = kInvalidId;
+              cwLogWarning("Location '%i' is not valid.",insertLocId);
+            }
+          }
+          break;
+          
+        case kInsertBtnId:
+          _on_ui_insert_btn(app);
+          break;
+          
+        case kDeleteBtnId:
+          break;
+
+        case kFragGainId:
+          _on_ui_frag_value( app, m.parentAppId, m.uuId, m.appId, m.chanId, m.value->u.d );
+          break;
+          
+        case kFragWetDryGainId:
+          _on_ui_frag_value( app, m.parentAppId, m.uuId, m.appId, m.chanId, m.value->u.d );
+          break;
+          
+        case kFragFadeOutMsId:
+          _on_ui_frag_value( app, m.parentAppId, m.uuId, m.appId, m.chanId, m.value->u.d );
+          break;
+
+        case kFragPresetOrderId:
+          _on_ui_frag_value( app, m.parentAppId, m.uuId, m.appId, m.chanId, m.value->u.u );
+          break;
+            
+        case kFragPresetSelId:
+          _on_ui_frag_value( app, m.parentAppId, m.uuId, m.appId, m.chanId, m.value->u.b );
           break;
       }
 
@@ -546,7 +831,7 @@ namespace cw
 cw::rc_t cw::preset_sel_app::main( const object_t* cfg )
 {
   rc_t rc;
-  app_t app = {};
+  app_t app = { };
   const object_t* params_cfg = nullptr;
   
   // Parse the configuration
@@ -559,6 +844,14 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg )
     rc = cwLogError(kOpFailRC,"IO Framework create failed.");
     goto errLabel;
   }
+
+  // create the preset selection state object
+  if((rc = create(app.psH, app.presets_cfg )) != kOkRC )
+  {
+    rc = cwLogError(kOpFailRC,"Preset state control object create failed.");
+    goto errLabel;
+  }
+
 
   // create the MIDI record-play object
   if((rc = midi_record_play::create(app.mrpH,app.ioH,*params_cfg,_midi_play_callback,&app)) != kOkRC )
