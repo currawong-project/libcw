@@ -33,9 +33,14 @@ namespace cw
     rc_t create(  handle_t& hRef, const object_t* cfg );
     rc_t destroy( handle_t& hRef );
 
+    
     unsigned       event_count( handle_t h );
     const event_t* base_event( handle_t h );
-    
+
+    unsigned       loc_count( handle_t h );
+    bool           is_loc_valid( handle_t h, unsigned locId );
+
+    // Format the event as a string for printing.
     rc_t  event_to_string( handle_t h, unsigned uid, char* buf, unsigned buf_byte_cnt );
     
     

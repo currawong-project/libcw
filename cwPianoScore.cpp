@@ -14,6 +14,7 @@ namespace cw
     {
       event_t* base;
       event_t* end;
+      unsigned maxLocId;
     } score_t;
 
     score_t* _handleToPtr(handle_t h)
@@ -103,6 +104,10 @@ namespace cw
             p->base = e;
           
           p->end  = e;
+
+          // track the max 'loc' id
+          if( e->loc > p->maxLocId )
+            p->maxLocId = e->loc;
           
         }
         
@@ -196,8 +201,7 @@ unsigned       cw::score::event_count( handle_t h )
   for(event_t* e=p->base; e!=nullptr; e=e->link)
     ++n;
 
-  return n;
-  
+  return n;  
 }
 
 const cw::score::event_t* cw::score::base_event( handle_t h )
@@ -231,4 +235,16 @@ cw::rc_t  cw::score::event_to_string( handle_t h, unsigned uid, char* buf, unsig
   }
 
   return rc;
+}
+
+unsigned       cw::score::loc_count( handle_t h )
+{
+  score_t* p  = _handleToPtr(h);
+  return p->maxLocId;
+}
+
+bool cw::score::is_loc_valid( handle_t h, unsigned locId )
+{
+  score_t* p  = _handleToPtr(h);
+  return locId < p->maxLocId;
 }
