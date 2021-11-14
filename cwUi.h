@@ -62,7 +62,7 @@ namespace cw
     // Create multiple UI elements from an object_t representation.
     // The channel id of all elements created from the object will be assigned 'chanId'.
     // The 'fieldName' string identifies
-    rc_t createFromObject( handle_t h, const object_t* o, unsigned parentUuId=kInvalidId, unsigned chanId=kInvalidId, const char* fieldName=nullptr);
+    rc_t createFromObject( handle_t h, const object_t* o, unsigned parentUuId=kInvalidId, unsigned chanId=kInvalidId, const char* cfgFieldName=nullptr);
     rc_t createFromFile(   handle_t h, const char* fn,    unsigned parentUuId=kInvalidId, unsigned chanId=kInvalidId);
     rc_t createFromText(   handle_t h, const char* text,  unsigned parentUuId=kInvalidId, unsigned chanId=kInvalidId);
 
@@ -134,9 +134,19 @@ namespace cw
     rc_t setEnable(      handle_t h, unsigned uuId, bool enableFl=true );
     rc_t clearEnable(    handle_t h, unsigned uuId );
     bool isEnabled(      handle_t h, unsigned uuId );
+
+    rc_t setOrderKey(    handle_t h, unsigned uuId, int orderKey );
+    int  getOrderKey(    handle_t h, unsigned uuId );
+
+    rc_t        setBlob(   handle_t h, unsigned uuId, const void* blob, unsigned blobByteN );
+    const void* getBlob(   handle_t h, unsigned uuId, unsigned& blobByteN_Ref );
+    rc_t        clearBlob( handle_t h, unsigned uuId );
     
     // Register parent/child/name app id's 
     rc_t registerAppIdMap(  handle_t h, const appIdMap_t* map, unsigned mapN );
+
+    // Release an element an all of it's children.
+    rc_t destroyElement( handle_t h, unsigned uuId );
 
     // Send a value from the application to the UI via a JSON messages.
     // Set wsSessId to kInvalidId to send to all sessions.

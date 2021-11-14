@@ -330,10 +330,19 @@ namespace cw
     rc_t uiSetEnable(      handle_t h, unsigned uuId, bool enableFl=true );
     rc_t uiClearEnable(    handle_t h, unsigned uuId );
     bool uiIsEnabled(      handle_t h, unsigned uuId );
+
+    rc_t uiSetOrderKey(    handle_t h, unsigned uuId, int orderKey );
+    int  uiGetOrderKey(    handle_t h, unsigned uuId );
+
     
+    rc_t        uiSetBlob(   handle_t h, unsigned uuId, const void* blob, unsigned blobByteN );
+    const void* uiGetBlob(   handle_t h, unsigned uuId, unsigned& blobByteN_Ref );
+    rc_t        uiClearBlob( handle_t h, unsigned uuId );
     
     // Register parent/child/name app id's 
     rc_t uiRegisterAppIdMap(  handle_t h, const ui::appIdMap_t* map, unsigned mapN );
+
+    rc_t uiDestroyElement( handle_t h, unsigned uuId );
     
     // Send a value from the application to the UI.
     // Set wsSessId to kInvalidId to send to all sessions.

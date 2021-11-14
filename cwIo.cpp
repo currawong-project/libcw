@@ -2912,13 +2912,61 @@ cw::rc_t cw::io::uiClearEnable(    handle_t h, unsigned uuId )
 }
 
 bool cw::io::uiIsEnabled(      handle_t h, unsigned uuId )
-{  rc_t         rc;
+{
+  rc_t         rc;
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
     return ui::isEnabled(uiH,uuId);
   return false;
-
 }
+
+cw::rc_t cw::io::uiSetOrderKey(    handle_t h, unsigned uuId, int orderKey )
+{
+  rc_t rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::setOrderKey(uiH,uuId,orderKey);
+  return rc;
+}
+
+int  cw::io::uiGetOrderKey(    handle_t h, unsigned uuId )
+{
+  rc_t rc;
+  ui::handle_t uiH;
+  int orderKey = 0;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    orderKey = ui::getOrderKey(uiH,uuId);
+  return orderKey;
+}
+
+cw::rc_t    cw::io::uiSetBlob(   handle_t h, unsigned uuId, const void* blob, unsigned blobByteN )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::setBlob( uiH, uuId, blob, blobByteN );
+  return rc;
+}
+
+const void* cw::io::uiGetBlob(   handle_t h, unsigned uuId, unsigned& blobByteN_Ref )
+{
+  ui::handle_t uiH;
+  if( _handleToUiHandle(h,uiH) == kOkRC )
+    return ui::getBlob( uiH, uuId, blobByteN_Ref );
+  
+  blobByteN_Ref = 0;
+  return nullptr;
+}
+
+cw::rc_t cw::io::uiClearBlob( handle_t h, unsigned uuId )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::clearBlob( uiH, uuId );
+  return rc;
+}
+
 
 cw::rc_t cw::io::uiRegisterAppIdMap(  handle_t h, const ui::appIdMap_t* map, unsigned mapN )
 {
@@ -2937,6 +2985,16 @@ cw::rc_t cw::io::uiSendValue(   handle_t h, unsigned uuId, bool value )
     rc = ui::sendValueBool(uiH,  uuId, value );
   return rc;
 }
+
+cw::rc_t cw::io::uiDestroyElement( handle_t h, unsigned uuId )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::destroyElement(uiH,  uuId );
+  return rc;
+}
+
 
 cw::rc_t cw::io::uiSendValue(    handle_t h, unsigned uuId, int value )
 {
