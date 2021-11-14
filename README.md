@@ -44,6 +44,12 @@ In otherwords the parent/child pairs shoud actually exists.
 - Add an ui::appIdToUuId() that returns the first matching appId, and then
 optionally looks for duplicates as an error checking scheme. 
 
+- The ui eleA[] data structure should be changed to a tree 
+because the current expandable array allows empty slots which need to be checked
+for whenever the list is iterated.  It is also very inefficient to delete from the
+eleA[] because an exhaustive search is required to find all the children of the
+element to be deleted.
+
 - thread needs setters and getters for internal variables
 
 - change cwMpScNbQueue so that it does not require 'new'.
