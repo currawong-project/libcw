@@ -43,7 +43,8 @@ namespace cw
       kLoadBtnId,
       kFnStringId,
 
-      kLocNumbId,
+      kBegPlayLocNumbId,
+      kEndPlayLocNumbId,
 
       kInsertLocId,
       kInsertBtnId,
@@ -60,8 +61,6 @@ namespace cw
       kFragGainId,
       kFragWetDryGainId,
       kFragFadeOutMsId
-      
-      
     };
 
     enum
@@ -87,17 +86,17 @@ namespace cw
       
       { kPanelDivId,     kCurAudioSecsId,    "curAudioSecsId" },
       { kPanelDivId,     kTotalAudioSecsId,  "totalAudioSecsId" },
-      
         
       { kPanelDivId,     kSaveBtnId,      "saveBtnId" },
       { kPanelDivId,     kLoadBtnId,      "loadBtnId" },
       { kPanelDivId,     kFnStringId,     "filenameId" },
 
-      { kPanelDivId,     kLocNumbId,      "locNumbId" },
+      { kPanelDivId,     kBegPlayLocNumbId,   "begLocNumbId" },
+      { kPanelDivId,     kEndPlayLocNumbId,   "endLocNumbId" },
 
       { kPanelDivId,     kInsertLocId,    "insertLocId" },
       { kPanelDivId,     kInsertBtnId,    "insertBtnId" },
-      { kDeleteBtnId,    kDeleteBtnId,    "deleteBtnId" },
+      { kPanelDivId,     kDeleteBtnId,    "deleteBtnId" },
 
       { kPanelDivId,     kFragListId,       "fragListId" },
       { kFragListId,     kFragPanelId,      "fragPanelId"},
@@ -116,6 +115,13 @@ namespace cw
       unsigned     loc;
       time::spec_t timestamp;
     } loc_map_t;
+
+    typedef struct ui_blob_str
+    {
+      unsigned fragId;
+      unsigned varId;
+      unsigned presetId;
+    } ui_blob_t;
     
     typedef struct app_str
     {
@@ -136,6 +142,9 @@ namespace cw
       unsigned        locMapN;
 
       unsigned insertLoc; // last valid insert location id received from the GUI
+
+      time::spec_t beg_play_timestamp;
+      time::spec_t end_play_timestamp;
 
       preset_sel::handle_t psH;
       
@@ -257,6 +266,57 @@ namespace cw
       return rc;
     }
 
+    // Get the endLoc associated with this fragment id
+    rc_t _frag_id_to_endloc( app_t* app, unsigned fragId, unsigned& endLocRef )
+    {
+      rc_t rc = kOkRC;
+
+      endLocRef = kInvalidId;
+      if((rc = get_value( app->psH, fragId, preset_sel::kEndLocVarId, kInvalidId, endLocRef )) != kOkRC )
+        rc = cwLogError(rc,"Unable to get the 'end loc' value for fragment id:%i.",fragId);
+
+      return rc;
+    }
+
+    // Update the preset select check boxes on a fragment panel
+    rc_t _update_frag_select_flags( app_t* app, unsigned fragId, unsigned fragEndLoc=kInvalidId )
+    {
+      rc_t     rc = kOkRC;
+
+      // if 
+      if( fragEndLoc == kInvalidId )
+      {
+        // get the endLoc associated with this fragment
+        rc = _frag_id_to_endloc(app, fragId, fragEndLoc );
+      }
+
+      if( rc == kOkRC )
+      {
+        bool     bValue;
+        unsigned uValue;
+      
+        // The uiChan is the fragment endLoc
+        unsigned uiChanId = fragEndLoc;
+
+        // The fragPanelUUid is the same as the fragId
+        unsigned fragPanelUuId = fragId;
+      
+        // uuid of the frag preset row
+        unsigned fragPresetRowUuId = io::uiFindElementUuId( app->ioH, fragPanelUuId, kFragPresetRowId, uiChanId );
+
+        // Update each fragment preset control UI by getting it's current value from the fragment data record
+        for(unsigned preset_idx=0; preset_idx<preset_sel::preset_count(app->psH); ++preset_idx)
+        {
+          _update_frag_ui( app, fragId, preset_sel::kPresetSelectVarId, preset_idx, fragPresetRowUuId, kFragPresetSelId,   preset_idx,  bValue );          
+          _update_frag_ui( app, fragId, preset_sel::kPresetOrderVarId,  preset_idx, fragPresetRowUuId, kFragPresetOrderId, preset_idx,  uValue );          
+        }
+        
+      }
+      
+      return rc;
+    }
+
+    // Update the fragment UI withh the fragment record associated with 'fragId'
     rc_t _update_frag_ui(app_t* app, unsigned fragId )
     {
       // Notes: fragId == fragPanelUuId
@@ -264,46 +324,56 @@ namespace cw
       //     or uiChanId = preset_index for preset values
 
       rc_t     rc            = kOkRC;
-      unsigned fragPanelUuId = fragId;
       unsigned endLoc;
-      
-      if((rc = get_value( app->psH, fragId, preset_sel::kEndLocVarId, kInvalidId, endLoc )) != kOkRC )
+
+      // get the endLoc for this fragment 
+      if((rc = _frag_id_to_endloc(app, fragId, endLoc )) == kOkRC )
       {
-        rc = cwLogError(rc,"Unable to get the 'end loc' value for fragment id:%i.",fragId);
-        goto errLabel;
-      }
-      else
-      {
-        bool     bValue;
         unsigned uValue;
         double   dValue;
-        unsigned uiChanId = endLoc;
-
+        unsigned uiChanId      = endLoc;
+        unsigned fragPanelUuId = fragId;
         
         _update_frag_ui( app, fragId, preset_sel::kEndLocVarId,    kInvalidId, fragPanelUuId, kFragEndLocId,     uiChanId,  uValue );          
         _update_frag_ui( app, fragId, preset_sel::kGainVarId,      kInvalidId, fragPanelUuId, kFragGainId,       uiChanId,  dValue );
         _update_frag_ui( app, fragId, preset_sel::kFadeOutMsVarId, kInvalidId, fragPanelUuId, kFragFadeOutMsId,  uiChanId,  dValue );
         _update_frag_ui( app, fragId, preset_sel::kWetGainVarId,   kInvalidId, fragPanelUuId, kFragWetDryGainId, uiChanId,  dValue );
 
-        // uuid of the frag preset row
-        unsigned fragPresetRowUuId = io::uiFindElementUuId( app->ioH, fragPanelUuId, kFragPresetRowId, uiChanId );
         
-        for(unsigned preset_idx=0; preset_idx<preset_sel::preset_count(app->psH); ++preset_idx)
-        {
-          _update_frag_ui( app, fragId, preset_sel::kPresetSelectVarId, preset_idx, fragPresetRowUuId, kFragPresetSelId,   preset_idx,  bValue );          
-          _update_frag_ui( app, fragId, preset_sel::kPresetOrderVarId,  preset_idx, fragPresetRowUuId, kFragPresetOrderId, preset_idx,  uValue );          
-        }
-      
+        _update_frag_select_flags( app, fragId, endLoc );
+        
       }
       
-    errLabel:
       return rc;
     }
 
     template< typename T>
-    rc_t _on_ui_frag_value( app_t* app, unsigned parentAppId, unsigned uuId, unsigned appId, unsigned chanId, const T& value )
+    rc_t _on_ui_frag_value( app_t* app, unsigned uuId, const T& value )
     {
-      rc_t rc = kOkRC;
+      rc_t       rc        = kOkRC;
+      unsigned   blobByteN = 0;
+      ui_blob_t* blob      = nullptr;
+
+      
+      if(( blob = (ui_blob_t*)io::uiGetBlob( app->ioH, uuId, blobByteN )) == nullptr || blobByteN != sizeof(ui_blob_t) )
+        return cwLogError(kInvalidStateRC,"A fragment UI blob was missing or corrupt.");
+      
+      rc = preset_sel::set_value( app->psH, blob->fragId, blob->varId, blob->presetId, value );
+
+      if( rc != kOkRC )
+      {
+        // TODO: Set the error indicator on the GUI
+      }
+      else
+      {
+        // TODO: Clear the error indicator on the GUI
+      }
+
+      printf("FV:%i\n",blob->varId );
+      // 
+      if( blob->varId == preset_sel::kPresetSelectVarId )
+        _update_frag_select_flags( app, blob->fragId);
+      
       return rc;
     }
     
@@ -414,6 +484,11 @@ namespace cw
 
       // update the current event and event count
       _update_event_ui(app);
+
+      // enable the start/stop buttons
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStartBtnId ), true );
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStopBtnId ),  true );
+
       
       cwLogInfo("'%s' loaded.",app->scoreFn);
       
@@ -427,19 +502,26 @@ namespace cw
     rc_t _on_ui_start( app_t* app )
     {
       rc_t rc=kOkRC;
+      bool rewindFl = true;
+
+      if( !time::isZero(app->beg_play_timestamp) )
+      {
+          // seek the player to the requested loc
+          if((rc = midi_record_play::seek( app->mrpH, app->beg_play_timestamp )) != kOkRC )
+          {
+            rc = cwLogError(rc,"MIDI seek failed.");
+            goto errLabel;
+          }
+          rewindFl = false;
+      }
       
-      if((rc = midi_record_play::start(app->mrpH)) != kOkRC )
+      if((rc = midi_record_play::start(app->mrpH,rewindFl,&app->end_play_timestamp)) != kOkRC )
       {
         rc = cwLogError(rc,"MIDI start failed.");
         goto errLabel;
       }
 
-      //if((rc = audio_record_play::start(app->arpH)) != kOkRC )
-      //{
-      //  rc = cwLogError(rc,"Audio start failed.");
-      //  goto errLabel;
-      //}
-
+      
       io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), midi_record_play::event_index(app->mrpH) );
       //io::uiSendValue( app->ioH, kInvalidId, uiFindElementUuId(app->ioH,kCurAudioSecsId),  audio_record_play::current_loc_seconds(app->arpH) );
       
@@ -486,13 +568,18 @@ namespace cw
       return nullptr;
     }
     
-    bool _is_loc_valid( app_t* app, unsigned loc )
-    {  return _find_loc(app,loc) != nullptr; }
+    bool _is_valid_insert_loc( app_t* app, unsigned loc )
+    {
+      bool fl0 = _find_loc(app,loc) != nullptr;
+      bool fl1 = preset_sel::is_fragment_loc( app->psH, loc)==false;
+
+      return fl0 && fl1;
+    }
 
     
-    rc_t _on_ui_loc(app_t* app, unsigned loc)
+    rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc)
     {
-      rc_t rc = kOkRC;
+      rc_t       rc = kOkRC;
       loc_map_t* map;
 
       // locate the map record
@@ -502,23 +589,52 @@ namespace cw
         goto errLabel;
       }
 
-      // seek the player to the requested loc
-      if((rc = midi_record_play::seek( app->mrpH, map->timestamp )) != kOkRC )
+      switch( appId )
       {
-        rc = cwLogError(rc,"MIDI seek failed.");
-        goto errLabel;
+        case kBegPlayLocNumbId:
+          app->beg_play_timestamp = map->timestamp;
+          break;
+          
+        case kEndPlayLocNumbId:
+          app->end_play_timestamp = map->timestamp;
+          break;
       }
-
-      // start the player
-      start( app->mrpH, false );
-      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId),   midi_record_play::event_index(app->mrpH) );
-
+      
     errLabel:
       return rc;
     }
 
+    rc_t _on_ui_insert_loc( app_t* app, unsigned insertLoc )
+    {
+      rc_t     rc            = kOkRC;
+      bool     enableFl      = _is_valid_insert_loc(app,insertLoc);
+      unsigned insertBtnUuId = io::uiFindElementUuId( app->ioH, kInsertBtnId );
+      
+      io::uiSetEnable( app->ioH, insertBtnUuId, enableFl );
+      
+      if( enableFl )
+      {
+        app->insertLoc = insertLoc;
+        // TODO: Clear GUI error indicator
+
+      }
+      else
+      {
+        app->insertLoc = kInvalidId;
+        cwLogWarning("Location '%i' is not valid.",insertLoc);
+        // TODO: Set GUI error indicator
+      }
+      return rc;
+    }
+
+    rc_t _frag_set_ui_blob( app_t* app, unsigned uuId, unsigned fragId, unsigned varId, unsigned presetId )
+    {
+      ui_blob_t   blob = { .fragId=fragId, .varId=varId, .presetId=presetId };
+      return io::uiSetBlob( app->ioH, uuId, &blob, sizeof(blob) );      
+    }
+
     
-    rc_t _create_frag_preset_ctl( app_t* app, unsigned fragPresetRowUuId, unsigned presetN, unsigned preset_idx )
+    rc_t _create_frag_preset_ctl( app_t* app, unsigned fragId, unsigned fragPresetRowUuId, unsigned presetN, unsigned preset_idx )
     {
       rc_t        rc           = kOkRC;
       unsigned    colUuId      = kInvalidId;
@@ -539,10 +655,16 @@ namespace cw
       if((rc = io::uiCreateCheck( app->ioH, uuId, colUuId, nullEleName, kFragPresetSelId, chanId, nullClass, presetLabel )) != kOkRC )
         goto errLabel;
 
+      // store a connection for the select control back to the fragment record
+      _frag_set_ui_blob(app, uuId, fragId, preset_sel::kPresetSelectVarId, preset_idx );
+
+
       // preset order number
       if((rc = io::uiCreateNumb( app->ioH, uuId,  colUuId, nullEleName, kFragPresetOrderId, chanId, nullClass, nullptr, 0, presetN, 1, 0 )) != kOkRC )
         goto errLabel;
 
+      // store a connection for the select control back to the fragment record
+      _frag_set_ui_blob(app, uuId, fragId, preset_sel::kPresetOrderVarId, preset_idx );
 
     errLabel:
       if(rc != kOkRC )
@@ -559,6 +681,7 @@ namespace cw
       unsigned fragEndLocUuId    = kInvalidId;
       unsigned fragPresetRowUuId = kInvalidId;
       unsigned presetN           = preset_sel::preset_count( app->psH );
+      unsigned fragId            = kInvalidId;
 
       // verify that frag panel resource object is initiailized
       if( app->frag_panel_cfg == nullptr)
@@ -590,18 +713,34 @@ namespace cw
       assert( fragEndLocUuId    != kInvalidId );
       assert( fragPresetRowUuId != kInvalidId );
 
+      // Make the fragment panel clickable
+      io::uiSetClickable(   app->ioH, fragPanelUuId);
+
+      // Set the fragment panel order 
+      io::uiSetOrderKey( app->ioH, fragPanelUuId, app->insertLoc );
+
+
+      // The fragment id is the same as the frag panel UUId
+      fragId = fragPanelUuId;
+
+      // Attach blobs to the UI to allow convenient access back to the prese_sel data record
+      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragGainId,       fragChanId), fragId, preset_sel::kGainVarId,      kInvalidId );
+      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragWetDryGainId, fragChanId), fragId, preset_sel::kWetGainVarId,   kInvalidId );
+      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragFadeOutMsId,  fragChanId), fragId, preset_sel::kFadeOutMsVarId, kInvalidId );
+      
+      
       // create each of the preset controls
       for(unsigned preset_idx=0; preset_idx<presetN; ++preset_idx)
-        if((rc = _create_frag_preset_ctl(app, fragPresetRowUuId, presetN, preset_idx )) != kOkRC )
+        if((rc = _create_frag_preset_ctl(app, fragId, fragPresetRowUuId, presetN, preset_idx )) != kOkRC )
           goto errLabel;
       
       // create the data record associated with the new fragment.
-      if((rc = preset_sel::create_fragment( app->psH, fragPanelUuId, app->insertLoc)) != kOkRC )
+      if((rc = preset_sel::create_fragment( app->psH, fragId, app->insertLoc)) != kOkRC )
       {
         rc = cwLogError(rc,"Fragment data record create failed.");
         goto errLabel;
       }
-
+      
       // update the fragment UI
       _update_frag_ui(app, fragPanelUuId );
       
@@ -610,6 +749,33 @@ namespace cw
           
     }
 
+    rc_t _on_ui_delete_btn( app_t* app )
+    {
+      rc_t     rc     = kOkRC;
+      unsigned fragId = kInvalidId;
+
+      // get the fragment id (uuid) of the selected fragment
+      if((fragId = preset_sel::ui_select_fragment_id(app->psH)) == kInvalidId )
+      {
+        rc =  cwLogError(kInvalidStateRC,"There is no selected fragment to delete.");
+        goto errLabel;
+      }
+
+      // delete the fragment data record
+      if((rc = delete_fragment(app->psH,fragId)) != kOkRC )
+        goto errLabel;
+
+      // delete the fragment UI element
+      if((rc = io::uiDestroyElement( app->ioH, fragId )) != kOkRC )
+        goto errLabel;
+
+      errLabel:
+      
+      if( rc != kOkRC )
+        rc = cwLogError(rc,"Fragment delete failed.");
+      
+      return rc;
+    }
 
     rc_t _onUiInit(app_t* app, const io::ui_msg_t& m )
     {
@@ -617,13 +783,19 @@ namespace cw
 
       _update_event_ui(app);
 
+      // disable start and stop buttons until a score is loaded
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStartBtnId ), false );
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStopBtnId ),  false );
+      
       const preset_sel::frag_t* f = preset_sel::get_fragment_base( app->psH );
       for(; f!=nullptr; f=f->link)
         _update_frag_ui( app, f->fragId );
 
+
       
       return rc;
     }
+
 
     rc_t _onUiValue(app_t* app, const io::ui_msg_t& m )
     {
@@ -666,27 +838,19 @@ namespace cw
         case kFnStringId:
           mem::release(app->directory);
           app->directory = mem::duplStr(m.value->u.s);
-          //printf("filename:%s\n",app->directory);
+          //rintf("filename:%s\n",app->directory);
           break;
 
-        case kLocNumbId:
-          _on_ui_loc(app, m.value->u.i);
+        case kBegPlayLocNumbId:
+          _on_ui_play_loc(app, m.appId, m.value->u.i);
+          break;
+          
+        case kEndPlayLocNumbId:
+          _on_ui_play_loc(app, m.appId, m.value->u.i);
           break;
 
         case kInsertLocId:
-          {
-            unsigned insertLocId = m.value->u.u;
-            bool     enableFl    = _is_loc_valid(app,insertLocId);
-            unsigned insertBtnUuId = io::uiFindElementUuId( app->ioH, kInsertBtnId );
-            io::uiSetEnable( app->ioH, insertBtnUuId, enableFl );
-            if( enableFl )
-              app->insertLoc = insertLocId;
-            else
-            {
-              app->insertLoc = kInvalidId;
-              cwLogWarning("Location '%i' is not valid.",insertLocId);
-            }
-          }
+          _on_ui_insert_loc(app, m.value->u.u );
           break;
           
         case kInsertBtnId:
@@ -694,28 +858,66 @@ namespace cw
           break;
           
         case kDeleteBtnId:
+          _on_ui_delete_btn(app);
           break;
 
         case kFragGainId:
-          _on_ui_frag_value( app, m.parentAppId, m.uuId, m.appId, m.chanId, m.value->u.d );
+          _on_ui_frag_value( app, m.uuId, m.value->u.d );
           break;
           
         case kFragWetDryGainId:
-          _on_ui_frag_value( app, m.parentAppId, m.uuId, m.appId, m.chanId, m.value->u.d );
+          _on_ui_frag_value( app, m.uuId, m.value->u.d );
           break;
           
         case kFragFadeOutMsId:
-          _on_ui_frag_value( app, m.parentAppId, m.uuId, m.appId, m.chanId, m.value->u.d );
+          _on_ui_frag_value( app, m.uuId, m.value->u.d );
           break;
 
         case kFragPresetOrderId:
-          _on_ui_frag_value( app, m.parentAppId, m.uuId, m.appId, m.chanId, m.value->u.u );
+          _on_ui_frag_value( app, m.uuId, m.value->u.u );
           break;
             
         case kFragPresetSelId:
-          _on_ui_frag_value( app, m.parentAppId, m.uuId, m.appId, m.chanId, m.value->u.b );
+          _on_ui_frag_value( app, m.uuId, m.value->u.b );
           break;
       }
+
+      return rc;
+    }
+
+    rc_t _onUiClick( app_t* app, const io::ui_msg_t& m )
+    {
+      rc_t rc = kOkRC;
+
+      // get the last selected fragment
+      unsigned uuId = preset_sel::ui_select_fragment_id(app->psH);
+
+      // is the last selected fragment the same as the clicked fragment
+      bool reclickFl = uuId == m.uuId;
+
+      // if a different fragment was clicked then deselect the last fragment in the UI
+      if( !reclickFl && uuId != kInvalidId )
+        uiSetSelect(   app->ioH, uuId, false );
+
+      // select or deselect the clicked fragment
+      uiSetSelect(   app->ioH, m.uuId, !reclickFl );
+
+      // Note: calls to uiSetSelect() produce callbacks to _onUiSelect().
+    
+      return rc;
+    }
+
+    rc_t _onUiSelect( app_t* app, const io::ui_msg_t& m )
+    {
+      rc_t rc = kOkRC;
+
+      bool selectFl = m.value->u.b; // True/False if the fragment is being selected/deselected
+
+      // track the currently selected fragment.
+      preset_sel::ui_select_fragment( app->psH, m.uuId, selectFl );
+
+      // enable/disable the delete fragment button
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kDeleteBtnId ), selectFl );
 
       return rc;
     }
@@ -748,6 +950,14 @@ namespace cw
         _onUiValue( app, m );
         break;
 
+      case ui::kClickOpId:
+        _onUiClick( app, m );
+        break;
+
+      case ui::kSelectOpId:
+        _onUiSelect( app, m );
+        break;
+        
       case ui::kEchoOpId:
         _onUiEcho( app, m );
         break;

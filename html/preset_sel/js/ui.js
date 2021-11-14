@@ -234,15 +234,22 @@ function ui_send_value( ele, typeId, value )
 
 function ui_send_bool_value(   ele, value ) { ui_send_value(ele,'b',value); }
 function ui_send_int_value(    ele, value ) { ui_send_value(ele,'i',value); }
-function ui_send_float_value(   ele, value ) { ui_send_value(ele,'f',value); }
+function ui_send_float_value(   ele, value ) { ui_send_value(ele,'d',value); }
 function ui_send_string_value( ele, value ) { ui_send_value(ele,'s',value); }
 
 function ui_send_click( ele )
 {
-    console.log("click " + ele.id )
+    //console.log("click " + ele.id )
         
     ws_send("click " + ele.id )  
 }
+
+function ui_send_select( ele, selectedFl )
+{
+    let selected_value = selectedFl ? 1 : 0;
+    ws_send("select " + ele.id  + " " + selected_value )
+}
+
 
 
 function ui_send_echo( ele )
@@ -301,7 +308,7 @@ function ui_create_ele( parent_ele, ele_type, d, dfltClassName )
 	{
 	    ele.className += " " + d.addClassName
 	}
-	
+
 	if(d.hasOwnProperty('appId'))
 	    ele.appId = d.appId;
 	else
@@ -387,6 +394,7 @@ function ui_create_panel_div( parent_ele, d )
     
     var div_ele =  ui_create_div( parent_ele, d );
 
+    
 
     return div_ele
 }
@@ -793,8 +801,13 @@ function ui_set_log_text( ele, value )
 function ui_create_log( parent_ele, d )
 {
     // create a containing div with the label
-    d.className = "uiLog"
+    
+    if( !d.hasOwnProperty('className') )
+	d.className = "uiLog"
+    
     var log_ele  = ui_create_ctl( parent_ele, "div", d.title, d, "uiLog" )
+
+    
 
     // add a <pre> to the containing div
     var ele = dom_create_ele("pre")
@@ -890,8 +903,15 @@ function ui_set_value( d )
 function _ui_modify_class( ele, classLabelArg, enableFl )
 {
     let classLabel  = " " + classLabelArg; // prefix the class label with a space
+
+    //console.log(ele.id + " " + classLabelArg + " " + enableFl )
+
+    let isEnabledFl = false;
     
-    let isEnabledFl = ele.className.includes(classLabel)
+    if( ele.hasOwnProperty("className") )
+	isEnabledFl = ele.className.includes(classLabel)
+    else
+	ele.className = ""
 
     // if the class is not already enabled/disabled
     if( enableFl != isEnabledFl )
@@ -901,11 +921,14 @@ function _ui_modify_class( ele, classLabelArg, enableFl )
 	else
 	    ele.className = ele.className.replace(classLabel, "");
     }
+
+    //console.log(ele.id + " " + ele.className + " " + enableFl )
 }
 
 function ui_set_select( ele, enableFl )
 {
-    _ui_modify_class("uiSelected")
+    _ui_modify_class(ele,"uiSelected",enableFl)
+    ui_send_select( ele, enableFl )
 }
 
 
@@ -944,6 +967,28 @@ function ui_set_enable( ele, enableFl )
     ele.disabled = !enableFl
 }
 
+function ui_set_order_key(ele, orderKey)
+{
+    let parent  = ele.parentElement // get the parent of the element to reorder    
+    ele = parent.removeChild( ele ) // remove the element to reorder from the parent list
+    
+    ele.order = orderKey
+
+    let i = 0;
+    for(i=0; i<parent.children.length; ++i)
+    {
+	if( parent.children[i].hasOwnProperty("order") && parent.children[i].order >= orderKey)
+	{
+	    parent.insertBefore( ele, parent.children[i] )
+	    break
+	}
+    }
+
+    // no element was found greater than this element  ....
+    if( i == parent.children.length )
+	parent.appendChild(ele) // ... insert the element at the end of the child lsit
+    
+}
 
 function ui_set( d )
 {
@@ -966,19 +1011,23 @@ function ui_set( d )
 	    break;
 
 	    case "select":
-	    ui_set_select(ele,d.enableFl)
+	    ui_set_select(ele,d.value)
 	    break
 
 	    case "clickable":
-	    ui_set_clickable(ele,d.enableFl)
+	    ui_set_clickable(ele,d.value)
 	    break
 
 	    case "visible":
-	    ui_set_visible(ele,d.enableFl)
+	    ui_set_visible(ele,d.value)
 	    break
 
 	    case "enable":
-	    ui_set_enable(ele,d.enableFl)
+	    ui_set_enable(ele,d.value)
+	    break
+
+	    case "order":
+	    ui_set_order_key(ele,d.value)
 	    break
 	    
 	}
@@ -1077,6 +1126,16 @@ function ui_create( d )
     }
 }
 
+function ui_destroy( d )
+{
+    if( typeof(d.uuId) == "number" )
+	d.uuId = d.uuId.toString()
+    
+    var ele = dom_id_to_ele(d.uuId)
+
+    if( ele != null )
+	ele.parentElement.removeChild( ele )
+}
 
 
 
@@ -1098,6 +1157,10 @@ function ws_on_msg( jsonMsg )
 	case 'create':
 	ui_create( d )
 	break;
+
+	case 'destroy':
+	ui_destroy( d )
+	break
 
 	case 'value':
 	ui_set_value( d )

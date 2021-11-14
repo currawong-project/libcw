@@ -3,6 +3,7 @@
 .fragList {
     border: 1px solid LightSteelBlue;
     width: 900px;
+    height: 450px;
 }
 
 .fragList label {
@@ -29,3 +30,14 @@
     width: 80%;
 }
 
+/*
+.uiCheckDiv,.uiStringDiv,.uiNumberDiv label  {
+    border: 1px solid black;
+    width: 100px;
+}
+*/
+
+.uiRow {
+    padding-bottom: 5px;
+    padding-top: 5px;
+}
