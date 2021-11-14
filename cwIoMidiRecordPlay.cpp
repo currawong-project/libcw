@@ -54,6 +54,7 @@ namespace cw
       
       time::spec_t   play_time;                
       time::spec_t   start_time;
+      time::spec_t   end_play_event_timestamp;
 
       bool pedalFl;
 
@@ -105,16 +106,26 @@ namespace cw
       return rc;
     }
 
-
+    rc_t _stop( midi_record_play_t* p );
     
     rc_t _event_callback( midi_record_play_t* p, unsigned id, const time::spec_t timestamp, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
     {
-      io::midiDeviceSend( p->ioH, p->midiOutDevIdx, p->midiOutPortIdx, status + ch, d0, d1 );
+      rc_t rc = kOkRC;
+      
+      if( !time::isZero(p->end_play_event_timestamp) && time::isGTE(timestamp,p->end_play_event_timestamp))
+      {
+        rc = _stop(p);
+      }
+      else
+      {
+        io::midiDeviceSend( p->ioH, p->midiOutDevIdx, p->midiOutPortIdx, status + ch, d0, d1 );
 
-      if( p->cb )
-        p->cb( p->cb_arg, id, timestamp, ch, status, d0, d1 );
-
-      return kOkRC;
+        if( p->cb )
+          p->cb( p->cb_arg, id, timestamp, ch, status, d0, d1 );
+        
+      }
+      
+      return rc;
     }
 
     rc_t _transmit_msg( midi_record_play_t* p, const am_midi_msg_t* am )
@@ -604,12 +615,18 @@ cw::rc_t cw::midi_record_play::destroy( handle_t& hRef )
   return rc;
 }
 
-cw::rc_t cw::midi_record_play::start( handle_t h, bool rewindFl )
+cw::rc_t cw::midi_record_play::start( handle_t h, bool rewindFl, const time::spec_t* end_play_event_timestamp )
 {
   midi_record_play_t* p = _handleToPtr(h);
   p->startedFl = true;
   p->pedalFl = false;
 
+  // set the end play time
+  if( end_play_event_timestamp == nullptr or time::isZero(*end_play_event_timestamp) )
+    time::setZero(p->end_play_event_timestamp);
+  else
+    p->end_play_event_timestamp = *end_play_event_timestamp;
+  
   time::get(p->start_time);
         
   if( p->recordFl )

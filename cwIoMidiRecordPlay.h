@@ -26,7 +26,7 @@ namespace cw
     rc_t destroy( handle_t& hRef );
 
     // Set rewindFl to play from start, otherwise play from current output location.
-    rc_t start( handle_t h, bool rewindFl=true );
+    rc_t start( handle_t h, bool rewindFl=true, const time::spec_t* end_play_event_timestamp=nullptr );
     rc_t stop( handle_t h );
     bool is_started( handle_t h );
     
