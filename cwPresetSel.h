@@ -27,7 +27,9 @@ namespace cw
 
       preset_t*        presetA;
       unsigned         presetN;
-      
+
+      bool             uiSelectFl;
+
       struct frag_str* link;
     } frag_t;
 
@@ -55,8 +57,15 @@ namespace cw
     const frag_t* get_fragment( handle_t h, unsigned fragId );
 
     
+    
     rc_t create_fragment( handle_t h, unsigned fragId, unsigned end_loc );
     rc_t delete_fragment( handle_t h, unsigned fragId );
+
+    bool is_fragment_loc( handle_t h, unsigned loc );
+    
+    unsigned ui_select_fragment_id( handle_t h );
+    void     ui_select_fragment(      handle_t h, unsigned fragId, bool selectFl );
+    
 
     rc_t set_value( handle_t h, unsigned fragId, unsigned varId, unsigned presetId, bool     value );
     rc_t set_value( handle_t h, unsigned fragId, unsigned varId, unsigned presetId, unsigned value );

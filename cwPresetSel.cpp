@@ -84,16 +84,40 @@ namespace cw
     {
       rc_t rc = kOkRC;
       if((fragPtrRef = _find_frag(p,fragId )) == nullptr )
-        rc = cwLogError(kInvalidId,"'%i' is not a valid fragment id.",fragId);
+        rc = cwLogError(kInvalidIdRC,"'%i' is not a valid fragment id.",fragId);
         
       return rc;
+    }
+
+    frag_t* _index_to_frag( preset_sel_t* p, unsigned frag_idx )
+    {
+      frag_t*  f;
+      unsigned i = 0;
+      for(f=p->fragL; f!=nullptr; f=f->link,++i)
+        if( i == frag_idx )
+          break;
+
+      if( f == nullptr )
+        cwLogError(kInvalidArgRC,"'%i' is not a valid fragment index.",frag_idx);
+      
+      return f;
+    }
+
+    frag_t* _loc_to_frag( preset_sel_t* p, unsigned loc )
+    {
+      frag_t* f;
+      for(f=p->fragL; f!=nullptr; f=f->link)
+        if( f->endLoc == loc )
+          return f;
+      
+      return nullptr;      
     }
 
     rc_t _validate_preset_id( const frag_t* frag, unsigned preset_id )
     {
       bool fl =  (preset_id < frag->presetN) && (frag->presetA[ preset_id ].preset_idx == preset_id);
 
-      return fl ? kOkRC : cwLogError(kInvalidId,"The preset id '%i' is invalid on the fragment at loc:%i.",preset_id,frag->endLoc);
+      return fl ? kOkRC : cwLogError(kInvalidIdRC,"The preset id '%i' is invalid on the fragment at loc:%i.",preset_id,frag->endLoc);
         
     }
 
@@ -138,7 +162,7 @@ namespace cw
         break;
     
       default:
-        rc = cwLogError(kInvalidId,"There is no preset variable with var id:%i.",varId);
+        rc = cwLogError(kInvalidIdRC,"There is no preset variable with var id:%i.",varId);
         goto errLabel;
       }
 
@@ -194,14 +218,14 @@ namespace cw
         break;
     
       default:
-        rc = cwLogError(kInvalidId,"There is no preset variable with var id:%i.",varId);
+        rc = cwLogError(kInvalidIdRC,"There is no preset variable with var id:%i.",varId);
         goto errLabel;
       }
 
     errLabel:
       if(rc != kOkRC )
         rc = cwLogError(rc,"Variable value access failed on fragment '%i' variable:%i preset:%i",fragId,varId,presetId);
-  
+
       return rc;
      
     }
@@ -367,6 +391,37 @@ cw::rc_t cw::preset_sel::delete_fragment( handle_t h, unsigned fragId )
   
   return kOkRC;
 }
+
+bool cw::preset_sel::is_fragment_loc( handle_t h, unsigned loc )
+{
+  preset_sel_t* p  = _handleToPtr(h);
+  return _loc_to_frag(p,loc) != nullptr;
+}
+
+
+unsigned cw::preset_sel::ui_select_fragment_id( handle_t h )
+{
+  preset_sel_t* p  = _handleToPtr(h);
+  for(frag_t* f = p->fragL; f!= nullptr; f=f->link)
+    if( f->uiSelectFl )
+      return f->fragId;
+  
+  return kInvalidId;  
+}
+
+
+void cw::preset_sel::ui_select_fragment( handle_t h, unsigned fragId, bool selectFl )
+{
+  preset_sel_t* p  = _handleToPtr(h);
+  frag_t* f = p->fragL;
+
+  for(; f!= nullptr; f=f->link)
+    if( f->fragId == fragId )
+      f->uiSelectFl = selectFl;
+    else
+      f->uiSelectFl = false;  
+}
+
 
 cw::rc_t cw::preset_sel::set_value( handle_t h, unsigned fragId, unsigned varId, unsigned presetId, bool value )
 { return _set_value(h,fragId,varId,presetId,value); }
