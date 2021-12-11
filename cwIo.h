@@ -82,12 +82,12 @@ namespace cw
       double             srate;         // Group sample rate.
       unsigned           dspFrameCnt;   // Count of samples in each buffer pointed to by iBufArray[] and oBufArray[]
       
-      sample_t**         iBufArray;     // Array of iBufChCnt ptrs to buffers of size bufSmpCnt
+      sample_t**         iBufArray;     // iBufArray[iBufChCnt] Array ptrs to buffers of size dspFrameCnt
       unsigned           iBufChCnt;     // Count of elements in iBufArray[]
       time::spec_t*      iTimeStampPtr; // 
       audio_group_dev_t* iDevL;         // Linked list of input devices which map directly to channels in iBufArray[]
       
-      sample_t**         oBufArray;     //
+      sample_t**         oBufArray;     // oBufArray[oBufChCnt] Array of ptrs to buffers of size dspFrameCnt
       unsigned           oBufChCnt;     //
       time::spec_t*      oTimeStampPtr; //
       audio_group_dev_t* oDevL;         // Linked list of output devices which map directly to channels in oBufArray[]
@@ -178,7 +178,7 @@ namespace cw
     unsigned    serialDeviceCount( handle_t h );
     unsigned    serialDeviceIndex( handle_t h, const char* label );
     const char* serialDeviceLabel( handle_t h, unsigned devIdx );
-    unsigned    serialDeviceId(    handle_t h, unsigned devIdx );
+    unsigned    serialDeviceId(    handle_t h, unsigned devIdx );  // defaults to device index
     void        serialDeviceSetId( handle_t h, unsigned devIdx, unsigned id );
     
     rc_t        serialDeviceSend(  handle_t h, unsigned devIdx, const void* byteA, unsigned byteN );
@@ -204,9 +204,11 @@ namespace cw
     
     unsigned        audioDeviceCount(          handle_t h );
     unsigned        audioDeviceLabelToIndex(   handle_t h, const char* label );
+    const char*     audioDeviceLabel(          handle_t h, unsigned devIdx );
     rc_t            audioDeviceSetUserId(      handle_t h, unsigned devIdx, unsigned userId );
     bool            audioDeviceIsEnabled(      handle_t h, unsigned devIdx );
     const char*     audioDeviceName(           handle_t h, unsigned devIdx );
+    unsigned        audioDeviceUserId(         handle_t h, unsigned devIdx );
     double          audioDeviceSampleRate(     handle_t h, unsigned devIdx );
     unsigned        audioDeviceFramesPerCycle( handle_t h, unsigned devIdx );
     unsigned        audioDeviceChannelCount(   handle_t h, unsigned devIdx, unsigned inOrOutFlag );
@@ -227,6 +229,12 @@ namespace cw
     rc_t            audioGroupSetUserId(     handle_t h, unsigned groupIdx, unsigned userId );
     double          audioGroupSampleRate(    handle_t h, unsigned groupIdx );
     unsigned        audioGroupDspFrameCount( handle_t h, unsigned groupIdx );
+
+    // Get the count of in or out devices assigned to this group.
+    unsigned        audioGroupDeviceCount(   handle_t h, unsigned groupIdx, unsigned inOrOutFl );
+
+    // Get the device index of each of the devices assigned to this group
+    unsigned        audioGroupDeviceIndex(   handle_t h, unsigned groupIdx, unsigned inOrOutFl, unsigned groupDeviceIdx );
     
     //----------------------------------------------------------------------------------------------------------
     //

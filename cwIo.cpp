@@ -1081,7 +1081,7 @@ namespace cw
         
     }
 
-    // This function is called by the audio device drivers to when incoming audio arrives
+    // This function is called by the audio device drivers when incoming audio arrives
     // or when there is available space to write outgoing audio.
     // If all in/out devices in a group are ready to be source/sink audio data then this function
     // triggers the group thread condition var thereby causing an application callback
@@ -2078,6 +2078,17 @@ unsigned    cw::io::audioDeviceLabelToIndex(   handle_t h, const char* label )
   return kInvalidIdx;
 }
 
+const char* cw::io::audioDeviceLabel( handle_t h, unsigned devIdx )
+{
+  io_t*       p = _handleToPtr(h);
+  audioDev_t* ad;
+  
+  if((ad = _audioDeviceIndexToRecd(p,devIdx)) != nullptr )
+    return ad->label;
+
+  return nullptr;
+}
+
 cw::rc_t  cw::io::audioDeviceSetUserId( handle_t h, unsigned devIdx, unsigned userId )
 {
   io_t*       p = _handleToPtr(h);
@@ -2118,6 +2129,18 @@ const char* cw::io::audioDeviceName( handle_t h, unsigned devIdx )
 
   return ad->devName;  
 }
+
+unsigned   cw::io::audioDeviceUserId( handle_t h, unsigned devIdx )
+{
+  io_t*       p = _handleToPtr(h);
+  audioDev_t* ad;
+  
+  if((ad = _audioDeviceIndexToRecd(p, devIdx )) == nullptr )
+    return kInvalidId;
+
+  return ad->userId;    
+}
+
 
 double cw::io::audioDeviceSampleRate( handle_t h, unsigned devIdx )
 {
@@ -2396,6 +2419,47 @@ unsigned cw::io::audioGroupDspFrameCount( handle_t h, unsigned groupIdx )
     return ag->msg.dspFrameCnt;
   return 0;
 }
+
+unsigned cw::io::audioGroupDeviceCount( handle_t h, unsigned groupIdx, unsigned inOrOutFl )
+{
+  audioGroup_t* ag;
+  io_t*         p = _handleToPtr(h);
+  unsigned      n = 0;
+  
+  if((ag = _audioGroupFromIndex( p, groupIdx )) != nullptr )
+  {
+    audio_group_dev_t* agd = cwIsFlag(inOrOutFl,kInFl) ? ag->msg.iDevL : ag->msg.oDevL;
+    for(; agd!=nullptr; agd=agd->link)
+      ++n;
+  }
+  
+  return n;  
+}
+
+unsigned cw::io::audioGroupDeviceIndex( handle_t h, unsigned groupIdx, unsigned inOrOutFl, unsigned groupDevIdx )
+{
+  audioGroup_t* ag;
+  io_t*         p = _handleToPtr(h);
+  unsigned      n = 0;
+  
+  if((ag = _audioGroupFromIndex( p, groupIdx )) != nullptr )
+  {
+    audio_group_dev_t* agd = cwIsFlag(inOrOutFl,kInFl) ? ag->msg.iDevL : ag->msg.oDevL;
+    
+    for(; agd!=nullptr; agd=agd->link)
+    {
+      if( n == groupDevIdx )
+        return agd->devIdx;
+      ++n;
+    }
+  }
+
+  cwLogError(kInvalidIdRC,"The audio group device index '%i' could found on group index: '%i' .",groupDevIdx,groupIdx);
+
+              
+  return kInvalidIdx;    
+}
+
 
 //----------------------------------------------------------------------------------------------------------
 //
