@@ -77,6 +77,194 @@ namespace cw
 
     //------------------------------------------------------------------------------------------------------------------
     //
+    // audio_in
+    //
+    
+    namespace audio_in
+    {
+      enum
+      {
+        kDevLabelPId,
+        kOutPId
+      };
+      
+      typedef struct
+      {
+        const char*        dev_label;
+        external_device_t* ext_dev;
+      } inst_t;
+      
+      rc_t create( instance_t* ctx )
+      {
+        rc_t rc = kOkRC;
+        
+        inst_t*                  inst = mem::allocZ<inst_t>();
+        
+        ctx->userPtr = inst;
+
+        // Register variable and get their current value
+        if((rc = var_register_and_get( ctx, kAnyChIdx, kDevLabelPId, "dev_label", inst->dev_label )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((inst->ext_dev = external_device_find( ctx->ctx, inst->dev_label, kAudioDevTypeId, kInFl )) == nullptr )
+        {
+          rc = cwLogError(kOpFailRC,"The audio input device description '%s' could not be found.", cwStringNullGuard(inst->dev_label));
+          goto errLabel;
+        }
+        
+
+        // create one output audio buffer
+        rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, inst->ext_dev->u.a.abuf->srate, inst->ext_dev->u.a.abuf->chN, ctx->ctx->framesPerCycle );
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( instance_t* ctx )
+      {
+        rc_t rc = kOkRC;
+
+        inst_t* inst = (inst_t*)ctx->userPtr;
+
+        mem::release(inst);
+        
+        return rc;
+      }
+
+      rc_t value( instance_t* ctx, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+      
+      rc_t exec( instance_t* ctx )
+      {
+        rc_t     rc           = kOkRC;
+        inst_t*  inst         = (inst_t*)ctx->userPtr;
+        abuf_t*  abuf         = nullptr;
+
+
+        // verify that a source buffer exists
+        if((rc = var_get(ctx,kOutPId,kAnyChIdx,abuf)) != kOkRC )
+        {
+          rc = cwLogError(kInvalidStateRC,"The audio file instance '%s' does not have a valid audio output buffer.",ctx->label);
+        }
+        else
+        {
+          memcpy(abuf->buf,inst->ext_dev->u.a.abuf->buf, abuf->frameN*abuf->chN*sizeof(sample_t));
+        }
+
+        return rc;
+      }
+
+      class_members_t members = {
+        .create = create,
+        .destroy = destroy,
+        .value   = value,
+        .exec = exec,
+        .report = nullptr
+      };
+      
+    }
+
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // audio_out
+    //
+    
+    namespace audio_out
+    {
+      enum
+      {
+        kInPId,
+        kDevLabelPId,
+      };
+      
+      typedef struct
+      {
+        const char*        dev_label;
+        external_device_t* ext_dev;
+
+      } inst_t;
+      
+      rc_t create( instance_t* ctx )
+      {
+        rc_t          rc            = kOkRC;                 //
+        inst_t*       inst          = mem::allocZ<inst_t>(); //
+        const abuf_t* src_abuf      = nullptr;
+        ctx->userPtr = inst;
+
+        // Register variables and get their current value
+        if((rc = var_register_and_get( ctx, kAnyChIdx,
+                                       kDevLabelPId, "dev_label", inst->dev_label,
+                                       kInPId,       "in",        src_abuf)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((inst->ext_dev = external_device_find( ctx->ctx, inst->dev_label, kAudioDevTypeId, kOutFl )) == nullptr )
+        {
+          rc = cwLogError(kOpFailRC,"The audio output device description '%s' could not be found.", cwStringNullGuard(inst->dev_label));
+          goto errLabel;
+        }        
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( instance_t* ctx )
+      {
+        rc_t    rc   = kOkRC;
+        inst_t* inst = (inst_t*)ctx->userPtr;
+
+        mem::release(inst);
+
+        return rc;
+      }
+
+      rc_t value( instance_t* ctx, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+      
+      rc_t exec( instance_t* ctx )
+      {
+        rc_t          rc     = kOkRC;
+        inst_t*       inst   = (inst_t*)ctx->userPtr;
+        const abuf_t* src_abuf = nullptr;
+
+        if((rc = var_get(ctx,kInPId,kAnyChIdx,src_abuf)) != kOkRC )
+          rc = cwLogError(kInvalidStateRC,"The audio file instance '%s' does not have a valid input connection.",ctx->label);
+        else
+        {
+
+          unsigned n = src_abuf->frameN*src_abuf->chN;
+          for(unsigned i=0; i<n; ++i)
+            inst->ext_dev->u.a.abuf->buf[i] += src_abuf->buf[i];
+          
+        }
+        
+        return rc;
+      }
+
+      class_members_t members = {
+        .create = create,
+        .destroy = destroy,
+        .value = value,
+        .exec = exec,
+        .report = nullptr
+      };
+      
+    }
+
+
+    
+    //------------------------------------------------------------------------------------------------------------------
+    //
     // AudioFileIn
     //
     
@@ -303,6 +491,110 @@ namespace cw
 
     //------------------------------------------------------------------------------------------------------------------
     //
+    // sine_tone
+    //
+    
+    namespace sine_tone
+    {
+      enum
+      {
+        kSratePId,
+        kChCntPid,
+        kFreqHzPId,
+        kGainPId,
+        kOutPId
+      };
+      
+      typedef struct
+      {
+        real_t gain;
+        real_t hz;
+        real_t phase;
+        srate_t srate;
+        unsigned chCnt;
+      } inst_t;
+      
+      rc_t create( instance_t* ctx )
+      {
+        rc_t rc = kOkRC;
+        
+        inst_t*                  inst = mem::allocZ<inst_t>();
+        
+        ctx->userPtr = inst;
+
+        // Register variables and get their current value
+        if((rc = var_register_and_get( ctx, kAnyChIdx,
+                                       kSratePId, "srate", inst->srate,
+                                       kChCntPid, "chCnt", inst->chCnt,
+                                       kFreqHzPId, "hz",   inst->hz,
+                                       kGainPId,  "gain",  inst->gain)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // create one output audio buffer
+        rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, inst->srate, inst->chCnt, ctx->ctx->framesPerCycle );
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( instance_t* ctx )
+      {
+        rc_t rc = kOkRC;
+
+        inst_t* inst = (inst_t*)ctx->userPtr;
+
+        mem::release(inst);
+        
+        return rc;
+      }
+
+      rc_t value( instance_t* ctx, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+      
+      rc_t exec( instance_t* ctx )
+      {
+        rc_t     rc           = kOkRC;
+        inst_t*  inst         = (inst_t*)ctx->userPtr;
+        abuf_t*  abuf         = nullptr;
+
+
+        // get the output signal buffer
+        if((rc = var_get(ctx,kOutPId,kAnyChIdx,abuf)) != kOkRC )
+        {
+          rc = cwLogError(kInvalidStateRC,"The Sine Tone instance '%s' does not have a valid audio output buffer.",ctx->label);
+        }
+        else
+        {
+          for(unsigned i=0; i<inst->chCnt; ++i)
+          {
+            sample_t* v = abuf->buf + (i*abuf->frameN);
+            for(unsigned j=0; j<abuf->frameN; ++j)
+              v[j] = inst->gain * (sample_t)sin( inst->phase + (j*inst->srate/inst->hz));
+          }
+
+          inst->phase += abuf->frameN*inst->srate/inst->hz;
+        }
+        
+        return rc;
+      }
+
+      class_members_t members = {
+        .create = create,
+        .destroy = destroy,
+        .value   = value,
+        .exec = exec,
+        .report = nullptr
+      };
+      
+    }
+    
+    //------------------------------------------------------------------------------------------------------------------
+    //
     // Phase Vocoder (Analysis)
     //
     namespace pv_analysis
@@ -336,7 +628,7 @@ namespace cw
         ctx->userPtr = inst;
 
         if((rc = var_register_and_get( ctx, kAnyChIdx,
-                                       kInPId, "in", srcBuf,
+                                       kInPId,      "in",      srcBuf,
                                        kHopSmpNPId, "hopSmpN", inst->hopSmpN,
                                        kWndSmpNPId, "wndSmpN", inst->wndSmpN,
                                        kHzFlPId,    "hzFl",    inst->hzFl )) != kOkRC )
@@ -348,6 +640,7 @@ namespace cw
           flags  = inst->hzFl ? dsp::pv_anl::kCalcHzPvaFl : dsp::pv_anl::kNoCalcHzPvaFl;
           inst->pvN = srcBuf->chN;
           inst->pvA = mem::allocZ<pv_t*>( inst->pvN );  // allocate pv channel array
+          
           const sample_t* magV[ srcBuf->chN ];
           const sample_t* phsV[ srcBuf->chN ];
           const sample_t* hzV[  srcBuf->chN ];
