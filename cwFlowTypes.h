@@ -193,7 +193,9 @@ namespace cw
       variable_t**    varMapA;       // varMapA[ varMapN ]
       
       struct instance_str* link;
-    } instance_t;    
+    } instance_t;
+
+    
 
     typedef struct flow_str
     {
@@ -205,6 +207,9 @@ namespace cw
       
       class_desc_t*        classDescA;     // 
       unsigned             classDescN;     //
+
+      external_device_t*   deviceA;        // deviceA[ deviceN ] external device description array
+      unsigned             deviceN;        //
       
       struct instance_str* network_head; // first instance
       struct instance_str* network_tail; // last insance      
@@ -254,9 +259,11 @@ namespace cw
     // Instance
     //
     
-    instance_t*    instance_find( flow_t* p, const char* inst_label );
-    rc_t           instance_find( flow_t* p, const char* inst_label, instance_t*& instPtrRef );
-    void           instance_print( instance_t* inst );
+    instance_t*        instance_find( flow_t* p, const char* inst_label );
+    rc_t               instance_find( flow_t* p, const char* inst_label, instance_t*& instPtrRef );
+    external_device_t* external_device_find( flow_t* p, const char* device_label, unsigned typeId, unsigned inOrOutFl );
+
+    void               instance_print( instance_t* inst );
 
     //------------------------------------------------------------------------------------------------------------------------
     //

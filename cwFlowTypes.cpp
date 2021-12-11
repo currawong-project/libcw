@@ -7,6 +7,7 @@
 #include "cwVectOps.h"
 #include "cwMtx.h"
 #include "cwDspTypes.h" // real_t, sample_t
+#include "cwFlow.h"
 #include "cwFlowTypes.h"
 
 
@@ -1049,6 +1050,16 @@ cw::rc_t cw::flow::instance_find( flow_t* p, const char* inst_label, instance_t*
   return cwLogError(kInvalidArgRC,"The instance '%s' was not found.", inst_label );
 }
 
+cw::flow::external_device_t* cw::flow::external_device_find( flow_t* p, const char* device_label, unsigned typeId, unsigned inOrOutFl )
+{
+  for(unsigned i=0; i<p->deviceN; ++i)
+    if( cw::textIsEqual(p->deviceA[i].label,device_label) && p->deviceA[i].typeId==typeId && cwIsFlag(p->deviceA[i].flags,inOrOutFl ))
+      return p->deviceA + i;
+  
+  cwLogError(kInvalidArgRC,"The %s device named '%s' could not be found.", cwIsFlag(inOrOutFl,kInFl) ? "in" : "out", device_label );
+  
+  return nullptr;
+}
 
 void cw::flow::instance_print( instance_t* inst )
 {
@@ -1060,9 +1071,9 @@ void cw::flow::instance_print( instance_t* inst )
   
   if( inst->class_desc->members->report )
     inst->class_desc->members->report( inst );
-    
-
 }
+
+
 
 void cw::flow::_var_destroy( variable_t* var )
 {
