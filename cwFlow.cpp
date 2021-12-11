@@ -23,8 +23,11 @@ namespace cw
     } library_t;
     
     library_t library[] = {
+      { "audio_in",     &audio_in::members },
+      { "audio_out",    &audio_out::members },
       { "audioFileIn",  &audioFileIn::members },
       { "audioFileOut", &audioFileOut::members },
+      { "sine_tone",    &sine_tone::members },
       { "pv_analysis",  &pv_analysis::members },
       { "pv_synthesis", &pv_synthesis::members },
       { "spec_dist",    &spec_dist::members },
@@ -133,7 +136,7 @@ namespace cw
             vd->cfg   = var_obj->pair_value();
 
             // get the variable description 
-            if((rc = var_obj->getv("type", type_str,
+            if((rc = vd->cfg->getv("type", type_str,
                                    "doc",  vd->docText)) != kOkRC )
             {
               rc = cwLogError(rc,"Parsing failed on class:%s variable: '%s'.", cd->label, vd->label );
@@ -148,7 +151,7 @@ namespace cw
             }
 
             // get the variable description 
-            if((rc = var_obj->getv_opt("srcFl", srcVarFl,"value",vd->val_cfg)) != kOkRC )
+            if((rc = vd->cfg->getv_opt("srcFl", srcVarFl,"value",vd->val_cfg)) != kOkRC )
             {
               rc = cwLogError(rc,"Parsing optional fields failed on class:%s variable: '%s'.", cd->label, vd->label );
               goto errLabel;
@@ -487,17 +490,17 @@ namespace cw
       }
       
       // get the instance class label
-      if((rc = inst_cfg->getv("class",pvars.inst_clas_label)) != kOkRC )
+      if((rc = inst_cfg->pair_value()->getv("class",pvars.inst_clas_label)) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"The instance cfg. %s is missing: 'type'.",pvars.inst_label);
         goto errLabel;        
       }
       
       // parse the optional args
-      if((rc = inst_cfg->getv_opt("args",     arg_dict,
-                                  "in",       pvars.in_dict,
-                                  "argLabel", pvars.arg_label,
-                                  "preset",   pvars.preset_labels)) != kOkRC )
+      if((rc = inst_cfg->pair_value()->getv_opt("args",     arg_dict,
+                                                "in",       pvars.in_dict,
+                                                "argLabel", pvars.arg_label,
+                                                "preset",   pvars.preset_labels)) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"The instance cfg. '%s' missing: 'type'.",pvars.inst_label);
         goto errLabel;        
@@ -727,22 +730,39 @@ namespace cw
       
       return rc;
     }
+
+    rc_t _exec_cycle( flow_t* p )
+    {
+      rc_t rc = kOkRC;
+      
+      for(instance_t* inst = p->network_head; inst!=nullptr; inst=inst->link)
+        if((rc = inst->class_desc->members->exec(inst)) != kOkRC )
+            break;
+      
+      return rc;
+    }
     
   }
 }
 
-cw::rc_t cw::flow::create( handle_t& hRef, const object_t& classCfg, const object_t& networkCfg )
+cw::rc_t cw::flow::create( handle_t&          hRef,
+                           const object_t&    classCfg,
+                           const object_t&    networkCfg,
+                           external_device_t* deviceA,
+                           unsigned           deviceN )
 {
-  rc_t rc = kOkRC;
+  rc_t            rc               = kOkRC;
   const object_t* network;
-  bool printClassDictFl = false;
-  bool printNetworkFl = false;
+  bool            printClassDictFl = false;
+  bool            printNetworkFl   = false;
   
   if(( rc = destroy(hRef)) != kOkRC )
     return rc;
 
   flow_t* p   = mem::allocZ<flow_t>();
-  p->cfg = &networkCfg;   // TODO: duplicate cfg?
+  p->cfg      = &networkCfg;   // TODO: duplicate cfg?
+  p->deviceA  = deviceA;
+  p->deviceN  = deviceN;
 
   // parse the class description array
   if((rc = _parse_class_cfg(p,library,&classCfg)) != kOkRC )
@@ -752,7 +772,7 @@ cw::rc_t cw::flow::create( handle_t& hRef, const object_t& classCfg, const objec
   }
 
   // parse the main audio file processor cfg record
-  if((rc = networkCfg.getv("framesPerCycle",  p->framesPerCycle,
+  if((rc = networkCfg.getv("framesPerCycle",   p->framesPerCycle,                               
                            "network",         network)) != kOkRC )
   {
     rc = cwLogError(kSyntaxErrorRC,"Error parsing the required flow configuration parameters.");
@@ -760,7 +780,7 @@ cw::rc_t cw::flow::create( handle_t& hRef, const object_t& classCfg, const objec
   }
 
   // parse the optional args
-  if((rc = networkCfg.getv_opt("maxCycleCount", p->maxCycleCount,
+  if((rc = networkCfg.getv_opt("maxCycleCount",    p->maxCycleCount,
                                "printClassDictFl", printClassDictFl,
                                "printNetworkFl",   printNetworkFl)) != kOkRC )
   {
@@ -800,6 +820,11 @@ cw::rc_t cw::flow::create( handle_t& hRef, const object_t& classCfg, const objec
   return rc;  
 }
 
+cw::rc_t cw::flow::exec_cycle( handle_t& hRef )
+{
+  return _exec_cycle(_handleToPtr(hRef));
+}
+
 cw::rc_t cw::flow::exec(    handle_t& hRef )
 {
   rc_t    rc = kOkRC;
@@ -807,9 +832,7 @@ cw::rc_t cw::flow::exec(    handle_t& hRef )
 
   while( true )
   {  
-    for(instance_t* inst = p->network_head; inst!=nullptr; inst=inst->link)
-      if((rc = inst->class_desc->members->exec(inst)) != kOkRC )
-        break;
+    rc = _exec_cycle(p);
     
     if( rc == kEofRC )
     {
