@@ -14,6 +14,7 @@
 #include "cwIoMidiRecordPlay.h"
 #include "cwIoPresetSelApp.h"
 #include "cwPianoScore.h"
+#include "cwIoFlow.h"
 #include "cwPresetSel.h"
 
 namespace cw
@@ -134,6 +135,7 @@ namespace cw
       const char*     scoreFn;
       const object_t* frag_panel_cfg;
       const object_t* presets_cfg;
+      const object_t* flow_cfg;
       
       midi_record_play::handle_t  mrpH;
 
@@ -147,6 +149,7 @@ namespace cw
       time::spec_t end_play_timestamp;
 
       preset_sel::handle_t psH;
+      io_flow::handle_t ioFlowH;
       
     } app_t;
 
@@ -154,7 +157,8 @@ namespace cw
     {
       rc_t rc = kOkRC;
 
-      if((rc = cfg->getv( "params", params_cfgRef)) != kOkRC )
+      if((rc = cfg->getv( "params", params_cfgRef,
+                          "flow",   app->flow_cfg)) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"Preset Select App 'params' cfg record not found.");
         goto errLabel;
@@ -186,6 +190,7 @@ namespace cw
     rc_t _free( app_t& app )      
     {
       preset_sel::destroy(app.psH);
+      io_flow::destroy(app.ioFlowH);
       mem::release(app.locMap);
       mem::release(app.directory);
       return kOkRC;
@@ -988,6 +993,11 @@ namespace cw
         if( midi_record_play::is_started(app->mrpH) )
           io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), midi_record_play::event_index(app->mrpH) );
       }
+
+      if( app->ioFlowH.isValid() )
+      {
+        io_flow::exec( app->ioFlowH, *m );
+      }
       
       /*
       if( app->arpH.isValid() )
@@ -1038,7 +1048,7 @@ namespace cw
 }
 
 
-cw::rc_t cw::preset_sel_app::main( const object_t* cfg )
+cw::rc_t cw::preset_sel_app::main( const object_t* cfg, const object_t* flow_proc_dict )
 {
   rc_t rc;
   app_t app = { };
@@ -1070,6 +1080,12 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg )
     goto errLabel;
   }
 
+  // create the IO Flow controller
+  if(app.flow_cfg==nullptr || flow_proc_dict==nullptr || (rc = io_flow::create(app.ioFlowH,app.ioH,*flow_proc_dict,*app.flow_cfg)) != kOkRC )
+  {
+    rc = cwLogError(rc,"The IO Flow controller create failed.");
+    goto errLabel;
+  }
   
   /*
   // create the audio record-play object

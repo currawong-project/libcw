@@ -5,7 +5,7 @@ namespace cw
 {
   namespace preset_sel_app
   {
-    rc_t main( const object_t* cfg );
+    rc_t main( const object_t* cfg, const object_t* flow_proc_dict );
   }
 }
 
