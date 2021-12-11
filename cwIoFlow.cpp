@@ -1,0 +1,406 @@
+#include "cwCommon.h"
+#include "cwLog.h"
+#include "cwCommonImpl.h"
+#include "cwMem.h"
+#include "cwObject.h"
+#include "cwFileSys.h"
+#include "cwFile.h"
+#include "cwTime.h"
+#include "cwVectOps.h"
+#include "cwMtx.h"
+
+#include "cwDspTypes.h"
+#include "cwFlow.h"
+#include "cwFlowTypes.h"
+
+
+#include "cwIo.h"
+
+#include "cwIoFlow.h"
+
+
+
+namespace cw
+{
+  namespace io_flow
+  {
+    // An audio_dev_t record exists for each possible input or output device.
+    typedef struct audio_dev_str
+    {
+      unsigned       ioDevIdx;  // device index in the io:: API
+      unsigned       ioDevId;   // device id in the io:: API
+      flow::abuf_t   abuf;      // src/dst buffer for incoming/outgoing (record/play) samples used by flow proc 'audio_in' and 'audio_out'.
+    } audio_dev_t;
+
+    typedef struct audio_group_str
+    {
+      double        srate;
+      unsigned      dspFrameCnt;
+      unsigned      ioGroupIdx;
+      
+      audio_dev_t* iDeviceA;
+      unsigned     iDeviceN;
+      
+      audio_dev_t* oDeviceA;
+      unsigned     oDeviceN;
+      
+    } audio_group_t;
+    
+    typedef struct io_flow_str
+    {
+      io::handle_t    ioH;
+      
+      flow::external_device_t* deviceA;  // Array of generic device descriptions used by the ioFlow controller
+      unsigned                 deviceN;  // (This array must exist for the life of ioFlow controller)
+      
+      audio_group_t*  audioGroupA;  // Array of real time audio device control records.
+      unsigned        audioGroupN;  // 
+      
+      flow::handle_t  flowH;
+      
+    } io_flow_t;
+
+    io_flow_t* _handleToPtr( handle_t h )
+    { return handleToPtr<handle_t,io_flow_t>(h); }
+
+    rc_t _destroy( io_flow_t* p )
+    {
+      mem::release(p->deviceA);
+      p->deviceN = 0;
+
+      for(unsigned gi=0; gi<p->audioGroupN; ++gi)
+      {
+        audio_group_t* ag = p->audioGroupA + gi;
+        for(unsigned di=0; di<ag->iDeviceN; ++di)
+          mem::release( ag->iDeviceA[di].abuf.buf );
+
+        for(unsigned di=0; di<ag->oDeviceN; ++di)
+          mem::release( ag->oDeviceA[di].abuf.buf );
+
+        mem::release( ag->iDeviceA);
+        mem::release( ag->oDeviceA);
+      }
+
+      mem::release(p);
+      
+      return kOkRC;
+    }
+
+    unsigned _calc_device_count(io_flow_t* p)
+    {
+      unsigned devN = 0;
+      
+      //devN += midiDeviceCount(p->ioH);
+      devN += socketCount(p->ioH);
+      devN += serialDeviceCount(p->ioH);
+
+      for(unsigned i=0; i<p->audioGroupN; ++i)
+        devN +=  p->audioGroupA[i].iDeviceN + p->audioGroupA[i].oDeviceN;
+      
+      return devN;
+    }
+
+    void _setup_audio_device( io_flow_t* p,audio_dev_t* dev, unsigned inOrOutFl, unsigned ioDevIdx, unsigned dspFrameCnt )
+    {
+      dev->ioDevIdx    = ioDevIdx;
+      dev->ioDevId     = audioDeviceUserId( p->ioH, ioDevIdx );
+      dev->abuf.base   = nullptr;
+      dev->abuf.srate  = audioDeviceSampleRate(   p->ioH, ioDevIdx );
+      dev->abuf.chN    = audioDeviceChannelCount( p->ioH, ioDevIdx, inOrOutFl );
+      dev->abuf.frameN = dspFrameCnt;
+      dev->abuf.buf    = mem::allocZ< flow::sample_t >( dev->abuf.chN * dev->abuf.frameN );
+
+      //printf("%i %s\n", dev->abuf.chN, audioDeviceLabel( p->ioH, ioDevIdx ) );
+
+    }
+
+    void _setup_audio_groups( io_flow_t* p )
+    {
+      p->audioGroupN = audioGroupCount( p->ioH );
+      p->audioGroupA = mem::allocZ<audio_group_t>( p->audioGroupN );
+      
+      for(unsigned gi=0; gi<audioGroupCount(p->ioH); ++gi)
+      {
+        audio_group_t* ag = p->audioGroupA + gi;
+        ag->srate       = audioGroupSampleRate(    p->ioH, gi );
+        ag->dspFrameCnt = audioGroupDspFrameCount( p->ioH, gi );
+        ag->ioGroupIdx  = gi;
+
+        ag->iDeviceN = audioGroupDeviceCount( p->ioH, gi, io::kInFl );
+        ag->iDeviceA = mem::allocZ< audio_dev_t >( ag->iDeviceN );
+
+        for(unsigned gdi=0; gdi<ag->iDeviceN; ++gdi)
+          _setup_audio_device( p, ag->iDeviceA + gdi, io::kInFl, audioGroupDeviceIndex( p->ioH, gi, io::kInFl, gdi), ag->dspFrameCnt  );
+      
+        ag->oDeviceN = audioGroupDeviceCount( p->ioH, gi, io::kOutFl );
+        ag->oDeviceA = mem::allocZ< audio_dev_t >( ag->oDeviceN );
+
+        for(unsigned gdi=0; gdi<ag->oDeviceN; ++gdi)
+          _setup_audio_device( p, ag->oDeviceA + gdi, io::kOutFl, audioGroupDeviceIndex( p->ioH, gi, io::kOutFl, gdi), ag->dspFrameCnt  );
+        
+        
+      }
+    }
+
+
+    void _setup_device_cfg( flow::external_device_t* d, const char* devLabel, unsigned ioDevId, unsigned typeId, unsigned flags )
+    {
+      d->label   = devLabel;
+      d->ioDevId = ioDevId;
+      d->typeId  = typeId;
+      d->flags   = flags;
+    }
+
+    void _setup_audio_device_cfg( io_flow_t* p, flow::external_device_t* d, audio_group_t* ag, audio_dev_t* ad, unsigned flags )
+    {
+      _setup_device_cfg( d, io::audioDeviceLabel(p->ioH,ad->ioDevIdx), ad->ioDevId, flow::kAudioDevTypeId, flags );
+      d->u.a.abuf = &ad->abuf;
+
+      printf("%i %s\n", d->u.a.abuf->chN, d->label );
+    }
+
+    void _fill_device_cfg_array( io_flow_t* p, flow::external_device_t* devA, unsigned devN )
+    {
+      unsigned i = 0;
+
+      // get serial devices
+      for(unsigned di=0; i<devN && di<serialDeviceCount(p->ioH); ++di,++i)
+        _setup_device_cfg( devA + i, io::serialDeviceLabel(p->ioH,di), io::serialDeviceId(p->ioH,di), flow::kSerialDevTypeId, flow::kInFl | flow::kOutFl );
+
+      // get midi devices
+      //for(unsigned di=0; i<devN && di<midiDeviceCount(p->ioH); ++di,++i)
+      //  _setup_device_cfg( devA + i, io::midiDeviceLabel(p->ioH,di), di, flow::kMidiDevTypeId, flow::kInFl | flow::kOutFl );
+
+      // get sockets
+      for(unsigned di=0; i<devN && di<socketCount(p->ioH); ++di,++i)
+        _setup_device_cfg( devA + i, io::socketLabel(p->ioH,di), io::socketUserId(p->ioH,di), flow::kSocketDevTypeId, flow::kInFl | flow::kOutFl );
+        
+      
+      for(unsigned gi=0; gi<p->audioGroupN; ++gi)
+      {
+        audio_group_t* ag = p->audioGroupA + gi;
+        
+        for(unsigned di=0; i<devN && di<ag->iDeviceN; ++di,++i)
+          _setup_audio_device_cfg( p, devA + i, ag, ag->iDeviceA + di, flow::kInFl );
+        
+        for(unsigned di=0; i<devN && di<ag->oDeviceN; ++di,++i)
+          _setup_audio_device_cfg( p, devA + i, ag, ag->oDeviceA + di, flow::kOutFl );
+      }
+
+    }
+
+    rc_t _device_index_to_abuf( io_flow_t* p, unsigned ioGroupIdx, unsigned ioDevIdx, unsigned inOrOutFl, flow::abuf_t*& abuf_ref )
+    {
+
+      rc_t rc = kOkRC;
+
+      for(unsigned gi=0; gi<p->audioGroupN; ++gi)
+        if( p->audioGroupA[gi].ioGroupIdx == ioGroupIdx )
+        {
+          audio_dev_t* adA = inOrOutFl == flow::kInFl ? p->audioGroupA[gi].iDeviceA : p->audioGroupA[gi].oDeviceA;
+          unsigned     adN = inOrOutFl == flow::kInFl ? p->audioGroupA[gi].iDeviceN : p->audioGroupA[gi].oDeviceN;
+
+          for(unsigned di=0; di<adN; ++di)
+            if( adA[di].ioDevIdx == ioDevIdx )
+            {
+              abuf_ref = &adA[di].abuf;
+              return rc;
+            }
+        
+        }
+
+      const char* dir = inOrOutFl==flow::kInFl ? "in" : "out";      
+      return cwLogError(kOpFailRC,"The '%s' audio group index:%i ,device index '%i' was not found.", dir, ioGroupIdx, ioDevIdx);
+    }
+
+    void _fill_input_buffer( flow::sample_t** bufChArray, unsigned bufChArrayN, flow::abuf_t* dst_abuf )
+    {
+      for(unsigned i=0; i<bufChArrayN; ++i)
+      {
+        const flow::sample_t* src = bufChArray[i];
+        flow::sample_t*       dst = dst_abuf->buf + (i*dst_abuf->frameN);
+        memcpy(dst,src,dst_abuf->frameN*sizeof(flow::sample_t));
+      }
+    }
+
+    void _zero_output_buffer( flow::abuf_t* dst_abuf )
+    {
+      memset(dst_abuf->buf,0, dst_abuf->chN*dst_abuf->frameN*sizeof(flow::sample_t));
+    }
+
+    void _fill_output_buffer( const flow::abuf_t* src_abuf, flow::sample_t** bufChArray, unsigned bufChArrayN )
+    {
+      for(unsigned i=0; i<src_abuf->chN; ++i)
+      {
+        const flow::sample_t* src = src_abuf->buf + (i*src_abuf->frameN);
+        flow::sample_t*       dst = bufChArray[i];
+        memcpy(dst,src,src_abuf->frameN*sizeof(flow::sample_t));
+      }
+    }
+
+    rc_t _audio_callback( io_flow_t* p, io::audio_msg_t& m )
+    {
+      
+      rc_t rc = kOkRC;
+      flow::abuf_t* abuf;
+      
+      if( m.iBufChCnt > 0 )
+      {
+        unsigned chIdx = 0;
+
+        // for each input device in this group
+        for(io::audio_group_dev_t* agd = m.iDevL; agd!=nullptr; agd=agd->link)
+        {
+          // get the abuf associated with each device in this group
+          if((rc = _device_index_to_abuf( p, m.groupIndex, agd->devIdx, flow::kInFl, abuf )) != kOkRC )            
+            goto errLabel;
+
+          // fill the input audio buf from the the external audio device
+          _fill_input_buffer( m.iBufArray + chIdx, agd->chCnt, abuf );
+
+          chIdx += agd->chCnt;
+        }
+
+      }
+
+      if( m.oBufChCnt > 0 )
+      {
+
+        // for each output device in this group
+        for(io::audio_group_dev_t* agd=m.oDevL; agd!=nullptr; agd=agd->link)
+        {
+          // get the output audio buf associated with this external audio device
+          if((rc = _device_index_to_abuf( p, m.groupIndex, agd->devIdx, flow::kOutFl, abuf )) != kOkRC )
+            goto errLabel;
+
+          // zerot the output buffer
+          _zero_output_buffer( abuf );
+        }
+      }
+
+      
+      flow::exec_cycle(p->flowH);
+      
+      
+      if( m.oBufChCnt > 0 )
+      {
+
+        unsigned chIdx = 0;
+        
+        // for each output device in this group
+        for(io::audio_group_dev_t* agd=m.oDevL; agd!=nullptr; agd=agd->link)
+        {
+          // get the output audio buf associated with this external audio device
+          if((rc = _device_index_to_abuf( p, m.groupIndex, agd->devIdx, flow::kOutFl, abuf )) != kOkRC )
+            goto errLabel;
+
+          // copy the samples from the flow 'audio_out' buffers to the outgoing buffer passed from the device driver
+          _fill_output_buffer( abuf, m.oBufArray + chIdx, agd->chCnt );
+          
+          chIdx += agd->chCnt;
+            
+        }
+        
+      }
+        
+    errLabel:
+      return rc;
+    }
+
+    
+  }
+}
+
+
+cw::rc_t cw::io_flow::create( handle_t& hRef, io::handle_t ioH, const object_t& flow_class_dict, const object_t& network_cfg )
+{
+  rc_t rc;
+
+  if((rc = destroy(hRef)) != kOkRC )
+    return rc;
+
+  io_flow_t* p = mem::allocZ<io_flow_t>();
+
+  p->ioH     = ioH;
+
+  _setup_audio_groups(p);
+  
+  p->deviceN = _calc_device_count(p);
+  p->deviceA = mem::allocZ<flow::external_device_t>( p->deviceN );
+
+ 
+  _fill_device_cfg_array(p,p->deviceA,p->deviceN);
+
+  // create the flow object
+  if((rc = create( p->flowH, flow_class_dict, network_cfg, p->deviceA, p->deviceN )) != kOkRC )
+  {
+    cwLogError(rc,"The 'flow' object create failed.");
+    goto errLabel;
+  }
+  
+
+  hRef.set(p);
+  
+ errLabel:
+  if( rc != kOkRC )
+    _destroy(p);
+
+  
+  
+  return rc;
+}
+
+cw::rc_t cw::io_flow::destroy( handle_t& hRef )
+{
+  rc_t rc = kOkRC;;
+  
+  if( !hRef.isValid() )
+    return rc;
+
+  io_flow_t* p = _handleToPtr(hRef);
+
+  if((rc = _destroy(p)) != kOkRC )
+    return rc;
+
+  hRef.clear();
+
+  return rc;
+}
+    
+cw::rc_t cw::io_flow::start( handle_t h )
+{
+  rc_t rc = kOkRC;
+  return rc;
+}
+
+cw::rc_t cw::io_flow::stop( handle_t h )
+{
+  rc_t rc = kOkRC;
+  return rc;
+}
+
+bool cw::io_flow::is_started( handle_t h )
+{
+  return false;
+}
+
+
+cw::rc_t cw::io_flow::exec( handle_t h, const io::msg_t& msg )
+{
+  rc_t       rc = kOkRC;
+  io_flow_t* p  = _handleToPtr(h);
+  
+  switch( msg.tid )
+  {
+  case io::kAudioTId:
+    if( msg.u.audio != nullptr )
+      _audio_callback(p,*msg.u.audio);
+    break;
+
+  default:
+    rc = kOkRC;
+  
+  }
+
+  return rc;
+}
