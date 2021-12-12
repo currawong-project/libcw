@@ -143,13 +143,13 @@ namespace cw
       loc_map_t*      locMap;
       unsigned        locMapN;
 
-      unsigned insertLoc; // last valid insert location id received from the GUI
+      unsigned        insertLoc; // last valid insert location id received from the GUI
 
-      time::spec_t beg_play_timestamp;
-      time::spec_t end_play_timestamp;
+      time::spec_t    beg_play_timestamp;
+      time::spec_t    end_play_timestamp;
 
       preset_sel::handle_t psH;
-      io_flow::handle_t ioFlowH;
+      io_flow::handle_t    ioFlowH;
       
     } app_t;
 
@@ -222,15 +222,41 @@ namespace cw
       return dir;
     }
 
+    rc_t _apply_preset( app_t* app, const time::spec_t& ts, const preset_sel::frag_t* frag=nullptr  )      
+    {
+      if( frag == nullptr )
+        preset_sel::track_timestamp( app->psH, ts, frag);
+
+      if( frag == nullptr )
+        cwLogInfo("No preset fragment was found for the requested timestamp.");
+      else
+      {
+        unsigned preset_idx = fragment_play_preset_index(frag);
+
+        printf("Apply preset: '%s'.\n", preset_idx==kInvalidIdx ? "<invalid>" : preset_sel::preset_label(app->psH,preset_idx));
+      }
+
+      return kOkRC;      
+    }
+
     void _midi_play_callback( void* arg, unsigned id, const time::spec_t timestamp, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
     {
       app_t* app = (app_t*)arg;
-      const unsigned buf_byte_cnt = 256;
-      char buf[ buf_byte_cnt ];
       if( id != kInvalidId )
       {
+        const unsigned buf_byte_cnt = 256;
+        char buf[ buf_byte_cnt ];
         event_to_string( app->scoreH, id, buf, buf_byte_cnt );
         printf("%s\n",buf);
+
+        const preset_sel::frag_t* f = nullptr;
+        if( preset_sel::track_timestamp( app->psH, timestamp, f ) )
+        {          
+          printf("NEW FRAG: id:%i loc:%i\n", f->fragId, f->endLoc );
+          _apply_preset( app, timestamp, f );                
+        }
+        
+
       }
     }
 
@@ -374,7 +400,6 @@ namespace cw
         // TODO: Clear the error indicator on the GUI
       }
 
-      printf("FV:%i\n",blob->varId );
       // 
       if( blob->varId == preset_sel::kPresetSelectVarId )
         _update_frag_select_flags( app, blob->fragId);
@@ -448,7 +473,6 @@ namespace cw
       // copy the MIDI events
       if((e = score::base_event( app->scoreH )) != nullptr )
       {
-
         // allocate the locMap[]
         mem::free(app->locMap);
         app->locMap  = mem::allocZ<loc_map_t>( midiEventN );
@@ -519,7 +543,15 @@ namespace cw
           }
           rewindFl = false;
       }
-      
+
+      // apply the preset which is active at the start time
+      if((rc = _apply_preset( app, app->beg_play_timestamp )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Preset application failed prior to MIDI start.");
+        goto errLabel;
+      }
+
+      // start the MIDI playback
       if((rc = midi_record_play::start(app->mrpH,rewindFl,&app->end_play_timestamp)) != kOkRC )
       {
         rc = cwLogError(rc,"MIDI start failed.");
@@ -679,14 +711,15 @@ namespace cw
 
     rc_t _on_ui_insert_btn( app_t* app )
     {
-      rc_t rc = kOkRC;
-      unsigned fragListUuId      = io::uiFindElementUuId( app->ioH, kFragListId );
-      unsigned fragChanId        = app->insertLoc;   // use the frag. endLoc as the channel id
-      unsigned fragPanelUuId     = kInvalidId;
-      unsigned fragEndLocUuId    = kInvalidId;
-      unsigned fragPresetRowUuId = kInvalidId;
-      unsigned presetN           = preset_sel::preset_count( app->psH );
-      unsigned fragId            = kInvalidId;
+      rc_t       rc                = kOkRC;
+      unsigned   fragListUuId      = io::uiFindElementUuId( app->ioH, kFragListId );
+      unsigned   fragChanId        = app->insertLoc; // use the frag. endLoc as the channel id
+      unsigned   fragPanelUuId     = kInvalidId;
+      unsigned   fragEndLocUuId    = kInvalidId;
+      unsigned   fragPresetRowUuId = kInvalidId;
+      unsigned   presetN           = preset_sel::preset_count( app->psH );
+      unsigned   fragId            = kInvalidId;
+      loc_map_t* loc_ts            = nullptr;
 
       // verify that frag panel resource object is initiailized
       if( app->frag_panel_cfg == nullptr)
@@ -699,6 +732,20 @@ namespace cw
       if( app->insertLoc == kInvalidId )
       {
         rc = cwLogError(kInvalidIdRC,"The new fragment's 'End Loc' is not valid.");
+        goto errLabel;
+      }
+
+      // verify that the end-loc is not already in use - this shouldn't be possible because the 'insert' btn should be disabled if the 'insertLoc' is not valid
+      if( preset_sel::is_fragment_loc( app->psH, app->insertLoc ) )
+      {
+        rc = cwLogError(kInvalidIdRC,"The new fragment's 'End Loc' is already in use.");
+        goto errLabel;
+      }
+
+      // get the timestamp assoc'd with the the 'end-loc'
+      if((loc_ts = _find_loc( app, app->insertLoc )) == nullptr )
+      {
+        rc = cwLogError(kOpFailRC,"The time stamp associated with the 'End Loc' '%i' could not be found.",app->insertLoc);
         goto errLabel;
       }
 
@@ -740,7 +787,7 @@ namespace cw
           goto errLabel;
       
       // create the data record associated with the new fragment.
-      if((rc = preset_sel::create_fragment( app->psH, fragId, app->insertLoc)) != kOkRC )
+      if((rc = preset_sel::create_fragment( app->psH, fragId, app->insertLoc, loc_ts->timestamp)) != kOkRC )
       {
         rc = cwLogError(rc,"Fragment data record create failed.");
         goto errLabel;
@@ -817,6 +864,7 @@ namespace cw
           break;
             
         case kReportBtnId:
+          preset_sel::report( app->psH );
           break;
 
         case kSaveBtnId:
