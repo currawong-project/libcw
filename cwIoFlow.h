@@ -10,10 +10,6 @@ namespace cw
     rc_t create( handle_t& hRef, io::handle_t ioH, const object_t& flow_class_dict, const object_t& cfg );
     rc_t destroy( handle_t& hRef );
     
-    rc_t start( handle_t h );
-    rc_t stop( handle_t h );
-    bool is_started( handle_t h );
-
     rc_t exec( handle_t h, const io::msg_t& msg );
     
 

@@ -51,9 +51,13 @@ namespace cw
                  const object_t&       networkCfg,
                  external_device_t*    deviceA = nullptr,
                  unsigned              deviceN = 0);
-    
+
+    // Run one cycle of the network.
     rc_t exec_cycle( handle_t& hRef );
+
+    // Run the network to completion.
     rc_t exec(    handle_t& hRef );
+    
     rc_t destroy( handle_t& hRef );
 
     void print_class_list( handle_t& hRef );

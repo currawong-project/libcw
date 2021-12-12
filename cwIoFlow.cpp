@@ -154,37 +154,44 @@ namespace cw
     void _setup_audio_device_cfg( io_flow_t* p, flow::external_device_t* d, audio_group_t* ag, audio_dev_t* ad, unsigned flags )
     {
       _setup_device_cfg( d, io::audioDeviceLabel(p->ioH,ad->ioDevIdx), ad->ioDevId, flow::kAudioDevTypeId, flags );
-      d->u.a.abuf = &ad->abuf;
 
-      printf("%i %s\n", d->u.a.abuf->chN, d->label );
+      // Each audio device is given a flow::abuf to hold incoming or outgoing audio.
+      // This buffer also allows the 'audio_in' and 'audio_out' flow procs to configure themselves.
+      d->u.a.abuf = &ad->abuf;
     }
 
-    void _fill_device_cfg_array( io_flow_t* p, flow::external_device_t* devA, unsigned devN )
+    void _setup_generic_device_array( io_flow_t* p )
     {
       unsigned i = 0;
 
+      // allocate the generic device control records
+      p->deviceN = _calc_device_count(p);
+      p->deviceA = mem::allocZ<flow::external_device_t>( p->deviceN );
+      
+
       // get serial devices
-      for(unsigned di=0; i<devN && di<serialDeviceCount(p->ioH); ++di,++i)
-        _setup_device_cfg( devA + i, io::serialDeviceLabel(p->ioH,di), io::serialDeviceId(p->ioH,di), flow::kSerialDevTypeId, flow::kInFl | flow::kOutFl );
+      for(unsigned di=0; i<p->deviceN && di<serialDeviceCount(p->ioH); ++di,++i)
+        _setup_device_cfg( p->deviceA + i, io::serialDeviceLabel(p->ioH,di), io::serialDeviceId(p->ioH,di), flow::kSerialDevTypeId, flow::kInFl | flow::kOutFl );
 
       // get midi devices
-      //for(unsigned di=0; i<devN && di<midiDeviceCount(p->ioH); ++di,++i)
-      //  _setup_device_cfg( devA + i, io::midiDeviceLabel(p->ioH,di), di, flow::kMidiDevTypeId, flow::kInFl | flow::kOutFl );
+      //for(unsigned di=0; i<p->deviceN && di<midiDeviceCount(p->ioH); ++di,++i)
+      //  _setup_device_cfg( p->deviceA + i, io::midiDeviceLabel(p->ioH,di), di, flow::kMidiDevTypeId, flow::kInFl | flow::kOutFl );
 
       // get sockets
-      for(unsigned di=0; i<devN && di<socketCount(p->ioH); ++di,++i)
-        _setup_device_cfg( devA + i, io::socketLabel(p->ioH,di), io::socketUserId(p->ioH,di), flow::kSocketDevTypeId, flow::kInFl | flow::kOutFl );
+      for(unsigned di=0; i<p->deviceN && di<socketCount(p->ioH); ++di,++i)
+        _setup_device_cfg( p->deviceA + i, io::socketLabel(p->ioH,di), io::socketUserId(p->ioH,di), flow::kSocketDevTypeId, flow::kInFl | flow::kOutFl );
         
-      
+
+      // get the audio devices
       for(unsigned gi=0; gi<p->audioGroupN; ++gi)
       {
         audio_group_t* ag = p->audioGroupA + gi;
         
-        for(unsigned di=0; i<devN && di<ag->iDeviceN; ++di,++i)
-          _setup_audio_device_cfg( p, devA + i, ag, ag->iDeviceA + di, flow::kInFl );
+        for(unsigned di=0; i<p->deviceN && di<ag->iDeviceN; ++di,++i)
+          _setup_audio_device_cfg( p, p->deviceA + i, ag, ag->iDeviceA + di, flow::kInFl );
         
-        for(unsigned di=0; i<devN && di<ag->oDeviceN; ++di,++i)
-          _setup_audio_device_cfg( p, devA + i, ag, ag->oDeviceA + di, flow::kOutFl );
+        for(unsigned di=0; i<p->deviceN && di<ag->oDeviceN; ++di,++i)
+          _setup_audio_device_cfg( p, p->deviceA + i, ag, ag->oDeviceA + di, flow::kOutFl );
       }
 
     }
@@ -243,7 +250,8 @@ namespace cw
       
       rc_t rc = kOkRC;
       flow::abuf_t* abuf;
-      
+
+      // if there is incoming (recorded) audio 
       if( m.iBufChCnt > 0 )
       {
         unsigned chIdx = 0;
@@ -263,6 +271,7 @@ namespace cw
 
       }
 
+      // if there are empty output (playback) buffers
       if( m.oBufChCnt > 0 )
       {
 
@@ -278,10 +287,12 @@ namespace cw
         }
       }
 
-      
+
+      // update the flow network - this will generate audio into the output audio buffers
       flow::exec_cycle(p->flowH);
       
-      
+
+      // if there are empty output (playback) buffers
       if( m.oBufChCnt > 0 )
       {
 
@@ -323,13 +334,11 @@ cw::rc_t cw::io_flow::create( handle_t& hRef, io::handle_t ioH, const object_t& 
 
   p->ioH     = ioH;
 
+  // allocate p->audioGroupA[] and create the audio input/output buffers associated with each audio device
   _setup_audio_groups(p);
-  
-  p->deviceN = _calc_device_count(p);
-  p->deviceA = mem::allocZ<flow::external_device_t>( p->deviceN );
 
- 
-  _fill_device_cfg_array(p,p->deviceA,p->deviceN);
+  // setup the control record for each external device known to the IO interface
+  _setup_generic_device_array(p);
 
   // create the flow object
   if((rc = create( p->flowH, flow_class_dict, network_cfg, p->deviceA, p->deviceN )) != kOkRC )
@@ -367,23 +376,6 @@ cw::rc_t cw::io_flow::destroy( handle_t& hRef )
   return rc;
 }
     
-cw::rc_t cw::io_flow::start( handle_t h )
-{
-  rc_t rc = kOkRC;
-  return rc;
-}
-
-cw::rc_t cw::io_flow::stop( handle_t h )
-{
-  rc_t rc = kOkRC;
-  return rc;
-}
-
-bool cw::io_flow::is_started( handle_t h )
-{
-  return false;
-}
-
 
 cw::rc_t cw::io_flow::exec( handle_t h, const io::msg_t& msg )
 {

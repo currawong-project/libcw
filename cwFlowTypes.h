@@ -31,40 +31,40 @@ namespace cw
     typedef struct fbuf_str
     {      
       struct value_str* base;
-      srate_t           srate;   // signal sample rate
-      unsigned          flags;   // See kXXXFbufFl
-      unsigned          chN;     // count of channels
-      unsigned          binN;    // count of sample frames per channel
-      unsigned          hopSmpN; // hop sample count 
-      sample_t**        magV;    // magV[ chN ][ binN ]
-      sample_t**        phsV;    // phsV[ chN ][ binN ]
-      sample_t**        hzV;     // hzV[ chN ][ binN ]
-      bool*             readyFlV;// readyFlV[chN] true if this channel is ready to be processed (used to sync. fbuf rate to abuf rate)
-      sample_t*         buf;     // memory used by this buffer (or NULL if magV,phsV,hzV point are proxied to another buffer)      
+      srate_t           srate;    // signal sample rate
+      unsigned          flags;    // See kXXXFbufFl
+      unsigned          chN;      // count of channels
+      unsigned          binN;     // count of sample frames per channel
+      unsigned          hopSmpN;  // hop sample count 
+      sample_t**        magV;     // magV[ chN ][ binN ]
+      sample_t**        phsV;     // phsV[ chN ][ binN ]
+      sample_t**        hzV;      // hzV[ chN ][ binN ]
+      bool*             readyFlV; // readyFlV[chN] true if this channel is ready to be processed (used to sync. fbuf rate to abuf rate)
+      sample_t*         buf;      // memory used by this buffer (or NULL if magV,phsV,hzV point are proxied to another buffer)      
     } fbuf_t;
 
     enum
     {
-      kInvalidTFl = 0x00000000,
-      kBoolTFl    = 0x00000001,
-      kUIntTFl    = 0x00000002,
-      kIntTFl     = 0x00000004,
-      kFloatTFl   = 0x00000008,
-      kDoubleTFl  = 0x00000010,
+      kInvalidTFl  = 0x00000000,
+      kBoolTFl     = 0x00000001,
+      kUIntTFl     = 0x00000002,
+      kIntTFl      = 0x00000004,
+      kFloatTFl    = 0x00000008,
+      kDoubleTFl   = 0x00000010,
       
-      kBoolMtxTFl = 0x00000020,
-      kUIntMtxTFl = 0x00000040,
-      kIntMtxTFl  = 0x00000080,
-      kRealMtxTFl = 0x00000100,
+      kBoolMtxTFl  = 0x00000020,
+      kUIntMtxTFl  = 0x00000040,
+      kIntMtxTFl   = 0x00000080,
+      kRealMtxTFl  = 0x00000100,
       kFloatMtxTFl = 0x00000200,
       kDoubleMtxTFl= 0x00000400,
       
-      kABufTFl    = 0x00000800,
-      kFBufTFl    = 0x00001000,
-      kStringTFl  = 0x00002000,
-      kTimeTFl    = 0x00004000,
+      kABufTFl     = 0x00000800,
+      kFBufTFl     = 0x00001000,
+      kStringTFl   = 0x00002000,
+      kTimeTFl     = 0x00004000,
 
-      kTypeMask   = 0x00007fff,
+      kTypeMask    = 0x00007fff,
 
     };
 

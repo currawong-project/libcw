@@ -417,11 +417,13 @@ namespace cw
       if( preset_labels->is_string() && preset_labels->value(s)==kOkRC )
         return _class_preset_channelize_vars(inst,s);
 
-      // if the preset_labels is a list
+      // if the preset_labels is not a list
       if( !preset_labels->is_list() )
         rc = cwLogError(kSyntaxErrorRC,"The preset list on instance '%s' is neither a list nor a string.",inst->label);
-      else
+      else        
       {
+        // preset_labels is a list.
+        
         // for each label listed in the preset label list
         for(unsigned i=0; i<preset_labels->child_count(); ++i)
         {
