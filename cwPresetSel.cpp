@@ -4,6 +4,7 @@
 #include "cwMem.h"
 #include "cwText.h"
 #include "cwObject.h"
+#include "cwTime.h"
 #include "cwPresetSel.h"
 
 namespace cw
@@ -25,6 +26,10 @@ namespace cw
       double          defaultFadeOutMs;
       
       struct frag_str*         fragL;
+      
+
+      frag_t*      last_ts_frag;
+      
     } preset_sel_t;
 
     preset_sel_t* _handleToPtr( handle_t h )
@@ -112,6 +117,50 @@ namespace cw
       
       return nullptr;      
     }
+
+    bool _ts_is_in_frag( const frag_t* f, const time::spec_t& ts )
+    {
+      // if f is the earliest fragment
+      if( f->prev == nullptr )
+        return time::isLTE(ts,f->endTimestamp);
+
+      // else  f->prev->end_ts < ts && ts <= f->end_ts
+      return time::isLT(f->prev->endTimestamp,ts) && time::isLTE(ts,f->endTimestamp);
+    }
+
+    bool _ts_is_before_frag( const frag_t* f, const time::spec_t& ts )
+    {
+      // if ts is past f
+      if( time::isGT(ts,f->endTimestamp ) )
+        return false;
+
+      // ts may now only be inside or before f
+
+      // if f is the first frag then ts must be inside it
+      if( f->prev == nullptr )
+        return false;
+
+      // is ts before f
+      return time::isLTE(ts,f->prev->endTimestamp);      
+    }
+
+    bool _ts_is_after_frag( const frag_t* f, const time::spec_t& ts )
+    {
+      return time::isGT(ts,f->endTimestamp);
+    }
+
+    // Scan from through the fragment list to find the fragment containing ts.
+    frag_t* _timestamp_to_frag( preset_sel_t* p, const time::spec_t& ts, frag_t* init_frag=nullptr )
+    {
+      frag_t* f = init_frag==nullptr ? p->fragL : init_frag;
+      for(; f!=nullptr; f=f->link)
+        if( _ts_is_in_frag(f,ts) )
+          return f;
+      
+      return nullptr;
+    }
+
+    
 
     rc_t _validate_preset_id( const frag_t* frag, unsigned preset_id )
     {
@@ -335,31 +384,64 @@ const cw::preset_sel::frag_t* cw::preset_sel::get_fragment( handle_t h, unsigned
   return _find_frag(p,fragId);
 }
     
-cw::rc_t cw::preset_sel::create_fragment( handle_t h, unsigned fragId, unsigned end_loc )
+cw::rc_t cw::preset_sel::create_fragment( handle_t h, unsigned fragId, unsigned end_loc, time::spec_t end_timestamp )
 {
-  preset_sel_t* p = _handleToPtr(h);
-  frag_t* f     = mem::allocZ<frag_t>();
-  f->endLoc     = end_loc;
-  f->fragId     = fragId;
-  f->dryFl      = false;
-  f->gain       = p->defaultGain;
-  f->wetDryGain = p->defaultWetDryGain;
-  f->fadeOutMs  = p->defaultFadeOutMs;
-  f->presetA    = mem::allocZ<preset_t>(p->presetLabelN);
-  f->presetN    = p->presetLabelN;
+  preset_sel_t* p  = _handleToPtr(h);
+  frag_t*       f  = mem::allocZ<frag_t>();
+  f->endLoc        = end_loc;
+  f->endTimestamp  = end_timestamp;
+  f->fragId        = fragId;
+  f->dryFl         = false;
+  f->gain          = p->defaultGain;
+  f->wetDryGain    = p->defaultWetDryGain;
+  f->fadeOutMs     = p->defaultFadeOutMs;
+  f->presetA       = mem::allocZ<preset_t>(p->presetLabelN);
+  f->presetN       = p->presetLabelN;
 
   for(unsigned i=0; i<p->presetLabelN; ++i)
     f->presetA[i].preset_idx = i;
-  
 
-  frag_t* f0;
-  for(f0=p->fragL; f0!=nullptr; f0=f0->link)
-    if( f0->link == nullptr )
-      break;
-  if( f0 == nullptr )
+  // if the list is empty
+  if( p->fragL == nullptr )
+  {
     p->fragL = f;
-  else
+    return kOkRC;
+  }
+  
+  frag_t* f0 = p->fragL;
+  for(; f0->link!=nullptr; f0 = f0->link)
+    if( end_loc < f0->endLoc )
+      break;
+  // 
+  assert( f0 != nullptr );
+
+  // if f is after the last current fragment ...
+  if( f0->link == nullptr )
+  {
+    // ... insert f at the end of the list
     f0->link = f;
+    f->prev  = f0;
+  }
+  else
+  {
+    // Insert f before f0
+
+    f->link = f0;
+    f->prev = f0->prev;
+
+    // if f0 was first on the list
+    if( f0->prev == nullptr )
+    {
+      assert( p->fragL == f0 );
+      p->fragL = f;
+    }
+    else
+    {
+      f0->prev->link = f;
+    }
+  
+    f0->prev = f;
+  }
   
   return kOkRC;
 }
@@ -440,7 +522,52 @@ cw::rc_t cw::preset_sel::get_value( handle_t h, unsigned fragId, unsigned varId,
 
 cw::rc_t cw::preset_sel::get_value( handle_t h, unsigned fragId, unsigned varId, unsigned presetId, double&   valueRef )
 { return _get_value(h,fragId,varId,presetId,valueRef); }
-    
+
+bool cw::preset_sel::track_timestamp( handle_t h, const time::spec_t& ts, const cw::preset_sel::frag_t*& frag_Ref )
+{
+  preset_sel_t* p               = _handleToPtr(h);
+  frag_t*       f               = nullptr;
+  bool          frag_changed_fl = false;
+
+  // if this is the first call to 'track_timestamp()'.
+  if( p->last_ts_frag == nullptr )
+    f = _timestamp_to_frag(p,ts);
+  else
+    // if the 'ts' is in the same frag as previous call.
+    if( _ts_is_in_frag(p->last_ts_frag,ts) )
+      f = p->last_ts_frag;
+    else
+      // if 'ts' is in a later frag
+      if( _ts_is_after_frag(p->last_ts_frag,ts) )
+        f = _timestamp_to_frag(p,ts,p->last_ts_frag);  
+      else // ts is prior to 'last_ts_frag'
+        f = _timestamp_to_frag(p,ts); 
+  
+  // 'f' will be null at this point if 'ts' is past the last preset.
+  // In this case we should leave 'last_ts_frag' unchanged.
+
+  // if 'f' is valid but different from 'last_ts_frag'
+  if( f != nullptr && f != p->last_ts_frag )
+  {
+    p->last_ts_frag = f;
+    frag_changed_fl = true;
+  }
+
+  frag_Ref = p->last_ts_frag;
+  
+  return frag_changed_fl;
+}
+
+unsigned cw::preset_sel::fragment_play_preset_index( const frag_t* frag )
+{
+  for(unsigned i=0; i<frag->presetN; ++i)
+    if( frag->presetA[i].playFl )
+      return frag->presetA[i].preset_idx;
+  
+  return kInvalidIdx;
+}
+
+
 cw::rc_t cw::preset_sel::write( handle_t h, const char* fn )
 {
   rc_t rc = kOkRC;
@@ -450,5 +577,24 @@ cw::rc_t cw::preset_sel::write( handle_t h, const char* fn )
 cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
 {
   rc_t rc = kOkRC;
+  return rc;
+}
+
+cw::rc_t cw::preset_sel::report( handle_t h )
+{
+  rc_t          rc = kOkRC;
+  preset_sel_t* p  = _handleToPtr(h);
+  unsigned      i  = 0;
+  time::spec_t  t0;
+  time::setZero(t0);
+ 
+  for(frag_t* f=p->fragL; f!=nullptr; f=f->link,++i)
+  {
+    unsigned elapsedMs = time::elapsedMs(t0,f->endTimestamp);
+    double mins = elapsedMs / 60000.0;
+    
+    cwLogInfo("%3i id:%3i end loc:%3i end min:%7.2f",i,f->fragId,f->endLoc, mins);
+  }
+
   return rc;
 }
