@@ -41,9 +41,15 @@ namespace cw
 
     // Returns true if t0 <=  t1.
     bool isLTE( const spec_t& t0, const spec_t& t1 );
+    
+    // Returns true if t0 <  t1.
+    bool isLT(  const spec_t& t0, const spec_t& t1 );
 
     // Return true if t0 >= t1.
     bool isGTE( const spec_t& t0, const spec_t& t1 );
+    
+   // Return true if t0 > t1. 
+   bool isGT(  const spec_t& t0, const spec_t& t1 );
 
     bool isEqual( const spec_t& t0, const spec_t& t1 );
 

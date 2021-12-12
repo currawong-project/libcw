@@ -105,6 +105,17 @@ bool cw::time::isLTE( const spec_t& t0, const spec_t& t1 )
   return false; 
 }
 
+bool cw::time::isLT( const spec_t& t0, const spec_t& t1 )
+{
+  if( t0.tv_sec  < t1.tv_sec )
+    return true;
+
+  if( t0.tv_sec == t1.tv_sec )
+    return t0.tv_nsec < t1.tv_nsec;
+
+  return false; 
+}
+
 bool cw::time::isGTE( const spec_t& t0, const spec_t& t1 )
 {
   if( t0.tv_sec  > t1.tv_sec )
@@ -112,6 +123,17 @@ bool cw::time::isGTE( const spec_t& t0, const spec_t& t1 )
 
   if( t0.tv_sec == t1.tv_sec )
     return t0.tv_nsec >= t1.tv_nsec;
+
+  return false;   
+}
+
+bool cw::time::isGT( const spec_t& t0, const spec_t& t1 )
+{
+  if( t0.tv_sec  > t1.tv_sec )
+    return true;
+
+  if( t0.tv_sec == t1.tv_sec )
+    return t0.tv_nsec > t1.tv_nsec;
 
   return false;   
 }
