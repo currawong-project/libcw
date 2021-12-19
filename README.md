@@ -171,7 +171,7 @@ Note that all vars must be included in the class description.
 2. Apply the preset record from the class description according to the
 label given in the instance definition. 
 
-If the variable valures are given as a scalar then the existing
+If the variable values are given as a scalar then the existing
 variable is simply given a new value.
 
 If the variable values are given as a list then new variables 
