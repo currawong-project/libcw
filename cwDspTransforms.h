@@ -45,9 +45,27 @@ namespace cw
       void set_thresh_db(  obj_t* p, real_t thresh );
       void set_rms_wnd_ms( obj_t* p, real_t ms );
     }
-    
-  }
-  
+
+    namespace recorder
+    {
+      typedef struct
+      {
+        real_t    srate;      //
+        unsigned  maxFrameN;  //
+        unsigned  chN;        //  channel count
+        unsigned  frameIdx;   //  next frame to write
+        sample_t* buf;        //   [ [maxFrameN] [maxFrameN] ]
+      } obj_t;                //        ch0          ch1
+
+      rc_t create(  obj_t*& pRef, real_t srate, real_t max_secs, unsigned chN );
+      rc_t destroy( obj_t*& pRef);
+      
+      rc_t exec(    obj_t* p, const sample_t* buf,   unsigned chN, unsigned frameN );
+      rc_t exec(    obj_t* p, const sample_t* chA[], unsigned chN, unsigned frameN );
+      rc_t write(   obj_t* p, const char* fname );
+      
+    }    
+  }  
 }
 
 #endif

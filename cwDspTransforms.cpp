@@ -161,3 +161,97 @@ void cw::dsp::compressor::set_rms_wnd_ms( obj_t* p, real_t ms )
   if( p->rmsWndCnt > p->rmsWndAllocCnt )
     p->rmsWndCnt = p->rmsWndAllocCnt;      
 }
+
+
+
+cw::rc_t cw::dsp::recorder::create(  obj_t*& pRef, real_t srate, real_t max_secs, unsigned chN )
+{
+  obj_t* p     = mem::allocZ<obj_t>();
+  p->srate     = srate;
+  p->maxFrameN = (unsigned)(max_secs * srate);
+  p->chN       = chN;
+  p->buf       = mem::allocZ<sample_t>( p->maxFrameN * p->chN );
+
+  pRef = p;
+
+  return kOkRC;
+}
+
+cw::rc_t cw::dsp::recorder::destroy( obj_t*& pRef)
+{
+  obj_t* p = pRef;
+
+  if( p != nullptr )
+  {
+    mem::release(p->buf);
+    mem::release(p);
+  }
+  
+  pRef = nullptr;
+  return kOkRC;
+}
+
+cw::rc_t cw::dsp::recorder::exec( obj_t* p, const sample_t* buf, unsigned chN, unsigned frameN )
+{
+  const sample_t* chA[ chN ];
+  for(unsigned i=0; i<chN; ++i)
+    chA[i] = buf + (i*frameN);
+
+  return exec(p, chA, chN, frameN );
+}
+
+cw::rc_t cw::dsp::recorder::exec( obj_t* p, const sample_t* chA[], unsigned chN, unsigned frameN )
+{
+  chN = std::min( chN, p->chN );
+  
+  // 
+  if( p->frameIdx + frameN > p->maxFrameN )
+    frameN = p->maxFrameN - p->frameIdx;
+  
+  for(unsigned i=0; i<chN; ++i)
+    for(unsigned j=0; j<frameN; ++j )
+      p->buf[ i*p->maxFrameN + p->frameIdx + j ] = chA[i][j];
+
+  p->frameIdx += frameN;
+
+  return kOkRC;
+}
+
+cw::rc_t cw::dsp::recorder::write(   obj_t* p, const char* fname )
+{
+  file::handle_t h;
+  cw::rc_t rc;
+  
+  if((rc = file::open(h,fname, file::kWriteFl )) != kOkRC )
+  {
+    rc = cwLogError(rc,"Recorder file open failed on '%s'.", cwStringNullGuard(fname));
+    goto errLabel;
+  }
+
+  file::printf(h,"{\n");
+
+  file::printf(h,"\"srate\":%f,\n",p->srate);
+  file::printf(h,"\"maxFrameN\":%i,\n",p->frameIdx);
+
+  for(unsigned i=0; i<p->chN; ++i)
+  {
+    file::printf(h,"\"%i\":[",i);
+
+    for(unsigned j=0; j<p->frameIdx; ++j)
+      file::printf(h,"%f%c\n",p->buf[ p->maxFrameN*i + j ], j+1==p->frameIdx ? ' ' : ',');
+    
+    file::printf(h,"]\n");
+  }
+  
+  file::printf(h,"}\n");
+
+ errLabel:
+
+  if((rc = file::close(h)) != kOkRC )
+  {
+    rc = cwLogError(rc,"Recorder file close failed on '%s'.", cwStringNullGuard(fname));
+    goto errLabel;
+  }
+
+  return rc;
+}
