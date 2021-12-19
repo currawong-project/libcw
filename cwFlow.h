@@ -28,6 +28,7 @@ namespace cw
     typedef struct audio_dev_cfg_str
     {
       struct abuf_str* abuf;  // Buffer to receive incoming or send outgoing audio for this device
+                              // The audio_in/audio_out proc's locate and use these buffers.
     } audio_dev_cfg_t;
 
     // Generate external device record
@@ -44,6 +45,9 @@ namespace cw
       } u;
         
     } external_device_t;
+
+    void print_abuf( const struct abuf_str* abuf );
+    void print_external_device( const external_device_t* dev );
     
 
     rc_t create( handle_t&             hRef,
@@ -52,16 +56,20 @@ namespace cw
                  external_device_t*    deviceA = nullptr,
                  unsigned              deviceN = 0);
 
-    // Run one cycle of the network.
-    rc_t exec_cycle( handle_t& hRef );
-
-    // Run the network to completion.
-    rc_t exec(    handle_t& hRef );
-    
     rc_t destroy( handle_t& hRef );
 
-    void print_class_list( handle_t& hRef );
-    void print_network( handle_t& hRef );
+
+    rc_t apply_preset( handle_t h, const char* presetLabel );
+    
+    // Run one cycle of the network.
+    rc_t exec_cycle( handle_t h );
+
+    // Run the network to completion.
+    rc_t exec(    handle_t h );
+
+    
+    void print_class_list( handle_t h );
+    void print_network( handle_t h );
 
     rc_t test( const object_t* class_cfg, const object_t* cfg );
 

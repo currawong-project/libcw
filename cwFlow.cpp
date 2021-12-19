@@ -733,6 +733,22 @@ namespace cw
       return rc;
     }
 
+    const object_t* _find_network_preset( flow_t* p, const char* presetLabel )
+    {
+      const object_t* preset_value = nullptr;
+      
+      if( p->presetCfg != nullptr )
+      {
+        rc_t rc;
+        
+        if((rc = p->presetCfg->getv_opt( presetLabel, preset_value )) != kOkRC )
+          cwLogError(rc,"Search for network preset named '%s' failed.", cwStringNullGuard(presetLabel));
+      }
+
+      return preset_value;
+      
+    }
+
     rc_t _exec_cycle( flow_t* p )
     {
       rc_t rc = kOkRC;
@@ -746,6 +762,20 @@ namespace cw
     
   }
 }
+
+void cw::flow::print_abuf( const abuf_t* abuf )
+{
+  printf("Abuf: sr:%7.1f chs:%3i frameN:%4i %p",abuf->srate,abuf->chN,abuf->frameN,abuf->buf);
+}
+
+void cw::flow::print_external_device( const external_device_t* dev )
+{
+  printf("Dev: %10s id:%3i type:%3i fl:0x%x : ", cwStringNullGuard(dev->label),dev->ioDevId,dev->typeId,dev->flags);
+  if( dev->typeId == kAudioDevTypeId )
+    print_abuf(dev->u.a.abuf);
+  printf("\n");
+}
+
 
 cw::rc_t cw::flow::create( handle_t&          hRef,
                            const object_t&    classCfg,
@@ -762,9 +792,9 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
     return rc;
 
   flow_t* p   = mem::allocZ<flow_t>();
-  p->cfg      = &networkCfg;   // TODO: duplicate cfg?
-  p->deviceA  = deviceA;
-  p->deviceN  = deviceN;
+  p->networkCfg = &networkCfg;   // TODO: duplicate cfg?
+  p->deviceA    = deviceA;
+  p->deviceN    = deviceN;
 
   // parse the class description array
   if((rc = _parse_class_cfg(p,library,&classCfg)) != kOkRC )
@@ -784,7 +814,8 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   // parse the optional args
   if((rc = networkCfg.getv_opt("maxCycleCount",    p->maxCycleCount,
                                "printClassDictFl", printClassDictFl,
-                               "printNetworkFl",   printNetworkFl)) != kOkRC )
+                               "printNetworkFl",   printNetworkFl,
+                               "presets",          p->presetCfg)) != kOkRC )
   {
     rc = cwLogError(kSyntaxErrorRC,"Error parsing the optional flow configuration parameters.");
     goto errLabel;
@@ -822,15 +853,92 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   return rc;  
 }
 
-cw::rc_t cw::flow::exec_cycle( handle_t& hRef )
-{
-  return _exec_cycle(_handleToPtr(hRef));
-}
-
-cw::rc_t cw::flow::exec(    handle_t& hRef )
+cw::rc_t cw::flow::destroy( handle_t& hRef )
 {
   rc_t    rc = kOkRC;
-  flow_t* p  = _handleToPtr(hRef);
+  flow_t* p  = nullptr;;
+  
+  if( !hRef.isValid() )
+    return rc;
+
+  p = _handleToPtr(hRef);
+
+  _destroy(p);
+
+  hRef.clear();
+  
+  return rc;
+}
+
+cw::rc_t cw::flow::apply_preset( handle_t h, const char* presetLabel )
+{
+  rc_t    rc = kOkRC;
+  flow_t* p  = _handleToPtr(h);
+  const object_t* net_preset_value;
+  const object_t* preset_pair;
+
+  // locate the cfg of the requested preset
+  if((net_preset_value = _find_network_preset(p, presetLabel )) == nullptr )
+  {
+    rc = cwLogError(kInvalidIdRC,"The network preset '%s' could not be found.", presetLabel );
+    goto errLabel;
+  }
+
+  // for each instance in the preset
+  for(unsigned i=0; i<net_preset_value->child_count(); ++i)
+  {
+    // get the instance label/value pair
+    if((preset_pair = net_preset_value->child_ele(i)) != nullptr && preset_pair->is_pair() )
+    {
+      const char* inst_label = preset_pair->pair_label();
+      const object_t* preset_value_cfg = preset_pair->pair_value();
+      instance_t* inst;
+
+      // locate the instance
+      if((inst = instance_find(p,inst_label)) == nullptr )
+      {
+        rc = cwLogError(kInvalidIdRC,"The network instance '%s' refered to in network preset '%s' could not be found.",inst_label,presetLabel);
+        goto errLabel;
+      }
+
+      if( preset_value_cfg->is_string() )
+      {
+        const char* class_preset_label;
+        preset_value_cfg->value(class_preset_label);
+        _class_preset_channelize_vars(inst, class_preset_label );
+      }
+      else
+        if( preset_value_cfg->is_dict() )
+        {
+          printf("Not implemented.\n");
+        }
+        else
+        {
+          rc = cwLogError(kSyntaxErrorRC,"The network preset '%s' instance '%s' does not have a string or dictionary value.", presetLabel, inst_label );
+          goto errLabel;
+        }
+      
+    }
+    else
+    {
+      rc = cwLogError(kSyntaxErrorRC,"The network preset '%s' is malformed.",presetLabel);
+      goto errLabel;        
+    }      
+  }
+  
+ errLabel:
+  return rc;
+}
+
+cw::rc_t cw::flow::exec_cycle( handle_t h )
+{
+  return _exec_cycle(_handleToPtr(h));
+}
+
+cw::rc_t cw::flow::exec(    handle_t h )
+{
+  rc_t    rc = kOkRC;
+  flow_t* p  = _handleToPtr(h);
 
   while( true )
   {  
@@ -850,31 +958,20 @@ cw::rc_t cw::flow::exec(    handle_t& hRef )
   return rc;
 }
 
-cw::rc_t cw::flow::destroy( handle_t& hRef )
+void cw::flow::print_class_list( handle_t h )
 {
-  rc_t    rc = kOkRC;
-  flow_t* p  = nullptr;;
-  
-  if( !hRef.isValid() )
-    return rc;
-
-  p = _handleToPtr(hRef);
-
-  _destroy(p);
-
-  hRef.clear();
-  
-  return rc;
+  flow_t* p = _handleToPtr(h);
+  class_dict_print(p);
 }
 
-void cw::flow::print_class_list( handle_t& hRef )
+void cw::flow::print_network( handle_t h )
 {
-  class_dict_print(_handleToPtr(hRef));
-}
-
-void cw::flow::print_network( handle_t& hRef )
-{
-  network_print(_handleToPtr(hRef));
+  flow_t* p = _handleToPtr(h);
+  
+  for(unsigned i=0; i<p->deviceN; ++i)
+    print_external_device( p->deviceA + i );
+  
+  network_print(p);
 }
 
 

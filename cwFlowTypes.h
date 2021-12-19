@@ -199,7 +199,9 @@ namespace cw
 
     typedef struct flow_str
     {
-      const object_t*      cfg;
+      const object_t*      networkCfg;     // complete cfg used to create this network
+
+      const object_t*      presetCfg;      // presets designed for this network
       
       unsigned             framesPerCycle; // sample frames per cycle (64)
       unsigned             cycleIndex;     // Incremented with each processing cycle      
@@ -265,6 +267,8 @@ namespace cw
 
     void               instance_print( instance_t* inst );
 
+
+    
     //------------------------------------------------------------------------------------------------------------------------
     //
     // Variable
