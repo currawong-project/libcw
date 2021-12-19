@@ -12,7 +12,7 @@
 #include "cwDspTypes.h"
 #include "cwFlow.h"
 #include "cwFlowTypes.h"
-
+#include "cwFlowCross.h"
 
 #include "cwIo.h"
 
@@ -34,9 +34,9 @@ namespace cw
 
     typedef struct audio_group_str
     {
-      double        srate;
-      unsigned      dspFrameCnt;
-      unsigned      ioGroupIdx;
+      double       srate;
+      unsigned     dspFrameCnt;
+      unsigned     ioGroupIdx;
       
       audio_dev_t* iDeviceA;
       unsigned     iDeviceN;
@@ -48,15 +48,15 @@ namespace cw
     
     typedef struct io_flow_str
     {
-      io::handle_t    ioH;
+      io::handle_t             ioH;         //
       
-      flow::external_device_t* deviceA;  // Array of generic device descriptions used by the ioFlow controller
-      unsigned                 deviceN;  // (This array must exist for the life of ioFlow controller)
+      flow::external_device_t* deviceA;     // Array of generic device descriptions used by the ioFlow controller
+      unsigned                 deviceN;     // (This array must exist for the life of ioFlow controller)
       
-      audio_group_t*  audioGroupA;  // Array of real time audio device control records.
-      unsigned        audioGroupN;  // 
+      audio_group_t*           audioGroupA; // Array of real time audio device control records.
+      unsigned                 audioGroupN; //
       
-      flow::handle_t  flowH;
+      flow_cross::handle_t     crossFlowH;  //
       
     } io_flow_t;
 
@@ -65,6 +65,9 @@ namespace cw
 
     rc_t _destroy( io_flow_t* p )
     {
+
+      flow_cross::destroy( p->crossFlowH );
+      
       mem::release(p->deviceA);
       p->deviceN = 0;
 
@@ -137,7 +140,6 @@ namespace cw
 
         for(unsigned gdi=0; gdi<ag->oDeviceN; ++gdi)
           _setup_audio_device( p, ag->oDeviceA + gdi, io::kOutFl, audioGroupDeviceIndex( p->ioH, gi, io::kOutFl, gdi), ag->dspFrameCnt  );
-        
         
       }
     }
@@ -246,8 +248,7 @@ namespace cw
     }
 
     rc_t _audio_callback( io_flow_t* p, io::audio_msg_t& m )
-    {
-      
+    {      
       rc_t rc = kOkRC;
       flow::abuf_t* abuf;
 
@@ -289,7 +290,7 @@ namespace cw
 
 
       // update the flow network - this will generate audio into the output audio buffers
-      flow::exec_cycle(p->flowH);
+      flow_cross::exec_cycle(p->crossFlowH);
       
 
       // if there are empty output (playback) buffers
@@ -323,7 +324,12 @@ namespace cw
 }
 
 
-cw::rc_t cw::io_flow::create( handle_t& hRef, io::handle_t ioH, const object_t& flow_class_dict, const object_t& network_cfg )
+cw::rc_t cw::io_flow::create( handle_t&       hRef,
+                              io::handle_t    ioH,
+                              double          srate,
+                              unsigned        crossFadeCnt,
+                              const object_t& flow_class_dict,
+                              const object_t& network_cfg )
 {
   rc_t rc;
 
@@ -341,11 +347,13 @@ cw::rc_t cw::io_flow::create( handle_t& hRef, io::handle_t ioH, const object_t& 
   _setup_generic_device_array(p);
 
   // create the flow object
-  if((rc = create( p->flowH, flow_class_dict, network_cfg, p->deviceA, p->deviceN )) != kOkRC )
+  if((rc = flow_cross::create( p->crossFlowH, flow_class_dict, network_cfg, srate, crossFadeCnt, p->deviceA, p->deviceN )) != kOkRC )
   {
     cwLogError(rc,"The 'flow' object create failed.");
     goto errLabel;
   }
+
+  //flow_cross::print(p->crossFlowH);
   
 
   hRef.set(p);
@@ -394,5 +402,17 @@ cw::rc_t cw::io_flow::exec( handle_t h, const io::msg_t& msg )
   
   }
 
+  return rc;
+}
+
+
+cw::rc_t cw::io_flow::apply_preset( handle_t h, double crossFadeMs, const char* presetLabel )
+{
+  cw::rc_t rc = kOkRC;
+
+  io_flow_t* p = _handleToPtr(h);
+
+  rc = apply_preset( p->crossFlowH, crossFadeMs, presetLabel );
+  
   return rc;
 }
