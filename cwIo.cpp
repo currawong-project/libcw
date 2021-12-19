@@ -1803,6 +1803,9 @@ cw::rc_t cw::io::stop( handle_t h )
 {
   io_t* p = _handleToPtr(h);
   p->quitFl.store(true);
+
+  _audioDeviceStartStop(p,false);
+  
   return kOkRC;
 }
 
