@@ -507,33 +507,41 @@ namespace cw
       
       typedef struct
       {
-        real_t gain;
-        real_t hz;
-        real_t phase;
-        srate_t srate;
-        unsigned chCnt;
+        real_t *phaseA;
       } inst_t;
       
       rc_t create( instance_t* ctx )
       {
-        rc_t rc = kOkRC;
-        
-        inst_t*                  inst = mem::allocZ<inst_t>();
+        rc_t     rc    = kOkRC;
+        inst_t*  inst  = mem::allocZ<inst_t>();
+        srate_t  srate = 0;
+        unsigned chCnt = 0;
+        real_t   gain;
+        real_t   hz;
         
         ctx->userPtr = inst;
 
         // Register variables and get their current value
-        if((rc = var_register_and_get( ctx, kAnyChIdx,
-                                       kSratePId, "srate", inst->srate,
-                                       kChCntPid, "chCnt", inst->chCnt,
-                                       kFreqHzPId, "hz",   inst->hz,
-                                       kGainPId,  "gain",  inst->gain)) != kOkRC )
+        if((rc = var_register_and_get( ctx, kAnyChIdx, kChCntPid, "chCnt", chCnt)) != kOkRC )
         {
           goto errLabel;
         }
 
+        // register each oscillator variable
+        for(unsigned i=0; i<chCnt; ++i)
+          if((rc = var_register_and_get( ctx, i,
+                                         kSratePId,  "srate", srate,
+                                         kFreqHzPId, "hz",    hz,
+                                         kGainPId,   "gain",  gain)) != kOkRC )
+          {
+            goto errLabel;
+          }
+
         // create one output audio buffer
-        rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, inst->srate, inst->chCnt, ctx->ctx->framesPerCycle );
+        rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, srate, chCnt, ctx->ctx->framesPerCycle );
+
+        inst->phaseA = mem::allocZ<real_t>( chCnt );
+        
 
       errLabel:
         return rc;
@@ -562,7 +570,6 @@ namespace cw
         inst_t*  inst         = (inst_t*)ctx->userPtr;
         abuf_t*  abuf         = nullptr;
 
-
         // get the output signal buffer
         if((rc = var_get(ctx,kOutPId,kAnyChIdx,abuf)) != kOkRC )
         {
@@ -570,14 +577,23 @@ namespace cw
         }
         else
         {
-          for(unsigned i=0; i<inst->chCnt; ++i)
+          for(unsigned i=0; i<abuf->chN; ++i)
           {
+            real_t  gain;
+            real_t  hz;
+            srate_t srate;
+            
+            var_get( ctx, kFreqHzPId, i, hz );
+            var_get( ctx, kGainPId,   i, gain );
+            var_get( ctx, kSratePId,  i, srate );
+            
             sample_t* v = abuf->buf + (i*abuf->frameN);
+            
             for(unsigned j=0; j<abuf->frameN; ++j)
-              v[j] = inst->gain * (sample_t)sin( inst->phase + (j*inst->srate/inst->hz));
-          }
+              v[j] = (sample_t)(gain * sin( inst->phaseA[i] + (2.0 * M_PI * j * hz/srate)));
 
-          inst->phase += abuf->frameN*inst->srate/inst->hz;
+            inst->phaseA[i] += 2.0 * M_PI * abuf->frameN * hz/srate;            
+          }
         }
         
         return rc;
