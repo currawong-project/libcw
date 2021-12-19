@@ -6,6 +6,7 @@
 #include "cwObject.h"
 #include "cwTime.h"
 #include "cwPresetSel.h"
+#include "cwFile.h"
 
 namespace cw
 {
@@ -21,20 +22,33 @@ namespace cw
       preset_label_t*  presetLabelA;
       unsigned         presetLabelN;
       
-      double          defaultGain;
-      double          defaultWetDryGain;
-      double          defaultFadeOutMs;
+      double           defaultGain;
+      double           defaultWetDryGain;
+      double           defaultFadeOutMs;
       
-      struct frag_str*         fragL;
+      struct frag_str* fragL;
       
-
-      frag_t*      last_ts_frag;
+      frag_t*          last_ts_frag;
       
     } preset_sel_t;
 
     preset_sel_t* _handleToPtr( handle_t h )
     { return handleToPtr<handle_t,preset_sel_t>(h); }
 
+    const char* _preset_label( preset_sel_t* p, unsigned preset_idx )
+    {
+      return p->presetLabelA[ preset_idx ].label;
+    }
+
+    unsigned _preset_label_to_index( preset_sel_t* p, const char* label )
+    {
+      for(unsigned i=0; i<p->presetLabelN; ++i)
+        if( textIsEqual(p->presetLabelA[i].label,label) )
+          return i;
+
+      return kInvalidIdx;
+    }
+    
     rc_t _delete_fragment( preset_sel_t*  p, unsigned fragId )
     {
       frag_t*       f0 = nullptr;
@@ -61,11 +75,16 @@ namespace cw
   
       return kOkRC;
     }
+
+    void _destroy_all_frags( preset_sel_t* p )
+    {
+      while( p->fragL != nullptr)
+        _delete_fragment(p, p->fragL->fragId );
+    }
     
     rc_t _destroy( preset_sel_t* p )
     {
-      while( p->fragL != nullptr )
-        _delete_fragment(p, p->fragL->fragId );
+      _destroy_all_frags(p);
       
       for(unsigned i=0; i<p->presetLabelN; ++i)
         mem::release( p->presetLabelA[i].label );
@@ -183,6 +202,16 @@ namespace cw
   
       switch( varId )
       {
+      case kFragIdVarId:
+        {
+          frag_t* ff = nullptr;
+            if( f->fragId != value && _find_frag(p,value,ff) != kOkRC )
+            rc = cwLogError(kInvalidIdRC,"The fragment id '%i' is already in use.",fragId);
+          else
+            f->fragId = value;
+        }
+        break;
+        
       case kDryFlVarId:
         f->dryFl = value;
         break;
@@ -236,6 +265,10 @@ namespace cw
   
       switch( varId )
       {
+      case kFragIdVarId:
+        valueRef = f->fragId;
+        break;
+        
       case kEndLocVarId:
         valueRef = f->endLoc;
         break;
@@ -357,7 +390,7 @@ unsigned    cw::preset_sel::preset_count( handle_t h )
 const char* cw::preset_sel::preset_label( handle_t h, unsigned preset_idx )
 {
   preset_sel_t* p = _handleToPtr(h);
-  return p->presetLabelA[ preset_idx].label;
+  return _preset_label(p,preset_idx);
 }
 
 
@@ -570,13 +603,182 @@ unsigned cw::preset_sel::fragment_play_preset_index( const frag_t* frag )
 
 cw::rc_t cw::preset_sel::write( handle_t h, const char* fn )
 {
-  rc_t rc = kOkRC;
+  rc_t          rc        = kOkRC;
+  preset_sel_t* p         = _handleToPtr(h);
+  object_t*     root      = newDictObject();
+  unsigned      fragN     = 0;
+  object_t*     fragL_obj = newListObject(nullptr);
+
+  
+  for(frag_t* f=p->fragL; f!=nullptr; f=f->link,++fragN)
+  {
+    object_t* frag_obj = newDictObject(nullptr);
+
+    fragL_obj->append_child(frag_obj);
+    
+    newPairObject("fragId",            f->fragId,               frag_obj );
+    newPairObject("endLoc",            f->endLoc,               frag_obj );
+    newPairObject("endTimestamp_sec",  f->endTimestamp.tv_sec,  frag_obj );
+    newPairObject("endTimestamp_nsec", f->endTimestamp.tv_nsec, frag_obj );
+    newPairObject("dryFl",             f->dryFl,                frag_obj );
+    newPairObject("gain",              f->gain,                 frag_obj );
+    newPairObject("wetDryGain",        f->wetDryGain,           frag_obj );
+    newPairObject("fadeOutMs",         f->fadeOutMs,            frag_obj );
+    newPairObject("presetN",           f->presetN,              frag_obj );
+
+    // note: newPairObject() return a ptr to the pair value node.
+    object_t* presetL_obj = newPairObject("presetL", newListObject( nullptr ), frag_obj );
+    
+    for(unsigned i=0; i<f->presetN; ++i)
+    {
+      object_t* presetD_obj = newDictObject( nullptr );
+
+      newPairObject("order",                         f->presetA[i].order,        presetD_obj );
+      newPairObject("preset_label", _preset_label(p, f->presetA[i].preset_idx ), presetD_obj );
+      newPairObject("play_fl",                       f->presetA[i].playFl,       presetD_obj );
+
+      presetL_obj->append_child( presetD_obj );
+    }
+  }
+
+  newPairObject("fragL", fragL_obj, root);
+  newPairObject("fragN", fragN,     root);
+
+  unsigned bytes_per_frag = 1024;
+  
+  do
+  {
+    unsigned s_byteN      = fragN * bytes_per_frag;    
+    char*    s            = mem::allocZ<char>( s_byteN );    
+    unsigned actual_byteN = root->to_string(s,s_byteN);
+    
+    if( actual_byteN < s_byteN )      
+      if((rc = file::fnWrite(fn,s,strlen(s))) != kOkRC )        
+        rc = cwLogError(rc,"Preset select failed on '%s'.",fn);
+
+    
+    mem::release(s);
+
+    if( actual_byteN < s_byteN )
+      break;
+
+    bytes_per_frag *= 2;
+
+  }while(1);
+  
+  
   return rc;
 }
 
 cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
 {
-  rc_t rc = kOkRC;
+  rc_t            rc    = kOkRC;
+  preset_sel_t*   p     = _handleToPtr(h);  
+  object_t*       root  = nullptr;
+  unsigned        fragN = 0;
+  const object_t* fragL_obj = nullptr;
+
+  // parse the preset  file
+  if((rc = objectFromFile(fn,root)) != kOkRC )
+  {
+    rc = cwLogError(rc,"The preset select file parse failed on '%s'.", cwStringNullGuard(fn));
+    goto errLabel;
+  }
+
+  // remove all existing fragments
+  _destroy_all_frags(p);
+
+  // parse the root level
+  if((rc = root->getv( "fragN", fragN,
+                       "fragL", fragL_obj )) != kOkRC )
+  {
+    rc = cwLogError(rc,"Root preset select parse failed on '%s'.", cwStringNullGuard(fn));
+    goto errLabel;
+  }
+
+  // for each fragment
+  for(unsigned i=0; i<fragN; ++i)
+  {
+    frag_t* f = nullptr;
+    const object_t* r = fragL_obj->child_ele(i);
+
+    unsigned fragId=kInvalidId,endLoc=0,presetN=0;
+    double gain=0,wetDryGain=0,fadeOutMs=0;
+    const object_t* presetL_obj = nullptr;
+    time::spec_t end_ts;
+
+    // parse the fragment record
+    if((rc = r->getv("fragId",fragId,
+                     "endLoc",endLoc,
+                     "endTimestamp_sec",end_ts.tv_sec,
+                     "endTimestamp_nsec",end_ts.tv_nsec,
+                     "gain",gain,
+                     "wetDryGain",wetDryGain,
+                     "fadeOutMs",fadeOutMs,
+                     "presetN", presetN,
+                     "presetL", presetL_obj )) != kOkRC )
+    {
+      rc = cwLogError(rc,"Fragment restore record parse failed.");
+      goto errLabel;
+    }
+
+
+    // create a new fragment
+    if((rc = create_fragment( h, fragId, endLoc, end_ts)) != kOkRC )
+    {
+      rc = cwLogError(rc,"Fragment record create failed.");
+      goto errLabel;
+    }
+
+    // update the fragment variables
+    set_value( h, fragId, kGainVarId, kInvalidId, gain );
+    set_value( h, fragId, kFadeOutMsVarId, kInvalidId, fadeOutMs );
+    set_value( h, fragId, kWetGainVarId,   kInvalidId, wetDryGain );
+
+
+    // locate the new fragment record
+    if((f = _find_frag(p, fragId )) == nullptr )
+    {
+      rc = cwLogError(rc,"Fragment record not found.");
+      goto errLabel;
+    }
+
+    // for each preset
+    for(unsigned i=0; i<presetN; ++i)
+    {
+      const object_t*   r      = presetL_obj->child_ele(i);
+      unsigned    order        = 0;
+      const char* preset_label = nullptr;
+      unsigned    preset_idx   = kInvalidIdx;
+      bool        playFl       = false;
+      
+      // parse the preset record
+      if((rc = r->getv("order",        order,
+                       "preset_label", preset_label,
+                       "play_fl",    playFl)) != kOkRC )
+      {
+        rc = cwLogError(rc,"The fragment preset at index '%i' parse failed during restore.",i);
+        goto errLabel;
+      }
+
+      // locate the preset index associated with the preset label
+      if((preset_idx = _preset_label_to_index(p,preset_label)) == kInvalidIdx )
+      {
+        rc = cwLogError(kInvalidIdRC,"The preset '%s' could not be restored.",cwStringNullGuard(preset_label));
+        goto errLabel;
+      }
+
+      f->presetA[ preset_idx ].order  = order;
+      f->presetA[ preset_idx ].playFl = playFl;
+    }
+
+  }
+  
+
+ errLabel:
+  if(rc != kOkRC )
+    cwLogError(rc,"Preset resotre failed.");
+  
   return rc;
 }
 

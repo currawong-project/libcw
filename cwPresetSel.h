@@ -37,6 +37,7 @@ namespace cw
 
 
     enum {
+      kFragIdVarId,
       kEndLocVarId,
       kGainVarId,
       kFadeOutMsVarId,
