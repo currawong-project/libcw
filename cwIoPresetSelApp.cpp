@@ -129,7 +129,7 @@ namespace cw
       io::handle_t    ioH;
       
       const char*     record_dir;
-      const char*     record_folder;
+      const char*     record_fn;
       const char*     record_fn_ext;
       char*           directory;
       const char*     scoreFn;
@@ -150,6 +150,10 @@ namespace cw
 
       preset_sel::handle_t psH;
       io_flow::handle_t    ioFlowH;
+      unsigned tmp;
+
+      double   crossFadeSrate;
+      unsigned crossFadeCnt;
       
     } app_t;
 
@@ -165,11 +169,13 @@ namespace cw
       }
         
       if((rc = params_cfgRef->getv( "record_dir",    app->record_dir,
-                                    "record_folder", app->record_folder,
+                                    "record_fn",     app->record_fn,
                                     "record_fn_ext", app->record_fn_ext,
                                     "score_fn",      app->scoreFn,
                                     "frag_panel",    app->frag_panel_cfg,
-                                    "presets",       app->presets_cfg)) != kOkRC )
+                                    "presets",       app->presets_cfg,
+                                    "crossFadeSrate",app->crossFadeSrate,
+                                    "crossFadeCount",app->crossFadeCnt)) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"Preset Select App configuration parse failed.");
       }
@@ -196,31 +202,6 @@ namespace cw
       return kOkRC;
     }
 
-    char* _form_versioned_directory(app_t* app)
-    {
-      char* dir = nullptr;
-      
-      for(unsigned version_numb=0; true; ++version_numb)
-      {
-        unsigned n = textLength(app->record_folder) + 32;
-        char     folder[n+1];
-
-        snprintf(folder,n,"%s_%i",app->record_folder,version_numb);
-        
-        if((dir = filesys::makeFn(app->record_dir,folder, NULL, NULL)) == nullptr )
-        {
-          cwLogError(kOpFailRC,"Unable to form a versioned directory from:'%s'",cwStringNullGuard(app->record_dir));
-          return nullptr;
-        }
-
-        if( !filesys::isDir(dir) )
-          break;
-
-        mem::release(dir);
-      }
-      
-      return dir;
-    }
 
     rc_t _apply_preset( app_t* app, const time::spec_t& ts, const preset_sel::frag_t* frag=nullptr  )      
     {
@@ -232,8 +213,12 @@ namespace cw
       else
       {
         unsigned preset_idx = fragment_play_preset_index(frag);
+        const char* preset_label = preset_sel::preset_label(app->psH,preset_idx);
+        
+        printf("Apply preset: '%s'.\n", preset_idx==kInvalidIdx ? "<invalid>" : preset_label);
 
-        printf("Apply preset: '%s'.\n", preset_idx==kInvalidIdx ? "<invalid>" : preset_sel::preset_label(app->psH,preset_idx));
+        if( preset_label != nullptr )
+          io_flow::apply_preset( app->ioFlowH, frag->fadeOutMs, preset_label );
       }
 
       return kOkRC;      
@@ -265,7 +250,8 @@ namespace cw
       io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId),   midi_record_play::event_index(app->mrpH) );
       io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kTotalMidiEvtCntId), midi_record_play::event_count(app->mrpH) );
     }
-    
+
+    // Update the UI with the value from the the fragment data record.
     template< typename T >
     rc_t _update_frag_ui( app_t* app, unsigned fragId, unsigned psVarId, unsigned psPresetId, unsigned uiParentUuId, unsigned uiVarAppId, unsigned uiChanId,  T& valRef )
     {
@@ -378,6 +364,7 @@ namespace cw
       return rc;
     }
 
+    // Called when a UI value is changed in a fragment panel (e.g. gain, fadeMs, ...)
     template< typename T>
     rc_t _on_ui_frag_value( app_t* app, unsigned uuId, const T& value )
     {
@@ -406,45 +393,188 @@ namespace cw
       
       return rc;
     }
-    
-    
-    rc_t _on_ui_save( app_t* app )
-    {
-      rc_t  rc0 = kOkRC;
-      rc_t  rc1 = kOkRC;
-      char* dir = nullptr;
-      char* fn  = nullptr;
-      
-      if((dir = _form_versioned_directory(app)) == nullptr )
-        return cwLogError(kOpFailRC,"Unable to form the versioned directory string.");
 
-      if( !filesys::isDir(dir) )
-        if((rc0 = filesys::makeDir(dir)) != kOkRC )
+
+    rc_t _frag_set_ui_blob( app_t* app, unsigned uuId, unsigned fragId, unsigned varId, unsigned presetId )
+    {
+      ui_blob_t   blob = { .fragId=fragId, .varId=varId, .presetId=presetId };
+      return io::uiSetBlob( app->ioH, uuId, &blob, sizeof(blob) );      
+    }
+
+    
+    rc_t _create_frag_preset_ctl( app_t* app, unsigned fragId, unsigned fragPresetRowUuId, unsigned presetN, unsigned preset_idx )
+    {
+      rc_t        rc           = kOkRC;
+      unsigned    colUuId      = kInvalidId;
+      unsigned    uuId         = kInvalidId;
+      const char* nullEleName  = nullptr;
+      const char* nullClass    = nullptr;
+      unsigned    invalidAppId = kInvalidId;
+      unsigned    chanId       = preset_idx; // chanId is the preset id
+      const char* presetLabel  = preset_sel::preset_label( app->psH, preset_idx );
+        
+      assert( presetLabel != nullptr );
+
+      // preset control column container
+      if((rc = io::uiCreateDiv( app->ioH, colUuId, fragPresetRowUuId, nullEleName, invalidAppId, chanId, "col fragPresetCtl", nullptr )) != kOkRC )
+        goto errLabel;
+
+      // preset select check
+      if((rc = io::uiCreateCheck( app->ioH, uuId, colUuId, nullEleName, kFragPresetSelId, chanId, nullClass, presetLabel )) != kOkRC )
+        goto errLabel;
+
+      // store a connection for the select control back to the fragment record
+      _frag_set_ui_blob(app, uuId, fragId, preset_sel::kPresetSelectVarId, preset_idx );
+
+
+      // preset order number
+      if((rc = io::uiCreateNumb( app->ioH, uuId,  colUuId, nullEleName, kFragPresetOrderId, chanId, nullClass, nullptr, 0, presetN, 1, 0 )) != kOkRC )
+        goto errLabel;
+
+      // store a connection for the select control back to the fragment record
+      _frag_set_ui_blob(app, uuId, fragId, preset_sel::kPresetOrderVarId, preset_idx );
+
+    errLabel:
+      if(rc != kOkRC )
+        rc = cwLogError(rc,"Preset control index '%i' create failed.");
+      return rc;
+    }
+
+    rc_t _create_frag_ui( app_t* app, unsigned endLoc, unsigned& fragIdRef )
+    {
+      rc_t       rc                = kOkRC;
+      unsigned   fragListUuId      = io::uiFindElementUuId( app->ioH, kFragListId );
+      unsigned   fragChanId        = endLoc; // use the frag. endLoc as the channel id
+      unsigned   fragPanelUuId     = kInvalidId;
+      unsigned   fragEndLocUuId    = kInvalidId;
+      unsigned   fragPresetRowUuId = kInvalidId;
+      unsigned   presetN           = preset_sel::preset_count( app->psH );
+     
+
+      // create the UI object
+      if((rc = io::uiCreateFromObject( app->ioH, app->frag_panel_cfg,  fragListUuId, fragChanId )) != kOkRC )
+      {
+        rc = cwLogError(rc,"The fragments UI object creation failed.");
+        goto errLabel;
+      }
+      
+      // get the uuid's of the new fragment panel and the endloc number display
+      fragPanelUuId     = io::uiFindElementUuId( app->ioH, fragListUuId,  kFragPanelId,     fragChanId ); 
+      fragEndLocUuId    = io::uiFindElementUuId( app->ioH, fragPanelUuId, kFragEndLocId,    fragChanId );
+      fragPresetRowUuId = io::uiFindElementUuId( app->ioH, fragPanelUuId, kFragPresetRowId, fragChanId );
+
+      assert( fragPanelUuId     != kInvalidId );
+      assert( fragEndLocUuId    != kInvalidId );
+      assert( fragPresetRowUuId != kInvalidId );
+
+      // Make the fragment panel clickable
+      io::uiSetClickable(   app->ioH, fragPanelUuId);
+
+      // Set the fragment panel order 
+      io::uiSetOrderKey( app->ioH, fragPanelUuId, endLoc );
+
+
+      // The fragment id is the same as the frag panel UUId
+      fragIdRef = fragPanelUuId;
+
+      // Attach blobs to the UI to allow convenient access back to the prese_sel data record
+      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragGainId,       fragChanId), fragIdRef, preset_sel::kGainVarId,      kInvalidId );
+      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragWetDryGainId, fragChanId), fragIdRef, preset_sel::kWetGainVarId,   kInvalidId );
+      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragFadeOutMsId,  fragChanId), fragIdRef, preset_sel::kFadeOutMsVarId, kInvalidId );
+      
+      
+      // create each of the preset controls
+      for(unsigned preset_idx=0; preset_idx<presetN; ++preset_idx)
+        if((rc = _create_frag_preset_ctl(app, fragIdRef, fragPresetRowUuId, presetN, preset_idx )) != kOkRC )
+          goto errLabel;
+
+    errLabel:
+      return rc;
+      
+    }
+    
+    
+    rc_t _restore( app_t* app )
+    {
+      rc_t  rc = kOkRC;
+      char* fn = nullptr;
+      const preset_sel::frag_t* f = nullptr;
+
+      // form the output file name
+      if((fn = filesys::makeFn(app->record_dir, app->record_fn, app->record_fn_ext, NULL)) == nullptr )
+      {
+        rc = cwLogError(kOpFailRC,"The preset select filename could not formed.");
+        goto errLabel;
+      }
+
+      if( !filesys::isFile(fn) )
+      {
+        cwLogInfo("The preset selection data file: '%s' does not exist.",cwStringNullGuard(fn));
+        goto errLabel;
+      }
+
+      // read the preset data file
+      if((rc = preset_sel::read( app->psH, fn)) != kOkRC )
+      {
+        rc = cwLogError(rc,"File write failed on preset select.");
+        goto errLabel;
+      }
+
+      preset_sel::report( app->psH );
+
+      f = preset_sel::get_fragment_base(app->psH);
+      for(; f!=nullptr; f=f->link)
+      {
+        unsigned fragId = kInvalidId;
+        
+        if((rc = _create_frag_ui(app, f->endLoc, fragId )) != kOkRC )
         {
-          rc0 = cwLogError(rc0,"Attempt to create directory: '%s' failed.", cwStringNullGuard(dir));
+          cwLogError(rc,"Frag UI create failed.");
           goto errLabel;
         }
 
-      if((fn = filesys::makeFn(dir,"midi","am",nullptr)) != nullptr )
-      {        
-        if((rc0 = midi_record_play::save( app->mrpH, fn )) != kOkRC )
-          rc0 = cwLogError(rc0,"MIDI file '%s' save failed.",fn);
+        // update the fragment id
+        // TODO:
+        // BUG BUG BUG: there is nothing to prevent the new fragment id from conflicting with the existing fragment id's
+        // The correct way to handle this is to reset all the fragment id's in a single operation after the UI is created
+        preset_sel::set_value(app->psH, f->fragId, preset_sel::kFragIdVarId, kInvalidId, fragId );
 
-        mem::release(fn);
+        _update_frag_ui(app, fragId );
+
       }
       
-      if((fn = filesys::makeFn(dir,"audio","wav",nullptr)) != nullptr )
-      {        
-        //if((rc1 = audio_record_play::save( app->arpH, fn )) != kOkRC )
-        // rc1 = cwLogError(rc1,"Audio file '%s' save failed.",fn);
 
-        mem::release(fn);
+    errLabel:
+      mem::release(fn);
+
+      
+
+      return rc;
+    }
+    
+    rc_t _on_ui_save( app_t* app )
+    {
+      rc_t  rc = kOkRC;
+      char* fn = nullptr;
+
+      // form the output file name
+      if((fn = filesys::makeFn(app->record_dir, app->record_fn, app->record_fn_ext, NULL)) == nullptr )
+      {
+        rc = cwLogError(kOpFailRC,"The preset select filename could not formed.");
+        goto errLabel;
+      }
+
+      // write the preset data file
+      if((rc = preset_sel::write( app->psH, fn)) != kOkRC )
+      {
+        rc = cwLogError(rc,"File write failed on preset select.");
+        goto errLabel;
       }
 
     errLabel:
-      mem::release(dir);
-      
-      return rcSelect(rc0,rc1);
+      mem::release(fn);
+
+      return rc;
     }
 
 
@@ -518,6 +648,12 @@ namespace cw
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStartBtnId ), true );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStopBtnId ),  true );
 
+      // restore the fragment records
+      if((rc = _restore( app )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Restore failed.");
+        goto errLabel;
+      }
       
       cwLogInfo("'%s' loaded.",app->scoreFn);
       
@@ -664,60 +800,10 @@ namespace cw
       return rc;
     }
 
-    rc_t _frag_set_ui_blob( app_t* app, unsigned uuId, unsigned fragId, unsigned varId, unsigned presetId )
-    {
-      ui_blob_t   blob = { .fragId=fragId, .varId=varId, .presetId=presetId };
-      return io::uiSetBlob( app->ioH, uuId, &blob, sizeof(blob) );      
-    }
-
-    
-    rc_t _create_frag_preset_ctl( app_t* app, unsigned fragId, unsigned fragPresetRowUuId, unsigned presetN, unsigned preset_idx )
-    {
-      rc_t        rc           = kOkRC;
-      unsigned    colUuId      = kInvalidId;
-      unsigned    uuId         = kInvalidId;
-      const char* nullEleName  = nullptr;
-      const char* nullClass    = nullptr;
-      unsigned    invalidAppId = kInvalidId;
-      unsigned    chanId       = preset_idx; // chanId is the preset id
-      const char* presetLabel  = preset_sel::preset_label( app->psH, preset_idx );
-        
-      assert( presetLabel != nullptr );
-
-      // preset control column container
-      if((rc = io::uiCreateDiv( app->ioH, colUuId, fragPresetRowUuId, nullEleName, invalidAppId, chanId, "col fragPresetCtl", nullptr )) != kOkRC )
-        goto errLabel;
-
-      // preset select check
-      if((rc = io::uiCreateCheck( app->ioH, uuId, colUuId, nullEleName, kFragPresetSelId, chanId, nullClass, presetLabel )) != kOkRC )
-        goto errLabel;
-
-      // store a connection for the select control back to the fragment record
-      _frag_set_ui_blob(app, uuId, fragId, preset_sel::kPresetSelectVarId, preset_idx );
-
-
-      // preset order number
-      if((rc = io::uiCreateNumb( app->ioH, uuId,  colUuId, nullEleName, kFragPresetOrderId, chanId, nullClass, nullptr, 0, presetN, 1, 0 )) != kOkRC )
-        goto errLabel;
-
-      // store a connection for the select control back to the fragment record
-      _frag_set_ui_blob(app, uuId, fragId, preset_sel::kPresetOrderVarId, preset_idx );
-
-    errLabel:
-      if(rc != kOkRC )
-        rc = cwLogError(rc,"Preset control index '%i' create failed.");
-      return rc;
-    }
 
     rc_t _on_ui_insert_btn( app_t* app )
     {
       rc_t       rc                = kOkRC;
-      unsigned   fragListUuId      = io::uiFindElementUuId( app->ioH, kFragListId );
-      unsigned   fragChanId        = app->insertLoc; // use the frag. endLoc as the channel id
-      unsigned   fragPanelUuId     = kInvalidId;
-      unsigned   fragEndLocUuId    = kInvalidId;
-      unsigned   fragPresetRowUuId = kInvalidId;
-      unsigned   presetN           = preset_sel::preset_count( app->psH );
       unsigned   fragId            = kInvalidId;
       loc_map_t* loc_ts            = nullptr;
 
@@ -749,42 +835,12 @@ namespace cw
         goto errLabel;
       }
 
-      // create the UI object
-      if((rc = io::uiCreateFromObject( app->ioH, app->frag_panel_cfg,  fragListUuId, fragChanId )) != kOkRC )
+      // create the fragment UI panel
+      if((rc = _create_frag_ui( app, app->insertLoc, fragId )) != kOkRC )
       {
-        rc = cwLogError(rc,"The fragments UI object creation failed.");
+        rc = cwLogError(rc,"Fragment UI panel create failed.");
         goto errLabel;
       }
-
-      // get the uuid's of the new fragment panel and the endloc number display
-      fragPanelUuId     = io::uiFindElementUuId( app->ioH, fragListUuId,  kFragPanelId,     fragChanId ); 
-      fragEndLocUuId    = io::uiFindElementUuId( app->ioH, fragPanelUuId, kFragEndLocId,    fragChanId );
-      fragPresetRowUuId = io::uiFindElementUuId( app->ioH, fragPanelUuId, kFragPresetRowId, fragChanId );
-
-      assert( fragPanelUuId     != kInvalidId );
-      assert( fragEndLocUuId    != kInvalidId );
-      assert( fragPresetRowUuId != kInvalidId );
-
-      // Make the fragment panel clickable
-      io::uiSetClickable(   app->ioH, fragPanelUuId);
-
-      // Set the fragment panel order 
-      io::uiSetOrderKey( app->ioH, fragPanelUuId, app->insertLoc );
-
-
-      // The fragment id is the same as the frag panel UUId
-      fragId = fragPanelUuId;
-
-      // Attach blobs to the UI to allow convenient access back to the prese_sel data record
-      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragGainId,       fragChanId), fragId, preset_sel::kGainVarId,      kInvalidId );
-      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragWetDryGainId, fragChanId), fragId, preset_sel::kWetGainVarId,   kInvalidId );
-      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragFadeOutMsId,  fragChanId), fragId, preset_sel::kFadeOutMsVarId, kInvalidId );
-      
-      
-      // create each of the preset controls
-      for(unsigned preset_idx=0; preset_idx<presetN; ++preset_idx)
-        if((rc = _create_frag_preset_ctl(app, fragId, fragPresetRowUuId, presetN, preset_idx )) != kOkRC )
-          goto errLabel;
       
       // create the data record associated with the new fragment.
       if((rc = preset_sel::create_fragment( app->psH, fragId, app->insertLoc, loc_ts->timestamp)) != kOkRC )
@@ -794,7 +850,7 @@ namespace cw
       }
       
       // update the fragment UI
-      _update_frag_ui(app, fragPanelUuId );
+      _update_frag_ui(app, fragId );
       
     errLabel:
       return rc;
@@ -814,7 +870,7 @@ namespace cw
       }
 
       // delete the fragment data record
-      if((rc = delete_fragment(app->psH,fragId)) != kOkRC )
+      if((rc = preset_sel::delete_fragment(app->psH,fragId)) != kOkRC )
         goto errLabel;
 
       // delete the fragment UI element
@@ -864,7 +920,9 @@ namespace cw
           break;
             
         case kReportBtnId:
-          preset_sel::report( app->psH );
+          //preset_sel::report( app->psH );
+          io_flow::apply_preset( app->ioFlowH, 2000.0, app->tmp==0 ? "a" : "b");
+          app->tmp = !app->tmp;
           break;
 
         case kSaveBtnId:
@@ -923,7 +981,7 @@ namespace cw
           break;
           
         case kFragFadeOutMsId:
-          _on_ui_frag_value( app, m.uuId, m.value->u.d );
+          _on_ui_frag_value( app, m.uuId, m.value->u.u );
           break;
 
         case kFragPresetOrderId:
@@ -1129,7 +1187,7 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, const object_t* flow_pro
   }
 
   // create the IO Flow controller
-  if(app.flow_cfg==nullptr || flow_proc_dict==nullptr || (rc = io_flow::create(app.ioFlowH,app.ioH,*flow_proc_dict,*app.flow_cfg)) != kOkRC )
+  if(app.flow_cfg==nullptr || flow_proc_dict==nullptr || (rc = io_flow::create(app.ioFlowH,app.ioH,app.crossFadeSrate,app.crossFadeCnt,*flow_proc_dict,*app.flow_cfg)) != kOkRC )
   {
     rc = cwLogError(rc,"The IO Flow controller create failed.");
     goto errLabel;
@@ -1159,7 +1217,15 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, const object_t* flow_pro
     sleepMs(50);
   }
 
+  if((rc = io::stop(app.ioH)) != kOkRC )
+  {
+    rc = cwLogError(rc,"IO API stop failed.");
+    goto errLabel;    
+  }
+  
  errLabel:
+
+  
   _free(app);
   io::destroy(app.ioH);
   printf("Preset-select Done.\n");
