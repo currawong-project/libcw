@@ -183,8 +183,8 @@ namespace cw
   void _objTypePrintUInt16( const object_t* o, print_ctx_t& c ) { printf("%i",o->u.u16); }
   void _objTypePrintInt32(  const object_t* o, print_ctx_t& c ) { printf("%i",o->u.i32); }
   void _objTypePrintUInt32( const object_t* o, print_ctx_t& c ) { printf("%i",o->u.u32); }
-  void _objTypePrintInt64(  const object_t* o, print_ctx_t& c ) { printf("%" PRIx64 ,o->u.i64); }
-  void _objTypePrintUInt64( const object_t* o, print_ctx_t& c ) { printf("%" PRIx64 ,o->u.u64); }
+  void _objTypePrintInt64(  const object_t* o, print_ctx_t& c ) { printf("%lli", o->u.i64); }
+  void _objTypePrintUInt64( const object_t* o, print_ctx_t& c ) { printf("%lli", o->u.u64); }
   void _objTypePrintBool(   const object_t* o, print_ctx_t& c ) { printf("%s",o->u.b ? "true" : "false"); }
   void _objTypePrintFloat(  const object_t* o, print_ctx_t& c ) { printf("%f",o->u.f); }
   void _objTypePrintDouble( const object_t* o, print_ctx_t& c ) { printf("%f",o->u.d); }
@@ -253,8 +253,8 @@ namespace cw
   unsigned _objTypeToStringUInt16( const object_t* o, char* buf, unsigned n ) { return toText(buf,n,o->u.u16); }
   unsigned _objTypeToStringInt32(  const object_t* o, char* buf, unsigned n ) { return toText(buf,n,o->u.i32); }
   unsigned _objTypeToStringUInt32( const object_t* o, char* buf, unsigned n ) { return toText(buf,n,o->u.u32); }
-  unsigned _objTypeToStringInt64(  const object_t* o, char* buf, unsigned n ) { assert(0); /*return toText(buf,n,o->u.i64);*/ return kInvalidOpRC; }
-  unsigned _objTypeToStringUInt64( const object_t* o, char* buf, unsigned n ) { assert(0); /*return toText(buf,n,o->u.u64);*/ return kInvalidOpRC; }
+  unsigned _objTypeToStringInt64(  const object_t* o, char* buf, unsigned n ) { return toText(buf,n,o->u.i64); }
+  unsigned _objTypeToStringUInt64( const object_t* o, char* buf, unsigned n ) { return toText(buf,n,o->u.u64); }
   unsigned _objTypeToStringBool(   const object_t* o, char* buf, unsigned n ) { return toText(buf,n,o->u.b); }
   unsigned _objTypeToStringFloat(  const object_t* o, char* buf, unsigned n ) { return toText(buf,n,o->u.f); }
   unsigned _objTypeToStringDouble( const object_t* o, char* buf, unsigned n ) { return toText(buf,n,o->u.d); }
@@ -720,6 +720,17 @@ cw::object_t* cw::newDictObject( object_t* parent )
     
 cw::object_t* cw::newListObject( object_t* parent )
 { return _objAllocate( kListTId, parent ); }
+
+cw::object_t* cw::newPairObject( const char* label, object_t* value, object_t* parent)
+{
+  object_t* pair = _objAppendLeftMostNode(parent, _objAllocate( kPairTId, parent) );
+
+  _objCreateValueNode<const char*>( pair, label );
+
+  pair->append_child(value);
+
+  return value;
+}
 
 cw::object_t* cw::newPairObject( const char* label, std::uint8_t v, object_t* parent)
 { return _objCreatePairNode<uint8_t>( parent, label, v ); }

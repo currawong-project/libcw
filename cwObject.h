@@ -58,8 +58,8 @@ namespace cw
 
   typedef struct print_ctx_str
   {
-    unsigned indent = 0;
-    bool listOnOneLineFl = true;
+    unsigned indent          = 0;
+    bool     listOnOneLineFl = true;
   } print_ctx_t;
  
   typedef struct type_str
@@ -103,8 +103,8 @@ namespace cw
       std::uint16_t    u16;
       std::int32_t     i32;
       std::uint32_t    u32;
-      std::int64_t     i64;
-      std::uint64_t    u64;
+      long long        i64;
+      unsigned long long u64;
 
       bool             b;
         
@@ -280,19 +280,20 @@ namespace cw
   object_t* newListObject( object_t* parent=nullptr );
 
   // Return a pointer to the value node.
-  object_t* newPairObject( const char* label, std::uint8_t  v, object_t* parent=nullptr);
-  object_t* newPairObject( const char* label, std::int8_t   v, object_t* parent=nullptr);
-  object_t* newPairObject( const char* label, std::int16_t  v, object_t* parent=nullptr);
-  object_t* newPairObject( const char* label, std::uint16_t v, object_t* parent=nullptr);
-  object_t* newPairObject( const char* label, std::int32_t  v, object_t* parent=nullptr);
-  object_t* newPairObject( const char* label, std::uint32_t v, object_t* parent=nullptr);
-  object_t* newPairObject( const char* label, std::int64_t  v, object_t* parent=nullptr);
-  object_t* newPairObject( const char* label, std::uint64_t v, object_t* parent=nullptr);
-  object_t* newPairObject( const char* label, bool          v, object_t* parent=nullptr);
-  object_t* newPairObject( const char* label, float         v, object_t* parent=nullptr);
-  object_t* newPairObject( const char* label, double        v, object_t* parent=nullptr);      
-  object_t* newPairObject( const char* label, char*         v, object_t* parent=nullptr);
-  object_t* newPairObject( const char* label, const char*   v, object_t* parent=nullptr);
+  object_t* newPairObject( const char* label, object_t*       v, object_t* parent=nullptr);
+  object_t* newPairObject( const char* label, std::uint8_t    v, object_t* parent=nullptr);
+  object_t* newPairObject( const char* label, std::int8_t     v, object_t* parent=nullptr);
+  object_t* newPairObject( const char* label, std::int16_t    v, object_t* parent=nullptr);
+  object_t* newPairObject( const char* label, std::uint16_t   v, object_t* parent=nullptr);
+  object_t* newPairObject( const char* label, std::int32_t    v, object_t* parent=nullptr);
+  object_t* newPairObject( const char* label, std::uint32_t   v, object_t* parent=nullptr);
+  object_t* newPairObject( const char* label, std::int64_t    v, object_t* parent=nullptr);
+  object_t* newPairObject( const char* label, std::uint64_t   v, object_t* parent=nullptr);
+  object_t* newPairObject( const char* label, bool            v, object_t* parent=nullptr);
+  object_t* newPairObject( const char* label, float           v, object_t* parent=nullptr);
+  object_t* newPairObject( const char* label, double          v, object_t* parent=nullptr);      
+  object_t* newPairObject( const char* label, char*           v, object_t* parent=nullptr);
+  object_t* newPairObject( const char* label, const char*     v, object_t* parent=nullptr);
   
   rc_t objectFromString( const char* s, object_t*& objRef );
   rc_t objectFromFile( const char* fn, object_t*& objRef );
