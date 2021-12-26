@@ -854,7 +854,7 @@ namespace cw
         // bump transform X0m
         _cmSpecDist2Bump(p,X0m, binN, p->ceiling, p->expo);
 
-        // xfade bump output with raw input: X1m = (X0m*mix) + (X1m*(1.0-mix))
+        // mix bump output with raw input: X1m = (X0m*mix) + (X1m*(1.0-mix))
         vop::mul(X0m, p->mix,       binN );
         vop::mul(X1m, 1.0 - p->mix, binN );
         vop::add(X1m, X0m,          binN );
