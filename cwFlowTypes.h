@@ -406,8 +406,6 @@ namespace cw
     rc_t           var_get(       variable_t* var, abuf_t*&       valRef );    
     rc_t           var_get( const variable_t* var, const fbuf_t*& valRef );
     rc_t           var_get(       variable_t* var, fbuf_t*&       valRef );
-    
-
 
     template< typename T>
     rc_t var_get( instance_t* inst, unsigned vid, unsigned chIdx, T& valRef)
@@ -419,7 +417,14 @@ namespace cw
         rc = var_get(var,valRef);
       
       return rc;  
+    }
 
+    template< typename T >
+    T val_get( instance_t* inst, unsigned vid, unsigned chIdx )
+    {
+      T value;
+      var_get(inst,vid,chIdx,value);
+      return value;
     }
 
     rc_t           var_set( instance_t* inst, unsigned vid, unsigned chIdx, bool val );
