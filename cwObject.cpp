@@ -322,7 +322,7 @@ namespace cw
 
   object_t* _objTypeDuplContainer( const struct object_str* src, struct object_str* parent )
   {
-    object_t* o = _objAppendLeftMostNode( parent, _objAllocate( src->type->id, parent ));
+    object_t* o = _objAppendRightMostNode( parent, _objAllocate( src->type->id, parent ));
     for(object_t* ch=src->u.children; ch!=nullptr; ch=ch->sibling)
       ch->type->duplicate(ch,o);
 
@@ -444,7 +444,7 @@ namespace cw
     return kOkRC;
   }
   
-  object_t* _objAppendLeftMostNode( object_t* parent, object_t* newNode )
+  object_t* _objAppendRightMostNode( object_t* parent, object_t* newNode )
   {
     if( newNode == nullptr )
       return nullptr;
@@ -473,7 +473,7 @@ namespace cw
   object_t* _objCreateConainerNode( lex::handle_t lexH, object_t* parent, objTypeId_t tid )
   {
     if( _objVerifyParentIsValueContainer(lexH,parent,_objTypeIdToLabel(tid)) == kOkRC )
-      return _objAppendLeftMostNode( parent, _objAllocate( tid, parent ));
+      return _objAppendRightMostNode( parent, _objAllocate( tid, parent ));
     
     return nullptr;            
   }
@@ -541,7 +541,7 @@ cw::rc_t cw::object_t::append_child( struct object_str* child )
   if( !is_container() )
     return cwLogError(kInvalidDataTypeRC,"The parent of a child object node must be a 'container'.");
   
-  _objAppendLeftMostNode( this, child );
+  _objAppendRightMostNode( this, child );
   return kOkRC;
 }
 
@@ -628,7 +628,7 @@ const struct cw::object_str* cw::object_t::find( const char* label, unsigned fla
       if( o->is_pair() && textCompare(o->pair_label(),label) == 0 )
         return o->pair_value();
 
-      const object_t* ch;
+      const object_t* ch; 
       if( cwIsFlag(flags,kRecurseFl) )
         if((ch = o->find(label)) != nullptr )
           return ch;
@@ -659,6 +659,22 @@ struct cw::object_str* cw::object_t::child_ele( unsigned idx )
   return const_cast<struct object_str*>(((const object_t*)this)->child_ele(idx));
 }
 
+const struct cw::object_str* cw::object_t::next_child_ele( const struct object_str* ele ) const
+{
+  if( is_container() )
+  {
+    if( ele == nullptr )
+      return u.children;
+
+    return ele->sibling;
+  }
+  return nullptr;
+}
+
+struct cw::object_str* cw::object_t::next_child_ele( struct object_str* ele  )
+{
+  return const_cast<struct object_str*>(((const object_t*)this)->next_child_ele(ele));
+}
 
 unsigned cw::object_t::to_string( char* buf, unsigned bufByteN ) const
 {
@@ -723,7 +739,7 @@ cw::object_t* cw::newListObject( object_t* parent )
 
 cw::object_t* cw::newPairObject( const char* label, object_t* value, object_t* parent)
 {
-  object_t* pair = _objAppendLeftMostNode(parent, _objAllocate( kPairTId, parent) );
+  object_t* pair = _objAppendRightMostNode(parent, _objAllocate( kPairTId, parent) );
 
   _objCreateValueNode<const char*>( pair, label );
 
@@ -780,7 +796,6 @@ cw::rc_t cw::objectFromString( const char* s, object_t*& objRef )
   unsigned      lexId    = lex::kErrorLexTId;
   object_t*     cnp      = _objAllocate(kRootTId,nullptr);
   object_t*     root     = cnp;
-
   objRef = nullptr;
 
   if((rc = lex::create(lexH,s,textLength(s), lexFlags )) != kOkRC )
@@ -860,7 +875,7 @@ cw::rc_t cw::objectFromString( const char* s, object_t*& objRef )
         break;
 
       case kNullLexTId:
-        _objAppendLeftMostNode( cnp, _objAllocate( kNullTId, cnp ));
+        _objAppendRightMostNode( cnp, _objAllocate( kNullTId, cnp ));
         break;        
 
       case kSegmentedIdLexTId:
@@ -870,7 +885,7 @@ cw::rc_t cw::objectFromString( const char* s, object_t*& objRef )
           
           // if the parent is an object then this string must be a pair label
           if( cnp->is_dict() )
-            cnp = _objAppendLeftMostNode( cnp, _objAllocate( kPairTId, cnp ));
+            cnp = _objAppendRightMostNode( cnp, _objAllocate( kPairTId, cnp ));
 
           unsigned n = lex::tokenCharCount(lexH);
           char s[ n + 1 ];

@@ -192,6 +192,11 @@ namespace cw
     const struct object_str* child_ele( unsigned idx ) const;
     struct       object_str* child_ele( unsigned idx );
 
+    // Set 'ele' to nullptr to return first child.  Returns nullptr when 'ele' is last child.
+    const struct object_str* next_child_ele( const struct object_str* ele) const;
+    struct       object_str* next_child_ele(       struct object_str* ele);
+
+    
     // Set flag  'kRecurseFl' to recurse into the object in search of the value.
     // Set flag  'kOptionalFl' if the label is optional and may not exist.
     template< typename T >
