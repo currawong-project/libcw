@@ -72,6 +72,15 @@ namespace cw
         
         return rc;
       }
+
+      class_members_t members = {
+        .create = create,
+        .destroy = destroy,
+        .value   = value,
+        .exec = exec,
+        .report = nullptr
+      };
+      
     }    
     
 
@@ -491,6 +500,340 @@ namespace cw
 
     //------------------------------------------------------------------------------------------------------------------
     //
+    // gain
+    //
+    namespace gain
+    {
+      enum
+      {
+        kInPId,
+        kGainPId,
+        kOutPId
+      };
+
+      rc_t create( instance_t* ctx )
+      {
+        rc_t          rc     = kOkRC;
+        const abuf_t* abuf    = nullptr; //        
+
+        // get the source audio buffer
+        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",abuf )) != kOkRC )
+          goto errLabel;
+
+        // register the gain 
+        for(unsigned i=0; i<abuf->chN; ++i)
+          if((rc = var_register( ctx, i, kGainPId, "gain" )) != kOkRC )
+            goto errLabel;
+          
+        // create the output audio buffer
+        rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, abuf->srate, abuf->chN, abuf->frameN );
+
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( instance_t* ctx )
+      { return kOkRC; }
+
+      rc_t value( instance_t* ctx, variable_t* var )
+      { return kOkRC; }
+
+      rc_t exec( instance_t* ctx )
+      {
+        rc_t     rc           = kOkRC;
+        const abuf_t* ibuf = nullptr;
+        abuf_t*       obuf = nullptr;
+
+        // get the src buffer
+        if((rc = var_get(ctx,kInPId, kAnyChIdx, ibuf )) != kOkRC )
+          goto errLabel;
+
+        // get the dst buffer
+        if((rc = var_get(ctx,kOutPId, kAnyChIdx, obuf)) != kOkRC )
+          goto errLabel;
+
+        // for each channel
+        for(unsigned i=0; i<ibuf->chN; ++i)
+        {
+          sample_t* isig = ibuf->buf + i*ibuf->frameN;
+          sample_t* osig = obuf->buf + i*obuf->frameN;
+          sample_t  gain = 1;
+          
+          var_get(ctx,kGainPId,i,gain);
+
+          // apply the gain
+          for(unsigned j=0; j<ibuf->frameN; ++j)
+            osig[j] = gain * isig[j];
+        }  
+        
+      errLabel:
+        return rc;
+      }
+
+      
+      class_members_t members = {
+        .create = create,
+        .destroy = destroy,
+        .value = value,
+        .exec = exec,
+        .report = nullptr
+      };
+      
+    }
+
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // audio_split
+    //
+    namespace audio_split
+    {
+      enum {
+        kInPId,
+        kSelectPId,
+        kGainPId,
+        kOutPId,
+        
+      };
+        
+      typedef struct
+      {
+        bool* chSelMap;  // [ inChCnt ] selected channel map
+        unsigned outChN;
+      } inst_t;
+
+
+      rc_t create( instance_t* ctx )
+      {
+        rc_t          rc   = kOkRC;        
+        const abuf_t* abuf = nullptr; //        
+        inst_t*       inst = mem::allocZ<inst_t>();
+        
+        ctx->userPtr = inst;
+
+        // get the source audio buffer
+        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",abuf )) != kOkRC )
+          goto errLabel;
+
+        if( abuf->chN )
+        {
+          inst->chSelMap = mem::allocZ<bool>(abuf->chN);
+        
+          // register the gain 
+          for(unsigned i=0; i<abuf->chN; ++i)
+          {
+            if((rc = var_register_and_get( ctx, i, kSelectPId, "select", inst->chSelMap[i] )) != kOkRC )
+              goto errLabel;
+
+            if( inst->chSelMap[i] )
+            {
+              // register an output gain control
+              if((rc = var_register( ctx, inst->outChN, kGainPId, "gain")) != kOkRC )
+                goto errLabel;
+
+              // count the number of selected channels to determine the count of output channels
+              inst->outChN += 1;
+            }
+          }
+          
+          // create the output audio buffer
+          if( inst->outChN == 0 )
+            cwLogWarning("The audio split instance '%s' has no selected channels.",ctx->label);
+          else
+            rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, abuf->srate, inst->outChN, abuf->frameN );
+        }
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( instance_t* ctx )
+      {
+        rc_t rc = kOkRC;
+
+        inst_t* inst = (inst_t*)ctx->userPtr;
+
+        mem::release(inst->chSelMap);
+
+        mem::release(inst);
+        
+        return rc;
+      }
+
+      rc_t value( instance_t* ctx, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+
+      rc_t exec( instance_t* ctx )
+      {
+        rc_t          rc       = kOkRC;
+        const abuf_t* ibuf     = nullptr;
+        abuf_t*       obuf     = nullptr;
+        inst_t*       inst     = (inst_t*)ctx->userPtr;
+        unsigned      outChIdx = 0;
+        
+        if( inst->outChN )
+        {
+          // get the src buffer
+          if((rc = var_get(ctx,kInPId, kAnyChIdx, ibuf )) != kOkRC )
+            goto errLabel;
+
+          // get the dst buffer
+          if((rc = var_get(ctx,kOutPId, kAnyChIdx, obuf)) != kOkRC )
+            goto errLabel;
+
+          // for each channel          
+          for(unsigned i=0; i<ibuf->chN  && outChIdx<obuf->chN; ++i)
+            if( inst->chSelMap[i] )
+            {
+            
+              sample_t* isig = ibuf->buf + i        * ibuf->frameN;
+              sample_t* osig = obuf->buf + outChIdx * obuf->frameN;
+              sample_t  gain = 1;
+          
+              var_get(ctx,kGainPId,outChIdx,gain);
+
+              // apply the gain
+              for(unsigned j=0; j<ibuf->frameN; ++j)
+                osig[j] = gain * isig[j];
+
+              outChIdx += 1;
+            }  
+        }
+        
+      errLabel:
+        return rc;
+      }
+
+      class_members_t members = {
+        .create = create,
+        .destroy = destroy,
+        .value   = value,
+        .exec = exec,
+        .report = nullptr
+      };
+      
+    }    
+    
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // audio_merge
+    //
+    namespace audio_merge
+    {
+      enum {
+        kIn0PId,
+        kIn1PId,
+        kGainPId,
+        kOutPId,
+      };
+      
+      typedef struct
+      {
+      } inst_t;
+
+
+      rc_t create( instance_t* ctx )
+      {
+        rc_t          rc     = kOkRC;
+        const abuf_t* abuf0  = nullptr; //
+        const abuf_t* abuf1  = nullptr;
+        unsigned      outChN = 0;
+
+        // get the source audio buffer
+        if((rc = var_register_and_get(ctx, kAnyChIdx,
+                                      kIn0PId,"in0",abuf0,
+                                      kIn1PId,"in1",abuf1 )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        assert( abuf0->frameN == abuf1->frameN );
+
+        outChN = abuf0->chN + abuf1->chN;
+
+        // register the gain 
+        for(unsigned i=0; i<outChN; ++i)
+          if((rc = var_register( ctx, i, kGainPId, "gain" )) != kOkRC )
+            goto errLabel;
+          
+        // create the output audio buffer
+        rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, abuf0->srate, outChN, abuf0->frameN );
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( instance_t* ctx )
+      { return kOkRC; }
+
+      rc_t value( instance_t* ctx, variable_t* var )
+      { return kOkRC; }
+
+      unsigned _exec( instance_t* ctx, const abuf_t* ibuf, abuf_t* obuf, unsigned outChIdx )
+      {
+        // for each channel          
+        for(unsigned i=0; i<ibuf->chN  && outChIdx<obuf->chN; ++i)
+        {
+            
+          sample_t* isig = ibuf->buf + i        * ibuf->frameN;
+          sample_t* osig = obuf->buf + outChIdx * obuf->frameN;
+          sample_t  gain = 1;
+          
+          var_get(ctx,kGainPId,outChIdx,gain);
+
+          // apply the gain
+          for(unsigned j=0; j<ibuf->frameN; ++j)
+            osig[j] = gain * isig[j];
+
+          outChIdx += 1;
+        }  
+
+        return outChIdx;
+      }
+
+      rc_t exec( instance_t* ctx )
+      {
+        rc_t          rc    = kOkRC;
+        const abuf_t* ibuf0 = nullptr;
+        const abuf_t* ibuf1 = nullptr;
+        abuf_t*       obuf  = nullptr;
+        unsigned      oChIdx = 0;
+        
+        if((rc = var_get(ctx,kIn0PId, kAnyChIdx, ibuf0 )) != kOkRC )
+          goto errLabel;
+
+        if((rc = var_get(ctx,kIn1PId, kAnyChIdx, ibuf1 )) != kOkRC )
+          goto errLabel;
+        
+        if((rc = var_get(ctx,kOutPId, kAnyChIdx, obuf)) != kOkRC )
+          goto errLabel;
+
+        oChIdx = _exec( ctx, ibuf0, obuf, oChIdx );
+        oChIdx = _exec( ctx, ibuf1, obuf, oChIdx );
+
+        assert( oChIdx == obuf->chN );
+
+      errLabel:
+        return rc;
+      }
+
+      class_members_t members = {
+        .create = create,
+        .destroy = destroy,
+        .value   = value,
+        .exec = exec,
+        .report = nullptr
+      };
+      
+    }    
+    
+    
+    //------------------------------------------------------------------------------------------------------------------
+    //
     // sine_tone
     //
     
@@ -579,15 +922,10 @@ namespace cw
         {
           for(unsigned i=0; i<abuf->chN; ++i)
           {
-            real_t  gain;
-            real_t  hz;
-            srate_t srate;
-            
-            var_get( ctx, kFreqHzPId, i, hz );
-            var_get( ctx, kGainPId,   i, gain );
-            var_get( ctx, kSratePId,  i, srate );
-            
-            sample_t* v = abuf->buf + (i*abuf->frameN);
+            real_t    gain  = val_get<real_t>( ctx, kGainPId, i );
+            real_t    hz    = val_get<real_t>( ctx, kFreqHzPId, i );
+            srate_t   srate = val_get<srate_t>( ctx, kSratePId, i );                        
+            sample_t* v     = abuf->buf + (i*abuf->frameN);
             
             for(unsigned j=0; j<abuf->frameN; ++j)
               v[j] = (sample_t)(gain * sin( inst->phaseA[i] + (2.0 * M_PI * j * hz/srate)));
@@ -1244,6 +1582,128 @@ namespace cw
         .exec    = exec,
         .report  = report
       };      
+    }
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // audio_delay
+    //
+    namespace audio_delay
+    {
+      enum
+      {
+        kInPId,
+        kMaxDelayMsPId,
+        kDelayMsPId,
+        kOutPId
+      };
+
+      typedef struct inst_str
+      {
+        abuf_t*   delayBuf;       // delayBuf->buf[ maxDelayFrameN ]
+        unsigned  maxDelayFrameN; // length of the delay 
+        unsigned* cntV;           // cntV[ chN ] per channel delay
+        unsigned* idxV;           // idxV[ chN ] per channel i/o idx
+      } inst_t;
+
+      rc_t create( instance_t* ctx )
+      {
+        rc_t          rc         = kOkRC;
+        const abuf_t* abuf       = nullptr; //
+        inst_t*       inst       = mem::allocZ<inst_t>();
+        real_t        delayMs    = 0;
+        real_t        maxDelayMs = 0;
+
+        // get the source audio buffer
+        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",abuf )) != kOkRC )
+          goto errLabel;
+
+
+        inst->cntV = mem::allocZ<unsigned>(abuf->chN);
+        inst->idxV      = mem::allocZ<unsigned>(abuf->chN);
+        
+        // register the gain 
+        for(unsigned i=0; i<abuf->chN; ++i)
+        {
+          if((rc = var_register_and_get( ctx, i,
+                                         kMaxDelayMsPId, "maxDelayMs", maxDelayMs,
+                                         kDelayMsPId,    "delayMs",    delayMs)) != kOkRC )
+          {
+            goto errLabel;
+          }
+
+          inst->maxDelayFrameN = std::max(inst->maxDelayFrameN, (unsigned)(maxDelayMs * abuf->srate / 1000.0) );
+                                  
+        }
+
+        inst->delayBuf = abuf_create( abuf->srate, abuf->chN, inst->maxDelayFrameN );
+        
+        // create the output audio buffer
+        rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, abuf->srate, abuf->chN, abuf->frameN );
+
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( instance_t* ctx )
+      {
+        inst_t* inst = (inst_t*)ctx->userPtr;
+
+        mem::release(inst->cntV);
+        mem::release(inst->idxV);
+        abuf_destroy(inst->delayBuf);
+        mem::release(inst);
+        
+        return kOkRC;
+      }
+
+      rc_t value( instance_t* ctx, variable_t* var )
+      { return kOkRC; }
+
+      rc_t exec( instance_t* ctx )
+      {
+        rc_t          rc   = kOkRC;
+        const abuf_t* ibuf = nullptr;
+        abuf_t*       obuf = nullptr;
+        inst_t*       inst = (inst_t*)ctx->userPtr;
+
+        // get the src buffer
+        if((rc = var_get(ctx,kInPId, kAnyChIdx, ibuf )) != kOkRC )
+          goto errLabel;
+
+        // get the dst buffer
+        if((rc = var_get(ctx,kOutPId, kAnyChIdx, obuf)) != kOkRC )
+          goto errLabel;
+
+        // for each channel
+        for(unsigned i=0; i<ibuf->chN; ++i)
+        {
+          sample_t* isig = ibuf->buf + i*ibuf->frameN;
+          sample_t* osig = obuf->buf + i*obuf->frameN;
+          unsigned    di = inst->idxV[i];
+
+          for(unsigned j=0; j<ibuf->frameN; ++j)
+          {
+            osig[j] = inst->delayBuf->buf[di];
+            inst->delayBuf->buf[di] = isig[j];
+            di = (di+1) % inst->cntV[i];
+          }
+        }  
+        
+      errLabel:
+        return rc;
+      }
+
+      
+      class_members_t members = {
+        .create = create,
+        .destroy = destroy,
+        .value = value,
+        .exec = exec,
+        .report = nullptr
+      };
+      
     }
 
     
