@@ -43,7 +43,7 @@ namespace cw
     // Format the event as a string for printing.
     rc_t  event_to_string( handle_t h, unsigned uid, char* buf, unsigned buf_byte_cnt );
     
-    
+    rc_t test( const object_t* cfg );
     
   }
 }

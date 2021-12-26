@@ -5,6 +5,7 @@
 #include "cwObject.h"
 #include "cwPianoScore.h"
 #include "cwMidi.h"
+#include "cwTime.h"
 
 namespace cw
 {
@@ -46,15 +47,16 @@ namespace cw
         rc = cwLogError( rc, "Unable to locate the 'evtL' configuration tag.");
       else
       {
-        unsigned eventN = eventL->child_count();
+        //unsigned eventN = eventL->child_count();
+        const object_t* evt_cfg = eventL->next_child_ele(nullptr);
         
-        for(unsigned i=0; i<eventN; ++i)
+        for(unsigned i=0; evt_cfg != nullptr; evt_cfg = eventL->next_child_ele(evt_cfg),++i)
         {
           const char*     sci_pitch  = nullptr;
           const char*     dmark      = nullptr;
           const char*     grace_mark = nullptr;
           
-          const object_t* evt_cfg    = eventL->child_ele(i);
+          //const object_t* evt_cfg    = eventL->next_child_ele(i);
 
           event_t* e = mem::allocZ<event_t>();
 
@@ -247,4 +249,31 @@ bool cw::score::is_loc_valid( handle_t h, unsigned locId )
 {
   score_t* p  = _handleToPtr(h);
   return locId < p->maxLocId;
+}
+
+
+cw::rc_t cw::score::test( const object_t* cfg )
+{
+  handle_t     h;
+  rc_t         rc    = kOkRC;
+  const  char* fname = nullptr;
+  
+  if((rc = cfg->getv( "filename", fname )) != kOkRC )
+  {
+    rc = cwLogError(rc,"Arg. parsing failed.");
+    goto errLabel;
+  }
+
+  if((rc = create( h, fname )) != kOkRC )
+  {
+    rc = cwLogError(rc,"Score create failed.");
+    goto errLabel;
+  }
+
+  cwLogInfo("Score created from '%s'.",cwStringNullGuard(fname));
+ errLabel:
+
+  destroy(h);
+  
+  return rc;
 }
