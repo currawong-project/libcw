@@ -27,11 +27,15 @@ namespace cw
       { "audio_out",    &audio_out::members },
       { "audioFileIn",  &audioFileIn::members },
       { "audioFileOut", &audioFileOut::members },
+      { "gain",         &gain::members },
+      { "audio_split",  &audio_split::members },
+      { "audio_merge",  &audio_merge::members },
       { "sine_tone",    &sine_tone::members },
       { "pv_analysis",  &pv_analysis::members },
       { "pv_synthesis", &pv_synthesis::members },
       { "spec_dist",    &spec_dist::members },
       { "compressor",   &compressor::members },
+      { "audio_delay",  &audio_delay::members },
       { nullptr, nullptr }
     };
 
@@ -759,6 +763,40 @@ namespace cw
       
       return rc;
     }
+
+    template< typename T >
+    rc_t _set_variable_value( flow_t* p, const char* inst_label, const char* var_label, unsigned chIdx, T value )
+    {
+      rc_t        rc   = kOkRC;
+      instance_t* inst = nullptr;
+      variable_t* var  = nullptr;
+
+      // locate the proc instance
+      if((inst = instance_find(p,inst_label)) != nullptr )
+      {
+        rc = cwLogError(kInvalidIdRC,"Unknown proc instance label '%s'.", cwStringNullGuard(inst_label));
+        goto errLabel;
+      }
+
+      // locate the variable
+      if((rc = var_find( inst, var_label, chIdx, var)) != kOkRC )
+      {
+        rc = cwLogError(kInvalidArgRC,"The variable '%s' could not be found on the proc instance '%s'.",cwStringNullGuard(var_label),cwStringNullGuard(inst_label));
+        goto errLabel;
+      }
+
+      // set the variable value
+      if((rc = var_set( inst, var->vid, chIdx, value )) != kOkRC )
+      {
+        rc = cwLogError(kOpFailRC,"The variable set failed on instance:'%s' variable:'%s'.",cwStringNullGuard(inst_label),cwStringNullGuard(var_label));
+        goto errLabel;
+      }
+
+    errLabel:
+      return rc;
+    }
+
+    
     
   }
 }
@@ -870,6 +908,35 @@ cw::rc_t cw::flow::destroy( handle_t& hRef )
   return rc;
 }
 
+
+cw::rc_t cw::flow::exec_cycle( handle_t h )
+{
+  return _exec_cycle(_handleToPtr(h));
+}
+
+cw::rc_t cw::flow::exec(    handle_t h )
+{
+  rc_t    rc = kOkRC;
+  flow_t* p  = _handleToPtr(h);
+
+  while( true )
+  {  
+    rc = _exec_cycle(p);
+    
+    if( rc == kEofRC )
+    {
+      rc = kOkRC;
+      break;
+    }
+    
+    p->cycleIndex += 1;
+    if( p->maxCycleCount > 0 && p->cycleIndex >= p->maxCycleCount )
+      break;
+  }
+  
+  return rc;
+}
+
 cw::rc_t cw::flow::apply_preset( handle_t h, const char* presetLabel )
 {
   rc_t    rc = kOkRC;
@@ -911,6 +978,7 @@ cw::rc_t cw::flow::apply_preset( handle_t h, const char* presetLabel )
         if( preset_value_cfg->is_dict() )
         {
           printf("Not implemented.\n");
+          assert(0);
         }
         else
         {
@@ -930,33 +998,21 @@ cw::rc_t cw::flow::apply_preset( handle_t h, const char* presetLabel )
   return rc;
 }
 
-cw::rc_t cw::flow::exec_cycle( handle_t h )
-{
-  return _exec_cycle(_handleToPtr(h));
-}
+cw::rc_t cw::flow::set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, bool value )
+{ return _set_variable_value( _handleToPtr(h), inst_label, var_label, chIdx, value ); }
 
-cw::rc_t cw::flow::exec(    handle_t h )
-{
-  rc_t    rc = kOkRC;
-  flow_t* p  = _handleToPtr(h);
+cw::rc_t cw::flow::set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, int value )
+{ return _set_variable_value( _handleToPtr(h), inst_label, var_label, chIdx, value ); }
 
-  while( true )
-  {  
-    rc = _exec_cycle(p);
-    
-    if( rc == kEofRC )
-    {
-      rc = kOkRC;
-      break;
-    }
-    
-    p->cycleIndex += 1;
-    if( p->maxCycleCount > 0 && p->cycleIndex >= p->maxCycleCount )
-      break;
-  }
-  
-  return rc;
-}
+cw::rc_t cw::flow::set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, unsigned value )
+{ return _set_variable_value( _handleToPtr(h), inst_label, var_label, chIdx, value ); }
+
+cw::rc_t cw::flow::set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, float value )
+{ return _set_variable_value( _handleToPtr(h), inst_label, var_label, chIdx, value ); }
+
+cw::rc_t cw::flow::set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, double value )
+{ return _set_variable_value( _handleToPtr(h), inst_label, var_label, chIdx, value ); }
+
 
 void cw::flow::print_class_list( handle_t h )
 {

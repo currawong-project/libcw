@@ -59,15 +59,20 @@ namespace cw
     rc_t destroy( handle_t& hRef );
 
 
-    rc_t apply_preset( handle_t h, const char* presetLabel );
-    
     // Run one cycle of the network.
     rc_t exec_cycle( handle_t h );
 
     // Run the network to completion.
     rc_t exec(    handle_t h );
 
-    
+    rc_t apply_preset( handle_t h, const char* presetLabel );
+        
+    rc_t set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, bool value     );
+    rc_t set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, int value      );
+    rc_t set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, unsigned value );
+    rc_t set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, float value    );
+    rc_t set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, double value   );
+
     void print_class_list( handle_t h );
     void print_network( handle_t h );
 

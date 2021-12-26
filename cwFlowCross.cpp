@@ -123,11 +123,13 @@ namespace cw
       dsp::recorder::create( net->recorder, srate, 10.0, 1 );
       
       net->deviceA = _clone_external_device_array( deviceA, deviceN );
-      net->deviceN = deviceN;
+      net->deviceN = 0;
       net->stateId = net_idx == 0 ? kActiveStateId : kInactiveStateId;
       net->net_idx = net_idx;
       
-      if((rc = flow::create( net->flowH, classCfg, networkCfg, net->deviceA, net->deviceN )) != kOkRC )
+      if((rc = flow::create( net->flowH, classCfg, networkCfg, net->deviceA, deviceN )) == kOkRC )
+        net->deviceN += 1;
+      else
       {
         cwLogError(rc,"Flow cross index %i network created failed.",net_idx);
         goto errLabel;
@@ -226,6 +228,33 @@ namespace cw
 
       _fade_audio( src, dst, net );
     }
+
+    unsigned _get_flow_index( flow_cross_t* p, destId_t destId )
+    {
+      unsigned flow_idx = kInvalidIdx;
+  
+      switch( destId )
+      {
+      case kCurDestId:  flow_idx = p->cur_idx; break;
+      case kNextDestId: flow_idx = (p->cur_idx + 1) % p->netN;
+      default:
+        assert(0);
+    
+      }  
+      return flow_idx;
+    }
+
+    template< typename T >
+    rc_t _set_variable_value( handle_t h, destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, const T& value )
+    {
+      //rc_t          rc       = kOkRC;
+      flow_cross_t* p        = _handleToPtr(h);
+      unsigned      flow_idx = _get_flow_index(p, destId );
+      return set_variable_value( p->netA[ flow_idx ].flowH, inst_label, var_label, chIdx, value );
+  
+    }
+
+    
   }
 }
 
@@ -250,13 +279,15 @@ cw::rc_t cw::flow_cross::create( handle_t&                hRef,
 
   flow_cross_t* p = mem::allocZ<flow_cross_t>();
   p->netA         = mem::allocZ<flow_network_t>( crossN );
-  p->netN         = crossN;
+  p->netN         = 0;
   p->srate        = srate;
   p->deviceA = deviceA;
   p->deviceN = deviceN;
 
   for(unsigned i=0; i<crossN; ++i)
-    if((rc = _create_network(p,i,srate,classCfg,networkCfg,deviceA,deviceN)) != kOkRC )
+    if((rc = _create_network(p,i,srate,classCfg,networkCfg,deviceA,deviceN)) == kOkRC )
+      p->netN += 1;
+    else
     {
       rc = cwLogError(rc,"Sub-network index '%i' create failed.",i);
       goto errLabel;
@@ -339,33 +370,50 @@ cw::rc_t cw::flow_cross::exec_cycle( handle_t h )
 }
 */
 
-cw::rc_t cw::flow_cross::apply_preset( handle_t h, unsigned crossFadeMs, const char* presetLabel )
+
+
+cw::rc_t cw::flow_cross::apply_preset( handle_t h, destId_t destId, const char* presetLabel )
+{
+  rc_t          rc       = kOkRC;
+  flow_cross_t* p        = _handleToPtr(h);
+  unsigned      flow_idx = _get_flow_index(p, destId );
+      
+  if((rc = flow::apply_preset( p->netA[flow_idx].flowH, presetLabel )) != kOkRC )
+    rc = cwLogError(rc,"Preset application '%s' failed.",cwStringNullGuard(presetLabel));
+
+  return rc;  
+}
+
+cw::rc_t cw::flow_cross::set_variable_value( handle_t h, destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, bool value )
+{  return _set_variable_value(h,destId,inst_label,var_label,chIdx,value); }
+
+cw::rc_t cw::flow_cross::set_variable_value( handle_t h, destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, int value )
+{  return _set_variable_value(h,destId,inst_label,var_label,chIdx,value); }
+
+cw::rc_t cw::flow_cross::set_variable_value( handle_t h, destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, unsigned value )
+{  return _set_variable_value(h,destId,inst_label,var_label,chIdx,value); }
+
+cw::rc_t cw::flow_cross::set_variable_value( handle_t h, destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, float value )
+{  return _set_variable_value(h,destId,inst_label,var_label,chIdx,value); }
+
+cw::rc_t cw::flow_cross::set_variable_value( handle_t h, destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, double value )
+{  return _set_variable_value(h,destId,inst_label,var_label,chIdx,value); }
+
+cw::rc_t cw::flow_cross::begin_cross_fade( handle_t h, unsigned crossFadeMs )
 {
   rc_t          rc = kOkRC;
   flow_cross_t* p = _handleToPtr(h);
-
-  unsigned next_idx = (p->cur_idx + 1) % p->netN;
-
-  // TODO: verify that this network is inactive
-
-  if((rc = flow::apply_preset( p->netA[next_idx].flowH, presetLabel )) != kOkRC )
-  {
-    cwLogError(rc,"Preset application '%s' failed.",cwStringNullGuard(presetLabel));
-    goto errLabel;
-  }
-
+  
   p->netA[ p->cur_idx ].stateId = kFadeOutStateId;
   
-  p->cur_idx                    = next_idx;
+  p->cur_idx                    = _get_flow_index( p, kNextDestId );
+  
   p->netA[ p->cur_idx ].stateId = kFadeInStateId;
   p->netA[ p->cur_idx ].fadeSmpN = (unsigned)(p->srate * crossFadeMs / 1000.0);
 
-  cwLogInfo("Apply preset:%s.",presetLabel);
-  
- errLabel:
-  
   return rc;
 }
+
 
 
 void cw::flow_cross::print( handle_t h )
