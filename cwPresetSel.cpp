@@ -25,8 +25,10 @@ namespace cw
       double           defaultGain;
       double           defaultWetDryGain;
       double           defaultFadeOutMs;
+      unsigned         defaultPresetIdx;
       
       struct frag_str* fragL;
+      unsigned         next_frag_id;
       
       frag_t*          last_ts_frag;
       
@@ -112,6 +114,18 @@ namespace cw
         
       return rc;
     }
+
+    unsigned _generate_unique_frag_id( preset_sel_t* p )
+    {
+      unsigned fragId = 0;
+      frag_t* f;
+      for(f=p->fragL; f!=nullptr; f=f->link)
+        fragId = std::max(fragId,f->fragId);
+
+      return fragId + 1;
+          
+    }
+    
 
     frag_t* _index_to_frag( preset_sel_t* p, unsigned frag_idx )
     {
@@ -202,20 +216,10 @@ namespace cw
   
       switch( varId )
       {
-      case kFragIdVarId:
-        {
-          frag_t* ff = nullptr;
-            if( f->fragId != value && _find_frag(p,value,ff) != kOkRC )
-            rc = cwLogError(kInvalidIdRC,"The fragment id '%i' is already in use.",fragId);
-          else
-            f->fragId = value;
-        }
+      case kGuiUuIdVarId:
+        f->guiUuId = value;
         break;
         
-      case kDryFlVarId:
-        f->dryFl = value;
-        break;
-
       case kPresetSelectVarId:
         for(unsigned i=0; i<f->presetN; ++i)
           f->presetA[i].playFl = f->presetA[i].preset_idx == presetId ? value : false;
@@ -265,17 +269,18 @@ namespace cw
   
       switch( varId )
       {
-      case kFragIdVarId:
-        valueRef = f->fragId;
+      case kGuiUuIdVarId:
+        valueRef = f->guiUuId;
+        break;
+
+      case kBegLocVarId:
+        valueRef = f->prev == nullptr ? 0 : f->prev->endLoc + 1;
         break;
         
       case kEndLocVarId:
         valueRef = f->endLoc;
         break;
         
-      case kDryFlVarId:
-        valueRef = f->dryFl;
-        break;
 
       case kPresetSelectVarId:
         if((rc = _validate_preset_id(f, presetId )) == kOkRC )
@@ -318,9 +323,10 @@ namespace cw
 
 cw::rc_t cw::preset_sel::create(  handle_t& hRef, const object_t* cfg  )
 {
-  rc_t            rc     = kOkRC;
-  preset_sel_t*   p      = nullptr;
-  const object_t* labelL = nullptr;
+  rc_t            rc                   = kOkRC;
+  preset_sel_t*   p                    = nullptr;
+  const object_t* labelL               = nullptr;
+  const char*     default_preset_label = nullptr;
   
   if((rc = destroy(hRef)) != kOkRC )
     return rc;
@@ -331,7 +337,8 @@ cw::rc_t cw::preset_sel::create(  handle_t& hRef, const object_t* cfg  )
   if((rc = cfg->getv( "preset_labelL",        labelL,
                       "default_gain",         p->defaultGain,
                       "default_wet_dry_gain", p->defaultWetDryGain,
-                      "default_fade_ms",      p->defaultFadeOutMs)) != kOkRC )
+                      "default_fade_ms",      p->defaultFadeOutMs,
+                      "default_preset",       default_preset_label)) != kOkRC )
   {
     rc = cwLogError(rc,"The preset configuration parse failed.");
     goto errLabel;
@@ -359,6 +366,16 @@ cw::rc_t cw::preset_sel::create(  handle_t& hRef, const object_t* cfg  )
     p->presetLabelA[i].label = mem::duplStr(label);
   }
 
+  p->defaultPresetIdx = kInvalidIdx;
+  if( default_preset_label != nullptr )
+    if((p->defaultPresetIdx = _preset_label_to_index(p,default_preset_label)) ==kInvalidIdx )
+      cwLogError(kInvalidIdRC,"The default preset label '%s' could not be found.",cwStringNullGuard(default_preset_label));
+    
+  if( p->defaultPresetIdx == kInvalidIdx )
+    cwLogError(kInvalidStateRC,"No default preset was set.");
+
+  
+  
   hRef.set(p);
   
  errLabel:
@@ -416,33 +433,58 @@ const cw::preset_sel::frag_t* cw::preset_sel::get_fragment( handle_t h, unsigned
   preset_sel_t* p = _handleToPtr(h);
   return _find_frag(p,fragId);
 }
-    
-cw::rc_t cw::preset_sel::create_fragment( handle_t h, unsigned fragId, unsigned end_loc, time::spec_t end_timestamp )
+
+const cw::preset_sel::frag_t* cw::preset_sel::gui_id_to_fragment(handle_t h, unsigned guiUuId )
 {
+  frag_t* f;
+  preset_sel_t* p = _handleToPtr(h);
+  for(f=p->fragL; f!=nullptr; f=f->link)
+    if( f->guiUuId == guiUuId )
+      return f;
+
+  cwLogError(kInvalidIdRC,"The fragment associated with GUI UU id %i could not be found.",guiUuId);
+  
+  return nullptr;
+}
+
+    
+cw::rc_t cw::preset_sel::create_fragment( handle_t h, unsigned end_loc, time::spec_t end_timestamp, unsigned& fragIdRef )
+{
+  
   preset_sel_t* p  = _handleToPtr(h);
+  frag_t*       f0 = nullptr;
   frag_t*       f  = mem::allocZ<frag_t>();
   f->endLoc        = end_loc;
   f->endTimestamp  = end_timestamp;
-  f->fragId        = fragId;
-  f->dryFl         = false;
   f->gain          = p->defaultGain;
   f->wetDryGain    = p->defaultWetDryGain;
   f->fadeOutMs     = p->defaultFadeOutMs;
   f->presetA       = mem::allocZ<preset_t>(p->presetLabelN);
   f->presetN       = p->presetLabelN;
+  f->fragId        = _generate_unique_frag_id(p);
 
+  // set the return value
+  fragIdRef        = f->fragId;
+
+  
   for(unsigned i=0; i<p->presetLabelN; ++i)
+  {
     f->presetA[i].preset_idx = i;
+
+    if( i == p->defaultPresetIdx )
+      f->presetA[i].playFl = true;
+  }
 
   // if the list is empty
   if( p->fragL == nullptr )
   {
     p->fragL = f;
-    return kOkRC;
+    goto doneLabel;
   }
-  
-  frag_t* f0 = p->fragL;
-  for(; f0->link!=nullptr; f0 = f0->link)
+
+  // search forward to the point where this fragment should be
+  // inserted to keep this fragment list in time order
+  for(f0 = p->fragL; f0->link!=nullptr; f0 = f0->link)
     if( end_loc < f0->endLoc )
       break;
   // 
@@ -475,7 +517,8 @@ cw::rc_t cw::preset_sel::create_fragment( handle_t h, unsigned fragId, unsigned 
   
     f0->prev = f;
   }
-  
+
+ doneLabel:
   return kOkRC;
 }
   
@@ -620,7 +663,6 @@ cw::rc_t cw::preset_sel::write( handle_t h, const char* fn )
     newPairObject("endLoc",            f->endLoc,               frag_obj );
     newPairObject("endTimestamp_sec",  f->endTimestamp.tv_sec,  frag_obj );
     newPairObject("endTimestamp_nsec", f->endTimestamp.tv_nsec, frag_obj );
-    newPairObject("dryFl",             f->dryFl,                frag_obj );
     newPairObject("gain",              f->gain,                 frag_obj );
     newPairObject("wetDryGain",        f->wetDryGain,           frag_obj );
     newPairObject("fadeOutMs",         f->fadeOutMs,            frag_obj );
@@ -724,7 +766,7 @@ cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
 
 
     // create a new fragment
-    if((rc = create_fragment( h, fragId, endLoc, end_ts)) != kOkRC )
+    if((rc = create_fragment( h, endLoc, end_ts, fragId)) != kOkRC )
     {
       rc = cwLogError(rc,"Fragment record create failed.");
       goto errLabel;

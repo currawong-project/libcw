@@ -17,11 +17,11 @@ namespace cw
 
     typedef struct frag_str
     {
-      unsigned         fragId;
+      unsigned         fragId;      // Unique fragment id 
+      unsigned         guiUuId;     // GUI UUId associated with this fragment
       unsigned         endLoc;      // The endLoc is included in this fragment. The begin loc is f->prev->endLoc+1
       time::spec_t     endTimestamp;
       
-      bool             dryFl;
       double           gain;
       double           wetDryGain;
       double           fadeOutMs;
@@ -37,7 +37,8 @@ namespace cw
 
 
     enum {
-      kFragIdVarId,
+      kGuiUuIdVarId,
+      kBegLocVarId,
       kEndLocVarId,
       kGainVarId,
       kFadeOutMsVarId,
@@ -58,10 +59,9 @@ namespace cw
     unsigned      fragment_count(    handle_t h );
     const frag_t* get_fragment_base( handle_t h );
     const frag_t* get_fragment(      handle_t h, unsigned fragId );
-
+    const frag_t* gui_id_to_fragment(handle_t h, unsigned guiUuId );
     
-    
-    rc_t create_fragment( handle_t h, unsigned fragId, unsigned end_loc, time::spec_t endTimestamp );
+    rc_t create_fragment( handle_t h, unsigned end_loc, time::spec_t endTimestamp, unsigned& fragIdRef );
     rc_t delete_fragment( handle_t h, unsigned fragId );
 
     bool is_fragment_loc( handle_t h, unsigned loc );
