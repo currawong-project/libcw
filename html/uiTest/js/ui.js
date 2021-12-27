@@ -244,6 +244,13 @@ function ui_send_click( ele )
     ws_send("click " + ele.id )  
 }
 
+function ui_send_select( ele, selectedFl )
+{
+    let selected_value = selectedFl ? 1 : 0;
+    ws_send("select " + ele.id  + " " + selected_value )
+}
+
+
 
 function ui_send_echo( ele )
 {
@@ -522,6 +529,37 @@ function _ui_on_focus( ele )
 {
     _focusId  = ele.id;
     _focusVal = ele.value;
+}
+
+
+function ui_set_str_display( ele_id, value )
+{
+    
+    var ele = dom_id_to_ele(ele_id);
+
+    if( typeof(value)=="string")
+    {
+	ele.innerHTML = value;
+    }
+}
+
+function ui_create_str_display( parent_ele, d )
+{
+    var ele = ui_create_ctl( parent_ele, "label", d.title, d, "uiStringDisp" );
+    
+    if( ele != null )
+    {
+	if( d.hasOwnProperty('value') )
+	{
+	    ui_set_str_display(ele.id, d.value);
+	}
+	else
+	{
+	    ui_send_echo(ele);
+	}
+    }
+    
+    return ele;
 }
 
 function _ui_on_string_blur( ele )
@@ -843,6 +881,10 @@ function ui_set_value( d )
 	    case "option":
 	    break;
 
+	    case "str_disp":
+	    ui_set_str_display(ele.id,d.value);
+	    break
+
 	    case "string":
 	    ele.value = d.value
 	    break;
@@ -888,7 +930,8 @@ function _ui_modify_class( ele, classLabelArg, enableFl )
 
 function ui_set_select( ele, enableFl )
 {
-    _ui_modify_class("uiSelected")
+    _ui_modify_class(ele,"uiSelected",enableFl)
+    ui_send_select( ele, enableFl )
 }
 
 
@@ -927,6 +970,28 @@ function ui_set_enable( ele, enableFl )
     ele.disabled = !enableFl
 }
 
+function ui_set_order_key(ele, orderKey)
+{
+    let parent  = ele.parentElement // get the parent of the element to reorder    
+    ele = parent.removeChild( ele ) // remove the element to reorder from the parent list
+    
+    ele.order = orderKey
+
+    let i = 0;
+    for(i=0; i<parent.children.length; ++i)
+    {
+	if( parent.children[i].hasOwnProperty("order") && parent.children[i].order >= orderKey)
+	{
+	    parent.insertBefore( ele, parent.children[i] )
+	    break
+	}
+    }
+
+    // no element was found greater than this element  ....
+    if( i == parent.children.length )
+	parent.appendChild(ele) // ... insert the element at the end of the child lsit
+    
+}
 
 function ui_set( d )
 {
@@ -949,19 +1014,23 @@ function ui_set( d )
 	    break;
 
 	    case "select":
-	    ui_set_select(ele,d.enableFl)
+	    ui_set_select(ele,d.value)
 	    break
 
 	    case "clickable":
-	    ui_set_clickable(ele,d.enableFl)
+	    ui_set_clickable(ele,d.value)
 	    break
 
 	    case "visible":
-	    ui_set_visible(ele,d.enableFl)
+	    ui_set_visible(ele,d.value)
 	    break
 
 	    case "enable":
-	    ui_set_enable(ele,d.enableFl)
+	    ui_set_enable(ele,d.value)
+	    break
+
+	    case "order":
+	    ui_set_order_key(ele,d.value)
 	    break
 	    
 	}
@@ -1020,6 +1089,10 @@ function ui_create( d )
 	    ele = ui_create_option( parent_ele, d );
 	    break;
 
+	    case "str_disp":
+	    ele = ui_create_str_display( parent_ele, d );
+	    break;
+
 	    case "string":
 	    ele = ui_create_string( parent_ele, d );
 	    break;
@@ -1060,6 +1133,16 @@ function ui_create( d )
     }
 }
 
+function ui_destroy( d )
+{
+    if( typeof(d.uuId) == "number" )
+	d.uuId = d.uuId.toString()
+    
+    var ele = dom_id_to_ele(d.uuId)
+
+    if( ele != null )
+	ele.parentElement.removeChild( ele )
+}
 
 
 
@@ -1081,6 +1164,10 @@ function ws_on_msg( jsonMsg )
 	case 'create':
 	ui_create( d )
 	break;
+
+	case 'destroy':
+	ui_destroy( d )
+	break
 
 	case 'value':
 	ui_set_value( d )

@@ -70,7 +70,8 @@ namespace cw
      kOpt1Id,
      kOpt2Id,
      kOpt3Id,
-     kListId
+     kListId,
+     kStatusId
     };
 
     rc_t uiTestCreateUi( ui_test_t* p, unsigned wsSessId=kInvalidId )
@@ -251,10 +252,22 @@ namespace cw
           break;
 
         case kSelId:
-          printf("sel: %i\n",v->u.i);
-          p->appSelId = v->u.i;
+          {
+            printf("sel: %i\n",v->u.i);
+            p->appSelId = v->u.i;
+
+            handle_t       uiH  = srv::uiHandle(p->wsUiSrvH);
+            unsigned       uuId = parentAndAppIdToUuId(   uiH, kPanelDivId, kStatusId );
+            const unsigned sN   = 32;
+            char s[ sN ];
+            snprintf(s,sN,"sel:%i",v->u.i);
+            sendValueString( uiH, uuId, s );
+          }
           break;
 
+        case kProgressId:
+          break;
+          
         default:
           cwLogWarning("Unhandled value message: uuid:%i appId:%i\n",uuId,appId);
       }
@@ -383,7 +396,8 @@ cw::rc_t cw::ui::test( const object_t* cfg )
      { kSelId,      kOpt2Id,         "myOpt2" },
      { kSelId,      kOpt3Id,         "myOpt3" },
      { kPanelDivId, kUiRptBtnId,     "uiRptBtnId"  },
-     { kPanelDivId, kListId,         "myListId" }
+     { kPanelDivId, kListId,         "myListId" },
+     { kPanelDivId, kStatusId,       "status" }
 
     };
 

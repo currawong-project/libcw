@@ -39,6 +39,7 @@ namespace cw
       { "check",     false },
       { "select",    false },
       { "option",    false },
+      { "str_disp",  false },
       { "string",    false },
       { "numb_disp", false },
       { "number",    false },
@@ -1254,7 +1255,7 @@ unsigned cw::ui::parentAndAppIdToUuId( handle_t h, unsigned parentAppId, unsigne
   for(unsigned i=0; i<p->eleN; ++i)
     if( p->eleA[i] != nullptr )
       if(((p->eleA[i]->phys_parent==nullptr && parentAppId==kRootAppId) ||
-          (p->eleA[i]->logical_parent->appId==parentAppId))
+          (p->eleA[i]->logical_parent!=nullptr && p->eleA[i]->logical_parent->appId==parentAppId))
          && p->eleA[i]->appId == appId )
         return p->eleA[i]->uuId;
   return kInvalidId;
@@ -1394,6 +1395,12 @@ cw::rc_t cw::ui::createSelect( handle_t h, unsigned& uuIdRef, unsigned parentUuI
 
 cw::rc_t cw::ui::createOption( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
 { return _createOneEle( _handleToPtr(h), uuIdRef, "option", kInvalidId, parentUuId, eleName, appId, chanId, clas, title ); }
+
+cw::rc_t cw::ui::createStrDisplay( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "str_disp", kInvalidId, parentUuId, eleName, appId, chanId, clas, title ); }
+
+cw::rc_t cw::ui::createStrDisplay( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, const char* value )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "str_disp", kInvalidId, parentUuId, eleName, appId, chanId, clas, title, "value", value ); }
 
 cw::rc_t cw::ui::createStr( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
 { return _createOneEle( _handleToPtr(h), uuIdRef, "string", kInvalidId, parentUuId, eleName, appId, chanId, clas, title ); }

@@ -2769,6 +2769,24 @@ cw::rc_t cw::io::uiCreateOption(     handle_t h, unsigned& uuIdRef, unsigned par
   return rc;  
 }
 
+cw::rc_t cw::io::uiCreateStrDisplay( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc  = ui::createStrDisplay(uiH,uuIdRef,parentUuId,eleName,appId,chanId,clas,title);
+  return rc;  
+}
+
+cw::rc_t cw::io::uiCreateStrDisplay( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, const char* value )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc  = ui::createStrDisplay(uiH,uuIdRef,parentUuId,eleName,appId,chanId,clas,title,value);
+  return rc;  
+}
+
 cw::rc_t cw::io::uiCreateStr(        handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
 {
   rc_t         rc;
