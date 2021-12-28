@@ -235,9 +235,15 @@ namespace cw
   
       switch( destId )
       {
-      case kCurDestId:  flow_idx = p->cur_idx; break;
-      case kNextDestId: flow_idx = (p->cur_idx + 1) % p->netN;
-      default:
+        case kCurDestId:
+          flow_idx = p->cur_idx;
+          break;
+          
+        case kNextDestId:
+          flow_idx = (p->cur_idx + 1) % p->netN;
+          break;
+          
+        default:
         assert(0);
     
       }  
