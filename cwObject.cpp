@@ -42,6 +42,11 @@ namespace cw
    { lex::kErrorLexTId,""}  
   };
 
+  unsigned _udiff( unsigned n, unsigned i )
+  {
+    return i>=n ? 0 : n-i;
+  }
+
   unsigned _lexSegmentedIdMatcher( const char* cp, unsigned cn )
   {
       unsigned i = 0;
@@ -74,22 +79,6 @@ namespace cw
 
   
   const char* _objTypeIdToLabel( objTypeId_t tid );
-
-
-  void _objTypeNullToString(   object_t* o, char* buf, unsigned bufN ) { snprintf(buf,bufN,"%s","NULL");  }
-  void _objTypeCharToString(   object_t* o, char* buf, unsigned bufN ) { number_to_string<char>(o->u.c,buf,bufN,"%c"); }
-  void _objTypeInt8ToString(   object_t* o, char* buf, unsigned bufN ) { number_to_string<int8_t>(o->u.i8,buf,bufN,"%i"); }
-  void _objTypeUInt8ToString(  object_t* o, char* buf, unsigned bufN ) { number_to_string<uint8_t>(o->u.u8,buf,bufN,"%i"); }
-  void _objTypeInt16ToString(  object_t* o, char* buf, unsigned bufN ) { number_to_string<int16_t>(o->u.i16,buf,bufN,"%i"); }
-  void _objTypeUInt16ToString( object_t* o, char* buf, unsigned bufN ) { number_to_string<uint16_t>(o->u.u16,buf,bufN,"%i"); } 
-  void _objTypeInt32ToString(  object_t* o, char* buf, unsigned bufN ) { number_to_string<int32_t>(o->u.i32,buf,bufN,"%i"); }
-  void _objTypeUInt32ToString( object_t* o, char* buf, unsigned bufN ) { number_to_string<uint32_t>(o->u.u32,buf,bufN,"%i"); }
-  void _objTypeInt64ToString(  object_t* o, char* buf, unsigned bufN ) { number_to_string<int64_t>(o->u.i64,buf,bufN,"%i"); }
-  void _objTypeUInt64ToString( object_t* o, char* buf, unsigned bufN ) { number_to_string<uint64_t>(o->u.u64,buf,bufN,"%i"); }
-  void _objTypeBoolToString(   object_t* o, char* buf, unsigned bufN ) { number_to_string<bool>(o->u.b,buf,bufN,"%i"); }
-  void _objTypeFloatToString(  object_t* o, char* buf, unsigned bufN ) { number_to_string<float>(o->u.f,buf,bufN,"%f"); }
-  void _objTypeDoubleToString( object_t* o, char* buf, unsigned bufN ) { number_to_string<double>(o->u.d,buf,bufN,"%f"); }
-  void _objTypeStringToString( object_t* o, char* buf, unsigned bufN ) { snprintf(buf,bufN,"%s",o->u.str); }
 
   
   rc_t _objTypeValueFromChar(     const object_t* o, unsigned tid, void* dst ) { return getObjectValue(o->u.c,tid,  dst,o->type->label); }
@@ -263,17 +252,23 @@ namespace cw
   unsigned _objTypeToStringString( const object_t* o, char* buf, unsigned n )
   {
     unsigned i = snprintf(buf,n,"\"");
+    const char* str = o->u.str;
+
+    if( str == nullptr )
+    {
+      cwLogWarning("Unexpected empty string while generating text output.");
+    }
     
-    i += toText(buf+i,n-i,o->u.str);
+    i += toText(buf+i,_udiff(n,i),str);
     
-    return i + snprintf(buf+i,n-i,"\"");
+    return i + snprintf(buf+i,_udiff(n,i),"\"");
   }
   
   unsigned _objTypeToStringPair(   const object_t* o, char* buf, unsigned n )
   {
     unsigned i = o->u.children->type->to_string(o->u.children,buf,n);
-    i += snprintf(buf+i,n-i," : ");
-    return i + o->u.children->sibling->type->to_string(o->u.children->sibling,buf+i,n-i);    
+    i += snprintf(buf+i,_udiff(n,i)," : ");
+    return i + o->u.children->sibling->type->to_string(o->u.children->sibling,buf+i,_udiff(n,i));    
   }
   
   unsigned _objTypeToStringList( const object_t* o, char* buf, unsigned n )
@@ -283,14 +278,14 @@ namespace cw
     for(const object_t* ch=o->u.children; ch!=nullptr; ch=ch->sibling)
     {
 
-      i += ch->type->to_string(ch,buf+i,n-i);
+      i += ch->type->to_string(ch,buf+i,_udiff(n,i));
 
       if( ch->sibling != nullptr )
-        i += snprintf(buf+i,n-i,", ");
+        i += snprintf(buf+i,_udiff(n,i),", ");
       
     }
 
-    i += snprintf(buf+i,n-i," ] ");
+    i += snprintf(buf+i,_udiff(n,i)," ] ");
 
     return i;
   }
@@ -302,13 +297,13 @@ namespace cw
     
     for(const object_t* ch=o->u.children; ch!=nullptr; ch=ch->sibling)
     {      
-      i += ch->type->to_string(ch,buf+i,n-i);
+      i += ch->type->to_string(ch,buf+i,_udiff(n,i));
       
       if( ch->sibling != nullptr )
-        i += snprintf(buf+i,n-i,", ");
+        i += snprintf(buf+i,_udiff(n,i),", ");
     }
     
-    i += snprintf(buf+i,n-i," } ");
+    i += snprintf(buf+i,_udiff(n,i)," } ");
 
     return i;
   }
