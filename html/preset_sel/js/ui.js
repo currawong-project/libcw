@@ -548,6 +548,37 @@ function _ui_on_focus( ele )
     _focusVal = ele.value;
 }
 
+
+function ui_set_str_display( ele_id, value )
+{
+    
+    var ele = dom_id_to_ele(ele_id);
+
+    if( typeof(value)=="string")
+    {
+	ele.innerHTML = value;
+    }
+}
+
+function ui_create_str_display( parent_ele, d )
+{
+    var ele = ui_create_ctl( parent_ele, "label", d.title, d, "uiStringDisp" );
+    
+    if( ele != null )
+    {
+	if( d.hasOwnProperty('value') )
+	{
+	    ui_set_str_display(ele.id, d.value);
+	}
+	else
+	{
+	    ui_send_echo(ele);
+	}
+    }
+    
+    return ele;
+}
+
 function _ui_on_string_blur( ele )
 {
     if( ele.id == _focusId )
@@ -724,7 +755,6 @@ function ui_create_number_display( parent_ele, d )
     }
     
     return ele;
-
 }
 
 function ui_create_text_display( parent_ele, d )
@@ -872,6 +902,10 @@ function ui_set_value( d )
 
 	    case "option":
 	    break;
+
+	    case "str_disp":
+	    ui_set_str_display(ele.id,d.value);
+	    break
 
 	    case "string":
 	    ele.value = d.value
@@ -1086,6 +1120,10 @@ function ui_create( d )
 	    ele = ui_create_option( parent_ele, d );
 	    break;
 
+	    case "str_disp":
+	    ele = ui_create_str_display( parent_ele, d );
+	    break;
+	    
 	    case "string":
 	    ele = ui_create_string( parent_ele, d );
 	    break;

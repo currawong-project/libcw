@@ -2,7 +2,7 @@
 
 .fragList {
     border: 1px solid LightSteelBlue;
-    width: 900px;
+    width: 1000px;
     height: 450px;
 }
 
@@ -36,6 +36,10 @@
     width: 100px;
 }
 */
+
+.fragNote {
+    width: 575px;
+}
 
 .uiRow {
     padding-bottom: 5px;
