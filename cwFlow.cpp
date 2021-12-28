@@ -23,19 +23,22 @@ namespace cw
     } library_t;
     
     library_t library[] = {
-      { "audio_in",     &audio_in::members },
-      { "audio_out",    &audio_out::members },
-      { "audioFileIn",  &audioFileIn::members },
-      { "audioFileOut", &audioFileOut::members },
-      { "gain",         &gain::members },
-      { "audio_split",  &audio_split::members },
-      { "audio_merge",  &audio_merge::members },
-      { "sine_tone",    &sine_tone::members },
-      { "pv_analysis",  &pv_analysis::members },
-      { "pv_synthesis", &pv_synthesis::members },
-      { "spec_dist",    &spec_dist::members },
-      { "compressor",   &compressor::members },
-      { "audio_delay",  &audio_delay::members },
+      { "audio_in",        &audio_in::members },
+      { "audio_out",       &audio_out::members },
+      { "audioFileIn",     &audioFileIn::members },
+      { "audioFileOut",    &audioFileOut::members },
+      { "audio_gain",      &audio_gain::members },
+      { "audio_split",     &audio_split::members },
+      { "audio_duplicate", &audio_duplicate::members },
+      { "audio_merge",     &audio_merge::members },
+      { "audio_mix",       &audio_mix::members },
+      { "sine_tone",       &sine_tone::members },
+      { "pv_analysis",     &pv_analysis::members },
+      { "pv_synthesis",    &pv_synthesis::members },
+      { "spec_dist",       &spec_dist::members },
+      { "compressor",      &compressor::members },
+      { "audio_delay",     &audio_delay::members },
+      { "balance",         &balance::members },
       { nullptr, nullptr }
     };
 
@@ -235,6 +238,12 @@ namespace cw
         goto errLabel;                
       }
 
+      if( src_var->value == nullptr )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The source value is null on the connection input:%s %s source:%s %s .", in_inst->label, in_var_label, src_inst->label, suffix);
+        goto errLabel;
+      }
+
 
       // connect in_var into src_var's outgoing var chain
       in_var->connect_link = src_var->connect_link;
@@ -244,7 +253,7 @@ namespace cw
       in_var->value   = src_var->value;
       
 
-      //cwLogInfo("'%s:%s' connected to source '%s:%s'.", in_inst->label, in_var_label, src_inst->label, suffix );
+      //cwLogInfo("'%s:%s' connected to source '%s:%s' %p.", in_inst->label, in_var_label, src_inst->label, suffix, in_var->value );
       
     errLabel:
       return rc;
@@ -328,6 +337,12 @@ namespace cw
 
             // assign this variable to a map position
             inst->varMapA[ idx ] = var;
+
+            if( var->value == nullptr )
+            {
+              rc = cwLogError(kInvalidStateRC,"The value of the variable '%s' ch:%i on instance:'%s' has not been set.",var->label,var->chIdx,inst->label);
+              goto errLabel;
+            }
           }
         
       }
@@ -638,20 +653,20 @@ namespace cw
           }
 
           // Note that all variable's found by the above call to var_desc_find() should be 'src' variables.
-          assert( cwIsFlag(vd->flags,kSrcVarFl) );
+          //assert( cwIsFlag(vd->flags,kSrcVarFl) );
 
           // if this value is a 'src' value then it must be setup prior to the instance being instantiated
-          if( cwIsFlag(vd->flags,kSrcVarFl) )
-          {
+          //if( cwIsFlag(vd->flags,kSrcVarFl) )
+          //{
             in_pair->pair_value()->value(src_label);
 
             // locate the pointer to the referenced output abuf and store it in inst->srcABuf[i]
             if((rc = _setup_input( p, inst, in_var_label, src_label )) != kOkRC )
             {
-              rc = cwLogError(kSyntaxErrorRC,"The 'in' buffer at index %i is not valid on instance '%s'.", i, inst->label );
+              rc = cwLogError(kSyntaxErrorRC,"The 'in' variable at index %i is not valid on instance '%s'.", i, inst->label );
               goto errLabel;
             }
-          }
+            //}
         }
       }
 
