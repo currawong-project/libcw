@@ -373,7 +373,8 @@ namespace cw
       variable_t* var = nullptr;
       if((rc = var_register_and_set( inst, var_label, vid, chIdx, var)) == kOkRC )
       {
-        var_set( var, val );        
+        var_set( inst, vid, chIdx, val );
+        
         if((rc = _var_register_and_set( inst, chIdx, std::forward<ARGS>(args)...)) != kOkRC )
           return rc;
       }
