@@ -22,9 +22,13 @@ namespace cw
       unsigned         endLoc;      // The endLoc is included in this fragment. The begin loc is f->prev->endLoc+1
       time::spec_t     endTimestamp;
       
-      double           gain;
+      double           igain;
+      double           ogain;
       double           wetDryGain;
       double           fadeOutMs;
+      unsigned         begPlayLoc;
+      unsigned         endPlayLoc;
+      char*            note;
 
       preset_t*        presetA;
       unsigned         presetN;
@@ -40,9 +44,14 @@ namespace cw
       kGuiUuIdVarId,
       kBegLocVarId,
       kEndLocVarId,
-      kGainVarId,
+      kInGainVarId,
+      kOutGainVarId,
       kFadeOutMsVarId,
       kWetGainVarId,
+      kBegPlayLocVarId,
+      kEndPlayLocVarId,
+      kPlayBtnVarId,
+      kNoteVarId,
       
       kPresetOrderVarId,  //  preset order value
       kPresetSelectVarId, //  select a preset to play
@@ -73,13 +82,15 @@ namespace cw
     rc_t set_value( handle_t h, unsigned fragId, unsigned varId, unsigned presetId, bool     value );
     rc_t set_value( handle_t h, unsigned fragId, unsigned varId, unsigned presetId, unsigned value );
     rc_t set_value( handle_t h, unsigned fragId, unsigned varId, unsigned presetId, double   value );
+    rc_t set_value( handle_t h, unsigned fragId, unsigned varId, unsigned presetId, const char*   value );
 
-    rc_t get_value( handle_t h, unsigned fragId, unsigned varId, unsigned presetId, bool&     valueRef );
-    rc_t get_value( handle_t h, unsigned fragId, unsigned varId, unsigned presetId, unsigned& valueRef );
-    rc_t get_value( handle_t h, unsigned fragId, unsigned varId, unsigned presetId, double&   valueRef );
+    rc_t get_value( handle_t h, unsigned fragId, unsigned varId, unsigned presetId, bool&        valueRef );
+    rc_t get_value( handle_t h, unsigned fragId, unsigned varId, unsigned presetId, unsigned&    valueRef );
+    rc_t get_value( handle_t h, unsigned fragId, unsigned varId, unsigned presetId, double&      valueRef );
+    rc_t get_value( handle_t h, unsigned fragId, unsigned varId, unsigned presetId, const char*& valueRef );
 
     // Call this function to determine which fragment the timestamp 'ts' is contained by.
-    // This call is optimized to be called in time critical functions where 'ts' is expected to be increasing.
+    // This function is optimized to be called in time sensitive functions where 'ts' is expected to be increasing.
     // If 'ts' is past the last defined fragment then the last fragment is returned.
     // If no fragments are defined 'frag_Ref' is set to nullptr.
     // The return value is true when the value of frag_Ref changes from the previous call.

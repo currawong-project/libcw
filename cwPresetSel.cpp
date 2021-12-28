@@ -66,6 +66,7 @@ namespace cw
             f0->link = f1->link;
 
           // release the fragment
+          mem::release(f1->note);
           mem::release(f1->presetA);
           mem::release(f1);
       
@@ -231,10 +232,14 @@ namespace cw
           f->presetA[ presetId ].order = value;
         break;
         
-      case kGainVarId:
-        f->gain = value;
+      case kInGainVarId:
+        f->igain = value;
         break;
-    
+
+      case kOutGainVarId:
+        f->ogain = value;
+        break;
+        
       case kFadeOutMsVarId:
         f->fadeOutMs = value;
         break;
@@ -242,7 +247,18 @@ namespace cw
       case kWetGainVarId:
         f->wetDryGain = value;
         break;
-    
+
+      case kBegPlayLocVarId:
+        f->begPlayLoc = value;
+        break;
+          
+      case kEndPlayLocVarId:
+        f->endPlayLoc = value;
+        break;
+
+      case kPlayBtnVarId:
+        break;
+        
       default:
         rc = cwLogError(kInvalidIdRC,"There is no preset variable with var id:%i.",varId);
         goto errLabel;
@@ -292,8 +308,12 @@ namespace cw
           valueRef = f->presetA[ presetId ].order;
         break;
         
-      case kGainVarId:
-        valueRef = f->gain;
+      case kInGainVarId:
+        valueRef = f->igain;
+        break;
+        
+      case kOutGainVarId:
+        valueRef = f->ogain;
         break;
     
       case kFadeOutMsVarId:
@@ -303,7 +323,18 @@ namespace cw
       case kWetGainVarId:
         valueRef = f->wetDryGain;
         break;
-    
+
+      case kBegPlayLocVarId:
+        valueRef = f->begPlayLoc;
+        break;
+
+      case kEndPlayLocVarId:
+        valueRef = f->endPlayLoc;
+        break;
+        
+      case kPlayBtnVarId:
+        break;
+
       default:
         rc = cwLogError(kInvalidIdRC,"There is no preset variable with var id:%i.",varId);
         goto errLabel;
@@ -456,13 +487,17 @@ cw::rc_t cw::preset_sel::create_fragment( handle_t h, unsigned end_loc, time::sp
   frag_t*       f  = mem::allocZ<frag_t>();
   f->endLoc        = end_loc;
   f->endTimestamp  = end_timestamp;
-  f->gain          = p->defaultGain;
+  f->igain         = p->defaultGain;
+  f->ogain         = p->defaultGain;
   f->wetDryGain    = p->defaultWetDryGain;
   f->fadeOutMs     = p->defaultFadeOutMs;
   f->presetA       = mem::allocZ<preset_t>(p->presetLabelN);
   f->presetN       = p->presetLabelN;
   f->fragId        = _generate_unique_frag_id(p);
-
+  f->begPlayLoc    = 0;
+  f->endPlayLoc    = end_loc;
+  f->note          = mem::duplStr("");
+  
   // set the return value
   fragIdRef        = f->fragId;
 
@@ -518,6 +553,9 @@ cw::rc_t cw::preset_sel::create_fragment( handle_t h, unsigned end_loc, time::sp
     f0->prev = f;
   }
 
+  if( f->prev != nullptr )
+    f->begPlayLoc = f->prev->endLoc + 1;
+  
  doneLabel:
   return kOkRC;
 }
@@ -590,6 +628,31 @@ cw::rc_t cw::preset_sel::set_value( handle_t h, unsigned fragId, unsigned varId,
 cw::rc_t cw::preset_sel::set_value( handle_t h, unsigned fragId, unsigned varId, unsigned presetId, double value )
 { return _set_value(h,fragId,varId,presetId,value); }
 
+cw::rc_t cw::preset_sel::set_value( handle_t h, unsigned fragId, unsigned varId, unsigned presetId, const char* value )
+{
+  rc_t          rc = kOkRC;
+  preset_sel_t* p  = _handleToPtr(h);
+  frag_t*       f  = nullptr;
+  
+  // locate the requested fragment
+  if((rc = _find_frag(p,fragId,f)) != kOkRC )
+    goto errLabel;
+  
+  switch( varId )
+  {
+  case kNoteVarId:
+    mem::release(f->note);
+    if( value != nullptr )
+      f->note = mem::duplStr(value);
+    break;
+  default:
+    rc = cwLogError(kInvalidIdRC,"There is no preset variable of type 'string' with var id:%i.",varId);
+  }
+  
+ errLabel:
+  return rc;
+}
+
 cw::rc_t cw::preset_sel::get_value( handle_t h, unsigned fragId, unsigned varId, unsigned presetId, bool&     valueRef )
 { return _get_value(h,fragId,varId,presetId,valueRef); }
 
@@ -598,6 +661,30 @@ cw::rc_t cw::preset_sel::get_value( handle_t h, unsigned fragId, unsigned varId,
 
 cw::rc_t cw::preset_sel::get_value( handle_t h, unsigned fragId, unsigned varId, unsigned presetId, double&   valueRef )
 { return _get_value(h,fragId,varId,presetId,valueRef); }
+
+cw::rc_t cw::preset_sel::get_value( handle_t h, unsigned fragId, unsigned varId, unsigned presetId, const char*&   valueRef )
+{
+  rc_t          rc = kOkRC;
+  preset_sel_t* p  = _handleToPtr(h);
+  frag_t*       f  = nullptr;
+  
+  // locate the requested fragment
+  if((rc = _find_frag(p,fragId,f)) != kOkRC )
+    goto errLabel;
+  
+  switch( varId )
+  {
+  case kNoteVarId:
+    valueRef = f->note;
+    break;
+    
+  default:
+    rc = cwLogError(kInvalidIdRC,"There is no preset variable of type 'string' with var id:%i.",varId);
+  }
+  
+ errLabel:
+  return rc;
+}
 
 bool cw::preset_sel::track_timestamp( handle_t h, const time::spec_t& ts, const cw::preset_sel::frag_t*& frag_Ref )
 {
@@ -663,9 +750,13 @@ cw::rc_t cw::preset_sel::write( handle_t h, const char* fn )
     newPairObject("endLoc",            f->endLoc,               frag_obj );
     newPairObject("endTimestamp_sec",  f->endTimestamp.tv_sec,  frag_obj );
     newPairObject("endTimestamp_nsec", f->endTimestamp.tv_nsec, frag_obj );
-    newPairObject("gain",              f->gain,                 frag_obj );
+    newPairObject("inGain",            f->igain,                frag_obj );
+    newPairObject("outGain",           f->ogain,                frag_obj );    
     newPairObject("wetDryGain",        f->wetDryGain,           frag_obj );
     newPairObject("fadeOutMs",         f->fadeOutMs,            frag_obj );
+    newPairObject("begPlayLoc",        f->begPlayLoc,           frag_obj );
+    newPairObject("endPlayLoc",        f->endPlayLoc,           frag_obj );
+    newPairObject("note",              f->note,                 frag_obj );
     newPairObject("presetN",           f->presetN,              frag_obj );
 
     // note: newPairObject() return a ptr to the pair value node.
@@ -700,6 +791,7 @@ cw::rc_t cw::preset_sel::write( handle_t h, const char* fn )
 
     
     mem::release(s);
+    s = nullptr;
 
     if( actual_byteN < s_byteN )
       break;
@@ -744,8 +836,9 @@ cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
     frag_t* f = nullptr;
     const object_t* r = fragL_obj->child_ele(i);
 
-    unsigned fragId=kInvalidId,endLoc=0,presetN=0;
-    double gain=0,wetDryGain=0,fadeOutMs=0;
+    unsigned fragId=kInvalidId,endLoc=0,presetN=0,begPlayLoc=0,endPlayLoc=0;
+    double igain=0,ogain=0,wetDryGain=0,fadeOutMs=0;
+    const char* note = nullptr;
     const object_t* presetL_obj = nullptr;
     time::spec_t end_ts;
 
@@ -754,9 +847,13 @@ cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
                      "endLoc",endLoc,
                      "endTimestamp_sec",end_ts.tv_sec,
                      "endTimestamp_nsec",end_ts.tv_nsec,
-                     "gain",gain,
+                     "inGain",igain,
+                     "outGain",ogain,
                      "wetDryGain",wetDryGain,
                      "fadeOutMs",fadeOutMs,
+                     "begPlayLoc",begPlayLoc,
+                     "endPlayLoc",endPlayLoc,
+                     "note",note,
                      "presetN", presetN,
                      "presetL", presetL_obj )) != kOkRC )
     {
@@ -773,10 +870,13 @@ cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
     }
 
     // update the fragment variables
-    set_value( h, fragId, kGainVarId, kInvalidId, gain );
-    set_value( h, fragId, kFadeOutMsVarId, kInvalidId, fadeOutMs );
-    set_value( h, fragId, kWetGainVarId,   kInvalidId, wetDryGain );
-
+    set_value( h, fragId, kInGainVarId,     kInvalidId, igain );
+    set_value( h, fragId, kOutGainVarId,    kInvalidId, ogain );
+    set_value( h, fragId, kFadeOutMsVarId,  kInvalidId, fadeOutMs );
+    set_value( h, fragId, kWetGainVarId,    kInvalidId, wetDryGain );
+    set_value( h, fragId, kBegPlayLocVarId, kInvalidId, begPlayLoc );
+    set_value( h, fragId, kEndPlayLocVarId, kInvalidId, endPlayLoc );
+    set_value( h, fragId, kNoteVarId,       kInvalidId, note );
 
     // locate the new fragment record
     if((f = _find_frag(p, fragId )) == nullptr )
