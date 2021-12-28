@@ -405,6 +405,15 @@ cw::rc_t cw::io_flow::exec( handle_t h, const io::msg_t& msg )
   return rc;
 }
 
+cw::rc_t cw::io_flow::apply_preset( handle_t h, unsigned crossFadeMs, const char* presetLabel )
+{
+  rc_t rc;
+  if((rc = apply_preset( h, flow_cross::kNextDestId, presetLabel )) == kOkRC )
+    rc = begin_cross_fade( h, crossFadeMs );
+  
+  return rc;
+}
+
 
 cw::rc_t cw::io_flow::apply_preset( handle_t h, flow_cross::destId_t destId, const char* presetLabel )
 { return apply_preset( _handleToPtr(h)->crossFlowH, destId, presetLabel ); }

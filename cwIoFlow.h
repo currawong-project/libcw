@@ -13,6 +13,12 @@ namespace cw
     rc_t exec( handle_t h, const io::msg_t& msg );
 
 
+    // Apply a preset to the 'next' network instance and activate it immediately.
+    rc_t apply_preset( handle_t h, unsigned crossFadeMs, const char* presetLabel );
+    
+    // Apply a preset to the selected network instance (current or next).
+    // If the preset is applied to the 'next' network instance then use 'begin_cross_fade()' to
+    // activate the next network.
     rc_t apply_preset( handle_t h, flow_cross::destId_t destId, const char* presetLabel );
 
     rc_t set_variable_value( handle_t h, flow_cross::destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, bool value );
