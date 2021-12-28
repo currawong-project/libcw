@@ -83,7 +83,73 @@ namespace cw
       
     }    
     
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // balance
+    //
+    namespace balance
+    {
+      enum
+      {
+        kInPId,
+        kOutPId,
+        kInvOutPId
+      };
+      
+      typedef struct
+      {
+        
+      } inst_t;
 
+
+      rc_t create( instance_t* ctx )
+      {
+        rc_t rc = kOkRC;        
+        real_t in_value = 0.5;
+        
+        if((rc  = var_register_and_get( ctx, kAnyChIdx, kInPId, "in", in_value )) != kOkRC )
+          goto errLabel;
+
+        if((rc = var_register_and_set( ctx, kAnyChIdx,
+                                       kOutPId,    "out", in_value,
+                                       kInvOutPId, "inv_out", (real_t)(1.0-in_value) )) != kOkRC )
+        {
+          goto errLabel;
+        }
+           
+        errLabel:
+           return rc;
+      }
+
+      rc_t destroy( instance_t* ctx )
+      { return kOkRC; }
+
+      rc_t value( instance_t* ctx, variable_t* var )
+      { return kOkRC; }
+
+      rc_t exec( instance_t* ctx )
+      {
+        rc_t   rc = kOkRC;
+        real_t value = 1;
+        
+        var_get(ctx, kInPId,     kAnyChIdx, value);
+        var_set(ctx, kOutPId,    kAnyChIdx, value);
+        var_set(ctx, kInvOutPId, kAnyChIdx, (real_t)(1.0 - value) );
+
+        return rc;
+      }
+
+      class_members_t members = {
+        .create               = create,
+        .destroy              = destroy,
+        .value                = value,
+        .exec                 = exec,
+        .report               = nullptr
+      };
+      
+    }    
+
+    
     //------------------------------------------------------------------------------------------------------------------
     //
     // audio_in
@@ -500,9 +566,9 @@ namespace cw
 
     //------------------------------------------------------------------------------------------------------------------
     //
-    // gain
+    // audio_gain
     //
-    namespace gain
+    namespace audio_gain
     {
       enum
       {
@@ -717,6 +783,143 @@ namespace cw
       };
       
     }    
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // audio_duplicate
+    //
+    namespace audio_duplicate
+    {
+      enum {
+        kInPId,
+        kDuplicatePId,
+        kGainPId,
+        kOutPId,
+        
+      };
+        
+      typedef struct
+      {
+        unsigned* chDuplMap;  // [ inChN ] duplicate channel map
+        unsigned  outChN;
+      } inst_t;
+
+
+      rc_t create( instance_t* ctx )
+      {
+        rc_t          rc   = kOkRC;        
+        const abuf_t* abuf = nullptr; //        
+        inst_t*       inst = mem::allocZ<inst_t>();
+        
+        ctx->userPtr = inst;
+
+        // get the source audio buffer
+        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",abuf )) != kOkRC )
+          goto errLabel;
+
+        if( abuf->chN )
+        {
+          inst->chDuplMap = mem::allocZ<unsigned>(abuf->chN);
+        
+          // register the gain 
+          for(unsigned i=0; i<abuf->chN; ++i)
+          {
+            if((rc = var_register_and_get( ctx, i, kDuplicatePId, "duplicate", inst->chDuplMap[i] )) != kOkRC )
+              goto errLabel;
+
+            if( inst->chDuplMap[i] )
+            {
+              // register an input gain control
+              if((rc = var_register( ctx, inst->outChN, kGainPId, "gain")) != kOkRC )
+                goto errLabel;
+
+              // count the number of selected channels to determine the count of output channels
+              inst->outChN += inst->chDuplMap[i];
+            }
+          }
+          
+          // create the output audio buffer
+          if( inst->outChN == 0 )
+            cwLogWarning("The audio split instance '%s' has no selected channels.",ctx->label);
+          else
+            rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, abuf->srate, inst->outChN, abuf->frameN );
+        }
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( instance_t* ctx )
+      {
+        rc_t rc = kOkRC;
+
+        inst_t* inst = (inst_t*)ctx->userPtr;
+
+        mem::release(inst->chDuplMap);
+
+        mem::release(inst);
+        
+        return rc;
+      }
+
+      rc_t value( instance_t* ctx, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+
+      rc_t exec( instance_t* ctx )
+      {
+        rc_t          rc       = kOkRC;
+        const abuf_t* ibuf     = nullptr;
+        abuf_t*       obuf     = nullptr;
+        inst_t*       inst     = (inst_t*)ctx->userPtr;
+        unsigned      outChIdx = 0;
+        
+        if( inst->outChN )
+        {
+          // get the src buffer
+          if((rc = var_get(ctx,kInPId, kAnyChIdx, ibuf )) != kOkRC )
+            goto errLabel;
+
+          // get the dst buffer
+          if((rc = var_get(ctx,kOutPId, kAnyChIdx, obuf)) != kOkRC )
+            goto errLabel;
+
+          // for each input channel          
+          for(unsigned i=0; i<ibuf->chN  && outChIdx<obuf->chN; ++i)
+          {
+            sample_t* isig = ibuf->buf + i * ibuf->frameN;
+            sample_t  gain = 1;
+          
+            var_get(ctx,kGainPId,i,gain);
+            
+            for(unsigned j=0; j<inst->chDuplMap[i]; ++j )
+            {            
+              sample_t* osig = obuf->buf + j * obuf->frameN;
+
+              // apply the gain
+              for(unsigned k=0; k<ibuf->frameN; ++k)
+                osig[k] = gain * isig[k];
+
+              outChIdx += 1;
+            }
+          }
+        }
+        
+      errLabel:
+        return rc;
+      }
+
+      class_members_t members = {
+        .create = create,
+        .destroy = destroy,
+        .value   = value,
+        .exec = exec,
+        .report = nullptr
+      };
+      
+    }    
     
     //------------------------------------------------------------------------------------------------------------------
     //
@@ -817,6 +1020,126 @@ namespace cw
 
         assert( oChIdx == obuf->chN );
 
+      errLabel:
+        return rc;
+      }
+
+      class_members_t members = {
+        .create = create,
+        .destroy = destroy,
+        .value   = value,
+        .exec = exec,
+        .report = nullptr
+      };
+      
+    }    
+    
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // audio_mix
+    //
+    namespace audio_mix
+    {
+      enum {
+        kIn0PId,
+        kIn1PId,
+        kGain0PId,
+        kGain1PId,
+        kOutPId,
+      };
+      
+      typedef struct
+      {
+      } inst_t;
+
+
+      rc_t create( instance_t* ctx )
+      {
+        rc_t          rc     = kOkRC;
+        const abuf_t* abuf0  = nullptr; //
+        const abuf_t* abuf1  = nullptr;
+        unsigned      outChN = 0;
+
+        // get the source audio buffer
+        if((rc = var_register_and_get(ctx, kAnyChIdx,
+                                      kIn0PId,"in0",abuf0,
+                                      kIn1PId,"in1",abuf1 )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        assert( abuf0->frameN == abuf1->frameN );
+
+        outChN = std::max(abuf0->chN, abuf1->chN);
+
+        // register the gain
+        var_register( ctx, kAnyChIdx, kGain0PId, "gain0" );
+        var_register( ctx, kAnyChIdx, kGain1PId, "gain1" );
+          
+        // create the output audio buffer
+        rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, abuf0->srate, outChN, abuf0->frameN );
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( instance_t* ctx )
+      { return kOkRC; }
+
+      rc_t value( instance_t* ctx, variable_t* var )
+      { return kOkRC; }
+
+      rc_t _mix( instance_t* ctx, unsigned inPId, unsigned gainPId, abuf_t* obuf )
+      {
+        rc_t          rc   = kOkRC;
+        const abuf_t* ibuf = nullptr;
+        
+        if((rc = var_get(ctx, inPId, kAnyChIdx, ibuf )) != kOkRC )
+          goto errLabel;
+
+
+        if(rc == kOkRC )
+        {          
+          unsigned chN = std::min(ibuf->chN, obuf->chN );
+          
+          for(unsigned i=0; i<chN; ++i)
+          {
+            const sample_t* isig = ibuf->buf + i*ibuf->frameN;
+            sample_t*       osig = obuf->buf + i*obuf->frameN;
+            real_t          gain = 1;
+
+            if((rc = var_get(ctx, gainPId, i, gain)) != kOkRC )
+              goto errLabel;
+            
+            for(unsigned j=0; j<obuf->frameN; ++j)
+              osig[j] += gain * isig[j];
+          }
+        }
+
+      errLabel:
+        return rc;
+        
+      }
+
+      rc_t exec( instance_t* ctx )
+      {
+        rc_t          rc    = kOkRC;
+        abuf_t*       obuf  = nullptr;
+        const abuf_t* ibuf0 = nullptr;
+        const abuf_t* ibuf1 = nullptr;
+
+        if((rc = var_get(ctx,kOutPId, kAnyChIdx, obuf)) != kOkRC )
+          goto errLabel;
+
+        if((rc = var_get(ctx,kIn0PId, kAnyChIdx, ibuf0 )) != kOkRC )
+          goto errLabel;
+        
+        if((rc = var_get(ctx,kIn1PId, kAnyChIdx, ibuf1 )) != kOkRC )
+          goto errLabel;
+
+        _mix( ctx, kIn0PId, kGain0PId, obuf );
+        _mix( ctx, kIn1PId, kGain1PId, obuf );
+        
       errLabel:
         return rc;
       }
@@ -1614,13 +1937,15 @@ namespace cw
         real_t        delayMs    = 0;
         real_t        maxDelayMs = 0;
 
+        ctx->userPtr = inst;
+
         // get the source audio buffer
         if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",abuf )) != kOkRC )
           goto errLabel;
 
 
         inst->cntV = mem::allocZ<unsigned>(abuf->chN);
-        inst->idxV      = mem::allocZ<unsigned>(abuf->chN);
+        inst->idxV = mem::allocZ<unsigned>(abuf->chN);
         
         // register the gain 
         for(unsigned i=0; i<abuf->chN; ++i)
@@ -1632,7 +1957,9 @@ namespace cw
             goto errLabel;
           }
 
-          inst->maxDelayFrameN = std::max(inst->maxDelayFrameN, (unsigned)(maxDelayMs * abuf->srate / 1000.0) );
+          inst->maxDelayFrameN = std::max(inst->maxDelayFrameN, (unsigned)(fabs(maxDelayMs) * abuf->srate / 1000.0) );
+
+          inst->cntV[i] = (unsigned)(fabs(delayMs) * abuf->srate / 1000.0);
                                   
         }
 
@@ -1678,18 +2005,28 @@ namespace cw
 
         // for each channel
         for(unsigned i=0; i<ibuf->chN; ++i)
-        {
-          sample_t* isig = ibuf->buf + i*ibuf->frameN;
-          sample_t* osig = obuf->buf + i*obuf->frameN;
-          unsigned    di = inst->idxV[i];
-
-          for(unsigned j=0; j<ibuf->frameN; ++j)
           {
-            osig[j] = inst->delayBuf->buf[di];
-            inst->delayBuf->buf[di] = isig[j];
-            di = (di+1) % inst->cntV[i];
-          }
-        }  
+            sample_t* isig = ibuf->buf + i*ibuf->frameN;
+            sample_t* osig = obuf->buf + i*obuf->frameN;
+            unsigned    di = inst->idxV[i];
+
+            // if the delay is set to zero samples
+            if( inst->cntV[i] == 0 )
+              memcpy(osig,isig,ibuf->frameN * sizeof(sample_t));
+            else 
+            {
+              // otherwise the delay is non-zero positive sample count
+              for(unsigned j=0; j<ibuf->frameN; ++j)
+              {
+                osig[j] = inst->delayBuf->buf[di]; // read delay output
+                inst->delayBuf->buf[di] = isig[j]; // set delay input
+                di = (di+1) % inst->cntV[i];       // update the delay index
+              }
+            }
+
+            // store the delay index for the next cycle
+            inst->idxV[i] = di; 
+          }  
         
       errLabel:
         return rc;
@@ -1697,11 +2034,11 @@ namespace cw
 
       
       class_members_t members = {
-        .create = create,
+        .create  = create,
         .destroy = destroy,
-        .value = value,
-        .exec = exec,
-        .report = nullptr
+        .value   = value,
+        .exec    = exec,
+        .report  = nullptr
       };
       
     }
