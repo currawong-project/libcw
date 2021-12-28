@@ -149,6 +149,8 @@ unsigned cw::toText( char* buf, unsigned bufN, double v )
 
 unsigned cw::toText( char* buf, unsigned bufN, const char* v )
 {
+  assert( v != nullptr );
+  
   unsigned sn = strlen(v) + 1;
 
   // bufN must be greater than the length of v[]
