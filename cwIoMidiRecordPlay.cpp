@@ -13,6 +13,7 @@
 #include "cwIo.h"
 #include "cwIoMidiRecordPlay.h"
 
+#define TIMER_LABEL "midi_record_play_timer"
 
 namespace cw
 {
@@ -74,7 +75,11 @@ namespace cw
     rc_t _destroy( midi_record_play_t* p )
     {
       rc_t rc = kOkRC;
-    
+      unsigned timerIdx;
+      
+      if((timerIdx = io::timerLabelToIndex( p->ioH, TIMER_LABEL )) != kInvalidIdx )
+        io::timerDestroy( p->ioH, timerIdx);
+      
       mem::release(p->msgArray);
       mem::release(p->midiOutDevLabel);
       mem::release(p->midiOutPortLabel);
@@ -583,7 +588,7 @@ cw::rc_t cw::midi_record_play::create( handle_t& hRef, io::handle_t ioH, const o
   }
   
   // create the MIDI playback timer
-  if((rc = timerCreate( p->ioH, "midi_record_play_timer", kMidiRecordPlayTimerId, p->midi_timer_period_micro_sec)) != kOkRC )
+  if((rc = timerCreate( p->ioH, TIMER_LABEL, kMidiRecordPlayTimerId, p->midi_timer_period_micro_sec)) != kOkRC )
   {
     cwLogError(rc,"Audio-MIDI timer create failed.");
     goto errLabel;
