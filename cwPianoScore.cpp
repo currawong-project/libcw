@@ -88,13 +88,13 @@ namespace cw
 
           
           if( sci_pitch != nullptr )
-            memcpy(e->sci_pitch,sci_pitch,sizeof(e->sci_pitch));
+            strncpy(e->sci_pitch,sci_pitch,sizeof(e->sci_pitch));
           
           if( dmark != nullptr )
-            memcpy(e->dmark,dmark,sizeof(e->dmark));
+            strncpy(e->dmark,dmark,sizeof(e->dmark));
 
           if( grace_mark != nullptr )
-            memcpy(e->grace_mark,grace_mark,sizeof(e->grace_mark));
+            strncpy(e->grace_mark,grace_mark,sizeof(e->grace_mark));
 
           // assign the UID
           e->uid = i;          
@@ -150,6 +150,10 @@ cw::rc_t cw::score::create( handle_t& hRef, const char* fn )
   rc = create(hRef,cfg);
 
  errLabel:
+
+  if( cfg != nullptr )
+    cfg->free();
+  
   return rc;
 }
 
