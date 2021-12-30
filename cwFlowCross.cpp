@@ -64,7 +64,7 @@ namespace cw
       for(unsigned i=0; i<net->deviceN; ++i)
         if( net->deviceA[i].typeId == flow::kAudioDevTypeId )
         {
-          mem::release(net->deviceA[i].u.a.abuf);
+          abuf_destroy(net->deviceA[i].u.a.abuf);
         }
       mem::release(net->deviceA);
       flow::destroy(net->flowH);
@@ -128,7 +128,7 @@ namespace cw
       net->net_idx = net_idx;
       
       if((rc = flow::create( net->flowH, classCfg, networkCfg, net->deviceA, deviceN )) == kOkRC )
-        net->deviceN += 1;
+        net->deviceN = deviceN;
       else
       {
         cwLogError(rc,"Flow cross index %i network created failed.",net_idx);
