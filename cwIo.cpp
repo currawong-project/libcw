@@ -404,17 +404,19 @@ namespace cw
     {
       serialPortSrv::destroy(p->serialPortSrvH);
                             
-      mem::free(p->serialA);
+      mem::release(p->serialA);
       p->serialN = 0;
       
     }
 
     rc_t _serialPortStart( io_t* p )
     {
-      rc_t rc;
-      
-      if((rc =serialPortSrv::start( p->serialPortSrvH )) != kOkRC )
-        rc = cwLogError(rc,"The serial port server start failed.");
+      rc_t rc = kOkRC;
+
+      // the service is only started if at least one serial port is enabled
+      if( serialPort::portCount( serialPortSrv::serialHandle(p->serialPortSrvH) ) > 0 )      
+        if((rc =serialPortSrv::start( p->serialPortSrvH )) != kOkRC )
+          rc = cwLogError(rc,"The serial port server start failed.");
       
       return rc;
     }
@@ -1639,7 +1641,10 @@ namespace cw
       if((rc = thread_mach::destroy(p->threadMachH)) != kOkRC )
         return rc;
 
-      mem::free(p->timerA);
+      for(unsigned i=0; i<p->timerN; ++i)
+        mem::release(p->timerA[i].label);
+      
+      mem::release(p->timerA);
       p->timerN = 0;
 
       _serialPortDestroy(p);
@@ -1647,6 +1652,8 @@ namespace cw
       _audioDestroy(p);
 
       midi::device::destroy(p->midiH);
+
+      sock::destroyMgr( p->sockH );
 
       mem::release(p->sockA);
       
@@ -1656,6 +1663,7 @@ namespace cw
       p->uiMapN = 0;
 
       ui::ws::destroy(p->wsUiH);
+
 
       // free the cfg object 
       if( p->cfg != nullptr )
