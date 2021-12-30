@@ -69,6 +69,9 @@ namespace cw
     const frag_t* get_fragment_base( handle_t h );
     const frag_t* get_fragment(      handle_t h, unsigned fragId );
     const frag_t* gui_id_to_fragment(handle_t h, unsigned guiUuId );
+
+    unsigned frag_to_gui_id( handle_t h, unsigned fragId, bool showErrorFl=true );
+    unsigned gui_to_frag_id( handle_t h, unsigned guiUuId, bool showErrorFl=true );
     
     rc_t create_fragment( handle_t h, unsigned end_loc, time::spec_t endTimestamp, unsigned& fragIdRef );
     rc_t delete_fragment( handle_t h, unsigned fragId );

@@ -91,7 +91,8 @@ namespace cw
       
       for(unsigned i=0; i<p->presetLabelN; ++i)
         mem::release( p->presetLabelA[i].label );
-      
+      mem::release( p->presetLabelA );
+      p->presetLabelN = 0;
       mem::release(p);
 
       return kOkRC;
@@ -297,7 +298,6 @@ namespace cw
         valueRef = f->endLoc;
         break;
         
-
       case kPresetSelectVarId:
         if((rc = _validate_preset_id(f, presetId )) == kOkRC )
           valueRef = f->presetA[ presetId ].playFl;
@@ -478,12 +478,37 @@ const cw::preset_sel::frag_t* cw::preset_sel::gui_id_to_fragment(handle_t h, uns
   return nullptr;
 }
 
+unsigned cw::preset_sel::frag_to_gui_id( handle_t h, unsigned fragId, bool showErrorFl )
+{
+  preset_sel_t* p  = _handleToPtr(h);
+  
+  const frag_t* f;
+  if((f = _find_frag(p,fragId)) != nullptr )
+    return f->guiUuId;
+
+  if( showErrorFl )
+    cwLogError(kInvalidIdRC,"The GUI uuid associated with the fragment id '%i' could not be found.",fragId);
+  return kInvalidId;
+}
+
+unsigned cw::preset_sel::gui_to_frag_id( handle_t h, unsigned guiUuId, bool showErrorFl )
+{
+  const frag_t* f;
+  if((f = gui_id_to_fragment(h,guiUuId)) != nullptr )
+    return f->fragId;
+
+  if( showErrorFl )
+    cwLogError(kInvalidIdRC,"The fragment id associated with the GUI uuid '%i' could not be found.",guiUuId);
+  return kInvalidId;
+}
+
     
 cw::rc_t cw::preset_sel::create_fragment( handle_t h, unsigned end_loc, time::spec_t end_timestamp, unsigned& fragIdRef )
 {
   
   preset_sel_t* p  = _handleToPtr(h);
   frag_t*       f0 = nullptr;
+  frag_t*       f1 = nullptr;
   frag_t*       f  = mem::allocZ<frag_t>();
   f->endLoc        = end_loc;
   f->endTimestamp  = end_timestamp;
@@ -519,18 +544,21 @@ cw::rc_t cw::preset_sel::create_fragment( handle_t h, unsigned end_loc, time::sp
 
   // search forward to the point where this fragment should be
   // inserted to keep this fragment list in time order
-  for(f0 = p->fragL; f0->link!=nullptr; f0 = f0->link)
+  for(f0 = p->fragL; f0!=nullptr; f0 = f0->link)
+  {
     if( end_loc < f0->endLoc )
       break;
-  // 
-  assert( f0 != nullptr );
-
-  // if f is after the last current fragment ...
-  if( f0->link == nullptr )
+    f1 = f0;
+  }
+  
+  // if f is after the last fragment ...
+  if( f0 == nullptr )
   {
+    assert( f1 != nullptr );
+    
     // ... insert f at the end of the list
-    f0->link = f;
-    f->prev  = f0;
+    f1->link = f;
+    f->prev  = f1;
   }
   else
   {
@@ -612,10 +640,7 @@ void cw::preset_sel::ui_select_fragment( handle_t h, unsigned fragId, bool selec
   frag_t* f = p->fragL;
 
   for(; f!= nullptr; f=f->link)
-    if( f->fragId == fragId )
-      f->uiSelectFl = selectFl;
-    else
-      f->uiSelectFl = false;  
+    f->uiSelectFl = f->fragId == fragId ? selectFl : false;
 }
 
 
@@ -919,7 +944,10 @@ cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
 
  errLabel:
   if(rc != kOkRC )
-    cwLogError(rc,"Preset resotre failed.");
+    cwLogError(rc,"Preset restore failed.");
+
+  if( root != nullptr )
+    root->free();
   
   return rc;
 }
