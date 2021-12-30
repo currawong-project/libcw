@@ -783,10 +783,7 @@ namespace cw
           
         case 'd':
           if((rc = string_to_number<double>(s,valueRef.u.d)) == kOkRC )
-          {
             valueRef.tid = kDoubleTId;
-            printf("value:%f\n",valueRef.u.d);
-          }
           break;
 
         case 's':
@@ -811,6 +808,36 @@ namespace cw
       return ele;
     }
 
+    ele_t* _parse_corrupt_msg( ui_t* p, const char* msg )
+    {
+      ele_t*   ele     = nullptr;
+      unsigned eleUuId = kInvalidId;
+      
+      if( msg == nullptr )
+      {
+        cwLogWarning("Empty 'corrupt' message received from UI.");
+        return nullptr;
+      }
+
+      // 
+      if( sscanf(msg, "corrupt %i ",&eleUuId) != 1 )
+      {
+        cwLogError(kSyntaxErrorRC,"Invalid 'corrupt' message from UI: '%s'.", msg );
+        goto errLabel;
+      }
+      
+      // locate the element record
+      if((ele = _uuIdToEle( p, eleUuId )) == nullptr )
+      {
+        cwLogError(kInvalidIdRC,"UI message elment not found.");
+        goto errLabel;
+      }
+      
+    errLabel:
+
+      return ele;
+    }
+    
     ele_t* _parse_click_msg( ui_t* p, const char* msg )
     {
       ele_t*   ele     = nullptr;
@@ -912,6 +939,7 @@ namespace cw
          { kConnectOpId,        "connect" },
          { kInitOpId,           "init" },
          { kValueOpId,          "value" },
+         { kCorruptOpId,        "corrupt" },
          { kClickOpId,          "click" },
          { kSelectOpId,         "select" },
          { kEchoOpId,           "echo" },
@@ -935,7 +963,7 @@ namespace cw
       if( p->sendCbFunc != nullptr )
       {
         const char* mFmt = "{ \"op\":\"%s\", \"uuId\":%i, \"value\":%s }";
-        const int   mbufN = 128;
+        const int   mbufN = 512;
         char        vbuf[vbufN];
         char        mbuf[mbufN];
     
@@ -1181,6 +1209,14 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* msg, unsi
                   
       }
       break;
+
+    case kCorruptOpId:
+      if((ele = _parse_corrupt_msg(p, (const char*)msg )) == nullptr )
+        cwLogError(kOpFailRC,"UI 'corrupt' message parse failed.");
+      else
+        p->uiCbFunc( p->uiCbArg, wsSessId, opId, ele->logical_parent->appId, ele->uuId, ele->appId, ele->chanId, &value );                  
+      break;
+      
 
     case kClickOpId:
       if((ele = _parse_click_msg(p, (const char*)msg )) == nullptr )
@@ -1512,7 +1548,7 @@ cw::rc_t cw::ui::setLogLine(   handle_t h, unsigned uuId, const char* text )
     
     s[sn-1] = 0;
 
-    printf("%s %s\n",text,s);
+    //printf("%s %s\n",text,s);
     
     rc = sendValueString(h,uuId,s);
 

@@ -17,6 +17,7 @@ namespace cw
      kConnectOpId,   // A new remote user interface was connected
      kInitOpId,      // A remote user interface instance was created and is available. It needs to be updated with the current state of the UI from the server.
      kValueOpId,     // The value of a remote user interface control changed. Send this value to the application engine.
+     kCorruptOpId,   // The value of the remote user interface is invalid or corrupt.
      kClickOpId,     // A element on a remote user interface was clicked.
      kSelectOpId,    // An element on a remote user interface was is 'selected' or 'deselected'.
      kEchoOpId,      // A remote user interface is requesting an application engine value. The the current value of a ui element must be sent to the remote UI.

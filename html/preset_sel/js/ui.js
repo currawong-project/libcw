@@ -232,6 +232,11 @@ function ui_send_value( ele, typeId, value )
     ws_send("value " + ele.id + " " + typeId + " : " + value)  
 }
 
+function ui_send_corrupt_state( ele )
+{
+    ws_send("corrupt " + ele.id)
+}
+
 function ui_send_bool_value(   ele, value ) { ui_send_value(ele,'b',value); }
 function ui_send_int_value(    ele, value ) { ui_send_value(ele,'i',value); }
 function ui_send_float_value(   ele, value ) { ui_send_value(ele,'d',value); }
@@ -621,7 +626,10 @@ function _ui_send_number( ele )
 	val = Number.parseFloat(ele.value)
 
     if( !(ele.minValue<=val && val<=ele.maxValue))
+    {
 	ele.style.borderColor = "red"
+	ui_send_corrupt_state(ele)
+    }
     else	
     {
 	ele.style.borderColor = ""
@@ -755,6 +763,7 @@ function ui_create_number_display( parent_ele, d )
     }
     
     return ele;
+
 }
 
 function ui_create_text_display( parent_ele, d )

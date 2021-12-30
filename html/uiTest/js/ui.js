@@ -232,6 +232,11 @@ function ui_send_value( ele, typeId, value )
     ws_send("value " + ele.id + " " + typeId + " : " + value)  
 }
 
+function ui_send_corrupt_state( ele )
+{
+    ws_send("corrupt " + ele.id)
+}
+
 function ui_send_bool_value(   ele, value ) { ui_send_value(ele,'b',value); }
 function ui_send_int_value(    ele, value ) { ui_send_value(ele,'i',value); }
 function ui_send_float_value(   ele, value ) { ui_send_value(ele,'f',value); }
@@ -304,6 +309,11 @@ function ui_create_ele( parent_ele, ele_type, d, dfltClassName )
 	else
 	    ele.className = dfltClassName;
 
+	if(d.hasOwnProperty('addClassName') )
+	{
+	    ele.className += " " + d.addClassName
+	}
+
 	if(d.hasOwnProperty('appId'))
 	    ele.appId = d.appId;
 	else
@@ -312,10 +322,15 @@ function ui_create_ele( parent_ele, ele_type, d, dfltClassName )
 	if( d.hasOwnProperty('clickable') )
 	    ui_set_clickable( ele, d.clickable );
 	
+	if( d.hasOwnProperty('enable') )
+	    ui_set_enable( ele, d.enable )
+
 	//console.log("Created: " + ele_type  + " parent:" + d.parentUuId + " id:" + ele.id + " appId:" + ele.appId)
 	
 	parent_ele.appendChild(ele);
 
+	
+	
 	
     }
     return ele
@@ -604,7 +619,10 @@ function _ui_send_number( ele )
 	val = Number.parseFloat(ele.value)
 
     if( !(ele.minValue<=val && val<=ele.maxValue))
+    {
 	ele.style.borderColor = "red"
+	ui_send_corrupt_state(ele)
+    }
     else	
     {
 	ele.style.borderColor = ""
