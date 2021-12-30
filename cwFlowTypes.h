@@ -165,6 +165,7 @@ namespace cw
       value_t              local_value;  // the local value instance (actual value if this is not a 'src' variable)
       value_t*             value;        // pointer to the value associated with this variable   
       unsigned             chIdx;        // channel index
+      struct variable_str* src_var;      // pointer to this input variables source link (or null if it uses the local_value)
       struct variable_str* var_link;     // link to other var's on 'inst' 
       struct variable_str* connect_link; // list of outgoing connections
       struct variable_str* ch_link;      // list of channels that share this variable (rooted on 'any' channel - in order by channel number)
@@ -280,11 +281,13 @@ namespace cw
 
     // Channelizing creates a new var record with an explicit channel index to replace the
     // automatically generated variable whose channel index is set to  'all'.
-    rc_t           var_channelize( instance_t* inst, const char* var_label, unsigned chIdx, const object_t* value_cfg, variable_t*& varRef );
+    rc_t           var_channelize( instance_t* inst, const char* var_label, unsigned chIdx, const object_t* value_cfg, unsigned vid, variable_t*& varRef );
 
     // `value_cfg` is optional. Set it to NULL to ignore
     rc_t           var_register( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, const object_t* value_cfg, variable_t*& varRef );
 
+    // Returns true if this var is connected to an external proc variable
+    bool           is_connected_to_external_proc( const variable_t* var );
 
     //-----------------
     //

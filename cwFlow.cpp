@@ -183,7 +183,17 @@ namespace cw
       return rc;
     }
 
-    
+    void _connect_vars( variable_t* src_var, variable_t* in_var )
+    {
+      // connect in_var into src_var's outgoing var chain
+      in_var->connect_link  = src_var->connect_link;
+      src_var->connect_link = in_var;
+
+      assert( src_var->value != nullptr );
+          
+      in_var->value    = src_var->value;
+      in_var->src_var = src_var;
+    }
 
     rc_t _setup_input( flow_t* p, instance_t* in_inst, const char* in_var_label, const char* src_label_arg )
     {
@@ -244,14 +254,7 @@ namespace cw
         goto errLabel;
       }
 
-
-      // connect in_var into src_var's outgoing var chain
-      in_var->connect_link = src_var->connect_link;
-      src_var->connect_link = in_var;
-      
-
-      in_var->value   = src_var->value;
-      
+      _connect_vars( src_var, in_var );
 
       //cwLogInfo("'%s:%s' connected to source '%s:%s' %p.", in_inst->label, in_var_label, src_inst->label, suffix, in_var->value );
       
@@ -301,8 +304,8 @@ namespace cw
           if( max_vid == kInvalidId || var->vid > max_vid )
             max_vid = var->vid;
 
-          if( var->chIdx != kAnyChIdx && var->chIdx > max_chIdx )
-            max_chIdx = var->chIdx;
+          if( var->chIdx != kAnyChIdx && (var->chIdx+1) > max_chIdx )
+            max_chIdx = (var->chIdx + 1);
 
         }
       }
@@ -332,17 +335,19 @@ namespace cw
               variable_t* v0 = inst->varMapA[idx];
               rc = cwLogError(kInvalidStateRC,"The variable '%s' id:%i ch:%i and '%s' id:%i ch:%i share the same variable map position on instance: %s. This is usually cased by duplicate variable id's.",
                               v0->label,v0->vid,v0->chIdx, var->label,var->vid,var->chIdx,inst->label);
+
               goto errLabel;
             }
 
             // assign this variable to a map position
             inst->varMapA[ idx ] = var;
 
-            if( var->value == nullptr )
+            if( var->chIdx != kAnyChIdx && var->value == nullptr )
             {
               rc = cwLogError(kInvalidStateRC,"The value of the variable '%s' ch:%i on instance:'%s' has not been set.",var->label,var->chIdx,inst->label);
               goto errLabel;
             }
+
           }
         
       }
@@ -350,6 +355,49 @@ namespace cw
     errLabel:
       return rc;
       
+    }
+
+    void _complete_input_connections( instance_t* inst )
+    {
+      for(variable_t* var=inst->varL; var!=nullptr; var=var->var_link)
+        if(var->chIdx == kAnyChIdx && is_connected_to_external_proc(var) )
+        {
+
+          variable_t* base_src_var = var->src_var;
+
+          // since 'var' is on the 'any' channel the 'src' var must also be on the 'any' channel
+          assert( base_src_var->chIdx == kAnyChIdx );
+          
+          printf("%s %s\n",inst->label,var->label);
+          for(variable_t* in_var = var->ch_link; in_var != nullptr; in_var=in_var->ch_link)
+          {
+            
+            
+            variable_t* svar = base_src_var;
+            for(; svar!=nullptr; svar=svar->ch_link)
+              if( svar->chIdx == in_var->chIdx )
+                break;
+
+            _connect_vars( svar==nullptr ? base_src_var : svar, in_var);
+          }
+        }
+    }
+    
+    rc_t _call_value_func_on_all_variables( instance_t* inst )
+    {
+      rc_t rc  = kOkRC;
+      rc_t rc1 = kOkRC;
+      
+      for(unsigned i=0; i<inst->varMapN; ++i)
+        if( inst->varMapA[i] != nullptr && inst->varMapA[i]->vid != kInvalidId )
+        {
+          variable_t* var = inst->varMapA[i];
+          
+          if((rc = var->inst->class_desc->members->value( var->inst, var )) != kOkRC )
+            rc1 = cwLogError(rc,"The proc instance '%s' reported an invalid valid on variable:%s chIdx:%i.", var->inst->label, var->label, var->chIdx );
+        }
+      
+      return rc1;
     }
 
     rc_t _preset_channelize_vars( instance_t* inst, const char* type_src_label, const char* preset_label, const object_t* preset_cfg )
@@ -384,12 +432,12 @@ namespace cw
         if( value->is_list() )
         {
           for(unsigned chIdx=0; chIdx<value->child_count(); ++chIdx)
-            if((rc = var_channelize( inst, value_label, chIdx, value->child_ele(chIdx), dummy )) != kOkRC )
+            if((rc = var_channelize( inst, value_label, chIdx, value->child_ele(chIdx), kInvalidId, dummy )) != kOkRC )
               goto errLabel;
         }
         else // otherwise a single value was given
         {          
-          if((rc = var_channelize( inst, value_label, kAnyChIdx, value, dummy )) != kOkRC )
+          if((rc = var_channelize( inst, value_label, kAnyChIdx, value, kInvalidId, dummy )) != kOkRC )
             goto errLabel;
         }
         
@@ -626,7 +674,7 @@ namespace cw
       // that were expressed with a list have numeric channel indexes assigned.
 
 
-      // TODO: Should the 'all' variable be removed for variables that have numeric channel indexes.
+      // TODO: Should the 'all' variable be removed for variables that have numeric channel indexes?
 
       // connect the variable lists in the instance 'in' dictionary
       if( pvars.in_dict != nullptr )
@@ -679,6 +727,11 @@ namespace cw
       }
       
       if((rc =_create_instance_var_map( inst )) != kOkRC )
+        goto errLabel;
+      
+      _complete_input_connections(inst);
+      
+      if((rc = _call_value_func_on_all_variables( inst )) != kOkRC )
         goto errLabel;
       
       // insert an instance in the network
@@ -787,7 +840,7 @@ namespace cw
       variable_t* var  = nullptr;
 
       // locate the proc instance
-      if((inst = instance_find(p,inst_label)) != nullptr )
+      if((inst = instance_find(p,inst_label)) == nullptr )
       {
         rc = cwLogError(kInvalidIdRC,"Unknown proc instance label '%s'.", cwStringNullGuard(inst_label));
         goto errLabel;
@@ -886,7 +939,7 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
     // create the instance
     if( (rc= _create_instance( p, inst_cfg ) ) != kOkRC )
     {
-      rc = cwLogError(rc,"The instantiation at network index %i is invalid.",i);
+      rc = cwLogError(rc,"The instantiation at proc index %i is invalid.",i);
       goto errLabel;
       
     }
@@ -983,6 +1036,7 @@ cw::rc_t cw::flow::apply_preset( handle_t h, const char* presetLabel )
         goto errLabel;
       }
 
+      // if the preset value is a string then look it up in the class dictionary
       if( preset_value_cfg->is_string() )
       {
         const char* class_preset_label;
@@ -990,10 +1044,15 @@ cw::rc_t cw::flow::apply_preset( handle_t h, const char* presetLabel )
         _class_preset_channelize_vars(inst, class_preset_label );
       }
       else
+        // if the preset value is a dict then apply it directly
         if( preset_value_cfg->is_dict() )
         {
-          printf("Not implemented.\n");
-          assert(0);
+          if((rc =  _preset_channelize_vars( inst, "network", presetLabel, preset_value_cfg )) != kOkRC )
+          {
+            rc = cwLogError(rc,"The preset  '%s' application failed on instance '%s'.", presetLabel, inst_label );
+            goto errLabel;
+          }
+          
         }
         else
         {

@@ -437,29 +437,143 @@ namespace cw
     rc_t _var_broadcast_new_value( variable_t* var )
     {
       rc_t rc = kOkRC;
-
+      /*
       // notify each connected var that the value has changed
       for(variable_t* con_var = var->connect_link; con_var!=nullptr; con_var=con_var->connect_link)
         if((rc = con_var->inst->class_desc->members->value( con_var->inst, con_var )) != kOkRC )
           break;
+      */
+      return rc;
+    }
+
+    template< typename T >
+    void _var_setter( variable_t* var, T val )
+    {
+      cwLogError(kAssertFailRC,"Unimplemented variable setter.");
+      assert(0);
+    }
+
+    template<>
+    void _var_setter<bool>( variable_t* var, bool val )
+    {
+      var->local_value.u.b   = val;
+      var->local_value.flags = kBoolTFl;
+      cwLogMod("%s.%s ch:%i %i (bool).",var->inst->label,var->label,var->chIdx,val);
+    }
+
+    template<>
+    void _var_setter<unsigned>( variable_t* var, unsigned val )
+    {
+      var->local_value.u.u   = val;
+      var->local_value.flags = kUIntTFl;
+      cwLogMod("%s.%s ch:%i %i (uint).",var->inst->label,var->label,var->chIdx,val);
+    }
+
+    template<>
+    void _var_setter<int>( variable_t* var, int val )
+    {
+      var->local_value.u.i   = val;
+      var->local_value.flags = kIntTFl;
+      cwLogMod("%s.%s ch:%i %i (int).",var->inst->label,var->label,var->chIdx,val);
+    }
+
+    template<>
+    void _var_setter<float>( variable_t* var, float val )
+    {
+      var->local_value.u.f   = val;
+      var->local_value.flags = kFloatTFl;
+      cwLogMod("%s.%s ch:%i %f (float).",var->inst->label,var->label,var->chIdx,val);
+    }
+
+    template<>
+    void _var_setter<double>( variable_t* var, double val )
+    {
+      var->local_value.u.d   = val;
+      var->local_value.flags = kDoubleTFl;
+      cwLogMod("%s.%s ch:%i %f (double).",var->inst->label,var->label,var->chIdx,val);
+    }
+
+    template<>
+    void _var_setter<const char*>( variable_t* var, const char* val )
+    {      
+      var->local_value.u.s   = mem::duplStr(val);
+      var->local_value.flags = kStringTFl;
+      cwLogMod("%s.%s ch:%i %s (string).",var->inst->label,var->label,var->chIdx,val);
+    }
+
+    template<>
+    void _var_setter<abuf_t*>( variable_t* var, abuf_t* val )
+    {
+      var->local_value.u.abuf   = val;
+      var->local_value.flags = kABufTFl;
+      cwLogMod("%s.%s ch:%i %s (abuf).",var->inst->label,var->label,var->chIdx,abuf==nullptr ? "null" : "valid");
+    }
+    
+    template<>
+    void _var_setter<fbuf_t*>( variable_t* var, fbuf_t* val )
+    {
+      var->local_value.u.fbuf = val;
+      var->local_value.flags  = kFBufTFl;
+      cwLogMod("%s.%s ch:%i %s (fbuf).",var->inst->label,var->label,var->chIdx,fbuf==nullptr ? "null" : "valid");
+    }
+    
+    template< typename T >
+    rc_t _var_set_template( variable_t* var, unsigned typeFlag, T val )
+    {
+      rc_t rc;
+
+      if((rc = _validate_var_assignment( var, typeFlag )) != kOkRC )
+        return rc;
+
+      // If the instance is fully initialized ...
+      if( var->inst->varMapA != nullptr )
+      {
+        // ... then inform the proc. that the value changed
+        // (we don't want to do call to occur if we are inside or prior to 'proc.create()' 
+        // call because calls' to 'proc.value()' will see the instance in a incomplete state)
+        rc = var->inst->class_desc->members->value( var->inst, var );
+      }
+
+      if( rc == kOkRC )
+      {
+        // release the current value
+        _value_release(&var->local_value);
+
+        // set the new local value
+        _var_setter(var,val);
+
+        // make the var point to the local value
+        var->value = &var->local_value;
+
+      
+        // send the value to connected downstream proc's
+        rc = _var_broadcast_new_value( var );
+      }
       
       return rc;
     }
+    
 
     rc_t _var_set( variable_t* var, bool val )
     {
       rc_t rc;
       if((rc = _validate_var_assignment( var, kBoolTFl )) != kOkRC )
         return rc;
+
+      if((rc = var->inst->class_desc->members->value( var->inst, var )) == kOkRC )
+      {
+
+        _value_release(&var->local_value);
+        var->local_value.u.b   = val;
+        var->local_value.flags = kBoolTFl;
+        var->value             = &var->local_value;
+
+        cwLogMod("%s.%s ch:%i %i (bool).",var->inst->label,var->label,var->chIdx,val);
+
+        rc = _var_broadcast_new_value( var );
+      }
       
-      _value_release(&var->local_value);
-      var->local_value.u.b   = val;
-      var->local_value.flags = kBoolTFl;
-      var->value             = &var->local_value;
-
-      cwLogMod("%s.%s ch:%i %i (bool).",var->inst->label,var->label,var->chIdx,val);
-
-      return _var_broadcast_new_value( var );        
+      return rc;
     }
     
     rc_t _var_set( variable_t* var, unsigned val )
@@ -467,16 +581,20 @@ namespace cw
       rc_t rc;
       if((rc = _validate_var_assignment( var, kUIntTFl )) != kOkRC )
         return rc;
-      
-      _value_release(&var->local_value);
-      var->local_value.u.u   = val;
-      var->local_value.flags = kUIntTFl;
-      var->value             = &var->local_value;
 
-      cwLogMod("%s.%s ch:%i %i (uint_t).",var->inst->label,var->label,var->chIdx,val);
+      if((rc = var->inst->class_desc->members->value( var->inst, var )) == kOkRC )
+      {
+        _value_release(&var->local_value);
+        var->local_value.u.u   = val;
+        var->local_value.flags = kUIntTFl;
+        var->value             = &var->local_value;
+
+        cwLogMod("%s.%s ch:%i %i (uint_t).",var->inst->label,var->label,var->chIdx,val);
       
-      return _var_broadcast_new_value( var );
-        
+       _var_broadcast_new_value( var );
+      }
+      
+      return rc;
     }
     
     rc_t _var_set( variable_t* var, int val )
@@ -576,26 +694,36 @@ namespace cw
       return _var_broadcast_new_value( var );
     }
 
+
+    bool is_connected_to_external_proc( const variable_t* var )
+    {
+      return var->src_var != nullptr && var->value != nullptr && var->value != &var->local_value;
+    }
+
     template< typename T >
-    rc_t _var_set_driver( variable_t* var, T value )
+    rc_t _var_set_driver( variable_t* var, unsigned typeFlag, T value )
     {
       rc_t rc;
+
+      // if this variable is fed from the output of an external proc - then it's local value cannot be set
+      if(is_connected_to_external_proc(var)   )
+        return kOkRC;
+      
 
       // if this assignment targets a specific channel ...
       if( var->chIdx != kAnyChIdx )
       {
-        rc = _var_set(var,value); // ...  then set it alone
+        rc = _var_set_template( var, typeFlag, value ); // ...  then set it alone
       }
       else // ... otherwise set all channels.
       {
         for(; var!=nullptr; var=var->ch_link)
-          if((rc = _var_set(var,value)) != kOkRC )
+          if((rc = _var_set_template( var, typeFlag, value )) != kOkRC)
             break;
       }
 
       return rc;
     }
-
 
     
     rc_t  _var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, abuf_t* abuf )
@@ -606,7 +734,7 @@ namespace cw
         return rc;
 
       if( var != nullptr )
-        _var_set_driver( var, abuf );
+        _var_set_driver( var, kABufTFl, abuf );
 
       return rc;
     }
@@ -619,7 +747,7 @@ namespace cw
         return rc;
 
       if( var != nullptr )
-        _var_set_driver( var, fbuf );
+        _var_set_driver( var, kFBufTFl, fbuf );
 
       return rc;
     }
@@ -628,13 +756,15 @@ namespace cw
     {
       rc_t rc = kOkRC;
 
-      switch( var->varDesc->type & kTypeMask )
+      unsigned typeFlag = var->varDesc->type & kTypeMask;
+      
+      switch( typeFlag )
       {
         case kBoolTFl:
           {
             bool v;
             if((rc = value->value(v)) == kOkRC )
-              rc = _var_set_driver( var, v );
+              rc = _var_set_driver( var, typeFlag, v );
           }
           break;
           
@@ -642,7 +772,7 @@ namespace cw
           {
             unsigned v;
             if((rc = value->value(v)) == kOkRC )
-              rc = _var_set_driver( var, v );
+              rc = _var_set_driver( var, typeFlag, v );
           }
           break;
           
@@ -650,7 +780,7 @@ namespace cw
           {
             int v;
             if((rc = value->value(v)) == kOkRC )
-              rc = _var_set_driver( var, v );
+              rc = _var_set_driver( var, typeFlag, v );
           }
           break;
           
@@ -658,7 +788,7 @@ namespace cw
           {
             float v;
             if((rc = value->value(v)) == kOkRC )
-              rc = _var_set_driver( var, v );
+              rc = _var_set_driver( var, typeFlag, v );
           }
           break;
 
@@ -666,7 +796,7 @@ namespace cw
           {
             double v;
             if((rc = value->value(v)) == kOkRC )
-              rc = _var_set_driver( var, v );
+              rc = _var_set_driver( var, typeFlag, v );
           }
           break;
           
@@ -674,7 +804,7 @@ namespace cw
           {
             const char* v;
             if((rc = value->value(v)) == kOkRC )
-              rc = _var_set_driver( var, v );
+              rc = _var_set_driver( var, typeFlag, v );
           }
           break;
 
@@ -692,11 +822,11 @@ namespace cw
 
     rc_t  _var_map_id_to_index(  instance_t* inst, unsigned vid, unsigned chIdx, unsigned& idxRef )
     {
-      unsigned idx = vid * inst->varMapChN + (chIdx == kAnyChIdx ? 0 : chIdx);
+      unsigned idx = vid * inst->varMapChN + (chIdx == kAnyChIdx ? 0 : (chIdx+1));
 
       // verify that the map idx is valid
       if( idx >= inst->varMapN )
-        return cwLogError(kAssertFailRC,"The variable map positioning location %i is out of the range % on instance '%s' vid:%i ch:%i.", idx, inst->varMapN, inst->label,vid,chIdx);
+        return cwLogError(kAssertFailRC,"The variable map positioning location %i is out of the range %i on instance '%s' vid:%i ch:%i.", idx, inst->varMapN, inst->label,vid,chIdx);
 
       idxRef = idx;
   
@@ -820,9 +950,10 @@ namespace cw
 
     void _var_print( const variable_t* var )
     {
-      const char* local_label = var->value==nullptr || var->value == &var->local_value ? "local" : "     ";
+      //const char* local_label = var->value==nullptr || var->value == &var->local_value ? "local" : "     ";
+      const char* conn_label  = is_connected_to_external_proc(var) ? "extern" : "      ";
     
-      printf("  %20s id:%4i ch:%3i : %s  : ", var->label, var->vid, var->chIdx, local_label );
+      printf("  %20s id:%4i ch:%3i : %s  : ", var->label, var->vid, var->chIdx, conn_label );
     
       if( var->value == nullptr )
         _value_print( &var->local_value );
@@ -1095,7 +1226,7 @@ cw::rc_t cw::flow::var_create( instance_t* inst, const char* var_label, unsigned
   return rc;
 }
 
-cw::rc_t  cw::flow::var_channelize( instance_t* inst, const char* var_label, unsigned chIdx, const object_t* value_cfg, variable_t*& varRef )
+cw::rc_t  cw::flow::var_channelize( instance_t* inst, const char* var_label, unsigned chIdx, const object_t* value_cfg, unsigned vid, variable_t*& varRef )
 {
   rc_t        rc  = kOkRC;
   variable_t* var = nullptr;
@@ -1124,7 +1255,7 @@ cw::rc_t  cw::flow::var_channelize( instance_t* inst, const char* var_label, uns
   if( var == nullptr && chIdx != kAnyChIdx )
   {
     // create the channelized var
-    if((rc = _var_create( inst, var_label, kInvalidId, chIdx, value_cfg, var )) != kOkRC )
+    if((rc = _var_create( inst, var_label, vid, chIdx, value_cfg, var )) != kOkRC )
       goto errLabel;
 
     // if no value was set then set the value from the 'any' channel
@@ -1247,12 +1378,17 @@ cw::rc_t cw::flow::var_register( instance_t* inst, const char* var_label, unsign
   }
   else // an exact match was not found - channelize the variable
   {
-    if((rc = var_channelize(inst,var_label,chIdx,value_cfg,var)) != kOkRC )
+    if((rc = var_channelize(inst,var_label,chIdx,value_cfg,vid,var)) != kOkRC )
       goto errLabel;
   }
 
   var->vid = vid;
   varRef   = var;
+
+  if((var = _var_find_on_label_and_ch(inst,var_label,kAnyChIdx)) != nullptr )
+    var->vid = vid;
+  else
+    rc = cwLogError(kInvalidStateRC,"The variable '%s' instance '%s' has no base channel.", var_label, inst->label, chIdx);
   
  errLabel:
   if( rc != kOkRC )
@@ -1331,7 +1467,7 @@ cw::rc_t cw::flow::var_set( instance_t* inst, unsigned vid, unsigned chIdx, bool
   variable_t* var = nullptr;
   
   if((rc = _var_find_to_set(inst, vid, chIdx, kBoolTFl, var )) == kOkRC )
-    _var_set_driver( var, val );
+    _var_set_driver( var, kBoolTFl, val );
   
   return rc;    
 }
@@ -1342,7 +1478,7 @@ cw::rc_t cw::flow::var_set( instance_t* inst, unsigned vid, unsigned chIdx, uint
   variable_t* var = nullptr;
   
   if((rc = _var_find_to_set(inst, vid, chIdx, kUIntTFl, var )) == kOkRC )
-    _var_set_driver( var, val );
+    _var_set_driver( var, kUIntTFl, val );
   
   return rc;    
 }
@@ -1353,7 +1489,7 @@ cw::rc_t cw::flow::var_set( instance_t* inst, unsigned vid, unsigned chIdx, int_
   variable_t* var = nullptr;
   
   if((rc = _var_find_to_set(inst, vid, chIdx, kIntTFl, var )) == kOkRC )
-    _var_set_driver( var, val );
+    _var_set_driver( var, kIntTFl, val );
   
   return rc;    
 }
@@ -1364,7 +1500,7 @@ cw::rc_t cw::flow::var_set( instance_t* inst, unsigned vid, unsigned chIdx, floa
   variable_t* var = nullptr;
   
   if((rc = _var_find_to_set(inst, vid, chIdx, kFloatTFl, var )) == kOkRC )
-    _var_set_driver( var, val );
+    _var_set_driver( var, kFloatTFl, val );
   
   return rc;    
 }
@@ -1375,7 +1511,7 @@ cw::rc_t cw::flow::var_set( instance_t* inst, unsigned vid, unsigned chIdx, doub
   variable_t* var = nullptr;
   
   if((rc = _var_find_to_set(inst, vid, chIdx, kDoubleTFl, var )) == kOkRC )
-    _var_set_driver( var, val );
+    _var_set_driver( var, kDoubleTFl, val );
   
   return rc;    
 }
@@ -1386,7 +1522,7 @@ cw::rc_t cw::flow::var_set( instance_t* inst, unsigned vid, unsigned chIdx, cons
   variable_t* var = nullptr;
   
   if((rc = _var_find_to_set(inst, vid, chIdx, kStringTFl, var )) == kOkRC )
-    _var_set_driver( var, val );
+    _var_set_driver( var, kStringTFl, val );
   
   return rc;    
 }
