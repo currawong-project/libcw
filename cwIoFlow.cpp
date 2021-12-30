@@ -84,6 +84,7 @@ namespace cw
         mem::release( ag->oDeviceA);
       }
 
+      mem::release(p->audioGroupA);
       mem::release(p);
       
       return kOkRC;
