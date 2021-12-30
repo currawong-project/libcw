@@ -112,6 +112,21 @@ unsigned cw::log::level( handle_t h )
   return p->level;
 }
 
+void cw::log::setOutputCb( handle_t h, logOutputCbFunc_t outFunc, void* outCbArg )
+{
+  log_t* p = _handleToPtr(h);
+  p->outCbFunc = outFunc;
+  p->outCbArg  = outCbArg;
+}
+
+void cw::log::setFormatCb( handle_t h, logFormatCbFunc_t fmtFunc, void* fmtCbArg )
+{
+  log_t* p = _handleToPtr(h);
+  p->fmtCbFunc = fmtFunc;
+  p->fmtCbArg = fmtCbArg;
+  
+}
+
 
 const char* cw::log::levelToLabel( unsigned level )
 {

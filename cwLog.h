@@ -31,6 +31,9 @@ namespace cw
     void     setLevel( handle_t h, unsigned level );
     unsigned level( handle_t h );
 
+    void setOutputCb( handle_t h, logOutputCbFunc_t outFunc, void* outCbArg );
+    void setFormatCb( handle_t h, logFormatCbFunc_t fmtFunc, void* fmtCbArg );
+
     const char* levelToLabel( unsigned level );
   
     void defaultOutput( void* arg, unsigned level, const char* text );
@@ -113,11 +116,11 @@ namespace cw
 // By defining cwLOG_MODULE prior to cwLog.h in a given module these logging lines will be enabled.
 #ifdef cwLOG_MODULE
 
-#define cwLogVModRC(rc,fmt, vl) cwLogVInfoH( cw::log::globalhandle(), (rc), (fmt), (vl) )
-#define cwLogModRC( rc,fmt,...) cwLogInfoH(  cw::log::globalHandle(), (rc), (fmt), ##__VA_ARGS__ )
+#define cwLogVModRC(rc,fmt, vl) cw::log::msg( cw::log::globalHandle(), cw::log::kInfo_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, (rc), (fmt), (vl) )
+#define cwLogModRC( rc,fmt,...) cw::log::msg( cw::log::globalHandle(), cw::log::kInfo_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, (rc), (fmt), ##__VA_ARGS__ )
 
-#define cwLogVMod(fmt, vl)      cwLogVInfoH( cw::log::globalHandle(), cw::kOkRC, (fmt), (vl) )
-#define cwLogMod( fmt,...)      cwLogInfoH(  cw::log::globalHandle(), cw::kOkRC, (fmt), ##__VA_ARGS__ )
+#define cwLogVMod(fmt, vl)      cw::log::msg( cw::log::globalHandle(), cw::log::kInfo_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, cw::kOkRC, (fmt), (vl) )
+#define cwLogMod( fmt,...)      cw::log::msg( cw::log::globalHandle(), cw::log::kInfo_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, cw::kOkRC, (fmt), ##__VA_ARGS__ )
 
 #else
 
