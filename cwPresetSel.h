@@ -57,6 +57,13 @@ namespace cw
       kPresetSelectVarId, //  select a preset to play
       kPlayEnableVarId,   //  include in the segment to play
       kDryFlVarId,        //  play this fragment dry
+
+
+      kBaseMasterVarId,       // All 'master' variables have id's greater than kBaseMasterVarId
+      kMasterWetInGainVarId,
+      kMasterWetOutGainVarId,
+      kMasterDryGainVarId,
+      kMasterSyncDelayMsVarId
     };
     
     rc_t create(  handle_t& hRef, const object_t* cfg  );
