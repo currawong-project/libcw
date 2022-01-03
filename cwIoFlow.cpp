@@ -251,7 +251,7 @@ namespace cw
     rc_t _audio_callback( io_flow_t* p, io::audio_msg_t& m )
     {      
       rc_t rc = kOkRC;
-      flow::abuf_t* abuf;
+      flow::abuf_t* abuf = nullptr;
 
       // if there is incoming (recorded) audio 
       if( m.iBufChCnt > 0 )
@@ -436,3 +436,9 @@ cw::rc_t cw::io_flow::set_variable_value( handle_t h, flow_cross::destId_t destI
 
 cw::rc_t cw::io_flow::begin_cross_fade( handle_t h, unsigned crossFadeMs )
 { return flow_cross::begin_cross_fade( _handleToPtr(h)->crossFlowH, crossFadeMs ); }
+
+void cw::io_flow::print( handle_t h )
+{ return flow_cross::print( _handleToPtr(h)->crossFlowH ); }
+
+void cw::io_flow::print_network( handle_t h, flow_cross::destId_t destId )
+{  return flow_cross::print_network(  _handleToPtr(h)->crossFlowH, destId );  }
