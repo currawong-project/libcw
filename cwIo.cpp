@@ -3134,3 +3134,9 @@ cw::rc_t cw::io::uiSendValue( handle_t h, unsigned uuId, const char* value )
   return rc;
 }
 
+void cw::io::uiReport( handle_t h )
+{
+  ui::handle_t uiH;
+  if(_handleToUiHandle(h,uiH) == kOkRC )
+    ui::report(uiH);
+}
