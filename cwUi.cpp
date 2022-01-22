@@ -1517,12 +1517,13 @@ cw::rc_t cw::ui::setLogLine(   handle_t h, unsigned uuId, const char* text )
     rc = sendValueString(h,uuId,text);
   else
   {
-    int sn = textLength(text);
+    unsigned sn = textLength(text);
     sn += n + 1;
-    
-    char s[ sn ];
+
+    // alloc. a lot of extra space to cover the space need for the '\' escape character
+    char s[ sn*2 ]; 
     unsigned i,j;
-    for( i=0,j=0; text[i]; ++i,++j)
+    for( i=0,j=0; text[i] && j<sn; ++i,++j)
     {
       char ch        = text[i];
       bool escape_fl = true;
@@ -1542,11 +1543,14 @@ cw::rc_t cw::ui::setLogLine(   handle_t h, unsigned uuId, const char* text )
 
       if( escape_fl )
         s[j++] = '\\';
-      
-      s[j] = ch;
+
+      if( j < sn )
+        s[j] = ch;
     }
     
     s[sn-1] = 0;
+
+    
 
     //printf("%s %s\n",text,s);
     
@@ -1781,11 +1785,12 @@ void cw::ui::report( handle_t h )
     if(p->eleA[i] != nullptr )
     {
       const ele_t* e = p->eleA[i];
+      
     
-      unsigned    parUuId    = e->phys_parent==NULL ? kInvalidId : e->phys_parent->uuId;
-      const char* parEleName = e->phys_parent==NULL || e->phys_parent->eleName == NULL ? "" : e->phys_parent->eleName;
-    
-      printf("uu:%5i app:%5i %20s : parent uu:%5i app:%5i %20s ", e->uuId, e->appId, e->eleName == NULL ? "" : e->eleName, parUuId, e->logical_parent->appId, parEleName );
+      unsigned    parUuId        = e->phys_parent==NULL ? kInvalidId : e->phys_parent->uuId;
+      const char* parEleName     = e->phys_parent==NULL || e->phys_parent->eleName == NULL ? "" : e->phys_parent->eleName;
+      unsigned    logParentAppId = e->logical_parent==NULL ? kInvalidId : e->logical_parent->appId;
+      printf("uu:%5i app:%5i chan:%5i %20s : parent uu:%5i app:%5i %20s ", e->uuId, e->appId, e->chanId, e->eleName == NULL ? "" : e->eleName, parUuId, logParentAppId, parEleName );
 
       for(unsigned i=0; i<e->attr->child_count(); ++i)
       {
