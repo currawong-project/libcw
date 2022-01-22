@@ -84,8 +84,11 @@ namespace cw
     rc_t delete_fragment( handle_t h, unsigned fragId );
 
     bool is_fragment_loc( handle_t h, unsigned loc );
-    
+
+    // Return the fragment id of the 'selected' fragment.
     unsigned ui_select_fragment_id( handle_t h );
+
+    // Set the 'select_flag' on this fragment and remove it from all others.
     void     ui_select_fragment(    handle_t h, unsigned fragId, bool selectFl );
     
 

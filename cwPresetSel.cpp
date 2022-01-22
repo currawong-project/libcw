@@ -637,29 +637,27 @@ cw::rc_t cw::preset_sel::create_fragment( handle_t h, unsigned end_loc, time::sp
 cw::rc_t cw::preset_sel::delete_fragment( handle_t h, unsigned fragId )
 {
   preset_sel_t* p  = _handleToPtr(h);
-  frag_t*       f0 = nullptr;
-  frag_t*       f1 = p->fragL;
+  frag_t*       f = p->fragL;
   
-  for(; f1!=nullptr; f1=f1->link)
-  {
-    if( f1->fragId == fragId )
+  for(; f!=nullptr; f=f->link)
+    if( f->fragId == fragId )
     {
-      if( f0 == nullptr )
-        p->fragL = f1->link;
+      if( f->prev == nullptr )
+        p->fragL = f->link;
       else
-        f0->link = f1->link;
+        f->prev->link = f->link;
+
+      if( f->link != nullptr )
+        f->link->prev = f->prev;
 
       // release the fragment
-      mem::release(f1->presetA);
-      mem::release(f1);
+      mem::release(f->presetA);
+      mem::release(f);
       
       return kOkRC;
     }
-    
-    f0 = f1;
-  }
   
-  return kOkRC;
+  return cwLogError(kInvalidArgRC,"The fragment '%i' could not be found to delete.",fragId);
 }
 
 bool cw::preset_sel::is_fragment_loc( handle_t h, unsigned loc )
