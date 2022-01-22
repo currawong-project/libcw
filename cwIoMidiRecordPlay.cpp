@@ -33,21 +33,28 @@ namespace cw
       uint8_t       d1;
         
     } am_midi_msg_t;
+
+    typedef struct midi_device_str
+    {
+      char*          midiOutDevLabel;
+      char*          midiOutPortLabel;
+      unsigned       midiOutDevIdx;
+      unsigned       midiOutPortIdx;
+      bool           enableFl;
+    } midi_device_t;
   
     typedef struct midi_record_play_str
     {
       io::handle_t   ioH;
       
-      am_midi_msg_t* msgArray;
-      unsigned       msgArrayN;
-      unsigned       msgArrayInIdx;
-      unsigned       msgArrayOutIdx;
-      unsigned       midi_timer_period_micro_sec;
+      am_midi_msg_t* msgArray;                    // msgArray[ msgArrayN ]
+      unsigned       msgArrayN;                   // Count of messages allocated in msgArray.
+      unsigned       msgArrayInIdx;               // Next available space for incoming MIDI messages (also the current count of msgs in msgArray[])
+      unsigned       msgArrayOutIdx;              // Next message to transmit in msgArray[]     
+      unsigned       midi_timer_period_micro_sec; // Timer period in microseconds
 
-      char*          midiOutDevLabel;
-      char*          midiOutPortLabel;
-      unsigned       midiOutDevIdx;
-      unsigned       midiOutPortIdx;
+      midi_device_t* midiDevA;
+      unsigned       midiDevN;
 
       bool           startedFl;
       bool           recordFl;
@@ -79,10 +86,15 @@ namespace cw
       
       if((timerIdx = io::timerLabelToIndex( p->ioH, TIMER_LABEL )) != kInvalidIdx )
         io::timerDestroy( p->ioH, timerIdx);
-      
+
+      for(unsigned i=0; i<p->midiDevN; ++i)
+      {
+        mem::release(p->midiDevA[i].midiOutDevLabel);
+        mem::release(p->midiDevA[i].midiOutPortLabel);
+      }
+
+      mem::release(p->midiDevA);
       mem::release(p->msgArray);
-      mem::release(p->midiOutDevLabel);
-      mem::release(p->midiOutPortLabel);
       mem::release(p);
     
       return rc;
@@ -91,21 +103,47 @@ namespace cw
     rc_t _parseCfg(midi_record_play_t* p, const object_t& cfg )
     {
       rc_t rc = kOkRC;
-        
+      const object_t* midiDevL = nullptr;
       if((rc = cfg.getv(
                         "max_midi_msg_count",          p->msgArrayN,
                         "midi_timer_period_micro_sec", p->midi_timer_period_micro_sec,
-                        "midi_out_device",             p->midiOutDevLabel,
-                        "midi_out_port",               p->midiOutPortLabel)) != kOkRC )
+                        "midi_device_list",            midiDevL)) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"MIDI record play configuration parse failed.");
         goto errLabel;
       }
 
+      
+      if( midiDevL->child_count() > 0 )
+      {
+        p->midiDevN = midiDevL->child_count();
+        p->midiDevA = mem::allocZ<midi_device_t>(p->midiDevN);
+
+        printf("Midi record play devices:%i\n",p->midiDevN);
+        
+        for(unsigned i=0; i<p->midiDevN; ++i)
+        {
+          const object_t* ele              = midiDevL->child_ele(i);
+          const char*     midiOutDevLabel  = nullptr;
+          const char*     midiOutPortLabel = nullptr;
+          bool            enableFl         = false;
+          
+          if((rc = ele->getv( "midi_out_device",   midiOutDevLabel,
+                              "midi_out_port",     midiOutPortLabel,
+                              "enableFl",          enableFl)) != kOkRC )
+          {
+            rc = cwLogError(kSyntaxErrorRC,"MIDI record play device list configuration parse failed.");
+            goto errLabel;          
+          }
+
+          p->midiDevA[i].midiOutDevLabel  = mem::duplStr( midiOutDevLabel);
+          p->midiDevA[i].midiOutPortLabel = mem::duplStr( midiOutPortLabel);
+          p->midiDevA[i].enableFl         = enableFl;
+        }
+      }
+      
       // allocate the MIDI msg buffer
       p->msgArray         = mem::allocZ<am_midi_msg_t>( p->msgArrayN );
-      p->midiOutDevLabel  = mem::duplStr( p->midiOutDevLabel);
-      p->midiOutPortLabel = mem::duplStr( p->midiOutPortLabel);
 
     errLabel:
       return rc;
@@ -117,13 +155,15 @@ namespace cw
     {
       rc_t rc = kOkRC;
       
-      if( !time::isZero(p->end_play_event_timestamp) && time::isGTE(timestamp,p->end_play_event_timestamp))
+      if( !time::isZero(p->end_play_event_timestamp) && time::isGT(timestamp,p->end_play_event_timestamp))
       {
         rc = _stop(p);
       }
       else
       {
-        io::midiDeviceSend( p->ioH, p->midiOutDevIdx, p->midiOutPortIdx, status + ch, d0, d1 );
+        for(unsigned i=0; i<p->midiDevN; ++i)
+          if(p->midiDevA[i].enableFl )
+            io::midiDeviceSend( p->ioH, p->midiDevA[i].midiOutDevIdx, p->midiDevA[i].midiOutPortIdx, status + ch, d0, d1 );
 
         if( p->cb )
           p->cb( p->cb_arg, id, timestamp, ch, status, d0, d1 );
@@ -407,15 +447,19 @@ namespace cw
         _transmit_ctl(   p, 0, 123, 0 ); // all notes off
         _transmit_ctl(   p, 0,   0, 0 ); // switch to bank 0
 
+        //_transmit_pedal( p, 0, midi::kSustainCtlMdId,   false );
+        //_transmit_pedal( p, 0, midi::kSostenutoCtlMdId, false );
+        //_transmit_pedal( p, 0, midi::kSoftPedalCtlMdId, false );
+
         // send pgm change 0
-        time::spec_t ts = {0};
-        _event_callback( p, kInvalidId, ts, 0, midi::kPgmMdId, 0, 0 );
+        //time::spec_t ts = {0};
+        //_event_callback( p, kInvalidId, ts, 0, midi::kPgmMdId, 0, 0 );
         
         p->pedalFl = false;
 
       }
 
-      cwLogInfo("Runtime: %5.2f seconds.", time::elapsedMs(p->start_time,t1)/1000.0 );
+      //cwLogInfo("Runtime: %5.2f seconds.", time::elapsedMs(p->start_time,t1)/1000.0 );
 
       return rc;
     }
@@ -471,10 +515,7 @@ namespace cw
                 p->msgArrayInIdx += 1;
 
                 if( p->thruFl )
-                {
                   _transmit_msg( p, am );
-                  //io::midiDeviceSend( p->ioH, p->midiOutDevIdx, p->midiOutPortIdx, am->status + am->ch, am->d0, am->d1 );
-                }
 
                 // send msg count
                 //io::uiSendValue( p->ioH, kInvalidId, uiFindElementUuId(p->ioH,kMsgCntId), p->msgArrayInIdx );                  
@@ -574,17 +615,25 @@ cw::rc_t cw::midi_record_play::create( handle_t& hRef, io::handle_t ioH, const o
   p->ioH = ioH;
   p->cb  = cb;
   p->cb_arg = cb_arg;
-  
-  if((p->midiOutDevIdx = io::midiDeviceIndex(p->ioH,p->midiOutDevLabel)) == kInvalidIdx )
+
+  for( unsigned i=0; i<
+          p->midiDevN; ++i)
   {
-    rc = cwLogError(kInvalidArgRC,"The MIDI output device: '%s' was not found.", cwStringNullGuard(p->midiOutDevLabel) );
-    goto errLabel;
-  }
-        
-  if((p->midiOutPortIdx = io::midiDevicePortIndex(p->ioH,p->midiOutDevIdx,false,p->midiOutPortLabel)) == kInvalidIdx )
-  {
-    rc = cwLogError(kInvalidArgRC,"The MIDI output port: '%s' was not found.", cwStringNullGuard(p->midiOutPortLabel) );
-    goto errLabel;
+    midi_device_t* dev = p->midiDevA + i;
+    
+    if((dev->midiOutDevIdx = io::midiDeviceIndex(p->ioH,dev->midiOutDevLabel)) == kInvalidIdx )
+    {
+      rc = cwLogError(kInvalidArgRC,"The MIDI output device: '%s' was not found.", cwStringNullGuard(dev->midiOutDevLabel) );
+      goto errLabel;
+    }
+    
+    if((dev->midiOutPortIdx = io::midiDevicePortIndex(p->ioH,dev->midiOutDevIdx,false,dev->midiOutPortLabel)) == kInvalidIdx )
+    {
+      rc = cwLogError(kInvalidArgRC,"The MIDI output port: '%s' was not found.", cwStringNullGuard(dev->midiOutPortLabel) );
+      goto errLabel;
+    }
+
+    printf("%s %s : %i %i\n",dev->midiOutDevLabel, dev->midiOutPortLabel, dev->midiOutDevIdx, dev->midiOutPortIdx );
   }
   
   // create the MIDI playback timer
@@ -738,8 +787,8 @@ cw::rc_t cw::midi_record_play::load( handle_t h, const midi_msg_t* msg, unsigned
     p->msgArray[i].status    = msg[i].status;
     p->msgArray[i].d0        = msg[i].d0;
     p->msgArray[i].d1        = msg[i].d1;
-    p->msgArray[i].devIdx    = p->midiOutDevIdx;
-    p->msgArray[i].portIdx   = p->midiOutPortIdx;
+    p->msgArray[i].devIdx    = kInvalidIdx;
+    p->msgArray[i].portIdx   = kInvalidIdx;
     p->msgArray[i].microsec  = time::elapsedMicros(p->msgArray[0].timestamp,p->msgArray[i].timestamp);
   }
 
@@ -842,7 +891,37 @@ cw::rc_t  cw::midi_record_play::exec( handle_t h, const io::msg_t& m )
   return rc;
 }
 
+unsigned cw::midi_record_play::device_count( handle_t h )
+{
+  midi_record_play_t* p = _handleToPtr(h);
+  return p->midiDevN;
+}
 
+bool cw::midi_record_play::is_device_enabled( handle_t h, unsigned devIdx )
+{
+  midi_record_play_t* p = _handleToPtr(h);
+  bool fl = false;
+  
+  if( devIdx >= p->midiDevN )
+    cwLogError(kInvalidArgRC,"The MIDI record-play device index '%i' is invalid.",devIdx );
+  else
+    fl = p->midiDevA[devIdx].enableFl;
+  
+  return fl;
+}
+
+void cw::midi_record_play::enable_device( handle_t h, unsigned devIdx, bool enableFl )
+{
+  midi_record_play_t* p = _handleToPtr(h);
+  
+  if( devIdx >= p->midiDevN )
+    cwLogError(kInvalidArgRC,"The MIDI record-play device index '%i' is invalid.",devIdx );
+  else
+  {
+    p->midiDevA[devIdx].enableFl = enableFl;
+    printf("Enable: %i = %i\n",devIdx,enableFl);
+  }
+}
 
 cw::rc_t cw::midi_record_play::am_to_midi_file( const char* am_filename, const char* midi_filename )
 {  

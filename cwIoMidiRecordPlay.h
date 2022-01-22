@@ -40,6 +40,8 @@ namespace cw
 
     rc_t save( handle_t h, const char* fn );
     rc_t open( handle_t h, const char* fn );
+
+    // Load the playback buffer with messages to output.
     rc_t load( handle_t h, const midi_msg_t* msg, unsigned msg_count );
 
     rc_t seek( handle_t h, time::spec_t timestamp );
@@ -47,6 +49,10 @@ namespace cw
     unsigned event_count( handle_t h );
     unsigned event_index( handle_t h );
     rc_t exec( handle_t h, const io::msg_t& msg );
+
+    unsigned device_count( handle_t h );
+    bool is_device_enabled( handle_t h, unsigned devIdx );
+    void enable_device( handle_t h, unsigned devIdx, bool enableFl );
 
     // Convert an audio-midi file to a MIDI file
     rc_t am_to_midi_file( const char* am_filename, const char* midi_filename );
