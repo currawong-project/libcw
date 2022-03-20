@@ -98,7 +98,7 @@ namespace cw
       
       typedef struct
       {
-        
+        real_t value; 
       } inst_t;
 
 
@@ -106,6 +106,7 @@ namespace cw
       {
         rc_t rc = kOkRC;        
         real_t in_value = 0.5;
+        ctx->userPtr = mem::allocZ<inst_t>();
         
         if((rc  = var_register_and_get( ctx, kAnyChIdx, kInPId, "in", in_value )) != kOkRC )
           goto errLabel;
@@ -122,19 +123,32 @@ namespace cw
       }
 
       rc_t destroy( instance_t* ctx )
-      { return kOkRC; }
+      {
+        mem::release( ctx->userPtr );
+        return kOkRC;
+      }
 
       rc_t value( instance_t* ctx, variable_t* var )
-      { return kOkRC; }
+      {
+        return kOkRC;
+      }
 
       rc_t exec( instance_t* ctx )
       {
         rc_t   rc = kOkRC;
+        inst_t* inst = (inst_t*)(ctx->userPtr);
+        
         real_t value = 1;
         
         var_get(ctx, kInPId,     kAnyChIdx, value);
         var_set(ctx, kOutPId,    kAnyChIdx, value);
         var_set(ctx, kInvOutPId, kAnyChIdx, (real_t)(1.0 - value) );
+
+        if( inst->value != value )
+        {
+          inst->value = value;
+        }
+        
 
         return rc;
       }
@@ -228,7 +242,9 @@ namespace cw
         }
         else
         {
-          memcpy(abuf->buf,inst->ext_dev->u.a.abuf->buf, abuf->frameN*abuf->chN*sizeof(sample_t));
+          unsigned chN    = std::min(inst->ext_dev->u.a.abuf->chN, abuf->chN );
+          unsigned frameN = std::min(inst->ext_dev->u.a.abuf->frameN, abuf->frameN );
+          memcpy(abuf->buf,inst->ext_dev->u.a.abuf->buf, frameN*chN*sizeof(sample_t));
         }
 
         return rc;
@@ -316,8 +332,9 @@ namespace cw
           rc = cwLogError(kInvalidStateRC,"The audio file instance '%s' does not have a valid input connection.",ctx->label);
         else
         {
-
-          unsigned n = src_abuf->frameN*src_abuf->chN;
+          unsigned  chN    = std::min(inst->ext_dev->u.a.abuf->chN,    src_abuf->chN);
+          unsigned  frameN = std::min(inst->ext_dev->u.a.abuf->frameN, src_abuf->frameN);
+          unsigned n = chN * frameN;
           for(unsigned i=0; i<n; ++i)
             inst->ext_dev->u.a.abuf->buf[i] += src_abuf->buf[i];
           
@@ -384,7 +401,7 @@ namespace cw
 
         cwLogInfo("Audio '%s' srate:%f chs:%i frames:%i %f seconds.",inst->filename,info.srate,info.chCnt,info.frameCnt, info.frameCnt/info.srate );
 
-        // create one output audio buffer
+        // create one output audio buffer - with the same configuration as the source audio file
         rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, info.srate, info.chCnt, ctx->ctx->framesPerCycle );
 
       errLabel:
@@ -491,7 +508,7 @@ namespace cw
           goto errLabel;
         }
 
-        // create the audio file 
+        // create the audio file with the same channel count as the incoming signal
         if((rc = audiofile::create( inst->afH, inst->filename, src_abuf->srate, audioFileBits, src_abuf->chN)) != kOkRC )
         {
           rc = cwLogError(kOpFailRC,"The audio file create failed on '%s'.",cwStringNullGuard(inst->filename));
@@ -577,10 +594,18 @@ namespace cw
         kOutPId
       };
 
+      typedef struct inst_str
+      {
+        unsigned n;
+        real_t vgain;
+        real_t gain;
+      } inst_t;
+
       rc_t create( instance_t* ctx )
       {
         rc_t          rc     = kOkRC;
-        const abuf_t* abuf    = nullptr; //        
+        const abuf_t* abuf    = nullptr; //
+        ctx->userPtr = mem::allocZ<inst_t>();
 
         // get the source audio buffer
         if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",abuf )) != kOkRC )
@@ -600,16 +625,32 @@ namespace cw
       }
 
       rc_t destroy( instance_t* ctx )
-      { return kOkRC; }
+      {
+        inst_t* inst = (inst_t*)(ctx->userPtr);
+        mem::release(inst);
+        return kOkRC;
+      }
 
       rc_t value( instance_t* ctx, variable_t* var )
-      { return kOkRC; }
+      {
+        real_t value = 0;
+        inst_t* inst = (inst_t*)ctx->userPtr;
+        var_get(ctx,kGainPId,0,value);
+        
+        if( inst->vgain != value )
+        {
+          inst->vgain = value;
+          //printf("VALUE GAIN: %s %s : %f\n", ctx->label, var->label, value );
+        }
+        return kOkRC;
+      }
 
       rc_t exec( instance_t* ctx )
       {
         rc_t     rc           = kOkRC;
         const abuf_t* ibuf = nullptr;
         abuf_t*       obuf = nullptr;
+        inst_t*  inst = (inst_t*)(ctx->userPtr);
 
         // get the src buffer
         if((rc = var_get(ctx,kInPId, kAnyChIdx, ibuf )) != kOkRC )
@@ -631,6 +672,13 @@ namespace cw
           // apply the gain
           for(unsigned j=0; j<ibuf->frameN; ++j)
             osig[j] = gain * isig[j];
+
+          if( i==0 && gain != inst->gain )
+          {
+            inst->gain = gain;
+            //printf("EXEC GAIN: %s %f\n",ctx->label,gain);
+            //instance_print(ctx);
+          }
         }  
         
       errLabel:
@@ -684,13 +732,19 @@ namespace cw
 
         if( abuf->chN )
         {
+          unsigned selChN = 0;
+          
           inst->chSelMap = mem::allocZ<bool>(abuf->chN);
-        
+          
+          if((rc = var_channel_count(ctx,"select",selChN)) != kOkRC )
+            goto errLabel;
+          
           // register the gain 
           for(unsigned i=0; i<abuf->chN; ++i)
           {
-            if((rc = var_register_and_get( ctx, i, kSelectPId, "select", inst->chSelMap[i] )) != kOkRC )
-              goto errLabel;
+            if( i < selChN )
+              if((rc = var_register_and_get( ctx, i, kSelectPId, "select", inst->chSelMap[i] )) != kOkRC )
+                goto errLabel;
 
             if( inst->chSelMap[i] )
             {
@@ -1659,17 +1713,23 @@ namespace cw
 
         if( var->chIdx != kAnyChIdx && var->chIdx < inst->sdN )
         {
+          double val = 0;
+          spec_dist_t* sd = inst->sdA[ var->chIdx ];
+          
           switch( var->vid )
           {
-            case kCeilingPId:  var_get( var, inst->sdA[ var->chIdx ]->ceiling );  break;
-            case kExpoPId:     var_get( var, inst->sdA[ var->chIdx ]->expo );     break;
-            case kThreshPId:   var_get( var, inst->sdA[ var->chIdx ]->thresh );   break;
-            case kUprSlopePId: var_get( var, inst->sdA[ var->chIdx ]->uprSlope ); break;
-            case kLwrSlopePId: var_get( var, inst->sdA[ var->chIdx ]->lwrSlope ); break;
-            case kMixPId:      var_get( var, inst->sdA[ var->chIdx ]->mix );      break;
+            case kCeilingPId:  rc = var_get( var, val ); sd->ceiling = val; break;
+            case kExpoPId:     rc = var_get( var, val ); sd->expo = val;    break;
+            case kThreshPId:   rc = var_get( var, val ); sd->thresh = val;  break;
+            case kUprSlopePId: rc = var_get( var, val ); sd->uprSlope = val; break;
+            case kLwrSlopePId: rc = var_get( var, val ); sd->lwrSlope = val; break;
+            case kMixPId:      rc = var_get( var, val ); sd->mix = val;     break;
             default:
               cwLogWarning("Unhandled variable id '%i' on instance: %s.", var->vid, ctx->label );
           }
+
+          //printf("sd: ceil:%f expo:%f thresh:%f upr:%f lwr:%f mix:%f : rc:%i val:%f\n",
+          //       sd->ceiling, sd->expo, sd->thresh, sd->uprSlope, sd->lwrSlope, sd->mix, rc, val );
         }
         
         return rc;
@@ -1833,20 +1893,24 @@ namespace cw
 
         if( var->chIdx != kAnyChIdx && var->chIdx < inst->cmpN )
         {
+          compressor_t* c = inst->cmpA[ var->chIdx ];
           
           switch( var->vid )
           {
-            case kBypassPId:   var_get( var, inst->cmpA[ var->chIdx ]->bypassFl );  break;
-            case kInGainPId:   var_get( var, inst->cmpA[ var->chIdx ]->inGain );    break;
-            case kOutGainPId:  var_get( var, inst->cmpA[ var->chIdx ]->outGain );   break;
-            case kRatioPId:    var_get( var, inst->cmpA[ var->chIdx ]->ratio_num ); break;
-            case kThreshPId:   var_get( var, inst->cmpA[ var->chIdx ]->threshDb );  break;
-            case kAtkMsPId:    var_get( var, tmp ); set_attack_ms(inst->cmpA[ var->chIdx ],  tmp ); break;
-            case kRlsMsPId:    var_get( var, tmp ); set_release_ms(inst->cmpA[ var->chIdx ], tmp ); break;
-            case kWndMsPId:    var_get( var, tmp ); set_rms_wnd_ms(inst->cmpA[ var->chIdx ], tmp ); break;
+            case kBypassPId:   rc = var_get( var, tmp ); c->bypassFl=tmp; break;
+            case kInGainPId:   rc = var_get( var, tmp ); c->inGain=tmp;   break;
+            case kOutGainPId:  rc = var_get( var, tmp ); c->outGain=tmp;  break;
+            case kRatioPId:    rc = var_get( var, tmp ); c->ratio_num=tmp; break;
+            case kThreshPId:   rc = var_get( var, tmp ); c->threshDb=tmp; break;
+            case kAtkMsPId:    rc = var_get( var, tmp ); dsp::compressor::set_attack_ms(c,  tmp ); break;
+            case kRlsMsPId:    rc = var_get( var, tmp ); dsp::compressor::set_release_ms(c, tmp ); break;
+            case kWndMsPId:    rc = var_get( var, tmp ); dsp::compressor::set_rms_wnd_ms(c, tmp ); break;
+            case kMaxWndMsPId: break;
             default:
               cwLogWarning("Unhandled variable id '%i' on instance: %s.", var->vid, ctx->label );
           }
+          //printf("cmp byp:%i igain:%f ogain:%f rat:%f thresh:%f atk:%i rls:%i wnd:%i : rc:%i val:%f\n",
+          //       c->bypassFl, c->inGain, c->outGain,c->ratio_num,c->threshDb,c->atkSmp,c->rlsSmp,c->rmsWndCnt,rc,tmp);
         }
         
         
@@ -1957,6 +2021,12 @@ namespace cw
             goto errLabel;
           }
 
+          if( delayMs > maxDelayMs )
+          {
+            cwLogWarning("'delayMs' (%i) is being reduced to 'maxDelayMs' (%i) on the delay instance:%s.",delayMs,maxDelayMs,ctx->label);
+            delayMs = maxDelayMs;
+          }
+
           inst->maxDelayFrameN = std::max(inst->maxDelayFrameN, (unsigned)(fabs(maxDelayMs) * abuf->srate / 1000.0) );
 
           inst->cntV[i] = (unsigned)(fabs(delayMs) * abuf->srate / 1000.0);
@@ -1991,9 +2061,10 @@ namespace cw
       rc_t exec( instance_t* ctx )
       {
         rc_t          rc   = kOkRC;
+        inst_t*       inst = (inst_t*)ctx->userPtr;
         const abuf_t* ibuf = nullptr;
         abuf_t*       obuf = nullptr;
-        inst_t*       inst = (inst_t*)ctx->userPtr;
+        abuf_t*       dbuf = inst->delayBuf;
 
         // get the src buffer
         if((rc = var_get(ctx,kInPId, kAnyChIdx, ibuf )) != kOkRC )
@@ -2008,6 +2079,7 @@ namespace cw
           {
             sample_t* isig = ibuf->buf + i*ibuf->frameN;
             sample_t* osig = obuf->buf + i*obuf->frameN;
+            sample_t* dsig = dbuf->buf + i*dbuf->frameN;
             unsigned    di = inst->idxV[i];
 
             // if the delay is set to zero samples
@@ -2018,8 +2090,8 @@ namespace cw
               // otherwise the delay is non-zero positive sample count
               for(unsigned j=0; j<ibuf->frameN; ++j)
               {
-                osig[j] = inst->delayBuf->buf[di]; // read delay output
-                inst->delayBuf->buf[di] = isig[j]; // set delay input
+                osig[j]  = dsig[di]; // read delay output
+                dsig[di] = isig[j];  // set delay input
                 di = (di+1) % inst->cntV[i];       // update the delay index
               }
             }
