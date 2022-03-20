@@ -129,7 +129,7 @@ namespace cw
 
     // If label is NULL or labelCharCnt==0 then a pointer to an internal static
     // buffer is returned. If label[] is given the it
-    // should have at least 5 (kMidiPitchCharCnt) char's (including the terminating zero).
+    // should have at least 5 (kMidiSciPitchCharCnt) char's (including the terminating zero).
     // If 'pitch' is outside of the range 0-127 then a blank string is returned.
     const char*    midiToSciPitch( uint8_t pitch, char* label, unsigned labelCharCnt );
 
