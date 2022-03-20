@@ -69,6 +69,13 @@ namespace cw
 
       kStatusId,
 
+      kHalfPedalPedalVel,
+      kHalfPedalDelayMs,
+      kHalfPedalPitch,
+      kHalfPedalVel,
+      kHalfPedalDurMs,
+      kHalfPedalDnDelayMs,
+
       kLogId,
 
       kFragListId,
@@ -140,6 +147,15 @@ namespace cw
       { kPanelDivId,     kInsertLocId,    "insertLocId" },
       { kPanelDivId,     kInsertBtnId,    "insertBtnId" },
       { kPanelDivId,     kDeleteBtnId,    "deleteBtnId" },
+
+      { kPanelDivId,     kHalfPedalPedalVel, "halfPedalPedalVelId" },
+      { kPanelDivId,     kHalfPedalDelayMs,  "halfPedalDelayMsId"  },
+      { kPanelDivId,     kHalfPedalPitch,    "halfPedalPitchId"    },
+      { kPanelDivId,     kHalfPedalVel,      "halfPedalVelId"      },
+      { kPanelDivId,     kHalfPedalDurMs,    "halfPedalDurMsId"    },
+      { kPanelDivId,     kHalfPedalDnDelayMs, "halfPedalDnDelayMsId"    },
+
+      
       { kPanelDivId,     kStatusId,       "statusId" },
       { kPanelDivId,     kLogId,          "logId" },
 
@@ -213,6 +229,15 @@ namespace cw
       unsigned crossFadeCnt;
 
       bool     printMidiFl;
+
+      unsigned hpDelayMs;
+      unsigned hpPedalVel;
+      unsigned hpPitch;
+      unsigned hpVel;
+      unsigned hpDurMs;
+      unsigned hpDnDelayMs;
+      
+
       
     } app_t;
 
@@ -362,13 +387,20 @@ namespace cw
     void _midi_play_callback( void* arg, unsigned id, const time::spec_t timestamp, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
     {
       app_t* app = (app_t*)arg;
-      if( id != kInvalidId )
-      {
+      
         if( app->printMidiFl )
         {
           const unsigned buf_byte_cnt = 256;
           char buf[ buf_byte_cnt ];
-          event_to_string( app->scoreH, id, buf, buf_byte_cnt );
+          
+          // if this event is not in the score
+          if( id == kInvalidId )
+          {
+            // TODO: print this out in the same format as event_to_string()
+            snprintf(buf,buf_byte_cnt,"ch:%i status:0x%02x d0:%i d1:%i",ch,status,d0,d1);
+          }
+          else
+            score::event_to_string( app->scoreH, id, buf, buf_byte_cnt );
           printf("%s\n",buf);
         }
         
@@ -381,9 +413,6 @@ namespace cw
           if( f != nullptr )
             _do_select_frag( app, f->guiUuId );
         }
-        
-
-      }
     }
 
     loc_map_t* _find_loc( app_t* app, unsigned loc )
@@ -423,6 +452,9 @@ namespace cw
         rc = _do_stop_play(app);
         goto errLabel;
       }
+
+      midi_record_play::half_pedal_params( app->mrpH, app->hpDelayMs, app->hpPitch, app->hpVel, app->hpPedalVel, app->hpDurMs, app->hpDnDelayMs );
+
       
       if((begMap = _find_loc(app,begLoc)) == nullptr )
       {
@@ -971,6 +1003,7 @@ namespace cw
             m[i].d1     = e->d1;
             m[i].id     = e->uid;
 
+
             app->locMap[i].loc       = e->loc;
             app->locMap[i].timestamp = m[i].timestamp;
 
@@ -986,6 +1019,8 @@ namespace cw
           cwLogError(rc,"MIDI player load failed.");
           goto errLabel;
         }
+
+        cwLogInfo("%i MIDI events loaded.", midiEventN );
 
         mem::free(m);
         
@@ -1030,7 +1065,6 @@ namespace cw
 
       return rc;
     }
-
 
     rc_t _on_ui_start( app_t* app )
     {
@@ -1257,6 +1291,77 @@ namespace cw
       return rc;
     }
 
+    rc_t _on_ui_half_pedal_value( app_t* app, unsigned appId, unsigned uuId, unsigned value )
+    {
+      switch( appId )
+      {
+        case kHalfPedalDelayMs:
+          app->hpDelayMs = value;
+          break;
+          
+        case  kHalfPedalPedalVel:
+          app->hpPedalVel = value;
+          break;
+          
+        case kHalfPedalPitch:
+          app->hpPitch = value;
+          break;
+          
+        case kHalfPedalVel:
+          app->hpVel = value;
+          break;
+          
+        case kHalfPedalDurMs:
+          app->hpDurMs = value;
+          break;
+          
+        case kHalfPedalDnDelayMs:
+          app->hpDnDelayMs = value;
+          break;
+
+        default:
+          { assert(0); }
+          
+      }
+      return kOkRC;
+    }
+
+    rc_t _on_echo_half_pedal( app_t* app, unsigned appId, unsigned uuId )
+    {
+      switch( appId )
+      {
+        case kHalfPedalDelayMs:
+          io::uiSendValue( app->ioH, uuId, app->hpDelayMs );
+          break;
+          
+        case  kHalfPedalPedalVel:
+          io::uiSendValue( app->ioH, uuId, app->hpPedalVel );
+          break;
+          
+        case kHalfPedalPitch:
+          io::uiSendValue( app->ioH, uuId, app->hpPitch );
+          break;
+          
+        case kHalfPedalVel:
+          io::uiSendValue( app->ioH, uuId, app->hpVel );
+          break;
+          
+        case kHalfPedalDurMs:
+          io::uiSendValue( app->ioH, uuId, app->hpDurMs );
+          break;
+
+        case kHalfPedalDnDelayMs:
+          io::uiSendValue( app->ioH, uuId, app->hpDnDelayMs );
+          break;
+          
+        default:
+          { assert(0); }
+          
+      }
+      return kOkRC;      
+    }
+    
+    
     rc_t _onUiInit(app_t* app, const io::ui_msg_t& m )
     {
       rc_t rc = kOkRC;
@@ -1299,7 +1404,8 @@ namespace cw
           //preset_sel::report( app->psH );
           //io_flow::apply_preset( app->ioFlowH, 2000.0, app->tmp==0 ? "a" : "b");
           //app->tmp = !app->tmp;
-          io_flow::print(app->ioFlowH);
+          //io_flow::print(app->ioFlowH);
+          midi_record_play::save_csv(app->mrpH,"/home/kevin/temp/mrp_1.csv");
           break;
 
         case kSaveBtnId:
@@ -1371,6 +1477,15 @@ namespace cw
           _on_ui_delete_btn(app);
           break;
 
+        case kHalfPedalPedalVel:
+        case kHalfPedalDelayMs:
+        case kHalfPedalPitch:
+        case kHalfPedalVel:
+        case kHalfPedalDurMs:
+        case kHalfPedalDnDelayMs:
+          _on_ui_half_pedal_value( app, m.appId, m.uuId, m.value->u.u );
+          break;
+          
         case kFragInGainId:
           _on_ui_frag_value( app, m.uuId, m.value->u.d);          
           break;
@@ -1495,6 +1610,15 @@ namespace cw
         case kSyncDelayMsId:
           _on_echo_master_value( app, preset_sel::kMasterSyncDelayMsVarId, m.uuId );
           break;
+
+        case kHalfPedalPedalVel:
+        case kHalfPedalDelayMs:
+        case kHalfPedalPitch:
+        case kHalfPedalVel:
+        case kHalfPedalDurMs:
+        case kHalfPedalDnDelayMs:
+          _on_echo_half_pedal( app, m.appId, m.uuId );
+          break;
           
           
       }
@@ -1614,8 +1738,9 @@ namespace cw
 
 cw::rc_t cw::preset_sel_app::main( const object_t* cfg, const object_t* flow_proc_dict )
 {
+
   rc_t rc;
-  app_t app = { };
+  app_t app = { .hpDelayMs=250, .hpPedalVel=127, .hpPitch=64, .hpVel=64, .hpDurMs=500, .hpDnDelayMs=1000 };
   const object_t* params_cfg = nullptr;
   
   // Parse the configuration
@@ -1661,7 +1786,8 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, const object_t* flow_pro
     rc = cwLogError(rc,"Preset-select app start failed.");
     goto errLabel;    
   }
-    
+
+  
   // execute the io framework
   while( !isShuttingDown(app.ioH))
   {

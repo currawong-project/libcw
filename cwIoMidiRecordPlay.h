@@ -39,6 +39,8 @@ namespace cw
     bool thru_state( handle_t h );
 
     rc_t save( handle_t h, const char* fn );
+    rc_t save_csv( handle_t h, const char* fn );
+    
     rc_t open( handle_t h, const char* fn );
 
     // Load the playback buffer with messages to output.
@@ -53,6 +55,8 @@ namespace cw
     unsigned device_count( handle_t h );
     bool is_device_enabled( handle_t h, unsigned devIdx );
     void enable_device( handle_t h, unsigned devIdx, bool enableFl );
+
+    void half_pedal_params( handle_t h, unsigned noteDelayMs, unsigned pitch, unsigned vel, unsigned pedal_vel, unsigned noteDurMs, unsigned downDelayMs );
 
     // Convert an audio-midi file to a MIDI file
     rc_t am_to_midi_file( const char* am_filename, const char* midi_filename );
