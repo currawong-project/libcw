@@ -963,7 +963,7 @@ namespace cw
       if( p->sendCbFunc != nullptr )
       {
         const char* mFmt = "{ \"op\":\"%s\", \"uuId\":%i, \"value\":%s }";
-        const int   mbufN = 512;
+        const int   mbufN = 1024;
         char        vbuf[vbufN];
         char        mbuf[mbufN];
     
