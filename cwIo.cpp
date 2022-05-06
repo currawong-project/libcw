@@ -1553,7 +1553,7 @@ namespace cw
     // UI
     //
 
-    // This function is called by the websocket with messages comring from a remote UI.
+    // This function is called by the websocket with messages coming from a remote UI.
     rc_t _uiCallback( void* cbArg, unsigned wsSessId, ui::opId_t opId, unsigned parentAppId, unsigned uuId, unsigned appId, unsigned chanId, const ui::value_t* v )
     {
       io_t* p = (io_t*)cbArg;
