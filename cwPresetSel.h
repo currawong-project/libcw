@@ -107,6 +107,7 @@ namespace cw
     // If 'ts' is past the last defined fragment then the last fragment is returned.
     // If no fragments are defined 'frag_Ref' is set to nullptr.
     // The return value is true when the value of frag_Ref changes from the previous call.
+    void track_timestamp_reset( handle_t h );
     bool track_timestamp( handle_t h, const time::spec_t& ts, const cw::preset_sel::frag_t*& frag_Ref );
 
     // Return the preset index marked to play on this fragment.

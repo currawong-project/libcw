@@ -755,6 +755,12 @@ cw::rc_t cw::preset_sel::get_value( handle_t h, unsigned fragId, unsigned varId,
   return rc;
 }
 
+void cw::preset_sel::track_timestamp_reset( handle_t h )
+{
+  preset_sel_t* p = _handleToPtr(h);
+  p->last_ts_frag = nullptr;
+}
+
 bool cw::preset_sel::track_timestamp( handle_t h, const time::spec_t& ts, const cw::preset_sel::frag_t*& frag_Ref )
 {
   preset_sel_t* p               = _handleToPtr(h);
