@@ -17,6 +17,11 @@ namespace cw
       event_t* base;
       event_t* end;
       unsigned maxLocId;
+
+      event_t** uid_mapA;
+      unsigned  uid_mapN;
+      unsigned  min_uid;
+      
     } score_t;
 
     score_t* _handleToPtr(handle_t h)
@@ -104,8 +109,8 @@ namespace cw
       };
 
       rc_t     rc        = kOkRC;
-      unsigned bfi   = 0;
-      unsigned efi   = 0;
+      unsigned bfi       = 0;
+      unsigned efi       = 0;
       unsigned field_idx = 0;
       
 
@@ -165,6 +170,7 @@ namespace cw
       unsigned       line_count     = 0;
       char*          lineBufPtr     = nullptr;
       unsigned       lineBufCharCnt = 0;
+      event_t*       e              = nullptr;
       
       if((rc = file::open( fH, fn, file::kReadFl )) != kOkRC )
       {
@@ -178,11 +184,12 @@ namespace cw
         goto errLabel;
       }
 
+      p->min_uid = kInvalidId;
+      p->uid_mapN = 0;
       
       for(unsigned line=0; line<line_count; ++line)
         if( line > 0 ) // skip column title line
         {
-          event_t* e = mem::allocZ<event_t>();
 
           if((rc = getLineAuto( fH, &lineBufPtr, &lineBufCharCnt )) != kOkRC )
           {
@@ -190,8 +197,11 @@ namespace cw
             goto errLabel;
           }
 
+          e = mem::allocZ<event_t>();
+          
           if((rc = _parse_csv_line( p, e, lineBufPtr, lineBufCharCnt )) != kOkRC )
           {
+            mem::release(e);
             rc = cwLogError( rc, "Line parse failed on '%s' line number '%i'.",cwStringNullGuard(fn),line+1);
             goto errLabel;            
           }
@@ -210,7 +220,11 @@ namespace cw
           // track the max 'loc' id
           if( e->loc > p->maxLocId )
             p->maxLocId = e->loc;
-        
+
+          if( p->min_uid == kInvalidId || e->uid < p->min_uid )
+            p->min_uid = e->uid;
+
+          p->uid_mapN += 1;        
         }
       
       
@@ -339,6 +353,8 @@ cw::rc_t cw::score::create( handle_t& hRef, const char* fn )
   p = mem::allocZ< score_t >();
   
   rc = _parse_csv(p,fn);
+
+  
   
   hRef.set(p);
 
@@ -449,6 +465,13 @@ bool cw::score::is_loc_valid( handle_t h, unsigned locId )
 {
   score_t* p  = _handleToPtr(h);
   return locId < p->maxLocId;
+}
+
+const cw::score::event_t* cw::score::uid_to_event( handle_t h, unsigned uid )
+{
+
+  score_t* p  = _handleToPtr(h);
+  return nullptr;
 }
 
 
