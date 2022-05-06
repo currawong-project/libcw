@@ -12,14 +12,15 @@ namespace cw
     {
       unsigned      id;
       time::spec_t  timestamp;
+      unsigned      loc;
       uint8_t       ch;
       uint8_t       status;
       uint8_t       d0;
-      uint8_t       d1;      
+      uint8_t       d1;
     } midi_msg_t;
 
 
-    typedef void (*event_callback_t)( void* arg, unsigned id, const time::spec_t timestamp, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 );
+    typedef void (*event_callback_t)( void* arg, unsigned id, const time::spec_t timestamp, unsigned loc, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 );
     
     
     rc_t create( handle_t& hRef, io::handle_t ioH, const object_t& cfg, event_callback_t cb=nullptr, void* cb_arg=nullptr );
@@ -50,6 +51,7 @@ namespace cw
     
     unsigned event_count( handle_t h );
     unsigned event_index( handle_t h );
+    unsigned event_loc( handle_t h );
     rc_t exec( handle_t h, const io::msg_t& msg );
 
     unsigned device_count( handle_t h );

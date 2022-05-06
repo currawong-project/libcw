@@ -27,6 +27,7 @@ namespace cw
 
       unsigned      id;
       time::spec_t  timestamp;
+      unsigned      loc;
       uint8_t       ch;
       uint8_t       status;
       uint8_t       d0;
@@ -44,10 +45,16 @@ namespace cw
       unsigned       velTableN;
       uint8_t*       velTableArray;
       bool           pedalMapEnableFl;
+      
       unsigned       pedalDownVelId;
-      unsigned       pedalDownHalfVelId;
       unsigned       pedalDownVel;
+      
+      unsigned       pedalDownHalfVelId;
       unsigned       pedalDownHalfVel;
+
+      unsigned       pedalUpHalfVelId;
+      unsigned       pedalUpHalfVel;
+      
     } midi_device_t;
 
       enum
@@ -213,8 +220,11 @@ namespace cw
           {
             if((rc = pedalRecd->getv( "down_id",  p->midiDevA[i].pedalDownVelId,
                                       "down_vel", p->midiDevA[i].pedalDownVel,
-                                      "half_id",  p->midiDevA[i].pedalDownHalfVelId,
-                                      "half_vel", p->midiDevA[i].pedalDownHalfVel )) != kOkRC )
+                                      "half_down_id",  p->midiDevA[i].pedalDownHalfVelId,
+                                      "half_down_vel", p->midiDevA[i].pedalDownHalfVel,
+                                      "half_up_id",  p->midiDevA[i].pedalUpHalfVelId,
+                                      "half_up_vel", p->midiDevA[i].pedalUpHalfVel
+                                      )) != kOkRC )
             {
               rc = cwLogError(kSyntaxErrorRC,"An error occured while parsing the pedal record for MIDI device:'%s' port:'%s'.",midiOutDevLabel,midiOutPortLabel);
               goto errLabel;              
@@ -267,7 +277,7 @@ namespace cw
       return am;
     }
     
-    rc_t _event_callback( midi_record_play_t* p, unsigned id, const time::spec_t timestamp, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1, bool log_fl=true )
+    rc_t _event_callback( midi_record_play_t* p, unsigned id, const time::spec_t timestamp, unsigned loc, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1, bool log_fl=true )
     {
       rc_t rc = kOkRC;
       
@@ -305,13 +315,16 @@ namespace cw
               // map the pedal down velocity
               if( status==midi::kCtlMdId && d0 == midi::kSustainCtlMdId && p->midiDevA[i].pedalMapEnableFl )
               {
-                if( d1 == p->midiDevA[i].pedalDownVelId )
-                  out_d1 = p->midiDevA[i].pedalDownVel;
+                if( d1 == 0 )
+                  out_d1 = 0;
                 else
-                  if( d1 == p->midiDevA[i].pedalDownHalfVelId )
-                    out_d1 = p->midiDevA[i].pedalDownHalfVel;
+                  if( d1 == p->midiDevA[i].pedalDownVelId )
+                    out_d1 = p->midiDevA[i].pedalDownVel;
                   else
-                    cwLogError(kInvalidIdRC,"Unexpected pedal down velocity (%i) during pedal velocity mapping.",d1);
+                    if( d1 == p->midiDevA[i].pedalDownHalfVelId )
+                      out_d1 = p->midiDevA[i].pedalDownHalfVel;
+                    else                    
+                      cwLogError(kInvalidIdRC,"Unexpected pedal down velocity (%i) during pedal velocity mapping.",d1);
               }
             }
             
@@ -319,7 +332,7 @@ namespace cw
           }
 
         if( p->cb )
-          p->cb( p->cb_arg, id, timestamp, ch, status, d0, d1 );
+          p->cb( p->cb_arg, id, timestamp, loc, ch, status, d0, d1 );
 
         if( log_fl && p->logOutFl )
         {
@@ -335,21 +348,21 @@ namespace cw
 
     rc_t _transmit_msg( midi_record_play_t* p, const am_midi_msg_t* am, bool log_fl=true )
     {
-      return _event_callback( p, am->id, am->timestamp, am->ch, am->status, am->d0, am->d1, log_fl );
+      return _event_callback( p, am->id, am->timestamp, am->loc, am->ch, am->status, am->d0, am->d1, log_fl );
     }
 
     rc_t _transmit_note( midi_record_play_t* p, unsigned ch, unsigned pitch, unsigned vel, unsigned microsecs )
     {
       time::spec_t ts = {0};
       time::microsecondsToSpec( ts, microsecs );
-      return _event_callback( p, kInvalidId, ts, ch, midi::kNoteOnMdId, pitch, vel );
+      return _event_callback( p, kInvalidId, ts, kInvalidId, ch, midi::kNoteOnMdId, pitch, vel );
     }
 
     rc_t _transmit_ctl(  midi_record_play_t* p, unsigned ch, unsigned ctlId, unsigned ctlVal, unsigned microsecs )
     {
       time::spec_t ts = {0};
       time::microsecondsToSpec( ts, microsecs );
-      return _event_callback( p, kInvalidId, ts, ch, midi::kCtlMdId, ctlId, ctlVal );
+      return _event_callback( p, kInvalidId, ts, kInvalidId, ch, midi::kCtlMdId, ctlId, ctlVal );
     }
     
     rc_t _transmit_pedal( midi_record_play_t* p, unsigned ch, unsigned pedalCtlId, bool pedalDownFl, unsigned microsecs )
@@ -1019,6 +1032,7 @@ cw::rc_t cw::midi_record_play::load( handle_t h, const midi_msg_t* msg, unsigned
   {
     p->msgArray[i].id        = msg[i].id;
     p->msgArray[i].timestamp = msg[i].timestamp;
+    p->msgArray[i].loc       = msg[i].loc;
     p->msgArray[i].ch        = msg[i].ch;
     p->msgArray[i].status    = msg[i].status;
     p->msgArray[i].d0        = msg[i].d0;
@@ -1099,6 +1113,16 @@ unsigned cw::midi_record_play::event_index( handle_t h )
 {
   midi_record_play_t* p  = _handleToPtr(h);    
   return p->recordFl ? p->iMsgArrayInIdx : p->msgArrayOutIdx;
+}
+
+unsigned cw::midi_record_play::event_loc( handle_t h )
+{
+  midi_record_play_t* p  = _handleToPtr(h);
+  
+  if( !p->recordFl && 0 <= p->msgArrayOutIdx &&  p->msgArrayOutIdx <  p->msgArrayN )
+    return p->msgArray[ p->msgArrayOutIdx ].loc;
+  
+  return kInvalidId;
 }
 
 
