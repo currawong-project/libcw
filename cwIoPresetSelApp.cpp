@@ -384,7 +384,7 @@ namespace cw
       return rc;
     }
 
-    void _midi_play_callback( void* arg, unsigned id, const time::spec_t timestamp, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
+    void _midi_play_callback( void* arg, unsigned id, const time::spec_t timestamp, unsigned loc, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
     {
       app_t* app = (app_t*)arg;
       
@@ -415,13 +415,22 @@ namespace cw
         }
     }
 
+    // Find the closest locMap equal to or after 'loc'
     loc_map_t* _find_loc( app_t* app, unsigned loc )
     {
       unsigned i=0;
+      loc_map_t* pre_loc_map = nullptr;
+      
       for(; i<app->locMapN; ++i)
-        if( app->locMap[i].loc == loc )
-          return app->locMap + i;
-      return nullptr;
+      {
+        if( app->locMap[i].loc >= loc )
+          return app->locMap +i;
+
+        pre_loc_map = app->locMap + i;
+           
+      }
+      
+      return pre_loc_map;
     }
 
     rc_t _do_stop_play( app_t* app )
@@ -498,7 +507,7 @@ namespace cw
       }
 
       
-      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), midi_record_play::event_index(app->mrpH) );
+      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), midi_record_play::event_loc(app->mrpH) );
 
     errLabel:
       return rc;
@@ -532,8 +541,10 @@ namespace cw
     
     void _update_event_ui( app_t* app )
     {
-      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId),   midi_record_play::event_index(app->mrpH) );
-      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kTotalMidiEvtCntId), midi_record_play::event_count(app->mrpH) );
+      //io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId),   midi_record_play::event_index(app->mrpH) );
+      //io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kTotalMidiEvtCntId), midi_record_play::event_count(app->mrpH) );
+      
+      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kTotalMidiEvtCntId), app->maxLoc );
     }
 
     // Update the UI with the value from the the fragment data record.
@@ -869,7 +880,7 @@ namespace cw
     }
     
     
-    rc_t _restore( app_t* app )
+    rc_t _restore_fragment_data( app_t* app )
     {
       rc_t  rc = kOkRC;
       char* fn = nullptr;
@@ -895,10 +906,10 @@ namespace cw
         goto errLabel;
       }
 
-      preset_sel::report( app->psH );
+      //preset_sel::report( app->psH );
 
       f = preset_sel::get_fragment_base(app->psH);
-      for(; f!=nullptr; f=f->link)
+      for(int i=0; f!=nullptr; f=f->link,++i)
       {
         unsigned fragId = f->fragId;
         
@@ -909,7 +920,7 @@ namespace cw
         }
 
         _update_frag_ui(app, fragId );
-
+        
       }
       
 
@@ -951,21 +962,18 @@ namespace cw
       return rc;
     }
 
+    int _compare_loc_map( const void* m0, const void* m1 )
+    { return ((const loc_map_t*)m0)->loc - ((const loc_map_t*)m1)->loc; }
 
-    rc_t _do_load( app_t* app )
+    rc_t _load_piano_score( app_t* app, unsigned& midiEventCntRef )
     {
       rc_t                          rc         = kOkRC;
       const score::event_t*         e          = nullptr;
       unsigned                      midiEventN = 0;      
       midi_record_play::midi_msg_t* m          = nullptr;
 
-      // if the score is already loaded
-      if( app->scoreH.isValid() )
-        return rc;
-
-      cwLogInfo("Loading");
-      _set_status(app,"Loading...");
-
+      midiEventCntRef = 0;
+      
       // create the score
       if((rc = score::create( app->scoreH, app->scoreFn )) != kOkRC )
       {
@@ -1002,7 +1010,7 @@ namespace cw
             m[i].d0     = e->d0;
             m[i].d1     = e->d1;
             m[i].id     = e->uid;
-
+            m[i].loc    = e->loc;
 
             app->locMap[i].loc       = e->loc;
             app->locMap[i].timestamp = m[i].timestamp;
@@ -1013,6 +1021,8 @@ namespace cw
             ++i;
           }
 
+        qsort( app->locMap, app->locMapN, sizeof(loc_map_t), _compare_loc_map );
+        
         // load the player with the msg list
         if((rc = midi_record_play::load( app->mrpH, m, midiEventN )) != kOkRC )
         {
@@ -1020,37 +1030,79 @@ namespace cw
           goto errLabel;
         }
 
-        cwLogInfo("%i MIDI events loaded.", midiEventN );
+        cwLogInfo("%i MIDI events loaded from score.", midiEventN );
 
-        mem::free(m);
-        
+        mem::free(m);        
       }
 
-      // set the range of the global play location controls
-      io::uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, kBegPlayLocNumbId), app->minLoc, app->maxLoc, 1, 0, app->minLoc );
-      io::uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, kEndPlayLocNumbId), app->minLoc, app->maxLoc, 1, 0, app->maxLoc );
+    errLabel:
 
+      midiEventCntRef = midiEventN;
       
-      // enable the 'End Loc' number box since the score is loaded
-      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kInsertLocId ), true );
+      
+      return rc;
+      
+    }
 
+
+    rc_t _do_load( app_t* app )
+    {
+      rc_t     rc          = kOkRC;
+      unsigned midiEventN  = 0;
+      bool     firstLoadFl = !app->scoreH.isValid();
+      unsigned minLoc      = firstLoadFl ? 0 : app->minLoc;
+      unsigned maxLoc      = firstLoadFl ? 0 : app->maxLoc;
+      
+      // if the score is already loaded
+      //if( app->scoreH.isValid() )
+      //  return rc;
+
+      cwLogInfo("Loading");
+      _set_status(app,"Loading...");
+
+
+      // Load the piano score
+      if((rc = _load_piano_score(app,midiEventN)) != kOkRC )
+        goto errLabel;
+
+      if( !firstLoadFl)
+      {
+        minLoc  = std::max(minLoc,app->minLoc);
+        maxLoc  = std::min(maxLoc,app->maxLoc);
+      }
+
+      // reset the timestamp tracker
+      track_timestamp_reset( app->psH );
+      
+      // set the range of the global play location controls
+      if( firstLoadFl )
+      {
+        io::uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, kBegPlayLocNumbId), app->minLoc, app->maxLoc, 1, 0, minLoc );
+        io::uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, kEndPlayLocNumbId), app->minLoc, app->maxLoc, 1, 0, maxLoc );
+      
+      
+        // enable the 'End Loc' number box since the score is loaded
+        io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kInsertLocId ), true );
+      }
+      
       // update the current event and event count
       _update_event_ui(app);
-
 
       // enable the start/stop buttons
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStartBtnId ), true );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStopBtnId ),  true );
-
+        
       // restore the fragment records
-      if((rc = _restore( app )) != kOkRC )
-      {
-        rc = cwLogError(rc,"Restore failed.");
-        goto errLabel;
-      }
+      if( firstLoadFl )
+        if((rc = _restore_fragment_data( app )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Restore failed.");
+          goto errLabel;
+        }
 
-      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kLoadBtnId ), false );
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kLoadBtnId ), true );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kSaveBtnId ), true );
+      
       
       cwLogInfo("'%s' loaded.",app->scoreFn);
       
@@ -1687,7 +1739,7 @@ namespace cw
       {
         midi_record_play::exec( app->mrpH, *m );
         if( midi_record_play::is_started(app->mrpH) )
-          io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), midi_record_play::event_index(app->mrpH) );
+          io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), midi_record_play::event_loc(app->mrpH) );
       }
 
       if( app->ioFlowH.isValid() )
@@ -1763,15 +1815,12 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, const object_t* flow_pro
     goto errLabel;
   }
 
-
   // create the MIDI record-play object
   if((rc = midi_record_play::create(app.mrpH,app.ioH,*app.midi_play_record_cfg,_midi_play_callback,&app)) != kOkRC )
   {
     rc = cwLogError(rc,"MIDI record-play object create failed.");
     goto errLabel;
   }
-
-  
   
   // create the IO Flow controller
   if(app.flow_cfg==nullptr || flow_proc_dict==nullptr || (rc = io_flow::create(app.ioFlowH,app.ioH,app.crossFadeSrate,app.crossFadeCnt,*flow_proc_dict,*app.flow_cfg)) != kOkRC )
@@ -1780,7 +1829,7 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, const object_t* flow_pro
     goto errLabel;
   }
   
-  // start the io framework instance
+  // start the IO framework instance
   if((rc = io::start(app.ioH)) != kOkRC )
   {
     rc = cwLogError(rc,"Preset-select app start failed.");
