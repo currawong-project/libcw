@@ -54,7 +54,7 @@ namespace cw
       void copy( T0* v0, const T1* v1, unsigned n )
     {
       for(unsigned i=0; i<n; ++i)
-        v0[i] = v1[i];
+        v0[i] = (T0)v1[i];
     }
     
     template< typename T0, typename T1 >
@@ -151,7 +151,7 @@ namespace cw
       void mul( T0* v0, const T1* v1, unsigned n )
     {
       for(unsigned i=0; i<n; ++i)
-        v0[i] *= v1[i];
+        v0[i] = v0[i] * (T1)v1[i];
     }
 
     template< typename T0, typename T1 >
@@ -169,8 +169,8 @@ namespace cw
         v0[i] *= scalar;
     }
 
-    template< typename T0, typename T1 >
-      void mul( T0* y0, const T0* v0, const T1& scalar, unsigned n )
+    template< typename T0, typename T1, typename T2 >
+      void mul( T0* y0, const T1* v0, const T2& scalar, unsigned n )
     {
       for(unsigned i=0; i<n; ++i)
         y0[i] = v0[i] * scalar;
@@ -363,15 +363,15 @@ namespace cw
       return init_idx;
     }
 
-    template< typename T >
-    T* ampl_to_db( T* dbp, const T* sbp, unsigned dn, T minDb=-1000 )
+    template< typename T0, typename T1 >
+    T0* ampl_to_db( T0* dbp, const T1* sbp, unsigned dn, T0 minDb=-1000 )
     {
-      T  minVal = pow(10.0,minDb/20.0);
-      T* dp     = dbp;
-      T* ep     = dp + dn;
+      T0  minVal = pow(10.0,minDb/20.0);
+      T0* dp     = dbp;
+      T0* ep     = dp + dn;
 
       for(; dp<ep; ++dp,++sbp)
-        *dp = *sbp<minVal ? minDb : 20.0 * log10(*sbp);
+        *dp = (T0)(*sbp<minVal ? minDb : 20.0 * log10(*sbp));
       return dbp;
       
     }
