@@ -63,6 +63,9 @@ bool cw::filesys::isDir( const char* dirStr )
 
   errno = 0;
 
+  if( dirStr == nullptr )
+    return false;
+
   if( stat(dirStr,&s)  != 0 )
   {
     // if the dir does not exist
@@ -81,6 +84,9 @@ bool cw::filesys::isFile( const char* fnStr )
   struct stat s;
   errno = 0;
 
+  if( fnStr == nullptr )
+    return false;
+  
   if( stat(fnStr,&s)  != 0 )
   {
 
@@ -100,6 +106,9 @@ bool cw::filesys::isLink( const char* fnStr )
 {
   struct stat s;
   errno = 0;
+
+  if( fnStr == nullptr )
+    return false;
 
   if( lstat(fnStr,&s)  != 0 )
   {
@@ -313,6 +322,9 @@ char* cw::filesys::expandPath( const char* dir )
   wordexp_t res;
 
   memset(&res,0,sizeof(res));
+
+  if( dir == nullptr )
+    return nullptr;
 
   if((sysRC = wordexp(dir,&res,flags)) != 0)
   {
