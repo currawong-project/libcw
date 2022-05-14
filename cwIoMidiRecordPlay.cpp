@@ -77,6 +77,7 @@ namespace cw
       unsigned       msgArrayInIdx;               // Next available space for loaded MIDI messages (also the current count of msgs in msgArray[])
       unsigned       msgArrayOutIdx;              // Next message to transmit in msgArray[]     
       unsigned       midi_timer_period_micro_sec; // Timer period in microseconds
+      unsigned       all_off_delay_ms;            // Wait this long before turning all notes off after the last note-on has played
 
       am_midi_msg_t* iMsgArray;                    // msgArray[ msgArrayN ]
       unsigned       iMsgArrayN;                   // Count of messages allocated in msgArray.
@@ -106,9 +107,8 @@ namespace cw
       time::spec_t   play_time;                
       time::spec_t   start_time;
       time::spec_t   end_play_event_timestamp;
+      time::spec_t   all_off_timestamp;
       time::spec_t   store_time;
-
-      bool pedalFl;
 
       event_callback_t cb;
       void*            cb_arg;
@@ -153,6 +153,7 @@ namespace cw
       if((rc = cfg.getv(
                         "max_midi_msg_count",          p->msgArrayN,
                         "midi_timer_period_micro_sec", p->midi_timer_period_micro_sec,
+                        "all_off_delay_ms",            p->all_off_delay_ms,
                         "midi_device_list",            midiDevL,
                         "log_in_flag",                 p->logInFl,
                         "log_out_flag",                p->logOutFl,
@@ -280,13 +281,19 @@ namespace cw
     rc_t _event_callback( midi_record_play_t* p, unsigned id, const time::spec_t timestamp, unsigned loc, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1, bool log_fl=true )
     {
       rc_t rc = kOkRC;
+
+      // if we have arrived at the stop time
+      bool after_stop_time_fl = !time::isZero(p->end_play_event_timestamp) && time::isGT(timestamp,p->end_play_event_timestamp);
+      bool after_all_off_fl   = after_stop_time_fl && time::isGT(timestamp,p->all_off_timestamp);
+
+      bool is_note_on_fl = status==midi::kNoteOnMdId and d1 != 0;
+      bool supress_fl = is_note_on_fl && after_stop_time_fl;
       
-      if( !time::isZero(p->end_play_event_timestamp) && time::isGT(timestamp,p->end_play_event_timestamp))
+      if( after_all_off_fl )
       {
         rc = _stop(p);
-        printf("ZERO\n");
       }
-      else
+      else        
       {
 
         if( p->halfPedalFl )
@@ -295,16 +302,17 @@ namespace cw
             d1 = p->halfPedalMidiPedalVel;
         }
         
-        
+
+        // for each midi device
         for(unsigned i=0; i<p->midiDevN; ++i)
           if(p->midiDevA[i].enableFl )
           {
             uint8_t out_d1 = d1;
-            
+
             if( !p->halfPedalFl )
             {
               // map the note on velocity
-              if( status==midi::kNoteOnMdId and d1 != 0 and p->midiDevA[i].velTableArray != nullptr )
+              if( is_note_on_fl and p->midiDevA[i].velTableArray != nullptr )
               {
                 if( d1 >= p->midiDevA[i].velTableN )
                   cwLogError(kInvalidIdRC,"A MIDI note-on velocity (%i) outside the velocity table range was encountered.",d1);
@@ -327,11 +335,12 @@ namespace cw
                       cwLogError(kInvalidIdRC,"Unexpected pedal down velocity (%i) during pedal velocity mapping.",d1);
               }
             }
-            
-            io::midiDeviceSend( p->ioH, p->midiDevA[i].midiOutDevIdx, p->midiDevA[i].midiOutPortIdx, status + ch, d0, out_d1 );
+
+            if( !supress_fl )           
+              io::midiDeviceSend( p->ioH, p->midiDevA[i].midiOutDevIdx, p->midiDevA[i].midiOutPortIdx, status + ch, d0, out_d1 );
           }
 
-        if( p->cb )
+        if( !after_stop_time_fl and p->cb )
           p->cb( p->cb_arg, id, timestamp, loc, ch, status, d0, d1 );
 
         if( log_fl && p->logOutFl )
@@ -915,7 +924,11 @@ cw::rc_t cw::midi_record_play::start( handle_t h, bool rewindFl, const time::spe
   if( end_play_event_timestamp == nullptr or time::isZero(*end_play_event_timestamp) )
     time::setZero(p->end_play_event_timestamp);
   else
+  {
     p->end_play_event_timestamp = *end_play_event_timestamp;
+    p->all_off_timestamp = *end_play_event_timestamp;
+    time::advanceMs( p->all_off_timestamp, p->all_off_delay_ms);
+  }
   
   time::get(p->start_time);
         
@@ -1070,7 +1083,7 @@ cw::rc_t cw::midi_record_play::seek( handle_t h, time::spec_t seek_timestamp )
       _transmit_pedal( p, mm->ch, midi::kSostenutoCtlMdId, sost_down_fl, 0 );
       _transmit_pedal( p, mm->ch, midi::kSoftPedalCtlMdId, soft_down_fl, 0 );
 
-      printf("PEDAL: %s.\n", damp_down_fl ? "Down" : "Up");
+      cwLogInfo("damper: %s.", damp_down_fl ? "down" : "up");
       
       break;
     }
