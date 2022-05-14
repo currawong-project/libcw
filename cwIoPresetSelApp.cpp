@@ -236,9 +236,6 @@ namespace cw
       unsigned hpVel;
       unsigned hpDurMs;
       unsigned hpDnDelayMs;
-      
-
-      
     } app_t;
 
     rc_t _parseCfg(app_t* app, const object_t* cfg, const object_t*& params_cfgRef )
@@ -265,6 +262,18 @@ namespace cw
         rc = cwLogError(kSyntaxErrorRC,"Preset Select App configuration parse failed.");
       }
 
+      if((app->scoreFn    = filesys::expandPath( app->scoreFn )) == nullptr )
+      {
+        rc = cwLogError(kInvalidArgRC,"The score file name is invalid.");
+        goto errLabel;
+      }
+      
+      if((app->record_dir = filesys::expandPath(app->record_dir)) == nullptr )
+      {
+        rc = cwLogError(kInvalidArgRC,"The record directory path is invalid.");
+        goto errLabel;
+      }
+      
       // verify that the output directory exists
       if((rc = filesys::isDir(app->record_dir)) != kOkRC )
         if((rc = filesys::makeDir(app->record_dir)) != kOkRC )
@@ -312,6 +321,8 @@ namespace cw
 
     rc_t _free( app_t& app )      
     {
+      mem::release((char*&)app.record_dir);
+      mem::release((char*&)app.scoreFn);
       preset_sel::destroy(app.psH);
       io_flow::destroy(app.ioFlowH);
       midi_record_play::destroy(app.mrpH);
@@ -403,15 +414,18 @@ namespace cw
             score::event_to_string( app->scoreH, id, buf, buf_byte_cnt );
           printf("%s\n",buf);
         }
-        
-        const preset_sel::frag_t* f = nullptr;
-        if( preset_sel::track_timestamp( app->psH, timestamp, f ) )
-        {          
-          //printf("NEW FRAG: id:%i loc:%i\n", f->fragId, f->endLoc );
-          _apply_preset( app, timestamp, f );
 
-          if( f != nullptr )
-            _do_select_frag( app, f->guiUuId );
+        if( midi_record_play::is_started(app->mrpH) )
+        {
+          const preset_sel::frag_t* f = nullptr;
+          if( preset_sel::track_timestamp( app->psH, timestamp, f ) )
+          {          
+            //printf("NEW FRAG: id:%i loc:%i\n", f->fragId, f->endLoc );
+            _apply_preset( app, timestamp, f );
+
+            if( f != nullptr )
+              _do_select_frag( app, f->guiUuId );
+          }
         }
     }
 
@@ -1453,11 +1467,11 @@ namespace cw
           break;
             
         case kReportBtnId:
-          //preset_sel::report( app->psH );
+          preset_sel::report( app->psH );
           //io_flow::apply_preset( app->ioFlowH, 2000.0, app->tmp==0 ? "a" : "b");
           //app->tmp = !app->tmp;
           //io_flow::print(app->ioFlowH);
-          midi_record_play::save_csv(app->mrpH,"/home/kevin/temp/mrp_1.csv");
+          //midi_record_play::save_csv(app->mrpH,"/home/kevin/temp/mrp_1.csv");
           break;
 
         case kSaveBtnId:
