@@ -862,10 +862,12 @@ cw::rc_t cw::midi_record_play::create( handle_t& hRef, io::handle_t ioH, const o
   p->halfPedalMidiPedalVel = 127;
   
 
-  for( unsigned i=0; i<
-          p->midiDevN; ++i)
+  for( unsigned i=0; i<p->midiDevN; ++i)    
   {
     midi_device_t* dev = p->midiDevA + i;
+
+    if( !p->midiDevA[i].enableFl )
+      continue;
     
     if((dev->midiOutDevIdx = io::midiDeviceIndex(p->ioH,dev->midiOutDevLabel)) == kInvalidIdx )
     {
