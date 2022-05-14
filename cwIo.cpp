@@ -1569,7 +1569,7 @@ namespace cw
     {
       rc_t           rc         = kOkRC;
       const char*    uiCfgLabel = "ui";
-      ui::ws::args_t args;
+      ui::ws::args_t args       = {};
 
 
       // Duplicate the application id map
