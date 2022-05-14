@@ -767,6 +767,12 @@ bool cw::preset_sel::track_timestamp( handle_t h, const time::spec_t& ts, const 
   frag_t*       f               = nullptr;
   bool          frag_changed_fl = false;
 
+  time::spec_t t0;
+  time::setZero(t0);
+  unsigned elapsedMs = time::elapsedMs(t0,ts);
+  double mins = elapsedMs / 60000.0;
+
+  
   // if this is the first call to 'track_timestamp()'.
   if( p->last_ts_frag == nullptr )
     f = _timestamp_to_frag(p,ts);
@@ -1023,7 +1029,7 @@ cw::rc_t cw::preset_sel::report( handle_t h )
     unsigned elapsedMs = time::elapsedMs(t0,f->endTimestamp);
     double mins = elapsedMs / 60000.0;
     
-    cwLogInfo("%3i id:%3i end loc:%3i end min:%7.2f",i,f->fragId,f->endLoc, mins);
+    cwLogInfo("%3i id:%3i end loc:%3i end min:%f",i,f->fragId,f->endLoc, mins);
   }
 
   return rc;
