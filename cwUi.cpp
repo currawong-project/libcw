@@ -86,6 +86,9 @@ namespace cw
       appIdMapRecd_t*      appIdMap;    // map of application parent/child/js id's
       char*                buf;         // buf[bufN] output message formatting buffer
       unsigned             bufN;        //
+      char*                recvBuf;
+      unsigned             recvBufN;
+      unsigned             recvBufIdx;
       
       unsigned*            sessA;       // sessA[ sessN ] array of wsSessId's
       unsigned             sessN;
@@ -153,6 +156,7 @@ namespace cw
       mem::release(p->sessA);
       mem::release(p->eleA);
       mem::release(p->buf);
+      mem::release(p->recvBuf);
       
       mem::release(p);
 
@@ -1082,6 +1086,9 @@ cw::rc_t cw::ui::create(
   p->sendCbArg  = sendCbArg;
   p->buf        = mem::allocZ<char>(fmtBufByteN);
   p->bufN       = fmtBufByteN;
+  p->recvBuf    = mem::allocZ<char>(fmtBufByteN);
+  p->recvBufN   = fmtBufByteN;
+  p->recvBufIdx = 0;
   
   // create the root element
   if((ele = _createBaseEle(p, nullptr, kRootAppId, kInvalidId, "uiDivId" )) == nullptr || ele->uuId != kRootUuId )
@@ -1182,14 +1189,55 @@ cw::rc_t cw::ui::onDisconnect( handle_t h, unsigned wsSessId )
   return kOkRC;
 }
 
-cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* msg, unsigned msgByteN )
+cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* void_msg, unsigned msgByteN )
 {
   rc_t    rc   = kOkRC;
   ui_t*   p    = _handleToPtr(h);
-  opId_t  opId = _labelToOpId((const char*)msg);
+  opId_t  opId = kInvalidOpId;
   value_t value;
   ele_t*  ele;
 
+  const char* src_msg = (const char*)void_msg;
+  const char* msg = src_msg;
+
+  // if the incoming message is valid
+  if( msgByteN > 0 and src_msg != nullptr )
+  {
+    // if there is a partial msg in the recv buffer (recvBufIdx!=0)
+    // or the incoming message is a partial mesg - then buffer the message
+    // (Note: incoming messages that are not zero terminated are partial.")
+    if( p->recvBufIdx != 0 || src_msg[msgByteN-1] != 0 )
+    {
+      // verify the buffer is large enough to hold the msg
+      if(p->recvBufIdx + msgByteN > p->recvBufN )
+      {
+        rc = cwLogError(kOpFailRC,"The UI input buffer (%i) is too small.", p->recvBufN);
+        p->recvBufIdx = 0;                
+      }
+      else
+      {
+        // update it with the incoming text
+        strncpy( p->recvBuf + p->recvBufIdx, src_msg, msgByteN );
+        p->recvBufIdx += msgByteN;
+        msg = p->recvBuf;
+      }
+    }
+
+    // if the incoming message is not zero terminated then it was a partial
+    // message it was buffered and there is nothing else to do.
+    if( src_msg[msgByteN-1] != 0)
+      return rc;        
+  }
+
+
+  // the message is being processed so the buffer will end up empty
+  // (if it was being used)
+  p->recvBufIdx = 0;
+  
+  // parse the 'opId' from the message
+  opId = _labelToOpId(msg);
+
+  
   switch( opId )
   {
     case kInitOpId:
@@ -1874,9 +1922,10 @@ namespace cw
 
 cw::rc_t cw::ui::ws::parseArgs(  const object_t& o, args_t& args, const char* object_label )
 {
-  rc_t rc = kOkRC;
-  const object_t* op = &o;
-  char* uiCfgFn = nullptr;
+  rc_t            rc      = kOkRC;
+  const object_t* op      = &o;
+  char*           uiCfgFn = nullptr;
+  char*           physRootDir = nullptr;
   
   memset(&args,0,sizeof(args));
 
@@ -1894,17 +1943,27 @@ cw::rc_t cw::ui::ws::parseArgs(  const object_t& o, args_t& args, const char* ob
     rc = cwLogError(rc,"'ui' cfg. parse failed.");
   }
 
+  // expand the physical root directory
+  if((physRootDir = filesys::expandPath( args.physRootDir)) == nullptr )
+  {
+    rc = cwLogError(kInvalidArgRC,"The physical root directory of the UI cfg. is invalid.");
+    goto errLabel;
+  }
+  
   // if a default UI resource script was given then convert it into an object
   if( uiCfgFn != nullptr )
   {
-    char* fn = filesys::makeFn(  args.physRootDir, uiCfgFn, nullptr, nullptr );
+    char* fn = filesys::makeFn(  physRootDir, uiCfgFn, nullptr, nullptr );
 
     if((rc = objectFromFile(fn,args.uiRsrc)) != kOkRC )
       rc = cwLogError(rc,"An error occurred while parsing the UI resource script in '%s'.", cwStringNullGuard(uiCfgFn));
 
     mem::release(fn);
   }
-  
+
+ errLabel:
+  mem::release(physRootDir);
+    
   return rc;
 }
 
@@ -2029,7 +2088,7 @@ cw::rc_t cw::ui::ws::exec( handle_t h )
     cwLogError(rc,"The UI websock execution failed.");
 
   // make the idle callback
-  ui::onReceive( p->uiH, kInvalidId, "idle", strlen("idle") );
+  ui::onReceive( p->uiH, kInvalidId, "idle", strlen("idle")+1 );
         
   return rc;
 }

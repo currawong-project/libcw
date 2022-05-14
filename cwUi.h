@@ -41,7 +41,12 @@ namespace cw
     // A UI was disconnected
     rc_t onDisconnect( handle_t h, unsigned wsSessId );
 
-    // Receive a msg from a remote UI
+    // Receive a msg from a remote UI.
+    //
+    // Note that individual messages are delinated with zero termination.
+    // Therefore a message which is not zero terminated is considered
+    // a partial message and will be buffered until the suffix of the message
+    // arrives.
     rc_t onReceive(    handle_t h, unsigned wsSessId, const void* msg, unsigned byteN );
 
     // Locate an element whose parent uuid is 'parentUuId' with a child named 'eleName'. 
