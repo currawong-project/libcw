@@ -85,7 +85,8 @@ namespace cw
     {
       p = _handleToPtr(h);
       if((s = _idToSock(p,userId,showErrorFl)) == nullptr )
-        return kInvalidArgRC;
+        return cwLogError(kInvalidArgRC,"The socket associated with id '%i' could not be found.",userId);
+      
       return kOkRC;
     }
 
@@ -635,7 +636,7 @@ cw::rc_t cw::sock::create( handle_t h,
 
  
   int type     = cwIsFlag(flags,kStreamFl) ? SOCK_STREAM : SOCK_DGRAM;
-  int protocol = cwIsFlag(flags,kTcpFl)    ? 0           : IPPROTO_UDP;
+  int protocol = cwIsFlag(flags,kTcpFl)    ? 0 : IPPROTO_UDP;
   
   // get a handle to the socket
   if(( s->sockH = ::socket( AF_INET, type, protocol ) ) == cwSOCKET_SYS_ERR )
