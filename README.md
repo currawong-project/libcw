@@ -2,6 +2,15 @@
 
 # To Do
 
+
+- The ui manageer should buffer the current valid value of a given control
+so that the value can be accessed synchronously. This would prevent the application
+from having to explicitely store all UI values and handle all the 'value' and 'echo'
+request.  It would support a model where the UI values get changed and then
+read by the app (e.g. getUiValue( appId, valueRef)) just prior to being used.
+As it is the UI values that are on the interface cannot be accessed synchronously
+instead the app is forced to notice all 'value' changes and store the last legal value.
+
 - Should a warning be issued by audioBuf functions which return a set of values:
 muteFlags(),toneFlags(), gain( ... gainA) but where the size of the dest array
 does not match the actual number of channesl?

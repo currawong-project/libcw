@@ -785,16 +785,16 @@ namespace cw
       }
 
       template< typename T0, typename T1 >
-      void _cmSpecDist2Bump( struct obj_str<T0,T1>* p, T0* x, unsigned binCnt, T1 thresh, T1 expo)
+      void _cmSpecDist2Bump( struct obj_str<T0,T1>* p, double* x, unsigned binCnt, double thresh, double expo)
       {
         unsigned i     = 0;  
-        T1       minDb = -100.0;
+        double       minDb = -100.0;
   
         thresh = -fabs(thresh);
 
         for(i=0; i<binCnt; ++i)
         {
-          T1 y;
+          double y;
 
           if( x[i] < minDb )
             x[i] = minDb;
@@ -813,7 +813,7 @@ namespace cw
       }
 
       template< typename T0, typename T1 >
-      void _cmSpecDist2BasicMode( struct obj_str<T0,T1>* p, T0* X1m, unsigned binCnt, T1 thresh, T1 upr, T1 lwr )
+      void _cmSpecDist2BasicMode( struct obj_str<T0,T1>* p, double* X1m, unsigned binCnt, double thresh, double upr, double lwr )
       {
 
         unsigned i=0;
@@ -823,8 +823,8 @@ namespace cw
 
         for(i=0; i<binCnt; ++i)
         {
-          T0 a = fabs(X1m[i]);
-          T0 d = a - thresh;
+          double a = fabs(X1m[i]);
+          double d = a - thresh;
 
           X1m[i] = -thresh;
 
@@ -841,11 +841,11 @@ namespace cw
       {
         rc_t rc = kOkRC;
 
-        T0 X0m[binN];
-        T0 X1m[binN]; 
+        double X0m[binN];
+        double X1m[binN]; 
 
         // take the mean of the the input magntitude spectrum
-        T0 u0 = vop::mean(magV,binN);
+        double u0 = vop::mean(magV,binN);
 
         // convert magnitude to db (range=-1000.0 to 0.0)
         vop::ampl_to_db(X0m, magV, binN );
@@ -867,10 +867,10 @@ namespace cw
         vop::db_to_ampl(X1m, X1m, binN );
 
         // convert the mean input magnitude to db
-        T0 idb = 20*log10(u0);
+        double idb = 20*log10(u0);
     
         // get the mean output magnitude spectra
-        T0 u1 = vop::mean(X1m,binN);
+        double u1 = vop::mean(X1m,binN);
 
         if( idb > -150.0 )
         {
@@ -890,7 +890,6 @@ namespace cw
 
         return rc;
       }
-
       
     }
 

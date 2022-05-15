@@ -29,7 +29,11 @@ namespace cw
     // Wrapper on elapsedMicros()
     unsigned elapsedMs( const spec_t&  t0, const spec_t& t1 );
     unsigned elapsedMs( const spec_t&  t0 );
-  
+
+    // Wrapper on elapsedMicros()
+    double elapsedSecs( const spec_t&  t0, const spec_t& t1 );
+    double elapsedSecs( const spec_t&  t0 );
+
     // Same as elapsedMicros() but the times are not assumed to be ordered.
     // The function therefore begins by swapping t1 and t0 if t0 is after t1.
     unsigned absElapsedMicros( const spec_t&  t0, const spec_t& t1 ); 

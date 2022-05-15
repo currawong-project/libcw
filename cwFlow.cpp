@@ -368,16 +368,18 @@ namespace cw
           // since 'var' is on the 'any' channel the 'src' var must also be on the 'any' channel
           assert( base_src_var->chIdx == kAnyChIdx );
           
-          printf("%s %s\n",inst->label,var->label);
+          //printf("%s %s\n",inst->label,var->label);
+          
+          // for each var channel in the input var
           for(variable_t* in_var = var->ch_link; in_var != nullptr; in_var=in_var->ch_link)
           {
-            
-            
+            // locate the matching channel on the 'src' var
             variable_t* svar = base_src_var;
             for(; svar!=nullptr; svar=svar->ch_link)
               if( svar->chIdx == in_var->chIdx )
                 break;
 
+            // connect the src->input var
             _connect_vars( svar==nullptr ? base_src_var : svar, in_var);
           }
         }

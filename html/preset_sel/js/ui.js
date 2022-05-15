@@ -1226,7 +1226,7 @@ function ws_on_msg( jsonMsg )
 function ws_on_open()
 {
     set_app_title( "Connected", "title_connected" );
-    _ws.send("init")
+    ws_send("init")
 }
 
 function ws_on_close()

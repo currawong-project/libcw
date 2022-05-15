@@ -464,7 +464,7 @@ namespace cw
 
       void _cmMpReportPort( textBuf::handle_t tbH, const port_t* port )
       {
-        textBuf::print( tbH,"    client:%i port:%i    %s caps:(",port->alsa_addr.client,port->alsa_addr.port,port->nameStr);
+        textBuf::print( tbH,"    client:%i port:%i    '%s' caps:(",port->alsa_addr.client,port->alsa_addr.port,port->nameStr);
         if( port->alsa_cap & SND_SEQ_PORT_CAP_READ       ) textBuf::print( tbH,"Read " );
         if( port->alsa_cap & SND_SEQ_PORT_CAP_WRITE      ) textBuf::print( tbH,"Writ " );
         if( port->alsa_cap & SND_SEQ_PORT_CAP_SYNC_READ  ) textBuf::print( tbH,"Syrd " );
@@ -896,7 +896,7 @@ void cw::midi::device::report( handle_t h, textBuf::handle_t tbH )
   {
     const dev_t* d = p->devArray + i;
 
-    textBuf::print( tbH,"%i : Device: %s \n",i,cwStringNullGuard(d->nameStr));
+    textBuf::print( tbH,"%i : Device: '%s' \n",i,cwStringNullGuard(d->nameStr));
 
     if(d->iPortCnt > 0 )
       textBuf::print( tbH,"  Input:\n");

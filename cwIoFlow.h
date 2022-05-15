@@ -30,6 +30,8 @@ namespace cw
     rc_t begin_cross_fade( handle_t h, unsigned crossFadeMs );
     
 
+    void print( handle_t h );
+    void print_network( handle_t h, flow_cross::destId_t destId );
   }
 }
 

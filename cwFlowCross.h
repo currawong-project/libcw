@@ -12,6 +12,7 @@ namespace cw
     {
       kCurDestId,   // Apply value to the current flow network 
       kNextDestId,  // Apply value to the next flow network (i.e. network which will be current following the next cross-fade)
+      kAllDestId,   // Apply value to all the flow networks
     } destId_t;
 
     rc_t create( handle_t&                hRef,                 
@@ -38,6 +39,7 @@ namespace cw
     rc_t begin_cross_fade( handle_t h, unsigned crossFadeMs );
     
     void print( handle_t h );
+    void print_network( handle_t h, flow_cross::destId_t destId );
     
   }
 }

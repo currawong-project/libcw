@@ -25,7 +25,8 @@ namespace cw
 
     enum {
       kFbufVectN = 3,
-      kAnyChIdx = kInvalidIdx
+      kAnyChIdx = kInvalidIdx,
+      kLocalValueN = 2
     };
     
     typedef struct fbuf_str
@@ -162,11 +163,12 @@ namespace cw
       char*                label;        // this variables label
       unsigned             vid;          // this variables numeric id ( cat(vid,chIdx) forms a unique variable identifier on this 'inst'
       var_desc_t*          varDesc;      // the variable description for this variable
-      value_t              local_value;  // the local value instance (actual value if this is not a 'src' variable)
+      value_t              local_value[ kLocalValueN ];  // the local value instance (actual value if this is not a 'src' variable)
+      unsigned             local_value_idx; 
       value_t*             value;        // pointer to the value associated with this variable   
       unsigned             chIdx;        // channel index
       struct variable_str* src_var;      // pointer to this input variables source link (or null if it uses the local_value)
-      struct variable_str* var_link;     // link to other var's on 'inst' 
+      struct variable_str* var_link;     // instance.varL link list
       struct variable_str* connect_link; // list of outgoing connections
       struct variable_str* ch_link;      // list of channels that share this variable (rooted on 'any' channel - in order by channel number)
     } variable_t;
@@ -186,7 +188,7 @@ namespace cw
 
       void*           userPtr;       // instance state
 
-      variable_t*     varL;          // list of instance  value
+      variable_t*     varL;          // list of all variables on this instance
 
       unsigned        varMapChN;     // max count of channels among all variables
       unsigned        varMapIdN;
@@ -224,13 +226,13 @@ namespace cw
     //
     
     abuf_t*         abuf_create( srate_t srate, unsigned chN, unsigned frameN );
-    void            abuf_destroy( abuf_t* buf );
+    void            abuf_destroy( abuf_t*& buf );
     abuf_t*         abuf_duplicate( const abuf_t* src );
     rc_t            abuf_set_channel( abuf_t* buf, unsigned chIdx, const sample_t* v, unsigned vN );
     const sample_t* abuf_get_channel( abuf_t* buf, unsigned chIdx );
 
     fbuf_t*        fbuf_create( srate_t srate, unsigned chN, unsigned binN, unsigned hopSmpN, const sample_t** magV=nullptr, const sample_t** phsV=nullptr, const sample_t** hzV=nullptr );
-    void           fbuf_destroy( fbuf_t* buf );
+    void           fbuf_destroy( fbuf_t*& buf );
     fbuf_t*        fbuf_duplicate( const fbuf_t* src );
     
     inline bool    value_is_abuf( const value_t* v ) { return v->flags & kABufTFl; }
@@ -395,10 +397,15 @@ namespace cw
     void           _var_destroy( variable_t* var );
 
     bool           var_exists( instance_t* inst, const char* label, unsigned chIdx );
-    
+
     rc_t           var_find( instance_t* inst, const char* var_label, unsigned chIdx, const variable_t*& varRef );
     rc_t           var_find( instance_t* inst, const char* var_label, unsigned chIdx,       variable_t*& varRef );
     rc_t           var_find( instance_t* inst, unsigned vid,          unsigned chIdx,       variable_t*& varRef );
+
+    // Count of numbered channels - does not count the kAnyChIdx variable instance.
+    rc_t           var_channel_count( instance_t* inst, const char* label, unsigned& chCntRef );
+    rc_t           var_channel_count( const variable_t* var, unsigned& chCntRef );
+    
     
     rc_t           var_get( const variable_t* var, bool&          valRef );
     rc_t           var_get( const variable_t* var, uint_t&        valRef );

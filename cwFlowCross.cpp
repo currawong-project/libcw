@@ -40,6 +40,7 @@ namespace cw
       unsigned                 fadeSmpN;  //
 
       unsigned                 net_idx;
+
       
     } flow_network_t;
     
@@ -54,6 +55,7 @@ namespace cw
       flow::external_device_t* deviceA;
       unsigned                 deviceN;
       
+      bool                     fadeInputFl;
     } flow_cross_t;
     
     flow_cross_t* _handleToPtr(handle_t h)
@@ -208,9 +210,9 @@ namespace cw
       flow::abuf_t* src = p->deviceA[devIdx].u.a.abuf;
       flow::abuf_t* dst = net->deviceA[devIdx].u.a.abuf;
 
-      memset( dst->buf, 0, dst->chN * dst->frameN * sizeof(flow::sample_t));
+      memcpy( dst->buf, src->buf, dst->chN * dst->frameN * sizeof(flow::sample_t));
       
-      _fade_audio( src, dst, net );
+      //_fade_audio( src, dst, net );
     }
 
     void _zero_audio_output( flow_cross_t* p, flow_network_t* net, unsigned devIdx )
@@ -253,11 +255,20 @@ namespace cw
     template< typename T >
     rc_t _set_variable_value( handle_t h, destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, const T& value )
     {
-      //rc_t          rc       = kOkRC;
+      rc_t          rc       = kOkRC;
       flow_cross_t* p        = _handleToPtr(h);
-      unsigned      flow_idx = _get_flow_index(p, destId );
-      return set_variable_value( p->netA[ flow_idx ].flowH, inst_label, var_label, chIdx, value );
-  
+      unsigned      flow_idx = destId == kAllDestId ? 0       : _get_flow_index(p, destId );
+      unsigned      flow_cnt = destId == kAllDestId ? p->netN : flow_idx + 1;
+
+      for(; flow_idx < flow_cnt; ++flow_idx )
+        if((rc = set_variable_value( p->netA[ flow_idx ].flowH, inst_label, var_label, chIdx, value )) != kOkRC )
+        {
+          cwLogError(rc,"Set variable value failed on cross-network index: %i.",flow_idx);
+          goto errLabel;
+        }
+      
+    errLabel:
+      return rc;
     }
 
     
@@ -331,28 +342,33 @@ cw::rc_t cw::flow_cross::exec_cycle( handle_t h )
   rc_t          rc = kOkRC;
   flow_cross_t* p = _handleToPtr(h);
 
+  // Note that all networks must be updated so that they maintain
+  // their state (e.g. delay line memory) event if their output
+  // is faded out
   for(unsigned i=0; i<p->netN; ++i)
   {
     flow_network_t* net = p->netA + i;
 
-    if( net->stateId != kInactiveStateId )
-    {
+    // We generally don't want to fade the input because the state
+    // of the network delay lines would then be invalid when the
+    // network is eventually made active again 
+    for(unsigned j=0; j<p->deviceN; ++j)
+      if( p->deviceA[j].typeId == flow::kAudioDevTypeId && cwIsFlag(p->deviceA[j].flags, flow::kInFl ) )
+        _update_audio_input( p, p->netA + i, j );
 
-      for(unsigned j=0; j<p->deviceN; ++j)
-        if( p->deviceA[j].typeId == flow::kAudioDevTypeId && cwIsFlag(p->deviceA[j].flags, flow::kInFl ) )
-          _update_audio_input( p, p->netA + i, j );
-
-      for(unsigned j=0; j<p->deviceN; ++j)
-        if( p->deviceA[j].typeId == flow::kAudioDevTypeId && cwIsFlag(p->deviceA[j].flags, flow::kOutFl ) )
+    // zero the audio device output buffers because we are about to sum into them
+    for(unsigned j=0; j<p->deviceN; ++j)
+      if( p->deviceA[j].typeId == flow::kAudioDevTypeId && cwIsFlag(p->deviceA[j].flags, flow::kOutFl ) )
         _zero_audio_output( p, net, j );
-        
 
-      flow::exec_cycle( net->flowH );
+    // update the network
+    flow::exec_cycle( net->flowH );
 
-      for(unsigned j=0; j<p->deviceN; ++j)
-        if( p->deviceA[j].typeId == flow::kAudioDevTypeId && cwIsFlag(p->deviceA[j].flags, flow::kOutFl ) )
-          _update_audio_output( p, net, j );
-    }
+    // sum the output from the network into the audio output device buffer
+    // (this is were newly active networks are faded in)
+    for(unsigned j=0; j<p->deviceN; ++j)
+      if( p->deviceA[j].typeId == flow::kAudioDevTypeId && cwIsFlag(p->deviceA[j].flags, flow::kOutFl ) )
+        _update_audio_output( p, net, j );
   }
   
   return rc;
@@ -426,6 +442,9 @@ void cw::flow_cross::print( handle_t h )
 {
   flow_cross_t* p = _handleToPtr(h);
 
+  unsigned cur_flow_idx  = _get_flow_index( p, kCurDestId );
+  unsigned next_flow_idx = _get_flow_index( p, kNextDestId );
+  
   printf("flow_cross: sr:%7.1f\n", p->srate );
 
   printf("master devices:\n");
@@ -434,7 +453,21 @@ void cw::flow_cross::print( handle_t h )
 
   for(unsigned i=0; i<p->netN; ++i)
   {
-    printf("cross network:%i \n",i);
+    const char* label = i==cur_flow_idx ? "Current" : (i==next_flow_idx ? "Next" : "");
+    printf("cross network:%i (%s)\n",i,label);
     flow::print_network( p->netA[i].flowH );
   }
 }
+
+void cw::flow_cross::print_network( handle_t h, destId_t destId )
+{
+  flow_cross_t* p         = _handleToPtr(h);
+  unsigned      flow_idx  = _get_flow_index( p, destId );
+  
+  if( flow_idx == kInvalidIdx )
+    cwLogError(kInvalidArgRC,"The network id '%i' is not valid. Cannot print the network state.",destId);
+  else
+    flow::print_network( p->netA[flow_idx].flowH );
+  
+}
+

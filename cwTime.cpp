@@ -78,6 +78,19 @@ unsigned cw::time::elapsedMs( const spec_t&  t0 )
   return elapsedMs(t0,t1);
 }
 
+double cw::time::elapsedSecs( const spec_t&  t0, const spec_t& t1 )
+{
+  return elapsedMicros(t0,t1) / 1000000.0;
+}
+
+double cw::time::elapsedSecs( const spec_t&  t0 )
+{
+  spec_t t1;
+  get(t1);
+  return elapsedSecs(t0,t1);
+}
+
+
 unsigned cw::time::absElapsedMicros( const spec_t&  t0, const spec_t& t1 )
 {
   if( isLTE(t0,t1) )

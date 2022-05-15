@@ -57,6 +57,13 @@ namespace cw
       kPresetSelectVarId, //  select a preset to play
       kPlayEnableVarId,   //  include in the segment to play
       kDryFlVarId,        //  play this fragment dry
+
+
+      kBaseMasterVarId,       // All 'master' variables have id's greater than kBaseMasterVarId
+      kMasterWetInGainVarId,
+      kMasterWetOutGainVarId,
+      kMasterDryGainVarId,
+      kMasterSyncDelayMsVarId
     };
     
     rc_t create(  handle_t& hRef, const object_t* cfg  );
@@ -77,8 +84,11 @@ namespace cw
     rc_t delete_fragment( handle_t h, unsigned fragId );
 
     bool is_fragment_loc( handle_t h, unsigned loc );
-    
+
+    // Return the fragment id of the 'selected' fragment.
     unsigned ui_select_fragment_id( handle_t h );
+
+    // Set the 'select_flag' on this fragment and remove it from all others.
     void     ui_select_fragment(    handle_t h, unsigned fragId, bool selectFl );
     
 
@@ -97,6 +107,7 @@ namespace cw
     // If 'ts' is past the last defined fragment then the last fragment is returned.
     // If no fragments are defined 'frag_Ref' is set to nullptr.
     // The return value is true when the value of frag_Ref changes from the previous call.
+    void track_timestamp_reset( handle_t h );
     bool track_timestamp( handle_t h, const time::spec_t& ts, const cw::preset_sel::frag_t*& frag_Ref );
 
     // Return the preset index marked to play on this fragment.

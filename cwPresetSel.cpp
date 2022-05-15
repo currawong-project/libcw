@@ -31,6 +31,11 @@ namespace cw
       unsigned         next_frag_id;
       
       frag_t*          last_ts_frag;
+
+      double           master_wet_in_gain;
+      double           master_wet_out_gain;
+      double           master_dry_gain;
+      double           master_sync_delay_ms;
       
     } preset_sel_t;
 
@@ -205,6 +210,9 @@ namespace cw
         
     }
 
+    bool _is_master_var_id( unsigned varId )
+    { return varId > kBaseMasterVarId; }
+
     template< typename T >
     rc_t _set_value( handle_t h, unsigned fragId, unsigned varId, unsigned presetId, const T& value )
     {
@@ -212,9 +220,10 @@ namespace cw
       preset_sel_t* p  = _handleToPtr(h);
       frag_t*       f  = nullptr;
 
-      // locate the requested fragment
-      if((rc = _find_frag(p,fragId,f)) != kOkRC )
-        goto errLabel;
+      // if this is not a 'master' variable then locate the requested fragment
+      if( !_is_master_var_id(varId) )
+        if((rc = _find_frag(p,fragId,f)) != kOkRC )
+          goto errLabel;
   
       switch( varId )
       {
@@ -259,6 +268,22 @@ namespace cw
 
       case kPlayBtnVarId:
         break;
+
+      case kMasterWetInGainVarId:
+        p->master_wet_in_gain = value;
+        break;
+
+      case kMasterWetOutGainVarId:
+        p->master_wet_out_gain = value;
+        break;
+
+      case kMasterDryGainVarId:
+        p->master_dry_gain = value;
+        break;
+        
+      case kMasterSyncDelayMsVarId:
+        p->master_sync_delay_ms = value;
+        break;
         
       default:
         rc = cwLogError(kInvalidIdRC,"There is no preset variable with var id:%i.",varId);
@@ -280,9 +305,10 @@ namespace cw
       preset_sel_t* p  = _handleToPtr(h);
       frag_t*       f  = nullptr;
 
-      // locate the requested fragment
-      if((rc = _find_frag(p,fragId,f)) != kOkRC )
-        goto errLabel;
+      // if this is not a 'master' variable then locate the requested fragment
+      if( !_is_master_var_id( varId ) )
+        if((rc = _find_frag(p,fragId,f)) != kOkRC )
+          goto errLabel;
   
       switch( varId )
       {
@@ -335,6 +361,22 @@ namespace cw
       case kPlayBtnVarId:
         break;
 
+      case kMasterWetInGainVarId:
+        valueRef = p->master_wet_in_gain;
+        break;
+
+      case kMasterWetOutGainVarId:
+        valueRef = p->master_wet_out_gain;
+        break;
+
+      case kMasterDryGainVarId:
+        valueRef = p->master_dry_gain;
+        break;
+        
+      case kMasterSyncDelayMsVarId:
+        valueRef = p->master_sync_delay_ms;
+        break;
+        
       default:
         rc = cwLogError(kInvalidIdRC,"There is no preset variable with var id:%i.",varId);
         goto errLabel;
@@ -365,11 +407,15 @@ cw::rc_t cw::preset_sel::create(  handle_t& hRef, const object_t* cfg  )
   p = mem::allocZ<preset_sel_t>();
 
   // parse the cfg
-  if((rc = cfg->getv( "preset_labelL",        labelL,
-                      "default_gain",         p->defaultGain,
-                      "default_wet_dry_gain", p->defaultWetDryGain,
-                      "default_fade_ms",      p->defaultFadeOutMs,
-                      "default_preset",       default_preset_label)) != kOkRC )
+  if((rc = cfg->getv( "preset_labelL",                labelL,
+                      "default_gain",                 p->defaultGain,
+                      "default_wet_dry_gain",         p->defaultWetDryGain,
+                      "default_fade_ms",              p->defaultFadeOutMs,
+                      "default_preset",               default_preset_label,
+                      "default_master_wet_in_gain",   p->master_wet_in_gain,
+                      "default_master_wet_out_gain",  p->master_wet_out_gain,
+                      "default_master_dry_gain",      p->master_dry_gain,
+                      "default_master_sync_delay_ms", p->master_sync_delay_ms)) != kOkRC )
   {
     rc = cwLogError(rc,"The preset configuration parse failed.");
     goto errLabel;
@@ -591,29 +637,27 @@ cw::rc_t cw::preset_sel::create_fragment( handle_t h, unsigned end_loc, time::sp
 cw::rc_t cw::preset_sel::delete_fragment( handle_t h, unsigned fragId )
 {
   preset_sel_t* p  = _handleToPtr(h);
-  frag_t*       f0 = nullptr;
-  frag_t*       f1 = p->fragL;
+  frag_t*       f = p->fragL;
   
-  for(; f1!=nullptr; f1=f1->link)
-  {
-    if( f1->fragId == fragId )
+  for(; f!=nullptr; f=f->link)
+    if( f->fragId == fragId )
     {
-      if( f0 == nullptr )
-        p->fragL = f1->link;
+      if( f->prev == nullptr )
+        p->fragL = f->link;
       else
-        f0->link = f1->link;
+        f->prev->link = f->link;
+
+      if( f->link != nullptr )
+        f->link->prev = f->prev;
 
       // release the fragment
-      mem::release(f1->presetA);
-      mem::release(f1);
+      mem::release(f->presetA);
+      mem::release(f);
       
       return kOkRC;
     }
-    
-    f0 = f1;
-  }
   
-  return kOkRC;
+  return cwLogError(kInvalidArgRC,"The fragment '%i' could not be found to delete.",fragId);
 }
 
 bool cw::preset_sel::is_fragment_loc( handle_t h, unsigned loc )
@@ -711,12 +755,24 @@ cw::rc_t cw::preset_sel::get_value( handle_t h, unsigned fragId, unsigned varId,
   return rc;
 }
 
+void cw::preset_sel::track_timestamp_reset( handle_t h )
+{
+  preset_sel_t* p = _handleToPtr(h);
+  p->last_ts_frag = nullptr;
+}
+
 bool cw::preset_sel::track_timestamp( handle_t h, const time::spec_t& ts, const cw::preset_sel::frag_t*& frag_Ref )
 {
   preset_sel_t* p               = _handleToPtr(h);
   frag_t*       f               = nullptr;
   bool          frag_changed_fl = false;
 
+  time::spec_t t0;
+  time::setZero(t0);
+  unsigned elapsedMs = time::elapsedMs(t0,ts);
+  double mins = elapsedMs / 60000.0;
+
+  
   // if this is the first call to 'track_timestamp()'.
   if( p->last_ts_frag == nullptr )
     f = _timestamp_to_frag(p,ts);
@@ -799,8 +855,12 @@ cw::rc_t cw::preset_sel::write( handle_t h, const char* fn )
     }
   }
 
-  newPairObject("fragL", fragL_obj, root);
-  newPairObject("fragN", fragN,     root);
+  newPairObject("fragL",             fragL_obj,              root);
+  newPairObject("fragN",             fragN,                  root);
+  newPairObject("masterWetInGain",   p->master_wet_in_gain,  root );
+  newPairObject("masterWetOutGain",  p->master_wet_out_gain, root );
+  newPairObject("masterDryGain",     p->master_dry_gain,     root );
+  newPairObject("masterSyncDelayMs", p->master_sync_delay_ms,root );
 
   unsigned bytes_per_frag = 1024;
   
@@ -848,8 +908,12 @@ cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
   _destroy_all_frags(p);
 
   // parse the root level
-  if((rc = root->getv( "fragN", fragN,
-                       "fragL", fragL_obj )) != kOkRC )
+  if((rc = root->getv( "fragN",            fragN,
+                       "fragL",            fragL_obj,
+                       "masterWetInGain",  p->master_wet_in_gain,
+                       "masterWetOutGain", p->master_wet_out_gain,
+                       "masterDryGain",    p->master_dry_gain,
+                       "masterSyncDelayMs",p->master_sync_delay_ms)) != kOkRC )
   {
     rc = cwLogError(rc,"Root preset select parse failed on '%s'.", cwStringNullGuard(fn));
     goto errLabel;
@@ -965,7 +1029,7 @@ cw::rc_t cw::preset_sel::report( handle_t h )
     unsigned elapsedMs = time::elapsedMs(t0,f->endTimestamp);
     double mins = elapsedMs / 60000.0;
     
-    cwLogInfo("%3i id:%3i end loc:%3i end min:%7.2f",i,f->fragId,f->endLoc, mins);
+    cwLogInfo("%3i id:%3i end loc:%3i end min:%f",i,f->fragId,f->endLoc, mins);
   }
 
   return rc;

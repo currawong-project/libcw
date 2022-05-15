@@ -12,14 +12,15 @@ namespace cw
     {
       unsigned      id;
       time::spec_t  timestamp;
+      unsigned      loc;
       uint8_t       ch;
       uint8_t       status;
       uint8_t       d0;
-      uint8_t       d1;      
+      uint8_t       d1;
     } midi_msg_t;
 
 
-    typedef void (*event_callback_t)( void* arg, unsigned id, const time::spec_t timestamp, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 );
+    typedef void (*event_callback_t)( void* arg, unsigned id, const time::spec_t timestamp, unsigned loc, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 );
     
     
     rc_t create( handle_t& hRef, io::handle_t ioH, const object_t& cfg, event_callback_t cb=nullptr, void* cb_arg=nullptr );
@@ -39,14 +40,26 @@ namespace cw
     bool thru_state( handle_t h );
 
     rc_t save( handle_t h, const char* fn );
+    rc_t save_csv( handle_t h, const char* fn );
+    
     rc_t open( handle_t h, const char* fn );
+
+    // Load the playback buffer with messages to output.
     rc_t load( handle_t h, const midi_msg_t* msg, unsigned msg_count );
 
     rc_t seek( handle_t h, time::spec_t timestamp );
+
+    unsigned event_count( handle_t h ); // Current count of stored messages.
+    unsigned event_index( handle_t h ); // record mode: index of next event to store play mode:index of next event to play
+    unsigned event_loc( handle_t h );   // play mode: loc of next event to play record mode:kInvalidId
     
-    unsigned event_count( handle_t h );
-    unsigned event_index( handle_t h );
     rc_t exec( handle_t h, const io::msg_t& msg );
+
+    unsigned device_count( handle_t h );
+    bool is_device_enabled( handle_t h, unsigned devIdx );
+    void enable_device( handle_t h, unsigned devIdx, bool enableFl );
+
+    void half_pedal_params( handle_t h, unsigned noteDelayMs, unsigned pitch, unsigned vel, unsigned pedal_vel, unsigned noteDurMs, unsigned downDelayMs );
 
     // Convert an audio-midi file to a MIDI file
     rc_t am_to_midi_file( const char* am_filename, const char* midi_filename );

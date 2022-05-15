@@ -35,10 +35,20 @@ namespace cw
       kPanelDivId = 1000,
       kQuitBtnId,
       kIoReportBtnId,
+      kNetPrintBtnId,
       kReportBtnId,
       
       kStartBtnId,
       kStopBtnId,
+
+      kPrintMidiCheckId,
+      kPianoMidiCheckId,
+      kSamplerMidiCheckId,
+      kSyncDelayMsId,
+
+      kWetInGainId,
+      kWetOutGainId,
+      kDryGainId,
       
       kMidiThruCheckId,
       kCurMidiEvtCntId,
@@ -58,6 +68,13 @@ namespace cw
       kDeleteBtnId,
 
       kStatusId,
+
+      kHalfPedalPedalVel,
+      kHalfPedalDelayMs,
+      kHalfPedalPitch,
+      kHalfPedalVel,
+      kHalfPedalDurMs,
+      kHalfPedalDnDelayMs,
 
       kLogId,
 
@@ -83,6 +100,12 @@ namespace cw
 
     enum
     {
+      kPiano_MRP_DevIdx  = 0,
+      kSampler_MRP_DevIdx = 1
+    };
+
+    enum
+    {
       kAmMidiTimerId
     };
 
@@ -93,10 +116,20 @@ namespace cw
       { ui::kRootAppId,  kPanelDivId,     "panelDivId" },
       { kPanelDivId,     kQuitBtnId,      "quitBtnId" },
       { kPanelDivId,     kIoReportBtnId,  "ioReportBtnId" },
+      { kPanelDivId,     kNetPrintBtnId,  "netPrintBtnId" },
       { kPanelDivId,     kReportBtnId,    "reportBtnId" },
         
       { kPanelDivId,     kStartBtnId,        "startBtnId" },
       { kPanelDivId,     kStopBtnId,         "stopBtnId" },
+
+      { kPanelDivId,     kPrintMidiCheckId,  "printMidiCheckId" },
+      { kPanelDivId,     kPianoMidiCheckId,  "pianoMidiCheckId" },
+      { kPanelDivId,     kSamplerMidiCheckId,"samplerMidiCheckId" },
+      { kPanelDivId,     kSyncDelayMsId,     "syncDelayMsId" },
+
+      { kPanelDivId,     kWetInGainId,       "wetInGainId" },
+      { kPanelDivId,     kWetOutGainId,      "wetOutGainId" },
+      { kPanelDivId,     kDryGainId,         "dryGainId" },
       
       { kPanelDivId,     kMidiThruCheckId,   "midiThruCheckId" },
       { kPanelDivId,     kCurMidiEvtCntId,   "curMidiEvtCntId" },      
@@ -114,6 +147,15 @@ namespace cw
       { kPanelDivId,     kInsertLocId,    "insertLocId" },
       { kPanelDivId,     kInsertBtnId,    "insertBtnId" },
       { kPanelDivId,     kDeleteBtnId,    "deleteBtnId" },
+
+      { kPanelDivId,     kHalfPedalPedalVel, "halfPedalPedalVelId" },
+      { kPanelDivId,     kHalfPedalDelayMs,  "halfPedalDelayMsId"  },
+      { kPanelDivId,     kHalfPedalPitch,    "halfPedalPitchId"    },
+      { kPanelDivId,     kHalfPedalVel,      "halfPedalVelId"      },
+      { kPanelDivId,     kHalfPedalDurMs,    "halfPedalDurMsId"    },
+      { kPanelDivId,     kHalfPedalDnDelayMs, "halfPedalDnDelayMsId"    },
+
+      
       { kPanelDivId,     kStatusId,       "statusId" },
       { kPanelDivId,     kLogId,          "logId" },
 
@@ -156,6 +198,7 @@ namespace cw
       const char*     record_fn;
       const char*     record_fn_ext;
       const char*     scoreFn;
+      const object_t* midi_play_record_cfg;
       const object_t* frag_panel_cfg;
       const object_t* presets_cfg;
       const object_t* flow_cfg;
@@ -184,7 +227,15 @@ namespace cw
 
       double   crossFadeSrate;
       unsigned crossFadeCnt;
-      
+
+      bool     printMidiFl;
+
+      unsigned hpDelayMs;
+      unsigned hpPedalVel;
+      unsigned hpPitch;
+      unsigned hpVel;
+      unsigned hpDurMs;
+      unsigned hpDnDelayMs;
     } app_t;
 
     rc_t _parseCfg(app_t* app, const object_t* cfg, const object_t*& params_cfgRef )
@@ -198,18 +249,31 @@ namespace cw
         goto errLabel;
       }
         
-      if((rc = params_cfgRef->getv( "record_dir",    app->record_dir,
-                                    "record_fn",     app->record_fn,
-                                    "record_fn_ext", app->record_fn_ext,
-                                    "score_fn",      app->scoreFn,
-                                    "frag_panel",    app->frag_panel_cfg,
-                                    "presets",       app->presets_cfg,
-                                    "crossFadeSrate",app->crossFadeSrate,
-                                    "crossFadeCount",app->crossFadeCnt)) != kOkRC )
+      if((rc = params_cfgRef->getv( "record_dir",       app->record_dir,
+                                    "record_fn",        app->record_fn,
+                                    "record_fn_ext",    app->record_fn_ext,
+                                    "score_fn",         app->scoreFn,
+                                    "midi_play_record", app->midi_play_record_cfg,
+                                    "frag_panel",       app->frag_panel_cfg,
+                                    "presets",          app->presets_cfg,
+                                    "crossFadeSrate",   app->crossFadeSrate,
+                                    "crossFadeCount",   app->crossFadeCnt)) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"Preset Select App configuration parse failed.");
       }
 
+      if((app->scoreFn    = filesys::expandPath( app->scoreFn )) == nullptr )
+      {
+        rc = cwLogError(kInvalidArgRC,"The score file name is invalid.");
+        goto errLabel;
+      }
+      
+      if((app->record_dir = filesys::expandPath(app->record_dir)) == nullptr )
+      {
+        rc = cwLogError(kInvalidArgRC,"The record directory path is invalid.");
+        goto errLabel;
+      }
+      
       // verify that the output directory exists
       if((rc = filesys::isDir(app->record_dir)) != kOkRC )
         if((rc = filesys::makeDir(app->record_dir)) != kOkRC )
@@ -257,6 +321,8 @@ namespace cw
 
     rc_t _free( app_t& app )      
     {
+      mem::release((char*&)app.record_dir);
+      mem::release((char*&)app.scoreFn);
       preset_sel::destroy(app.psH);
       io_flow::destroy(app.ioFlowH);
       midi_record_play::destroy(app.mrpH);
@@ -283,15 +349,15 @@ namespace cw
         {        
           const char* preset_label = preset_sel::preset_label(app->psH,preset_idx);
         
-          cwLogInfo("Apply preset: '%s'.\n", preset_idx==kInvalidIdx ? "<invalid>" : preset_label);
+          cwLogInfo("Apply preset: '%s'.", preset_idx==kInvalidIdx ? "<invalid>" : preset_label);
 
           if( preset_label != nullptr )
           {
             io_flow::apply_preset( app->ioFlowH, flow_cross::kNextDestId, preset_label );
 
-            io_flow::set_variable_value( app->ioFlowH, flow_cross::kNextDestId, "wd_bal",    "in",    flow::kAnyChIdx, (dsp::real_t)frag->wetDryGain );
-            io_flow::set_variable_value( app->ioFlowH, flow_cross::kNextDestId, "split_wet", "gain",  flow::kAnyChIdx, (dsp::real_t)frag->igain );
-            io_flow::set_variable_value( app->ioFlowH, flow_cross::kNextDestId, "cmp",       "ogain", flow::kAnyChIdx, (dsp::real_t)frag->ogain );
+            io_flow::set_variable_value( app->ioFlowH, flow_cross::kNextDestId, "wet_in_gain", "gain",  flow::kAnyChIdx, (dsp::real_t)frag->igain );
+            io_flow::set_variable_value( app->ioFlowH, flow_cross::kNextDestId, "wet_out_gain","gain", flow::kAnyChIdx, (dsp::real_t)frag->ogain );
+            io_flow::set_variable_value( app->ioFlowH, flow_cross::kNextDestId, "wd_bal",      "in",    flow::kAnyChIdx, (dsp::real_t)frag->wetDryGain );
             
             io_flow::begin_cross_fade( app->ioFlowH, frag->fadeOutMs );
           }
@@ -301,34 +367,98 @@ namespace cw
       return kOkRC;      
     }
 
-    void _midi_play_callback( void* arg, unsigned id, const time::spec_t timestamp, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
+
+    // Turn on the selection border for the clicked fragment
+    rc_t _do_select_frag( app_t* app, unsigned clickedUuId )
     {
-      app_t* app = (app_t*)arg;
-      if( id != kInvalidId )
+      rc_t rc = kOkRC;
+
+      // get the last selected fragment
+      unsigned prevFragId = preset_sel::ui_select_fragment_id(app->psH);
+      unsigned prevUuId   = preset_sel::frag_to_gui_id(app->psH,prevFragId,false);
+      
+      // is the last selected fragment the same as the clicked fragment
+      bool reclickFl = prevUuId == clickedUuId;
+
+      // if a different fragment was clicked then deselect the last fragment in the UI
+      if( !reclickFl )
       {
-        const unsigned buf_byte_cnt = 256;
-        char buf[ buf_byte_cnt ];
-        event_to_string( app->scoreH, id, buf, buf_byte_cnt );
-        printf("%s\n",buf);
+        if(prevUuId != kInvalidId )
+          io::uiSetSelect(   app->ioH, prevUuId, false );
 
-        const preset_sel::frag_t* f = nullptr;
-        if( preset_sel::track_timestamp( app->psH, timestamp, f ) )
-        {          
-          //printf("NEW FRAG: id:%i loc:%i\n", f->fragId, f->endLoc );
-          _apply_preset( app, timestamp, f );                
-        }
-        
-
+        // select or deselect the clicked fragment
+        io::uiSetSelect(   app->ioH, clickedUuId, !reclickFl );
       }
+      
+      // Note: calls to uiSetSelect() produce callbacks to _onUiSelect().
+
+      return rc;
     }
 
+    void _midi_play_callback( void* arg, unsigned id, const time::spec_t timestamp, unsigned loc, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
+    {
+      app_t* app = (app_t*)arg;
+      
+        if( app->printMidiFl )
+        {
+          const unsigned buf_byte_cnt = 256;
+          char buf[ buf_byte_cnt ];
+          
+          // if this event is not in the score
+          if( id == kInvalidId )
+          {
+            // TODO: print this out in the same format as event_to_string()
+            snprintf(buf,buf_byte_cnt,"ch:%i status:0x%02x d0:%i d1:%i",ch,status,d0,d1);
+          }
+          else
+            score::event_to_string( app->scoreH, id, buf, buf_byte_cnt );
+          printf("%s\n",buf);
+        }
+
+        if( midi_record_play::is_started(app->mrpH) )
+        {
+          const preset_sel::frag_t* f = nullptr;
+          if( preset_sel::track_timestamp( app->psH, timestamp, f ) )
+          {          
+            //printf("NEW FRAG: id:%i loc:%i\n", f->fragId, f->endLoc );
+            _apply_preset( app, timestamp, f );
+
+            if( f != nullptr )
+              _do_select_frag( app, f->guiUuId );
+          }
+        }
+    }
+
+    // Find the closest locMap equal to or after 'loc'
     loc_map_t* _find_loc( app_t* app, unsigned loc )
     {
       unsigned i=0;
+      loc_map_t* pre_loc_map = nullptr;
+      
       for(; i<app->locMapN; ++i)
-        if( app->locMap[i].loc == loc )
-          return app->locMap + i;
-      return nullptr;
+      {
+        if( app->locMap[i].loc >= loc )
+          return app->locMap +i;
+
+        pre_loc_map = app->locMap + i;
+           
+      }
+      
+      return pre_loc_map;
+    }
+
+    rc_t _do_stop_play( app_t* app )
+    {
+      rc_t rc = kOkRC;
+
+      if((rc = midi_record_play::stop(app->mrpH)) != kOkRC )
+      {
+        rc = cwLogError(rc,"MIDI stop failed.");
+        goto errLabel;
+      }
+
+    errLabel:
+      return rc;
     }
     
     
@@ -339,6 +469,16 @@ namespace cw
       loc_map_t* begMap = nullptr;
       loc_map_t* endMap = nullptr;
 
+      // if the player is already playing then stop it
+      if( midi_record_play::is_started(app->mrpH) )
+      {
+        rc = _do_stop_play(app);
+        goto errLabel;
+      }
+
+      midi_record_play::half_pedal_params( app->mrpH, app->hpDelayMs, app->hpPitch, app->hpVel, app->hpPedalVel, app->hpDurMs, app->hpDnDelayMs );
+
+      
       if((begMap = _find_loc(app,begLoc)) == nullptr )
       {
         rc = cwLogError(kInvalidArgRC,"The begin play location is not valid.");
@@ -381,7 +521,7 @@ namespace cw
       }
 
       
-      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), midi_record_play::event_index(app->mrpH) );
+      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), midi_record_play::event_loc(app->mrpH) );
 
     errLabel:
       return rc;
@@ -415,8 +555,10 @@ namespace cw
     
     void _update_event_ui( app_t* app )
     {
-      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId),   midi_record_play::event_index(app->mrpH) );
-      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kTotalMidiEvtCntId), midi_record_play::event_count(app->mrpH) );
+      //io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId),   midi_record_play::event_index(app->mrpH) );
+      //io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kTotalMidiEvtCntId), midi_record_play::event_count(app->mrpH) );
+      
+      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kTotalMidiEvtCntId), app->maxLoc );
     }
 
     // Update the UI with the value from the the fragment data record.
@@ -752,7 +894,7 @@ namespace cw
     }
     
     
-    rc_t _restore( app_t* app )
+    rc_t _restore_fragment_data( app_t* app )
     {
       rc_t  rc = kOkRC;
       char* fn = nullptr;
@@ -778,10 +920,10 @@ namespace cw
         goto errLabel;
       }
 
-      preset_sel::report( app->psH );
+      //preset_sel::report( app->psH );
 
       f = preset_sel::get_fragment_base(app->psH);
-      for(; f!=nullptr; f=f->link)
+      for(int i=0; f!=nullptr; f=f->link,++i)
       {
         unsigned fragId = f->fragId;
         
@@ -792,7 +934,7 @@ namespace cw
         }
 
         _update_frag_ui(app, fragId );
-
+        
       }
       
 
@@ -834,21 +976,18 @@ namespace cw
       return rc;
     }
 
+    int _compare_loc_map( const void* m0, const void* m1 )
+    { return ((const loc_map_t*)m0)->loc - ((const loc_map_t*)m1)->loc; }
 
-    rc_t _do_load( app_t* app )
+    rc_t _load_piano_score( app_t* app, unsigned& midiEventCntRef )
     {
       rc_t                          rc         = kOkRC;
       const score::event_t*         e          = nullptr;
       unsigned                      midiEventN = 0;      
       midi_record_play::midi_msg_t* m          = nullptr;
 
-      // if the score is already loaded
-      if( app->scoreH.isValid() )
-        return rc;
-
-      cwLogInfo("Loading");
-      _set_status(app,"Loading...");
-
+      midiEventCntRef = 0;
+      
       // create the score
       if((rc = score::create( app->scoreH, app->scoreFn )) != kOkRC )
       {
@@ -885,6 +1024,7 @@ namespace cw
             m[i].d0     = e->d0;
             m[i].d1     = e->d1;
             m[i].id     = e->uid;
+            m[i].loc    = e->loc;
 
             app->locMap[i].loc       = e->loc;
             app->locMap[i].timestamp = m[i].timestamp;
@@ -895,6 +1035,8 @@ namespace cw
             ++i;
           }
 
+        qsort( app->locMap, app->locMapN, sizeof(loc_map_t), _compare_loc_map );
+        
         // load the player with the msg list
         if((rc = midi_record_play::load( app->mrpH, m, midiEventN )) != kOkRC )
         {
@@ -902,35 +1044,79 @@ namespace cw
           goto errLabel;
         }
 
-        mem::free(m);
-        
+        cwLogInfo("%i MIDI events loaded from score.", midiEventN );
+
+        mem::free(m);        
       }
 
-      // set the range of the global play location controls
-      io::uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, kBegPlayLocNumbId), app->minLoc, app->maxLoc, 1, 0, app->minLoc );
-      io::uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, kEndPlayLocNumbId), app->minLoc, app->maxLoc, 1, 0, app->maxLoc );
+    errLabel:
 
+      midiEventCntRef = midiEventN;
       
-      // enable the 'End Loc' number box since the score is loaded
-      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kInsertLocId ), true );
+      
+      return rc;
+      
+    }
 
+
+    rc_t _do_load( app_t* app )
+    {
+      rc_t     rc          = kOkRC;
+      unsigned midiEventN  = 0;
+      bool     firstLoadFl = !app->scoreH.isValid();
+      unsigned minLoc      = firstLoadFl ? 0 : app->minLoc;
+      unsigned maxLoc      = firstLoadFl ? 0 : app->maxLoc;
+      
+      // if the score is already loaded
+      //if( app->scoreH.isValid() )
+      //  return rc;
+
+      cwLogInfo("Loading");
+      _set_status(app,"Loading...");
+
+
+      // Load the piano score
+      if((rc = _load_piano_score(app,midiEventN)) != kOkRC )
+        goto errLabel;
+
+      if( !firstLoadFl)
+      {
+        minLoc  = std::max(minLoc,app->minLoc);
+        maxLoc  = std::min(maxLoc,app->maxLoc);
+      }
+
+      // reset the timestamp tracker
+      track_timestamp_reset( app->psH );
+      
+      // set the range of the global play location controls
+      if( firstLoadFl )
+      {
+        io::uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, kBegPlayLocNumbId), app->minLoc, app->maxLoc, 1, 0, minLoc );
+        io::uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, kEndPlayLocNumbId), app->minLoc, app->maxLoc, 1, 0, maxLoc );
+      
+      
+        // enable the 'End Loc' number box since the score is loaded
+        io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kInsertLocId ), true );
+      }
+      
       // update the current event and event count
       _update_event_ui(app);
-
 
       // enable the start/stop buttons
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStartBtnId ), true );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStopBtnId ),  true );
-
+        
       // restore the fragment records
-      if((rc = _restore( app )) != kOkRC )
-      {
-        rc = cwLogError(rc,"Restore failed.");
-        goto errLabel;
-      }
+      if( firstLoadFl )
+        if((rc = _restore_fragment_data( app )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Restore failed.");
+          goto errLabel;
+        }
 
-      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kLoadBtnId ), false );
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kLoadBtnId ), true );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kSaveBtnId ), true );
+      
       
       cwLogInfo("'%s' loaded.",app->scoreFn);
       
@@ -946,25 +1132,11 @@ namespace cw
       return rc;
     }
 
-
     rc_t _on_ui_start( app_t* app )
     {
       return _do_play(app, app->beg_play_loc, app->end_play_loc );
     }
 
-    rc_t _on_ui_stop( app_t* app )
-    {
-      rc_t rc = kOkRC;
-
-      if((rc = midi_record_play::stop(app->mrpH)) != kOkRC )
-      {
-        rc = cwLogError(rc,"MIDI start failed.");
-        goto errLabel;
-      }
-
-    errLabel:
-      return rc;
-    }
 
     rc_t _set_midi_thru_state( app_t* app, bool thru_fl )
     {
@@ -990,26 +1162,31 @@ namespace cw
     {
       rc_t       rc = kOkRC;
 
-      switch( appId )
-      {
-        case kBegPlayLocNumbId:
-          app->beg_play_loc = loc;
-          break;
-          
-        case kEndPlayLocNumbId:
-          app->end_play_loc = loc;
-          break;
-      }
-
-      bool enableFl = app->beg_play_loc < app->end_play_loc;
-      
-      _enable_global_play_btn(app, enableFl );
-
-      if(enableFl)
-        _clear_status(app);
+      // verify that the location exists
+      if( _find_loc(app,loc) == nullptr )
+        _set_status(app,"%i is an invalid location.",loc);
       else
-        _set_status(app,"Invalid play location range.");
-
+      {
+        switch( appId )
+        {
+          case kBegPlayLocNumbId:
+            app->beg_play_loc = loc;
+            break;
+          
+          case kEndPlayLocNumbId:
+            app->end_play_loc = loc;
+            break;
+        }
+        
+        bool enableFl = app->beg_play_loc < app->end_play_loc;
+      
+        _enable_global_play_btn(app, enableFl );
+        
+        if(enableFl)
+          _clear_status(app);
+        else
+          _set_status(app,"Invalid play location range.");
+      }
       
       return rc;
     }
@@ -1131,10 +1308,126 @@ namespace cw
       
       if( rc != kOkRC )
         rc = cwLogError(rc,"Fragment delete failed.");
+      else
+        cwLogInfo("Fragment %i deleted.",fragId);
+
+      return rc;
+    }
+
+    void _on_echo_midi_enable( app_t* app, unsigned uuId,  unsigned mrp_dev_idx )
+    {
+      if( mrp_dev_idx <= midi_record_play::device_count(app->mrpH)  )
+      {
+        bool     enableFl = midi_record_play::is_device_enabled(app->mrpH, mrp_dev_idx );
+        io::uiSendValue( app->ioH, uuId, enableFl );
+      }
+    }
+
+    void _on_midi_enable( app_t* app, unsigned checkAppId, unsigned mrp_dev_idx, bool enableFl )
+    {
+      unsigned midi_dev_n = midi_record_play::device_count(app->mrpH);
+      
+      if(  mrp_dev_idx < midi_dev_n  )
+        midi_record_play::enable_device(app->mrpH, mrp_dev_idx, enableFl );
+      else
+        cwLogError(kInvalidArgRC,"%i is not a valid MIDI device index for device count:%i.",mrp_dev_idx,midi_dev_n);
+    }
+    
+    rc_t _on_echo_master_value( app_t* app, unsigned varId, unsigned uuId )
+    {
+      rc_t rc = kOkRC;
+      double val = 0;
+      if((rc = get_value( app->psH, kInvalidId, varId, kInvalidId, val )) != kOkRC )
+        rc = cwLogError(rc,"Unable to get the master value for var id:%i.",varId);
+      else
+        io::uiSendValue( app->ioH, uuId, val );
+                        
+      return rc;
+    }
+    
+    rc_t _on_master_value( app_t* app, const char* inst_label, const char* var_label, unsigned varId, double value )
+    {
+      rc_t rc = kOkRC;
+      if((rc = preset_sel::set_value( app->psH, kInvalidId, varId, kInvalidId, value )) != kOkRC )
+        rc = cwLogError(rc,"Master value set failed on varId:%i %s.%s.",varId,cwStringNullGuard(inst_label),cwStringNullGuard(var_label));
+      else
+        if((rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, inst_label,  var_label,    flow::kAnyChIdx, (dsp::real_t)value )) != kOkRC )
+            rc = cwLogError(rc,"Master value send failed on %s.%s.",cwStringNullGuard(inst_label),cwStringNullGuard(var_label));
       
       return rc;
     }
 
+    rc_t _on_ui_half_pedal_value( app_t* app, unsigned appId, unsigned uuId, unsigned value )
+    {
+      switch( appId )
+      {
+        case kHalfPedalDelayMs:
+          app->hpDelayMs = value;
+          break;
+          
+        case  kHalfPedalPedalVel:
+          app->hpPedalVel = value;
+          break;
+          
+        case kHalfPedalPitch:
+          app->hpPitch = value;
+          break;
+          
+        case kHalfPedalVel:
+          app->hpVel = value;
+          break;
+          
+        case kHalfPedalDurMs:
+          app->hpDurMs = value;
+          break;
+          
+        case kHalfPedalDnDelayMs:
+          app->hpDnDelayMs = value;
+          break;
+
+        default:
+          { assert(0); }
+          
+      }
+      return kOkRC;
+    }
+
+    rc_t _on_echo_half_pedal( app_t* app, unsigned appId, unsigned uuId )
+    {
+      switch( appId )
+      {
+        case kHalfPedalDelayMs:
+          io::uiSendValue( app->ioH, uuId, app->hpDelayMs );
+          break;
+          
+        case  kHalfPedalPedalVel:
+          io::uiSendValue( app->ioH, uuId, app->hpPedalVel );
+          break;
+          
+        case kHalfPedalPitch:
+          io::uiSendValue( app->ioH, uuId, app->hpPitch );
+          break;
+          
+        case kHalfPedalVel:
+          io::uiSendValue( app->ioH, uuId, app->hpVel );
+          break;
+          
+        case kHalfPedalDurMs:
+          io::uiSendValue( app->ioH, uuId, app->hpDurMs );
+          break;
+
+        case kHalfPedalDnDelayMs:
+          io::uiSendValue( app->ioH, uuId, app->hpDnDelayMs );
+          break;
+          
+        default:
+          { assert(0); }
+          
+      }
+      return kOkRC;      
+    }
+    
+    
     rc_t _onUiInit(app_t* app, const io::ui_msg_t& m )
     {
       rc_t rc = kOkRC;
@@ -1150,7 +1443,7 @@ namespace cw
       for(; f!=nullptr; f=f->link)
         _update_frag_ui( app, f->fragId );
 
-      //_do_load(app);
+      _do_load(app);
       
       return rc;
     }
@@ -1168,11 +1461,17 @@ namespace cw
         case kIoReportBtnId:
           io::report( app->ioH );
           break;
+
+        case kNetPrintBtnId:
+          io_flow::print_network(app->ioFlowH,flow_cross::kCurDestId);
+          break;
             
         case kReportBtnId:
-          //preset_sel::report( app->psH );
+          preset_sel::report( app->psH );
           //io_flow::apply_preset( app->ioFlowH, 2000.0, app->tmp==0 ? "a" : "b");
           //app->tmp = !app->tmp;
+          //io_flow::print(app->ioFlowH);
+          //midi_record_play::save_csv(app->mrpH,"/home/kevin/temp/mrp_1.csv");
           break;
 
         case kSaveBtnId:
@@ -1193,9 +1492,37 @@ namespace cw
           break;
             
         case kStopBtnId:
-          _on_ui_stop(app);
+          _do_stop_play(app);
           break;
 
+        case kPrintMidiCheckId:
+          app->printMidiFl = m.value->u.b;
+          break;
+          
+        case kPianoMidiCheckId:
+          _on_midi_enable( app, m.appId, kPiano_MRP_DevIdx, m.value->u.b );
+          break;
+
+        case kSamplerMidiCheckId:
+          _on_midi_enable( app, m.appId, kSampler_MRP_DevIdx, m.value->u.b );
+          break;
+
+        case kWetInGainId:
+          _on_master_value( app, "mstr_wet_in_gain","gain", preset_sel::kMasterWetInGainVarId, m.value->u.d );
+          break;
+            
+        case kWetOutGainId:
+          _on_master_value( app, "mstr_wet_out_gain","gain",preset_sel::kMasterWetOutGainVarId, m.value->u.d );
+          break;
+          
+        case kDryGainId:
+          _on_master_value( app, "mstr_dry_out_gain", "gain", preset_sel::kMasterDryGainVarId, m.value->u.d );
+          break;
+
+        case kSyncDelayMsId:
+          _on_master_value( app, "sync_delay","delayMs",preset_sel::kMasterSyncDelayMsVarId, (double)m.value->u.i );          
+          break;
+          
         case kBegPlayLocNumbId:
           _on_ui_play_loc(app, m.appId, m.value->u.i);
           break;
@@ -1216,6 +1543,15 @@ namespace cw
           _on_ui_delete_btn(app);
           break;
 
+        case kHalfPedalPedalVel:
+        case kHalfPedalDelayMs:
+        case kHalfPedalPitch:
+        case kHalfPedalVel:
+        case kHalfPedalDurMs:
+        case kHalfPedalDnDelayMs:
+          _on_ui_half_pedal_value( app, m.appId, m.uuId, m.value->u.u );
+          break;
+          
         case kFragInGainId:
           _on_ui_frag_value( app, m.uuId, m.value->u.d);          
           break;
@@ -1286,31 +1622,6 @@ namespace cw
       return kOkRC;
     }
 
-    rc_t _onUiClick( app_t* app, const io::ui_msg_t& m )
-    {
-      rc_t rc = kOkRC;
-
-      // get the last selected fragment
-      unsigned prevFragId = preset_sel::ui_select_fragment_id(app->psH);
-      unsigned prevUuId   = preset_sel::frag_to_gui_id(app->psH,prevFragId,false);
-      
-      // is the last selected fragment the same as the clicked fragment
-      bool reclickFl = prevUuId == m.uuId;
-
-      // if a different fragment was clicked then deselect the last fragment in the UI
-      if( !reclickFl )
-      {
-        if(prevUuId != kInvalidId )
-          uiSetSelect(   app->ioH, prevUuId, false );
-
-        // select or deselect the clicked fragment
-        uiSetSelect(   app->ioH, m.uuId, !reclickFl );
-      }
-      
-      // Note: calls to uiSetSelect() produce callbacks to _onUiSelect().
-
-      return rc;
-    }
 
     rc_t _onUiSelect( app_t* app, const io::ui_msg_t& m )
     {
@@ -1333,10 +1644,50 @@ namespace cw
     errLabel:
       return rc;
     }
-    
+
     rc_t _onUiEcho(app_t* app, const io::ui_msg_t& m )
     {
       rc_t rc = kOkRC;
+      switch( m.appId )
+      {
+        case kPrintMidiCheckId:
+          break;
+          
+        case kPianoMidiCheckId:
+          _on_echo_midi_enable( app, m.uuId, kPiano_MRP_DevIdx );
+          break;
+          
+        case kSamplerMidiCheckId:
+          _on_echo_midi_enable( app, m.uuId, kSampler_MRP_DevIdx );
+          break;
+          
+        case kWetInGainId:
+          _on_echo_master_value( app, preset_sel::kMasterWetInGainVarId, m.uuId );
+          break;
+          
+        case kWetOutGainId:
+          _on_echo_master_value( app, preset_sel::kMasterWetOutGainVarId, m.uuId );
+          break;
+          
+        case kDryGainId:
+          _on_echo_master_value( app, preset_sel::kMasterDryGainVarId, m.uuId );
+          break;
+          
+        case kSyncDelayMsId:
+          _on_echo_master_value( app, preset_sel::kMasterSyncDelayMsVarId, m.uuId );
+          break;
+
+        case kHalfPedalPedalVel:
+        case kHalfPedalDelayMs:
+        case kHalfPedalPitch:
+        case kHalfPedalVel:
+        case kHalfPedalDurMs:
+        case kHalfPedalDnDelayMs:
+          _on_echo_half_pedal( app, m.appId, m.uuId );
+          break;
+          
+          
+      }
       return rc;
     }
     
@@ -1367,7 +1718,7 @@ namespace cw
         break;
 
       case ui::kClickOpId:
-        _onUiClick( app, m );
+        _do_select_frag( app, m.uuId );
         break;
 
       case ui::kSelectOpId:
@@ -1402,7 +1753,7 @@ namespace cw
       {
         midi_record_play::exec( app->mrpH, *m );
         if( midi_record_play::is_started(app->mrpH) )
-          io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), midi_record_play::event_index(app->mrpH) );
+          io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), midi_record_play::event_loc(app->mrpH) );
       }
 
       if( app->ioFlowH.isValid() )
@@ -1453,8 +1804,9 @@ namespace cw
 
 cw::rc_t cw::preset_sel_app::main( const object_t* cfg, const object_t* flow_proc_dict )
 {
+
   rc_t rc;
-  app_t app = { };
+  app_t app = { .hpDelayMs=250, .hpPedalVel=127, .hpPitch=64, .hpVel=64, .hpDurMs=500, .hpDnDelayMs=1000 };
   const object_t* params_cfg = nullptr;
   
   // Parse the configuration
@@ -1477,14 +1829,13 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, const object_t* flow_pro
     goto errLabel;
   }
 
-
   // create the MIDI record-play object
-  if((rc = midi_record_play::create(app.mrpH,app.ioH,*params_cfg,_midi_play_callback,&app)) != kOkRC )
+  if((rc = midi_record_play::create(app.mrpH,app.ioH,*app.midi_play_record_cfg,_midi_play_callback,&app)) != kOkRC )
   {
     rc = cwLogError(rc,"MIDI record-play object create failed.");
     goto errLabel;
   }
-
+  
   // create the IO Flow controller
   if(app.flow_cfg==nullptr || flow_proc_dict==nullptr || (rc = io_flow::create(app.ioFlowH,app.ioH,app.crossFadeSrate,app.crossFadeCnt,*flow_proc_dict,*app.flow_cfg)) != kOkRC )
   {
@@ -1492,13 +1843,14 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, const object_t* flow_pro
     goto errLabel;
   }
   
-  // start the io framework instance
+  // start the IO framework instance
   if((rc = io::start(app.ioH)) != kOkRC )
   {
     rc = cwLogError(rc,"Preset-select app start failed.");
     goto errLabel;    
   }
-    
+
+  
   // execute the io framework
   while( !isShuttingDown(app.ioH))
   {
