@@ -85,6 +85,7 @@ namespace cw
       
       kFragPresetRowId,
       kFragPresetSelId,
+      kFragPresetSeqSelId,
       kFragPresetOrderId,
       
       kFragInGainId,
@@ -95,6 +96,7 @@ namespace cw
       kFragEndPlayLocId,
       kFragPlayBtnId,
       kFragPlaySeqBtnId,
+      kFragPlayAllBtnId,
       kFragNoteId
       
     };
@@ -172,8 +174,9 @@ namespace cw
       { kFragPanelId,    kFragBegPlayLocId, "fragBegPlayLocId" },
       { kFragPanelId,    kFragEndPlayLocId, "fragEndPlayLocId" },
       { kFragPanelId,    kFragPlayBtnId,    "fragPlayBtnId" },
-      { kFragPanelId,    kFragPlaySeqBtnId,  "fragPlaySeqBtnId" },
-      { kFragPanelId,     kFragNoteId,       "fragNoteId" },
+      { kFragPanelId,    kFragPlaySeqBtnId, "fragPlaySeqBtnId" },
+      { kFragPanelId,    kFragPlayAllBtnId, "fragPlayAllBtnId" },
+      { kFragPanelId,    kFragNoteId,       "fragNoteId" },
       
     };
 
@@ -350,14 +353,19 @@ namespace cw
       else
       {
         unsigned preset_idx;
-
-        if((preset_idx = fragment_play_preset_index(frag)) == kInvalidIdx )
+        
+        // if the preset sequence player is active then apply the next selected seq. preset
+        // otherwise select the next primary preset for ths fragment
+        unsigned seq_idx_n = app->seqActiveFl ? app->seqPresetIdx : kInvalidIdx;
+        
+        // get the preset index to play for this fragment
+        if((preset_idx = fragment_play_preset_index(frag,seq_idx_n)) == kInvalidIdx )
           cwLogInfo("No preset has been assigned to the fragment at end loc. '%i'.",frag->endLoc );
         else
         {        
           const char* preset_label = preset_sel::preset_label(app->psH,preset_idx);
         
-          cwLogInfo("Apply preset: '%s'.", preset_idx==kInvalidIdx ? "<invalid>" : preset_label);
+          _set_status(app,"Apply preset: '%s'.", preset_idx==kInvalidIdx ? "<invalid>" : preset_label);
 
           if( preset_label != nullptr )
           {
@@ -409,7 +417,8 @@ namespace cw
       switch( actionId )
       {
         case midi_record_play::kPlayerStoppedActionId:
-          printf("Player Stopped.\n");
+          app->seqStartedFl=false;
+          _set_status(app,"Done");
           break;
           
         case midi_record_play::kMidiEventActionId:
@@ -582,7 +591,8 @@ namespace cw
       {
         app->seqFragId    = fragId;
         app->seqPresetIdx = 0;
-        app->seqActiveFl  = true;
+        app->seqStartedFl = true;
+        app->seqActiveFl  = true;        
       }
 
       // Note that if the MIDI player is already playing
@@ -595,8 +605,16 @@ namespace cw
     rc_t _do_seq_exec( app_t* app )
     {
       rc_t rc = kOkRC;
-      if( app->seqActiveFl )
+      
+      // if the seq player is active but currently stopped
+      if( app->seqActiveFl && app->seqStartedFl==false)
       {
+        app->seqPresetIdx += 1;
+        app->seqStartedFl = app->seqPresetIdx < preset_sel::fragment_seq_count( app->psH, app->seqFragId );
+        app->seqActiveFl  = app->seqStartedFl;
+        
+        if( app->seqStartedFl )
+          _do_play_fragment( app, app->seqFragId );
       }
       return rc;
     }
@@ -685,8 +703,9 @@ namespace cw
         // Update each fragment preset control UI by getting it's current value from the fragment data record
         for(unsigned preset_idx=0; preset_idx<preset_sel::preset_count(app->psH); ++preset_idx)
         {
-          _update_frag_ui( app, fragId, preset_sel::kPresetSelectVarId, preset_idx, fragPresetRowUuId, kFragPresetSelId,   preset_idx,  bValue );          
-          _update_frag_ui( app, fragId, preset_sel::kPresetOrderVarId,  preset_idx, fragPresetRowUuId, kFragPresetOrderId, preset_idx,  uValue );          
+          _update_frag_ui( app, fragId, preset_sel::kPresetSelectVarId,   preset_idx, fragPresetRowUuId, kFragPresetSelId,    preset_idx,  bValue );          
+          _update_frag_ui( app, fragId, preset_sel::kPresetOrderVarId,    preset_idx, fragPresetRowUuId, kFragPresetOrderId,  preset_idx,  uValue );          
+          _update_frag_ui( app, fragId, preset_sel::kPresetSeqSelectVarId,preset_idx, fragPresetRowUuId, kFragPresetSeqSelId, preset_idx,  bValue );          
         }
         
       }
@@ -803,6 +822,11 @@ namespace cw
         case preset_sel::kPresetSelectVarId:
           _update_frag_select_flags( app, blob->fragId);
           break;
+
+        case preset_sel::kPresetSeqSelectVarId:
+          _update_frag_select_flags( app, blob->fragId);
+          break;
+          
           
         case preset_sel::kPlayBtnVarId:
           _do_play_fragment( app, blob->fragId );
@@ -812,6 +836,10 @@ namespace cw
           _do_seq_play_fragment( app, blob->fragId );
           break;
 
+        case preset_sel::kPlaySeqAllBtnVarId:
+          _do_seq_play_fragment( app, blob->fragId );
+          break;
+          
         case preset_sel::kBegPlayLocVarId:
           {
             unsigned endPlayLoc;
@@ -870,8 +898,15 @@ namespace cw
       if((rc = io::uiCreateNumb( app->ioH, uuId,  colUuId, nullEleName, kFragPresetOrderId, chanId, nullClass, nullptr, 0, presetN, 1, 0 )) != kOkRC )
         goto errLabel;
 
-      // store a connection for the select control back to the fragment record
+      // store a connection for the order control back to the fragment record
       _frag_set_ui_blob(app, uuId, fragId, preset_sel::kPresetOrderVarId, preset_idx );
+
+      // preset sequence select check
+      if((rc = io::uiCreateCheck( app->ioH, uuId, colUuId, nullEleName, kFragPresetSeqSelId, chanId, nullClass, nullptr )) != kOkRC )
+        goto errLabel;
+
+      // store a connection for the sequence select control back to the fragment record
+      _frag_set_ui_blob(app, uuId, fragId, preset_sel::kPresetSeqSelectVarId, preset_idx );
 
     errLabel:
       if(rc != kOkRC )
@@ -922,15 +957,16 @@ namespace cw
 
 
       // Attach blobs to the UI to allow convenient access back to the prese_sel data record
-      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragInGainId,     fragChanId), fragId, preset_sel::kInGainVarId,     kInvalidId );
-      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragOutGainId,    fragChanId), fragId, preset_sel::kOutGainVarId,    kInvalidId );
-      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragWetDryGainId, fragChanId), fragId, preset_sel::kWetGainVarId,    kInvalidId );
-      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragFadeOutMsId,  fragChanId), fragId, preset_sel::kFadeOutMsVarId,  kInvalidId );
-      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragBegPlayLocId, fragChanId), fragId, preset_sel::kBegPlayLocVarId, kInvalidId );
-      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragEndPlayLocId, fragChanId), fragId, preset_sel::kEndPlayLocVarId, kInvalidId );
-      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragPlayBtnId,    fragChanId), fragId, preset_sel::kPlayBtnVarId,    kInvalidId );
-      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragPlaySeqBtnId, fragChanId), fragId, preset_sel::kPlaySeqBtnVarId, kInvalidId );
-      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragNoteId,       fragChanId), fragId, preset_sel::kNoteVarId,       kInvalidId );
+      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragInGainId,     fragChanId), fragId, preset_sel::kInGainVarId,        kInvalidId );
+      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragOutGainId,    fragChanId), fragId, preset_sel::kOutGainVarId,       kInvalidId );
+      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragWetDryGainId, fragChanId), fragId, preset_sel::kWetGainVarId,       kInvalidId );
+      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragFadeOutMsId,  fragChanId), fragId, preset_sel::kFadeOutMsVarId,     kInvalidId );
+      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragBegPlayLocId, fragChanId), fragId, preset_sel::kBegPlayLocVarId,    kInvalidId );
+      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragEndPlayLocId, fragChanId), fragId, preset_sel::kEndPlayLocVarId,    kInvalidId );
+      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragPlayBtnId,    fragChanId), fragId, preset_sel::kPlayBtnVarId,       kInvalidId );
+      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragPlaySeqBtnId, fragChanId), fragId, preset_sel::kPlaySeqBtnVarId,    kInvalidId );
+      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragPlayAllBtnId, fragChanId), fragId, preset_sel::kPlaySeqAllBtnVarId, kInvalidId );
+      _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragNoteId,       fragChanId), fragId, preset_sel::kNoteVarId,          kInvalidId );
       
       
       // create each of the preset controls
@@ -1646,6 +1682,10 @@ namespace cw
           _on_ui_frag_value( app, m.uuId, m.value->u.b );
           break;
 
+        case kFragPlayAllBtnId:
+          _on_ui_frag_value( app, m.uuId, m.value->u.b );
+          break;
+          
         case kFragNoteId:
           _on_ui_frag_value( app, m.uuId, m.value->u.s );
           break;
@@ -1657,6 +1697,11 @@ namespace cw
         case kFragPresetSelId:
           _on_ui_frag_value( app, m.uuId, m.value->u.b );
           break;
+
+        case kFragPresetSeqSelId:
+          _on_ui_frag_value( app, m.uuId, m.value->u.b );
+          break;
+          
       }
 
       return rc;
