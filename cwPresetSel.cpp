@@ -234,9 +234,13 @@ namespace cw
       case kPresetSelectVarId:
         for(unsigned i=0; i<f->presetN; ++i)
           f->presetA[i].playFl = f->presetA[i].preset_idx == presetId ? value : false;
-            
          break;
-        
+
+      case kPresetSeqSelectVarId:
+        if((rc = _validate_preset_id(f, presetId )) == kOkRC )
+          f->presetA[ presetId ].seqFl = value;
+        break;
+
       case kPresetOrderVarId:
         if((rc = _validate_preset_id(f, presetId )) == kOkRC )
           f->presetA[ presetId ].order = value;
@@ -269,6 +273,14 @@ namespace cw
       case kPlayBtnVarId:
         break;
 
+      case kPlaySeqBtnVarId:
+        f->seqAllFl = false;
+        break;
+
+      case kPlaySeqAllBtnVarId:
+        f->seqAllFl = true;
+        break;
+        
       case kMasterWetInGainVarId:
         p->master_wet_in_gain = value;
         break;
@@ -329,6 +341,11 @@ namespace cw
           valueRef = f->presetA[ presetId ].playFl;
          break;
         
+      case kPresetSeqSelectVarId:
+        if((rc = _validate_preset_id(f, presetId )) == kOkRC )
+          valueRef = f->presetA[ presetId ].seqFl;
+         break;
+
       case kPresetOrderVarId:
         if((rc = _validate_preset_id(f, presetId )) == kOkRC )
           valueRef = f->presetA[ presetId ].order;
@@ -359,6 +376,13 @@ namespace cw
         break;
         
       case kPlayBtnVarId:
+        break;
+        
+      case kPlaySeqBtnVarId:
+        break;
+
+      case kPlaySeqAllBtnVarId:
+        valueRef = f->seqAllFl;
         break;
 
       case kMasterWetInGainVarId:
@@ -769,8 +793,8 @@ bool cw::preset_sel::track_timestamp( handle_t h, const time::spec_t& ts, const 
 
   time::spec_t t0;
   time::setZero(t0);
-  unsigned elapsedMs = time::elapsedMs(t0,ts);
-  double mins = elapsedMs / 60000.0;
+  //unsigned elapsedMs = time::elapsedMs(t0,ts);
+  //double mins = elapsedMs / 60000.0;
 
   
   // if this is the first call to 'track_timestamp()'.
@@ -802,13 +826,52 @@ bool cw::preset_sel::track_timestamp( handle_t h, const time::spec_t& ts, const 
   return frag_changed_fl;
 }
 
-unsigned cw::preset_sel::fragment_play_preset_index( const frag_t* frag )
+unsigned cw::preset_sel::fragment_play_preset_index( const frag_t* frag, unsigned preset_seq_idx )
 {
+  unsigned n = 0;
+  // for each preset
   for(unsigned i=0; i<frag->presetN; ++i)
-    if( frag->presetA[i].playFl )
-      return frag->presetA[i].preset_idx;
+  {
+    // if 'preset_seq_idx' is not valid ...
+    if( preset_seq_idx==kInvalidIdx )
+    {
+      // ...then select the first preset whose 'playFl' is set.
+      if( frag->presetA[i].playFl  )
+        return frag->presetA[i].preset_idx;
+    }
+    else
+    {
+      // ... otherwise select the 'nth' preset whose 'seqFl' is set      
+      if( frag->presetA[i].seqFl || frag->seqAllFl )
+      {
+        if( n == preset_seq_idx )
+          return frag->presetA[i].preset_idx;
+        ++n;
+      }
+    }
+  }
   
   return kInvalidIdx;
+}
+
+unsigned cw::preset_sel::fragment_seq_count( handle_t h, unsigned fragId )
+{
+  rc_t          rc = kOkRC;
+  preset_sel_t* p  = _handleToPtr(h);
+  frag_t*       f  = nullptr;
+  unsigned      n  = 0;
+  
+  if((rc = _find_frag(p,fragId,f)) != kOkRC )
+    return 0;
+
+  if( f->seqAllFl )
+    return f->presetN;
+  
+  for(unsigned i=0; i<f->presetN; ++i)
+    if( f->presetA[i].seqFl )
+      ++n;
+
+  return n;
 }
 
 
