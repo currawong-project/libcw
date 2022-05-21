@@ -733,7 +733,6 @@ namespace cw
         unsigned fragPanelUuId = kInvalidId;
         
         get_value( app->psH, fragId, preset_sel::kGuiUuIdVarId, kInvalidId, fragPanelUuId );
-
         
         _update_frag_ui( app, fragId, preset_sel::kBegLocVarId,     kInvalidId, fragPanelUuId, kFragBegLocId,     uiChanId,  uValue );          
         _update_frag_ui( app, fragId, preset_sel::kEndLocVarId,     kInvalidId, fragPanelUuId, kFragEndLocId,     uiChanId,  uValue );          
@@ -772,20 +771,28 @@ namespace cw
     void _enable_frag_play_btn( app_t* app, ui_blob_t* blob, const char*, unsigned  ){}
     void _enable_frag_play_btn( app_t* app, ui_blob_t* blob, unsigned begPlayLoc, unsigned endPlayLoc )
     {
-      bool     enableFl        = begPlayLoc < endPlayLoc;
-      unsigned fragUuId        = kInvalidId;
-      unsigned fragPlayBtnUuId = kInvalidId;
+      bool     enableFl           = begPlayLoc < endPlayLoc;
+      unsigned fragUuId           = kInvalidId;
 
       if((fragUuId = frag_to_gui_id( app->psH, blob->fragId )) != kInvalidId )
-        if((fragPlayBtnUuId =  uiFindElementUuId( app->ioH, fragUuId, kFragPlayBtnId, blob->presetId )) != kInvalidId )
+      {
+        unsigned btnIdA[] = { kFragPlayBtnId, kFragPlaySeqBtnId, kFragPlayAllBtnId };
+        unsigned btnIdN   = sizeof(btnIdA)/sizeof(btnIdA[0]);
+
+        for(unsigned i=0; i<btnIdN; ++i)
         {
-          uiSetEnable( app->ioH, fragPlayBtnUuId, enableFl );
-          if( enableFl )
-            _clear_status(app);
-          else
-            _set_status(app,"Invalid fragment play range.");
+          unsigned btnUuId;
+          if((btnUuId =  uiFindElementUuId( app->ioH, fragUuId, btnIdA[i], blob->presetId )) != kInvalidId )
+            uiSetEnable( app->ioH, btnUuId, enableFl );
+
         }
-      
+      }
+
+      if( enableFl )
+        _clear_status(app);
+      else
+        _set_status(app,"Invalid fragment play range.");
+
     }
 
     void _disable_frag_play_btn( app_t* app, unsigned fragBegEndUuId )
