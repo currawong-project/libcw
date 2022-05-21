@@ -25,6 +25,10 @@
     width: 50px;
 }
 
+.fragPresetCtl:nth-of-type(even){
+    border: 1px solid Yellow;
+}
+
 .fragPresetCtl .uiNumber {
     border: 1px solid LightSteelBlue;
     width: 80%;
