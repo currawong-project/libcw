@@ -341,7 +341,7 @@ namespace cw
           }
 
         if( !after_stop_time_fl and p->cb )
-          p->cb( p->cb_arg, id, timestamp, loc, ch, status, d0, d1 );
+          p->cb( p->cb_arg, kMidiEventActionId, id, timestamp, loc, ch, status, d0, d1 );
 
         if( log_fl && p->logOutFl )
         {
@@ -738,6 +738,9 @@ namespace cw
         _transmit_ctl(   p, 0,   0, 0, 0 ); // switch to bank 0
         
       }
+
+      if( p->cb != nullptr )
+        p->cb( p->cb_arg, kPlayerStoppedActionId, kInvalidId, t1, kInvalidId, 0, 0, 0, 0 );
 
       return rc;
     }
