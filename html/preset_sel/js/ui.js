@@ -467,7 +467,9 @@ function ui_create_check( parent_ele, d )
 	ele.onclick = function() {  ui_send_bool_value(this,dom_get_checkbox(this.id)); }
 
 	if( !d.hasOwnProperty('value') )
+	{
 	    ui_send_echo(ele)
+	}
 	else
 	{
 	    dom_set_checkbox(ele.id, d.value );
@@ -870,8 +872,6 @@ function ui_create_list( parent_ele, d )
 
 function ui_set_value( d )
 {
-    //console.log(d)
-    
     var eleId = d.uuId.toString()
     var ele = dom_id_to_ele(eleId)
 
@@ -1089,7 +1089,9 @@ function ui_create( d )
     var parent_ele  = ui_get_parent(d.parentUuId);
     var ele = null;
     
-    if( parent_ele != null )
+    if( parent_ele == null )
+	console.log("Parent ele not found.",d)
+    else
     {    
 	switch( d.type )
 	{
