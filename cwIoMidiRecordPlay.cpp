@@ -1088,7 +1088,7 @@ cw::rc_t cw::midi_record_play::seek( handle_t h, time::spec_t seek_timestamp )
       _transmit_pedal( p, mm->ch, midi::kSostenutoCtlMdId, sost_down_fl, 0 );
       _transmit_pedal( p, mm->ch, midi::kSoftPedalCtlMdId, soft_down_fl, 0 );
 
-      cwLogInfo("damper: %s.", damp_down_fl ? "down" : "up");
+      //cwLogInfo("damper: %s.", damp_down_fl ? "down" : "up");
       
       break;
     }
