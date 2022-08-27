@@ -21,6 +21,12 @@
     padding-top: 5px;
 }
 
+.fragPanelRow {
+    padding-right: 15px;
+    padding-left: 15px;
+    justify-content: space-around;
+}
+
 .fragPresetCtl {
     width: 50px;
 }
