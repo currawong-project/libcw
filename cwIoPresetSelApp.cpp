@@ -69,13 +69,15 @@ namespace cw
 
       kStatusId,
 
+      /*
       kHalfPedalPedalVel,
       kHalfPedalDelayMs,
       kHalfPedalPitch,
       kHalfPedalVel,
       kHalfPedalDurMs,
       kHalfPedalDnDelayMs,
-
+      */
+      
       kLogId,
 
       kFragListId,
@@ -151,13 +153,14 @@ namespace cw
       { kPanelDivId,     kInsertBtnId,    "insertBtnId" },
       { kPanelDivId,     kDeleteBtnId,    "deleteBtnId" },
 
+      /*
       { kPanelDivId,     kHalfPedalPedalVel, "halfPedalPedalVelId" },
       { kPanelDivId,     kHalfPedalDelayMs,  "halfPedalDelayMsId"  },
       { kPanelDivId,     kHalfPedalPitch,    "halfPedalPitchId"    },
       { kPanelDivId,     kHalfPedalVel,      "halfPedalVelId"      },
       { kPanelDivId,     kHalfPedalDurMs,    "halfPedalDurMsId"    },
       { kPanelDivId,     kHalfPedalDnDelayMs, "halfPedalDnDelayMsId"    },
-
+      */
       
       { kPanelDivId,     kStatusId,       "statusId" },
       { kPanelDivId,     kLogId,          "logId" },
@@ -503,7 +506,7 @@ namespace cw
         goto errLabel;
       }
 
-      midi_record_play::half_pedal_params( app->mrpH, app->hpDelayMs, app->hpPitch, app->hpVel, app->hpPedalVel, app->hpDurMs, app->hpDnDelayMs );
+      //midi_record_play::half_pedal_params( app->mrpH, app->hpDelayMs, app->hpPitch, app->hpVel, app->hpPedalVel, app->hpDurMs, app->hpDnDelayMs );
 
       
       if((begMap = _find_loc(app,begLoc)) == nullptr )
@@ -1461,6 +1464,7 @@ namespace cw
       return rc;
     }
 
+    /*
     rc_t _on_ui_half_pedal_value( app_t* app, unsigned appId, unsigned uuId, unsigned value )
     {
       switch( appId )
@@ -1495,7 +1499,7 @@ namespace cw
       }
       return kOkRC;
     }
-
+    
     rc_t _on_echo_half_pedal( app_t* app, unsigned appId, unsigned uuId )
     {
       switch( appId )
@@ -1530,7 +1534,7 @@ namespace cw
       }
       return kOkRC;      
     }
-    
+    */
     
     rc_t _onUiInit(app_t* app, const io::ui_msg_t& m )
     {
@@ -1647,6 +1651,7 @@ namespace cw
           _on_ui_delete_btn(app);
           break;
 
+          /*
         case kHalfPedalPedalVel:
         case kHalfPedalDelayMs:
         case kHalfPedalPitch:
@@ -1655,6 +1660,7 @@ namespace cw
         case kHalfPedalDnDelayMs:
           _on_ui_half_pedal_value( app, m.appId, m.uuId, m.value->u.u );
           break;
+          */
           
         case kFragInGainId:
           _on_ui_frag_value( app, m.uuId, m.value->u.d);          
@@ -1794,6 +1800,7 @@ namespace cw
           _on_echo_master_value( app, preset_sel::kMasterSyncDelayMsVarId, m.uuId );
           break;
 
+          /*
         case kHalfPedalPedalVel:
         case kHalfPedalDelayMs:
         case kHalfPedalPitch:
@@ -1802,7 +1809,7 @@ namespace cw
         case kHalfPedalDnDelayMs:
           _on_echo_half_pedal( app, m.appId, m.uuId );
           break;
-          
+          */
           
       }
       return rc;
