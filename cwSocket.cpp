@@ -85,7 +85,10 @@ namespace cw
     {
       p = _handleToPtr(h);
       if((s = _idToSock(p,userId,showErrorFl)) == nullptr )
-        return cwLogError(kInvalidArgRC,"The socket associated with id '%i' could not be found.",userId);
+      {
+        if( showErrorFl )
+          return cwLogError(kInvalidArgRC,"The socket associated with id '%i' could not be found.",userId);
+      }
       
       return kOkRC;
     }
