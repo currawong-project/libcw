@@ -1051,7 +1051,7 @@ namespace cw
 
     rc_t _copy_msg_to_recv_buffer( ui_t* p, const void* msg, unsigned msgByteN )
     {
-      rc_t rc;
+      rc_t rc = kOkRC;
       
       if( p->recvBufIdx + msgByteN > p->recvBufN )
         rc = cwLogError(kBufTooSmallRC,"The UI input buffer (%i) is too small.", p->recvBufN);
