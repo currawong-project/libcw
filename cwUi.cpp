@@ -1051,17 +1051,16 @@ namespace cw
 
     rc_t _copy_msg_to_recv_buffer( ui_t* p, const void* msg, unsigned msgByteN )
     {
-      rc_t rc = kOkRC;
+      if( msg == nullptr || msgByteN == 0)
+        return kOkRC;
       
       if( p->recvBufIdx + msgByteN > p->recvBufN )
-        rc = cwLogError(kBufTooSmallRC,"The UI input buffer (%i) is too small.", p->recvBufN);
-      else
-      {
-        memcpy(p->recvBuf + p->recvBufIdx, msg, msgByteN );
-        p->recvBufIdx += msgByteN;
-      }
+        return cwLogError(kBufTooSmallRC,"The UI input buffer (%i) is too small.", p->recvBufN);
       
-      return rc;
+      memcpy(p->recvBuf + p->recvBufIdx, msg, msgByteN );
+      p->recvBufIdx += msgByteN;
+      
+      return kOkRC;
     }
 
     const char* _get_msg_from_recv_buffer( ui_t* p )
@@ -1072,8 +1071,12 @@ namespace cw
       // shift off the previous msg
       if( p->recvShiftN > 0 )
       {
+        assert( p->recvBufIdx >= p->recvShiftN );
+        
         memmove(p->recvBuf, p->recvBuf+p->recvShiftN, p->recvBufIdx - p->recvShiftN );
+        p->recvBufIdx -= p->recvShiftN;
         p->recvShiftN = 0;
+        
       }
 
       // locate the end of the next msg.
