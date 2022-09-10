@@ -442,6 +442,53 @@ namespace cw
     }
 
 
+    cw::rc_t _am_file_read_version_0( const char* fn, file::handle_t fH, am_midi_msg_t* amMsgArray, unsigned msgN )
+    {
+      // version 0 record type
+      typedef struct msg_str
+      {
+        unsigned dev_idx;
+        unsigned port_idx;
+        time::spec_t timestamp;
+        uint8_t ch;
+        uint8_t st;
+        uint8_t d0;
+        uint8_t d1;
+        unsigned microsecs;
+      } zero_msg_t;
+
+      cw::rc_t    rc        = kOkRC;
+      zero_msg_t* zMsgArray = mem::allocZ<zero_msg_t>(msgN);
+      unsigned    fileByteN = msgN * sizeof(zero_msg_t);
+      
+      if((rc = file::read(fH,zMsgArray,fileByteN)) != kOkRC )
+      {
+        rc = cwLogError(kReadFailRC,"Data read failed on Audio-MIDI file: '%s'.", fn );
+        goto errLabel;
+      }
+
+      for(unsigned i=0; i<msgN; ++i)
+      {
+        am_midi_msg_t* am = amMsgArray + i;
+        zero_msg_t*    zm = zMsgArray + i;
+        
+        am->devIdx        = zm->dev_idx;
+        am->portIdx       = zm->port_idx;
+        am->microsec      = zm->microsecs;
+        am->id            = i;
+        am->timestamp     = zm->timestamp;
+        am->loc           = i;
+        am->ch            = zm->ch;
+        am->status        = zm->st;
+        am->d0            = zm->d0;
+        am->d1            = zm->d1;
+      }
+      
+    errLabel:
+      mem::release(zMsgArray);
+      return rc;
+    }
+
     // Read the am_midi_msg_t records from a file written by _midi_write()
     // If msgArrayCntRef==0 and msgArrayRef==NULL then an array will be allocated and it is up
     // to the caller to release it, otherwise the msgArrayCntRef should be set to the count
@@ -450,44 +497,94 @@ namespace cw
     // msgArrayCntRef records will be returned.
     cw::rc_t _am_file_read( const char* fn, unsigned& msgArrayCntRef, am_midi_msg_t*& msgArrayRef )
     {
-      rc_t           rc = kOkRC;
-      unsigned       n  = 0;
+      
+      rc_t           rc        = kOkRC;
+      unsigned       recordN   = 0;      // count of records in the ifle
+      unsigned       fileByteN = 0;      // count of bytes in the file
+      int            version   = 0;      // version id (always a negative number)
+      bool           alloc_fl  = false;
+      bool           print_fl  = false;
       file::handle_t fH;
-        
+
       if((rc = file::open(fH,fn,file::kReadFl)) != kOkRC )
       {
         rc = cwLogError(kOpenFailRC,"Unable to locate the AM file: '%s'.", fn );
         goto errLabel;
       }
 
-      if((rc = file::read(fH,n)) != kOkRC )
+      // read the first word - which is either a version id or the count of records in the file
+      // if this is a version 0 file
+      if((rc = file::read(fH,version)) != kOkRC )
       {
-        rc = cwLogError(kReadFailRC,"Header read failed on Audio-MIDI file: '%s'.", fn );
+        rc = cwLogError(kReadFailRC,"Version read failed on Audio-MIDI file: '%s'.", fn );
         goto errLabel;
       }
 
+      // if the version is greater than 0 then this is a version 0 file (and 'version' holds the record count.
+      if( version > 0 )
+      {
+        recordN = (unsigned)version;
+        version = 0;
+      }
+      else // otherwise the second word in the file holds the size of the file
+      {
+        if((rc = file::read(fH,recordN)) != kOkRC )
+        {
+          rc = cwLogError(kReadFailRC,"Header read failed on Audio-MIDI file: '%s'.", fn );
+          goto errLabel;
+        }
+      }
+
+      // if the output msg array was not allocated - then allocate it here 
       if( msgArrayCntRef == 0 || msgArrayRef == nullptr )
       {
-        msgArrayRef = mem::allocZ<am_midi_msg_t>(n);        
+        alloc_fl = true;
+        msgArrayRef = mem::allocZ<am_midi_msg_t>(recordN);
+      }
+      else // if the msg array was allocated but is too small - then decrease the count of records to be read from the file
+      {
+        if( recordN > msgArrayCntRef )
+        {
+          cwLogWarning("The count of message in Audio-MIDI file '%s' reduced from %i to %i.", fn, recordN, msgArrayCntRef );
+          recordN = msgArrayCntRef;          
+        }
+      }
+
+      if( version == 0 )
+      {
+        // read the version 0 file into a temporary buffer then translate to am_midi_msg_t records
+        if((rc = _am_file_read_version_0( fn, fH, msgArrayRef, recordN )) != kOkRC )
+          goto errLabel;
       }
       else
       {
-        if( n > msgArrayCntRef )
+        if((rc = file::read(fH,msgArrayRef,fileByteN)) != kOkRC )
         {
-          cwLogWarning("The count of message in Audio-MIDI file '%s' reduced from %i to %i.", fn, n, msgArrayCntRef );
-          n = msgArrayCntRef;
+          rc = cwLogError(kReadFailRC,"Data read failed on Audio-MIDI file: '%s'.", fn );
+          goto errLabel;
+        }
+      }
+
+      if( print_fl )
+      {
+        for(unsigned i=0; i<recordN; ++i)
+        {
+          am_midi_msg_t* m = msgArrayRef;        
+          double dt = time::elapsedSecs( m[0].timestamp, m[i].timestamp );
+          printf("%4i %4i : %6.2f %2x %2x %2x %2x : %6.2f\n", m[i].devIdx, m[i].portIdx, dt, m[i].ch, m[i].status, m[i].d0, m[i].d1, m[i].microsec/(1000.0*1000.0) );
         }
       }
       
-      if((rc = file::read(fH,msgArrayRef,n*sizeof(am_midi_msg_t))) != kOkRC )
-      {
-        rc = cwLogError(kReadFailRC,"Data read failed on Audio-MIDI file: '%s'.", fn );
-        goto errLabel;
-      }
-
-      msgArrayCntRef = n;
+      msgArrayCntRef = recordN;
 
     errLabel:
+
+      if( rc != kOkRC and alloc_fl )
+      {
+        mem::release(msgArrayRef);
+        msgArrayRef = nullptr;
+        msgArrayCntRef = 0;
+      } 
         
       return rc;        
     }
@@ -497,14 +594,21 @@ namespace cw
     {
       rc_t           rc = kOkRC;
       unsigned       n  = 0;
+      int            version;
       file::handle_t fH;
-        
+
       if((rc = file::open(fH,fn,file::kReadFl)) != kOkRC )
       {
         rc = cwLogError(kOpenFailRC,"Unable to locate the file: '%s'.", fn );
         goto errLabel;
       }
 
+      if((rc = file::read(fH,version)) != kOkRC )
+      {
+        rc = cwLogError(kReadFailRC,"Version read failed on Audio-MIDI file: '%s'.", fn );
+        goto errLabel;
+      }
+      
       if((rc = file::read(fH,n)) != kOkRC )
       {
         rc = cwLogError(kReadFailRC,"Header read failed on Audio-MIDI file: '%s'.", fn );
@@ -539,7 +643,10 @@ namespace cw
     {
       rc_t           rc = kOkRC;
       file::handle_t fH;
-
+      // NOTE: version must be a small negative number to differentiate from file version that
+      // whose first word is the count of records in the file, rather than the version number
+      int version = -1; 
+      
       if( p->iMsgArrayInIdx == 0 )
       {
         cwLogWarning("Nothing to write.");
@@ -553,6 +660,13 @@ namespace cw
         goto errLabel;
       }
 
+      // write the file version
+      if((rc = write(fH,version)) != kOkRC )
+      {
+        rc = cwLogError(kWriteFailRC,"Version write to '%s' failed.",cwStringNullGuard(fn));
+        goto errLabel;          
+      }
+      
       // write the file header
       if((rc = write(fH,p->iMsgArrayInIdx)) != kOkRC )
       {
@@ -1244,12 +1358,21 @@ cw::rc_t cw::midi_record_play::am_to_midi_dir( const char* inDir )
   filesys::dirEntry_t* dirEntryArray = nullptr;
   unsigned             dirEntryCnt   = 0;
   
-  if(( dirEntryArray = dirEntries( inDir, filesys::kDirFsFl, &dirEntryCnt )) == nullptr )
+  if(( dirEntryArray = filesys::dirEntries( inDir, filesys::kDirFsFl | filesys::kFullPathFsFl, &dirEntryCnt )) == nullptr )
     goto errLabel;
 
-  for(unsigned i=0; i<dirEntryCnt; ++i)
+  for(unsigned i=0; i<dirEntryCnt and rc==kOkRC; ++i)
   {
-    printf("0x%x %s\n", dirEntryArray[i].flags, dirEntryArray[i].name);
+    char* am_fn   = filesys::makeFn(  dirEntryArray[i].name, "midi", "am", NULL);
+    char* midi_fn = filesys::makeFn(  dirEntryArray[i].name, "midi", "mid", NULL);
+
+    cwLogInfo("0x%x AM:%s MIDI:%s", dirEntryArray[i].flags, dirEntryArray[i].name, midi_fn);
+
+    rc = am_to_midi_file( am_fn, midi_fn );
+    
+    mem::release(am_fn);
+    mem::release(midi_fn);
+
   }
   
  errLabel:
