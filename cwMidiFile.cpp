@@ -1114,8 +1114,50 @@ namespace cw
       
         return rc;
       }
-      
-      
+
+
+      rc_t _testBatchConvert( const object_t* cfg )
+      {
+        rc_t rc;
+        const char* io_dir = nullptr;
+        const char* session_dir = nullptr;
+        unsigned take_begin = 0;
+        unsigned take_end = 0;
+        bool printWarningsFl = true;
+        if((rc = cfg->getv("io_dir",io_dir,
+                           "session_dir",session_dir,
+                           "take_begin",take_begin,
+                           "take_end",take_end,
+                           "print_warnings_flag",printWarningsFl)) != kOkRC )
+        {
+          cwLogError(rc,"MIDI file batch convert to CSV failed.");
+        }
+
+        for(unsigned i=take_begin; i<=take_end; ++i)
+        {
+          char take_dir[32];
+          snprintf(take_dir,32,"record_%i",i);
+          char* src_midi_fn =  filesys::makeFn(  io_dir, "midi", ".mid", session_dir, take_dir, nullptr );
+          char* dst_csv_fn  =  filesys::makeFn(  io_dir, "midi", ".csv", session_dir, take_dir, nullptr );
+
+          char* sm_fn = filesys::expandPath( src_midi_fn );
+          char* dm_fn = filesys::expandPath( dst_csv_fn );
+          
+          //rc = genCsvFile(mfn,cfn );
+          cwLogInfo("Midi to CSV: src:%s dst:%s\n", sm_fn,dm_fn);
+          
+          if((rc = genCsvFile(sm_fn, dm_fn, printWarningsFl )) != kOkRC )
+            cwLogError(rc,"MIDI to CSV Conversion failed on %s to %s.",sm_fn,dm_fn);
+
+          mem::release(sm_fn);
+          mem::release(dm_fn);
+        
+          mem::release(src_midi_fn);
+          mem::release(dst_csv_fn);
+        }
+
+        return rc;
+      }
       
     }
   }
@@ -1746,12 +1788,18 @@ void cw::midi::file::calcNoteDurations( handle_t h, unsigned flags )
         trackMsg_t*  m0 = noteM[k];
 
         if( m0 == NULL )
-          cwLogWarning("%i : Missing note-on instance for note-off:%s",m->uid,midi::midiToSciPitch(d0,NULL,0));
+        {
+          if( warningFl )
+            cwLogWarning("%i : Missing note-on instance for note-off:%s",m->uid,midi::midiToSciPitch(d0,NULL,0));
+        }
         else
         {
           // a key was released - so it should not already be up
           if( noteGateM[k]==0 )
-            cwLogWarning("%i : Missing note-on for note-off:%s",m->uid,midi::midiToSciPitch(d0,NULL,0));
+          {
+            if( warningFl )
+              cwLogWarning("%i : Missing note-on for note-off:%s",m->uid,midi::midiToSciPitch(d0,NULL,0));
+          }
           else
           {
             noteGateM[k] -= 1; // update the note gate state
@@ -1783,7 +1831,7 @@ void cw::midi::file::calcNoteDurations( handle_t h, unsigned flags )
           if( isSustainPedalUp(m) )
           {
             // if the sustain channel is already up
-            if( sustGateV[ch]==0 )
+            if( warningFl && sustGateV[ch]==0 )
               cwLogWarning("%i : The sustain pedal release message was received with no previous pedal down.",m->uid);
 
             if( sustGateV[ch] >= 1 )
@@ -1830,7 +1878,7 @@ void cw::midi::file::calcNoteDurations( handle_t h, unsigned flags )
               if( isSostenutoPedalUp(m) )
               {
                 // if the sustain channel is already up
-                if( sostGateV[ch]==0 )
+                if( warningFl && sostGateV[ch]==0 )
                   cwLogWarning("%i : The sostenuto pedal release message was received with no previous pedal down.",m->uid);
 
                 if( sostGateV[ch] >= 1 )
@@ -2157,7 +2205,7 @@ cw::rc_t cw::midi::file::genPlotFile( const char* midiFn, const char* outFn )
   return rc;
 }
 
-cw::rc_t cw::midi::file::genCsvFile( const char* midiFn, const char* csvFn )
+cw::rc_t cw::midi::file::genCsvFile( const char* midiFn, const char* csvFn, bool printWarningsFl)
 {
   rc_t               rc = kOkRC;
   handle_t           mfH;  
@@ -2166,7 +2214,7 @@ cw::rc_t cw::midi::file::genCsvFile( const char* midiFn, const char* csvFn )
   if((rc = open( mfH, midiFn )) != kOkRC )
     return cwLogError(rc,"The MIDI file object could not be opened from '%s'.",cwStringNullGuard(midiFn));
   
-  calcNoteDurations( mfH, 0 );
+  calcNoteDurations( mfH, printWarningsFl ? kWarningsMfFl : 0  );
   
   if((rc = cw::file::open(fH, csvFn,cw::file::kWriteFl)) != kOkRC )
   {
@@ -2351,13 +2399,23 @@ cw::rc_t cw::midi::file::test( const object_t* cfg )
 {
 
   rc_t rc = kOkRC;
-  const object_t* o;
   
-  if((o = cfg->find("rpt")) != nullptr )
-    rc = _testReport(o);
+  const object_t* o;
 
-  if((o = cfg->find("csv")) != nullptr )
-    rc = _testCsv(o);
+  for(unsigned i=0; i<cfg->child_count(); ++i)
+  {
+    if((o = cfg->child_ele(i)) != nullptr )
+    {
+      if( strcmp(o->pair_label(),"rpt")==0 )
+        rc = _testReport(o->pair_value());
+      
+      if( strcmp(o->pair_label(),"csv")==0 )
+        rc = _testCsv(o->pair_value());
+      
+      if( strcmp(o->pair_label(),"batch_convert")==0 )
+        rc = _testBatchConvert(o->pair_value());
+    }
+  }
   
   return rc;
 
