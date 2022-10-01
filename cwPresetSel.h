@@ -115,6 +115,9 @@ namespace cw
     void track_timestamp_reset( handle_t h );
     bool track_timestamp( handle_t h, const time::spec_t& ts, const cw::preset_sel::frag_t*& frag_Ref );
 
+    void track_loc_reset( handle_t h );
+    bool track_loc( handle_t h, unsigned loc, const cw::preset_sel::frag_t*& frag_Ref );
+
     // Return the preset index marked to play on this fragment.
     unsigned fragment_play_preset_index( const frag_t* frag, unsigned preset_seq_idx=kInvalidIdx );
 

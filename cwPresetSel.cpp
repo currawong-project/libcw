@@ -200,6 +200,56 @@ namespace cw
       return nullptr;
     }
 
+
+
+
+
+    bool _loc_is_in_frag( const frag_t* f, unsigned loc )
+    {
+      // if f is the earliest fragment
+      if( f->prev == nullptr )
+        return loc <= f->endLoc;
+
+      // else  f->prev->end_loc < loc && loc <= f->end_loc
+      return f->prev->endLoc < loc && loc <= f->endLoc;
+    }
+
+    bool _loc_is_before_frag( const frag_t* f, unsigned loc )
+    {
+      // if loc is past f
+      if( loc > f->endLoc ) 
+        return false;
+
+      // loc may now only be inside or before f
+
+      // if f is the first frag then loc must be inside it
+      if( f->prev == nullptr )
+        return false;
+
+      // is loc before f
+      return loc <= f->prev->endLoc;      
+    }
+
+    bool _loc_is_after_frag( const frag_t* f, unsigned loc )
+    {
+      return loc > f->endLoc;
+    }
+
+    // Scan from through the fragment list to find the fragment containing loc.
+    frag_t* _fast_loc_to_frag( preset_sel_t* p, unsigned loc, frag_t* init_frag=nullptr )
+    {
+      frag_t* f = init_frag==nullptr ? p->fragL : init_frag;
+      for(; f!=nullptr; f=f->link)
+        if( _loc_is_in_frag(f,loc) )
+          return f;
+      
+      return nullptr;
+    }
+
+
+
+    
+    
     
 
     rc_t _validate_preset_id( const frag_t* frag, unsigned preset_id )
@@ -825,6 +875,51 @@ bool cw::preset_sel::track_timestamp( handle_t h, const time::spec_t& ts, const 
   
   return frag_changed_fl;
 }
+
+
+void cw::preset_sel::track_loc_reset( handle_t h )
+{
+  preset_sel_t* p = _handleToPtr(h);
+  p->last_ts_frag = nullptr;
+}
+
+bool cw::preset_sel::track_loc( handle_t h, unsigned loc, const cw::preset_sel::frag_t*& frag_Ref )
+{
+  preset_sel_t* p               = _handleToPtr(h);
+  frag_t*       f               = nullptr;
+  bool          frag_changed_fl = false;
+
+  
+  // if this is the first call to 'track_timestamp()'.
+  if( p->last_ts_frag == nullptr )
+    f = _fast_loc_to_frag(p,loc);
+  else
+    // if the 'ts' is in the same frag as previous call.
+    if( _loc_is_in_frag(p->last_ts_frag,loc) )
+      f = p->last_ts_frag;
+    else
+      // if 'ts' is in a later frag
+      if( _loc_is_after_frag(p->last_ts_frag,loc) )
+        f = _fast_loc_to_frag(p,loc,p->last_ts_frag);  
+      else // ts is prior to 'last_ts_frag'
+        f = _fast_loc_to_frag(p,loc); 
+  
+  // 'f' will be null at this point if 'ts' is past the last preset.
+  // In this case we should leave 'last_ts_frag' unchanged.
+
+  // if 'f' is valid but different from 'last_ts_frag'
+  if( f != nullptr && f != p->last_ts_frag )
+  {
+    p->last_ts_frag = f;
+    frag_changed_fl = true;
+  }
+
+  frag_Ref = p->last_ts_frag;
+  
+  return frag_changed_fl;
+}
+
+
 
 unsigned cw::preset_sel::fragment_play_preset_index( const frag_t* frag, unsigned preset_seq_idx )
 {

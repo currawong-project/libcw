@@ -218,7 +218,8 @@ namespace cw
       unsigned        locMapN;
 
       unsigned        insertLoc; // last valid insert location id received from the GUI
-
+      unsigned        lastPlayedLoc;
+      
       unsigned        minLoc;
       unsigned        maxLoc;
       
@@ -346,11 +347,14 @@ namespace cw
       return kOkRC;
     }
 
-    rc_t _apply_preset( app_t* app, const time::spec_t& ts, const preset_sel::frag_t* frag=nullptr  )      
+    rc_t _apply_preset( app_t* app, const time::spec_t& ts, unsigned loc, const preset_sel::frag_t* frag=nullptr  )      
     {
       if( frag == nullptr )
-        preset_sel::track_timestamp( app->psH, ts, frag);
-
+      {
+        //preset_sel::track_timestamp( app->psH, ts, frag);
+        preset_sel::track_loc( app->psH, loc, frag);
+      }
+      
       if( frag == nullptr )
         cwLogInfo("No preset fragment was found for the requested timestamp.");
       else
@@ -445,13 +449,21 @@ namespace cw
           if( midi_record_play::is_started(app->mrpH) )
           {
             const preset_sel::frag_t* f = nullptr;
-            if( preset_sel::track_timestamp( app->psH, timestamp, f ) )
-            {          
-              //printf("NEW FRAG: id:%i loc:%i\n", f->fragId, f->endLoc );
-              _apply_preset( app, timestamp, f );
+            //if( preset_sel::track_timestamp( app->psH, timestamp, f ) )
 
-              if( f != nullptr )
-                _do_select_frag( app, f->guiUuId );
+
+            // ZERO SHOULD BE A VALID LOC VALUE - MAKE -1 THE INVALID LOC VALUE
+            
+            if( loc != 0 )
+            {  
+              if( preset_sel::track_loc( app->psH, loc, f ) )  
+              {          
+                //printf("NEW FRAG: id:%i loc:%i\n", f->fragId, f->endLoc );
+                _apply_preset( app, timestamp, loc, f );
+                
+                if( f != nullptr )
+                  _do_select_frag( app, f->guiUuId );
+              }
             }
           }
           break;
@@ -498,6 +510,7 @@ namespace cw
       bool rewindFl = true;
       loc_map_t* begMap = nullptr;
       loc_map_t* endMap = nullptr;
+      unsigned cur_loc = 0;
 
       // if the player is already playing then stop it
       if( midi_record_play::is_started(app->mrpH) )
@@ -537,7 +550,7 @@ namespace cw
       }
 
       // apply the preset which is active at the start time
-      if((rc = _apply_preset( app, app->beg_play_timestamp )) != kOkRC )
+      if((rc = _apply_preset( app, app->beg_play_timestamp, app->beg_play_loc )) != kOkRC )
       {
         rc = cwLogError(rc,"Preset application failed prior to MIDI start.");
         goto errLabel;
@@ -550,8 +563,11 @@ namespace cw
         goto errLabel;
       }
 
-      
-      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), midi_record_play::event_loc(app->mrpH) );
+      if((cur_loc = midi_record_play::event_loc(app->mrpH)) > app->lastPlayedLoc )
+      {
+        io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), cur_loc  );
+        app->lastPlayedLoc = cur_loc;
+      }
 
     errLabel:
       return rc;
@@ -1878,7 +1894,15 @@ namespace cw
       {
         midi_record_play::exec( app->mrpH, *m );
         if( midi_record_play::is_started(app->mrpH) )
-          io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), midi_record_play::event_loc(app->mrpH) );
+        {
+          unsigned cur_loc = midi_record_play::event_loc(app->mrpH);
+          if( cur_loc > app->lastPlayedLoc )
+          {
+            io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), cur_loc );
+            app->lastPlayedLoc = cur_loc;
+          }
+          
+        }
       }
 
       if( app->ioFlowH.isValid() )

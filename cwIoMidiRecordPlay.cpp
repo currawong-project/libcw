@@ -281,7 +281,7 @@ namespace cw
     rc_t _event_callback( midi_record_play_t* p, unsigned id, const time::spec_t timestamp, unsigned loc, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1, bool log_fl=true )
     {
       rc_t rc = kOkRC;
-
+      bool quiet_flag = true;
       // if we have arrived at the stop time
       bool after_stop_time_fl = !time::isZero(p->end_play_event_timestamp) && time::isGT(timestamp,p->end_play_event_timestamp);
       bool after_all_off_fl   = after_stop_time_fl && time::isGT(timestamp,p->all_off_timestamp);
@@ -331,8 +331,11 @@ namespace cw
                   else
                     if( d1 == p->midiDevA[i].pedalDownHalfVelId )
                       out_d1 = p->midiDevA[i].pedalDownHalfVel;
-                    else                    
-                      cwLogError(kInvalidIdRC,"Unexpected pedal down velocity (%i) during pedal velocity mapping.",d1);
+                    else
+                    {
+                      if(!quiet_flag)
+                        cwLogError(kInvalidIdRC,"Unexpected pedal down velocity (%i) during pedal velocity mapping.",d1);
+                    }
               }
             }
 
