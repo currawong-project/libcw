@@ -1333,6 +1333,12 @@ cw::rc_t cw::midi_record_play::am_to_midi_file( const char* am_filename, const c
   unsigned       msgArrayCnt = 0;
   am_midi_msg_t* msgArray    = nullptr;
 
+  if(!filesys::isFile(am_filename))
+    {
+      cwLogError(kOpenFailRC,"The AM file '%s' does not exist.",am_filename);
+      goto errLabel;
+    }
+
   if((rc = _am_file_read( am_filename, msgArrayCnt, msgArray )) != kOkRC )
   {
     rc = cwLogError(rc,"Unable to read AM file '%s'.", cwStringNullGuard(am_filename));
