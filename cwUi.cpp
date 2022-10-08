@@ -1058,6 +1058,7 @@ namespace cw
         return cwLogError(kBufTooSmallRC,"The UI input buffer (%i) is too small.", p->recvBufN);
       
       memcpy(p->recvBuf + p->recvBufIdx, msg, msgByteN );
+
       p->recvBufIdx += msgByteN;
       
       return kOkRC;
@@ -1080,21 +1081,21 @@ namespace cw
       }
 
       // locate the end of the next msg.
-      for(i=0; p->recvBuf[i]!=0 and i<p->recvBufIdx; ++i)
-      {}
-
-      // if the end of the next msg was found
-      if( p->recvBuf[i] == 0 )
+      if( p->recvBufIdx > 0 )
       {
-        p->recvShiftN = i+1;
-        msg = p->recvBuf;
+        for(i=0; p->recvBuf[i]!=0 and i<p->recvBufIdx; ++i)
+        {}
+
+        // if the end of the next msg was found
+        if( i<p->recvBufIdx && p->recvBuf[i] == 0 )
+        {
+          p->recvShiftN = i+1;
+          msg = p->recvBuf;
+        }
       }
-  
+      
       return msg;
     }
-
-    
-    
   }
 }
 
