@@ -218,16 +218,15 @@ namespace cw
       unsigned        locMapN;
 
       unsigned        insertLoc; // last valid insert location id received from the GUI
-      unsigned        lastPlayedLoc;
       
       unsigned        minLoc;
       unsigned        maxLoc;
       
-      unsigned        beg_play_loc;
-      unsigned        end_play_loc;
-      
       time::spec_t    beg_play_timestamp;
       time::spec_t    end_play_timestamp;
+      
+      unsigned        beg_play_loc;
+      unsigned        end_play_loc;
 
       preset_sel::handle_t psH;
       io_flow::handle_t    ioFlowH;
@@ -273,7 +272,9 @@ namespace cw
                                     "frag_panel",       app->frag_panel_cfg,
                                     "presets",          app->presets_cfg,
                                     "crossFadeSrate",   app->crossFadeSrate,
-                                    "crossFadeCount",   app->crossFadeCnt)) != kOkRC )
+                                    "crossFadeCount",   app->crossFadeCnt,
+                                    "beg_play_loc",     app->beg_play_loc,
+                                    "end_play_loc",     app->end_play_loc)) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"Preset Select App configuration parse failed.");
       }
@@ -349,9 +350,12 @@ namespace cw
 
     rc_t _apply_preset( app_t* app, const time::spec_t& ts, unsigned loc, const preset_sel::frag_t* frag=nullptr  )      
     {
+      // if frag is NULL this is the beginning of a play session
       if( frag == nullptr )
       {
+        preset_sel::track_loc_reset(app->psH);
         //preset_sel::track_timestamp( app->psH, ts, frag);
+        
         preset_sel::track_loc( app->psH, loc, frag);
       }
       
@@ -563,10 +567,9 @@ namespace cw
         goto errLabel;
       }
 
-      if((cur_loc = midi_record_play::event_loc(app->mrpH)) > app->lastPlayedLoc )
+      if((cur_loc = midi_record_play::event_loc(app->mrpH)) > 0 )
       {
         io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), cur_loc  );
-        app->lastPlayedLoc = cur_loc;
       }
 
     errLabel:
@@ -1203,20 +1206,26 @@ namespace cw
       */
       
       // reset the timestamp tracker
-      track_timestamp_reset( app->psH );
+      track_loc_reset( app->psH );
       
       // set the range of the global play location controls
       if( firstLoadFl )
       {
         unsigned minLocUuId = io::uiFindElementUuId(app->ioH, kBegPlayLocNumbId);
         unsigned maxLocUuId = io::uiFindElementUuId(app->ioH, kEndPlayLocNumbId);
+        //unsigned end_loc    = app->end_play_loc==0 ? app->maxLoc : app->end_play_loc;
+        //unsigned beg_loc    = app->minLoc <= app->beg_play_loc && app->beg_play_loc <= app->maxLoc ? app->beg_play_loc : app->minLoc;
         
         io::uiSetNumbRange( app->ioH, minLocUuId, app->minLoc, app->maxLoc, 1, 0, app->minLoc );
         io::uiSetNumbRange( app->ioH, maxLocUuId, app->minLoc, app->maxLoc, 1, 0, app->maxLoc );
 
+        //io::uiSendValue( app->ioH, minLocUuId, std::max(beg_loc,app->minLoc));
+        //io::uiSendValue( app->ioH, maxLocUuId, std::min(end_loc,app->maxLoc));
+
         io::uiSendValue( app->ioH, minLocUuId, app->minLoc);
         io::uiSendValue( app->ioH, maxLocUuId, app->maxLoc);
 
+        
         // enable the 'End Loc' number box since the score is loaded
         io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kInsertLocId ), true );
       }
@@ -1896,10 +1905,9 @@ namespace cw
         if( midi_record_play::is_started(app->mrpH) )
         {
           unsigned cur_loc = midi_record_play::event_loc(app->mrpH);
-          if( cur_loc > app->lastPlayedLoc )
+          if( cur_loc > 0 )
           {
             io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), cur_loc );
-            app->lastPlayedLoc = cur_loc;
           }
           
         }
@@ -2001,9 +2009,9 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, const object_t* flow_pro
 
   
   // execute the io framework
-  while( !isShuttingDown(app.ioH))
+  while( !io::isShuttingDown(app.ioH))
   {
-    exec(app.ioH);
+    io::exec(app.ioH);
     sleepMs(50);
   }
 
