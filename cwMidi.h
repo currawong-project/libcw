@@ -11,6 +11,7 @@ namespace cw
      kInvalidMidiByte     = 128,
      kMidiNoteCnt         = kInvalidMidiByte,
      kMidiCtlCnt          = kInvalidMidiByte,
+     kMidiVelCnt          = kInvalidMidiByte,
      kMidiPgmCnt          = kInvalidMidiByte,
      kInvalidMidiPitch    = kInvalidMidiByte,
      kInvalidMidiVelocity = kInvalidMidiByte,

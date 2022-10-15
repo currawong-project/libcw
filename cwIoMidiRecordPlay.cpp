@@ -54,6 +54,12 @@ namespace cw
 
       unsigned       pedalUpHalfVelId;
       unsigned       pedalUpHalfVel;
+
+      unsigned       velHistogram[ midi::kMidiVelCnt ];
+
+      bool           force_damper_down_fl;
+      unsigned       force_damper_down_threshold;
+      unsigned       force_damper_down_velocity;
       
     } midi_device_t;
 
@@ -92,6 +98,8 @@ namespace cw
       bool           thruFl;
       bool           logInFl;   // log incoming message when not in 'record' mode.
       bool           logOutFl;  // log outgoing messages
+
+      bool           velHistogramEnableFl;
       
       bool     halfPedalFl;
       unsigned halfPedalState;
@@ -191,11 +199,19 @@ namespace cw
           
 
           if((rc = ele->getv_opt( "vel_table", velTable,
-                                  "pedal",     pedalRecd)) != kOkRC )
+                                  "pedal",     pedalRecd,
+                                  "force_damper_down_fl",p->midiDevA[i].force_damper_down_fl,
+                                  "force_damper_down_threshold",p->midiDevA[i].force_damper_down_threshold,
+                                  "force_damper_down_velocity", p->midiDevA[i].force_damper_down_velocity)) != kOkRC )
           {
             rc = cwLogError(kSyntaxErrorRC,"MIDI record play device optional argument parsing failed.");
             goto errLabel;          
           }
+
+          printf("FORCE PEDAL:%i %i %i\n",
+                 p->midiDevA[i].force_damper_down_fl,
+                 p->midiDevA[i].force_damper_down_threshold,
+                 p->midiDevA[i].force_damper_down_velocity);
           
           p->midiDevA[i].midiOutDevLabel  = mem::duplStr( midiOutDevLabel);
           p->midiDevA[i].midiOutPortLabel = mem::duplStr( midiOutPortLabel);
@@ -281,12 +297,12 @@ namespace cw
     rc_t _event_callback( midi_record_play_t* p, unsigned id, const time::spec_t timestamp, unsigned loc, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1, bool log_fl=true )
     {
       rc_t rc = kOkRC;
-      bool quiet_flag = true;
       // if we have arrived at the stop time
       bool after_stop_time_fl = !time::isZero(p->end_play_event_timestamp) && time::isGT(timestamp,p->end_play_event_timestamp);
       bool after_all_off_fl   = after_stop_time_fl && time::isGT(timestamp,p->all_off_timestamp);
 
       bool is_note_on_fl = status==midi::kNoteOnMdId and d1 != 0;
+      bool is_damper_fl = status==midi::kCtlMdId and d0==midi::kSustainCtlMdId;
       bool supress_fl = is_note_on_fl && after_stop_time_fl;
       
       if( after_all_off_fl )
@@ -320,6 +336,12 @@ namespace cw
                   out_d1 = p->midiDevA[i].velTableArray[ d1 ];
               }
 
+              if( p->velHistogramEnableFl && is_note_on_fl && out_d1 < midi::kMidiVelCnt )
+                p->midiDevA[i].velHistogram[ out_d1 ] += 1;
+
+              if( p->midiDevA[i].force_damper_down_fl && is_damper_fl && out_d1>p->midiDevA[i].force_damper_down_threshold )
+                out_d1 = p->midiDevA[i].force_damper_down_velocity;
+
               // map the pedal down velocity
               if( status==midi::kCtlMdId && d0 == midi::kSustainCtlMdId && p->midiDevA[i].pedalMapEnableFl )
               {
@@ -333,8 +355,7 @@ namespace cw
                       out_d1 = p->midiDevA[i].pedalDownHalfVel;
                     else
                     {
-                      if(!quiet_flag)
-                        cwLogError(kInvalidIdRC,"Unexpected pedal down velocity (%i) during pedal velocity mapping.",d1);
+                      cwLogError(kInvalidIdRC,"Unexpected pedal down velocity (%i) during pedal velocity mapping. Remove the 'pedal' stanza from the MIDI device cfg to prevent pedal mapping.",d1);
                     }
               }
             }
@@ -820,6 +841,36 @@ namespace cw
       }
     }
 
+    rc_t _write_vel_histogram( midi_record_play_t* p )
+    {
+      const char* fname = "/home/kevin/temp/vel_histogram.txt";
+      rc_t rc = kOkRC;
+      
+      if( !p->velHistogramEnableFl )
+        return rc;
+            
+      file::handle_t h;
+      if((rc = file::open(h,fname,file::kWriteFl)) != kOkRC )
+        return rc;
+
+      for(unsigned i=0; i<p->midiDevN; ++i)
+        if(p->midiDevA[i].enableFl )
+        {
+          for(unsigned j=0; j<midi::kMidiVelCnt; ++j)
+            if((rc = file::printf(h,"%i,",p->midiDevA[i].velHistogram[j])) != kOkRC )
+            {
+              rc = cwLogError(rc,"Histogram output file (%s) write failed.",fname);
+              goto errLabel;
+            }
+          
+          file::printf(h,"\n");
+        }
+
+    errLabel:
+      file::close(h);
+      return rc;
+    }
+
     rc_t _stop( midi_record_play_t* p )
     {
       rc_t rc = kOkRC;
@@ -829,6 +880,8 @@ namespace cw
       time::spec_t t1;
       time::get(t1);
 
+      _write_vel_histogram( p );
+      
       // if we were recording
       if( p->recordFl )
       {
@@ -1042,6 +1095,12 @@ cw::rc_t cw::midi_record_play::start( handle_t h, bool rewindFl, const time::spe
   midi_record_play_t* p = _handleToPtr(h);
   p->startedFl = true;
 
+  if( p->velHistogramEnableFl )
+    for(unsigned i=0; i<p->midiDevN; ++i)
+      if(p->midiDevA[i].enableFl )
+        memset(p->midiDevA[i].velHistogram,0,sizeof(p->midiDevA[i].velHistogram));
+
+  
   // set the end play time
   if( end_play_event_timestamp == nullptr or time::isZero(*end_play_event_timestamp) )
     time::setZero(p->end_play_event_timestamp);
