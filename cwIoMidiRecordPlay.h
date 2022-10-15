@@ -70,6 +70,8 @@ namespace cw
     rc_t am_to_midi_file( const char* am_filename, const char* midi_filename );
     rc_t am_to_midi_dir( const char* inDir );
     rc_t am_to_midi_file( const object_t* cfg );
+
+    void report( handle_t h );
     
   }
 }

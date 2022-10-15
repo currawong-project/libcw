@@ -208,7 +208,7 @@ namespace cw
             goto errLabel;          
           }
 
-          printf("FORCE PEDAL:%i %i %i\n",
+          printf("Force Pedal: enabled%i thresh:%i veloc:%i\n",
                  p->midiDevA[i].force_damper_down_fl,
                  p->midiDevA[i].force_damper_down_threshold,
                  p->midiDevA[i].force_damper_down_velocity);
@@ -270,6 +270,9 @@ namespace cw
     const am_midi_msg_t*  _midi_store( midi_record_play_t* p, unsigned devIdx, unsigned portIdx, const time::spec_t& ts, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
     {
       am_midi_msg_t* am = nullptr;
+
+      //if( !midi::isPedal(status,d0) )
+      //  printf("MIDI store: %i : ch:%i st:%i d0:%i d1:%i\n",p->iMsgArrayInIdx,ch,status,d0,d1);
       
       // verify that space exists in the record buffer
       if( p->iMsgArrayInIdx < p->iMsgArrayN )
@@ -527,7 +530,7 @@ namespace cw
       unsigned       fileByteN = 0;      // count of bytes in the file
       int            version   = 0;      // version id (always a negative number)
       bool           alloc_fl  = false;
-      bool           print_fl  = false;
+      bool           print_fl  = true;
       file::handle_t fH;
 
       if((rc = file::open(fH,fn,file::kReadFl)) != kOkRC )
@@ -834,11 +837,21 @@ namespace cw
       
     void _report_midi( midi_record_play_t* p )
     {
+      printf("omsg cnt:%i\n",p->msgArrayInIdx);
       for(unsigned i=0; i<p->msgArrayInIdx; ++i)
       {
         am_midi_msg_t* mm = p->msgArray + i;
         _print_midi_msg(mm);
       }
+
+
+      printf("imsg cnt:%i\n",p->iMsgArrayInIdx);
+      for(unsigned i=0; i<p->iMsgArrayInIdx; ++i)
+      {
+        am_midi_msg_t* mm = p->iMsgArray + i;
+        _print_midi_msg(mm);
+      }
+      
     }
 
     rc_t _write_vel_histogram( midi_record_play_t* p )
@@ -871,6 +884,20 @@ namespace cw
       return rc;
     }
 
+    // Fill the play buffer (msgArray) from the record buffer (iMsgArray)
+    void _iMsgArray_to_msgArray(midi_record_play_t* p)
+    {
+      if( p->msgArrayN < p->iMsgArrayN)
+      {
+        mem::resize(p->msgArray,p->iMsgArrayN,mem::kZeroAllFl);
+        p->msgArrayN = p->iMsgArrayN;
+      }
+      p->msgArrayOutIdx = 0;
+      p->msgArrayInIdx = p->iMsgArrayInIdx;
+      memcpy(p->msgArray,p->iMsgArray,p->iMsgArrayInIdx*sizeof(am_midi_msg_t));
+    }
+    
+    
     rc_t _stop( midi_record_play_t* p )
     {
       rc_t rc = kOkRC;
@@ -889,9 +916,12 @@ namespace cw
         // set the 'microsec' value for each MIDI msg as an offset from the first message[]
         for(unsigned i=0; i<p->iMsgArrayInIdx; ++i)
         {
-          p->msgArray[i].microsec = time::elapsedMicros(p->iMsgArray[0].timestamp,p->iMsgArray[i].timestamp);
+          p->iMsgArray[i].microsec = time::elapsedMicros(p->iMsgArray[0].timestamp,p->iMsgArray[i].timestamp);
         }
-          
+
+        // copy the recorded messages from the input buffer to the output buffer
+        _iMsgArray_to_msgArray(p);
+
         cwLogInfo("MIDI messages recorded: %i",p->msgArrayInIdx );
           
       }
@@ -926,12 +956,13 @@ namespace cw
         // if this is a sys-ex msg
         if( pkt->msgArray == NULL )
         {
+          cwLogError(kNotImplementedRC,"Sys-ex recording not implemented.");
         }
         else // this is a triple
         {
 
           //if( !midi::isPedal(pkt->msgArray[j].status,pkt->msgArray[j].d0) )
-          //printf("IN: 0x%x 0x%x 0x%x\n", pkt->msgArray[j].status, pkt->msgArray[j].d0, pkt->msgArray[j].d1 );
+          //  printf("IN: 0x%x 0x%x 0x%x\n", pkt->msgArray[j].status, pkt->msgArray[j].d0, pkt->msgArray[j].d1 );
           
           if( (p->recordFl || p->logInFl) && p->startedFl )
           {
@@ -1477,4 +1508,10 @@ cw::rc_t cw::midi_record_play::am_to_midi_file( const object_t* cfg )
  errLabel:
   return rc;
   
+}
+
+void cw::midi_record_play::report( handle_t h )
+{
+  midi_record_play_t* p = _handleToPtr(h);
+  _report_midi(p);
 }
