@@ -115,6 +115,7 @@ namespace cw
     void track_timestamp_reset( handle_t h );
     bool track_timestamp( handle_t h, const time::spec_t& ts, const cw::preset_sel::frag_t*& frag_Ref );
 
+    // Same as track_timestamp_???() but tracks the score 'loc' instead of timestamp.
     void track_loc_reset( handle_t h );
     bool track_loc( handle_t h, unsigned loc, const cw::preset_sel::frag_t*& frag_Ref );
 

@@ -910,8 +910,12 @@ bool cw::preset_sel::track_loc( handle_t h, unsigned loc, const cw::preset_sel::
   // if 'f' is valid but different from 'last_ts_frag'
   if( f != nullptr && f != p->last_ts_frag )
   {
-    p->last_ts_frag = f;
-    frag_changed_fl = true;
+    // don't allow the selected fragment to go backwards
+    if( p->last_ts_frag == nullptr || (p->last_ts_frag != nullptr && p->last_ts_frag->endLoc < f->endLoc) )
+    {    
+      p->last_ts_frag = f;
+      frag_changed_fl = true;
+    }
   }
 
   frag_Ref = p->last_ts_frag;
