@@ -40,6 +40,7 @@ namespace cw
       
       kStartBtnId,
       kStopBtnId,
+      kLiveCheckId,
 
       kPrintMidiCheckId,
       kPianoMidiCheckId,
@@ -105,8 +106,8 @@ namespace cw
 
     enum
     {
-      kPiano_MRP_DevIdx  = 0,
-      kSampler_MRP_DevIdx = 1
+      kPiano_MRP_DevIdx  = 1,
+      kSampler_MRP_DevIdx = 0
     };
 
     enum
@@ -126,6 +127,7 @@ namespace cw
         
       { kPanelDivId,     kStartBtnId,        "startBtnId" },
       { kPanelDivId,     kStopBtnId,         "stopBtnId" },
+      { kPanelDivId,     kLiveCheckId,       "liveCheckId" },
 
       { kPanelDivId,     kPrintMidiCheckId,  "printMidiCheckId" },
       { kPanelDivId,     kPianoMidiCheckId,  "pianoMidiCheckId" },
@@ -209,6 +211,7 @@ namespace cw
       const object_t* midi_play_record_cfg;
       const object_t* frag_panel_cfg;
       const object_t* presets_cfg;
+      object_t* flow_proc_dict;
       const object_t* flow_cfg;
       
       midi_record_play::handle_t  mrpH;
@@ -249,6 +252,8 @@ namespace cw
       unsigned seqStartedFl; // set by the first seq idle callback
       unsigned seqFragId;    // 
       unsigned seqPresetIdx; //
+
+      bool     useLiveMidiFl;
       
       
     } app_t;
@@ -256,6 +261,7 @@ namespace cw
     rc_t _parseCfg(app_t* app, const object_t* cfg, const object_t*& params_cfgRef )
     {
       rc_t rc = kOkRC;
+      const char* flow_proc_dict_fn = nullptr;
 
       if((rc = cfg->getv( "params", params_cfgRef,
                           "flow",   app->flow_cfg)) != kOkRC )
@@ -268,6 +274,7 @@ namespace cw
                                     "record_fn",        app->record_fn,
                                     "record_fn_ext",    app->record_fn_ext,
                                     "score_fn",         app->scoreFn,
+                                    "flow_proc_dict_fn",flow_proc_dict_fn,
                                     "midi_play_record", app->midi_play_record_cfg,
                                     "frag_panel",       app->frag_panel_cfg,
                                     "presets",          app->presets_cfg,
@@ -288,6 +295,12 @@ namespace cw
       if((app->record_dir = filesys::expandPath(app->record_dir)) == nullptr )
       {
         rc = cwLogError(kInvalidArgRC,"The record directory path is invalid.");
+        goto errLabel;
+      }
+
+      if((rc = objectFromFile( flow_proc_dict_fn, app->flow_proc_dict )) != kOkRC )
+      {
+        rc = cwLogError(kInvalidArgRC,"The flow proc file '%s' parse failed.",app->flow_proc_dict);
         goto errLabel;
       }
       
@@ -338,6 +351,9 @@ namespace cw
 
     rc_t _free( app_t& app )      
     {
+      if( app.flow_proc_dict != nullptr )
+        app.flow_proc_dict->free();
+      
       mem::release((char*&)app.record_dir);
       mem::release((char*&)app.scoreFn);
       preset_sel::destroy(app.psH);
@@ -475,6 +491,46 @@ namespace cw
       }
     }
 
+    rc_t  _on_live_midi( app_t* app, const io::msg_t& msg )
+    {
+      rc_t rc = kOkRC;
+
+      if( msg.u.midi != nullptr )
+      {
+        
+        const io::midi_msg_t& m = *msg.u.midi;
+        const midi::packet_t* pkt = m.pkt;
+        // for each midi msg
+        for(unsigned j=0; j<pkt->msgCnt; ++j)
+        {
+          // if this is a sys-ex msg
+          if( pkt->msgArray == NULL )
+          {
+            cwLogError(kNotImplementedRC,"Sys-ex recording not implemented.");
+          }
+          else // this is a triple
+          {
+            midi::msg_t*  mm = pkt->msgArray + j;
+            time::spec_t  timestamp;
+            unsigned id = kInvalidId;
+            unsigned loc = app->beg_play_loc;
+            
+            time::get(timestamp);
+            
+            if( midi::isChStatus(mm->status) )
+            {
+              if(midi_record_play::send_midi_msg( app->mrpH, kSampler_MRP_DevIdx, mm->status & 0x0f, mm->status & 0xf0, mm->d0, mm->d1 ) == kOkRC )                
+                _midi_play_callback( app, midi_record_play::kMidiEventActionId, id, timestamp, loc, mm->status & 0x0f, mm->status & 0xf0, mm->d0, mm->d1 );
+            }
+
+          }
+        }          
+      }
+
+      return rc;
+    }
+      
+
     // Find the closest locMap equal to or after 'loc'
     loc_map_t* _find_loc( app_t* app, unsigned loc )
     {
@@ -542,7 +598,7 @@ namespace cw
       app->end_play_timestamp = endMap->timestamp;
 
       
-      if( !time::isZero(app->beg_play_timestamp) )
+      if( !time::isZero(app->beg_play_timestamp) && !app->useLiveMidiFl )
       {
           // seek the player to the requested loc
           if((rc = midi_record_play::seek( app->mrpH, app->beg_play_timestamp )) != kOkRC )
@@ -561,17 +617,20 @@ namespace cw
       }
 
       // start the MIDI playback
-      if((rc = midi_record_play::start(app->mrpH,rewindFl,&app->end_play_timestamp)) != kOkRC )
+      if( !app->useLiveMidiFl )
       {
-        rc = cwLogError(rc,"MIDI start failed.");
-        goto errLabel;
-      }
+        if((rc = midi_record_play::start(app->mrpH,rewindFl,&app->end_play_timestamp)) != kOkRC )
+        {
+          rc = cwLogError(rc,"MIDI start failed.");
+          goto errLabel;
+        }
 
-      if((cur_loc = midi_record_play::event_loc(app->mrpH)) > 0 )
-      {
-        io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), cur_loc  );
+        if((cur_loc = midi_record_play::event_loc(app->mrpH)) > 0 )
+        {
+          io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), cur_loc  );
+        }
       }
-
+      
     errLabel:
       return rc;
     }
@@ -1236,6 +1295,7 @@ namespace cw
       // enable the start/stop buttons
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStartBtnId ), true );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStopBtnId ),  true );
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kLiveCheckId ),  true );
         
       // restore the fragment records
       if( firstLoadFl )
@@ -1570,6 +1630,7 @@ namespace cw
       // disable start and stop buttons until a score is loaded
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStartBtnId ), false );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStopBtnId ),  false );
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kLiveCheckId ),  false );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kSaveBtnId ),  false );
       
       const preset_sel::frag_t* f = preset_sel::get_fragment_base( app->psH );
@@ -1626,6 +1687,10 @@ namespace cw
             
         case kStopBtnId:
           _do_stop_play(app);
+          break;
+
+        case kLiveCheckId:
+          app->useLiveMidiFl = m.value->u.b;
           break;
 
         case kPrintMidiCheckId:
@@ -1792,7 +1857,7 @@ namespace cw
     errLabel:
       return rc;
     }
-
+    
     rc_t _onUiEcho(app_t* app, const io::ui_msg_t& m )
     {
       rc_t rc = kOkRC;
@@ -1899,7 +1964,7 @@ namespace cw
       rc_t rc = kOkRC;
       app_t* app = reinterpret_cast<app_t*>(arg);
 
-      if( app->mrpH.isValid() )
+      if( app->mrpH.isValid() && !app->useLiveMidiFl )
       {
         midi_record_play::exec( app->mrpH, *m );
         if( midi_record_play::is_started(app->mrpH) )
@@ -1928,6 +1993,8 @@ namespace cw
         break;
           
       case io::kMidiTId:
+        if( app->useLiveMidiFl && app->mrpH.isValid() )
+          _on_live_midi( app, *m );
         break;
           
       case io::kAudioTId:        
@@ -1959,7 +2026,7 @@ namespace cw
 }
 
 
-cw::rc_t cw::preset_sel_app::main( const object_t* cfg, const object_t* flow_proc_dict )
+cw::rc_t cw::preset_sel_app::main( const object_t* cfg )
 {
 
   rc_t rc;
@@ -1994,7 +2061,7 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, const object_t* flow_pro
   }
   
   // create the IO Flow controller
-  if(app.flow_cfg==nullptr || flow_proc_dict==nullptr || (rc = io_flow::create(app.ioFlowH,app.ioH,app.crossFadeSrate,app.crossFadeCnt,*flow_proc_dict,*app.flow_cfg)) != kOkRC )
+  if(app.flow_cfg==nullptr || app.flow_proc_dict==nullptr || (rc = io_flow::create(app.ioFlowH,app.ioH,app.crossFadeSrate,app.crossFadeCnt,*app.flow_proc_dict,*app.flow_cfg)) != kOkRC )
   {
     rc = cwLogError(rc,"The IO Flow controller create failed.");
     goto errLabel;
