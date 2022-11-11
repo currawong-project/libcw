@@ -32,16 +32,16 @@ namespace cw
     typedef struct fbuf_str
     {      
       struct value_str* base;
-      srate_t           srate;    // signal sample rate
-      unsigned          flags;    // See kXXXFbufFl
-      unsigned          chN;      // count of channels
-      unsigned          binN;     // count of sample frames per channel
-      unsigned          hopSmpN;  // hop sample count 
-      sample_t**        magV;     // magV[ chN ][ binN ]
-      sample_t**        phsV;     // phsV[ chN ][ binN ]
-      sample_t**        hzV;      // hzV[ chN ][ binN ]
-      bool*             readyFlV; // readyFlV[chN] true if this channel is ready to be processed (used to sync. fbuf rate to abuf rate)
-      sample_t*         buf;      // memory used by this buffer (or NULL if magV,phsV,hzV point are proxied to another buffer)      
+      srate_t           srate;     // signal sample rate
+      unsigned          flags;     // See kXXXFbufFl
+      unsigned          chN;       // count of channels
+      unsigned*         binN_V;    // binN_V[ chN ] count of sample frames per channel
+      unsigned*         hopSmpN_V; // hopSmpN_V[ chN ] hop sample count 
+      sample_t**        magV;      // magV[ chN ][ binN ]
+      sample_t**        phsV;      // phsV[ chN ][ binN ]
+      sample_t**        hzV;       // hzV[ chN ][ binN ]
+      bool*             readyFlV;  // readyFlV[chN] true if this channel is ready to be processed (used to sync. fbuf rate to abuf rate)
+      sample_t*         buf;       // memory used by this buffer (or NULL if magV,phsV,hzV point are proxied to another buffer)      
     } fbuf_t;
 
     enum

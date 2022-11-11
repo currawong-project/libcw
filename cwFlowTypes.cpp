@@ -175,7 +175,11 @@ namespace cw
           if( v->u.fbuf == nullptr )
             printf("fbuf: <null>");
           else
-            printf("fbuf: chN:%i binN:%i hopSmpN:%i srate:%8.1f", v->u.fbuf->chN, v->u.fbuf->binN, v->u.fbuf->hopSmpN, v->u.fbuf->srate );
+          {
+            printf("fbuf: chN:%i srate:%8.1f ", v->u.fbuf->chN, v->u.fbuf->srate );
+            for(unsigned i; i<v->u.fbuf->chN; ++i)
+              printf("(binN:%i hopSmpN:%i) ", v->u.fbuf->binN_V[i], v->u.fbuf->hopSmpN_V[i] );
+          }
           break;
           
         case kBoolMtxTFl:
@@ -907,17 +911,23 @@ cw::flow::fbuf_t*  cw::flow::fbuf_create( srate_t srate, unsigned chN, unsigned 
   
   f->srate   = srate;
   f->chN     = chN;
-  f->binN    = binN;
-  f->hopSmpN = hopSmpN;
+  f->binN_V    = mem::allocZ<unsigned>(chN);; 
+  f->hopSmpN_V = mem::allocZ<unsigned>(chN); 
   f->magV    = mem::allocZ<sample_t*>(chN);
   f->phsV    = mem::allocZ<sample_t*>(chN);
   f->hzV     = mem::allocZ<sample_t*>(chN);
   f->readyFlV= mem::allocZ<bool>(chN);
 
+  for(unsigned chIdx=0; chIdx<chN; ++chIdx)
+  {
+    f->binN_V[chIdx]    = binN;
+    f->hohpSmpN_V[chIdx] = hopSmpN;
+  }
+  
   if( magV != nullptr || phsV != nullptr || hzV != nullptr )
   {
     for(unsigned chIdx=0; chIdx<chN; ++chIdx)
-    {
+    {      
       f->magV[ chIdx ] = (sample_t*)magV[chIdx];
       f->phsV[ chIdx ] = (sample_t*)phsV[chIdx];
       f->hzV[  chIdx ] = (sample_t*)hzV[chIdx];
@@ -945,7 +955,9 @@ void cw::flow::fbuf_destroy( fbuf_t*& fbuf )
 {
   if( fbuf == nullptr )
     return;
-  
+
+  mem::release( fbuf->binN_V );
+  mem::release( fbuf->hopSmpN_V);
   mem::release( fbuf->magV);
   mem::release( fbuf->phsV);
   mem::release( fbuf->hzV);
@@ -959,9 +971,12 @@ cw::flow::fbuf_t*  cw::flow::fbuf_duplicate( const fbuf_t* src )
   fbuf_t* fbuf = fbuf_create( src->srate, src->chN, src->binN, src->hopSmpN );
   for(unsigned i=0; i<fbuf->chN; ++i)
   {
-    vop::copy( fbuf->magV[i], src->magV[i], fbuf->binN );
-    vop::copy( fbuf->phsV[i], src->phsV[i], fbuf->binN );
-    vop::copy( fbuf->hzV[i],  src->hzV[i],  fbuf->binN );    
+    fbuf->binN_V[i]    = src->binN_V[i];
+    fbuf->hopSmpN_V[i] = src->hopSmpN_V[i]; 
+
+    vop::copy( fbuf->magV[i], src->magV[i], fbuf->binN_V[i] );
+    vop::copy( fbuf->phsV[i], src->phsV[i], fbuf->binN_V[i] );
+    vop::copy( fbuf->hzV[i],  src->hzV[i],  fbuf->binN_V[i] );    
   }
   return fbuf;
 }
