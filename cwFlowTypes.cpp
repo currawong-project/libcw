@@ -1013,9 +1013,10 @@ void cw::flow::class_dict_print( flow_t* p )
         
     for(; vd!=nullptr; vd=vd->link)
     {
-      const char* srcFlStr = vd->flags&kSrcVarFl ? "src" : "   ";
+      const char* srcFlStr    = vd->flags & kSrcVarFl    ? "src"    : "   ";
+      const char* srcOptFlStr = vd->flags & kSrcOptVarFl ? "srcOpt" : "      ";
           
-      printf("  %10s 0x%08x %s %s\n", cwStringNullGuard(vd->label), vd->type, srcFlStr, cwStringNullGuard(vd->docText) );
+      printf("  %10s 0x%08x %s %s %s\n", cwStringNullGuard(vd->label), vd->type, srcFlStr, srcOptFlStr, cwStringNullGuard(vd->docText) );
     }
   }
 }
@@ -1161,6 +1162,17 @@ cw::rc_t  cw::flow::var_channelize( instance_t* inst, const char* var_label, uns
 
 bool cw::flow::var_exists( instance_t* inst, const char* label, unsigned chIdx )
 { return _var_find_on_label_and_ch(inst,label,chIdx) != nullptr; }
+
+bool cw::flow::var_has_value( instance_t* inst, const char* label, unsigned chIdx )
+{
+  variable_t* varPtr = nullptr;
+  rc_t rc;
+  
+  if((rc = var_find( inst, label, chIdx, varPtr )) != kOkRC )
+    return false;
+
+  return varPtr->value != nullptr;
+}
 
 
 cw::rc_t cw::flow::var_find( instance_t* inst, unsigned vid, unsigned chIdx, variable_t*& varRef )

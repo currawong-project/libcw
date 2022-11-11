@@ -564,7 +564,7 @@ namespace cw
           // print a minutes counter
           inst->durSmpN += src_abuf->frameN;          
           if( inst->durSmpN % ((unsigned)src_abuf->srate*60) == 0 )
-            printf("%5.1f min\n", inst->durSmpN/(src_abuf->srate*60));
+            printf("audio file out: %5.1f min\n", inst->durSmpN/(src_abuf->srate*60));
           
         }
         
@@ -982,35 +982,64 @@ namespace cw
     namespace audio_merge
     {
       enum {
-        kIn0PId,
-        kIn1PId,
         kGainPId,
         kOutPId,
+        kInBasePId,
       };
       
       typedef struct
       {
+        unsigned srcN;
       } inst_t;
 
 
       rc_t create( instance_t* ctx )
       {
         rc_t          rc     = kOkRC;
-        const abuf_t* abuf0  = nullptr; //
-        const abuf_t* abuf1  = nullptr;
         unsigned      outChN = 0;
-
-        // get the source audio buffer
-        if((rc = var_register_and_get(ctx, kAnyChIdx,
-                                      kIn0PId,"in0",abuf0,
-                                      kIn1PId,"in1",abuf1 )) != kOkRC )
+        unsigned      frameN = 0;
+        srate_t       srate  = 0;
+        
+        inst_t*       inst = mem::allocZ<inst_t>();
+        
+        ctx->userPtr = inst;
+        
+        for(unsigned i=0; 1; ++i)
         {
-          goto errLabel;
+          const abuf_t* abuf  = nullptr; //
+          
+          char label[32];          
+          snprintf(label,31,"in%i",i);
+          label[31] = 0;
+
+          // TODO: allow non-contiguous source labels
+          
+          // the source labels must be contiguous
+          if( !var_has_value( ctx, label, kAnyChIdx ) )
+            break;
+          
+          // get the source audio buffer
+          if((rc = var_register_and_get(ctx, kAnyChIdx,kInBasePId+i,label,abuf )) != kOkRC )
+          {
+            goto errLabel;
+          }
+          
+          if( i == 0 )
+          {
+            frameN = abuf->frameN;
+            srate  = abuf->srate;
+          }
+          else
+          {
+            // TODO: check srate and frameN are same as first src
+          }
+          
+          inst->srcN += 1;
+          outChN += abuf->chN;
+          
         }
 
-        assert( abuf0->frameN == abuf1->frameN );
-
-        outChN = abuf0->chN + abuf1->chN;
+        //outChN = abuf0->chN + abuf1->chN;
 
         // register the gain 
         for(unsigned i=0; i<outChN; ++i)
@@ -1018,14 +1047,20 @@ namespace cw
             goto errLabel;
           
         // create the output audio buffer
-        rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, abuf0->srate, outChN, abuf0->frameN );
+        rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, srate, outChN, frameN );
 
       errLabel:
         return rc;
       }
 
       rc_t destroy( instance_t* ctx )
-      { return kOkRC; }
+      { 
+        inst_t* inst = (inst_t*)ctx->userPtr;
+        
+        mem::release(inst);
+
+        return kOkRC;
+      }
 
       rc_t value( instance_t* ctx, variable_t* var )
       { return kOkRC; }
@@ -1052,6 +1087,7 @@ namespace cw
         return outChIdx;
       }
 
+      /*
       rc_t exec( instance_t* ctx )
       {
         rc_t          rc    = kOkRC;
@@ -1077,6 +1113,31 @@ namespace cw
       errLabel:
         return rc;
       }
+      */
+      
+      rc_t exec( instance_t* ctx )
+      {
+        rc_t          rc    = kOkRC;
+        inst_t*       inst     = (inst_t*)ctx->userPtr;
+        abuf_t*       obuf  = nullptr;
+        unsigned      oChIdx = 0;
+        
+        if((rc = var_get(ctx,kOutPId, kAnyChIdx, obuf)) != kOkRC )
+          goto errLabel;
+
+        for(unsigned i=0; i<inst->srcN; ++i)
+        {
+          const abuf_t* ibuf = nullptr;
+
+          if((rc = var_get(ctx,kInBasePId+i, kAnyChIdx, ibuf )) != kOkRC )
+            goto errLabel;
+
+          oChIdx = _exec( ctx, ibuf, obuf, oChIdx );
+        }
+
+      errLabel:
+        return rc;
+      }
 
       class_members_t members = {
         .create = create,
@@ -1087,6 +1148,7 @@ namespace cw
       };
       
     }    
+
     
     //------------------------------------------------------------------------------------------------------------------
     //
