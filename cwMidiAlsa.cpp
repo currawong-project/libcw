@@ -134,12 +134,18 @@ namespace cw
 
             // if no input
             if( rc == -EAGAIN )
+            {
+              // TODO: report or at least count error
               break;
-
+            }
+            
             // if input buffer overrun
             if( rc == -ENOSPC )
+            {
+              // TODO: report or at least count error
               break;
-      
+            }
+            
             // get the device this event arrived from
             if( p->prvRcvDev==NULL || p->prvRcvDev->clientId != ev->source.client )
               p->prvRcvDev = _cmMpClientIdToDev(p,ev->source.client);
@@ -150,7 +156,7 @@ namespace cw
 
             if( p->prvRcvDev == NULL || p->prvRcvPort == NULL )
               continue;
-
+            
             //printf("%i %x\n",ev->type,ev->type);
             //printf("dev:%i port:%i ch:%i %i\n",ev->source.client,ev->source.port,ev->data.note.channel,ev->data.note.note);
 

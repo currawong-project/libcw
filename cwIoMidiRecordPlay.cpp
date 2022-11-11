@@ -404,6 +404,7 @@ namespace cw
       return rc;
     }
 
+
     rc_t _transmit_msg( midi_record_play_t* p, const am_midi_msg_t* am, bool log_fl=true )
     {
       return _event_callback( p, am->id, am->timestamp, am->loc, am->ch, am->status, am->d0, am->d1, log_fl );
@@ -552,7 +553,7 @@ namespace cw
       unsigned       fileByteN = 0;      // count of bytes in the file
       int            version   = 0;      // version id (always a negative number)
       bool           alloc_fl  = false;
-      bool           print_fl  = true;
+      bool           print_fl  = false;
       file::handle_t fH;
 
       if((rc = file::open(fH,fn,file::kReadFl)) != kOkRC )
@@ -607,6 +608,7 @@ namespace cw
       }
       else
       {
+        fileByteN = recordN * sizeof(am_midi_msg_t);
         if((rc = file::read(fH,msgArrayRef,fileByteN)) != kOkRC )
         {
           rc = cwLogError(kReadFailRC,"Data read failed on Audio-MIDI file: '%s'.", fn );
@@ -1444,6 +1446,20 @@ void cw::midi_record_play::enable_device( handle_t h, unsigned devIdx, bool enab
     printf("Enable: %i = %i\n",devIdx,enableFl);
   }
 }
+
+cw::rc_t cw::midi_record_play::send_midi_msg( handle_t h, unsigned devIdx, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
+{
+  midi_record_play_t* p = _handleToPtr(h);
+  
+  if( devIdx >= p->midiDevN )
+    return cwLogError(kInvalidArgRC,"The MIDI record-play device index '%i' is invalid.",devIdx );
+  
+  if( p->midiDevA[devIdx].enableFl )
+    io::midiDeviceSend( p->ioH, p->midiDevA[devIdx].midiOutDevIdx, p->midiDevA[devIdx].midiOutPortIdx, status + ch, d0, d1 );
+
+  return kOkRC;
+}
+
 
 void cw::midi_record_play::half_pedal_params( handle_t h, unsigned noteDelayMs, unsigned pitch, unsigned vel, unsigned pedal_vel, unsigned noteDurMs, unsigned downDelayMs )
 {

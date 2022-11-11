@@ -66,6 +66,7 @@ namespace cw
     unsigned device_count( handle_t h );
     bool is_device_enabled( handle_t h, unsigned devIdx );
     void enable_device( handle_t h, unsigned devIdx, bool enableFl );
+    rc_t send_midi_msg( handle_t h, unsigned devIdx, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 );
 
     void half_pedal_params( handle_t h, unsigned noteDelayMs, unsigned pitch, unsigned vel, unsigned pedal_vel, unsigned noteDurMs, unsigned downDelayMs );
 
