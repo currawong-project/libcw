@@ -531,7 +531,7 @@ namespace cw
       unsigned       fileByteN = 0;      // count of bytes in the file
       int            version   = 0;      // version id (always a negative number)
       bool           alloc_fl  = false;
-      bool           print_fl  = true;
+      bool           print_fl  = false;
       file::handle_t fH;
 
       if((rc = file::open(fH,fn,file::kReadFl)) != kOkRC )
@@ -586,6 +586,7 @@ namespace cw
       }
       else
       {
+        fileByteN = recordN * sizeof(am_midi_msg_t);
         if((rc = file::read(fH,msgArrayRef,fileByteN)) != kOkRC )
         {
           rc = cwLogError(kReadFailRC,"Data read failed on Audio-MIDI file: '%s'.", fn );
