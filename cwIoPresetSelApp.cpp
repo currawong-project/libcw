@@ -610,7 +610,7 @@ namespace cw
       }
 
       // apply the preset which is active at the start time
-      if((rc = _apply_preset( app, app->beg_play_timestamp, app->beg_play_loc )) != kOkRC )
+      if((rc = _apply_preset( app, app->beg_play_timestamp, begMap->loc )) != kOkRC )
       {
         rc = cwLogError(rc,"Preset application failed prior to MIDI start.");
         goto errLabel;
@@ -1270,19 +1270,21 @@ namespace cw
       // set the range of the global play location controls
       if( firstLoadFl )
       {
-        unsigned minLocUuId = io::uiFindElementUuId(app->ioH, kBegPlayLocNumbId);
-        unsigned maxLocUuId = io::uiFindElementUuId(app->ioH, kEndPlayLocNumbId);
-        //unsigned end_loc    = app->end_play_loc==0 ? app->maxLoc : app->end_play_loc;
-        //unsigned beg_loc    = app->minLoc <= app->beg_play_loc && app->beg_play_loc <= app->maxLoc ? app->beg_play_loc : app->minLoc;
+        unsigned begPlayLocUuId = io::uiFindElementUuId(app->ioH, kBegPlayLocNumbId);
+        unsigned endPlayLocUuId = io::uiFindElementUuId(app->ioH, kEndPlayLocNumbId);
         
-        io::uiSetNumbRange( app->ioH, minLocUuId, app->minLoc, app->maxLoc, 1, 0, app->minLoc );
-        io::uiSetNumbRange( app->ioH, maxLocUuId, app->minLoc, app->maxLoc, 1, 0, app->maxLoc );
+        unsigned end_play_loc    = app->end_play_loc==0 ? app->maxLoc : app->end_play_loc;
+        unsigned beg_play_loc    = app->minLoc <= app->beg_play_loc && app->beg_play_loc <= app->maxLoc ? app->beg_play_loc : app->minLoc;
+        
+        io::uiSetNumbRange( app->ioH, begPlayLocUuId, app->minLoc, app->maxLoc, 1, 0, app->minLoc );
+        io::uiSetNumbRange( app->ioH, endPlayLocUuId, app->minLoc, app->maxLoc, 1, 0, app->maxLoc );
 
-        //io::uiSendValue( app->ioH, minLocUuId, std::max(beg_loc,app->minLoc));
-        //io::uiSendValue( app->ioH, maxLocUuId, std::min(end_loc,app->maxLoc));
+        //io::uiSendValue( app->ioH, begPlayLocUuId, app->minLoc);
+        //io::uiSendValue( app->ioH, endPlayLocUuId, app->maxLoc);
 
-        io::uiSendValue( app->ioH, minLocUuId, app->minLoc);
-        io::uiSendValue( app->ioH, maxLocUuId, app->maxLoc);
+        
+        io::uiSendValue( app->ioH, begPlayLocUuId, beg_play_loc);
+        io::uiSendValue( app->ioH, endPlayLocUuId, end_play_loc);
 
         
         // enable the 'End Loc' number box since the score is loaded
