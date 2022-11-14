@@ -162,10 +162,10 @@ void cw::log::defaultFormatter( void* cbArg, logOutputCbFunc_t outFunc, void* ou
   cwAssert(rcn==rcm);
   const char* rcStr = rcs;
 
-  const char* syFmt = "%s%s";
-  int syn = snprintf(nullptr,0,syFmt,systemLabel,systemMsg);
+  const char* syFmt = "%s (%i) %s";
+  int syn = snprintf(nullptr,0,syFmt,systemLabel,sys_errno,systemMsg);
   char sys[syn+1];
-  int sym = snprintf(sys,syn+1,syFmt,systemLabel,systemMsg);
+  int sym = snprintf(sys,syn+1,syFmt,systemLabel,sys_errno,systemMsg);
   cwAssert(syn==sym);
   const char* syStr = sys;
 
