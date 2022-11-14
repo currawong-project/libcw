@@ -251,6 +251,8 @@ namespace cw
     unsigned           socketInetAddress(  handle_t h, unsigned sockIdx );
     sock::portNumber_t socketPort(         handle_t h, unsigned sockIdx );
     rc_t               socketPeername(     handle_t h, unsigned sockIdx, struct sockaddr_in* addr );
+
+    bool               socketIsConnected(  handle_t h, unsigned sockIdx );
     
     
     

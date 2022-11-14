@@ -2576,6 +2576,16 @@ cw::rc_t cw::io::socketPeername( handle_t h, unsigned sockIdx, struct sockaddr_i
   return sock::peername( p->sockH, s->userId, addr );
 }
 
+bool     cw::io::socketIsConnected(  handle_t h, unsigned sockIdx )
+{ 
+  io_t* p = _handleToPtr(h);
+  socket_t* s;
+  if((s = _socketIndexToRecd(p,sockIdx)) == nullptr )
+    return sock::isConnected( p->sockH, s->userId );
+
+  return false;
+}
+
 cw::rc_t cw::io::socketSend(    handle_t h, unsigned sockIdx, unsigned connId, const void* data, unsigned dataByteCnt )
 {
   io_t* p = _handleToPtr(h);
