@@ -54,6 +54,16 @@ namespace cw
 
       unsigned       pedalUpHalfVelId;
       unsigned       pedalUpHalfVel;
+
+      unsigned       velHistogram[ midi::kMidiVelCnt ];
+
+      bool           force_damper_down_fl;
+      unsigned       force_damper_down_threshold;
+      unsigned       force_damper_down_velocity;
+
+      bool           damper_dead_band_enable_fl;
+      unsigned       damper_dead_band_min_value;
+      unsigned       damper_dead_band_max_value;
       
     } midi_device_t;
 
@@ -89,9 +99,12 @@ namespace cw
 
       bool           startedFl;
       bool           recordFl;
+      bool           muteFl;
       bool           thruFl;
       bool           logInFl;   // log incoming message when not in 'record' mode.
       bool           logOutFl;  // log outgoing messages
+
+      bool           velHistogramEnableFl;
       
       bool     halfPedalFl;
       unsigned halfPedalState;
@@ -190,12 +203,27 @@ namespace cw
           }
           
 
-          if((rc = ele->getv_opt( "vel_table", velTable,
-                                  "pedal",     pedalRecd)) != kOkRC )
+          if((rc = ele->getv_opt(
+                "vel_table", velTable,
+                "pedal",     pedalRecd,
+                "force_damper_down_fl",p->midiDevA[i].force_damper_down_fl,
+                "force_damper_down_threshold",p->midiDevA[i].force_damper_down_threshold,
+                "force_damper_down_velocity", p->midiDevA[i].force_damper_down_velocity,
+                "damper_dead_band_enable_fl", p->midiDevA[i].damper_dead_band_enable_fl,
+                "damper_dead_band_min_value", p->midiDevA[i].damper_dead_band_min_value,
+                "damper_dead_band_max_value", p->midiDevA[i].damper_dead_band_max_value)) != kOkRC )
           {
             rc = cwLogError(kSyntaxErrorRC,"MIDI record play device optional argument parsing failed.");
             goto errLabel;          
           }
+
+          cwLogInfo("Force Pedal: enabled:%i thresh:%i veloc:%i dead band: enable:%i min:%i max:%i",
+            p->midiDevA[i].force_damper_down_fl,
+            p->midiDevA[i].force_damper_down_threshold,
+            p->midiDevA[i].force_damper_down_velocity,
+            p->midiDevA[i].damper_dead_band_enable_fl,
+            p->midiDevA[i].damper_dead_band_min_value,
+            p->midiDevA[i].damper_dead_band_max_value );
           
           p->midiDevA[i].midiOutDevLabel  = mem::duplStr( midiOutDevLabel);
           p->midiDevA[i].midiOutPortLabel = mem::duplStr( midiOutPortLabel);
@@ -254,6 +282,9 @@ namespace cw
     const am_midi_msg_t*  _midi_store( midi_record_play_t* p, unsigned devIdx, unsigned portIdx, const time::spec_t& ts, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
     {
       am_midi_msg_t* am = nullptr;
+
+      //if( !midi::isPedal(status,d0) )
+      //  printf("MIDI store: %i : ch:%i st:%i d0:%i d1:%i\n",p->iMsgArrayInIdx,ch,status,d0,d1);
       
       // verify that space exists in the record buffer
       if( p->iMsgArrayInIdx < p->iMsgArrayN )
@@ -281,13 +312,14 @@ namespace cw
     rc_t _event_callback( midi_record_play_t* p, unsigned id, const time::spec_t timestamp, unsigned loc, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1, bool log_fl=true )
     {
       rc_t rc = kOkRC;
-
       // if we have arrived at the stop time
       bool after_stop_time_fl = !time::isZero(p->end_play_event_timestamp) && time::isGT(timestamp,p->end_play_event_timestamp);
       bool after_all_off_fl   = after_stop_time_fl && time::isGT(timestamp,p->all_off_timestamp);
 
       bool is_note_on_fl = status==midi::kNoteOnMdId and d1 != 0;
-      bool supress_fl = is_note_on_fl && after_stop_time_fl;
+      bool is_damper_fl = status==midi::kCtlMdId and d0==midi::kSustainCtlMdId;
+      bool supress_fl = (is_note_on_fl && after_stop_time_fl) || p->muteFl;
+      bool is_pedal_fl = midi::isPedal( status, d0 );
       
       if( after_all_off_fl )
       {
@@ -320,6 +352,19 @@ namespace cw
                   out_d1 = p->midiDevA[i].velTableArray[ d1 ];
               }
 
+              // store the note-on velocity histogram data
+              if( p->velHistogramEnableFl && is_note_on_fl && out_d1 < midi::kMidiVelCnt )
+                p->midiDevA[i].velHistogram[ out_d1 ] += 1;
+
+              // if the damper pedal velocity is in the dead band then don't send it
+              if( p->midiDevA[i].damper_dead_band_enable_fl && is_pedal_fl && p->midiDevA[i].damper_dead_band_min_value <= out_d1 && out_d1 <= p->midiDevA[i].damper_dead_band_max_value )
+                out_d1 = 0;
+              
+              // if the damper pedal velocity is over the 'forcing' threshold then force the damper down
+              if( p->midiDevA[i].force_damper_down_fl && is_damper_fl && out_d1>p->midiDevA[i].force_damper_down_threshold )
+                out_d1 = p->midiDevA[i].force_damper_down_velocity;
+
+
               // map the pedal down velocity
               if( status==midi::kCtlMdId && d0 == midi::kSustainCtlMdId && p->midiDevA[i].pedalMapEnableFl )
               {
@@ -331,17 +376,21 @@ namespace cw
                   else
                     if( d1 == p->midiDevA[i].pedalDownHalfVelId )
                       out_d1 = p->midiDevA[i].pedalDownHalfVel;
-                    else                    
-                      cwLogError(kInvalidIdRC,"Unexpected pedal down velocity (%i) during pedal velocity mapping.",d1);
+                    else
+                    {
+                      cwLogError(kInvalidIdRC,"Unexpected pedal down velocity (%i) during pedal velocity mapping. Remove the 'pedal' stanza from the MIDI device cfg to prevent pedal mapping.",d1);
+                    }
               }
             }
 
-            if( !supress_fl )           
+            if( !supress_fl )
+            {
               io::midiDeviceSend( p->ioH, p->midiDevA[i].midiOutDevIdx, p->midiDevA[i].midiOutPortIdx, status + ch, d0, out_d1 );
+            }
           }
 
         if( !after_stop_time_fl and p->cb )
-          p->cb( p->cb_arg, id, timestamp, loc, ch, status, d0, d1 );
+          p->cb( p->cb_arg, kMidiEventActionId, id, timestamp, loc, ch, status, d0, d1 );
 
         if( log_fl && p->logOutFl )
         {
@@ -354,6 +403,7 @@ namespace cw
       
       return rc;
     }
+
 
     rc_t _transmit_msg( midi_record_play_t* p, const am_midi_msg_t* am, bool log_fl=true )
     {
@@ -442,6 +492,53 @@ namespace cw
     }
 
 
+    cw::rc_t _am_file_read_version_0( const char* fn, file::handle_t fH, am_midi_msg_t* amMsgArray, unsigned msgN )
+    {
+      // version 0 record type
+      typedef struct msg_str
+      {
+        unsigned dev_idx;
+        unsigned port_idx;
+        time::spec_t timestamp;
+        uint8_t ch;
+        uint8_t st;
+        uint8_t d0;
+        uint8_t d1;
+        unsigned microsecs;
+      } zero_msg_t;
+
+      cw::rc_t    rc        = kOkRC;
+      zero_msg_t* zMsgArray = mem::allocZ<zero_msg_t>(msgN);
+      unsigned    fileByteN = msgN * sizeof(zero_msg_t);
+      
+      if((rc = file::read(fH,zMsgArray,fileByteN)) != kOkRC )
+      {
+        rc = cwLogError(kReadFailRC,"Data read failed on Audio-MIDI file: '%s'.", fn );
+        goto errLabel;
+      }
+
+      for(unsigned i=0; i<msgN; ++i)
+      {
+        am_midi_msg_t* am = amMsgArray + i;
+        zero_msg_t*    zm = zMsgArray + i;
+        
+        am->devIdx        = zm->dev_idx;
+        am->portIdx       = zm->port_idx;
+        am->microsec      = zm->microsecs;
+        am->id            = i;
+        am->timestamp     = zm->timestamp;
+        am->loc           = i;
+        am->ch            = zm->ch;
+        am->status        = zm->st;
+        am->d0            = zm->d0;
+        am->d1            = zm->d1;
+      }
+      
+    errLabel:
+      mem::release(zMsgArray);
+      return rc;
+    }
+
     // Read the am_midi_msg_t records from a file written by _midi_write()
     // If msgArrayCntRef==0 and msgArrayRef==NULL then an array will be allocated and it is up
     // to the caller to release it, otherwise the msgArrayCntRef should be set to the count
@@ -450,44 +547,95 @@ namespace cw
     // msgArrayCntRef records will be returned.
     cw::rc_t _am_file_read( const char* fn, unsigned& msgArrayCntRef, am_midi_msg_t*& msgArrayRef )
     {
-      rc_t           rc = kOkRC;
-      unsigned       n  = 0;
+      
+      rc_t           rc        = kOkRC;
+      unsigned       recordN   = 0;      // count of records in the ifle
+      unsigned       fileByteN = 0;      // count of bytes in the file
+      int            version   = 0;      // version id (always a negative number)
+      bool           alloc_fl  = false;
+      bool           print_fl  = false;
       file::handle_t fH;
-        
+
       if((rc = file::open(fH,fn,file::kReadFl)) != kOkRC )
       {
         rc = cwLogError(kOpenFailRC,"Unable to locate the AM file: '%s'.", fn );
         goto errLabel;
       }
 
-      if((rc = file::read(fH,n)) != kOkRC )
+      // read the first word - which is either a version id or the count of records in the file
+      // if this is a version 0 file
+      if((rc = file::read(fH,version)) != kOkRC )
       {
-        rc = cwLogError(kReadFailRC,"Header read failed on Audio-MIDI file: '%s'.", fn );
+        rc = cwLogError(kReadFailRC,"Version read failed on Audio-MIDI file: '%s'.", fn );
         goto errLabel;
       }
 
+      // if the version is greater than 0 then this is a version 0 file (and 'version' holds the record count.
+      if( version > 0 )
+      {
+        recordN = (unsigned)version;
+        version = 0;
+      }
+      else // otherwise the second word in the file holds the size of the file
+      {
+        if((rc = file::read(fH,recordN)) != kOkRC )
+        {
+          rc = cwLogError(kReadFailRC,"Header read failed on Audio-MIDI file: '%s'.", fn );
+          goto errLabel;
+        }
+      }
+
+      // if the output msg array was not allocated - then allocate it here 
       if( msgArrayCntRef == 0 || msgArrayRef == nullptr )
       {
-        msgArrayRef = mem::allocZ<am_midi_msg_t>(n);        
+        alloc_fl = true;
+        msgArrayRef = mem::allocZ<am_midi_msg_t>(recordN);
+      }
+      else // if the msg array was allocated but is too small - then decrease the count of records to be read from the file
+      {
+        if( recordN > msgArrayCntRef )
+        {
+          cwLogWarning("The count of message in Audio-MIDI file '%s' reduced from %i to %i.", fn, recordN, msgArrayCntRef );
+          recordN = msgArrayCntRef;          
+        }
+      }
+
+      if( version == 0 )
+      {
+        // read the version 0 file into a temporary buffer then translate to am_midi_msg_t records
+        if((rc = _am_file_read_version_0( fn, fH, msgArrayRef, recordN )) != kOkRC )
+          goto errLabel;
       }
       else
       {
-        if( n > msgArrayCntRef )
+        fileByteN = recordN * sizeof(am_midi_msg_t);
+        if((rc = file::read(fH,msgArrayRef,fileByteN)) != kOkRC )
         {
-          cwLogWarning("The count of message in Audio-MIDI file '%s' reduced from %i to %i.", fn, n, msgArrayCntRef );
-          n = msgArrayCntRef;
+          rc = cwLogError(kReadFailRC,"Data read failed on Audio-MIDI file: '%s'.", fn );
+          goto errLabel;
+        }
+      }
+
+      if( print_fl )
+      {
+        for(unsigned i=0; i<recordN; ++i)
+        {
+          am_midi_msg_t* m = msgArrayRef;        
+          double dt = time::elapsedSecs( m[0].timestamp, m[i].timestamp );
+          printf("%4i %4i : %6.2f %2x %2x %2x %2x : %6.2f\n", m[i].devIdx, m[i].portIdx, dt, m[i].ch, m[i].status, m[i].d0, m[i].d1, m[i].microsec/(1000.0*1000.0) );
         }
       }
       
-      if((rc = file::read(fH,msgArrayRef,n*sizeof(am_midi_msg_t))) != kOkRC )
-      {
-        rc = cwLogError(kReadFailRC,"Data read failed on Audio-MIDI file: '%s'.", fn );
-        goto errLabel;
-      }
-
-      msgArrayCntRef = n;
+      msgArrayCntRef = recordN;
 
     errLabel:
+
+      if( rc != kOkRC and alloc_fl )
+      {
+        mem::release(msgArrayRef);
+        msgArrayRef = nullptr;
+        msgArrayCntRef = 0;
+      } 
         
       return rc;        
     }
@@ -497,14 +645,21 @@ namespace cw
     {
       rc_t           rc = kOkRC;
       unsigned       n  = 0;
+      int            version;
       file::handle_t fH;
-        
+
       if((rc = file::open(fH,fn,file::kReadFl)) != kOkRC )
       {
         rc = cwLogError(kOpenFailRC,"Unable to locate the file: '%s'.", fn );
         goto errLabel;
       }
 
+      if((rc = file::read(fH,version)) != kOkRC )
+      {
+        rc = cwLogError(kReadFailRC,"Version read failed on Audio-MIDI file: '%s'.", fn );
+        goto errLabel;
+      }
+      
       if((rc = file::read(fH,n)) != kOkRC )
       {
         rc = cwLogError(kReadFailRC,"Header read failed on Audio-MIDI file: '%s'.", fn );
@@ -539,7 +694,10 @@ namespace cw
     {
       rc_t           rc = kOkRC;
       file::handle_t fH;
-
+      // NOTE: version must be a small negative number to differentiate from file version that
+      // whose first word is the count of records in the file, rather than the version number
+      int version = -1; 
+      
       if( p->iMsgArrayInIdx == 0 )
       {
         cwLogWarning("Nothing to write.");
@@ -553,6 +711,13 @@ namespace cw
         goto errLabel;
       }
 
+      // write the file version
+      if((rc = write(fH,version)) != kOkRC )
+      {
+        rc = cwLogError(kWriteFailRC,"Version write to '%s' failed.",cwStringNullGuard(fn));
+        goto errLabel;          
+      }
+      
       // write the file header
       if((rc = write(fH,p->iMsgArrayInIdx)) != kOkRC )
       {
@@ -696,13 +861,67 @@ namespace cw
       
     void _report_midi( midi_record_play_t* p )
     {
+      printf("omsg cnt:%i\n",p->msgArrayInIdx);
       for(unsigned i=0; i<p->msgArrayInIdx; ++i)
       {
         am_midi_msg_t* mm = p->msgArray + i;
         _print_midi_msg(mm);
       }
+
+
+      printf("imsg cnt:%i\n",p->iMsgArrayInIdx);
+      for(unsigned i=0; i<p->iMsgArrayInIdx; ++i)
+      {
+        am_midi_msg_t* mm = p->iMsgArray + i;
+        _print_midi_msg(mm);
+      }
+      
     }
 
+    rc_t _write_vel_histogram( midi_record_play_t* p )
+    {
+      const char* fname = "/home/kevin/temp/vel_histogram.txt";
+      rc_t rc = kOkRC;
+      
+      if( !p->velHistogramEnableFl )
+        return rc;
+            
+      file::handle_t h;
+      if((rc = file::open(h,fname,file::kWriteFl)) != kOkRC )
+        return rc;
+
+      for(unsigned i=0; i<p->midiDevN; ++i)
+        if(p->midiDevA[i].enableFl )
+        {
+          for(unsigned j=0; j<midi::kMidiVelCnt; ++j)
+            if((rc = file::printf(h,"%i,",p->midiDevA[i].velHistogram[j])) != kOkRC )
+            {
+              rc = cwLogError(rc,"Histogram output file (%s) write failed.",fname);
+              goto errLabel;
+            }
+          
+          file::printf(h,"\n");
+        }
+
+    errLabel:
+      file::close(h);
+      return rc;
+    }
+
+    // Fill the play buffer (msgArray) from the record buffer (iMsgArray)
+    void _iMsgArray_to_msgArray(midi_record_play_t* p)
+    {
+      if( p->msgArrayN < p->iMsgArrayN)
+      {
+        mem::resize(p->msgArray,p->iMsgArrayN,mem::kZeroAllFl);
+        p->msgArrayN = p->iMsgArrayN;
+      }
+      p->msgArrayOutIdx = 0;
+      p->msgArrayInIdx = p->iMsgArrayInIdx;
+      memcpy(p->msgArray,p->iMsgArray,p->iMsgArrayInIdx*sizeof(am_midi_msg_t));
+    }
+    
+    
     rc_t _stop( midi_record_play_t* p )
     {
       rc_t rc = kOkRC;
@@ -712,6 +931,8 @@ namespace cw
       time::spec_t t1;
       time::get(t1);
 
+      _write_vel_histogram( p );
+      
       // if we were recording
       if( p->recordFl )
       {
@@ -719,9 +940,12 @@ namespace cw
         // set the 'microsec' value for each MIDI msg as an offset from the first message[]
         for(unsigned i=0; i<p->iMsgArrayInIdx; ++i)
         {
-          p->msgArray[i].microsec = time::elapsedMicros(p->iMsgArray[0].timestamp,p->iMsgArray[i].timestamp);
+          p->iMsgArray[i].microsec = time::elapsedMicros(p->iMsgArray[0].timestamp,p->iMsgArray[i].timestamp);
         }
-          
+
+        // copy the recorded messages from the input buffer to the output buffer
+        _iMsgArray_to_msgArray(p);
+
         cwLogInfo("MIDI messages recorded: %i",p->msgArrayInIdx );
           
       }
@@ -739,6 +963,9 @@ namespace cw
         
       }
 
+      if( p->cb != nullptr )
+        p->cb( p->cb_arg, kPlayerStoppedActionId, kInvalidId, t1, kInvalidId, 0, 0, 0, 0 );
+
       return rc;
     }
     
@@ -753,12 +980,13 @@ namespace cw
         // if this is a sys-ex msg
         if( pkt->msgArray == NULL )
         {
+          cwLogError(kNotImplementedRC,"Sys-ex recording not implemented.");
         }
         else // this is a triple
         {
 
           //if( !midi::isPedal(pkt->msgArray[j].status,pkt->msgArray[j].d0) )
-          //printf("IN: 0x%x 0x%x 0x%x\n", pkt->msgArray[j].status, pkt->msgArray[j].d0, pkt->msgArray[j].d1 );
+          //  printf("IN: 0x%x 0x%x 0x%x\n", pkt->msgArray[j].status, pkt->msgArray[j].d0, pkt->msgArray[j].d1 );
           
           if( (p->recordFl || p->logInFl) && p->startedFl )
           {
@@ -922,6 +1150,12 @@ cw::rc_t cw::midi_record_play::start( handle_t h, bool rewindFl, const time::spe
   midi_record_play_t* p = _handleToPtr(h);
   p->startedFl = true;
 
+  if( p->velHistogramEnableFl )
+    for(unsigned i=0; i<p->midiDevN; ++i)
+      if(p->midiDevA[i].enableFl )
+        memset(p->midiDevA[i].velHistogram,0,sizeof(p->midiDevA[i].velHistogram));
+
+  
   // set the end play time
   if( end_play_event_timestamp == nullptr or time::isZero(*end_play_event_timestamp) )
     time::setZero(p->end_play_event_timestamp);
@@ -998,6 +1232,21 @@ bool cw::midi_record_play::record_state( handle_t h )
   midi_record_play_t* p  = _handleToPtr(h);
   return p->recordFl;
 }
+
+cw::rc_t cw::midi_record_play::set_mute_state( handle_t h, bool mute_fl )
+{
+  rc_t                rc = kOkRC;
+  midi_record_play_t* p  = _handleToPtr(h);
+  p->muteFl = mute_fl;
+  return rc;  
+}
+
+bool cw::midi_record_play::mute_state( handle_t h )
+{
+  midi_record_play_t* p  = _handleToPtr(h);
+  return p->muteFl;
+}
+
 
 cw::rc_t cw::midi_record_play::set_thru_state( handle_t h, bool thru_fl )
 {
@@ -1085,7 +1334,7 @@ cw::rc_t cw::midi_record_play::seek( handle_t h, time::spec_t seek_timestamp )
       _transmit_pedal( p, mm->ch, midi::kSostenutoCtlMdId, sost_down_fl, 0 );
       _transmit_pedal( p, mm->ch, midi::kSoftPedalCtlMdId, soft_down_fl, 0 );
 
-      cwLogInfo("damper: %s.", damp_down_fl ? "down" : "up");
+      //cwLogInfo("damper: %s.", damp_down_fl ? "down" : "up");
       
       break;
     }
@@ -1198,6 +1447,20 @@ void cw::midi_record_play::enable_device( handle_t h, unsigned devIdx, bool enab
   }
 }
 
+cw::rc_t cw::midi_record_play::send_midi_msg( handle_t h, unsigned devIdx, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
+{
+  midi_record_play_t* p = _handleToPtr(h);
+  
+  if( devIdx >= p->midiDevN )
+    return cwLogError(kInvalidArgRC,"The MIDI record-play device index '%i' is invalid.",devIdx );
+  
+  if( p->midiDevA[devIdx].enableFl )
+    io::midiDeviceSend( p->ioH, p->midiDevA[devIdx].midiOutDevIdx, p->midiDevA[devIdx].midiOutPortIdx, status + ch, d0, d1 );
+
+  return kOkRC;
+}
+
+
 void cw::midi_record_play::half_pedal_params( handle_t h, unsigned noteDelayMs, unsigned pitch, unsigned vel, unsigned pedal_vel, unsigned noteDurMs, unsigned downDelayMs )
 {
   midi_record_play_t* p = _handleToPtr(h);
@@ -1215,6 +1478,12 @@ cw::rc_t cw::midi_record_play::am_to_midi_file( const char* am_filename, const c
   rc_t           rc          = kOkRC;
   unsigned       msgArrayCnt = 0;
   am_midi_msg_t* msgArray    = nullptr;
+
+  if(!filesys::isFile(am_filename))
+    {
+      cwLogError(kOpenFailRC,"The AM file '%s' does not exist.",am_filename);
+      goto errLabel;
+    }
 
   if((rc = _am_file_read( am_filename, msgArrayCnt, msgArray )) != kOkRC )
   {
@@ -1241,12 +1510,21 @@ cw::rc_t cw::midi_record_play::am_to_midi_dir( const char* inDir )
   filesys::dirEntry_t* dirEntryArray = nullptr;
   unsigned             dirEntryCnt   = 0;
   
-  if(( dirEntryArray = dirEntries( inDir, filesys::kDirFsFl, &dirEntryCnt )) == nullptr )
+  if(( dirEntryArray = filesys::dirEntries( inDir, filesys::kDirFsFl | filesys::kFullPathFsFl, &dirEntryCnt )) == nullptr )
     goto errLabel;
 
-  for(unsigned i=0; i<dirEntryCnt; ++i)
+  for(unsigned i=0; i<dirEntryCnt and rc==kOkRC; ++i)
   {
-    printf("0x%x %s\n", dirEntryArray[i].flags, dirEntryArray[i].name);
+    char* am_fn   = filesys::makeFn(  dirEntryArray[i].name, "midi", "am", NULL);
+    char* midi_fn = filesys::makeFn(  dirEntryArray[i].name, "midi", "mid", NULL);
+
+    cwLogInfo("0x%x AM:%s MIDI:%s", dirEntryArray[i].flags, dirEntryArray[i].name, midi_fn);
+
+    rc = am_to_midi_file( am_fn, midi_fn );
+    
+    mem::release(am_fn);
+    mem::release(midi_fn);
+
   }
   
  errLabel:
@@ -1283,4 +1561,10 @@ cw::rc_t cw::midi_record_play::am_to_midi_file( const object_t* cfg )
  errLabel:
   return rc;
   
+}
+
+void cw::midi_record_play::report( handle_t h )
+{
+  midi_record_play_t* p = _handleToPtr(h);
+  _report_midi(p);
 }

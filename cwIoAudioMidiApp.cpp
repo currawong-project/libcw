@@ -35,9 +35,11 @@ namespace cw
       kMidiThruCheckId,
       kCurMidiEvtCntId,
       kTotalMidiEvtCntId,
+      kMidiMuteCheckId,
       
       kCurAudioSecsId,
       kTotalAudioSecsId,
+      kAudioMuteCheckId,
                 
       kSaveBtnId,
       kOpenBtnId,
@@ -66,10 +68,11 @@ namespace cw
       { kPanelDivId,     kMidiThruCheckId,   "midiThruCheckId" },
       { kPanelDivId,     kCurMidiEvtCntId,   "curMidiEvtCntId" },      
       { kPanelDivId,     kTotalMidiEvtCntId, "totalMidiEvtCntId" },
+      { kPanelDivId,     kMidiMuteCheckId,   "midiMuteCheckId" },
       
       { kPanelDivId,     kCurAudioSecsId,    "curAudioSecsId" },
       { kPanelDivId,     kTotalAudioSecsId,  "totalAudioSecsId" },
-      
+      { kPanelDivId,     kAudioMuteCheckId,  "audioMuteCheckId" },
         
       { kPanelDivId,     kSaveBtnId,      "saveBtnId" },
       { kPanelDivId,     kOpenBtnId,      "openBtnId" },
@@ -89,7 +92,10 @@ namespace cw
       char*                       directory;
       
       midi_record_play::handle_t  mrpH;
-      audio_record_play::handle_t arpH;      
+      audio_record_play::handle_t arpH;
+      
+      const object_t* midi_play_record_cfg;
+
     } app_t;
 
     rc_t _parseCfg(app_t* app, const object_t* cfg )
@@ -99,7 +105,8 @@ namespace cw
       if((rc = cfg->getv(
                          "record_dir",                  app->record_dir,
                          "record_folder",               app->record_folder,
-                         "record_fn_ext",               app->record_fn_ext)) != kOkRC )
+                         "record_fn_ext",               app->record_fn_ext,
+                         "midi_play_record",            app->midi_play_record_cfg)) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"Audio MIDI app configuration parse failed.");
       }
@@ -172,6 +179,15 @@ namespace cw
 
         mem::release(fn);
       }
+
+      if((fn = filesys::makeFn(dir,"midi","csv",nullptr)) != nullptr )
+      {        
+        if((rc0 = midi_record_play::save_csv( app->mrpH, fn )) != kOkRC )
+          rc0 = cwLogError(rc0,"MIDI CSV file '%s' save failed.",fn);
+
+        mem::release(fn);
+      }
+
       
       if((fn = filesys::makeFn(dir,"audio","wav",nullptr)) != nullptr )
       {        
@@ -355,6 +371,7 @@ namespace cw
           break;
             
         case kReportBtnId:
+          report( app->mrpH );
           break;
 
         case kSaveBtnId:
@@ -373,6 +390,14 @@ namespace cw
         case kMidiThruCheckId:
           cwLogInfo("MIDI thru:%i",m.value->u.b);        
           _set_midi_thru_state(app, m.value->u.b);
+          break;
+
+        case kMidiMuteCheckId:
+          midi_record_play::set_mute_state(app->mrpH,m.value->u.b);
+          break;
+
+        case kAudioMuteCheckId:
+          audio_record_play::set_mute_state(app->arpH,m.value->u.b);
           break;
             
         case kStartBtnId:
@@ -518,7 +543,7 @@ cw::rc_t cw::audio_midi_app::main( const object_t* cfg )
     return rc;
 
   // create the MIDI record-play object
-  if((rc = midi_record_play::create(app.mrpH,app.ioH,*cfg)) != kOkRC )
+  if((rc = midi_record_play::create(app.mrpH,app.ioH,*app.midi_play_record_cfg)) != kOkRC )
   {
     rc = cwLogError(rc,"MIDI record-play object create failed.");
     goto errLabel;

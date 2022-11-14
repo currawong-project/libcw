@@ -39,6 +39,8 @@ namespace cw
       unsigned       curFrameIdx;
       bool           recordFl;
       bool           startedFl;
+
+      bool           mute_fl;
       
       unsigned*      audioInChMapA;
       unsigned       audioInChMapN;
@@ -169,8 +171,11 @@ namespace cw
       for(unsigned chIdx=0; chIdx<chCnt; ++chIdx)
       {
         unsigned srcChIdx = p->audioInChMapA == nullptr ? chIdx : p->audioInChMapA[chIdx];
-        
-        memcpy(a->audioBuf + chIdx*asrc.dspFrameCnt, asrc.iBufArray[ srcChIdx ], asrc.dspFrameCnt * sizeof(sample_t));
+
+        if( srcChIdx >= asrc.iBufChCnt )
+          cwLogError(kInvalidArgRC,"Invalid input channel map index:%i >= %i.",srcChIdx,asrc.iBufChCnt);
+        else
+          memcpy(a->audioBuf + chIdx*asrc.dspFrameCnt, asrc.iBufArray[ srcChIdx ], asrc.dspFrameCnt * sizeof(sample_t));
       }
       
       a->chCnt        = chCnt;
@@ -197,31 +202,34 @@ namespace cw
     void _audio_play( audio_record_play_t* p, io::audio_msg_t& adst )
     {
       unsigned adst_idx = 0;
-      
-      while(adst_idx < adst.dspFrameCnt)
+
+      if( !p->mute_fl )
       {
-        am_audio_t* a;
-        unsigned sample_offs = 0;
-        if((a = _am_audio_from_sample_index(p, p->curFrameIdx, sample_offs )) == nullptr )
-          break;
-
-        unsigned n  = std::min(a->dspFrameCnt - sample_offs, adst.dspFrameCnt );
-
-
-        // TODO: Verify that this is correct - it looks like sample_offs should have to be incremented
-        
-        for(unsigned i=0; i<a->chCnt; ++i)
+        while(adst_idx < adst.dspFrameCnt)
         {
-          unsigned dstChIdx = p->audioOutChMapA != nullptr && i < p->audioOutChMapN ? p->audioOutChMapA[i] : i;
+          am_audio_t* a;
+          unsigned sample_offs = 0;
+          if((a = _am_audio_from_sample_index(p, p->curFrameIdx, sample_offs )) == nullptr )
+            break;
 
-          if( dstChIdx < adst.oBufChCnt )
-            memcpy( adst.oBufArray[ dstChIdx ] + adst_idx, a->audioBuf + sample_offs, n * sizeof(sample_t));
+          unsigned n  = std::min(a->dspFrameCnt - sample_offs, adst.dspFrameCnt );
+
+
+          // TODO: Verify that this is correct - it looks like sample_offs should have to be incremented
+        
+          for(unsigned i=0; i<a->chCnt; ++i)
+          {
+            unsigned dstChIdx = p->audioOutChMapA != nullptr && i < p->audioOutChMapN ? p->audioOutChMapA[i] : i;
+
+            if( dstChIdx < adst.oBufChCnt )
+              memcpy( adst.oBufArray[ dstChIdx ] + adst_idx, a->audioBuf + sample_offs, n * sizeof(sample_t));
+          }
+
+          p->curFrameIdx += n;
+          adst_idx       += n;
         }
-
-        p->curFrameIdx += n;
-        adst_idx       += n;
       }
-
+      
       // TODO: zero unused channels
 
       if( adst_idx < adst.dspFrameCnt )
@@ -415,8 +423,15 @@ namespace cw
         else
         {
           if( m.oBufChCnt > 0 )
+          {
             _audio_play(p,m);
+          }
         }
+      }
+      else
+      {
+        for(unsigned i=0; i<m.oBufChCnt; ++i)
+          memset( m.oBufArray[i], 0, m.dspFrameCnt * sizeof(sample_t)); 
       }
       
       return rc;
@@ -519,6 +534,22 @@ bool cw::audio_record_play::record_state( handle_t h )
   rc_t                 rc = kOkRC;
   audio_record_play_t* p  = _handleToPtr(h);
   return p->recordFl;
+  return rc;
+}
+
+cw::rc_t cw::audio_record_play::set_mute_state( handle_t h, bool mute_fl )
+{
+  rc_t                 rc = kOkRC;
+  audio_record_play_t* p  = _handleToPtr(h);
+  p->mute_fl = true;
+  return rc;
+}
+
+bool cw::audio_record_play::mute_state( handle_t h )
+{
+  rc_t                 rc = kOkRC;
+  audio_record_play_t* p  = _handleToPtr(h);
+  return p->mute_fl;
   return rc;
 }
 

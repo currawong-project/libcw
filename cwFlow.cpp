@@ -137,6 +137,7 @@ namespace cw
             const char*     type_str  = nullptr;
             unsigned        type_flag = 0;
             bool            srcVarFl  = false;
+            bool            srcOptFl  = false;
             var_desc_t*     vd        = mem::allocZ<var_desc_t>();
 
             vd->label = var_obj->pair_label();
@@ -158,7 +159,9 @@ namespace cw
             }
 
             // get the variable description 
-            if((rc = vd->cfg->getv_opt("srcFl", srcVarFl,"value",vd->val_cfg)) != kOkRC )
+            if((rc = vd->cfg->getv_opt("srcFl", srcVarFl,
+                                       "srcOptFl", srcOptFl,
+                                       "value",vd->val_cfg)) != kOkRC )
             {
               rc = cwLogError(rc,"Parsing optional fields failed on class:%s variable: '%s'.", cd->label, vd->label );
               goto errLabel;
@@ -168,9 +171,10 @@ namespace cw
             vd->type |= type_flag;
 
             if( srcVarFl )
-            {
               vd->flags |= kSrcVarFl;
-            }
+
+            if( srcOptFl )
+              vd->flags |= kSrcOptVarFl;
 
             vd->link     = cd->varDescL;
             cd->varDescL = vd;

@@ -27,6 +27,7 @@ namespace cw
     
     enum
     {
+      kThreadTId,
       kTimerTId,
       kSerialTId,
       kMidiTId,
@@ -37,6 +38,12 @@ namespace cw
       kUiTId
     };
 
+    typedef struct thread_msg_str
+    {
+      unsigned id;
+      void*    arg;
+    } thread_msg_t;
+    
     typedef struct timer_msg_str
     {
       unsigned id;
@@ -121,6 +128,7 @@ namespace cw
       unsigned tid;
       union
       {
+        thread_msg_t*      thread;
         timer_msg_t*       timer;
         serial_msg_t*      serial;
         midi_msg_t*        midi;
@@ -151,6 +159,11 @@ namespace cw
     bool isShuttingDown( handle_t h );
     void report( handle_t h );
 
+    //----------------------------------------------------------------------------------------------------------
+    //
+    // Thread
+    //
+    rc_t  threadCreate(    handle_t h, unsigned id, void* arg );
 
     //----------------------------------------------------------------------------------------------------------
     //

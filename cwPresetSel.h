@@ -11,6 +11,7 @@ namespace cw
     typedef struct preset_str
     {
       bool     playFl;      // play this preset
+      bool     seqFl;       // play this preset during sequencing.
       unsigned preset_idx;  // preset index into preset_labelA[].
       unsigned order;       //
     } preset_t;
@@ -34,6 +35,7 @@ namespace cw
       unsigned         presetN;
 
       bool             uiSelectFl;
+      bool             seqAllFl; // Set if all preset.seqFl's should be treated as though they are set to true.
 
       struct frag_str* link;
       struct frag_str* prev;
@@ -51,12 +53,15 @@ namespace cw
       kBegPlayLocVarId,
       kEndPlayLocVarId,
       kPlayBtnVarId,
+      kPlaySeqBtnVarId,
+      kPlaySeqAllBtnVarId,
       kNoteVarId,
       
-      kPresetOrderVarId,  //  preset order value
-      kPresetSelectVarId, //  select a preset to play
-      kPlayEnableVarId,   //  include in the segment to play
-      kDryFlVarId,        //  play this fragment dry
+      kPresetOrderVarId,     //  preset order value
+      kPresetSelectVarId,    //  select a preset to play
+      kPresetSeqSelectVarId, //  sequence preset selections to play
+      kPlayEnableVarId,      //  include in the segment to play
+      kDryFlVarId,           //  play this fragment dry
 
 
       kBaseMasterVarId,       // All 'master' variables have id's greater than kBaseMasterVarId
@@ -110,8 +115,15 @@ namespace cw
     void track_timestamp_reset( handle_t h );
     bool track_timestamp( handle_t h, const time::spec_t& ts, const cw::preset_sel::frag_t*& frag_Ref );
 
+    // Same as track_timestamp_???() but tracks the score 'loc' instead of timestamp.
+    void track_loc_reset( handle_t h );
+    bool track_loc( handle_t h, unsigned loc, const cw::preset_sel::frag_t*& frag_Ref );
+
     // Return the preset index marked to play on this fragment.
-    unsigned fragment_play_preset_index( const frag_t* frag );
+    unsigned fragment_play_preset_index( const frag_t* frag, unsigned preset_seq_idx=kInvalidIdx );
+
+    // Return the count of presets whose 'seqFl' is set.
+    unsigned fragment_seq_count( handle_t h, unsigned fragId );
     
     rc_t write( handle_t h, const char* fn );
     rc_t read(  handle_t h, const char* fn );

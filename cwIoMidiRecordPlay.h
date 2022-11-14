@@ -19,8 +19,13 @@ namespace cw
       uint8_t       d1;
     } midi_msg_t;
 
+    enum {
+      kMidiEventActionId,
+      kPlayerStoppedActionId
+    };
 
-    typedef void (*event_callback_t)( void* arg, unsigned id, const time::spec_t timestamp, unsigned loc, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 );
+
+    typedef void (*event_callback_t)( void* arg, unsigned actionId, unsigned id, const time::spec_t timestamp, unsigned loc, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 );
     
     
     rc_t create( handle_t& hRef, io::handle_t ioH, const object_t& cfg, event_callback_t cb=nullptr, void* cb_arg=nullptr );
@@ -35,6 +40,9 @@ namespace cw
     rc_t clear( handle_t h );
     rc_t set_record_state( handle_t h, bool record_fl );
     bool record_state( handle_t h );
+
+    rc_t set_mute_state( handle_t h, bool record_fl );
+    bool mute_state( handle_t h );
 
     rc_t set_thru_state( handle_t h, bool record_thru );
     bool thru_state( handle_t h );
@@ -58,6 +66,7 @@ namespace cw
     unsigned device_count( handle_t h );
     bool is_device_enabled( handle_t h, unsigned devIdx );
     void enable_device( handle_t h, unsigned devIdx, bool enableFl );
+    rc_t send_midi_msg( handle_t h, unsigned devIdx, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 );
 
     void half_pedal_params( handle_t h, unsigned noteDelayMs, unsigned pitch, unsigned vel, unsigned pedal_vel, unsigned noteDurMs, unsigned downDelayMs );
 
@@ -65,6 +74,8 @@ namespace cw
     rc_t am_to_midi_file( const char* am_filename, const char* midi_filename );
     rc_t am_to_midi_dir( const char* inDir );
     rc_t am_to_midi_file( const object_t* cfg );
+
+    void report( handle_t h );
     
   }
 }

@@ -200,6 +200,56 @@ namespace cw
       return nullptr;
     }
 
+
+
+
+
+    bool _loc_is_in_frag( const frag_t* f, unsigned loc )
+    {
+      // if f is the earliest fragment
+      if( f->prev == nullptr )
+        return loc <= f->endLoc;
+
+      // else  f->prev->end_loc < loc && loc <= f->end_loc
+      return f->prev->endLoc < loc && loc <= f->endLoc;
+    }
+
+    bool _loc_is_before_frag( const frag_t* f, unsigned loc )
+    {
+      // if loc is past f
+      if( loc > f->endLoc ) 
+        return false;
+
+      // loc may now only be inside or before f
+
+      // if f is the first frag then loc must be inside it
+      if( f->prev == nullptr )
+        return false;
+
+      // is loc before f
+      return loc <= f->prev->endLoc;      
+    }
+
+    bool _loc_is_after_frag( const frag_t* f, unsigned loc )
+    {
+      return loc > f->endLoc;
+    }
+
+    // Scan from through the fragment list to find the fragment containing loc.
+    frag_t* _fast_loc_to_frag( preset_sel_t* p, unsigned loc, frag_t* init_frag=nullptr )
+    {
+      frag_t* f = init_frag==nullptr ? p->fragL : init_frag;
+      for(; f!=nullptr; f=f->link)
+        if( _loc_is_in_frag(f,loc) )
+          return f;
+      
+      return nullptr;
+    }
+
+
+
+    
+    
     
 
     rc_t _validate_preset_id( const frag_t* frag, unsigned preset_id )
@@ -234,9 +284,13 @@ namespace cw
       case kPresetSelectVarId:
         for(unsigned i=0; i<f->presetN; ++i)
           f->presetA[i].playFl = f->presetA[i].preset_idx == presetId ? value : false;
-            
          break;
-        
+
+      case kPresetSeqSelectVarId:
+        if((rc = _validate_preset_id(f, presetId )) == kOkRC )
+          f->presetA[ presetId ].seqFl = value;
+        break;
+
       case kPresetOrderVarId:
         if((rc = _validate_preset_id(f, presetId )) == kOkRC )
           f->presetA[ presetId ].order = value;
@@ -269,6 +323,14 @@ namespace cw
       case kPlayBtnVarId:
         break;
 
+      case kPlaySeqBtnVarId:
+        f->seqAllFl = false;
+        break;
+
+      case kPlaySeqAllBtnVarId:
+        f->seqAllFl = true;
+        break;
+        
       case kMasterWetInGainVarId:
         p->master_wet_in_gain = value;
         break;
@@ -329,6 +391,11 @@ namespace cw
           valueRef = f->presetA[ presetId ].playFl;
          break;
         
+      case kPresetSeqSelectVarId:
+        if((rc = _validate_preset_id(f, presetId )) == kOkRC )
+          valueRef = f->presetA[ presetId ].seqFl;
+         break;
+
       case kPresetOrderVarId:
         if((rc = _validate_preset_id(f, presetId )) == kOkRC )
           valueRef = f->presetA[ presetId ].order;
@@ -359,6 +426,13 @@ namespace cw
         break;
         
       case kPlayBtnVarId:
+        break;
+        
+      case kPlaySeqBtnVarId:
+        break;
+
+      case kPlaySeqAllBtnVarId:
+        valueRef = f->seqAllFl;
         break;
 
       case kMasterWetInGainVarId:
@@ -769,8 +843,8 @@ bool cw::preset_sel::track_timestamp( handle_t h, const time::spec_t& ts, const 
 
   time::spec_t t0;
   time::setZero(t0);
-  unsigned elapsedMs = time::elapsedMs(t0,ts);
-  double mins = elapsedMs / 60000.0;
+  //unsigned elapsedMs = time::elapsedMs(t0,ts);
+  //double mins = elapsedMs / 60000.0;
 
   
   // if this is the first call to 'track_timestamp()'.
@@ -802,13 +876,101 @@ bool cw::preset_sel::track_timestamp( handle_t h, const time::spec_t& ts, const 
   return frag_changed_fl;
 }
 
-unsigned cw::preset_sel::fragment_play_preset_index( const frag_t* frag )
+
+void cw::preset_sel::track_loc_reset( handle_t h )
 {
+  preset_sel_t* p = _handleToPtr(h);
+  p->last_ts_frag = nullptr;
+}
+
+bool cw::preset_sel::track_loc( handle_t h, unsigned loc, const cw::preset_sel::frag_t*& frag_Ref )
+{
+  preset_sel_t* p               = _handleToPtr(h);
+  frag_t*       f               = nullptr;
+  bool          frag_changed_fl = false;
+
+  
+  // if this is the first call to 'track_timestamp()'.
+  if( p->last_ts_frag == nullptr )
+    f = _fast_loc_to_frag(p,loc);
+  else
+    // if the 'ts' is in the same frag as previous call.
+    if( _loc_is_in_frag(p->last_ts_frag,loc) )
+      f = p->last_ts_frag;
+    else
+      // if 'ts' is in a later frag
+      if( _loc_is_after_frag(p->last_ts_frag,loc) )
+        f = _fast_loc_to_frag(p,loc,p->last_ts_frag);  
+      else // ts is prior to 'last_ts_frag'
+        f = _fast_loc_to_frag(p,loc); 
+  
+  // 'f' will be null at this point if 'ts' is past the last preset.
+  // In this case we should leave 'last_ts_frag' unchanged.
+
+  // if 'f' is valid but different from 'last_ts_frag'
+  if( f != nullptr && f != p->last_ts_frag )
+  {
+    // don't allow the selected fragment to go backwards
+    if( p->last_ts_frag == nullptr || (p->last_ts_frag != nullptr && p->last_ts_frag->endLoc < f->endLoc) )
+    {    
+      p->last_ts_frag = f;
+      frag_changed_fl = true;
+    }
+  }
+
+  frag_Ref = p->last_ts_frag;
+  
+  return frag_changed_fl;
+}
+
+
+
+unsigned cw::preset_sel::fragment_play_preset_index( const frag_t* frag, unsigned preset_seq_idx )
+{
+  unsigned n = 0;
+  // for each preset
   for(unsigned i=0; i<frag->presetN; ++i)
-    if( frag->presetA[i].playFl )
-      return frag->presetA[i].preset_idx;
+  {
+    // if 'preset_seq_idx' is not valid ...
+    if( preset_seq_idx==kInvalidIdx )
+    {
+      // ...then select the first preset whose 'playFl' is set.
+      if( frag->presetA[i].playFl  )
+        return frag->presetA[i].preset_idx;
+    }
+    else
+    {
+      // ... otherwise select the 'nth' preset whose 'seqFl' is set      
+      if( frag->presetA[i].seqFl || frag->seqAllFl )
+      {
+        if( n == preset_seq_idx )
+          return frag->presetA[i].preset_idx;
+        ++n;
+      }
+    }
+  }
   
   return kInvalidIdx;
+}
+
+unsigned cw::preset_sel::fragment_seq_count( handle_t h, unsigned fragId )
+{
+  rc_t          rc = kOkRC;
+  preset_sel_t* p  = _handleToPtr(h);
+  frag_t*       f  = nullptr;
+  unsigned      n  = 0;
+  
+  if((rc = _find_frag(p,fragId,f)) != kOkRC )
+    return 0;
+
+  if( f->seqAllFl )
+    return f->presetN;
+  
+  for(unsigned i=0; i<f->presetN; ++i)
+    if( f->presetA[i].seqFl )
+      ++n;
+
+  return n;
 }
 
 

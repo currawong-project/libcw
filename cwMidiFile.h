@@ -218,7 +218,7 @@ namespace cw
 
       rc_t genSvgFile(const char* midiFn, const char* outSvgFn, const char* cssFn, bool standAloneFl, bool panZoomFl );
 
-      rc_t genCsvFile( const char* midiFn, const char* csvFn );
+      rc_t genCsvFile( const char* midiFn, const char* csvFn, bool printWarningsFl=true );
 
       // Generate a text file reportusing cmMIdiFilePrintMsgs()
       rc_t report( const char* midiFn, log::handle_t logH );

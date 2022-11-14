@@ -38,6 +38,14 @@ namespace cw
 
     struct io_str;
 
+    typedef struct thread_str
+    {
+      unsigned           id;
+      void*              arg;
+      struct io_str*     p;
+      struct thread_str* link;
+    } thread_t;
+    
     typedef struct timer_str
     {
       struct io_str*    io;
@@ -85,8 +93,7 @@ namespace cw
       bool     enableFl;
       char*    label;
       unsigned sockA_index;
-      unsigned userId;
-      
+      unsigned userId;      
     } socket_t;
 
     typedef struct io_str
@@ -102,6 +109,8 @@ namespace cw
       
       object_t*                     cfg;
 
+      thread_t*                     threadL;
+      
       timer_t*                      timerA;
       unsigned                      timerN;
       
@@ -141,6 +150,36 @@ namespace cw
     io_t* _handleToPtr( handle_t h )
     { return handleToPtr<handle_t,io_t>(h); }
 
+
+    //----------------------------------------------------------------------------------------------------------
+    //
+    // Thread
+    //
+    bool _threadFunc( void* arg )
+    {
+      thread_t*    t  = (thread_t*)arg;
+      thread_msg_t tm = { .id=t->id, .arg=t->arg };
+      msg_t        m;
+
+      m.tid       = kThreadTId;
+      m.u.thread = &tm;
+    
+      t->p->cbFunc( t->p->cbArg, &m );
+
+      return true;
+    }
+
+    void _threadRelease( io_t* p )
+    {
+      thread_t* t0 = p->threadL;
+      for(; t0!=nullptr; t0=t0->link)
+      {
+        thread_t* t1 = t0->link;
+        mem::release(t0);
+        t0 = t1;
+      }
+    }
+    
     //----------------------------------------------------------------------------------------------------------
     //
     // Timer
@@ -335,7 +374,10 @@ namespace cw
 
       // get the serial port list node
       if((cfg = c->find("serial")) == nullptr)
-        return cwLogError(kSyntaxErrorRC,"Unable to locate the 'serial' configuration.");
+      {
+        cwLogWarning("No 'serial' configuration.");
+        return kOkRC;
+      }
 
       // the serial header values
       if((rc = cfg->getv("pollPeriodMs", pollPeriodMs,
@@ -413,10 +455,11 @@ namespace cw
     {
       rc_t rc = kOkRC;
 
-      // the service is only started if at least one serial port is enabled
-      if( serialPort::portCount( serialPortSrv::serialHandle(p->serialPortSrvH) ) > 0 )      
-        if((rc =serialPortSrv::start( p->serialPortSrvH )) != kOkRC )
-          rc = cwLogError(rc,"The serial port server start failed.");
+      if( p->serialPortSrvH.isValid() ) 
+        // the service is only started if at least one serial port is enabled
+        if( serialPort::portCount( serialPortSrv::serialHandle(p->serialPortSrvH) ) > 0 )      
+          if((rc =serialPortSrv::start( p->serialPortSrvH )) != kOkRC )
+            rc = cwLogError(rc,"The serial port server start failed.");
       
       return rc;
     }
@@ -461,9 +504,11 @@ namespace cw
 
       // get the MIDI port cfg
       if((cfg = c->find("midi")) == nullptr)
-        return cwLogError(kSyntaxErrorRC,"Unable to locate the 'MIDI' configuration.");
-
-            
+      {
+        cwLogWarning("No 'MIDI' configuration.");
+        return kOkRC;
+      }
+      
       if((rc = cfg->getv(
             "parserBufByteN", parserBufByteN )) != kOkRC )
       {
@@ -586,8 +631,8 @@ namespace cw
       // get the socket configuration node
       if((node = cfg->find("socket")) == nullptr )
       {
-        rc = cwLogError(kSyntaxErrorRC,"Unable to locate the 'socket' configuration node.");
-        goto errLabel;
+        cwLogWarning("No 'socket' configuration node.");
+        return kOkRC;
       }
 
       // get the required socket arguments
@@ -1469,8 +1514,11 @@ namespace cw
       
       // get the audio port node
       if((node = cfg->find("audio")) == nullptr )
-        return cwLogError(kSyntaxErrorRC,"Unable to locate the 'audio' configuration node.");
-
+      {
+        cwLogWarning("No 'audio' configuration node.");
+        return kOkRC;
+      }
+      
       // get the meterMs value
       if((rc = node->getv("meterMs", p->audioMeterCbPeriodMs, "threadTimeOutMs", p->audioThreadTimeOutMs )) != kOkRC )
       {
@@ -1861,6 +1909,29 @@ void cw::io::report( handle_t h )
   for(unsigned i=0; i<audioDeviceCount(h); ++i)
     printf("audio: %s\n", audioDeviceName(h,i));
   
+}
+
+//----------------------------------------------------------------------------------------------------------
+//
+// Thread
+//
+
+cw::rc_t cw::io::threadCreate( handle_t h, unsigned id, void* arg )
+{
+  rc_t      rc = kOkRC;
+  io_t*     p  = _handleToPtr(h);
+  thread_t* t  = mem::allocZ<thread_t>(1);
+  
+  t->id      = id;
+  t->arg     = arg;
+  t->p       = p;
+  t->link    = p->threadL;
+  p->threadL = t;
+
+  if((rc = thread_mach::add( p->threadMachH, _threadFunc, t )) != kOkRC )
+    rc = cwLogError(rc,"Thread create failed.");
+ 
+  return rc;
 }
 
 //----------------------------------------------------------------------------------------------------------

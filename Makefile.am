@@ -40,6 +40,8 @@ libcwSRC +=                       src/libcw/cwUi.cpp src/libcw/cwUiTest.cpp
 
 endif
 
+libcwHDR += src/libcw/cwKeyboard.h
+libcwSRC += src/libcw/cwKeyboard.cpp
 
 libcwHDR += src/libcw/cwSerialPortDecls.h src/libcw/cwSerialPort.h    src/libcw/cwSerialPortSrv.h
 libcwSRC +=                               src/libcw/cwSerialPort.cpp  src/libcw/cwSerialPortSrv.cpp
@@ -56,14 +58,17 @@ libcwHDR += src/libcw/cwMidiPort.h                            src/libcw/cwAudioD
 libcwSRC += src/libcw/cwMidiPort.cpp src/libcw/cwMidiAlsa.cpp src/libcw/cwAudioDeviceAlsa.cpp src/libcw/cwAudioDeviceTest.cpp
 
 if cwWEBSOCK
-libcwHDR += src/libcw/cwIo.h   src/libcw/cwIoTest.h     src/libcw/cwIoSocketChat.h   src/libcw/cwIoAudioPanel.h    src/libcw/cwIoAudioMidi.h
-libcwSRC += src/libcw/cwIo.cpp src/libcw/cwIoTest.cpp   src/libcw/cwIoSocketChat.cpp src/libcw/cwIoAudioPanel.cpp  src/libcw/cwIoAudioMidi.cpp
+libcwHDR += src/libcw/cwIo.h   src/libcw/cwIoTest.h     src/libcw/cwIoMinTest.h   src/libcw/cwIoSocketChat.h   src/libcw/cwIoAudioPanel.h    src/libcw/cwIoAudioMidi.h
+libcwSRC += src/libcw/cwIo.cpp src/libcw/cwIoTest.cpp   src/libcw/cwIoMinTest.cpp src/libcw/cwIoSocketChat.cpp src/libcw/cwIoAudioPanel.cpp  src/libcw/cwIoAudioMidi.cpp
 
 libcwHDR += src/libcw/cwIoMidiRecordPlay.h    src/libcw/cwIoAudioRecordPlay.h   src/libcw/cwIoAudioMidiApp.h    src/libcw/cwIoFlow.h
 libcwSRC += src/libcw/cwIoMidiRecordPlay.cpp  src/libcw/cwIoAudioRecordPlay.cpp src/libcw/cwIoAudioMidiApp.cpp  src/libcw/cwIoFlow.cpp
 
-libcwHDR += src/libcw/cwIoPresetSelApp.h     src/libcw/cwPianoScore.h    src/libcw/cwPresetSel.h
-libcwSRC += src/libcw/cwIoPresetSelApp.cpp   src/libcw/cwPianoScore.cpp  src/libcw/cwPresetSel.cpp
+libcwHDR += src/libcw/cwIoPresetSelApp.h     src/libcw/cwPianoScore.h    src/libcw/cwPresetSel.h   
+libcwSRC += src/libcw/cwIoPresetSelApp.cpp   src/libcw/cwPianoScore.cpp  src/libcw/cwPresetSel.cpp 
+
+# libcwHDR += src/libcw/cwCmInterface.h    src/libcw/cwScoreFollower.h
+# libcwSRC += src/libcw/cwCmInterface.cpp  src/libcw/cwScoreFollower.cpp
 
 endif
 

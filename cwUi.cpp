@@ -89,6 +89,7 @@ namespace cw
       char*                recvBuf;
       unsigned             recvBufN;
       unsigned             recvBufIdx;
+      unsigned             recvShiftN;
       
       unsigned*            sessA;       // sessA[ sessN ] array of wsSessId's
       unsigned             sessN;
@@ -1047,7 +1048,54 @@ namespace cw
     {
       return _setPropertyValue( h, propertyStr,uuId,enableFl ? 1 : 0 );
     }
-    
+
+    rc_t _copy_msg_to_recv_buffer( ui_t* p, const void* msg, unsigned msgByteN )
+    {
+      if( msg == nullptr || msgByteN == 0)
+        return kOkRC;
+      
+      if( p->recvBufIdx + msgByteN > p->recvBufN )
+        return cwLogError(kBufTooSmallRC,"The UI input buffer (%i) is too small.", p->recvBufN);
+      
+      memcpy(p->recvBuf + p->recvBufIdx, msg, msgByteN );
+
+      p->recvBufIdx += msgByteN;
+      
+      return kOkRC;
+    }
+
+    const char* _get_msg_from_recv_buffer( ui_t* p )
+    {
+      const char* msg = nullptr;
+      unsigned i;
+
+      // shift off the previous msg
+      if( p->recvShiftN > 0 )
+      {
+        assert( p->recvBufIdx >= p->recvShiftN );
+        
+        memmove(p->recvBuf, p->recvBuf+p->recvShiftN, p->recvBufIdx - p->recvShiftN );
+        p->recvBufIdx -= p->recvShiftN;
+        p->recvShiftN = 0;
+        
+      }
+
+      // locate the end of the next msg.
+      if( p->recvBufIdx > 0 )
+      {
+        for(i=0; p->recvBuf[i]!=0 and i<p->recvBufIdx; ++i)
+        {}
+
+        // if the end of the next msg was found
+        if( i<p->recvBufIdx && p->recvBuf[i] == 0 )
+        {
+          p->recvShiftN = i+1;
+          msg = p->recvBuf;
+        }
+      }
+      
+      return msg;
+    }
   }
 }
 
@@ -1089,6 +1137,7 @@ cw::rc_t cw::ui::create(
   p->recvBuf    = mem::allocZ<char>(fmtBufByteN);
   p->recvBufN   = fmtBufByteN;
   p->recvBufIdx = 0;
+  p->recvShiftN = 0;
   
   // create the root element
   if((ele = _createBaseEle(p, nullptr, kRootAppId, kInvalidId, "uiDivId" )) == nullptr || ele->uuId != kRootUuId )
@@ -1191,12 +1240,14 @@ cw::rc_t cw::ui::onDisconnect( handle_t h, unsigned wsSessId )
 
 cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* void_msg, unsigned msgByteN )
 {
-  rc_t    rc   = kOkRC;
-  ui_t*   p    = _handleToPtr(h);
-  opId_t  opId = kInvalidOpId;
-  value_t value;
-  ele_t*  ele;
-
+  rc_t        rc   = kOkRC;
+  ui_t*       p    = _handleToPtr(h);
+  opId_t      opId = kInvalidOpId;
+  ele_t*      ele  = nullptr;
+  const char* msg  = nullptr;
+  value_t     value;
+  
+  /*
   const char* src_msg = (const char*)void_msg;
   const char* msg = src_msg;
 
@@ -1233,80 +1284,90 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* void_msg,
   // the message is being processed so the buffer will end up empty
   // (if it was being used)
   p->recvBufIdx = 0;
-  
-  // parse the 'opId' from the message
-  opId = _labelToOpId(msg);
+  */
 
-  
-  switch( opId )
+  // buffer the incoming msg
+  if((rc = _copy_msg_to_recv_buffer( p, void_msg, msgByteN )) != kOkRC )
+    goto errLabel;
+
+  // remove and and act on each buffered msg
+  while( (msg = _get_msg_from_recv_buffer(p)) != NULL )
   {
-    case kInitOpId:
-      // if the app cfg included a reference to a UI resource file then instantiate it here
-      _onNewRemoteUi( p, wsSessId );
+
+    // parse the 'opId' from the message
+    opId = _labelToOpId(msg);
+
+  
+    switch( opId )
+    {
+      case kInitOpId:
+        // if the app cfg included a reference to a UI resource file then instantiate it here
+        _onNewRemoteUi( p, wsSessId );
       
-      // Pass on the 'init' msg to the app.
-      p->uiCbFunc( p->uiCbArg, wsSessId, opId, kInvalidId, kInvalidId, kInvalidId, kInvalidId, nullptr );
-      break;
+        // Pass on the 'init' msg to the app.
+        p->uiCbFunc( p->uiCbArg, wsSessId, opId, kInvalidId, kInvalidId, kInvalidId, kInvalidId, nullptr );
+        break;
                 
-    case kValueOpId:
-      if((ele = _parse_value_msg(p, value, (const char*)msg )) == nullptr )
-        cwLogError(kOpFailRC,"UI 'value' message parse failed.");
-      else
-      {
-        p->uiCbFunc( p->uiCbArg, wsSessId, opId, ele->logical_parent->appId, ele->uuId, ele->appId, ele->chanId, &value );
+      case kValueOpId:
+        if((ele = _parse_value_msg(p, value, (const char*)msg )) == nullptr )
+          cwLogError(kOpFailRC,"UI 'value' message parse failed.");
+        else
+        {
+          p->uiCbFunc( p->uiCbArg, wsSessId, opId, ele->logical_parent->appId, ele->uuId, ele->appId, ele->chanId, &value );
                   
-      }
-      break;
+        }
+        break;
 
-    case kCorruptOpId:
-      if((ele = _parse_corrupt_msg(p, (const char*)msg )) == nullptr )
-        cwLogError(kOpFailRC,"UI 'corrupt' message parse failed.");
-      else
-        p->uiCbFunc( p->uiCbArg, wsSessId, opId, ele->logical_parent->appId, ele->uuId, ele->appId, ele->chanId, &value );                  
-      break;
+      case kCorruptOpId:
+        if((ele = _parse_corrupt_msg(p, (const char*)msg )) == nullptr )
+          cwLogError(kOpFailRC,"UI 'corrupt' message parse failed.");
+        else
+          p->uiCbFunc( p->uiCbArg, wsSessId, opId, ele->logical_parent->appId, ele->uuId, ele->appId, ele->chanId, &value );                  
+        break;
       
 
-    case kClickOpId:
-      if((ele = _parse_click_msg(p, (const char*)msg )) == nullptr )
-        cwLogError(kOpFailRC,"UI 'click' message parse failed.");
-      else
-      {
-        p->uiCbFunc( p->uiCbArg, wsSessId, opId, ele->logical_parent->appId, ele->uuId, ele->appId, ele->chanId, &value );
-      }
-      break;
+      case kClickOpId:
+        if((ele = _parse_click_msg(p, (const char*)msg )) == nullptr )
+          cwLogError(kOpFailRC,"UI 'click' message parse failed.");
+        else
+        {
+          p->uiCbFunc( p->uiCbArg, wsSessId, opId, ele->logical_parent->appId, ele->uuId, ele->appId, ele->chanId, &value );
+        }
+        break;
 
-    case kSelectOpId:
-      if((ele = _parse_select_msg(p, value, (const char*)msg )) == nullptr )
-        cwLogError(kOpFailRC,"UI 'select' message parse failed.");
-      else
-      {
-        p->uiCbFunc( p->uiCbArg, wsSessId, opId, ele->logical_parent->appId, ele->uuId, ele->appId, ele->chanId, &value );
-      }      
-      break;
+      case kSelectOpId:
+        if((ele = _parse_select_msg(p, value, (const char*)msg )) == nullptr )
+          cwLogError(kOpFailRC,"UI 'select' message parse failed.");
+        else
+        {
+          p->uiCbFunc( p->uiCbArg, wsSessId, opId, ele->logical_parent->appId, ele->uuId, ele->appId, ele->chanId, &value );
+        }      
+        break;
       
-    case kEchoOpId:
-      if((ele = _parse_echo_msg(p,(const char*)msg)) == nullptr )
-        cwLogError(kOpFailRC,"UI Echo message parse failed.");
-      else
-      {
-        p->uiCbFunc( p->uiCbArg, wsSessId, opId, ele->logical_parent->appId, ele->uuId, ele->appId, ele->chanId,nullptr );               
-      }
-      break;
+      case kEchoOpId:
+        if((ele = _parse_echo_msg(p,(const char*)msg)) == nullptr )
+          cwLogError(kOpFailRC,"UI Echo message parse failed.");
+        else
+        {
+          p->uiCbFunc( p->uiCbArg, wsSessId, opId, ele->logical_parent->appId, ele->uuId, ele->appId, ele->chanId,nullptr );               
+        }
+        break;
 
-    case kIdleOpId:
-      p->uiCbFunc( p->uiCbArg, kInvalidId, opId, kInvalidId, kInvalidId, kInvalidId, kInvalidId, nullptr );                     
-      break;
+      case kIdleOpId:
+        p->uiCbFunc( p->uiCbArg, kInvalidId, opId, kInvalidId, kInvalidId, kInvalidId, kInvalidId, nullptr );                     
+        break;
 
-    case kInvalidOpId:
-      cwLogError(kInvalidIdRC,"The UI received a NULL op. id.");
-      break;
+      case kInvalidOpId:
+        cwLogError(kInvalidIdRC,"The UI received a NULL op. id.");
+        break;
 
-    default:
-      cwLogError(kInvalidIdRC,"The UI received an unknown op. id.");
-      break;
+      default:
+        cwLogError(kInvalidIdRC,"The UI received an unknown op. id.");
+        break;
                 
-  } // switch opId
-
+    } // switch opId
+  }
+ errLabel:
   return rc;
 }
 

@@ -1,0 +1,110 @@
+#include "cwCommon.h"
+#include "cwLog.h"
+#include "cwCommonImpl.h"
+#include "cwMem.h"
+#include "cwCmInterface.h"
+
+#include "cmGlobal.h"
+#include "cmFloatTypes.h"
+#include "cmRpt.h"
+#include "cmErr.h"
+#include "cmCtx.h"
+#include "cmMem.h"
+#include "cmMallocDebug.h"
+#include "cmLinkedHeap.h"
+#include "cmTime.h"
+#include "cmMidi.h"
+#include "cmSymTbl.h"
+#include "cmScore.h"
+#include "cmText.h"
+#include "cmFileSys.h"
+
+extern "C" {
+  void _cm_print_info( void* arg, const char* text )
+  {
+    cwLogInfo(text);
+  }
+
+  void _cm_print_error( void* arg, const char* text )
+  {
+    cwLogError(cw::kOpFailRC,text);
+  }
+}
+
+namespace cw
+{
+  namespace cm
+  {
+    typedef struct cm_str
+    {
+      ::cmCtx_t ctx;
+    } cm_t;
+
+    cm_t* _handleToPtr( handle_t h )
+    { return handleToPtr<handle_t,cm_t>(h); }
+
+    rc_t _destroy( cm_t* p )
+    {
+      if( p != nullptr )
+      {
+        cmTsFinalize();
+        cmFsFinalize();
+        cmMdReport( kIgnoreNormalMmFl );
+        cmMdFinalize();
+
+        mem::release(p);
+      }
+      return kOkRC;
+    }
+  }
+}
+
+cw::rc_t cw::cm::create( handle_t& hRef )
+{
+  rc_t            rc              = kOkRC;
+  cm_t*           p               = nullptr;
+  bool            memDebugFl      = 0; //cmDEBUG_FL;
+  unsigned        memGuardByteCnt = memDebugFl ? 8 : 0;
+  unsigned        memAlignByteCnt = 16;
+  unsigned        memFlags        = memDebugFl ? kTrackMmFl | kDeferFreeMmFl | kFillUninitMmFl : 0;  
+  const cmChar_t* appTitle        = "cwtest";
+
+  if((rc = destroy(hRef)) != kOkRC )
+    return rc;
+  
+  p = mem::allocZ<cm_t>();
+  
+  cmCtxSetup(&p->ctx,appTitle,_cm_print_info,_cm_print_error,NULL,memGuardByteCnt,memAlignByteCnt,memFlags);
+
+  cmMdInitialize( memGuardByteCnt, memAlignByteCnt, memFlags, &p->ctx.rpt );
+
+  cmFsInitialize( &p->ctx, appTitle);
+
+  cmTsInitialize( &p->ctx );
+
+  return rc;
+}
+
+cw::rc_t cw::cm::destroy( handle_t& hRef )
+{
+  rc_t rc = kOkRC;
+  cm_t* p = nullptr;
+  if( !hRef.isValid() )
+    return rc;
+
+  p = _handleToPtr(hRef);
+  
+  if((rc = _destroy(p)) != kOkRC )
+    return rc;
+
+  hRef.clear();
+  return rc;  
+  
+}
+
+::cmCtx_t* cw::cm::context( handle_t h )
+{
+  cm_t* p = _handleToPtr(h);
+  return &p->ctx;
+}
+

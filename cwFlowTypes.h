@@ -115,7 +115,9 @@ namespace cw
     typedef rc_t (*member_value_func_t)( struct instance_str* ctx, struct variable_str* var );
     enum
     {
-      kSrcVarFl = 0x01
+      kSrcVarFl = 0x01,
+      kSrcOptVarFl = 0x02
+      
     };
     
     typedef struct class_members_str
@@ -397,6 +399,7 @@ namespace cw
     void           _var_destroy( variable_t* var );
 
     bool           var_exists( instance_t* inst, const char* label, unsigned chIdx );
+    bool           var_has_value( instance_t* inst, const char* label, unsigned chIdx );
 
     rc_t           var_find( instance_t* inst, const char* var_label, unsigned chIdx, const variable_t*& varRef );
     rc_t           var_find( instance_t* inst, const char* var_label, unsigned chIdx,       variable_t*& varRef );

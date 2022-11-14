@@ -11,6 +11,7 @@ namespace cw
      kInvalidMidiByte     = 128,
      kMidiNoteCnt         = kInvalidMidiByte,
      kMidiCtlCnt          = kInvalidMidiByte,
+     kMidiVelCnt          = kInvalidMidiByte,
      kMidiPgmCnt          = kInvalidMidiByte,
      kInvalidMidiPitch    = kInvalidMidiByte,
      kInvalidMidiVelocity = kInvalidMidiByte,
@@ -98,6 +99,10 @@ namespace cw
     template< typename T> bool isSostenutoPedalDown( T s, T d0, T d1) { return ( isSostenutoPedal(s,d0) && (d1)>=64 ); }
     template< typename T> bool isSostenutoPedalUp(   T s, T d0, T d1) { return ( isSostenutoPedal(s,d0) && (d1)<64 ); }
 
+    template< typename T> bool isSoftPedal(     T s, T d0 )      { return ( kCtlMdId <= (s) && (s) <= (kCtlMdId + kMidiChCnt) && (d0)== kSoftPedalCtlMdId ); }
+    template< typename T> bool isSoftPedalDown( T s, T d0, T d1) { return ( isSoftPedal(s,d0) && (d1)>=64 ); }
+    template< typename T> bool isSoftPedalUp(   T s, T d0, T d1) { return ( isSoftPedal(s,d0) && (d1)<64 ); }
+    
     template< typename T> bool isPedal(     T s, T d0 )        { return ( kCtlMdId <= (s) && (s) <= (kCtlMdId + kMidiChCnt) && (d0)>=kSustainCtlMdId && (d0)<=kLegatoCtlMdId ); }
     template< typename T> bool isPedalDown( T s, T d0, T d1 )  { return ( isPedal(s,d0) && (d1)>=64 ); }
     template< typename T> bool isPedalUp(   T s, T d0, T d1 )  { return ( isPedal(s,d0) && (d1)<64  ); }
