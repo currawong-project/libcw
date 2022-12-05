@@ -29,6 +29,10 @@ namespace cw
   }
 }
 
+//----------------------------------------------------------------------------------------------------------------
+// compressor
+//
+
 cw::rc_t cw::dsp::compressor::create( obj_t*& p, real_t srate, unsigned procSmpCnt, real_t inGain, real_t rmsWndMaxMs, real_t rmsWndMs, real_t threshDb, real_t ratio_num, real_t atkMs, real_t rlsMs, real_t outGain, bool bypassFl )
 {
   p = mem::allocZ<obj_t>();
@@ -162,7 +166,111 @@ void cw::dsp::compressor::set_rms_wnd_ms( obj_t* p, real_t ms )
     p->rmsWndCnt = p->rmsWndAllocCnt;      
 }
 
+//----------------------------------------------------------------------------------------------------------------
+// Limiter
+//
 
+cw::rc_t cw::dsp::limiter::create( obj_t*& p, real_t srate, unsigned procSmpCnt, real_t thresh, real_t igain, real_t ogain, bool bypassFl )
+{
+  p = mem::allocZ<obj_t>();
+
+  p->procSmpCnt = procSmpCnt;
+  p->thresh     = thresh;
+  p->igain      = igain;
+  p->ogain      = ogain;
+  return kOkRC;
+}
+
+cw::rc_t cw::dsp::limiter::destroy( obj_t*& p )
+{
+  mem::release(p);
+  return kOkRC;
+}
+
+cw::rc_t cw::dsp::limiter::exec( obj_t* p, const sample_t* x, sample_t* y, unsigned n )
+{
+  if( p->bypassFl )
+  {
+    vop::copy(y,x,n); // copy through - with no input gain
+    return kOkRC;
+  }
+  else
+  {
+    real_t T = p->thresh * p->ogain;
+  
+    for(unsigned i=0; i<n; ++i)
+    {
+      sample_t mx = 0.999;
+      sample_t s = x[i] < 0.0 ? -mx : mx;
+      sample_t v = fabsf(x[i]) * p->igain;
+      
+      if( v >= mx )
+        y[i] = s;
+      else
+      {
+        if( v < p->thresh )
+        {
+          y[i] = s * T * v/p->thresh;
+        }    
+        else
+        {
+          // apply a linear limiting function
+          y[i] = s * (T + (1.0f-T) * (v-p->thresh)/(1.0f-p->thresh));
+        }
+      }
+    }
+  }
+  return kOkRC;
+}
+
+//----------------------------------------------------------------------------------------------------------------
+// dc-filter
+//
+
+cw::rc_t cw::dsp::dc_filter::create( obj_t*& p, real_t srate, unsigned procSmpCnt, real_t gain, bool bypassFl )
+{
+  p = mem::allocZ<obj_t>();
+
+  p->gain     = gain;
+  p->bypassFl = bypassFl;
+  p->b0       = 1;
+  p->b[0]     = -1;
+  p->a[0]     = -0.999;
+  p->d[0]     = 0;
+  p->d[1]     = 0;
+  
+  
+  return kOkRC;
+}
+
+cw::rc_t cw::dsp::dc_filter::destroy( obj_t*& pp )
+{
+  mem::release(pp);
+  return kOkRC;
+}
+
+cw::rc_t cw::dsp::dc_filter::exec( obj_t* p, const sample_t* x, sample_t* y, unsigned n )
+{
+
+  if( p->bypassFl )
+    vop::copy(y,x,n);
+  else
+    vop::filter<sample_t,real_t>(y,n,x,n,p->b0, p->b, p->a,  p->d, 1 );
+
+  return kOkRC;
+}
+
+cw::rc_t cw::dsp::dc_filter::set( obj_t* p, real_t gain, bool bypassFl )
+{
+  p->gain = gain;
+  p->bypassFl = bypassFl;
+  return kOkRC;
+}
+
+
+//----------------------------------------------------------------------------------------------------------------
+// Recorder
+//
 
 cw::rc_t cw::dsp::recorder::create(  obj_t*& pRef, real_t srate, real_t max_secs, unsigned chN )
 {
