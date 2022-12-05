@@ -402,6 +402,60 @@ namespace cw
       return rms;  
         
     }
+
+    // Direct form II algorithm based on the MATLAB implmentation
+    // http://www.mathworks.com/access/helpdesk/help/techdoc/ref/filter.html#f83-1015962
+    // The only difference between this function and the equivalent MATLAB filter() function
+    // is that the first feedforward coeff is given as a seperate value. The first  b coefficient
+    //  in this function is therefore the same as the second coefficient in the MATLAB function.
+    //  and the first a[] coefficient (which is generally set to 1.0) is skipped.
+    //  Example:
+    //  Matlab:         b=[.5 .4 .3]  a=[1 .2 .1]
+    //  Equiv:  b0 = .5 b=[   .4 .3]  a=[  .2 .1]; 
+    //
+    // y[yn] - output vector 
+    // x[xn] - input vector. xn must be <= yn. if xn < yn then the end of y[] is set to zero.
+    // b0    - signal scale. This can also be seen as b[0] (which is not included in b[])
+    // b[dn] - feedforward coeff's b[1..dn-1]
+    // a[dn] - feedback coeff's    a[1..dn-1]
+    // d[dn+1] - delay registers - note that this array must be one element longer than the coeff arrays.
+    // 
+    
+    template< typename S, typename T >
+    S* filter(   S*       y, 
+                 unsigned yn, 
+                 const S* x, 
+                 unsigned xn, 
+                 T        b0, 
+                 const T* b, 
+                 const T* a,  
+                 T*       d, 
+                 unsigned dn )
+    {
+      unsigned      i,j;
+      S             y0 = 0;
+      unsigned      n = yn<xn ? yn : xn;
+
+      for(i=0; i<n; ++i)
+        {
+          y[i] = (x[i] * b0) + d[0];
+
+          y0 = y[i];
+
+          for(j=0; j<dn; ++j)
+            d[j] = (b[j] * x[i]) - (a[j] * y0) + d[j+1]; 
+   
+        }
+
+
+      // if fewer input samples than output samples - zero the end of the output buffer
+      if( yn > xn )
+        fill(y+i,yn-i,0);
+
+      return y;
+  
+    }
+    
     
 
     
