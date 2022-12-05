@@ -119,7 +119,7 @@ namespace cw
 
         for(unsigned i=0; i<p->chCnt; ++i)
         {
-          if((rc = dsp::pv_anl::create( p->anlA[i], p->procSmpN, ctx->srcSrate, p->wndSmpN, p->hopSmpN, dsp::pv_anl::kNoCalcHzPvaFl )) != kOkRC )
+          if((rc = dsp::pv_anl::create( p->anlA[i], p->procSmpN, ctx->srcSrate, p->wndSmpN, p->wndSmpN, p->hopSmpN, dsp::pv_anl::kNoCalcHzPvaFl )) != kOkRC )
           {
             rc = cwLogError(rc,"PVOC analysis component create failed.");
             goto errLabel;

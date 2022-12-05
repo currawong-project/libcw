@@ -196,6 +196,10 @@ namespace cw
     namespace fft
     {
 
+      
+      unsigned window_sample_count_to_bin_count( unsigned wndSmpN );
+      unsigned bin_count_to_window_sample_count( unsigned binN );
+      
       enum
       {
         kToPolarFl = 0x01,  // convert to polar (magn./phase)
@@ -231,7 +235,7 @@ namespace cw
         
         p->flags = flags;
         p->inN   = xN;
-        p->binN  = xN/2 + 1;
+        p->binN  = window_sample_count_to_bin_count(xN); 
         p->magV  = mem::allocZ<T>(p->binN);
         p->phsV  = mem::allocZ<T>(p->binN);  
 
@@ -368,7 +372,7 @@ namespace cw
         p = mem::allocZ< obj_str<T> >(1);
         
         p->binN  = binN;
-        p->outN  = (binN-1)*2;
+        p->outN  = fft::bin_count_to_window_sample_count(binN); 
 
         if( std::is_same<T,float>::value )
         {

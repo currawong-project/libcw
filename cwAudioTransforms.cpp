@@ -234,7 +234,7 @@ namespace cw
         unsigned        flags      = kCalcHzPvaFl;
         unsigned        wndTypeId  = wnd_func::kHannWndId;
         
-        if((rc = create( pva, procSmpCnt, srate, wndSmpCnt, hopSmpCnt, flags )) != kOkRC )
+        if((rc = create( pva, procSmpCnt, srate, wndSmpCnt, wndSmpCnt, hopSmpCnt, flags )) != kOkRC )
         {
         }
 

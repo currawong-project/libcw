@@ -903,26 +903,33 @@ const cw::flow::sample_t*   cw::flow::abuf_get_channel( abuf_t* abuf, unsigned c
   return abuf->buf + (chIdx*abuf->frameN);
 }
 
-
-
-cw::flow::fbuf_t*  cw::flow::fbuf_create( srate_t srate, unsigned chN, unsigned binN, unsigned hopSmpN, const sample_t** magV, const sample_t** phsV, const sample_t** hzV )
+cw::flow::fbuf_t* cw::flow::fbuf_create( srate_t srate, unsigned maxBinN, unsigned chN, const unsigned* binN_V, const unsigned* hopSmpN_V, const sample_t** magV, const sample_t** phsV, const sample_t** hzV )
 {
+  unsigned curMaxBinN = vop::max(binN_V,chN);
+  
+  if( curMaxBinN > maxBinN )
+  {
+    cwLogWarning("A channel bin count (%i) execeeds the max bin count (%i). Max. bin count increased to:%i.",curMaxBinN,maxBinN,curMaxBinN);
+    maxBinN = curMaxBinN;
+  }
+  
   fbuf_t* f = mem::allocZ<fbuf_t>();
   
-  f->srate   = srate;
-  f->chN     = chN;
+  f->srate     = srate;
+  f->maxBinN   = maxBinN;
+  f->chN       = chN;
   f->binN_V    = mem::allocZ<unsigned>(chN);; 
   f->hopSmpN_V = mem::allocZ<unsigned>(chN); 
-  f->magV    = mem::allocZ<sample_t*>(chN);
-  f->phsV    = mem::allocZ<sample_t*>(chN);
-  f->hzV     = mem::allocZ<sample_t*>(chN);
-  f->readyFlV= mem::allocZ<bool>(chN);
+  f->magV      = mem::allocZ<sample_t*>(chN);
+  f->phsV      = mem::allocZ<sample_t*>(chN);
+  f->hzV       = mem::allocZ<sample_t*>(chN);
+  f->readyFlV  = mem::allocZ<bool>(chN);
 
-  for(unsigned chIdx=0; chIdx<chN; ++chIdx)
-  {
-    f->binN_V[chIdx]    = binN;
-    f->hohpSmpN_V[chIdx] = hopSmpN;
-  }
+
+  vop::copy( f->binN_V, binN_V, chN );
+  vop::copy( f->hopSmpN_V, hopSmpN_V, chN );
+  
+  
   
   if( magV != nullptr || phsV != nullptr || hzV != nullptr )
   {
@@ -935,21 +942,37 @@ cw::flow::fbuf_t*  cw::flow::fbuf_create( srate_t srate, unsigned chN, unsigned 
   }
   else
   {
-    sample_t* buf  = mem::allocZ<sample_t>( chN * kFbufVectN * binN );
-  
-    for(unsigned chIdx=0,j=0; chIdx<chN; ++chIdx,j+=kFbufVectN*binN)
+    sample_t* buf       = mem::allocZ<sample_t>( kFbufVectN * maxBinN );
+    sample_t* m         = buf;
+    for(unsigned chIdx=0; chIdx<chN; ++chIdx)
     {   
-      f->magV[chIdx] = buf + j + 0 * binN;
-      f->phsV[chIdx] = buf + j + 1 * binN;
-      f->hzV[ chIdx] = buf + j + 2 * binN;
+      f->magV[chIdx] = m + 0 * f->binN_V[chIdx];
+      f->phsV[chIdx] = m + 1 * f->binN_V[chIdx];
+      f->hzV[ chIdx] = m + 2 * f->binN_V[chIdx];
+      m += f->binN_V[chIdx];
+      assert( m <= buf + kFbufVectN * maxBinN );
     }
-  
+
     f->buf = buf;
       
   }
 
-  return f;
+  return f;  
 }
+
+
+cw::flow::fbuf_t*  cw::flow::fbuf_create( srate_t srate, unsigned maxBinN, unsigned chN, unsigned binN, unsigned hopSmpN, const sample_t** magV, const sample_t** phsV, const sample_t** hzV )
+{
+  unsigned binN_V[ chN ];
+  unsigned hopSmpN_V[ chN ];
+
+  vop::fill( binN_V, chN, binN );
+  vop::fill( hopSmpN_V, chN, binN );
+  return fbuf_create( srate, maxBinN, chN, binN_V, hopSmpN_V, magV, phsV, hzV );
+
+}
+
+
 
 void cw::flow::fbuf_destroy( fbuf_t*& fbuf )
 {
@@ -958,9 +981,9 @@ void cw::flow::fbuf_destroy( fbuf_t*& fbuf )
 
   mem::release( fbuf->binN_V );
   mem::release( fbuf->hopSmpN_V);
-  mem::release( fbuf->magV);
-  mem::release( fbuf->phsV);
-  mem::release( fbuf->hzV);
+  //mem::release( fbuf->magV);
+  //mem::release( fbuf->phsV);
+  //mem::release( fbuf->hzV);
   mem::release( fbuf->buf);
   mem::release( fbuf->readyFlV);
   mem::release( fbuf);
@@ -968,7 +991,8 @@ void cw::flow::fbuf_destroy( fbuf_t*& fbuf )
 
 cw::flow::fbuf_t*  cw::flow::fbuf_duplicate( const fbuf_t* src )
 {
-  fbuf_t* fbuf = fbuf_create( src->srate, src->chN, src->binN, src->hopSmpN );
+  fbuf_t* fbuf = fbuf_create( src->srate, src->maxBinN, src->chN, src->binN_V, src->hopSmpN_V );
+  
   for(unsigned i=0; i<fbuf->chN; ++i)
   {
     fbuf->binN_V[i]    = src->binN_V[i];
@@ -1340,17 +1364,26 @@ cw::rc_t        cw::flow::var_register_and_set( instance_t* inst, const char* va
   return rc;
 }
 
-cw::rc_t cw::flow::var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, unsigned binN, unsigned hopSmpN, const sample_t** magV, const sample_t** phsV, const sample_t** hzV )
+cw::rc_t cw::flow::var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned maxBinN, unsigned chN, const unsigned* binN_V, const unsigned* hopSmpN_V, const sample_t** magV, const sample_t** phsV, const sample_t** hzV )
 {
   rc_t rc = kOkRC;
   fbuf_t* fbuf;
-  if((fbuf = fbuf_create( srate, chN, binN, hopSmpN, magV, phsV, hzV )) == nullptr )
+  if((fbuf = fbuf_create( srate, maxBinN, chN, binN_V, hopSmpN_V, magV, phsV, hzV )) == nullptr )
     return cwLogError(kOpFailRC,"fbuf create failed on instance:'%s' variable:'%s'.", inst->label, var_label);
 
   if((rc = _var_register_and_set( inst, var_label, vid, chIdx, fbuf )) != kOkRC )
     fbuf_destroy(fbuf);
 
   return rc;
+}
+
+cw::rc_t cw::flow::var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned maxBinN, unsigned chN, unsigned binN, unsigned hopSmpN, const sample_t** magV, const sample_t** phsV, const sample_t** hzV )
+{
+  unsigned binN_V[ chN ];
+  unsigned hopSmpN_V[ chN ];
+  vop::fill(binN_V,chN,binN);
+  vop::fill(hopSmpN_V,chN, hopSmpN );
+  return var_register_and_set(inst,var_label,vid,chIdx,srate,maxBinN, chN,binN_V, hopSmpN_V, magV, phsV, hzV);
 }
 
 

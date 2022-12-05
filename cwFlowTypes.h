@@ -24,7 +24,7 @@ namespace cw
 
 
     enum {
-      kFbufVectN = 3,
+      kFbufVectN = 3,  // count of signal vectors in fbuf (mag,phs,hz)
       kAnyChIdx = kInvalidIdx,
       kLocalValueN = 2
     };
@@ -34,6 +34,7 @@ namespace cw
       struct value_str* base;
       srate_t           srate;     // signal sample rate
       unsigned          flags;     // See kXXXFbufFl
+      unsigned          maxBinN;   // max value that any value in binN_V[] is allowed to take
       unsigned          chN;       // count of channels
       unsigned*         binN_V;    // binN_V[ chN ] count of sample frames per channel
       unsigned*         hopSmpN_V; // hopSmpN_V[ chN ] hop sample count 
@@ -233,7 +234,8 @@ namespace cw
     rc_t            abuf_set_channel( abuf_t* buf, unsigned chIdx, const sample_t* v, unsigned vN );
     const sample_t* abuf_get_channel( abuf_t* buf, unsigned chIdx );
 
-    fbuf_t*        fbuf_create( srate_t srate, unsigned chN, unsigned binN, unsigned hopSmpN, const sample_t** magV=nullptr, const sample_t** phsV=nullptr, const sample_t** hzV=nullptr );
+    fbuf_t*        fbuf_create( srate_t srate, unsigned maxBinN, unsigned chN, const unsigned* binN_V, const unsigned* hopSmpN_V, const sample_t** magV=nullptr, const sample_t** phsV=nullptr, const sample_t** hzV=nullptr );
+    fbuf_t*        fbuf_create( srate_t srate, unsigned maxBinN, unsigned chN, unsigned binN, unsigned hopSmpN, const sample_t** magV=nullptr, const sample_t** phsV=nullptr, const sample_t** hzV=nullptr );
     void           fbuf_destroy( fbuf_t*& buf );
     fbuf_t*        fbuf_duplicate( const fbuf_t* src );
     
@@ -368,7 +370,8 @@ namespace cw
     rc_t           var_register_and_set( instance_t* inst, const char* label,     unsigned vid, unsigned chIdx, variable_t*& varRef );
     
     rc_t           var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, unsigned frameN );
-    rc_t           var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, unsigned binN, unsigned hopSmpN, const sample_t** magV=nullptr, const sample_t** phsV=nullptr, const sample_t** hzV=nullptr );
+    rc_t           var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned maxBinN, unsigned chN, const unsigned* binN_V, const unsigned* hopSmpN_V, const sample_t** magV=nullptr, const sample_t** phsV=nullptr, const sample_t** hzV=nullptr );
+    rc_t           var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned maxBinN, unsigned chN, unsigned binN, unsigned hopSmpN, const sample_t** magV=nullptr, const sample_t** phsV=nullptr, const sample_t** hzV=nullptr );
 
     inline rc_t _var_register_and_set(cw::flow::instance_t*, unsigned int ) { return kOkRC; }
 
