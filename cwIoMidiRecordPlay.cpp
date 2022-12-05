@@ -60,6 +60,10 @@ namespace cw
       bool           force_damper_down_fl;
       unsigned       force_damper_down_threshold;
       unsigned       force_damper_down_velocity;
+
+      bool           damper_dead_band_enable_fl;
+      unsigned       damper_dead_band_min_value;
+      unsigned       damper_dead_band_max_value;
       
     } midi_device_t;
 
@@ -95,6 +99,7 @@ namespace cw
 
       bool           startedFl;
       bool           recordFl;
+      bool           muteFl;
       bool           thruFl;
       bool           logInFl;   // log incoming message when not in 'record' mode.
       bool           logOutFl;  // log outgoing messages
@@ -198,20 +203,27 @@ namespace cw
           }
           
 
-          if((rc = ele->getv_opt( "vel_table", velTable,
-                                  "pedal",     pedalRecd,
-                                  "force_damper_down_fl",p->midiDevA[i].force_damper_down_fl,
-                                  "force_damper_down_threshold",p->midiDevA[i].force_damper_down_threshold,
-                                  "force_damper_down_velocity", p->midiDevA[i].force_damper_down_velocity)) != kOkRC )
+          if((rc = ele->getv_opt(
+                "vel_table", velTable,
+                "pedal",     pedalRecd,
+                "force_damper_down_fl",p->midiDevA[i].force_damper_down_fl,
+                "force_damper_down_threshold",p->midiDevA[i].force_damper_down_threshold,
+                "force_damper_down_velocity", p->midiDevA[i].force_damper_down_velocity,
+                "damper_dead_band_enable_fl", p->midiDevA[i].damper_dead_band_enable_fl,
+                "damper_dead_band_min_value", p->midiDevA[i].damper_dead_band_min_value,
+                "damper_dead_band_max_value", p->midiDevA[i].damper_dead_band_max_value)) != kOkRC )
           {
             rc = cwLogError(kSyntaxErrorRC,"MIDI record play device optional argument parsing failed.");
             goto errLabel;          
           }
 
-          printf("Force Pedal: enabled%i thresh:%i veloc:%i\n",
-                 p->midiDevA[i].force_damper_down_fl,
-                 p->midiDevA[i].force_damper_down_threshold,
-                 p->midiDevA[i].force_damper_down_velocity);
+          cwLogInfo("Force Pedal: enabled:%i thresh:%i veloc:%i dead band: enable:%i min:%i max:%i",
+            p->midiDevA[i].force_damper_down_fl,
+            p->midiDevA[i].force_damper_down_threshold,
+            p->midiDevA[i].force_damper_down_velocity,
+            p->midiDevA[i].damper_dead_band_enable_fl,
+            p->midiDevA[i].damper_dead_band_min_value,
+            p->midiDevA[i].damper_dead_band_max_value );
           
           p->midiDevA[i].midiOutDevLabel  = mem::duplStr( midiOutDevLabel);
           p->midiDevA[i].midiOutPortLabel = mem::duplStr( midiOutPortLabel);
@@ -306,7 +318,8 @@ namespace cw
 
       bool is_note_on_fl = status==midi::kNoteOnMdId and d1 != 0;
       bool is_damper_fl = status==midi::kCtlMdId and d0==midi::kSustainCtlMdId;
-      bool supress_fl = is_note_on_fl && after_stop_time_fl;
+      bool supress_fl = (is_note_on_fl && after_stop_time_fl) || p->muteFl;
+      bool is_pedal_fl = midi::isPedal( status, d0 );
       
       if( after_all_off_fl )
       {
@@ -339,11 +352,18 @@ namespace cw
                   out_d1 = p->midiDevA[i].velTableArray[ d1 ];
               }
 
+              // store the note-on velocity histogram data
               if( p->velHistogramEnableFl && is_note_on_fl && out_d1 < midi::kMidiVelCnt )
                 p->midiDevA[i].velHistogram[ out_d1 ] += 1;
 
+              // if the damper pedal velocity is in the dead band then don't send it
+              if( p->midiDevA[i].damper_dead_band_enable_fl && is_pedal_fl && p->midiDevA[i].damper_dead_band_min_value <= out_d1 && out_d1 <= p->midiDevA[i].damper_dead_band_max_value )
+                out_d1 = 0;
+              
+              // if the damper pedal velocity is over the 'forcing' threshold then force the damper down
               if( p->midiDevA[i].force_damper_down_fl && is_damper_fl && out_d1>p->midiDevA[i].force_damper_down_threshold )
                 out_d1 = p->midiDevA[i].force_damper_down_velocity;
+
 
               // map the pedal down velocity
               if( status==midi::kCtlMdId && d0 == midi::kSustainCtlMdId && p->midiDevA[i].pedalMapEnableFl )
@@ -363,8 +383,10 @@ namespace cw
               }
             }
 
-            if( !supress_fl )           
+            if( !supress_fl )
+            {
               io::midiDeviceSend( p->ioH, p->midiDevA[i].midiOutDevIdx, p->midiDevA[i].midiOutPortIdx, status + ch, d0, out_d1 );
+            }
           }
 
         if( !after_stop_time_fl and p->cb )
@@ -1210,6 +1232,21 @@ bool cw::midi_record_play::record_state( handle_t h )
   midi_record_play_t* p  = _handleToPtr(h);
   return p->recordFl;
 }
+
+cw::rc_t cw::midi_record_play::set_mute_state( handle_t h, bool mute_fl )
+{
+  rc_t                rc = kOkRC;
+  midi_record_play_t* p  = _handleToPtr(h);
+  p->muteFl = mute_fl;
+  return rc;  
+}
+
+bool cw::midi_record_play::mute_state( handle_t h )
+{
+  midi_record_play_t* p  = _handleToPtr(h);
+  return p->muteFl;
+}
+
 
 cw::rc_t cw::midi_record_play::set_thru_state( handle_t h, bool thru_fl )
 {

@@ -41,6 +41,9 @@ namespace cw
     rc_t set_record_state( handle_t h, bool record_fl );
     bool record_state( handle_t h );
 
+    rc_t set_mute_state( handle_t h, bool record_fl );
+    bool mute_state( handle_t h );
+
     rc_t set_thru_state( handle_t h, bool record_thru );
     bool thru_state( handle_t h );
 

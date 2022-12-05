@@ -35,9 +35,11 @@ namespace cw
       kMidiThruCheckId,
       kCurMidiEvtCntId,
       kTotalMidiEvtCntId,
+      kMidiMuteCheckId,
       
       kCurAudioSecsId,
       kTotalAudioSecsId,
+      kAudioMuteCheckId,
                 
       kSaveBtnId,
       kOpenBtnId,
@@ -66,10 +68,11 @@ namespace cw
       { kPanelDivId,     kMidiThruCheckId,   "midiThruCheckId" },
       { kPanelDivId,     kCurMidiEvtCntId,   "curMidiEvtCntId" },      
       { kPanelDivId,     kTotalMidiEvtCntId, "totalMidiEvtCntId" },
+      { kPanelDivId,     kMidiMuteCheckId,   "midiMuteCheckId" },
       
       { kPanelDivId,     kCurAudioSecsId,    "curAudioSecsId" },
       { kPanelDivId,     kTotalAudioSecsId,  "totalAudioSecsId" },
-      
+      { kPanelDivId,     kAudioMuteCheckId,  "audioMuteCheckId" },
         
       { kPanelDivId,     kSaveBtnId,      "saveBtnId" },
       { kPanelDivId,     kOpenBtnId,      "openBtnId" },
@@ -387,6 +390,14 @@ namespace cw
         case kMidiThruCheckId:
           cwLogInfo("MIDI thru:%i",m.value->u.b);        
           _set_midi_thru_state(app, m.value->u.b);
+          break;
+
+        case kMidiMuteCheckId:
+          midi_record_play::set_mute_state(app->mrpH,m.value->u.b);
+          break;
+
+        case kAudioMuteCheckId:
+          audio_record_play::set_mute_state(app->arpH,m.value->u.b);
           break;
             
         case kStartBtnId:

@@ -17,6 +17,8 @@ namespace cw
     rc_t clear( handle_t h );
     rc_t set_record_state( handle_t h, bool record_fl );
     bool record_state( handle_t h );
+    rc_t set_mute_state( handle_t h, bool mute_fl );
+    bool mute_state( handle_t h );
     rc_t save( handle_t h, const char* fn );
     rc_t open( handle_t h, const char* fn );
     double duration_seconds( handle_t h );
