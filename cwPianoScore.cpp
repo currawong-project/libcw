@@ -325,6 +325,17 @@ namespace cw
 
       return nullptr;
     }
+
+    const event_t* _loc_to_event( score_t* p, unsigned loc )
+    {
+      const event_t* e = p->base;
+      for(; e!=nullptr; e=e->link)
+        if( e->loc == loc )
+          return e;
+
+      return nullptr;
+      
+    }
     
   }
 }
@@ -467,10 +478,31 @@ bool cw::score::is_loc_valid( handle_t h, unsigned locId )
   return locId < p->maxLocId;
 }
 
+unsigned cw::score::loc_to_measure( handle_t h, unsigned locId )
+{
+  score_t* p  = _handleToPtr(h);
+  const event_t* e;
+  if((e = _loc_to_event(p,locId)) == nullptr )
+    return 0;
+
+  return kInvalidId;
+}
+
+unsigned  cw::score::loc_to_next_note_on_measure( handle_t h, unsigned locId )
+{
+  score_t* p  = _handleToPtr(h);
+  const event_t* e = _loc_to_event(p,locId);
+  
+  while( e != nullptr )
+    if( midi::isNoteOn(e->status))
+      return e->meas;
+      
+  return kInvalidId;
+}
+
 const cw::score::event_t* cw::score::uid_to_event( handle_t h, unsigned uid )
 {
-
-  score_t* p  = _handleToPtr(h);
+  //hscore_t* p  = _handleToPtr(h);
   return nullptr;
 }
 
