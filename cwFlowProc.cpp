@@ -1675,6 +1675,7 @@ namespace cw
       enum
       {
         kInPId,
+        kBypassPId,
         kCeilingPId,
         kExpoPId,
         kThreshPId,
@@ -1736,6 +1737,7 @@ namespace cw
             spec_dist_t* sd = inst->sdA[i];
 
             if((rc = var_register_and_get( ctx, i,
+                                           kBypassPId,   "bypass",   sd->bypassFl,
                                            kCeilingPId,  "ceiling",  sd->ceiling,
                                            kExpoPId,     "expo",     sd->expo,
                                            kThreshPId,   "thresh",   sd->thresh,
@@ -1783,6 +1785,7 @@ namespace cw
           
           switch( var->vid )
           {
+            case kBypassPId:   rc = var_get( var, val ); sd->bypassFl = val; break;
             case kCeilingPId:  rc = var_get( var, val ); sd->ceiling = val; break;
             case kExpoPId:     rc = var_get( var, val ); sd->expo = val;    break;
             case kThreshPId:   rc = var_get( var, val ); sd->thresh = val;  break;
