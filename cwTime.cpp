@@ -42,7 +42,12 @@ void cw::time::get( spec_t& t )
 
 #ifdef OS_LINUX
 void cw::time::get( spec_t& t )
-{ clock_gettime(CLOCK_REALTIME,&t); }
+{
+  // NOTcw::mutex::lock(h,timeout) relies on using 
+  // CLOCK_REALTIME.  If the source of this clock changes
+  // then change cw::mutex::loc(h,timeout) as well  
+  clock_gettime(CLOCK_REALTIME,&t);
+}
 #endif
 
 // this assumes that the seconds have been normalized to a recent start time
@@ -209,13 +214,17 @@ void cw::time::subtractMicros( spec_t& ts, unsigned micros )
 
 void cw::time::advanceMs( spec_t& ts, unsigned ms )
 {
-  // strip off whole seconds from ms
-  unsigned sec = ms / 1000; 
+  if( ms > 1000 )
+  {
+    // strip off whole seconds from ms
+    unsigned sec = ms / 1000; 
 
-  // find the remaining fractional second in milliseconds
-  ms = (ms - sec*1000);
+    // find the remaining fractional second in milliseconds
+    ms = (ms - sec*1000);
+
+    ts.tv_sec  += sec;
+  }
   
-  ts.tv_sec  += sec;
   ts.tv_nsec +=  ms * 1000000; // convert millisconds to nanoseconds
 
   // stip off whole seconds from tv_nsec
