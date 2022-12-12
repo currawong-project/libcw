@@ -97,6 +97,34 @@ cw::rc_t cw::mutex::tryLock( handle_t h, bool& lockFlRef )
   return rc;
 }
 
+cw::rc_t cw::mutex::lock( handle_t h, unsigned timeout_milliseconds )
+{
+  rc_t     rc = kOkRC;
+  mutex_t* p  = _handleToPtr(h);
+  int      sysRc;
+  time::spec_t ts;
+
+  time::get(ts);
+  time::advanceMs(ts,timeout_milliseconds);
+  
+  
+  switch(sysRc = pthread_mutex_timedlock(&p->mutex,&ts) )
+  {
+    case 0:
+      rc = kOkRC;
+      break;
+      
+    case ETIMEDOUT:
+      rc = kTimeOutRC;
+      
+    default:
+      rc = cwLogSysError(kInvalidOpRC,sysRc,"Lock failed.");
+  }
+  
+  return rc;  
+  
+}
+
 cw::rc_t cw::mutex::lock(    handle_t h )
 {
   rc_t     rc = kOkRC;

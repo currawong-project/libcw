@@ -11,6 +11,7 @@ namespace cw
     rc_t destroy( handle_t& h );
 
     rc_t tryLock( handle_t h, bool& lockFlRef );
+    rc_t lock(    handle_t h, unsigned timeout_milliseconds );
     rc_t lock(    handle_t h );
     rc_t unlock(  handle_t h );
 
