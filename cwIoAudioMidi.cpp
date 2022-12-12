@@ -978,6 +978,7 @@ cw::rc_t cw::io::audio_midi::main( const object_t* cfg )
 
   rc_t rc;
   app_t app = {};
+  bool asyncFl = true;
   
   if((rc = _parseCfg(&app,cfg)) != kOkRC )
     goto errLabel;
@@ -987,7 +988,7 @@ cw::rc_t cw::io::audio_midi::main( const object_t* cfg )
     return rc;
 
   // create the MIDI playback timer
-  if((rc = timerCreate( app.ioH, "am_timer", kAmMidiTimerId, app.midi_timer_period_micro_sec)) != kOkRC )
+  if((rc = timerCreate( app.ioH, "am_timer", kAmMidiTimerId, app.midi_timer_period_micro_sec, asyncFl)) != kOkRC )
   {
     cwLogError(rc,"Audio-MIDI timer create failed.");
     goto errLabel;

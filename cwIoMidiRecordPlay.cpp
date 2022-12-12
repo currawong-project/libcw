@@ -1065,6 +1065,7 @@ namespace cw
 
 cw::rc_t cw::midi_record_play::create( handle_t& hRef, io::handle_t ioH, const object_t& cfg, event_callback_t cb, void* cb_arg )
 {
+  bool asyncFl = true;
   midi_record_play_t* p = nullptr;
   rc_t rc;
   
@@ -1113,7 +1114,7 @@ cw::rc_t cw::midi_record_play::create( handle_t& hRef, io::handle_t ioH, const o
   }
   
   // create the MIDI playback timer
-  if((rc = timerCreate( p->ioH, TIMER_LABEL, kMidiRecordPlayTimerId, p->midi_timer_period_micro_sec)) != kOkRC )
+  if((rc = timerCreate( p->ioH, TIMER_LABEL, kMidiRecordPlayTimerId, p->midi_timer_period_micro_sec, asyncFl)) != kOkRC )
   {
     cwLogError(rc,"Audio-MIDI timer create failed.");
     goto errLabel;

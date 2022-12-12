@@ -88,18 +88,19 @@ cw::rc_t cw::min_test( const object_t* cfg )
   rc_t rc;
   app_t app = {};
 
+  bool asyncFl = true;
 
   // create the io framework instance
   if((rc = create(app.ioH,cfg,minTestCb,&app)) != kOkRC )
     return rc;
 
-  if((rc = threadCreate( app.ioH, kThread0Id, &app )) != kOkRC )
+  if((rc = threadCreate( app.ioH, kThread0Id, asyncFl, &app )) != kOkRC )
   {
     rc = cwLogError(rc,"Thread 0 create failed.");
     goto errLabel;    
   }
   
-  if((rc = threadCreate( app.ioH, kThread1Id, &app )) != kOkRC )
+  if((rc = threadCreate( app.ioH, kThread1Id, asyncFl, &app )) != kOkRC )
   {
     rc = cwLogError(rc,"Thread 1 create failed.");
     goto errLabel;    
