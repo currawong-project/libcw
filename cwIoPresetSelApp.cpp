@@ -773,7 +773,7 @@ namespace cw
         unsigned fragPanelUuId;
         
         // The uiChan is the fragment endLoc
-        unsigned uiChanId = fragEndLoc;
+        unsigned uiChanId = fragId; //fragEndLoc;
 
         // Get the fragPanelUUid
         get_value( app->psH, fragId, preset_sel::kGuiUuIdVarId, kInvalidId, fragPanelUuId );
@@ -800,7 +800,7 @@ namespace cw
     rc_t _update_frag_ui(app_t* app, unsigned fragId )
     {
       // Notes: 
-      //        uiChanId = endLoc for panel values
+      //        uiChanId = fragId for panel values     
       //     or uiChanId = preset_index for preset values
 
       rc_t     rc            = kOkRC;
@@ -812,7 +812,7 @@ namespace cw
         unsigned uValue;
         double   dValue;
         const char* sValue;
-        unsigned uiChanId      = endLoc;
+        unsigned uiChanId      = fragId; //endLoc;
         unsigned fragPanelUuId = kInvalidId;
         
         get_value( app->psH, fragId, preset_sel::kGuiUuIdVarId, kInvalidId, fragPanelUuId );
@@ -1008,7 +1008,7 @@ namespace cw
     {
       rc_t       rc                = kOkRC;
       unsigned   fragListUuId      = io::uiFindElementUuId( app->ioH, kFragListId );
-      unsigned   fragChanId        = endLoc; // use the frag. endLoc as the channel id
+      unsigned   fragChanId        = fragId; //endLoc; // use the frag. endLoc as the channel id
       unsigned   fragPanelUuId     = kInvalidId;
       unsigned   fragBegLocUuId    = kInvalidId;
       unsigned   fragEndLocUuId    = kInvalidId;
@@ -1289,7 +1289,7 @@ namespace cw
         io::uiSendValue( app->ioH, endPlayLocUuId, end_play_loc);
 
         
-        // enable the 'End Loc' number box since the score is loaded
+        // enable the insert 'End Loc' number box since the score is loaded
         io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kInsertLocId ), true );
       }
       
@@ -1346,7 +1346,7 @@ namespace cw
     bool _is_valid_insert_loc( app_t* app, unsigned loc )
     {
       bool fl0 = _find_loc(app,loc) != nullptr;
-      bool fl1 = preset_sel::is_fragment_loc( app->psH, loc)==false;
+      bool fl1 = preset_sel::is_fragment_end_loc( app->psH, loc)==false;
 
       return fl0 && fl1;
     }
@@ -1407,7 +1407,6 @@ namespace cw
       return rc;
     }
 
-
     rc_t _on_ui_insert_btn( app_t* app )
     {
       rc_t                      rc     = kOkRC;
@@ -1430,7 +1429,7 @@ namespace cw
       }
 
       // verify that the end-loc is not already in use - this shouldn't be possible because the 'insert' btn should be disabled if the 'insertLoc' is not valid
-      if( preset_sel::is_fragment_loc( app->psH, app->insertLoc ) )
+      if( preset_sel::is_fragment_end_loc( app->psH, app->insertLoc ) )
       {
         rc = cwLogError(kInvalidIdRC,"The new fragment's 'End Loc' is already in use.");
         goto errLabel;
@@ -1473,9 +1472,10 @@ namespace cw
 
     rc_t _on_ui_delete_btn( app_t* app )
     {
-      rc_t     rc     = kOkRC;
-      unsigned fragId = kInvalidId;
-      unsigned uuId   = kInvalidId;
+      rc_t                      rc     = kOkRC;
+      unsigned                  fragId = kInvalidId;
+      unsigned                  uuId   = kInvalidId;
+      const preset_sel::frag_t* f      = nullptr;;
 
       // get the fragment id (uuid) of the selected (high-lighted) fragment
       if((fragId = preset_sel::ui_select_fragment_id(app->psH)) == kInvalidId )
@@ -1491,6 +1491,10 @@ namespace cw
         goto errLabel;
       }
 
+      // get a pointer to the fragment prior to the one to be deleted
+      if((f = get_fragment(app->psH,fragId)) != nullptr )
+        f = f->prev;
+
       // delete the fragment data record
       if((rc = preset_sel::delete_fragment(app->psH,fragId)) != kOkRC )
         goto errLabel;
@@ -1499,6 +1503,10 @@ namespace cw
       if((rc = io::uiDestroyElement( app->ioH, uuId )) != kOkRC )
         goto errLabel;
 
+      // update the fragment prior to deleted fragment
+      if(f != nullptr )
+        _update_frag_ui(app, f->fragId );
+      
       errLabel:
       
       if( rc != kOkRC )
@@ -1826,7 +1834,7 @@ namespace cw
       case kInsertLocId:
         io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kInsertBtnId ),  false );
         break;
-        
+
       case kFragBegPlayLocId:
       case kFragEndPlayLocId:
         _disable_frag_play_btn(app, m.uuId );
