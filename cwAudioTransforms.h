@@ -739,6 +739,8 @@ namespace cw
       template< typename T0, typename T1  >
       struct obj_str
       {
+        bool bypassFl;
+        
         T1   ceiling;
         T1   expo;    
         T1   mix;
@@ -757,12 +759,13 @@ namespace cw
       typedef struct obj_str<double,double> dobj_t;
 
       template< typename T0, typename T1 >
-      rc_t create( struct obj_str<T0,T1>*& p, unsigned binN, T1 ceiling=30, T1 expo=2, T1 thresh=60, T1 uprSlope=0, T1 lwrSlope=2, T1 mix=0 )
+      rc_t create( struct obj_str<T0,T1>*& p, unsigned binN, bool bypassFl=false, T1 ceiling=30, T1 expo=2, T1 thresh=60, T1 uprSlope=0, T1 lwrSlope=2, T1 mix=0 )
       {
         rc_t rc = kOkRC;
         
         p = mem::allocZ< struct obj_str<T0,T1> >();
 
+        p->bypassFl = bypassFl;
         p->ceiling  = ceiling;
         p->expo     = expo;    
         p->thresh   = thresh;
@@ -819,7 +822,7 @@ namespace cw
       }
 
       template< typename T0, typename T1 >
-      void _cmSpecDist2BasicMode( struct obj_str<T0,T1>* p, double* X1m, unsigned binCnt, double thresh, double upr, double lwr )
+      void _cmSpecDist2BasicMode_Original( struct obj_str<T0,T1>* p, double* X1m, unsigned binCnt, double thresh, double upr, double lwr )
       {
 
         unsigned i=0;
@@ -841,6 +844,42 @@ namespace cw
         }
 
       }
+
+      template< typename T0, typename T1 >
+      void _cmSpecDist2BasicMode( struct obj_str<T0,T1>* p, double* X1m, unsigned binCnt, double thresh, double upr, double lwr )
+      {
+
+        unsigned i=0;
+
+        if( lwr < 0.3 )
+          lwr = 0.3;
+
+        for(i=0; i<binCnt; ++i)
+        {
+          double a = fabs(X1m[i]);
+          double d = a - thresh;
+          double curve_thresh = 3;
+          
+          X1m[i] = -thresh;
+
+          if( d > curve_thresh )
+            X1m[i] -= (lwr*d);
+          else
+          {
+            if( d < -curve_thresh )
+              X1m[i] -= (upr*d);
+            else
+            {
+              double a  = (d+curve_thresh)/(curve_thresh*2.0);
+              double slope = lwr*a + upr*(1.0-a);
+              X1m[i] -=  slope * d;
+            }
+            
+          }
+        }
+
+      }
+
       
       template< typename T0, typename T1 >
       rc_t exec( struct obj_str<T0,T1>* p, const T0* magV, const T0* phsV, unsigned binN )
@@ -891,7 +930,11 @@ namespace cw
         }
 
         // apply the output gain
-        vop::mul(  p->outMagV, X1m, std::min((T1)4.0,p->ogain), binN);
+        if( p->bypassFl )
+          vop::copy( p->outMagV, magV, binN );
+        else
+          vop::mul(  p->outMagV, X1m, std::min((T1)4.0,p->ogain), binN);
+        
         vop::copy( p->outPhsV, phsV,                binN);
 
         return rc;

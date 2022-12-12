@@ -646,7 +646,8 @@ cw::rc_t cw::preset_sel::create_fragment( handle_t h, unsigned end_loc, time::sp
   // set the return value
   fragIdRef        = f->fragId;
 
-  
+
+  // intiialize the preset array elements
   for(unsigned i=0; i<p->presetLabelN; ++i)
   {
     f->presetA[i].preset_idx = i;
@@ -719,7 +720,12 @@ cw::rc_t cw::preset_sel::delete_fragment( handle_t h, unsigned fragId )
       if( f->prev == nullptr )
         p->fragL = f->link;
       else
+      {
+        // the previous fragment's end-loc become the
+        // endloc of the deleted fragment
+        f->prev->endLoc = f->endLoc;
         f->prev->link = f->link;
+      }
 
       if( f->link != nullptr )
         f->link->prev = f->prev;
@@ -734,11 +740,12 @@ cw::rc_t cw::preset_sel::delete_fragment( handle_t h, unsigned fragId )
   return cwLogError(kInvalidArgRC,"The fragment '%i' could not be found to delete.",fragId);
 }
 
-bool cw::preset_sel::is_fragment_loc( handle_t h, unsigned loc )
+bool cw::preset_sel::is_fragment_end_loc( handle_t h, unsigned loc )
 {
   preset_sel_t* p  = _handleToPtr(h);
   return _loc_to_frag(p,loc) != nullptr;
 }
+
 
 
 unsigned cw::preset_sel::ui_select_fragment_id( handle_t h )

@@ -88,7 +88,7 @@ namespace cw
     rc_t create_fragment( handle_t h, unsigned end_loc, time::spec_t endTimestamp, unsigned& fragIdRef );
     rc_t delete_fragment( handle_t h, unsigned fragId );
 
-    bool is_fragment_loc( handle_t h, unsigned loc );
+    bool is_fragment_end_loc( handle_t h, unsigned loc );
 
     // Return the fragment id of the 'selected' fragment.
     unsigned ui_select_fragment_id( handle_t h );
