@@ -35,7 +35,8 @@ namespace cw
       kAudioMeterTId,
       kSockTId,
       kWebSockTId,
-      kUiTId
+      kUiTId,
+      kExecTId
     };
 
     typedef struct thread_msg_str
@@ -123,9 +124,15 @@ namespace cw
       const ui::value_t* value;
     } ui_msg_t;
 
+    typedef struct exec_msg_str
+    {
+      void* execArg;
+    } exec_msg_t;
+
     typedef struct msg_str
     {
       unsigned tid;
+      bool     asyncFl;
       union
       {
         thread_msg_t*      thread;
@@ -136,6 +143,7 @@ namespace cw
         audio_group_dev_t* audioGroupDev; // audioMeterTId
         socket_msg_t*      sock;
         ui_msg_t           ui;
+        exec_msg_t         exec;
       } u;
     } msg_t;
     
@@ -155,7 +163,7 @@ namespace cw
     rc_t start( handle_t h );
     rc_t pause( handle_t h );
     rc_t stop(  handle_t h );
-    rc_t exec(  handle_t h );
+    rc_t exec(  handle_t h, void* execCbArg=nullptr );
     bool isShuttingDown( handle_t h );
     void report( handle_t h );
 
@@ -163,14 +171,14 @@ namespace cw
     //
     // Thread
     //
-    rc_t  threadCreate(    handle_t h, unsigned id, void* arg );
+    rc_t  threadCreate(    handle_t h, unsigned id, bool asyncFl, void* arg );
 
     //----------------------------------------------------------------------------------------------------------
     //
     // Timer
     //
     
-    rc_t        timerCreate(            handle_t h, const char* label, unsigned id, unsigned periodMicroSec );
+    rc_t        timerCreate(            handle_t h, const char* label, unsigned id, unsigned periodMicroSec, bool asyncFl );
     rc_t        timerDestroy(           handle_t h, unsigned timerIdx );
     
     unsigned    timerCount(             handle_t h );
