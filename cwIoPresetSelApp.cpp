@@ -83,6 +83,7 @@ namespace cw
 
       kFragListId,
       kFragPanelId,
+      kFragMeasId,
       kFragBegLocId,
       kFragEndLocId,
       
@@ -169,6 +170,7 @@ namespace cw
 
       { kPanelDivId,     kFragListId,       "fragListId"   },
       { kFragListId,     kFragPanelId,      "fragPanelId"  },
+      { kFragPanelId,    kFragMeasId,       "fragMeasId"   },
       { kFragPanelId,    kFragBegLocId,     "fragBegLocId" },
       { kFragPanelId,    kFragEndLocId,     "fragEndLocId" },
       { kFragPanelId,    kFragPresetRowId,  "fragPresetRowId" },
@@ -1475,7 +1477,7 @@ namespace cw
       unsigned fragId = kInvalidId;
       unsigned uuId   = kInvalidId;
 
-      // get the fragment id (uuid) of the selected fragment
+      // get the fragment id (uuid) of the selected (high-lighted) fragment
       if((fragId = preset_sel::ui_select_fragment_id(app->psH)) == kInvalidId )
       {
         rc =  cwLogError(kInvalidStateRC,"There is no selected fragment to delete.");

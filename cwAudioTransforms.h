@@ -500,6 +500,10 @@ namespace cw
         unsigned               flags;
         unsigned               procSmpCnt;
         T                      srate;
+        
+        unsigned               maxWndSmpCnt;
+        unsigned               maxBinCnt;
+        
         unsigned               wndSmpCnt;
         unsigned               hopSmpCnt;
         unsigned               binCnt;
@@ -514,7 +518,7 @@ namespace cw
       typedef obj_str< double> dobj_t;
       
       template< typename T >
-      rc_t create( struct obj_str<T>*& p, unsigned procSmpCnt, const T& srate, unsigned wndSmpCnt, unsigned hopSmpCnt, unsigned flags )
+      rc_t create( struct obj_str<T>*& p, unsigned procSmpCnt, const T& srate, unsigned maxWndSmpCnt, unsigned wndSmpCnt, unsigned hopSmpCnt, unsigned flags )
       {
         rc_t rc = kOkRC;
         
@@ -527,6 +531,8 @@ namespace cw
 
         p->flags      = flags;
         p->procSmpCnt = procSmpCnt;
+        p->maxWndSmpCnt = maxWndSmpCnt;
+        p->maxBinCnt    = fft::window_sample_count_to_bin_count(maxWndSmpCnt);
         p->wndSmpCnt  = wndSmpCnt;
         p->hopSmpCnt  = hopSmpCnt;
         p->binCnt     = p->ft->binN;

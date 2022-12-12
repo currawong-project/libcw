@@ -16,7 +16,9 @@ namespace cw
     namespace pv_synthesis    { extern class_members_t members;  }
     namespace spec_dist       { extern class_members_t members;  }
     namespace compressor      { extern class_members_t members;  }
+    namespace limiter         { extern class_members_t members;  }
     namespace audio_delay     { extern class_members_t members;  }
+    namespace dc_filter       { extern class_members_t members;  }
     namespace balance         { extern class_members_t members;  }
   }
 }

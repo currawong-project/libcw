@@ -1396,8 +1396,9 @@ namespace cw
 
       enum {
         kInPId,
-        kHopSmpNPId,
+        kMaxWndSmpNPId,
         kWndSmpNPId,
+        kHopSmpNPId,
         kHzFlPId,
         kOutPId
       };
@@ -1406,6 +1407,7 @@ namespace cw
       {
         pv_t**   pvA;       // pvA[ srcBuf.chN ]
         unsigned pvN;
+        unsigned maxWndSmpN;
         unsigned wndSmpN;
         unsigned hopSmpN;
         bool     hzFl;
@@ -1422,8 +1424,9 @@ namespace cw
 
         if((rc = var_register_and_get( ctx, kAnyChIdx,
                                        kInPId,      "in",      srcBuf,
-                                       kHopSmpNPId, "hopSmpN", inst->hopSmpN,
+                                       kMaxWndSmpNPId, "maxWndSmpN", inst->maxWndSmpN,
                                        kWndSmpNPId, "wndSmpN", inst->wndSmpN,
+                                       kHopSmpNPId, "hopSmpN", inst->hopSmpN,
                                        kHzFlPId,    "hzFl",    inst->hzFl )) != kOkRC )
         {
           goto errLabel;
@@ -1441,7 +1444,7 @@ namespace cw
           // create a pv anlaysis object for each input channel
           for(unsigned i=0; i<srcBuf->chN; ++i)
           {
-            if((rc = create( inst->pvA[i], ctx->ctx->framesPerCycle, srcBuf->srate, inst->wndSmpN, inst->hopSmpN, flags )) != kOkRC )
+            if((rc = create( inst->pvA[i], ctx->ctx->framesPerCycle, srcBuf->srate, inst->maxWndSmpN, inst->wndSmpN, inst->hopSmpN, flags )) != kOkRC )
             {
               rc = cwLogError(kOpFailRC,"The PV analysis object create failed on the instance '%s'.",ctx->label);
               goto errLabel;
@@ -1456,7 +1459,7 @@ namespace cw
             goto errLabel;
           
           // create the fbuf 'out'
-          rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, inst->pvA[0]->binCnt, inst->pvA[0]->hopSmpCnt, magV, phsV, hzV );
+          rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, srcBuf->srate, inst->pvA[0]->maxBinCnt, srcBuf->chN, inst->pvA[0]->binCnt, inst->pvA[0]->hopSmpCnt, magV, phsV, hzV );
         
         }
         
@@ -1515,7 +1518,7 @@ namespace cw
           if( dsp::pv_anl::exec( inst->pvA[i], srcBuf->buf + i*srcBuf->frameN, srcBuf->frameN ) )
           {
             // rescale the frequency domain magnitude
-            vop::mul(dstBuf->magV[i], dstBuf->binN/2, dstBuf->binN);
+            vop::mul(dstBuf->magV[i], dstBuf->binN_V[i]/2, dstBuf->binN_V[i]);
             
             dstBuf->readyFlV[i] = true;
 
@@ -1580,9 +1583,9 @@ namespace cw
           // create a pv anlaysis object for each input channel
           for(unsigned i=0; i<srcBuf->chN; ++i)
           {
-            unsigned wndSmpN = (srcBuf->binN-1)*2;
+            unsigned wndSmpN = (srcBuf->binN_V[i]-1)*2;
             
-            if((rc = create( inst->pvA[i], ctx->ctx->framesPerCycle, srcBuf->srate, wndSmpN, srcBuf->hopSmpN )) != kOkRC )
+            if((rc = create( inst->pvA[i], ctx->ctx->framesPerCycle, srcBuf->srate, wndSmpN, srcBuf->hopSmpN_V[i] )) != kOkRC )
             {
               rc = cwLogError(kOpFailRC,"The PV synthesis object create failed on the instance '%s'.",ctx->label);
               goto errLabel;
@@ -1719,7 +1722,7 @@ namespace cw
           // create a spec_dist object for each input channel
           for(unsigned i=0; i<srcBuf->chN; ++i)
           {
-            if((rc = create( inst->sdA[i], srcBuf->binN )) != kOkRC )
+            if((rc = create( inst->sdA[i], srcBuf->binN_V[i] )) != kOkRC )
             {
               rc = cwLogError(kOpFailRC,"The 'spec dist' object create failed on the instance '%s'.",ctx->label);
               goto errLabel;
@@ -1746,7 +1749,7 @@ namespace cw
           }
           
           // create the output buffer
-          if((rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, srcBuf->binN, srcBuf->hopSmpN, magV, phsV, hzV )) != kOkRC )
+          if((rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->maxBinN, srcBuf->chN, srcBuf->binN_V, srcBuf->hopSmpN_V, magV, phsV, hzV )) != kOkRC )
             goto errLabel;
         }
         
@@ -1820,7 +1823,7 @@ namespace cw
           dstBuf->readyFlV[i] = false;
           if( srcBuf->readyFlV[i] )
           {          
-            dsp::spec_dist::exec( inst->sdA[i], srcBuf->magV[i], srcBuf->phsV[i], srcBuf->binN );
+            dsp::spec_dist::exec( inst->sdA[i], srcBuf->magV[i], srcBuf->phsV[i], srcBuf->binN_V[i] );
 
             dstBuf->readyFlV[i] = true;
             //If == 0 )
@@ -1897,7 +1900,8 @@ namespace cw
           // create a compressor object for each input channel
           for(unsigned i=0; i<srcBuf->chN; ++i)
           {
-            real_t igain, maxWnd_ms, wnd_ms, thresh, ratio, atk_ms, rls_ms, ogain, bypassFl;
+            real_t igain, maxWnd_ms, wnd_ms, thresh, ratio, atk_ms, rls_ms, ogain;
+            bool bypassFl;
 
 
             // get the compressor variable values
@@ -2033,6 +2037,184 @@ namespace cw
       };      
     }
 
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // Limiter
+    //
+    namespace limiter
+    {
+
+      enum
+      {       
+        kInPId,
+        kBypassPId,
+        kInGainPId,
+        kThreshPId,
+        kOutGainPId,
+        kOutPId,
+      };
+
+
+      typedef dsp::limiter::obj_t limiter_t;
+      
+      typedef struct
+      {
+        limiter_t** limA;
+        unsigned    limN;
+      } inst_t;
+    
+
+      rc_t create( instance_t* ctx )
+      {
+        rc_t          rc     = kOkRC;
+        const abuf_t* srcBuf = nullptr; //
+        inst_t*       inst   = mem::allocZ<inst_t>();
+        
+        ctx->userPtr = inst;
+
+        // verify that a source buffer exists
+        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",srcBuf )) != kOkRC )
+        {
+          rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",ctx->label);
+          goto errLabel;
+        }
+        else
+        {
+          // allocate pv channel array
+          inst->limN = srcBuf->chN;
+          inst->limA = mem::allocZ<limiter_t*>( inst->limN );  
+        
+          // create a limiter object for each input channel
+          for(unsigned i=0; i<srcBuf->chN; ++i)
+          {
+            real_t igain, thresh, ogain;
+            bool bypassFl;
+
+
+            // get the limiter variable values
+            if((rc = var_register_and_get( ctx, i,
+                                           kBypassPId,   "bypass",    bypassFl,
+                                           kInGainPId,   "igain",     igain,
+                                           kThreshPId,   "thresh",    thresh,
+                                           kOutGainPId,  "ogain",     ogain )) != kOkRC )
+            {
+              goto errLabel;
+            }
+
+            // create the limiter instance
+            if((rc = dsp::limiter::create( inst->limA[i], srcBuf->srate, srcBuf->frameN, igain, thresh, ogain, bypassFl)) != kOkRC )
+            {
+              rc = cwLogError(kOpFailRC,"The 'limiter' object create failed on the instance '%s'.",ctx->label);
+              goto errLabel;
+            }
+                
+          }
+          
+          // create the output audio buffer
+          if((rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, srcBuf->frameN )) != kOkRC )
+            goto errLabel;
+        }
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( instance_t* ctx )
+      {
+        rc_t rc = kOkRC;
+
+        inst_t* inst = (inst_t*)ctx->userPtr;
+        for(unsigned i=0; i<inst->limN; ++i)
+          destroy(inst->limA[i]);
+        
+        mem::release(inst->limA);
+        mem::release(inst);
+        
+        return rc;
+      }
+      
+      rc_t value( instance_t* ctx, variable_t* var )
+      {
+        rc_t    rc   = kOkRC;
+        inst_t* inst = (inst_t*)ctx->userPtr;
+        real_t  rtmp;
+        bool btmp;
+
+        if( var->chIdx != kAnyChIdx && var->chIdx < inst->limN )
+        {
+          limiter_t* c = inst->limA[ var->chIdx ];
+          
+          switch( var->vid )
+          {
+            case kBypassPId:   rc = var_get( var, btmp ); c->bypassFl=btmp; break;
+            case kInGainPId:   rc = var_get( var, rtmp ); c->igain=rtmp;   break;
+            case kOutGainPId:  rc = var_get( var, rtmp ); c->ogain=rtmp;  break;
+            case kThreshPId:   rc = var_get( var, rtmp ); c->thresh=rtmp; break;
+            default:
+              cwLogWarning("Unhandled variable id '%i' on instance: %s.", var->vid, ctx->label );
+          }
+          //printf("lim byp:%i igain:%f ogain:%f rat:%f thresh:%f atk:%i rls:%i wnd:%i : rc:%i val:%f\n",
+          //       c->bypassFl, c->inGain, c->outGain,c->ratio_num,c->threshDb,c->atkSmp,c->rlsSmp,c->rmsWndCnt,rc,tmp);
+        }
+        
+        
+        return rc;
+      }
+
+      rc_t exec( instance_t* ctx )
+      {
+        rc_t          rc     = kOkRC;
+        inst_t*       inst   = (inst_t*)ctx->userPtr;
+        const abuf_t* srcBuf = nullptr;
+        abuf_t*       dstBuf = nullptr;
+        unsigned      chN    = 0;
+        
+        // get the src buffer
+        if((rc = var_get(ctx,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
+          goto errLabel;
+
+        // get the dst buffer
+        if((rc = var_get(ctx,kOutPId, kAnyChIdx, dstBuf)) != kOkRC )
+          goto errLabel;
+
+        chN = std::min(srcBuf->chN,inst->limN);
+       
+        for(unsigned i=0; i<chN; ++i)
+        {
+          dsp::limiter::exec( inst->limA[i], srcBuf->buf + i*srcBuf->frameN, dstBuf->buf + i*srcBuf->frameN, srcBuf->frameN );
+        }
+
+        
+        
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t report( instance_t* ctx )
+      {
+        rc_t rc = kOkRC;
+        inst_t* inst = (inst_t*)ctx->userPtr;
+        for(unsigned i=0; i<inst->limN; ++i)
+        {
+          limiter_t* c = inst->limA[i];
+          cwLogInfo("%s ch:%i : bypass:%i procSmpN:%i igain:%f threshdb:%f  ogain:%f",
+                    ctx->label,i,c->bypassFl,c->procSmpCnt,c->igain,c->thresh,c->ogain );
+        }
+        
+        return rc;
+      }
+
+      class_members_t members = {
+        .create  = create,
+        .destroy = destroy,
+        .value   = value,
+        .exec    = exec,
+        .report  = report
+      };      
+    }
+    
     //------------------------------------------------------------------------------------------------------------------
     //
     // audio_delay
@@ -2177,7 +2359,159 @@ namespace cw
       
     }
 
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // DC Filter
+    //
+    namespace dc_filter
+    {
+
+      enum
+      {       
+        kInPId,
+        kBypassPId,
+        kGainPId,
+        kOutPId,
+      };
+
+
+      typedef dsp::dc_filter::obj_t dc_filter_t;
+      
+      typedef struct
+      {
+        dc_filter_t** dcfA;
+        unsigned    dcfN;
+      } inst_t;
     
+
+      rc_t create( instance_t* ctx )
+      {
+        rc_t          rc     = kOkRC;
+        const abuf_t* srcBuf = nullptr; //
+        inst_t*       inst   = mem::allocZ<inst_t>();
+        
+        ctx->userPtr = inst;
+
+        // verify that a source buffer exists
+        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",srcBuf )) != kOkRC )
+        {
+          rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",ctx->label);
+          goto errLabel;
+        }
+        else
+        {
+          // allocate channel array
+          inst->dcfN = srcBuf->chN;
+          inst->dcfA = mem::allocZ<dc_filter_t*>( inst->dcfN );  
+        
+          // create a dc_filter object for each input channel
+          for(unsigned i=0; i<srcBuf->chN; ++i)
+          {
+            real_t gain;
+            bool bypassFl;
+
+
+            // get the dc_filter variable values
+            if((rc = var_register_and_get( ctx, i,
+                                           kBypassPId,   "bypass",    bypassFl,
+                                           kGainPId,     "gain",      gain )) != kOkRC )
+            {
+              goto errLabel;
+            }
+
+            // create the dc_filter instance
+            if((rc = dsp::dc_filter::create( inst->dcfA[i], srcBuf->srate, srcBuf->frameN, gain, bypassFl)) != kOkRC )
+            {
+              rc = cwLogError(kOpFailRC,"The 'dc_filter' object create failed on the instance '%s'.",ctx->label);
+              goto errLabel;
+            }
+                
+          }
+          
+          // create the output audio buffer
+          if((rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, srcBuf->frameN )) != kOkRC )
+            goto errLabel;
+        }
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( instance_t* ctx )
+      {
+        rc_t rc = kOkRC;
+
+        inst_t* inst = (inst_t*)ctx->userPtr;
+        for(unsigned i=0; i<inst->dcfN; ++i)
+          destroy(inst->dcfA[i]);
+        
+        mem::release(inst->dcfA);
+        mem::release(inst);
+        
+        return rc;
+      }
+      
+      rc_t value( instance_t* ctx, variable_t* var )
+      {
+        return kOkRC;
+      }
+
+      rc_t exec( instance_t* ctx )
+      {
+        rc_t          rc     = kOkRC;
+        inst_t*       inst   = (inst_t*)ctx->userPtr;
+        const abuf_t* srcBuf = nullptr;
+        abuf_t*       dstBuf = nullptr;
+        unsigned      chN    = 0;
+        
+        // get the src buffer
+        if((rc = var_get(ctx,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
+          goto errLabel;
+
+        // get the dst buffer
+        if((rc = var_get(ctx,kOutPId, kAnyChIdx, dstBuf)) != kOkRC )
+          goto errLabel;
+
+        chN = std::min(srcBuf->chN,inst->dcfN);
+       
+        for(unsigned i=0; i<chN; ++i)
+        {
+          real_t gain   = val_get<real_t>( ctx, kGainPId,   i );
+          bool bypassFl = val_get<bool>(   ctx, kBypassPId, i );
+
+          dsp::dc_filter::set( inst->dcfA[i], gain, bypassFl );
+          
+          dsp::dc_filter::exec( inst->dcfA[i], srcBuf->buf + i*srcBuf->frameN, dstBuf->buf + i*srcBuf->frameN, srcBuf->frameN );
+        }
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t report( instance_t* ctx )
+      {
+        rc_t rc = kOkRC;
+        inst_t* inst = (inst_t*)ctx->userPtr;
+        for(unsigned i=0; i<inst->dcfN; ++i)
+        {
+          dc_filter_t* c = inst->dcfA[i];
+          cwLogInfo("%s ch:%i : bypass:%i gain:%f",
+                    ctx->label,i,c->bypassFl,c->gain );
+        }
+        
+        return rc;
+      }
+
+      class_members_t members = {
+        .create  = create,
+        .destroy = destroy,
+        .value   = value,
+        .exec    = exec,
+        .report  = report
+      };      
+    }
+    
+ 
     
   }
 }

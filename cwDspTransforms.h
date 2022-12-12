@@ -46,6 +46,40 @@ namespace cw
       void set_rms_wnd_ms( obj_t* p, real_t ms );
     }
 
+    namespace limiter
+    {
+      typedef struct
+      {
+        unsigned procSmpCnt;
+        real_t   igain;   // applied before thresholding
+        real_t   thresh;  // linear (0.0-1.0) threshold.
+        real_t   ogain;   // applied after thresholding
+        bool     bypassFl;
+      } obj_t;
+      
+      rc_t create( obj_t*& p, real_t srate, unsigned procSmpCnt, real_t thresh, real_t igain, real_t ogain, bool bypassFl );
+      rc_t destroy( obj_t*& pp );
+      rc_t exec( obj_t* p, const sample_t* x, sample_t* y, unsigned n );
+    }
+
+    namespace dc_filter
+    {
+      typedef struct
+      {
+        real_t d[2]; //
+        real_t b[1]; // 
+        real_t a[1]; // a[dn] feedback coeff's
+        real_t b0;   // feedforward coeff 0
+        bool   bypassFl;
+        real_t gain;
+      } obj_t;
+
+      rc_t create( obj_t*& p, real_t srate, unsigned procSmpCnt, real_t gain, bool bypassFl );
+      rc_t destroy( obj_t*& pp );
+      rc_t exec( obj_t* p, const sample_t* x, sample_t* y, unsigned n );
+      rc_t set( obj_t* p, real_t gain, bool bypassFl );
+    }
+
     namespace recorder
     {
       typedef struct

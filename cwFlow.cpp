@@ -37,7 +37,9 @@ namespace cw
       { "pv_synthesis",    &pv_synthesis::members },
       { "spec_dist",       &spec_dist::members },
       { "compressor",      &compressor::members },
+      { "limiter",         &limiter::members },
       { "audio_delay",     &audio_delay::members },
+      { "dc_filter",       &dc_filter::members },
       { "balance",         &balance::members },
       { nullptr, nullptr }
     };
