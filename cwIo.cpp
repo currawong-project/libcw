@@ -2928,6 +2928,16 @@ cw::rc_t cw::io::uiCreateFromText(   handle_t h, const char* text,  unsigned par
   return rc;
 }
 
+cw::rc_t cw::io::uiCreateFromRsrc(   handle_t h, const char* label,  unsigned parentUuId, unsigned chanId)
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc  = ui::createFromRsrc(uiH,label,parentUuId, chanId);
+  return rc;
+}
+
+
 cw::rc_t cw::io::uiCreateDiv(        handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
 {
   rc_t         rc;

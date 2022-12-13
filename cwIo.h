@@ -314,6 +314,7 @@ namespace cw
     rc_t uiCreateFromObject( handle_t h, const object_t* o, unsigned parentUuId=kInvalidId, unsigned chanId=kInvalidId, const char* eleName=nullptr);
     rc_t uiCreateFromFile(   handle_t h, const char* fn,    unsigned parentUuId=kInvalidId, unsigned chanId=kInvalidId );
     rc_t uiCreateFromText(   handle_t h, const char* text,  unsigned parentUuId=kInvalidId, unsigned chanId=kInvalidId );
+    rc_t uiCreateFromRsrc(   handle_t h, const char* label, unsigned parentUuId=kInvalidId, unsigned chanId=kInvalidId );
     
     rc_t uiCreateDiv(        handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
     rc_t uiCreateLabel(      handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
