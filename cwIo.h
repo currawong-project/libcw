@@ -27,7 +27,7 @@ namespace cw
     
     enum
     {
-      kThreadTId,
+      kThreadTId,   
       kTimerTId,
       kSerialTId,
       kMidiTId,
@@ -36,7 +36,7 @@ namespace cw
       kSockTId,
       kWebSockTId,
       kUiTId,
-      kExecTId
+      kExecTId        // callback from io::exec() which is inside the application main loop thread
     };
 
     typedef struct thread_msg_str

@@ -167,14 +167,14 @@ namespace cw
 
 
     // All callbacks to the application occur through this function
-    rc_t _ioCallback( io_t* p, bool asyncFl, const msg_t* m )
+    rc_t _ioCallback( io_t* p, bool asyncFl, const msg_t* m, rc_t* app_rc_ref=nullptr )
     {
       rc_t rc       = kOkRC;
-      rc_t rc_app   = kOkRC;
       bool unlockFl = false;
+      bool isSynchronousFl = !asyncFl;
 
-      // if this is not an async callback then lock the mutex
-      if( !asyncFl )
+      // if this is a synchronous callback then lock the mutex
+      if( isSynchronousFl )
       {
         switch(rc = mutex::lock(p->cbMutexH,p->cbMutexTimeOutMs))
         {
@@ -194,8 +194,11 @@ namespace cw
 
       // make the callback to the client
       if( rc == kOkRC )
-        rc_app = p->cbFunc( p->cbArg, m );
-
+      {
+        rc_t app_rc = p->cbFunc( p->cbArg, m );
+        if( app_rc_ref != nullptr )
+          *app_rc_ref = app_rc;
+      }
 
       // if the mutex is locked
       if( unlockFl )
@@ -205,8 +208,8 @@ namespace cw
           rc = cwLogError(rc,"io mutex callback mutex unlock failed.");          
         }
       }
-      
-      return rc_app;
+
+      return rc;
     }
 
     rc_t _ioParse( io_t* p, const object_t* cfg )
@@ -235,6 +238,7 @@ namespace cw
     //
     bool _threadFunc( void* arg )
     {
+      rc_t        rc  = kOkRC;
       thread_t*    t  = (thread_t*)arg;
       thread_msg_t tm = { .id=t->id, .arg=t->arg };
       msg_t        m;
@@ -242,7 +246,8 @@ namespace cw
       m.tid       = kThreadTId;
       m.u.thread = &tm;
     
-      _ioCallback( t->p, t->asyncFl, &m );
+      if((rc = _ioCallback( t->p, t->asyncFl, &m )) != kOkRC )
+        cwLogError(rc,"Thread app callback failed.");
 
       return true;
     }
@@ -270,13 +275,16 @@ namespace cw
 
       if( t->startedFl && !t->deletedFl )
       {
+        rc_t        rc = kOkRC;
         msg_t       m;        
         timer_msg_t tm;
         
         tm.id     = t->id;
         m.tid     = kTimerTId;
         m.u.timer = &tm;
-        _ioCallback( t->io, t->asyncFl, &m );
+        
+        if((rc = _ioCallback( t->io, t->asyncFl, &m )) != kOkRC )
+          cwLogError(rc,"Timer app callback failed.");
       }
 
       return !t->deletedFl;
@@ -365,7 +373,8 @@ namespace cw
       if( serialCfgIdx > p->serialN )
         cwLogError(kAssertFailRC,"The serial cfg index %i is out of range %i in serial port callback.", serialCfgIdx, p->serialN );
       else
-      {      
+      {
+        rc_t rc = kOkRC;
         const serialPort_t* sp = p->serialA + serialCfgIdx;
         msg_t m;
         serial_msg_t sm;
@@ -377,7 +386,8 @@ namespace cw
         m.tid      = kSerialTId;
         m.u.serial = &sm;
 
-        _ioCallback( p, sp->asyncFl,  &m );
+        if((rc = _ioCallback( p, sp->asyncFl,  &m )) != kOkRC )
+          cwLogError(rc,"Serial port app callback failed.");
       }
       
     }
@@ -558,13 +568,15 @@ namespace cw
         midi_msg_t            mm;
         const midi::packet_t* pkt = pktArray + i;        
         io_t*                 p   = reinterpret_cast<io_t*>(pkt->cbDataPtr);
+        rc_t                  rc  = kOkRC;
 
         
         mm.pkt   = pkt;
         m.tid    = kMidiTId;
         m.u.midi = &mm;
 
-        _ioCallback( p, p->midiAsyncFl, &m );
+        if((rc = _ioCallback( p, p->midiAsyncFl, &m )) !=kOkRC )
+          cwLogError(rc,"MIDI app callback failed.");
 
         /*
         for(unsigned j=0; j<pkt->msgCnt; ++j)
@@ -652,7 +664,10 @@ namespace cw
         m.tid    = kSockTId;
         m.u.sock = &sm;
 
-        _ioCallback( p, p->sockA[ sockArray_index ].asyncFl, &m );
+        rc_t rc;
+        
+        if((rc = _ioCallback( p, p->sockA[ sockArray_index ].asyncFl, &m )) != kOkRC )
+          cwLogError(rc,"Socket app callback failed.");
       }
     }
     
@@ -937,6 +952,7 @@ namespace cw
       rc_t rc = kOkRC;
       if( agd != nullptr && ag != nullptr && cwIsFlag(agd->flags,kMeterFl))
       {
+        rc_t app_rc = kOkRC;
         msg_t m;
         m.tid             = kAudioMeterTId;
         m.u.audioGroupDev = agd;
@@ -945,8 +961,10 @@ namespace cw
         audio::buf::meter(p->audioBufH, agd->devIdx, audioBufFlags, agd->meterA, agd->chCnt );
 
         // callback the application with the current meter values
-        rc = _ioCallback( p, ag->asyncFl, &m);
+        if((rc = _ioCallback( p, ag->asyncFl, &m, &app_rc )) != kOkRC )
+          cwLogError(rc,"Audio meter app callback failed.");
         
+        rc = app_rc;
       }
 
       return rc;
@@ -1055,7 +1073,8 @@ namespace cw
           _audioGroupProcSampleBufs( ag->p, ag, kAudioGroupGetBuf, true );
           _audioGroupProcSampleBufs( ag->p, ag, kAudioGroupGetBuf, false );
 
-          _ioCallback( ag->p, ag->asyncFl, &msg);
+          if((rc = _ioCallback( ag->p, ag->asyncFl, &msg)) != kOkRC )
+            cwLogError(rc,"Audio app callback failed %i.",ag->asyncFl);
 
           _audioGroupProcSampleBufs( ag->p, ag, kAudioGroupAdvBuf, true );
           _audioGroupProcSampleBufs( ag->p, ag, kAudioGroupAdvBuf, false );
@@ -1344,6 +1363,7 @@ namespace cw
         {
           if(( rc = node->getv(
                 "enableFl",    p->audioGroupA[i].enableFl,
+                "asyncFl",     p->audioGroupA[i].asyncFl,
                 "label",       p->audioGroupA[i].msg.label,
                 "id",          p->audioGroupA[i].msg.userId,
                 "srate",       p->audioGroupA[i].msg.srate,
@@ -1687,11 +1707,16 @@ namespace cw
     {
       io_t* p = (io_t*)cbArg;
       msg_t r;
+      rc_t rc = kOkRC;
+      rc_t app_rc = kOkRC;
       
       r.tid  = kUiTId;
       r.u.ui = { .opId=opId, .wsSessId=wsSessId, .parentAppId=parentAppId, .uuId=uuId, .appId=appId, .chanId=chanId, .value=v };
 
-      return _ioCallback( p, p->uiAsyncFl, &r );
+      if((rc = _ioCallback( p, p->uiAsyncFl, &r, &app_rc )) != kOkRC )
+        cwLogError(rc,"UI app callback failed.");
+
+      return app_rc;
     }
 
     rc_t _uiConfig( io_t* p, const object_t* c, const ui::appIdMap_t* mapA, unsigned mapN )
@@ -1957,7 +1982,12 @@ cw::rc_t cw::io::stop( handle_t h )
   io_t* p = _handleToPtr(h);
   p->quitFl.store(true);
 
+  // stop the audio devices
   _audioDeviceStartStop(p,false);
+
+  // clear the UI
+  if( p->wsUiH.isValid() )
+    uiDestroyElement(h,ui::kRootUuId);
   
   return kOkRC;
 }
