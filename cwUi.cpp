@@ -2,6 +2,7 @@
 #include "cwLog.h"
 #include "cwCommonImpl.h"
 #include "cwMem.h"
+#include "cwTime.h"
 #include "cwFileSys.h"
 #include "cwThread.h"
 #include "cwObject.h"
@@ -90,11 +91,12 @@ namespace cw
       unsigned             recvBufN;
       unsigned             recvBufIdx;
       unsigned             recvShiftN;
-      
+      object_t*            uiRsrc;
+
       unsigned*            sessA;       // sessA[ sessN ] array of wsSessId's
       unsigned             sessN;
       unsigned             sessAllocN;
-      
+
     } ui_t;
 
     ui_t* _handleToPtr( handle_t h )
@@ -141,8 +143,9 @@ namespace cw
       rc_t rc = kOkRC;
 
       // free each element
-      for(unsigned i=0; i<p->eleN; ++i)
-        _destroy_element( p->eleA[i] );
+      if( p->eleA != nullptr )
+        for(unsigned i=0; i<p->eleN; ++i)
+          _destroy_element( p->eleA[i] );
       
 
       appIdMapRecd_t* m = p->appIdMap;
@@ -158,6 +161,9 @@ namespace cw
       mem::release(p->eleA);
       mem::release(p->buf);
       mem::release(p->recvBuf);
+
+      if( p->uiRsrc != nullptr )
+        p->uiRsrc->free();
       
       mem::release(p);
 
@@ -323,11 +329,11 @@ namespace cw
         if( wsSessId != kInvalidId )
           rc = p->sendCbFunc( p->sendCbArg, wsSessId, msg, msgByteN );
         else
-          {
-            for(unsigned i=0; i<p->sessN; ++i)
-              rc = p->sendCbFunc( p->sendCbArg, p->sessA[i], msg, msgByteN );
-            
-          }
+        {
+          for(unsigned i=0; i<p->sessN; ++i)
+            rc = p->sendCbFunc( p->sendCbArg, p->sessA[i], msg, msgByteN );
+          
+        }
       }
       
       return rc;
@@ -434,7 +440,7 @@ namespace cw
     rc_t _transmitTree( ui_t* p, unsigned wsSessId, ele_t* ele )
     {
       rc_t rc;
-      
+
       // transmit the parent (unelss 'ele' is the root
       if(ele->uuId == kRootUuId || (rc = _transmitOneEle(p,wsSessId,ele)) == kOkRC )
       {
@@ -605,7 +611,7 @@ namespace cw
           rc = kOkRC;
         else
         {
-          rc = cwLogError(rc,"The UI element name could not be read.");
+          rc = cwLogError(rc,"The UI element 'name' could not be read.");
         
           goto errLabel;
         }
@@ -978,13 +984,59 @@ namespace cw
         if( snprintf(mbuf,mbufN,mFmt,opStr,uuId,vbuf) >= mbufN-1 )
           return cwLogError(kBufTooSmallRC,"The msg buffer is too small.");
 
-        //p->sendCbFunc(p->sendCbArg,wsSessId,mbuf,strlen(mbuf));
         _websockSend(p,wsSessId,mbuf);
       }
 
       return rc;
     }
 
+    rc_t _sendValue( ui_t* p, unsigned wsSessId, unsigned uuId, const value_t& value )
+    {
+      rc_t rc = kOkRC;
+      switch( value.tid )
+      {
+        case kBoolTId:
+          rc = _sendValue<int>(p,wsSessId,uuId,"%i",value.u.b?1:0);
+          break;
+          
+        case kIntTId:
+           rc = _sendValue<int>(p,wsSessId,uuId,"%i",value.u.i);
+           break;
+
+        case kUIntTId:
+           rc = _sendValue<unsigned>(p,wsSessId,uuId,"%i",value.u.u);
+          break;
+          
+        case kFloatTId:
+           rc = _sendValue<float>(p,wsSessId,uuId,"%f",value.u.f);
+          break;
+          
+        case kDoubleTId:
+           rc = _sendValue<double>(p,wsSessId,uuId,"%f",value.u.d);
+          break;
+          
+        case kStringTId:
+          rc = _sendValue<const char*>(p,kInvalidId,uuId,"\"%s\"",value.u.s,"value",strlen(value.u.s)+10);
+          break;
+          
+        default:
+          assert(0);
+      }
+
+      return rc;
+    }
+
+
+    void _reflect_value_msg( ui_t* p, unsigned wsSessId, ele_t* ele, const value_t& value )
+    {
+      // send a 'value' message to all sessions except 'wsSessId'.
+      for(unsigned i=0; i<p->sessN; ++i)
+        if( p->sessA[i] != wsSessId )
+          _sendValue(p,p->sessA[i],ele->uuId, value );
+    }
+
+
+    
     rc_t _onNewRemoteUi( ui_t* p, unsigned wsSessId )
     {
       rc_t rc = kOkRC;
@@ -1060,7 +1112,7 @@ namespace cw
       memcpy(p->recvBuf + p->recvBufIdx, msg, msgByteN );
 
       p->recvBufIdx += msgByteN;
-      
+
       return kOkRC;
     }
 
@@ -1138,6 +1190,7 @@ cw::rc_t cw::ui::create(
   p->recvBufN   = fmtBufByteN;
   p->recvBufIdx = 0;
   p->recvShiftN = 0;
+  p->uiRsrc     = uiRsrc->duplicate();
   
   // create the root element
   if((ele = _createBaseEle(p, nullptr, kRootAppId, kInvalidId, "uiDivId" )) == nullptr || ele->uuId != kRootUuId )
@@ -1151,9 +1204,13 @@ cw::rc_t cw::ui::create(
     goto errLabel;
 
   if( uiRsrc != nullptr )
-    if((rc = _createFromObj( p, uiRsrc, kInvalidId, kRootUuId, kInvalidId )) != kOkRC )
-      rc = cwLogError(rc,"Create from UI resource failed.");
+  {
+    const object_t* main_obj = nullptr;
 
+    if((main_obj = uiRsrc->find( "main")) != nullptr )    
+      if((rc = _createFromObj( p, main_obj, kInvalidId, kRootUuId, kInvalidId )) != kOkRC )
+        rc = cwLogError(rc,"Create from UI resource failed.");
+  }
   
   h.set(p);
 
@@ -1222,7 +1279,7 @@ cw::rc_t cw::ui::onDisconnect( handle_t h, unsigned wsSessId )
   ui_t* p = _handleToPtr(h);
 
   p->uiCbFunc( p->uiCbArg, wsSessId, kDisconnectOpId, kInvalidId, kInvalidId, kInvalidId, kInvalidId, nullptr );
-
+  
   // erase the disconnected session id by shrinking the array
   for(unsigned i=0; i<p->sessN; ++i)
     if( p->sessA[i] == wsSessId )
@@ -1237,6 +1294,7 @@ cw::rc_t cw::ui::onDisconnect( handle_t h, unsigned wsSessId )
   
   return kOkRC;
 }
+
 
 cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* void_msg, unsigned msgByteN )
 {
@@ -1296,7 +1354,6 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* void_msg,
 
     // parse the 'opId' from the message
     opId = _labelToOpId(msg);
-
   
     switch( opId )
     {
@@ -1314,7 +1371,10 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* void_msg,
         else
         {
           p->uiCbFunc( p->uiCbArg, wsSessId, opId, ele->logical_parent->appId, ele->uuId, ele->appId, ele->chanId, &value );
-                  
+
+          // reflect the UI element value state to other wsSessions
+          _reflect_value_msg( p, wsSessId, ele, value );
+          
         }
         break;
 
@@ -1367,6 +1427,8 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* void_msg,
                 
     } // switch opId
   }
+  
+  
  errLabel:
   return rc;
 }
@@ -1519,6 +1581,22 @@ cw::rc_t cw::ui::createFromText( handle_t h, const char* text,  unsigned parentU
   
   return rc;
 }
+
+cw::rc_t cw::ui::createFromRsrc(   handle_t h, const char* label, unsigned parentUuId, unsigned chanId)
+{
+ 
+  ui_t*     p  = _handleToPtr(h);
+  rc_t      rc = kOkRC;
+
+  if( p->uiRsrc == nullptr )
+    rc = cwLogError(kInvalidStateRC,"The UI resource '%s' was not found because the UI sub-system was not given a resource file.",cwStringNullGuard(label));
+  else
+    rc = createFromObject( h, p->uiRsrc,  parentUuId, chanId, label );
+    
+  return rc;
+  
+}
+
    
 cw::rc_t cw::ui::createDiv( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title  )
 { return _createOneEle( _handleToPtr(h), uuIdRef, "div", kInvalidId, parentUuId, eleName, appId, chanId, clas, title ); }
@@ -1851,39 +1929,64 @@ cw::rc_t cw::ui::registerAppIdMap(  handle_t h, const appIdMap_t* map, unsigned 
 cw::rc_t cw::ui::sendValueBool( handle_t h, unsigned uuId, bool value )
 {
   ui_t* p  = _handleToPtr(h);
-  return _sendValue<int>(p,kInvalidId,uuId,"%i",value?1:0);
+  value_t v = { .tid=kBoolTId };
+  v.u.b = value;
+  return _sendValue(p,kInvalidId,uuId,v);
+  
+  //return _sendValue<int>(p,kInvalidId,uuId,"%i",value?1:0);
 }
 
 cw::rc_t cw::ui::sendValueInt( handle_t h, unsigned uuId, int value )
 {
   ui_t* p  = _handleToPtr(h);
-  return _sendValue<int>(p,kInvalidId,uuId,"%i",value);  
+  value_t v = { .tid=kIntTId };
+  v.u.i = value;
+  return _sendValue(p,kInvalidId,uuId,v);
+  
+  //return _sendValue<int>(p,kInvalidId,uuId,"%i",value);  
 }
 
 cw::rc_t cw::ui::sendValueUInt( handle_t h, unsigned uuId, unsigned value )
 {
   ui_t* p  = _handleToPtr(h);
-  return _sendValue<unsigned>(p,kInvalidId,uuId,"%i",value);
+
+  value_t v = { .tid=kUIntTId };
+  v.u.u = value;
+  return _sendValue(p,kInvalidId,uuId,v);
+  
+  //return _sendValue<unsigned>(p,kInvalidId,uuId,"%i",value);
 }
 
 cw::rc_t cw::ui::sendValueFloat( handle_t h, unsigned uuId, float value )
 {
   ui_t* p  = _handleToPtr(h);
-  return _sendValue<float>(p,kInvalidId,uuId,"%f",value);
+  value_t v = { .tid=kFloatTId };
+  v.u.f = value;
+  return _sendValue(p,kInvalidId,uuId,v);
+  
+  //return _sendValue<float>(p,kInvalidId,uuId,"%f",value);
   
 }
 
 cw::rc_t cw::ui::sendValueDouble( handle_t h, unsigned uuId, double value )
 {
   ui_t* p  = _handleToPtr(h);
-  return _sendValue<double>(p,kInvalidId,uuId,"%f",value);
+  value_t v = { .tid=kDoubleTId };
+  v.u.d = value;
+  return _sendValue(p,kInvalidId,uuId,v);
+  
+  //return _sendValue<double>(p,kInvalidId,uuId,"%f",value);
 }
 
 cw::rc_t cw::ui::sendValueString( handle_t h, unsigned uuId, const char* value )
 {
   ui_t* p  = _handleToPtr(h);
+  value_t v = { .tid=kStringTId };
+  v.u.s = value;
+  return _sendValue(p,kInvalidId,uuId,v);
+  
   // +10 allows for extra value buffer space for double quotes and slashed
-  return _sendValue<const char*>(p,kInvalidId,uuId,"\"%s\"",value,"value",strlen(value)+10);
+  //return _sendValue<const char*>(p,kInvalidId,uuId,"\"%s\"",value,"value",strlen(value)+10);
 }
 
 void cw::ui::report( handle_t h )
@@ -1928,6 +2031,8 @@ namespace cw
         uiCallback_t      uiCbFunc;
         websock::cbFunc_t wsCbFunc;
         unsigned          wsTimeOutMs;
+        unsigned          idleMsgPeriodMs;
+        time::spec_t      lastRecvMsgTimeStamp;
       } ui_ws_t;
 
       ui_ws_t* _handleToPtr( handle_t h )
@@ -1969,12 +2074,15 @@ namespace cw
           default:
             cwLogError(kInvalidIdRC,"An invalid websock msgTypeId (%i) was encountered",msg_type);
         }
+
+          time::get(p->lastRecvMsgTimeStamp);
+        
       }
 
       rc_t _webSockSend( void* cbArg, unsigned wsSessId, const void* msg, unsigned msgByteN )
       {
         ui_ws_t* p = static_cast<ui_ws_t*>(cbArg);
-        return websock::send( p->wsH, kUiProtocolId, kInvalidId, msg, msgByteN );
+        return websock::send( p->wsH, kUiProtocolId, wsSessId, msg, msgByteN );
       }
       
     }
@@ -1998,8 +2106,15 @@ cw::rc_t cw::ui::ws::parseArgs(  const object_t& o, args_t& args, const char* ob
       return cwLogError(kLabelNotFoundRC,"The ui configuration label '%s' was not found.", cwStringNullGuard(object_label));
   
   if((rc = op->getv(
-        "physRootDir", args.physRootDir, "dfltPageFn", args.dfltPageFn, "port", args.port, "rcvBufByteN", args.rcvBufByteN,
-        "xmtBufByteN", args.xmtBufByteN, "fmtBufByteN", args.fmtBufByteN, "websockTimeOutMs", args.wsTimeOutMs, "uiCfgFn", uiCfgFn )) != kOkRC )
+        "physRootDir", args.physRootDir,
+        "dfltPageFn", args.dfltPageFn,
+        "port", args.port,
+        "rcvBufByteN", args.rcvBufByteN,
+        "xmtBufByteN", args.xmtBufByteN,
+        "fmtBufByteN", args.fmtBufByteN,
+        "websockTimeOutMs", args.wsTimeOutMs,
+        "idleMsgPeriodMs", args.idleMsgPeriodMs,
+        "uiCfgFn", uiCfgFn )) != kOkRC )
   {
     rc = cwLogError(rc,"'ui' cfg. parse failed.");
   }
@@ -2045,36 +2160,38 @@ cw::rc_t cw::ui::ws::create( handle_t& h,
   websock::cbFunc_t wsCbFunc  )
 {
   return create(h,
-    args.port,
-    args.physRootDir,
-    cbArg,
-    uiCbFunc,
-    uiRsrc,
-    appIdMapA,
-    appIdMapN,
-    wsCbFunc,
-    args.dfltPageFn,
-    args.wsTimeOutMs,
-    args.rcvBufByteN,
-    args.xmtBufByteN,
-    args.fmtBufByteN );
+                args.port,
+                args.physRootDir,
+                cbArg,
+                uiCbFunc,
+                uiRsrc,
+                appIdMapA,
+                appIdMapN,
+                wsCbFunc,
+                args.dfltPageFn,
+                args.wsTimeOutMs,
+                args.idleMsgPeriodMs,
+                args.rcvBufByteN,
+                args.xmtBufByteN,
+                args.fmtBufByteN );
 }
 
   
 cw::rc_t cw::ui::ws::create(  handle_t& h,
-  unsigned          port,
-  const char*       physRootDir,
-  void*             cbArg,
-  uiCallback_t      uiCbFunc,
-  const object_t*   uiRsrc,
-  const appIdMap_t* appIdMapA,
-  unsigned          appIdMapN,
-  websock::cbFunc_t wsCbFunc,
-  const char*       dfltPageFn,
-  unsigned          websockTimeOutMs,
-  unsigned          rcvBufByteN,
-  unsigned          xmtBufByteN,
-  unsigned          fmtBufByteN )
+                              unsigned          port,
+                              const char*       physRootDir,
+                              void*             cbArg,
+                              uiCallback_t      uiCbFunc,
+                              const object_t*   uiRsrc,
+                              const appIdMap_t* appIdMapA,
+                              unsigned          appIdMapN,
+                              websock::cbFunc_t wsCbFunc,
+                              const char*       dfltPageFn,
+                              unsigned          websockTimeOutMs,
+                              unsigned          idleMsgPeriodMs,
+                              unsigned          rcvBufByteN,
+                              unsigned          xmtBufByteN,
+                              unsigned          fmtBufByteN )
 {
   rc_t rc = kOkRC;
 
@@ -2111,7 +2228,10 @@ cw::rc_t cw::ui::ws::create(  handle_t& h,
   p->uiCbFunc    = uiCbFunc;
   p->wsCbFunc    = wsCbFunc;
   p->wsTimeOutMs = websockTimeOutMs;
-
+  p->idleMsgPeriodMs = idleMsgPeriodMs;
+  // initialize the last received msg
+  time::get(p->lastRecvMsgTimeStamp);
+  
   h.set(p);
   
  errLabel:
@@ -2144,13 +2264,20 @@ cw::rc_t cw::ui::ws::exec( handle_t h )
 {
   rc_t     rc = kOkRC;
   ui_ws_t* p  = _handleToPtr(h);
-
+  time::spec_t t;
+  
   if((rc = websock::exec( p->wsH, p->wsTimeOutMs )) != kOkRC)
     cwLogError(rc,"The UI websock execution failed.");
 
   // make the idle callback
-  ui::onReceive( p->uiH, kInvalidId, "idle", strlen("idle")+1 );
-        
+  time::get(t);
+
+  if( time::elapsedMs(p->lastRecvMsgTimeStamp,t) > p->idleMsgPeriodMs )
+  {
+    ui::onReceive( p->uiH, kInvalidId, "idle", strlen("idle")+1 );
+    p->lastRecvMsgTimeStamp = t;
+  }
+  
   return rc;
 }
 
@@ -2158,6 +2285,8 @@ cw::rc_t cw::ui::ws::onReceive( handle_t h, unsigned protocolId, unsigned sessio
 {
   ui_ws_t* p = _handleToPtr(h);
   _webSockCb( p, protocolId, sessionId, msg_type, msg, byteN );
+
+  
   return kOkRC;
 }
 

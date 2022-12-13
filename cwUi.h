@@ -66,11 +66,13 @@ namespace cw
 
     // Create multiple UI elements from an object_t representation.
     // The channel id of all elements created from the object will be assigned 'chanId'.
-    // The 'fieldName' string identifies
-    rc_t createFromObject( handle_t h, const object_t* o, unsigned parentUuId=kInvalidId, unsigned chanId=kInvalidId, const char* cfgFieldName=nullptr);
+    // The 'label' string identifies a child wihtin the outer object (e.g. o,fn,text, create( ... uiRsrc, ...)) which should be used to create the element.
+    rc_t createFromObject( handle_t h, const object_t* o, unsigned parentUuId=kInvalidId, unsigned chanId=kInvalidId, const char* label=nullptr);
     rc_t createFromFile(   handle_t h, const char* fn,    unsigned parentUuId=kInvalidId, unsigned chanId=kInvalidId);
     rc_t createFromText(   handle_t h, const char* text,  unsigned parentUuId=kInvalidId, unsigned chanId=kInvalidId);
-
+    // This function uses 'label' to locate the child of the internal uiRsrc (passed to 'create()') as the element configuration resource.
+    rc_t createFromRsrc(   handle_t h, const char* label, unsigned parentUuId=kInvalidId, unsigned chanId=kInvalidId);
+    
     //
     // Create Sincgle UI elements on the UI instance identified by wsSessId.
     //
@@ -182,35 +184,38 @@ namespace cw
         unsigned        rcvBufByteN;
         unsigned        xmtBufByteN;
         unsigned        fmtBufByteN;
-        unsigned        wsTimeOutMs;        
+        unsigned        wsTimeOutMs;
+        unsigned        idleMsgPeriodMs; // min period without messages before an idle message is generated
       } args_t;
 
       rc_t parseArgs( const object_t& o, args_t& args, const char* object_label="ui" );
       rc_t releaseArgs( args_t& args );
 
       rc_t create( handle_t& h,
-        const args_t&     args,
-        void*             cbArg,
-        uiCallback_t      uiCbFunc,
-        const object_t*   uiRsrc           = nullptr,
-        const appIdMap_t* appIdMapA        = nullptr,
-        unsigned          appIdMapN        = 0,
-        websock::cbFunc_t wsCbFunc         = nullptr );
+                   const args_t&     args,
+                   void*             cbArg,
+                   uiCallback_t      uiCbFunc,
+                   const object_t*   uiRsrc           = nullptr,
+                   const appIdMap_t* appIdMapA        = nullptr,
+                   unsigned          appIdMapN        = 0,
+                   websock::cbFunc_t wsCbFunc         = nullptr );
 
       rc_t create(  handle_t& h,
-        unsigned          port,
-        const char*       physRootDir,
-        void*             cbArg,
-        uiCallback_t      uiCbFunc,
-        const object_t*   uiRsrc           = nullptr,
-        const appIdMap_t* appIdMapA        = nullptr,
-        unsigned          appIdMapN        = 0,
-        websock::cbFunc_t wsCbFunc         = nullptr,        
-        const char*       dfltPageFn       = "index.html",        
-        unsigned          websockTimeOutMs = 50,
-        unsigned          rcvBufByteN      = 1024,
-        unsigned          xmtBufByteN      = 1024,
-        unsigned          fmtBufByteN      = 4096 );
+                    unsigned          port,
+                    const char*       physRootDir,
+                    void*             cbArg,
+                    uiCallback_t      uiCbFunc,
+                    const object_t*   uiRsrc           = nullptr,
+                    const appIdMap_t* appIdMapA        = nullptr,
+                    unsigned          appIdMapN        = 0,
+                    websock::cbFunc_t wsCbFunc         = nullptr,        
+                    const char*       dfltPageFn       = "index.html",        
+                    unsigned          websockTimeOutMs = 50,
+                    unsigned          idleMsgPeriodMs  = 50,
+                    unsigned          rcvBufByteN      = 1024,
+                    unsigned          xmtBufByteN      = 1024,
+                    unsigned          fmtBufByteN      = 4096                    
+                    );
 
       rc_t destroy( handle_t& h );
 
