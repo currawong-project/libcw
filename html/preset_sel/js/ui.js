@@ -328,9 +328,9 @@ function ui_create_ele( parent_ele, ele_type, d, dfltClassName )
 	//console.log("Created: " + ele_type  + " parent:" + d.parentUuId + " id:" + ele.id + " appId:" + ele.appId)
 	
 	parent_ele.appendChild(ele);
-
 	
-	
+	if( d.hasOwnProperty('order') )
+	    ui_set_order_key(ele,d.order)
 	
     }
     return ele
@@ -683,7 +683,10 @@ function _ui_set_number_range( ele, d )
 
 function ui_set_number_value( ele, value )
 {
-    if( ele.minValue <= value && value <= ele.maxValue    )
+    var min_ok_fl = (!ele.hasOwnProperty('minValue')) || (value >= ele.minValue)
+    var max_ok_fl = (!ele.hasOwnProperty('maxValue')) || (value <= ele.maxValue)
+    
+    if( min_ok_fl && max_ok_fl    )
     {
 	ele.value     = value;
 	if( ele.decpl == 0 )
@@ -1252,7 +1255,9 @@ function ws_form_url(urlSuffix)
 
 function main()
 {
-    rootEle = dom_id_to_ele(_rootId);
+    d = { "className":"uiAppDiv", "uuId":_rootId }
+    rootEle = ui_create_div( document.body, d )
+    //rootEle = dom_id_to_ele(_rootId);
     rootEle.uuId = 0;
     rootEle.id = _nextEleId;
     _nextEleId += 1;
