@@ -236,8 +236,6 @@ namespace cw
       preset_sel::handle_t psH;
       io_flow::handle_t    ioFlowH;
       
-      unsigned tmp;
-
       double   crossFadeSrate;
       unsigned crossFadeCnt;
 
@@ -1017,7 +1015,7 @@ namespace cw
       unsigned   fragBegLoc        = 0;
 
       // create the UI object
-      if((rc = io::uiCreateFromObject( app->ioH, app->frag_panel_cfg,  fragListUuId, fragChanId )) != kOkRC )
+      if((rc = io::uiCreateFromRsrc( app->ioH, "frag_panel",  fragListUuId, fragChanId )) != kOkRC )
       {
         rc = cwLogError(rc,"The fragments UI object creation failed.");
         goto errLabel;
@@ -1243,12 +1241,6 @@ namespace cw
       rc_t     rc          = kOkRC;
       unsigned midiEventN  = 0;
       bool     firstLoadFl = !app->scoreH.isValid();
-      //unsigned minLoc      = firstLoadFl ? 0 : app->minLoc;
-      //unsigned maxLoc      = firstLoadFl ? 0 : app->maxLoc;
-      
-      // if the score is already loaded
-      //if( app->scoreH.isValid() )
-      //  return rc;
 
       cwLogInfo("Loading");
       _set_status(app,"Loading...");
@@ -1258,13 +1250,6 @@ namespace cw
       if((rc = _load_piano_score(app,midiEventN)) != kOkRC )
         goto errLabel;
 
-      /*
-      if( !firstLoadFl)
-      {
-        minLoc  = std::max(minLoc,app->minLoc);
-        maxLoc  = std::min(maxLoc,app->maxLoc);
-      }
-      */
       
       // reset the timestamp tracker
       track_loc_reset( app->psH );
@@ -1274,23 +1259,22 @@ namespace cw
       {
         unsigned begPlayLocUuId = io::uiFindElementUuId(app->ioH, kBegPlayLocNumbId);
         unsigned endPlayLocUuId = io::uiFindElementUuId(app->ioH, kEndPlayLocNumbId);
-        
-        unsigned end_play_loc    = app->end_play_loc==0 ? app->maxLoc : app->end_play_loc;
-        unsigned beg_play_loc    = app->minLoc <= app->beg_play_loc && app->beg_play_loc <= app->maxLoc ? app->beg_play_loc : app->minLoc;
-        
-        io::uiSetNumbRange( app->ioH, begPlayLocUuId, app->minLoc, app->maxLoc, 1, 0, app->minLoc );
-        io::uiSetNumbRange( app->ioH, endPlayLocUuId, app->minLoc, app->maxLoc, 1, 0, app->maxLoc );
 
-        //io::uiSendValue( app->ioH, begPlayLocUuId, app->minLoc);
-        //io::uiSendValue( app->ioH, endPlayLocUuId, app->maxLoc);
+        if( app->end_play_loc == 0 )
+          app->end_play_loc = app->maxLoc;
 
+        if( !(app->minLoc <= app->beg_play_loc && app->beg_play_loc <= app->maxLoc) )
+          app->beg_play_loc = app->minLoc;
         
-        io::uiSendValue( app->ioH, begPlayLocUuId, beg_play_loc);
-        io::uiSendValue( app->ioH, endPlayLocUuId, end_play_loc);
+        io::uiSetNumbRange( app->ioH, begPlayLocUuId, app->minLoc, app->maxLoc, 1, 0, app->beg_play_loc );
+        io::uiSetNumbRange( app->ioH, endPlayLocUuId, app->minLoc, app->maxLoc, 1, 0, app->end_play_loc );
 
-        
+        io::uiSendValue( app->ioH, begPlayLocUuId, app->beg_play_loc);
+        io::uiSendValue( app->ioH, endPlayLocUuId, app->end_play_loc);
+
         // enable the insert 'End Loc' number box since the score is loaded
         io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kInsertLocId ), true );
+
       }
       
       // update the current event and event count
@@ -1314,15 +1298,17 @@ namespace cw
       
       
       cwLogInfo("'%s' loaded.",app->scoreFn);
-      
-    errLabel:
 
+    errLabel:
+ 
       _update_event_ui( app );
 
       if( rc != kOkRC )
         _set_status(app,"Load failed.");
       else
         _set_status(app,"%i MIDI events loaded.",midiEventN);
+
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kLoadBtnId ), false );
 
       return rc;
     }
@@ -1673,11 +1659,12 @@ namespace cw
           break;
             
         case kReportBtnId:
-          preset_sel::report( app->psH );
+          //preset_sel::report( app->psH );
           //io_flow::apply_preset( app->ioFlowH, 2000.0, app->tmp==0 ? "a" : "b");
           //app->tmp = !app->tmp;
           //io_flow::print(app->ioFlowH);
           //midi_record_play::save_csv(app->mrpH,"/home/kevin/temp/mrp_1.csv");
+          printf("%i %i\n",app->beg_play_loc,app->end_play_loc);
           break;
 
         case kSaveBtnId:
@@ -1773,7 +1760,6 @@ namespace cw
           break;
           
         case kFragWetDryGainId:
-          //printf("UI wet/dry:%f\n",m.value->u.d);
           _on_ui_frag_value( app, m.uuId, m.value->u.d );
           break;
           
@@ -1902,6 +1888,14 @@ namespace cw
           _on_echo_master_value( app, preset_sel::kMasterSyncDelayMsVarId, m.uuId );
           break;
 
+        case kBegPlayLocNumbId:
+          io::uiSendValue( app->ioH, m.uuId, app->beg_play_loc );
+          break;
+          
+        case kEndPlayLocNumbId:
+          io::uiSendValue( app->ioH, m.uuId, app->end_play_loc );
+          break;
+
           /*
         case kHalfPedalPedalVel:
         case kHalfPedalDelayMs:
@@ -2023,6 +2017,9 @@ namespace cw
           
       case io::kUiTId:
         rc = _ui_callback(app,m->u.ui);
+        break;
+
+      case io::kExecTId:
         break;
 
       default:
