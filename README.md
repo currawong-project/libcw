@@ -1,9 +1,73 @@
+# Functionality
+## libcw:
 
-
-# To Do
+- Remove dependency on locally built websockets library.
 
 - Remove applications from the libcw folder and put them in their
-own folders.
+own folders. (breakout libcw from application / reorganize project)
+Allow ui.js to be shared by all apps.
+
+
+## UI:
+- Add support for custom controls
+- Document the UI resource file format.
+- Document the UI client/server protocol.
+1. The message formats to and from the server and the javascript client.
+2. When the messages are sent.
+
+- UI: Add an option to print the UI elment information as they are created.
+This is a useful way to see if id maps are working.
+Print: ele name, uuid, appId and parent name, uuid, appId
+
+
+## Flow:
+
+- create automatic UI for proc's.
+- create the ability to script sub-networks.
+- create true plug-in architecture - requires a C only interface.
+
+
+# TODO:
+
+## libcw
+- Fix the time functions to make them more convenient and C++ish.
+- libcw: document basic functionality: flow, UI, Audio
+
+## Flow
+
+- Implement MIDI processors.
+- Implement flow procs for all libcm processsors.
+- Create default system wide sample rate.
+- Allow gain to be set on any audio input or output.
+- flow metering object with resetable clip indicator and audio I/O meters
+- indicate drop-outs that are detected from the audio IO system
+- allow a pre/post network before and after cross fader
+- allow modifiable FFT window and hop length as part of preset 
+- add selectable audio output file object to easily test for out of time problems
+
+- Add attributes to proc variables:
+  1. 'init' this variable is only used to initialize the proc. It cannot be changed during runtime.  (e.g. audio_split.map)
+  2. 'scalar' this variable may only be a scalar.  It can never be placed in a list.  (e.g. sine_tone.chCnt)
+  3. 'multi' this src variable can be repeated and it's label is always suffixed with an integer. 
+  4. 'src' this variable must be connected to a source.
+  5. 'min','max' for numeric variables.
+  6. 'channelize' The proc should instantiate one internal process for each input channel. (e.g. spec_dist )
+  
+- Create a var args version of 'var_get()' in cwFlowTypes.h.
+
+- add attribute list to instances: [ init_only, scalar_only, print="print values", ui ]
+- why are multiple records given in the 'args:{}' attribute?
+
+
+## UI:
+
+- Fix crash when '=' is used as a pair separator rather than ':'.
+cwUi is not noticing when a UI resource file fails to parse correctly.
+This may be a problem in cwObject or in cwUI.
+
+- Fix bug where leaving out the ending bracket for the first 'row' div in ui.cfg
+causes the next row to be included in the first row, and no error to be generated,
+even though the resource object is invalid (i.e. there is a missing brace).
 
 - The UI needs to be better documented. Start by giving clear names
 to the various parts: Browser, UI Manager, UI Server, Application.
@@ -19,6 +83,10 @@ In otherwords the parent/child pairs shoud actually exists.
 Currently changes and improvements to one version of ui.js cannot be automatically
 shared.
 
+- uiSetValue() should be optionally reflected back to the app with kValueOpId messages.
+This way all value change messages could be handled from one place no matter
+if the value changes originate on the GUI or from the app.
+
 - The ui manageer should buffer the current valid value of a given control
 so that the value can be accessed synchronously. This would prevent the application
 from having to explicitely store all UI values and handle all the 'value' and 'echo'
@@ -26,9 +94,16 @@ request.  It would support a model where the UI values get changed and then
 read by the app (e.g. getUiValue( appId, valueRef)) just prior to being used.
 As it is the UI values that are on the interface cannot be accessed synchronously
 instead the app is forced to notice all 'value' changes and store the last legal value.
+(12/22: Given that the cwUi.cpp _transmitTree() function appears to the current
+value of each control to new remote WS Sessions - the value may actually already
+be available.  Examine how this works.  Is 'value' and 'attribute' like 'order'?)
+
+- Using the 'blob' functionality should be the default way for tying UI elements to program model.
+  Rewrite the UI test case to reflect this.
 
 - Add an ui::appIdToUuId() that returns the first matching appId, and then
 optionally looks for duplicates as an error checking scheme. 
+
 
 - The ui eleA[] data structure should be changed to a tree 
 because the current expandable array allows empty slots which need to be checked
@@ -36,55 +111,63 @@ for whenever the list is iterated.  It is also very inefficient to delete from t
 eleA[] because an exhaustive search is required to find all the children of the
 element to be deleted.
 
+- UI needs a special UUID (not kInvalidId) to specify the 'root' UI element. See note in cwUi._createFromObj()
+
+
+## Audio:
+
+
 - Should a warning be issued by audioBuf functions which return a set of values:
 muteFlags(),toneFlags(), gain( ... gainA) but where the size of the dest array
 does not match the actual number of channesl?
 
-
-
-- Any socket function which takes a IP/port address should have a version which also takes a sockaddr_in*.
-- Fix the time functions to make them more convenient and C++ish.
-- implement floating point UI numbers
-- UI needs a special UUID (not kInvalidId) to specify the 'root' UI element. See note in cwUi._createFromObj()
-- Look at 'BUG' warnings in cwNumericConvert.h.
-- cwObject must be able to parse without dynamic memory allocation into a fixed buffer
-- cwObject must be able to be composed without dynamic memory allocation or from a fixed buffer.
-
-- cwWebsock is allocating memory on send().
-- cwWebsock: if the size of the recv and xmt buffer, as passed form the protocolArray[], is too small send() will fail without an error message.
-This is easy to reproduce by simply decreasing the size of the buffers in the protocol array.
-
-- Clean up the cwObject namespace - add an 'object' namespace inside 'cw'
-
-- Add underscore to the member variables of object_t.
-
-
-- logDefaultFormatter() in cwLog.cpp uses stack allocated memory in a way that could easily be exploited.
-
-- lexIntMatcher() in cwLex.cpp doesn't handle 'e' notation correctly. See note in code.
-
-- numeric_convert() in cwNumericConvert.h could be made more efficient using type_traits.
-
-- numeric_convert() d_min is NOT zero, it's smallest positive number, this fails when src == 0.
-  min value is now set to zero.
-
-
-
-- thread needs setters and getters for internal variables
-
-- change cwMpScNbQueue so that it does not require 'new'.
-
 - cwAudioBuf.cpp - the ch->fn in update() does not have the correct memory fence.
-
-- Change file names to match object names
 
 - Replace 24 bit read/write in cwAudioFile.cpp
 
 - Remove Audio file operations that have been superceded by 'flow' framework.
 
 
-- (DONE) change all NULL's to nullptr
+## Socket
+- Any socket function which takes a IP/port address should have a version which also takes a sockaddr_in*.
 
+
+## Websocket
+
+- cwWebsock is allocating memory on send().
+- cwWebsock: if the size of the recv and xmt buffer, as passed form the protocolArray[], is too small send() will fail without an error message.
+This is easy to reproduce by simply decreasing the size of the buffers in the protocol array.
+
+## Object
+- Look at 'BUG' warnings in cwNumericConvert.h.
+- cwObject must be able to parse without dynamic memory allocation into a fixed buffer
+- cwObject must be able to be composed without dynamic memory allocation or from a fixed buffer.
+
+
+- Clean up the cwObject namespace - add an 'object' namespace inside 'cw'
+
+- Add underscore to the member variables of object_t.
+
+- numeric_convert() in cwNumericConvert.h could be made more efficient using type_traits.
+
+- numeric_convert() d_min is NOT zero, it's smallest positive number, this fails when src == 0.
+  min value is now set to zero.
+
+- Change file names to match object names
+
+- Improve performance of load parser. Try parsing a big JSON file and notice how poorly it performs.
+
+
+## Misc
+- logDefaultFormatter() in cwLog.cpp uses stack allocated memory in a way that could easily be exploited.
+
+- lexIntMatcher() in cwLex.cpp doesn't handle 'e' notation correctly. See note in code.
+
+- thread needs setters and getters for internal variables
+
+- change cwMpScNbQueue so that it does not require 'new'.
+
+- (DONE) change all NULL's to nullptr
 - (DONE) implement kTcpFl in cwTcpSocket.cpp
 
 # UI Control Creation Protocol
