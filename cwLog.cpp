@@ -178,8 +178,11 @@ void cw::log::defaultFormatter( void* cbArg, logOutputCbFunc_t outFunc, void* ou
 
   // don't print the function,file,line when this is an 'info' msg.
   if( level == kInfo_LogLevel )
+  {
     loStr = "";
-
+    syStr = "";
+  }
+  
   // dont' print the rc msg if this is info or debug
   if( level < kWarning_LogLevel )
     rcStr = "";
