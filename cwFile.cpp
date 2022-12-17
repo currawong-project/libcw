@@ -463,7 +463,7 @@ cw::rc_t    cw::file::copy(
 
 }
 
-cw::rc_t cw::file::backup( const char* dir, const char* name, const char* ext )
+cw::rc_t cw::file::backup( const char* dir, const char* name, const char* ext, const char* dst_dir )
 {
   rc_t               rc      = kOkRC;
   char*              newName = nullptr;
@@ -490,6 +490,9 @@ cw::rc_t cw::file::backup( const char* dir, const char* name, const char* ext )
     goto errLabel;
   }
 
+  if( dst_dir == nullptr  )
+    dst_dir = pp->dirStr;
+
   // iterate until a unique file name is found
   for(n=0; 1; ++n)
   {
@@ -499,7 +502,7 @@ cw::rc_t cw::file::backup( const char* dir, const char* name, const char* ext )
     newName = mem::printf(newName,"%s_%i",pp->fnStr,n);
     
     // form the new file name into a complete path
-    if((newFn = filesys::makeFn(pp->dirStr,newName,pp->extStr,nullptr)) == nullptr )
+    if((newFn = filesys::makeFn(dst_dir,newName,pp->extStr,nullptr)) == nullptr )
     {
       rc = cwLogError(kOpFailRC,"A backup file name could not be formed for the file '%s'.",cwStringNullGuard(newName));
       goto errLabel;
