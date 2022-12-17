@@ -219,8 +219,8 @@ char* cw::filesys::vMakeVersionedFn(const char* dir, const char* fn_prefix, cons
 {
   char*          fn          = nullptr;
   const unsigned max_version = 1024;
-  
-  for(unsigned version = 0; version<max_version; ++version)
+  unsigned version;
+  for(version = 0; version<max_version; ++version)
   {
     char name[ PATH_MAX ];
     va_list vl0;
@@ -237,6 +237,12 @@ char* cw::filesys::vMakeVersionedFn(const char* dir, const char* fn_prefix, cons
 
     mem::release(fn);
   }
+
+  if( version >= max_version )
+    cwLogError(kInvalidStateRC,"%i versioned files already exist - another one cannot be created.",max_version);
+
+  if( fn == nullptr )
+    cwLogError(kOpFailRC,"Create versioned filename failed.");
 
   return fn;
 }
