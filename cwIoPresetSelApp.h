@@ -5,7 +5,7 @@ namespace cw
 {
   namespace preset_sel_app
   {
-    rc_t main( const object_t* cfg );
+    rc_t main( const object_t* cfg, int argc, const char* argv[] );
   }
 }
 

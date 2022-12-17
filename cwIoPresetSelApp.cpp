@@ -2,8 +2,9 @@
 #include "cwLog.h"
 #include "cwCommonImpl.h"
 #include "cwMem.h"
-#include "cwObject.h"
 #include "cwText.h"
+#include "cwNumericConvert.h"
+#include "cwObject.h"
 #include "cwFileSys.h"
 #include "cwFile.h"
 #include "cwTime.h"
@@ -258,7 +259,50 @@ namespace cw
       
     } app_t;
 
-    rc_t _parseCfg(app_t* app, const object_t* cfg, const object_t*& params_cfgRef )
+    rc_t _apply_command_line_args( app_t* app, int argc, const char* argv[] )
+    {
+      rc_t rc = kOkRC;
+      
+      for(int i=0; i<argc ; i+=2)
+      {
+        if( strcmp(argv[i],"record_fn")==0 )
+        {
+          app->record_fn = argv[i+1];
+          goto found_fl;
+        }
+        
+        if( strcmp(argv[i],"score_fn")==0 )
+        {
+          app->scoreFn = argv[i+1];
+          goto found_fl;
+        }
+
+        if( strcmp(argv[i],"beg_play_loc")==0 )
+        {
+          string_to_number( argv[i+1], app->beg_play_loc );
+          goto found_fl;
+        }
+
+        if( strcmp(argv[i],"end_play_loc")==0 )
+        {
+          string_to_number( argv[i+1], app->end_play_loc );
+          goto found_fl;
+        }
+
+        rc = cwLogError(kSyntaxErrorRC,"The command line argument: '%s' was not recognized.",argv[i]);
+        goto errLabel;
+
+      found_fl:
+        printf("Command line override '%s=%s' .\n",argv[i],argv[i+1]);
+        
+        
+      }
+
+    errLabel:
+      return rc;
+    }
+    
+    rc_t _parseCfg(app_t* app, const object_t* cfg, const object_t*& params_cfgRef, int argc, const char* argv[] )
     {
       rc_t rc = kOkRC;
       const char* flow_proc_dict_fn = nullptr;
@@ -285,6 +329,8 @@ namespace cw
         rc = cwLogError(kSyntaxErrorRC,"Preset Select App configuration parse failed.");
         goto errLabel;
       }
+
+      _apply_command_line_args(app,argc,argv);
 
       if((app->scoreFn    = filesys::expandPath( app->scoreFn )) == nullptr )
       {
@@ -323,7 +369,7 @@ namespace cw
         rc = cwLogError(rc,"Unable to create the output backup directory:%s.",cwStringNullGuard(app->record_backup_dir));
       }
 
-      app->insertLoc = kInvalidId; // initialize 'insertLoc' to be invalid
+      app->insertLoc = kInvalidId; // initialize 'insertLoc' to be invalid 
       
     errLabel:
       
@@ -1352,8 +1398,14 @@ namespace cw
 
     bool _is_valid_insert_loc( app_t* app, unsigned loc )
     {
+      // the minimum possible value for the insert location is 1 because the previous end loc must be
+      // less than the insert location (BUT what if we are inserting location 0???? A: loc 0 is invalid
+      //  ???? FIX the loc values1 ....
+      if( loc < 1 )
+        return false;
+      
       bool fl0 = _find_loc(app,loc) != nullptr;
-      bool fl1 = preset_sel::is_fragment_end_loc( app->psH, loc)==false;
+      bool fl1 = preset_sel::is_fragment_end_loc( app->psH, loc-1)==false;
 
       return fl0 && fl1;
     }
@@ -1416,10 +1468,12 @@ namespace cw
 
     rc_t _on_ui_insert_btn( app_t* app )
     {
-      rc_t                      rc     = kOkRC;
-      unsigned                  fragId = kInvalidId;
-      loc_map_t*                loc_ts = nullptr;
-      const preset_sel::frag_t* f      = nullptr;;
+      rc_t                      rc      = kOkRC;
+      unsigned                  fragId  = kInvalidId;
+      loc_map_t*                loc_ts  = nullptr;
+      const preset_sel::frag_t* f       = nullptr;
+      unsigned                  end_loc = app->insertLoc - 1;
+      
 
       // verify that the insertion location is valid
       if( app->insertLoc == kInvalidId )
@@ -1429,28 +1483,28 @@ namespace cw
       }
 
       // verify that the end-loc is not already in use - this shouldn't be possible because the 'insert' btn should be disabled if the 'insertLoc' is not valid
-      if( preset_sel::is_fragment_end_loc( app->psH, app->insertLoc ) )
+      if( preset_sel::is_fragment_end_loc( app->psH, end_loc ) )
       {
         rc = cwLogError(kInvalidIdRC,"The new fragment's 'End Loc' is already in use.");
         goto errLabel;
       }
 
       // get the timestamp assoc'd with the the 'end-loc'
-      if((loc_ts = _find_loc( app, app->insertLoc )) == nullptr )
+      if((loc_ts = _find_loc( app, end_loc )) == nullptr )
       {
-        rc = cwLogError(kOpFailRC,"The time stamp associated with the 'End Loc' '%i' could not be found.",app->insertLoc);
+        rc = cwLogError(kOpFailRC,"The time stamp associated with the 'End Loc' '%i' could not be found.",app->insertLoc-1);
         goto errLabel;
       }
 
       // create the data record associated with the new fragment.
-      if((rc = preset_sel::create_fragment( app->psH, app->insertLoc, loc_ts->timestamp, fragId)) != kOkRC )
+      if((rc = preset_sel::create_fragment( app->psH, end_loc, loc_ts->timestamp, fragId)) != kOkRC )
       {
         rc = cwLogError(rc,"Fragment data record create failed.");
         goto errLabel;
       }
       
       // create the fragment UI panel
-      if((rc = _create_frag_ui( app, app->insertLoc, fragId )) != kOkRC )
+      if((rc = _create_frag_ui( app, end_loc, fragId )) != kOkRC )
       {
         rc = cwLogError(rc,"Fragment UI panel create failed.");
         goto errLabel;
@@ -2049,7 +2103,7 @@ namespace cw
 }
 
 
-cw::rc_t cw::preset_sel_app::main( const object_t* cfg )
+cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* argv[] )
 {
 
   rc_t rc;
@@ -2057,7 +2111,7 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg )
   const object_t* params_cfg = nullptr;
   
   // Parse the configuration
-  if((rc = _parseCfg(&app,cfg,params_cfg)) != kOkRC )
+  if((rc = _parseCfg(&app,cfg,params_cfg,argc,argv)) != kOkRC )
     goto errLabel;
         
   // create the io framework instance
