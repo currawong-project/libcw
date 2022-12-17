@@ -57,6 +57,32 @@ namespace cw
     { return handleToPtr<handle_t,flow_t>(h); }
 
 
+    rc_t _is_var_flag_set( const object_t* var_flags_obj, const char* flag_label, const char* classLabel, const char* varLabel, bool&is_set_flag_ref )
+    {
+      rc_t rc = kOkRC;
+      
+      is_set_flag_ref = false;
+
+      if( var_flags_obj != nullptr )
+      {
+        for(unsigned k=0; k<var_flags_obj->child_count(); ++k)
+        {
+          const object_t* tag_obj = var_flags_obj->child_ele(k);
+          const char* tag = nullptr;
+          if( tag_obj != nullptr &&  tag_obj->is_string() && (rc=tag_obj->value(tag))==kOkRC && tag != nullptr )
+          {
+            if( strcmp(tag,flag_label) == 0 )
+              is_set_flag_ref = true;
+          }
+          else                  
+          {
+            rc = cwLogError(kSyntaxErrorRC,"An invalid or non-string value was found in a flow class '%s' variable:'%s' 'flags' field.",classLabel,varLabel);
+          }
+        }
+      }
+      return rc;
+    }
+    
     rc_t  _parse_class_cfg(flow_t* p, const library_t* library, const object_t* classCfg)
     {
       rc_t rc = kOkRC;
@@ -136,6 +162,7 @@ namespace cw
           for(unsigned j=0; j<varD->child_count(); ++j)
           {
             const object_t* var_obj   = varD->child_ele(j);
+            const object_t* var_flags_obj = nullptr;
             const char*     type_str  = nullptr;
             unsigned        type_flag = 0;
             bool            srcVarFl  = false;
@@ -161,14 +188,20 @@ namespace cw
             }
 
             // get the variable description 
-            if((rc = vd->cfg->getv_opt("srcFl", srcVarFl,
-                                       "srcOptFl", srcOptFl,
+            if((rc = vd->cfg->getv_opt("flags", var_flags_obj,
                                        "value",vd->val_cfg)) != kOkRC )
             {
               rc = cwLogError(rc,"Parsing optional fields failed on class:%s variable: '%s'.", cd->label, vd->label );
               goto errLabel;
             }
-            
+
+            // check for 'src' flag
+            if((rc = _is_var_flag_set( var_flags_obj, "src", cd->label, vd->label, srcVarFl )) != kOkRC )
+              goto errLabel;
+
+            // check for 'src_opt' flag
+            if((rc = _is_var_flag_set( var_flags_obj, "src_opt", cd->label, vd->label, srcOptFl )) != kOkRC )
+              goto errLabel;
           
             vd->type |= type_flag;
 
