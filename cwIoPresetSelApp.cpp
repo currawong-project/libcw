@@ -209,9 +209,9 @@ namespace cw
       const char*     record_dir;
       const char*     record_fn;
       const char*     record_fn_ext;
+      const char*     record_backup_dir;
       const char*     scoreFn;
       const object_t* midi_play_record_cfg;
-      const object_t* frag_panel_cfg;
       const object_t* presets_cfg;
       object_t* flow_proc_dict;
       const object_t* flow_cfg;
@@ -276,7 +276,6 @@ namespace cw
                                     "score_fn",         app->scoreFn,
                                     "flow_proc_dict_fn",flow_proc_dict_fn,
                                     "midi_play_record", app->midi_play_record_cfg,
-                                    "frag_panel",       app->frag_panel_cfg,
                                     "presets",          app->presets_cfg,
                                     "crossFadeSrate",   app->crossFadeSrate,
                                     "crossFadeCount",   app->crossFadeCnt,
@@ -284,6 +283,7 @@ namespace cw
                                     "end_play_loc",     app->end_play_loc)) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"Preset Select App configuration parse failed.");
+        goto errLabel;
       }
 
       if((app->scoreFn    = filesys::expandPath( app->scoreFn )) == nullptr )
@@ -298,17 +298,30 @@ namespace cw
         goto errLabel;
       }
 
+      if((app->record_backup_dir = filesys::makeFn(app->record_dir,"backup",nullptr,nullptr)) == nullptr )
+      {
+        rc = cwLogError(kInvalidArgRC,"The record backup directory path is invalid.");
+        goto errLabel;
+      }
+
       if((rc = objectFromFile( flow_proc_dict_fn, app->flow_proc_dict )) != kOkRC )
       {
         rc = cwLogError(kInvalidArgRC,"The flow proc file '%s' parse failed.",app->flow_proc_dict);
         goto errLabel;
       }
-      
-      // verify that the output directory exists
-      if((rc = filesys::isDir(app->record_dir)) != kOkRC )
-        if((rc = filesys::makeDir(app->record_dir)) != kOkRC )
-          rc = cwLogError(rc,"Unable to create the base output directory:%s.",cwStringNullGuard(app->record_dir));
 
+      // verify that the output directory exists
+      if((rc = filesys::makeDir(app->record_dir)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Unable to create the base output directory:%s.",cwStringNullGuard(app->record_dir));
+        goto errLabel;
+      }
+
+      // verify that the output backup directory exists
+      if((rc = filesys::makeDir(app->record_backup_dir)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Unable to create the output backup directory:%s.",cwStringNullGuard(app->record_backup_dir));
+      }
 
       app->insertLoc = kInvalidId; // initialize 'insertLoc' to be invalid
       
@@ -354,6 +367,7 @@ namespace cw
       if( app.flow_proc_dict != nullptr )
         app.flow_proc_dict->free();
       
+      mem::release((char*&)app.record_backup_dir);
       mem::release((char*&)app.record_dir);
       mem::release((char*&)app.scoreFn);
       preset_sel::destroy(app.psH);
@@ -1127,14 +1141,21 @@ namespace cw
     {
       rc_t  rc = kOkRC;
       char* fn = nullptr;
-
+      
       // form the output file name
-      if((fn = filesys::makeFn(app->record_dir, app->record_fn, app->record_fn_ext, NULL)) == nullptr )
+      if((fn = filesys::makeFn(app->record_dir, app->record_fn, app->record_fn_ext, nullptr)) == nullptr )
       {
         rc = cwLogError(kOpFailRC,"The preset select filename could not formed.");
         goto errLabel;
       }
 
+      // backup the current output file to versioned copy
+      if((rc = file::backup( app->record_dir, app->record_fn, app->record_fn_ext, app->record_backup_dir )) != kOkRC )
+      {
+        rc = cwLogError(kOpFailRC,"The preset select backup to '%s' failed.",cwStringNullGuard(app->record_backup_dir));
+        goto errLabel;
+      }
+  
       // write the preset data file
       if((rc = preset_sel::write( app->psH, fn)) != kOkRC )
       {
@@ -1293,7 +1314,7 @@ namespace cw
           goto errLabel;
         }
 
-      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kLoadBtnId ), true );
+      //io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kLoadBtnId ), true );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kSaveBtnId ), true );
       
       
@@ -1399,13 +1420,6 @@ namespace cw
       unsigned                  fragId = kInvalidId;
       loc_map_t*                loc_ts = nullptr;
       const preset_sel::frag_t* f      = nullptr;;
-
-      // verify that frag panel resource object is initiailized
-      if( app->frag_panel_cfg == nullptr)
-      {
-        rc = cwLogError(kInvalidStateRC,"The fragment UI resource was not initialized.");
-        goto errLabel;
-      }
 
       // verify that the insertion location is valid
       if( app->insertLoc == kInvalidId )
@@ -1626,10 +1640,10 @@ namespace cw
       _update_event_ui(app);
 
       // disable start and stop buttons until a score is loaded
-      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStartBtnId ), false );
-      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStopBtnId ),  false );
-      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kLiveCheckId ),  false );
-      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kSaveBtnId ),  false );
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStartBtnId ),  false );
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStopBtnId ),   false );
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kLiveCheckId ), false );
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kSaveBtnId ),   false );
       
       const preset_sel::frag_t* f = preset_sel::get_fragment_base( app->psH );
       for(; f!=nullptr; f=f->link)
