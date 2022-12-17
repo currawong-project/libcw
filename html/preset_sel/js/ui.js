@@ -1237,6 +1237,11 @@ function ws_on_open()
 function ws_on_close()
 {
     set_app_title( "Disconnected", "title_disconnected" );
+
+    // remove the body of UI
+    var rootEle = dom_id_to_ele(_rootId)
+    if( rootEle != null )
+      document.body.removeChild(  rootEle )
 }
 
 function ws_form_url(urlSuffix)
@@ -1257,7 +1262,6 @@ function main()
 {
     d = { "className":"uiAppDiv", "uuId":_rootId }
     rootEle = ui_create_div( document.body, d )
-    //rootEle = dom_id_to_ele(_rootId);
     rootEle.uuId = 0;
     rootEle.id = _nextEleId;
     _nextEleId += 1;
