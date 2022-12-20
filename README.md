@@ -1,3 +1,10 @@
+
+Plan:
+1. Add MIDI processors - this may be complicated by cross fading schem.
+2. Add subnets. (see outline below)
+3. Add auto-UI (this will require a separate app).
+
+
 # Functionality
 ## libcw:
 
@@ -25,6 +32,37 @@ Print: ele name, uuid, appId and parent name, uuid, appId
 - create automatic UI for proc's.
 - create the ability to script sub-networks.
 - create true plug-in architecture - requires a C only interface.
+
++ Subnet scheme:
+```
+{
+    balanced_mix: {
+
+	doc: "This is a two channel balancer network.",
+
+    network: {
+		ain:    { class: port, source:merge.in0, doc:"Audio input."},
+		ain_alt:{ class: port, source.merge.in1, doc:"Alternate audio input."},
+		bal_in  { class: port, type: real,       doc:"Mix balance control." },
+				    
+		bal:    { class: balance,     in:{ in:bal_in.out } },	    
+		merge:  { class: audio_merge, in:{ in.0:ain, in.1:ain_alt } }
+		gain:   { class: audio_gain   in:{ in:merge.out, gain:bal.out } },
+	    
+		aout:   { class: port, type: audio, in:{ gain.out } }
+	  }
+    } 
+}
+```
+- Create a class description by parsing the subnet and converting 
+the 'port' instances into a variable definitions.
+
+- Port instances are just proc's that have a single variable but do not implement
+any of the processing functions.  The variables act as 'pass-through' variables
+that connect variables outside the subnet to variables inside the subnet.
+
+- The subnet itself will be held inside an 'instance_t' and will pass
+on 'exec()' calls to the internal instance processor chain.
 
 
 # TODO:
@@ -60,6 +98,29 @@ Print: ele name, uuid, appId and parent name, uuid, appId
 
 
 ## UI:
+
+- Notes on UI id's:
+1. The appId, when set via an enum, is primarily for identifying a UI element in a callback switch statement.
+There is no requirement that they be unique - although it may be useful that they are guaranteed to be unique
+or warned when they are not. Their primary use is to identify a UI element or class of UI
+elements in a callback switch statement. Note that the callback also contains the uuId of the element
+which can then be used to send information back, or change the state of, the specific element which 
+generated the callback. In this case there is never a need to do a appId->uuId lookup because the
+callback contains both items.  
+
+2. UUid's are the preferred way to interact from the app to the UI because they are unique
+and the fastest way to lookup the object that represents the element.
+
+3. The 'blob' is useful for storing application information that is associated with an UI element.
+Using the 'blob' can avoid having to maintain a data structure which parallels the internal
+UI data structure for application related data.  The 'blob' can be accessed efficiently via the uuId.
+
+4. The most labor intensive GUI related accesses are changing the state of a UI element outside
+of a callback from that GUI element.  In this case it may be advantageous to store UUID's of elements
+which affect one anothers state within each others blobs.  Alternatively use 
+uiElementChildCout() and uiElementChildIndexToUuid() or uiElementChildAppIdToUuid() to 
+iterate child elements given a parent element uuid.
+
 
 - Fix crash when '=' is used as a pair separator rather than ':'.
 cwUi is not noticing when a UI resource file fails to parse correctly.
