@@ -1207,7 +1207,9 @@ cw::rc_t cw::ui::create(
   {
     const object_t* main_obj = nullptr;
 
-    if((main_obj = uiRsrc->find( "main")) != nullptr )    
+    if((main_obj = uiRsrc->find( "main")) == nullptr )
+      cwLogWarning("The UI resource does not have a 'main' element.");
+    else
       if((rc = _createFromObj( p, main_obj, kInvalidId, kRootUuId, kInvalidId )) != kOkRC )
         rc = cwLogError(rc,"Create from UI resource failed.");
   }
