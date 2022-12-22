@@ -151,7 +151,7 @@ namespace cw
       
       double   dd     = (double)frameN / net->fadeSmpN; // change in gain over frameN samples
       double   bf     = net->fadeGain; // starting gain
-      double   ef;
+      double   ef     = 0;
       
       switch( net->stateId )
       {

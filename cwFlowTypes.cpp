@@ -177,7 +177,7 @@ namespace cw
           else
           {
             printf("fbuf: chN:%i srate:%8.1f ", v->u.fbuf->chN, v->u.fbuf->srate );
-            for(unsigned i; i<v->u.fbuf->chN; ++i)
+            for(unsigned i=0; i<v->u.fbuf->chN; ++i)
               printf("(binN:%i hopSmpN:%i) ", v->u.fbuf->binN_V[i], v->u.fbuf->hopSmpN_V[i] );
           }
           break;

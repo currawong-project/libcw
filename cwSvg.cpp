@@ -425,7 +425,7 @@ namespace cw
     {
       rc_t           rc;
       file::handle_t fH;
-      char*          s;
+      char*          s = nullptr;
 
       if( p->cssL == nullptr )
         return kOkRC;
