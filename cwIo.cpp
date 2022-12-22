@@ -214,7 +214,7 @@ namespace cw
 
     rc_t _ioParse( io_t* p, const object_t* cfg )
     {
-      rc_t rc;
+      rc_t rc = kOkRC;
       const object_t* ioCfg;
       if((ioCfg = cfg->find("io")) == nullptr )
       {
@@ -2427,7 +2427,7 @@ const cw::io::sample_t* cw::io::audioDeviceMeters( handle_t h, unsigned devIdx, 
 {
   rc_t rc = kOkRC;
   io_t* p = _handleToPtr(h);
-  sample_t* meterA;
+  sample_t* meterA = nullptr;
   
   audioDev_t* ad;
   if((ad = _audioDeviceIndexToRecd(p,devIdx)) == nullptr )
