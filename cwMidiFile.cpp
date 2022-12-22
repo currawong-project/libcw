@@ -1437,7 +1437,7 @@ cw::rc_t cw::midi::file::setVelocity( handle_t h, unsigned uid, uint8_t vel )
   if((r = _uidToMsg(mfp,uid)) == NULL )
     return cwLogError(kInvalidArgRC,"The MIDI file uid %i could not be found.",uid);
 
-  if( midi::isNoteOn(r->status) == false && midi::isNoteOff(r->status,(uint8_t)0)==false )
+  if( midi::isNoteOnStatus(r->status) == false && midi::isNoteOff(r->status,(uint8_t)0)==false )
     return cwLogError(kInvalidArgRC,"Cannot set velocity on a non-Note-On/Off msg.");
   
   chMsg_t* chm = (chMsg_t*)r->u.chMsgPtr;
@@ -2033,7 +2033,7 @@ namespace cw
                       tmp->u.chMsgPtr->d1);    
         }
 
-        if( midi::isChStatus(tmp->status) && midi::isNoteOn(tmp->status) && (tmp->u.chMsgPtr->d1>0) )
+        if( midi::isChStatus(tmp->status) && midi::isNoteOn(tmp->status,tmp->u.chMsgPtr->d1) )
           cwLogPrintH(logH," %4s ",midi::midiToSciPitch(tmp->u.chMsgPtr->d0,NULL,0));
     
   
@@ -2082,7 +2082,7 @@ namespace cw
                       m->u.chMsgPtr->d1);    
         }
 
-        bool fl = midi::isChStatus(m->status) && midi::isNoteOn(m->status) && (m->u.chMsgPtr->d1>0);
+        bool fl = midi::isChStatus(m->status) && midi::isNoteOn(m->status,m->u.chMsgPtr->d1);
         cw::file::printf(fH,",%4s",fl ? midi::midiToSciPitch(m->u.chMsgPtr->d0,NULL,0) : "");
     
   
@@ -2195,7 +2195,7 @@ cw::rc_t cw::midi::file::genPlotFile( const char* midiFn, const char* outFn )
     return cwLogError(rc,"Unable to create the file '%s'.",cwStringNullGuard(outFn));
 
   for(i=0; i<mN; ++i)
-    if( (m[i]!=NULL) && midi::isChStatus(m[i]->status) && midi::isNoteOn(m[i]->status) && (m[i]->u.chMsgPtr->d1>0) )
+    if( (m[i]!=NULL) && midi::isChStatus(m[i]->status) && midi::isNoteOn(m[i]->status,m[i]->u.chMsgPtr->d1) )
       cw::file::printf(fH,"n %f %f %i %s\n",m[i]->amicro/1000000.0,m[i]->u.chMsgPtr->durMicros/1000000.0,m[i]->uid,midi::midiToSciPitch(m[i]->u.chMsgPtr->d0,NULL,0));
 
  errLabel:

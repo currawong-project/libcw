@@ -96,7 +96,7 @@ namespace cw
         } u;
       } trackMsg_t;
 
-      inline bool isNoteOn(const trackMsg_t* m)     { return midi::isNoteOn(m->status) && (m->u.chMsgPtr->d1>0); }
+      inline bool isNoteOn(const trackMsg_t* m)     { return midi::isNoteOn( m->status,m->u.chMsgPtr->d1); }
       inline bool isNoteOff(const trackMsg_t* m)    { return midi::isNoteOff(m->status,m->u.chMsgPtr->d1); }
 
       inline bool isPedalUp(const trackMsg_t* m)    { return midi::isPedalUp(    m->status, m->u.chMsgPtr->d0, m->u.chMsgPtr->d1); }

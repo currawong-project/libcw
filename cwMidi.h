@@ -87,8 +87,9 @@ namespace cw
     template< typename T> bool isStatus( T s )   { return  (kNoteOffMdId <= (s) /*&& ((unsigned)(s)) <= kSysRtResetMdId*/ ); }
     template< typename T> bool isChStatus( T s ) { return  (kNoteOffMdId <= (s) && (s) <  kSysExMdId); }
 
-    template< typename T> bool isNoteOn( T s )        { return ( kNoteOnMdId <= (s) && (s) <= (kNoteOnMdId + kMidiChCnt) ); }
-    template< typename T> bool isNoteOff( T s, T d1 ) { return ( (isNoteOn(s) && (d1)==0) || (kNoteOffMdId <= (s) && (s) <= (kNoteOffMdId + kMidiChCnt)) ); }
+    template< typename T> bool isNoteOnStatus( T s )        { return ( kNoteOnMdId <= (s) && (s) <= (kNoteOnMdId + kMidiChCnt) ); }
+    template< typename T> bool isNoteOn( T s, T d1 )  { return ( (isNoteOnStatus(s) && (d1)!=0) ); }
+    template< typename T> bool isNoteOff( T s, T d1 ) { return ( (isNoteOnStatus(s) && (d1)==0) || (kNoteOffMdId <= (s) && (s) <= (kNoteOffMdId + kMidiChCnt)) ); }
     template< typename T> bool isCtl( T s )           { return ( kCtlMdId <= (s) && (s) <= (kCtlMdId + kMidiChCnt) ); }
 
     template< typename T> bool isSustainPedal(     T s, T d0 )      { return ( kCtlMdId <= (s) && (s) <= (kCtlMdId + kMidiChCnt) && (d0)== kSustainCtlMdId ); }

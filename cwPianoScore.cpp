@@ -239,9 +239,9 @@ namespace cw
     rc_t _parse_event_list( score_t* p, const object_t* cfg )
     {
       rc_t            rc;
-      const object_t* eventL;
+      const object_t* eventL = nullptr;
       
-      if((rc = cfg->getv( "evtL", eventL )) != kOkRC || eventL->is_list()==false )
+      if((rc = cfg->getv( "evtL", eventL )) != kOkRC || eventL==nullptr || eventL->is_list()==false )
         rc = cwLogError( rc, "Unable to locate the 'evtL' configuration tag.");
       else
       {
@@ -494,7 +494,7 @@ unsigned  cw::score::loc_to_next_note_on_measure( handle_t h, unsigned locId )
   const event_t* e = _loc_to_event(p,locId);
   
   while( e != nullptr )
-    if( midi::isNoteOn(e->status))
+    if( midi::isNoteOn(e->status,e->d1))
       return e->meas;
       
   return kInvalidId;
