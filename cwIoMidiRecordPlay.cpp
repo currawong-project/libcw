@@ -32,7 +32,9 @@ namespace cw
       uint8_t       status;
       uint8_t       d0;
       uint8_t       d1;
-        
+
+      unsigned      chordNoteCnt; // count of notes in same chord as this note (only set on Note-on messages)
+      
     } am_midi_msg_t;
 
     typedef struct midi_device_str
@@ -64,6 +66,9 @@ namespace cw
       bool           damper_dead_band_enable_fl;
       unsigned       damper_dead_band_min_value;
       unsigned       damper_dead_band_max_value;
+
+      bool           scale_chord_notes_enable_fl;
+      double         scale_chord_notes_factor;
       
     } midi_device_t;
 
@@ -159,6 +164,41 @@ namespace cw
       return rc;
     }
 
+    void _set_chord_note_count( am_midi_msg_t* m0, const am_midi_msg_t* m, unsigned chordNoteCnt )
+    {
+      for(; m0<m; ++m0)
+        if( midi::isNoteOn(m0->status,m0->d1) )
+          m0->chordNoteCnt = chordNoteCnt;
+      
+    }
+    
+    void _set_chord_note_count( midi_record_play_t* p )
+    {
+      unsigned             chordNoteCnt = 1;
+      am_midi_msg_t*       m0           = p->msgArray;
+      am_midi_msg_t*       m            = nullptr;
+      
+      for(unsigned i=1; i<p->msgArrayN; ++i)
+      {
+        m = p->msgArray + i;
+        if( midi::isNoteOn(m->status,m->d1) )
+        {
+          if( time::isEqual(m0->timestamp, m->timestamp) )
+            ++chordNoteCnt;
+          else
+          {
+            _set_chord_note_count(m0,m,chordNoteCnt);
+          
+            chordNoteCnt=1;
+            m0 = m;
+          }
+        }
+      }
+
+      _set_chord_note_count(m0,m,chordNoteCnt);
+      
+    }
+
     rc_t _parseCfg(midi_record_play_t* p, const object_t& cfg )
     {
       rc_t rc = kOkRC;
@@ -211,7 +251,9 @@ namespace cw
                 "force_damper_down_velocity", p->midiDevA[i].force_damper_down_velocity,
                 "damper_dead_band_enable_fl", p->midiDevA[i].damper_dead_band_enable_fl,
                 "damper_dead_band_min_value", p->midiDevA[i].damper_dead_band_min_value,
-                "damper_dead_band_max_value", p->midiDevA[i].damper_dead_band_max_value)) != kOkRC )
+                "damper_dead_band_max_value", p->midiDevA[i].damper_dead_band_max_value,
+                "scale_chord_notes_enable_fl",p->midiDevA[i].scale_chord_notes_enable_fl,
+                "scale_chord_notes_factor",   p->midiDevA[i].scale_chord_notes_factor)) != kOkRC )
           {
             rc = cwLogError(kSyntaxErrorRC,"MIDI record play device optional argument parsing failed.");
             goto errLabel;          
@@ -309,7 +351,7 @@ namespace cw
       return am;
     }
     
-    rc_t _event_callback( midi_record_play_t* p, unsigned id, const time::spec_t timestamp, unsigned loc, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1, bool log_fl=true )
+    rc_t _event_callback( midi_record_play_t* p, unsigned id, const time::spec_t timestamp, unsigned loc, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1, unsigned chordNoteCnt, bool log_fl=true )
     {
       rc_t rc = kOkRC;
       // if we have arrived at the stop time
@@ -350,6 +392,17 @@ namespace cw
                   cwLogError(kInvalidIdRC,"A MIDI note-on velocity (%i) outside the velocity table range was encountered.",d1);
                 else                
                   out_d1 = p->midiDevA[i].velTableArray[ d1 ];
+
+                if( p->midiDevA[i].scale_chord_notes_enable_fl && chordNoteCnt>1 )
+                {
+                  uint8_t delta = (uint8_t)lround(out_d1 * p->midiDevA[i].scale_chord_notes_factor * (chordNoteCnt-1) );
+                  if( delta < out_d1 )
+                  {
+                    //printf("%i %i %i %i\n",chordNoteCnt,delta,out_d1,out_d1-delta);
+                    out_d1 -= delta;
+                  }
+                }
+                
               }
 
               // store the note-on velocity histogram data
@@ -363,7 +416,6 @@ namespace cw
               // if the damper pedal velocity is over the 'forcing' threshold then force the damper down
               if( p->midiDevA[i].force_damper_down_fl && is_damper_fl && out_d1>p->midiDevA[i].force_damper_down_threshold )
                 out_d1 = p->midiDevA[i].force_damper_down_velocity;
-
 
               // map the pedal down velocity
               if( status==midi::kCtlMdId && d0 == midi::kSustainCtlMdId && p->midiDevA[i].pedalMapEnableFl )
@@ -407,21 +459,21 @@ namespace cw
 
     rc_t _transmit_msg( midi_record_play_t* p, const am_midi_msg_t* am, bool log_fl=true )
     {
-      return _event_callback( p, am->id, am->timestamp, am->loc, am->ch, am->status, am->d0, am->d1, log_fl );
+      return _event_callback( p, am->id, am->timestamp, am->loc, am->ch, am->status, am->d0, am->d1, am->chordNoteCnt, log_fl );
     }
 
     rc_t _transmit_note( midi_record_play_t* p, unsigned ch, unsigned pitch, unsigned vel, unsigned microsecs )
     {
       time::spec_t ts = {0};
       time::microsecondsToSpec( ts, microsecs );
-      return _event_callback( p, kInvalidId, ts, kInvalidId, ch, midi::kNoteOnMdId, pitch, vel );
+      return _event_callback( p, kInvalidId, ts, kInvalidId, ch, midi::kNoteOnMdId, pitch, vel, 0 );
     }
 
     rc_t _transmit_ctl(  midi_record_play_t* p, unsigned ch, unsigned ctlId, unsigned ctlVal, unsigned microsecs )
     {
       time::spec_t ts = {0};
       time::microsecondsToSpec( ts, microsecs );
-      return _event_callback( p, kInvalidId, ts, kInvalidId, ch, midi::kCtlMdId, ctlId, ctlVal );
+      return _event_callback( p, kInvalidId, ts, kInvalidId, ch, midi::kCtlMdId, ctlId, ctlVal, 0 );
     }
     
     rc_t _transmit_pedal( midi_record_play_t* p, unsigned ch, unsigned pedalCtlId, bool pedalDownFl, unsigned microsecs )
@@ -856,7 +908,7 @@ namespace cw
     
     void _print_midi_msg( const am_midi_msg_t* mm )
     {
-      printf("%i %i : %10i : %2i 0x%02x 0x%02x 0x%02x\n", mm->devIdx, mm->portIdx, mm->microsec, mm->ch, mm->status, mm->d0, mm->d1 );
+      printf("%i %i : %10i : %2i 0x%02x 0x%02x 0x%02x %i\n", mm->devIdx, mm->portIdx, mm->microsec, mm->ch, mm->status, mm->d0, mm->d1, mm->chordNoteCnt );
     }
       
     void _report_midi( midi_record_play_t* p )
@@ -1089,7 +1141,7 @@ cw::rc_t cw::midi_record_play::create( handle_t& hRef, io::handle_t ioH, const o
   p->halfPedalMidiPitch    = 64;
   p->halfPedalMidiNoteVel  = 64;
   p->halfPedalMidiPedalVel = 127;
-  
+  p->velHistogramEnableFl  = true;
 
   for( unsigned i=0; i<p->midiDevN; ++i)    
   {
@@ -1310,7 +1362,9 @@ cw::rc_t cw::midi_record_play::load( handle_t h, const midi_msg_t* msg, unsigned
 
   p->msgArrayInIdx =  msg_count;
   p->msgArrayOutIdx = 0;
-    
+
+  _set_chord_note_count(p);
+  
   return rc;
 }
 
