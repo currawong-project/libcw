@@ -195,6 +195,7 @@ namespace cw
       // make the callback to the client
       if( rc == kOkRC )
       {
+        
         rc_t app_rc = p->cbFunc( p->cbArg, m );
         if( app_rc_ref != nullptr )
           *app_rc_ref = app_rc;
@@ -1982,12 +1983,14 @@ cw::rc_t cw::io::stop( handle_t h )
   io_t* p = _handleToPtr(h);
   p->quitFl.store(true);
 
+  thread_mach::stop(p->threadMachH );
+  
   // stop the audio devices
   _audioDeviceStartStop(p,false);
 
   // clear the UI
-  if( p->wsUiH.isValid() )
-    uiDestroyElement(h,ui::kRootUuId);
+  //if( p->wsUiH.isValid() )
+  //  uiDestroyElement(h,ui::kRootUuId);
   
   return kOkRC;
 }
