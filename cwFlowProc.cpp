@@ -366,6 +366,8 @@ namespace cw
       {
         kFnamePId,
         kEofFlPId,
+        kOnOffFlPId,
+        kSeekSecsPId,
         kOutPId
       };
       
@@ -380,13 +382,19 @@ namespace cw
       {
         rc_t rc = kOkRC;
         audiofile::info_t info;
-        
+        real_t seekSecs;
         inst_t* inst = mem::allocZ<inst_t>();
         ctx->userPtr = inst;
+
+        if((rc = var_register( ctx, kAnyChIdx, kOnOffFlPId, "on_off" )) != kOkRC )
+        {
+          goto errLabel;
+        }
 
         // Register variable and get their current value
         if((rc = var_register_and_get( ctx, kAnyChIdx,
                                        kFnamePId, "fname", inst->filename,
+                                       kSeekSecsPId, "seekSecs", seekSecs,
                                        kEofFlPId, "eofFl", inst->eofFl )) != kOkRC )
         {
           goto errLabel;
@@ -398,6 +406,13 @@ namespace cw
           rc = cwLogError(kInvalidArgRC,"The audio file '%s' could not be opened.",inst->filename);
           goto errLabel;
         }
+
+        if((rc = seek( inst->afH, (unsigned)lround(seekSecs*info.srate) )) != kOkRC )
+        {
+          rc = cwLogError(kInvalidArgRC,"The audio file '%s' could not seek to offset %f seconds.",seekSecs);
+          goto errLabel;
+        }
+        
 
         cwLogInfo("Audio '%s' srate:%f chs:%i frames:%i %f seconds.",inst->filename,info.srate,info.chCnt,info.frameCnt, info.frameCnt/info.srate );
 
@@ -427,7 +442,21 @@ namespace cw
       rc_t value( instance_t* ctx, variable_t* var )
       {
         rc_t rc = kOkRC;
-        return rc;
+        real_t seekSecs = 0;
+        inst_t* inst = (inst_t*)ctx->userPtr;
+
+        if((rc = var_get(ctx,kSeekSecsPId,kAnyChIdx,seekSecs)) != kOkRC )
+          goto errLabel;
+
+        if((rc = seek( inst->afH, (unsigned)lround(seekSecs * audiofile::sampleRate(inst->afH) ) )) != kOkRC )
+        {
+          rc = cwLogError(kInvalidArgRC,"The audio file '%s' could not seek to offset %f seconds.",seekSecs);
+          goto errLabel;
+        }
+
+        
+      errLabel:
+        return kOkRC;
       }
       
       rc_t exec( instance_t* ctx )
@@ -436,7 +465,11 @@ namespace cw
         unsigned actualFrameN = 0;
         inst_t*  inst         = (inst_t*)ctx->userPtr;
         abuf_t*  abuf         = nullptr;
+        bool     onOffFl      = false;
 
+        // get the 'on-off; flag
+        if((rc = var_get(ctx,kOnOffFlPId,kAnyChIdx,onOffFl)) != kOkRC )
+          goto errLabel;
 
         // verify that a source buffer exists
         if((rc = var_get(ctx,kOutPId,kAnyChIdx,abuf)) != kOkRC )
@@ -448,14 +481,23 @@ namespace cw
           sample_t*   chBuf[ abuf->chN ];
         
           for(unsigned i=0; i<abuf->chN; ++i)
+          {
             chBuf[i] = abuf->buf + (i*abuf->frameN);
-            
-          rc  = readFloat(inst->afH, abuf->frameN, 0, abuf->chN, chBuf, &actualFrameN );
+
+            // if the on/off flag is not set - then fill the output buffer with zeros
+            if( !onOffFl )
+              vop::zero(chBuf[i],abuf->frameN);
+          }
+
+          // if the on/off flag is set then read from audio file
+          if( onOffFl )
+            rc  = readFloat(inst->afH, abuf->frameN, 0, abuf->chN, chBuf, &actualFrameN );
           
           if( inst->eofFl && actualFrameN == 0)            
             rc = kEofRC;
         }
-        
+
+      errLabel:
         return rc;
       }
 
@@ -503,7 +545,7 @@ namespace cw
         if((rc = var_register_and_get( ctx, kAnyChIdx,
                                        kFnamePId, "fname", inst->filename,
                                        kBitsPId,  "bits",  audioFileBits,
-                                       kInPId,    "in",    src_abuf)) != kOkRC )
+                                       kInPId,    "in",    src_abuf )) != kOkRC )
         {
           goto errLabel;
         }
@@ -548,7 +590,7 @@ namespace cw
         rc_t          rc     = kOkRC;
         inst_t*       inst   = (inst_t*)ctx->userPtr;
         const abuf_t* src_abuf = nullptr;
-
+        
         if((rc = var_get(ctx,kInPId,kAnyChIdx,src_abuf)) != kOkRC )
           rc = cwLogError(kInvalidStateRC,"The audio file instance '%s' does not have a valid input connection.",ctx->label);
         else
@@ -1175,7 +1217,8 @@ namespace cw
         const abuf_t* abuf0  = nullptr; //
         const abuf_t* abuf1  = nullptr;
         unsigned      outChN = 0;
-
+        double dum;
+        
         // get the source audio buffer
         if((rc = var_register_and_get(ctx, kAnyChIdx,
                                       kIn0PId,"in0",abuf0,
@@ -1189,8 +1232,8 @@ namespace cw
         outChN = std::max(abuf0->chN, abuf1->chN);
 
         // register the gain
-        var_register( ctx, kAnyChIdx, kGain0PId, "gain0" );
-        var_register( ctx, kAnyChIdx, kGain1PId, "gain1" );
+        var_register_and_get( ctx, kAnyChIdx, kGain0PId, "gain0", dum );
+        var_register_and_get( ctx, kAnyChIdx, kGain1PId, "gain1", dum );
           
         // create the output audio buffer
         rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, abuf0->srate, outChN, abuf0->frameN );
@@ -1224,7 +1267,7 @@ namespace cw
             sample_t*       osig = obuf->buf + i*obuf->frameN;
             real_t          gain = 1;
 
-            if((rc = var_get(ctx, gainPId, i, gain)) != kOkRC )
+            if((rc = var_get(ctx, gainPId, kAnyChIdx, gain)) != kOkRC )
               goto errLabel;
             
             for(unsigned j=0; j<obuf->frameN; ++j)
@@ -1241,18 +1284,20 @@ namespace cw
       {
         rc_t          rc    = kOkRC;
         abuf_t*       obuf  = nullptr;
-        const abuf_t* ibuf0 = nullptr;
-        const abuf_t* ibuf1 = nullptr;
+        //const abuf_t* ibuf0 = nullptr;
+        //const abuf_t* ibuf1 = nullptr;
 
         if((rc = var_get(ctx,kOutPId, kAnyChIdx, obuf)) != kOkRC )
           goto errLabel;
 
-        if((rc = var_get(ctx,kIn0PId, kAnyChIdx, ibuf0 )) != kOkRC )
-          goto errLabel;
+        //if((rc = var_get(ctx,kIn0PId, kAnyChIdx, ibuf0 )) != kOkRC )
+        //  goto errLabel;
         
-        if((rc = var_get(ctx,kIn1PId, kAnyChIdx, ibuf1 )) != kOkRC )
-          goto errLabel;
+        //if((rc = var_get(ctx,kIn1PId, kAnyChIdx, ibuf1 )) != kOkRC )
+        //  goto errLabel;
 
+        vop::zero(obuf->buf, obuf->frameN*obuf->chN );
+        
         _mix( ctx, kIn0PId, kGain0PId, obuf );
         _mix( ctx, kIn1PId, kGain1PId, obuf );
         
@@ -1422,14 +1467,9 @@ namespace cw
         inst_t*       inst   = mem::allocZ<inst_t>();
         ctx->userPtr = inst;
 
-        if((rc = var_register_and_get( ctx, kAnyChIdx,
-                                       kInPId,      "in",      srcBuf,
-                                       kMaxWndSmpNPId, "maxWndSmpN", inst->maxWndSmpN,
-                                       kWndSmpNPId, "wndSmpN", inst->wndSmpN,
-                                       kHopSmpNPId, "hopSmpN", inst->hopSmpN,
-                                       kHzFlPId,    "hzFl",    inst->hzFl )) != kOkRC )
+        if((rc = var_register_and_get( ctx, kAnyChIdx,kInPId, "in", srcBuf )) != kOkRC )
         {
-          goto errLabel;
+          cwLogError(kInvalidArgRC,"Unable to access the 'src' buffer.");
         }
         else
         {
@@ -1440,27 +1480,50 @@ namespace cw
           const sample_t* magV[ srcBuf->chN ];
           const sample_t* phsV[ srcBuf->chN ];
           const sample_t* hzV[  srcBuf->chN ];
-
+          unsigned maxBinNV[ srcBuf->chN ];
+          unsigned binNV[ srcBuf->chN ];
+          unsigned hopNV[ srcBuf->chN ];
+          
           // create a pv anlaysis object for each input channel
           for(unsigned i=0; i<srcBuf->chN; ++i)
           {
-            if((rc = create( inst->pvA[i], ctx->ctx->framesPerCycle, srcBuf->srate, inst->maxWndSmpN, inst->wndSmpN, inst->hopSmpN, flags )) != kOkRC )
+            
+            unsigned maxWndSmpN = 0;
+            unsigned wndSmpN = 0;
+            unsigned hopSmpN = 0;
+            bool hzFl = false;
+            
+            if((rc = var_register_and_get( ctx, i,
+                                           kMaxWndSmpNPId, "maxWndSmpN", maxWndSmpN,
+                                           kWndSmpNPId, "wndSmpN", wndSmpN,
+                                           kHopSmpNPId, "hopSmpN", hopSmpN,
+                                           kHzFlPId,    "hzFl",    hzFl )) != kOkRC )
+            {
+              goto errLabel;
+            }
+            
+            if((rc = create( inst->pvA[i], ctx->ctx->framesPerCycle, srcBuf->srate, maxWndSmpN, wndSmpN, hopSmpN, flags )) != kOkRC )
             {
               rc = cwLogError(kOpFailRC,"The PV analysis object create failed on the instance '%s'.",ctx->label);
               goto errLabel;
             }
 
-            magV[i] = inst->pvA[i]->magV;
-            phsV[i] = inst->pvA[i]->phsV;
-            hzV[i]  = inst->pvA[i]->hzV;
+            maxBinNV[i] = inst->pvA[i]->maxBinCnt;
+            binNV[i] = inst->pvA[i]->binCnt;
+            hopNV[i] = hopSmpN;
+            
+            magV[i]  = inst->pvA[i]->magV;
+            phsV[i]  = inst->pvA[i]->phsV;
+            hzV[i]   = inst->pvA[i]->hzV;
           }
 
-          if((rc = var_register( ctx, kAnyChIdx, kInPId, "in" )) != kOkRC )
-            goto errLabel;
-          
-          // create the fbuf 'out'
-          rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, srcBuf->srate, inst->pvA[0]->maxBinCnt, srcBuf->chN, inst->pvA[0]->binCnt, inst->pvA[0]->hopSmpCnt, magV, phsV, hzV );
         
+          // create the fbuf 'out'
+          if((rc = var_register_and_set(ctx, "out", kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, maxBinNV, binNV, hopNV, magV, phsV, hzV )) != kOkRC )
+          {
+            cwLogError(kOpFailRC,"The output freq. buffer could not be created.");
+            goto errLabel;
+          }
         }
         
       errLabel:
@@ -1485,6 +1548,24 @@ namespace cw
       rc_t value( instance_t* ctx, variable_t* var )
       {
         rc_t rc = kOkRC;
+        inst_t* inst = (inst_t*)ctx->userPtr;
+
+        if( var->chIdx != kAnyChIdx && var->chIdx < inst->pvN )
+        {
+          unsigned val = 0;
+          pv_t* pva = inst->pvA[ var->chIdx ];
+          
+          switch( var->vid )
+          {
+            case kWndSmpNPId:
+              rc = var_get( var, val );
+              dsp::pv_anl::set_window_length(pva,val);
+              //printf("WL:%i %i\n",val,var->chIdx);
+              break;              
+          }
+          
+        }
+        
         return rc;
       }
 
@@ -1751,7 +1832,7 @@ namespace cw
           }
           
           // create the output buffer
-          if((rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->maxBinN, srcBuf->chN, srcBuf->binN_V, srcBuf->hopSmpN_V, magV, phsV, hzV )) != kOkRC )
+          if((rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, srcBuf->maxBinN_V, srcBuf->binN_V, srcBuf->hopSmpN_V, magV, phsV, hzV )) != kOkRC )
             goto errLabel;
         }
         
@@ -1796,8 +1877,8 @@ namespace cw
               cwLogWarning("Unhandled variable id '%i' on instance: %s.", var->vid, ctx->label );
           }
 
-          //printf("sd: ceil:%f expo:%f thresh:%f upr:%f lwr:%f mix:%f : rc:%i val:%f\n",
-          //       sd->ceiling, sd->expo, sd->thresh, sd->uprSlope, sd->lwrSlope, sd->mix, rc, val );
+          //printf("%i sd: ceil:%f expo:%f thresh:%f upr:%f lwr:%f mix:%f : rc:%i val:%f\n",
+          //       var->chIdx,sd->ceiling, sd->expo, sd->thresh, sd->uprSlope, sd->lwrSlope, sd->mix, rc, val );
         }
         
         return rc;

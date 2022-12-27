@@ -39,14 +39,14 @@ namespace cw
       unsigned    wndLabelToId( const char* label )
       {  return cw::labelToId( wndLabelArray, label, kInvalidWndId ); }
       
-      rc_t _test( const char* windowLabel, const double* wndV, unsigned wndN )
+      rc_t _test( const char* windowLabel, const double* wndV, unsigned maxWndN, unsigned wndN )
       {
         rc_t rc = kOkRC;
         wnd_func::fobj_t* p = nullptr;
 
         unsigned wndId = wndLabelToId( windowLabel );
         
-        if((rc = create(p,wndId,wndN,3)) == kOkRC )
+        if((rc = create(p,wndId,maxWndN,wndN,3)) == kOkRC )
         {
           vop::print(p->wndV, p->wndN, "%f ", windowLabel);
 
@@ -70,13 +70,13 @@ namespace cw
         
         rc_t rc = kOkRC;
         
-        _test( "hann",    hann_15, 15);
-        _test( "hann",    hann_16, 16);
-        _test( "hamming", hamm_15, 15);
-        _test( "hamming", hamm_16, 16);
-        _test( "triangle", tri_15, 15);
-        _test( "triangle", tri_16, 16);
-        _test( "unity",    ones_5,  5);
+        _test( "hann",    hann_15, 15, 15);
+        _test( "hann",    hann_16, 16, 16);
+        _test( "hamming", hamm_15, 15, 15);
+        _test( "hamming", hamm_16, 16, 16);
+        _test( "triangle", tri_15, 15, 15);
+        _test( "triangle", tri_16, 16, 16);
+        _test( "unity",    ones_5,  5,  5);
 
         if( rc != kOkRC )
           cwLogError(rc,"Window test failed.");
@@ -168,6 +168,7 @@ namespace cw
 
         unsigned    procSmpCnt =  5;   // count of samples to be fed to the shift buffer on each cycle
         unsigned    hopSmpCnt  =  6;   // count of samples between shift buffer outputs
+        unsigned    maxWndSmpCnt= 7;
         unsigned    wndSmpCnt  =  7;   // count of samples in each shift buffer output
 
         unsigned    iSmpCnt    = 49;  // count of samples in the input test signal
@@ -177,7 +178,7 @@ namespace cw
 
         shift_buf::fobj_t* p = nullptr;
 
-        if((rc = shift_buf::create(p,procSmpCnt,wndSmpCnt,hopSmpCnt)) == kOkRC )
+        if((rc = shift_buf::create(p,procSmpCnt,maxWndSmpCnt,wndSmpCnt,hopSmpCnt)) == kOkRC )
         {
           sample_t* x = mem::allocZ<sample_t>(iSmpCnt);
           sample_t* y = mem::allocZ<sample_t>(oSmpCnt);

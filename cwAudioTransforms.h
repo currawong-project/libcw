@@ -36,6 +36,7 @@ namespace cw
       {
         unsigned  wndTypeId;        //
         unsigned  flags;            //
+        unsigned  maxWndN;          //
         sample_t* wndV;             // wndV[ wndN ]
         unsigned  wndN;             // length of wndV[] and outV[]
         sample_t* outV;             // outV[ wndN ]
@@ -49,19 +50,10 @@ namespace cw
       unsigned    wndLabelToId( const char* label );      // window type label to id
 
       template< typename sample_t >
-      rc_t create(  struct obj_str<sample_t>*& p, unsigned wndId, unsigned wndSmpCnt, double kaiserSideLobeRejectDb )
+      rc_t _apply_window(  struct obj_str<sample_t>*& p )
       {
-        rc_t  rc = kOkRC;
-
-        p = mem::allocZ< struct obj_str< sample_t > >();
-          
-        p->wndV      = mem::allocZ<sample_t>(wndSmpCnt);
-        p->outV      = mem::allocZ<sample_t>(wndSmpCnt);
-        p->wndN      = wndSmpCnt;
-        p->wndTypeId = wndId &  kWndIdMask;
-        p->flags     = wndId & ~kWndIdMask;
-
-
+        rc_t rc = kOkRC;
+        
         switch( p->wndTypeId )
         {
           case kHannWndId:
@@ -78,7 +70,7 @@ namespace cw
             
           case kKaiserWndId:
             {
-              sample_t beta =  (p->flags & kSlRejIsBetaWndFl) ? kaiserSideLobeRejectDb : kaiser_beta_from_sidelobe_reject<sample_t>(kaiserSideLobeRejectDb);
+              sample_t beta =  (p->flags & kSlRejIsBetaWndFl) ? p->kaiserSLRejectDb : kaiser_beta_from_sidelobe_reject<sample_t>(p->kaiserSLRejectDb);
               kaiser<sample_t>(p->wndV,p->wndN, beta);
             } 
             break;
@@ -92,20 +84,19 @@ namespace cw
             break;
             
           default:
-            rc = cwLogError(kInvalidArgRC,"The window id '%i' (0x%x) is not valid.", wndId, wndId );
+            rc = cwLogError(kInvalidArgRC,"The window id '%i' (0x%x) is not valid.", p->wndTypeId, p->wndTypeId );
         }
-
 
         sample_t den = 0;
         sample_t num = 1;
         if( cwIsFlag(p->flags,kNormBySumWndFl) )
         {
           den = vop::sum(p->wndV, p->wndN);
-          num = wndSmpCnt;
+          num = p->wndN;
         }
 
         if( cwIsFlag(p->flags,kNormByLengthWndFl) )
-          den += wndSmpCnt;
+          den += p->wndN;
     
         if( den > 0 )
         {
@@ -113,11 +104,30 @@ namespace cw
           vop::div(p->wndV,den,p->wndN);
         }
         
+        return rc;
+      }
+      
+      template< typename sample_t >
+      rc_t create(  struct obj_str<sample_t>*& p, unsigned wndId, unsigned maxWndSmpCnt, unsigned wndSmpCnt, double kaiserSideLobeRejectDb )
+      {
+        rc_t  rc = kOkRC;
+
+        p = mem::allocZ< struct obj_str< sample_t > >();
+          
+        p->wndV             = mem::allocZ<sample_t>(maxWndSmpCnt);
+        p->outV             = mem::allocZ<sample_t>(maxWndSmpCnt);
+        p->wndN             = wndSmpCnt;
+        p->maxWndN          = maxWndSmpCnt;
+        p->wndTypeId        = wndId & kWndIdMask;
+        p->flags            = wndId & ~kWndIdMask;
+        p->kaiserSLRejectDb = kaiserSideLobeRejectDb;
+
+        rc = _apply_window(p);
+        
         if( rc != kOkRC )
           destroy(p);
 
         return rc;
-
       }
       
       template< typename sample_t >
@@ -151,6 +161,28 @@ namespace cw
         return rc;
       }
 
+      template< typename sample_t >
+      rc_t set_window_sample_count( struct obj_str<sample_t>* p, unsigned wndSmpCnt )
+      {
+        rc_t rc = kOkRC;
+        
+        if( wndSmpCnt > p->maxWndN )
+          return cwLogError( kInvalidArgRC, "The window function sample count (%i) cannot be larger than the max window function sample count (%i).", wndSmpCnt, p->maxWndN );
+
+        if( wndSmpCnt != p->wndN )
+        {
+        p->wndN = wndSmpCnt;
+
+        if((rc = _apply_window(p)) == kOkRC )
+        {
+          // zero the end of the window buffer
+          vop::zero(p->wndV + p->wndN, p->maxWndN - p->wndN );
+        }
+        }
+        return rc;
+      }
+
+      
       rc_t test( const cw::object_t* args );
 
     }
@@ -191,7 +223,7 @@ namespace cw
 
         p = mem::allocZ< struct obj_str<sample_t> >();
 
-        if((rc = wnd_func::create( p->wf, wndTypeId, wndSmpCnt, 0)) != kOkRC ) 
+        if((rc = wnd_func::create( p->wf, wndTypeId, wndSmpCnt, wndSmpCnt, 0)) != kOkRC ) 
           return rc;
 
         p->bufV   = mem::allocZ<sample_t>( wndSmpCnt );
@@ -285,7 +317,6 @@ namespace cw
         return sp;
       }
 
-
       rc_t test( const cw::object_t* args );
       
     }
@@ -303,6 +334,7 @@ namespace cw
         sample_t* outV;         // output window outV[ outN ]
         unsigned  outN;         // outN == wndSmpCnt
         unsigned  procSmpCnt;   // input sample count
+        unsigned  maxWndSmpCnt; // maximum value for wndSmpCnt
         unsigned  wndSmpCnt;    // output sample count
         unsigned  hopSmpCnt;    // count of samples to shift the buffer by on each call to cmShiftExec()
         sample_t* inPtr;        // ptr to location in outV[] to recv next sample
@@ -313,21 +345,26 @@ namespace cw
       typedef obj_str<double> dobj_t;
 
       template< typename sample_t >
-      rc_t create( struct obj_str<sample_t>*& p, unsigned procSmpCnt, unsigned wndSmpCnt, unsigned hopSmpCnt )
+      rc_t create( struct obj_str<sample_t>*& p, unsigned procSmpCnt, unsigned maxWndSmpCnt, unsigned wndSmpCnt, unsigned hopSmpCnt )
       {
         rc_t rc = kOkRC;
         
         p = mem::allocZ< struct obj_str<sample_t> >();
+
+        p->maxWndSmpCnt = maxWndSmpCnt;
+        if((rc = set_window_sample_count(p,wndSmpCnt )) != kOkRC )
+          return rc;
         
         if( hopSmpCnt > wndSmpCnt )
-          return cwLogError( kInvalidArgRC, "The window sample count (%i) must be greater than or equal to the hop sample count (%i).", wndSmpCnt, hopSmpCnt );
+          return cwLogError( kInvalidArgRC, "The shift buffer window sample count (%i) must be greater than or equal to the hop sample count (%i).", wndSmpCnt, hopSmpCnt );
 
         // The worst case storage requirement is where there are wndSmpCnt-1 samples in outV[] and procSmpCnt new samples arrive.
-        p->bufSmpCnt    = wndSmpCnt + procSmpCnt;
+        p->bufSmpCnt    = maxWndSmpCnt + procSmpCnt;
         p->bufV         = mem::allocZ<sample_t>( p->bufSmpCnt );
         p->outV         = p->bufV;
-        p->outN         = wndSmpCnt;
-        p->wndSmpCnt    = wndSmpCnt;
+        //p->outN         = wndSmpCnt;
+        //p->maxWndSmpCnt = maxWndSmpCnt;
+        //p->wndSmpCnt    = wndSmpCnt;
         p->procSmpCnt   = procSmpCnt;
         p->hopSmpCnt    = hopSmpCnt;
         p->inPtr        = p->outV;
@@ -387,6 +424,18 @@ namespace cw
         p->fl = p->inPtr - p->outV >= p->wndSmpCnt;
   
         return p->fl;        
+      }
+
+      template< typename sample_t >
+      rc_t set_window_sample_count( struct obj_str<sample_t>* p, unsigned wndSmpCnt )
+      {
+        if( wndSmpCnt > p->maxWndSmpCnt )
+          return cwLogError( kInvalidArgRC, "The shift buffer window sample count (%i) cannot be larger than the max window sample count (%i).", p->wndSmpCnt, p->maxWndSmpCnt );
+
+        p->wndSmpCnt = wndSmpCnt;
+        p->outN      = wndSmpCnt;
+
+        return kOkRC;
       }
 
       rc_t test( const cw::object_t* args );
@@ -524,9 +573,9 @@ namespace cw
         
         p = mem::allocZ< struct obj_str<T> >();
 
-        shift_buf::create( p->sb, procSmpCnt, wndSmpCnt, hopSmpCnt );
-        wnd_func::create(  p->wf, wnd_func::kHannWndId  | wnd_func::kNormByLengthWndFl, wndSmpCnt, 0 );
-        fft::create(       p->ft, wndSmpCnt, fft::kToPolarFl);
+        shift_buf::create( p->sb, procSmpCnt, maxWndSmpCnt, wndSmpCnt, hopSmpCnt );
+        wnd_func::create(  p->wf, wnd_func::kHannWndId  | wnd_func::kNormByLengthWndFl, maxWndSmpCnt, wndSmpCnt, 0 );
+        fft::create(       p->ft, maxWndSmpCnt, fft::kToPolarFl);
         phs_to_frq::create(p->pf, srate, p->ft->binN, hopSmpCnt );
 
         p->flags      = flags;
@@ -576,6 +625,17 @@ namespace cw
 
         return fl;
         
+      }
+
+      template< typename T >
+      rc_t set_window_length( struct obj_str<T>* p, unsigned wndSmpCnt )
+      {
+        rc_t rc;
+        
+        if((rc = shift_buf::set_window_sample_count( p->sb, wndSmpCnt )) == kOkRC )
+          rc = wnd_func::set_window_sample_count( p->wf, wndSmpCnt );
+          
+        return rc;
       }
     }
 
@@ -638,7 +698,7 @@ namespace cw
         p->magV       = mem::allocZ<T>( p->binCnt );
 
 
-        wnd_func::create( p->wf, wndTypeId, wndSmpCnt, 0);
+        wnd_func::create( p->wf, wndTypeId, wndSmpCnt, wndSmpCnt, 0);
         ifft::create(     p->ft, p->binCnt );
         ola::create(      p->ola, wndSmpCnt, hopSmpCnt, procSmpCnt, wndTypeId );
         
@@ -911,29 +971,35 @@ namespace cw
         // convert db back to magnitude
         vop::db_to_ampl(X1m, X1m, binN );
 
+        
         // convert the mean input magnitude to db
         double idb = 20*log10(u0);
     
         // get the mean output magnitude spectra
         double u1 = vop::mean(X1m,binN);
-
-        if( idb > -150.0 )
+        
+        if( p->mix > 0 )
         {
-          // set the output gain such that the mean output magnitude
-          // will match the mean input magnitude
-          p->ogain = u0/u1;  
+          if( idb > -150.0 )
+          {
+            // set the output gain such that the mean output magnitude
+            // will match the mean input magnitude
+            p->ogain = u0/u1;  
+          }
+          else
+          {
+            T0 a0 = 0.9;
+            p->ogain *= a0;
+          }
         }
-        else
-        {
-          T0 a0 = 0.9;
-          p->ogain *= a0;
-        }
-
+        
+        
         // apply the output gain
         if( p->bypassFl )
           vop::copy( p->outMagV, magV, binN );
         else
           vop::mul(  p->outMagV, X1m, std::min((T1)4.0,p->ogain), binN);
+        //vop::mul(  p->outMagV, X1m, p->ogain, binN);
         
         vop::copy( p->outPhsV, phsV,                binN);
 

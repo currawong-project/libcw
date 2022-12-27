@@ -385,14 +385,14 @@ cw::rc_t cw::afop::file_processor( const char* srcFn, const char* dstFn, proc_fu
     for(unsigned i = 0; i<proc_ctx.srcChN; ++i)
     {
       srcChFileBuf[i] = srcFileBuf + (i*proc_ctx.srcHopSmpN );
-      dsp::shift_buf::create( srcShiftBufA[i], proc_ctx.srcHopSmpN, proc_ctx.srcWndSmpN, proc_ctx.srcHopSmpN );      
+      dsp::shift_buf::create( srcShiftBufA[i], proc_ctx.srcHopSmpN, proc_ctx.srcWndSmpN, proc_ctx.srcWndSmpN, proc_ctx.srcHopSmpN );      
     }
 
     // For each dest. channel - setup the dest file buffer and create the dst shift buffer
     for(unsigned i = 0; i<proc_ctx.dstChN; ++i)
     {
       oChBuf[i]   = procFileBuf + (i*proc_ctx.dstHopSmpN );
-      dsp::shift_buf::create( dstShiftBufA[i], proc_ctx.dstHopSmpN, proc_ctx.dstWndSmpN, proc_ctx.dstHopSmpN );
+      dsp::shift_buf::create( dstShiftBufA[i], proc_ctx.dstHopSmpN, proc_ctx.dstWndSmpN, proc_ctx.dstWndSmpN, proc_ctx.dstHopSmpN );
     }
 
     // create the data recorder
