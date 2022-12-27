@@ -1,6 +1,10 @@
 
 Plan:
-1. Add MIDI processors - this may be complicated by cross fading schem.
+1. Add MIDI processors - this may be complicated by cross fading scheme.
+   - maybe cross-faded proc's should be all placed in a 'sub-net' and
+   only those processes would then be cross faded.
+
+   
 2. Add subnets. (see outline below)
 3. Add auto-UI (this will require a separate app).
 
@@ -64,6 +68,15 @@ that connect variables outside the subnet to variables inside the subnet.
 - The subnet itself will be held inside an 'instance_t' and will pass
 on 'exec()' calls to the internal instance processor chain.
 
+- The current flow architecture only allows static connections.
+This allows proc variables to be proxied to other proc variables.
+This doesn't scale well for processes with many variables (e.g. matrix mixer).
+For processes with many variables a message passing scheme works better
+because it allows a message to dynamically address a process
+(e.g. (set-in-channel-1-gain-to-42) 'set','in',1,'gain',42), 'set','out',4,'delay',15)
+
+Note that it would be easy to form these messages on the stack and 
+transmit them to connected processes. 
 
 # TODO:
 
