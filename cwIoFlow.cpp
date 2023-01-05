@@ -437,8 +437,28 @@ cw::rc_t cw::io_flow::set_variable_value( handle_t h, flow_cross::destId_t destI
 cw::rc_t cw::io_flow::begin_cross_fade( handle_t h, unsigned crossFadeMs )
 { return flow_cross::begin_cross_fade( _handleToPtr(h)->crossFlowH, crossFadeMs ); }
 
+
+cw::rc_t cw::io_flow::get_variable_value( handle_t h, flow_cross::destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, bool& valueRef )
+{ return flow_cross::get_variable_value( _handleToPtr(h)->crossFlowH, destId, inst_label, var_label, chIdx, valueRef ); }
+
+cw::rc_t cw::io_flow::get_variable_value( handle_t h, flow_cross::destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, int& valueRef )
+{ return flow_cross::get_variable_value( _handleToPtr(h)->crossFlowH, destId, inst_label, var_label, chIdx, valueRef ); }
+
+cw::rc_t cw::io_flow::get_variable_value( handle_t h, flow_cross::destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, unsigned& valueRef )
+{ return flow_cross::get_variable_value( _handleToPtr(h)->crossFlowH, destId, inst_label, var_label, chIdx, valueRef ); }
+
+cw::rc_t cw::io_flow::get_variable_value( handle_t h, flow_cross::destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, float& valueRef )
+{ return flow_cross::get_variable_value( _handleToPtr(h)->crossFlowH, destId, inst_label, var_label, chIdx, valueRef ); }
+
+cw::rc_t cw::io_flow::get_variable_value( handle_t h, flow_cross::destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, double& valueRef )
+{ return flow_cross::get_variable_value( _handleToPtr(h)->crossFlowH, destId, inst_label, var_label, chIdx, valueRef ); }
+
+
 void cw::io_flow::print( handle_t h )
 { return flow_cross::print( _handleToPtr(h)->crossFlowH ); }
 
 void cw::io_flow::print_network( handle_t h, flow_cross::destId_t destId )
 {  return flow_cross::print_network(  _handleToPtr(h)->crossFlowH, destId );  }
+
+void cw::io_flow::report( handle_t h )
+{ flow_cross::report( _handleToPtr(h)->crossFlowH ); }

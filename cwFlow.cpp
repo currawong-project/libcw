@@ -41,6 +41,7 @@ namespace cw
       { "audio_delay",     &audio_delay::members },
       { "dc_filter",       &dc_filter::members },
       { "balance",         &balance::members },
+      { "audio_meter",     &audio_meter::members },
       { nullptr, nullptr }
     };
 
@@ -759,19 +760,23 @@ namespace cw
         }
       }
 
-      // complete the instantiation
-      
+      // Complete the instantiation
+
+      // Call the custom instance create() function.
       if((rc = class_desc->members->create( inst )) != kOkRC )
       {
         rc = cwLogError(kInvalidArgRC,"Instantiation failed on instance '%s'.", inst->label );
         goto errLabel;
       }
-      
+
+      // Create the instance->varMap[] lookup array
       if((rc =_create_instance_var_map( inst )) != kOkRC )
         goto errLabel;
-      
+
+      // 
       _complete_input_connections(inst);
-      
+
+      // call the 'value()' function to inform the instance of the current value of all of it's variables.
       if((rc = _call_value_func_on_all_variables( inst )) != kOkRC )
         goto errLabel;
       
@@ -873,12 +878,14 @@ namespace cw
       return rc;
     }
 
-    template< typename T >
-    rc_t _set_variable_value( flow_t* p, const char* inst_label, const char* var_label, unsigned chIdx, T value )
+    rc_t _get_variable( flow_t* p, const char* inst_label, const char* var_label, unsigned chIdx, instance_t*& instPtrRef, variable_t*& varPtrRef )
     {
       rc_t        rc   = kOkRC;
       instance_t* inst = nullptr;
       variable_t* var  = nullptr;
+
+      varPtrRef = nullptr;
+      instPtrRef = nullptr;
 
       // locate the proc instance
       if((inst = instance_find(p,inst_label)) == nullptr )
@@ -894,6 +901,24 @@ namespace cw
         goto errLabel;
       }
 
+      instPtrRef = inst;
+      varPtrRef = var;
+      
+    errLabel:
+      return rc;
+    }
+    
+    template< typename T >
+    rc_t _set_variable_value( flow_t* p, const char* inst_label, const char* var_label, unsigned chIdx, T value )
+    {
+      rc_t rc = kOkRC;
+      instance_t* inst = nullptr;
+      variable_t* var = nullptr;
+
+      // get the variable
+      if((rc = _get_variable(p,inst_label,var_label,chIdx,inst,var)) != kOkRC )
+	goto errLabel;
+      
       // set the variable value
       if((rc = var_set( inst, var->vid, chIdx, value )) != kOkRC )
       {
@@ -905,6 +930,28 @@ namespace cw
       return rc;
     }
 
+    template< typename T >
+    rc_t _get_variable_value( flow_t* p, const char* inst_label, const char* var_label, unsigned chIdx, T& valueRef )
+    {
+      rc_t rc = kOkRC;
+      instance_t* inst = nullptr;
+      variable_t* var = nullptr;
+
+      // get the variable 
+      if((rc = _get_variable(p,inst_label,var_label,chIdx,inst,var)) != kOkRC )
+	goto errLabel;
+      
+      // get the variable value
+      if((rc = var_get( inst, var->vid, chIdx, valueRef )) != kOkRC )
+      {
+        rc = cwLogError(kOpFailRC,"The variable get failed on instance:'%s' variable:'%s'.",cwStringNullGuard(inst_label),cwStringNullGuard(var_label));
+        goto errLabel;
+      }
+
+    errLabel:
+      return rc;
+    }
+    
     
     
   }
@@ -1127,6 +1174,22 @@ cw::rc_t cw::flow::set_variable_value( handle_t h, const char* inst_label, const
 
 cw::rc_t cw::flow::set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, double value )
 { return _set_variable_value( _handleToPtr(h), inst_label, var_label, chIdx, value ); }
+
+cw::rc_t cw::flow::get_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, bool& valueRef )
+{ return _get_variable_value( _handleToPtr(h), inst_label, var_label, chIdx, valueRef ); }
+
+cw::rc_t cw::flow::get_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, int& valueRef )
+{ return _get_variable_value( _handleToPtr(h), inst_label, var_label, chIdx, valueRef ); }
+
+cw::rc_t cw::flow::get_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, unsigned& valueRef )
+{ return _get_variable_value( _handleToPtr(h), inst_label, var_label, chIdx, valueRef ); }
+
+cw::rc_t cw::flow::get_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, float& valueRef )
+{ return _get_variable_value( _handleToPtr(h), inst_label, var_label, chIdx, valueRef ); }
+
+cw::rc_t cw::flow::get_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, double& valueRef )
+{ return _get_variable_value( _handleToPtr(h), inst_label, var_label, chIdx, valueRef ); }
+
 
 
 void cw::flow::print_class_list( handle_t h )

@@ -73,6 +73,12 @@ namespace cw
     rc_t set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, float value    );
     rc_t set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, double value   );
 
+    rc_t get_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, bool& valueRef     );
+    rc_t get_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, int& valueRef      );
+    rc_t get_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, unsigned& valueRef );
+    rc_t get_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, float& valueRef    );
+    rc_t get_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, double& valueRef   );
+    
     void print_class_list( handle_t h );
     void print_network( handle_t h );
 

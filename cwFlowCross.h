@@ -36,10 +36,17 @@ namespace cw
     rc_t set_variable_value( handle_t h, destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, float value );
     rc_t set_variable_value( handle_t h, destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, double value );
 
+    rc_t get_variable_value( handle_t h, destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, bool& valueRef );
+    rc_t get_variable_value( handle_t h, destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, int& valueRef );
+    rc_t get_variable_value( handle_t h, destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, unsigned& valueRef );
+    rc_t get_variable_value( handle_t h, destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, float& valueRef );
+    rc_t get_variable_value( handle_t h, destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, double& valueRef );
+    
     rc_t begin_cross_fade( handle_t h, unsigned crossFadeMs );
     
     void print( handle_t h );
     void print_network( handle_t h, flow_cross::destId_t destId );
+    void report( handle_t h );
     
   }
 }

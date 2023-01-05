@@ -271,6 +271,25 @@ namespace cw
       return rc;
     }
 
+    template< typename T >
+    rc_t _get_variable_value( handle_t h, destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, T& valueRef )
+    {
+      rc_t          rc       = kOkRC;
+      flow_cross_t* p        = _handleToPtr(h);
+      unsigned      flow_idx = destId == kAllDestId ? 0       : _get_flow_index(p, destId );
+      unsigned      flow_cnt = destId == kAllDestId ? p->netN : flow_idx + 1;
+
+      for(; flow_idx < flow_cnt; ++flow_idx )
+        if((rc = get_variable_value( p->netA[ flow_idx ].flowH, inst_label, var_label, chIdx, valueRef )) != kOkRC )
+        {
+          cwLogError(rc,"Get variable value failed on cross-network index: %i.",flow_idx);
+          goto errLabel;
+        }
+      
+    errLabel:
+      return rc;
+    }
+    
     
   }
 }
@@ -421,6 +440,22 @@ cw::rc_t cw::flow_cross::set_variable_value( handle_t h, destId_t destId, const 
 cw::rc_t cw::flow_cross::set_variable_value( handle_t h, destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, double value )
 {  return _set_variable_value(h,destId,inst_label,var_label,chIdx,value); }
 
+
+cw::rc_t cw::flow_cross::get_variable_value( handle_t h, destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, bool& valueRef )
+{  return _get_variable_value(h,destId,inst_label,var_label,chIdx,valueRef); }
+
+cw::rc_t cw::flow_cross::get_variable_value( handle_t h, destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, int& valueRef )
+{  return _get_variable_value(h,destId,inst_label,var_label,chIdx,valueRef); }
+
+cw::rc_t cw::flow_cross::get_variable_value( handle_t h, destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, unsigned& valueRef )
+{  return _get_variable_value(h,destId,inst_label,var_label,chIdx,valueRef); }
+
+cw::rc_t cw::flow_cross::get_variable_value( handle_t h, destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, float& valueRef )
+{  return _get_variable_value(h,destId,inst_label,var_label,chIdx,valueRef); }
+
+cw::rc_t cw::flow_cross::get_variable_value( handle_t h, destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, double& valueRef )
+{  return _get_variable_value(h,destId,inst_label,var_label,chIdx,valueRef); }
+
 cw::rc_t cw::flow_cross::begin_cross_fade( handle_t h, unsigned crossFadeMs )
 {
   rc_t          rc = kOkRC;
@@ -471,3 +506,16 @@ void cw::flow_cross::print_network( handle_t h, destId_t destId )
   
 }
 
+void cw::flow_cross::report( handle_t h )
+{
+  flow_cross_t* p         = _handleToPtr(h);
+  unsigned cur_flow_idx  = _get_flow_index( p, kCurDestId );
+  unsigned next_flow_idx = _get_flow_index( p, kNextDestId );
+  
+  for(unsigned i=0; i<p->netN; ++i)
+  {
+    const char* label = i==cur_flow_idx ? "Current" : (i==next_flow_idx ? "Next" : "");
+    printf("%s %f : ",label,p->netA[i].fadeGain );    
+  }
+  printf("\n");
+}
