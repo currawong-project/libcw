@@ -96,9 +96,35 @@ namespace cw
       
       rc_t exec(    obj_t* p, const sample_t* buf,   unsigned chN, unsigned frameN );
       rc_t exec(    obj_t* p, const sample_t* chA[], unsigned chN, unsigned frameN );
-      rc_t write(   obj_t* p, const char* fname );
+      rc_t write(   obj_t* p, const char* fname );      
+    }
+
+    namespace audio_meter
+    {
+      typedef struct
+      {
+	unsigned  maxWndMs;
+	unsigned  maxWndSmpN;
+	unsigned  wndSmpN;
+	sample_t* wndV;
+	real_t    srate;
+	real_t    peakThreshDb;
+	real_t    outLin;
+	real_t    outDb;
+	bool      peakFl;
+	bool      clipFl;
+	unsigned  peakCnt;
+	unsigned  clipCnt;
+	unsigned  wi;
+      } obj_t;
       
-    }    
+      rc_t create( obj_t*& p, real_t srate, real_t maxWndMs, real_t wndMs, real_t peakThreshDb );
+      rc_t destroy( obj_t*& pp );
+      rc_t exec( obj_t* p, const sample_t* x, unsigned n );
+      void reset( obj_t* p );
+      void set_window_ms( obj_t* p, real_t wndMs );
+
+    }
   }  
 }
 

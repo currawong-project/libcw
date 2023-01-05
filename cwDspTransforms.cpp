@@ -289,11 +289,8 @@ cw::rc_t cw::dsp::recorder::destroy( obj_t*& pRef)
 {
   obj_t* p = pRef;
 
-  if( p != nullptr )
-  {
-    mem::release(p->buf);
-    mem::release(p);
-  }
+  mem::release(p->buf);
+  mem::release(p);
   
   pRef = nullptr;
   return kOkRC;
@@ -362,4 +359,133 @@ cw::rc_t cw::dsp::recorder::write(   obj_t* p, const char* fname )
   }
 
   return rc;
+}
+
+//----------------------------------------------------------------------------------------------------------------
+// Audio Meter
+//
+namespace cw {
+  namespace dsp {
+    namespace audio_meter {
+      sample_t _sum_square( const sample_t* v, unsigned vn, bool& clipFlRef )
+      {
+	sample_t sum = 0;
+	for(unsigned i=0; i<vn; ++i)
+	{
+	   sample_t x = v[i]*v[i];
+	   sum += x;
+	   clipFlRef = x > 1.0;
+	   
+	}
+	return sum;
+      }
+    }
+  }
+}
+
+cw::rc_t cw::dsp::audio_meter::create( obj_t*& p, real_t srate, real_t maxWndMs, real_t wndMs, real_t peakThreshDb )
+{
+  rc_t rc = kOkRC;
+
+  if( maxWndMs < wndMs )
+  {
+    cwLogWarning("Audio meter Max. window length (%f ms) is less than requested window length (%f ms). Setting max window length to %f ms.",maxWndMs,wndMs,wndMs);
+    maxWndMs = wndMs;
+  }
+  
+  p             = mem::allocZ<obj_t>();
+  p->maxWndMs   = maxWndMs;
+  p->maxWndSmpN = (unsigned)((maxWndMs * srate)/1000.0);
+  p->wndV       = mem::allocZ<sample_t>(p->maxWndSmpN);
+  p->srate      = srate;
+  p->peakThreshDb = peakThreshDb;
+  p->wi         = 0;
+
+  set_window_ms( p, wndMs );
+  reset(p);
+  
+  return rc;
+}
+
+cw::rc_t cw::dsp::audio_meter::destroy( obj_t*& pp )
+{
+  rc_t rc = kOkRC;
+  mem::release(pp->wndV);
+  mem::release(pp);
+  return rc;
+}
+
+cw::rc_t cw::dsp::audio_meter::exec( obj_t* p, const sample_t* xV, unsigned xN )
+{
+  rc_t rc = kOkRC;
+  unsigned n = 0;
+
+  // copy the incoming audio samples to the buffer
+  while( xN )
+  {
+    unsigned n0 = std::min( p->maxWndSmpN - p->wi, xN );
+    
+    vop::copy(p->wndV + p->wi, xV + n, n0 );
+    
+    n += n0;
+    xN -= n0;
+
+    p->wi = (p->wi + n0) % p->maxWndSmpN;
+  }
+
+  // get the starting and ending locations of the RMS sub-buffers
+  
+  unsigned i0 = 0, i1 = 0;
+  unsigned n0 = 0, n1 = 0;
+  
+  if( p->wi >= p->wndSmpN )
+  {
+    i0 = p->wi - p->wndSmpN;
+    n0 = p->wndSmpN;
+  }
+  else
+  {
+    i1 = 0;
+    n1 = p->wi;
+    n0 = p->wndSmpN - n1;
+    i0 = p->maxWndSmpN - n0;
+  }
+
+  // calc the squared-sum of the RMS buffers
+  sample_t sum = _sum_square(p->wndV + i0, n0, p->clipFl);
+  if( n1 )
+    sum += _sum_square(p->wndV + i1, n1, p->clipFl );
+
+  p->outLin = std::sqrt( sum / (n0+n1) );  // linear RMS
+  p->outDb  = ampl_to_db(p->outLin);           // RMS dB
+
+  p->peakFl = p->outDb > p->peakThreshDb;   // set peak flag
+  p->clipFl = vop::max(xV,xN) >= 1.0;       // set clip flag
+
+  p->peakCnt += p->peakFl ? 1 : 0;          // count peak violations
+  
+  return rc;
+}
+
+void cw::dsp::audio_meter::reset( obj_t* p )
+{
+  p->peakFl  = false;
+  p->clipFl  = false;
+  p->peakCnt = 0;
+  p->clipCnt = 0;
+}
+
+void cw::dsp::audio_meter::set_window_ms( obj_t* p, real_t wndMs )
+{
+  unsigned wndSmpN  = (unsigned)((wndMs * p->srate)/1000.0);
+
+  if( wndSmpN <= p->maxWndSmpN )
+    p->wndSmpN = wndSmpN;
+  else
+  {
+    cwLogWarning("The audio meter window length (%f ms) exceeds the max. window length (%f ms). The window length was reduced to (%f ms).",wndMs,p->maxWndMs,p->maxWndMs);
+    p->wndSmpN = p->maxWndSmpN;
+  }
+  
+  
 }

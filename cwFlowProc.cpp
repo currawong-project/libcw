@@ -1437,7 +1437,7 @@ namespace cw
     //
     namespace pv_analysis
     {
-      typedef struct dsp::pv_anl::obj_str<sample_t> pv_t;
+      typedef struct dsp::pv_anl::obj_str<sample_t,fd_real_t> pv_t;
 
       enum {
         kInPId,
@@ -1477,9 +1477,9 @@ namespace cw
           inst->pvN = srcBuf->chN;
           inst->pvA = mem::allocZ<pv_t*>( inst->pvN );  // allocate pv channel array
           
-          const sample_t* magV[ srcBuf->chN ];
-          const sample_t* phsV[ srcBuf->chN ];
-          const sample_t* hzV[  srcBuf->chN ];
+          const fd_real_t* magV[ srcBuf->chN ];
+          const fd_real_t* phsV[ srcBuf->chN ];
+          const fd_real_t* hzV[  srcBuf->chN ];
           unsigned maxBinNV[ srcBuf->chN ];
           unsigned binNV[ srcBuf->chN ];
           unsigned hopNV[ srcBuf->chN ];
@@ -1625,7 +1625,7 @@ namespace cw
     //
     namespace pv_synthesis
     {
-      typedef struct dsp::pv_syn::obj_str<sample_t> pv_t;
+      typedef struct dsp::pv_syn::obj_str<sample_t,fd_real_t> pv_t;
 
       enum {
         kInPId,
@@ -1751,7 +1751,7 @@ namespace cw
     //
     namespace spec_dist
     {
-      typedef struct dsp::spec_dist::obj_str<sample_t,sample_t> spec_dist_t;
+      typedef struct dsp::spec_dist::obj_str<fd_real_t,fd_real_t> spec_dist_t;
 
       enum
       {
@@ -1794,9 +1794,9 @@ namespace cw
           inst->sdN = srcBuf->chN;
           inst->sdA = mem::allocZ<spec_dist_t*>( inst->sdN );  
 
-          const sample_t* magV[ srcBuf->chN ];
-          const sample_t* phsV[ srcBuf->chN ];
-          const sample_t*  hzV[ srcBuf->chN ];
+          const fd_real_t* magV[ srcBuf->chN ];
+          const fd_real_t* phsV[ srcBuf->chN ];
+          const fd_real_t*  hzV[ srcBuf->chN ];
 
           //if((rc = var_register(ctx, kAnyChIdx, kInPId, "in")) != kOkRC )
           //  goto errLabel;
@@ -1864,6 +1864,7 @@ namespace cw
           double val = 0;
           spec_dist_t* sd = inst->sdA[ var->chIdx ];
           
+          
           switch( var->vid )
           {
             case kBypassPId:   rc = var_get( var, val ); sd->bypassFl = val; break;
@@ -1877,8 +1878,8 @@ namespace cw
               cwLogWarning("Unhandled variable id '%i' on instance: %s.", var->vid, ctx->label );
           }
 
-          //printf("%i sd: ceil:%f expo:%f thresh:%f upr:%f lwr:%f mix:%f : rc:%i val:%f\n",
-          //       var->chIdx,sd->ceiling, sd->expo, sd->thresh, sd->uprSlope, sd->lwrSlope, sd->mix, rc, val );
+          //printf("%i sd: ceil:%f expo:%f thresh:%f upr:%f lwr:%f mix:%f : rc:%i val:%f var:%s \n",
+          //       var->chIdx,sd->ceiling, sd->expo, sd->thresh, sd->uprSlope, sd->lwrSlope, sd->mix, rc, val, var->label );
         }
         
         return rc;
@@ -2596,8 +2597,164 @@ namespace cw
     }
     
  
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // audio_meter
+    //
+    namespace audio_meter
+    {
+
+      enum
+      {       
+        kInPId,
+        kDbFlPId,
+        kWndMsPId,
+        kPeakDbPId,
+	kOutPId,
+	kPeakFlPId,
+	kClipFlPId
+      };
+
+
+      typedef dsp::audio_meter::obj_t audio_meter_t;
+      
+      typedef struct
+      {
+        audio_meter_t** mtrA;
+        unsigned    mtrN;
+      } inst_t;
     
-  }
-}
+
+      rc_t create( instance_t* ctx )
+      {
+        rc_t          rc     = kOkRC;
+        const abuf_t* srcBuf = nullptr; //
+        inst_t*       inst   = mem::allocZ<inst_t>();
+        
+        ctx->userPtr = inst;
+
+        // verify that a source buffer exists
+        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",srcBuf )) != kOkRC )
+        {
+          rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",ctx->label);
+          goto errLabel;
+        }
+        else
+        {
+          // allocate channel array
+          inst->mtrN = srcBuf->chN;
+          inst->mtrA = mem::allocZ<audio_meter_t*>( inst->mtrN );  
+        
+          // create a audio_meter object for each input channel
+          for(unsigned i=0; i<srcBuf->chN; ++i)
+          {
+	    real_t wndMs, peakThreshDb;
+	    bool dbFl;
+	    
+            // get the audio_meter variable values
+            if((rc = var_register_and_get( ctx, i,
+                                           kDbFlPId,   "dbFl",    dbFl,
+                                           kWndMsPId, "wndMs",    wndMs,
+					   kPeakDbPId, "peakDb",  peakThreshDb )) != kOkRC )
+            {
+              goto errLabel;
+            }
+
+            // get the audio_meter variable values
+            if((rc = var_register( ctx, i,
+				   kOutPId,   "out",
+				   kPeakFlPId, "peakFl",
+				   kClipFlPId, "clipFl" )) != kOkRC )
+            {
+              goto errLabel;
+            }
+	    
+	    unsigned maxWndMs = std::max(wndMs,1000.0f);
+	    
+            // create the audio_meter instance
+            if((rc = dsp::audio_meter::create( inst->mtrA[i], srcBuf->srate, maxWndMs, wndMs, peakThreshDb)) != kOkRC )
+            {
+              rc = cwLogError(kOpFailRC,"The 'audio_meter' object create failed on the instance '%s'.",ctx->label);
+              goto errLabel;
+            }
+                
+          }
+          
+        }
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( instance_t* ctx )
+      {
+        rc_t rc = kOkRC;
+
+        inst_t* inst = (inst_t*)ctx->userPtr;
+        for(unsigned i=0; i<inst->mtrN; ++i)
+          destroy(inst->mtrA[i]);
+        
+        mem::release(inst->mtrA);
+        mem::release(inst);
+        
+        return rc;
+      }
+      
+      rc_t value( instance_t* ctx, variable_t* var )
+      {
+        return kOkRC;
+      }
+
+      rc_t exec( instance_t* ctx )
+      {
+        rc_t          rc     = kOkRC;
+        inst_t*       inst   = (inst_t*)ctx->userPtr;
+        const abuf_t* srcBuf = nullptr;
+        unsigned      chN    = 0;
+        
+        // get the src buffer
+        if((rc = var_get(ctx,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
+          goto errLabel;
+
+        chN = std::min(srcBuf->chN,inst->mtrN);
+       
+        for(unsigned i=0; i<chN; ++i)
+        {
+          dsp::audio_meter::exec( inst->mtrA[i], srcBuf->buf + i*srcBuf->frameN, srcBuf->frameN );
+	  var_set(ctx, kOutPId,    i, inst->mtrA[i]->outDb  );
+	  var_set(ctx, kPeakFlPId, i, inst->mtrA[i]->peakFl );
+	  var_set(ctx, kClipFlPId, i, inst->mtrA[i]->clipFl );
+        }
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t report( instance_t* ctx )
+      {
+        rc_t rc = kOkRC;
+        inst_t* inst = (inst_t*)ctx->userPtr;
+        for(unsigned i=0; i<inst->mtrN; ++i)
+        {
+          audio_meter_t* c = inst->mtrA[i];
+          cwLogInfo("%s ch:%i : %f %f db : pk:%i %i clip:%i %i ",
+                    ctx->label,i,c->outLin,c->outDb,c->peakFl,c->peakCnt,c->clipFl,c->clipCnt );
+        }
+        
+        return rc;
+      }
+
+      class_members_t members = {
+        .create  = create,
+        .destroy = destroy,
+        .value   = value,
+        .exec    = exec,
+        .report  = report
+      };      
+    }
+    
+    
+  } // flow
+} // cw
 
 

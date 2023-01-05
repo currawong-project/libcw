@@ -82,6 +82,7 @@ namespace cw
     typedef struct audioDev_str
     {
       bool               enableFl; // True if this device was enabled by the user
+      bool               meterFl;  // True if meters are enabled on this device
       const char*        label;    // User label
       unsigned           userId;   // User id
       char*              devName;  // System device name
@@ -827,6 +828,8 @@ namespace cw
     // Audio
     //
 
+
+    
     // Start or stop all the audio devices in p->audioDevA[]
     rc_t _audioDeviceStartStop( io_t* p, bool startFl )
     {
@@ -1122,6 +1125,68 @@ namespace cw
         cwLogError(kInvalidArgRC,"An audio device with label '%s' could not be found.",cwStringNullGuard(label));
 
       return nullptr;
+    }
+
+    rc_t _audioDeviceParams( io_t* p, unsigned devIdx, unsigned flags, audioDev_t*& adRef, unsigned& audioBufFlagsRef )
+    {
+      rc_t rc = kOkRC;
+  
+      if((adRef = _audioDeviceIndexToRecd(p,devIdx)) == nullptr )
+        rc = kInvalidArgRC;
+      else
+      {
+        audioBufFlagsRef = 0;
+        if( cwIsFlag(flags,kInFl) )
+          audioBufFlagsRef += audio::buf::kInFl;
+    
+        if( cwIsFlag(flags,kOutFl) )
+          audioBufFlagsRef += audio::buf::kOutFl;
+
+        if( cwIsFlag(flags,kEnableFl) )
+          audioBufFlagsRef += audio::buf::kEnableFl;
+    
+      }
+
+      return rc;
+    }
+
+    rc_t _audioDeviceEnableMeter( io_t* p, unsigned devIdx, unsigned inOutEnaFlags )
+    {
+      rc_t        rc            = kOkRC;
+      audioDev_t* ad            = nullptr;
+      unsigned    audioBufFlags = 0;
+  
+      if((rc = _audioDeviceParams( p, devIdx, inOutEnaFlags, ad, audioBufFlags )) != kOkRC )
+	rc = cwLogError(rc,"Enable tone failed.");
+      else    
+      {
+	bool     enaFl       = inOutEnaFlags & kEnableFl;
+	bool     enaState0Fl = _audioDeviceIsMeterEnabled(ad, kInFl | kOutFl);
+    
+	audioBufFlags += audio::buf::kMeterFl;
+
+	if( inOutEnaFlags & kInFl )
+	  ad->iagd->flags = cwEnaFlag(ad->iagd->flags,kMeterFl,enaFl);
+
+	if( inOutEnaFlags & kOutFl )
+	  ad->oagd->flags = cwEnaFlag(ad->oagd->flags,kMeterFl,enaFl);
+    
+	audio::buf::setFlag( p->audioBufH, devIdx, kInvalidIdx, audioBufFlags );
+    
+	bool enaState1Fl= _audioDeviceIsMeterEnabled(ad, kInFl | kOutFl);
+
+	if( enaState1Fl and !enaState0Fl )
+	  p->audioMeterDevEnabledN += 1;
+	else
+	  if( p->audioMeterDevEnabledN > 0 && !enaState1Fl && enaState0Fl )
+	    p->audioMeterDevEnabledN -= 1;
+   
+      }
+
+      if( rc != kOkRC )
+	rc = cwLogError(rc,"Enable meters failed.");
+   
+      return rc;
     }
     
     // Add an audioGroup pointer to groupA[] and return the new count of elements in the array.
@@ -1438,6 +1503,7 @@ namespace cw
       {
         audioDev_t*   ad             = nullptr; //p->audioDevA + i;
         bool          enableFl       = false;
+	bool          meterFl        = false;
         char*         userLabel      = nullptr;
         unsigned      userId         = kInvalidId;
         char*         devName        = nullptr;
@@ -1477,6 +1543,7 @@ namespace cw
 
           if((rc = node->getv_opt(
                 "userId",     userId,
+		"meterFl",    meterFl,
                 "inGroup",    inGroupLabel,
                 "outGroup",   outGroupLabel )) != kOkRC )
           {
@@ -1575,14 +1642,15 @@ namespace cw
             if((rc = _audioGroupAddDevice( oag, false, ad, oChCnt )) != kOkRC )
               goto errLabel;            
           }
-          
+
           // set the device group pointers
           ad->enableFl = enableFl;
+	  ad->meterFl  = meterFl;
           ad->label    = userLabel;
           ad->userId   = userId;
           ad->iGroup   = iag;
           ad->oGroup   = oag;
-            
+
         }
       }
 
@@ -1590,6 +1658,23 @@ namespace cw
       return rc;
     }
 
+    rc_t _audioDeviceEnableMeters( io_t* p )
+    {
+      rc_t rc = kOkRC;
+      
+      for(unsigned i=0; i<p->audioDevN; ++i)
+        if( p->audioDevA[i].enableFl && p->audioDevA[i].meterFl )
+	  if((rc = _audioDeviceEnableMeter(p, p->audioDevA[i].devIdx, kEnableFl | kInFl | kOutFl )) != kOkRC )
+	  {
+	    cwLogError(rc,"Audio enable on device '%s' failed.",p->audioDevA[i].label);
+	    goto errLabel;
+	  }
+      
+    errLabel:
+      return rc;
+	      
+    }
+    
     // Allocate the sample ptr buffers for each audio group.
     rc_t _audioGroupAllocBuffer( io_t* p )
     {
@@ -1654,6 +1739,13 @@ namespace cw
       {
         rc = cwLogError(rc,"Audio group buffer allocation failed.");
         goto errLabel;
+      }
+
+      // initialize enabled audio meters
+      if((rc = _audioDeviceEnableMeters(p)) != kOkRC )
+      {
+	rc = cwLogError(rc,"Audio device enabled failed.");
+	goto errLabel;
       }
 
     errLabel:
@@ -1839,31 +1931,7 @@ namespace cw
       return rc;
     }
 
-    rc_t _audioDeviceParams( handle_t h, unsigned devIdx, unsigned flags, io_t*& pRef, audioDev_t*& adRef, unsigned& audioBufFlagsRef )
-    {
-      rc_t rc = kOkRC;
-  
-      pRef  = _handleToPtr(h);
-  
-      if((adRef = _audioDeviceIndexToRecd(pRef,devIdx)) == nullptr )
-        rc = kInvalidArgRC;
-      else
-      {
-        audioBufFlagsRef = 0;
-        if( cwIsFlag(flags,kInFl) )
-          audioBufFlagsRef += audio::buf::kInFl;
     
-        if( cwIsFlag(flags,kOutFl) )
-          audioBufFlagsRef += audio::buf::kOutFl;
-
-        if( cwIsFlag(flags,kEnableFl) )
-          audioBufFlagsRef += audio::buf::kEnableFl;
-    
-      }
-
-      return rc;
-    }
-
     
     
   }
@@ -2386,43 +2454,8 @@ unsigned cw::io::audioDeviceChannelCount(   handle_t h, unsigned devIdx, unsigne
 
 cw::rc_t cw::io::audioDeviceEnableMeters( handle_t h, unsigned devIdx, unsigned inOutEnaFlags )
 {
-  rc_t        rc            = kOkRC;
-  io_t*       p             = nullptr;
-  audioDev_t* ad            = nullptr;
-  unsigned    audioBufFlags = 0;
-  
-  if((rc = _audioDeviceParams( h, devIdx, inOutEnaFlags, p, ad, audioBufFlags )) != kOkRC )
-    rc = cwLogError(rc,"Enable tone failed.");
-  else    
-  {
-    bool     enaFl       = inOutEnaFlags & kEnableFl;
-    bool     enaState0Fl = _audioDeviceIsMeterEnabled(ad, kInFl | kOutFl);
-    
-    audioBufFlags += audio::buf::kMeterFl;
-
-
-    if( inOutEnaFlags & kInFl )
-      ad->iagd->flags = cwEnaFlag(ad->iagd->flags,kMeterFl,enaFl);
-
-    if( inOutEnaFlags & kOutFl )
-      ad->oagd->flags = cwEnaFlag(ad->oagd->flags,kMeterFl,enaFl);
-    
-    audio::buf::setFlag( p->audioBufH, devIdx, kInvalidIdx, audioBufFlags );
-    
-    bool enaState1Fl= _audioDeviceIsMeterEnabled(ad, kInFl | kOutFl);
-
-    if( enaState1Fl and !enaState0Fl )
-      p->audioMeterDevEnabledN += 1;
-    else
-      if( p->audioMeterDevEnabledN > 0 && !enaState1Fl && enaState0Fl )
-        p->audioMeterDevEnabledN -= 1;
-   
-  }
-
-  if( rc != kOkRC )
-     rc = cwLogError(rc,"Enable meters failed.");
-   
-  return rc;
+  io_t* p = _handleToPtr(h);
+  return _audioDeviceEnableMeter(p, devIdx, inOutEnaFlags );
 }
 
 
@@ -2460,11 +2493,11 @@ const cw::io::sample_t* cw::io::audioDeviceMeters( handle_t h, unsigned devIdx, 
 cw::rc_t cw::io::audioDeviceEnableTone( handle_t h, unsigned devIdx, unsigned inOutEnaFlags )
 {
   rc_t        rc            = kOkRC;
-  io_t*       p             = nullptr;
+  io_t*       p             = _handleToPtr(h);
   audioDev_t* ad            = nullptr;
   unsigned    audioBufFlags = 0;
   
-  if((rc = _audioDeviceParams( h, devIdx, inOutEnaFlags, p, ad, audioBufFlags )) != kOkRC )
+  if((rc = _audioDeviceParams( p, devIdx, inOutEnaFlags, ad, audioBufFlags )) != kOkRC )
     rc = cwLogError(rc,"Enable tone failed.");
   else    
   {
@@ -2479,11 +2512,11 @@ cw::rc_t cw::io::audioDeviceToneFlags( handle_t h, unsigned devIdx, unsigned inO
 {
 
   rc_t        rc            = kOkRC;
-  io_t*       p             = nullptr;
+  io_t*       p             = _handleToPtr(h);
   audioDev_t* ad            = nullptr;
   unsigned    audioBufFlags = 0;
   
-  if((rc = _audioDeviceParams( h, devIdx, inOrOutFlag, p, ad, audioBufFlags )) != kOkRC )
+  if((rc = _audioDeviceParams( p, devIdx, inOrOutFlag, ad, audioBufFlags )) != kOkRC )
     rc = cwLogError(rc,"Get tone flags failed.");
   else    
   {
@@ -2497,11 +2530,11 @@ cw::rc_t cw::io::audioDeviceToneFlags( handle_t h, unsigned devIdx, unsigned inO
 cw::rc_t cw::io::audioDeviceEnableMute( handle_t h, unsigned devIdx, unsigned inOutEnaFlags )
 {
   rc_t        rc            = kOkRC;
-  io_t*       p             = nullptr;
+  io_t*       p             = _handleToPtr(h);
   audioDev_t* ad            = nullptr;
   unsigned    audioBufFlags = 0;
   
-  if((rc = _audioDeviceParams( h, devIdx, inOutEnaFlags, p, ad, audioBufFlags )) != kOkRC )
+  if((rc = _audioDeviceParams( p, devIdx, inOutEnaFlags, ad, audioBufFlags )) != kOkRC )
     rc = cwLogError(rc,"Enable mute failed.");
   else    
   {
@@ -2515,11 +2548,11 @@ cw::rc_t cw::io::audioDeviceEnableMute( handle_t h, unsigned devIdx, unsigned in
 cw::rc_t cw::io::audioDeviceMuteFlags( handle_t h, unsigned devIdx, unsigned inOrOutFlag,  bool* muteFlA, unsigned chCnt )
 {
   rc_t        rc            = kOkRC;
-  io_t*       p             = nullptr;
+  io_t*       p             = _handleToPtr(h);
   audioDev_t* ad            = nullptr;
   unsigned    audioBufFlags = 0;
   
-  if((rc = _audioDeviceParams( h, devIdx, inOrOutFlag, p, ad, audioBufFlags )) != kOkRC )
+  if((rc = _audioDeviceParams( p, devIdx, inOrOutFlag, ad, audioBufFlags )) != kOkRC )
     rc = cwLogError(rc,"Get mute flags failed.");
   else    
   {
@@ -2534,11 +2567,11 @@ cw::rc_t cw::io::audioDeviceMuteFlags( handle_t h, unsigned devIdx, unsigned inO
 cw::rc_t cw::io::audioDeviceSetGain( handle_t h, unsigned devIdx, unsigned inOrOutFlag, double gain )
 {
   rc_t        rc            = kOkRC;
-  io_t*       p             = nullptr;
+  io_t*       p             = _handleToPtr(h);
   audioDev_t* ad            = nullptr;
   unsigned    audioBufFlags = 0;
   
-  if((rc = _audioDeviceParams( h, devIdx, inOrOutFlag, p, ad, audioBufFlags )) != kOkRC )
+  if((rc = _audioDeviceParams( p, devIdx, inOrOutFlag, ad, audioBufFlags )) != kOkRC )
     rc = cwLogError(rc,"Set gain failed.");
   else    
   {
@@ -2551,11 +2584,11 @@ cw::rc_t cw::io::audioDeviceSetGain( handle_t h, unsigned devIdx, unsigned inOrO
 cw::rc_t cw::io::audioDeviceGain( handle_t h, unsigned devIdx, unsigned inOrOutFlag, double* gainA, unsigned chCnt )
 {
   rc_t        rc            = kOkRC;
-  io_t*       p             = nullptr;
+  io_t*       p             = _handleToPtr(h);
   audioDev_t* ad            = nullptr;
   unsigned    audioBufFlags = 0;
   
-  if((rc = _audioDeviceParams( h, devIdx, inOrOutFlag, p, ad, audioBufFlags )) != kOkRC )
+  if((rc = _audioDeviceParams( p, devIdx, inOrOutFlag, ad, audioBufFlags )) != kOkRC )
     rc = cwLogError(rc,"Get gain failed.");
   else    
   {

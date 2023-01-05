@@ -20,5 +20,6 @@ namespace cw
     namespace audio_delay     { extern class_members_t members;  }
     namespace dc_filter       { extern class_members_t members;  }
     namespace balance         { extern class_members_t members;  }
+    namespace audio_meter     { extern class_members_t members;  }
   }
 }
