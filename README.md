@@ -33,9 +33,18 @@ Print: ele name, uuid, appId and parent name, uuid, appId
 
 ## Flow:
 
-- create automatic UI for proc's.
-- create the ability to script sub-networks.
-- create true plug-in architecture - requires a C only interface.
+- Create automatic UI for proc's.
+- Create the ability to script sub-networks.
+- Create true plug-in architecture - requires a C only interface.
+- Add a callback function to inform the app when a variable changes.
+  The same callback could be used to map variable labels to id's at startup.
+  This callback may be a key part of adding an automatic UI.
+- Simplify the coding of processors by having the system
+  call the instance for each variable.  This will make createing most
+  processors a matter of responding to simple requests from the system.
+  More complex processors could still be created using the current technique
+  of calling explicit functions (e.g. `register_and_get(), register_and_set()`)
+  
 
 + Subnet scheme:
 ```
