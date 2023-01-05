@@ -6,6 +6,7 @@ namespace cw
     #define kRealTFl kFloatTFl
     typedef dsp::real_t   real_t;
     typedef dsp::sample_t sample_t;
+    typedef dsp::fd_real_t fd_real_t;
     typedef dsp::srate_t  srate_t;
     typedef unsigned      uint_t;
     typedef int           int_t;
@@ -38,11 +39,11 @@ namespace cw
       unsigned*         maxBinN_V; // max value that binN_V[i] is allowed to take
       unsigned*         binN_V;    // binN_V[ chN ] count of sample frames per channel
       unsigned*         hopSmpN_V; // hopSmpN_V[ chN ] hop sample count 
-      sample_t**        magV;      // magV[ chN ][ binN ]
-      sample_t**        phsV;      // phsV[ chN ][ binN ]
-      sample_t**        hzV;       // hzV[ chN ][ binN ]
+      fd_real_t**        magV;      // magV[ chN ][ binN ]
+      fd_real_t**        phsV;      // phsV[ chN ][ binN ]
+      fd_real_t**        hzV;       // hzV[ chN ][ binN ]
       bool*             readyFlV;  // readyFlV[chN] true if this channel is ready to be processed (used to sync. fbuf rate to abuf rate)
-      sample_t*         buf;       // memory used by this buffer (or NULL if magV,phsV,hzV point are proxied to another buffer)      
+      fd_real_t*         buf;       // memory used by this buffer (or NULL if magV,phsV,hzV point are proxied to another buffer)      
     } fbuf_t;
 
     enum
@@ -191,12 +192,12 @@ namespace cw
 
       void*           userPtr;       // instance state
 
-      variable_t*     varL;          // list of all variables on this instance
+      variable_t*     varL;          // linked list of all variables on this instance
 
-      unsigned        varMapChN;     // max count of channels among all variables
-      unsigned        varMapIdN;
-      unsigned        varMapN;       // varMapN
-      variable_t**    varMapA;       // varMapA[ varMapN ]
+      unsigned        varMapChN;     // max count of channels (max 'chIdx' + 2) among all variables on this instance, (2=kAnyChIdx+index to count)
+      unsigned        varMapIdN;     // max 'vid' among all variables on this instance 
+      unsigned        varMapN;       // varMapN = varMapIdN * varMapChN 
+      variable_t**    varMapA;       // varMapA[ varMapN ] = allows fast lookup from ('vid','chIdx) to variable
       
       struct instance_str* link;
     } instance_t;
@@ -234,8 +235,8 @@ namespace cw
     rc_t            abuf_set_channel( abuf_t* buf, unsigned chIdx, const sample_t* v, unsigned vN );
     const sample_t* abuf_get_channel( abuf_t* buf, unsigned chIdx );
 
-    fbuf_t*        fbuf_create( srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const sample_t** magV=nullptr, const sample_t** phsV=nullptr, const sample_t** hzV=nullptr );
-    fbuf_t*        fbuf_create( srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const sample_t** magV=nullptr, const sample_t** phsV=nullptr, const sample_t** hzV=nullptr );
+    fbuf_t*        fbuf_create( srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_real_t** magV=nullptr, const fd_real_t** phsV=nullptr, const fd_real_t** hzV=nullptr );
+    fbuf_t*        fbuf_create( srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_real_t** magV=nullptr, const fd_real_t** phsV=nullptr, const fd_real_t** hzV=nullptr );
     void           fbuf_destroy( fbuf_t*& buf );
     fbuf_t*        fbuf_duplicate( const fbuf_t* src );
     
@@ -370,8 +371,8 @@ namespace cw
     rc_t           var_register_and_set( instance_t* inst, const char* label,     unsigned vid, unsigned chIdx, variable_t*& varRef );
     
     rc_t           var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, unsigned frameN );
-    rc_t           var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const sample_t** magV=nullptr, const sample_t** phsV=nullptr, const sample_t** hzV=nullptr );
-    rc_t           var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const sample_t** magV=nullptr, const sample_t** phsV=nullptr, const sample_t** hzV=nullptr );
+    rc_t           var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_real_t** magV=nullptr, const fd_real_t** phsV=nullptr, const fd_real_t** hzV=nullptr );
+    rc_t           var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_real_t** magV=nullptr, const fd_real_t** phsV=nullptr, const fd_real_t** hzV=nullptr );
 
     inline rc_t _var_register_and_set(cw::flow::instance_t*, unsigned int ) { return kOkRC; }
 

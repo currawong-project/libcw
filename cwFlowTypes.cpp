@@ -903,7 +903,7 @@ const cw::flow::sample_t*   cw::flow::abuf_get_channel( abuf_t* abuf, unsigned c
   return abuf->buf + (chIdx*abuf->frameN);
 }
 
-cw::flow::fbuf_t* cw::flow::fbuf_create( srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const sample_t** magV, const sample_t** phsV, const sample_t** hzV )
+cw::flow::fbuf_t* cw::flow::fbuf_create( srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_real_t** magV, const fd_real_t** phsV, const fd_real_t** hzV )
 {
   for(unsigned i=0; i<chN; ++i)
     if( binN_V[i] > maxBinN_V[i] )
@@ -919,9 +919,9 @@ cw::flow::fbuf_t* cw::flow::fbuf_create( srate_t srate, unsigned chN, const unsi
   f->maxBinN_V = mem::allocZ<unsigned>(chN);
   f->binN_V    = mem::allocZ<unsigned>(chN);
   f->hopSmpN_V = mem::allocZ<unsigned>(chN); 
-  f->magV      = mem::allocZ<sample_t*>(chN);
-  f->phsV      = mem::allocZ<sample_t*>(chN);
-  f->hzV       = mem::allocZ<sample_t*>(chN);
+  f->magV      = mem::allocZ<fd_real_t*>(chN);
+  f->phsV      = mem::allocZ<fd_real_t*>(chN);
+  f->hzV       = mem::allocZ<fd_real_t*>(chN);
   f->readyFlV  = mem::allocZ<bool>(chN);
 
   vop::copy( f->binN_V, binN_V, chN );
@@ -932,17 +932,17 @@ cw::flow::fbuf_t* cw::flow::fbuf_create( srate_t srate, unsigned chN, const unsi
   {
     for(unsigned chIdx=0; chIdx<chN; ++chIdx)
     {      
-      f->magV[ chIdx ] = (sample_t*)magV[chIdx];
-      f->phsV[ chIdx ] = (sample_t*)phsV[chIdx];
-      f->hzV[  chIdx ] = (sample_t*)hzV[chIdx];
+      f->magV[ chIdx ] = (fd_real_t*)magV[chIdx];
+      f->phsV[ chIdx ] = (fd_real_t*)phsV[chIdx];
+      f->hzV[  chIdx ] = (fd_real_t*)hzV[chIdx];
     }
   }
   else
   {
     unsigned maxTotalBinsN = vop::sum( maxBinN_V, chN );
         
-    sample_t* buf       = mem::allocZ<sample_t>( kFbufVectN * maxTotalBinsN );
-    sample_t* m         = buf;
+    fd_real_t* buf       = mem::allocZ<fd_real_t>( kFbufVectN * maxTotalBinsN );
+    fd_real_t* m         = buf;
     for(unsigned chIdx=0; chIdx<chN; ++chIdx)
     {   
       f->magV[chIdx] = m + 0 * f->binN_V[chIdx];
@@ -960,7 +960,7 @@ cw::flow::fbuf_t* cw::flow::fbuf_create( srate_t srate, unsigned chN, const unsi
 }
 
 
-cw::flow::fbuf_t*  cw::flow::fbuf_create( srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const sample_t** magV, const sample_t** phsV, const sample_t** hzV )
+cw::flow::fbuf_t*  cw::flow::fbuf_create( srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_real_t** magV, const fd_real_t** phsV, const fd_real_t** hzV )
 {
   unsigned maxBinN_V[ chN ];
   unsigned binN_V[ chN ];
@@ -1367,7 +1367,7 @@ cw::rc_t        cw::flow::var_register_and_set( instance_t* inst, const char* va
   return rc;
 }
 
-cw::rc_t cw::flow::var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const sample_t** magV, const sample_t** phsV, const sample_t** hzV )
+cw::rc_t cw::flow::var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_real_t** magV, const fd_real_t** phsV, const fd_real_t** hzV )
 {
   rc_t rc = kOkRC;
   fbuf_t* fbuf;
@@ -1380,7 +1380,7 @@ cw::rc_t cw::flow::var_register_and_set( instance_t* inst, const char* var_label
   return rc;
 }
 
-cw::rc_t cw::flow::var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const sample_t** magV, const sample_t** phsV, const sample_t** hzV )
+cw::rc_t cw::flow::var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_real_t** magV, const fd_real_t** phsV, const fd_real_t** hzV )
 {
   unsigned maxBinN_V[ chN ];
   unsigned binN_V[ chN ];

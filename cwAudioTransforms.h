@@ -538,17 +538,17 @@ namespace cw
         kCalcHzPvaFl   = 0x01,
       };
       
-      template< typename T >
+      template< typename T0, typename T1 >
       struct obj_str
       {
-        struct shift_buf::obj_str<T>*  sb;
-        struct fft::obj_str<T>*        ft;
-        struct wnd_func::obj_str<T>*   wf;
-        struct phs_to_frq::obj_str<T>* pf;
+        struct shift_buf::obj_str<T0>*  sb;
+        struct wnd_func::obj_str<T0>*   wf;
+        struct fft::obj_str<T1>*        ft;
+        struct phs_to_frq::obj_str<T1>* pf;
         
         unsigned               flags;
         unsigned               procSmpCnt;
-        T                      srate;
+        T1                     srate;
         
         unsigned               maxWndSmpCnt;
         unsigned               maxBinCnt;
@@ -557,21 +557,21 @@ namespace cw
         unsigned               hopSmpCnt;
         unsigned               binCnt;
         
-        const T*               magV; // amplitude NOT power - alias to ft->magV
-        const T*               phsV; //                       alias to ft->phsV
-        const T*               hzV;
+        const T1*               magV; // amplitude NOT power - alias to ft->magV
+        const T1*               phsV; //                       alias to ft->phsV
+        const T1*               hzV;
 
       };
 
-      typedef obj_str< float > fobj_t;
-      typedef obj_str< double> dobj_t;
+      typedef obj_str< float, float > fobj_t;
+      typedef obj_str< double, double> dobj_t;
       
-      template< typename T >
-      rc_t create( struct obj_str<T>*& p, unsigned procSmpCnt, const T& srate, unsigned maxWndSmpCnt, unsigned wndSmpCnt, unsigned hopSmpCnt, unsigned flags )
+      template< typename T0, typename T1 >
+      rc_t create( struct obj_str<T0,T1>*& p, unsigned procSmpCnt, const T1& srate, unsigned maxWndSmpCnt, unsigned wndSmpCnt, unsigned hopSmpCnt, unsigned flags )
       {
         rc_t rc = kOkRC;
         
-        p = mem::allocZ< struct obj_str<T> >();
+        p = mem::allocZ< struct obj_str<T0,T1> >();
 
         shift_buf::create( p->sb, procSmpCnt, maxWndSmpCnt, wndSmpCnt, hopSmpCnt );
         wnd_func::create(  p->wf, wnd_func::kHannWndId  | wnd_func::kNormByLengthWndFl, maxWndSmpCnt, wndSmpCnt, 0 );
@@ -593,8 +593,8 @@ namespace cw
         return rc;
       }
 
-      template< typename T >
-      rc_t destroy( struct obj_str<T>*& p )
+      template< typename T0, typename T1 >
+      rc_t destroy( struct obj_str<T0,T1>*& p )
       {
         if( p != nullptr )
         {
@@ -607,15 +607,19 @@ namespace cw
         return kOkRC;
       }
 
-      template< typename T >
-      bool exec( struct obj_str<T>* p, const T* x, unsigned xN )
+      template< typename T0, typename T1 >
+      bool exec( struct obj_str<T0,T1>* p, const T0* x, unsigned xN )
       {
         bool fl = false;
         while( shift_buf::exec(p->sb,x,xN) )
         {
           wnd_func::exec(p->wf, p->sb->outV, p->sb->wndSmpCnt );
 
-          fft::exec(p->ft, p->wf->outV, p->wf->wndN);
+	  // convert float to double
+	  T1 cvtV[ p->wf->wndN ];
+	  vop::copy(cvtV, p->wf->outV, p->wf->wndN );
+
+          fft::exec(p->ft, cvtV, p->wf->wndN);
 
           if( cwIsFlag(p->flags,kCalcHzPvaFl) )
             phs_to_frq::exec(p->pf,p->phsV);
@@ -627,8 +631,8 @@ namespace cw
         
       }
 
-      template< typename T >
-      rc_t set_window_length( struct obj_str<T>* p, unsigned wndSmpCnt )
+      template< typename T0, typename T1 >
+      rc_t set_window_length( struct obj_str<T0,T1>* p, unsigned wndSmpCnt )
       {
         rc_t rc;
         
@@ -645,20 +649,20 @@ namespace cw
     
     namespace pv_syn
     {
-      template< typename T >
+      template< typename T0, typename T1 >
       struct obj_str
       {
-        ifft::obj_str<T>*     ft;
-        wnd_func::obj_str<T>* wf;
-        ola::obj_str<T>*      ola;
+        ifft::obj_str<T1>*     ft;
+        wnd_func::obj_str<T0>* wf;
+        ola::obj_str<T0>*      ola;
         
-        T*                    minRphV;
-        T*                    maxRphV;
-        T*                    itrV;
-        T*                    phs0V;
-        T*                    mag0V;
-        T*                    phsV;
-        T*                    magV;
+        T1*                    minRphV;
+        T1*                    maxRphV;
+        T1*                    itrV;
+        T1*                    phs0V;
+        T1*                    mag0V;
+        T1*                    phsV;
+        T1*                    magV;
         
         double                outSrate;
         unsigned              procSmpCnt;
@@ -668,15 +672,15 @@ namespace cw
         
       };
 
-      typedef obj_str< float > fobj_t;
-      typedef obj_str< double> dobj_t;
+      typedef obj_str< float, float > fobj_t;
+      typedef obj_str< double, double > dobj_t;
 
-      template< typename T >
-      rc_t create( struct obj_str<T>*& p, unsigned procSmpCnt, const T& outSrate, unsigned wndSmpCnt, unsigned hopSmpCnt, unsigned wndTypeId=wnd_func::kHannWndId )
+      template< typename T0, typename T1 >
+      rc_t create( struct obj_str<T0,T1>*& p, unsigned procSmpCnt, const T1& outSrate, unsigned wndSmpCnt, unsigned hopSmpCnt, unsigned wndTypeId=wnd_func::kHannWndId )
       {
         rc_t rc = kOkRC;
         
-        p = mem::allocZ< struct obj_str<T> >();
+        p = mem::allocZ< struct obj_str<T0,T1> >();
 
         int      k;
         double   twoPi     = 2.0 * M_PI;
@@ -689,13 +693,13 @@ namespace cw
         p->hopSmpCnt  = hopSmpCnt;
         p->binCnt     = wndSmpCnt / 2 + 1;
 
-        p->minRphV    = mem::allocZ<T>( p->binCnt );
-        p->maxRphV    = mem::allocZ<T>( p->binCnt );
-        p->itrV       = mem::allocZ<T>( p->binCnt );
-        p->phs0V      = mem::allocZ<T>( p->binCnt );
-        p->phsV       = mem::allocZ<T>( p->binCnt );
-        p->mag0V      = mem::allocZ<T>( p->binCnt );
-        p->magV       = mem::allocZ<T>( p->binCnt );
+        p->minRphV    = mem::allocZ<T1>( p->binCnt );
+        p->maxRphV    = mem::allocZ<T1>( p->binCnt );
+        p->itrV       = mem::allocZ<T1>( p->binCnt );
+        p->phs0V      = mem::allocZ<T1>( p->binCnt );
+        p->phsV       = mem::allocZ<T1>( p->binCnt );
+        p->mag0V      = mem::allocZ<T1>( p->binCnt );
+        p->magV       = mem::allocZ<T1>( p->binCnt );
 
 
         wnd_func::create( p->wf, wndTypeId, wndSmpCnt, wndSmpCnt, 0);
@@ -707,8 +711,8 @@ namespace cw
           // complete revolutions per hop in radians
           p->itrV[k] = twoPi * floor((double)k * hopSmpCnt / wndSmpCnt ); 
 
-          p->minRphV[k] = ((T)(k-m)) * hopSmpCnt * twoPi / wndSmpCnt;
-          p->maxRphV[k] = ((T)(k+m)) * hopSmpCnt * twoPi / wndSmpCnt;
+          p->minRphV[k] = ((T1)(k-m)) * hopSmpCnt * twoPi / wndSmpCnt;
+          p->maxRphV[k] = ((T1)(k+m)) * hopSmpCnt * twoPi / wndSmpCnt;
 
           //printf("%f %f %f\n",p->itrV[k],p->minRphV[k],p->maxRphV[k]);
         }
@@ -716,8 +720,8 @@ namespace cw
         return rc;  
       }
       
-      template< typename T >
-      rc_t destroy( struct obj_str<T>*& p )
+      template< typename T0, typename T1 >
+      rc_t destroy( struct obj_str<T0,T1>*& p )
       {
         if( p != nullptr )
         {
@@ -738,8 +742,8 @@ namespace cw
         return kOkRC;
       }
 
-      template< typename T >
-      rc_t exec( struct obj_str<T>* p, const T* magV, const T* phsV )
+      template< typename T0, typename T1 >
+      rc_t exec( struct obj_str<T0,T1>* p, const T1* magV, const T1* phsV )
       {
 
         double   twoPi = 2.0 * M_PI;
@@ -748,7 +752,7 @@ namespace cw
         for(k=0; k<p->binCnt; ++k)
         {
           // phase dist between cur and prv frame
-          T dp = phsV[k] - p->phs0V[k];
+          T1 dp = phsV[k] - p->phs0V[k];
 
           // dist must be positive (accum phase always increases)
           if( dp < -0.00001 )
@@ -774,8 +778,12 @@ namespace cw
         }
   
         ifft::exec_polar( p->ft, magV, phsV );
+
+	// convert double to float
+	T0 v[ p->ft->outN ];
+	vop::copy( v, p->ft->outV, p->ft->outN );
   
-        ola::exec( p->ola, p->ft->outV, p->ft->outN ); 
+        ola::exec( p->ola, v, p->ft->outN ); 
 
         //printf("%i %i\n",p->binCnt,p->ft.binCnt );
 
@@ -978,7 +986,8 @@ namespace cw
         // get the mean output magnitude spectra
         double u1 = vop::mean(X1m,binN);
         
-        if( p->mix > 0 )
+        //if( p->mix > 0 )
+        if(1)
         {
           if( idb > -150.0 )
           {
@@ -998,8 +1007,8 @@ namespace cw
         if( p->bypassFl )
           vop::copy( p->outMagV, magV, binN );
         else
-          vop::mul(  p->outMagV, X1m, std::min((T1)4.0,p->ogain), binN);
-        //vop::mul(  p->outMagV, X1m, p->ogain, binN);
+          //vop::mul(  p->outMagV, X1m, std::min((T1)4.0,p->ogain), binN);
+          vop::mul(  p->outMagV, X1m, p->ogain, binN);
         
         vop::copy( p->outPhsV, phsV,                binN);
 
@@ -1223,7 +1232,6 @@ namespace cw
       }
       
     }
-
 
     
     rc_t test( const cw::object_t* args );

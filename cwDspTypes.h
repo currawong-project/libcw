@@ -6,8 +6,9 @@ namespace cw
   namespace dsp
   {
     typedef float    real_t;
-    typedef real_t   sample_t;
-    typedef real_t   srate_t;
+    typedef float   sample_t;
+    typedef double  fd_real_t;
+    typedef double   srate_t;
   }
 }
 #endif

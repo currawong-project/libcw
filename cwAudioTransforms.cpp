@@ -260,4 +260,21 @@ namespace cw
       return kOkRC;
     }
   }
+
+  /*
+  namespace spec_dist
+  {
+    rc_t _test_one( const object_t* arg,   )
+    {
+    }
+    
+    rc_t create( struct obj_str<T0,T1>*& p, unsigned binN, bool bypassFl=false, T1 ceiling=30, T1 expo=2, T1 thresh=60, T1 uprSlope=0, T1 lwrSlope=2, T1 mix=0 )
+
+    rc_t  test( const object_t* args )
+    {
+      
+    }
+    
+  }
+  */
 }
