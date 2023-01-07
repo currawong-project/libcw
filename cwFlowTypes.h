@@ -168,7 +168,7 @@ namespace cw
       unsigned             vid;          // this variables numeric id ( cat(vid,chIdx) forms a unique variable identifier on this 'inst'
       var_desc_t*          varDesc;      // the variable description for this variable
       value_t              local_value[ kLocalValueN ];  // the local value instance (actual value if this is not a 'src' variable)
-      unsigned             local_value_idx; 
+      unsigned             local_value_idx; // local_value[] is double buffered to allow the cur value of the buf[] to be held while the next value is validated (see _var_set_template())
       value_t*             value;        // pointer to the value associated with this variable   
       unsigned             chIdx;        // channel index
       struct variable_str* src_var;      // pointer to this input variables source link (or null if it uses the local_value)
