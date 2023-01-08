@@ -16,6 +16,15 @@ namespace cw
     typedef std::complex<double> complex_d_t;
     typedef std::complex<float>  complex_f_t;
 
+    template< typename T >
+    T ampl_to_db( T ampl, T ref=1.0, T minDb=-200.0 )
+    { return ampl<1e-10 ? minDb : 20.0 * log10(ampl/ref); }
+
+    template< typename T >
+    T db_to_ampl( T db )
+    { return pow(10.0,db/20.0); }
+    
+
     //---------------------------------------------------------------------------------------------------------------------------------
     // Window functions
     //
