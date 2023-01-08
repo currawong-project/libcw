@@ -974,7 +974,7 @@ namespace cw
 
 
         // basic transform 
-        _cmSpecDist2BasicMode_Original(p,X1m,binN,p->thresh,p->uprSlope,p->lwrSlope);
+        _cmSpecDist2BasicMode_WithKnee(p,X1m,binN,p->thresh,p->uprSlope,p->lwrSlope);
 
         // convert db back to magnitude
         vop::db_to_ampl(X1m, X1m, binN );
