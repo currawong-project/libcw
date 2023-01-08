@@ -54,7 +54,7 @@ namespace cw
       void copy( T0* v0, const T1* v1, unsigned n )
     {
       for(unsigned i=0; i<n; ++i)
-        v0[i] = (T0)v1[i];
+        v0[i] = (T0)v1[i]; // Note: copy with convert - not the same as memcpy. 
     }
     
     template< typename T0, typename T1 >
