@@ -1,16 +1,91 @@
 
-Plan:
-1. Add MIDI processors - this may be complicated by cross fading scheme.
+TODO: fix cwDsp.h: ampl_to_db(),db_to_ampl(), add pow_to_db() and db_to_pow().
+Implement vectorized version in terms of the scalar versions in cwDsp.h.
+Decide on standard dB range.  e.g. -100 to 0,  0 to 100 ....
+
+* Flow Variables Class
+** Attributes 
+  + type: real,int,string,audio,spectrum,enum
+  + flags: attribute flags
+    - src: This variable must be connected.
+    - multi: This variable may be instantiated multiple times
+    - fan_in: This variable allows multiple incoming connections.
+  + value:
+    - real,int { min,max,value,center,step }
+    - enum [ list of (id,label) pairs ]
+    
+  + doc: documentation string  
+
+  + max_multi: max count of instantiations due to multiple connections
+  + min_multi: min count of instantiations due to multiple connections
+
+* Flow Proc Class
+** Attributes
+  + doc: documentation string
+  + sub_proc:
+    - sub_proc_cnt:<int>  set an absolute sub_proc_cnt
+    - sub_proc_cnt_min:   
+    - sub_proc_cnt_max:
+      
+    - sub_proc_var
+      + label
+      + flags: [ audio_chs, multi_chs, fan_in_chs ]
+
+      Calculate the sub_proc_cnt based on the count of mult's,fan_ins, and audio channels.
+
+
+* Proc Instance setup
+
+    
+    
+
+
+  
+* Plan
+
+
+
+** Flow processor 'multi' processor:
+   Add the ability for a processor to expand the number of variables based on
+   incoming connections. 
+   - Variables with this capability must have the 'multi' attribute in the class description.
+   - The new variables will be named by adding a suffix in the connection command.
+     e.g. in:{ in.a:out.foo } connect the output out.foo to a new variable instantiated
+     on the the local variable description 'in'.
+   - The new variable may then be addressed by referring to 'in.a'.
+   - The proc instance may then ask for a count of variable instances for a given base varaible.
+     var_get_multi_count( ...,'in') and address them by var_get( ...,'in',multi_idx).
+   - Note that once a variable is given the 'multi' attribute the only way for the instance
+     to access the variable is by supplying the 'multi' index since the variable
+     label alone will not be adequate to select among multiple instances.
+   
+     
+** Flow processor Fan-in capability:
+    Add the ability for a processor variables to support multiple incoming connections.
+   
+   - Fan-in capability must be enabled in the processor class description with the 'fan-in' attribute.
+   - The array of variables associated with fan-in connections will be
+     addressed via "<label>.<integer>".
+   - The count of inputs to a fan-in varaible instance can be accessed via: var_fan_in_count( ...,var_label)
+   - The variable instance associated with each fan-in connection can be accessed with
+     var_get( ...,'in',fan_in_idx).
+   - Note that once a variable is given the 'fan-in' attribute a fan_in_idx must be used to access it.
+
+    
+
+     
+
+** Add MIDI processors - this may be complicated by cross fading scheme.
    - maybe cross-faded proc's should be all placed in a 'sub-net' and
    only those processes would then be cross faded.
 
    
-2. Add subnets. (see outline below)
-3. Add auto-UI (this will require a separate app).
+** Add subnets. (see outline below)
+** Add auto-UI (this will require a separate app).
 
 
-# Functionality
-## libcw:
+* Functionality
+** libcw:
 
 - Remove dependency on locally built websockets library.
 
@@ -19,7 +94,7 @@ own folders. (breakout libcw from application / reorganize project)
 Allow ui.js to be shared by all apps.
 
 
-## UI:
+** UI:
 - Add support for custom controls
 - Document the UI resource file format.
 - Document the UI client/server protocol.
@@ -31,7 +106,7 @@ This is a useful way to see if id maps are working.
 Print: ele name, uuid, appId and parent name, uuid, appId
 
 
-## Flow:
+** Flow:
 
 - Create automatic UI for proc's.
 - Create the ability to script sub-networks.
@@ -46,7 +121,7 @@ Print: ele name, uuid, appId and parent name, uuid, appId
   of calling explicit functions (e.g. `register_and_get(), register_and_set()`)
   
 
-+ Subnet scheme:
+*** Subnet scheme:
 ```
 {
     balanced_mix: {
@@ -87,13 +162,13 @@ because it allows a message to dynamically address a process
 Note that it would be easy to form these messages on the stack and 
 transmit them to connected processes. 
 
-# TODO:
+* To do list:
 
-## libcw
+** libcw
 - Fix the time functions to make them more convenient and C++ish.
 - libcw: document basic functionality: flow, UI, Audio
 
-## Flow
+** Flow
 
 - Implement MIDI processors.
 - Implement flow procs for all libcm processsors.
@@ -119,7 +194,7 @@ transmit them to connected processes.
 - why are multiple records given in the 'args:{}' attribute?
 
 
-## UI:
+** UI:
 
 - Notes on UI id's:
 1. The appId, when set via an enum, is primarily for identifying a UI element in a callback switch statement.
@@ -197,7 +272,7 @@ element to be deleted.
 - UI needs a special UUID (not kInvalidId) to specify the 'root' UI element. See note in cwUi._createFromObj()
 
 
-## Audio:
+** Audio:
 
 
 - Should a warning be issued by audioBuf functions which return a set of values:
@@ -211,11 +286,11 @@ does not match the actual number of channesl?
 - Remove Audio file operations that have been superceded by 'flow' framework.
 
 
-## Socket
+** Socket
 - Any socket function which takes a IP/port address should have a version which also takes a sockaddr_in*.
 
 
-## Websocket
+** Websocket
 
 - cwWebsock is allocating memory on send().
 - cwWebsock: if the size of the recv and xmt buffer, as passed form the protocolArray[], is too small send() will fail without an error message.
@@ -241,7 +316,7 @@ This is easy to reproduce by simply decreasing the size of the buffers in the pr
 - Improve performance of load parser. Try parsing a big JSON file and notice how poorly it performs.
 
 
-## Misc
+** Misc
 - logDefaultFormatter() in cwLog.cpp uses stack allocated memory in a way that could easily be exploited.
 
 - lexIntMatcher() in cwLex.cpp doesn't handle 'e' notation correctly. See note in code.
@@ -253,7 +328,9 @@ This is easy to reproduce by simply decreasing the size of the buffers in the pr
 - (DONE) change all NULL's to nullptr
 - (DONE) implement kTcpFl in cwTcpSocket.cpp
 
-# UI Control Creation Protocol
+** Documentation
+
+*** UI Control Creation Protocol
 
 The UI elements have four identifiers:
 
@@ -272,7 +349,7 @@ Server sends 'create' messages.
 Client sends 'register' messages.
 Server send' 'id_assign' messages.
 
-# sockaddr_in reference
+*** sockaddr_in reference
 
 
     #include <netinet/in.h>
@@ -290,7 +367,7 @@ struct in_addr {
 
 
 
-# Development Setup
+*** Development Setup
 
 0)
 ```
@@ -312,7 +389,7 @@ struct in_addr {
 
     export LD_LIBRARY_PATH=~/sdk/libwebsockets/build/out/lib
 
-# Raspberry Pi Build Notes:
+*** Raspberry Pi Build Notes:
 
     cd sdk
     mkdir libwebsockets
@@ -324,7 +401,7 @@ struct in_addr {
 
 
     
-# Flow Notes:
+*** Flow Notes:
 
 
 - When a variable has a variant with a numberic channel should the 'all' channel variant be removed?
@@ -349,8 +426,7 @@ specific types, to pass through. For example a 'selector' (n inputs, 1 output) o
 
 DONE:  Add a version of var_register() that both registers and returns the value of the variable.
 
-Flow Instance Creation:
------------------------
+*** Flow Instance Creation:
 
 1. Create all vars from the class description and initially set their
 value to the default value given in the class.  chIdx=kAnyChIdx.
