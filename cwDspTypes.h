@@ -7,8 +7,8 @@ namespace cw
   {
     typedef float    real_t;
     typedef float   sample_t;
-    typedef double  fd_real_t;
-    typedef double   srate_t;
+    typedef float  fd_real_t;
+    typedef float   srate_t;
   }
 }
 #endif
