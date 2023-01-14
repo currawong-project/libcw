@@ -65,7 +65,8 @@ namespace cw
 
     void subtractMicros( spec_t& ts, unsigned us );
     
-    // Advance 'ts' by 'ms' milliseconds.
+    // Advance 'ts' by 'us/'ms' microseconds/milliseconds.
+    void advanceMicros( spec_t& ts, unsigned us );
     void advanceMs( spec_t& ts, unsigned ms );
 
     // Advance the current time by 'ms' milliseconds;

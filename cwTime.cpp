@@ -212,6 +212,30 @@ void cw::time::subtractMicros( spec_t& ts, unsigned micros )
   
 }
 
+void cw::time::advanceMicros( spec_t& ts, unsigned us )
+{
+  if( us > 1000000 )
+  {
+    // strip off whole seconds from usec
+    unsigned sec = us / 1000000; 
+
+    // find the remaining fractional second in microseconds
+    us = (us - sec*1000000);
+
+    ts.tv_sec  += sec;
+  }
+  
+  ts.tv_nsec +=  us * 1000000000; // convert microseconds to nanoseconds
+
+  // stip off whole seconds from tv_nsec
+  while( ts.tv_nsec > 1e9 )
+  {
+    ts.tv_nsec -= 1e9;
+    ts.tv_sec +=1;
+  }    
+  
+}
+
 void cw::time::advanceMs( spec_t& ts, unsigned ms )
 {
   if( ms > 1000 )
