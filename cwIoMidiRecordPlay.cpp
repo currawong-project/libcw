@@ -19,6 +19,19 @@ namespace cw
 {
   namespace midi_record_play
   {
+    enum {
+      kStoppedMidiStateId,
+      kPlayingMidiStateId,
+      kStoppingMidiStateId
+    };
+    
+    typedef struct midi_state_str
+    {
+      uint8_t keyVel[ midi::kMidiNoteCnt ];
+      uint8_t ctlVal[ midi::kMidiCtlCnt ];
+      unsigned state;
+    } midi_state_t;
+    
     typedef struct am_midi_msg_str
     {
       unsigned      devIdx;
@@ -50,6 +63,9 @@ namespace cw
       
       unsigned       pedalDownVelId;
       unsigned       pedalDownVel;
+
+      unsigned       pedalUpVelId;
+      unsigned       pedalUpVel;
       
       unsigned       pedalDownHalfVelId;
       unsigned       pedalDownHalfVel;
@@ -69,6 +85,8 @@ namespace cw
 
       bool           scale_chord_notes_enable_fl;
       double         scale_chord_notes_factor;
+
+      midi_state_t   midi_state;
       
     } midi_device_t;
 
@@ -108,6 +126,7 @@ namespace cw
       bool           thruFl;
       bool           logInFl;   // log incoming message when not in 'record' mode.
       bool           logOutFl;  // log outgoing messages
+      bool           supressMidiXmitFl; // don't transmit MIDI
 
       bool           velHistogramEnableFl;
       
@@ -164,6 +183,139 @@ namespace cw
       return rc;
     }
 
+    void _xmit_midi( midi_record_play_t* p, unsigned devIdx, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
+    {
+      if( !p->supressMidiXmitFl )
+	io::midiDeviceSend( p->ioH, p->midiDevA[devIdx].midiOutDevIdx, p->midiDevA[devIdx].midiOutPortIdx, status + ch, d0, d1 );      
+    }
+        
+
+    // initialze the midi state to all-notes-off and all controllers=0
+    void _midi_state_clear( midi_record_play_t* p)
+    {
+      
+      for(unsigned i=0; i<p->midiDevN; ++i)
+      {
+	for(unsigned j=0; j<midi::kMidiNoteCnt; ++j)
+	  p->midiDevA[i].midi_state.keyVel[j] = 0;
+	    
+	for(unsigned j=0; j<midi::kMidiCtlCnt; ++j)
+	  p->midiDevA[i].midi_state.ctlVal[j] = 0;
+
+	p->midiDevA[i].midi_state.state = kPlayingMidiStateId;
+      }
+      
+    }
+
+    void _midi_state_set_state( midi_record_play_t* p, unsigned stateId )
+    {
+      for(unsigned i=0; i<p->midiDevN; ++i)
+	p->midiDevA[i].midi_state.state = stateId;
+    }
+
+    bool _midi_state_is_state( midi_record_play_t* p, unsigned stateId )
+    {
+      for(unsigned i=0; i<p->midiDevN; ++i)
+	if( p->midiDevA[i].midi_state.state != stateId )
+	  return false;
+      return true;
+    }
+
+    
+    void _midi_state_set_stopping( midi_record_play_t* p )
+    { _midi_state_set_state(p,kStoppingMidiStateId); }
+    
+    bool _midi_state_is_stopping( midi_record_play_t* p )
+    { return _midi_state_is_state(p,kStoppingMidiStateId); }
+
+    bool _midi_state_is_stopped( midi_record_play_t* p )
+    { return _midi_state_is_state(p,kStoppedMidiStateId); }
+	
+    unsigned _midi_state_active_note_count( midi_record_play_t* p )
+    {
+      unsigned n = 0;
+      for(unsigned i=0; i<p->midiDevN; ++i)
+	for(unsigned j=0; j<midi::kMidiNoteCnt; ++j)
+	  n += p->midiDevA[i].midi_state.keyVel[j] > 0 ? 1 : 0;
+
+      return n;
+    }
+
+    rc_t  _midi_state_update( midi_record_play_t* p, midi_device_t& dev, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
+    {
+      rc_t rc = kOkRC;
+
+      if( ch != 0 )
+      {
+	rc = cwLogError(kInvalidArgRC,"Only the state of MIDI channel 0 tracked.");
+	goto errLabel;
+      }
+
+      if( d0 > 127 || d1 > 127 )
+      {
+	rc = cwLogError(kInvalidArgRC,"Illegal MIDI byte value: st:%i d0:%i d1:%i",status,d0,d1);
+	goto errLabel;
+      }
+
+      if( midi::isNoteOn(status,d1) )
+      {
+	if( dev.midi_state.state == kPlayingMidiStateId )
+	  dev.midi_state.keyVel[ d0 ] = d1;
+	goto errLabel;
+      }
+      
+      if( midi::isNoteOff(status,d1))
+      {	
+	dev.midi_state.keyVel[ d0 ] = 0;	
+	goto errLabel;
+      }
+
+      if( midi::isCtl(status) )
+      {
+	dev.midi_state.ctlVal[ d0 ] = d1;
+	goto errLabel;
+      }
+	  
+    errLabel:
+
+      
+      return rc;
+    }
+
+    bool _midi_state_are_all_notes_off( midi_record_play_t* p )
+    {
+      if( _midi_state_is_stopped( p ) )
+	return true;
+      
+      if( _midi_state_is_stopping( p ) )
+	if( _midi_state_active_note_count( p ) == 0 )
+	{
+	  _midi_state_set_state(p,kStoppedMidiStateId);
+	  return true;
+	}
+      
+      return false;
+    }
+
+    uint8_t _midi_state_ctl_value( midi_record_play_t* p, midi_device_t& dev, uint8_t d0 )
+    {
+      return dev.midi_state.ctlVal[d0];
+    }
+
+    void _midi_state_xmit_pedals( midi_record_play_t* p )
+    {
+      uint8_t ctlA[] = { midi::kSustainCtlMdId, midi::kSostenutoCtlMdId, midi::kSoftPedalCtlMdId };
+      unsigned ctlN = sizeof(ctlA)/sizeof(ctlA[0]);
+  
+      for(unsigned i=0; i<p->midiDevN; ++i)
+	for(unsigned j=0; j<ctlN; ++j)
+	{
+	  uint8_t d1 = _midi_state_ctl_value( p, p->midiDevA[i], ctlA[j] );
+	  _xmit_midi(p, i, 0, midi::kCtlMdId, ctlA[j], d1 );
+	}
+    
+    }
+    
     void _set_chord_note_count( am_midi_msg_t* m0, const am_midi_msg_t* m, unsigned chordNoteCnt )
     {
       for(; m0<m; ++m0)
@@ -291,6 +443,8 @@ namespace cw
           {
             if((rc = pedalRecd->getv( "down_id",  p->midiDevA[i].pedalDownVelId,
                                       "down_vel", p->midiDevA[i].pedalDownVel,
+				      "up_id",    p->midiDevA[i].pedalUpVelId,
+				      "up_vel",   p->midiDevA[i].pedalUpVel,
                                       "half_down_id",  p->midiDevA[i].pedalDownHalfVelId,
                                       "half_down_vel", p->midiDevA[i].pedalDownHalfVel,
                                       "half_up_id",  p->midiDevA[i].pedalUpHalfVelId,
@@ -350,16 +504,24 @@ namespace cw
 
       return am;
     }
-    
+
     rc_t _event_callback( midi_record_play_t* p, unsigned id, const time::spec_t timestamp, unsigned loc, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1, unsigned chordNoteCnt, bool log_fl=true )
     {
       rc_t rc = kOkRC;
-      // if we have arrived at the stop time
+      // if we have arrived at the stop time (but we may still be waiting for note-end messages)
       bool after_stop_time_fl = !time::isZero(p->end_play_event_timestamp) && time::isGT(timestamp,p->end_play_event_timestamp);
-      bool after_all_off_fl   = after_stop_time_fl && time::isGT(timestamp,p->all_off_timestamp);
 
-      bool is_note_on_fl = status==midi::kNoteOnMdId and d1 != 0;
-      bool is_damper_fl = status==midi::kCtlMdId and d0==midi::kSustainCtlMdId;
+      if( after_stop_time_fl )
+	_midi_state_set_stopping(p);
+
+      // if we are after the stop time and after the all-notes-off time
+      // bool after_all_off_fl   = after_stop_time_fl && time::isGT(timestamp,p->all_off_timestamp);
+
+      // if we are after the stop time and there are no  more active notes
+      bool after_all_off_fl  = after_stop_time_fl && _midi_state_are_all_notes_off(p);
+      
+      bool is_note_on_fl = midi::isNoteOn(status,d1);
+      bool is_damper_fl = midi::isSustainPedal(status,d0); 
       bool supress_fl = (is_note_on_fl && after_stop_time_fl) || p->muteFl;
       bool is_pedal_fl = midi::isPedal( status, d0 );
       
@@ -385,14 +547,16 @@ namespace cw
 
             if( !p->halfPedalFl )
             {
-              // map the note on velocity
+              // if this is a note-on and a vel. table exists
               if( is_note_on_fl and p->midiDevA[i].velTableArray != nullptr )
               {
+		// verify that the vel. is legal given the table
                 if( d1 >= p->midiDevA[i].velTableN )
                   cwLogError(kInvalidIdRC,"A MIDI note-on velocity (%i) outside the velocity table range was encountered.",d1);
                 else                
                   out_d1 = p->midiDevA[i].velTableArray[ d1 ];
 
+		// scale the note velocities of chords to account for their combined volumes
                 if( p->midiDevA[i].scale_chord_notes_enable_fl && chordNoteCnt>1 )
                 {
                   uint8_t delta = (uint8_t)lround(out_d1 * p->midiDevA[i].scale_chord_notes_factor * (chordNoteCnt-1) );
@@ -417,11 +581,11 @@ namespace cw
               if( p->midiDevA[i].force_damper_down_fl && is_damper_fl && out_d1>p->midiDevA[i].force_damper_down_threshold )
                 out_d1 = p->midiDevA[i].force_damper_down_velocity;
 
-              // map the pedal down velocity
+              // map the pedal  velocity
               if( status==midi::kCtlMdId && d0 == midi::kSustainCtlMdId && p->midiDevA[i].pedalMapEnableFl )
               {
-                if( d1 == 0 )
-                  out_d1 = 0;
+                if( d1 == p->midiDevA[i].pedalUpVelId )
+                  out_d1 = p->midiDevA[i].pedalUpVel;
                 else
                   if( d1 == p->midiDevA[i].pedalDownVelId )
                     out_d1 = p->midiDevA[i].pedalDownVel;
@@ -435,12 +599,16 @@ namespace cw
               }
             }
 
+	    _midi_state_update(p, p->midiDevA[i], ch, status, d0, out_d1 );
+	    
             if( !supress_fl )
             {
-              io::midiDeviceSend( p->ioH, p->midiDevA[i].midiOutDevIdx, p->midiDevA[i].midiOutPortIdx, status + ch, d0, out_d1 );
+	      _xmit_midi( p, i, ch, status, d0, out_d1 );
+	      
             }
           }
 
+	// don't inform the app if we are past the end time
         if( !after_stop_time_fl and p->cb )
           p->cb( p->cb_arg, kMidiEventActionId, id, timestamp, loc, ch, status, d0, d1 );
 
@@ -1018,6 +1186,9 @@ namespace cw
       if( p->cb != nullptr )
         p->cb( p->cb_arg, kPlayerStoppedActionId, kInvalidId, t1, kInvalidId, 0, 0, 0, 0 );
 
+      
+      _midi_state_clear(p);
+      
       return rc;
     }
     
@@ -1172,6 +1343,8 @@ cw::rc_t cw::midi_record_play::create( handle_t& hRef, io::handle_t ioH, const o
     goto errLabel;
   }
 
+  _midi_state_clear(p);
+  
  errLabel:
   if( rc == kOkRC )
     hRef.set(p);
@@ -1368,6 +1541,7 @@ cw::rc_t cw::midi_record_play::load( handle_t h, const midi_msg_t* msg, unsigned
   return rc;
 }
 
+/*
 cw::rc_t cw::midi_record_play::seek( handle_t h, time::spec_t seek_timestamp )
 {
   rc_t rc           = kOkRC;
@@ -1376,7 +1550,7 @@ cw::rc_t cw::midi_record_play::seek( handle_t h, time::spec_t seek_timestamp )
   bool soft_down_fl = false;
 
   midi_record_play_t* p = _handleToPtr(h);
-      
+  
   for(unsigned i=0; i<p->msgArrayInIdx; ++i)
   {
     am_midi_msg_t* mm = p->msgArray + i;
@@ -1420,7 +1594,44 @@ cw::rc_t cw::midi_record_play::seek( handle_t h, time::spec_t seek_timestamp )
   return rc;
       
 }
+*/
 
+cw::rc_t cw::midi_record_play::seek( handle_t h, time::spec_t seek_timestamp )
+{
+  rc_t rc           = kOkRC;
+  midi_record_play_t* p = _handleToPtr(h);
+
+  // stop  and clear the MIDI state
+  _stop(p); 
+
+  // supress MIDI transmission during the seek 
+  p->supressMidiXmitFl = true;
+
+  // iterate throught the MIDI msg array
+  for(unsigned i=0; i<p->msgArrayInIdx; ++i)
+  {
+    am_midi_msg_t* mm = p->msgArray + i;
+
+    // if this msg is prior to or equal to the seek target
+    if( time::isLTE(seek_timestamp,mm->timestamp) )
+    {
+      p->msgArrayOutIdx = i;
+      break;
+    }
+
+    // transmit the msg so that the dev._midi_state is updated,
+    // but 'supressMidiXmitFl' is set so no MIDI will actually
+    // be transmitted
+    _transmit_msg( p, mm, false );
+  }
+
+  p->supressMidiXmitFl = false;
+
+  _midi_state_xmit_pedals(p);
+
+  
+  return rc;
+}
 
 unsigned cw::midi_record_play::event_count( handle_t h )
 {
