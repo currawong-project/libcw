@@ -128,6 +128,7 @@ namespace cw
       bool           logOutFl;  // log outgoing messages
       bool           supressMidiXmitFl; // don't transmit MIDI
 
+      unsigned       minDamperDownMs;
       bool           velHistogramEnableFl;
       
       bool     halfPedalFl;
@@ -362,6 +363,7 @@ namespace cw
                         "midi_device_list",            midiDevL,
                         "log_in_flag",                 p->logInFl,
                         "log_out_flag",                p->logOutFl,
+			"min_damper_down_time_ms",     p->minDamperDownMs,
                         "half_pedal_flag",             p->halfPedalFl)) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"MIDI record play configuration parse failed.");
@@ -1510,6 +1512,10 @@ cw::rc_t cw::midi_record_play::load( handle_t h, const midi_msg_t* msg, unsigned
 {
   rc_t                rc = kOkRC;
   midi_record_play_t* p  = _handleToPtr(h);
+
+  unsigned extraMs = 0;
+  unsigned curMicros = 0;
+  
   
   if( msg_count > p->msgArrayN )
   {  
@@ -1520,6 +1526,13 @@ cw::rc_t cw::midi_record_play::load( handle_t h, const midi_msg_t* msg, unsigned
 
   for(unsigned i=0; i<msg_count; ++i)
   {
+
+    if( i> 0)
+    {
+      unsigned deltaMicros = time::elapsedMicros(msg[i-1].timestamp,msg[i].timestamp);
+      curMicros += deltaMicros + (extraMs*1000);
+    }
+    
     p->msgArray[i].id        = msg[i].id;
     p->msgArray[i].timestamp = msg[i].timestamp;
     p->msgArray[i].loc       = msg[i].loc;
@@ -1529,8 +1542,15 @@ cw::rc_t cw::midi_record_play::load( handle_t h, const midi_msg_t* msg, unsigned
     p->msgArray[i].d1        = msg[i].d1;
     p->msgArray[i].devIdx    = kInvalidIdx;
     p->msgArray[i].portIdx   = kInvalidIdx;
-    p->msgArray[i].microsec  = time::elapsedMicros(p->msgArray[0].timestamp,p->msgArray[i].timestamp);
+    //p->msgArray[i].microsec  = time::elapsedMicros(p->msgArray[0].timestamp,p->msgArray[i].timestamp);
+    p->msgArray[i].microsec  = curMicros;
 
+    //hprintf("%i %i\n",curMicros,time::elapsedMicros(p->msgArray[0].timestamp,p->msgArray[i].timestamp) );
+
+    extraMs = 0;
+    if( midi::isSustainPedalUp(msg[i].status,msg[i].d0,msg[i].d1))
+      extraMs = p->minDamperDownMs;
+    
   }
 
   p->msgArrayInIdx =  msg_count;
