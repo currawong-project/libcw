@@ -34,13 +34,52 @@ Decide on standard dB range.  e.g. -100 to 0,  0 to 100 ....
       Calculate the sub_proc_cnt based on the count of mult's,fan_ins, and audio channels.
 
 
-* Proc Instance setup
+    
+* Var Map:
 
-    
-    
+#+BEGIN_SRC c
+  typedef struct variable_str
+  {
+
+    variable_str* var_link; // instance_t varL links 
+  } variable_t;
+
+  typedef struct proc_desc
+  {
+    var_desc_t* varDescA; // description of each base variable
+    unsigned    varDescN; 
+
+  } proc_desc_t;
+
+  typedef struct varBase_str
+  {
+    char*       label;      // label assigned to this 'mult'
+    unsigned    multIdx;    // mult index 
+    variable_t* baseVar;    // all variables have a base instance (chIdx=kAnyChIdx)
+    unsigned    subProcN;   // count of times this variable is replicated to specialize for a given subprocess
+    variable_t* subProcA[ subProcN ]; // 
+  } varBase_t;
+
+  typedef struct varMap_str
+  {
+    unsigned   multN;  // count of times this variable is replicated based on multiple incoming connections to the same input variable label.
+    varBase_t* multA[ multN ] // pointer to each base variable
+  } varMap_t;
+
+  typedef struct instance_str
+  {
+    variable_t* varL;  // variable linked list: list of all variable instances
+    unsigned maxVId; // maximum application supplied vid. In general maxVId+1 == proc_desc_t.varDescN
+    varMap_t varMap[ maxVId ]; // maps an application vid to a list of variable instances
+  } instance_t;
+
+  
+
+#+END_SRC
 
 
   
+* 
 * Plan
 
 
