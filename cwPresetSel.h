@@ -120,7 +120,7 @@ namespace cw
     bool track_loc( handle_t h, unsigned loc, const cw::preset_sel::frag_t*& frag_Ref );
 
     // Return the preset index marked to play on this fragment.
-    unsigned fragment_play_preset_index( const frag_t* frag, unsigned preset_seq_idx=kInvalidIdx );
+    unsigned fragment_play_preset_index( handle_t h, const frag_t* frag, unsigned preset_seq_idx=kInvalidIdx );
 
     // Return the count of presets whose 'seqFl' is set.
     unsigned fragment_seq_count( handle_t h, unsigned fragId );

@@ -292,16 +292,16 @@ namespace cw
       bool     trackMidiFl;    // apply presets based on MIDI location (otherwise respond only to direct manipulation of fragment control)
       bool     audioFileSrcFl;
 
-      unsigned	pvWndSmpCnt;
-      bool	sdBypassFl;
-      double	sdInGain;
-      double	sdCeiling;
-      double	sdExpo;
-      double	sdThresh;
-      double	sdUpr;
-      double	sdLwr;
-      double	sdMix;
-      bool      cmpBypassFl;
+      unsigned pvWndSmpCnt;
+      bool     sdBypassFl;
+      double   sdInGain;
+      double   sdCeiling;
+      double   sdExpo;
+      double   sdThresh;
+      double   sdUpr;
+      double   sdLwr;
+      double   sdMix;
+      bool     cmpBypassFl;
       
     } app_t;
 
@@ -428,6 +428,7 @@ namespace cw
       char s[sN];
       vsnprintf(s,sN,fmt,vl);      
       uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kStatusId), s );
+      //printf("Status:%s\n",s);
     }
 
     
@@ -470,14 +471,12 @@ namespace cw
       return kOkRC;
     }
 
-    rc_t _apply_preset( app_t* app, const time::spec_t& ts, unsigned loc, const preset_sel::frag_t* frag=nullptr  )      
+    rc_t _apply_preset( app_t* app, unsigned loc, const preset_sel::frag_t* frag=nullptr  )      
     {
       // if frag is NULL this is the beginning of a play session
       if( frag == nullptr )
       {
-        preset_sel::track_loc_reset(app->psH);
-        //preset_sel::track_timestamp( app->psH, ts, frag);
-        
+        preset_sel::track_loc_reset(app->psH);        
         preset_sel::track_loc( app->psH, loc, frag);
       }
       
@@ -492,7 +491,7 @@ namespace cw
         unsigned seq_idx_n = app->seqActiveFl ? app->seqPresetIdx : kInvalidIdx;
         
         // get the preset index to play for this fragment
-        if((preset_idx = fragment_play_preset_index(frag,seq_idx_n)) == kInvalidIdx )
+        if((preset_idx = fragment_play_preset_index(app->psH, frag,seq_idx_n)) == kInvalidIdx )
           cwLogInfo("No preset has been assigned to the fragment at end loc. '%i'.",frag->endLoc );
         else
         {        
@@ -585,7 +584,7 @@ namespace cw
               if( preset_sel::track_loc( app->psH, loc, f ) )  
               {          
                 //printf("NEW FRAG: id:%i loc:%i\n", f->fragId, f->endLoc );
-                _apply_preset( app, timestamp, loc, f );
+                _apply_preset( app, loc, f );
                 
                 if( f != nullptr )
                   _do_select_frag( app, f->guiUuId );
@@ -696,6 +695,7 @@ namespace cw
 
       //midi_record_play::half_pedal_params( app->mrpH, app->hpDelayMs, app->hpPitch, app->hpVel, app->hpPedalVel, app->hpDurMs, app->hpDnDelayMs );
 
+      // If we are using an audio file as the audio source
       if( app->audioFileSrcFl )
       {
         if((rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "aud_in",  "on_off",    flow::kAnyChIdx, true )) != kOkRC )
@@ -739,7 +739,7 @@ namespace cw
       }
 
       // apply the preset which is active at the start time
-      if((rc = _apply_preset( app, app->beg_play_timestamp, begMap->loc )) != kOkRC )
+      if((rc = _apply_preset( app, begMap->loc )) != kOkRC )
       {
         rc = cwLogError(rc,"Preset application failed prior to MIDI start.");
         goto errLabel;
@@ -764,13 +764,14 @@ namespace cw
       return rc;
     }
 
+    // This function is used to apply the selected (checked) preset immediately.
     rc_t _apply_current_preset( app_t* app, unsigned fragId )
     {
-      rc_t			rc		 = kOkRC;
-      time::spec_t		ts		 = {0};
-      const preset_sel::frag_t* frag		 = nullptr;
-      bool			orig_seqActiveFl = app->seqActiveFl;
+      rc_t                      rc               = kOkRC;
+      const preset_sel::frag_t* frag             = nullptr;
+      bool                      orig_seqActiveFl = app->seqActiveFl;
 
+      // temporarily turn of the preset sequencer (if it is active)
       app->seqActiveFl = false;
 
       if((frag = preset_sel::get_fragment( app->psH, fragId )) == nullptr )
@@ -780,7 +781,7 @@ namespace cw
       }
 
       // apply the preset which is active at the start time
-      if((rc = _apply_preset( app, ts, frag->begPlayLoc, frag )) != kOkRC )
+      if((rc = _apply_preset( app, frag->begPlayLoc, frag )) != kOkRC )
       {
         rc = cwLogError(rc,"Preset application failed on fragment at id '%i'.",fragId);
         goto errLabel;        
@@ -797,13 +798,17 @@ namespace cw
       rc_t rc;
       unsigned begLoc = 0;
       unsigned endLoc = 0;
-      
+
+      // get the fragment starting location as currently set in the UI
+      // (this may be different from the fragment begin location)
       if((rc = get_value( app->psH, fragId, preset_sel::kBegPlayLocVarId, kInvalidId, begLoc )) != kOkRC )
       {
         rc = cwLogError(rc,"Could not retrieve the begin play location for fragment id:%i.",fragId);
         goto errLabel;
       }
 
+      // get the fragment ending location as currently set in the UI
+      // (this may be different from the fragment end location)
       if((rc = get_value( app->psH, fragId, preset_sel::kEndPlayLocVarId, kInvalidId, endLoc )) != kOkRC )
       {
         rc = cwLogError(rc,"Could not retrieve the begin play location for fragment id:%i.",fragId);

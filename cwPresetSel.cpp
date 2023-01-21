@@ -36,6 +36,8 @@ namespace cw
       double           master_wet_out_gain;
       double           master_dry_gain;
       double           master_sync_delay_ms;
+
+      unsigned         sel_frag_id; // fragment id assoc'd with last selected frag. ui element
       
     } preset_sel_t;
 
@@ -245,11 +247,6 @@ namespace cw
       
       return nullptr;
     }
-
-
-
-    
-    
     
 
     rc_t _validate_preset_id( const frag_t* frag, unsigned preset_id )
@@ -272,9 +269,13 @@ namespace cw
 
       // if this is not a 'master' variable then locate the requested fragment
       if( !_is_master_var_id(varId) )
+      {
         if((rc = _find_frag(p,fragId,f)) != kOkRC )
           goto errLabel;
-  
+
+        p->sel_frag_id = fragId;
+      }
+      
       switch( varId )
       {
       case kGuiUuIdVarId:
@@ -932,14 +933,16 @@ bool cw::preset_sel::track_loc( handle_t h, unsigned loc, const cw::preset_sel::
 
 
 
-unsigned cw::preset_sel::fragment_play_preset_index( const frag_t* frag, unsigned preset_seq_idx )
+unsigned cw::preset_sel::fragment_play_preset_index( handle_t h, const frag_t* frag, unsigned preset_seq_idx )
 {
-  unsigned n = 0;
+  unsigned      n                   = 0;
+  preset_sel_t* p                   = _handleToPtr(h);
+  
   // for each preset
   for(unsigned i=0; i<frag->presetN; ++i)
   {
     // if 'preset_seq_idx' is not valid ...
-    if( preset_seq_idx==kInvalidIdx )
+    if( preset_seq_idx==kInvalidIdx || frag->fragId != p->sel_frag_id )
     {
       // ...then select the first preset whose 'playFl' is set.
       if( frag->presetA[i].playFl  )
