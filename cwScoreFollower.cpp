@@ -77,6 +77,8 @@ namespace cw
 
     unsigned _get_max_cw_loc_value( score_follower_t* p )
     {
+      // Note: cmScoreEvt_t.csvEventId is the app score 'loc' value.
+      
       unsigned cmEvtN = cmScoreEvtCount( p->cmScoreH );
       unsigned maxCwLoc = 0;
       for(unsigned i=0; i<cmEvtN; ++i)
