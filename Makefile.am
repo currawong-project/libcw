@@ -67,8 +67,8 @@ libcwSRC += src/libcw/cwIoMidiRecordPlay.cpp  src/libcw/cwIoAudioRecordPlay.cpp 
 libcwHDR += src/libcw/cwIoPresetSelApp.h     src/libcw/cwPianoScore.h    src/libcw/cwPresetSel.h   
 libcwSRC += src/libcw/cwIoPresetSelApp.cpp   src/libcw/cwPianoScore.cpp  src/libcw/cwPresetSel.cpp 
 
-# libcwHDR += src/libcw/cwCmInterface.h    src/libcw/cwScoreFollower.h
-# libcwSRC += src/libcw/cwCmInterface.cpp  src/libcw/cwScoreFollower.cpp
+libcwHDR += src/libcw/cwCmInterface.h    src/libcw/cwScoreFollower.h
+libcwSRC += src/libcw/cwCmInterface.cpp  src/libcw/cwScoreFollower.cpp
 
 endif
 
