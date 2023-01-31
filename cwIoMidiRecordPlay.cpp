@@ -1298,11 +1298,12 @@ cw::rc_t cw::midi_record_play::create( handle_t& hRef, io::handle_t ioH, const o
     return rc;
 
   p = mem::allocZ<midi_record_play_t>();
+
+  p->ioH = ioH; // p->ioH is used in _destory() so initialize it here
   
   if((rc = _parseCfg(p,cfg)) != kOkRC )
     goto errLabel;
 
-  p->ioH = ioH;
   p->cb  = cb;
   p->cb_arg = cb_arg;
   p->halfPedalState        = kHalfPedalDone;
