@@ -89,12 +89,12 @@ namespace cw
       kAMtrOut1Id,
 
       /*
-      kHalfPedalPedalVel,
-      kHalfPedalDelayMs,
-      kHalfPedalPitch,
-      kHalfPedalVel,
-      kHalfPedalDurMs,
-      kHalfPedalDnDelayMs,
+        kHalfPedalPedalVel,
+        kHalfPedalDelayMs,
+        kHalfPedalPitch,
+        kHalfPedalVel,
+        kHalfPedalDurMs,
+        kHalfPedalDnDelayMs,
       */
       
       kLogId,
@@ -175,14 +175,14 @@ namespace cw
       { kPanelDivId,     kInsertBtnId,    "insertBtnId" },
       { kPanelDivId,     kDeleteBtnId,    "deleteBtnId" },
 
-      /*
-      { kPanelDivId,     kHalfPedalPedalVel, "halfPedalPedalVelId" },
-      { kPanelDivId,     kHalfPedalDelayMs,  "halfPedalDelayMsId"  },
-      { kPanelDivId,     kHalfPedalPitch,    "halfPedalPitchId"    },
-      { kPanelDivId,     kHalfPedalVel,      "halfPedalVelId"      },
-      { kPanelDivId,     kHalfPedalDurMs,    "halfPedalDurMsId"    },
-      { kPanelDivId,     kHalfPedalDnDelayMs, "halfPedalDnDelayMsId"    },
-      */
+        /*
+          { kPanelDivId,     kHalfPedalPedalVel, "halfPedalPedalVelId" },
+          { kPanelDivId,     kHalfPedalDelayMs,  "halfPedalDelayMsId"  },
+          { kPanelDivId,     kHalfPedalPitch,    "halfPedalPitchId"    },
+          { kPanelDivId,     kHalfPedalVel,      "halfPedalVelId"      },
+          { kPanelDivId,     kHalfPedalDurMs,    "halfPedalDurMsId"    },
+          { kPanelDivId,     kHalfPedalDnDelayMs, "halfPedalDnDelayMsId"    },
+        */
 
       { kPanelDivId,     kPvWndSmpCntId, "pvWndSmpCntId" },
       { kPanelDivId,     kSdBypassId,    "sdBypassId" },
@@ -417,7 +417,7 @@ namespace cw
 
       app->insertLoc = kInvalidId; // initialize 'insertLoc' to be invalid 
       
-    errLabel:
+                                        errLabel:
       
       return rc;
     }
@@ -729,13 +729,13 @@ namespace cw
       
       if( !time::isZero(app->beg_play_timestamp) && !app->useLiveMidiFl )
       {
-          // seek the player to the requested loc
-          if((rc = midi_record_play::seek( app->mrpH, app->beg_play_timestamp )) != kOkRC )
-          {
-            rc = cwLogError(rc,"MIDI seek failed.");
-            goto errLabel;
-          }
-          rewindFl = false;
+        // seek the player to the requested loc
+        if((rc = midi_record_play::seek( app->mrpH, app->beg_play_timestamp )) != kOkRC )
+        {
+          rc = cwLogError(rc,"MIDI seek failed.");
+          goto errLabel;
+        }
+        rewindFl = false;
       }
 
       // apply the preset which is active at the start time
@@ -919,7 +919,6 @@ namespace cw
     {
       rc_t     rc = kOkRC;
 
-      // if 
       if( fragEndLoc == kInvalidId )
       {
         // get the endLoc associated with this fragment
@@ -962,13 +961,12 @@ namespace cw
     rc_t _update_frag_ui(app_t* app, unsigned fragId )
     {
       // Notes: 
-      //        uiChanId = fragId for panel values     
-      //     or uiChanId = preset_index for preset values
-
+      // uiChanId = fragId for panel values or uiChanId = preset_index for preset values
+                                      
       rc_t     rc            = kOkRC;
       unsigned endLoc;
 
-      // get the endLoc for this fragment 
+      // Get the endLoc for this fragment
       if((rc = _frag_id_to_endloc(app, fragId, endLoc )) == kOkRC )
       {
         unsigned uValue;
@@ -1093,20 +1091,20 @@ namespace cw
           break;
           
         case preset_sel::kBegPlayLocVarId:
-          {
-            unsigned endPlayLoc;
-            get_value( app->psH, blob->fragId, preset_sel::kEndPlayLocVarId, blob->presetId, endPlayLoc );
-            _enable_frag_play_btn( app, blob, value, endPlayLoc );
-          }
-          break;
+        {
+          unsigned endPlayLoc;
+          get_value( app->psH, blob->fragId, preset_sel::kEndPlayLocVarId, blob->presetId, endPlayLoc );
+          _enable_frag_play_btn( app, blob, value, endPlayLoc );
+        }
+        break;
           
         case preset_sel::kEndPlayLocVarId:
-          {
-            unsigned begPlayLoc;
-            get_value( app->psH, blob->fragId, preset_sel::kBegPlayLocVarId, blob->presetId, begPlayLoc );
-            _enable_frag_play_btn( app, blob, begPlayLoc, value );
-          }
-          break;
+        {
+          unsigned begPlayLoc;
+          get_value( app->psH, blob->fragId, preset_sel::kBegPlayLocVarId, blob->presetId, begPlayLoc );
+          _enable_frag_play_btn( app, blob, begPlayLoc, value );
+        }
+        break;
       }
 
     errLabel:
@@ -1199,7 +1197,7 @@ namespace cw
       // Make the fragment panel clickable
       io::uiSetClickable(   app->ioH, fragPanelUuId);
 
-      // Set the fragment panel order 
+      // Set the fragment panel order.
       io::uiSetOrderKey( app->ioH, fragPanelUuId, endLoc );
 
       // Set the fragment beg/end play range
@@ -1666,7 +1664,7 @@ namespace cw
       if(f != nullptr )
         _update_frag_ui(app, f->fragId );
       
-      errLabel:
+    errLabel:
       
       if( rc != kOkRC )
         rc = cwLogError(rc,"Fragment delete failed.");
@@ -1715,7 +1713,7 @@ namespace cw
         rc = cwLogError(rc,"Master value set failed on varId:%i %s.%s.",varId,cwStringNullGuard(inst_label),cwStringNullGuard(var_label));
       else
         if((rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, inst_label,  var_label,    flow::kAnyChIdx, (dsp::real_t)value )) != kOkRC )
-            rc = cwLogError(rc,"Master value send failed on %s.%s.",cwStringNullGuard(inst_label),cwStringNullGuard(var_label));
+          rc = cwLogError(rc,"Master value send failed on %s.%s.",cwStringNullGuard(inst_label),cwStringNullGuard(var_label));
       
       return rc;
     }
@@ -1728,12 +1726,12 @@ namespace cw
       
       for(unsigned i=0; i<n; ++i)
       {
-	unsigned uuid = io::uiFindElementUuId( app->ioH, baseUiAppId+i );
+        unsigned uuid = io::uiFindElementUuId( app->ioH, baseUiAppId+i );
 
-	double lin_val = agd->meterA[i];
-	unsigned meter_value = (unsigned)(lin_val < 1e-5 ? 0  : (100.0 + 20*log10(lin_val)));
+        double lin_val = agd->meterA[i];
+        unsigned meter_value = (unsigned)(lin_val < 1e-5 ? 0  : (100.0 + 20*log10(lin_val)));
 
-	io::uiSendValue( app->ioH, uuid, meter_value );
+        io::uiSendValue( app->ioH, uuid, meter_value );
       }
       
       return kOkRC;
@@ -1748,143 +1746,143 @@ namespace cw
       
       switch( m.appId )
       {
-	case kPvWndSmpCntId:
-	  var_label="wndSmpN";
-	  app->pvWndSmpCnt = m.value->u.u;
-	  rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "pva",  var_label,    flow::kAnyChIdx, m.value->u.u );
-	  break;
+        case kPvWndSmpCntId:
+          var_label="wndSmpN";
+          app->pvWndSmpCnt = m.value->u.u;
+          rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "pva",  var_label,    flow::kAnyChIdx, m.value->u.u );
+          break;
 	  
-	case kSdBypassId:
-	  var_label="bypass";
-	  app->sdBypassFl = m.value->u.b;
-	  rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "sd",  var_label,    flow::kAnyChIdx, m.value->u.b );
-	  break;
+        case kSdBypassId:
+          var_label="bypass";
+          app->sdBypassFl = m.value->u.b;
+          rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "sd",  var_label,    flow::kAnyChIdx, m.value->u.b );
+          break;
 	  
-	case kSdInGainId:
-	  var_label = "igain";
-	  app->sdInGain = m.value->u.d;
-	  break;
+        case kSdInGainId:
+          var_label = "igain";
+          app->sdInGain = m.value->u.d;
+          break;
 	  
-	case kSdCeilingId:
-	  var_label = "ceiling";
-	  app->sdCeiling = m.value->u.d;
-	  break;
+        case kSdCeilingId:
+          var_label = "ceiling";
+          app->sdCeiling = m.value->u.d;
+          break;
 	  
-	case kSdExpoId:
-	  var_label = "expo";
-	  app->sdExpo = m.value->u.d;
-	  break;
+        case kSdExpoId:
+          var_label = "expo";
+          app->sdExpo = m.value->u.d;
+          break;
 	  
-	case kSdThreshId:
-	  var_label = "thresh";
-	  app->sdThresh = m.value->u.d;
-	  break;
+        case kSdThreshId:
+          var_label = "thresh";
+          app->sdThresh = m.value->u.d;
+          break;
 	  
-	case kSdUprId:
-	  var_label = "upr";
-	  app->sdUpr = m.value->u.d;
-	  break;
+        case kSdUprId:
+          var_label = "upr";
+          app->sdUpr = m.value->u.d;
+          break;
 	  
-	case kSdLwrId:
-	  var_label = "lwr";
-	  app->sdLwr = m.value->u.d;
-	  break;
+        case kSdLwrId:
+          var_label = "lwr";
+          app->sdLwr = m.value->u.d;
+          break;
 	  
-	case kSdMixId:
-	  var_label = "mix";
-	  app->sdMix = m.value->u.d;
-	  break;
+        case kSdMixId:
+          var_label = "mix";
+          app->sdMix = m.value->u.d;
+          break;
 
-	case kCmpBypassId:
-	  var_label="cmp-bypass";
-	  app->cmpBypassFl = m.value->u.b;
-	  rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "cmp",  "bypass",    flow::kAnyChIdx, m.value->u.b );
-	  break;
+        case kCmpBypassId:
+          var_label="cmp-bypass";
+          app->cmpBypassFl = m.value->u.b;
+          rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "cmp",  "bypass",    flow::kAnyChIdx, m.value->u.b );
+          break;
 	  
-	default:
-	  assert(0);
+        default:
+          assert(0);
       }
 
       if( m.value->tid == ui::kDoubleTId )
-	rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "sd",  var_label,    flow::kAnyChIdx, (dsp::real_t)m.value->u.d );
+        rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "sd",  var_label,    flow::kAnyChIdx, (dsp::real_t)m.value->u.d );
 
       if(rc != kOkRC )
-	rc = cwLogError(rc,"Attempt to set a spec-dist variable '%s'",var_label );
+        rc = cwLogError(rc,"Attempt to set a spec-dist variable '%s'",var_label );
 
       return rc;
     }
 
 
     /*
-    rc_t _on_ui_half_pedal_value( app_t* app, unsigned appId, unsigned uuId, unsigned value )
-    {
+      rc_t _on_ui_half_pedal_value( app_t* app, unsigned appId, unsigned uuId, unsigned value )
+      {
       switch( appId )
       {
-        case kHalfPedalDelayMs:
-          app->hpDelayMs = value;
-          break;
+      case kHalfPedalDelayMs:
+      app->hpDelayMs = value;
+      break;
           
-        case  kHalfPedalPedalVel:
-          app->hpPedalVel = value;
-          break;
+      case  kHalfPedalPedalVel:
+      app->hpPedalVel = value;
+      break;
           
-        case kHalfPedalPitch:
-          app->hpPitch = value;
-          break;
+      case kHalfPedalPitch:
+      app->hpPitch = value;
+      break;
           
-        case kHalfPedalVel:
-          app->hpVel = value;
-          break;
+      case kHalfPedalVel:
+      app->hpVel = value;
+      break;
           
-        case kHalfPedalDurMs:
-          app->hpDurMs = value;
-          break;
+      case kHalfPedalDurMs:
+      app->hpDurMs = value;
+      break;
           
-        case kHalfPedalDnDelayMs:
-          app->hpDnDelayMs = value;
-          break;
+      case kHalfPedalDnDelayMs:
+      app->hpDnDelayMs = value;
+      break;
 
-        default:
-          { assert(0); }
+      default:
+      { assert(0); }
           
       }
       return kOkRC;
-    }
+      }
     
-    rc_t _on_echo_half_pedal( app_t* app, unsigned appId, unsigned uuId )
-    {
+      rc_t _on_echo_half_pedal( app_t* app, unsigned appId, unsigned uuId )
+      {
       switch( appId )
       {
-        case kHalfPedalDelayMs:
-          io::uiSendValue( app->ioH, uuId, app->hpDelayMs );
-          break;
+      case kHalfPedalDelayMs:
+      io::uiSendValue( app->ioH, uuId, app->hpDelayMs );
+      break;
           
-        case  kHalfPedalPedalVel:
-          io::uiSendValue( app->ioH, uuId, app->hpPedalVel );
-          break;
+      case  kHalfPedalPedalVel:
+      io::uiSendValue( app->ioH, uuId, app->hpPedalVel );
+      break;
           
-        case kHalfPedalPitch:
-          io::uiSendValue( app->ioH, uuId, app->hpPitch );
-          break;
+      case kHalfPedalPitch:
+      io::uiSendValue( app->ioH, uuId, app->hpPitch );
+      break;
           
-        case kHalfPedalVel:
-          io::uiSendValue( app->ioH, uuId, app->hpVel );
-          break;
+      case kHalfPedalVel:
+      io::uiSendValue( app->ioH, uuId, app->hpVel );
+      break;
           
-        case kHalfPedalDurMs:
-          io::uiSendValue( app->ioH, uuId, app->hpDurMs );
-          break;
+      case kHalfPedalDurMs:
+      io::uiSendValue( app->ioH, uuId, app->hpDurMs );
+      break;
 
-        case kHalfPedalDnDelayMs:
-          io::uiSendValue( app->ioH, uuId, app->hpDnDelayMs );
-          break;
+      case kHalfPedalDnDelayMs:
+      io::uiSendValue( app->ioH, uuId, app->hpDnDelayMs );
+      break;
           
-        default:
-          { assert(0); }
+      default:
+      { assert(0); }
           
       }
       return kOkRC;      
-    }
+      }
     */
     
     rc_t _onUiInit(app_t* app, const io::ui_msg_t& m )
@@ -1958,13 +1956,13 @@ namespace cw
           _do_stop_play(app);
           break;
 
-	case kLiveCheckId:
+        case kLiveCheckId:
           app->useLiveMidiFl = m.value->u.b;
           break;
 
-	case kTrackMidiCheckId:
-	  app->trackMidiFl = m.value->u.b;
-	  break;
+        case kTrackMidiCheckId:
+          app->trackMidiFl = m.value->u.b;
+          break;
 	  
         case kPrintMidiCheckId:
           app->printMidiFl = m.value->u.b;
@@ -2014,28 +2012,28 @@ namespace cw
           _on_ui_delete_btn(app);
           break;
 
-	case kPvWndSmpCntId:
-	case kSdBypassId:
-	case kSdInGainId:
-	case kSdCeilingId:
-	case kSdExpoId:
-	case kSdThreshId:
-	case kSdUprId:
-	case kSdLwrId:
-	case kSdMixId:
-	case kCmpBypassId:
-	  _on_sd_control(app,m);
-	  break;
+        case kPvWndSmpCntId:
+        case kSdBypassId:
+        case kSdInGainId:
+        case kSdCeilingId:
+        case kSdExpoId:
+        case kSdThreshId:
+        case kSdUprId:
+        case kSdLwrId:
+        case kSdMixId:
+        case kCmpBypassId:
+          _on_sd_control(app,m);
+          break;
 	  
           /*
-        case kHalfPedalPedalVel:
-        case kHalfPedalDelayMs:
-        case kHalfPedalPitch:
-        case kHalfPedalVel:
-        case kHalfPedalDurMs:
-        case kHalfPedalDnDelayMs:
-          _on_ui_half_pedal_value( app, m.appId, m.uuId, m.value->u.u );
-          break;
+            case kHalfPedalPedalVel:
+            case kHalfPedalDelayMs:
+            case kHalfPedalPitch:
+            case kHalfPedalVel:
+            case kHalfPedalDurMs:
+            case kHalfPedalDnDelayMs:
+            _on_ui_half_pedal_value( app, m.appId, m.uuId, m.value->u.u );
+            break;
           */
           
         case kFragInGainId:
@@ -2099,22 +2097,22 @@ namespace cw
     {
       switch( m.appId )
       {
-      case kBegPlayLocNumbId:
-      case kEndPlayLocNumbId:
-        _enable_global_play_btn(app,false);
-        break;
+        case kBegPlayLocNumbId:
+        case kEndPlayLocNumbId:
+          _enable_global_play_btn(app,false);
+          break;
 
-      case kInsertLocId:
-        io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kInsertBtnId ),  false );
-        break;
+        case kInsertLocId:
+          io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kInsertBtnId ),  false );
+          break;
 
-      case kFragBegPlayLocId:
-      case kFragEndPlayLocId:
-        _disable_frag_play_btn(app, m.uuId );
-        break;
+        case kFragBegPlayLocId:
+        case kFragEndPlayLocId:
+          _disable_frag_play_btn(app, m.uuId );
+          break;
         
-      default:
-        break;
+        default:
+          break;
       }
 
       return kOkRC;
@@ -2183,64 +2181,64 @@ namespace cw
           io::uiSendValue( app->ioH, m.uuId, app->end_play_loc );
           break;
 
-	case kLiveCheckId:
-	  io::uiSendValue( app->ioH, m.uuId, app->useLiveMidiFl );
-	  break;
+        case kLiveCheckId:
+          io::uiSendValue( app->ioH, m.uuId, app->useLiveMidiFl );
+          break;
 	  
-	case kTrackMidiCheckId:
-	  io::uiSendValue( app->ioH, m.uuId, app->trackMidiFl );
-	  break;
+        case kTrackMidiCheckId:
+          io::uiSendValue( app->ioH, m.uuId, app->trackMidiFl );
+          break;
 
-	case kPvWndSmpCntId:
-	  io::uiSendValue( app->ioH, m.uuId, app->pvWndSmpCnt );
-	  break;
+        case kPvWndSmpCntId:
+          io::uiSendValue( app->ioH, m.uuId, app->pvWndSmpCnt );
+          break;
 
-	case kSdBypassId:
-	  io::uiSendValue( app->ioH, m.uuId, app->sdBypassFl );
-	  break;
+        case kSdBypassId:
+          io::uiSendValue( app->ioH, m.uuId, app->sdBypassFl );
+          break;
 	  
-	case kSdInGainId:
-	  io::uiSendValue( app->ioH, m.uuId, app->sdInGain );
-	  break;
+        case kSdInGainId:
+          io::uiSendValue( app->ioH, m.uuId, app->sdInGain );
+          break;
 	  
-	case kSdCeilingId:
-	  io::uiSendValue( app->ioH, m.uuId, app->sdCeiling );
-	  break;
+        case kSdCeilingId:
+          io::uiSendValue( app->ioH, m.uuId, app->sdCeiling );
+          break;
 	  
-	case kSdExpoId:
-	  io::uiSendValue( app->ioH, m.uuId, app->sdExpo );
-	  break;
+        case kSdExpoId:
+          io::uiSendValue( app->ioH, m.uuId, app->sdExpo );
+          break;
 	  
-	case kSdThreshId:
-	  io::uiSendValue( app->ioH, m.uuId, app->sdThresh );
-	  break;
+        case kSdThreshId:
+          io::uiSendValue( app->ioH, m.uuId, app->sdThresh );
+          break;
 	  
-	case kSdUprId:
-	  io::uiSendValue( app->ioH, m.uuId, app->sdUpr );
-	  break;
+        case kSdUprId:
+          io::uiSendValue( app->ioH, m.uuId, app->sdUpr );
+          break;
 	  
-	case kSdLwrId:
-	  io::uiSendValue( app->ioH, m.uuId, app->sdLwr );
-	  break;
+        case kSdLwrId:
+          io::uiSendValue( app->ioH, m.uuId, app->sdLwr );
+          break;
 	  
-	case kSdMixId:
-	  io::uiSendValue( app->ioH, m.uuId, app->sdMix );
-	  break;
+        case kSdMixId:
+          io::uiSendValue( app->ioH, m.uuId, app->sdMix );
+          break;
 	  
-	case kCmpBypassId:
-	  io::uiSendValue( app->ioH, m.uuId, app->cmpBypassFl );
-	  break;
+        case kCmpBypassId:
+          io::uiSendValue( app->ioH, m.uuId, app->cmpBypassFl );
+          break;
 
 	  
           /*
-        case kHalfPedalPedalVel:
-        case kHalfPedalDelayMs:
-        case kHalfPedalPitch:
-        case kHalfPedalVel:
-        case kHalfPedalDurMs:
-        case kHalfPedalDnDelayMs:
-          _on_echo_half_pedal( app, m.appId, m.uuId );
-          break;
+            case kHalfPedalPedalVel:
+            case kHalfPedalDelayMs:
+            case kHalfPedalPitch:
+            case kHalfPedalVel:
+            case kHalfPedalDurMs:
+            case kHalfPedalDnDelayMs:
+            _on_echo_half_pedal( app, m.appId, m.uuId );
+            break;
           */
           
       }
@@ -2253,47 +2251,47 @@ namespace cw
       
       switch( m.opId )
       {
-      case ui::kConnectOpId:
-        cwLogInfo("UI Connected: wsSessId:%i.",m.wsSessId);
-        break;
+        case ui::kConnectOpId:
+          cwLogInfo("UI Connected: wsSessId:%i.",m.wsSessId);
+          break;
           
-      case ui::kDisconnectOpId:
-        cwLogInfo("UI Disconnected: wsSessId:%i.",m.wsSessId);          
-        break;
+        case ui::kDisconnectOpId:
+          cwLogInfo("UI Disconnected: wsSessId:%i.",m.wsSessId);          
+          break;
           
-      case ui::kInitOpId:
-        _onUiInit(app,m);
-        break;
+        case ui::kInitOpId:
+          _onUiInit(app,m);
+          break;
 
-      case ui::kValueOpId:
-        _onUiValue( app, m );
-        break;
+        case ui::kValueOpId:
+          _onUiValue( app, m );
+          break;
 
-      case ui::kCorruptOpId:
-        _onUiCorrupt( app, m );
-        break;
+        case ui::kCorruptOpId:
+          _onUiCorrupt( app, m );
+          break;
 
-      case ui::kClickOpId:
-        _do_select_frag( app, m.uuId );
-        break;
+        case ui::kClickOpId:
+          _do_select_frag( app, m.uuId );
+          break;
 
-      case ui::kSelectOpId:
-        _onUiSelect( app, m );
-        break;
+        case ui::kSelectOpId:
+          _onUiSelect( app, m );
+          break;
         
-      case ui::kEchoOpId:
-        _onUiEcho( app, m );
-        break;
+        case ui::kEchoOpId:
+          _onUiEcho( app, m );
+          break;
 
-      case ui::kIdleOpId:
-        _do_seq_exec( app );
-        break;
+        case ui::kIdleOpId:
+          _do_seq_exec( app );
+          break;
           
-      case ui::kInvalidOpId:
-        // fall through
-      default:
-        assert(0);
-        break;
+        case ui::kInvalidOpId:
+          // fall through
+        default:
+          assert(0);
+          break;
         
       }
 
@@ -2328,39 +2326,39 @@ namespace cw
       
       switch( m->tid )
       {
-      case io::kTimerTId:
-        break;
+        case io::kTimerTId:
+          break;
             
-      case io::kSerialTId:
-        break;
+        case io::kSerialTId:
+          break;
           
-      case io::kMidiTId:
-        if( app->useLiveMidiFl && app->mrpH.isValid() )
-          _on_live_midi( app, *m );
-        break;
+        case io::kMidiTId:
+          if( app->useLiveMidiFl && app->mrpH.isValid() )
+            _on_live_midi( app, *m );
+          break;
           
-      case io::kAudioTId:        
-        break;
+        case io::kAudioTId:        
+          break;
 
-      case io::kAudioMeterTId:
-	_on_master_audio_meter(app, *m );
-        break;
+        case io::kAudioMeterTId:
+          _on_master_audio_meter(app, *m );
+          break;
           
-      case io::kSockTId:
-        break;
+        case io::kSockTId:
+          break;
           
-      case io::kWebSockTId:
-        break;
+        case io::kWebSockTId:
+          break;
           
-      case io::kUiTId:
-        rc = _ui_callback(app,m->u.ui);
-        break;
+        case io::kUiTId:
+          rc = _ui_callback(app,m->u.ui);
+          break;
 
-      case io::kExecTId:
-        break;
+        case io::kExecTId:
+          break;
 
-      default:
-        assert(0);
+        default:
+          assert(0);
         
       }
 
@@ -2377,17 +2375,18 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
 
   rc_t rc;
   app_t app = { .hpDelayMs=250, .hpPedalVel=127, .hpPitch=64, .hpVel=64, .hpDurMs=500, .hpDnDelayMs=1000,
-		.trackMidiFl = true,
-		.pvWndSmpCnt = 512,
-		.sdBypassFl  = false,
-		.sdInGain    = 1.0,
-		.sdCeiling   = 20.0,
-		.sdExpo	     = 2.0,
-		.sdThresh    = 60.0,
-		.sdUpr	     = -1.1,
-		.sdLwr	     = 2.0,
-		.sdMix	     = 0.0,
-		.cmpBypassFl = false
+                .trackMidiFl = true,
+                .audioFileSrcFl = true,
+                .pvWndSmpCnt = 512,
+                .sdBypassFl  = false,
+                .sdInGain    = 1.0,
+                .sdCeiling   = 20.0,
+                .sdExpo	     = 2.0,
+                .sdThresh    = 60.0,
+                .sdUpr	     = -1.1,
+                .sdLwr	     = 2.0,
+                .sdMix	     = 0.0,
+                .cmpBypassFl = false,
 		
   };
   const object_t* params_cfg = nullptr;
