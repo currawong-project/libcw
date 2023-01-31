@@ -96,17 +96,17 @@ namespace cw
         } u;
       } trackMsg_t;
 
-      inline bool isNoteOn(const trackMsg_t* m)     { return midi::isNoteOn( m->status,m->u.chMsgPtr->d1); }
-      inline bool isNoteOff(const trackMsg_t* m)    { return midi::isNoteOff(m->status,m->u.chMsgPtr->d1); }
+      inline bool isNoteOn(const trackMsg_t* m)     { return midi::isChStatus(m->status) ? midi::isNoteOn( m->status,m->u.chMsgPtr->d1) : false; }
+      inline bool isNoteOff(const trackMsg_t* m)    { return midi::isChStatus(m->status) ? midi::isNoteOff(m->status,m->u.chMsgPtr->d1) : false; }
 
-      inline bool isPedalUp(const trackMsg_t* m)    { return midi::isPedalUp(    m->status, m->u.chMsgPtr->d0, m->u.chMsgPtr->d1); }
-      inline bool isPedalDown(const trackMsg_t* m)  { return midi::isPedalDown(  m->status, m->u.chMsgPtr->d0, m->u.chMsgPtr->d1); }
+      inline bool isPedalUp(const trackMsg_t* m)    { return midi::isChStatus(m->status) ? midi::isPedalUp(    m->status, m->u.chMsgPtr->d0, m->u.chMsgPtr->d1) : false; }
+      inline bool isPedalDown(const trackMsg_t* m)  { return midi::isChStatus(m->status) ? midi::isPedalDown(  m->status, m->u.chMsgPtr->d0, m->u.chMsgPtr->d1) : false; }
     
-      inline bool isSustainPedalUp(const trackMsg_t* m)     { return midi::isSustainPedalUp(    m->status,m->u.chMsgPtr->d0,m->u.chMsgPtr->d1); }
-      inline bool isSustainPedalDown(const trackMsg_t* m)   { return midi::isSustainPedalDown(  m->status,m->u.chMsgPtr->d0,m->u.chMsgPtr->d1); }
+      inline bool isSustainPedalUp(const trackMsg_t* m)     { return midi::isChStatus(m->status) ? midi::isSustainPedalUp(    m->status,m->u.chMsgPtr->d0,m->u.chMsgPtr->d1) : false; }
+      inline bool isSustainPedalDown(const trackMsg_t* m)   { return midi::isChStatus(m->status) ? midi::isSustainPedalDown(  m->status,m->u.chMsgPtr->d0,m->u.chMsgPtr->d1) : false; }
       
-      inline bool isSostenutoPedalUp(const trackMsg_t* m)   { return midi::isSostenutoPedalUp(  m->status,m->u.chMsgPtr->d0,m->u.chMsgPtr->d1); }
-      inline bool isSostenutoPedalDown(const trackMsg_t* m) { return midi::isSostenutoPedalDown(m->status,m->u.chMsgPtr->d0,m->u.chMsgPtr->d1); }
+      inline bool isSostenutoPedalUp(const trackMsg_t* m)   { return midi::isChStatus(m->status) ? midi::isSostenutoPedalUp(  m->status,m->u.chMsgPtr->d0,m->u.chMsgPtr->d1) : false; }
+      inline bool isSostenutoPedalDown(const trackMsg_t* m) { return midi::isChStatus(m->status) ? midi::isSostenutoPedalDown(m->status,m->u.chMsgPtr->d0,m->u.chMsgPtr->d1) : false; }
   
       typedef handle<struct file_str> handle_t;
 
