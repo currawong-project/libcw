@@ -1157,34 +1157,34 @@ namespace cw
       unsigned    audioBufFlags = 0;
   
       if((rc = _audioDeviceParams( p, devIdx, inOutEnaFlags, ad, audioBufFlags )) != kOkRC )
-	rc = cwLogError(rc,"Enable tone failed.");
+        rc = cwLogError(rc,"Enable tone failed.");
       else    
       {
-	bool     enaFl       = inOutEnaFlags & kEnableFl;
-	bool     enaState0Fl = _audioDeviceIsMeterEnabled(ad, kInFl | kOutFl);
+        bool     enaFl       = inOutEnaFlags & kEnableFl;
+        bool     enaState0Fl = _audioDeviceIsMeterEnabled(ad, kInFl | kOutFl);
     
-	audioBufFlags += audio::buf::kMeterFl;
+        audioBufFlags += audio::buf::kMeterFl;
 
-	if( inOutEnaFlags & kInFl )
-	  ad->iagd->flags = cwEnaFlag(ad->iagd->flags,kMeterFl,enaFl);
+        if( inOutEnaFlags & kInFl )
+          ad->iagd->flags = cwEnaFlag(ad->iagd->flags,kMeterFl,enaFl);
 
-	if( inOutEnaFlags & kOutFl )
-	  ad->oagd->flags = cwEnaFlag(ad->oagd->flags,kMeterFl,enaFl);
+        if( inOutEnaFlags & kOutFl )
+          ad->oagd->flags = cwEnaFlag(ad->oagd->flags,kMeterFl,enaFl);
     
-	audio::buf::setFlag( p->audioBufH, devIdx, kInvalidIdx, audioBufFlags );
+        audio::buf::setFlag( p->audioBufH, devIdx, kInvalidIdx, audioBufFlags );
     
-	bool enaState1Fl= _audioDeviceIsMeterEnabled(ad, kInFl | kOutFl);
+        bool enaState1Fl= _audioDeviceIsMeterEnabled(ad, kInFl | kOutFl);
 
-	if( enaState1Fl and !enaState0Fl )
-	  p->audioMeterDevEnabledN += 1;
-	else
-	  if( p->audioMeterDevEnabledN > 0 && !enaState1Fl && enaState0Fl )
-	    p->audioMeterDevEnabledN -= 1;
+        if( enaState1Fl and !enaState0Fl )
+          p->audioMeterDevEnabledN += 1;
+        else
+          if( p->audioMeterDevEnabledN > 0 && !enaState1Fl && enaState0Fl )
+            p->audioMeterDevEnabledN -= 1;
    
       }
 
       if( rc != kOkRC )
-	rc = cwLogError(rc,"Enable meters failed.");
+        rc = cwLogError(rc,"Enable meters failed.");
    
       return rc;
     }
@@ -1503,7 +1503,7 @@ namespace cw
       {
         audioDev_t*   ad             = nullptr; //p->audioDevA + i;
         bool          enableFl       = false;
-	bool          meterFl        = false;
+        bool          meterFl        = false;
         char*         userLabel      = nullptr;
         unsigned      userId         = kInvalidId;
         char*         devName        = nullptr;
@@ -1543,7 +1543,7 @@ namespace cw
 
           if((rc = node->getv_opt(
                 "userId",     userId,
-		"meterFl",    meterFl,
+                "meterFl",    meterFl,
                 "inGroup",    inGroupLabel,
                 "outGroup",   outGroupLabel )) != kOkRC )
           {
@@ -1645,7 +1645,7 @@ namespace cw
 
           // set the device group pointers
           ad->enableFl = enableFl;
-	  ad->meterFl  = meterFl;
+          ad->meterFl  = meterFl;
           ad->label    = userLabel;
           ad->userId   = userId;
           ad->iGroup   = iag;
