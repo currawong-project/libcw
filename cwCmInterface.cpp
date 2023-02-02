@@ -1,3 +1,4 @@
+
 #include "cwCommon.h"
 #include "cwLog.h"
 #include "cwCommonImpl.h"
@@ -18,8 +19,11 @@
 #include "cmScore.h"
 #include "cmText.h"
 #include "cmFileSys.h"
+#include "cmProcObj.h"
 
 extern "C" {
+
+  
   void _cm_print_info( void* arg, const char* text )
   {
     cwLogInfo(text);
@@ -35,11 +39,18 @@ namespace cw
 {
   namespace cm
   {
-    typedef struct cm_str
-    {
-      ::cmCtx_t ctx;
-    } cm_t;
-
+    
+    extern "C" {
+      typedef struct cm_str
+      {
+        cmCtx_t ctx;
+        cmSymTblH_t symTblH;
+        cmLHeapH_t  lhH;        
+        cmProcCtx* procCtx;
+        
+      } cm_t;
+    }
+    
     cm_t* _handleToPtr( handle_t h )
     { return handleToPtr<handle_t,cm_t>(h); }
 
@@ -52,9 +63,42 @@ namespace cw
         cmMdReport( kIgnoreNormalMmFl );
         cmMdFinalize();
 
+        cmLHeapDestroy(&p->lhH);
+        cmSymTblDestroy(&p->symTblH);
+        cmProcCtxFree(&p->procCtx);
+
         mem::release(p);
       }
       return kOkRC;
+    }
+
+    rc_t _create_proc_ctx( cm_t* p, cmCtx_t* ctx )
+    {
+      rc_t rc = kOkRC;
+      
+      // create the linked heap
+      if(cmLHeapIsValid( p->lhH = cmLHeapCreate(1024,ctx)) == false)
+      {
+        rc = cwLogError(kOpFailRC,"The cm linked heap allocation failed.");
+        goto errLabel;
+      }
+
+      // intialize the symbol table
+      if( cmSymTblIsValid( p->symTblH = cmSymTblCreate(cmSymTblNullHandle,1,ctx)) == false )
+      {
+        rc = cwLogError(kOpFailRC,"The cm linked heap allocation failed.");
+        goto errLabel;
+      }
+
+      // initialize the proc context
+      if( (p->procCtx = cmProcCtxAlloc(NULL,&ctx->rpt,p->lhH,p->symTblH)) == NULL )
+      {
+        rc = cwLogError(kOpFailRC,"The cm proc context allocation failed.");
+        goto errLabel;
+      }
+
+    errLabel:
+      return rc;
     }
   }
 }
@@ -82,6 +126,14 @@ cw::rc_t cw::cm::create( handle_t& hRef )
 
   cmTsInitialize( &p->ctx );
 
+  if((rc = _create_proc_ctx(p, &p->ctx )) == kOkRC )
+    hRef.set(p);
+  else
+  {
+    _destroy(p);
+    rc = cwLogError(rc,"cm Interface context create failed.");
+  }
+  
   return rc;
 }
 
@@ -102,9 +154,17 @@ cw::rc_t cw::cm::destroy( handle_t& hRef )
   
 }
 
-::cmCtx_t* cw::cm::context( handle_t h )
-{
-  cm_t* p = _handleToPtr(h);
-  return &p->ctx;
+extern "C" {
+  struct cmCtx_str* cw::cm::context( handle_t h )
+  {
+    cm_t* p = _handleToPtr(h);
+    return &p->ctx;
+  }
+  
+  struct cmProcCtx_str* cw::cm::proc_context( handle_t h )
+  {
+    cm_t* p = _handleToPtr(h);
+    return p->procCtx;
+  }
+  
 }
-
