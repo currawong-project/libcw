@@ -54,8 +54,8 @@ libcwSRC += src/libcw/cwAudioDevice.cpp
 
 if cwALSA
 
-libcwHDR += src/libcw/cwMidiPort.h                            src/libcw/cwAudioDeviceAlsa.h                                    
-libcwSRC += src/libcw/cwMidiPort.cpp src/libcw/cwMidiAlsa.cpp src/libcw/cwAudioDeviceAlsa.cpp src/libcw/cwAudioDeviceTest.cpp
+libcwHDR += src/libcw/cwMidiPort.h                            src/libcw/cwAudioDeviceAlsa.h   src/libcw/cwAudioDeviceFile.h                                  
+libcwSRC += src/libcw/cwMidiPort.cpp src/libcw/cwMidiAlsa.cpp src/libcw/cwAudioDeviceAlsa.cpp src/libcw/cwAudioDeviceFile.cpp src/libcw/cwAudioDeviceTest.cpp
 
 if cwWEBSOCK
 libcwHDR += src/libcw/cwIo.h   src/libcw/cwIoTest.h     src/libcw/cwIoMinTest.h   src/libcw/cwIoSocketChat.h   src/libcw/cwIoAudioPanel.h    src/libcw/cwIoAudioMidi.h
