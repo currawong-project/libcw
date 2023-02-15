@@ -978,7 +978,7 @@ namespace cw
         goto errLabel;
       }
 
-      file::printf(fH,"dev,port,microsec,id,sec,ch,status,d0,d1\n");
+      file::printf(fH,"dev,port,microsec,id,sec,ch,status,sci_pitch,d0,d1\n");
       
       for(unsigned i=0; i<p->iMsgArrayInIdx; ++i)
       {
