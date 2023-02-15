@@ -1,3 +1,7 @@
+Audio Dev. File
+1. Try different combinations of including input and output channels and groups.
+   Specify an input file, but not an input group. Specify an input group but not an input file ....
+
 
 TODO: fix cwDsp.h: ampl_to_db(),db_to_ampl(), add pow_to_db() and db_to_pow().
 Implement vectorized version in terms of the scalar versions in cwDsp.h.
