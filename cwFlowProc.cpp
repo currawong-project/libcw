@@ -334,7 +334,7 @@ namespace cw
         {
           unsigned  chN    = std::min(inst->ext_dev->u.a.abuf->chN,    src_abuf->chN);
           unsigned  frameN = std::min(inst->ext_dev->u.a.abuf->frameN, src_abuf->frameN);
-          unsigned n = chN * frameN;
+          unsigned  n      = chN * frameN;
           for(unsigned i=0; i<n; ++i)
             inst->ext_dev->u.a.abuf->buf[i] += src_abuf->buf[i];
           
@@ -1074,14 +1074,14 @@ namespace cw
           else
           {
             // TODO: check srate and frameN are same as first src
+            assert( abuf->frameN == frameN );
+            assert( abuf->srate  == srate );            
           }
           
           inst->srcN += 1;
           outChN += abuf->chN;
           
         }
-
-        //outChN = abuf0->chN + abuf1->chN;
 
         // register the gain 
         for(unsigned i=0; i<outChN; ++i)
