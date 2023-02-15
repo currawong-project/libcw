@@ -91,7 +91,7 @@ namespace cw
       // This function is called asynchronously by the audio device driver to transfer incoming samples to the
       // the buffer and to send outgoing samples to the DAC. This function is 
       // intended to be called from the audio port callback function (\see auido::device::cbFunc_t).
-      // This function is thread-safe under the condition where the audio device uses
+      // This function is thread-safe under the condition that the audio device uses
       // different threads for input and output.
       //
       // Enable Flag: 
