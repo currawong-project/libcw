@@ -51,19 +51,23 @@ namespace cw
     // Move,fill,copy
     //
     template< typename T0, typename T1 >
-      void copy( T0* v0, const T1* v1, unsigned n )
+    void copy( T0* v0, const T1* v1, unsigned n )
     {
       for(unsigned i=0; i<n; ++i)
         v0[i] = (T0)v1[i]; // Note: copy with convert - not the same as memcpy. 
     }
     
     template< typename T0, typename T1 >
-      void fill( T0* v, unsigned n, const T1& value=0 )
+    void fill( T0* v, unsigned n, const T1& value, unsigned dst_offset )
     {
-      for(unsigned i=0; i<n; ++i)
-        v[i] = value;
+      for(unsigned i=0,j=0; i<n; ++i,j+=dst_offset)
+        v[j] = value;
     }
-
+    
+    template< typename T0, typename T1 >
+    void fill( T0* v, unsigned n, const T1& value=0 )
+    { fill(v,n,value,1); }
+    
     template< typename T >
       void zero( T* v, unsigned n )
     { fill(v,n,0); }
@@ -342,6 +346,31 @@ namespace cw
     //==================================================================================================================
     // Signal Processing
     //
+    template< typename T0, typename T1 >
+    void interleave( T0* v0, const T1* v1, unsigned frameN, unsigned dstChCnt )
+    {
+      // v0[] = { LRLRLRLR ], v1[] = [ LLLLRRRR ]
+      for(unsigned k=0; k<dstChCnt; ++k)
+      {
+        unsigned n = k*frameN;
+        for(unsigned i=0,j=k; i<frameN; ++i,j+=dstChCnt)
+          v0[j] = (T0)v1[i+n];
+      }
+    }
+
+    template< typename T0, typename T1 >
+    void deinterleave( T0* v0, const T1* v1, unsigned frameN, unsigned srcChCnt )
+    {
+      // v0[] = [ LLLLRRRR ], v1[] = { LRLRLRLR ]
+      for(unsigned k=0; k<srcChCnt; ++k)
+      {
+        unsigned n = k*frameN;
+        for(unsigned i=0,j=k; i<frameN; ++i,j+=srcChCnt)
+          v0[i+n] = (T0)v1[j];
+      }
+    }
+
+    
 
     template< typename T >
       unsigned phasor( T* y, unsigned n, T srate, T hz, unsigned init_idx=0 )
