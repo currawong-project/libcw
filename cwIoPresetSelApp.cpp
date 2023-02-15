@@ -1930,9 +1930,10 @@ namespace cw
           //io_flow::apply_preset( app->ioFlowH, 2000.0, app->tmp==0 ? "a" : "b");
           //app->tmp = !app->tmp;
           //io_flow::print(app->ioFlowH);
-          io_flow::report(app->ioFlowH);
+          //io_flow::report(app->ioFlowH);
           //midi_record_play::save_csv(app->mrpH,"/home/kevin/temp/mrp_1.csv");
           //printf("%i %i\n",app->beg_play_loc,app->end_play_loc);
+          io::realTimeReport(app->ioH);
           break;
 
         case kSaveBtnId:
@@ -2376,7 +2377,7 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
   rc_t rc;
   app_t app = { .hpDelayMs=250, .hpPedalVel=127, .hpPitch=64, .hpVel=64, .hpDurMs=500, .hpDnDelayMs=1000,
                 .trackMidiFl = true,
-                .audioFileSrcFl = true,
+                .audioFileSrcFl = false,
                 .pvWndSmpCnt = 512,
                 .sdBypassFl  = false,
                 .sdInGain    = 1.0,
@@ -2403,6 +2404,8 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
   }
 
   log::setOutputCb( log::globalHandle(),_log_output_func,&app);
+
+  io::report(app.ioH);
 
   // create the preset selection state object
   if((rc = create(app.psH, app.presets_cfg )) != kOkRC )
