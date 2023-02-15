@@ -73,6 +73,7 @@ namespace cw
 
           device::cbFunc_t     cbFunc;    // user callback
           void*                cbArg;
+          unsigned             cbDevIdx;  
 
         } devRecd_t;
 
@@ -831,7 +832,7 @@ namespace cw
 
                   inputFl ? drp->iCbCnt++ : drp->oCbCnt++;
           
-                  pkt.devIdx         = drp->devIdx;
+                  pkt.devIdx         = drp->cbDevIdx;
                   pkt.begChIdx       = 0;
                   pkt.chCnt          = chCnt;
                   pkt.audioFramesCnt = frmCnt;
@@ -1374,6 +1375,9 @@ cw::rc_t cw::audio::device::alsa::create( handle_t& hRef, struct driver_str*& dr
     p->driver.deviceStart          = deviceStart;
     p->driver.deviceStop           = deviceStop;
     p->driver.deviceIsStarted      = deviceIsStarted;
+    p->driver.deviceIsAsync        = deviceIsAsync;
+    p->driver.deviceExecute        = deviceExecute;
+    
     p->driver.deviceRealTimeReport = deviceRealTimeReport;
     
     hRef.set(p);
@@ -1434,7 +1438,7 @@ unsigned cw::audio::device::alsa::deviceFramesPerCycle( struct driver_str* drv, 
   return p->devArray[devIdx].framesPerCycle;  
 }
 
-cw::rc_t  cw::audio::device::alsa::deviceSetup( struct driver_str* drv, unsigned devIdx, double srate, unsigned framesPerCycle, cbFunc_t cbFunc, void* cbArg )
+cw::rc_t  cw::audio::device::alsa::deviceSetup( struct driver_str* drv, unsigned devIdx, double srate, unsigned framesPerCycle, cbFunc_t cbFunc, void* cbArg, unsigned cbDevIdx )
 {
   alsa_t* p = static_cast<alsa_t*>(drv->drvArg);
   cwAssert( devIdx < deviceCount(drv));
@@ -1454,6 +1458,7 @@ cw::rc_t  cw::audio::device::alsa::deviceSetup( struct driver_str* drv, unsigned
     drp->periodsPerBuf  = periodsPerBuf;
     drp->cbFunc         = cbFunc;
     drp->cbArg          = cbArg;
+    drp->cbDevIdx       = cbDevIdx;
   }
 
   return rc;  
@@ -1577,6 +1582,16 @@ bool  cw::audio::device::alsa::deviceIsStarted(struct driver_str* drv, unsigned 
 	  
   return iFl || oFl;  
   
+}
+
+bool  cw::audio::device::alsa::deviceIsAsync(struct driver_str* drv, unsigned devIdx )
+{
+  return true;
+}
+
+cw::rc_t  cw::audio::device::alsa::deviceExecute(struct driver_str* drv, unsigned devIdx )
+{
+  return kOkRC;
 }
 
 void cw::audio::device::alsa::deviceRealTimeReport(struct driver_str* drv, unsigned devIdx ) 
