@@ -24,6 +24,7 @@
 #include "cwAudioDevice.h"
 #include "cwAudioBuf.h"
 #include "cwAudioDeviceAlsa.h"
+#include "cwAudioDeviceFile.h"
 
 #include "cwSocket.h"
 
@@ -91,6 +92,11 @@ namespace cw
       audioGroup_t*      oGroup;   //
       audio_group_dev_t* iagd;     // Audio group device record assoc'd with this device
       audio_group_dev_t* oagd;     //
+      
+      struct audioDev_str* clockInList;  // List of devices sync'd to this devices input clock
+      struct audioDev_str* clockOutList; // List of devices sync'd to this devices output clock
+      struct audioDev_str* clockLink;   // links used by clockIn/OutList
+      
     } audioDev_t;
 
     typedef struct socket_str
@@ -138,6 +144,7 @@ namespace cw
       
       audio::device::handle_t       audioH;
       audio::device::alsa::handle_t alsaH;
+      audio::device::file::handle_t audioDevFileH;
       audio::buf::handle_t          audioBufH;
       unsigned                      audioThreadTimeOutMs;
       unsigned                      audioMeterDevEnabledN;
@@ -828,12 +835,12 @@ namespace cw
     // Audio
     //
 
-
     
     // Start or stop all the audio devices in p->audioDevA[]
     rc_t _audioDeviceStartStop( io_t* p, bool startFl )
     {
       rc_t rc = kOkRC;
+      rc_t rc1 = kOkRC;
       
       for(unsigned i=0; i<p->audioDevN; ++i)
         if( p->audioDevA[i].enableFl )
@@ -847,9 +854,22 @@ namespace cw
           if(rc0 != kOkRC )
             rc = cwLogError(rc0,"The audio device: %s failed to %s.", cwStringNullGuard(p->audioDevA[i].devName), startFl ? "start" : "stop");
 
-        }      
+        }
 
-      return rc;
+      if( p->audioDevFileH.isValid() )
+      {    
+        if( startFl )
+          rc1 = audio::device::file::start( p->audioDevFileH );
+        else
+          rc1 = audio::device::file::stop( p->audioDevFileH );
+
+        if( rc1 != kOkRC )
+          rc1 = cwLogError(rc1,"Audio device file sub-system %s failed.", startFl ? "start" : "stop");
+        
+      }
+      
+       
+      return rcSelect(rc,rc1);
     }
 
 
@@ -905,13 +925,18 @@ namespace cw
         goto errLabel;
       }
       
+      if((rc = audio::device::file::destroy(p->audioDevFileH)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Audio device file sub-system shutdown failed.");
+        goto errLabel;
+      }
+
             
       if((rc = audio::device::destroy(p->audioH)) != kOkRC )
       {
         rc = cwLogError(rc,"Audio device sub-system shutdown failed.");
         goto errLabel;
       }
-
       
       if((rc = audio::buf::destroy(p->audioBufH)) != kOkRC )
       {
@@ -1165,10 +1190,10 @@ namespace cw
     
         audioBufFlags += audio::buf::kMeterFl;
 
-        if( inOutEnaFlags & kInFl )
+        if( ad->iagd != nullptr && (inOutEnaFlags & kInFl) )
           ad->iagd->flags = cwEnaFlag(ad->iagd->flags,kMeterFl,enaFl);
 
-        if( inOutEnaFlags & kOutFl )
+        if( ad->oagd != nullptr && (inOutEnaFlags & kOutFl) )
           ad->oagd->flags = cwEnaFlag(ad->oagd->flags,kMeterFl,enaFl);
     
         audio::buf::setFlag( p->audioBufH, devIdx, kInvalidIdx, audioBufFlags );
@@ -1213,9 +1238,11 @@ namespace cw
 
     // If audioDev (devIdx) is ready then update audio_group_dev.readyCnt and store a pointer to it's associated group in groupA[].
     // Return the count of pointers stored in groupA[].
-    unsigned _audioDeviceUpdateReadiness( io_t* p, unsigned devIdx, bool inputFl, audioGroup_t** groupA, unsigned groupN, unsigned curGroupN )
+    unsigned _audioDeviceUpdateReadiness( io_t* p, unsigned devIdx, bool inputFl, audioGroup_t** groupA, unsigned groupN, unsigned curGroupN, audioDev_t*& syncAdRef )
     {
       audioDev_t* ad;
+
+      syncAdRef = nullptr;
       
       // get the device record assoc'ed with this device
       if((ad = _audioDeviceIndexToRecd(p, devIdx )) == nullptr )
@@ -1227,21 +1254,23 @@ namespace cw
       // if an input packet was received on this device
       if( inputFl )
       {
-        if( audio::buf::isDeviceReady( p->audioBufH, devIdx, audio::buf::kInFl) )
+        if( audio::buf::isDeviceReady( p->audioBufH, devIdx, audio::buf::kInFl) && ad->iagd != nullptr )
         {
           // atomic incr  - note that the ordering doesn't matter because the update does not control access to any other variables from another thread
           std::atomic_store_explicit(&ad->iagd->readyCnt, ad->iagd->readyCnt+1,  std::memory_order_relaxed); 
           curGroupN = _audioDeviceUpdateGroupArray( groupA, groupN, curGroupN, ad->iGroup ); 
           ad->iagd->cbCnt += 1; // update the callback count for this device
+          syncAdRef = ad->clockInList;
         }
       }
       else // if an output packet was received on this device
       {    
-        if( audio::buf::isDeviceReady( p->audioBufH, devIdx, audio::buf::kOutFl ) )
+        if( audio::buf::isDeviceReady( p->audioBufH, devIdx, audio::buf::kOutFl ) && ad->oagd != nullptr )
         {
           std::atomic_store_explicit(&ad->oagd->readyCnt, ad->oagd->readyCnt+1, std::memory_order_relaxed); // atomic incr  
           curGroupN = _audioDeviceUpdateGroupArray( groupA, groupN, curGroupN, ad->oGroup );
           ad->oagd->cbCnt += 1;
+          syncAdRef = ad->clockOutList;
         }          
       }
 
@@ -1294,6 +1323,16 @@ namespace cw
         
     }
 
+    void _audioDevSync( io_t* p, audioDev_t** syncDevA, unsigned syncDevN )
+    {
+      for(unsigned i=0; i<syncDevN; ++i)
+        for(audioDev_t* ad = syncDevA[i]; ad!=nullptr; ad=ad->clockLink)
+          if(audio::device::execute( p->audioH, ad->devIdx ) != kOkRC )
+            cwLogWarning("Synced audio device '%s' execution failed.",ad->label);
+        
+          
+    }
+
     // This function is called by the audio device drivers when incoming audio arrives
     // or when there is available space to write outgoing audio.
     // If all in/out devices in a group are ready to be source/sink audio data then this function
@@ -1306,22 +1345,28 @@ namespace cw
       unsigned      groupN = 2 * inPktCnt + outPktCnt;
       audioGroup_t* groupA[ groupN ];
       unsigned curGroupN = 0;
-      
+
+      // These arrays are allocated with more space than they need - to avoid 0 length array when inPktCnt or outPktCnt is 0.
+      audioDev_t* iSyncDevListA[ inPktCnt+outPktCnt ];
+      audioDev_t* oSyncDevListA[ inPktCnt+outPktCnt ];
 
       // update the audio buffer
       audio::buf::update( p->audioBufH, inPktArray, inPktCnt, outPktArray, outPktCnt );
 
       // update the readiness of the input devices
       for(unsigned i=0; i<inPktCnt; ++i)
-        curGroupN = _audioDeviceUpdateReadiness( p, inPktArray[i].devIdx, true, groupA, groupN, curGroupN );
-
+        curGroupN = _audioDeviceUpdateReadiness( p, inPktArray[i].devIdx, true, groupA, groupN, curGroupN, iSyncDevListA[i] );
+      
       // update the readiness of the output devices
       for(unsigned i=0; i<outPktCnt; ++i)
-        curGroupN = _audioDeviceUpdateReadiness( p, outPktArray[i].devIdx, false, groupA, groupN, curGroupN );
-
+        curGroupN = _audioDeviceUpdateReadiness( p, outPktArray[i].devIdx, false, groupA, groupN, curGroupN, oSyncDevListA[i] );
+      
       // groupA[] contains the set of groups which may have been made ready during this callback
       _audioGroupNotifyIfReady( p, groupA, curGroupN );
 
+      // trigger any devices synced to the calling device
+      _audioDevSync( p, iSyncDevListA, inPktCnt  );
+      _audioDevSync( p, oSyncDevListA, outPktCnt );
     }
 
 
@@ -1472,6 +1517,34 @@ namespace cw
     errLabel:
       return rc;
     }
+
+
+    // Link dstAudioDev onto the list of devices that depend on srcAudioDev's clock.
+    rc_t _audioDeviceConnectToClockSource( io_t* p, const char* srcAudioDevLabel, bool clockSrcInputFl, audioDev_t* dstAudioDev )
+    {
+      rc_t rc = kOkRC;
+      audioDev_t* srcAudioDev = nullptr;
+      
+      if((srcAudioDev = _audioDeviceLabelToRecd(p,srcAudioDevLabel)) == nullptr )
+      {
+        rc = cwLogError(kInvalidArgRC,"The clock source '%s' could not be found for the audio device '%s'.",cwStringNullGuard(srcAudioDevLabel),cwStringNullGuard(dstAudioDev->label));
+        goto errLabel;
+      }
+
+      if( clockSrcInputFl )
+      {
+        dstAudioDev->clockLink = srcAudioDev->clockInList;
+        srcAudioDev->clockInList = dstAudioDev;
+      }
+      else
+      {
+        dstAudioDev->clockLink = srcAudioDev->clockOutList;
+        srcAudioDev->clockOutList = dstAudioDev;
+      }
+
+    errLabel:
+      return rc;      
+    }
       
     // Create the audio device records by parsing the cfg audio.deviceL[] list.
     rc_t _audioDeviceParseAudioDeviceList( io_t* p, const object_t* cfg )
@@ -1523,7 +1596,9 @@ namespace cw
         
         char*         inGroupLabel   = nullptr;
         char*         outGroupLabel  = nullptr;
-        
+
+        const char*   clockSrcDev = nullptr;
+        bool          clockSrcInputFl = false;
         
         const object_t* node;
         
@@ -1545,7 +1620,9 @@ namespace cw
                 "userId",     userId,
                 "meterFl",    meterFl,
                 "inGroup",    inGroupLabel,
-                "outGroup",   outGroupLabel )) != kOkRC )
+                "outGroup",   outGroupLabel,
+                "clockSrcDev",clockSrcDev,
+                "syncToClockSrcDevInputFl", clockSrcInputFl )) != kOkRC )
           {
             rc = cwLogError(rc,"Error parsing optional audio cfg record at index:%i",i);
             goto errLabel;
@@ -1571,8 +1648,8 @@ namespace cw
           }
 
           // get the device channel counts
-          unsigned iChCnt  = audio::device::channelCount(p->audioH,ad->devIdx,true);
-          unsigned oChCnt  = audio::device::channelCount(p->audioH,ad->devIdx,false);
+          unsigned iChCnt  = 0; //audio::device::channelCount(p->audioH,ad->devIdx,true);
+          unsigned oChCnt  = 0; //audio::device::channelCount(p->audioH,ad->devIdx,false);
           
 
           // get the ingroup
@@ -1621,6 +1698,11 @@ namespace cw
             rc = cwLogError(rc,"Unable to setup the audio hardware device:'%s'.", ad->devName);
             goto errLabel;
           }
+
+          // get the device channel counts
+          iChCnt  = audio::device::channelCount(p->audioH,ad->devIdx,true);
+          oChCnt  = audio::device::channelCount(p->audioH,ad->devIdx,false);
+
           
           // initialize the audio bufer for this device
           if((rc = audio::buf::setup( p->audioBufH, ad->devIdx, srate, dspFrameCnt, cycleCnt, iChCnt, framesPerCycle, oChCnt, framesPerCycle )) != kOkRC )
@@ -1641,6 +1723,14 @@ namespace cw
           {
             if((rc = _audioGroupAddDevice( oag, false, ad, oChCnt )) != kOkRC )
               goto errLabel;            
+          }
+
+          // if this device is dependent on another device as a clock
+          if( clockSrcDev != nullptr )
+          {
+            // ... then link it to the device
+            if((rc = _audioDeviceConnectToClockSource( p, clockSrcDev, clockSrcInputFl, ad )) != kOkRC )
+              goto errLabel;
           }
 
           // set the device group pointers
@@ -1694,17 +1784,9 @@ namespace cw
       return rc;
     }
 
-    rc_t _audioParseConfig( io_t* p, const object_t* cfg )
+    rc_t _audioParseConfig( io_t* p, const object_t* node )
     {
-      rc_t            rc          = kOkRC;
-      const object_t* node        = nullptr;
-      
-      // get the audio port node
-      if((node = cfg->find("audio")) == nullptr )
-      {
-        cwLogWarning("No 'audio' configuration node.");
-        return kOkRC;
-      }
+      rc_t            rc          = kOkRC;      
       
       // get the meterMs value
       if((rc = node->getv("meterMs", p->audioMeterCbPeriodMs, "threadTimeOutMs", p->audioThreadTimeOutMs )) != kOkRC )
@@ -1744,20 +1826,123 @@ namespace cw
       // initialize enabled audio meters
       if((rc = _audioDeviceEnableMeters(p)) != kOkRC )
       {
-	rc = cwLogError(rc,"Audio device enabled failed.");
-	goto errLabel;
+        rc = cwLogError(rc,"Audio device enabled failed.");
+        goto errLabel;
       }
 
     errLabel:
       return rc;
     }
 
+    rc_t _audioCreateDeviceFiles(io_t* p, const object_t* cfg, audio::device::driver_t*& audioDrvRef )
+    {
+      rc_t            rc    = kOkRC;
+      const object_t* flist = nullptr;
+        
+      audioDrvRef = nullptr;
+
+      // locate the audio device file cfg. node
+      if((rc = cfg->getv_opt( "files", flist)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Error obtaining audio device file cfg. node.");
+        goto errLabel;
+      }
+
+      // if no audio device file cfg. node was given - then there are no audio device files
+      if( flist == nullptr )
+        goto errLabel;
+
+
+      // create the audio devicce file mgr
+      if((rc = create( p->audioDevFileH, audioDrvRef )) != kOkRC )
+      {
+        rc = cwLogError(rc,"The audio device file manager create failed.");
+        goto errLabel;
+      }
+
+      for(unsigned i=0; i<flist->child_count(); ++i)
+      {
+        const object_t* fnode = flist->child_ele(i);
+
+        if( fnode == nullptr )
+        {
+          cwLogWarning("The audio device file descriptor at index %i is empty.",i);
+        }
+        else
+        {
+          bool        enableFl      = false;
+          const char* label         = nullptr;
+          const char* iFname        = nullptr;
+          bool        iRwdOnStartFl = false;
+            
+          const char* oFname        = nullptr;
+          unsigned    oChCnt        = 0;
+          bool        oRwdOnStartFl = false;
+
+          if((rc = fnode->getv( "device_label",label)) != kOkRC || label == nullptr )
+          {
+            cwLogError(rc,"The label parse failed on audio device descriptor at index %i.",i);
+            goto errLabel;
+          }
+
+          if((rc = fnode->getv_opt("enableFl", enableFl,
+                                   "in_fname", iFname,
+                                   "in_rewind_on_start_fl",iRwdOnStartFl,
+                                   "out_fname", oFname,
+                                   "out_rewind_on_start_fl",oRwdOnStartFl,
+                                   "out_ch_count", oChCnt )) != kOkRC )
+          {
+            cwLogError(rc,"The optional variables parse failed on audio device descriptor at index %i label:%s.",i,cwStringNullGuard(label));
+            goto errLabel;
+          }
+
+
+          if( enableFl )
+          {
+            if( iFname != nullptr )
+            {
+              unsigned iFlags = iRwdOnStartFl ? audio::device::file::kRewindOnStartFl : 0;
+                                   
+              if((rc = createInDevice( p->audioDevFileH, label, iFname,  iFlags )) != kOkRC )
+              {
+                cwLogError(rc,"Create failed on input audio device file '%s'.",cwStringNullGuard(label));
+                goto errLabel;
+              }
+            }
+
+            if( oFname != nullptr )
+            {
+              unsigned oFlags = oRwdOnStartFl ? audio::device::file::kRewindOnStartFl : 0;
+            
+              if((rc = createOutDevice( p->audioDevFileH, label, oFname, oFlags, oChCnt, 0 )) != kOkRC )
+              {
+                cwLogError(rc,"Create failed on output audio device file '%s'.",cwStringNullGuard(label));
+                goto errLabel;              
+              }            
+            }            
+          }
+          
+        }
+      }
+      
+      
+    errLabel:
+      if( rc != kOkRC )
+      {
+        audioDrvRef = nullptr;
+        rc = cwLogError(rc,"Audio device file iniitaliztion failed.");
+      }
+      
+      return rc;
+    }
 
     rc_t _audioCreate( io_t* p, const object_t* c )
     {      
       rc_t                     rc       = kOkRC;
       audio::device::driver_t* audioDrv = nullptr;
+      const object_t* cfg;
 
+      
       // initialize the audio device interface  
       if((rc = audio::device::create(p->audioH)) != kOkRC )
       {
@@ -1779,13 +1964,40 @@ namespace cw
         goto errLabel;
       }
 
-      // read the configuration information and setup the audio hardware
-      if((rc = _audioParseConfig( p, c )) != kOkRC )
+      // get the audio port node
+      if((cfg = c->find("audio")) == nullptr )
       {
-        rc = cwLogError(rc,"Audio device configuration failed.");
-        goto errLabel;
+        cwLogWarning("No 'audio' configuration node.");
       }
+      else
+      {
 
+        // create the audio device sub-system - audio device files must be created
+        // before they can be referenced in _audioParseConfig().
+        if((rc = _audioCreateDeviceFiles(p,cfg,audioDrv)) != kOkRC )
+        {
+          rc = cwLogError(rc,"The audio device file creation failed.");
+          goto errLabel;
+        }
+
+        // register audio device file driver
+        if( audioDrv != nullptr )
+          if((rc = audio::device::registerDriver( p->audioH, audioDrv )) != kOkRC )
+          {
+            rc = cwLogError(rc,"The audio device file driver registration failed.");
+            goto errLabel;
+          }
+
+        // read the configuration information and setup the audio hardware
+        if((rc = _audioParseConfig( p, cfg )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Audio device configuration failed.");
+          goto errLabel;
+        }
+
+        audio::device::report( p->audioH );
+      }
+      
     errLabel:
       return rc;
     }
@@ -2110,9 +2322,16 @@ void cw::io::report( handle_t h )
     }
 
   for(unsigned i=0; i<audioDeviceCount(h); ++i)
-    printf("audio: %s\n", audioDeviceName(h,i));
-  
+    printf("audio: %s\n", audioDeviceName(h,i));  
 }
+
+void cw::io::realTimeReport( handle_t h )
+{
+  io_t* p = _handleToPtr(h);
+  audio::device::realTimeReport(p->audioH);
+
+}
+
 
 //----------------------------------------------------------------------------------------------------------
 //
@@ -2472,15 +2691,17 @@ const cw::io::sample_t* cw::io::audioDeviceMeters( handle_t h, unsigned devIdx, 
   {
     bool               inputFl = inOrOutFlag & kInFl;
     audio_group_dev_t* agd     = inputFl ? ad->iagd     : ad->oagd;
-    
-    if( !cwIsFlag(agd->flags,kMeterFl) )
-      rc = cwLogError(kInvalidArgRC,"The %s meters on device %s are not enabled.", inputFl ? "input" : "output", cwStringNullGuard(ad->label));
-    else
+
+    if( agd != nullptr )
     {
-      meterA   = agd->meterA;
-      chCntRef = agd->chCnt;
+      if( !cwIsFlag(agd->flags,kMeterFl) )
+        rc = cwLogError(kInvalidArgRC,"The %s meters on device %s are not enabled.", inputFl ? "input" : "output", cwStringNullGuard(ad->label));
+      else
+      {
+        meterA   = agd->meterA;
+        chCntRef = agd->chCnt;
+      }
     }
-    
   }
 
   if( rc != kOkRC )

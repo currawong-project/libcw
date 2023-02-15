@@ -166,6 +166,7 @@ namespace cw
     rc_t exec(  handle_t h, void* execCbArg=nullptr );
     bool isShuttingDown( handle_t h );
     void report( handle_t h );
+    void realTimeReport( handle_t h );
 
     //----------------------------------------------------------------------------------------------------------
     //
