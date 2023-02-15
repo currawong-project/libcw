@@ -168,7 +168,7 @@ cw::rc_t  cw::audio::device::setup( handle_t h, unsigned devIdx, double sr, unsi
 {
   drv_t* d;
   if((d = _indexToDriver(h,devIdx)) != nullptr )
-    return d->drv->deviceSetup( d->drv, devIdx - d->begIdx, sr, frmPerCycle, cb, cbData );
+    return d->drv->deviceSetup( d->drv, devIdx - d->begIdx, sr, frmPerCycle, cb, cbData, devIdx );
   return kInvalidArgRC;
 }
 
@@ -203,6 +203,17 @@ void cw::audio::device::realTimeReport( handle_t h, unsigned devIdx )
     d->drv->deviceRealTimeReport( d->drv, devIdx - d->begIdx );
 }
 
+cw::rc_t cw::audio::device::execute(        handle_t h, unsigned devIdx )
+{
+  rc_t rc = kOkRC;
+  drv_t* d;
+  if((d = _indexToDriver(h,devIdx)) != nullptr )
+    rc = d->drv->deviceExecute( d->drv, devIdx - d->begIdx );
+
+  return rc;
+}
+
+
 void cw::audio::device::report( handle_t h )
 {
   for(unsigned i=0; i<count(h); ++i)
@@ -215,3 +226,13 @@ void cw::audio::device::report( handle_t h )
   }
   
 }
+
+void cw::audio::device::realTimeReport( handle_t h )
+{
+  for(unsigned i=0; i<count(h); ++i)
+  {
+    realTimeReport(h,i);
+  }
+  
+}
+

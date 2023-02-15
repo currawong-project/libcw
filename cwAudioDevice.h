@@ -58,10 +58,12 @@ namespace cw
         unsigned    (*deviceChannelCount)(   struct driver_str* drvArg, unsigned devIdx, bool inputFl );
         double      (*deviceSampleRate)(     struct driver_str* drvArg, unsigned devIdx );
         unsigned    (*deviceFramesPerCycle)( struct driver_str* drvArg, unsigned devIdx, bool inputFl );
-        rc_t        (*deviceSetup)(          struct driver_str* drvArg, unsigned devIdx, double sr, unsigned frmPerCycle, cbFunc_t cb, void* cbData );
+        rc_t        (*deviceSetup)(          struct driver_str* drvArg, unsigned devIdx, double sr, unsigned frmPerCycle, cbFunc_t cb, void* cbData, unsigned cbDevIdx );
         rc_t        (*deviceStart)(          struct driver_str* drvArg, unsigned devIdx );
         rc_t        (*deviceStop)(           struct driver_str* drvArg, unsigned devIdx );
-        bool        (*deviceIsStarted)(      struct driver_str* drvArg, unsigned devIdx );          
+        bool        (*deviceIsStarted)(      struct driver_str* drvArg, unsigned devIdx );
+        bool        (*deviceIsAsync)(        struct driver_str* drvArg, unsigned devIdx );
+        rc_t        (*deviceExecute)(        struct driver_str* drvArg, unsigned devIdx );
         void        (*deviceRealTimeReport)( struct driver_str* drvArg, unsigned devIdx );          
       } driver_t;          
         
@@ -78,6 +80,8 @@ namespace cw
       unsigned    channelCount(   handle_t h, unsigned devIdx, bool inputFl );
       double      sampleRate(     handle_t h, unsigned devIdx );
       unsigned    framesPerCycle( handle_t h, unsigned devIdx, bool inputFl );
+      bool        isAsync(        handle_t h, unsigned devIdx );
+      
       
       // Configure a device.  
       // All devices must be setup before they are started.
@@ -102,7 +106,10 @@ namespace cw
       bool        isStarted(      handle_t h, unsigned devIdx );
       void        realTimeReport( handle_t h, unsigned devIdx );
 
-      void report( handle_t h );      
+      rc_t        execute(        handle_t h, unsigned devIdx );
+
+      void report( handle_t h );
+      void realTimeReport( handle_t h );
     }
   }  
 }
