@@ -1083,11 +1083,11 @@ namespace cw
       return rc;
     }
 
-    rc_t _write_samples_to_file( af_t* p, unsigned bytesPerSmp, unsigned bufSmpCnt, void* buf )
+    rc_t _write_samples_to_file( af_t* p, unsigned bytesPerSmp, unsigned bufSmpCnt, const void* buf )
     {
       rc_t rc = kOkRC;
       
-      if( fwrite( buf, bufSmpCnt*bytesPerSmp, 1, p->fp ) != 1)
+      if( fwrite( (void*)buf, bufSmpCnt*bytesPerSmp, 1, p->fp ) != 1)
         rc = cwLogError(kWriteFailRC,"Audio file write failed on '%s'.",cwStringNullGuard(p->fn));
 
       return rc;
@@ -1245,8 +1245,9 @@ namespace cw
     // float->float
     rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const float* sbuf, float* dbuf )
     {
-      memcpy(dbuf,sbuf,bufSmpCnt*sizeof(float));
-      return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);      
+      //memcpy(dbuf,sbuf,bufSmpCnt*sizeof(float));
+      //return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);
+      return _write_samples_to_file(p,sizeof(sbuf[0]),bufSmpCnt,sbuf);
     }
 
     // double->float    
@@ -1851,6 +1852,18 @@ cw::rc_t    cw::audiofile::writeDouble( handle_t h, unsigned frmCnt, unsigned ch
   //return _writeRealSamples(h,frmCnt,chCnt,bufPtrPtr,sizeof(double));
 }
 
+cw::rc_t    cw::audiofile::writeFloatInterleaved( handle_t h, unsigned frmCnt, unsigned chCnt, const float* bufPtr )
+{
+  rc_t rc = kOkRC;
+  af_t* p  = _handleToPtr(h);
+  
+  if((rc = _write_samples_to_file(p,sizeof(float),frmCnt*chCnt,bufPtr)) == kOkRC )
+  {
+    p->info.frameCnt += frmCnt;
+  }
+
+  return rc;
+}
 
 
 cw::rc_t    cw::audiofile::minMaxMean( handle_t h, unsigned chIdx, float* minPtr, float* maxPtr, float* meanPtr )

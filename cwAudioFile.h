@@ -139,6 +139,8 @@ namespace cw
     rc_t    writeFloat(  handle_t h, unsigned frmCnt, unsigned chCnt, const float* const*  bufPtrPtr );
     rc_t    writeDouble( handle_t h, unsigned frmCnt, unsigned chCnt, const double* const* bufPtrPtr );
 
+    rc_t    writeFloatInterleaved( handle_t h, unsigned frmCnt, unsigned chCnt, const float* bufPtr );
+
     // File Writing Functions
     // Set 'bit' to 0 to write the file in IEEE float format.
     rc_t    writeFileInt(    const char* fn, double srate, unsigned bit, unsigned frmCnt, unsigned chCnt, const int* const *    bufPtrPtr);
