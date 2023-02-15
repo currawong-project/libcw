@@ -515,6 +515,9 @@ namespace cw
       case io::kUiTId:
         rc = _ui_callback(app,m->u.ui);
         break;
+        
+      case io::kExecTId:
+        break;
 
       default:
         assert(0);
