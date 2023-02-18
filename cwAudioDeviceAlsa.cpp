@@ -1375,7 +1375,6 @@ cw::rc_t cw::audio::device::alsa::create( handle_t& hRef, struct driver_str*& dr
     p->driver.deviceStart          = deviceStart;
     p->driver.deviceStop           = deviceStop;
     p->driver.deviceIsStarted      = deviceIsStarted;
-    p->driver.deviceIsAsync        = deviceIsAsync;
     p->driver.deviceExecute        = deviceExecute;
     
     p->driver.deviceRealTimeReport = deviceRealTimeReport;
@@ -1582,11 +1581,6 @@ bool  cw::audio::device::alsa::deviceIsStarted(struct driver_str* drv, unsigned 
 	  
   return iFl || oFl;  
   
-}
-
-bool  cw::audio::device::alsa::deviceIsAsync(struct driver_str* drv, unsigned devIdx )
-{
-  return true;
 }
 
 cw::rc_t  cw::audio::device::alsa::deviceExecute(struct driver_str* drv, unsigned devIdx )
