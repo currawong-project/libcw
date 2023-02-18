@@ -26,7 +26,6 @@ namespace cw
         rc_t        deviceStart(          struct driver_str* drv, unsigned devIdx );
         rc_t        deviceStop(           struct driver_str* drv, unsigned devIdx );
         bool        deviceIsStarted(      struct driver_str* drv, unsigned devIdx );
-        bool        deviceIsAsync(        struct driver_str* drv, unsigned devIdx );
         rc_t        deviceExecute(        struct driver_str* drv, unsigned devIdx );                
         void        deviceRealTimeReport( struct driver_str* drv, unsigned devIdx );
 
@@ -37,6 +36,8 @@ namespace cw
         // A device may have an input, an output or both.
         // A device with both an input and output can be created by assigning both to the same label
         rc_t        createInDevice(  handle_t& h, const char* label, const char* audioInFName,  unsigned flags );
+        
+        // Set bitsPerSample to 0 to write in single prec. float.
         rc_t        createOutDevice( handle_t& h, const char* label, const char* audioOutFName, unsigned flags, unsigned chCnt, unsigned bitsPerSample );
 
         // Generate an audio callback on the specified device.
@@ -44,6 +45,7 @@ namespace cw
         
         rc_t        report(handle_t h );
         rc_t        report();
+        rc_t        test( const object_t* cfg );
       }
     }
   }

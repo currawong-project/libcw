@@ -430,6 +430,8 @@ namespace cw
             d = d0;            
           }
 
+          mem::release(p);
+
         errLabel:          
           return rc;
         }
@@ -457,7 +459,6 @@ cw::rc_t    cw::audio::device::file::create( handle_t& hRef, struct driver_str*&
   p->driver.deviceStart          = deviceStart;
   p->driver.deviceStop           = deviceStop;
   p->driver.deviceIsStarted      = deviceIsStarted;
-  p->driver.deviceIsAsync        = deviceIsAsync;
   p->driver.deviceExecute        = deviceExecute;
   p->driver.deviceRealTimeReport = deviceRealTimeReport;
 
@@ -481,8 +482,10 @@ cw::rc_t    cw::audio::device::file::create( handle_t& hRef, struct driver_str*&
 
  errLabel:
   if( rc != kOkRC )
+  {
+    _destroy(p);
     rc = cwLogError(rc,"Audio device file create failed.");
-  
+  }
   return rc;
 }
   
@@ -688,11 +691,6 @@ bool        cw::audio::device::file::deviceIsStarted(      struct driver_str* dr
   return false;
 }
 
-bool        cw::audio::device::file::deviceIsAsync(        struct driver_str* drv, unsigned devIdx )
-{
-  return false;
-}
-
 cw::rc_t    cw::audio::device::file::deviceExecute(        struct driver_str* drv, unsigned devIdx )
 {
   rc_t           rc    = kOkRC;
@@ -786,4 +784,135 @@ cw::rc_t    cw::audio::device::file::report()
 {
   rc_t rc = kOkRC;
   return rc;
+}
+
+
+namespace cw {
+  namespace audio {
+    namespace device {
+      namespace file {
+
+        typedef struct cb_object_str
+        {
+          uint8_t*         buf;
+          unsigned         byteCnt;
+          std::atomic<int> readyCnt;
+        } cb_object_t;
+        
+        void driverCallback( void* cbArg, audioPacket_t* inPktArray, unsigned inPktCnt, audioPacket_t* outPktArray, unsigned outPktCnt )
+        {
+          cb_object_t* p = (cb_object_t*)cbArg;
+
+          if( inPktCnt )
+          {
+            audioPacket_t* pkt      = inPktArray;
+            unsigned       pktByteN = pkt->audioFramesCnt * pkt->chCnt * sizeof(sample_t);
+            unsigned       byteN    = std::min(p->byteCnt,pktByteN);
+            vop::copy(p->buf,(const uint8_t*)pkt->audioBytesPtr,byteN);
+            p->readyCnt++;
+          }
+
+          if( outPktCnt && p->readyCnt.load() > 0)
+          {
+            audioPacket_t* pkt      = outPktArray;
+            unsigned       pktByteN = pkt->audioFramesCnt * pkt->chCnt * sizeof(sample_t);
+            unsigned       byteN    = std::min(p->byteCnt,pktByteN);
+            vop::copy((uint8_t*)pkt->audioBytesPtr,p->buf,byteN);
+            p->readyCnt--;
+          }
+        }
+      }
+    }
+  }
+}
+
+cw::rc_t cw::audio::device::file::test( const object_t* cfg)
+{
+  rc_t               rc             = kOkRC;
+  rc_t               rc1            = kOkRC;
+  rc_t               rc2            = kOkRC;
+  const char*        ifname         = nullptr;
+  const char*        ofname         = nullptr;
+  struct driver_str  driver         = {0};
+  struct driver_str* driver_ptr     = &driver;
+  unsigned           bitsPerSample  = 0; // zero indicates floating point sample format for output audio file
+  unsigned           sleepMicrosec  = 0;
+  const char*        devLabel       = "dev_file";
+  unsigned           devIdx         = 0;
+  unsigned           framesPerCycle = 0;
+  cb_object_t        obj            = { 0 };
+  void*              cbArg          = &obj;
+  audiofile::info_t  info;
+  handle_t           h;
+  
+  if((rc = cfg->getv("inAudioFname",ifname,
+                     "outAudioFname",ofname,
+                     "framesPerCycle",framesPerCycle)) != kOkRC || ifname==nullptr || ofname==nullptr )
+  {
+    rc = cwLogError(rc,"Parsing audiio device file test cfg. failed.");
+    goto errLabel;
+  }
+
+  if((rc = create(h,driver_ptr)) != kOkRC )
+  {
+    rc = cwLogError(rc,"Error creating audio device file mgr.");
+    goto errLabel;
+  }
+
+  if((rc = getInfo( ifname, &info )) != kOkRC )
+  {
+    rc = cwLogError(rc,"Error parsing input audio file '%s' header.",cwStringNullGuard(ifname));
+    goto errLabel;
+  }
+
+  if((rc = createInDevice( h, devLabel, ifname,  kRewindOnStartFl )) != kOkRC )
+  {
+    rc = cwLogError(rc,"Error creating the audio device file input device from the file:%s.",cwStringNullGuard(ifname));
+    goto errLabel;    
+  }
+
+  if((rc = createOutDevice( h, devLabel, ofname, kRewindOnStartFl, info.chCnt, bitsPerSample )) != kOkRC )
+  {
+    rc = cwLogError(rc,"Error creating the audio device file output device from the file:%s.",cwStringNullGuard(ofname));
+    goto errLabel;        
+  }
+
+  if((rc =  deviceSetup( driver_ptr, devIdx, info.srate, framesPerCycle, driverCallback, cbArg, devIdx )) != kOkRC )
+  {
+    rc = cwLogError(rc,"Error setting up the audio device file.");
+    goto errLabel;
+  }
+
+  sleepMicrosec = (framesPerCycle * 1e6) / info.srate;
+  printf("%i\n",sleepMicrosec);
+  
+  report(h);
+
+  obj.byteCnt = framesPerCycle * info.chCnt * sizeof(sample_t);
+  obj.buf = mem::allocZ<uint8_t>( obj.byteCnt );
+  
+  if((rc = start(h)) != kOkRC )
+  {
+    rc = cwLogError(rc,"Audio device file start failed.");
+    goto errLabel;
+  }
+  
+  for(unsigned i=0; i<10; ++i)
+  {
+    deviceExecute( driver_ptr, devIdx );
+    deviceRealTimeReport( driver_ptr, devIdx );
+    sleepUs( sleepMicrosec );
+  }
+    
+ errLabel:
+  mem::release(obj.buf);
+  
+  if((rc2 = stop(h)) != kOkRC )
+    rc2 = cwLogError(rc2,"Audio device file mgr. stop failed.");
+  
+  if((rc1 = destroy(h)) != kOkRC )
+    rc1 = cwLogError(rc1,"Audio device file mgr. destroy failed.");
+  
+  return rcSelect(rc,rc1,rc2);
+  
 }
