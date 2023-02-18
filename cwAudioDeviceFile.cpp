@@ -844,7 +844,8 @@ cw::rc_t cw::audio::device::file::test( const object_t* cfg)
   void*              cbArg          = &obj;
   audiofile::info_t  info;
   handle_t           h;
-  
+
+  // parse the test args
   if((rc = cfg->getv("inAudioFname",ifname,
                      "outAudioFname",ofname,
                      "framesPerCycle",framesPerCycle)) != kOkRC || ifname==nullptr || ofname==nullptr )
@@ -853,30 +854,35 @@ cw::rc_t cw::audio::device::file::test( const object_t* cfg)
     goto errLabel;
   }
 
+  // create the audioDeviceFile mgr
   if((rc = create(h,driver_ptr)) != kOkRC )
   {
     rc = cwLogError(rc,"Error creating audio device file mgr.");
     goto errLabel;
   }
 
+  // get input file srate and channel count
   if((rc = getInfo( ifname, &info )) != kOkRC )
   {
     rc = cwLogError(rc,"Error parsing input audio file '%s' header.",cwStringNullGuard(ifname));
     goto errLabel;
   }
 
+  // create an input audio file device
   if((rc = createInDevice( h, devLabel, ifname,  kRewindOnStartFl )) != kOkRC )
   {
     rc = cwLogError(rc,"Error creating the audio device file input device from the file:%s.",cwStringNullGuard(ifname));
     goto errLabel;    
   }
 
+  // create an output audio file device
   if((rc = createOutDevice( h, devLabel, ofname, kRewindOnStartFl, info.chCnt, bitsPerSample )) != kOkRC )
   {
     rc = cwLogError(rc,"Error creating the audio device file output device from the file:%s.",cwStringNullGuard(ofname));
     goto errLabel;        
   }
 
+  // setup the audio device file device
   if((rc =  deviceSetup( driver_ptr, devIdx, info.srate, framesPerCycle, driverCallback, cbArg, devIdx )) != kOkRC )
   {
     rc = cwLogError(rc,"Error setting up the audio device file.");
@@ -884,19 +890,20 @@ cw::rc_t cw::audio::device::file::test( const object_t* cfg)
   }
 
   sleepMicrosec = (framesPerCycle * 1e6) / info.srate;
-  printf("%i\n",sleepMicrosec);
   
   report(h);
 
   obj.byteCnt = framesPerCycle * info.chCnt * sizeof(sample_t);
   obj.buf = mem::allocZ<uint8_t>( obj.byteCnt );
-  
+
+  // start the audio device file
   if((rc = start(h)) != kOkRC )
   {
     rc = cwLogError(rc,"Audio device file start failed.");
     goto errLabel;
   }
-  
+
+  // run the audio device file
   for(unsigned i=0; i<10; ++i)
   {
     deviceExecute( driver_ptr, devIdx );
@@ -906,13 +913,14 @@ cw::rc_t cw::audio::device::file::test( const object_t* cfg)
     
  errLabel:
   mem::release(obj.buf);
-  
+
+  // stop the audio device file mgr.
   if((rc2 = stop(h)) != kOkRC )
     rc2 = cwLogError(rc2,"Audio device file mgr. stop failed.");
-  
+
+  // destroy the audio device file mgr
   if((rc1 = destroy(h)) != kOkRC )
     rc1 = cwLogError(rc1,"Audio device file mgr. destroy failed.");
   
-  return rcSelect(rc,rc1,rc2);
-  
+  return rcSelect(rc,rc1,rc2);  
 }
