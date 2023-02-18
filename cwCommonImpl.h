@@ -179,7 +179,7 @@ namespace cw
 
   void sleepSec( unsigned secs ); // sleep seconds
   void sleepMs( unsigned ms ); // sleep milliseconds
-  void sleepUs( unsigned us ); // sleep seconds
+  void sleepUs( unsigned us ); // sleep microseconds
   void sleepNs( unsigned ns ); // sleep nanoseconds
 
   template< typename T >
