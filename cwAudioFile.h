@@ -74,9 +74,11 @@ namespace cw
     } info_t;
     
 
+    // The file path for fn is internally expanded if it begins with a '~' or '..'.
     rc_t open( handle_t& h, const char* fn, info_t* info );
 
     // Set bits to 0 to write the file in IEEE float format.
+    // The file path for fn is internally expanded if it begins with a '~' or '..'.
     rc_t create( handle_t& h, const char* fn, double srate, unsigned bits, unsigned chN );
     
     rc_t close( handle_t& h );
@@ -139,6 +141,11 @@ namespace cw
     rc_t    writeFloat(  handle_t h, unsigned frmCnt, unsigned chCnt, const float* const*  bufPtrPtr );
     rc_t    writeDouble( handle_t h, unsigned frmCnt, unsigned chCnt, const double* const* bufPtrPtr );
 
+    // Write a buffer of interleaved floating point samples. Note that no sample format conversion is
+    // implemented on this function.  The samples are directly written to the current file location.
+    // This means that the file must have been 'created()' with 'bits' set to 0 to indicate that the
+    // file is using a single precision float sample format. This limitation could easily be removed
+    // by adding sample conversion to integer types.
     rc_t    writeFloatInterleaved( handle_t h, unsigned frmCnt, unsigned chCnt, const float* bufPtr );
 
     // File Writing Functions

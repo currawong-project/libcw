@@ -439,17 +439,25 @@ namespace cw
       return rc;
     }
 
-    rc_t _open( af_t* p, const char* fn, const char* fileModeStr )
+    rc_t _open( af_t* p, const char* fname, const char* fileModeStr )
     {
       rc_t rc = kOkRC;
-  
+      char* fn = nullptr;
+      
       // zero the info record
       memset(&p->info,0,sizeof(p->info));
+
+      // expand the path
+      if((fn = filesys::expandPath(fname)) == nullptr )
+      {
+        rc = cwLogError(kOpFailRC,"File path expansion failed on '%s'.",cwStringNullGuard(fname));
+        goto errLabel;
+      }
 
       // open the file
       if((p->fp = fopen(fn,fileModeStr)) == NULL )
       {
-        rc = cwLogError(kOpenFailRC,"Audio file open failed on '%s'.",cwStringNullGuard(fn));
+        rc = cwLogError(kOpenFailRC,"Audio file open failed on '%s'.",cwStringNullGuard(fname));
         goto errLabel;
       }
 
@@ -520,6 +528,8 @@ namespace cw
     errLabel:
       if( rc!=kOkRC )
         _destroy(p);
+
+      mem::release(fn);
 
       return rc;
     }
@@ -1449,23 +1459,29 @@ cw::rc_t cw::audiofile::open( handle_t& h, const char* fn, info_t* info )
 }
 
     
-cw::rc_t cw::audiofile::create( handle_t& h, const char* fn, double srate, unsigned bits, unsigned chCnt )
+cw::rc_t cw::audiofile::create( handle_t& h, const char* fname, double srate, unsigned bits, unsigned chCnt )
 {
   rc_t rc = kOkRC;
   af_t* p = nullptr;
+  char* fn = nullptr;
   
   if((rc = close(h)) != kOkRC )
     return rc;
 
-  if( fn == NULL || strlen(fn)==0 )
+  if( fname == NULL || strlen(fname)==0 )
     return cwLogError(kInvalidArgRC,"Audio file create failed. The file name is blank.");
+
+  if((fn = filesys::expandPath(fname)) == nullptr )
+  {
+    rc = cwLogError(kOpFailRC,"File path expansion failed on '%s'.",cwStringNullGuard(fname));
+    goto errLabel;
+  }
   
   p = mem::allocZ<af_t>(1);
-
+  
   if((rc =  _filenameToAudioFileType(fn, p->info.flags )) != kOkRC )
     goto errLabel;
   
-
   // open the file for writing
   if((p->fp = fopen(fn,"wb")) == NULL )
   {
@@ -1495,6 +1511,9 @@ cw::rc_t cw::audiofile::create( handle_t& h, const char* fn, double srate, unsig
     h.set(p);
   }
  errLabel:
+
+  mem::release(fn);
+  
   if( rc != kOkRC )
     _destroy(p);
   
