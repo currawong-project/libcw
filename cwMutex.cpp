@@ -116,6 +116,7 @@ cw::rc_t cw::mutex::lock( handle_t h, unsigned timeout_milliseconds )
       
     case ETIMEDOUT:
       rc = kTimeOutRC;
+      break;
       
     default:
       rc = cwLogSysError(kInvalidOpRC,sysRc,"Lock failed.");
