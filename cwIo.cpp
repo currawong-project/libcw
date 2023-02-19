@@ -82,7 +82,7 @@ namespace cw
 
     typedef struct audioDev_str
     {
-      bool               enableFl; // True if this device was enabled by the user
+      bool               activeFl; // True if this device was enabled by the user
       bool               meterFl;  // True if meters are enabled on this device
       const char*        label;    // User label
       unsigned           userId;   // User id
@@ -843,7 +843,7 @@ namespace cw
       rc_t rc1 = kOkRC;
       
       for(unsigned i=0; i<p->audioDevN; ++i)
-        if( p->audioDevA[i].enableFl )
+        if( p->audioDevA[i].activeFl )
         {
           rc_t rc0 = kOkRC;
           if( startFl )
@@ -1007,7 +1007,7 @@ namespace cw
       if( time::isGTE(p->t0,p->audioMeterNextTime) )
       {
         for(unsigned i=0; i<p->audioDevN; ++i)
-          if( p->audioDevA[i].enableFl )
+          if( p->audioDevA[i].activeFl )
           {
             audioDev_t* ad = p->audioDevA + i;
             rc_t rc0;
@@ -1575,7 +1575,7 @@ namespace cw
       for(unsigned i=0; i<deviceL_Node->child_count(); ++i)
       {
         audioDev_t*   ad             = nullptr; //p->audioDevA + i;
-        bool          enableFl       = false;
+        bool          activeFl       = false;
         bool          meterFl        = false;
         char*         userLabel      = nullptr;
         unsigned      userId         = kInvalidId;
@@ -1605,7 +1605,7 @@ namespace cw
         if((node = deviceL_Node->child_ele(i)) != nullptr )
         {
           if(( rc = node->getv(
-                "enableFl",       enableFl,
+                "activeFl",       activeFl,
                 "label",          userLabel,
                 "device",         devName,
                 "framesPerCycle", framesPerCycle,
@@ -1631,7 +1631,7 @@ namespace cw
         }
         
         // if the configuration is enabled
-        if( enableFl )
+        if( activeFl )
         {
           // locate the record assoc'd with devName
           if((ad = _audioDeviceNameToRecd(p,devName)) == nullptr )
@@ -1734,7 +1734,7 @@ namespace cw
           }
 
           // set the device group pointers
-          ad->enableFl = enableFl;
+          ad->activeFl = activeFl;
           ad->meterFl  = meterFl;
           ad->label    = userLabel;
           ad->userId   = userId;
@@ -1753,7 +1753,7 @@ namespace cw
       rc_t rc = kOkRC;
       
       for(unsigned i=0; i<p->audioDevN; ++i)
-        if( p->audioDevA[i].enableFl && p->audioDevA[i].meterFl )
+        if( p->audioDevA[i].activeFl && p->audioDevA[i].meterFl )
 	  if((rc = _audioDeviceEnableMeter(p, p->audioDevA[i].devIdx, kEnableFl | kInFl | kOutFl )) != kOkRC )
 	  {
 	    cwLogError(rc,"Audio enable on device '%s' failed.",p->audioDevA[i].label);
@@ -2613,12 +2613,12 @@ cw::rc_t  cw::io::audioDeviceSetUserId( handle_t h, unsigned devIdx, unsigned us
   return kInvalidArgRC;  
 }
 
-bool  cw::io::audioDeviceIsEnabled( handle_t h, unsigned devIdx )
+bool  cw::io::audioDeviceIsActive( handle_t h, unsigned devIdx )
 {
   io_t*       p = _handleToPtr(h);
   audioDev_t* ad;
   if((ad = _audioDeviceIndexToRecd(p,devIdx)) != nullptr )
-    return ad->enableFl;
+    return ad->activeFl;
   
   return false;
 }
@@ -2646,6 +2646,17 @@ unsigned   cw::io::audioDeviceUserId( handle_t h, unsigned devIdx )
   return ad->userId;    
 }
 
+cw::rc_t  cw::io::audioDeviceEnable(  handle_t h, unsigned devIdx, bool inputFl, bool enableFl )
+{
+  io_t* p = _handleToPtr(h);
+  return audio::device::enable(p->audioH, devIdx, inputFl, enableFl );
+}
+
+cw::rc_t  cw::io::audioDeviceSeek(    handle_t h, unsigned devIdx, bool inputFl, unsigned frameOffset )
+{
+  io_t* p = _handleToPtr(h);
+  return audio::device::seek(p->audioH, devIdx, inputFl, frameOffset );
+}
 
 double cw::io::audioDeviceSampleRate( handle_t h, unsigned devIdx )
 {

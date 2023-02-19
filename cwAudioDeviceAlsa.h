@@ -25,6 +25,8 @@ namespace cw
         rc_t        deviceStop(           struct driver_str* drv, unsigned devIdx );
         bool        deviceIsStarted(      struct driver_str* drv, unsigned devIdx );
         rc_t        deviceExecute(        struct driver_str* drv, unsigned devIdx );        
+        rc_t        deviceEnable(         struct driver_str* drv, unsigned devIdx, bool inputFl, bool enableFl );        
+        rc_t        deviceSeek(           struct driver_str* drv, unsigned devIdx, bool inputFl, unsigned frameOffset );        
         void        deviceRealTimeReport( struct driver_str* drv, unsigned devIdx );
         
         rc_t        report(handle_t h );

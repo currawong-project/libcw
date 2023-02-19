@@ -228,9 +228,11 @@ namespace cw
     unsigned        audioDeviceLabelToIndex(   handle_t h, const char* label );
     const char*     audioDeviceLabel(          handle_t h, unsigned devIdx );
     rc_t            audioDeviceSetUserId(      handle_t h, unsigned devIdx, unsigned userId );
-    bool            audioDeviceIsEnabled(      handle_t h, unsigned devIdx );
+    bool            audioDeviceIsActive(       handle_t h, unsigned devIdx );
     const char*     audioDeviceName(           handle_t h, unsigned devIdx );
     unsigned        audioDeviceUserId(         handle_t h, unsigned devIdx );
+    rc_t            audioDeviceEnable(         handle_t h, unsigned devIdx, bool inputFl, bool enableFl );
+    rc_t            audioDeviceSeek(           handle_t h, unsigned devIdx, bool inputFl, unsigned frameOffset );
     double          audioDeviceSampleRate(     handle_t h, unsigned devIdx );
     unsigned        audioDeviceFramesPerCycle( handle_t h, unsigned devIdx );
     unsigned        audioDeviceChannelCount(   handle_t h, unsigned devIdx, unsigned inOrOutFlag );

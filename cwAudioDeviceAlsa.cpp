@@ -50,6 +50,9 @@ namespace cw
           bool                 iSwapFl;        // swap the sample bytes
           bool                 oSwapFl;
 
+          bool                 iEnableFl;      // enable the device
+          bool                 oEnableFl;      
+
           unsigned             iSigBits;       // significant bits in each sample beginning
           unsigned             oSigBits;       // with the most sig. bit.
 
@@ -566,7 +569,7 @@ namespace cw
           //const device::sample_t* rms = sp;
 
           // if no output was given then fill the device buffer with zeros
-          if( sp == NULL )
+          if( sp == NULL || drp->oEnableFl == false)
             memset(obuf,0,byteCnt);
           else
           {            
@@ -675,58 +678,66 @@ namespace cw
           if( smpPtr == NULL )
             return err;
 
-          // setup the return buffer
-          device::sample_t* dp = smpPtr;
-          device::sample_t* ep = dp + std::min(smpCnt,err*chCnt);
-  
-          switch(bits)
+
+          if( !drp->iEnableFl )
           {
-            case 8: 
-              {
-                char* sp = buf;
-                while(dp < ep)
-                  *dp++ = ((device::sample_t)*sp++) /  0x7f;
-              }
-              break;
-
-            case 16:
-              {
-                short* sp = (short*)buf;
-                while(dp < ep)
-                  *dp++ = ((device::sample_t)*sp++) /  0x7fff;
-              }
-              break;
-
-            case 24:
-              {
-                // For use with MBox
-                //_devS24_3BE_to_Float(buf, dp, ep-dp );
-                int* sp = (int*)buf;
-                while(dp < ep)
-                  *dp++ = ((device::sample_t)*sp++) /  0x7fffff;
-              }
-              break;
-
-
-            case 32:
-              {
-                int* sp = (int*)buf;
-                // The delta1010 (ICE1712) uses only the 24 highest bits according to
-                //
-                // http://www.alsa-project.org/alsa-doc/alsa-lib/pcm.html
-                // <snip> The example: ICE1712 chips support 32-bit sample processing, 
-                // but low byte is ignored (playback) or zero (capture). 
-                //
-                int  mv = sigBits==24 ? 0x7fffff00 : 0x7fffffff;
-                while(dp < ep)
-                  *dp++ = ((device::sample_t)*sp++) /  mv;
-
-              }
-              break;
-            default:
-              { cwAssert(0); }
+            memset(smpPtr,0,smpCnt*sizeof(sample_t));
           }
+          else
+          {
+            
+            // setup the return buffer
+            device::sample_t* dp = smpPtr;
+            device::sample_t* ep = dp + std::min(smpCnt,err*chCnt);
+            
+            switch(bits)
+            {
+              case 8: 
+                {
+                  char* sp = buf;
+                  while(dp < ep)
+                    *dp++ = ((device::sample_t)*sp++) /  0x7f;
+                }
+                break;
 
+              case 16:
+                {
+                  short* sp = (short*)buf;
+                  while(dp < ep)
+                    *dp++ = ((device::sample_t)*sp++) /  0x7fff;
+                }
+                break;
+
+              case 24:
+                {
+                  // For use with MBox
+                  //_devS24_3BE_to_Float(buf, dp, ep-dp );
+                  int* sp = (int*)buf;
+                  while(dp < ep)
+                    *dp++ = ((device::sample_t)*sp++) /  0x7fffff;
+                }
+                break;
+
+
+              case 32:
+                {
+                  int* sp = (int*)buf;
+                  // The delta1010 (ICE1712) uses only the 24 highest bits according to
+                  //
+                  // http://www.alsa-project.org/alsa-doc/alsa-lib/pcm.html
+                  // <snip> The example: ICE1712 chips support 32-bit sample processing, 
+                        // but low byte is ignored (playback) or zero (capture). 
+                             //
+                             int  mv = sigBits==24 ? 0x7fffff00 : 0x7fffffff;
+                  while(dp < ep)
+                    *dp++ = ((device::sample_t)*sp++) /  mv;
+
+                }
+                break;
+              default:
+                { cwAssert(0); }
+            }
+          }
           return err;
         }
 
@@ -1102,6 +1113,7 @@ namespace cw
                   drp->iPcmH    = pcmH;
                   drp->iBuf     = mem::resizeZ<device::sample_t>( drp->iBuf, actFpC * drp->iChCnt );
                   drp->iFpC     = actFpC;
+                  drp->iEnableFl= true;
                 }		
                 else
                 {
@@ -1112,6 +1124,7 @@ namespace cw
                   drp->oPcmH    = pcmH;
                   drp->oBuf     = mem::resizeZ<device::sample_t>( drp->oBuf, actFpC * drp->oChCnt );
                   drp->oFpC     = actFpC;
+                  drp->oEnableFl= true;
                 }
 
                 if( p->asyncFl == false )
@@ -1376,6 +1389,8 @@ cw::rc_t cw::audio::device::alsa::create( handle_t& hRef, struct driver_str*& dr
     p->driver.deviceStop           = deviceStop;
     p->driver.deviceIsStarted      = deviceIsStarted;
     p->driver.deviceExecute        = deviceExecute;
+    p->driver.deviceEnable         = deviceEnable;
+    p->driver.deviceSeek           = deviceSeek;
     
     p->driver.deviceRealTimeReport = deviceRealTimeReport;
     
@@ -1587,6 +1602,27 @@ cw::rc_t  cw::audio::device::alsa::deviceExecute(struct driver_str* drv, unsigne
 {
   return kOkRC;
 }
+
+cw::rc_t  cw::audio::device::alsa::deviceEnable( struct driver_str* drv, unsigned devIdx, bool inputFl, bool enableFl )
+{
+  cwAssert(devIdx < deviceCount(drv));
+  
+  alsa_t*    p   = static_cast<alsa_t*>(drv->drvArg);
+  devRecd_t* drp = p->devArray + devIdx;
+
+  if( inputFl )
+    drp->iEnableFl = enableFl;
+  else
+    drp->oEnableFl = enableFl;
+
+  return kOkRC;
+}
+  
+cw::rc_t  cw::audio::device::alsa::deviceSeek( struct driver_str* drv, unsigned devIdx, bool inputFl, unsigned frameOffset )
+{
+  return kOkRC;
+}
+
 
 void cw::audio::device::alsa::deviceRealTimeReport(struct driver_str* drv, unsigned devIdx ) 
 {

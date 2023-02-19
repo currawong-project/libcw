@@ -196,23 +196,49 @@ bool  cw::audio::device::isStarted(handle_t h, unsigned devIdx )
   return false;  
 }
 
+
+cw::rc_t cw::audio::device::execute(        handle_t h, unsigned devIdx )
+{
+  rc_t rc = kOkRC;
+  drv_t* d;
+  if((d = _indexToDriver(h,devIdx)) == nullptr )
+    rc = kInvalidArgRC;
+  else
+    rc = d->drv->deviceExecute( d->drv, devIdx - d->begIdx );
+
+  return rc;
+}
+
+cw::rc_t  cw::audio::device::enable(         handle_t h, unsigned devIdx, bool inputFl, bool enableFl )
+{
+  rc_t rc = kOkRC;
+  drv_t* d;
+  if((d = _indexToDriver(h,devIdx)) == nullptr )
+    rc = kInvalidArgRC;
+  else
+    rc = d->drv->deviceEnable( d->drv, devIdx - d->begIdx, inputFl, enableFl );
+
+  return rc;
+}
+
+cw::rc_t  cw::audio::device::seek(           handle_t h, unsigned devIdx, bool inputFl, unsigned frameOffset )
+{
+  rc_t rc = kOkRC;
+  drv_t* d;
+  if((d = _indexToDriver(h,devIdx)) == nullptr )
+    rc = kInvalidArgRC;
+  else
+    rc = d->drv->deviceSeek( d->drv, devIdx - d->begIdx, inputFl, frameOffset );
+  
+  return rc;  
+}
+
 void cw::audio::device::realTimeReport( handle_t h, unsigned devIdx )
 {
   drv_t* d;
   if((d = _indexToDriver(h,devIdx)) != nullptr )
     d->drv->deviceRealTimeReport( d->drv, devIdx - d->begIdx );
 }
-
-cw::rc_t cw::audio::device::execute(        handle_t h, unsigned devIdx )
-{
-  rc_t rc = kOkRC;
-  drv_t* d;
-  if((d = _indexToDriver(h,devIdx)) != nullptr )
-    rc = d->drv->deviceExecute( d->drv, devIdx - d->begIdx );
-
-  return rc;
-}
-
 
 void cw::audio::device::report( handle_t h )
 {

@@ -46,6 +46,7 @@ namespace cw
           audiofile::handle_t iFileH;
           unsigned            iFlags;
           unsigned            iChCnt;
+          bool                iEnableFl;
           audioPacket_t       iPkt;
           float*              iPktAudioBuf;
           unsigned            iCbCnt;
@@ -58,6 +59,7 @@ namespace cw
           audiofile::handle_t oFileH;
           unsigned            oFlags;
           unsigned            oChCnt;
+          bool                oEnableFl;
           unsigned            oBitsPerSample;
           audioPacket_t       oPkt;
           float*              oPktAudioBuf;
@@ -201,6 +203,7 @@ namespace cw
           d->iChArray            = mem::resize<sample_t*>(d->iChArray,info.chCnt);
           d->iChSmpBuf           = mem::resize<sample_t>(d->iChSmpBuf, d->framesPerCycle*info.chCnt );
           d->iChCnt              = info.chCnt;
+          d->iEnableFl           = true;
           d->iErrCnt             = 0;
           d->iFrmCnt             = 0;
           d->iPkt.devIdx         = d->cbDevIdx;
@@ -224,26 +227,32 @@ namespace cw
           rc_t rc = kOkRC;
 
           unsigned actualFrameCnt = 0;
-          
-          // read the file
-          if((rc = readFloat(d->iFileH, d->framesPerCycle, 0, d->iChCnt, d->iChArray, &actualFrameCnt)) == kOkRC )
-            d->iFrmCnt += actualFrameCnt;
+
+          if( !d->iEnableFl )
+          {
+            memset(d->iPkt.audioBytesPtr,0,d->iChCnt*d->framesPerCycle*sizeof(sample_t));
+          }
           else
-          {
-            rc = cwLogError(rc,"File read failed on audio device file: %s.",cwStringNullGuard(d->label));
-            d->iErrCnt += 1;
-            goto errLabel;
+          {          
+            // read the file
+            if((rc = readFloat(d->iFileH, d->framesPerCycle, 0, d->iChCnt, d->iChArray, &actualFrameCnt)) == kOkRC )
+              d->iFrmCnt += actualFrameCnt;
+            else
+            {
+              rc = cwLogError(rc,"File read failed on audio device file: %s.",cwStringNullGuard(d->label));
+              d->iErrCnt += 1;
+              goto errLabel;
+            }
+
+            // interleave into the iPkt audio buffer
+            vop::interleave( d->iPktAudioBuf, d->iChSmpBuf, actualFrameCnt, d->iChCnt );
+
+            if( actualFrameCnt < d->framesPerCycle )
+            {
+              for(unsigned i=0; i<d->iChCnt; ++i)
+                vop::fill( d->iPktAudioBuf + (actualFrameCnt * d->iChCnt) + i, 0, d->framesPerCycle-actualFrameCnt, d->iChCnt );            
+            }
           }
-
-          // interleave into the iPkt audio buffer
-          vop::interleave( d->iPktAudioBuf, d->iChSmpBuf, actualFrameCnt, d->iChCnt );
-
-          if( actualFrameCnt < d->framesPerCycle )
-          {
-            for(unsigned i=0; i<d->iChCnt; ++i)
-              vop::fill( d->iPktAudioBuf + (actualFrameCnt * d->iChCnt) + i, 0, d->framesPerCycle-actualFrameCnt, d->iChCnt );            
-          }
-
         errLabel:
           return rc;
         }
@@ -280,6 +289,7 @@ namespace cw
           d->oPktAudioBuf        = mem::resize<sample_t>(d->oPktAudioBuf,d->framesPerCycle*d->oChCnt);
           d->oChArray            = mem::resize<sample_t*>(d->oChArray,d->oChCnt);
           d->oChSmpBuf           = mem::resize<sample_t>(d->oChSmpBuf, d->framesPerCycle*d->oChCnt );
+          d->oEnableFl           = true;
           d->oFrmCnt             = 0;
           d->oErrCnt             = 0;
           d->oPkt.devIdx         = d->cbDevIdx;
@@ -302,7 +312,7 @@ namespace cw
         {
           rc_t rc = kOkRC;
 
-          if( d->oFileH.isValid() )
+          if( d->oFileH.isValid() && d->oEnableFl )
           {
             /*
             // deinterleave the audio into d->oChArray[]
@@ -460,6 +470,8 @@ cw::rc_t    cw::audio::device::file::create( handle_t& hRef, struct driver_str*&
   p->driver.deviceStop           = deviceStop;
   p->driver.deviceIsStarted      = deviceIsStarted;
   p->driver.deviceExecute        = deviceExecute;
+  p->driver.deviceEnable         = deviceEnable;
+  p->driver.deviceSeek           = deviceSeek;
   p->driver.deviceRealTimeReport = deviceRealTimeReport;
 
   if((rc = create( p->threadH, _threadCbFunc, p )) != kOkRC )
@@ -705,8 +717,53 @@ cw::rc_t    cw::audio::device::file::deviceExecute(        struct driver_str* dr
   mutex::signalCondVar(p->mutexH);
 
  errLabel:
-  return rc;
+  return rc; 
+}
+
+cw::rc_t  cw::audio::device::file::deviceEnable( struct driver_str* drv, unsigned devIdx, bool inputFl, bool enableFl )
+{
+  rc_t           rc    = kOkRC;
+  dev_mgr_t*     p     = _driverToPtr(drv);
+  dev_t*         d     = nullptr;
   
+  if((rc = _indexToDev( p, devIdx, d )) != kOkRC )
+    goto errLabel;
+
+  if( inputFl )
+    d->iEnableFl = enableFl;
+  else
+    d->oEnableFl = enableFl;
+
+  printf("Enable i:%i o:%i\n",d->iEnableFl,d->oEnableFl);
+  
+ errLabel:
+  return rc; 
+}
+
+cw::rc_t  cw::audio::device::file::deviceSeek(   struct driver_str* drv, unsigned devIdx, bool inputFl, unsigned frameOffset )
+{
+  rc_t           rc    = kOkRC;
+  dev_mgr_t*     p     = _driverToPtr(drv);
+  dev_t*         d     = nullptr;
+  
+  if((rc = _indexToDev( p, devIdx, d )) != kOkRC )
+    goto errLabel;
+
+  if( inputFl )
+  {
+    if( d->iFileH.isValid() )
+      if((rc = seek(d->iFileH,frameOffset)) != kOkRC )
+        rc = cwLogError(rc,"Seek failed on the audio device file input file.");    
+  }
+  else
+  {
+    if( d->oFileH.isValid())
+      if((rc = seek(d->oFileH,frameOffset)) != kOkRC )
+        rc = cwLogError(rc,"Seek failed on the audio device file output file.");
+  }
+
+ errLabel:
+  return rc;
 }
 
 void        cw::audio::device::file::deviceRealTimeReport( struct driver_str* drv, unsigned devIdx )

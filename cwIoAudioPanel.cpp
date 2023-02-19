@@ -274,7 +274,7 @@ cw::rc_t cw::io::audio_panel::create(  handle_t& hRef, io::handle_t ioH, unsigne
 
   // create the audio panels for each audio device
   for(unsigned i=0; i<audioDeviceCount(ioH); ++i)
-    if( io::audioDeviceIsEnabled(ioH,i))
+    if( io::audioDeviceIsActive(ioH,i))
     {
       if((rc = _registerDevice(p, baseAppId, i, 0 )) != kOkRC )
       {

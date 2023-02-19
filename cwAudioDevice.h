@@ -62,7 +62,19 @@ namespace cw
         rc_t        (*deviceStart)(          struct driver_str* drvArg, unsigned devIdx );
         rc_t        (*deviceStop)(           struct driver_str* drvArg, unsigned devIdx );
         bool        (*deviceIsStarted)(      struct driver_str* drvArg, unsigned devIdx );
+
+        // deviceExecute() is called to indicate that a device should execute a callback as soon as possible.
+        // This function is called by one device to synchronize another device.
         rc_t        (*deviceExecute)(        struct driver_str* drvArg, unsigned devIdx );
+
+        // An input device that is started but not enabled will source zeros.
+        // An output device that is started but not enabled will ignore incoming samples (and sink zeros),
+        // audio device files will not write.
+        rc_t        (*deviceEnable)(         struct driver_str* drvArg, unsigned devIdx, bool inputFl, bool enableFl );
+
+        // This function is only enabled on audio device files.
+        rc_t        (*deviceSeek)(           struct driver_str* drvArg, unsigned devIdx, bool inputFl, unsigned frameOffset );
+        
         void        (*deviceRealTimeReport)( struct driver_str* drvArg, unsigned devIdx );          
       } driver_t;          
         
@@ -103,10 +115,11 @@ namespace cw
       rc_t        start(          handle_t h, unsigned devIdx );
       rc_t        stop(           handle_t h, unsigned devIdx );
       bool        isStarted(      handle_t h, unsigned devIdx );
-      void        realTimeReport( handle_t h, unsigned devIdx );
-
       rc_t        execute(        handle_t h, unsigned devIdx );
-
+      rc_t        enable(         handle_t h, unsigned devIdx, bool inputFl, bool enableFl );
+      rc_t        seek(           handle_t h, unsigned devIdx, bool inputFl, unsigned frameOffset );
+      void        realTimeReport( handle_t h, unsigned devIdx );
+      
       void report( handle_t h );
       void realTimeReport( handle_t h );
     }
