@@ -214,7 +214,11 @@ namespace cw
       {
         if((rc = mutex::unlock(p->cbMutexH)) != kOkRC )
         {
-          rc = cwLogError(rc,"io mutex callback mutex unlock failed.");          
+          // Time out is not a failure
+          if( rc == kTimeOutRC )
+            rc = kOkRC;
+          else
+            rc = cwLogError(rc,"io mutex callback mutex unlock failed.");          
         }
       }
 
