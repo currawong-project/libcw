@@ -250,6 +250,8 @@ namespace cw
       const object_t* presets_cfg;
       object_t*       flow_proc_dict;
       const object_t* flow_cfg;
+      const char*     in_audio_dev_file;
+      unsigned        in_audio_dev_idx;
       
       midi_record_play::handle_t  mrpH;
 
@@ -290,7 +292,6 @@ namespace cw
 
       bool     useLiveMidiFl;  // use incoming MIDI to drive program (otherwise use score file)
       bool     trackMidiFl;    // apply presets based on MIDI location (otherwise respond only to direct manipulation of fragment control)
-      bool     audioFileSrcFl;
 
       unsigned pvWndSmpCnt;
       bool     sdBypassFl;
@@ -376,6 +377,12 @@ namespace cw
         goto errLabel;
       }
 
+      if((rc = params_cfgRef->getv_opt( "in_audio_dev_file",  app->in_audio_dev_file)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Parse of optional cfg. params failed..");
+        goto errLabel;        
+      }
+
       _apply_command_line_args(app,argc,argv);
 
       if((app->scoreFn    = filesys::expandPath( app->scoreFn )) == nullptr )
@@ -417,7 +424,7 @@ namespace cw
 
       app->insertLoc = kInvalidId; // initialize 'insertLoc' to be invalid 
       
-                                        errLabel:
+    errLabel:
       
       return rc;
     }
@@ -658,14 +665,15 @@ namespace cw
     {
       rc_t rc = kOkRC;
 
-      if( app->audioFileSrcFl )
+      if( app->in_audio_dev_idx != kInvalidIdx )
       {
-        if((rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "aud_in",  "on_off",    flow::kAnyChIdx, false )) != kOkRC )
+        if((rc = audioDeviceEnable( app->ioH, app->in_audio_dev_idx, true, false )) != kOkRC )
         {
-          rc = cwLogError(kInvalidArgRC,"Attempt to set audio in 'on/off' value to 'off' failed.");
+          rc = cwLogError(rc,"Enable failed on audio device input file.");
           goto errLabel;
         }
       }
+      
       
       if((rc = midi_record_play::stop(app->mrpH)) != kOkRC )
       {
@@ -680,11 +688,11 @@ namespace cw
     
     rc_t _do_play( app_t* app, unsigned begLoc, unsigned endLoc )
     {
-      rc_t rc = kOkRC;
-      bool rewindFl = true;
-      loc_map_t* begMap = nullptr;
-      loc_map_t* endMap = nullptr;
-      unsigned cur_loc = 0;
+      rc_t       rc       = kOkRC;
+      bool       rewindFl = true;
+      loc_map_t* begMap   = nullptr;
+      loc_map_t* endMap   = nullptr;
+      unsigned   cur_loc  = 0;
 
       // if the player is already playing then stop it
       if( midi_record_play::is_started(app->mrpH) )
@@ -695,22 +703,21 @@ namespace cw
 
       //midi_record_play::half_pedal_params( app->mrpH, app->hpDelayMs, app->hpPitch, app->hpVel, app->hpPedalVel, app->hpDurMs, app->hpDnDelayMs );
 
-      // If we are using an audio file as the audio source
-      if( app->audioFileSrcFl )
+      if( app->in_audio_dev_idx != kInvalidIdx )
       {
-        if((rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "aud_in",  "on_off",    flow::kAnyChIdx, true )) != kOkRC )
+        if((rc = audioDeviceSeek( app->ioH, app->in_audio_dev_idx, true, 0 )) != kOkRC )
         {
-          rc = cwLogError(kInvalidArgRC,"Attempt to set audio in 'on/off' value to 'on' failed.");
+          rc = cwLogError(rc,"Seek failed on audio device input file.");
           goto errLabel;
         }
 
-        if((rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "aud_in",  "seekSecs",    flow::kAnyChIdx, 0.0f )) != kOkRC )
+        if((rc = audioDeviceEnable( app->ioH, app->in_audio_dev_idx, true, true )) != kOkRC )
         {
-          rc = cwLogError(kInvalidArgRC,"Attempt to rewind audio file failed.");
+          rc = cwLogError(rc,"Enable failed on audio device input file.");
           goto errLabel;
         }
       }
-      
+
       if((begMap = _find_loc(app,begLoc)) == nullptr )
       {
         rc = cwLogError(kInvalidArgRC,"The begin play location is not valid.");
@@ -2377,7 +2384,6 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
   rc_t rc;
   app_t app = { .hpDelayMs=250, .hpPedalVel=127, .hpPitch=64, .hpVel=64, .hpDurMs=500, .hpDnDelayMs=1000,
                 .trackMidiFl = true,
-                .audioFileSrcFl = false,
                 .pvWndSmpCnt = 512,
                 .sdBypassFl  = false,
                 .sdInGain    = 1.0,
@@ -2406,6 +2412,23 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
   log::setOutputCb( log::globalHandle(),_log_output_func,&app);
 
   io::report(app.ioH);
+
+  // if an input audio file is being used
+  app.in_audio_dev_idx = kInvalidIdx;
+  if( app.in_audio_dev_file != nullptr )
+  {
+    if((app.in_audio_dev_idx = audioDeviceLabelToIndex(app.ioH, app.in_audio_dev_file )) == kInvalidIdx )
+    {
+      rc = cwLogError(kInvalidArgRC,"The input audio device file '%s' could not be found.",cwStringNullGuard(app.in_audio_dev_file));
+      goto errLabel;          
+    }
+
+    if((rc = audioDeviceEnable( app.ioH, app.in_audio_dev_idx, true, false )) != kOkRC )
+    {
+      rc = cwLogError(rc,"The input audio device file disable failed.");
+      goto errLabel;                
+    }
+  }
 
   // create the preset selection state object
   if((rc = create(app.psH, app.presets_cfg )) != kOkRC )
