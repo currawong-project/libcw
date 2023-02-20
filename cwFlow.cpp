@@ -978,7 +978,7 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
                            unsigned           deviceN )
 {
   rc_t            rc               = kOkRC;
-  const object_t* network;
+  const object_t* network          = nullptr; 
   bool            printClassDictFl = false;
   bool            printNetworkFl   = false;
   
