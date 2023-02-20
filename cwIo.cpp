@@ -1878,6 +1878,7 @@ namespace cw
           const char* label         = nullptr;
           const char* iFname        = nullptr;
           bool        iRwdOnStartFl = false;
+          bool        iCacheFl      = true;
             
           const char* oFname        = nullptr;
           unsigned    oChCnt        = 0;
@@ -1892,6 +1893,7 @@ namespace cw
           if((rc = fnode->getv_opt("enableFl", enableFl,
                                    "in_fname", iFname,
                                    "in_rewind_on_start_fl",iRwdOnStartFl,
+                                   "in_cache_fl",iCacheFl,
                                    "out_fname", oFname,
                                    "out_rewind_on_start_fl",oRwdOnStartFl,
                                    "out_ch_count", oChCnt )) != kOkRC )
@@ -1906,6 +1908,8 @@ namespace cw
             if( iFname != nullptr )
             {
               unsigned iFlags = iRwdOnStartFl ? audio::device::file::kRewindOnStartFl : 0;
+
+              iFlags += iCacheFl ? audio::device::file::kCacheFl : 0;
                                    
               if((rc = createInDevice( p->audioDevFileH, label, iFname,  iFlags )) != kOkRC )
               {

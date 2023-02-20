@@ -33,6 +33,7 @@ namespace cw
 
         enum {
           kRewindOnStartFl = 0x01,
+          kCacheFl         = 0x02
         };
 
         // A device may have an input, an output or both.

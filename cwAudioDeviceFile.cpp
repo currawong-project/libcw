@@ -48,12 +48,16 @@ namespace cw
           unsigned            iChCnt;
           bool                iEnableFl;
           audioPacket_t       iPkt;
-          float*              iPktAudioBuf;
+          sample_t*           iPktAudioBuf;
           unsigned            iCbCnt;
-          float**             iChArray;  // iChArray[2]
-          float*              iChSmpBuf; //
+          sample_t**          iChArray;  // iChArray[ iChCnt ]
+          sample_t*           iChSmpBuf; //
           unsigned            iErrCnt;   // count of errors
           unsigned            iFrmCnt;   // count of frames read
+          
+          sample_t*           iCacheBuf;     // iCacheFrameBuf[ iCacheFrameN * iChCnt ] (interleaved)
+          unsigned            iCacheFrameN;  // count of frames in iCacheBuf
+          unsigned            iCacheIdx;     // next frame to read (always at channel 0)
           
           char*               oFname;
           audiofile::handle_t oFileH;
@@ -62,10 +66,10 @@ namespace cw
           bool                oEnableFl;
           unsigned            oBitsPerSample;
           audioPacket_t       oPkt;
-          float*              oPktAudioBuf;
+          sample_t*           oPktAudioBuf;
           unsigned            oCbCnt;
-          float**             oChArray;  // oChArray[2]
-          float*              oChSmpBuf; //
+          sample_t**          oChArray;  // oChArray[2]
+          sample_t*           oChSmpBuf; //
           unsigned            oErrCnt;   // count of errors
           unsigned            oFrmCnt;   // count of frames written
                     
@@ -169,7 +173,102 @@ namespace cw
             mem::release(d->iPktAudioBuf);
             mem::release(d->iChArray);
             mem::release(d->iChSmpBuf);
+            mem::release(d->iCacheBuf);
           }
+        }
+
+        rc_t _fill_input_packet_from_cache( dev_t* d )
+        {
+          rc_t     rc = kOkRC;
+          unsigned n  = d->framesPerCycle;
+          unsigned m  = d->framesPerCycle;
+
+          // set n to the count of frames to copy from the cache into the pkt
+          if( d->iCacheIdx + n > d->iCacheFrameN )
+            n = d->iCacheFrameN - d->iCacheIdx;
+          
+          if( n > 0 )
+          {
+            memcpy( d->iPktAudioBuf, d->iCacheBuf + (d->iCacheIdx * d->iChCnt), d->framesPerCycle * d->iChCnt * sizeof(sample_t));
+            d->iCacheIdx += n;
+
+            // set m to the count of frames to zero at the end of the pkt
+            m = d->framesPerCycle - n;
+          }
+          
+          if( m > 0 )
+          {
+            memset( d->iPktAudioBuf + (n*d->iChCnt), 0, m * d->iChCnt * sizeof(sample_t));
+            d->iCacheIdx = d->iCacheFrameN;
+          }
+          
+          return rc;
+        }
+        
+        rc_t _fill_input_packet_from_file( dev_t* d )
+        {
+          rc_t     rc             = kOkRC;
+          unsigned actualFrameCnt = 0;
+
+          // read the file
+          if((rc = readFloat(d->iFileH, d->framesPerCycle, 0, d->iChCnt, d->iChArray, &actualFrameCnt)) == kOkRC )
+            d->iFrmCnt                                                                                  += actualFrameCnt;
+          else
+          {
+            rc = cwLogError(rc,"File read failed on audio device file: %s.",cwStringNullGuard(d->label));
+            d->iErrCnt += 1;
+            goto errLabel;
+          }
+
+          // interleave into the iPkt audio buffer
+          vop::interleave( d->iPktAudioBuf, d->iChSmpBuf, actualFrameCnt, d->iChCnt );
+
+          if( actualFrameCnt < d->framesPerCycle )
+          {
+            for(unsigned i=0; i<d->iChCnt; ++i)
+              vop::fill( d->iPktAudioBuf + (actualFrameCnt * d->iChCnt) + i, 0, d->framesPerCycle-actualFrameCnt, d->iChCnt );            
+          }
+
+          // d->iPktAudioBuf[] now contains d->framesPerCycle*d->iChCnt samples
+
+        errLabel:
+          return rc;
+        }
+
+        rc_t _cache_input( dev_t* d, unsigned frameN )
+        {
+          rc_t     rc = kOkRC;
+          unsigned n  = 0;
+          
+          d->iCacheFrameN = frameN;
+          d->iCacheBuf    = mem::resize<sample_t>(d->iCacheBuf, d->iCacheFrameN * d->iChCnt);
+          d->iCacheIdx    = 0;
+          
+          while(n < d->iCacheFrameN )
+          {
+            if((rc = _fill_input_packet_from_file(d)) != kOkRC )
+            {
+              rc = cwLogError(rc,"Read failed while reading the input cache.");
+              d->iCacheFrameN = 0; // this will prevent the cache from being used
+              goto errLabel;
+            }
+
+            unsigned copyFrameN = d->framesPerCycle;
+            if( n + copyFrameN > d->iCacheFrameN )
+              copyFrameN = d->iCacheFrameN - n;
+                        
+            memcpy( d->iCacheBuf + n * d->iChCnt, d->iPktAudioBuf, copyFrameN * d->iChCnt * sizeof(sample_t));
+
+            n += copyFrameN;
+          }
+
+          if( n % d->iChCnt != 0 )
+          {
+            cwLogWarning("The cache buffer seems to have a size mismatch with the input audio file.");
+          }
+
+        errLabel:
+          return rc;          
         }
 
         rc_t _open_input( dev_t* d, unsigned devIdx )
@@ -217,6 +316,11 @@ namespace cw
           
           for(unsigned i=0; i<d->iChCnt; ++i)
             d->iChArray[i] = d->iChSmpBuf + i*d->framesPerCycle;
+
+          // if input caching was requested
+          if( cwIsFlag(d->iFlags,kCacheFl) )
+            if((rc = _cache_input(d,info.frameCnt)) != kOkRC )
+              cwLogError(rc,"Cache load failed on '%s'.",cwStringNullGuard(d->iFname));
           
         errLabel:
           return rc;
@@ -226,34 +330,18 @@ namespace cw
         {
           rc_t rc = kOkRC;
 
-          unsigned actualFrameCnt = 0;
 
           if( !d->iEnableFl )
           {
             memset(d->iPkt.audioBytesPtr,0,d->iChCnt*d->framesPerCycle*sizeof(sample_t));
           }
           else
-          {          
-            // read the file
-            if((rc = readFloat(d->iFileH, d->framesPerCycle, 0, d->iChCnt, d->iChArray, &actualFrameCnt)) == kOkRC )
-              d->iFrmCnt += actualFrameCnt;
+          {
+            if( d->iCacheFrameN )
+              rc = _fill_input_packet_from_cache(d);
             else
-            {
-              rc = cwLogError(rc,"File read failed on audio device file: %s.",cwStringNullGuard(d->label));
-              d->iErrCnt += 1;
-              goto errLabel;
-            }
-
-            // interleave into the iPkt audio buffer
-            vop::interleave( d->iPktAudioBuf, d->iChSmpBuf, actualFrameCnt, d->iChCnt );
-
-            if( actualFrameCnt < d->framesPerCycle )
-            {
-              for(unsigned i=0; i<d->iChCnt; ++i)
-                vop::fill( d->iPktAudioBuf + (actualFrameCnt * d->iChCnt) + i, 0, d->framesPerCycle-actualFrameCnt, d->iChCnt );            
-            }
+              rc = _fill_input_packet_from_file(d);
           }
-        errLabel:
           return rc;
         }
 
@@ -377,7 +465,7 @@ namespace cw
           dev_t*     d  = nullptr;
           
           // block on the cond. var - unlock the mutex
-          if((rc = mutex::waitOnCondVar(p->mutexH,false,p->threadTimeOutMs)) != kOkRC )
+          if((rc = mutex::waitOnCondVar(p->mutexH,false,p->threadTimeOutMs/2)) != kOkRC )
           {
             if( rc != kTimeOutRC )
             {
@@ -658,6 +746,7 @@ cw::rc_t    cw::audio::device::file::deviceStart(          struct driver_str* dr
   
   if((rc0 = _indexToDev( p, devIdx, d )) == kOkRC )
   {
+    /*
     if( d->iFileH.isValid() && cwIsFlag(d->iFlags,kRewindOnStartFl) )
       if((rc0 = seek(d->iFileH,0)) != kOkRC )
         rc0 = cwLogError(rc0,"Rewind on start failed on the audio device file input file.");
@@ -665,6 +754,7 @@ cw::rc_t    cw::audio::device::file::deviceStart(          struct driver_str* dr
     if( d->oFileH.isValid() && cwIsFlag(d->oFlags,kRewindOnStartFl) )    
       if((rc1 = seek(d->oFileH,0)) != kOkRC )
         rc1 = cwLogError(rc1,"Rewind on start failed on the audio device file output file.");
+    */
   }
   
   if((rc0 = rcSelect(rc0,rc1)) == kOkRC )
@@ -734,8 +824,6 @@ cw::rc_t  cw::audio::device::file::deviceEnable( struct driver_str* drv, unsigne
   else
     d->oEnableFl = enableFl;
 
-  printf("Enable i:%i o:%i\n",d->iEnableFl,d->oEnableFl);
-  
  errLabel:
   return rc; 
 }
