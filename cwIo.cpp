@@ -1874,15 +1874,19 @@ namespace cw
         }
         else
         {
-          bool        enableFl      = false;
-          const char* label         = nullptr;
-          const char* iFname        = nullptr;
-          bool        iRwdOnStartFl = false;
-          bool        iCacheFl      = true;
+          bool        enableFl          = false;
+          const char* label             = nullptr;
+          const char* iFname            = nullptr;
+          bool        iRwdOnStartFl     = false;
+          bool        iCacheFl          = true;
+          bool        iUseInternalClkFl = false;
             
-          const char* oFname        = nullptr;
-          unsigned    oChCnt        = 0;
-          bool        oRwdOnStartFl = false;
+          const char* oFname            = nullptr;
+          unsigned    oChCnt            = 0;
+          unsigned    oCacheBlockSec    = 10;
+          bool        oRwdOnStartFl     = false;
+          bool        oCacheFl          = true;
+          bool        oUseInternalClkFl = false;
 
           if((rc = fnode->getv( "device_label",label)) != kOkRC || label == nullptr )
           {
@@ -1894,8 +1898,12 @@ namespace cw
                                    "in_fname", iFname,
                                    "in_rewind_on_start_fl",iRwdOnStartFl,
                                    "in_cache_fl",iCacheFl,
+                                   "out_use_internal_clock_fl",iUseInternalClkFl,
                                    "out_fname", oFname,
                                    "out_rewind_on_start_fl",oRwdOnStartFl,
+                                   "out_cache_fl",oCacheFl,
+                                   "out_use_internal_clock_fl",oUseInternalClkFl,
+                                   "out_cache_block_sec",oCacheBlockSec,
                                    "out_ch_count", oChCnt )) != kOkRC )
           {
             cwLogError(rc,"The optional variables parse failed on audio device descriptor at index %i label:%s.",i,cwStringNullGuard(label));
@@ -1909,7 +1917,8 @@ namespace cw
             {
               unsigned iFlags = iRwdOnStartFl ? audio::device::file::kRewindOnStartFl : 0;
 
-              iFlags += iCacheFl ? audio::device::file::kCacheFl : 0;
+              iFlags += iCacheFl          ? audio::device::file::kCacheFl            : 0;
+              iFlags += iUseInternalClkFl ? audio::device::file::kUseInternalClockFl : 0;
                                    
               if((rc = createInDevice( p->audioDevFileH, label, iFname,  iFlags )) != kOkRC )
               {
@@ -1921,8 +1930,12 @@ namespace cw
             if( oFname != nullptr )
             {
               unsigned oFlags = oRwdOnStartFl ? audio::device::file::kRewindOnStartFl : 0;
-            
-              if((rc = createOutDevice( p->audioDevFileH, label, oFname, oFlags, oChCnt, 0 )) != kOkRC )
+
+              oFlags += oCacheFl          ? audio::device::file::kCacheFl            : 0;
+              oFlags += oUseInternalClkFl ? audio::device::file::kUseInternalClockFl : 0;
+
+              // bitsPerSample==0 indicates the output file should use a floating point sample format
+              if((rc = createOutDevice( p->audioDevFileH, label, oFname, oFlags, oChCnt, 0, oCacheBlockSec )) != kOkRC )
               {
                 cwLogError(rc,"Create failed on output audio device file '%s'.",cwStringNullGuard(label));
                 goto errLabel;              
