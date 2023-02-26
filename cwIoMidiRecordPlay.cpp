@@ -150,7 +150,7 @@ namespace cw
 
       event_callback_t cb;
       void*            cb_arg;
-    
+
     } midi_record_play_t;
     
     enum
@@ -1597,6 +1597,15 @@ cw::rc_t cw::midi_record_play::seek( handle_t h, time::spec_t seek_timestamp )
 
   
   return rc;
+}
+
+unsigned cw::midi_record_play::elapsed_micros( handle_t h )
+{
+  midi_record_play_t* p  = _handleToPtr(h);
+  time::spec_t t;
+  time::get(t);
+
+  return time::elapsedMicros( p->start_time, t );
 }
 
 unsigned cw::midi_record_play::event_count( handle_t h )

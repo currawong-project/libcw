@@ -56,6 +56,8 @@ namespace cw
     rc_t load( handle_t h, const midi_msg_t* msg, unsigned msg_count );
 
     rc_t seek( handle_t h, time::spec_t timestamp );
+    
+    unsigned elapsed_micros( handle_t h );
 
     unsigned event_count( handle_t h ); // Current count of stored messages.
     unsigned event_index( handle_t h ); // record mode: index of next event to store play mode:index of next event to play
