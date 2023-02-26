@@ -25,6 +25,8 @@
 #include "cwIoFlow.h"
 #include "cwPresetSel.h"
 
+#define INVALID_LOC (0)
+
 namespace cw
 {
   namespace preset_sel_app
@@ -252,6 +254,8 @@ namespace cw
       const object_t* flow_cfg;
       const char*     in_audio_dev_file;
       unsigned        in_audio_dev_idx;
+      unsigned        in_audio_begin_loc;
+      double          in_audio_offset_sec;
       
       midi_record_play::handle_t  mrpH;
 
@@ -377,7 +381,9 @@ namespace cw
         goto errLabel;
       }
 
-      if((rc = params_cfgRef->getv_opt( "in_audio_dev_file",  app->in_audio_dev_file)) != kOkRC )
+      if((rc = params_cfgRef->getv_opt( "in_audio_dev_file",  app->in_audio_dev_file,
+                                        "in_audio_file_begin_loc", app->in_audio_begin_loc,
+                                        "in_audio_file_offset_sec", app->in_audio_offset_sec)) != kOkRC )
       {
         rc = cwLogError(rc,"Parse of optional cfg. params failed..");
         goto errLabel;        
@@ -503,7 +509,9 @@ namespace cw
         else
         {        
           const char* preset_label = preset_sel::preset_label(app->psH,preset_idx);
-        
+
+          printf("Apply preset: '%s' : loc:%i", preset_idx==kInvalidIdx ? "<invalid>" : preset_label, loc );
+
           _set_status(app,"Apply preset: '%s'.", preset_idx==kInvalidIdx ? "<invalid>" : preset_label);
 
           if( preset_label != nullptr )
@@ -550,6 +558,31 @@ namespace cw
       return rc;
     }
 
+    rc_t _do_stop_play( app_t* app )
+    {
+      rc_t rc = kOkRC;
+
+      if( app->in_audio_dev_idx != kInvalidIdx )
+      {
+        if((rc = audioDeviceEnable( app->ioH, app->in_audio_dev_idx, true, false )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Enable failed on audio device input file.");
+          goto errLabel;
+        }
+      }
+      
+      
+      if((rc = midi_record_play::stop(app->mrpH)) != kOkRC )
+      {
+        rc = cwLogError(rc,"MIDI stop failed.");
+        goto errLabel;
+      }
+
+    errLabel:
+      return rc;
+    }
+
+    
     void _midi_play_callback( void* arg, unsigned actionId, unsigned id, const time::spec_t timestamp, unsigned loc, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
     {
       app_t* app = (app_t*)arg;
@@ -557,6 +590,7 @@ namespace cw
       {
         case midi_record_play::kPlayerStoppedActionId:
           app->seqStartedFl=false;
+          _do_stop_play(app);
           _set_status(app,"Done");
           break;
           
@@ -586,7 +620,7 @@ namespace cw
 
             // ZERO SHOULD BE A VALID LOC VALUE - MAKE -1 THE INVALID LOC VALUE
             
-            if( loc != 0  && app->trackMidiFl )
+            if( loc != INVALID_LOC  && app->trackMidiFl )
             {  
               if( preset_sel::track_loc( app->psH, loc, f ) )  
               {          
@@ -597,6 +631,7 @@ namespace cw
                   _do_select_frag( app, f->guiUuId );
               }
             }
+            
           }
           break;
         }
@@ -661,30 +696,51 @@ namespace cw
       return pre_loc_map;
     }
 
-    rc_t _do_stop_play( app_t* app )
+    rc_t  _loc_to_frame_index( app_t* app, unsigned loc, unsigned& frameIdxRef )
     {
-      rc_t rc = kOkRC;
+      rc_t                  rc        = kOkRC;
+      const score::event_t* e0        = nullptr;
+      const score::event_t* e1        = nullptr;
+      double                srate     = 0;
+      double secs = 0;
 
-      if( app->in_audio_dev_idx != kInvalidIdx )
+      frameIdxRef = kInvalidIdx;
+      
+      if( app->in_audio_begin_loc != INVALID_LOC )
       {
-        if((rc = audioDeviceEnable( app->ioH, app->in_audio_dev_idx, true, false )) != kOkRC )
+        if((e0 = loc_to_event(app->scoreH,app->in_audio_begin_loc)) == nullptr )
         {
-          rc = cwLogError(rc,"Enable failed on audio device input file.");
+          rc = cwLogError(kInvalidArgRC,"The score event associated with the 'in_audio_beg_loc' loc:%i could not be found.",loc);
           goto errLabel;
         }
       }
       
-      
-      if((rc = midi_record_play::stop(app->mrpH)) != kOkRC )
+      if((e1 = loc_to_event(app->scoreH,loc)) == nullptr )
       {
-        rc = cwLogError(rc,"MIDI stop failed.");
+        rc = cwLogError(kInvalidArgRC,"The score event associated with the begin play loc:%i could not be found.",loc);
         goto errLabel;
       }
 
+      if((srate = audioDeviceSampleRate(app->ioH, app->in_audio_dev_idx )) == 0 )
+      {
+        rc = cwLogError(kInvalidArgRC,"Audio device file sample rate could not be accessed.");
+        goto errLabel;        
+      }
+
+      if( e1->sec < e0->sec )
+        cwLogWarning("The audio file start time ('in_audio_beg_sec') (%f sec) is prior to the start play location %f sec.",e1->sec,e0->sec);
+      else
+      {
+        secs = (e1->sec - e0->sec) + app->in_audio_offset_sec;      
+        cwLogInfo("File offset %f seconds. %f %f",secs);
+      }
+      
+      frameIdxRef = (unsigned)(secs * srate);
+      
     errLabel:
+      
       return rc;
     }
-    
     
     rc_t _do_play( app_t* app, unsigned begLoc, unsigned endLoc )
     {
@@ -705,7 +761,14 @@ namespace cw
 
       if( app->in_audio_dev_idx != kInvalidIdx )
       {
-        if((rc = audioDeviceSeek( app->ioH, app->in_audio_dev_idx, true, 0 )) != kOkRC )
+        unsigned frameIdx = 0;
+        if((rc = _loc_to_frame_index(app, begLoc, frameIdx )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Frame index could not be calculated.");
+          goto errLabel;
+        }
+        
+        if((rc = audioDeviceSeek( app->ioH, app->in_audio_dev_idx, true, frameIdx )) != kOkRC )
         {
           rc = cwLogError(rc,"Seek failed on audio device input file.");
           goto errLabel;
@@ -732,7 +795,6 @@ namespace cw
       
       app->beg_play_timestamp = begMap->timestamp;
       app->end_play_timestamp = endMap->timestamp;
-
       
       if( !time::isZero(app->beg_play_timestamp) && !app->useLiveMidiFl )
       {
@@ -946,8 +1008,6 @@ namespace cw
 
         // uuid of the frag preset row
         unsigned fragPresetRowUuId = io::uiFindElementUuId( app->ioH, fragPanelUuId, kFragPresetRowId, uiChanId );
-
-
         
         // Update each fragment preset control UI by getting it's current value from the fragment data record
         for(unsigned preset_idx=0; preset_idx<preset_sel::preset_count(app->psH); ++preset_idx)
@@ -1414,7 +1474,7 @@ namespace cw
 
     rc_t _do_load( app_t* app )
     {
-      rc_t     rc          = kOkRC;
+      rc_t    rc          = kOkRC;
       unsigned midiEventN  = 0;
       bool     firstLoadFl = !app->scoreH.isValid();
 
@@ -2411,7 +2471,7 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
 
   log::setOutputCb( log::globalHandle(),_log_output_func,&app);
 
-  io::report(app.ioH);
+  //io::report(app.ioH);
 
   // if an input audio file is being used
   app.in_audio_dev_idx = kInvalidIdx;
