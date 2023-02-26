@@ -439,31 +439,10 @@ const cw::score::event_t* cw::score::base_event( handle_t h )
   return p->base;
 }
 
-
-cw::rc_t  cw::score::event_to_string( handle_t h, unsigned uid, char* buf, unsigned buf_byte_cnt )
+const cw::score::event_t* cw::score::loc_to_event( handle_t h, unsigned loc )
 {
-  score_t*       p  = _handleToPtr(h);
-  const event_t* e  = nullptr;
-  rc_t           rc = kOkRC;
-  
-  if((e = _uid_to_event( p, uid )) == nullptr )
-    rc = cwLogError(kInvalidIdRC,"A score event with uid=%i does not exist.",uid);
-  else
-  {
-    const char* sci_pitch = strlen(e->sci_pitch)  ? e->sci_pitch  : "";
-    const char* dyn_mark  = strlen(e->dmark)      ? e->dmark      : "";
-    const char* grace_mark= strlen(e->grace_mark) ? e->grace_mark : "";
-
-    if( midi::isSustainPedal( e->status, e->d0 ) )
-      sci_pitch = midi::isPedalDown( e->status, e->d0, e->d1 ) ? "Dv" : "D^";
-    else
-      if( midi::isSostenutoPedal( e->status, e->d0 ) )
-        sci_pitch = midi::isPedalDown( e->status, e->d0, e->d1 ) ? "Sv" : "S^";
-    
-    snprintf(buf,buf_byte_cnt,"uid:%5i meas:%4i loc:%4i tick:%8i sec:%8.3f %4s %5s %3s (st:0x%02x d0:0x%02x d1:0x%02x)", e->uid, e->meas, e->loc, e->tick, e->sec, sci_pitch, dyn_mark, grace_mark, e->status, e->d0, e->d1 );
-  }
-
-  return rc;
+  score_t* p = _handleToPtr(h);  
+  return _loc_to_event(p,loc);
 }
 
 unsigned       cw::score::loc_count( handle_t h )
@@ -500,12 +479,46 @@ unsigned  cw::score::loc_to_next_note_on_measure( handle_t h, unsigned locId )
   return kInvalidId;
 }
 
+double  cw::score::locs_to_diff_seconds( handle_t h, unsigned loc0Id, unsigned loc1Id )
+{
+  score_t* p  = _handleToPtr(h);
+  const event_t* e0 = _loc_to_event(p,loc0Id);
+  const event_t* e1 = _loc_to_event(p,loc1Id);
+
+  return e1->sec - e0->sec;  
+}
+
 const cw::score::event_t* cw::score::uid_to_event( handle_t h, unsigned uid )
 {
   //hscore_t* p  = _handleToPtr(h);
   return nullptr;
 }
 
+cw::rc_t  cw::score::event_to_string( handle_t h, unsigned uid, char* buf, unsigned buf_byte_cnt )
+{
+  score_t*       p  = _handleToPtr(h);
+  const event_t* e  = nullptr;
+  rc_t           rc = kOkRC;
+  
+  if((e = _uid_to_event( p, uid )) == nullptr )
+    rc = cwLogError(kInvalidIdRC,"A score event with uid=%i does not exist.",uid);
+  else
+  {
+    const char* sci_pitch = strlen(e->sci_pitch)  ? e->sci_pitch  : "";
+    const char* dyn_mark  = strlen(e->dmark)      ? e->dmark      : "";
+    const char* grace_mark= strlen(e->grace_mark) ? e->grace_mark : "";
+
+    if( midi::isSustainPedal( e->status, e->d0 ) )
+      sci_pitch = midi::isPedalDown( e->status, e->d0, e->d1 ) ? "Dv" : "D^";
+    else
+      if( midi::isSostenutoPedal( e->status, e->d0 ) )
+        sci_pitch = midi::isPedalDown( e->status, e->d0, e->d1 ) ? "Sv" : "S^";
+    
+    snprintf(buf,buf_byte_cnt,"uid:%5i meas:%4i loc:%4i tick:%8i sec:%8.3f %4s %5s %3s (st:0x%02x d0:0x%02x d1:0x%02x)", e->uid, e->meas, e->loc, e->tick, e->sec, sci_pitch, dyn_mark, grace_mark, e->status, e->d0, e->d1 );
+  }
+
+  return rc;
+}
 
 cw::rc_t cw::score::test( const object_t* cfg )
 {
