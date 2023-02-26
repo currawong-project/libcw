@@ -21,5 +21,6 @@ namespace cw
     namespace dc_filter       { extern class_members_t members;  }
     namespace balance         { extern class_members_t members;  }
     namespace audio_meter     { extern class_members_t members;  }
+    namespace audio_marker    { extern class_members_t members;  }
   }
 }

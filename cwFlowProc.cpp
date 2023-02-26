@@ -1731,7 +1731,7 @@ namespace cw
           //abuf_set_channel( dstBuf, i, inst->pvA[i]->ola->outV, dstBuf->frameN );
         }
         
-
+        
       errLabel:
         return rc;
       }
@@ -2751,6 +2751,104 @@ namespace cw
         .exec    = exec,
         .report  = report
       };      
+    }
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // audio_marker
+    //
+    namespace audio_marker
+    {
+      enum
+      {
+        kInPId,
+        kMarkPId,
+        kOutPId
+      };
+
+      typedef struct inst_str
+      {
+        real_t mark;
+      } inst_t;
+
+      rc_t create( instance_t* ctx )
+      {
+        rc_t          rc     = kOkRC;
+        const abuf_t* abuf    = nullptr; //
+        ctx->userPtr = mem::allocZ<inst_t>();
+
+        // get the source audio buffer
+        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",abuf )) != kOkRC )
+          goto errLabel;
+
+        // register the marker input 
+        if((rc = var_register_and_set( ctx, kAnyChIdx, kMarkPId, "mark", 0.0f )) != kOkRC )
+          goto errLabel;
+          
+        // create the output audio buffer
+        rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, abuf->srate, abuf->chN, abuf->frameN );
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( instance_t* ctx )
+      {
+        inst_t* inst = (inst_t*)(ctx->userPtr);
+        mem::release(inst);
+        return kOkRC;
+      }
+
+      rc_t value( instance_t* ctx, variable_t* var )
+      {
+        return kOkRC;
+      }
+
+      rc_t exec( instance_t* ctx )
+      {
+        rc_t          rc   = kOkRC;
+        const abuf_t* ibuf = nullptr;
+        abuf_t*       obuf = nullptr;
+        //inst_t*       inst = (inst_t*)(ctx->userPtr);
+        sample_t      mark = 1;
+
+        // get the src buffer
+        if((rc = var_get(ctx,kInPId, kAnyChIdx, ibuf )) != kOkRC )
+          goto errLabel;
+
+        // get the dst buffer
+        if((rc = var_get(ctx,kOutPId, kAnyChIdx, obuf)) != kOkRC )
+          goto errLabel;
+
+          
+        var_get(ctx,kMarkPId,kAnyChIdx,mark);
+        
+        // for each channel
+        for(unsigned i=0; i<ibuf->chN; ++i)
+        {
+          sample_t* isig = ibuf->buf + i*ibuf->frameN;
+          sample_t* osig = obuf->buf + i*obuf->frameN;
+
+          // apply the marker
+          for(unsigned j=0; j<ibuf->frameN; ++j)
+            osig[j] = mark + isig[j];
+        }
+
+        var_set(ctx,kMarkPId,kAnyChIdx,0.0f);
+        
+      errLabel:
+        return rc;
+      }
+
+      
+      class_members_t members = {
+        .create = create,
+        .destroy = destroy,
+        .value = value,
+        .exec = exec,
+        .report = nullptr
+      };
+      
     }
     
     

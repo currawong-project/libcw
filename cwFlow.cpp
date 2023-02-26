@@ -42,6 +42,7 @@ namespace cw
       { "dc_filter",       &dc_filter::members },
       { "balance",         &balance::members },
       { "audio_meter",     &audio_meter::members },
+      { "audio_marker",    &audio_marker::members },
       { nullptr, nullptr }
     };
 
