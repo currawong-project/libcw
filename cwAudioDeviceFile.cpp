@@ -26,7 +26,16 @@ namespace cw
           kInFl  = 0x01,
           kOutFl = 0x02
         };
-        
+
+        typedef struct cache_block_str
+        {
+          sample_t* buf;
+          sample_t* ebuf;
+          unsigned  frameN;  // allocated frames
+          unsigned  frameIdx; // next frame to fill
+          struct cache_block_str* link;
+        } cache_block_t;
+
         typedef struct dev_str
         {
           char*               label;
@@ -72,6 +81,11 @@ namespace cw
           sample_t*           oChSmpBuf; //
           unsigned            oErrCnt;   // count of errors
           unsigned            oFrmCnt;   // count of frames written
+
+          cache_block_t*      oCacheBeg;          // Output cache output linked list 
+          cache_block_t*      oCacheEnd;          // Last output cache output node.
+          unsigned            oCacheBlockSec;     // output cache block size in seconds
+          unsigned            oCacheBlockFrameN;  // output cache block size in frames
                     
           struct dev_str*     link;
         } dev_t;
@@ -84,7 +98,6 @@ namespace cw
           unsigned         threadCbCnt;
           thread::handle_t threadH;
           mutex::handle_t  mutexH;
-          
         } dev_mgr_t;
 
         dev_mgr_t* _handleToPtr( handle_t h )
@@ -92,6 +105,9 @@ namespace cw
 
         dev_mgr_t* _driverToPtr( driver_t* drvr )
         { return (dev_mgr_t*)drvr->drvArg; }
+
+        bool _is_thread_active( dev_mgr_t* p )
+        { return p->threadTimeOutMs > 0; }
 
         dev_t* _labelToDev( dev_mgr_t* p, const char* label )
         {
@@ -189,7 +205,7 @@ namespace cw
           
           if( n > 0 )
           {
-            memcpy( d->iPktAudioBuf, d->iCacheBuf + (d->iCacheIdx * d->iChCnt), d->framesPerCycle * d->iChCnt * sizeof(sample_t));
+            memcpy( d->iPktAudioBuf, d->iCacheBuf + (d->iCacheIdx * d->iChCnt), n * d->iChCnt * sizeof(sample_t));
             d->iCacheIdx += n;
 
             // set m to the count of frames to zero at the end of the pkt
@@ -211,9 +227,7 @@ namespace cw
           unsigned actualFrameCnt = 0;
 
           // read the file
-          if((rc = readFloat(d->iFileH, d->framesPerCycle, 0, d->iChCnt, d->iChArray, &actualFrameCnt)) == kOkRC )
-            d->iFrmCnt                                                                                  += actualFrameCnt;
-          else
+          if((rc = readFloat(d->iFileH, d->framesPerCycle, 0, d->iChCnt, d->iChArray, &actualFrameCnt)) != kOkRC )
           {
             rc = cwLogError(rc,"File read failed on audio device file: %s.",cwStringNullGuard(d->label));
             d->iErrCnt += 1;
@@ -309,7 +323,7 @@ namespace cw
           d->iPkt.begChIdx       = 0;
           d->iPkt.chCnt          = info.chCnt;
           d->iPkt.audioFramesCnt = d->framesPerCycle;
-          d->iPkt.bitsPerSample  = sizeof(sample_t);
+          d->iPkt.bitsPerSample  = 0;
           d->iPkt.flags          = kInterleavedApFl | kFloatApFl;
           d->iPkt.audioBytesPtr  = d->iPktAudioBuf;
           d->iPkt.cbArg          = d->cbArg;
@@ -341,33 +355,82 @@ namespace cw
               rc = _fill_input_packet_from_cache(d);
             else
               rc = _fill_input_packet_from_file(d);
+
+            if( rc == kOkRC )
+              d->iFrmCnt += d->framesPerCycle;
+
           }
           return rc;
         }
 
+
+        rc_t _write_cache_to_file( dev_t* d )
+        {
+          rc_t rc = kOkRC;
+          
+          for(cache_block_t* b = d->oCacheBeg; b!=nullptr; b=b->link)
+            if((rc = writeFloatInterleaved( d->oFileH, b->frameIdx, d->oChCnt, b->buf )) != kOkRC )            
+              rc = cwLogError(rc,"Audio device file cache write failed on device '%s'.",d->label);
+          
+          return rc;
+        }
+        
         void _close_output( dev_t* d )
         {
           if( d->oFileH.isValid() )
           {
+            _write_cache_to_file(d);            
+            
             close(d->oFileH);
             d->oCbCnt = 0;
             mem::release(d->oFname);
             mem::release(d->oPktAudioBuf);
             mem::release(d->oChArray);
             mem::release(d->oChSmpBuf);
+
+            for(cache_block_t* b=d->oCacheBeg; b!=nullptr; )
+            {
+              cache_block_t* b0 = b->link;
+              mem::release(b);
+              b = b0;
+            }
+            
           }
+        }
+
+        rc_t _alloc_ocache_block( dev_t* d )
+        {
+          unsigned bufByteN    = sizeof(cache_block_t) + d->oCacheBlockFrameN * d->oChCnt * sizeof(sample_t);
+          uint8_t* bytes       = mem::allocZ<uint8_t>( bufByteN );
+          cache_block_t* block = (cache_block_t*)bytes;
+          block->buf           = (sample_t*)(block + 1);
+          block->ebuf          = (sample_t*)(bytes + bufByteN);
+          block->frameN        = d->oCacheBlockFrameN;
+          block->frameIdx      = 0;
+          block->link          = nullptr;
+
+          if( d->oCacheEnd != nullptr )
+            d->oCacheEnd->link = block;
+          
+          d->oCacheEnd         = block;
+          
+          if( d->oCacheBeg == nullptr )
+            d->oCacheBeg = block;
+
+          return kOkRC;
         }
 
         rc_t _open_output( dev_t* d, unsigned devIdx )
         {
           rc_t rc = kOkRC;
           audiofile::handle_t oFileH;
-
+          unsigned floatBitsPerSample = 0; // set bits per sample to 0 to indicate a floating point file
           if( d->oFname == nullptr )
             return rc;
           
           // open the requested audio output flie
-          if((rc = create( oFileH, d->oFname, d->srate, d->oBitsPerSample, d->oChCnt )) != kOkRC )
+          
+          if((rc = create( oFileH, d->oFname, d->srate, floatBitsPerSample, d->oChCnt )) != kOkRC )
           {
             rc = cwLogError(rc,"Audio file device open failed on '%s'.",cwStringNullGuard(d->oFname));
             goto errLabel;
@@ -384,15 +447,58 @@ namespace cw
           d->oPkt.begChIdx       = 0;
           d->oPkt.chCnt          = d->oChCnt;
           d->oPkt.audioFramesCnt = d->framesPerCycle;
-          d->oPkt.bitsPerSample  = 0;
+          d->oPkt.bitsPerSample  = 0; // 0==floating point sample format
           d->oPkt.flags          = kInterleavedApFl | kFloatApFl;
           d->oPkt.audioBytesPtr  = d->oPktAudioBuf;
           d->oPkt.cbArg          = d->cbArg;
+
+          d->oCacheBlockFrameN   = 0;
+          if( cwIsFlag(d->oFlags,kCacheFl) )
+          {
+            // note each cache block has a whole multiple of framesPerCycle
+            d->oCacheBlockFrameN =  ((unsigned)lround((d->oCacheBlockSec * d->srate) + d->framesPerCycle)/d->framesPerCycle) * d->framesPerCycle;
+
+            assert( d->oCacheBlockFrameN >= d->framesPerCycle && d->oCacheBlockFrameN % d->framesPerCycle == 0 );
+            
+            _alloc_ocache_block(d);
+          }
 
           for(unsigned i=0; i<d->oChCnt; ++i)
             d->oChArray[i] = d->oChSmpBuf + i*d->framesPerCycle;
 
         errLabel:
+          return rc;
+        }
+
+        rc_t _write_cache_output( dev_t* d )
+        {
+          rc_t rc = kOkRC;
+
+          assert( d->oCacheEnd != nullptr );
+            
+          if( d->oCacheEnd->frameIdx + d->framesPerCycle > d->oCacheEnd->frameN )
+            if((rc = _alloc_ocache_block(d)) != kOkRC )
+              goto errLabel;
+
+          assert( d->oCacheEnd->frameIdx + d->framesPerCycle <= d->oCacheEnd->frameN );
+          
+          memcpy(d->oCacheEnd->buf + d->oCacheEnd->frameIdx * d->oChCnt, d->oPktAudioBuf, d->framesPerCycle * d->oChCnt * sizeof(sample_t));
+          d->oCacheEnd->frameIdx += d->framesPerCycle;
+
+        errLabel:
+          return rc;
+        }
+
+        rc_t _write_file_output( dev_t* d )
+        {
+          rc_t rc;
+          
+          if((rc = writeFloatInterleaved( d->oFileH, d->framesPerCycle, d->oChCnt, d->oPktAudioBuf )) != kOkRC )            
+          {
+            rc = cwLogError(rc,"Audio device file write failed on device '%s'.",d->label);
+            d->oErrCnt += 1;
+          }
+          
           return rc;
         }
 
@@ -402,29 +508,20 @@ namespace cw
 
           if( d->oFileH.isValid() && d->oEnableFl )
           {
-            /*
-            // deinterleave the audio into d->oChArray[]
-            vop::deinterleave( d->oChSmpBuf, d->oPktAudioBuf, d->framesPerCycle, d->oChCnt );
-
-            // write the audio
-            if((rc = writeFloat( d->oFileH, d->framesPerCycle, d->oChCnt, d->oChArray )) == kOkRC )
-            */
-            
-            if((rc = writeFloatInterleaved( d->oFileH, d->framesPerCycle, d->oChCnt, d->oPktAudioBuf )) == kOkRC )            
-              d->oFrmCnt += d->framesPerCycle;
+            if( cwIsFlag(d->oFlags,kCacheFl) )
+              rc = _write_cache_output(d);
             else
-            {
-              rc = cwLogError(rc,"Audio device file write failed on device '%s'.",d->label);
-              d->oErrCnt += 1;
-              goto errLabel;
-            }
+              rc = _write_file_output(d);
+
+            if( rc != kOkRC )
+              d->oFrmCnt += d->framesPerCycle;
+
           }
 
-        errLabel:
           return rc;
         }
 
-        rc_t _update_device( dev_t* d )
+        rc_t _update_device( dev_t* d, bool inThreadFl )
         {
           rc_t           rc0   = kOkRC;
           rc_t           rc1   = kOkRC;
@@ -434,7 +531,7 @@ namespace cw
           audioPacket_t* oPkt  = nullptr;
           unsigned       oPktN = 0;
           
-          if( d->iFileH.isValid() )
+          if( d->iFileH.isValid() && inThreadFl == cwIsFlag(d->iFlags,kUseInternalClockFl) )
           {
             iPkt       = &d->iPkt;
             iPktN      = 1;
@@ -442,7 +539,7 @@ namespace cw
             rc0        = _read_input( d );    
           }
 
-          if( d->oFileH.isValid() )
+          if( d->oFileH.isValid()  && inThreadFl == cwIsFlag(d->iFlags,kUseInternalClockFl)  )
           {
             oPkt       = &d->oPkt;
             oPktN      = 1;
@@ -465,7 +562,7 @@ namespace cw
           dev_t*     d  = nullptr;
           
           // block on the cond. var - unlock the mutex
-          if((rc = mutex::waitOnCondVar(p->mutexH,false,p->threadTimeOutMs/2)) != kOkRC )
+          if((rc = mutex::waitOnCondVar(p->mutexH,false,p->threadTimeOutMs)) != kOkRC )
           {
             if( rc != kTimeOutRC )
             {
@@ -488,7 +585,7 @@ namespace cw
                 // atomic incr  - note that the ordering doesn't matter because the update does not control access to any other variables from another thread
                 std::atomic_store_explicit(&d->readyCnt, d->readyCnt-1,  std::memory_order_relaxed); // decrement
 
-                if((rc = _update_device(d)) != kOkRC )
+                if((rc = _update_device(d,true)) != kOkRC )
                   cwLogError(rc,"The update of audio device file %s failed.",cwStringNullGuard(d->label));
               
               }
@@ -613,11 +710,12 @@ cw::rc_t   cw::audio::device::file::start( handle_t h )
   // if there are any audio device files
   if( p->list != nullptr )
   {
-    if((rc = thread::unpause(p->threadH)) != kOkRC )
-    {
-      rc = cwLogError(rc,"Audio file device thread start failed.");
-      goto errLabel;
-    }
+    if( _is_thread_active(p) )
+      if((rc = thread::unpause(p->threadH)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Audio file device thread start failed.");
+        goto errLabel;
+      }
   }
  errLabel:
   return rc;
@@ -628,11 +726,12 @@ cw::rc_t   cw::audio::device::file::stop( handle_t h )
   rc_t       rc = kOkRC;
   dev_mgr_t* p  = _handleToPtr(h);
 
-  if((rc = thread::pause(p->threadH)) != kOkRC )
-  {
-    rc = cwLogError(rc,"Audio file device thread stop failed.");
-    goto errLabel;
-  }
+  if( _is_thread_active(p) )
+    if((rc = thread::pause(p->threadH)) != kOkRC )
+    {
+      rc = cwLogError(rc,"Audio file device thread stop failed.");
+      goto errLabel;
+    }
 
  errLabel:
   return rc;
@@ -719,11 +818,14 @@ cw::rc_t    cw::audio::device::file::deviceSetup( struct driver_str* drv, unsign
   d->cbArg          = cbArg;
   d->cbDevIdx       = cbDevIdx;
 
-  unsigned ms = (frmPerCycle * 1000) / srate;
-  if( p->threadTimeOutMs==0 || ms < p->threadTimeOutMs )
+  if( cwIsFlag(d->iFlags,kUseInternalClockFl) || cwIsFlag(d->oFlags,kUseInternalClockFl) )
   {
-    p->threadTimeOutMs = ms;
-    cwLogInfo("Audio device file time out %i ms.",p->threadTimeOutMs);
+    unsigned ms = (frmPerCycle * 1000) / srate;
+    if( p->threadTimeOutMs==0 || ms < p->threadTimeOutMs )
+    {
+      p->threadTimeOutMs = ms;
+      cwLogInfo("Audio device file time out %i ms.",p->threadTimeOutMs);
+    }
   }
   
   rc0 = _open_input(d, devIdx);
@@ -746,7 +848,6 @@ cw::rc_t    cw::audio::device::file::deviceStart(          struct driver_str* dr
   
   if((rc0 = _indexToDev( p, devIdx, d )) == kOkRC )
   {
-    /*
     if( d->iFileH.isValid() && cwIsFlag(d->iFlags,kRewindOnStartFl) )
       if((rc0 = seek(d->iFileH,0)) != kOkRC )
         rc0 = cwLogError(rc0,"Rewind on start failed on the audio device file input file.");
@@ -754,7 +855,6 @@ cw::rc_t    cw::audio::device::file::deviceStart(          struct driver_str* dr
     if( d->oFileH.isValid() && cwIsFlag(d->oFlags,kRewindOnStartFl) )    
       if((rc1 = seek(d->oFileH,0)) != kOkRC )
         rc1 = cwLogError(rc1,"Rewind on start failed on the audio device file output file.");
-    */
   }
   
   if((rc0 = rcSelect(rc0,rc1)) == kOkRC )
@@ -800,12 +900,21 @@ cw::rc_t    cw::audio::device::file::deviceExecute(        struct driver_str* dr
   dev_t*         d     = nullptr;
   
   if((rc = _indexToDev( p, devIdx, d )) != kOkRC )
+  {
     goto errLabel;
+  }
   
   std::atomic_store_explicit(&d->readyCnt, d->readyCnt+1, std::memory_order_relaxed); // atomic incr
 
-  mutex::signalCondVar(p->mutexH);
-
+  if( cwIsFlag(d->iFlags,kUseInternalClockFl)  )
+  {    
+    mutex::signalCondVar(p->mutexH);
+  }
+  else
+  {
+    rc = _update_device(d,false);
+  }
+  
  errLabel:
   return rc; 
 }
@@ -840,8 +949,17 @@ cw::rc_t  cw::audio::device::file::deviceSeek(   struct driver_str* drv, unsigne
   if( inputFl )
   {
     if( d->iFileH.isValid() )
-      if((rc = seek(d->iFileH,frameOffset)) != kOkRC )
-        rc = cwLogError(rc,"Seek failed on the audio device file input file.");    
+    {
+      if( d->iCacheFrameN )
+      {
+        d->iCacheIdx = std::min( frameOffset, d->iCacheFrameN );
+      }
+      else
+      {
+        if((rc = seek(d->iFileH,frameOffset)) != kOkRC )
+          rc = cwLogError(rc,"Seek failed on the audio device file input file.");
+      }
+    }
   }
   else
   {
@@ -889,7 +1007,7 @@ cw::rc_t    cw::audio::device::file::createInDevice(  handle_t& h, const char* l
   return rc;
 }
 
-cw::rc_t    cw::audio::device::file::createOutDevice( handle_t& h, const char* label, const char* audioOutFName, unsigned flags, unsigned chCnt, unsigned bitsPerSample )
+cw::rc_t    cw::audio::device::file::createOutDevice( handle_t& h, const char* label, const char* audioOutFName, unsigned flags, unsigned chCnt, unsigned bitsPerSample, unsigned cacheBlkSec )
 {
   rc_t       rc = kOkRC;
   dev_t*     d;  
@@ -906,6 +1024,7 @@ cw::rc_t    cw::audio::device::file::createOutDevice( handle_t& h, const char* l
   d->oFlags         = flags;
   d->oChCnt         = chCnt;
   d->oBitsPerSample = bitsPerSample;
+  d->oCacheBlockSec = cacheBlkSec;
   
  errLabel:
   
@@ -1014,14 +1133,14 @@ cw::rc_t cw::audio::device::file::test( const object_t* cfg)
   }
 
   // create an input audio file device
-  if((rc = createInDevice( h, devLabel, ifname,  kRewindOnStartFl )) != kOkRC )
+  if((rc = createInDevice( h, devLabel, ifname,  kRewindOnStartFl | kCacheFl)) != kOkRC )
   {
     rc = cwLogError(rc,"Error creating the audio device file input device from the file:%s.",cwStringNullGuard(ifname));
     goto errLabel;    
   }
 
   // create an output audio file device
-  if((rc = createOutDevice( h, devLabel, ofname, kRewindOnStartFl, info.chCnt, bitsPerSample )) != kOkRC )
+  if((rc = createOutDevice( h, devLabel, ofname, kRewindOnStartFl | kCacheFl, info.chCnt, bitsPerSample )) != kOkRC )
   {
     rc = cwLogError(rc,"Error creating the audio device file output device from the file:%s.",cwStringNullGuard(ofname));
     goto errLabel;        

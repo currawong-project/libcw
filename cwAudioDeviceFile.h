@@ -11,8 +11,8 @@ namespace cw
       namespace file
       {
         typedef handle<struct dev_mgr_str> handle_t;
-        
-        rc_t        create( handle_t& hRef, struct driver_str*& drvRef );
+
+        rc_t        create( handle_t& hRef, struct driver_str*& drvRef);
         rc_t        destroy( handle_t& hRef );
         rc_t        start( handle_t h );
         rc_t        stop( handle_t h );
@@ -32,8 +32,10 @@ namespace cw
         void        deviceRealTimeReport( struct driver_str* drv, unsigned devIdx );
 
         enum {
-          kRewindOnStartFl = 0x01,
-          kCacheFl         = 0x02
+          kRewindOnStartFl    = 0x01, // rewind the in/out file deviceStart()
+          kCacheFl            = 0x02, // if set then cache in/out audio in memory, otherwise access disk file 
+          kUseInternalClockFl = 0x04, // if set then callback from internal thread, else callback from deviceExecute()
+          
         };
 
         // A device may have an input, an output or both.
@@ -41,7 +43,7 @@ namespace cw
         rc_t        createInDevice(  handle_t& h, const char* label, const char* audioInFName,  unsigned flags );
         
         // Set bitsPerSample to 0 to write in single prec. float.
-        rc_t        createOutDevice( handle_t& h, const char* label, const char* audioOutFName, unsigned flags, unsigned chCnt, unsigned bitsPerSample );
+        rc_t        createOutDevice( handle_t& h, const char* label, const char* audioOutFName, unsigned flags, unsigned chCnt, unsigned bitsPerSample, unsigned cacheBlockSec=10 );
 
         // Generate an audio callback on the specified device.
         rc_t        deviceExec( handle_t& h, unsigned devIdx );
