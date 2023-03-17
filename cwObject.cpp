@@ -676,6 +676,25 @@ unsigned cw::object_t::to_string( char* buf, unsigned bufByteN ) const
   return type->to_string(this,buf,bufByteN );
 }
 
+char* cw::object_t::to_string() const
+{
+  unsigned n = 1024;
+  char* buf = mem::alloc<char>(n);
+  do
+  {
+    unsigned actual_bytes = to_string(buf,n);
+    if( actual_bytes < n )
+      break;
+
+    n *= 2;
+    buf = mem::resize(buf,n);
+    
+  }while(1);
+
+  return buf;
+}
+
+
 void cw::object_t::print(const print_ctx_t* c) const
 {
   print_ctx_t ctx;
@@ -727,10 +746,10 @@ cw::object_t* cw::newObject( const char* v, object_t* parent)
 { return _objCreateValueNode<const char*>( parent, v ); }
 
 cw::object_t* cw::newDictObject( object_t* parent )
-{ return _objAllocate( kDictTId, parent); }
+{ return  _objAllocate( kDictTId, parent); }
     
 cw::object_t* cw::newListObject( object_t* parent )
-{ return _objAllocate( kListTId, parent ); }
+{ return  _objAllocate( kListTId, parent ); }
 
 cw::object_t* cw::newPairObject( const char* label, object_t* value, object_t* parent)
 {
@@ -965,5 +984,27 @@ void cw::objectPrintTypes( object_t* o0 )
 
 
 
+cw::rc_t cw::objectToFile( const char* fn, const object_t* obj )
+{
+  rc_t rc = kOkRC;
+  
+  char* buf;
+  if((buf = obj->to_string()) == nullptr )
+  {
+    rc = cwLogError(kOpFailRC,"Unable to convert object to string.");
+    goto errLabel;
+  }
+
+  if((rc = file::fnWrite(fn,buf,textLength(buf))) != kOkRC )
+  {
+    rc = cwLogError(rc,"Object write failed on write to '%s'.",cwStringNullGuard(fn));
+    goto errLabel;
+  }
+ errLabel:
+
+  mem::release(buf);
+  
+  return rc;
+}
 
 

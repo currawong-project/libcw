@@ -259,6 +259,7 @@ namespace cw
     
     // convert this object to a string
     unsigned to_string( char* buf, unsigned bufByteN ) const;
+    char* to_string() const;
 
     // print this object
     void print(const print_ctx_t* c=NULL) const;
@@ -303,6 +304,8 @@ namespace cw
   rc_t objectFromString( const char* s, object_t*& objRef );
   rc_t objectFromFile( const char* fn, object_t*& objRef );
   void objectPrintTypes( object_t* o );
+
+  rc_t objectToFile( const char* fn, const object_t* obj );
 
 
 }
