@@ -113,6 +113,7 @@ namespace cw
     // unused file name is found in the same directory as 'fn'.
     // If the file identified by 'fn' is not found then the function returns quietly.
     rc_t backup( const char* dir, const char* name, const char* ext, const char* dst_dir=nullptr );
+    rc_t backup( const char* fname, const char* dst_dir=nullptr );
   
     // Allocate and fill a zero terminated string from a file.
     // Set *bufByteCntPtr to count of bytes read into the buffer.=

@@ -463,16 +463,29 @@ cw::rc_t    cw::file::copy(
 
 }
 
-cw::rc_t cw::file::backup( const char* dir, const char* name, const char* ext, const char* dst_dir )
+cw::rc_t cw::file::backup( const char* dir, const char* name, const char* ext, const char* dst0_dir )
 {
-  rc_t               rc      = kOkRC;
-  char*              newName = nullptr;
-  char*              newFn   = nullptr;
-  unsigned           n       = 0;
-  char*              srcFn   = nullptr;
+  rc_t                 rc      = kOkRC;
+  char*                newName = nullptr;
+  char*                newFn   = nullptr;
+  unsigned             n       = 0;
+  char*                srcFn   = nullptr;
   filesys::pathPart_t* pp      = nullptr;
+  const char*          dst_dir = nullptr;
+  char*                dst_base_dir = nullptr;
 
-  // form the name of the backup file
+  // expand the destination path
+  if( dst0_dir != nullptr )
+  {
+    if((dst_base_dir = filesys::expandPath(dst0_dir)) == nullptr )
+    {
+      rc = cwLogError(kOpFailRC,"The backup dest directory '%s' could not be expanded.");
+      goto errLabel;
+    }
+    dst_dir = dst_base_dir;
+  }
+  
+  // form the name of the backup file to backup
   if((srcFn = filesys::makeFn(dir,name,ext,nullptr)) == nullptr )
   {
     rc = cwLogError(kOpFailRC,"Backup source file name formation failed.");
@@ -523,6 +536,7 @@ cw::rc_t cw::file::backup( const char* dir, const char* name, const char* ext, c
 
  errLabel:
 
+  mem::release(dst_base_dir);
   mem::release(srcFn);
   mem::release(newFn);
   mem::release(newName);
@@ -531,6 +545,24 @@ cw::rc_t cw::file::backup( const char* dir, const char* name, const char* ext, c
   return rc;
 
 }
+
+cw::rc_t cw::file::backup( const char* fname, const char* dst_dir )
+{
+  rc_t rc = kOkRC;
+  filesys::pathPart_t* pp = nullptr;
+  if((pp = filesys::pathParts(fname)) == nullptr )
+  {
+    rc = cwLogError(kInvalidArgRC,"The parts (dir,name,ext) of the file name '%s' could not be parsed.");
+    goto errLabel;
+  }
+
+  rc = backup(pp->dirStr,pp->fnStr,pp->extStr,dst_dir);
+
+ errLabel:
+  mem::release(pp);
+  return rc;
+}
+
 
 
 char*  cw::file::toBuf( handle_t h, unsigned* bufByteCntPtr )
