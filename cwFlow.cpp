@@ -873,8 +873,12 @@ namespace cw
       rc_t rc = kOkRC;
       
       for(instance_t* inst = p->network_head; inst!=nullptr; inst=inst->link)
+      {
         if((rc = inst->class_desc->members->exec(inst)) != kOkRC )
-            break;
+        {          
+          break;
+        }
+      }
       
       return rc;
     }
@@ -1079,18 +1083,18 @@ cw::rc_t cw::flow::exec(    handle_t h )
   while( true )
   {  
     rc = _exec_cycle(p);
-    
+
     if( rc == kEofRC )
     {
       rc = kOkRC;
       break;
-    }
+    }    
     
     p->cycleIndex += 1;
     if( p->maxCycleCount > 0 && p->cycleIndex >= p->maxCycleCount )
       break;
   }
-  
+
   return rc;
 }
 
@@ -1210,10 +1214,25 @@ void cw::flow::print_network( handle_t h )
 }
 
 
-cw::rc_t cw::flow::test( const object_t* class_cfg, const object_t* cfg )
+cw::rc_t cw::flow::test(  const object_t* cfg )
 {
   rc_t rc = kOkRC;
   handle_t flowH;
+
+  object_t* class_cfg = nullptr;
+  const char* flow_proc_fname;
+  
+  if((rc = cfg->getv("flow_proc_fname",flow_proc_fname)) != kOkRC )
+  {
+    rc = cwLogError(rc,"The name of the flow_proc_dict file could not be parsed.");
+    goto errLabel;
+  }
+
+  if((rc = objectFromFile(flow_proc_fname,class_cfg)) != kOkRC )
+  {
+    rc = cwLogError(rc,"The flow proc dict could not be read from '%s'.",cwStringNullGuard(flow_proc_fname));
+    goto errLabel;
+  }
 
   // create the flow object
   if((rc = create( flowH, *class_cfg, *cfg)) != kOkRC )
@@ -1221,6 +1240,8 @@ cw::rc_t cw::flow::test( const object_t* class_cfg, const object_t* cfg )
     rc = cwLogError(rc,"Flow object create failed.");
     goto errLabel;
   }
+
+  //print_network(flowH);
   
   // run the network
   if((rc = exec( flowH )) != kOkRC )
@@ -1235,6 +1256,8 @@ cw::rc_t cw::flow::test( const object_t* class_cfg, const object_t* cfg )
   }
   
  errLabel:
+  if( class_cfg != nullptr )
+    class_cfg->free();
   return rc;
 }
 
