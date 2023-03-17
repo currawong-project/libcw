@@ -983,9 +983,9 @@ void cw::flow::fbuf_destroy( fbuf_t*& fbuf )
   mem::release( fbuf->maxBinN_V );
   mem::release( fbuf->binN_V );
   mem::release( fbuf->hopSmpN_V);
-  //mem::release( fbuf->magV);
-  //mem::release( fbuf->phsV);
-  //mem::release( fbuf->hzV);
+  mem::release( fbuf->magV);
+  mem::release( fbuf->phsV);
+  mem::release( fbuf->hzV);
   mem::release( fbuf->buf);
   mem::release( fbuf->readyFlV);
   mem::release( fbuf);
