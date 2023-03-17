@@ -329,7 +329,17 @@ char* cw::filesys::expandPath( const char* dir )
 
   memset(&res,0,sizeof(res));
 
+  // if dir is empty
   if( dir == nullptr )
+    return nullptr;
+
+  // skip leading white space
+  for(; *dir; ++dir)
+    if( !isspace(*dir) )
+      break;
+
+  // if dir is empty
+  if( strlen(dir) == 0 )
     return nullptr;
 
   if((sysRC = wordexp(dir,&res,flags)) != 0)
@@ -387,7 +397,7 @@ char* cw::filesys::expandPath( const char* dir )
 
 
 
-cw::filesys::pathPart_t* cw::filesys::pathParts( const char* pathStr )
+cw::filesys::pathPart_t* cw::filesys::pathParts( const char* path0Str )
 {
   unsigned           n  = 0;    // char's in pathStr
   unsigned    dn  = 0;          // char's in the dir part
@@ -395,6 +405,9 @@ cw::filesys::pathPart_t* cw::filesys::pathParts( const char* pathStr )
   unsigned    en  = 0;          // char's in the ext part
   char*       cp  = nullptr;
   pathPart_t* rp  = nullptr;
+
+  char* pathBaseStr = expandPath(path0Str);
+  const char* pathStr = pathBaseStr;
   
   if( pathStr==nullptr )
     return nullptr;
@@ -403,7 +416,7 @@ cw::filesys::pathPart_t* cw::filesys::pathParts( const char* pathStr )
   for(; *pathStr; ++pathStr )
     if( !isspace(*pathStr ) )
       break;
-
+  
   
   // get the length of pathStr
   n = strlen(pathStr);
@@ -415,9 +428,14 @@ cw::filesys::pathPart_t* cw::filesys::pathParts( const char* pathStr )
 
   // if pathStr is empty
   if( n == 0 )
-    return nullptr;
+  {
+    // nothing to do
+    goto errLabel;
+  }
   else
   {
+
+    
   
     char buf[n+1];
     buf[n] = 0;
@@ -522,7 +540,12 @@ cw::filesys::pathPart_t* cw::filesys::pathParts( const char* pathStr )
     if( en == 0 )
       rp->extStr = nullptr;
   }
+  
  errLabel:
+
+  mem::release(pathBaseStr);
+  
+  
   return rp;
 }
 
