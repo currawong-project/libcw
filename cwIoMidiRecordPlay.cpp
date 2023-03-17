@@ -1809,3 +1809,40 @@ void cw::midi_record_play::report( handle_t h )
   midi_record_play_t* p = _handleToPtr(h);
   _report_midi(p);
 }
+
+
+unsigned cw::midi_record_play::dev_count( handle_t h )
+{
+  midi_record_play_t* p = _handleToPtr(h);
+  return p->midiDevN;
+}
+
+unsigned cw::midi_record_play::vel_table_count( handle_t h, unsigned devIdx )
+{
+  midi_record_play_t* p = _handleToPtr(h);
+  return p->midiDevA[ devIdx ].velTableN;   
+}
+
+const uint8_t*  cw::midi_record_play::vel_table( handle_t h, unsigned devIdx )
+{
+  midi_record_play_t* p = _handleToPtr(h);
+  return p->midiDevA[ devIdx ].velTableArray;   
+}
+
+cw::rc_t cw::midi_record_play::vel_table_set( handle_t h, unsigned devIdx, const uint8_t* tbl, unsigned tblN )
+{
+  midi_record_play_t* p = _handleToPtr(h);
+
+  midi_device_t* dev = p->midiDevA + devIdx;
+  
+  if( tblN != dev->velTableN )
+  {
+    dev->velTableArray = mem::resize<uint8_t>(dev->velTableArray,tblN);
+    dev->velTableN     = tblN;
+  }
+  
+  for(unsigned i=0; i<tblN; ++i)
+    dev->velTableArray[i] = tbl[i];
+  
+  return kOkRC;
+}

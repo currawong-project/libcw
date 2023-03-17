@@ -27,6 +27,13 @@ namespace cw
 
     typedef void (*event_callback_t)( void* arg, unsigned actionId, unsigned id, const time::spec_t timestamp, unsigned loc, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 );
     
+    enum
+    {
+      kPiano_MRP_DevIdx  = 1,
+      kSampler_MRP_DevIdx = 0
+    };
+
+
     
     rc_t create( handle_t& hRef, io::handle_t ioH, const object_t& cfg, event_callback_t cb=nullptr, void* cb_arg=nullptr );
     rc_t destroy( handle_t& hRef );
@@ -77,7 +84,15 @@ namespace cw
     rc_t am_to_midi_dir( const char* inDir );
     rc_t am_to_midi_file( const object_t* cfg );
 
+    unsigned dev_count( handle_t h );
+    
+    unsigned       vel_table_count( handle_t h, unsigned devIdx );
+    const uint8_t* vel_table( handle_t h, unsigned devIdx );
+    rc_t           vel_table_set( handle_t h, unsigned devIdx, const uint8_t* tbl, unsigned tblN );
+    
     void report( handle_t h );
+
+    
     
   }
 }
