@@ -2,6 +2,7 @@
 #include "cwLog.h"
 #include "cwCommonImpl.h"
 #include "cwMem.h"
+#include "cwText.h"
 #include "cwObject.h"
 #include "cwFileSys.h"
 #include "cwFile.h"
@@ -423,6 +424,7 @@ namespace cw
           p->midiDevA[i].midiOutPortLabel = mem::duplStr( midiOutPortLabel);
           p->midiDevA[i].enableFl         = enableFl;
 
+          /*
           if( velTable != nullptr )
           {
             p->midiDevA[i].velTableN     = velTable->child_count();
@@ -438,7 +440,8 @@ namespace cw
               }
             }              
           }
-
+          */
+          
           if( pedalRecd != nullptr )
           {
             if((rc = pedalRecd->getv( "down_id",  p->midiDevA[i].pedalDownVelId,
@@ -1081,6 +1084,16 @@ namespace cw
       
     void _report_midi( midi_record_play_t* p )
     {
+
+      for(unsigned i=0; i<p->midiDevN; ++i)
+      {
+        printf("vel table: %s:%s\n", cwStringNullGuard(p->midiDevA[i].midiOutDevLabel),cwStringNullGuard(p->midiDevA[i].midiOutPortLabel));
+        for(unsigned j=0; j<p->midiDevA[i].velTableN; ++j)
+          printf("%i ",(unsigned)p->midiDevA[i].velTableArray[j]);
+
+        printf("\n");
+      }
+      
       printf("omsg cnt:%i\n",p->msgArrayInIdx);
       for(unsigned i=0; i<p->msgArrayInIdx; ++i)
       {
@@ -1284,15 +1297,112 @@ namespace cw
         
       return rc;
     }
+
+    rc_t _loadVelTable( midi_record_play_t* p, const object_t* cfg, midi_device_t* dev, unsigned devIdx )
+    {
+      rc_t        rc          = kOkRC;
+      const char* refDevLabel = nullptr;
+      const object_t* tables  = nullptr;
+      unsigned        i           = 0;
+
+      // get the textual name the device
+      switch( devIdx )
+      {
+        case kSampler_MRP_DevIdx: refDevLabel="sampler"; break;
+        case kPiano_MRP_DevIdx:   refDevLabel="piano";  break;
+      }
+
+      // verify that the device has a label
+      if( refDevLabel == nullptr )
+      {
+        rc = cwLogError(kInvalidStateRC,"The MIDI record-play unit device '%i' does not have a device label.",devIdx);
+        goto errLabel;
+      }
+
+      // get the 'tables' node
+      if((rc = cfg->getv("tables",tables)) != kOkRC )
+      {
+        rc = cwLogError(rc,"The 'tables' field could not be read from the vel. table cfg. object.");
+        goto errLabel;
+      }
+
+      // for each table
+      for(i=0; i<tables->child_count(); ++i)
+      {
+        const object_t* tbl         = tables->child_ele(i);
+        const object_t* array       = nullptr;
+        bool            enableFl    = false;
+        bool            defaultFl   = false;
+        const char*     deviceLabel = nullptr;
+
+        // read the table record
+        if((rc = tbl->getv("table",array,
+                           "enableFl",enableFl,
+                           "defaultFl",defaultFl,
+                           "device",deviceLabel)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Parsing failed on the velocity table at index '%i'.",i);
+          goto errLabel;
+        }
+
+        // if this table is enabled and the 'default' for this device
+        if( enableFl && defaultFl && textCompare(refDevLabel,deviceLabel) == 0 )
+        {
+          // allocate the actual velocity table
+          dev->velTableN  = array->child_count();
+          dev->velTableArray = mem::allocZ<uint8_t>(dev->velTableN);
+
+          // for each velocity entry
+          for(unsigned j=0; j<dev->velTableN; ++j)
+          {
+            // read the velocity value
+            unsigned v;
+            if((rc = array->child_ele(j)->value(v)) != kOkRC )
+            {
+              rc = cwLogError(rc,"Parsing failed on the velocity at index '%i'.",j);
+              goto errLabel;
+            }
+
+            // validate the velocity range
+            if( 0 <= v && v <= 127 )
+              dev->velTableArray[j] = (uint8_t)v;
+            else
+            {
+              rc = cwLogError(kInvalidArgRC,"A velocity table entry outside the range 0-127 was encountered at index %i.",j);
+              goto errLabel;
+            }
+          }
+
+          break;
+        }
+      }
+
+      // if no enabled and default table was found for this device
+      if( i >= tables->child_count() )
+      {
+        cwLogError(kInvalidStateRC,"A velocity table was not found for MIDI device index '%i'.",devIdx );
+        goto errLabel;
+      }
+
+    errLabel:
+
+      return rc;
+    }
     
   }
 }
 
-cw::rc_t cw::midi_record_play::create( handle_t& hRef, io::handle_t ioH, const object_t& cfg, event_callback_t cb, void* cb_arg )
+cw::rc_t cw::midi_record_play::create( handle_t& hRef,
+                                       io::handle_t ioH,
+                                       const object_t& cfg,
+                                       const char* velTableFname,
+                                       event_callback_t cb,
+                                       void* cb_arg )
 {
   bool asyncFl = true;
   midi_record_play_t* p = nullptr;
   rc_t rc;
+  object_t* velTblCfg = nullptr;
   
   if((rc = destroy(hRef)) != kOkRC )
     return rc;
@@ -1300,9 +1410,18 @@ cw::rc_t cw::midi_record_play::create( handle_t& hRef, io::handle_t ioH, const o
   p = mem::allocZ<midi_record_play_t>();
 
   p->ioH = ioH; // p->ioH is used in _destory() so initialize it here
-  
+
+  // parse the cfg 
   if((rc = _parseCfg(p,cfg)) != kOkRC )
     goto errLabel;
+
+  // parse the vel table cfg
+  if(velTableFname != nullptr )
+    if((rc = objectFromFile(velTableFname,velTblCfg)) != kOkRC )
+    {
+      rc = cwLogError(rc,"Parsing the velocity table cfg. failed on '%s'.",cwStringNullGuard(velTableFname));
+      goto errLabel;
+    }
 
   p->cb  = cb;
   p->cb_arg = cb_arg;
@@ -1336,6 +1455,13 @@ cw::rc_t cw::midi_record_play::create( handle_t& hRef, io::handle_t ioH, const o
       goto errLabel;
     }
 
+    if( velTblCfg != nullptr )
+      if((rc = _loadVelTable( p, velTblCfg, dev, i )) != kOkRC )
+      {
+        rc = cwLogError(rc,"MIDI record-play velocity table setup failed.");
+        goto errLabel;
+      }
+
     printf("%s %s : %i %i\n",dev->midiOutDevLabel, dev->midiOutPortLabel, dev->midiOutDevIdx, dev->midiOutPortIdx );
   }
   
@@ -1353,6 +1479,9 @@ cw::rc_t cw::midi_record_play::create( handle_t& hRef, io::handle_t ioH, const o
     hRef.set(p);
   else
     _destroy(p);
+
+  if(velTblCfg != nullptr )
+    velTblCfg->free();
   
   return rc;
 }
