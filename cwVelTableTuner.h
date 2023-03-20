@@ -10,6 +10,7 @@ namespace cw
       kVtPianoDevId,
       kVtSamplerDevId,
       kVtTableSelectId,
+      kVtDefaultCheckId,
       kVtPlayVelSeqBtnId,
       kVtPitchId,  
       kVtPlayPitchSeqBtnId,

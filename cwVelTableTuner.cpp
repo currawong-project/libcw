@@ -23,6 +23,7 @@ namespace cw
       { kVtDeviceSelectId, kVtPianoDevId,        "vtPianoDevId" },
       { kVtDeviceSelectId, kVtSamplerDevId,      "vtSamplerDevId" },      
       { kInvalidId, kVtTableSelectId,     "vtTableSelectId" },
+      { kInvalidId, kVtDefaultCheckId,    "vtDefaultCheckId" },
       { kInvalidId, kVtPlayVelSeqBtnId,   "vtPlayVelSeqBtnId" },
       { kInvalidId, kVtPitchId,           "vtPitchId" },
       { kInvalidId, kVtPlayPitchSeqBtnId, "vtPlayPitchSeqBtnId" },
@@ -66,12 +67,13 @@ namespace cw
 
     typedef struct tbl_str
     {
+      bool            defaultFl;
       bool            enableFl;
       uint8_t*        tableA;
       unsigned        tableN;
       char*           name;
       unsigned        mrpDevIdx;
-      unsigned        appId;  // id associated with UI select option for this table
+      unsigned        appId;     // id associated with UI select option for this table
       struct tbl_str* link;
     } tbl_t;
 
@@ -98,7 +100,7 @@ namespace cw
       tbl_t*       tableL;    // array of tables
       unsigned     nextTableAppId;
       
-      tbl_t        curTable;  // current table being edited
+      tbl_t*       curTable;  // current table being edited
       
       bool         initUiFl;      // True if the UI has been initialized (UI initialization happens once at startup)
       bool         waitForStopFl; // The player was requested to stop but is waiting for the current note cycle to end 
@@ -189,9 +191,6 @@ namespace cw
 
       mem::release(p->cfg_fname);
       mem::release(p->cfg_backup_dir);
-
-      mem::release(p->curTable.tableA);
-      mem::release(p->curTable.name);
 
       mem::release(p->duplicateName);
       
@@ -313,6 +312,7 @@ namespace cw
         const char*     tbl_name     = nullptr;
         const char*     tbl_device   = nullptr;
         bool            tbl_enableFl = false;
+        bool            tbl_defaultFl= false;
         const object_t* tbl_node     = nullptr;
         const dev_map_t*devMap       = nullptr;
 
@@ -327,6 +327,7 @@ namespace cw
         if((rc = tbl_hdr->getv("name",    tbl_name,
                                "device",  tbl_device,
                                "enableFl",tbl_enableFl,
+                               "defaultFl", tbl_defaultFl,
                                "table",   tbl_node)) != kOkRC )
         {
           rc = cwLogError(rc,"Velocity table cfg. file parsing error.");
@@ -343,6 +344,7 @@ namespace cw
         t->name     = mem::duplStr(tbl_name);
         t->mrpDevIdx= devMap->mrpDevIdx;
         t->enableFl = tbl_enableFl;
+        t->defaultFl= tbl_defaultFl;
         t->tableN   = tbl_node->child_count();
         t->tableA   = mem::allocZ<uint8_t>( t->tableN );
 
@@ -489,14 +491,14 @@ namespace cw
       rc_t rc = kOkRC;
       
       const dev_map_t* dm;
-      if((dm = _dev_map_from_mrpDevIdx(p->curTable.mrpDevIdx)) == nullptr )
+      if((dm = _dev_map_from_mrpDevIdx(p->curTable->mrpDevIdx)) == nullptr )
       {
-        rc = _set_status(p,kOpFailRC,"The current table has an invalid device index (%i).",p->curTable.mrpDevIdx );
+        rc = _set_status(p,kOpFailRC,"The current table has an invalid device index (%i).",p->curTable->mrpDevIdx );
         goto errLabel;
       }
      
       
-      if((rc = vel_table_set( p->mrpH, p->curTable.mrpDevIdx, p->curTable.tableA, p->curTable.tableN )) != kOkRC )
+      if((rc = vel_table_set( p->mrpH, p->curTable->mrpDevIdx, p->curTable->tableA, p->curTable->tableN )) != kOkRC )
         rc = _set_status(p,rc,"Velocity table apply failed.");
       else
         _set_status(p,kOkRC,"Velocity table applied to '%s'.", cwStringNullGuard(dm->label));
@@ -524,6 +526,8 @@ namespace cw
       if( newTableName == nullptr )
         newTableName = t->name;
       
+      dst_tbl.defaultFl = t->defaultFl;
+      dst_tbl.enableFl  = t->enableFl;
       dst_tbl.name      = mem::reallocStr(dst_tbl.name,newTableName);
       dst_tbl.mrpDevIdx = t->mrpDevIdx;
       dst_tbl.appId     = t->appId;
@@ -607,7 +611,8 @@ namespace cw
       }
 
       // duplicate the selected table into 'curTable'
-      _duplicateTable(p,p->curTable,t);
+      //_duplicateTable(p,p->curTable,t);
+      p->curTable = t;
 
       // update the UI with the new velocity table values
       for(unsigned i = 0; i<t->tableN; ++i)
@@ -615,14 +620,16 @@ namespace cw
 
 
       // set the device menu
-      dm = _dev_map_from_mrpDevIdx(t->mrpDevIdx);
-      // device labels were tested at parse time - so this function can't fail
-      assert( dm != nullptr );
+      dm = _dev_map_from_mrpDevIdx(t->mrpDevIdx);      
+      assert( dm != nullptr ); // device labels were tested at parse time - so dm must be non-null
       uiSendValue( p->ioH, uiFindElementUuId( p->ioH, kVtDeviceSelectId), dm->appId );
 
       // set the table menu
       uiSendValue( p->ioH, io::uiFindElementUuId( p->ioH, kVtTableSelectId ), t->appId );
-      
+
+      // set the 'default' check box
+      uiSendValue( p->ioH, io::uiFindElementUuId( p->ioH, kVtDefaultCheckId ), t->defaultFl );
+
       // Set the 'duplicate name' based on the new table
       _set_duplicate_name(p,t->name);
 
@@ -652,7 +659,8 @@ namespace cw
           tbl_t* new_tbl = mem::allocZ<tbl_t>();
 
           // duplicate 'curTable' into the new table
-          _duplicateTable(p, *new_tbl, &p->curTable, p->duplicateName);
+          //_duplicateTable(p, *new_tbl, &p->curTable, p->duplicateName);
+          p->curTable = new_tbl;
 
           // link in the new table
           _link_in_table(p, new_tbl );
@@ -672,7 +680,24 @@ namespace cw
 
       cwAssert( dm != nullptr );
       
-      p->curTable.mrpDevIdx = dm->mrpDevIdx;
+      p->curTable->mrpDevIdx = dm->mrpDevIdx;
+      
+      return rc;
+    }
+
+    cw::rc_t _set_default_check( vtbl_t* p, unsigned defaultFl )
+    {
+      cw::rc_t rc = kOkRC;
+
+      if( defaultFl )
+      {
+        tbl_t* t;
+        for(t=p->tableL; t!=nullptr; t=t->link)
+          if( t->mrpDevIdx == p->curTable->mrpDevIdx )
+            t->defaultFl = false;
+      }
+
+      p->curTable->defaultFl = defaultFl;
       
       return rc;
     }
@@ -756,7 +781,7 @@ namespace cw
     cw::rc_t _set_table_entry( vtbl_t* p, unsigned table_idx, unsigned value )
     {
       rc_t rc = kOkRC;
-      if( table_idx >= p->curTable.tableN )
+      if( table_idx >= p->curTable->tableN )
       {
         rc = _set_status(p,kInvalidArgRC,"The table index %i is not valid.",table_idx);
       }
@@ -764,7 +789,7 @@ namespace cw
       {
         if((rc = _validate_midi_value(p,value)) == kOkRC )
         {
-          p->curTable.tableA[ table_idx ] = value;
+          p->curTable->tableA[ table_idx ] = value;
           _set_status(p,kOkRC,"The table index '%i' was set to the value '%i'.",table_idx,value);
         }
       }
@@ -864,6 +889,10 @@ cw::rc_t cw::vtbl::on_ui_value( handle_t h, const io::ui_msg_t& m )
     case kVtDeviceSelectId:
       rc = vtbl::_set_device(p, m.value->u.u );
       break;
+
+    case kVtDefaultCheckId:
+      rc = vtbl::_set_default_check(p, m.value->u.b );
+      break;
           
     case kVtPianoDevId:
       rc = vtbl::_set_device(p,midi_record_play::kPiano_MRP_DevIdx );
@@ -954,10 +983,14 @@ cw::rc_t cw::vtbl::on_ui_echo( handle_t h, const io::ui_msg_t& m )
             p->initUiFl = true;
       }
       break;
+
+    case kVtDefaultCheckId:      
+      rc = io::uiSendValue(p->ioH, m.uuId, p->curTable->defaultFl );      
+      break;
       
     case kVtPitchId:
       rc = io::uiSendValue(p->ioH, m.uuId, p->vseqPitch );      
-      break;
+      break;      
     case kVtVelocityId:
       rc = io::uiSendValue(p->ioH, m.uuId, p->pseqVelocity );
       break;
@@ -1002,8 +1035,8 @@ cw::rc_t cw::vtbl::exec( handle_t h )
             {
               case kVelSeqModeId:
                 pitch = p->vseqPitch;
-                cwAssert( p->nextVelIdx < p->curTable.tableN );
-                vel = p->curTable.tableA[ p->nextVelIdx ];
+                cwAssert( p->nextVelIdx < p->curTable->tableN );
+                vel = p->curTable->tableA[ p->nextVelIdx ];
                 break;
                 
               case kPitchSeqModeId:
@@ -1030,7 +1063,7 @@ cw::rc_t cw::vtbl::exec( handle_t h )
                 {
                   pitch    = p->vseqPitch;
 
-                  if( p->nextVelIdx + 1 >= p->curTable.tableN || p->waitForStopFl )
+                  if( p->nextVelIdx + 1 >= p->curTable->tableN || p->waitForStopFl )
                     p->state = kStoppedStateId;
                   else
                     p->nextVelIdx += 1;
@@ -1061,12 +1094,12 @@ cw::rc_t cw::vtbl::exec( handle_t h )
 
       _set_status(p,kOkRC,"state:%i mode:%i wfs_fl:%i : dev:%i : pitch:%i vel:%i : nxt %i %i",
                   p->state,p->mode,p->waitForStopFl,
-                  p->curTable.mrpDevIdx,
+                  p->curTable->mrpDevIdx,
                   pitch,vel,
                   p->nextPitch,p->nextVelIdx);
 
       send_midi_msg( p->mrpH,
-                     p->curTable.mrpDevIdx,
+                     p->curTable->mrpDevIdx,
                      0,
                      midi::kNoteOnMdId,
                      _cast_int_to_8bits(p,pitch),
