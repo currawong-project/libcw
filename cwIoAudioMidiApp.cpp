@@ -90,6 +90,7 @@ namespace cw
       const char*                 record_folder;
       const char*                 record_fn_ext;
       char*                       directory;
+      const char*                 velTableFname;
       
       midi_record_play::handle_t  mrpH;
       audio_record_play::handle_t arpH;
@@ -109,6 +110,14 @@ namespace cw
                          "midi_play_record",            app->midi_play_record_cfg)) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"Audio MIDI app configuration parse failed.");
+        goto errLabel;
+      }
+
+
+      if((rc = cfg->getv_opt( "vel_table_fname", app->velTableFname)) != kOkRC )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"Audio MIDI app optional configuration parse failed.");
+        goto errLabel;
       }
 
       // verify that the output directory exists
@@ -117,7 +126,7 @@ namespace cw
       
       
       
-
+         errLabel:
       return rc;
     }
 
@@ -546,7 +555,7 @@ cw::rc_t cw::audio_midi_app::main( const object_t* cfg )
     return rc;
 
   // create the MIDI record-play object
-  if((rc = midi_record_play::create(app.mrpH,app.ioH,*app.midi_play_record_cfg)) != kOkRC )
+  if((rc = midi_record_play::create(app.mrpH,app.ioH,*app.midi_play_record_cfg,app.velTableFname)) != kOkRC )
   {
     rc = cwLogError(rc,"MIDI record-play object create failed.");
     goto errLabel;
