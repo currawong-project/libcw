@@ -111,6 +111,7 @@ namespace cw
     typedef struct io_str
     {
       std::atomic<bool>             quitFl;
+      std::atomic<bool>             startedFl;
 
       time::spec_t                  t0;
       
@@ -180,48 +181,52 @@ namespace cw
       rc_t rc       = kOkRC;
       bool unlockFl = false;
       bool isSynchronousFl = !asyncFl;
+      bool isStartedFl = p->startedFl.load();
 
-      // if this is a synchronous callback then lock the mutex
-      if( isSynchronousFl )
+      if( isStartedFl )
       {
-        switch(rc = mutex::lock(p->cbMutexH,p->cbMutexTimeOutMs))
+
+        // if this is a synchronous callback then lock the mutex
+        if( isSynchronousFl )
         {
-          case kOkRC:
-            unlockFl = true;
-            break;
+          switch(rc = mutex::lock(p->cbMutexH,p->cbMutexTimeOutMs))
+          {
+            case kOkRC:
+              unlockFl = true;
+              break;
             
-          case kTimeOutRC:
-            rc = cwLogError(rc,"io mutex callback mutex lock timed out.");
-            break;
+            case kTimeOutRC:
+              rc = cwLogError(rc,"io mutex callback mutex lock timed out.");
+              break;
             
-          default:
-            rc = cwLogError(rc,"io mutex callback mutex lock failed.");
-        }
+            default:
+              rc = cwLogError(rc,"io mutex callback mutex lock failed.");
+          }
            
-      }
+        }
 
-      // make the callback to the client
-      if( rc == kOkRC )
-      {
-        
-        rc_t app_rc = p->cbFunc( p->cbArg, m );
-        if( app_rc_ref != nullptr )
-          *app_rc_ref = app_rc;
-      }
-
-      // if the mutex is locked
-      if( unlockFl )
-      {
-        if((rc = mutex::unlock(p->cbMutexH)) != kOkRC )
+        // make the callback to the client
+        if( rc == kOkRC )
         {
-          // Time out is not a failure
-          if( rc == kTimeOutRC )
-            rc = kOkRC;
-          else
-            rc = cwLogError(rc,"io mutex callback mutex unlock failed.");          
+        
+          rc_t app_rc = p->cbFunc( p->cbArg, m );
+          if( app_rc_ref != nullptr )
+            *app_rc_ref = app_rc;
+        }
+
+        // if the mutex is locked
+        if( unlockFl )
+        {
+          if((rc = mutex::unlock(p->cbMutexH)) != kOkRC )
+          {
+            // Time out is not a failure
+            if( rc == kTimeOutRC )
+              rc = kOkRC;
+            else
+              rc = cwLogError(rc,"io mutex callback mutex unlock failed.");          
+          }
         }
       }
-
       return rc;
     }
 
@@ -2233,6 +2238,7 @@ cw::rc_t cw::io::create(
   
 
   p->quitFl.store(false);
+  p->startedFl.store(false);
   time::get(p->t0);  
   
   h.set(p);
@@ -2264,19 +2270,46 @@ cw::rc_t cw::io::destroy( handle_t& h )
 
 cw::rc_t cw::io::start( handle_t h )
 {
+  rc_t rc = kOkRC;
+  
   io_t* p = _handleToPtr(h);
 
-  _audioDeviceStartStop(p,true);
+  if((rc = _audioDeviceStartStop(p,true)) != kOkRC )
+    goto errLabel;
 
-  _serialPortStart(p);
+  if((rc = _serialPortStart(p)) != kOkRC )
+    goto errLabel;
   
-  return thread_mach::start( p->threadMachH );
+  if((rc = thread_mach::start( p->threadMachH )) != kOkRC )
+  {
+    cwLogError(rc,"Thread machine start failed.");
+    goto errLabel;
+  }
+  
+  p->startedFl.store(true);
+  
+ errLabel:
+
+  if( rc != kOkRC )
+    stop(h);
+  
+  return rc;
 }
 
 cw::rc_t cw::io::pause( handle_t h )
 {
   io_t* p = _handleToPtr(h);
-  return thread_mach::stop( p->threadMachH );
+  rc_t rc;
+  if((rc = thread_mach::stop( p->threadMachH )) != kOkRC )
+  {
+    cwLogError(rc,"Thread machine stop failed.");
+    goto errLabel;    
+  }
+
+  p->startedFl.store(false);
+  
+ errLabel:
+  return rc;
 }
 
 cw::rc_t cw::io::stop( handle_t h )
@@ -2284,16 +2317,21 @@ cw::rc_t cw::io::stop( handle_t h )
   io_t* p = _handleToPtr(h);
   p->quitFl.store(true);
 
-  thread_mach::stop(p->threadMachH );
+  rc_t rc0 = thread_mach::stop(p->threadMachH );
   
   // stop the audio devices
-  _audioDeviceStartStop(p,false);
+  rc_t rc1 = _audioDeviceStartStop(p,false);
 
   // clear the UI
   //if( p->wsUiH.isValid() )
   //  uiDestroyElement(h,ui::kRootUuId);
   
-  return kOkRC;
+  rc_t rc = rcSelect(rc0,rc1);
+
+  if(rc == kOkRC )
+    p->startedFl.store(false);
+
+  return rc;
 }
 
 cw::rc_t cw::io::exec( handle_t h, void* execCbArg )
