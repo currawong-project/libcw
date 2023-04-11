@@ -95,9 +95,9 @@ namespace cw
     rc_t _destroy( score_follower_t* p)
     {
       mem::release(p->score_csv_fname);
-      mem::release(p);
       cmScMatcherFree(&p->matcher);
       cmScoreFinalize(&p->cmScoreH);
+      mem::release(p);
       return kOkRC;
     }
 
@@ -107,24 +107,35 @@ namespace cw
       score_follower_t* p = (score_follower_t*)arg;
       cmScoreEvt_t* cse;
 
-      // get a pointer to the matched event
-      if((cse = cmScoreEvt( p->cmScoreH, r->scEvtIdx )) == nullptr )
+      printf("%4i %4i %4i %3i %3i %4s : ", r->locIdx, r->mni, r->muid, r->flags, r->pitch, midi::midiToSciPitch( r->pitch, nullptr, 0 ));
+
+      if( r->scEvtIdx == cmInvalidIdx )
       {
-        cwLogError(kInvalidStateRC,"cm Score event index (%i) reported by the score follower is invalid.",r->scEvtIdx );
+        printf("MISS\n");
       }
       else
       {
-        if( p->match_id_curN >= p->match_id_allocN )
+        // get a pointer to the matched event
+        if((cse = cmScoreEvt( p->cmScoreH, r->scEvtIdx )) == nullptr )
         {
-          cwLogError(kInvalidStateRC,"The score follower match id array is full.");
+          cwLogError(kInvalidStateRC,"cm Score event index (%i) reported by the score follower is invalid.",r->scEvtIdx );
         }
         else
         {
-          // the csvEventId corresponds to the cwPianoScore location 
-          p->match_idA[ p->match_id_curN++ ] = cse->csvEventId;          
+          if( p->match_id_curN >= p->match_id_allocN )
+          {
+            cwLogError(kInvalidStateRC,"The score follower match id array is full.");
+          }
+          else
+          {
+            // the csvEventId corresponds to the cwPianoScore location 
+              p->match_idA[ p->match_id_curN++ ] = cse->csvEventId;
+            
+            printf("%i MATCH\n",p->match_id_curN);
+            
+          }
         }
       }
-      
     }
 
 
@@ -153,8 +164,7 @@ cw::rc_t cw::score_follower::create( handle_t& hRef, const object_t* cfg, cm::ha
     cwLogError(kOpFailRC,"The score could not be initialized from '%s'. cmRC:%i.",p->score_csv_fname);
     goto errLabel;
   }
-
-
+  
   if((p->matcher = cmScMatcherAlloc(  cmProcCtx,           // Program context.
                                      nullptr,             // Existing cmScMatcher to reallocate or NULL to allocate a new cmScMatcher.
                                      srate,               // System sample rate.
@@ -170,7 +180,7 @@ cw::rc_t cw::score_follower::create( handle_t& hRef, const object_t* cfg, cm::ha
   
   
   p->srate = srate;
-  p->match_id_allocN = 128;
+  p->match_id_allocN = cmScoreEvtCount( p->cmScoreH )*2;  // give plenty of extra space for the match_idA[]
   p->match_idA       = mem::allocZ<unsigned>(p->match_id_allocN);
   
   hRef.set(p);
@@ -205,12 +215,17 @@ cw::rc_t cw::score_follower::destroy( handle_t& hRef )
 
 cw::rc_t cw::score_follower::reset( handle_t h, unsigned loc )
 {
-  rc_t rc = kOkRC;
-  //score_follower_t* p = _handleToPtr(h);
-
+  rc_t              rc   = kOkRC;
+  cmRC_t            cmRC = cmOkRC;  
+  score_follower_t* p    = _handleToPtr(h);
   
-  // cmRC_t       cmScMatcherReset( cmScMatcher* p, unsigned scLocIdx );
-  
+  if((cmRC = cmScMatcherReset( p->matcher, loc )) != cmOkRC )
+  {
+    rc = cwLogError(kOpFailRC,"The score follower reset failed.");
+    goto errLabel;
+  }
+      
+ errLabel:
   return rc;
 }
     
@@ -370,6 +385,9 @@ cw::rc_t cw::score_follower::test( const object_t* cfg )
 
   // create the score follower
   if((rc = create( sfH, t.cfg, cmCtxH, t.srate )) != kOkRC )
+    goto errLabel;
+
+  if((rc = reset( sfH, 0)) != kOkRC )
     goto errLabel;
 
   // open the midi file

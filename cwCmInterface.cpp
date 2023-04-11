@@ -58,15 +58,16 @@ namespace cw
     {
       if( p != nullptr )
       {
-        cmTsFinalize();
-        cmFsFinalize();
-        cmMdReport( kIgnoreNormalMmFl );
-        cmMdFinalize();
 
         cmLHeapDestroy(&p->lhH);
         cmSymTblDestroy(&p->symTblH);
         cmProcCtxFree(&p->procCtx);
-
+        
+        cmTsFinalize();
+        cmFsFinalize();
+        cmMdReport( kIgnoreNormalMmFl );
+        cmMdFinalize();
+        
         mem::release(p);
       }
       return kOkRC;
