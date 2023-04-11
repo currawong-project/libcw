@@ -528,7 +528,7 @@ namespace cw
       bool supress_fl = (is_note_on_fl && after_stop_time_fl) || p->muteFl;
       bool is_pedal_fl = midi::isPedal( status, d0 );
       
-      if( after_all_off_fl )
+      if( p->stateStateId == kExecuteStopStateId )
       {
         rc = _stop(p);
       }
@@ -1520,9 +1520,9 @@ cw::rc_t cw::midi_record_play::start( handle_t h, bool rewindFl, const time::spe
   else
   {
     p->end_play_event_timestamp = *end_play_event_timestamp;
-    p->all_off_timestamp = *end_play_event_timestamp;
-    time::advanceMs( p->all_off_timestamp, p->all_off_delay_ms);
-  }
+    //p->all_off_timestamp = *end_play_event_timestamp;
+    //time::advanceMs( p->all_off_timestamp, p->all_off_delay_ms);  }
+
   
   time::get(p->start_time);
         
@@ -1549,10 +1549,18 @@ cw::rc_t cw::midi_record_play::start( handle_t h, bool rewindFl, const time::spe
       p->halfPedalNextUs = 0;
       p->halfPedalState  = kWaitForBegin;
     }
+
+    for(unsigned i=0; i<kMidiNoteCnt; ++i)
+      p->activeNoteV[i] = false;
+
+    p->activeDampFl = 0;
+    p->activeNoteCnt = 0;
+    p->stoppingStateId = kNoStopStateId;
     
     io::timerStart( p->ioH, io::timerIdToIndex(p->ioH, kMidiRecordPlayTimerId) );
   }
 
+  
   return kOkRC;
 }
 
