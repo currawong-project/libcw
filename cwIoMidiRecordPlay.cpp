@@ -528,7 +528,7 @@ namespace cw
       bool supress_fl = (is_note_on_fl && after_stop_time_fl) || p->muteFl;
       bool is_pedal_fl = midi::isPedal( status, d0 );
       
-      if( p->stateStateId == kExecuteStopStateId )
+      if( after_all_off_fl )
       {
         rc = _stop(p);
       }
@@ -1278,6 +1278,7 @@ namespace cw
           while( p->msgArray[ p->msgArrayOutIdx ].microsec <= cur_time_us )
           {
 
+            
             am_midi_msg_t* mm = p->msgArray + p->msgArrayOutIdx;
 
             //_print_midi_msg(mm);
@@ -1522,7 +1523,7 @@ cw::rc_t cw::midi_record_play::start( handle_t h, bool rewindFl, const time::spe
     p->end_play_event_timestamp = *end_play_event_timestamp;
     //p->all_off_timestamp = *end_play_event_timestamp;
     //time::advanceMs( p->all_off_timestamp, p->all_off_delay_ms);  }
-
+  }
   
   time::get(p->start_time);
         
@@ -1550,13 +1551,6 @@ cw::rc_t cw::midi_record_play::start( handle_t h, bool rewindFl, const time::spe
       p->halfPedalState  = kWaitForBegin;
     }
 
-    for(unsigned i=0; i<kMidiNoteCnt; ++i)
-      p->activeNoteV[i] = false;
-
-    p->activeDampFl = 0;
-    p->activeNoteCnt = 0;
-    p->stoppingStateId = kNoStopStateId;
-    
     io::timerStart( p->ioH, io::timerIdToIndex(p->ioH, kMidiRecordPlayTimerId) );
   }
 
