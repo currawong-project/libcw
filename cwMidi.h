@@ -137,7 +137,7 @@ namespace cw
     // buffer is returned. If label[] is given the it
     // should have at least 5 (kMidiSciPitchCharCnt) char's (including the terminating zero).
     // If 'pitch' is outside of the range 0-127 then a blank string is returned.
-    const char*    midiToSciPitch( uint8_t pitch, char* label, unsigned labelCharCnt );
+    const char*    midiToSciPitch( uint8_t pitch, char* label=nullptr, unsigned labelCharCnt=0 );
 
     // Convert a scientific pitch to MIDI pitch.  acc == 1 == sharp, acc == -1 == flat.
     // The pitch character must be in the range 'A' to 'G'. Upper or lower case is valid.
