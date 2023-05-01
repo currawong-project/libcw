@@ -42,6 +42,13 @@ namespace cw
       char*        score_csv_fname;
       cmScH_t      cmScoreH;
       cmScMatcher* matcher;
+      
+      unsigned*    cwLocToCmLocA;  // cwLocToCmLocA[ cwLocToCmLocN ]
+      unsigned     cwLocToCmLocN;
+
+      unsigned*    cmLocToCwLocA;  // cmLocToCwLocA[ cmLocToCwLocN ]
+      unsigned     cmLocToCwLocN;
+      
       unsigned*    match_idA;
       unsigned     match_id_allocN;
       unsigned     match_id_curN;
@@ -50,7 +57,8 @@ namespace cw
     score_follower_t* _handleToPtr( handle_t h )
     { return handleToPtr<handle_t,score_follower_t>(h); }
 
-    
+
+    // parse the score follower parameter record
     rc_t _parse_cfg( score_follower_t* p, const object_t* cfg )
     {
       rc_t rc = kOkRC;
@@ -75,25 +83,84 @@ namespace cw
       return rc;
     }
 
-    unsigned _get_max_cw_loc_value( score_follower_t* p )
+    // get the max cw loc value
+    rc_t  _get_max_cw_loc( score_follower_t* p, unsigned& maxCwLocRef )
     {
+      rc_t rc = kOkRC;
+      
       // Note: cmScoreEvt_t.csvEventId is the app score 'loc' value.
       
       unsigned cmEvtN = cmScoreEvtCount( p->cmScoreH );
-      unsigned maxCwLoc = 0;
+      
+      maxCwLocRef = 0;
+      
       for(unsigned i=0; i<cmEvtN; ++i)
       {
+        cmScoreEvt_t* cmEvt = cmScoreEvt( p->cmScoreH, i );
+
+        if( cmEvt == nullptr )
+        {
+          cwLogError(kOpFailRC,"Unexpected missing cm event at index '%i while scanning cmScore.h",i);
+          goto errLabel;
+        }
+        
+        if( cmEvt->csvEventId > maxCwLocRef )
+          maxCwLocRef = cmEvt->csvEventId;
       }
       
-      return maxCwLoc; 
+    errLabel:
+      return rc;
     }
-    
-    void _createCwLocToCmLocMap( score_follower_t* p )
+
+    // Create cw-to-cm location map
+    rc_t _createCwLocToCmLocMap( score_follower_t* p )
     {
+      unsigned cmEvtN =0;
+      rc_t rc = kOkRC;
+      
+      if((rc = _get_max_cw_loc(p,p->cwLocToCmLocN)) != kOkRC )
+        goto errLabel;
+      
+      p->cwLocToCmLocA = mem::allocZ<unsigned>( p->cwLocToCmLocN );
+
+      cmEvtN = cmScoreEvtCount( p->cmScoreH );
+
+      for(unsigned i=0; i<cmEvtN; ++i)
+      {
+        const cmScoreEvt_t* cmEvt = cmScoreEvt( p->cmScoreH, i );
+        assert( cmEvt != nullptr );
+        p->cwLocToCmLocA[ cmEvt->csvEventId ] = cmEvt->locIdx;
+      }
+
+    errLabel:
+      
+      return rc;      
     }
+
+    // create cm-to-cw location map
+    rc_t _createCmLocToCwLocMap( score_follower_t* p )
+    {
+      rc_t rc = kOkRC;
+
+      unsigned cmEvtN = cmScoreEvtCount( p->cmScoreH );
+
+      p->cmLocToCwLocN = cmEvtN;
+      p->cmLocToCwLocA = mem::allocZ<unsigned>( p->cmLocToCwLocN );
+
+      for(unsigned i=0; i<cmEvtN; ++i)
+      {
+        const cmScoreEvt_t* cmEvt = cmScoreEvt( p->cmScoreH, i );
+        assert( cmEvt != nullptr );
+        p->cmLocToCwLocA[i] = cmEvt->csvEventId;
+      }
+      
+      return rc;
+    }    
 
     rc_t _destroy( score_follower_t* p)
     {
+      mem::release(p->cmLocToCwLocA);
+      mem::release(p->cwLocToCmLocA);                   
       mem::release(p->score_csv_fname);
       cmScMatcherFree(&p->matcher);
       cmScoreFinalize(&p->cmScoreH);
@@ -107,11 +174,11 @@ namespace cw
       score_follower_t* p = (score_follower_t*)arg;
       cmScoreEvt_t* cse;
 
-      printf("%4i %4i %4i %3i %3i %4s : ", r->locIdx, r->mni, r->muid, r->flags, r->pitch, midi::midiToSciPitch( r->pitch, nullptr, 0 ));
+      //printf("%4i %4i %4i %3i %3i %4s : ", r->locIdx, r->mni, r->muid, r->flags, r->pitch, midi::midiToSciPitch( r->pitch, nullptr, 0 ));
 
       if( r->scEvtIdx == cmInvalidIdx )
       {
-        printf("MISS\n");
+        //cwLogInfo("Score Follower: MISS");
       }
       else
       {
@@ -129,17 +196,14 @@ namespace cw
           else
           {
             // the csvEventId corresponds to the cwPianoScore location 
-              p->match_idA[ p->match_id_curN++ ] = cse->csvEventId;
+            p->match_idA[ p->match_id_curN++ ] = cse->csvEventId;
             
-            printf("%i MATCH\n",p->match_id_curN);
+            //cwLogInfo("Score Follower: MATCH %i\n",cse->csvEventId);
             
           }
         }
       }
     }
-
-
-    
   }
 }
 
@@ -159,27 +223,42 @@ cw::rc_t cw::score_follower::create( handle_t& hRef, const object_t* cfg, cm::ha
   if((rc = _parse_cfg(p,cfg)) != kOkRC )
     goto errLabel;
 
+  // create the the score follower reference score
   if((scoreRC = cmScoreInitialize( cmCtx, &p->cmScoreH, p->score_csv_fname, srate, nullptr, 0, nullptr, nullptr, cmSymTblH )) != cmOkRC )
   {
     cwLogError(kOpFailRC,"The score could not be initialized from '%s'. cmRC:%i.",p->score_csv_fname);
     goto errLabel;
   }
-  
-  if((p->matcher = cmScMatcherAlloc(  cmProcCtx,           // Program context.
-                                     nullptr,             // Existing cmScMatcher to reallocate or NULL to allocate a new cmScMatcher.
-                                     srate,               // System sample rate.
+
+  // create the score follower
+  if((p->matcher = cmScMatcherAlloc(  cmProcCtx,            // Program context.
+                                     nullptr,               // Existing cmScMatcher to reallocate or NULL to allocate a new cmScMatcher.
+                                     srate,                 // System sample rate.
                                      p->cmScoreH,           // Score handle.  See cmScore.h.
-                                     p->search_area_locN, // Length of the scores active search area. ** See Notes.
-                                     p->key_wnd_locN,     // Length of the MIDI active note buffer.    ** See Notes.
-                                     _score_follower_cb,  // A cmScMatcherCb_t function to be called to notify the recipient of changes in the score matcher status.
-                                     p )) == nullptr )    // User argument to 'cbFunc'.
+                                     p->search_area_locN,   // Length of the scores active search area. ** See Notes.
+                                     p->key_wnd_locN,       // Length of the MIDI active note buffer.    ** See Notes.
+                                     _score_follower_cb,    // A cmScMatcherCb_t function to be called to notify the recipient of changes in the score matcher status.
+                                     p )) == nullptr )      // User argument to 'cbFunc'.
   {
     cwLogError(kOpFailRC,"The score follower allocation failed.");
     goto errLabel;
   }
   
+  // create the cw-to-cm loc idx map
+  if((rc = _createCwLocToCmLocMap( p )) != kOkRC )
+  {
+    rc = cwLogError(rc,"cw-to-cm loc map creation failed.");
+    goto errLabel;
+  }
+
+  if((rc = _createCmLocToCwLocMap( p )) != kOkRC )
+  {
+    rc = cwLogError(rc,"cm-to-cw loc map creation failed.");
+    goto errLabel;
+  }
+
   
-  p->srate = srate;
+  p->srate           = srate;
   p->match_id_allocN = cmScoreEvtCount( p->cmScoreH )*2;  // give plenty of extra space for the match_idA[]
   p->match_idA       = mem::allocZ<unsigned>(p->match_id_allocN);
   
@@ -213,18 +292,29 @@ cw::rc_t cw::score_follower::destroy( handle_t& hRef )
   return rc;    
 }
 
-cw::rc_t cw::score_follower::reset( handle_t h, unsigned loc )
+cw::rc_t cw::score_follower::reset( handle_t h, unsigned cwLocId )
 {
   rc_t              rc   = kOkRC;
   cmRC_t            cmRC = cmOkRC;  
   score_follower_t* p    = _handleToPtr(h);
-  
-  if((cmRC = cmScMatcherReset( p->matcher, loc )) != cmOkRC )
+
+  if( cwLocId != kInvalidId )
   {
-    rc = cwLogError(kOpFailRC,"The score follower reset failed.");
-    goto errLabel;
+    unsigned cmLocId = p->cwLocToCmLocA[cwLocId];
+
+    if( cmLocId == kInvalidId )
+    {
+      rc = cwLogWarning("The cw loc id:%i does not translate to a cm loc id.",cwLocId);
+      goto errLabel;
+    }
+    
+    if((cmRC = cmScMatcherReset( p->matcher, cmLocId )) != cmOkRC )
+    {
+      rc = cwLogError(kOpFailRC,"The score follower reset failed.");
+      goto errLabel;
+    }
   }
-      
+  
  errLabel:
   return rc;
 }
@@ -232,46 +322,43 @@ cw::rc_t cw::score_follower::reset( handle_t h, unsigned loc )
 cw::rc_t cw::score_follower::exec(  handle_t h, unsigned smpIdx, unsigned muid, unsigned status, uint8_t d0, uint8_t d1, bool& newMatchFlRef )
 {
   rc_t              rc                 = kOkRC;
-  cmRC_t            cmRC               = cmOkRC;
   score_follower_t* p                  = _handleToPtr(h);
   unsigned          scLocIdx           = cmInvalidIdx;
   unsigned          pre_match_id_curN = p->match_id_curN;
 
   newMatchFlRef = false;
     
-  if((cmRC = cmScMatcherExec(  p->matcher, smpIdx, muid, status, d0, d1, &scLocIdx )) != cmOkRC )
-  {
-    switch( cmRC )
-    {
-      case cmOkRC:
-        newMatchFlRef = p->match_id_curN != pre_match_id_curN;
-        break;
-        
-      case cmEofRC:
-        rc = cwLogInfo("Score match complete.");
-        break;
-        
-      case cmInvalidArgRC:
-        rc = cwLogError(kInvalidStateRC,"Score follower state is invalid.");
-        break;
-        
-      case cmSubSysFailRC:
-        rc = cwLogError(kOpFailRC,"The score follower failed during a resync attempt.");
-        break;
-        
-      default:
-        rc = cwLogError(kOpFailRC,"The score follower failed with an unknown error. cmRC:%i",cmRC);
-    }
-      
-  }
-
+  cmRC_t cmRC = cmScMatcherExec(  p->matcher, smpIdx, muid, status, d0, d1, &scLocIdx );
   
+  switch( cmRC )
+  {
+    case cmOkRC:
+      newMatchFlRef = p->match_id_curN != pre_match_id_curN;
+      //printf("NM_FL:%i\n",newMatchFlRef);
+      break;
+        
+    case cmEofRC:
+      rc = cwLogInfo("Score match complete.");
+      break;
+        
+    case cmInvalidArgRC:
+      rc = cwLogError(kInvalidStateRC,"Score follower state is invalid.");
+      break;
+        
+    case cmSubSysFailRC:
+      rc = cwLogError(kOpFailRC,"The score follower failed during a resync attempt.");
+      break;
+        
+    default:
+      rc = cwLogError(kOpFailRC,"The score follower failed with an unknown error. cmRC:%i",cmRC);
+  }
+      
   return rc;
 
 }
 
 
-unsigned* cw::score_follower::current_match_id_array( handle_t h, unsigned& cur_match_id_array_cnt_ref )
+const unsigned* cw::score_follower::current_match_id_array( handle_t h, unsigned& cur_match_id_array_cnt_ref )
 {
   score_follower_t* p = _handleToPtr(h);
   cur_match_id_array_cnt_ref = p->match_id_curN;
@@ -421,7 +508,7 @@ cw::rc_t cw::score_follower::test( const object_t* cfg )
       if( newMatchFl )
       {
         unsigned matchIdN = 0;
-        unsigned* matchIdA = current_match_id_array(sfH, matchIdN );
+        const unsigned* matchIdA = current_match_id_array(sfH, matchIdN );
 
         for(unsigned i=0; i<matchIdN; ++i)
           cwLogInfo("Match:%i",matchIdA[i]);
