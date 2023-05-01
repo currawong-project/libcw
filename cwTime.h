@@ -73,6 +73,8 @@ namespace cw
     rc_t futureMs( spec_t& ts, unsigned ms );
 
     void secondsToSpec(      spec_t& ts, unsigned sec );
+    double specToSeconds(  const spec_t& ts );
+
     void millisecondsToSpec( spec_t& ts, unsigned ms );
     void microsecondsToSpec( spec_t& ts, unsigned us );
 

@@ -274,6 +274,20 @@ void cw::time::secondsToSpec(      spec_t& ts, unsigned sec )
   ts.tv_nsec = 0;  
 }
 
+double cw::time::specToSeconds(  const spec_t& t )
+{
+  spec_t ts = t;
+  double sec = ts.tv_sec;
+  while( ts.tv_nsec >= 1e9 )
+  {
+    sec += 1.0;
+    ts.tv_nsec -= 1e9;
+  }
+  
+  return sec + ((double)ts.tv_nsec)/1e9;
+}
+
+
 void cw::time::millisecondsToSpec( spec_t& ts, unsigned ms )
 {
   unsigned sec = ms/1000;
