@@ -65,7 +65,8 @@ namespace cw
 
       enum
       {
-        kDropTrkMsgFl = 0x01
+        kDropTrkMsgFl = 0x01,
+        kReleaseFl    = 0x02,
       };
 
       typedef struct trackMsg_str
@@ -209,7 +210,7 @@ namespace cw
       } density_t;
 
       // Generate the note onset density measure for each note in the MIDI file.
-      // Delete the returned memory with a call to cmMemFree().
+      // Delete the returned memory with a call to mem::release().
       density_t* noteDensity( handle_t h, unsigned* cntRef );
 
 

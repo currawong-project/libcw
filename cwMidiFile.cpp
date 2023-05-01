@@ -110,11 +110,20 @@ namespace cw
         char*  t = mem::allocZ<char>(byteN+1);
         t[byteN] = 0;
   
-        if((rc = cw::file::readChar(mfp->fh,t,byteN)) != kOkRC )  
-          return cwLogError(rc,"MIDI read text failed.");
-
+        if((rc = cw::file::readChar(mfp->fh,t,byteN)) != kOkRC )
+        {
+           rc = cwLogError(rc,"MIDI read text failed.");
+           goto errLabel;
+        }
+        
         tmp->u.text  = t;
         tmp->byteCnt = byteN;
+        tmp->flags |= kReleaseFl;
+        
+      errLabel:
+        if( rc != kOkRC )
+          mem::release(t);
+            
         return rc;
       }
 
@@ -123,12 +132,20 @@ namespace cw
         rc_t rc = kOkRC;
         char*  t = mem::allocZ<char>(byteN);
   
-        if((rc = cw::file::readChar(mfp->fh,t,byteN)) != kOkRC )  
-          return cwLogError(rc,"MIDI read record failed.");
-
+        if((rc = cw::file::readChar(mfp->fh,t,byteN)) != kOkRC )
+        {
+          rc = cwLogError(rc,"MIDI read record failed.");
+          goto errLabel;          
+        }
+        
         tmp->byteCnt = byteN;
         tmp->u.voidPtr = t;
+        tmp->flags |= kReleaseFl;
 
+      errLabel:
+        if( rc != kOkRC )
+          mem::release(t);
+        
         return rc;
       }
 
@@ -170,7 +187,7 @@ namespace cw
         tmp->trkIdx   = trkIdx;
         tmp->byteCnt  = 0;
         tmp->uid      = mfp->nextUid++;
-
+        
         return tmp;
       }
 
@@ -230,11 +247,19 @@ namespace cw
         uint8_t* mp = mem::allocZ<uint8_t>( byteN );
 
         // read the sys-ex msg from the file into msg memory
-        if((rc = cw::file::readUChar(mfp->fh,mp,byteN)) != kOkRC )  
-          return cwLogError(rc,"MIDI sys-ex read failed.");
-  
+        if((rc = cw::file::readUChar(mfp->fh,mp,byteN)) != kOkRC )
+        {
+          rc = cwLogError(rc,"MIDI sys-ex read failed.");
+          goto errLabel;
+        }
+        
         tmp->byteCnt     = byteN;
-        tmp->u.sysExPtr = mp;
+        tmp->u.sysExPtr  = mp;
+        tmp->flags      |= kReleaseFl;
+
+      errLabel:
+        if( rc != kOkRC )
+          mem::release(mp);
   
         return rc;
       }
@@ -259,15 +284,18 @@ namespace cw
         unsigned byteN = statusToByteCount(tmp->status);
   
         if( byteN==kInvalidMidiByte || byteN > 2 )
-          return cwLogError(kSyntaxErrorRC,"Invalid status:0x%x %i byte cnt:%i.",tmp->status,tmp->status,byteN);
-
+        {
+          rc = cwLogError(kSyntaxErrorRC,"Invalid status:0x%x %i byte cnt:%i.",tmp->status,tmp->status,byteN);
+          goto errLabel;
+        }
+        
         unsigned i;
         for(i=useRsFl; i<byteN; ++i)
         {
           uint8_t* b = i==0 ? &p->d0 : &p->d1;
   
           if((rc = _read8(mfp,b)) != kOkRC )
-            return rc;
+            goto errLabel;
         }
 
         // convert note-on velocity=0 to note off
@@ -275,7 +303,12 @@ namespace cw
           tmp->status = kNoteOffMdId;
 
         tmp->u.chMsgPtr = p;
-  
+        tmp->flags |= kReleaseFl;
+        
+      errLabel:
+        if( rc != kOkRC )
+          mem::release(p);
+          
         return rc;
       }
 
@@ -545,12 +578,28 @@ namespace cw
         if( mfp == NULL )
           return rc;
 
+        for(unsigned i=0; i<mfp->trkN; ++i)
+        {
+          trackMsg_t* t = mfp->trkV[i].base; 
+          while( t!=nullptr )
+          {
+            trackMsg_t* t0 = t->link;
+            
+            if( cwIsFlag(t->flags,kReleaseFl) )
+              mem::release((void*&)(t->u.voidPtr));
+            
+            mem::release(t);
+            t = t0;
+          }          
+        }
+        mem::release(mfp->trkV);
         mem::release(mfp->msgV);
 
         if( mfp->fh.isValid() )
           if((rc = cw::file::close( mfp->fh )) != kOkRC )
             rc = cwLogError(rc,"MIDI file close failed.");
-    
+
+        mem::release(mfp->fn);
         mem::release(mfp);
 
         return rc;
@@ -1484,6 +1533,7 @@ cw::rc_t cw::midi::file::insertMsg( handle_t h, unsigned uid, int dtick, uint8_t
   chMsg_t*    c   = mem::allocZ<chMsg_t>();
 
   m->u.chMsgPtr = c;
+  m->flags |= kReleaseFl;
   
   c->ch   = ch;
   c->d0   = d0;
