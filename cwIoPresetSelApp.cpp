@@ -25,6 +25,8 @@
 #include "cwIoFlow.h"
 #include "cwPresetSel.h"
 #include "cwVelTableTuner.h"
+#include "cwCmInterface.h"
+#include "cwScoreFollower.h"
 
 #define INVALID_LOC (0)
 
@@ -236,12 +238,16 @@ namespace cw
       const object_t* presets_cfg;
       object_t*       flow_proc_dict;
       const object_t* flow_cfg;
+      const object_t* score_follower_cfg;
       const char*     in_audio_dev_file;
       unsigned        in_audio_dev_idx;
       unsigned        in_audio_begin_loc;
       double          in_audio_offset_sec;
-      
+
+      cm::handle_t                cmCtxH;
+      score_follower::handle_t    sfH;
       midi_record_play::handle_t  mrpH;
+      unsigned                    scoreFollowMaxLocId;
 
       score::handle_t scoreH;
       loc_map_t*      locMap;
@@ -274,6 +280,8 @@ namespace cw
 
       bool     useLiveMidiFl;  // use incoming MIDI to drive program (otherwise use score file)
       bool     trackMidiFl;    // apply presets based on MIDI location (otherwise respond only to direct manipulation of fragment control)
+
+      bool     supressPresetLogFl;
 
       unsigned pvWndSmpCnt;
       bool     sdBypassFl;
@@ -352,10 +360,10 @@ namespace cw
                                     "vel_table_fname",      app->velTableFname,
                                     "vel_table_backup_dir", app->velTableBackupDir,
                                     "presets",              app->presets_cfg,
-                                    "crossFadeSrate",       app->crossFadeSrate,
                                     "crossFadeCount",       app->crossFadeCnt,
                                     "beg_play_loc",         app->beg_play_loc,
-                                    "end_play_loc",         app->end_play_loc)) != kOkRC )
+                                    "end_play_loc",         app->end_play_loc,
+                                    "score_follower",       app->score_follower_cfg)) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"Preset Select App configuration parse failed.");
         goto errLabel;
@@ -465,6 +473,28 @@ namespace cw
       return kOkRC;
     }
 
+    double _get_system_sample_rate( app_t* app, const char* groupLabel )
+    {
+      unsigned groupIdx = kInvalidIdx;
+      double   srate    = 0;
+      
+      if((groupIdx = audioGroupLabelToIndex( app->ioH, groupLabel )) == kInvalidIdx )
+      {
+        cwLogError(kOpFailRC,"The audio group '%s' could not be found.", cwStringNullGuard(groupLabel));
+        goto errLabel;
+      }
+
+      if(( srate = audioGroupSampleRate( app->ioH, groupIdx )) == 0 )
+      {
+        cwLogError(kOpFailRC,"The sample rate could not be determined for the audio group: '%s'.", cwStringNullGuard(groupLabel));
+        goto errLabel;
+      }
+
+    errLabel:
+      
+      return srate;
+    }
+
     rc_t _apply_preset( app_t* app, unsigned loc, const preset_sel::frag_t* frag=nullptr  )      
     {
       // if frag is NULL this is the beginning of a play session
@@ -491,10 +521,11 @@ namespace cw
         {        
           const char* preset_label = preset_sel::preset_label(app->psH,preset_idx);
 
-          printf("Apply preset: '%s' : loc:%i", preset_idx==kInvalidIdx ? "<invalid>" : preset_label, loc );
+          // don't display preset updates unless the score is actually loaded          
+          printf("Apply preset: '%s' : loc:%i\n", preset_idx==kInvalidIdx ? "<invalid>" : preset_label, loc );
 
           _set_status(app,"Apply preset: '%s'.", preset_idx == kInvalidIdx ? "<invalid>" : preset_label);
-
+          
           if( preset_label != nullptr )
           {
             io_flow::apply_preset( app->ioFlowH, flow_cross::kNextDestId, preset_label );
@@ -596,16 +627,59 @@ namespace cw
           if( midi_record_play::is_started(app->mrpH) )
           {
             const preset_sel::frag_t* f = nullptr;
-            //if( preset_sel::track_timestamp( app->psH, timestamp, f ) )
 
+            /*
+            TEMPORARILY COMMENT OUT THE SCORE FOLLOWER
 
+            loc = INVALID_LOC;
+            
+            // if this is a MIDI note-on event - then udpate the score follower
+            if( status == midi::kNoteOnMdId )
+            {
+              unsigned smpIdx             = 0; // not functional - used to associate input with score follower output 
+              unsigned muid               = 0; //
+              bool     newMatchOccurredFl = false;
+              if( exec( app->sfH, smpIdx, muid, status, d0, d1, newMatchOccurredFl ) != kOkRC )
+              {
+                cwLogWarning("Score follower exec error.");
+              }
+              else
+              {
+                if( newMatchOccurredFl )
+                {
+                  unsigned        matchLocN = 0;
+                  const unsigned* matchLocA = current_match_id_array( app->sfH, matchLocN );
+
+                  unsigned maxLocId = 0;
+                  
+                  printf("SF: ");
+                  for(unsigned i=0; i<matchLocN; ++i)
+                  {
+                    if( matchLocA[i] > maxLocId )
+                      maxLocId = matchLocA[i];
+                    printf("%i ",matchLocA[i]);
+                  }                  
+                  printf("\n");
+
+                  if( maxLocId > app->scoreFollowMaxLocId )
+                  {
+                    loc = maxLocId;
+                    app->scoreFollowMaxLocId = maxLocId;
+                  }
+                  
+                  clear_match_id_array(app->sfH);
+                }
+                
+              }
+            }
+            */
+          
             // ZERO SHOULD BE A VALID LOC VALUE - MAKE -1 THE INVALID LOC VALUE
             
             if( loc != INVALID_LOC  && app->trackMidiFl )
             {  
               if( preset_sel::track_loc( app->psH, loc, f ) )  
               {          
-                //printf("NEW FRAG: id:%i loc:%i\n", f->fragId, f->endLoc );
                 _apply_preset( app, loc, f );
                 
                 if( f != nullptr )
@@ -770,6 +844,12 @@ namespace cw
       {
         rc = cwLogError(kInvalidArgRC,"The end play location is not valid.");
         goto errLabel;
+      }
+
+      if((rc = score_follower::reset(app->sfH,begLoc)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Score follower reset failed.");
+        goto errLabel;        
       }
       
       app->beg_play_timestamp = begMap->timestamp;
@@ -963,7 +1043,7 @@ namespace cw
     }
 
     // Update the preset select check boxes on a fragment panel
-    rc_t _update_frag_select_flags( app_t* app, unsigned fragId, unsigned fragEndLoc = kInvalidId )
+    rc_t _update_frag_select_flags( app_t* app, unsigned fragId, unsigned fragEndLoc = kInvalidId, bool apply_preset_fl = true )
     {
       rc_t rc = kOkRC;
 
@@ -996,7 +1076,8 @@ namespace cw
           _update_frag_ui( app, fragId, preset_sel::kPresetSeqSelectVarId,preset_idx, fragPresetRowUuId, kFragPresetSeqSelId, preset_idx,  bValue );          
         }
 
-        _apply_current_preset(app, fragId );
+        if( apply_preset_fl )
+          _apply_current_preset(app, fragId );
         
       }
       
@@ -1004,7 +1085,7 @@ namespace cw
     }
 
     // Update the fragment UI withh the fragment record associated with 'fragId'
-    rc_t _update_frag_ui(app_t* app, unsigned fragId )
+    rc_t _update_frag_ui(app_t* app, unsigned fragId, bool apply_preset_fl=true )
     {
       // Notes: 
       // uiChanId = fragId for panel values or uiChanId = preset_index for preset values
@@ -1033,7 +1114,7 @@ namespace cw
         _update_frag_ui( app, fragId, preset_sel::kEndPlayLocVarId, kInvalidId, fragPanelUuId, kFragEndPlayLocId, uiChanId,  uValue );          
         _update_frag_ui( app, fragId, preset_sel::kNoteVarId,       kInvalidId, fragPanelUuId, kFragNoteId,       uiChanId,  sValue );          
         
-        _update_frag_select_flags( app, fragId, endLoc );
+        _update_frag_select_flags( app, fragId, endLoc, apply_preset_fl );
         
       }
       
@@ -1318,7 +1399,7 @@ namespace cw
           goto errLabel;
         }
 
-        _update_frag_ui(app, fragId );
+        _update_frag_ui(app, fragId, false );
         
       }
       
@@ -1410,6 +1491,9 @@ namespace cw
         for(unsigned i = 0; e!=nullptr && i<midiEventN; e  = e->link)
           if( e->status                                     != 0 )
           {
+            if( (e->status & 0x0f) != 0 )
+              printf("%i %i \n", i, e->status & 0x0f);
+            
             time::millisecondsToSpec(m[i].timestamp,  (unsigned)(e->sec*1000) );
             m[i].ch     = e->status & 0x0f;
             m[i].status = e->status & 0xf0;
@@ -2354,6 +2438,7 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
   const ui::appIdMap_t* vtMap   = vtbl::get_ui_id_map( kPanelDivId );  
   unsigned              bigMapN = mapN + vtMapN;
   ui::appIdMap_t        bigMap[ bigMapN ];
+  double                sysSampleRate = 0;
   
   for(unsigned i=0; i<mapN; ++i)
     bigMap[i] = mapA[i];
@@ -2394,10 +2479,33 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
     }
   }
 
+  // get the system sample rate
+  if((sysSampleRate = _get_system_sample_rate(&app, "main" )) == 0)
+  {
+    rc = cwLogError(rc,"The system sample rate could not be determined.");
+    goto errLabel;
+  }
+
+  cwLogInfo("System sample rate:%f",sysSampleRate);
+
   // create the preset selection state object
   if((rc = create(app.psH, app.presets_cfg )) != kOkRC )
   {
     rc = cwLogError(kOpFailRC,"Preset state control object create failed.");
+    goto errLabel;
+  }
+
+  // create the 'cm' context object - which is needed by the score follower
+  if((rc = create(app.cmCtxH)) != kOkRC )
+  {
+    rc = cwLogError(kOpFailRC,"cm context create failed.");
+    goto errLabel;
+  }
+
+  // create the score follower
+  if((rc = create(app.sfH, app.score_follower_cfg, app.cmCtxH, sysSampleRate )) != kOkRC )
+  {
+    rc = cwLogError(kOpFailRC,"score follower create failed.");
     goto errLabel;
   }
 
@@ -2416,7 +2524,7 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
   }
   
   // create the IO Flow controller
-  if(app.flow_cfg==nullptr || app.flow_proc_dict==nullptr || (rc = io_flow::create(app.ioFlowH,app.ioH,app.crossFadeSrate,app.crossFadeCnt,*app.flow_proc_dict,*app.flow_cfg)) != kOkRC )
+  if(app.flow_cfg==nullptr || app.flow_proc_dict==nullptr || (rc = io_flow::create(app.ioFlowH,app.ioH,sysSampleRate,app.crossFadeCnt,*app.flow_proc_dict,*app.flow_cfg)) != kOkRC )
   {
     rc = cwLogError(rc,"The IO Flow controller create failed.");
     goto errLabel;
@@ -2428,7 +2536,6 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
     rc = cwLogError(rc,"Preset-select app start failed.");
     goto errLabel;    
   }
-
   
   // execute the io framework
   while( !io::isShuttingDown(app.ioH))
