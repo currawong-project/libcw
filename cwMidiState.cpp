@@ -2,6 +2,7 @@
 #include "cwLog.h"
 #include "cwCommonImpl.h"
 #include "cwMem.h"
+#include "cwFile.h"
 #include "cwText.h"
 #include "cwObject.h"
 #include "cwTime.h"
@@ -67,16 +68,11 @@ namespace cw
     
     typedef struct midi_state_str
     {
+      config_t   cfg;
+      
       callback_t cbFunc;
       void*      cbArg;
       
-      unsigned   cacheBlockMsgN;
-      bool       cacheEnableFl;
-      
-      unsigned   pedalUpMidiValue;
-      unsigned   pedalHalfMinMidiValue;
-      unsigned   pedalHalfMaxMidiValue;
-    
       msg_cache_t*   beg_msg_cache;
       msg_cache_t*   end_msg_cache;
 
@@ -169,7 +165,7 @@ namespace cw
       if( pedal_idx >= kPedalCnt )
         return nullptr;
       
-      return p->noteChains + (ch * kPedalCnt + pedal_idx);
+      return p->pedalChains + (ch * kPedalCnt + pedal_idx);
     }
     
     event_chain_t* _pedal_event_chain_from_midi_ctl_id( midi_state_t* p, uint8_t ch, uint8_t d0 )
@@ -177,6 +173,55 @@ namespace cw
       return _pedal_event_chain_from_pedal_idx(p,ch,_pedalMidiToIndex(d0));
     }
 
+    int _format_marker( const marker_msg_t* m, char* buf, unsigned bufCharN )
+    {
+      return snprintf(buf,bufCharN,"%5i %3i %5i %5i ",m->uid,m->ch,m->typeId,m->value);
+    }
+
+    int _format_midi_msg( const midi_msg_t* m, char* buf, unsigned bufCharN )
+    {
+      return snprintf(buf,bufCharN," %5i %3i 0x%2x %3i %3i ",m->uid,m->ch,m->status,m->d0, m->d1);
+    }
+    
+    rc_t _format_event( const event_t* e, char *buf, unsigned bufCharN )
+    {
+      rc_t rc = kOkRC;      
+      int n = snprintf(buf,bufCharN,"%7.3f ",e->secs);
+      assert( n<=(int)bufCharN);
+      buf += n;
+      bufCharN -= n;
+
+      if( e->msg != nullptr )
+      {
+        if( cwIsFlag(e->flags,kMarkerEvtFl) )
+        {
+          n = _format_marker(&e->msg->u.marker,buf,bufCharN);
+          assert( n<=(int)bufCharN );
+          buf += n;
+          bufCharN -= n;
+        }
+      
+        if( cwIsFlag(e->flags,kNoteEvtFl|kPedalEvtFl) )
+        {
+          n = _format_midi_msg(&e->msg->u.midi,buf,bufCharN);
+          assert( n<=(int)bufCharN );
+          buf += n;
+          bufCharN -= n;
+        }
+      }
+      
+      if( bufCharN < flags_to_string_max_string_length() )
+        rc = cwLogError(kBufTooSmallRC,"The event char buf is too small.");
+      else
+        rc = flags_to_string( e->flags, buf, bufCharN );
+
+      if( rc != kOkRC )
+        rc = cwLogError(rc,"Event format failed.");
+      
+      return rc;
+    }
+
+    
     // Rewind the chain iterator.
     void _rewind_chain_iterator( midi_state_t* p )
     {
@@ -268,7 +313,44 @@ namespace cw
       return e;
     }
     
-        
+    unsigned _count_null_tlinks( midi_state_t* p )
+    {
+      event_cache_t* ec = p->beg_event_cache;
+      unsigned n = 0;
+      for(; ec!=nullptr; ec=ec->link)
+        for(unsigned i=0; i<ec->next_idx; ++i)
+          if( ec->eventA[i].tlink == nullptr )
+            ++n;
+
+      return n;
+    }
+
+    const event_t* _get_first_link( midi_state_t* p )
+    {
+      // if the first_event has not yet been set ....
+      if( p->first_event == nullptr )
+      {
+        event_t* e0 = nullptr;
+        event_t* e1 = nullptr;
+        // ... the use the chain iterator to get the time order of the events and set 'tlink'
+        _seek_chain_iterator(p, 0.0);
+
+        while((e1 = _step_chain_iterator( p )) != nullptr )
+        {
+          if( e0 == nullptr )
+            p->first_event = e1;
+          else
+            e0->tlink = e1;
+      
+          e0 = e1;
+        }
+      }
+
+      cwAssert( _count_null_tlinks(p) == 1 );
+
+      return p->first_event;
+    }
+            
     void _reset( midi_state_t* p )
     {
       // TODO: it would be better if once allocated the cache memory
@@ -357,7 +439,7 @@ namespace cw
       if( p->end_msg_cache == nullptr || p->end_msg_cache->next_idx >= p->end_msg_cache->msgN )
       {
         msg_cache_t* mc = mem::allocZ<msg_cache_t>();
-        mc->msgN = p->cacheBlockMsgN;
+        mc->msgN = p->cfg.cacheBlockMsgN;
         mc->msgA = mem::allocZ<msg_t>(mc->msgN);
         if( p->end_msg_cache == nullptr )
           p->beg_msg_cache = mc;
@@ -396,7 +478,7 @@ namespace cw
       if( p->end_event_cache == nullptr || p->end_event_cache->next_idx >= p->end_event_cache->eventN )
       {
         event_cache_t* ec = mem::allocZ<event_cache_t>();
-        ec->eventN = p->cacheBlockMsgN;
+        ec->eventN = p->cfg.cacheBlockMsgN;
         ec->eventA = mem::allocZ<event_t>(ec->eventN);
         if( p->end_event_cache == nullptr )
           p->beg_event_cache = ec;
@@ -420,12 +502,16 @@ namespace cw
 
     void _onStateChange( midi_state_t* p, unsigned flags, double secs,  const msg_t* m )
     {
+      // notice when a voice is being switched off
+      if( cwIsFlag(flags,kSoundOffFl) )
+        p->chState[m->u.midi.ch].noteState[m->u.midi.d0].sndGateFl = false;
+      
       if( p->cbFunc != nullptr )
         p->cbFunc( p->cbArg, flags, secs, m );
 
-      if( p->cacheEnableFl )
+      if( p->cfg.cacheEnableFl )
       {
-        cwAssert( cwIsFlag( flags,kPedalEvtFl | kNoteEvtFl ) );
+        cwAssert( cwIsFlag( flags,kPedalEvtFl | kNoteEvtFl | kMarkerEvtFl ) );
         event_t*       e  = _insert_event( p, flags, secs, m );
         event_chain_t* ec = cwIsFlag(flags,kPedalEvtFl) ? _pedal_event_chain_from_midi_ctl_id(p,m->u.midi.ch,m->u.midi.d0) : _note_event_chain(p,m->u.midi.ch,m->u.midi.d0);
 
@@ -446,7 +532,7 @@ namespace cw
 
       // if the cache is enabled then we need a valid msg_t record which will
       // be stored in the cached event - in _onStateChange() ...
-      if( p->cacheEnableFl )
+      if( p->cfg.cacheEnableFl )
       {
         event_chain_t* ec = _note_event_chain( p, chIdx, pitch );
         assert( ec != nullptr && ec->endEvt != nullptr && ec->endEvt->msg != nullptr );
@@ -475,8 +561,6 @@ namespace cw
           // if this note is sounding and not being held by the note gate or sostenuto pedal
           if( c->noteState[i].sndGateFl && c->noteState[i].sostHoldFl==false && c->noteState[i].noteGateFl==false )
           {
-            c->noteState[i].sndGateFl = false;
-
             // turn sounding note off
             _onMidiNoteStateChange(p,kSoundOffFl | kNoteEvtFl, sec, uid, c->chIdx, midi::kNoteOffMdId, i, 0);
             
@@ -514,10 +598,10 @@ namespace cw
       if( c->noteState[ m->u.midi.d0 ].noteGateFl == false )
         flags |= kNoChangeFl;
 
-      c->noteState[ m->u.midi.d0 ].noteGateFl = false;      
-      
+      c->noteState[ m->u.midi.d0 ].noteGateFl = false;
+
       // if the note is sounding and is not being held on by the sost or damper - then turn it off
-      if( c->noteState[m->u.midi.d1].sndGateFl && (c->dampState == kUpPedalStateId && c->noteState[m->u.midi.d1].sostHoldFl==false) )
+      if( c->noteState[m->u.midi.d0].sndGateFl && (c->dampState == kUpPedalStateId && c->noteState[m->u.midi.d0].sostHoldFl==false) )
       {
         // turn off the note
         flags |= kSoundOffFl;
@@ -536,7 +620,7 @@ namespace cw
       unsigned    flags     = kDownPedalFl;
 
       // if the pedal is going up
-      if( m->u.midi.d1 < p->pedalHalfMinMidiValue )
+      if( m->u.midi.d1 < p->cfg.pedalHalfMinMidiValue )
       {
         dampState = kUpPedalStateId;
         flags     = kUpPedalFl;
@@ -544,7 +628,7 @@ namespace cw
       else
       {
         // if the pedal is in the half pedal band
-        if( m->u.midi.d1 <= p->pedalHalfMaxMidiValue )
+        if( m->u.midi.d1 <= p->cfg.pedalHalfMaxMidiValue )
         {
           dampState = kHalfPedalStateId;
           flags     = kHalfPedalFl;
@@ -587,7 +671,7 @@ namespace cw
     rc_t _setMidiSostenutoMsg( midi_state_t* p, double sec, const msg_t* m )
     {
       rc_t        rc          = kOkRC;
-      bool        pedalDownFl = m->u.midi.d1 > p->pedalUpMidiValue;
+      bool        pedalDownFl = m->u.midi.d1 > p->cfg.pedalUpMidiValue;
       unsigned    flags       = 0;
       ch_state_t* c           = p->chState + m->u.midi.ch;
 
@@ -631,7 +715,7 @@ namespace cw
     rc_t _setMidiSoftPedalMsg( midi_state_t* p, double sec, const msg_t* m )
     {
       rc_t        rc          = kOkRC;
-      bool        pedalDownFl = m->u.midi.d1 >= p->pedalUpMidiValue;
+      bool        pedalDownFl = m->u.midi.d1 >= p->cfg.pedalUpMidiValue;
       unsigned    flags       = 0;
       ch_state_t* c           = p->chState + m->u.midi.ch;
       
@@ -645,18 +729,6 @@ namespace cw
       _onStateChange( p, flags | kPedalEvtFl, sec, m );
       
       return rc;
-    }
-
-    unsigned _count_null_tlinks( midi_state_t* p )
-    {
-      event_cache_t* ec = p->beg_event_cache;
-      unsigned n = 0;
-      for(; ec!=nullptr; ec=ec->link)
-        for(unsigned i=0; i<ec->next_idx; ++i)
-          if( ec->eventA[i].tlink == nullptr )
-            ++n;
-
-      return n;
     }
 
   }
@@ -691,15 +763,29 @@ cw::rc_t cw::midi_state::flags_to_string( unsigned flags, char* str, unsigned st
   return rc;
 }
 
+cw::rc_t  cw::midi_state::format_event( const event_t* e, char* buf, unsigned bufCharN )
+{
+  return _format_event(e,buf,bufCharN);
+}
 
-cw::rc_t cw::midi_state::create( handle_t&  hRef,
-                                 callback_t cbFunc,                  // set to nullptr to disable callbacks
-                                 void*      cbArg,
-                                 bool       cacheEnableFl,
-                                 unsigned   cacheBlockMsgN,          // set to 0 to disable caching
-                                 unsigned   pedalUpMidiValue,        
-                                 unsigned   pedalHalfMinMidiValue,
-                                 unsigned   pedalHalfMaxMidiValue )
+
+const cw::midi_state::config_t& cw::midi_state::default_config()
+{
+  static config_t c = {
+    .cacheEnableFl         = true,
+    .cacheBlockMsgN        = 1024,
+    .pedalHalfMinMidiValue = 42,
+    .pedalHalfMaxMidiValue = 46,
+    .pedalUpMidiValue      = 64
+  };
+  
+  return c;   
+}
+
+cw::rc_t cw::midi_state::create( handle_t&       hRef,
+                                 callback_t      cbFunc,
+                                 void*           cbArg,
+                                 const config_t* cfg )
 {
   rc_t rc;
   if((rc = destroy(hRef)) != kOkRC )
@@ -707,13 +793,12 @@ cw::rc_t cw::midi_state::create( handle_t&  hRef,
 
   midi_state_t* p = mem::allocZ<midi_state_t>();
 
-  p->cbFunc                = cbFunc;
-  p->cbArg                 = cbArg;
-  p->cacheEnableFl         = cacheEnableFl;
-  p->cacheBlockMsgN        = cacheBlockMsgN;
-  p->pedalUpMidiValue      = pedalUpMidiValue;
-  p->pedalHalfMinMidiValue = pedalHalfMinMidiValue;
-  p->pedalHalfMaxMidiValue = pedalHalfMaxMidiValue;
+  if( cfg == nullptr )
+    cfg = &default_config();
+
+  p->cbFunc = cbFunc;
+  p->cbArg  = cbArg;
+  p->cfg    = *cfg;
 
   for(unsigned i=0; i<midi::kMidiChCnt; ++i)
     p->chState[i].chIdx = i;
@@ -726,32 +811,26 @@ cw::rc_t cw::midi_state::create( handle_t&  hRef,
 cw::rc_t cw::midi_state::create( handle_t&       hRef,
                                  callback_t      cbFunc,
                                  void*           cbArg,
-                                 bool            cacheEnableFl,
                                  const object_t* cfg )
 {
-  rc_t          rc                        = kOkRC;
-  unsigned      cache_block_msg_cnt       = 128;
-  unsigned      pedal_up_midi_value       = 40;
-  unsigned      pedal_half_min_midi_value = 40;
-  unsigned      pedal_half_max_midi_value = 50;
+  rc_t       rc = kOkRC;
+  config_t   c;
 
-  if((rc = cfg->getv("cache_block_msg_count",cache_block_msg_cnt,
-                     "pedal_up_midi_value",pedal_up_midi_value,
-                     "pedal_half_min_midi_value",pedal_half_min_midi_value,
-                     "pedal_half_max_midi_value",pedal_half_max_midi_value)) != kOkRC )
+  if((rc = cfg->getv("cache_enable_fl",c.cacheEnableFl,
+                     "cache_block_msg_count",c.cacheBlockMsgN,
+                     "pedal_up_midi_value",c.pedalUpMidiValue,
+                     "pedal_half_min_midi_value",c.pedalHalfMinMidiValue,
+                     "pedal_half_max_midi_value",c.pedalHalfMaxMidiValue)) != kOkRC )
   {
-    cwLogError(rc,"MIDI state cfg. parse failed.");
+    rc = cwLogError(rc,"MIDI state cfg. parse failed.");
     goto errLabel;
   }
 
-  rc = create( hRef,
-               cbFunc,
-               cbArg,
-               cacheEnableFl,
-               cache_block_msg_cnt,
-               pedal_up_midi_value,
-               pedal_half_min_midi_value,
-               pedal_half_max_midi_value );
+  if((rc = create( hRef,cbFunc,cbArg,&c)) != kOkRC )
+  {
+    rc = cwLogError(rc,"midi_state object create faild.");
+    goto errLabel;
+  }
   
  errLabel:
   return rc;
@@ -784,7 +863,7 @@ cw::rc_t cw::midi_state::setMidiMsg( handle_t h, double sec, unsigned uid, uint8
   status = status & 0xf0;  // be sure that the MIDI channel has been cleared from the status byte
 
   // convert the midi arg's into a midi_msg_t record
-  if( p->cacheEnableFl )
+  if( p->cfg.cacheEnableFl )
     m = _insert_midi_msg(p, uid, ch, status, d0, d1 );
   else
     m = _fill_midi_msg(&mr, uid, ch, status, d0, d1 );
@@ -792,7 +871,7 @@ cw::rc_t cw::midi_state::setMidiMsg( handle_t h, double sec, unsigned uid, uint8
   switch( status )
   {
     case midi::kNoteOnMdId:
-      if( d0 > 0 )
+      if( d1 > 0 )
         rc = _setMidiNoteOnMsg(p,sec,m);
       else
         rc = _setMidiNoteOffMsg(p,sec,m);
@@ -831,7 +910,7 @@ cw::rc_t cw::midi_state::setMarker(  handle_t h, double sec, unsigned uid, uint8
   msg_t               mr;
   
   // convert the midi arg's into a midi_msg_t record
-  if( p->cacheEnableFl )
+  if( p->cfg.cacheEnableFl )
     m = _insert_marker_msg(p, uid, ch, typeId, value );
   else
     m = _fill_marker_msg(&mr, uid, ch, typeId, value );
@@ -851,26 +930,7 @@ void cw::midi_state::reset( handle_t h )
 const cw::midi_state::event_t*  cw::midi_state::get_first_link( handle_t h )
 {
   midi_state_t* p = _handleToPtr(h);
-  if( p->first_event == nullptr )
-  {
-    event_t* e0 = nullptr;
-    event_t* e1 = nullptr;
-    _seek_chain_iterator(p, 0.0);
-
-    while((e1 = _step_chain_iterator( p )) != nullptr )
-    {
-      if( e0 == nullptr )
-        p->first_event = e1;
-      else
-        e0->tlink = e1;
-      
-      e0 = e1;
-    }
-  }
-
-  cwAssert( _count_null_tlinks(p) == 1 );
-
-  return p->first_event;
+  return _get_first_link(p);
 }
 
 
@@ -996,6 +1056,47 @@ cw::rc_t cw::midi_state::load_from_midi_file( handle_t h, const char* midi_fname
 
   // close the MIDI file
   close(mfH);
+  return rc;
+}
+
+cw::rc_t cw::midi_state::report_events( handle_t h, const char* out_fname )
+{
+  rc_t           rc = kOkRC;
+  midi_state_t*  p  = _handleToPtr(h);
+  file::handle_t fH;
+  
+  if((rc = file::open(fH,out_fname,file::kWriteFl)) != kOkRC )
+  {
+    cwLogError(rc,"The report file create failed:'%s'.",out_fname);
+    goto errLabel;
+  }
+  else
+  {
+    const unsigned bufCharN = 511;
+    char buf[ bufCharN+1 ];
+    const event_t* e = nullptr;
+    const event_t* e0 = nullptr;
+    if((e = _get_first_link(p)) != nullptr )
+    {
+      for(; e!=nullptr; e=e->tlink)
+      {
+        if((rc = _format_event( e, buf, bufCharN )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Formst event failed.");
+          goto errLabel;
+        }
+
+        double dsec = e0==nullptr ? 0 : e->secs - e0->secs;
+        file::printf(fH,"%7.3f %s\n",dsec,buf);
+        e0 = e;
+      }
+    }
+  }
+    
+ errLabel:
+  if((rc = file::close(fH)) != kOkRC )
+    rc = cwLogError(rc,"The report file close failed:'%s'.",out_fname);
+
   return rc;
 }
 
@@ -1183,7 +1284,6 @@ cw::rc_t cw::midi_state::test( const object_t* cfg )
   if((rc = midi_state::create(msH,
                               _testCallback,
                               &test_arg,
-                              cache_enable_fl,
                               args  )) != kOkRC )
   {
     cwLogError(rc,"MIDI state object create failed.");
@@ -1223,7 +1323,7 @@ cw::rc_t cw::midi_state::test( const object_t* cfg )
   //_testPrintPedalEvent(msH, 0, midi::kSustainCtlMdId );
   //_testPrintNoteEvent(msH, 0, 60 );
   //_testPrintOrderedNoteEvent( msH, 0, 60 );
-  _testPrintTimeLinkedNoteEvent( msH, 0, 60 );
+  _testPrintTimeLinkedNoteEvent( msH, 0, 33 );
   
  errLabel:
 

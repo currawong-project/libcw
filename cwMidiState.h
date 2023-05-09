@@ -103,6 +103,15 @@ namespace cw
       struct event_str*  tlink;   // time order link
     } event_t;
 
+    typedef struct config_str
+    {
+      bool       cacheEnableFl;          // enable/disable event caching  
+      unsigned   cacheBlockMsgN;         // count of cache messages to pre-allocate in each block
+      unsigned   pedalHalfMinMidiValue;  // sustain half pedal lower value
+      unsigned   pedalHalfMaxMidiValue;  // sustain pedal half pedal upper value       
+      unsigned   pedalUpMidiValue;       // soft and sostenuto pedal down min value
+    } config_t;
+
     const char* flag_to_label( unsigned flag );
 
 
@@ -110,26 +119,24 @@ namespace cw
     unsigned    flags_to_string_max_string_length();
     rc_t        flags_to_string( unsigned flags, char* str, unsigned strCharCnt );
 
+    rc_t        format_event( const event_t* e, char* buf, unsigned bufCharN );
+
+    const config_t& default_config();
+
     // Note that if the cache is not enabled then 'msg' is only valid during the callback and
     // therefore should not be stored.  If the cache is enabled then 'msg' is valid until
     // the next call to 'reset()' or until the midi_state_t instance is destroyed.
     typedef void (*callback_t)( void* arg, unsigned flags, double secs,  const msg_t* msg );
     
-    rc_t create( handle_t&  hRef,
-                 callback_t cbFunc,                 // set to nullptr to disable callbacks
-                 void*      cbArg,                  // callback arg
-                 bool       cacheEnableFl,          // enable/disable event caching  
-                 unsigned   cacheBlockMsgN,         // count of cache messages to pre-allocate in each block
-                 unsigned   pedalHalfMinMidiValue,  // sustain half pedal lower value
-                 unsigned   pedalHalfMaxMidialue,   // sustain pedal half pedal upper value       
-                 unsigned   pedalUpMidiValue = 64 );// soft and sostenuto pedal down min value
+    rc_t create( handle_t&       hRef,
+                 callback_t      cbFunc, // set to nullptr to disable callbacks
+                 void*           cbArg,   // callback arg
+                 const config_t* cfg = nullptr ); // if cfg==nullptr then default_config() is used
 
     rc_t create( handle_t&       hRef,
                  callback_t      cbFunc,         // set to nullptr to disable callbacks
                  void*           cbArg,          // callback arg
-                 bool            cacheEnableFl,  // 
                  const object_t* cfg );          //
-
 
     rc_t destroy( handle_t& hRef );
 
@@ -138,6 +145,9 @@ namespace cw
 
     void reset( handle_t h );
 
+    const config_t* config( handle_t h );
+
+    
     // Get the first link in time, then use event.tlink to traverse the
     // events in time.
     const event_t*  get_first_link( handle_t h );
@@ -156,6 +166,7 @@ namespace cw
     void get_note_extents(  handle_t h, uint8_t& minPitchRef, uint8_t& maxPitchRef, double& minSecRef, double& maxSecRef );
     void get_pedal_extents( handle_t h, double& minSecRef, double& maxSecRef );
 
+    rc_t report_events( handle_t h, const char* out_fname );
 
     rc_t load_from_midi_file( handle_t h, const char* midi_fname );
     
