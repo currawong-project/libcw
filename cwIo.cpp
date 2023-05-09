@@ -55,6 +55,7 @@ namespace cw
       bool              startedFl;
       char*             label;
       unsigned          id;
+      unsigned          index;
       unsigned          periodMicroSec;
       bool              asyncFl;
     } timer_t;
@@ -298,6 +299,7 @@ namespace cw
         timer_msg_t tm;
         
         tm.id     = t->id;
+        tm.index  = t->index;
         m.tid     = kTimerTId;
         m.u.timer = &tm;
         
@@ -312,12 +314,14 @@ namespace cw
     {
       rc_t     rc = kOkRC;
       timer_t* t  = nullptr;
+      unsigned timer_idx = kInvalidIdx;
 
       // look for a deleted timer
       for(unsigned i=0; i<p->timerN; ++i)
         if( p->timerA[i].deletedFl )
         {
           t = p->timerA + i;
+          timer_idx = i;
           break;
         }
 
@@ -331,6 +335,7 @@ namespace cw
 
         // keep a pointer to the empty slot
         t = tA + p->timerN;
+        timer_idx = p->timerN;
 
         // update the timer array
         mem::release( p->timerA );
@@ -343,6 +348,7 @@ namespace cw
       t->io             = p;
       t->label          = mem::duplStr(label);
       t->id             = id;
+      t->index          = timer_idx;
       t->asyncFl        = asyncFl;
       t->periodMicroSec = periodMicroSec;
 
@@ -594,7 +600,7 @@ namespace cw
         m.u.midi = &mm;
 
         if((rc = _ioCallback( p, p->midiAsyncFl, &m )) !=kOkRC )
-          cwLogError(rc,"MIDI app callback failed.");
+          cwLogError(rc,"MIDI app callback failed: async fl:%i",p->midiAsyncFl);
 
         /*
         for(unsigned j=0; j<pkt->msgCnt; ++j)

@@ -47,7 +47,8 @@ namespace cw
     
     typedef struct timer_msg_str
     {
-      unsigned id;
+      unsigned id;    // timer id (as set in create)
+      unsigned index; // timer index as used by timer accessor functions
     } timer_msg_t;
     
     typedef struct serial_msg_str
