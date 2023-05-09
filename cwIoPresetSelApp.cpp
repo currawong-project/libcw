@@ -28,6 +28,7 @@
 #include "cwCmInterface.h"
 #include "cwScoreFollower.h"
 
+
 #define INVALID_LOC (0)
 
 namespace cw
@@ -594,6 +595,56 @@ namespace cw
       return rc;
     }
 
+    unsigned _get_loc_from_score_follower( app_t* app, double secs, uint8_t status, uint8_t d0, uint8_t d1 )
+    {
+      unsigned loc = INVALID_LOC;
+            
+      // if this is a MIDI note-on event - then udpate the score follower
+      if( midi::isNoteOn(status,d1) )
+      {
+        unsigned smpIdx             = 0; // not functional - used to associate input with score follower output 
+        unsigned muid               = 0; //
+        bool     newMatchOccurredFl = false;
+        if( exec( app->sfH, secs, smpIdx, muid, status, d0, d1, newMatchOccurredFl ) != kOkRC )
+        {
+          cwLogWarning("Score follower exec error.");
+        }
+        else
+        {
+          if( newMatchOccurredFl )
+          {
+            unsigned        matchLocN = 0;
+            const unsigned* matchLocA = current_match_id_array( app->sfH, matchLocN );
+
+            unsigned maxLocId = 0;
+
+            if( true )
+            {
+              printf("SF: ");
+              for(unsigned i=0; i<matchLocN; ++i)
+              {
+                if( matchLocA[i] > maxLocId )
+                  maxLocId = matchLocA[i];
+                printf("%i ",matchLocA[i]);
+              }                  
+              printf("\n");
+            }
+
+            // notice if the end of the score was reached
+            if( maxLocId > app->scoreFollowMaxLocId )
+            {
+              loc = maxLocId;
+              app->scoreFollowMaxLocId = maxLocId;
+            }
+                  
+            clear_match_id_array(app->sfH);
+          }
+                
+        }
+      }
+      
+      return loc;      
+    }
     
     void _midi_play_callback( void* arg, unsigned actionId, unsigned id, const time::spec_t timestamp, unsigned loc, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
     {
@@ -628,53 +679,11 @@ namespace cw
           {
             const preset_sel::frag_t* f = nullptr;
 
-            /*
-            TEMPORARILY COMMENT OUT THE SCORE FOLLOWER
+            double sec = time::specToSeconds(timestamp);
 
-            loc = INVALID_LOC;
-            
-            // if this is a MIDI note-on event - then udpate the score follower
-            if( status == midi::kNoteOnMdId )
-            {
-              unsigned smpIdx             = 0; // not functional - used to associate input with score follower output 
-              unsigned muid               = 0; //
-              bool     newMatchOccurredFl = false;
-              if( exec( app->sfH, smpIdx, muid, status, d0, d1, newMatchOccurredFl ) != kOkRC )
-              {
-                cwLogWarning("Score follower exec error.");
-              }
-              else
-              {
-                if( newMatchOccurredFl )
-                {
-                  unsigned        matchLocN = 0;
-                  const unsigned* matchLocA = current_match_id_array( app->sfH, matchLocN );
-
-                  unsigned maxLocId = 0;
-                  
-                  printf("SF: ");
-                  for(unsigned i=0; i<matchLocN; ++i)
-                  {
-                    if( matchLocA[i] > maxLocId )
-                      maxLocId = matchLocA[i];
-                    printf("%i ",matchLocA[i]);
-                  }                  
-                  printf("\n");
-
-                  if( maxLocId > app->scoreFollowMaxLocId )
-                  {
-                    loc = maxLocId;
-                    app->scoreFollowMaxLocId = maxLocId;
-                  }
-                  
-                  clear_match_id_array(app->sfH);
-                }
-                
-              }
-            }
-            */
+            loc = _get_loc_from_score_follower( app, sec, status, d0, d1 );
           
-            // ZERO SHOULD BE A VALID LOC VALUE - MAKE -1 THE INVALID LOC VALUE
+            // TODO: ZERO SHOULD BE A VALID LOC VALUE - MAKE -1 THE INVALID LOC VALUE
             
             if( loc != INVALID_LOC  && app->trackMidiFl )
             {  
@@ -1403,11 +1412,8 @@ namespace cw
         
       }
       
-
     errLabel:
       mem::release(fn);
-
-      
 
       return rc;
     }
@@ -1488,11 +1494,11 @@ namespace cw
         m = mem::allocZ<midi_record_play::midi_msg_t>( midiEventN );
 
         // load the player msg array
-        for(unsigned i = 0; e!=nullptr && i<midiEventN; e  = e->link)
-          if( e->status                                     != 0 )
+        for(unsigned i = 0; e!=nullptr && i<midiEventN; e= e->link)
+          if( e->status != 0 )
           {
-            if( (e->status & 0x0f) != 0 )
-              printf("%i %i \n", i, e->status & 0x0f);
+            //if( (e->status & 0x0f) != 0 )
+            //  printf("%i %i \n", i, e->status & 0x0f);
             
             time::millisecondsToSpec(m[i].timestamp,  (unsigned)(e->sec*1000) );
             m[i].ch     = e->status & 0x0f;
@@ -1992,7 +1998,10 @@ namespace cw
           //midi_record_play::save_csv(app->mrpH,"/home/kevin/temp/mrp_1.csv");
           //printf("%i %i\n",app->beg_play_loc,app->end_play_loc);
           //io::realTimeReport(app->ioH);
-          midi_record_play::report(app->mrpH);
+          //midi_record_play::report(app->mrpH);
+          score_follower::write_svg_file(app->sfH,"/home/kevin/temp/temp_sf.html");
+          //score_follower::midi_state_rt_report( app->sfH, "/home/kevin/temp/temp_midi_state_rt_report.txt" );
+          //score_follower::score_report(app->sfH,"/home/kevin/temp/temp_cm_score_report.txt");
           break;
 
         case kSaveBtnId:
