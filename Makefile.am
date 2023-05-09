@@ -67,8 +67,8 @@ libcwSRC += src/libcw/cwIoMidiRecordPlay.cpp  src/libcw/cwIoAudioRecordPlay.cpp 
 libcwHDR += src/libcw/cwIoPresetSelApp.h     src/libcw/cwPianoScore.h    src/libcw/cwPresetSel.h   src/libcw/cwVelTableTuner.h
 libcwSRC += src/libcw/cwIoPresetSelApp.cpp   src/libcw/cwPianoScore.cpp  src/libcw/cwPresetSel.cpp src/libcw/cwVelTableTuner.cpp
 
-libcwHDR += src/libcw/cwCmInterface.h    src/libcw/cwScoreFollower.h   src/libcw/cwMidiState.h   src/libcw/cwSvgMidi.h   src/libcw/cwSvgScore.h
-libcwSRC += src/libcw/cwCmInterface.cpp  src/libcw/cwScoreFollower.cpp src/libcw/cwMidiState.cpp src/libcw/cwSvgMidi.cpp src/libcw/cwSvgScore.cpp
+libcwHDR += src/libcw/cwCmInterface.h    src/libcw/cwScoreFollower.h   src/libcw/cwMidiState.h   src/libcw/cwSvgMidi.h   src/libcw/cwSvgScoreFollow.h
+libcwSRC += src/libcw/cwCmInterface.cpp  src/libcw/cwScoreFollower.cpp src/libcw/cwMidiState.cpp src/libcw/cwSvgMidi.cpp src/libcw/cwSvgScoreFollow.cpp
 
 endif
 
