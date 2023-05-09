@@ -756,7 +756,7 @@ cw::rc_t cw::svg::write( handle_t h, const char* outFn, const char* cssFn, unsig
     "<head>\n"
     "<meta charset=\"utf-8\">\n"
     "%s"
-    "<style>%s</style>\n"
+    "<style>\n%s</style>\n"
     "%s\n"
     "</head>\n"
     "<body onload=\"doOnLoad()\">\n";
