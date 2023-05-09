@@ -83,28 +83,29 @@ namespace cw
     //===============================================================================================
     // Utility Functions
     //
+    template< typename T> T removeCh(T s) { return (s) & 0xf0; };
 
-    template< typename T> bool isStatus( T s )   { return  (kNoteOffMdId <= (s) /*&& ((unsigned)(s)) <= kSysRtResetMdId*/ ); }
-    template< typename T> bool isChStatus( T s ) { return  (kNoteOffMdId <= (s) && (s) <  kSysExMdId); }
+    template< typename T> bool isStatus( T s )   { return  (kNoteOffMdId <= removeCh(s) /*&& ((unsigned)(s)) <= kSysRtResetMdId*/ ); }
+    template< typename T> bool isChStatus( T s ) { return  (kNoteOffMdId <= removeCh(s) && removeCh(s) <  kSysExMdId); }
 
-    template< typename T> bool isNoteOnStatus( T s )        { return ( kNoteOnMdId <= (s) && (s) <= (kNoteOnMdId + kMidiChCnt) ); }
-    template< typename T> bool isNoteOn( T s, T d1 )  { return ( (isNoteOnStatus(s) && (d1)!=0) ); }
-    template< typename T> bool isNoteOff( T s, T d1 ) { return ( (isNoteOnStatus(s) && (d1)==0) || (kNoteOffMdId <= (s) && (s) <= (kNoteOffMdId + kMidiChCnt)) ); }
-    template< typename T> bool isCtl( T s )           { return ( kCtlMdId <= (s) && (s) <= (kCtlMdId + kMidiChCnt) ); }
+    template< typename T> bool isNoteOnStatus( T s )        { return ( kNoteOnMdId <= removeCh(s) && removeCh(s) <= (kNoteOnMdId + kMidiChCnt) ); }
+    template< typename T> bool isNoteOn( T s, T d1 )  { return ( isNoteOnStatus(removeCh(s)) && (d1)!=0) ; }
+    template< typename T> bool isNoteOff( T s, T d1 ) { return ( (isNoteOnStatus(removeCh(s)) && (d1)==0) || (kNoteOffMdId <= removeCh(s) && removeCh(s) <= (kNoteOffMdId + kMidiChCnt)) ); }
+    template< typename T> bool isCtl( T s )           { return ( kCtlMdId <= removeCh(s) && removeCh(s) <= (kCtlMdId + kMidiChCnt) ); }
 
-    template< typename T> bool isSustainPedal(     T s, T d0 )      { return ( kCtlMdId <= (s) && (s) <= (kCtlMdId + kMidiChCnt) && (d0)== kSustainCtlMdId ); }
+    template< typename T> bool isSustainPedal(     T s, T d0 )      { return ( kCtlMdId <= removeCh(s) && removeCh(s) <= (kCtlMdId + kMidiChCnt) && (d0)== kSustainCtlMdId ); }
     template< typename T> bool isSustainPedalDown( T s, T d0, T d1) { return ( isSustainPedal(s,d0) && (d1)>=64 ); }
     template< typename T> bool isSustainPedalUp(   T s, T d0, T d1) { return ( isSustainPedal(s,d0) && (d1)<64 ); }
   
-    template< typename T> bool isSostenutoPedal(     T s, T d0 )      { return ( kCtlMdId <= (s) && (s) <= (kCtlMdId + kMidiChCnt) && (d0)== kSostenutoCtlMdId ); }
+    template< typename T> bool isSostenutoPedal(     T s, T d0 )      { return ( kCtlMdId <= removeCh(s) && removeCh(s) <= (kCtlMdId + kMidiChCnt) && (d0)== kSostenutoCtlMdId ); }
     template< typename T> bool isSostenutoPedalDown( T s, T d0, T d1) { return ( isSostenutoPedal(s,d0) && (d1)>=64 ); }
     template< typename T> bool isSostenutoPedalUp(   T s, T d0, T d1) { return ( isSostenutoPedal(s,d0) && (d1)<64 ); }
 
-    template< typename T> bool isSoftPedal(     T s, T d0 )      { return ( kCtlMdId <= (s) && (s) <= (kCtlMdId + kMidiChCnt) && (d0)== kSoftPedalCtlMdId ); }
+    template< typename T> bool isSoftPedal(     T s, T d0 )      { return ( kCtlMdId <= removeCh(s) && removeCh(s) <= (kCtlMdId + kMidiChCnt) && (d0)== kSoftPedalCtlMdId ); }
     template< typename T> bool isSoftPedalDown( T s, T d0, T d1) { return ( isSoftPedal(s,d0) && (d1)>=64 ); }
     template< typename T> bool isSoftPedalUp(   T s, T d0, T d1) { return ( isSoftPedal(s,d0) && (d1)<64 ); }
     
-    template< typename T> bool isPedal(     T s, T d0 )        { return ( kCtlMdId <= (s) && (s) <= (kCtlMdId + kMidiChCnt) && (d0)>=kSustainCtlMdId && (d0)<=kLegatoCtlMdId ); }
+    template< typename T> bool isPedal(     T s, T d0 )        { return ( kCtlMdId <= removeCh(s) && removeCh(s) <= (kCtlMdId + kMidiChCnt) && (d0)>=kSustainCtlMdId && (d0)<=kLegatoCtlMdId ); }
     template< typename T> bool isPedalDown( T s, T d0, T d1 )  { return ( isPedal(s,d0) && (d1)>=64 ); }
     template< typename T> bool isPedalUp(   T s, T d0, T d1 )  { return ( isPedal(s,d0) && (d1)<64  ); }
 
