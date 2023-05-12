@@ -126,7 +126,8 @@ namespace cw
     // Same as fileToBuf() but accepts a file name argument.
     char*  fnToStr( const char* fn, unsigned* bufByteCntPtr );
 
-    // Return the count of lines in a file.
+    // Return the count of lines in a file following the current file position.
+    // This function does not change current file position.
     rc_t lineCount( handle_t h, unsigned* lineCntPtr );
 
     // Read the next line into buf[bufByteCnt]. 
