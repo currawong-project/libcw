@@ -7,21 +7,35 @@ namespace cw
   {
     typedef handle<struct csv_str> handle_t;
 
+    // The first line of the CSV is expected to hold the column titles.
+    // If titlesA and titleN are valid then these will be verified to exist when the CSV file is opened.
     rc_t create( handle_t& hRef, const char* fname, const char** titleA=nullptr, unsigned titleN=0 );
     
     rc_t destroy(handle_t& hRef );
 
+    // Count of lines in the CSV including the title line.
+    // Subtract 1 to get the count of data lines.
     rc_t line_count( handle_t h, unsigned& lineCntRef );
 
+    // Count of columns in the first row (title row).
+    unsigned col_count( handle_t h );
+    
+    const char* col_title( handle_t h, unsigned idx );
     unsigned title_col_index( handle_t h, const char* title );
 
+    // Reset the CSV to make the title line current.
+    // The next call to 'next_line()' will make the first data row current.
     rc_t rewind( handle_t h );
-    
+
+    // Make the next row current. The 'getv()' and parse_???()' functions
+    // operate on the current row.
+    // This function return kEofRC when it increments past the last line in the file.
     rc_t next_line( handle_t h );
 
     // line index (first line==0) of the line currently being parsed.
     unsigned cur_line_index( handle_t h );
 
+    // Return the count of characters in the field identified by 'colIdx'.
     rc_t field_char_count( handle_t h, unsigned colIdx, unsigned& charCntRef );
 
     rc_t parse_field( handle_t h, unsigned colIdx, unsigned& valRef );

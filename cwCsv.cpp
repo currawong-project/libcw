@@ -380,6 +380,23 @@ cw::rc_t cw::csv::line_count( handle_t h, unsigned& lineCntRef )
   return rc;
 }
 
+
+unsigned cw::csv::col_count( handle_t h )
+{
+  csv_t* p = _handleToPtr(h);
+  return p->colN;
+}
+
+const char* cw::csv::col_title( handle_t h, unsigned idx )
+{
+  csv_t* p = _handleToPtr(h);
+  
+  if( idx >= p->colN )
+    return nullptr;
+  
+  return p->colA[idx].title;
+}
+
 unsigned cw::csv::title_col_index( handle_t h, const char* title )
 {
   csv_t* p = _handleToPtr(h);
