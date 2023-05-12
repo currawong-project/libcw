@@ -10,8 +10,8 @@ libcwSRC += src/libcw/cwString.cpp src/libcw/cwMath.cpp                       sr
 libcwHDR += src/libcw/cwFileSys.h   src/libcw/cwText.h   src/libcw/cwFile.h    src/libcw/cwTime.h   src/libcw/cwLex.h   src/libcw/cwNumericConvert.h 
 libcwSRC += src/libcw/cwFileSys.cpp src/libcw/cwText.cpp src/libcw/cwFile.cpp  src/libcw/cwTime.cpp src/libcw/cwLex.cpp
 
-libcwHDR += src/libcw/cwLib.h
-libcwSRC += src/libcw/cwLib.cpp
+libcwHDR += src/libcw/cwLib.h      src/libcw/cwCsv.h
+libcwSRC += src/libcw/cwLib.cpp    src/libcw/cwCsv.cpp
 
 libcwHDR += src/libcw/cwObject.h   src/libcw/cwObjectTemplate.h src/libcw/cwTextBuf.h    
 libcwSRC += src/libcw/cwObject.cpp                              src/libcw/cwTextBuf.cpp
