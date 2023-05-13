@@ -62,7 +62,6 @@ namespace cw
       return buf_idx;
     }
 
-    
     rc_t  _parse_csv_double( const char* lineBuf, unsigned bfi, unsigned efi, double &valueRef )
     {
       errno = 0;
@@ -94,6 +93,7 @@ namespace cw
         kSec_FIdx,
         kDur_FIdx,
         kRval_FIdx,
+        kDots_FIdx,
         kSPitch_FIdx,
         kDMark_FIdx,
         kDLevel_FIdx,
@@ -105,11 +105,14 @@ namespace cw
         kBpm_FIdx,
         kGrace_FIdx,
         kPedal_FIdx,
+        kDyn_FIdx,
+        kEven_FIdx,
+        kTempo_FIdx,
         kMax_FIdx
       };
 
       rc_t     rc        = kOkRC;
-      unsigned bfi       = 0;
+      unsigned bfi       = 0; 
       unsigned efi       = 0;
       unsigned field_idx = 0;
       
@@ -121,7 +124,6 @@ namespace cw
           rc = cwLogError( rc, "End of field scan failed");
           goto errLabel;          
         }
-        
 
         if( bfi != efi )
         {
@@ -146,7 +148,15 @@ namespace cw
             case kD1_FIdx:
               rc = _parse_csv_unsigned( line_buf, bfi, efi, e->d1 );
               break;
-            
+
+            case kBar_FIdx:
+              rc = _parse_csv_unsigned( line_buf, bfi, efi, e->bar );
+              break;
+
+            case kSection_FIdx:
+              rc = _parse_csv_unsigned( line_buf, bfi, efi, e->section );
+              break;
+              
             default:
               break;
           }
