@@ -10,6 +10,7 @@
 #include "cwMidiFile.h"
 #include "cwCmInterface.h"
 #include "cwScoreFollower.h"
+#include "cwMidiState.h"
 
 #include "cmGlobal.h"
 #include "cmFloatTypes.h"
@@ -29,17 +30,21 @@
 #include "cmProcObj.h"
 #include "cmProc4.h"
 
+#include "cwSvgScoreFollow.h"
+
 namespace cw
 {
   namespace score_follower
   {
 
+    
     typedef struct score_follower_str
     {
       double       srate;
       unsigned     search_area_locN;
       unsigned     key_wnd_locN;
       char*        score_csv_fname;
+      cmCtx_t*     cmCtx;
       cmScH_t      cmScoreH;
       cmScMatcher* matcher;
       
@@ -52,6 +57,11 @@ namespace cw
       unsigned*    match_idA;
       unsigned     match_id_allocN;
       unsigned     match_id_curN;
+
+      ssf_note_on_t* perfA;
+      unsigned       perfN;
+      unsigned       perf_idx; 
+  
     } score_follower_t;
 
     score_follower_t* _handleToPtr( handle_t h )
@@ -155,13 +165,30 @@ namespace cw
       }
       
       return rc;
-    }    
+    }
+
+    rc_t _update_midi_state( score_follower_t* p, midi_state::handle_t msH )
+    {
+      rc_t rc;
+      for(unsigned i=0; i<p->perf_idx; ++i)
+      {
+        if((rc = setMidiMsg( msH, p->perfA[i].sec, i, 0, midi::kNoteOnMdId, p->perfA[i].pitch, p->perfA[i].vel )) != kOkRC )
+        {
+          rc = cwLogError(rc,"midi_state update failed.");
+          goto errLabel;
+        }
+      }
+      
+    errLabel:
+      return rc;
+    }
 
     rc_t _destroy( score_follower_t* p)
     {
       mem::release(p->cmLocToCwLocA);
       mem::release(p->cwLocToCmLocA);                   
       mem::release(p->score_csv_fname);
+      mem::release(p->perfA);
       cmScMatcherFree(&p->matcher);
       cmScoreFinalize(&p->cmScoreH);
       mem::release(p);
@@ -210,8 +237,6 @@ namespace cw
 cw::rc_t cw::score_follower::create( handle_t& hRef, const object_t* cfg, cm::handle_t cmCtxH, double srate )
 {
   rc_t        rc        = kOkRC;
-  cmCtx_t*    cmCtx     = context(cmCtxH);
-  cmProcCtx*  cmProcCtx = proc_context(cmCtxH);
   cmSymTblH_t cmSymTblH = cmSTATIC_NULL_HANDLE;
   cmScRC_t    scoreRC   = cmOkRC;
   
@@ -220,18 +245,20 @@ cw::rc_t cw::score_follower::create( handle_t& hRef, const object_t* cfg, cm::ha
 
   score_follower_t* p = mem::allocZ<score_follower_t>();
 
+  p->cmCtx     = context(cmCtxH);
+  
   if((rc = _parse_cfg(p,cfg)) != kOkRC )
     goto errLabel;
 
   // create the the score follower reference score
-  if((scoreRC = cmScoreInitialize( cmCtx, &p->cmScoreH, p->score_csv_fname, srate, nullptr, 0, nullptr, nullptr, cmSymTblH )) != cmOkRC )
+  if((scoreRC = cmScoreInitialize( p->cmCtx, &p->cmScoreH, p->score_csv_fname, srate, nullptr, 0, nullptr, nullptr, cmSymTblH )) != cmOkRC )
   {
     cwLogError(kOpFailRC,"The score could not be initialized from '%s'. cmRC:%i.",p->score_csv_fname);
     goto errLabel;
   }
 
   // create the score follower
-  if((p->matcher = cmScMatcherAlloc(  cmProcCtx,            // Program context.
+  if((p->matcher = cmScMatcherAlloc( proc_context(cmCtxH),  // Program context.
                                      nullptr,               // Existing cmScMatcher to reallocate or NULL to allocate a new cmScMatcher.
                                      srate,                 // System sample rate.
                                      p->cmScoreH,           // Score handle.  See cmScore.h.
@@ -261,6 +288,10 @@ cw::rc_t cw::score_follower::create( handle_t& hRef, const object_t* cfg, cm::ha
   p->srate           = srate;
   p->match_id_allocN = cmScoreEvtCount( p->cmScoreH )*2;  // give plenty of extra space for the match_idA[]
   p->match_idA       = mem::allocZ<unsigned>(p->match_id_allocN);
+
+  p->perfN = cmScoreEvtCount(p->cmScoreH)*2;
+  p->perfA = mem::allocZ<ssf_note_on_t>( p->perfN );
+  p->perf_idx = 0;
   
   hRef.set(p);
   
@@ -307,19 +338,23 @@ cw::rc_t cw::score_follower::reset( handle_t h, unsigned cwLocId )
       rc = cwLogWarning("The cw loc id:%i does not translate to a cm loc id.",cwLocId);
       goto errLabel;
     }
+
+    printf("SF Reset: cw:%i cm:%i\n",cwLocId,cmLocId);
     
     if((cmRC = cmScMatcherReset( p->matcher, cmLocId )) != cmOkRC )
     {
       rc = cwLogError(kOpFailRC,"The score follower reset failed.");
       goto errLabel;
     }
+
+    p->perf_idx = 0;
   }
   
  errLabel:
   return rc;
 }
     
-cw::rc_t cw::score_follower::exec(  handle_t h, unsigned smpIdx, unsigned muid, unsigned status, uint8_t d0, uint8_t d1, bool& newMatchFlRef )
+cw::rc_t cw::score_follower::exec(  handle_t h, double sec, unsigned smpIdx, unsigned muid, unsigned status, uint8_t d0, uint8_t d1, bool& newMatchFlRef )
 {
   rc_t              rc                 = kOkRC;
   score_follower_t* p                  = _handleToPtr(h);
@@ -327,8 +362,9 @@ cw::rc_t cw::score_follower::exec(  handle_t h, unsigned smpIdx, unsigned muid, 
   unsigned          pre_match_id_curN = p->match_id_curN;
 
   newMatchFlRef = false;
-    
-  cmRC_t cmRC = cmScMatcherExec(  p->matcher, smpIdx, muid, status, d0, d1, &scLocIdx );
+
+  // Note: pass p->perf_idx as 'muid' to the score follower
+  cmRC_t cmRC = cmScMatcherExec(  p->matcher, smpIdx, p->perf_idx, status, d0, d1, &scLocIdx );
   
   switch( cmRC )
   {
@@ -352,6 +388,20 @@ cw::rc_t cw::score_follower::exec(  handle_t h, unsigned smpIdx, unsigned muid, 
     default:
       rc = cwLogError(kOpFailRC,"The score follower failed with an unknown error. cmRC:%i",cmRC);
   }
+
+  // store note-on messages
+  if( p->perf_idx < p->perfN && midi::isNoteOn(status,(unsigned)d1) )
+  {
+
+    ssf_note_on_t* pno = p->perfA + p->perf_idx;
+    pno->sec   = sec;
+    pno->pitch = d0;
+    pno->vel   = d1;    
+    p->perf_idx += 1;
+    if( p->perf_idx >= p->perfN )
+      cwLogWarning("The cw score follower performance cache is full.");
+  }
+  
       
   return rc;
 
@@ -369,6 +419,46 @@ void cw::score_follower::clear_match_id_array( handle_t h )
 {
   score_follower_t* p = _handleToPtr(h);
   p->match_id_curN = 0;
+}
+
+cw::rc_t cw::score_follower::write_svg_file( handle_t h, const char* out_fname )
+{
+  score_follower_t* p = _handleToPtr(h);
+
+  return svgScoreFollowWrite( p->cmScoreH, p->matcher, p->perfA, p->perf_idx, out_fname );
+}
+
+void cw::score_follower::score_report( handle_t h, const char* out_fname )
+{
+  score_follower_t* p = _handleToPtr(h);
+  cmScoreReport( p->cmCtx,  p->score_csv_fname, out_fname );  
+}
+
+cw::rc_t cw::score_follower::midi_state_rt_report( handle_t h, const char* out_fname )
+{
+  score_follower_t*    p     = _handleToPtr(h);
+  midi_state::config_t msCfg = midi_state::default_config();
+  rc_t                 rc    = kOkRC;
+  midi_state::handle_t msH;
+  
+  if((rc = midi_state::create(msH,nullptr,nullptr,&msCfg)) != kOkRC )
+  {
+    rc = cwLogError(rc,"midi_state create failed.");
+    goto errLabel;
+  }
+
+  if((rc = _update_midi_state(p,msH)) != kOkRC )
+    goto errLabel;    
+
+  if((rc = report_events(msH,out_fname)) != kOkRC )
+    goto errLabel;
+
+ errLabel:
+  if( rc != kOkRC )
+    cwLogError(rc,"Score follower midi_state_rt_report() failed.");
+  
+  midi_state::destroy(msH);
+  return rc;
 }
 
 
@@ -497,9 +587,11 @@ cw::rc_t cw::score_follower::test( const object_t* cfg )
 
     if( midi::file::isNoteOn( m ) )
     {
-      unsigned long smpIdx = (unsigned long)(t.srate * m->amicro/1e6);
-      bool newMatchFl = false;
-      if((rc = exec(sfH, smpIdx, m->uid, m->status, m->u.chMsgPtr->d0, m->u.chMsgPtr->d1, newMatchFl )) != kOkRC )
+      double        sec        = (double)m->amicro/1e6;      
+      unsigned long smpIdx     = (unsigned long)(t.srate * m->amicro/1e6);
+      bool          newMatchFl = false;
+      
+      if((rc = exec(sfH, sec, smpIdx, m->uid, m->status, m->u.chMsgPtr->d0, m->u.chMsgPtr->d1, newMatchFl )) != kOkRC )
       {
         rc = cwLogError(rc,"score follower exec failed.");
         goto errLabel;
