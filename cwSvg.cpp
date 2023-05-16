@@ -612,7 +612,6 @@ cw::rc_t cw::svg::_set_attr( handle_t h, const char* selectorStr, const char* at
   int    bufN = 64;
   char   buf[ bufN + 1 ];
 
-
   if( suffix != nullptr )
   {
     snprintf(buf,bufN,"%s%s",value,suffix);
@@ -812,7 +811,7 @@ cw::rc_t cw::svg::write( handle_t h, const char* outFn, const char* cssFn, unsig
       dStyleStr = mem::printf(dStyleStr, "style=\"%s\" ",_print_css_attr_list(e->css->attrL,dStyleStr));
 
     if( e->attrL != nullptr )
-      dStyleStr = mem::printp(dStyleStr,"%s",_print_ele_attr_list(e->attrL,dStyleStr) );
+      dStyleStr = _print_ele_attr_list(e->attrL,dStyleStr);
     
     const char* styleStr  = dStyleStr==nullptr ? "" : dStyleStr;
         
