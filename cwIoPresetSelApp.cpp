@@ -68,6 +68,7 @@ namespace cw
                 
       kSaveBtnId,
       kLoadBtnId,
+      kPerfSelId,
 
       kBegPlayLocNumbId,
       kEndPlayLocNumbId,
@@ -119,7 +120,9 @@ namespace cw
       kFragNoteId,
 
       kVelTblMinId = vtbl::kVtMinId,
-      kVelTblMaxId = vtbl::kVtMaxId
+      kVelTblMaxId = vtbl::kVtMaxId,
+
+      kPerfOptionBaseId = kVelTblMaxId + 1,
     };
 
     enum
@@ -160,6 +163,7 @@ namespace cw
         
       { kPanelDivId,     kSaveBtnId,      "saveBtnId" },
       { kPanelDivId,     kLoadBtnId,      "loadBtnId" },
+      { kPanelDivId,     kPerfSelId,      "perfSelId" },
 
       { kPanelDivId,     kBegPlayLocNumbId,   "begLocNumbId" },
       { kPanelDivId,     kEndPlayLocNumbId,   "endLocNumbId" },
@@ -233,6 +237,8 @@ namespace cw
       const char*     record_fn_ext;
       const char*     record_backup_dir;
       const char*     scoreFn;
+      const object_t* perfL;
+      unsigned        perfMenuCnt;
       const char*     velTableFname;
       const char*     velTableBackupDir;
       const object_t* midi_play_record_cfg;
@@ -356,6 +362,7 @@ namespace cw
                                     "record_fn",            app->record_fn,
                                     "record_fn_ext",        app->record_fn_ext,
                                     "score_fn",             app->scoreFn,
+                                    "perfL",                app->perfL,
                                     "flow_proc_dict_fn",    flow_proc_dict_fn,
                                     "midi_play_record",     app->midi_play_record_cfg,
                                     "vel_table_fname",      app->velTableFname,
@@ -421,6 +428,53 @@ namespace cw
       
     errLabel:
       
+      return rc;
+    }
+
+    rc_t _load_perf_selection_menu( app_t* app )
+    {
+      rc_t rc = kOkRC;
+      unsigned selectUuId = kInvalidId;
+      
+      // verify that a performance list was given
+      if( app->perfL == nullptr || app->perfL->child_count()==0)
+      {
+        rc = cwLogError(rc,"The performance list is missing or empty.");
+        goto errLabel;
+      }
+
+      // get the peformance menu UI uuid
+      if((selectUuId = io::uiFindElementUuId( app->ioH, kPerfSelId )) == kInvalidId )
+      {
+        rc = cwLogError(rc,"The performance list base UI element does not exist.");
+        goto errLabel;        
+      }      
+      
+      for(unsigned i=0; i<app->perfL->child_count(); ++i)
+      {
+        const object_t* pair        = nullptr;
+        unsigned        uuId        = kInvalidId;
+
+        // get and validate the option label
+        if((pair = app->perfL->child_ele(i)) == nullptr ||  !pair->is_pair() || pair->pair_label()==nullptr)
+        {
+          rc = cwLogError(kSyntaxErrorRC,"The performance list contains a syntax error near element index %i.",i);
+          goto errLabel;
+        }
+
+        // create an option entry in the selection ui
+        if((rc = uiCreateOption( app->ioH, uuId, selectUuId, nullptr, kPerfOptionBaseId+i, kInvalidId, "optClass", pair->pair_label() )) != kOkRC )
+        {          
+          rc = cwLogError(kSyntaxErrorRC,"The performance list contains a syntax error near element index %i.",i);
+          goto errLabel;
+        }
+
+      }
+
+    errLabel:
+
+      app->perfMenuCnt = app->perfL->child_count();
+
       return rc;
     }
 
@@ -1458,7 +1512,7 @@ namespace cw
     int _compare_loc_map( const void* m0, const void* m1 )
     { return ((const loc_map_t*)m0)->loc - ((const loc_map_t*)m1)->loc; }
 
-    rc_t _load_piano_score( app_t* app, unsigned& midiEventCntRef )
+    rc_t _load_piano_score( app_t* app, unsigned& midiEventCntRef, const char* perf_fn )
     {
       rc_t                          rc         = kOkRC;
       const score::event_t*         e          = nullptr;
@@ -1468,7 +1522,7 @@ namespace cw
       midiEventCntRef = 0;
       
       // create the score
-      if((rc= score::create( app->scoreH, app->scoreFn )) != kOkRC )
+      if((rc= score::create( app->scoreH, perf_fn /*app->scoreFn*/ )) != kOkRC )
       {
         cwLogError(rc,"Score create failed on '%s'.",app->scoreFn);
         goto errLabel;          
@@ -1541,7 +1595,7 @@ namespace cw
     }
 
 
-    rc_t _do_load( app_t* app )
+    rc_t _do_load( app_t* app, const char* perf_fn )
     {
       rc_t     rc         = kOkRC;
       unsigned midiEventN = 0;
@@ -1552,15 +1606,15 @@ namespace cw
 
 
       // Load the piano score (this set's app->min/maxLoc)
-      if((rc = _load_piano_score(app,midiEventN)) != kOkRC )
+      if((rc = _load_piano_score(app,midiEventN,perf_fn)) != kOkRC )
         goto errLabel;
-
       
       // reset the timestamp tracker
       track_loc_reset( app->psH );
       
       // set the range of the global play location controls
-      if( firstLoadFl )
+      //if( firstLoadFl )
+      if( true )  
       {
         unsigned begPlayLocUuId = io::uiFindElementUuId(app->ioH, kBegPlayLocNumbId);
         unsigned endPlayLocUuId = io::uiFindElementUuId(app->ioH, kEndPlayLocNumbId);
@@ -1619,6 +1673,56 @@ namespace cw
       return rc;
     }
 
+    
+    rc_t _on_perf_select(app_t* app, unsigned optionAppId )
+    {
+      rc_t              rc       = kOkRC;
+      unsigned          perf_idx = kInvalidIdx;
+      const object_t*   pair     = nullptr;
+      const char*       perf_fn  = nullptr;
+      unsigned beg_play_loc = 0;
+      unsigned end_play_loc = 0;
+
+      // validate the selected menu id
+      if( optionAppId < kPerfOptionBaseId || optionAppId >= kPerfOptionBaseId + app->perfMenuCnt  )
+      {
+        rc = cwLogError(kInvalidArgRC,"The performance request menu id is not valid.");
+        goto errLabel;
+      }
+
+      perf_idx = optionAppId - kPerfOptionBaseId;
+
+      // get the requested performance record
+      if((pair = app->perfL->child_ele(perf_idx)) == nullptr || pair->pair_value() == nullptr)
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The performance record at index %i is not valid.",perf_idx);
+        goto errLabel;
+      }
+
+      // parse the performance record
+      if((rc = pair->pair_value()->getv("perf_fn",perf_fn,
+                                        "beg_loc",beg_play_loc,
+                                        "end_loc",end_play_loc)) != kOkRC )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The performance record at index %i could not be parsed.",perf_idx);
+        goto errLabel;
+      }
+
+      app->beg_play_loc = beg_play_loc;
+      app->end_play_loc = end_play_loc;
+
+      // load the requested performance
+      if((rc = _do_load(app,perf_fn)) != kOkRC )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The performance load failed.");
+        goto errLabel;
+      }
+
+    errLabel:
+      return rc;
+    }
+
+    
     rc_t _on_ui_start( app_t* app )
     {
       return _do_play(app, app->beg_play_loc, app->end_play_loc );
@@ -2009,7 +2113,11 @@ namespace cw
           break;
 
         case kLoadBtnId:
-          _do_load(app);
+          _do_load(app,app->scoreFn);
+          break;
+
+        case kPerfSelId:
+          _on_perf_select(app,m.value->u.u);          
           break;
         
         case kMidiThruCheckId:
@@ -2531,6 +2639,14 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
     rc = cwLogError(rc,"velocity table tuner create failed.");
     goto errLabel;
   }
+
+  // create the performance selection menu
+  if((rc= _load_perf_selection_menu(&app)) != kOkRC )
+  {
+    rc = cwLogError(rc,"The performance list UI create failed.");
+    goto errLabel;
+  }
+  
   
   // create the IO Flow controller
   if(app.flow_cfg==nullptr || app.flow_proc_dict==nullptr || (rc = io_flow::create(app.ioFlowH,app.ioH,sysSampleRate,app.crossFadeCnt,*app.flow_proc_dict,*app.flow_cfg)) != kOkRC )
