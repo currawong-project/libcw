@@ -26,12 +26,12 @@ extern "C" {
   
   void _cm_print_info( void* arg, const char* text )
   {
-    cwLogInfo(text);
+    cw::log::msg( cw::log::globalHandle(), cw::log::kInfo_LogLevel, nullptr, nullptr, 0, 0, cw::kOkRC, "%s", text );
   }
 
   void _cm_print_error( void* arg, const char* text )
   {
-    cwLogError(cw::kOpFailRC,text);
+    cw::log::msg( cw::log::globalHandle(), cw::log::kPrint_LogLevel, nullptr, nullptr, 0, 0, cw::kOkRC, "cm-error: %s", text );
   }
 }
 
