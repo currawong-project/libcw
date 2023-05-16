@@ -17,7 +17,7 @@ namespace cw
     // Create a file name by concatenating sub-strings.
     //
     // Variable arg's. entries are directories inserted between 
-    // 'dirPrefixStr' and the file name.
+    // 'dir' and the 'fn'.
     // Terminate var arg's directory list with a  nullptr. 
     //
     // The returned string must be released by a call to mem::release() or mem::free().
