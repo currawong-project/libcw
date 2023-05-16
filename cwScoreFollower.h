@@ -12,6 +12,7 @@ namespace cw
     
     rc_t destroy( handle_t& hRef );
 
+    // Set the starting search location and calls clear_match_id_array().
     rc_t reset( handle_t h, unsigned loc );
 
     // If 'new_match_fl_ref' is returned as true then there are new match id's in the current_match_id_array[]
@@ -24,7 +25,9 @@ namespace cw
     void clear_match_id_array( handle_t h );
 
     // Write an SVG file containing a graphic view of the score following results since the last call to reset().
-    rc_t write_svg_file( handle_t h, const char* out_fname );
+    // Set show_muid_fl to true to display the 'muid' of the performed notes in the
+    // SVG rendering, otherwise the performed note sequence (order of arrival) id is shown.
+    rc_t write_svg_file( handle_t h, const char* out_fname, bool show_muid_fl=false );
 
     // Write the score to 'out_fname'.
     void score_report( handle_t h, const char* out_fname );

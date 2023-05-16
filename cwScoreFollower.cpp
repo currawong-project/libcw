@@ -36,14 +36,12 @@ namespace cw
 {
   namespace score_follower
   {
-
-    
     typedef struct score_follower_str
     {
       double       srate;
       unsigned     search_area_locN;
       unsigned     key_wnd_locN;
-      char*        score_csv_fname;
+      char*        cm_score_csv_fname;
       cmCtx_t*     cmCtx;
       cmScH_t      cmScoreH;
       cmScMatcher* matcher;
@@ -73,9 +71,9 @@ namespace cw
     {
       rc_t rc = kOkRC;
 
-      const char* score_csv_fname;
+      const char* cm_score_csv_fname;
       
-      if((rc = cfg->getv("score_csv_fname",     score_csv_fname,
+      if((rc = cfg->getv("cm_score_csv_fname", cm_score_csv_fname,
                          "search_area_locN",    p->search_area_locN,
                          "key_wnd_locN",        p->key_wnd_locN )) != kOkRC )
       {
@@ -83,7 +81,7 @@ namespace cw
         goto errLabel;
       }
 
-      if((p->score_csv_fname = filesys::expandPath( score_csv_fname )) == nullptr )
+      if((p->cm_score_csv_fname = filesys::expandPath( cm_score_csv_fname )) == nullptr )
       {
         rc = cwLogError(kOpFailRC,"Score follower score file expansion failed.");
         goto errLabel;
@@ -130,7 +128,8 @@ namespace cw
       
       if((rc = _get_max_cw_loc(p,p->cwLocToCmLocN)) != kOkRC )
         goto errLabel;
-      
+
+      p->cwLocToCmLocN += 1; // incr. by 1 because _get_max_cw_loc() returns an index but we need a count 
       p->cwLocToCmLocA = mem::allocZ<unsigned>( p->cwLocToCmLocN );
 
       cmEvtN = cmScoreEvtCount( p->cmScoreH );
@@ -187,8 +186,9 @@ namespace cw
     {
       mem::release(p->cmLocToCwLocA);
       mem::release(p->cwLocToCmLocA);                   
-      mem::release(p->score_csv_fname);
+      mem::release(p->cm_score_csv_fname);
       mem::release(p->perfA);
+      mem::release(p->match_idA);
       cmScMatcherFree(&p->matcher);
       cmScoreFinalize(&p->cmScoreH);
       mem::release(p);
@@ -251,9 +251,9 @@ cw::rc_t cw::score_follower::create( handle_t& hRef, const object_t* cfg, cm::ha
     goto errLabel;
 
   // create the the score follower reference score
-  if((scoreRC = cmScoreInitialize( p->cmCtx, &p->cmScoreH, p->score_csv_fname, srate, nullptr, 0, nullptr, nullptr, cmSymTblH )) != cmOkRC )
+  if((scoreRC = cmScoreInitialize( p->cmCtx, &p->cmScoreH, p->cm_score_csv_fname, srate, nullptr, 0, nullptr, nullptr, cmSymTblH )) != cmOkRC )
   {
-    cwLogError(kOpFailRC,"The score could not be initialized from '%s'. cmRC:%i.",p->score_csv_fname);
+    rc = cwLogError(kOpFailRC,"The score could not be initialized from '%s'. cmRC:%i.",p->cm_score_csv_fname);
     goto errLabel;
   }
 
@@ -348,6 +348,7 @@ cw::rc_t cw::score_follower::reset( handle_t h, unsigned cwLocId )
     }
 
     p->perf_idx = 0;
+    clear_match_id_array(h);
   }
   
  errLabel:
@@ -395,13 +396,13 @@ cw::rc_t cw::score_follower::exec(  handle_t h, double sec, unsigned smpIdx, uns
 
     ssf_note_on_t* pno = p->perfA + p->perf_idx;
     pno->sec   = sec;
+    pno->muid  = muid;
     pno->pitch = d0;
     pno->vel   = d1;    
     p->perf_idx += 1;
     if( p->perf_idx >= p->perfN )
       cwLogWarning("The cw score follower performance cache is full.");
   }
-  
       
   return rc;
 
@@ -421,17 +422,17 @@ void cw::score_follower::clear_match_id_array( handle_t h )
   p->match_id_curN = 0;
 }
 
-cw::rc_t cw::score_follower::write_svg_file( handle_t h, const char* out_fname )
+cw::rc_t cw::score_follower::write_svg_file( handle_t h, const char* out_fname, bool show_muid_fl )
 {
   score_follower_t* p = _handleToPtr(h);
 
-  return svgScoreFollowWrite( p->cmScoreH, p->matcher, p->perfA, p->perf_idx, out_fname );
+  return svgScoreFollowWrite( p->cmScoreH, p->matcher, p->perfA, p->perf_idx, out_fname, show_muid_fl );
 }
 
 void cw::score_follower::score_report( handle_t h, const char* out_fname )
 {
   score_follower_t* p = _handleToPtr(h);
-  cmScoreReport( p->cmCtx,  p->score_csv_fname, out_fname );  
+  cmScoreReport( p->cmCtx,  p->cm_score_csv_fname, out_fname );  
 }
 
 cw::rc_t cw::score_follower::midi_state_rt_report( handle_t h, const char* out_fname )
@@ -467,46 +468,44 @@ namespace cw {
 
     typedef struct test_str
     {
-      char*                midi_fname;
-      char*                out_dir;
-      double               srate;
-      const object_t*      cfg;
-      midi::file::handle_t mfH;
-      
+      double          srate;      
+      char*           out_dir;
+      const object_t* cfg;      
+      const char*     out_svg_fname;
+      const char*     out_midi_csv_fname;
+      const char*     out_cm_score_rpt_fname;
+      const object_t* perfL;
+      bool  pre_test_fl;   // insert a dummy note prior to the first perf. note to test the 'pre' functionality of the SVG generation
+      bool  show_muid_fl;  // true=show perf. note 'muid' in SVG file, false=show sequence id
     } test_t;
 
     
     rc_t _test_destroy( test_t* p )
     {
       rc_t rc = kOkRC;
-      mem::release(p->midi_fname);
       mem::release(p->out_dir);
-
-      midi::file::close(p->mfH);
       
       return rc;
     }
+
     
     rc_t _test_parse_cfg( test_t* p, const object_t* cfg )
     {
-      rc_t        rc;
-      const char* midi_fname = nullptr;
-      const char* out_dir    = nullptr;
-
+      rc_t        rc      = kOkRC;
+      const char* out_dir = nullptr;
+      
       // read the test cfg.
-      if((rc = cfg->getv("midi_fname", midi_fname,
-                         "srate",      p->srate,
-                         "cfg",        p->cfg,
-                         "out_dir",    out_dir )) != kOkRC )
+      if((rc = cfg->getv("perfL",        p->perfL,
+                         "srate",        p->srate,
+                         "pre_test_fl",  p->pre_test_fl,
+                         "show_muid_fl", p->show_muid_fl,
+                         "cfg",          p->cfg,
+                         "out_dir",      out_dir,
+                         "out_svg_fname",p->out_svg_fname,
+                         "out_midi_csv_fname", p->out_midi_csv_fname,
+                         "out_cm_score_rpt_fname", p->out_cm_score_rpt_fname)) != kOkRC )
       {
         rc = cwLogError(rc,"Score follower test cfg. parse failed.");
-        goto errLabel;
-      }
-
-      // expand the MIDI filename
-      if((p->midi_fname = filesys::expandPath( midi_fname )) == nullptr )
-      {
-        rc = cwLogError(kOpFailRC,"The MIDI file path expansion failed.");
         goto errLabel;
       }
 
@@ -526,13 +525,163 @@ namespace cw {
           goto errLabel;          
         }
       }
+      
 
     errLabel:
-      if(rc != kOkRC )
+      return rc;
+    }
+
+
+    rc_t _score_follow_one_perf( test_t* p, handle_t& sfH, unsigned perf_idx )
+    {
+      rc_t                 rc         = kOkRC;
+      bool                 pre_test_fl= p->pre_test_fl;
+      bool                 enable_fl  = true;
+      const char*          perf_label = nullptr;
+      const char*          midi_fname = nullptr;
+      char*                out_dir    = nullptr;
+      char*                fname      = nullptr;
+      unsigned             start_loc  = 0;
+      const object_t*      perf       = nullptr;
+      unsigned             msgN       = 0;
+      midi::file::handle_t mfH;      
+      const midi::file::trackMsg_t** msgA = nullptr;
+
+      // get the perf. record
+      if((perf = p->perfL->child_ele(perf_idx)) == nullptr )
       {
-        _test_destroy(p);
-        rc = cwLogError(rc,"Score follower test parse cfg. failed.");
+        rc = cwLogError(kSyntaxErrorRC,"Error accessing the cfg record for perf. record index:%i.",perf_idx);
+        goto errLabel;
       }
+
+      // parse the performance record
+      if((rc = perf->getv("label",perf_label,
+                          "enable_fl",enable_fl,
+                          "start_loc", start_loc,
+                          "midi_fname", midi_fname)) != kOkRC )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"Error parsing cfg record for perf. record index:%i.",perf_idx);
+        goto errLabel;
+      }
+
+      if( !enable_fl )
+        goto errLabel;
+          
+      // create the output directory
+      if((out_dir = filesys::makeFn(p->out_dir,perf_label,nullptr,nullptr)) == nullptr )
+      {
+        rc = cwLogError(kOpFailRC,"Directory name formation failed on '%s'.",cwStringNullGuard(out_dir));
+        goto errLabel;        
+      }
+
+      // create the output directory
+      if((rc = filesys::makeDir(out_dir)) != kOkRC )
+      {
+        rc = cwLogError(kOpFailRC,"mkdir failed on '%s'.",cwStringNullGuard(out_dir));
+        goto errLabel;        
+      }
+
+      // expand the MIDI filename
+      if((fname = filesys::expandPath( midi_fname )) == nullptr )
+      {
+        rc = cwLogError(kOpFailRC,"The MIDI file path expansion failed.");
+        goto errLabel;
+      }
+      
+      // open the midi file
+      if((rc = midi::file::open( mfH, fname )) != kOkRC )
+      {
+        rc = cwLogError(rc,"MIDI file open failed on '%s'.",cwStringNullGuard(fname));
+        goto errLabel;
+      }
+
+      mem::release(fname);
+
+      // set the score follower to the start location
+      if((rc = reset( sfH, start_loc)) != kOkRC )
+        goto errLabel;
+
+      
+      // get a pointer to a time sorted list of MIDI messages in the file
+      if(((msgN = msgCount( mfH )) == 0) || ((msgA = midi::file::msgArray( mfH )) == nullptr) )
+      {
+        rc = cwLogError(rc,"MIDI file msg array is empty or corrupp->");
+        goto errLabel;    
+      }
+
+      for(unsigned i=0; i<msgN; ++i)
+      {
+        const midi::file::trackMsg_t* m = msgA[i];
+
+        if( midi::file::isNoteOn( m ) )
+        {
+          double        sec        = (double)m->amicro/1e6;      
+          unsigned long smpIdx     = (unsigned long)(p->srate * m->amicro/1e6);
+          bool          newMatchFl = false;
+
+          if( pre_test_fl )
+          {
+            // test the 'pre' ref location by adding an extra note before the first note
+            exec(sfH, sec, smpIdx, m->uid-1, m->status, 60, m->u.chMsgPtr->d1, newMatchFl);
+            pre_test_fl = false;
+          }
+      
+          if((rc = exec(sfH, sec, smpIdx, m->uid, m->status, m->u.chMsgPtr->d0, m->u.chMsgPtr->d1, newMatchFl )) != kOkRC )
+          {
+            rc = cwLogError(rc,"score follower exec failed.");
+            break;
+          }
+
+          if( newMatchFl )
+          {
+            unsigned matchIdN = 0;
+            const unsigned* matchIdA = current_match_id_array(sfH, matchIdN );
+
+            for(unsigned i=0; i<matchIdN; ++i)
+              cwLogInfo("Match:%i",matchIdA[i]);
+        
+            clear_match_id_array( sfH );
+          }
+        }
+      }
+
+
+      // create the SVG output filename
+      if((fname = filesys::makeFn(out_dir,p->out_svg_fname,nullptr,nullptr)) == nullptr )
+      {
+        cwLogError(kOpFailRC,"The output SVG filename formation failed.");
+        goto errLabel;
+      }
+
+      // write the score following result SVG
+      if((rc = write_svg_file(sfH,fname,p->show_muid_fl)) != kOkRC )
+      {
+        rc = cwLogError(rc,"SVG report file create failed.");
+        goto errLabel;
+      }
+      
+      mem::release(fname);
+      
+
+      // create the MIDI file as a CSV
+      if((fname = filesys::makeFn(out_dir,p->out_midi_csv_fname,nullptr,nullptr)) == nullptr )
+      {
+        cwLogError(kOpFailRC,"The output MIDI CSV filename formation failed.");
+        goto errLabel;
+      }
+
+      // convert the MIDI file to a CSV
+      if((rc = midi::file::genCsvFile( filename(mfH), fname, false)) != kOkRC )
+      {
+        cwLogError(rc,"MIDI file to CSV failed on '%s'.",cwStringNullGuard(filename(mfH)));
+      }
+      
+      mem::release(fname);
+      
+    errLabel:
+      mem::release(out_dir);
+      mem::release(fname);
+      close(mfH);
 
       return rc;
     }
@@ -549,9 +698,8 @@ cw::rc_t cw::score_follower::test( const object_t* cfg )
   
   cm::handle_t cmCtxH;
   handle_t sfH;
-  unsigned msgN = 0;
-  const midi::file::trackMsg_t** msgA = nullptr;
-    
+  char* fname = nullptr;
+  
   // parse the test cfg
   if((rc = _test_parse_cfg( &t, cfg )) != kOkRC )
     goto errLabel;
@@ -564,53 +712,23 @@ cw::rc_t cw::score_follower::test( const object_t* cfg )
   if((rc = create( sfH, t.cfg, cmCtxH, t.srate )) != kOkRC )
     goto errLabel;
 
-  if((rc = reset( sfH, 0)) != kOkRC )
-    goto errLabel;
-
-  // open the midi file
-  if((rc = midi::file::open( t.mfH, t.midi_fname )) != kOkRC )
+  // create the cm score report filename
+  if((fname = filesys::makeFn(t.out_dir,t.out_cm_score_rpt_fname,nullptr,nullptr)) == nullptr )
   {
-    rc = cwLogError(rc,"MIDI file open failed on '%s'.",cwStringNullGuard(t.midi_fname));
+    cwLogError(kOpFailRC,"The output cm score filename formation failed.");
     goto errLabel;
   }
-
-  // get a pointer to a time sorted list of MIDI messages in the file
-  if(((msgN = msgCount( t.mfH )) == 0) || ((msgA = midi::file::msgArray( t.mfH )) == nullptr) )
-  {
-    rc = cwLogError(rc,"MIDI file msg array is empty or corrupt.");
-    goto errLabel;    
-  }
-
-  for(unsigned i=0; i<msgN; ++i)
-  {
-    const midi::file::trackMsg_t* m = msgA[i];
-
-    if( midi::file::isNoteOn( m ) )
-    {
-      double        sec        = (double)m->amicro/1e6;      
-      unsigned long smpIdx     = (unsigned long)(t.srate * m->amicro/1e6);
-      bool          newMatchFl = false;
       
-      if((rc = exec(sfH, sec, smpIdx, m->uid, m->status, m->u.chMsgPtr->d0, m->u.chMsgPtr->d1, newMatchFl )) != kOkRC )
-      {
-        rc = cwLogError(rc,"score follower exec failed.");
-        goto errLabel;
-      }
+  // write the cm score report
+  score_report(sfH,fname);
 
-      if( newMatchFl )
-      {
-        unsigned matchIdN = 0;
-        const unsigned* matchIdA = current_match_id_array(sfH, matchIdN );
-
-        for(unsigned i=0; i<matchIdN; ++i)
-          cwLogInfo("Match:%i",matchIdA[i]);
-        
-        clear_match_id_array( sfH );
-      }
-    }
-  }
+  // score follow each performance
+  for(unsigned perf_idx=0; perf_idx<t.perfL->child_count(); ++perf_idx)
+    _score_follow_one_perf(&t,sfH,perf_idx);
+  
   
  errLabel:
+  mem::release(fname);
   destroy(sfH);
   cm::destroy(cmCtxH);
   _test_destroy(&t);
