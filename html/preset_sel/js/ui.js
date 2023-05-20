@@ -1080,6 +1080,14 @@ function ui_set( d )
     }
 }
 
+function ui_cache( d )
+{
+    for(i=0; i<d.array.length; ++i)
+    {
+	_ws_on_msg( d.array[i] )
+    }
+}
+
 function ui_create( d )
 {
     if( typeof(d.parentUuId) == "number")
@@ -1198,14 +1206,14 @@ function ws_send( s )
     _ws.send(s+"\0")
 }
 
-function ws_on_msg( jsonMsg )
+function _ws_on_msg( d )
 {
-    //console.log(jsonMsg)
-    
-    d = JSON.parse(jsonMsg.data);
-
     switch( d.op )
     {
+	case 'cache':
+	ui_cache( d )
+	break;
+	
 	case 'create':
 	ui_create( d )
 	break;
@@ -1226,6 +1234,15 @@ function ws_on_msg( jsonMsg )
 	ui_error("Unknown UI operation. " + d.op )
     }
 
+}
+
+function ws_on_msg( jsonMsg )
+{
+    //console.log(jsonMsg)
+    
+    d = JSON.parse(jsonMsg.data);
+
+    _ws_on_msg(d)
 }
 
 function ws_on_open()
