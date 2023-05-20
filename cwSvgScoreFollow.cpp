@@ -540,7 +540,7 @@ namespace cw
               
               assert( rn != nullptr );
               
-              ssf_perf_note_t* pn;
+              ssf_perf_note_t* pn = nullptr;
               
               if((rc = _setup_perf_note(p,rn->ref,rn,rn0,midiA+muid,pn)) != kOkRC )
                 goto errLabel;
