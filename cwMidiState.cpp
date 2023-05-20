@@ -1117,7 +1117,7 @@ namespace cw
       if( t->printMsgsFl && m->typeId == kMidiMsgTId )
       {
         printf("%6.3f %2x %4i : %2i %2x %3i %3i :", secs, flags, m->u.midi.uid, m->u.midi.ch, m->u.midi.status, m->u.midi.d0, m->u.midi.d1 );
-        for(unsigned i=0; flag_map[i].label==nullptr; ++i)
+        for(unsigned i=0; flag_map[i].label!=nullptr; ++i)
           if( cwIsFlag(flags,flag_map[i].flag) )
             printf("%s ",flag_map[i].label);
         printf("\n");
