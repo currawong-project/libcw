@@ -78,6 +78,9 @@ namespace cw
     void millisecondsToSpec( spec_t& ts, unsigned ms );
     void microsecondsToSpec( spec_t& ts, unsigned us );
 
+    // Return count of bytes in in buf[]
+    unsigned formatDateTime( char* buf, unsigned bufN, bool includeDateFl=false );
+
     rc_t test();
 
     //)

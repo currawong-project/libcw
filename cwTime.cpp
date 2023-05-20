@@ -41,6 +41,7 @@ void cw::time::get( spec_t& t )
 #endif
 
 #ifdef OS_LINUX
+#include <sys/time.h> // gettimeofday()
 void cw::time::get( spec_t& t )
 {
   // NOTcw::mutex::lock(h,timeout) relies on using 
@@ -304,6 +305,42 @@ void cw::time::microsecondsToSpec( spec_t& ts, unsigned us )
   
   ts.tv_sec  = sec;
   ts.tv_nsec = ns;  
+}
+
+
+unsigned cw::time::formatDateTime( char* buffer, unsigned bufN, bool includeDateFl )
+{
+  // from here: https://stackoverflow.com/questions/3673226/how-to-print-time-in-format-2009-08-10-181754-811
+  int millisec;
+  struct tm* tm_info;
+  struct timeval tv;
+  int n = 0;
+
+  gettimeofday(&tv, NULL);
+
+  millisec = lrint(tv.tv_usec/1000.0); // Round to nearest millisec
+
+  // Allow for rounding up to nearest second
+  if (millisec>=1000)
+  { 
+    millisec -=1000;
+    tv.tv_sec++;
+  }
+
+  tm_info = localtime(&tv.tv_sec);
+
+  const char* fmt = "%H:%M:%S";
+
+  if( includeDateFl )
+    fmt = "%Y:%m:%d %H:%M:%S";
+    
+
+  n = strftime(buffer, bufN, fmt, tm_info);
+  
+  if( n < (int)bufN && bufN-n >= 5 )
+    n = snprintf(buffer + n, bufN-n,".%03d", millisec);
+
+  return (unsigned)n;
 }
 
 cw::rc_t cw::time::test()
