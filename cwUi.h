@@ -32,6 +32,9 @@ namespace cw
     
     rc_t destroy( handle_t& h );
 
+    rc_t enableCache( handle_t h, unsigned cacheByteCnt=4096 );
+    rc_t flushCache( handle_t h );
+    
     unsigned        sessionIdCount(handle_t h);  // Count of connected remote UI's
     const unsigned* sessionIdArray(handle_t h);  // Array of 'sessionIdCount()' remote UI id's
 

@@ -77,25 +77,34 @@ namespace cw
     
     typedef struct ui_str
     {
-      unsigned             eleAllocN;   // size of eleA[]
-      unsigned             eleN;        // count of ele's in use
-      ele_t**              eleA;        // eleA[ eleAllocN ] 
-      uiCallback_t         uiCbFunc;    // app. cb func
-      void*                uiCbArg;     // app. cb func arg.
-      sendCallback_t       sendCbFunc;
-      void*                sendCbArg;
-      appIdMapRecd_t*      appIdMap;    // map of application parent/child/js id's
-      char*                buf;         // buf[bufN] output message formatting buffer
-      unsigned             bufN;        //
-      char*                recvBuf;
-      unsigned             recvBufN;
-      unsigned             recvBufIdx;
-      unsigned             recvShiftN;
-      object_t*            uiRsrc;
+      unsigned        eleAllocN; // size of eleA[]
+      unsigned        eleN;     // count of ele's in use
+      ele_t**         eleA;     // eleA[ eleAllocN ] 
+      uiCallback_t    uiCbFunc; // app. cb func
+      void*           uiCbArg;  // app. cb func arg.
+      sendCallback_t  sendCbFunc;
+      void*           sendCbArg;
+      appIdMapRecd_t* appIdMap; // map of application parent/child/js id's
+      char*           buf;      // buf[bufN] output message formatting buffer
+      unsigned        bufN;     //
+      char*           recvBuf;
+      unsigned        recvBufN;
+      unsigned        recvBufIdx;
+      unsigned        recvShiftN;
+      object_t*       uiRsrc;
+      
+      unsigned*       sessA;    // sessA[ sessN ] array of wsSessId's
+      unsigned        sessN;
+      unsigned        sessAllocN;
 
-      unsigned*            sessA;       // sessA[ sessN ] array of wsSessId's
-      unsigned             sessN;
-      unsigned             sessAllocN;
+      
+      bool     msgCacheEnableFl;
+      unsigned msgCacheSessId;
+      char*    msgCache;
+      unsigned msgCacheAllocN;
+      unsigned msgCacheDataN;
+      unsigned msgCacheN;
+      unsigned msgCacheMsgN;
 
     } ui_t;
 
@@ -317,28 +326,100 @@ namespace cw
       return nullptr;
     }
 
-    rc_t _websockSend( ui_t* p, unsigned wsSessId, const char* msg )
+    
+    rc_t _cache_flush( ui_t* p )
     {
       rc_t rc = kOkRC;
-      
-      //return websock::send( websockSrv::websockHandle( p->wssH ), kUiProtocolId, wsSessId, msg, strlen(msg) );
-      if( p->sendCbFunc != nullptr )
-      {
-        unsigned msgByteN = msg==nullptr ? 0 : strlen(msg);
 
-        if( wsSessId != kInvalidId )
-          rc = p->sendCbFunc( p->sendCbArg, wsSessId, msg, msgByteN );
-        else
-        {
-          for(unsigned i=0; i<p->sessN; ++i)
-            rc = p->sendCbFunc( p->sendCbArg, p->sessA[i], msg, msgByteN );
-          
-        }
+      if( p->msgCacheMsgN > 0 )
+      {        
+        assert( p->msgCacheN <= p->msgCacheDataN );
+        p->msgCache[ p->msgCacheN+0 ] = ']';
+        p->msgCache[ p->msgCacheN+1 ] = '}';
+        p->msgCache[ p->msgCacheN+2 ] = 0;
+              
+        rc = p->sendCbFunc( p->sendCbArg, p->msgCacheSessId, p->msgCache, strlen(p->msgCache) );
+
+        p->msgCacheN      = snprintf(p->msgCache,p->msgCacheAllocN,"{\"op\":\"cache\", \"array\": [");     
+        p->msgCacheSessId = kInvalidId;
+        p->msgCacheMsgN   = 0;
+
       }
       
       return rc;
     }
 
+    rc_t _cache_send( ui_t* p, unsigned wsSessId, const char* msg, unsigned msgByteN )
+    {
+      rc_t rc = kOkRC;
+
+      unsigned msgByteCommaN = msgByteN + 1;
+
+      // if the cache buffer has not yet been allocated
+      if( p->msgCache == nullptr && p->msgCacheAllocN>0 )
+      {
+        p->msgCacheDataN  = p->msgCacheAllocN - 3; // "]}/0" three char's must be reserved to terminate the cache message (See _cache_flush().)
+        p->msgCache       = mem::allocZ<char>( p->msgCacheAllocN );
+        p->msgCacheSessId = kInvalidId;
+        p->msgCacheN      = snprintf(p->msgCache,p->msgCacheDataN,"{\"op\":\"cache\", \"array\": [");
+        p->msgCacheMsgN   = 0;
+      }
+      
+      if( wsSessId != p->msgCacheSessId ||  p->msgCacheN + msgByteCommaN > p->msgCacheDataN  || msgByteN > p->msgCacheDataN )        
+        rc = _cache_flush(p);
+
+      if( msgByteN > p->msgCacheDataN )
+        rc = p->sendCbFunc( p->sendCbArg, wsSessId, msg, msgByteN );
+      else
+      {
+        assert( p->msgCacheN + msgByteCommaN <= p->msgCacheDataN );
+
+        // if this isn't the first msg is the buffer then prepend a ','
+        if( p->msgCacheMsgN != 0 )
+          strncat(p->msgCache,",",2);
+        else
+          msgByteCommaN -= 1;  // otherwise the msgByteCommaN is the same as msgByteN
+        
+        strncat(p->msgCache,msg,msgByteN);
+        
+        p->msgCacheN += msgByteCommaN;
+        p->msgCacheSessId = wsSessId;
+        p->msgCacheMsgN += 1;
+      }
+      
+      return rc;
+    }
+
+    rc_t _send_or_cache( ui_t* p, unsigned sessId, const char* msg, unsigned msgByteCnt )
+    {
+      rc_t rc = kOkRC;
+      if( p->msgCacheEnableFl )
+        rc = _cache_send( p, sessId, msg, msgByteCnt );
+      else
+        rc =  p->sendCbFunc( p->sendCbArg, sessId, msg, msgByteCnt );
+
+      return rc;
+    }
+    
+    rc_t _websockSend( ui_t* p, unsigned wsSessId, const char* msg )
+    {
+      rc_t rc = kOkRC;
+      
+      if( p->sendCbFunc != nullptr )
+      {
+        unsigned msgByteN = msg==nullptr ? 0 : strlen(msg);
+
+        if( wsSessId != kInvalidId )
+          rc = _send_or_cache( p, wsSessId, msg, msgByteN );
+        else
+        {
+          for(unsigned i=0; i<p->sessN; ++i)
+            rc = _send_or_cache( p, p->sessA[i], msg, msgByteN );          
+        }        
+      }
+      
+      return rc;
+    }
 
     // terminating condition for format_attributes()
     void _create_attributes( ele_t* e )
@@ -1191,6 +1272,7 @@ cw::rc_t cw::ui::create(
   p->recvBufIdx = 0;
   p->recvShiftN = 0;
   p->uiRsrc     = uiRsrc->duplicate();
+  p->msgCacheSessId = kInvalidId;
   
   // create the root element
   if((ele = _createBaseEle(p, nullptr, kRootAppId, kInvalidId, "uiDivId" )) == nullptr || ele->uuId != kRootUuId )
@@ -1242,6 +1324,24 @@ cw::rc_t cw::ui::destroy( handle_t& h )
   
   return rc;
 }
+
+cw::rc_t cw::ui::enableCache( handle_t h, unsigned cacheByteCnt )
+{
+  ui_t* p = _handleToPtr(h);
+  p->msgCacheEnableFl = true;
+  p->msgCacheAllocN = cacheByteCnt;
+  return kOkRC;
+}
+
+cw::rc_t cw::ui::flushCache( handle_t h )
+{
+  rc_t rc = kOkRC;
+  ui_t* p = _handleToPtr(h);
+
+  if( p->msgCacheEnableFl && p->msgCache != nullptr )
+    rc =_cache_flush(p);
+  return rc;
+ }
 
 
 unsigned        cw::ui::sessionIdCount(handle_t h)
@@ -1656,7 +1756,6 @@ cw::rc_t cw::ui::createLog(   handle_t h, unsigned& uuIdRef, unsigned parentUuId
 
 cw::rc_t cw::ui::createList( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
 { return _createOneEle( _handleToPtr(h), uuIdRef, "list", kInvalidId, parentUuId, eleName, appId, chanId, clas, title);  }
-
 
 cw::rc_t cw::ui::setNumbRange( handle_t h, unsigned uuId, double minValue, double maxValue, double stepValue, unsigned decPl, double value )
 {
