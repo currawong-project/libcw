@@ -3,6 +3,7 @@
 
 #include "cwCommonImpl.h"
 #include "cwMem.h"
+#include "cwTime.h"
 
 namespace cw
 {
@@ -24,10 +25,10 @@ namespace cw
     {
      { kPrint_LogLevel, "" },
      { kDebug_LogLevel,   "debug" },
-     { kInfo_LogLevel,    "info" },
-     { kWarning_LogLevel, "warning" },
+     { kInfo_LogLevel,    "info " },
+     { kWarning_LogLevel, "warn " },
      { kError_LogLevel,   "error" },
-     { kFatal_LogLevel,  "fatal" },
+     { kFatal_LogLevel,   "fatal" },
      { kInvalid_LogLevel, "<invalid>" }
     };
   
@@ -176,6 +177,12 @@ void cw::log::defaultFormatter( void* cbArg, logOutputCbFunc_t outFunc, void* ou
   cwAssert(lon==lom);
   const char* loStr = los;
 
+  int tdn = 256;
+  char td[tdn];
+  time::formatDateTime( td, (unsigned)tdn );
+  tdn = strlen(td);
+
+
   // don't print the function,file,line when this is an 'info' msg.
   if( level == kInfo_LogLevel )
   {
@@ -189,23 +196,23 @@ void cw::log::defaultFormatter( void* cbArg, logOutputCbFunc_t outFunc, void* ou
 
   if( level == kPrint_LogLevel )
   {
-    const char* fmt = "%s";
-    int  n = snprintf(nullptr,0,fmt,msg);
+    const char* fmt = "%s: %s";
+    int  n = snprintf(nullptr,0,fmt,td,msg);
     cwAssert(n != -1);
     char s[n+1];
-    int m = snprintf(s,n+1,fmt,msg);
+    int m = snprintf(s,n+1,fmt,td,msg);
     cwAssert(m==n);
     outFunc(outCbArg,level,s);     
   }
   else
   {
     // levelStr, msg,sys_msg, rc, function, lineno, filename 
-    const char* fmt = "%s: %s %s %s %s\n";
+    const char* fmt = "%s: %s: %s %s %s %s\n";
 
-    int  n = snprintf(nullptr,0,fmt,levelStr,msg,syStr,rcStr,loStr);
+    int  n = snprintf(nullptr,0,fmt,levelStr,td,msg,syStr,rcStr,loStr);
     cwAssert(n != -1);
     char s[n+1];
-    int m = snprintf(s,n+1,fmt,levelStr,msg,syStr,rcStr,loStr);
+    int m = snprintf(s,n+1,fmt,levelStr,td,msg,syStr,rcStr,loStr);
     cwAssert(m==n);
     outFunc(outCbArg,level,s);     
   }
