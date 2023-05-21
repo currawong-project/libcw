@@ -85,7 +85,10 @@ namespace cw
     dirEntry_t* dirEntries( const char* dirStr, unsigned includeFlags, unsigned* dirEntryCntRef );
 
 
-
+    // Release the returned string memory via mem::release()
+    char* formVersionedDirectory(const char* recordDir, const char* recordFolder);
+    char* makeVersionedDirectory(const char* recordDir, const char* recordFolder );
+    
     rc_t makeDir( const char* dirStr );
   }
   

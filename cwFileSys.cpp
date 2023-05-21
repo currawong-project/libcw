@@ -5,6 +5,7 @@
 #include "cwCommonImpl.h"
 #include "cwMem.h"
 #include "cwString.h"
+#include "cwText.h"
 
 #ifdef OS_LINUX
 #include <libgen.h> // basename() dirname()
@@ -802,6 +803,45 @@ cw::filesys::dirEntry_t* cw::filesys::dirEntries( const char* dirStr, unsigned f
   mem::release(inDirStr);
 
   return r.rp;
+}
+
+char* cw::filesys::formVersionedDirectory(const char* recordDir, const char* recordFolder)
+{
+  char* dir = nullptr;
+      
+  for(unsigned version_numb=0; true; ++version_numb)
+  {
+    unsigned n = textLength(recordFolder) + 32;
+    char     folder[n+1];
+
+    snprintf(folder,n,"%s_%i",recordFolder,version_numb);
+        
+    if((dir = filesys::makeFn(recordDir,folder, NULL, NULL)) == nullptr )
+    {
+      cwLogError(kOpFailRC,"Unable to form a versioned directory from:'%s'",cwStringNullGuard(recordDir));
+      return nullptr;
+    }
+
+    if( !filesys::isDir(dir) )
+      break;
+
+    mem::release(dir);
+  }
+      
+  return dir;
+}
+
+char* cw::filesys::makeVersionedDirectory(const char* recordDir, const char* recordFolder )
+{
+  rc_t rc = kOkRC;
+  char* dir;
+  if((dir = formVersionedDirectory(recordDir,recordFolder)) == nullptr )
+    return nullptr;
+
+  if((rc = makeDir(dir)) != kOkRC )
+    return nullptr;
+
+  return dir;  
 }
 
 cw::rc_t cw::filesys::makeDir( const char* dirStr )
