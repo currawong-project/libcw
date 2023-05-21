@@ -78,9 +78,14 @@ namespace cw
       valueRef = 0;  // BUG BUG BUG why is this not an error ????
     else
     {
+      int base = 10;
       errno = 0;
-      long v = strtol(s,nullptr,10);
-      if( v == 0 and errno != 0)
+
+      if( strlen(s) >= 2 && s[0]=='0' && s[1]=='x' )
+        base = 16;
+      
+      long v = strtol(s,nullptr,base);
+      if( v == 0 && errno != 0)
         return cwLogError(kOpFailRC,"String to number conversion failed on '%s'.", cwStringNullGuard(s));
       
       return numeric_convert(v,valueRef);
@@ -98,7 +103,7 @@ namespace cw
     {
       errno = 0;
       valueRef = strtod(s,nullptr);
-      if( valueRef == 0 and errno != 0)
+      if( valueRef == 0 && errno != 0)
         return cwLogError(kOpFailRC,"String to number conversion failed on '%s'.", cwStringNullGuard(s));
             
     }
