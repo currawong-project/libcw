@@ -13,6 +13,8 @@
 #include "cwUiDecls.h"
 #include "cwIo.h"
 #include "cwIoMidiRecordPlay.h"
+#include "cwMidiState.h"
+#include "cwSvgMidi.h"
 
 #define TIMER_LABEL "midi_record_play_timer"
 
@@ -1224,7 +1226,7 @@ namespace cw
         {
 
           //if( !midi::isPedal(pkt->msgArray[j].status,pkt->msgArray[j].d0) )
-          //  printf("IN: 0x%x 0x%x 0x%x\n", pkt->msgArray[j].status, pkt->msgArray[j].d0, pkt->msgArray[j].d1 );
+          //  printf("IN: st:%i rec:%i : 0x%x 0x%x 0x%x\n", p->startedFl, p->recordFl, pkt->msgArray[j].status, pkt->msgArray[j].d0, pkt->msgArray[j].d1 );
           
           if( (p->recordFl || p->logInFl) && p->startedFl )
           {
@@ -1633,6 +1635,39 @@ cw::rc_t cw::midi_record_play::save_csv( handle_t h, const char* fn )
   midi_record_play_t* p  = _handleToPtr(h);  
   return _write_csv(p,fn);
 }
+
+cw::rc_t cw::midi_record_play::write_svg( handle_t h, const char* fn )
+{
+  rc_t rc;
+  svg_midi::handle_t svgH;
+
+  midi_record_play_t* p = _handleToPtr(h);
+  
+  if((rc = svg_midi::create( svgH )) != kOkRC )
+  {
+    rc = cwLogError(rc,"svg_midi object create failed.");
+    goto errLabel;
+  }
+
+  for(unsigned i=0; i<p->iMsgArrayInIdx; ++i)
+  {
+    const am_midi_msg_t* m = p->iMsgArray + i;
+
+    double sec = time::specToSeconds( m->timestamp );
+
+    if((rc = svg_midi::setMidiMsg(svgH,sec,m->id,m->ch,m->status,m->d0,m->d1)) != kOkRC )
+    {
+      rc = cwLogError(rc,"svg_midi set midi msg failed.");
+      goto errLabel;
+    }
+  }
+
+ errLabel:
+  svg_midi::destroy(svgH);
+  
+  return rc;
+}
+
 
 cw::rc_t cw::midi_record_play::open( handle_t h, const char* fn )
 {

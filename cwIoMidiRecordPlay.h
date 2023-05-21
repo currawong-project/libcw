@@ -61,6 +61,7 @@ namespace cw
 
     rc_t save( handle_t h, const char* fn );
     rc_t save_csv( handle_t h, const char* fn );
+    rc_t write_svg( handle_t h, const char* fn );
     
     rc_t open( handle_t h, const char* fn );
 
