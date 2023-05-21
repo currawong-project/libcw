@@ -5,6 +5,16 @@ namespace cw
 {
   namespace svg_midi
   {
+    typedef handle<struct svg_midi_str> handle_t;
+
+    rc_t create( handle_t& hRef );
+    rc_t destroy( handle_t& hRef );
+
+    rc_t setMidiMsg( handle_t h, double secs, unsigned uid, unsigned ch, unsigned status, unsigned d0,  unsigned d1 );
+    rc_t setMarker(  handle_t h, double secs, unsigned uid, unsigned ch, unsigned markId, unsigned markValue );
+    rc_t write( handle_t h, const char* fname );
+
+    
     rc_t write( const char* fname, midi_state::handle_t msH );
     
     rc_t midi_to_svg_file(        const char* midi_fname,        const char* out_fname, const object_t* midi_state_args );

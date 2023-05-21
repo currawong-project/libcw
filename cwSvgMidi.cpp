@@ -350,6 +350,137 @@ namespace cw
   }  
 }
 
+
+namespace cw
+{
+  namespace svg_midi
+  {
+    typedef struct svg_midi_str
+    {
+      midi_state::handle_t msH;
+    } svg_midi_t;
+
+    svg_midi_t* _handleToPtr( handle_t h )
+    {  return handleToPtr<handle_t,svg_midi_t>(h); }
+      
+    rc_t _destroy( svg_midi_t* p )
+    {
+      midi_state::destroy(p->msH);
+      mem::release(p);
+      return kOkRC;
+    }
+  }
+}
+
+cw::rc_t cw::svg_midi::create( handle_t& hRef )
+{
+  rc_t rc;
+  if((rc = destroy(hRef)) != kOkRC )
+    return rc;
+
+  svg_midi_t* p = mem::allocZ<svg_midi_t>();
+
+  if((rc = midi_state::create(p->msH, nullptr, nullptr, &midi_state::default_config())) != kOkRC )
+  {
+    rc = cwLogError(rc,"midi_state create failed.");
+    goto errLabel;
+  }
+
+ errLabel:
+  return rc;
+}
+
+cw::rc_t cw::svg_midi::destroy( handle_t& hRef )
+{
+  rc_t rc = kOkRC;
+  if(!hRef.isValid())
+    return rc;
+
+  svg_midi_t* p = _handleToPtr(hRef);
+
+  if((rc = _destroy(p)) != kOkRC )
+    return rc;
+
+  hRef.clear();
+  
+  return rc;
+}
+
+cw::rc_t cw::svg_midi::setMidiMsg( handle_t h, double secs, unsigned uid, unsigned ch, unsigned status, unsigned d0,  unsigned d1 )
+{
+  rc_t rc;
+  svg_midi_t* p = _handleToPtr(h);
+
+  if( ch >= midi::kMidiChCnt )
+  {
+    rc = cwLogError(kInvalidArgRC,"Invalid MIDI channel value: %i.",ch);
+    goto errLabel;
+  }
+  
+  if( !midi::isStatus(status))
+  {
+    rc = cwLogError(kInvalidArgRC,"Invalid MIDI status value: %i.",status);
+    goto errLabel;
+  }
+  
+  if( d0>127 )
+  {
+    rc = cwLogError(kInvalidArgRC,"Invalid MIDI d0 value: %i.",d0);
+    goto errLabel;
+  }
+  
+  if( d1>127 )
+  {
+    rc = cwLogError(kInvalidArgRC,"Invalid MIDI d1 value: %i.",d1);
+    goto errLabel;
+  }
+  
+  if((rc = midi_state::setMidiMsg( p->msH, secs, uid, (uint8_t)ch, (uint8_t)status, (uint8_t)d0, (uint8_t)d1 )) != kOkRC )
+  {
+    rc = cwLogError(rc,"midi_state MIDI msg update failed.");
+    goto errLabel;
+  }
+
+ errLabel:
+  return rc;  
+}
+
+cw::rc_t cw::svg_midi::setMarker(  handle_t h, double secs, unsigned uid, unsigned ch, unsigned markId, unsigned markValue )
+{
+  rc_t rc;
+  svg_midi_t* p = _handleToPtr(h);
+
+  if( ch >= midi::kMidiChCnt )
+  {
+    rc = cwLogError(kInvalidArgRC,"Invalid MIDI channel value: %i.",ch);
+    goto errLabel;
+  }
+  
+  if((rc = midi_state::setMarker(  p->msH, secs, uid, (uint8_t)ch, markId, markValue )) != kOkRC )
+  {
+    rc = cwLogError(rc,"midi_state MIDI set marker failed.");
+    goto errLabel;
+  }
+
+ errLabel:
+  return rc;
+}
+
+cw::rc_t cw::svg_midi::write( handle_t h, const char* fname )
+{
+  rc_t rc;
+  svg_midi_t* p = _handleToPtr(h);
+  if((rc = write(fname,p->msH)) != kOkRC )
+  {
+    rc = cwLogError(rc,"MIDI SVG write failed.");
+    goto errLabel;
+  }
+  
+ errLabel:
+  return rc;
+}
+
+
 cw::rc_t cw::svg_midi::write( const char* fname, midi_state::handle_t msH )
 {
   rc_t     rc           = kOkRC;
