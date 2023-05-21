@@ -24,6 +24,12 @@ namespace cw
     // Clear the match id array.  This should be done to empty the current_match_id_array() 
     void clear_match_id_array( handle_t h );
 
+
+    rc_t cw_loc_range( handle_t h, unsigned& minLocRef, unsigned& maxLocRef );
+    bool is_loc_in_range( handle_t h, unsigned loc );
+    
+    unsigned has_stored_performance( handle_t h );
+
     // Write an SVG file containing a graphic view of the score following results since the last call to reset().
     // Set show_muid_fl to true to display the 'muid' of the performed notes in the
     // SVG rendering, otherwise the performed note sequence (order of arrival) id is shown.

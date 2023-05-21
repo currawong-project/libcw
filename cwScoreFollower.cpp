@@ -422,6 +422,46 @@ void cw::score_follower::clear_match_id_array( handle_t h )
   p->match_id_curN = 0;
 }
 
+cw::rc_t cw::score_follower::cw_loc_range( handle_t h, unsigned& minLocRef, unsigned& maxLocRef )
+{
+  rc_t rc = kOkRC;
+  score_follower_t* p = _handleToPtr(h);
+
+  minLocRef = kInvalidId;
+  maxLocRef = kInvalidId;
+  
+  if( p->cwLocToCmLocA==nullptr || p->cwLocToCmLocN == 0 )
+  {
+    rc = cwLogError(kInvalidStateRC,"The cw location range is not yet set.");
+    goto errLabel;
+  }
+  
+  minLocRef = 1;
+  maxLocRef = p->cwLocToCmLocN-1;
+
+ errLabel:
+  return rc;
+}
+
+bool cw::score_follower::is_loc_in_range( handle_t h, unsigned loc )
+{
+  rc_t rc;
+  unsigned minLoc = 0;
+  unsigned maxLoc = 0;
+  
+  if((rc = cw_loc_range(h,minLoc,maxLoc)) != kOkRC )
+    return false;
+  
+  return minLoc <= loc && loc <= maxLoc;
+}
+    
+unsigned cw::score_follower::has_stored_performance( handle_t h )
+{
+  score_follower_t* p = _handleToPtr(h);
+  return p->perf_idx > 0;
+}
+
+
 cw::rc_t cw::score_follower::write_svg_file( handle_t h, const char* out_fname, bool show_muid_fl )
 {
   score_follower_t* p = _handleToPtr(h);
