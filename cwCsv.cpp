@@ -168,13 +168,30 @@ namespace cw
     rc_t _fill_line_buffer( csv_t* p )
     {
       rc_t rc;
-      
+
+      // read the next line
       if((rc = getLineAuto( p->fH, &p->lineBuf, &p->lineCharCnt )) != kOkRC )
       {
         if( rc != kEofRC )
           rc = cwLogError(rc,"Line buf alloc failed on line index:%i.",p->curLineIdx);
       }
-      
+
+      p->lineCharCnt = textLength(p->lineBuf);
+
+      // trim trailing white space from the line buffer.
+      if( p->lineCharCnt > 0 )
+      {
+        int i = ((int)p->lineCharCnt)-1;
+        
+        while( i>=0 && isspace(p->lineBuf[i]) )
+        {
+          p->lineBuf[i] = '\0';
+          --i;
+          p->lineCharCnt -= 1;
+        }
+        
+      }
+        
       return rc;
     }
 
