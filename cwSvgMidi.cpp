@@ -386,6 +386,8 @@ cw::rc_t cw::svg_midi::create( handle_t& hRef )
     goto errLabel;
   }
 
+  hRef.set(p);
+  
  errLabel:
   return rc;
 }
