@@ -585,7 +585,7 @@ cw::rc_t cw::csv::test( const object_t* args )
     for(unsigned i=0; i<10 && (rc = next_line(csvH)) == kOkRC; ++i )
     {
       const char* opcode = nullptr;
-      unsigned d0,d1;
+      unsigned d0=0xff,d1=0xff;
       if((rc = getv(csvH,"opcode",opcode,
                     "d0",d0,
                     "d1",d1)) != kOkRC )
