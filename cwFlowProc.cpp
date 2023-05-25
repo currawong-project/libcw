@@ -118,8 +118,8 @@ namespace cw
           goto errLabel;
         }
            
-        errLabel:
-           return rc;
+      errLabel:
+        return rc;
       }
 
       rc_t destroy( instance_t* ctx )
@@ -1130,8 +1130,8 @@ namespace cw
       }
 
       /*
-      rc_t exec( instance_t* ctx )
-      {
+        rc_t exec( instance_t* ctx )
+        {
         rc_t          rc    = kOkRC;
         const abuf_t* ibuf0 = nullptr;
         const abuf_t* ibuf1 = nullptr;
@@ -1139,22 +1139,22 @@ namespace cw
         unsigned      oChIdx = 0;
         
         if((rc = var_get(ctx,kIn0PId, kAnyChIdx, ibuf0 )) != kOkRC )
-          goto errLabel;
+        goto errLabel;
 
         if((rc = var_get(ctx,kIn1PId, kAnyChIdx, ibuf1 )) != kOkRC )
-          goto errLabel;
+        goto errLabel;
         
         if((rc = var_get(ctx,kOutPId, kAnyChIdx, obuf)) != kOkRC )
-          goto errLabel;
+        goto errLabel;
 
         oChIdx = _exec( ctx, ibuf0, obuf, oChIdx );
         oChIdx = _exec( ctx, ibuf1, obuf, oChIdx );
 
         assert( oChIdx == obuf->chN );
 
-      errLabel:
+        errLabel:
         return rc;
-      }
+        }
       */
       
       rc_t exec( instance_t* ctx )
@@ -1537,7 +1537,7 @@ namespace cw
         inst_t* inst = (inst_t*)ctx->userPtr;
         
         for(unsigned i=0; i<inst->pvN; ++i)
-           destroy(inst->pvA[i]);
+          destroy(inst->pvA[i]);
         
         mem::release(inst->pvA);
         mem::release(inst);
@@ -2384,8 +2384,53 @@ namespace cw
         return kOkRC;
       }
 
+      rc_t _update_delay( instance_t* ctx, variable_t* var )
+      {
+        rc_t     rc          = kOkRC;
+        inst_t*  inst        = (inst_t*)ctx->userPtr;
+        abuf_t*  ibuf        = nullptr;
+        real_t   delayMs     = 0;
+        unsigned delayFrameN = 0;
+        
+        if((rc = var_get(ctx,kInPId, kAnyChIdx, ibuf )) != kOkRC )
+          goto errLabel;
+
+        if((rc = var_get( var, delayMs )) != kOkRC )
+          goto errLabel;
+        
+        delayFrameN = (unsigned)(fabs(delayMs) * ibuf->srate / 1000.0);
+
+        if( delayFrameN > inst->maxDelayFrameN )
+        {
+          delayFrameN = inst->maxDelayFrameN;
+          cwLogWarning("The audio delay length is limited to %i milliseconds.", (int)((delayFrameN * 1000) / ibuf->srate));
+        }
+        
+        vop::zero(inst->delayBuf->buf,inst->delayBuf->chN*inst->delayBuf->frameN);
+        
+        for(unsigned i=0; i<ibuf->chN; ++i)
+        {
+          inst->cntV[i] = delayFrameN;
+          inst->idxV[i] = 0;          
+        }
+
+      errLabel:
+        return rc;
+      }
+
       rc_t value( instance_t* ctx, variable_t* var )
-      { return kOkRC; }
+      {
+        rc_t rc = kOkRC;
+        
+        switch( var->vid )
+        {
+          case kDelayMsPId:
+            rc = _update_delay(ctx,var);
+            break;
+        }
+
+        return rc;
+      }
 
       rc_t exec( instance_t* ctx )
       {
@@ -2405,29 +2450,29 @@ namespace cw
 
         // for each channel
         for(unsigned i=0; i<ibuf->chN; ++i)
+        {
+          sample_t* isig = ibuf->buf + i*ibuf->frameN;
+          sample_t* osig = obuf->buf + i*obuf->frameN;
+          sample_t* dsig = dbuf->buf + i*dbuf->frameN;
+          unsigned    di = inst->idxV[i];
+
+          // if the delay is set to zero samples
+          if( inst->cntV[i] == 0 )
+            memcpy(osig,isig,ibuf->frameN * sizeof(sample_t));
+          else 
           {
-            sample_t* isig = ibuf->buf + i*ibuf->frameN;
-            sample_t* osig = obuf->buf + i*obuf->frameN;
-            sample_t* dsig = dbuf->buf + i*dbuf->frameN;
-            unsigned    di = inst->idxV[i];
-
-            // if the delay is set to zero samples
-            if( inst->cntV[i] == 0 )
-              memcpy(osig,isig,ibuf->frameN * sizeof(sample_t));
-            else 
+            // otherwise the delay is non-zero positive sample count
+            for(unsigned j=0; j<ibuf->frameN; ++j)
             {
-              // otherwise the delay is non-zero positive sample count
-              for(unsigned j=0; j<ibuf->frameN; ++j)
-              {
-                osig[j]  = dsig[di]; // read delay output
-                dsig[di] = isig[j];  // set delay input
-                di = (di+1) % inst->cntV[i];       // update the delay index
-              }
+              osig[j]  = dsig[di]; // read delay output
+              dsig[di] = isig[j];  // set delay input
+              di = (di+1) % inst->cntV[i];       // update the delay index
             }
+          }
 
-            // store the delay index for the next cycle
-            inst->idxV[i] = di; 
-          }  
+          // store the delay index for the next cycle
+          inst->idxV[i] = di; 
+        }  
         
       errLabel:
         return rc;
@@ -2610,9 +2655,9 @@ namespace cw
         kDbFlPId,
         kWndMsPId,
         kPeakDbPId,
-	kOutPId,
-	kPeakFlPId,
-	kClipFlPId
+        kOutPId,
+        kPeakFlPId,
+        kClipFlPId
       };
 
 
@@ -2648,28 +2693,28 @@ namespace cw
           // create a audio_meter object for each input channel
           for(unsigned i=0; i<srcBuf->chN; ++i)
           {
-	    real_t wndMs, peakThreshDb;
-	    bool dbFl;
+            real_t wndMs, peakThreshDb;
+            bool dbFl;
 	    
             // get the audio_meter variable values
             if((rc = var_register_and_get( ctx, i,
                                            kDbFlPId,   "dbFl",    dbFl,
                                            kWndMsPId, "wndMs",    wndMs,
-					   kPeakDbPId, "peakDb",  peakThreshDb )) != kOkRC )
+                                           kPeakDbPId, "peakDb",  peakThreshDb )) != kOkRC )
             {
               goto errLabel;
             }
 
             // get the audio_meter variable values
             if((rc = var_register( ctx, i,
-				   kOutPId,   "out",
-				   kPeakFlPId, "peakFl",
-				   kClipFlPId, "clipFl" )) != kOkRC )
+                                   kOutPId,   "out",
+                                   kPeakFlPId, "peakFl",
+                                   kClipFlPId, "clipFl" )) != kOkRC )
             {
               goto errLabel;
             }
 	    
-	    unsigned maxWndMs = std::max(wndMs,1000.0f);
+            unsigned maxWndMs = std::max(wndMs,1000.0f);
 	    
             // create the audio_meter instance
             if((rc = dsp::audio_meter::create( inst->mtrA[i], srcBuf->srate, maxWndMs, wndMs, peakThreshDb)) != kOkRC )
@@ -2721,9 +2766,9 @@ namespace cw
         for(unsigned i=0; i<chN; ++i)
         {
           dsp::audio_meter::exec( inst->mtrA[i], srcBuf->buf + i*srcBuf->frameN, srcBuf->frameN );
-	  var_set(ctx, kOutPId,    i, inst->mtrA[i]->outDb  );
-	  var_set(ctx, kPeakFlPId, i, inst->mtrA[i]->peakFl );
-	  var_set(ctx, kClipFlPId, i, inst->mtrA[i]->clipFl );
+          var_set(ctx, kOutPId,    i, inst->mtrA[i]->outDb  );
+          var_set(ctx, kPeakFlPId, i, inst->mtrA[i]->peakFl );
+          var_set(ctx, kClipFlPId, i, inst->mtrA[i]->clipFl );
         }
 
       errLabel:
