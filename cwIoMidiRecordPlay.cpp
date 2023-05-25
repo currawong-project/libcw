@@ -12,6 +12,7 @@
 #include "cwMidiFile.h"
 #include "cwUiDecls.h"
 #include "cwIo.h"
+#include "cwScoreFollowerPerf.h"
 #include "cwIoMidiRecordPlay.h"
 #include "cwMidiState.h"
 #include "cwSvgMidi.h"
@@ -119,6 +120,7 @@ namespace cw
       unsigned       iMsgArrayN;                   // Count of messages allocated in msgArray.
       unsigned       iMsgArrayInIdx;               // Next available space for incoming MIDI messages (also the current count of msgs in msgArray[])
 
+      unsigned       lastStoreIndex;
       
       midi_device_t* midiDevA;
       unsigned       midiDevN;
@@ -372,6 +374,7 @@ namespace cw
       }
 
       p->iMsgArrayN = p->msgArrayN;
+      p->lastStoreIndex = kInvalidIdx;
       
       if( midiDevL->child_count() > 0 )
       {
@@ -486,12 +489,16 @@ namespace cw
 
       //if( !midi::isPedal(status,d0) )
       //  printf("MIDI store: %i : ch:%i st:%i d0:%i d1:%i\n",p->iMsgArrayInIdx,ch,status,d0,d1);
+
+      p->lastStoreIndex = kInvalidIdx;
       
       // verify that space exists in the record buffer
       if( p->iMsgArrayInIdx < p->iMsgArrayN )
       {
         // MAKE THIS ATOMIC
-        unsigned id = p->iMsgArrayInIdx;
+        unsigned id       =  p->iMsgArrayInIdx;
+        p->lastStoreIndex =  p->iMsgArrayInIdx;
+        
         ++p->iMsgArrayInIdx;
 
         am = p->iMsgArray + id;
@@ -708,6 +715,8 @@ namespace cw
     void _set_midi_msg_next_index( midi_record_play_t* p, unsigned next_idx )
     {
       p->iMsgArrayInIdx = next_idx;
+      if( next_idx == 0 )
+        p->lastStoreIndex = kInvalidIdx;
     }
 
     // Set the next index of the next MIDI message to transmit
@@ -1012,8 +1021,65 @@ namespace cw
       cwLogInfo("Saved %i events to '%s'.", p->iMsgArrayInIdx, fn );
 
       return rc;
+    }
+
+    rc_t _write_sync_csv( midi_record_play_t* p, const char* fn )
+    {
+      rc_t           rc = kOkRC;
+      file::handle_t fH;
+
+      if( p->iMsgArrayInIdx == 0 )
+      {
+        cwLogWarning("Nothing to write.");
+        return rc;
+      }
+
+      // open the file
+      if((rc = file::open(fH,fn,file::kWriteFl)) != kOkRC )
+      {
+        rc = cwLogError(kOpenFailRC,"Unable to create the file '%s'.",cwStringNullGuard(fn));
+        goto errLabel;
+      }
+
+      // write the header line
+      file::printf(fH,"meas,index,voice,loc,tick,sec,dur,rval,dots,sci_pitch,dmark,dlevel,status,d0,d1,bar,section,bpm,grace,pedal\n");
+      
+      for(unsigned i=0; i<p->iMsgArrayInIdx; ++i)
+      {
+        const am_midi_msg_t* m = p->iMsgArray + i;
+
+        double secs = time::elapsedSecs( p->iMsgArray[0].timestamp, p->iMsgArray[i].timestamp );
+        
+        // write the event line
+        if( midi::isNoteOn(m->status,m->d1) )
+        {
+          char sciPitch[ midi::kMidiSciPitchCharCnt + 1 ];
+          unsigned bar = 0;
+          midi::midiToSciPitch( m->d0, sciPitch, midi::kMidiSciPitchCharCnt );
+          rc = file::printf(fH, "%i,%i,%i,%i,0,%f,0.0,0.0,0,%s,,,%i,%i,%i,,,,,\n",
+                            bar,i,1,m->loc,secs,sciPitch,m->status,m->d0,m->d1);
+        }        
+        else
+        {
+          rc = file::printf(fH, ",%i,,,%i,%f,,,,,,,%i,%i,%i,,,,,\n",i,0,secs,m->status,m->d0,m->d1);
+        }
+        
+        if( rc != kOkRC )
+        {
+          rc  = cwLogError(rc,"Write failed on line:%i", i+1 );
+          goto errLabel;
+        }
+      }
+
+    errLabel:
+      file::close(fH);
+
+      cwLogInfo("Saved %i events to '%s'.", p->iMsgArrayInIdx, fn );
+
+      return rc;
 
     }
+    
 
     rc_t _midi_file_write( const char* fn, const am_midi_msg_t* msgArray, unsigned msgArrayCnt )
     {
@@ -1245,6 +1311,8 @@ namespace cw
 
               if( midi::isChStatus(mm->status) )
               {
+                //printf("R:%i %i %i\n",mm->status, mm->d0, mm->d1);
+        
                 const am_midi_msg_t* am = _midi_store( p, pkt->devIdx, pkt->portIdx, mm->timeStamp, mm->status & 0x0f, mm->status & 0xf0, mm->d0, mm->d1 );
 
                 if( p->thruFl && am != nullptr )
@@ -1636,6 +1704,46 @@ cw::rc_t cw::midi_record_play::save_csv( handle_t h, const char* fn )
   return _write_csv(p,fn);
 }
 
+cw::rc_t cw::midi_record_play::save_synced_csv( handle_t h, const char* fn, const score_follower::ssf_note_on_t* syncA, unsigned syncN )
+{
+  rc_t rc = kOkRC;
+  midi_record_play_t* p  = _handleToPtr(h);  
+
+  for(unsigned i=0; i<p->iMsgArrayInIdx; ++i)
+  {
+    const am_midi_msg_t* m = p->iMsgArray + i;
+
+    if( midi::isNoteOn(m->status,m->d1) )
+    {
+      for(unsigned j=0; j<syncN; ++j)
+        if( syncA[j].muid == p->iMsgArray[i].id )
+        {
+          if( p->iMsgArray[i].d0 != syncA[j].pitch )
+          {
+            rc = cwLogError(kInvalidStateRC,"MIDI sync failed. Pitch mismatch. i:%i j:%i : %i %i",i,j, p->iMsgArray[i].d0 != syncA[j].pitch);
+            //goto errLabel;
+            continue;
+          }
+
+          p->iMsgArray[i].loc = syncA[j].loc;
+          
+
+        }
+    }
+    
+  }
+
+  if((rc = _write_sync_csv( p, fn )) != kOkRC )
+  {
+    rc = cwLogError(rc,"MIDI sync'd CSV write failed.");
+    goto errLabel;
+  }
+
+ errLabel:
+  return rc;
+}
+
+
 cw::rc_t cw::midi_record_play::write_svg( handle_t h, const char* fn )
 {
   rc_t rc;
@@ -1784,6 +1892,12 @@ unsigned cw::midi_record_play::event_index( handle_t h )
 {
   midi_record_play_t* p  = _handleToPtr(h);    
   return p->recordFl ? p->iMsgArrayInIdx : p->msgArrayOutIdx;
+}
+
+unsigned cw::midi_record_play::last_store_index( handle_t h )
+{
+  midi_record_play_t* p  = _handleToPtr(h);    
+  return p->recordFl ? p->lastStoreIndex : kInvalidIdx;
 }
 
 unsigned cw::midi_record_play::event_loc( handle_t h )

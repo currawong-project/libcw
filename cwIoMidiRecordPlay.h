@@ -61,6 +61,8 @@ namespace cw
 
     rc_t save( handle_t h, const char* fn );
     rc_t save_csv( handle_t h, const char* fn );
+    rc_t save_synced_csv( handle_t h, const char* fn, const score_follower::ssf_note_on_t* syncA, unsigned syncN );
+    
     rc_t write_svg( handle_t h, const char* fn );
     
     rc_t open( handle_t h, const char* fn );
@@ -75,6 +77,9 @@ namespace cw
     unsigned event_count( handle_t h ); // Current count of stored messages.
     unsigned event_index( handle_t h ); // record mode: index of next event to store play mode:index of next event to play
     unsigned event_loc( handle_t h );   // play mode: loc of next event to play record mode:kInvalidId
+
+    unsigned last_store_index( handle_t h );
+
     
     rc_t exec( handle_t h, const io::msg_t& msg );
 
