@@ -5,7 +5,6 @@ namespace cw
 {
   namespace score_follower
   {
-
     typedef handle< struct score_follower_str > handle_t;
     
     rc_t create( handle_t& hRef, const object_t* cfg, cm::handle_t cmCtxH, double srate );
@@ -24,11 +23,20 @@ namespace cw
     // Clear the match id array.  This should be done to empty the current_match_id_array() 
     void clear_match_id_array( handle_t h );
 
-
+    // Get the min and max cw loc values for the current score.
     rc_t cw_loc_range( handle_t h, unsigned& minLocRef, unsigned& maxLocRef );
     bool is_loc_in_range( handle_t h, unsigned loc );
-    
+
     unsigned has_stored_performance( handle_t h );
+
+    // Set the 'loc' field on the stored performance from the stored score following info.
+    rc_t     sync_perf_to_score( handle_t h );
+
+    // Return the count of stored performance records in the performance array.
+    unsigned perf_count( handle_t h );
+
+    // Return the base of the stored performance array.
+    const score_follower::ssf_note_on_t* perf_base( handle_t h );
 
     // Write an SVG file containing a graphic view of the score following results since the last call to reset().
     // Set show_muid_fl to true to display the 'muid' of the performed notes in the

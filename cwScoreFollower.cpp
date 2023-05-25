@@ -9,6 +9,7 @@
 #include "cwMidi.h"
 #include "cwMidiFile.h"
 #include "cwCmInterface.h"
+#include "cwScoreFollowerPerf.h"
 #include "cwScoreFollower.h"
 #include "cwMidiState.h"
 
@@ -405,9 +406,7 @@ cw::rc_t cw::score_follower::exec(  handle_t h, double sec, unsigned smpIdx, uns
   }
       
   return rc;
-
 }
-
 
 const unsigned* cw::score_follower::current_match_id_array( handle_t h, unsigned& cur_match_id_array_cnt_ref )
 {
@@ -458,9 +457,59 @@ bool cw::score_follower::is_loc_in_range( handle_t h, unsigned loc )
 unsigned cw::score_follower::has_stored_performance( handle_t h )
 {
   score_follower_t* p = _handleToPtr(h);
-  return p->perf_idx > 0;
+  return p->perf_idx > 0 && p->matcher->ri > 0;
 }
 
+cw::rc_t cw::score_follower::sync_perf_to_score( handle_t h )
+{
+  rc_t rc = kOkRC;
+  score_follower_t* p = _handleToPtr(h);
+
+  if( !has_stored_performance(h) )
+  {
+    rc = cwLogError(kInvalidStateRC,"No performance to sync.");
+    goto errLabel;
+  }
+  
+  for(unsigned i=0; i<p->matcher->ri; ++i)
+  {
+    unsigned perf_idx = p->matcher->res[i].muid;
+
+    // the matcher result 'muid' is the perf. array index of the matching perf. record
+    if( perf_idx >= p->perf_idx )
+    {
+      rc = cwLogError(kInvalidStateRC,"Inconsistent match to perf. map: index mismatch.");
+      goto errLabel;
+    }
+
+    // verify the pitch of the matching records 
+    if( p->perfA[ perf_idx ].pitch != p->matcher->res[i].pitch )
+    {
+      rc = cwLogError(kInvalidStateRC,"Inconsistent match to perf. map: pitch mismatch %i != %i.",p->perfA[ perf_idx ].pitch ,p->matcher->res[i].pitch);
+      goto errLabel;
+    }
+
+    assert( p->matcher->res[i].scEvtIdx == kInvalidIdx || p->matcher->res[i].scEvtIdx < p->cmLocToCwLocN );
+
+    if( p->matcher->res[i].scEvtIdx != kInvalidIdx )
+      p->perfA[ perf_idx ].loc = p->cmLocToCwLocA[ p->matcher->res[i].scEvtIdx ];
+  }
+
+ errLabel:
+  return rc;
+}
+
+unsigned cw::score_follower::perf_count( handle_t h )
+{
+  score_follower_t* p = _handleToPtr(h);
+  return p->perfN;
+}
+
+const cw::score_follower::ssf_note_on_t* cw::score_follower::perf_base( handle_t h )
+{
+  score_follower_t* p = _handleToPtr(h);
+  return p->perfA;
+}
 
 cw::rc_t cw::score_follower::write_svg_file( handle_t h, const char* out_fname, bool show_muid_fl )
 {
