@@ -658,7 +658,7 @@ namespace cw
           unsigned smpCnt      = chCnt * frmCnt;
           unsigned byteCnt     = smpCnt * bytesPerSmp;
 
-          char     buf[ byteCnt ];
+          char     buf[ byteCnt ]{0};
 
           // get the incoming samples into buf[] ...
           err = snd_pcm_readi(pcmH,buf,frmCnt);
