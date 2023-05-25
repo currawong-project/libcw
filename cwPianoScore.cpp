@@ -7,6 +7,7 @@
 #include "cwMidi.h"
 #include "cwTime.h"
 #include "cwFile.h"
+#include "cwCsv.h"
 
 namespace cw
 {
@@ -21,6 +22,8 @@ namespace cw
       event_t** uid_mapA;
       unsigned  uid_mapN;
       unsigned  min_uid;
+
+      bool has_locs_fl;
       
     } score_t;
 
@@ -325,7 +328,61 @@ namespace cw
     errLabel:
       return rc;
     }
+    
+    rc_t _parse_midi_csv( score_t* p, const char* fn )
+    {
+      rc_t rc = kOkRC;
+      csv::handle_t csvH;
+      const char* titleA[] = { "dev","port","microsec","id","sec","ch","status","sci_pitch","d0","d1" };
+      const unsigned titleN = sizeof(titleA)/sizeof(titleA[0]);
+      
+      if((rc = csv::create(csvH,fn,titleA, titleN)) != kOkRC )
+      {
+        rc = cwLogError(rc,"CSV object create failed on '%s'.",cwStringNullGuard(fn));
+        goto errLabel;
+      }
 
+      for(unsigned i=0;  (rc = next_line(csvH)) == kOkRC; ++i )
+      {
+        unsigned ch = 0;
+        event_t* e = mem::allocZ<event_t>();
+
+        
+        if((rc = csv::getv(csvH,
+                           "id",e->uid,
+                           "sec",e->sec,
+                           "ch",ch,
+                           "status",e->status,
+                           "d0",e->d0,
+                           "d1",e->d1)) != kOkRC )
+        {
+          rc = cwLogError(rc,"CSV parse failed on line index:%i of '%s'.",i,cwStringNullGuard(fn));
+          mem::release(e);
+          goto errLabel;
+        }
+
+        e->status += ch;
+        e->loc = e->uid;
+        
+        // link the event into the event list
+        if( p->end != nullptr )
+          p->end->link = e;
+        else
+          p->base = e;
+        
+        p->end  = e;
+        
+      }
+
+
+    errLabel:
+      if((rc = csv::destroy(csvH)) != kOkRC )
+        rc = cwLogError(rc,"CSV object destroy failed on '%s'.",cwStringNullGuard(fn));
+      
+      return rc;
+    }
+
+    
     const event_t* _uid_to_event( score_t* p, unsigned uid )
     {
       const event_t* e = p->base;
@@ -359,28 +416,15 @@ cw::rc_t cw::score::create( handle_t& hRef, const char* fn )
   
   if((rc = destroy(hRef)) != kOkRC )
     return rc;
-
-  // parse the cfg file
-  /*
-  if((rc = objectFromFile( fn, cfg )) != kOkRC )
-  {
-    rc = cwLogError(rc,"Score parse failed on file: '%s'.", fn);
-    goto errLabel;
-  }
-
-  rc = create(hRef,cfg);
-  */
   
   p = mem::allocZ< score_t >();
   
   rc = _parse_csv(p,fn);
-
-  
   
   hRef.set(p);
 
-  //errLabel:
-
+  p->has_locs_fl = true;
+  
   if( cfg != nullptr )
     cfg->free();
 
@@ -404,6 +448,8 @@ cw::rc_t cw::score::create( handle_t& hRef, const object_t* cfg )
     rc = cwLogError(rc,"Score event list parse failed.");
     goto errLabel;
   }
+
+  p->has_locs_fl = true;
   
   hRef.set(p);
   
@@ -413,6 +459,33 @@ cw::rc_t cw::score::create( handle_t& hRef, const object_t* cfg )
   
   return rc;
 }
+
+cw::rc_t cw::score::create_from_midi_csv( handle_t& hRef, const char* fn )
+{
+  rc_t rc;
+  if((rc = destroy(hRef)) != kOkRC )
+    return rc;
+
+  score_t* p = mem::allocZ< score_t >();
+
+  // parse the event list
+  if((rc = _parse_midi_csv(p, fn)) != kOkRC )
+  {
+    rc = cwLogError(rc,"Score event list parse failed.");
+    goto errLabel;
+  }
+
+  p->has_locs_fl = false;
+  
+  hRef.set(p);
+  
+ errLabel:
+  if( rc != kOkRC )
+    destroy(hRef);
+  
+  return rc;
+}
+
 
 cw::rc_t cw::score::destroy( handle_t& hRef )
 {
@@ -431,7 +504,13 @@ cw::rc_t cw::score::destroy( handle_t& hRef )
 
   return rc; 
 }
-  
+
+bool cw::score::has_loc_info_flag( handle_t h )
+{
+  score_t* p = _handleToPtr(h);
+  return p->has_locs_fl;
+}
+
 
 unsigned       cw::score::event_count( handle_t h )
 {
@@ -455,6 +534,7 @@ const cw::score::event_t* cw::score::loc_to_event( handle_t h, unsigned loc )
   return _loc_to_event(p,loc);
 }
 
+/*
 unsigned       cw::score::loc_count( handle_t h )
 {
   score_t* p  = _handleToPtr(h);
@@ -497,6 +577,7 @@ double  cw::score::locs_to_diff_seconds( handle_t h, unsigned loc0Id, unsigned l
 
   return e1->sec - e0->sec;  
 }
+*/
 
 const cw::score::event_t* cw::score::uid_to_event( handle_t h, unsigned uid )
 {

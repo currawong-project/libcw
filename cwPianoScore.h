@@ -31,19 +31,27 @@ namespace cw
         
     rc_t create(  handle_t& hRef, const char* fn );
     rc_t create(  handle_t& hRef, const object_t* cfg );
+
+    // Read a CSV as written by cwIoMidiRecordPlay.save_csv().
+    // In this case event.loc == event.muid.
+    rc_t create_from_midi_csv( handle_t& hRef, const char* fn );
     rc_t destroy( handle_t& hRef );
 
+
+    bool           has_loc_info_flag( handle_t h );
     
     unsigned       event_count( handle_t h );
     const event_t* base_event( handle_t h );
 
     const event_t* loc_to_event( handle_t h, unsigned loc );
     
+    /*
     unsigned       loc_count( handle_t h );
     bool           is_loc_valid( handle_t h, unsigned locId );
     unsigned       loc_to_measure( handle_t h, unsigned locId );
     unsigned       loc_to_next_note_on_measure( handle_t h, unsigned locId );
     double         locs_to_diff_seconds( handle_t h, unsigned loc0Id, unsigned loc1Id );
+    */
     
     const event_t* uid_to_event( handle_t h, unsigned uid );
 
