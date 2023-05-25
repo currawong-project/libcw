@@ -2146,6 +2146,8 @@ namespace cw
       mem::release(p->timerA);
       p->timerN = 0;
 
+      destroy(p->cbMutexH);
+
       _serialPortDestroy(p);
 
       _audioDestroy(p);
@@ -2345,9 +2347,12 @@ cw::rc_t cw::io::exec( handle_t h, void* execCbArg )
   rc_t rc = kOkRC;
   io_t* p = _handleToPtr(h);
   
-  if( p->wsUiH.isValid() )    
+  if( p->wsUiH.isValid() )
+  {
+    ui::flushCache( ui::ws::uiHandle( p->wsUiH ));
     rc = ui::ws::exec( p->wsUiH );
-
+  }
+  
   time::get(p->t0);
 
   if( p->audioMeterDevEnabledN ) 
