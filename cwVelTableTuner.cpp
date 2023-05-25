@@ -10,6 +10,7 @@
 #include "cwFileSys.h"
 #include "cwMidi.h"
 #include "cwIo.h"
+#include "cwScoreFollowerPerf.h"
 #include "cwIoMidiRecordPlay.h"
 #include "cwVelTableTuner.h"
 #include "cwNumericConvert.h"

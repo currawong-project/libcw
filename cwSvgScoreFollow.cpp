@@ -28,6 +28,7 @@
 #include "cmProcObj.h"
 #include "cmProc4.h"
 
+#include "cwScoreFollowerPerf.h"
 #include "cwScoreFollower.h"
 #include "cwSvgScoreFollow.h"
 

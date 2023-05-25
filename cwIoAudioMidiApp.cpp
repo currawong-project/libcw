@@ -11,6 +11,7 @@
 #include "cwMidi.h"
 #include "cwUiDecls.h"
 #include "cwIo.h"
+#include "cwScoreFollowerPerf.h"
 #include "cwIoAudioMidiApp.h"
 #include "cwIoMidiRecordPlay.h"
 #include "cwIoAudioRecordPlay.h"
