@@ -149,15 +149,19 @@ unsigned cw::toText( char* buf, unsigned bufN, double v )
 
 unsigned cw::toText( char* buf, unsigned bufN, const char* v )
 {
-  assert( v != nullptr );
-  
-  unsigned sn = strlen(v) + 1;
-
-  // bufN must be greater than the length of v[]
-  if( sn >= bufN )
+  if( v == nullptr )
+  {
+    cwLogError(kInvalidArgRC,"The source string in a call to 'toText()' was null.");
     return 0;
+  }
+  
+  unsigned i;
+  for(i=0; i<bufN; ++i)
+  {
+    buf[i] = v[i];
+    if(v[i]==0)
+      return i; // on success return the length of the string in buf[] and v[]
+  }
 
-  strncpy(buf,v,sn);
-
-  return sn-1;
+  return 0; // if buf is too small return 0
 }
