@@ -641,7 +641,8 @@ namespace cw
       for(unsigned i=0; i<app->perfDirL->child_count(); ++i)
       {
         const object_t* d;
-        const char* dir;
+        const char* dir=nullptr;
+        const char* fname=nullptr;
 
         // get the directory dict. from the cfg file
         if((d = app->perfDirL->child_ele(i)) == nullptr || !d->is_dict() )
@@ -651,14 +652,14 @@ namespace cw
         }
 
         // get the directory 
-        if((rc = d->getv("dir",dir)) != kOkRC )
+        if((rc = d->getv("dir",dir,"fname",fname)) != kOkRC )
         {
           rc = cwLogError(rc ,"Error parsing the performance directory entry at index '%i'.",i);
           goto errLabel;
         }
 
         // create the performance records from this directory
-        if((rc = _parse_perf_recording_dir(app,dir,"play_score.csv")) != kOkRC )
+        if((rc = _parse_perf_recording_dir(app,dir,fname)) != kOkRC )
         {
           rc = cwLogError(rc ,"Error creating the performance directory entry at index '%i'.",i);
           goto errLabel;          
