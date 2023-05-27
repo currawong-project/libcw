@@ -126,9 +126,10 @@ bool cw::filesys::isLink( const char* fnStr )
 
 
 
-char* cw::filesys::vMakeFn( const char* dir, const char* fn, const char* ext, va_list vl )
+char* cw::filesys::vMakeFn( const char* dir0, const char* fn, const char* ext, va_list vl )
 {
   rc_t        rc      = kOkRC;
+  char*       dir     = nullptr;
   char*       rp      = nullptr;
   const char* dp      = nullptr;
   unsigned    n       = 0;
@@ -136,6 +137,9 @@ char* cw::filesys::vMakeFn( const char* dir, const char* fn, const char* ext, va
   char        extSep  = '.';
   va_list     vl_t;
   va_copy(vl_t,vl);
+
+  if( dir0 != nullptr )
+    dir = expandPath(dir0);
 
   // get prefix directory length
   if( dir != nullptr )
@@ -202,6 +206,8 @@ char* cw::filesys::vMakeFn( const char* dir, const char* fn, const char* ext, va
   if( rc != kOkRC && rp != nullptr )
     mem::release( rp );
 
+  mem::release(dir);
+  
   return rp;
 }
 
