@@ -226,12 +226,12 @@ void cw::time::advanceMicros( spec_t& ts, unsigned us )
     ts.tv_sec  += sec;
   }
   
-  ts.tv_nsec +=  us * 1000000000; // convert microseconds to nanoseconds
+  ts.tv_nsec +=  us * 1000; // convert microseconds to nanoseconds
 
   // stip off whole seconds from tv_nsec
-  while( ts.tv_nsec > 1e9 )
+  while( ts.tv_nsec > 1000000000 )
   {
-    ts.tv_nsec -= 1e9;
+    ts.tv_nsec -= 1000000000;
     ts.tv_sec +=1;
   }    
   
@@ -253,9 +253,9 @@ void cw::time::advanceMs( spec_t& ts, unsigned ms )
   ts.tv_nsec +=  ms * 1000000; // convert millisconds to nanoseconds
 
   // stip off whole seconds from tv_nsec
-  while( ts.tv_nsec > 1e9 )
+  while( ts.tv_nsec > 1000000000 )
   {
-    ts.tv_nsec -= 1e9;
+    ts.tv_nsec -= 1000000000;
     ts.tv_sec +=1;
   }    
 }
@@ -279,10 +279,10 @@ double cw::time::specToSeconds(  const spec_t& t )
 {
   spec_t ts = t;
   double sec = ts.tv_sec;
-  while( ts.tv_nsec >= 1e9 )
+  while( ts.tv_nsec >= 1000000000 )
   {
     sec += 1.0;
-    ts.tv_nsec -= 1e9;
+    ts.tv_nsec -= 1000000000;
   }
   
   return sec + ((double)ts.tv_nsec)/1e9;
@@ -364,7 +364,18 @@ cw::rc_t cw::time::test()
   subtractMicros( t0, 500000 );             // subtract .5 seconds
   printf("%li %li\n",t0.tv_sec,t0.tv_nsec);
 
+
+  time::get(t0);
+  //time::get(t1);
+  t1 = t0;
+
+  advanceMicros(t1,5000);
   
+  int usec = time::elapsedMicros(t0,t1);
+
+  printf("usec:%i\n",usec);
+
+
 
   return kOkRC;
   
