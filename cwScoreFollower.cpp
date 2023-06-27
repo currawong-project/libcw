@@ -39,6 +39,7 @@ namespace cw
   {
     typedef struct score_follower_str
     {
+      bool         enableFl;
       double       srate;
       unsigned     search_area_locN;
       unsigned     key_wnd_locN;
@@ -74,7 +75,8 @@ namespace cw
 
       const char* cm_score_csv_fname;
       
-      if((rc = cfg->getv("cm_score_csv_fname", cm_score_csv_fname,
+      if((rc = cfg->getv("enable_flag",         p->enableFl,
+                         "cm_score_csv_fname",  cm_score_csv_fname,
                          "search_area_locN",    p->search_area_locN,
                          "key_wnd_locN",        p->key_wnd_locN )) != kOkRC )
       {
@@ -324,6 +326,12 @@ cw::rc_t cw::score_follower::destroy( handle_t& hRef )
   return rc;    
 }
 
+bool cw::score_follower::is_enabled( handle_t h )
+{
+  score_follower_t* p    = _handleToPtr(h);
+  return p->enableFl;
+}
+
 cw::rc_t cw::score_follower::reset( handle_t h, unsigned cwLocId )
 {
   rc_t              rc   = kOkRC;
@@ -363,6 +371,10 @@ cw::rc_t cw::score_follower::exec(  handle_t h, double sec, unsigned smpIdx, uns
   unsigned          scLocIdx           = cmInvalidIdx;
   unsigned          pre_match_id_curN = p->match_id_curN;
 
+  if( !p->enableFl )
+    return cwLogError(kInvalidStateRC,"The score follower is not enabled.");
+
+  
   newMatchFlRef = false;
 
   // Note: pass p->perf_idx as 'muid' to the score follower
