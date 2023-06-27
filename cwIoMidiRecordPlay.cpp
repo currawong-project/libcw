@@ -54,12 +54,25 @@ namespace cw
       
     } am_midi_msg_t;
 
+    typedef struct vel_tbl_str
+    {
+      uint8_t*    velTblA;
+      unsigned    velTblN;
+      bool        enableFl;
+      bool        defaultFl;
+      char*       name;
+      char*       device;
+    } vel_tbl_t;
+
     typedef struct midi_device_str
     {
+      char*          label;
+      
       char*          midiOutDevLabel;
       char*          midiOutPortLabel;
       unsigned       midiOutDevIdx;
       unsigned       midiOutPortIdx;
+
       bool           enableFl;
       unsigned       velTableN;
       uint8_t*       velTableArray;
@@ -104,7 +117,6 @@ namespace cw
       kWaitForPedalDown,
     };
 
-    
     typedef struct midi_record_play_str
     {
       io::handle_t   ioH;
@@ -114,6 +126,7 @@ namespace cw
       unsigned       msgArrayInIdx;               // Next available space for loaded MIDI messages (also the current count of msgs in msgArray[])
       unsigned       msgArrayOutIdx;              // Next message to transmit in msgArray[]     
       unsigned       midi_timer_period_micro_sec; // Timer period in microseconds
+      unsigned       midi_timer_index;             // 
       unsigned       all_off_delay_ms;            // Wait this long before turning all notes off after the last note-on has played
 
       am_midi_msg_t* iMsgArray;                    // msgArray[ msgArrayN ]
@@ -151,7 +164,6 @@ namespace cw
       time::spec_t   start_time;
       time::spec_t   end_play_event_timestamp;
       time::spec_t   all_off_timestamp;
-      time::spec_t   store_time;
 
       event_callback_t cb;
       void*            cb_arg;
@@ -169,13 +181,13 @@ namespace cw
     rc_t _destroy( midi_record_play_t* p )
     {
       rc_t rc = kOkRC;
-      unsigned timerIdx;
       
-      if((timerIdx = io::timerLabelToIndex( p->ioH, TIMER_LABEL )) != kInvalidIdx )
-        io::timerDestroy( p->ioH, timerIdx);
+      if(p->midi_timer_index != kInvalidIdx )
+        io::timerDestroy( p->ioH, p->midi_timer_index);
 
       for(unsigned i=0; i<p->midiDevN; ++i)
       {
+        mem::release(p->midiDevA[i].label);
         mem::release(p->midiDevA[i].midiOutDevLabel);
         mem::release(p->midiDevA[i].midiOutPortLabel);
         mem::release(p->midiDevA[i].velTableArray);
@@ -184,9 +196,19 @@ namespace cw
       mem::release(p->midiDevA);
       mem::release(p->msgArray);
       mem::release(p->iMsgArray);
+      printf("P:%p\n",p);
       mem::release(p);
     
       return rc;
+    }
+
+    unsigned _label_to_device_index( midi_record_play_t* p, const char* label )
+    {
+      for(unsigned i=0; i<p->midiDevN; ++i)
+        if( textCompare(p->midiDevA[i].label,label) == 0 )
+          return i;
+      
+      return kInvalidIdx;
     }
 
     void _xmit_midi( midi_record_play_t* p, unsigned devIdx, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
@@ -351,8 +373,7 @@ namespace cw
         }
       }
 
-      _set_chord_note_count(m0,m,chordNoteCnt);
-      
+      _set_chord_note_count(m0,m,chordNoteCnt);      
     }
 
     rc_t _parseCfg(midi_record_play_t* p, const object_t& cfg )
@@ -386,13 +407,14 @@ namespace cw
         for(unsigned i=0; i<p->midiDevN; ++i)
         {
           const object_t* ele              = midiDevL->child_ele(i);
+          const char*     label            = nullptr;
           const char*     midiOutDevLabel  = nullptr;
           const char*     midiOutPortLabel = nullptr;
-          const object_t* velTable         = nullptr;
           const object_t* pedalRecd        = nullptr;
           bool            enableFl         = false;
           
-          if((rc = ele->getv( "midi_out_device",   midiOutDevLabel,
+          if((rc = ele->getv( "label",             label,
+                              "midi_out_device",   midiOutDevLabel,
                               "midi_out_port",     midiOutPortLabel,
                               "enableFl",          enableFl)) != kOkRC )
           {
@@ -402,7 +424,6 @@ namespace cw
           
 
           if((rc = ele->getv_opt(
-                                 "vel_table", velTable,
                                  "pedal",     pedalRecd,
                                  "force_damper_down_fl",p->midiDevA[i].force_damper_down_fl,
                                  "force_damper_down_threshold",p->midiDevA[i].force_damper_down_threshold,
@@ -424,29 +445,12 @@ namespace cw
                     p->midiDevA[i].damper_dead_band_enable_fl,
                     p->midiDevA[i].damper_dead_band_min_value,
                     p->midiDevA[i].damper_dead_band_max_value );
-          
+
+          p->midiDevA[i].label            = mem::duplStr( label );
           p->midiDevA[i].midiOutDevLabel  = mem::duplStr( midiOutDevLabel);
           p->midiDevA[i].midiOutPortLabel = mem::duplStr( midiOutPortLabel);
           p->midiDevA[i].enableFl         = enableFl;
 
-          /*
-          if( velTable != nullptr )
-          {
-            p->midiDevA[i].velTableN     = velTable->child_count();
-            p->midiDevA[i].velTableArray = mem::allocZ<uint8_t>(p->midiDevA[i].velTableN);
-
-            
-            for(unsigned j=0; j<p->midiDevA[i].velTableN; ++j)
-            {
-              if((rc = velTable->child_ele(j)->value( p->midiDevA[i].velTableArray[j] )) != kOkRC )
-              {
-                rc = cwLogError(kSyntaxErrorRC,"An error occured while parsing the velocity table for MIDI device:'%s' port:'%s'.",midiOutDevLabel,midiOutPortLabel);
-                goto errLabel;
-              }
-            }              
-          }
-          */
-          
           if( pedalRecd != nullptr )
           {
             if((rc = pedalRecd->getv( "down_id",  p->midiDevA[i].pedalDownVelId,
@@ -564,7 +568,7 @@ namespace cw
               {
                 // verify that the vel. is legal given the table
                 if( d1 >= p->midiDevA[i].velTableN )
-                  cwLogError(kInvalidIdRC,"A MIDI note-on velocity (%i) outside the velocity table range was encountered.",d1);
+                  cwLogError(kInvalidIdRC,"A MIDI note-on velocity (%i) outside the velocity table (%i>%i) range was encountered on device:%s.",d1,(p->midiDevA[i].velTableN)-1,cwStringNullGuard(p->midiDevA[i].label));
                 else                
                   out_d1 = p->midiDevA[i].velTableArray[ d1 ];
 
@@ -1253,8 +1257,10 @@ namespace cw
           
         }
         else
-        {
+        {          
           io::timerStop( p->ioH, io::timerIdToIndex(p->ioH, kMidiRecordPlayTimerId) );
+
+
 
           // TODO:
           // BUG BUG BUG: should work for all channels
@@ -1347,7 +1353,6 @@ namespace cw
         else  
           while( p->msgArray[ p->msgArrayOutIdx ].microsec <= cur_time_us )
           {
-
             
             am_midi_msg_t* mm = p->msgArray + p->msgArrayOutIdx;
 
@@ -1364,105 +1369,23 @@ namespace cw
               break;
             }
           }
+
+        if( p->msgArrayOutIdx < p->msgArrayInIdx )
+        {
+          // the next callback should happen at now() + (next_msg_us - cur_us)
+          time::advanceMicros(t, p->msgArray[ p->msgArrayOutIdx ].microsec - cur_time_us );
+          io::timerSetNextTime( p->ioH, p->midi_timer_index,t);
+        }
       }
         
       return rc;
     }
 
-    rc_t _loadVelTable( midi_record_play_t* p, const object_t* cfg, midi_device_t* dev, unsigned devIdx )
-    {
-      rc_t        rc          = kOkRC;
-      const char* refDevLabel = nullptr;
-      const object_t* tables  = nullptr;
-      unsigned        i           = 0;
-
-      // get the textual name the device
-      switch( devIdx )
-      {
-        case kSampler_MRP_DevIdx: refDevLabel="sampler"; break;
-        case kPiano_MRP_DevIdx:   refDevLabel="piano";  break;
-      }
-
-      // verify that the device has a label
-      if( refDevLabel == nullptr )
-      {
-        rc = cwLogError(kInvalidStateRC,"The MIDI record-play unit device '%i' does not have a device label.",devIdx);
-        goto errLabel;
-      }
-
-      // get the 'tables' node
-      if((rc = cfg->getv("tables",tables)) != kOkRC )
-      {
-        rc = cwLogError(rc,"The 'tables' field could not be read from the vel. table cfg. object.");
-        goto errLabel;
-      }
-
-      // for each table
-      for(i=0; i<tables->child_count(); ++i)
-      {
-        const object_t* tbl         = tables->child_ele(i);
-        const object_t* array       = nullptr;
-        bool            enableFl    = false;
-        bool            defaultFl   = false;
-        const char*     deviceLabel = nullptr;
-
-        // read the table record
-        if((rc = tbl->getv("table",array,
-                           "enableFl",enableFl,
-                           "defaultFl",defaultFl,
-                           "device",deviceLabel)) != kOkRC )
-        {
-          rc = cwLogError(rc,"Parsing failed on the velocity table at index '%i'.",i);
-          goto errLabel;
-        }
-
-        // if this table is enabled and the 'default' for this device
-        if( enableFl && defaultFl && textCompare(refDevLabel,deviceLabel) == 0 )
-        {
-          // allocate the actual velocity table
-          dev->velTableN  = array->child_count();
-          dev->velTableArray = mem::allocZ<uint8_t>(dev->velTableN);
-
-          // for each velocity entry
-          for(unsigned j=0; j<dev->velTableN; ++j)
-          {
-            // read the velocity value
-            unsigned v;
-            if((rc = array->child_ele(j)->value(v)) != kOkRC )
-            {
-              rc = cwLogError(rc,"Parsing failed on the velocity at index '%i'.",j);
-              goto errLabel;
-            }
-
-            // validate the velocity range
-            if( 0 <= v && v <= 127 )
-              dev->velTableArray[j] = (uint8_t)v;
-            else
-            {
-              rc = cwLogError(kInvalidArgRC,"A velocity table entry outside the range 0-127 was encountered at index %i.",j);
-              goto errLabel;
-            }
-          }
-
-          break;
-        }
-      }
-
-      // if no enabled and default table was found for this device
-      if( i >= tables->child_count() )
-      {
-        cwLogError(kInvalidStateRC,"A velocity table was not found for MIDI device index '%i'.",devIdx );
-        goto errLabel;
-      }
-
-    errLabel:
-
-      return rc;
-    }
     
   }
 }
-
+    
+    
 cw::rc_t cw::midi_record_play::create( handle_t& hRef,
                                        io::handle_t ioH,
                                        const object_t& cfg,
@@ -1480,20 +1403,16 @@ cw::rc_t cw::midi_record_play::create( handle_t& hRef,
 
   p = mem::allocZ<midi_record_play_t>();
 
+  printf("P0:%p\n",p);
+  
   p->ioH = ioH; // p->ioH is used in _destory() so initialize it here
 
   // parse the cfg 
   if((rc = _parseCfg(p,cfg)) != kOkRC )
     goto errLabel;
 
-  // parse the vel table cfg
-  if(velTableFname != nullptr )
-    if((rc = objectFromFile(velTableFname,velTblCfg)) != kOkRC )
-    {
-      rc = cwLogError(rc,"Parsing the velocity table cfg. failed on '%s'.",cwStringNullGuard(velTableFname));
-      goto errLabel;
-    }
-
+  
+  p->midi_timer_index = kInvalidIdx;
   p->cb  = cb;
   p->cb_arg = cb_arg;
   p->halfPedalState        = kHalfPedalDone;
@@ -1526,20 +1445,19 @@ cw::rc_t cw::midi_record_play::create( handle_t& hRef,
       goto errLabel;
     }
 
-    if( velTblCfg != nullptr )
-      if((rc = _loadVelTable( p, velTblCfg, dev, i )) != kOkRC )
-      {
-        rc = cwLogError(rc,"MIDI record-play velocity table setup failed.");
-        goto errLabel;
-      }
-
     printf("%s %s : %i %i\n",dev->midiOutDevLabel, dev->midiOutPortLabel, dev->midiOutDevIdx, dev->midiOutPortIdx );
   }
-  
+
   // create the MIDI playback timer
   if((rc = timerCreate( p->ioH, TIMER_LABEL, kMidiRecordPlayTimerId, p->midi_timer_period_micro_sec, asyncFl)) != kOkRC )
   {
     cwLogError(rc,"Audio-MIDI timer create failed.");
+    goto errLabel;
+  }
+
+  if((p->midi_timer_index = io::timerLabelToIndex( p->ioH, TIMER_LABEL )) == kInvalidIdx )
+  {
+    cwLogError(rc,"Audio-MIDI timer index access failed.");
     goto errLabel;
   }
 
@@ -1610,9 +1528,13 @@ cw::rc_t cw::midi_record_play::start( handle_t h, bool rewindFl, const time::spe
       _set_midi_msg_next_play_index(p,0);
     else
     {
+
+      io::timerSetNextTime( p->ioH, p->midi_timer_index,p->play_time);
+      
       // Set the begin play time back by the time offset of the current output event.
       // This will cause that event to be played back immediately.
       time::subtractMicros(p->play_time, p->msgArray[ p->msgArrayOutIdx ].microsec );
+
     }
 
     if( p->halfPedalFl )
@@ -1726,8 +1648,6 @@ cw::rc_t cw::midi_record_play::save_synced_csv( handle_t h, const char* fn, cons
           }
 
           p->iMsgArray[i].loc = syncA[j].loc;
-          
-
         }
     }
     
@@ -1836,6 +1756,18 @@ cw::rc_t cw::midi_record_play::load( handle_t h, const midi_msg_t* msg, unsigned
   return rc;
 }
 
+unsigned cw::midi_record_play::label_to_device_index( handle_t h, const char* devLabel )
+{
+  midi_record_play_t* p = _handleToPtr(h);  
+  return _label_to_device_index( p, devLabel );
+}
+
+const char* cw::midi_record_play::device_index_to_label( handle_t h, unsigned devIdx )
+{
+  midi_record_play_t* p = _handleToPtr(h);
+  return  0 <= devIdx && devIdx < p->midiDevN ? p->midiDevA[devIdx].label : nullptr;
+}
+
 cw::rc_t cw::midi_record_play::seek( handle_t h, time::spec_t seek_timestamp )
 {
   rc_t rc           = kOkRC;
@@ -1845,14 +1777,14 @@ cw::rc_t cw::midi_record_play::seek( handle_t h, time::spec_t seek_timestamp )
   _midi_state_clear(p); 
 
   // supress MIDI transmission during the seek 
-       p->supressMidiXmitFl = true;
+  p->supressMidiXmitFl = true;
 
   // iterate throught the MIDI msg array
   for(unsigned i=0; i<p->msgArrayInIdx; ++i)
   {
     am_midi_msg_t* mm = p->msgArray + i;
 
-    // if this msg is prior to or equal to the seek target
+    // if this msg is at or after the seek target
     if( time::isLTE(seek_timestamp,mm->timestamp) )
     {
       p->msgArrayOutIdx = i;
@@ -2097,6 +2029,31 @@ unsigned cw::midi_record_play::dev_count( handle_t h )
   return p->midiDevN;
 }
 
+cw::rc_t cw::midi_record_play::vel_table_disable( handle_t h, unsigned devIdx )
+{
+  rc_t                rc = kOkRC;  
+  midi_record_play_t* p  = _handleToPtr(h);
+  
+  if( devIdx != kInvalidIdx )
+  {
+    if( devIdx > p->midiDevN )
+    {
+      rc = cwLogError(kInvalidArgRC,"The device index '%i'is invalid.",devIdx);
+      goto errLabel;
+    }
+    
+    p->midiDevA[devIdx].velTableArray = nullptr;
+  }
+  else
+  {
+    for(unsigned i=0; i<p->midiDevN; ++i)
+      p->midiDevA[i].velTableArray = nullptr;
+  }
+  
+ errLabel:
+  return rc;
+}
+
 unsigned cw::midi_record_play::vel_table_count( handle_t h, unsigned devIdx )
 {
   midi_record_play_t* p = _handleToPtr(h);
@@ -2126,3 +2083,4 @@ cw::rc_t cw::midi_record_play::vel_table_set( handle_t h, unsigned devIdx, const
   
   return kOkRC;
 }
+
