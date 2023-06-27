@@ -58,6 +58,7 @@ namespace cw
       unsigned          index;
       unsigned          periodMicroSec;
       bool              asyncFl;
+      time::spec_t      nextTime;
     } timer_t;
     
     typedef struct serialPort_str
@@ -281,7 +282,8 @@ namespace cw
         t0 = t1;
       }
     }
-    
+
+
     //----------------------------------------------------------------------------------------------------------
     //
     // Timer
@@ -290,8 +292,17 @@ namespace cw
     {
       timer_t* t = (timer_t*)arg;
 
-      sleepUs( t->periodMicroSec );
+      time::spec_t t0;
+      time::get(t0);
 
+      int usec = time::diffMicros(t0,t->nextTime);
+
+      if( usec > 0 )
+        sleepUs(usec);
+
+      time::advanceMicros(t->nextTime,t->periodMicroSec);
+
+      
       if( t->startedFl && !t->deletedFl )
       {
         rc_t        rc = kOkRC;
@@ -315,7 +326,7 @@ namespace cw
       rc_t     rc = kOkRC;
       timer_t* t  = nullptr;
       unsigned timer_idx = kInvalidIdx;
-
+      
       // look for a deleted timer
       for(unsigned i=0; i<p->timerN; ++i)
         if( p->timerA[i].deletedFl )
@@ -352,6 +363,9 @@ namespace cw
       t->asyncFl        = asyncFl;
       t->periodMicroSec = periodMicroSec;
 
+
+      time::get(t->nextTime);
+            
       if((rc = thread_mach::add(p->threadMachH,_timerThreadCb,t)) != kOkRC )
       {
         rc = cwLogError(rc,"Timer thread assignment failed.");        
@@ -380,7 +394,6 @@ namespace cw
         rc = kInvalidIdRC;
       else
         p->timerA[ timerIdx ].startedFl = startFl;
-    
       return rc;
     }
     
@@ -1340,7 +1353,7 @@ namespace cw
 
     void _audioDevSync( io_t* p, audioDev_t** syncDevA, unsigned syncDevN )
     {
-      for(unsigned i=0; i<syncDevN; ++i)
+      for(unsigned i=0; i<syncDevN; ++i)        
         for(audioDev_t* ad = syncDevA[i]; ad!=nullptr; ad=ad->clockLink)
           if(audio::device::execute( p->audioH, ad->devIdx ) != kOkRC )
             cwLogWarning("Synced audio device '%s' execution failed.",ad->label);
@@ -1381,7 +1394,7 @@ namespace cw
 
       // trigger any devices synced to the calling device
       _audioDevSync( p, iSyncDevListA, inPktCnt  );
-      _audioDevSync( p, oSyncDevListA, outPktCnt );
+      _audioDevSync( p, oSyncDevListA, outPktCnt );      
     }
 
 
@@ -2516,7 +2529,25 @@ cw::rc_t    cw::io::timerSetPeriodMicroSec( handle_t h, unsigned timerIdx, unsig
   if( t == nullptr )
     rc = kInvalidIdRC;
   else
+  {
     p->timerA[ timerIdx ].periodMicroSec = periodMicroSec;
+  }
+    
+  return rc;
+}
+
+cw::rc_t    cw::io::timerSetNextTime( handle_t h, unsigned timerIdx, const time::spec_t& time  )
+{
+  rc_t     rc = kOkRC;
+  io_t*    p  = _handleToPtr(h);
+  timer_t* t  = _timerIndexToPtr(p, timerIdx);
+
+  if( t == nullptr )
+    rc = kInvalidIdRC;
+  else
+  {
+    p->timerA[ timerIdx ].nextTime = time;
+  }
     
   return rc;
 }
