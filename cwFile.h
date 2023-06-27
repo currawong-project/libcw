@@ -160,7 +160,7 @@ namespace cw
     //
     // On the first call to this function *bufPtrPtr must be set to nullptr and
     // *bufByteCntPtr must be set to 0.
-    // Following the last call to this function call cmMemPtrFree(bufPtrptr)
+    // Following the last call to this function call mem::release(bufPtrptr)
     // to be sure the line buffer is fully released. Note this step is not
     // neccessary if the last call does not return kOkFileRC.
     rc_t getLineAuto( handle_t h, char** bufPtrPtr, unsigned* bufByteCntPtr );
