@@ -80,5 +80,8 @@ namespace cw
     // Update the state of the player
     rc_t exec( handle_t h );
 
+
+    const uint8_t* get_vel_table( handle_t h, const char* label, unsigned& velTblN_Ref );
+
   }
 }

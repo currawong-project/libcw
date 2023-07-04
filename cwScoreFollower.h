@@ -11,6 +11,8 @@ namespace cw
     
     rc_t destroy( handle_t& hRef );
 
+    bool is_enabled( handle_t h );
+    
     // Set the starting search location and calls clear_match_id_array().
     rc_t reset( handle_t h, unsigned loc );
 

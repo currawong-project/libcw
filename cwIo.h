@@ -179,7 +179,7 @@ namespace cw
     //
     // Timer
     //
-    
+
     rc_t        timerCreate(            handle_t h, const char* label, unsigned id, unsigned periodMicroSec, bool asyncFl );
     rc_t        timerDestroy(           handle_t h, unsigned timerIdx );
     
@@ -190,6 +190,12 @@ namespace cw
     unsigned    timerId(                handle_t h, unsigned timerIdx );
     unsigned    timerPeriodMicroSec(    handle_t h, unsigned timerIdx );
     rc_t        timerSetPeriodMicroSec( handle_t h, unsigned timerIdx, unsigned periodMicroSec );
+
+    // Set an explicit next time to trigger. The 'time' argument will over ride the next periodic callback.
+    // Note that the most reliable way to use this function is by calling it in the timer callback
+    // so that it will deterine the time of the following callback.
+    rc_t        timerSetNextTime(       handle_t h, unsigned timerIdx, const time::spec_t& time );
+
     rc_t        timerStart(             handle_t h, unsigned timerIdx );
     rc_t        timerStop(              handle_t h, unsigned timerIdx );
     

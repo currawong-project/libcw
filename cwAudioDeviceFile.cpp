@@ -473,7 +473,8 @@ namespace cw
         rc_t _write_cache_output( dev_t* d )
         {
           rc_t rc = kOkRC;
-
+          //sample_t s;
+          
           assert( d->oCacheEnd != nullptr );
             
           if( d->oCacheEnd->frameIdx + d->framesPerCycle > d->oCacheEnd->frameN )
@@ -485,6 +486,10 @@ namespace cw
           memcpy(d->oCacheEnd->buf + d->oCacheEnd->frameIdx * d->oChCnt, d->oPktAudioBuf, d->framesPerCycle * d->oChCnt * sizeof(sample_t));
           d->oCacheEnd->frameIdx += d->framesPerCycle;
 
+          //s = vop::sum(d->oPktAudioBuf,d->framesPerCycle * d->oChCnt);
+          
+          //printf("w:%i %i %f\n",d->oCacheEnd->frameIdx,d->framesPerCycle * d->oChCnt,s);
+          
         errLabel:
           return rc;
         }

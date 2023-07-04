@@ -238,27 +238,36 @@ namespace cw
       unsigned presetId;
     } ui_blob_t;
 
+
+    typedef struct vel_tbl_str
+    {
+      const char* name;
+      const char* device;
+    } vel_tbl_t;
+    
     typedef struct perf_recording_str
     {
-      char* fname;   // perf recording
-      char* label;   // menu label
-      unsigned id;   // menu appId
-      unsigned uuId; // menu uuid
+      char*                      fname;     // perf recording
+      char*                      label;     // menu label
+      unsigned                   id;        // menu appId
+      unsigned                   uuId;      // menu uuid
+      vel_tbl_t*                 vel_tblA;  // vel_tblA[ velTblN ] 
+      unsigned                   vel_tblN;  //
       struct perf_recording_str* link;
     } perf_recording_t;
     
     typedef struct app_str
     {
-      io::handle_t    ioH;
+      io::handle_t ioH;
+
+      // path components for reading/writing the preset assignments
+      const char* record_dir;
+      const char* record_fn;
+      const char* record_fn_ext;
+      const char* record_backup_dir;
       
-      const char*     record_dir;
-      const char*     record_fn;
-      const char*     record_fn_ext;
-      const char*     record_backup_dir;
       const char*     scoreFn;
-      const object_t* perfL;
       const object_t* perfDirL;
-      unsigned        perfMenuCnt;
       const char*     velTableFname;
       const char*     velTableBackupDir;
       const object_t* midi_play_record_cfg;
@@ -271,47 +280,43 @@ namespace cw
       unsigned        in_audio_begin_loc;
       double          in_audio_offset_sec;
 
-      cm::handle_t                cmCtxH;
-      score_follower::handle_t    sfH;
-      midi_record_play::handle_t  mrpH;
-      unsigned                    scoreFollowMaxLocId;
+      cm::handle_t               cmCtxH;
+      score_follower::handle_t   sfH;
+      midi_record_play::handle_t mrpH;
 
       score::handle_t scoreH;
-      loc_map_t*      locMap;
+      loc_map_t*      locMap;    
       unsigned        locMapN;
 
-      unsigned        insertLoc; // last valid insert location id received from the GUI
+      unsigned insertLoc;       // last valid insert location id received from the GUI
       
-      unsigned        minLoc;
-      unsigned        maxLoc;
+      unsigned minLoc;          // min/max locations of the currently loaded performance
+      unsigned maxLoc;
       
-      time::spec_t    beg_play_timestamp;
-      time::spec_t    end_play_timestamp;
-      
-      unsigned        beg_play_loc;
-      unsigned        end_play_loc;
+      unsigned beg_play_loc;    // beg/end play loc's from the UI
+      unsigned end_play_loc;
 
-      preset_sel::handle_t psH;      
-      const preset_sel::frag_t*  psNextFrag;
-      time::spec_t psLoadT0;
+      preset_sel::handle_t      psH;      
+      const preset_sel::frag_t* psNextFrag;
+      time::spec_t              psLoadT0;
       
-      vtbl::handle_t       vtH;
-      io_flow::handle_t    ioFlowH;
+      vtbl::handle_t    vtH;
+      io_flow::handle_t ioFlowH;
       
       double   crossFadeSrate;
       unsigned crossFadeCnt;
 
-      bool     printMidiFl;
+      bool printMidiFl;
 
-      bool     seqActiveFl;  // true if the sequence is currently active (set by 'Play Seq' btn)
-      unsigned seqStartedFl; // set by the first seq idle callback
-      unsigned seqFragId;    // 
-      unsigned seqPresetIdx; //
+      bool     seqActiveFl;     // true if the sequence is currently active (set by 'Play Seq' btn)
+      unsigned seqStartedFl;    // set by the first seq idle callback
+      unsigned seqFragId;       // 
+      unsigned seqPresetIdx;    //
 
-      bool     useLiveMidiFl;   // use incoming MIDI to drive program (otherwise use score file)
-      bool     trackMidiFl;     // apply presets based on MIDI location (otherwise respond only to direct manipulation of fragment control)
+      bool useLiveMidiFl;       // use incoming MIDI to drive program (otherwise use score file)
+      bool trackMidiFl;         // apply presets based on MIDI location (otherwise respond only to direct manipulation of fragment control)
 
-      bool        enableRecordFl;  // enable recording of incoming MIDI 
+      bool        enableRecordFl; // enable recording of incoming MIDI 
       char*       midiRecordDir;
       const char* midiRecordFolder;
       char*       midiLoadFname;
@@ -385,19 +390,18 @@ namespace cw
       const char* flow_proc_dict_fn = nullptr;
       const char* midi_record_dir;
       
-      if((rc = cfg->getv( "params", params_cfgRef,
+      if((rc                                         = cfg->getv( "params", params_cfgRef,
                           "flow",   app->flow_cfg)) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"Preset Select App 'params' cfg record not found.");
         goto errLabel;
       }
         
-      if((rc = params_cfgRef->getv( "record_dir",           app->record_dir,
+      if((rc                                                                           = params_cfgRef->getv( "record_dir",           app->record_dir,
                                     "record_fn",            app->record_fn,
                                     "record_fn_ext",        app->record_fn_ext,
                                     "score_fn",             app->scoreFn,
                                     "perfDirL",             app->perfDirL,
-                                    "perfL",                app->perfL,
                                     "flow_proc_dict_fn",    flow_proc_dict_fn,                                    
                                     "midi_play_record",     app->midi_play_record_cfg,
                                     "vel_table_fname",      app->velTableFname,
@@ -485,59 +489,12 @@ namespace cw
       return rc;
     }
 
-    rc_t _load_perf_selection_menu( app_t* app )
-    {
-      rc_t rc = kOkRC;
-      unsigned selectUuId = kInvalidId;
-      
-      // verify that a performance list was given
-      if( app->perfL == nullptr || app->perfL->child_count()==0)
-      {
-        rc = cwLogError(rc,"The performance list is missing or empty.");
-        goto errLabel;
-      }
-
-      // get the peformance menu UI uuid
-      if((selectUuId = io::uiFindElementUuId( app->ioH, kPerfSelId )) == kInvalidId )
-      {
-        rc = cwLogError(rc,"The performance list base UI element does not exist.");
-        goto errLabel;        
-      }      
-      
-      for(unsigned i=0; i<app->perfL->child_count(); ++i)
-      {
-        const object_t* pair        = nullptr;
-        unsigned        uuId        = kInvalidId;
-
-        // get and validate the option label
-        if((pair = app->perfL->child_ele(i)) == nullptr ||  !pair->is_pair() || pair->pair_label()==nullptr)
-        {
-          rc = cwLogError(kSyntaxErrorRC,"The performance list contains a syntax error near element index %i.",i);
-          goto errLabel;
-        }
-
-        // create an option entry in the selection ui
-        if((rc = uiCreateOption( app->ioH, uuId, selectUuId, nullptr, kPerfOptionBaseId+i, kInvalidId, "optClass", pair->pair_label() )) != kOkRC )
-        {          
-          rc = cwLogError(kSyntaxErrorRC,"The performance list contains a syntax error near element index %i.",i);
-          goto errLabel;
-        }
-
-      }
-
-    errLabel:
-
-      app->perfMenuCnt = app->perfL->child_count();
-
-      return rc;
-    }
-
     rc_t _load_perf_recording_menu( app_t* app )
     {
       rc_t              rc  = kOkRC;
       perf_recording_t* prp = nullptr;
       unsigned          id  = 0;
-      unsigned selectUuId = kInvalidId;
+      unsigned          selectUuId = kInvalidId;
       
       // get the peformance menu UI uuid
       if((selectUuId = io::uiFindElementUuId( app->ioH, kPerfSelId )) == kInvalidId )
@@ -547,7 +504,7 @@ namespace cw
       }      
 
       // for each performance recording
-      for(prp=app->perfRecordingBeg; prp!=nullptr; prp=prp->link)
+      for(prp = app->perfRecordingBeg; prp!=nullptr; prp=prp->link)
       {
         // create an option entry in the selection ui
         if((rc = uiCreateOption( app->ioH, prp->uuId, selectUuId, nullptr, kPerfOptionBaseId+id, kInvalidId, "optClass", prp->label )) != kOkRC )
@@ -558,8 +515,6 @@ namespace cw
 
         prp->id = id;
         id     += 1;
-
-       
       }
       
     errLabel:
@@ -567,12 +522,43 @@ namespace cw
       return rc;
     }
 
-    rc_t _parse_perf_recording_dir( app_t* app, const char* dir, const char* fname )
+    rc_t _parse_perf_recording_vel_tbl( app_t* app, const object_t* velTblCfg, vel_tbl_t*& velTblA_Ref, unsigned& velTblN_Ref )
     {
-      rc_t        rc  = kOkRC;
+      rc_t rc = kOkRC;
+      
+      velTblA_Ref = nullptr;
+      velTblN_Ref = 0;
+      
+      unsigned   velTblN = velTblCfg->child_count();
+      vel_tbl_t* velTblA = nullptr;
+      
+      if( velTblN > 0 )
+      {
+        velTblA = mem::allocZ<vel_tbl_t>(velTblN);
+
+        for(unsigned i = 0; i<velTblN; ++i)
+        {
+          if((rc = velTblCfg->child_ele(i)->getv("name",velTblA[i].name,
+                                                 "device",velTblA[i].device)) != kOkRC )
+          {
+            rc = cwLogError(rc,"The vel table at index '%i' parse failed.",i);
+            goto errLabel;
+          }
+        }
+      }
+
+      velTblA_Ref = velTblA;
+      velTblN_Ref = velTblN;
+    errLabel:
+      return rc;
+    }
+
+    rc_t _parse_perf_recording_dir( app_t* app, const char* dir, const char* fname, const object_t* velTblCfg )
+    {
+      rc_t                 rc  = kOkRC;
       filesys::dirEntry_t* deA  = nullptr;
-      unsigned    deN = 0;
-      char* path = nullptr;
+      unsigned             deN = 0;
+      char*                path = nullptr;
 
       // get the directory entries based on 'dir'
       if((deA = filesys::dirEntries( dir, filesys::kDirFsFl, &deN )) == nullptr )
@@ -585,7 +571,7 @@ namespace cw
         cwLogWarning("The performance recording directory '%s' was found to be empty.",cwStringNullGuard(dir));
 
       // for each directory entry
-      for(unsigned i=0; i<deN; ++i)
+      for(unsigned i = 0; i<deN && rc == kOkRC; ++i)
       {
         perf_recording_t* prp = nullptr;
         
@@ -600,13 +586,19 @@ namespace cw
 
         if( !filesys::isFile(path) )
           continue;
-
+        
         // link in the perf. recording fname to app->perfRecording list
         prp = mem::allocZ<perf_recording_t>();
 
         prp->fname = mem::duplStr(path);
         prp->label = mem::duplStr(deA[i].name);
 
+        if((rc = _parse_perf_recording_vel_tbl(app, velTblCfg, prp->vel_tblA, prp->vel_tblN )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Parse failed on vel table at directory entry index '%i'.",i);
+          // don't goto errLabel because the perf_recording record would be leaked
+        }
+        
         if( app->perfRecordingEnd == nullptr )
         {
           app->perfRecordingBeg = prp;
@@ -640,9 +632,10 @@ namespace cw
       // for each performance directory
       for(unsigned i=0; i<app->perfDirL->child_count(); ++i)
       {
-        const object_t* d;
-        const char* dir=nullptr;
-        const char* fname=nullptr;
+        const object_t* d         = nullptr;;
+        const char*     dir       = nullptr;
+        const char*     fname     = nullptr;
+        const object_t* velTblCfg = nullptr;
 
         // get the directory dict. from the cfg file
         if((d = app->perfDirL->child_ele(i)) == nullptr || !d->is_dict() )
@@ -652,14 +645,16 @@ namespace cw
         }
 
         // get the directory 
-        if((rc = d->getv("dir",dir,"fname",fname)) != kOkRC )
+        if((rc = d->getv("dir",dir,
+                         "fname",fname,
+                         "vel_table", velTblCfg)) != kOkRC )
         {
           rc = cwLogError(rc ,"Error parsing the performance directory entry at index '%i'.",i);
           goto errLabel;
         }
 
         // create the performance records from this directory
-        if((rc = _parse_perf_recording_dir(app,dir,fname)) != kOkRC )
+        if((rc = _parse_perf_recording_dir(app,dir,fname,velTblCfg)) != kOkRC )
         {
           rc = cwLogError(rc ,"Error creating the performance directory entry at index '%i'.",i);
           goto errLabel;          
@@ -727,6 +722,7 @@ namespace cw
         perf_recording_t* tmp = prp->link;
         mem::release(prp->fname);
         mem::release(prp->label);
+        mem::release(prp->vel_tblA);
         mem::release(prp);
         prp = tmp;
       }
@@ -904,16 +900,10 @@ namespace cw
                 maxLocId = matchLocA[i];
               printf("%i ",matchLocA[i]);
             }                  
-
-            // notice if the end of the score was reached
-            if( maxLocId > app->scoreFollowMaxLocId )
-            {
-              loc = maxLocId;
-              app->scoreFollowMaxLocId = maxLocId;
-              printf(" set");
-            }
-
             printf("\n");
+
+
+            loc = maxLocId;
             
             clear_match_id_array(app->sfH);
           }
@@ -960,7 +950,8 @@ namespace cw
             double sec = time::specToSeconds(timestamp);
 
             // call the score follower
-            loc = _get_loc_from_score_follower( app, sec, id, status, d0, d1 );
+            if( score_follower::is_enabled(app->sfH) )
+              loc = _get_loc_from_score_follower( app, sec, id, status, d0, d1 );
           
             // TODO: ZERO SHOULD BE A VALID LOC VALUE - MAKE -1 THE INVALID LOC VALUE
             
@@ -1098,8 +1089,6 @@ namespace cw
       
       score_follower::reset(app->sfH,app->sfResetLoc);
 
-      app->scoreFollowMaxLocId = 0;
-      
       cwLogInfo("SF reset loc: %i",app->sfResetLoc);
       return rc;
     }
@@ -1160,13 +1149,10 @@ namespace cw
           goto errLabel;
         }
 
-        app->beg_play_timestamp = begMap->timestamp;
-        app->end_play_timestamp = endMap->timestamp;
-      
-        if( !time::isZero(app->beg_play_timestamp)  )
+        if( !time::isZero(begMap->timestamp)  )
         {
           // seek the player to the requested loc
-          if((rc = midi_record_play::seek( app->mrpH, app->beg_play_timestamp )) != kOkRC )
+          if((rc = midi_record_play::seek( app->mrpH, begMap->timestamp )) != kOkRC )
           {
             rc = cwLogError(rc,"MIDI seek failed.");
             goto errLabel;
@@ -1185,11 +1171,8 @@ namespace cw
         midi_record_play::clear(app->mrpH);
         io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kMidiSaveBtnId ), false );
       }
-
-      
       
       // reset the score follower
-      //if((rc = score_follower::reset(app->sfH,score_loc)) != kOkRC )
       if((rc = _do_sf_reset(app,score_loc)) != kOkRC )
       {
         rc = cwLogError(rc,"Score follower reset failed.");
@@ -1208,7 +1191,7 @@ namespace cw
       {
         unsigned evt_cnt = 0;
         
-        if((rc = midi_record_play::start(app->mrpH,rewindFl,&app->end_play_timestamp)) != kOkRC )
+        if((rc = midi_record_play::start(app->mrpH,rewindFl,&endMap->timestamp)) != kOkRC )
         {
           rc = cwLogError(rc,"MIDI start failed.");
           goto errLabel;
@@ -1335,7 +1318,7 @@ namespace cw
       //io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId),   midi_record_play::event_index(app->mrpH) );
       //io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kTotalMidiEvtCntId), midi_record_play::event_count(app->mrpH) );
       
-      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kTotalMidiEvtCntId), app->maxLoc );
+      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kTotalMidiEvtCntId), app->maxLoc-app->minLoc );
     }
 
     // Update the UI with the value from the the fragment data record.
@@ -1638,8 +1621,6 @@ namespace cw
       unsigned fragListUuId      = io::uiFindElementUuId( app->ioH, kFragListId );
       unsigned   fragChanId      = fragId; //endLoc; // use the frag. endLoc as the channel id
       unsigned fragPanelUuId     = kInvalidId;
-      //unsigned fragBegLocUuId    = kInvalidId;
-      //unsigned fragEndLocUuId    = kInvalidId;
       unsigned fragPresetRowUuId = kInvalidId;
       unsigned presetN           = preset_sel::preset_count( app->psH );
       unsigned fragBegLoc  = 0;
@@ -1653,13 +1634,9 @@ namespace cw
       
       // get the uuid's of the new fragment panel and the endloc number display
       fragPanelUuId     = io::uiFindElementUuId( app->ioH, fragListUuId,  kFragPanelId,     fragChanId );
-      //fragBegLocUuId    = io::uiFindElementUuId( app->ioH, fragPanelUuId, kFragBegLocId,    fragChanId );
-      //fragEndLocUuId    = io::uiFindElementUuId( app->ioH, fragPanelUuId, kFragEndLocId,    fragChanId );
       fragPresetRowUuId = io::uiFindElementUuId( app->ioH, fragPanelUuId, kFragPresetRowId, fragChanId );
 
       assert( fragPanelUuId     != kInvalidId );
-      //assert( fragBegLocUuId    != kInvalidId );
-      //assert( fragEndLocUuId    != kInvalidId );
       assert( fragPresetRowUuId != kInvalidId );
 
       // Make the fragment panel clickable
@@ -1726,7 +1703,6 @@ namespace cw
       }
 
       // Settting psNextFrag to a non-null value causes the
-      // _fragment_restore_ui() to be called from the io::exec() callback
       app->psNextFrag = preset_sel::get_fragment_base(app->psH);
 
       _set_status(app,"Loaded fragment file.");
@@ -1766,18 +1742,11 @@ namespace cw
         // if all the fragment UI's have been created
         if( app->psNextFrag == nullptr )
         {
-          // enable the start/stop buttons
-          io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStartBtnId ), true );
-          io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStopBtnId ),  true );
-          io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kLiveCheckId ),  true );
-          io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kEnaRecordCheckId ),  true );
-          io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kTrackMidiCheckId ),  true );
-          io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kSaveBtnId ), true );
-          io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kSfResetBtnId ),   true );
-          io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kSfResetLocNumbId ),   true );
+
+          // the fragments are loaded enable the 'load' menu
           io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kPerfSelId ),   true );
-       
-          _set_status(app,"Fragment restore complete: elapsed secs:%f\n",time::elapsedSecs(app->psLoadT0));
+          
+          cwLogInfo("Fragment restore complete: elapsed secs:%f",time::elapsedSecs(app->psLoadT0));
           
         }
       }
@@ -1954,8 +1923,6 @@ namespace cw
 
         midiEventCntRef = midiEventN;
 
-        //uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, kSfResetLocNumbId), app->minLoc, app->maxLoc, 1, 0, app->minLoc );
-        
         cwLogInfo("%i MIDI events loaded from score. Loc Min:%i Max:%i", midiEventN , app->minLoc, app->maxLoc);
       }
       
@@ -1965,7 +1932,56 @@ namespace cw
       return rc;  
     }
 
-    rc_t _do_load( app_t* app, const char* perf_fn )
+    rc_t _set_vel_table( app_t* app, const vel_tbl_t* vtA, unsigned vtN )
+    {
+      rc_t rc;
+      const uint8_t* tableA = nullptr;
+      unsigned tableN = 0;
+      unsigned midiDevIdx = kInvalidIdx;
+      unsigned assignN = 0;
+      
+      if((rc = vel_table_disable(app->mrpH)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Velocity table disable failed.");
+        goto errLabel;
+      }
+
+     
+      for(unsigned i=0; i<vtN; ++i)
+      {
+        if((midiDevIdx = label_to_device_index( app->mrpH, vtA[i].device)) == kInvalidIdx )
+        {
+          rc = cwLogError(kInvalidArgRC,"The MIDI device '%s' could not be found.",cwStringNullGuard(vtA[i].device));
+          goto errLabel;
+        }
+
+        if((tableA = get_vel_table( app->vtH, vtA[i].name, tableN )) == nullptr )
+        {
+          rc = cwLogError(kInvalidArgRC,"The MIDI velocity table '%s' could not be found.",cwStringNullGuard(vtA[i].name));
+          goto errLabel;
+        }
+        
+        if((rc = vel_table_set(app->mrpH, midiDevIdx, tableA, tableN )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Velocity table device:%s name:%s assignment failed.",cwStringNullGuard(vtA[i].device), cwStringNullGuard(vtA[i].name));
+          goto errLabel;
+        }
+
+        assignN += 1;
+      }
+
+      if( assignN == 0 )
+        cwLogWarning("All velocity tables disabled.");
+      
+    errLabel:
+
+      if( rc != kOkRC )
+        rc = cwLogError(rc,"Velocity table assignment failed.");
+      
+      return rc;
+    }
+    
+    rc_t _do_load( app_t* app, const char* perf_fn, const vel_tbl_t* vtA=nullptr, unsigned vtN=0 )
     {
       rc_t     rc         = kOkRC;
       unsigned midiEventN = 0;
@@ -1973,73 +1989,56 @@ namespace cw
       cwLogInfo("Loading");
       _set_status(app,"Loading...");
 
-      // create the score
-      if( perf_fn != nullptr )
-        if((rc= score::create( app->scoreH, perf_fn )) != kOkRC )
-        {
-          cwLogError(rc,"Score create failed on '%s'.",app->scoreFn);
-          goto errLabel;          
-        }
-      
-      if((rc = _load_midi_player(app, midiEventN )) != kOkRC )
+      // load the performance or score
+      if((rc= score::create( app->scoreH, perf_fn )) != kOkRC )
       {
-        cwLogError(rc,"MIDI player load failed.");
+        cwLogError(rc,"Score create failed on '%s'.",app->scoreFn);
         goto errLabel;          
       }
-            
-      // reset the timestamp tracker
-      track_loc_reset( app->psH );
       
-      // set the range of the global play location controls
-      //if( firstLoadFl )
-      if( true )  
+      // load the midi player, create locMap[], set app->min/maxLoc
+      if((rc = _load_midi_player(app, midiEventN )) != kOkRC )
       {
-        unsigned begPlayLocUuId = io::uiFindElementUuId(app->ioH, kBegPlayLocNumbId);
-        unsigned endPlayLocUuId = io::uiFindElementUuId(app->ioH, kEndPlayLocNumbId);
-
-        //if( app->end_play_loc == 0 )
-          app->end_play_loc = app->maxLoc;
-
-          //if( !(app->minLoc <= app->beg_play_loc && app->beg_play_loc <= app->maxLoc) )
-          app->beg_play_loc = app->minLoc;
-        
-        io::uiSetNumbRange( app->ioH, begPlayLocUuId, app->minLoc, app->maxLoc, 1, 0, app->beg_play_loc );
-        io::uiSetNumbRange( app->ioH, endPlayLocUuId, app->minLoc, app->maxLoc, 1, 0, app->end_play_loc );
-
-        io::uiSendValue( app->ioH, begPlayLocUuId, app->beg_play_loc);
-        io::uiSendValue( app->ioH, endPlayLocUuId, app->end_play_loc);
-
-        // enable the insert 'End Loc' number box since the score is loaded
-        io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kInsertLocId ), true );
-
-        uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, kSfResetLocNumbId), app->minLoc, app->maxLoc, 1, 0, app->beg_play_loc );
-
+        rc = cwLogError(rc,"MIDI player load failed.");
+        goto errLabel;          
       }
 
-      /*
+      // assign the vel. table 
+      if((rc = _set_vel_table(app, vtA, vtN )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Velocity table assignment failed.");
+        goto errLabel;                  
+      }
 
-      // update the current event and event count
-      _update_event_ui(app);
-
-      // enable the start/stop buttons
+      // A performance is loaded so enable the UI
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStartBtnId ), true );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStopBtnId ),  true );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kLiveCheckId ),  true );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kEnaRecordCheckId ),  true );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kTrackMidiCheckId ),  true );
-        
-      // restore the fragment records
-      if( firstLoadFl )
-        if((rc = _restore_fragment_data( app )) != kOkRC )
-        {
-          rc = cwLogError(rc,"Restore failed.");
-          goto errLabel;
-        }
-
-      //io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kLoadBtnId ), true );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kSaveBtnId ), true );
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kInsertLocId ), true );
       
-      */
+      // set the UI begin/end play to the locations of the newly loaded performance
+      app->end_play_loc = app->maxLoc;
+      app->beg_play_loc = app->minLoc;
+
+      // Update the master range of the play beg/end number widgets
+      io::uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, kBegPlayLocNumbId), app->minLoc, app->maxLoc, 1, 0, app->beg_play_loc );
+      io::uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, kEndPlayLocNumbId), app->minLoc, app->maxLoc, 1, 0, app->end_play_loc );
+
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kBegPlayLocNumbId ), true );
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kEndPlayLocNumbId ), true );
+
+      io::uiSendValue( app->ioH, io::uiFindElementUuId(app->ioH, kBegPlayLocNumbId), app->beg_play_loc);
+      io::uiSendValue( app->ioH, io::uiFindElementUuId(app->ioH, kEndPlayLocNumbId), app->end_play_loc);
+
+      // set the range of the SF reset number
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kSfResetBtnId ),   true );
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kSfResetLocNumbId ),   true );      
+      io::uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, kSfResetLocNumbId), app->minLoc, app->maxLoc, 1, 0, app->beg_play_loc );
+      io::uiSendValue( app->ioH, io::uiFindElementUuId(app->ioH, kSfResetLocNumbId), app->minLoc);
+
       cwLogInfo("'%s' loaded.",perf_fn);
 
     errLabel:
@@ -2084,13 +2083,11 @@ namespace cw
       }
 
       // load the requested performance
-      if((rc = _do_load(app,prp->fname)) != kOkRC )
+      if((rc = _do_load(app,prp->fname,prp->vel_tblA, prp->vel_tblN)) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"The performance load failed.");
         goto errLabel;
       }
-
-      //_do_sf_reset(app,app->beg_play_loc);
 
     errLabel:
       return rc;
@@ -2709,6 +2706,7 @@ namespace cw
 
       _update_event_ui(app);
 
+      /*
       // disable start and stop buttons until a score is loaded
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStartBtnId ),  false );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStopBtnId ),   false );
@@ -2719,6 +2717,8 @@ namespace cw
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kSfResetBtnId ),   false );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kSfResetLocNumbId ),   false );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kPerfSelId ),   false );
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kInsertLocId ), false );
+      */
 
       io::uiSendValue( app->ioH, io::uiFindElementUuId( app->ioH, kMidiLoadFnameId), app->midiRecordDir);
 
@@ -2730,13 +2730,6 @@ namespace cw
       if((rc = _fragment_load_data(app)) != kOkRC )
         rc = cwLogError(rc,"Preset data restore failed.");
 
-      if( app->sfH.isValid() )
-      {
-        cw_loc_range(app->sfH,app->minLoc,app->maxLoc);
-        printf("SF Loc range:%i %i\n",app->minLoc,app->maxLoc);
-        uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, kSfResetLocNumbId), app->minLoc, app->maxLoc, 1, 0, app->minLoc );
-      }
-      
       _on_live_midi_fl(app,app->useLiveMidiFl);
 
       return rc;
@@ -2777,10 +2770,6 @@ namespace cw
 
         case kSaveBtnId:
           _on_ui_save(app);
-          break;
-
-        case kLoadBtnId:
-          _do_load(app,app->scoreFn);
           break;
 
         case kPerfSelId:
@@ -3344,7 +3333,7 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
   }
 
   // create the MIDI record-play object
-  if((rc = midi_record_play::create(app.mrpH,app.ioH,*app.midi_play_record_cfg,app.velTableFname,_midi_play_callback,&app)) != kOkRC )
+  if((rc = midi_record_play::create(app.mrpH,app.ioH,*app.midi_play_record_cfg,nullptr,_midi_play_callback,&app)) != kOkRC )
   {
     rc = cwLogError(rc,"MIDI record-play object create failed.");
     goto errLabel;
@@ -3357,14 +3346,6 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
     goto errLabel;
   }
 
-  // create the performance selection menu
-  /*
-  if((rc= _load_perf_selection_menu(&app)) != kOkRC )
-  {
-    rc = cwLogError(rc,"The performance list UI create failed.");
-    goto errLabel;
-  }
-  */
   // create the performance selection menu
   if((rc= _load_perf_dir_selection_menu(&app)) != kOkRC )
   {

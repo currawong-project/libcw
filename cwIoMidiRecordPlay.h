@@ -83,6 +83,11 @@ namespace cw
     
     rc_t exec( handle_t h, const io::msg_t& msg );
 
+    unsigned    label_to_device_index( handle_t h, const char* devLabel );
+    const char* device_index_to_label( handle_t h, unsigned devIdx );
+    
+
+
     unsigned device_count( handle_t h );
     bool is_device_enabled( handle_t h, unsigned devIdx );
     void enable_device( handle_t h, unsigned devIdx, bool enableFl );
@@ -96,6 +101,9 @@ namespace cw
     rc_t am_to_midi_file( const object_t* cfg );
 
     unsigned dev_count( handle_t h );
+
+    // Set devIdx to kInvalididx to disable vel tables on all devices
+    rc_t           vel_table_disable( handle_t h, unsigned devIdx=kInvalidIdx );
     
     unsigned       vel_table_count( handle_t h, unsigned devIdx );
     const uint8_t* vel_table( handle_t h, unsigned devIdx );

@@ -1110,3 +1110,23 @@ cw::rc_t cw::vtbl::exec( handle_t h )
   }
   return rc;
 }
+
+const uint8_t* cw::vtbl::get_vel_table( handle_t h, const char* label, unsigned& velTblN_Ref )
+{
+  vtbl_t* p = _handleToPtr(h);
+
+  const tbl_t* t= nullptr;
+
+  velTblN_Ref = 0;
+  
+  if((t = _table_from_name( p, label )) == nullptr )
+  {
+    cwLogError(kInvalidArgRC,"The velocity table named:'%s' could not be found.",cwStringNullGuard(label));
+    return nullptr;
+  }
+
+  velTblN_Ref = t->tableN;
+  
+  return t->tableA;
+  
+}
