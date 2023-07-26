@@ -109,6 +109,8 @@ namespace cw
     template< typename T> bool isPedalDown( T s, T d0, T d1 )  { return ( isPedal(s,d0) && (d1)>=64 ); }
     template< typename T> bool isPedalUp(   T s, T d0, T d1 )  { return ( isPedal(s,d0) && (d1)<64  ); }
 
+    typedef uint8_t byte_t;
+    
 
     
     const char*   statusToLabel(     uint8_t status );
