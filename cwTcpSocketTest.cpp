@@ -236,15 +236,22 @@ namespace cw
       {
         handle_t srvH;
         unsigned cbN;
+        struct sockaddr_in remoteAddr;
       } app_t;
       
       void srvReceiveCallback( void* arg, const void* data, unsigned dataByteCnt, const struct sockaddr_in* fromAddr )
       {
         app_t* p = static_cast<app_t*>(arg);
+        
+        send(p->srvH, data, dataByteCnt, &p->remoteAddr );
+
+        
         char addrBuf[ INET_ADDRSTRLEN ];
         socket::addrToString( fromAddr, addrBuf, INET_ADDRSTRLEN );
         p->cbN += 1;
         printf("%i %s %s\n", p->cbN, addrBuf, (const char*)data );
+
+
       }
     }      
   }
@@ -270,9 +277,16 @@ cw::rc_t cw::net::srv::test_udp_srv( socket::portNumber_t localPort, const char*
         timeOutMs,
         nullptr,
         socket::kInvalidPortNumber )) != kOkRC )
-    
+  {
     return rc;
+  }
 
+  if((rc = socket::initAddr( remoteAddr, remotePort, &app.remoteAddr )) != kOkRC )
+  {
+    cwLogError(rc,"Address initialization failed.");
+    goto errLabel;
+  }
+  
   if((rc = srv::start( app.srvH )) != kOkRC )
     goto errLabel;
 
