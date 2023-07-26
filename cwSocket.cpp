@@ -8,6 +8,7 @@
 #include <sys/ioctl.h>
 #include <net/if.h>
 #include <netinet/in.h>	
+#include <netinet/tcp.h>
 #include <arpa/inet.h>	
 #include <fcntl.h>		
 #include <unistd.h>  // close
@@ -502,6 +503,7 @@ namespace cw
         goto errLabel;
       }
 
+
     errLabel:
       return rc;
     }
@@ -739,6 +741,17 @@ cw::rc_t cw::sock::create( handle_t h,
       rc = cwLogSysError(kOpFailRC,errno, "Attempt to set the socket broadcast attribute failed." );
       goto errLabel;
     }
+  }
+
+  if( cwIsFlag(flags,kTcpFl) && cwIsFlag(flags,kTcpNoDelayFl) )
+  {
+    int nodelay_flag = 1;
+    if( setsockopt( s->sockH, IPPROTO_TCP, TCP_NODELAY, (void *)&nodelay_flag, sizeof(nodelay_flag)) == cwSOCKET_SYS_ERR )
+    {
+      rc = cwLogSysError(kOpFailRC,errno, "Attempt to set the socket NODELAY attribute failed." );
+      goto errLabel;      
+    }
+    
   }
   
   // create the 32 bit local address		

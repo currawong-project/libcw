@@ -28,6 +28,7 @@ namespace cw
      kMultiCastLoopFl = 0x040,  //
      kListenFl        = 0x080,  // Use this socket to listen for incoming connections
      kStreamFl        = 0x100,  // Connected stream (not Datagram)
+     kTcpNoDelayFl    = 0x200,  // TCP stream option only (Implements TCP_NODELAY)
     };
 
     enum

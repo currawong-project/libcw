@@ -727,6 +727,7 @@ namespace cw
           { .id=sock::kMultiCastLoopFl, .label="multicast_loop" }, //
           { .id=sock::kListenFl,        .label="listen"         }, // Use this socket to listen for incoming connections
           { .id=sock::kStreamFl,        .label="stream"         }, // Connected stream (vs. Datagram)
+          { .id=sock::kTcpNoDelayFl,    .label="tcp_no_delay"   }, // Implements TCP_NODELAY
           { .id=0,                      .label=nullptr,         }
         };
 
