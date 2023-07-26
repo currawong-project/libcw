@@ -17,6 +17,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cmath>
+#include <cctype>
 #include <complex>
 #include <type_traits>
 
@@ -151,7 +152,7 @@ namespace cw
     cwAssert( h.p != nullptr );
     return h.p;
   }
-
+  
   typedef struct idLabelPair_str
   {
     unsigned    id;

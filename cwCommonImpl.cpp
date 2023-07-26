@@ -28,9 +28,11 @@ const char* cw::idToLabel( const idLabelPair_t* array, unsigned id, unsigned eol
 unsigned cw::labelToId( const idLabelPair_t* array, const char* label, unsigned eolId )
 {
   const idLabelPair_t* p = array;
-  for(; p->id != eolId; ++p)
-    if( std::strcmp(label,p->label) == 0 )
-      return p->id;
+
+  if( label != nullptr )
+    for(; p->id != eolId; ++p)
+      if( std::strcmp(label,p->label) == 0 )
+        return p->id;
 
   return eolId;
 }
