@@ -490,6 +490,12 @@ cw::rc_t cw::csv::field_char_count( handle_t h, unsigned colIdx, unsigned& charC
   return rc;
 }
 
+cw::rc_t cw::csv::parse_field( handle_t h, unsigned colIdx, uint8_t& valRef )
+{
+  csv_t* p = _handleToPtr(h);
+  return _parse_number_field( p, colIdx, valRef )  ;
+}
+
 cw::rc_t cw::csv::parse_field( handle_t h, unsigned colIdx, unsigned& valRef )
 {
   csv_t* p = _handleToPtr(h);
@@ -512,6 +518,12 @@ cw::rc_t cw::csv::parse_field( handle_t h, unsigned colIdx, const char*& valRef 
 {
   csv_t* p = _handleToPtr(h);
   return _parse_string_field( p, colIdx, valRef );
+}
+
+cw::rc_t cw::csv::parse_field( handle_t h, const char* colLabel, uint8_t& valRef )
+{
+  csv_t* p = _handleToPtr(h);
+  return _parse_number_field(p, colLabel, valRef );
 }
 
 cw::rc_t cw::csv::parse_field( handle_t h, const char* colLabel, unsigned& valRef )

@@ -32,20 +32,28 @@ namespace cw
     // This function return kEofRC when it increments past the last line in the file.
     rc_t next_line( handle_t h );
 
-    // line index (first line==0) of the line currently being parsed.
+    // line index (first line==0) of the line currently bei[ng parsed.
     unsigned cur_line_index( handle_t h );
 
     // Return the count of characters in the field identified by 'colIdx'.
     rc_t field_char_count( handle_t h, unsigned colIdx, unsigned& charCntRef );
 
+    rc_t parse_field( handle_t h, unsigned colIdx, uint8_t& valRef );
     rc_t parse_field( handle_t h, unsigned colIdx, unsigned& valRef );
     rc_t parse_field( handle_t h, unsigned colIdx, int& valRef );
     rc_t parse_field( handle_t h, unsigned colIdx, double& valRef );
+    
+    // The returned pointer is a pointer into an internal 'line' buffer.
+    // The reference is therefore only valid until the next call to next_line().
     rc_t parse_field( handle_t h, unsigned colIdx, const char*& valRef );
 
+    rc_t parse_field( handle_t h, const char* colLabel, uint8_t& valRef );
     rc_t parse_field( handle_t h, const char* colLabel, unsigned& valRef );
     rc_t parse_field( handle_t h, const char* colLabel, int& valRef );
     rc_t parse_field( handle_t h, const char* colLabel, double& valRef );
+    
+    // The returned pointer is a pointer into an internal 'line' buffer.
+    // The reference is therefore only valid until the next call to next_line().
     rc_t parse_field( handle_t h, const char* colLabel, const char*& valRef );
 
     inline rc_t _getv(handle_t) { return kOkRC; } 
