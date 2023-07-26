@@ -7,7 +7,7 @@ namespace cw
   // Return 0 if s is null.
   unsigned textLength( const char* s );
   
-  // if both s0 and s1 are nullptr then a match is indicated
+  // Note: if both s0 and s1 are nullptr then a match is indicated
   int textCompare( const char* s0, const char* s1 );
   int textCompare( const char* s0, const char* s1, unsigned n);
   
@@ -35,6 +35,11 @@ namespace cw
   // a pointer to the EOS if there are no non-white space char's,
   // or nullptr if 's' is null.
   const char* nextNonWhiteCharEOS( const char* s );
+
+  
+  bool isInteger( const char* );        // text contains only [0-9]
+  bool isReal( const char* );           // text contains only [0-9] with one decimal place
+  bool isIdentifier( const char* );      // text is a legal id [0-9,A-Z,a-z,_] w/o leading number
 
   // Join s0 and s1 to form one long string.  Release the returned string with mem::free()
   char* textJoin( const char* s0, const char* s1 );

@@ -82,6 +82,44 @@ const char* cw::nextNonWhiteChar( const char* s )
 const char* cw::nextNonWhiteCharEOS( const char* s )
 { return _nextNonWhiteChar(s,true); }
 
+bool cw::isInteger( const char* s )
+{
+  for(; *s; ++s)
+    if(!isdigit(*s))
+      return false;
+  return true;
+}
+
+bool cw::isReal( const char* s)
+{
+  unsigned decN = 0;
+  for(; *s; ++s)
+    if( *s == '.' )
+    {
+      if( ++decN > 1)
+        return false;
+    }   
+    else
+    {
+      if(!isdigit(*s))
+        return false;
+    }
+  
+  return true;
+}
+
+bool cw::isIdentifier( const char* s )
+{
+  if( !isalpha(*s) && *s != '_' )
+    return false;
+
+  for(++s; *s; ++s)
+    if( !isalnum(*s) && *s != '_' )
+      return false;
+
+  return true;
+}
+
 
 char* cw::textJoin( const char* s0, const char* s1 )
 {
