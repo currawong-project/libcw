@@ -45,8 +45,8 @@ namespace cw
 
       typedef struct p_set_str
       {
-        unsigned             id;             // 
-        unsigned             varTypeId;      // 
+        unsigned             id;             // unique id for this set
+        unsigned             varTypeId;      // k???ScFl 
         p_section_t*         target_section; // section to which this set will be applied
         struct p_event_str*  beg_event;      // first event in this section
         unsigned             eventN;         // count of events in this set
@@ -88,10 +88,12 @@ namespace cw
       const p_event_t* event_array( handle_t h );
 
       unsigned section_count( handle_t h );
+      // Returns a linked list of section records in time order.
       const p_section_t* section_list( handle_t h );
 
       unsigned set_count( handle_t h );
-      const p_set_t* set_array( handle_t h );
+      // Returns a linked list of sets.
+      const p_set_t* set_list( handle_t h );
 
 
       void report( handle_t h );

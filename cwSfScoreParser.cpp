@@ -529,6 +529,9 @@ namespace cw
         return rc;
       }
 
+
+      
+      // Allocate a new set record.
       p_set_t* _alloc_set( sfscore_parser_t* p, unsigned varTypeId, p_event_t* beg_evt )
       {
         p_set_t* s   = mem::allocZ<p_set_t>();
@@ -550,6 +553,8 @@ namespace cw
         return s;
       }
 
+      // Fill a set eventA[] by iterating from set->beg_event to 'end_event'
+      // and storing all events of type set->varTypeid.
       rc_t _fill_set( sfscore_parser_t* p, p_set_t* set, p_event_t* end_event )
       {
         rc_t     rc         = kOkRC;
@@ -574,6 +579,7 @@ namespace cw
       }
 
 
+      // Returns true if the event 'e' is the last event in a set of type 'varTypeId'.
       bool _is_end_of_set( sfscore_parser_t* p, unsigned varTypeId, p_event_t* e )
       {
 
@@ -599,7 +605,9 @@ namespace cw
         
         return false;
       }
-      
+
+      // Register an event to the set to which it belongs.  If the set does not exist then create it.
+      // Setup pointers from the set to the event and the set to the event.
       rc_t  _register_event_with_set( sfscore_parser_t* p, p_event_t* e, unsigned varTypeId,  p_set_t*& setRef )
       {
         rc_t rc = kOkRC;
@@ -625,6 +633,7 @@ namespace cw
         return kOkRC;
       }
 
+      // Check for the existence of each var type on each event and then register the event with the set.
       rc_t _create_sets( sfscore_parser_t* p )
       {
         rc_t       rc = kOkRC;
@@ -661,6 +670,10 @@ namespace cw
       }
 
 
+      // Assign a target section to each set. Since only the last set of a consecutive set of sets
+      // has a target section id this function iterates backwards throught the events, 
+      // notices the last event in the last set of a group of sets, and then propogates the
+      // associated target section back to previous sets.
       rc_t _assign_set_sections(sfscore_parser_t* p )
       {
         rc_t rc = kOkRC;
@@ -672,10 +685,10 @@ namespace cw
           
           p_event_t* e = p->eventA + p->eventN - 1;
 
-          // iterate backward
+          // iterate backward through the event list
           for(; e>=p->eventA; --e)            
           {
-            // if this event is the end of a section for this variable type
+            // if this event is the end of a section for this variable type - then previous sets of this type will be assigned to this section
             if( e->sectionLabelA[refVarTypeId]!=nullptr )
             {
               // locate the section
@@ -711,6 +724,7 @@ namespace cw
         return rc;
       }
 
+      // Validate as many set invariants as possible.
       rc_t _validate_sets( sfscore_parser_t* p )
       {
         rc_t rc = kOkRC;
@@ -787,13 +801,7 @@ namespace cw
           for(unsigned refVarTypeId=kMinVarScId; refVarTypeId<kScVarCnt; ++refVarTypeId)
             if( e->setA[ refVarTypeId ] != nullptr )
             {
-              if( e->setA[ refVarTypeId ]->target_section == nullptr )
-              {
-                rc = cwLogError(kInvalidStateRC,"No target section was assigned to the set '%s' of the event at csv row:%i bar:%i bni:%i is after the event.",
-                                var_type_id_to_label(refVarTypeId),e->csvRowNumb,e->barNumb,e->barNoteIdx);
-                continue;
-              }
-
+              // verify that the target section for this set begins after this event
               if( textCompare(e->setA[ refVarTypeId ]->target_section->label,e->section->label) <= 0  )
               {                
                 rc = cwLogError(kInvalidStateRC,"The target section for '%s' of the event at csv row:%i bar:%i bni:%i is after the event.",
@@ -1042,28 +1050,51 @@ const cw::sfscore::parser::p_section_t* cw::sfscore::parser::section_list( handl
 
 unsigned cw::sfscore::parser::set_count( handle_t h )
 {
-  return 0;
+  sfscore_parser_t* p = _handleToPtr(h);
+  unsigned n=0;
+  for(p_set_t* s=p->begSetL; s!=nullptr; s=s->link)
+    ++n;
+  return n;  
 }
 
-const cw::sfscore::parser::p_set_t* cw::sfscore::parser::set_array( handle_t h )
+const cw::sfscore::parser::p_set_t* cw::sfscore::parser::set_list( handle_t h )
 {
-  return nullptr;
+  sfscore_parser_t* p = _handleToPtr(h);
+  return p->begSetL;
 }
 
 void cw::sfscore::parser::report( handle_t h )
 {
   sfscore_parser_t* p = _handleToPtr(h);
+  unsigned bar0 = 0;
+  const char* sec0 = nullptr;
+  const char* blank_str = "  ";
+  const char* sec_str = "S:";
+  const char* bar_str = "B:";
+    
+  printf("e idx  loc   secs   op  sectn  sdx  bar  bdx scip vel  frac\n");
+  printf("----- ----- ------- --- ------ --- ----- --- ---- --- -----\n");
 
+  
   for(p_event_t* e = p->eventA; e<p->eventA+p->eventN; ++e)
   {
 
-    printf("%5i %5i %7.3f %s %s %3i %3i %3i %4s %3i %4.3f ",
+    const char* d_bar_str = bar0 != e->barNumb ? bar_str : blank_str;
+    const char* d_sec_str = e->section != nullptr && textIsEqual(sec0,e->section->label) ? blank_str : sec_str;
+      
+    bar0 = e->barNumb;
+    if( e->section != nullptr )
+      sec0 = e->section->label;
+
+    printf("%5i %5i %7.3f %3s %2s%4s %3i %2s%3i %3i %4s %3i %5.3f ",
            e->index,
            e->locIdx,
            e->secs,
            opcode_id_to_label(e->typeId),
+           d_sec_str,
            e->section==nullptr ? "    " : cwStringNullGuard(e->section->label),
            e->sectionIdx,
+           d_bar_str,
            e->barNumb,
            e->barNoteIdx,
            e->sciPitch,
