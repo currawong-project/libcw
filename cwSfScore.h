@@ -32,7 +32,7 @@ namespace cw
       kDynScFl     = 0x002,        // This note is marked for dynamics measurement
       kTempoScFl   = 0x004,        // This note is marked for tempo measurement
       //kSkipScFl    = 0x008,        // This isn't a real event (e.g. tied note) skip over it
-      //kGraceScFl   = 0x010,        // This is a grace note
+      kGraceScFl   = 0x010,        // This is a grace note
       kInvalidScFl = 0x020,        // This note has a calculated time
       //kPedalDnScFl   = 0x040,        // This is a pedal down event (pitch holds the pedal id and durSecs holds the time the pedal will remain down.)
       //kPedalUpScFl   = 0x080,         // This is a pedal up event (pitch holds the pedal id)
@@ -96,6 +96,7 @@ namespace cw
     // (e.g. eveness, tempo, dynamcs ... )
     typedef struct set_str
     {
+      unsigned        id;           // Unique id for this set
       unsigned        varId;        // See kXXXVarScId flags above
       event_t**       eleArray;     // Events that make up this set in time order
       unsigned        eleCnt;       // 
@@ -154,7 +155,13 @@ namespace cw
     rc_t destroy( handle_t& h );
 
     unsigned event_count( handle_t h );
+    event_t* event( handle_t h, unsigned idx );
 
+    unsigned loc_count( handle_t h );
+    loc_t*   loc( handle_t h, unsigned idx );
+
+    rc_t parse_dyn_ref_cfg( const object_t* cfg, dyn_ref_t*& refArrayRef, unsigned& refArrayNRef);
+    
     void report( handle_t h );
 
 
