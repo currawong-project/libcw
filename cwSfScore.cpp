@@ -6,12 +6,13 @@
 #include "cwObject.h"
 #include "cwMidi.h"
 #include "cwFileSys.h"
+#include "cwDynRefTbl.h"
+#include "cwScoreParse.h"
 #include "cwSfScore.h"
 #include "cwCsv.h"
 #include "cwNumericConvert.h"
 #include "cwTime.h"
 #include "cwVectOps.h"
-#include "cwSfScoreParser.h"
 #include "cwMidi.h"
 
 namespace cw
@@ -21,9 +22,13 @@ namespace cw
     
     typedef struct sfscore_str
     {
-      parser::handle_t parserH;
+      bool                  deleteParserH_Fl;
+      score_parse::handle_t parserH;
+
+      double     srate;
       
       event_t*   eventA;
+      unsigned   eventAllocN;
       unsigned   eventN;
 
       set_t*     setA;
@@ -42,7 +47,7 @@ namespace cw
       event_t*    event;
       loc_t*      loc;
       section_t*  section;
-      set_t*      setA[ kScVarCnt ];
+      set_t*      setA[ score_parse::kVarCnt ];
     } rpt_event_t;
 
 
@@ -85,52 +90,86 @@ namespace cw
       
       mem::release(p->eventA);
 
-      destroy(p->parserH);
+      if( p->deleteParserH_Fl )
+        destroy(p->parserH);
       
       mem::release(p);
       return rc;
+    }
+
+
+    event_t* _hash_to_event( sfscore_t* p, unsigned hash )
+    {
+      for(unsigned i=0; i<p->eventN; ++i)
+        if( p->eventA[i].hash == hash )
+          return p->eventA + i;
+      return nullptr;
+    }
+
+    double _calc_frac( double rval, unsigned dot_cnt )
+    {
+      double mult = 1.0;
+      if(dot_cnt > 0)
+      {
+        for(unsigned i=0; i<dot_cnt; ++i)
+          mult += 1.0 / (1 << i);
+      }
+      
+      return mult/rval;      
     }
 
     rc_t _create_event_array( sfscore_t* p )
     {
       rc_t rc = kOkRC;
       
-      const parser::p_event_t* pe_array = parser::event_array(p->parserH);
+      const score_parse::event_t* pe_array = score_parse::event_array(p->parserH);
       
-      p->eventN = parser::event_count(p->parserH);
-
-      if( pe_array == nullptr || p->eventN == 0 )
+      p->eventAllocN = score_parse::event_count(p->parserH);
+      p->eventN      = 0;
+      
+      if( pe_array == nullptr || p->eventAllocN == 0 )
       {
         rc = cwLogError(kInvalidStateRC,"No events were found.");
         goto errLabel;
       }
       
-      p->eventA = mem::allocZ<event_t>(p->eventN);
+      p->eventA = mem::allocZ<event_t>(p->eventAllocN);
       p->locN   = 0;
 
-      for(unsigned i=0; i<p->eventN; ++i)
+      for(unsigned i=0; i<p->eventAllocN; ++i)
       {
-        event_t*                 e  = p->eventA + i;
-        const parser::p_event_t* pe = pe_array  + i;
+        event_t* e  = p->eventA + p->eventN;
+        const score_parse::event_t* pe = pe_array  + i;
 
-        e->type       = pe->typeId;
-        e->secs       = pe->secs;
-        e->index      = pe->index;
-        e->locIdx     = pe->locIdx;
-        e->pitch      = pe->pitch;
-        e->vel        = pe->vel;
-        e->flags      = pe->flags;
-        e->dynVal     = pe->dynVal;
-        e->frac       = pe->t_frac;
-        e->barNumb    = pe->barNumb;
-        e->barNoteIdx = pe->barNoteIdx;
-        e->csvRowNumb = pe->csvRowNumb;
-        e->line       = pe->line;
-        e->csvEventId = pe->csvEventId;
+        if( cwIsFlag(pe->flags,score_parse::kOnsetFl) )
+        {
+          e->type       = pe->opId;
+          e->secs       = pe->sec;
+          e->index      = p->eventN;
+          e->locIdx     = pe->oloc;
+          e->pitch      = pe->d0;
+          e->vel        = pe->d1;
+          e->flags      = 0;
+          e->dynVal     = pe->dynLevel;
+          e->frac       = _calc_frac(pe->rval, pe->dotCnt);
+          e->barNumb    = pe->barNumb;
+          e->barNoteIdx = pe->barPitchIdx;
+          e->csvRowNumb = pe->csvRowNumb;
+          e->line       = pe->csvRowNumb;
+          e->csvEventId = kInvalidId; // pe->csvId;
+          e->hash       = pe->hash;
 
-        if( e->locIdx > p->locN )
-          p->locN = e->locIdx;
-        
+          for(unsigned i = score_parse::kMinVarIdx; i<score_parse::kVarCnt; ++i)
+          {
+            e->varA[i] = pe->varA[i].flags;
+            e->flags  |= pe->varA[i].flags;
+          }
+          
+          if( e->locIdx > p->locN )
+            p->locN = e->locIdx;
+            
+          p->eventN += 1;
+        }
       }
 
       p->locN += 1; // add one to convert locN from index to count
@@ -190,7 +229,7 @@ namespace cw
     rc_t _create_section_array( sfscore_t* p )
     {
       rc_t rc = kOkRC;
-      p->sectionN = parser::section_count(p->parserH);
+      p->sectionN = score_parse::section_count(p->parserH);
 
       // the location array must have already been created.
       assert( p->locA != nullptr );
@@ -204,18 +243,29 @@ namespace cw
       {
         p->sectionA = mem::allocZ<section_t>(p->sectionN);
         
-        const parser::p_section_t* ps = parser::section_list(p->parserH);
+        const score_parse::section_t* ps = score_parse::section_list(p->parserH);
         for(unsigned i=0; i<p->sectionN; ++i)
         {
-          section_t* section          = p->sectionA + i;
-          section->label              = mem::duplStr(ps->label);
-          section->index              = i;
-          section->begEvtIndex        = ps->begEvtIdx;
-          section->locPtr             = p->locA + p->eventA[ps->begEvtIdx].locIdx;
-          section->locPtr->begSectPtr = section;
+          if( ps->begEvent != nullptr )
+          {
+            section_t* section = p->sectionA + i;
+            event_t*   begEvt  = _hash_to_event(p,ps->begEvent->hash);
 
-          for(unsigned j=0; j<kScVarCnt; ++j)
-            section->vars[j] = DBL_MAX;
+            if( begEvt == nullptr )
+            {
+              rc = cwLogError(kInvalidStateRC,"The section '%s' does not have a 'begin' event with hash:%x.",cwStringNullGuard(ps->label),ps->begEvent->hash);
+              goto errLabel;
+            }
+          
+            section->label              = mem::duplStr(ps->label);
+            section->index              = i;
+            section->begEvtIndex        = begEvt->index;
+            section->locPtr             = p->locA + p->eventA[begEvt->index].locIdx;
+            section->locPtr->begSectPtr = section;
+
+            for(unsigned j=0; j<score_parse::kVarCnt; ++j)
+              section->vars[j] = DBL_MAX;
+          }
           
           ps = ps->link;
         }
@@ -237,9 +287,9 @@ namespace cw
     rc_t _create_set_array( sfscore_t* p )
     {
       rc_t rc = kOkRC;
-      const parser::p_set_t* ps = set_list(p->parserH);
+      const score_parse::set_t* ps = set_list(p->parserH);
       
-      p->setN = parser::set_count(p->parserH);
+      p->setN = score_parse::set_count(p->parserH);
       if( p->setN == 0 )
       {
         rc = cwLogError(kInvalidStateRC,"No sets were found.");
@@ -263,8 +313,16 @@ namespace cw
           set->eleCnt      = ps->eventN;
           set->eleArray    = mem::allocZ<event_t*>(set->eleCnt);
           for(unsigned j=0; j<set->eleCnt; ++j)
-            set->eleArray[j] = p->eventA + ps->eventA[j]->index;
-
+          {
+            set->eleArray[j] = _hash_to_event(p, ps->eventA[j]->hash );
+            
+            if( set->eleArray[j] == nullptr )
+            {
+              rc = cwLogError(kInvalidStateRC,"The '%s' set event in measure:%i with hash %x (CSV Row:%i) could not be found.",score_parse::var_index_to_char(ps->varTypeId),ps->eventA[j]->barNumb,ps->eventA[j]->hash,ps->eventA[j]->csvRowNumb);
+              goto errLabel;
+            }
+          }
+          
           // add this set to the setList for the set's end loc
           if( set->eleCnt > 0 )
           {
@@ -274,9 +332,9 @@ namespace cw
           }
           
           // set the target-section related fields fro this set
-          if( ps->target_section != nullptr )
+          if( ps->targetSection != nullptr )
           {
-            if((section = _label_to_section(p,ps->target_section->label)) == nullptr )
+            if((section = _label_to_section(p,ps->targetSection->label)) == nullptr )
             {
               rc = cwLogError(kInvalidIdRC,"The section '%s' was not found.");
               goto errLabel;
@@ -297,6 +355,46 @@ namespace cw
       return rc;
     }
 
+
+    rc_t _create( handle_t& hRef,
+                  score_parse::handle_t spH,
+                  bool deleteParserH_Fl )
+    {
+      rc_t rc;
+  
+      if((rc = destroy(hRef)) != kOkRC )
+        return rc;
+
+      sfscore_t* p = mem::allocZ<sfscore_t>();
+
+      p->deleteParserH_Fl = deleteParserH_Fl;
+      p->parserH = spH;
+  
+      if((rc = _create_event_array( p )) != kOkRC )
+        goto errLabel;
+
+      if((rc = _create_loc_array( p )) != kOkRC )
+        goto errLabel;
+  
+      if((rc = _create_section_array( p )) != kOkRC )
+        goto errLabel;
+
+      if((rc = _create_set_array( p )) != kOkRC )
+        goto errLabel;
+
+  
+      hRef.set(p);
+  
+    errLabel:
+      if( rc != kOkRC )
+      {
+        rc = cwLogError(rc,"sfscore create failed.");
+        _destroy(p);
+      }
+      return rc;
+    }
+    
+    
     void _report_print( sfscore_t* p, rpt_event_t* rptA, unsigned rptN )
     {
       unsigned    bar0      = 0;
@@ -305,7 +403,7 @@ namespace cw
       const char* sec_str   = "S:";
       const char* bar_str   = "B:";
       
-      printf("e idx  loc   secs   op  sectn  sdx  bar  bdx scip vel  frac\n");
+      printf("e idx oloc   secs   op  sectn  sdx  bar  bdx scip vel  frac\n");
       printf("----- ----- ------- --- ------ --- ----- --- ---- --- -----\n");
 
   
@@ -327,7 +425,7 @@ namespace cw
                e->index,
                e->locIdx,
                e->secs,
-               opcode_id_to_label(e->type),
+               score_parse::opcode_id_to_label(e->type),
                d_sec_str,
                section==nullptr ? "    " : cwStringNullGuard(section->label),
                section->index,
@@ -338,17 +436,15 @@ namespace cw
                e->vel,
                e->frac );
 
-        for(unsigned refVarTypeId=kMinVarScId; refVarTypeId<kScVarCnt; ++refVarTypeId)
+        for(unsigned vi=score_parse::kMinVarIdx; vi<score_parse::kVarCnt; ++vi)
         {
-          set_t* set = r->setA[refVarTypeId];
+          set_t* set = r->setA[vi];
           if( set == nullptr || set->sectCnt==0 )
             printf("           ");
           else
           {
-            unsigned varRefFlags = var_type_id_to_mask(refVarTypeId);
-            
             const char* sect_label = set->sectArray[0]==nullptr ? "****" : set->sectArray[0]->label;
-            printf("%c-%03i-%s ",var_type_flag_to_char(e->flags & varRefFlags), set->id, sect_label);
+            printf("%s-%03i-%s ",score_parse::var_flags_to_char(e->varA[vi]), set->id, sect_label);
           }
         }
 
@@ -424,47 +520,34 @@ namespace cw
   }
 }
 
+cw::rc_t cw::sfscore::create( handle_t& hRef,
+                              score_parse::handle_t spH )
+{
+  return _create(hRef,spH,false);
+  
+}
+
 cw::rc_t cw::sfscore::create( handle_t&        hRef,
                               const char*      fname,
                               double           srate,
-                              const dyn_ref_t* dynRefA,
-                              unsigned         dynRefN )
+                              dyn_ref_tbl::handle_t dynRefH)
 {
   rc_t rc;
   
-  if((rc = destroy(hRef)) != kOkRC )
-    return rc;
+  score_parse::handle_t spH;
 
-  sfscore_t* p = mem::allocZ<sfscore_t>();
-
-  if((rc = parser::create(p->parserH,fname,dynRefA,dynRefN)) != kOkRC )
+  if((rc = score_parse::create(spH,fname,srate,dynRefH)) != kOkRC )
   {
     rc = cwLogError(rc,"sfscore parse failed.");
     goto errLabel;
   }
 
-  if((rc = _create_event_array( p )) != kOkRC )
-    goto errLabel;
-
-  if((rc = _create_loc_array( p )) != kOkRC )
-    goto errLabel;
   
-  if((rc = _create_section_array( p )) != kOkRC )
-    goto errLabel;
+  rc = _create(hRef,spH,true);
 
-  if((rc = _create_set_array( p )) != kOkRC )
-    goto errLabel;
-
-  
-  hRef.set(p);
-  
  errLabel:
-  if( rc != kOkRC )
-  {
-    rc = cwLogError(rc,"sfscore create failed.");
-    _destroy(p);
-  }
   return rc;
+  
 }
 
 cw::rc_t cw::sfscore::destroy( handle_t& hRef )
@@ -488,6 +571,14 @@ cw::rc_t cw::sfscore::destroy( handle_t& hRef )
 }
 
 
+double cw::sfscore::sample_rate( handle_t& h )
+{
+  sfscore_t* p = _handleToPtr(h);
+  return sample_rate(p->parserH);
+}
+
+
+
 unsigned cw::sfscore::event_count( handle_t h )
 {
   sfscore_t* p = _handleToPtr(h);
@@ -499,6 +590,16 @@ cw::sfscore::event_t* cw::sfscore::event( handle_t h, unsigned idx )
   sfscore_t* p = _handleToPtr(h);
   return p->eventA + idx;
 }
+
+cw::sfscore::event_t* cw::sfscore::hash_to_event( handle_t h, unsigned hash )
+{
+  sfscore_t* p = _handleToPtr(h);
+  for(unsigned i=0; p->eventN; ++i)
+    if( p->eventA[i].hash == hash )
+      return p->eventA + i;
+  return nullptr;
+}
+
 
 unsigned cw::sfscore::loc_count( handle_t h )
 {
@@ -512,108 +613,16 @@ cw::sfscore::loc_t* cw::sfscore::loc( handle_t h, unsigned idx )
   return p->locA + idx;
 }
 
-cw::rc_t cw::sfscore::parse_dyn_ref_cfg( const object_t* cfg, dyn_ref_t*& refArrayRef, unsigned& refArrayNRef)
-{
-  rc_t       rc      = kOkRC;
-  dyn_ref_t* dynRefA = nullptr;
-
-  refArrayRef = nullptr;
-  refArrayNRef   = 0;
-  
-  // parse the dynamics ref. array
-  unsigned dynRefN = cfg->child_count();
-  
-  if( dynRefN == 0 )
-    cwLogWarning("The dynamic reference array cfg. is empty.");
-  else
-  {
-    dynRefA = mem::allocZ<dyn_ref_t>(dynRefN);
-  
-    for(unsigned i=0; i<dynRefN; ++i)
-    {
-      const object_t* pair = cfg->child_ele(i);
-    
-      if( !pair->is_pair() || pair->pair_label()==nullptr || pair->pair_value()==nullptr || pair->pair_value()->value( dynRefA[i].vel)!=kOkRC )
-      {
-        rc = cwLogError(kSyntaxErrorRC,"Error parsing the dynamics reference array.");
-        goto errLabel;
-      }
-    
-      dynRefA[i].label = pair->pair_label();
-    }
-  }
-
-  
- errLabel:
-  if( rc != kOkRC )
-    mem::release(dynRefA);
-  else               
-  {
-    refArrayRef = dynRefA;
-    refArrayNRef = dynRefN;
-  }
-  
-  return rc;
-}
-
-
-void cw::sfscore::report( handle_t h )
+void cw::sfscore::report( handle_t h, const char* out_fname )
 {
   sfscore_t* p = _handleToPtr(h);
-  if( p->parserH.isValid() )
-  {
-    //printf("Score Parser Report\n");
-    //report(p->parserH);
-  }
-
   printf("Score Report\n");
   _report(p);
-  
-
-  
 }
 
-cw::rc_t cw::sfscore::test( const object_t* cfg )
+void cw::sfscore::parse_report( handle_t h )
 {
-  rc_t            rc             = kOkRC;
-  const char*     cm_score_fname = nullptr;
-  const object_t* dynArrayNode   = nullptr;
-  dyn_ref_t*      dynRefA        = nullptr;
-  unsigned        dynRefN        = 0;
-  double          srate          = 0;
-  handle_t        h;
-  time::spec_t    t0;
-  
-
-  // parse the test cfg
-  if((rc = cfg->getv( "cm_score_fname", cm_score_fname,
-                      "srate", srate,
-                      "dyn_ref", dynArrayNode )) != kOkRC )
-  {
-    rc = cwLogError(rc,"sfscore test parse params failed on.");
-    goto errLabel;
-  }
-
-  if((rc = parse_dyn_ref_cfg( dynArrayNode, dynRefA, dynRefN )) != kOkRC )
-  {
-    rc = cwLogError(rc,"The reference dynamics array parse failed.");
-    goto errLabel;
-  }
-
-  time::get(t0);
-  
-  if((rc = create(h,cm_score_fname,srate,dynRefA,dynRefN)) != kOkRC )
-  {
-    rc = cwLogError(rc,"Score test create failed.");
-    goto errLabel;
-  }
-
-  report(h);
-  
-  printf("%i events %i ms\n",event_count(h), time::elapsedMs(t0) );
-  
- errLabel:
-  destroy(h);
-  mem::release(dynRefA);
-  return rc;
+  sfscore_t* p = _handleToPtr(h);
+  report(p->parserH);
 }
+

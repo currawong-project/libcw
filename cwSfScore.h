@@ -6,55 +6,6 @@ namespace cw
   namespace sfscore
   {
     
-    enum
-    {
-      kInvalidEvtScId = 0,
-      kTimeSigEvtScId,
-      kKeySigEvtScId,
-      kTempoEvtScId,
-      kTrackEvtScId,
-      kTextEvtScId,
-      kNameEvtScId,
-      kEOTrackEvtScId,
-      kCopyEvtScId,
-      kBlankEvtScId,
-      kBarEvtScId,
-      kPgmEvtScId,
-      kCtlEvtScId,
-      kNonEvtScId,
-      kPedalEvtScId
-    };
-
-    // Flags used by event_t.flags
-    enum
-    {
-      kEvenScFl    = 0x001,        // This note is marked for evenness measurement
-      kDynScFl     = 0x002,        // This note is marked for dynamics measurement
-      kTempoScFl   = 0x004,        // This note is marked for tempo measurement
-      //kSkipScFl    = 0x008,        // This isn't a real event (e.g. tied note) skip over it
-      kGraceScFl   = 0x010,        // This is a grace note
-      kInvalidScFl = 0x020,        // This note has a calculated time
-      //kPedalDnScFl   = 0x040,        // This is a pedal down event (pitch holds the pedal id and durSecs holds the time the pedal will remain down.)
-      //kPedalUpScFl   = 0x080,         // This is a pedal up event (pitch holds the pedal id)
-    };
-
-
-    // Id's used by set_t.varId and as indexes into
-    // section_t.vars[].
-    enum
-    {
-      kInvalidVarScId = 0, // 0
-      kMinVarScId = 1,
-      kEvenVarScId = kMinVarScId,    // 1
-      kDynVarScId = 2,     // 2
-      kTempoVarScId = 3,   // 3
-      kScVarCnt = 4      
-    };
-
-    enum : uint8_t  {
-      kInvalidDynVel = 0
-    };
-
     struct loc_str;
     struct set_str;
 
@@ -67,16 +18,16 @@ namespace cw
       unsigned         begEvtIndex;       // score element index where this section starts    
       unsigned         setCnt;            // Count of elements in setArray[]
       struct set_str** setArray;          // Ptrs to sets which are applied to this section.
-      double           vars[ kScVarCnt ]; // Set to DBL_MAX by default.
+      double           vars[  score_parse::kVarCnt ]; // Set to DBL_MAX by default.
     } section_t;
 
     typedef struct event_str
     {
-      unsigned     type;         // Event type
+      unsigned     type;         // See score_parse ???TId
       double       secs;         // Time location in seconds 
       double       durSecs;      // Duration in seconds
       unsigned     index;        // Index of this event in the event array.
-      unsigned     locIdx;       // Index of the location containing this event
+      unsigned     locIdx;       // Index of the onset location (oloc) containing this event
       midi::byte_t pitch;        // MIDI pitch of this note or the MIDI pedal id of pedal down/up msg (64=sustain 65=sostenuto 66=soft)
       midi::byte_t vel;          // MIDI velocity of this note
       unsigned     flags;        // Attribute flags for this event
@@ -90,10 +41,12 @@ namespace cw
       unsigned     perfDynLvl;   // Index into dynamic level ref. array assoc'd with perfVel  
       unsigned     line;         // Line number of this event in the score file.
       unsigned     csvEventId;   // EventId from CSV 'evt' column.
+      unsigned     hash;         // unique hash id for this note
+      unsigned     varA[ score_parse::kVarCnt ];
     } event_t;
 
     // A 'set' is a collection of events that are grouped in time and all marked with a given attribute.
-    // (e.g. eveness, tempo, dynamcs ... )
+    // (e.g. eveness, tempo, dynamcs ... )o
     typedef struct set_str
     {
       unsigned        id;           // Unique id for this set
@@ -143,29 +96,36 @@ namespace cw
       marker_t*      markList;   // List of markers assigned to this location
     } loc_t;
 
-    typedef struct
-    {
-      const char* label;
-       uint8_t    vel;
-    } dyn_ref_t;
-
+    typedef dyn_ref_tbl::dyn_ref_t dyn_ref_t;
     typedef handle<struct sfscore_str> handle_t;
 
-    rc_t create( handle_t& h, const char* fname, double srate, const dyn_ref_t* dynRefA=nullptr, unsigned dynRefN=0 );
+    // Create the score from a provided score parser
+    rc_t create( handle_t& h,
+                 score_parse::handle_t spH );
+
+    // Create an internal score parser.
+    rc_t create( handle_t&             h,
+                 const char*           fname,
+                 double                srate,
+                 dyn_ref_tbl::handle_t dynRefH);
+
+    
     rc_t destroy( handle_t& h );
 
+    double sample_rate( handle_t& h );
+    
     unsigned event_count( handle_t h );
     event_t* event( handle_t h, unsigned idx );
+    event_t* hash_to_event( handle_t h, unsigned hash );
 
     unsigned loc_count( handle_t h );
     loc_t*   loc( handle_t h, unsigned idx );
 
-    rc_t parse_dyn_ref_cfg( const object_t* cfg, dyn_ref_t*& refArrayRef, unsigned& refArrayNRef);
     
-    void report( handle_t h );
+    void report( handle_t h, const char* out_fname=nullptr );
+    void parse_report( handle_t h );
 
-
-    rc_t test( const object_t* cfg );
+    // see score_test::test() for testing this object
 
   }
 }
