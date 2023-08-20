@@ -171,7 +171,7 @@ namespace cw
     inline const cw::sfmatch::path_t* optimal_path( handle_t h )        { return handleToPtr<handle_t,sfmatch_t>(h)->p_opt; }
 
     
-    rc_t test( const object_t* cfg );
+    rc_t test( const object_t* cfg, sfscore::handle_t scoreH );
       
   }  
 }

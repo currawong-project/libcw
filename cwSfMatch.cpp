@@ -6,6 +6,8 @@
 #include "cwObject.h"
 #include "cwMidi.h"
 #include "cwFileSys.h"
+#include "cwDynRefTbl.h"
+#include "cwScoreParse.h"
 #include "cwSfScore.h"
 #include "cwSfMatch.h"
 
@@ -49,7 +51,7 @@ namespace cw
 
         // count the number of note events at location li
         for(n=0,i=0; i<lp->evtCnt; ++i)
-          if( lp->evtArray[i]->type == sfscore::kNonEvtScId )
+          if( lp->evtArray[i]->type == score_parse::kNoteOnTId )
             ++n;
 
         assert( ei+n <= p->locN );
@@ -65,7 +67,7 @@ namespace cw
           p->loc[ei+i].barNumb  = lp->barNumb;
 
           for(j=0,k=0; j<lp->evtCnt; ++j)
-            if( lp->evtArray[j]->type == sfscore::kNonEvtScId )
+            if( lp->evtArray[j]->type == score_parse::kNoteOnTId )
             {
               p->loc[ei+i].evtV[k].pitch    = lp->evtArray[j]->pitch;
               p->loc[ei+i].evtV[k].scEvtIdx = lp->evtArray[j]->index;
@@ -415,17 +417,17 @@ namespace cw
 
       s[0] = 0;
 
-      if( cwIsFlag(ep->flags,sfscore::kEvenScFl) )
+      if( cwIsFlag(ep->flags,score_parse::kEvenVarFl) )
         s[i++] = 'e';
 
-      if( cwIsFlag(ep->flags,sfscore::kTempoScFl) )
+      if( cwIsFlag(ep->flags,score_parse::kTempoVarFl) )
         s[i++] = 't';
 
-      if( cwIsFlag(ep->flags,sfscore::kDynScFl) )
+      if( cwIsFlag(ep->flags,score_parse::kDynVarFl) )
         s[i++] = 'd';
 
-      if( cwIsFlag(ep->flags,sfscore::kGraceScFl) )
-        s[i++] = 'g';
+      //if( cwIsFlag(ep->flags,sfscore::kGraceScFl) )
+      //  s[i++] = 'g';
 
       s[i++] = 0;
 
@@ -777,14 +779,9 @@ void cw::sfmatch::print_path( handle_t h, unsigned bsi, const midi_t* midiV )
 }
 
 
-cw::rc_t cw::sfmatch::test( const object_t* cfg )
+cw::rc_t cw::sfmatch::test( const object_t* cfg, sfscore::handle_t scoreH )
 {
   rc_t                rc                   = kOkRC;
-  const char*         score_csv_fname      = nullptr; 
-  sfscore::dyn_ref_t* dynRefA              = nullptr;
-  unsigned            dynRefN              = 0;;
-  double              srate                = 48000.0;
-  const object_t*     dynArrayNode         = nullptr;
   const object_t*     perf                 = nullptr;
   const object_t*     gen_perf_example     = nullptr;
   bool                gen_perf_enable_fl   = false;
@@ -793,14 +790,10 @@ cw::rc_t cw::sfmatch::test( const object_t* cfg )
   midi_t*             midiA                = nullptr;
   unsigned            maxScWndN            = 10;
   unsigned            maxMidiWndN          = 7;
-  sfscore::handle_t   scoreH;
   sfmatch::handle_t   matchH;
   
   // parse the test cfg
-  if((rc = cfg->getv( "cm_score_fname", score_csv_fname,
-                      "srate", srate,
-                      "dyn_ref", dynArrayNode,
-                      "maxScWndN", maxScWndN,
+  if((rc = cfg->getv( "maxScWndN", maxScWndN,
                       "maxMidiWndN", maxMidiWndN,
                       "gen_perf_example", gen_perf_example,
                       "perf", perf)) != kOkRC )
@@ -816,22 +809,10 @@ cw::rc_t cw::sfmatch::test( const object_t* cfg )
     rc = cwLogError(rc,"sfscore test parse params 'gen_perf_example' failed.");
     goto errLabel;
   }
-      
-  if((rc = sfscore::parse_dyn_ref_cfg( dynArrayNode, dynRefA, dynRefN )) != kOkRC )
-  {
-    rc = cwLogError(rc,"The reference dynamics array parse failed.");
-    goto errLabel;
-  }
-
-  if((rc = sfscore::create(scoreH,score_csv_fname,srate,dynRefA,dynRefN)) != kOkRC )
-  {
-    rc = cwLogError(rc,"Score test create failed.");
-    goto errLabel;
-  }
 
   if( gen_perf_enable_fl )
   {
-    _gen_match_test_input_from_score( scoreH, gen_perf_beg_loc_idx, gen_perf_loc_cnt, srate );
+    _gen_match_test_input_from_score( scoreH, gen_perf_beg_loc_idx, gen_perf_loc_cnt, sample_rate(scoreH) );
   }
   else
   {
@@ -885,9 +866,7 @@ cw::rc_t cw::sfmatch::test( const object_t* cfg )
   }
   
  errLabel:
-  sfmatch::destroy(matchH);
-  sfscore::destroy(scoreH);
-  mem::release(dynRefA);
+  destroy(matchH);
   mem::release(midiA);
   
   return rc;
