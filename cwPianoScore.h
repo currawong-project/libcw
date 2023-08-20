@@ -53,7 +53,7 @@ namespace cw
     double         locs_to_diff_seconds( handle_t h, unsigned loc0Id, unsigned loc1Id );
     */
     
-    const event_t* uid_to_event( handle_t h, unsigned uid );
+    //const event_t* uid_to_event( handle_t h, unsigned uid );
 
 
     // Format the event as a string for printing.

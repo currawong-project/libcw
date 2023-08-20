@@ -577,13 +577,13 @@ double  cw::score::locs_to_diff_seconds( handle_t h, unsigned loc0Id, unsigned l
 
   return e1->sec - e0->sec;  
 }
-*/
 
 const cw::score::event_t* cw::score::uid_to_event( handle_t h, unsigned uid )
 {
   //hscore_t* p  = _handleToPtr(h);
   return nullptr;
 }
+*/
 
 cw::rc_t  cw::score::event_to_string( handle_t h, unsigned uid, char* buf, unsigned buf_byte_cnt )
 {
