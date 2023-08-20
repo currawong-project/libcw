@@ -7,6 +7,8 @@
 #include "cwMidi.h"
 #include "cwMidiFile.h"
 #include "cwFileSys.h"
+#include "cwDynRefTbl.h"
+#include "cwScoreParse.h"
 #include "cwSfScore.h"
 #include "cwSfMatch.h"
 #include "cwSfTrack.h"
@@ -308,7 +310,6 @@ namespace cw
 
 
 cw::rc_t cw::sftrack::create( handle_t&         hRef,
-                              double            srate,    // System sample rate.
                               sfscore::handle_t scH,      // Score handle.  See cmScore.h.
                               unsigned          scWndN,   // Length of the scores active search area. ** See Notes.
                               unsigned          midiWndN, // Length of the MIDI active note buffer.    ** See Notes.
@@ -430,6 +431,19 @@ cw::rc_t cw::sftrack::exec( handle_t h, unsigned smpIdx, unsigned muid, unsigned
   return rc;
 }
 
+unsigned cw::sftrack::result_count( handle_t h )
+{
+  sftrack_t* p = _handleToPtr(h);
+  return p->ri;
+}
+
+const cw::sftrack::result_t* cw::sftrack::result_base( handle_t h )
+{
+  sftrack_t* p = _handleToPtr(h);
+  return p->res;
+}
+
+
 void cw::sftrack::print( handle_t h )
 {
   sftrack_t* p = _handleToPtr(h);
@@ -447,44 +461,29 @@ namespace cw
   }
 }
 
-cw::rc_t cw::sftrack::test( const object_t* cfg )
+cw::rc_t cw::sftrack::test( const object_t* cfg, sfscore::handle_t scoreH )
 {
-  rc_t                rc                  = kOkRC;
+  rc_t            rc                  = kOkRC;  
+  bool            report_midi_file_fl = false;
+  bool            report_track_fl     = false;  
+  const object_t* perf                = nullptr;  
+  bool            perf_enable_fl      = false;
+  unsigned        perf_loc_idx        = 0;
+  const char*     perf_midi_fname     = nullptr;
+  unsigned        maxScWndN           = 10;
+  unsigned        maxMidiWndN         = 7;
   
-  const char*         score_csv_fname     = nullptr; 
-  double              srate               = 48000.0;
-  unsigned            maxScWndN           = 10;
-  unsigned            maxMidiWndN         = 7;
-  bool                report_midi_file_fl = false;
-  bool                report_score_fl     = false;
-  bool                report_track_fl     = false;
-  
-  sfscore::dyn_ref_t* dynRefA             = nullptr;
-  unsigned            dynRefN             = 0;;
-  const object_t*     dynArrayNode        = nullptr;
-  
-  const object_t*     perf                = nullptr;  
-  bool                perf_enable_fl  = false;
-  unsigned            perf_loc_idx    = 0;
-  const char*         perf_midi_fname = nullptr;
-  
-  
-  const midi::file::trackMsg_t** midiMsgA            = nullptr;
-  unsigned                      midiMsgN            = 0;
-  sfscore::handle_t             scoreH;
-  sftrack::handle_t             trackH;
-  midi::file::handle_t          mfH;
+  const midi::file::trackMsg_t** midiMsgA = nullptr;
+  unsigned                       midiMsgN = 0;
+  sftrack::handle_t              trackH;
+  midi::file::handle_t           mfH;
   
   // parse the test cfg
-  if((rc = cfg->getv( "cm_score_fname", score_csv_fname,
-                      "srate", srate,
-                      "dyn_ref", dynArrayNode,
-                      "maxScWndN", maxScWndN,
-                      "maxMidiWndN", maxMidiWndN,
-                      "report_midi_file_fl",report_midi_file_fl,
-                      "report_score_fl",report_score_fl,
-                      "report_track_fl",report_track_fl,
-                      "perf", perf)) != kOkRC )
+  if((rc = cfg->getv("maxScWndN", maxScWndN,
+                     "maxMidiWndN", maxMidiWndN,
+                     "report_midi_file_fl",report_midi_file_fl,
+                     "report_track_fl",report_track_fl,
+                     "perf", perf)) != kOkRC )
   {
     rc = cwLogError(rc,"sfscore test parse params failed.");
     goto errLabel;
@@ -498,25 +497,8 @@ cw::rc_t cw::sftrack::test( const object_t* cfg )
     goto errLabel;
   }
 
-  // dynamic reference
-  if((rc = sfscore::parse_dyn_ref_cfg( dynArrayNode, dynRefA, dynRefN )) != kOkRC )
-  {
-    rc = cwLogError(rc,"The reference dynamics array parse failed.");
-    goto errLabel;
-  }
-
-  // create the score
-  if((rc = sfscore::create(scoreH,score_csv_fname,srate,dynRefA,dynRefN)) != kOkRC )
-  {
-    rc = cwLogError(rc,"Score test create failed.");
-    goto errLabel;
-  }
-
-  if( report_score_fl )
-    report(scoreH);
-
   // create the score tracker
-  if((rc = create(trackH, srate, scoreH, maxScWndN, maxMidiWndN, _test_cb_func, nullptr )) != kOkRC )
+  if((rc = create(trackH, scoreH, maxScWndN, maxMidiWndN, _test_cb_func, nullptr )) != kOkRC )
   {
     rc = cwLogError(rc,"sftrack create failed.");
     goto errLabel;
@@ -561,9 +543,7 @@ cw::rc_t cw::sftrack::test( const object_t* cfg )
   
  errLabel:
   midi::file::close(mfH);
-  sftrack::destroy(trackH);
-  sfscore::destroy(scoreH);
-  mem::release(dynRefA);
+  destroy(trackH);
   
   return rc;
 }

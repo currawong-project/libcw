@@ -51,7 +51,6 @@ namespace cw
     typedef handle<struct sftrack_str> handle_t;
     
     rc_t create( handle_t&         hRef,
-                 double            srate,    // System sample rate.
                  sfscore::handle_t scH,      // Score handle.  See cmScore.h.
                  unsigned          scWndN,   // Length of the scores active search area. ** See Notes.
                  unsigned          midiWndN, // Length of the MIDI active note buffer.    ** See Notes.
@@ -112,9 +111,13 @@ namespace cw
                midi::byte_t d1,
                unsigned* scLocIdxPtr );
 
+
+    unsigned        result_count( handle_t h );
+    const result_t* result_base( handle_t h );
+    
     void print( handle_t h );
 
-    rc_t test( const object_t* cfg );
+    rc_t test( const object_t* cfg, sfscore::handle_t scoreH );
     
   }
 }
