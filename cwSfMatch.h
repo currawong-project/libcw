@@ -35,12 +35,12 @@ namespace cw
     // List record used to track a path through the DP matrix p->m[,]
     typedef struct path_str
     {
-      unsigned                  code;     // kSmXXXIdx
-      unsigned                  ri;       // matrix row index
-      unsigned                  ci;       // matrix col index
-      unsigned                  flags;    // cmSmMatchFl | cmSmTransFl
-      unsigned                  locIdx;   // p->loc index or cmInvalidIdx
-      unsigned                  scEvtIdx; // scScore event index
+      unsigned         code;     // kSmXXXIdx
+      unsigned         ri;       // matrix row index
+      unsigned         ci;       // matrix col index
+      unsigned         flags;    // cmSmMatchFl | cmSmTransFl
+      unsigned         oLocId;   // p->loc index or cmInvalidIdx
+      unsigned         scEvtIdx; // scScore event index
       struct path_str* next;     //
     } path_t;
 
@@ -63,10 +63,11 @@ namespace cw
     {
       unsigned mni;             // unique identifier for this MIDI note - used to recognize when the sfmatcher backtracks.
       unsigned muid;            // MIDI file event msg unique id (See cmMidiTrackMsg_t.uid)
-      unsigned smpIdx;          // time stamp of this event
+      double   sec;             // time stamp of this event in seconds
+      unsigned smpIdx;          // time stamp of this event in samples
       unsigned pitch;           // MIDI note pitch
       unsigned vel;             //  "    "   velocity
-      unsigned locIdx;          // location assoc'd with this MIDI evt (kInvalidIdx if not a  matching or non-matching 'substitute')
+      unsigned oLocId;          // location assoc'd with this MIDI evt (kInvalidIdx if not a  matching or non-matching 'substitute')
       unsigned scEvtIdx;        // sfscore event index assoc'd with this event
     } midi_t;
 
@@ -94,7 +95,7 @@ namespace cw
       path_t*  p_opt;           // p_opt[pn] - current best alignment as a linked list
       double   opt_cost;        // last p_opt cost set by exec() 
     } sfmatch_t;
-
+    
     typedef handle<struct sfmatch_str> handle_t;
       
     //  This matcher determines the optimal alignment of a short list of MIDI notes
@@ -117,26 +118,25 @@ namespace cw
     rc_t create( handle_t& hRef, sfscore::handle_t scoreH, unsigned maxScWndN, unsigned maxMidiWndN );
     rc_t destroy( handle_t& hRef  );
 
-    // Locate the position in p->loc[locIdx:locIdx+locN-1] which bests matches midiV[0:midiN].
+    // Locate the position in p->loc[oLocId:oLocId+locN-1] which bests matches midiV[0:midiN].
     // The result of this function is to update p_opt[] 
     // The optimal path p_opt[] will only be updated if the edit_cost associated 'midiV[0:midiN]'.
     // with the best match is less than 'min_cost'.
     // Set 'min_cost' to DBL_MAX to force p_opt[] to be updated.
-    // Returns kEofRC if locIdx + locN > p->locN - note that this is not necessarily an error.
-    rc_t exec(  handle_t h, unsigned locIdx, unsigned locN, const midi_t* midiV, unsigned midiN, double min_cost );
+    // Returns kEofRC if oLocId + locN > p->locN - note that this is not necessarily an error.
+    rc_t exec(  handle_t h, unsigned oLocId, unsigned locN, const midi_t* midiV, unsigned midiN, double min_cost );
 
 
-
-    // This function updates the midiBuf[] fields 'locIdx' and 'scEvtIdx' after an alignment
+    // This function updates the midiBuf[] fields 'oLocId' and 'scEvtIdx' after an alignment
     // has been found via an earlier call to 'exec()'.
     //   
     // Traverse the least cost path and:
     //
     // 1) Returns, esi, the score location index of the last MIDI note
     // which has a positive match with the score and assign
-    // the internal score index to cp->locIdx.
+    // the internal score index to cp->oLocId.
     //
-    // 2) Set cmScAlignPath_t.locIdx - index into p->loc[] associated
+    // 2) Set cmScAlignPath_t.oLocId - index into p->loc[] associated
     // with each path element that is a 'substitute' or an 'insert'.
     //
     // 3) Set *missCnPtr: the count of trailing non-positive matches in midiBuf[].
@@ -150,6 +150,9 @@ namespace cw
     // bsi - score location index of the first element in the score window which was used to form the path.
     // midiV - pointer to the first element of the MIDI buffer used to form the path.
     void print_path( handle_t h, unsigned bsi, const midi_t* midiV );
+
+    // Given a loc value return the index into p->loc[p->locN].of the associated loc.
+    unsigned loc_to_index( handle_t h, unsigned loc );
 
     // Returns the index into loc->evtV[] of pitch.
     inline unsigned match_index( const loc_t* loc, unsigned pitch )

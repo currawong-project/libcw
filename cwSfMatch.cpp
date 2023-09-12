@@ -15,6 +15,7 @@ namespace cw
 {
   namespace sfmatch
   {
+    
     sfmatch_t* _handleToPtr( handle_t h )
     { return handleToPtr<handle_t,sfmatch_t>(h); }
 
@@ -47,7 +48,7 @@ namespace cw
       {
         unsigned i,n;
 
-        const sfscore::loc_t* lp = loc(p->scH,li);
+        const sfscore::loc_t* lp = loc_base(p->scH) + li;
 
         // count the number of note events at location li
         for(n=0,i=0; i<lp->evtCnt; ++i)
@@ -408,7 +409,7 @@ namespace cw
 
     void _cmScMatchMidiEvtFlags( sfmatch_t* p, const loc_t* lp, unsigned evtIdx, char* s, unsigned sn )
     {
-      const sfscore::loc_t* slp = sfscore::loc(p->scH,lp->scLocIdx);
+      const sfscore::loc_t* slp = sfscore::loc_base(p->scH) + lp->scLocIdx;
 
       assert( evtIdx < slp->evtCnt );
 
@@ -443,7 +444,7 @@ namespace cw
       {
         assert( begLocIdx < sfscore::loc_count(scoreH) );
         
-        const sfscore::loc_t* loc = sfscore::loc(scoreH,i);
+        const sfscore::loc_t* loc = sfscore::loc_base(scoreH) + i;
         
         for(unsigned j=0; j<loc->evtCnt; ++j)
         {
@@ -512,7 +513,7 @@ cw::rc_t cw::sfmatch::destroy( handle_t& hRef  )
   return rc;
 }
 
-cw::rc_t cw::sfmatch::exec(  handle_t h, unsigned locIdx, unsigned locN, const midi_t* midiV, unsigned midiN, double min_cost )
+cw::rc_t cw::sfmatch::exec(  handle_t h, unsigned oLocId, unsigned locN, const midi_t* midiV, unsigned midiN, double min_cost )
 {
   rc_t   rc;
   unsigned rn = midiN + 1;
@@ -524,7 +525,7 @@ cw::rc_t cw::sfmatch::exec(  handle_t h, unsigned locIdx, unsigned locN, const m
     return rc;
 
   // _cmScMatchCalcMtx() returns false if the score window exceeds the length of the score
-  if(!_cmScMatchCalcMtx(p,locIdx, midiV, rn, cn) )
+  if(!_cmScMatchCalcMtx(p,oLocId, midiV, rn, cn) )
     return kEofRC;
 
   //_cmScMatchPrintMtx(p,rn,cn);
@@ -534,7 +535,6 @@ cw::rc_t cw::sfmatch::exec(  handle_t h, unsigned locIdx, unsigned locN, const m
 
   return rc;
 }
-
 
 unsigned cw::sfmatch::sync( handle_t h, unsigned i_opt, midi_t* midiBuf, unsigned midiN, unsigned* missCntPtr )
 {
@@ -550,13 +550,13 @@ unsigned cw::sfmatch::sync( handle_t h, unsigned i_opt, midi_t* midiBuf, unsigne
     if( cp->code != kSmInsIdx )
     {
       assert( cp->ri > 0 );
-      midiBuf[ cp->ri-1 ].locIdx = kInvalidIdx;
+      midiBuf[ cp->ri-1 ].oLocId = kInvalidIdx;
     }
 
     switch( cp->code )
     {
       case kSmSubIdx:
-        midiBuf[ cp->ri-1 ].locIdx   = i_opt + i;
+        midiBuf[ cp->ri-1 ].oLocId   = i_opt + i;
         midiBuf[ cp->ri-1 ].scEvtIdx = cp->scEvtIdx;
 
         if( cwIsFlag(cp->flags,kSmMatchFl) )
@@ -571,12 +571,12 @@ unsigned cw::sfmatch::sync( handle_t h, unsigned i_opt, midi_t* midiBuf, unsigne
         // fall through
 
       case kSmInsIdx:
-        cp->locIdx = i_opt + i;
+        cp->oLocId = i_opt + i;
         ++i;
         break;
 
       case kSmDelIdx:
-        cp->locIdx = kInvalidIdx;
+        cp->oLocId = kInvalidIdx;
         ++missCnt;
         break;
     }
@@ -592,11 +592,11 @@ void cw::sfmatch::print_path( handle_t h, unsigned bsi, const midi_t* midiV )
 {
   assert( bsi != kInvalidIdx );
 
-  sfmatch_t*       p     = _handleToPtr(h);
-  path_t* cp    = p->p_opt;
-  path_t* pp    = cp;
-  int              polyN = 0;
-  int              i;
+  sfmatch_t* p     = _handleToPtr(h);
+  path_t*    cp    = p->p_opt;
+  path_t*    pp    = cp;
+  int        polyN = 0;
+  int        i;
 
   printf("loc: ");
 
@@ -627,9 +627,9 @@ void cw::sfmatch::print_path( handle_t h, unsigned bsi, const midi_t* midiV )
 
       if( pp->code!=kSmDelIdx )
       {
-        int locIdx = bsi + pp->ci - 1;
-        assert(0 <= locIdx && locIdx <= (int)p->locN);
-        loc_t* lp = p->loc + locIdx;
+        int oLocId = bsi + pp->ci - 1;
+        assert(0 <= oLocId && oLocId <= (int)p->locN);
+        loc_t* lp = p->loc + oLocId;
 
         if( lp->evtCnt >= (unsigned)
             i )
@@ -646,9 +646,9 @@ void cw::sfmatch::print_path( handle_t h, unsigned bsi, const midi_t* midiV )
         printf("%4s%4s ", (pp->code==kSmDelIdx? "-" : " ")," ");
 
       /*
-        int locIdx = bsi + pp->ci - 1;
-        assert(0 <= locIdx && locIdx <= p->locN);
-        loc_t* lp = p->loc + locIdx;
+        int oLocId = bsi + pp->ci - 1;
+        assert(0 <= oLocId && oLocId <= p->locN);
+        loc_t* lp = p->loc + oLocId;
         if( pp->code!=kSmDelIdx && lp->evtCnt >= i )
         printf("%4s ",cmMidiToSciPitch(lp->evtV[i-1].pitch,NULL,0));
         else
@@ -732,10 +732,10 @@ void cw::sfmatch::print_path( handle_t h, unsigned bsi, const midi_t* midiV )
   // print the stored location index
   for(pp=cp; pp!=NULL; pp=pp->next)
   {
-    if( pp->locIdx == kInvalidIdx )
+    if( pp->oLocId == kInvalidIdx )
       printf("%4s%4s "," "," ");
     else
-      printf("%4i%4s ",p->loc[pp->locIdx].scLocIdx," ");
+      printf("%4i%4s ",p->loc[pp->oLocId].scLocIdx," ");
   }
   
   printf("\nbar: ");
@@ -743,7 +743,7 @@ void cw::sfmatch::print_path( handle_t h, unsigned bsi, const midi_t* midiV )
   // print the stored location index
   for(pp=cp; pp!=NULL; pp=pp->next)
   {
-    if( pp->locIdx==kInvalidIdx || pp->scEvtIdx==kInvalidIdx )
+    if( pp->oLocId==kInvalidIdx || pp->scEvtIdx==kInvalidIdx )
       printf("%4s%4s "," "," ");
     else
     {
@@ -778,24 +778,39 @@ void cw::sfmatch::print_path( handle_t h, unsigned bsi, const midi_t* midiV )
 
 }
 
+unsigned cw::sfmatch::loc_to_index( handle_t h, unsigned loc )
+{
+  sfmatch_t* p = _handleToPtr(h);
+  const loc_t* y = std::find_if(p->loc, p->loc+p->locN, [&loc](const loc_t& x){return x.scLocIdx==loc;} );
+  unsigned idx = y - p->loc;
+  return idx<p->locN ? idx : kInvalidIdx;
+}
+
+
 
 cw::rc_t cw::sfmatch::test( const object_t* cfg, sfscore::handle_t scoreH )
 {
-  rc_t                rc                   = kOkRC;
-  const object_t*     perf                 = nullptr;
-  const object_t*     gen_perf_example     = nullptr;
-  bool                gen_perf_enable_fl   = false;
-  unsigned            gen_perf_beg_loc_idx = 0;
-  unsigned            gen_perf_loc_cnt     = 0;
-  midi_t*             midiA                = nullptr;
-  unsigned            maxScWndN            = 10;
-  unsigned            maxMidiWndN          = 7;
+  rc_t            rc                   = kOkRC;
+  const object_t* perf                 = nullptr;
+  const object_t* gen_perf_example     = nullptr;
+  bool            gen_perf_enable_fl   = false;
+  unsigned        gen_perf_beg_loc_idx = 0;
+  unsigned        gen_perf_loc_cnt     = 0;
+  midi_t*         midiA                = nullptr;
+  unsigned        maxScWndN            = 10;
+  unsigned        maxMidiWndN          = 7;
+  unsigned        init_score_loc       = 0;
+  unsigned        beg_perf_idx         = 0;
+  unsigned        perf_cnt             = 6;
   sfmatch::handle_t   matchH;
   
   // parse the test cfg
   if((rc = cfg->getv( "maxScWndN", maxScWndN,
                       "maxMidiWndN", maxMidiWndN,
                       "gen_perf_example", gen_perf_example,
+                      "init_score_loc",init_score_loc,
+                      "beg_perf_idx", beg_perf_idx,
+                      "perf_cnt", perf_cnt,
                       "perf", perf)) != kOkRC )
   {
     rc = cwLogError(rc,"sfscore test parse params failed.");
@@ -816,8 +831,9 @@ cw::rc_t cw::sfmatch::test( const object_t* cfg, sfscore::handle_t scoreH )
   }
   else
   {
+
+    // Parse the cfg. perf[] array
     unsigned midiN = perf->child_count();
-    
     midiA = mem::allocZ<midi_t>(midiN);
     
     for(unsigned i=0; i<midiN; ++i)
@@ -834,33 +850,39 @@ cw::rc_t cw::sfmatch::test( const object_t* cfg, sfscore::handle_t scoreH )
       }
     }
 
+    // Create the cwMatch
     if((rc = create(matchH, scoreH, maxScWndN, maxMidiWndN )) != kOkRC )
     {
       rc = cwLogError(rc,"Score matcher create failed.");
       goto errLabel;
     }
 
-    unsigned locIdx = 0;
-    unsigned locN = maxScWndN;
-    unsigned perf_idx = 3;
-    unsigned perf_cnt = 4;
-      
-    if((rc = exec(matchH, locIdx, locN, midiA + perf_idx, perf_cnt, DBL_MAX )) != kOkRC )
+    // Set the matcher to the first location to begin matching against
+    unsigned oLocId = loc_to_index(matchH,init_score_loc);
+    unsigned locN   = maxScWndN;
+
+    // Count of MIDI events to track.
+    perf_cnt = std::min(maxMidiWndN,perf_cnt);
+
+    // Align MIDI notes to the score
+    if((rc = exec(matchH, oLocId, locN, midiA + beg_perf_idx, perf_cnt, DBL_MAX )) != kOkRC )
     {
       rc = cwLogError(rc,"score match failed.");
       goto errLabel;
     }
 
-    unsigned eli = kInvalidIdx;
+    // Update the cwMatch to reflect the alignment found during the exec. 
+    unsigned eli     = kInvalidIdx;
     unsigned missCnt = 0;
-    unsigned i_opt = locIdx;
-    if(( eli = cw::sfmatch::sync( matchH, i_opt, midiA + perf_idx, perf_cnt, &missCnt )) == kInvalidIdx )
+    unsigned i_opt   = oLocId;
+    if(( eli = cw::sfmatch::sync( matchH, i_opt, midiA + beg_perf_idx, perf_cnt, &missCnt )) == kInvalidIdx )
     {
       rc = cwLogError(rc,"score match sync failed.");
       goto errLabel;
     }
 
-    unsigned bsi = locIdx;
+    // Print the state alignment.
+    unsigned bsi = oLocId;
     print_path( matchH, bsi, midiA );
     
   }
