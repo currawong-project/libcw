@@ -342,6 +342,23 @@ namespace cw
 
       return sum(v,n)/n;
     }
+
+    template< typename T >
+    double std( const T* v, unsigned n )
+    {
+      if( n < 2 )
+        return 0;
+
+      double u = mean(v,n);
+      double dsum = 0;
+      for(unsigned i=0; i<n; ++i)
+      {
+        double d = v[i] - u;
+        dsum += d*d;
+      }
+
+      return sqrt(dsum/n);
+    }
     
     //==================================================================================================================
     // Signal Processing
