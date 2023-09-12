@@ -17,6 +17,33 @@ namespace cw
 {
   namespace sftrack
   {
+    typedef struct sftrack_str
+    {
+      callback_func_t      cbFunc;
+      void*                cbArg;
+      sfmatch::handle_t    matchH;
+      unsigned             mn;       // size of midiBuf[] 
+      sfmatch::midi_t*     midiBuf;  // midiBuf[mn]
+
+      result_t*            res;      // res[rn]
+      unsigned             rn;       // length of res[] (set to 2*score event count)
+      unsigned             ri;       // next avail res[] recd.
+
+      double               s_opt;          // 
+      unsigned             missCnt;        // current count of consecutive trailing non-matches
+      unsigned             ili;            // index into loc[] to start scan following reset
+      unsigned             eli;            // index into loc[] of the last positive match. 
+      unsigned             mni;            // current count of MIDI events since the last call to cmScMatcherReset()
+      unsigned             mbi;            // index of oldest MIDI event in midiBuf[]; stays at 0 when the buffer is full.
+      unsigned             begSyncLocIdx;  // start of score window, in mp->loc[], of best match in previous scan
+      unsigned             initHopCnt;     // max window hops during the initial (when the MIDI buffer fills for first time) sync scan 
+      unsigned             stepCnt;        // count of forward/backward score loc's to examine for a match during cmScMatcherStep().
+      unsigned             maxMissCnt;     // max. number of consecutive non-matches during step prior to executing a scan.
+      unsigned             scanCnt;        // current count of times a resync-scan was executed during cmScMatcherStep()
+
+      unsigned             flags;
+    } sftrack_t;
+    
     sftrack_t* _handleToPtr( handle_t h )
     { return handleToPtr<handle_t,sftrack_t>(h); }
 
@@ -76,7 +103,7 @@ namespace cw
       return rc;
     }
 
-    bool _input_midi(  sftrack_t* p, unsigned smpIdx, unsigned muid, unsigned status, midi::byte_t d0, midi::byte_t d1 )
+    bool _input_midi(  sftrack_t* p, double sec, unsigned smpIdx, unsigned muid, unsigned status, midi::byte_t d0, midi::byte_t d1 )
     {
       if( (status&0xf0) != midi::kNoteOnMdId)
         return false;
@@ -90,9 +117,10 @@ namespace cw
 
       // shift the new MIDI event onto the end of the MIDI buffer
       memmove(p->midiBuf, p->midiBuf+1, sizeof(sfmatch::midi_t)*mi);
-      p->midiBuf[mi].locIdx   = kInvalidIdx;
+      p->midiBuf[mi].oLocId   = kInvalidIdx;
       p->midiBuf[mi].scEvtIdx = kInvalidIdx;
       p->midiBuf[mi].mni      = p->mni++;
+      p->midiBuf[mi].sec      = sec;      
       p->midiBuf[mi].smpIdx   = smpIdx;
       p->midiBuf[mi].muid     = muid;
       p->midiBuf[mi].pitch    = d0;
@@ -103,64 +131,80 @@ namespace cw
       return true;
     }
 
-    void _store_result( sftrack_t* p, unsigned locIdx, unsigned scEvtIdx, unsigned flags, const sfmatch::midi_t* mp )
+    void _store_result( sftrack_t* p, unsigned oLocId, unsigned scEvtIdx, unsigned flags, const sfmatch::midi_t* mp, double cost )
     {
       // don't store missed score note results
       assert( mp != NULL );
-      bool       matchFl = cwIsFlag(flags,sfmatch::kSmMatchFl);
-      bool       tpFl    = locIdx!=kInvalidIdx && matchFl;
-      bool       fpFl    = locIdx==kInvalidIdx || matchFl==false;
-      result_t * rp      = NULL;
-      unsigned   i;
+      bool       matchFl    = cwIsFlag(flags,sfmatch::kSmMatchFl);
+      bool       tpFl       = oLocId!=kInvalidIdx && matchFl;
+      bool       fpFl       = oLocId==kInvalidIdx || matchFl==false;
+      result_t * rp         = NULL;
+      unsigned   result_idx = kInvalidIdx;
       result_t   r;
 
-      assert( tpFl==false || (tpFl==true && locIdx != kInvalidIdx ) );
+      assert( tpFl==false || (tpFl==true && oLocId != kInvalidIdx ) );
 
       // it is possible that the same MIDI event is reported more than once
       // (due to step->scan back tracking) - try to find previous result records
       // associated with this MIDI event
-      for(i=0; i<p->ri; ++i) 
-        if( p->res[i].mni == mp->mni )
-        {
-          // if this is not the first time this note was reported and it is a true positive 
-          if( tpFl )
+
+      // TODO: This process looks expensive - as the result array grows a linear
+      // search is done over the entire length looking for previous matches.
+      // - and why do we want this behavior anyway?
+      if( cwIsFlag(p->flags,kBacktrackResultsFl) )
+      {
+        for(unsigned i=0; i<p->ri; ++i) 
+          if( p->res[i].mni == mp->mni )
           {
-            rp = p->res + i;
-            break;
+            // if this is not the first time this note was reported and it is a true positive 
+            if( tpFl )
+            {
+              rp = p->res + i;
+              result_idx = i;
+              break;
+            }
+
+            // a match was found but this was not a true-pos so ignore it
+            return;
           }
-
-          // a match was found but this was not a true-pos so ignore it
-          return;
-        }
-
+      }
+      
       if( rp == NULL )
       {
+        // if the result array is full ...
         if( p->ri >= p->rn )
         {
-          rp = &r;
+          // then use a single record to hold the result so that we can still make the callback
+          rp = &r; 
           memset(rp,0,sizeof(r));
         }
         else
         {
+          // otherwise append select the next available record to receive the result
           rp = p->res + p->ri;
+          result_idx = p->ri;
           ++p->ri;
         }
       }
 
-      rp->locIdx   = locIdx;
+      rp->index    = result_idx;
+      rp->oLocId   = oLocId;
       rp->scEvtIdx = scEvtIdx;
       rp->mni      = mp->mni;
       rp->muid     = mp->muid;
+      rp->sec      = mp->sec;
       rp->smpIdx   = mp->smpIdx;
       rp->pitch    = mp->pitch;
       rp->vel      = mp->vel;
       rp->flags    = flags | (tpFl ? sfmatch::kSmTruePosFl : 0) | (fpFl ? sfmatch::kSmFalsePosFl : 0);
+      rp->cost     = cost;
   
       if( p->cbFunc != NULL )
         p->cbFunc(p->cbArg,rp);
 
     }
 
+    
     unsigned _scan( sftrack_t* p, unsigned bli, unsigned hopCnt )
     {
       
@@ -168,7 +212,7 @@ namespace cw
 
       unsigned i_opt = kInvalidIdx;
       double   s_opt = DBL_MAX;
-      rc_t   rc    = kOkRC;
+      rc_t     rc    = kOkRC;
       unsigned mmn   = sfmatch::max_midi_wnd_count(p->matchH);
       unsigned msn   = sfmatch::max_score_wnd_count(p->matchH);
       unsigned i;
@@ -213,8 +257,8 @@ namespace cw
         return kInvalidIdx;
 
 
-      // set the locIdx field in midiBuf[], trailing miss count and
-      // return the latest positive-match locIdx
+      // set the oLocId field in midiBuf[], trailing miss count and
+      // return the latest positive-match oLocId
       p->eli = sfmatch::sync(p->matchH,i_opt,p->midiBuf,mmn,&p->missCnt);
 
       // if no positive matches were found
@@ -225,7 +269,7 @@ namespace cw
         // record result
         for(const sfmatch::path_t* cp = optimal_path(p->matchH); cp!=NULL; cp=cp->next)
           if( cp->code != sfmatch::kSmInsIdx )
-            _store_result(p, cp->locIdx, cp->scEvtIdx, cp->flags, p->midiBuf + cp->ri - 1);
+            _store_result(p, cp->oLocId, cp->scEvtIdx, cp->flags, p->midiBuf + cp->ri - 1,p->s_opt);
       }
 
       return i_opt;
@@ -235,7 +279,7 @@ namespace cw
     rc_t _step( sftrack_t* p )
     {
       unsigned              pitch  = p->midiBuf[ p->mn-1 ].pitch;
-      unsigned              locIdx = kInvalidIdx;
+      unsigned              oLocId = kInvalidIdx;
       unsigned              pidx   = kInvalidIdx;
       unsigned              locN   = loc_count(p->matchH);
       const sfmatch::loc_t* loc    = loc_base(p->matchH);
@@ -251,7 +295,7 @@ namespace cw
       // attempt to match to next location first
       if( (pidx = match_index(loc + p->eli + 1, pitch)) != kInvalidIdx )
       {
-        locIdx = p->eli + 1;
+        oLocId = p->eli + 1;
       }
       else
       {
@@ -261,34 +305,34 @@ namespace cw
           // go forward 
           if( p->eli+i < locN && (pidx=match_index(loc + p->eli + i, pitch))!=kInvalidIdx )
           {
-            locIdx = p->eli + i;
+            oLocId = p->eli + i;
             break;
           }
 
           // go backward
           if( p->eli >= (i-1)  && (pidx=match_index(loc + p->eli - (i-1), pitch))!=kInvalidIdx )
           {
-            locIdx = p->eli - (i-1);
+            oLocId = p->eli - (i-1);
             break;
           }
         }
       }
 
-      unsigned scEvtIdx = locIdx==kInvalidIdx ? kInvalidIdx : loc[locIdx].evtV[pidx].scEvtIdx;
+      unsigned scEvtIdx = oLocId==kInvalidIdx ? kInvalidIdx : loc[oLocId].evtV[pidx].scEvtIdx;
 
-      p->midiBuf[ p->mn-1 ].locIdx   = locIdx;
+      p->midiBuf[ p->mn-1 ].oLocId   = oLocId;
       p->midiBuf[ p->mn-1 ].scEvtIdx = scEvtIdx;
 
-      if( locIdx == kInvalidIdx )
+      if( oLocId == kInvalidIdx )
         ++p->missCnt;
       else
       {
         p->missCnt = 0;
-        p->eli     = locIdx;
+        p->eli     = oLocId;
       }
 
       // store the result
-      _store_result(p, locIdx,  scEvtIdx, locIdx!=kInvalidIdx ? sfmatch::kSmMatchFl : 0, p->midiBuf + p->mn - 1);
+      _store_result(p, oLocId,  scEvtIdx, oLocId!=kInvalidIdx ? sfmatch::kSmMatchFl : 0, p->midiBuf + p->mn - 1, cost(p->matchH) );
 
       if( p->missCnt >= p->maxMissCnt )
       {
@@ -308,11 +352,11 @@ namespace cw
   }
 }
 
-
 cw::rc_t cw::sftrack::create( handle_t&         hRef,
                               sfscore::handle_t scH,      // Score handle.  See cmScore.h.
                               unsigned          scWndN,   // Length of the scores active search area. ** See Notes.
                               unsigned          midiWndN, // Length of the MIDI active note buffer.    ** See Notes.
+                              unsigned          flags,
                               callback_func_t   cbFunc,   // A cmScMatcherCb_t function to be called to notify the recipient of changes in the score matcher status.
                               void*             cbArg )   // User argument to 'cbFunc'.
 {
@@ -340,7 +384,7 @@ cw::rc_t cw::sftrack::create( handle_t&         hRef,
   p->maxMissCnt = p->stepCnt+1;
   p->rn         = 2 * event_count(scH);
   p->res        = mem::resize<result_t>(p->res,p->rn);
-  p->printFl    = false;
+  p->flags      = flags;
 
   _reset(p,0);
 
@@ -377,7 +421,7 @@ cw::rc_t cw::sftrack::reset( handle_t h, unsigned scLocIdx )
 }
 
 
-cw::rc_t cw::sftrack::exec( handle_t h, unsigned smpIdx, unsigned muid, unsigned status, midi::byte_t d0, midi::byte_t d1, unsigned* scLocIdxPtr )
+cw::rc_t cw::sftrack::exec( handle_t h, double sec, unsigned smpIdx, unsigned muid, unsigned status, midi::byte_t d0, midi::byte_t d1, unsigned* scLocIdxPtr )
 {
   sftrack_t* p       = _handleToPtr(h);
   bool       fl      = p->mbi > 0;
@@ -388,7 +432,7 @@ cw::rc_t cw::sftrack::exec( handle_t h, unsigned smpIdx, unsigned muid, unsigned
     *scLocIdxPtr = kInvalidIdx;
 
   // update the MIDI buffer with the incoming note
-  if( _input_midi(p,smpIdx,muid,status,d0,d1) == false )
+  if( _input_midi(p,sec,smpIdx,muid,status,d0,d1) == false )
     return rc;
 
   // if the MIDI buffer transitioned to full then perform an initial scan sync.
@@ -423,7 +467,7 @@ cw::rc_t cw::sftrack::exec( handle_t h, unsigned smpIdx, unsigned muid, unsigned
     {
       const sfmatch::loc_t* loc = loc_base(p->matchH);
 
-      //printf("LOC:%i bar:%i\n",p->eli,loc[p->eli].barNumb);
+      // printf("LOC:%i bar:%i\n",p->eli,loc[p->eli].barNumb);
       *scLocIdxPtr = loc[p->eli].scLocIdx;
     }
   }
@@ -456,7 +500,7 @@ namespace cw
   {
     void _test_cb_func(  void* arg, result_t* rp )
     {
-      printf("mni:%i muid:%i loc:%i scevt:%i\n",rp->mni,rp->muid,rp->locIdx,rp->scEvtIdx);
+      printf("mni:%i muid:%i loc:%i scevt:%i\n",rp->mni,rp->muid,rp->oLocId,rp->scEvtIdx);
     }
   }
 }
@@ -468,10 +512,14 @@ cw::rc_t cw::sftrack::test( const object_t* cfg, sfscore::handle_t scoreH )
   bool            report_track_fl     = false;  
   const object_t* perf                = nullptr;  
   bool            perf_enable_fl      = false;
+  bool            print_fl            = false;
+  bool            backtrack_fl        = false;
   unsigned        perf_loc_idx        = 0;
   const char*     perf_midi_fname     = nullptr;
   unsigned        maxScWndN           = 10;
   unsigned        maxMidiWndN         = 7;
+  double          srate               = sample_rate(scoreH);;
+  unsigned        flags               = 0;
   
   const midi::file::trackMsg_t** midiMsgA = nullptr;
   unsigned                       midiMsgN = 0;
@@ -483,6 +531,8 @@ cw::rc_t cw::sftrack::test( const object_t* cfg, sfscore::handle_t scoreH )
                      "maxMidiWndN", maxMidiWndN,
                      "report_midi_file_fl",report_midi_file_fl,
                      "report_track_fl",report_track_fl,
+                     "print_fl",print_fl,
+                     "backtrack_fl",backtrack_fl,
                      "perf", perf)) != kOkRC )
   {
     rc = cwLogError(rc,"sfscore test parse params failed.");
@@ -497,8 +547,11 @@ cw::rc_t cw::sftrack::test( const object_t* cfg, sfscore::handle_t scoreH )
     goto errLabel;
   }
 
+  flags += print_fl     ? kPrintFl            : 0;
+  flags += backtrack_fl ? kBacktrackResultsFl : 0;
+  
   // create the score tracker
-  if((rc = create(trackH, scoreH, maxScWndN, maxMidiWndN, _test_cb_func, nullptr )) != kOkRC )
+  if((rc = create(trackH, scoreH, maxScWndN, maxMidiWndN, flags, _test_cb_func, nullptr )) != kOkRC )
   {
     rc = cwLogError(rc,"sftrack create failed.");
     goto errLabel;
@@ -528,16 +581,19 @@ cw::rc_t cw::sftrack::test( const object_t* cfg, sfscore::handle_t scoreH )
   {    
     unsigned                      scLocIdx = kInvalidIdx;
     const midi::file::trackMsg_t* trk      = midiMsgA[i];
-    unsigned                      smpIdx   = 0;
 
     // if this is a note on message
     if( midi::isNoteOnStatus(trk->status) )
-      if((rc = exec(trackH, smpIdx, trk->uid, trk->status, trk->u.chMsgPtr->d0, trk->u.chMsgPtr->d1, &scLocIdx)) != kOkRC )
+    {
+      double    secs   = trk->amicro / 1000000.0;
+      unsigned  smpIdx = secs / srate;
+      if((rc = exec(trackH, secs, smpIdx, trk->uid, trk->status, trk->u.chMsgPtr->d0, trk->u.chMsgPtr->d1, &scLocIdx)) != kOkRC )
       {
         if( rc != kEofRC )
           rc = cwLogError(rc,"tracker exec() failed.");
         goto errLabel;
       }
+    }
   }
   
   
