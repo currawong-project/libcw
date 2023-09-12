@@ -17,10 +17,14 @@ namespace cw
      kFatal_LogLevel,
     } logLevelId_t;
 
+    enum {
+      kDateTimeFl = 0x01,
+    };
+
     typedef handle<struct log_str> handle_t;
   
     typedef void (*logOutputCbFunc_t)( void* cbArg, unsigned level, const char* text );
-    typedef void (*logFormatCbFunc_t)( void* cbArg, logOutputCbFunc_t outFunc, void* outCbArg, unsigned level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t rc, const char* msg );
+    typedef void (*logFormatCbFunc_t)( void* cbArg, logOutputCbFunc_t outFunc, void* outCbArg, unsigned flags, unsigned level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t rc, const char* msg );
   
     rc_t create(  handle_t& hRef, unsigned level=kDebug_LogLevel, logOutputCbFunc_t outCb=nullptr, void* outCbArg=nullptr,  logFormatCbFunc_t fmtCb=nullptr, void* fmtCbArg=nullptr  );
     rc_t destroy( handle_t& hRef );
@@ -35,9 +39,12 @@ namespace cw
     void setFormatCb( handle_t h, logFormatCbFunc_t fmtFunc, void* fmtCbArg );
 
     const char* levelToLabel( unsigned level );
+
+    unsigned flags( handle_t h );
+    void set_flags( handle_t h, unsigned flags );
   
     void defaultOutput( void* arg, unsigned level, const char* text );
-    void defaultFormatter( void* cbArg, logOutputCbFunc_t outFunc, void* outCbArg, unsigned level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t rc, const char* msg );
+    void defaultFormatter( void* cbArg, logOutputCbFunc_t outFunc, void* outCbArg, unsigned flags, unsigned level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t rc, const char* msg );
 
     rc_t createGlobal(  unsigned level=kDebug_LogLevel, logOutputCbFunc_t outCb=nullptr, void* outCbArg=nullptr,  logFormatCbFunc_t fmtCb=nullptr, void* fmtCbArg=nullptr  );
     rc_t destroyGlobal( );

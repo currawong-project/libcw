@@ -16,6 +16,7 @@ namespace cw
       logFormatCbFunc_t fmtCbFunc;
       void*             fmtCbArg;
       unsigned          level;
+      unsigned          flags;
     } log_t;
 
 
@@ -84,7 +85,7 @@ cw::rc_t cw::log::msg( handle_t h, unsigned level, const char* function, const c
     int m = vsnprintf(msg,n+1,fmt,vl1);
     cwAssert(m==n);
     
-    p->fmtCbFunc( p->fmtCbArg, p->outCbFunc, p->outCbArg, level, function, filename, line, systemErrorCode, rc, msg );
+    p->fmtCbFunc( p->fmtCbArg, p->outCbFunc, p->outCbArg, p->flags, level, function, filename, line, systemErrorCode, rc, msg );
   }
 
   va_end(vl1);
@@ -112,6 +113,19 @@ unsigned cw::log::level( handle_t h )
   log_t* p = _handleToPtr(h);
   return p->level;
 }
+
+void cw::log::set_flags( handle_t h, unsigned flags )
+{
+  log_t* p = _handleToPtr(h);
+  p->flags = flags;
+}
+
+unsigned cw::log::flags( handle_t h )
+{
+  log_t* p = _handleToPtr(h);
+  return p->flags;
+}
+  
 
 void cw::log::setOutputCb( handle_t h, logOutputCbFunc_t outFunc, void* outCbArg )
 {
@@ -147,7 +161,7 @@ void  cw::log::defaultOutput( void* arg, unsigned level, const char* text )
   fflush(f);
 }
 
-void cw::log::defaultFormatter( void* cbArg, logOutputCbFunc_t outFunc, void* outCbArg, unsigned level, const char* function, const char* filename, unsigned lineno, int sys_errno, rc_t rc, const char* msg )
+void cw::log::defaultFormatter( void* cbArg, logOutputCbFunc_t outFunc, void* outCbArg, unsigned flags, unsigned level, const char* function, const char* filename, unsigned lineno, int sys_errno, rc_t rc, const char* msg )
 {
   // TODO: This code is avoids the use of dynamic memory allocation but relies on stack allocation. It's a security vulnerability.
   //       
@@ -179,7 +193,9 @@ void cw::log::defaultFormatter( void* cbArg, logOutputCbFunc_t outFunc, void* ou
 
   int tdn = 256;
   char td[tdn];
-  time::formatDateTime( td, (unsigned)tdn );
+  td[0] = 0;
+  if( cwIsFlag(flags,kDateTimeFl) )
+    time::formatDateTime( td, (unsigned)tdn );
   tdn = strlen(td);
 
 
