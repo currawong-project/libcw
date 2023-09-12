@@ -190,9 +190,13 @@ namespace cw
     {
       rc_t rc;
       
-      if((rc = getv(csvH,"bpm",e->bpm)) != kOkRC )
+      if((rc = getv(csvH,
+                    "bpm",e->bpm,
+                    "rval",e->bpm_rval )) != kOkRC )
+      {
         rc = cwLogError(rc,"BPM row parse failed.");
-
+      }
+      
       return rc;
     }
 
@@ -268,10 +272,10 @@ namespace cw
       const char* dynLabel   = nullptr;
       const char* evenLabel  = nullptr;
       const char* tempoLabel = nullptr;
-      const char* oloc       = nullptr;
+      const char* oLocId       = nullptr;
       
       if((rc = getv(csvH,
-                    "oloc",  oloc,
+                    "oloc",  oLocId,
                     "rval",  e->rval,
                     "dots",  e->dotCnt,
                     "sci_pitch",sciPitch,
@@ -290,10 +294,10 @@ namespace cw
         goto errLabel;
       }
 
-      if( textLength(oloc) > 0 )
-        if((rc = string_to_number(oloc,e->oloc)) != kOkRC )
+      if( textLength(oLocId) > 0 )
+        if((rc = string_to_number(oLocId,e->oLocId)) != kOkRC )
         {
-          rc = cwLogError(rc,"Error converting oloc (%s) to number.",oloc);
+          rc = cwLogError(rc,"Error converting oLocId (%s) to number.",oLocId);
           goto errLabel;
         }
       
@@ -397,6 +401,8 @@ namespace cw
       section_t* cur_section  = nullptr;
       unsigned   cur_bar_numb = 1;
       unsigned   bar_evt_idx  = 0;
+      unsigned   bpm          = 0;
+      double     bpm_rval     = 0;
       unsigned   barPitchCntV[ midi::kMidiNoteCnt ];
       vop::zero(barPitchCntV,midi::kMidiNoteCnt);
 
@@ -412,14 +418,12 @@ namespace cw
         
         event_t* e = p->eventA + p->eventN;
 
-        e->oloc = kInvalidIdx;
+        e->oLocId = kInvalidIdx;
         
         if((rc = getv(csvH,
                       "opcode",opcodeLabel,
-                      "index", e->csvId,
                       "voice", e->voice,
-                      "loc",   e->loc,
-                      "loctn", e->loctn,
+                      "eloc",  e->eLocId,
                       "tick",  e->tick,
                       "sec",   e->sec )) != kOkRC )
         {
@@ -429,6 +433,8 @@ namespace cw
 
         e->csvRowNumb = cur_line_index(csvH) + 1;
         e->opId       = opcode_label_to_id(opcodeLabel);
+        e->index      = p->eventN;
+        e->dynLevel   = kInvalidIdx;
         
         switch( e->opId )
         {
@@ -453,7 +459,32 @@ namespace cw
             break;
             
           case kBpmTId:
-            rc = _parse_bpm_row(p,csvH, e );
+            if((rc = _parse_bpm_row(p,csvH, e )) == kOkRC )
+            {
+              // if the cur BPM has not yet been set then go backward setting
+              // all events prior to this to the initial BPM
+              if( bpm == 0 && e->bpm != 0 )
+                std::for_each(p->eventA,e,[e](auto& x){ x.bpm = e->bpm; x.bpm_rval=e->bpm_rval; });
+
+              // if the parsed BPM is invalid ...
+              if( e->bpm == 0 || e->bpm_rval==0 )
+              {
+                e->bpm      = bpm; // ... then ignore it
+                e->bpm_rval = bpm_rval;
+              }
+              else
+              {
+                bpm      = e->bpm; // ... otherwise make it the current BPM
+                bpm_rval = e->bpm_rval;
+              }
+
+              // Be sure that all events on this location have the same BPM
+              for(event_t* e0 = e - 1; e0>=p->eventA && e0->eLocId==e->eLocId; --e0)
+              {
+                e0->bpm      = e->bpm;
+                e0->bpm_rval = e->bpm_rval;
+              }
+            }
             break;
             
           case kNoteOnTId:
@@ -462,6 +493,7 @@ namespace cw
               e->barPitchIdx = barPitchCntV[e->d0];
               
               unsigned hash = form_hash(e->opId,cur_bar_numb,e->d0,e->barPitchIdx);
+              
               if( _hash_to_event(p,hash) != nullptr )
               {
                 rc = cwLogError(kInvalidStateRC,"The event hash '%x' is is duplicated.",hash);
@@ -502,6 +534,8 @@ namespace cw
         e->section   = cur_section;
         e->barNumb   = cur_bar_numb;
         e->barEvtIdx = bar_evt_idx++;
+        e->bpm       = bpm;
+        e->bpm_rval  = bpm_rval;
         p->eventN   += 1;
         
       }
@@ -527,7 +561,7 @@ namespace cw
     rc_t _parse_csv( score_parse_t* p, const char* fname )
     {
         rc_t        rc       = kOkRC;
-        const char* titleA[] = { "opcode","meas","index","voice","loc","loctn","oloc","tick","sec",
+        const char* titleA[] = { "opcode","meas","index","voice","loc","eloc","oloc","tick","sec",
                                  "dur","rval","dots","sci_pitch","dmark","dlevel","status","d0","d1",
                                  "bar","section","bpm","grace","tie","onset","pedal","dyn","even","tempo" };
         
@@ -613,7 +647,7 @@ namespace cw
           // then the set is complete
           // (this handles the case where there are multiple events
           //  on the same end set location)
-          if( endLoc != kInvalidIdx && (e->loctn > endLoc || ei==p->eventN-1) )
+          if( endLoc != kInvalidIdx && (e->eLocId > endLoc || ei==p->eventN-1) )
           {
             cur_set->eventA  = mem::allocZ<event_t*>(cur_set->eventN);
             setId           += 1;
@@ -633,7 +667,7 @@ namespace cw
             cur_set->eventN        += 1;
             
             if( cwIsFlag(e->varA[vi].flags,kSetEndVarFl) )
-              endLoc = e->loctn;              
+              endLoc = e->eLocId;              
           }
         }
     }
@@ -682,11 +716,11 @@ namespace cw
           {
             unsigned j;
             for(j=0; j<loc_i; ++j)
-              if( loc[j] == set->eventA[i]->loctn )
+              if( loc[j] == set->eventA[i]->eLocId )
                 break;
 
             if( j == loc_i )
-              loc[ loc_i++ ] = set->eventA[i]->loctn;
+              loc[ loc_i++ ] = set->eventA[i]->eLocId;
           }
         }
 
@@ -733,12 +767,12 @@ namespace cw
       }
     }
 
-    void _fill_sections( score_parse_t* p )
+    void _fill_section_sets( score_parse_t* p )
     {
       // allocate memory to hold the set ptr arrays in each section
       for(section_t* s = p->sectionL; s!=nullptr; s=s->link)
         s->setA = mem::allocZ<set_t*>(s->setN);
-
+      
       //  fill the section->setA[] ptrs
       for(set_t* set = p->begSetL; set!=nullptr; set=set->link)
       {
@@ -746,20 +780,37 @@ namespace cw
         set->targetSection->setA[ set->sectionSetIdx ] = set;
 
         // set the section beg/end events
-        if( set->targetSection->begEvent == nullptr )
+        if( set->targetSection->begSetEvent == nullptr )
         {
-          set->targetSection->begEvent = set->eventA[0];
-          set->targetSection->endEvent = set->eventA[ set->eventN-1 ];
+          set->targetSection->begSetEvent = set->eventA[0];
+          set->targetSection->endSetEvent = set->eventA[ set->eventN-1 ];
         }
         else
         {
-          if( set->eventA[0]->sec < set->targetSection->begEvent->sec )
-            set->targetSection->begEvent = set->eventA[0];
+          if( set->eventA[0]->sec < set->targetSection->begSetEvent->sec )
+            set->targetSection->begSetEvent = set->eventA[0];
           
-          if( set->eventA[set->eventN-1]->sec > set->targetSection->endEvent->sec )
-            set->targetSection->endEvent = set->eventA[ set->eventN-1 ];
+          if( set->eventA[set->eventN-1]->sec > set->targetSection->endSetEvent->sec )
+            set->targetSection->endSetEvent = set->eventA[ set->eventN-1 ];
         }
+      }      
+    }
+
+    rc_t _fill_section_beg_end_evt( score_parse_t* p )
+    {
+      rc_t rc = kOkRC;
+      for(unsigned i=0; i<p->eventN; ++i)
+      {
+        event_t* e = p->eventA + i;
+        assert( e->section != nullptr );
+        if( e->section->begEvent == nullptr || e->index < e->section->begEvent->index )
+          e->section->begEvent = e;
+        
+        if( e->section->endEvent == nullptr || e->index > e->section->endEvent->index )
+          e->section->endEvent = e;
       }
+
+      return rc;
     }
 
     bool _compare_sections(const section_t*  sec0, const section_t* sec1)
@@ -808,7 +859,7 @@ namespace cw
       mem::release(secA);
     }   
 
-    rc_t _validate_sections( score_parse_t* p )
+    rc_t _validate_sections( score_parse_t* p, bool show_warnings_fl )
     {
       rc_t rc = kOkRC;
 
@@ -818,10 +869,11 @@ namespace cw
       {
         if( s->setN == 0 )
         {
-          cwLogWarning("The section '%s' does not have any sets assigned to it.",cwStringNullGuard(s->label));
+          if( show_warnings_fl )
+            cwLogWarning("The section '%s' does not have any sets assigned to it.",cwStringNullGuard(s->label));
         }
         else
-          if( s->begEvent == nullptr || s->endEvent == nullptr )
+          if( s->begSetEvent == nullptr || s->endSetEvent == nullptr )
           {
             rc = cwLogError(kInvalidStateRC,"The section '%s' does not beg/end events.",cwStringNullGuard(s->label));
             continue;
@@ -836,6 +888,31 @@ namespace cw
         s0 = s;
       }
 
+
+      // verify that there are no event gaps between the sections
+      if( p->sectionL != nullptr and p->sectionL->link != nullptr )
+      {
+        s0 = p->sectionL;
+        for(section_t* s=s0->link; s!=nullptr; s=s->link)
+        {
+          if( s0->endEvent == nullptr )
+            rc = cwLogError(kInvalidStateRC,"The section '%s' does not have an end event.",cwStringNullGuard(s0->label));
+          else
+          {
+            if( s->begEvent == nullptr )
+              rc = cwLogError(kInvalidStateRC,"The section '%s' does not have a begin event.",cwStringNullGuard(s->label));
+            else
+            {
+              if( s0->endEvent->index+1 != s->begEvent->index )
+                rc = cwLogError(kInvalidStateRC,"The sections '%s' and '%s' do not begin/end on consecutive events.",cwStringNullGuard(s0->label),cwStringNullGuard(s->label));
+            }
+          }
+        
+          s0 = s;
+        }
+      }
+
+      
       if( rc != kOkRC )
         rc = cwLogError(rc,"Section validation failed.");
       return rc;
@@ -908,6 +985,11 @@ unsigned cw::score_parse::dyn_ref_label_to_level( handle_t h, const char* label 
   return marker_to_level( p->dynRefH, label );
 }
 
+unsigned cw::score_parse::dyn_ref_vel_to_level( handle_t h, uint8_t vel )
+{
+  score_parse_t* p = _handleToPtr(h);
+  return velocity_to_level(p->dynRefH,vel);
+}
 
 unsigned    cw::score_parse::form_hash( unsigned op_id, unsigned bar, uint8_t midi_pitch, unsigned barPitchIdx )
 {
@@ -932,7 +1014,7 @@ void        cw::score_parse::parse_hash( unsigned hash, unsigned& op_idRef, unsi
 }
 
 
-cw::rc_t cw::score_parse::create( handle_t& hRef, const char* fname, double srate, dyn_ref_tbl::handle_t dynRefH )
+cw::rc_t cw::score_parse::create( handle_t& hRef, const char* fname, double srate, dyn_ref_tbl::handle_t dynRefH, bool show_warnings_fl )
 {
   rc_t           rc = kOkRC;
   score_parse_t* p  = nullptr;
@@ -960,16 +1042,15 @@ cw::rc_t cw::score_parse::create( handle_t& hRef, const char* fname, double srat
   
   _fill_target_sections(p);
 
-  _fill_sections(p);
+  _fill_section_sets(p);
 
   _sort_sections(p);
 
-  if((rc = _validate_sections(p)) != kOkRC )
+  _fill_section_beg_end_evt(p);
+  
+  if((rc = _validate_sections(p,show_warnings_fl)) != kOkRC )
     goto errLabel;
   
-  
- 
-
   hRef.set(p);
   
  errLabel:
@@ -1055,11 +1136,9 @@ void cw::score_parse::report( handle_t h )
   const char*    B        = "B:";
   const char*    blank    = " ";
   const unsigned flN      = 6;
-
   
-  
-  printf("row  op  section  bar  bei voc tick  sec     rval  dot lo c  lctn   oloc flags bpm stat  d0  d1  spich   hash  \n");
-  printf("---- --- ------- ----- --- --- ---- ------- ------ --- ----- ----- ----- ----- --- ---- ---- --- ----- --------\n");
+  printf("row  op  section bpm b_rval bar  bei voc tick  sec     rval   dot eloc   oloc flags bpm stat  d0  d1  spich   hash  \n");
+  printf("---- --- ------- --- ------ ----- --- --- ---- ------- ------ --- ----- ----- ----- --- ---- ---- --- ----- --------\n");
 
   for(unsigned i=0; i<p->eventN; ++i)
   {
@@ -1076,11 +1155,13 @@ void cw::score_parse::report( handle_t h )
     if( cwIsFlag(e->flags,kTieEndFl))      { flag_str[fli++] = 'T'; }
     if( cwIsFlag(e->flags,kOnsetFl))       { flag_str[fli++] = 'o'; }
     
-    printf("%4i %3s %2s%4s %2s%3i %3i %3i %4i %7.3f %6.3f %3i %5i %5i %5i %5s %3i 0x%02x 0x%02x %3i %5s",
+    printf("%4i %3s  %2s%4s %3i %6.4f %2s%3i %3i %3i %4i %7.3f %6.3f %3i %5i %5i %5s %3i 0x%02x 0x%02x %3i %5s",
            e->csvRowNumb,
            opcode_id_to_label(e->opId),
            secLabel,
            e->section  == nullptr || e->section->label==nullptr ? "" : e->section->label ,
+           e->bpm,
+           e->bpm_rval,
            barLabel,
            e->barNumb,
            e->barEvtIdx,
@@ -1089,9 +1170,8 @@ void cw::score_parse::report( handle_t h )
            e->sec,
            e->rval,
            e->dotCnt,
-           e->loc,
-           e->loctn,
-           e->oloc,
+           e->eLocId,
+           e->oLocId,
            flag_str,
            e->bpm,
            e->status,

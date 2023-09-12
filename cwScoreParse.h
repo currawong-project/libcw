@@ -47,26 +47,28 @@ namespace cw
     struct event_str;
     typedef struct section_str
     {
-      char*               label;
-      unsigned            csvRowNumb; // score CSV row number where this section starts
-      unsigned            setN;
-      struct set_str**    setA;
-      struct event_str*   begEvent;
-      struct event_str*   endEvent;
-      struct section_str* link;
+      char*               label;       // This sections label
+      unsigned            csvRowNumb;  // score CSV row number where this section starts
+      unsigned            setN;        // Count of elements in setA[]
+      struct set_str**    setA;        // setA[setN] Array of pointers to sets that are applied to this section.
+      struct event_str*   begEvent;    // first event in this section
+      struct event_str*   endEvent;    // last event in this section
+      struct event_str*   begSetEvent; // first set event in this section
+      struct event_str*   endSetEvent; // last set event in this section
+      struct section_str* link;        // p->sectionL links
     } section_t;
 
     struct event_str;
     
     typedef struct set_str
     {
-      unsigned           id;
-      unsigned           varTypeId;
-      unsigned           eventN;
-      struct event_str** eventA;
-      section_t*         targetSection;
-      unsigned           sectionSetIdx; // index of this set in the section
-      struct set_str*    link;
+      unsigned           id;             // Unique id for this set
+      unsigned           varTypeId;      // Type of measurement to perform on this set.
+      unsigned           eventN;         // Count of elements in eventA[]
+      struct event_str** eventA;         // eventA[eventN] Pointers to all events in this set.
+      section_t*         targetSection;  // Section this set will be applied to.
+      unsigned           sectionSetIdx;  // Index of this set in the targetSection->setA[].
+      struct set_str*    link;           // p->setL link
     } set_t;
 
     typedef struct event_var_str
@@ -81,7 +83,7 @@ namespace cw
     {
       unsigned     csvRowNumb;  // CSV row number this event was derived from
       unsigned     opId;        // event type
-      unsigned     csvId;       // CSV 'index' column
+      unsigned     index;       // index of this recod in event_array() 
       section_t*   section;     // section that this event belongs to
       unsigned     barNumb;     //
       unsigned     barEvtIdx;   // index of this event in this bar
@@ -93,10 +95,10 @@ namespace cw
       unsigned     dotCnt;
       unsigned     dynLevel;  // dynamic level based on marker
       unsigned     hash;      // [ op_id:4 bar:12 pitch:8 bar_pitch_n:8 ]
-      unsigned     loc;
-      unsigned     loctn;
-      unsigned     oloc;
+      unsigned     eLocId;    // event location id (includes all events, oloc includes just note-ons)
+      unsigned     oLocId;    // onset location id (onset loc id's used by sfScore)
       unsigned     bpm;
+      double       bpm_rval;
       unsigned     flags;
       midi::byte_t status;
       midi::byte_t d0;
@@ -118,11 +120,12 @@ namespace cw
     
     const char* dyn_ref_level_to_label( handle_t h, unsigned vel );
     unsigned    dyn_ref_label_to_level( handle_t h, const char* label );
+    unsigned    dyn_ref_vel_to_level(   handle_t h, uint8_t vel );
 
     unsigned    form_hash( unsigned op_id, unsigned bar, uint8_t midi_pitch, unsigned barPitchIdx );
     void        parse_hash( unsigned hash, unsigned& op_idRef, unsigned& barRef, uint8_t& midi_pitchRef, unsigned& barPitchIdxRef );
     
-    rc_t create( handle_t& hRef, const char* fname, double srate, dyn_ref_tbl::handle_t dynRefH );
+    rc_t create( handle_t& hRef, const char* fname, double srate, dyn_ref_tbl::handle_t dynRefH, bool show_warnings_fl=false );
     rc_t destroy( handle_t& hRef );
 
     double sample_rate( handle_t h );
