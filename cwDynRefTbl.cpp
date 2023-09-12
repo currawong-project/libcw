@@ -15,6 +15,8 @@ namespace cw
     {
       dyn_ref_t* dynRefA;
       unsigned   dynRefN;
+      unsigned*   levelLookupA;
+      unsigned   levelLookupN;
       
     } dyn_ref_tbl_t;
 
@@ -31,6 +33,23 @@ namespace cw
       mem::release(p->dynRefA);
       mem::release(p);
       return rc;
+    }
+
+    void _fill_level_lookup_table( dyn_ref_tbl_t* p )
+    {
+
+      for(midi::byte_t vel=0; vel<midi::kMidiVelCnt; ++vel)
+        for(unsigned i=0; i<p->levelLookupN; ++i)
+          if( p->dynRefA[i].velocity >= vel )
+          {
+            midi::byte_t d0 = p->dynRefA[i].velocity - vel;          
+            midi::byte_t d1 = i>0 ? (vel -  p->dynRefA[i-1].velocity) : d0;          
+            unsigned     j = d0 <= d1 ? i : i-1;
+          
+            p->levelLookupA[vel] = p->dynRefA[j].level;
+            break;
+          }
+      
     }
 
     rc_t _parse_cfg( dyn_ref_tbl_t* p, const object_t* cfg )
@@ -84,6 +103,10 @@ cw::rc_t cw::dyn_ref_tbl::create( handle_t& hRef, const object_t* cfg )
     rc = cwLogError(rc,"Dynamics reference table parse failed.");
     goto errLabel;
   }
+
+  p->levelLookupN = midi::kMidiVelCnt;
+  p->levelLookupA = mem::allocZ<unsigned>(p->levelLookupN);
+  _fill_level_lookup_table(p);
 
   hRef.set(p);
   
@@ -140,26 +163,25 @@ unsigned    cw::dyn_ref_tbl::velocity_to_level( handle_t h, midi::byte_t vel )
 {
   dyn_ref_tbl_t* p = _handleToPtr(h);
   
-  for(unsigned i=0; i<p->dynRefN; ++i)
-    if( p->dynRefA[i].velocity > vel )
-    {
-      midi::byte_t d0 = p->dynRefA[i].velocity - vel;
-      
-      midi::byte_t d1 = i>0 ? (vel -  p->dynRefA[i-1].velocity) : d0;
-
-      unsigned j = d0 <= d1 ? i : i-1;
-
-      return p->dynRefA[j].level;
-    }
-
-  return p->dynRefA[ p->dynRefN-1 ].velocity;
+  if( vel <= p->levelLookupN )
+    return p->levelLookupA[vel];
+  
+  cwLogError(kInvalidArgRC,"The velocity value %i is out of range on level lookup.");
+  return 0;
 }
 
 void cw::dyn_ref_tbl::report( handle_t h )
 {
   dyn_ref_tbl_t* p = _handleToPtr(h);
+  unsigned i = 0;
 
+  printf("Dynamics Table\n");
   auto rpt = [](dyn_ref_t& x) { printf("%2i %3i %s\n",x.level,x.velocity,x.marker); };
   
-  std::for_each(p->dynRefA,p->dynRefA+p->dynRefN, rpt );  
+  std::for_each(p->dynRefA,p->dynRefA+p->dynRefN, rpt );
+
+  printf("Dynamics Table Level Lookup Table.\n");
+  auto rpt_level = [&i](unsigned& x) { printf("%3i %2i\n",i++,x); };
+
+  std::for_each(p->levelLookupA,p->levelLookupA+p->levelLookupN, rpt_level);
 }
