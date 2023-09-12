@@ -8,25 +8,11 @@
 #include "cwMidi.h"
 #include "cwPianoScore.h"
 #include "cwSvg.h"
-#include "cwCmInterface.h"
-
-#include "cmGlobal.h"
-#include "cmFloatTypes.h"
-#include "cmRpt.h"
-#include "cmErr.h"
-#include "cmCtx.h"
-#include "cmMem.h"
-#include "cmSymTbl.h"
-#include "cmLinkedHeap.h"
-#include "cmTime.h"
-#include "cmMidi.h"
-#include "cmSymTbl.h"
-#include "cmMidiFile.h"
-#include "cmAudioFile.h"
-#include "cmScore.h"
-#include "cmTimeLine.h"
-#include "cmProcObj.h"
-#include "cmProc4.h"
+#include "cwDynRefTbl.h"
+#include "cwScoreParse.h"
+#include "cwSfScore.h"
+#include "cwSfMatch.h"
+#include "cwSfTrack.h"
 
 #include "cwScoreFollowerPerf.h"
 #include "cwScoreFollower.h"
@@ -65,8 +51,8 @@ namespace cw
       struct ssf_ref_note_str* refNoteL; // ref_note's linked to this ref
       
       union {
-        cmScoreLoc_t* loc;  // cmScore location
-        unsigned      id;   // bar/section id
+        const sfscore::loc_t* loc;  // score location
+        unsigned              id;   // bar/section id
       } u;
     } ssf_ref_t;
 
@@ -74,7 +60,7 @@ namespace cw
     typedef struct ssf_ref_note_str
     {
       ssf_ref_t*               ref; // loc UI component that this ref. note belongs to 
-      cmScoreEvt_t*            evt; // cmScore event assoc'd with this note
+      const sfscore::event_t*  evt; // cmScore event assoc'd with this note
       unsigned                 top;
       unsigned                 cnt; // count of perf notes that matched to this ref-note
       unsigned                 cwLocId; 
@@ -100,9 +86,9 @@ namespace cw
 
     typedef struct ssf_str
     {
-      svg::handle_t svgH;
-      cmScH_t       cmScH;
-      cmScMatcher*  matcher;
+      svg::handle_t     svgH;
+      sfscore::handle_t scoreH;
+      sftrack::handle_t trackH;
 
       ssf_ref_t*    refA;
       unsigned      refAllocN;
@@ -334,7 +320,7 @@ namespace cw
       }
     }
     
-    void _create_bar_ref( ssf_t* p, const cmScoreEvt_t* e, unsigned& x_coord_ref, unsigned y_coord )
+    void _create_bar_ref( ssf_t* p, const sfscore::event_t* e, unsigned& x_coord_ref, unsigned y_coord )
     {
       ssf_ref_t* ref;
       if((ref = _create_ref(p,x_coord_ref,y_coord)) != nullptr )
@@ -344,15 +330,15 @@ namespace cw
       }
     }
 
-    void _create_loc_ref( ssf_t* p, const cmScoreEvt_t* e, unsigned& x_coord_ref, unsigned y_coord )
+    void _create_loc_ref( ssf_t* p, const sfscore::event_t* e, unsigned& x_coord_ref, unsigned y_coord )
     {
       ssf_ref_t* ref;
       if((ref = _create_ref(p,x_coord_ref,y_coord)) != nullptr )
       {
         ref->tid = kLocTId;
-        ref->u.loc = cmScoreLoc(p->cmScH, e->locIdx );
+        ref->u.loc = sfscore::loc_base(p->scoreH) + e->oLocId;
 
-        cwAssert( ref->u.loc != nullptr and ref->u.loc->index == e->locIdx );
+        cwAssert( ref->u.loc != nullptr and ref->u.loc->index == e->oLocId );
       }
     }
     
@@ -360,7 +346,7 @@ namespace cw
     {
 
       // create the cmScoreLoc array
-      unsigned cmEvtN = cmScoreEvtCount(p->cmScH);
+      unsigned cmEvtN = event_count(p->scoreH);
       unsigned loc_idx = kInvalidIdx;
 
       p->refAllocN = cmEvtN + 1;
@@ -371,17 +357,17 @@ namespace cw
       
       for(unsigned i=0; i<cmEvtN; ++i)
       {
-        const cmScoreEvt_t* e = cmScoreEvt(p->cmScH,i);
+        const sfscore::event_t* e = event(p->scoreH,i);
 
         // if this is a bar marker
-        if( e->type == kBarEvtScId )
+        if( e->type == score_parse::kBarTId )
           _create_bar_ref(p,e,x_coord_ref,y_coord);
 
         // if this is the start of a new location
-        if( e->locIdx != loc_idx)
+        if( e->oLocId != loc_idx)
         {
           _create_loc_ref(p,e,x_coord_ref,y_coord);
-          loc_idx = e->locIdx;
+          loc_idx = e->oLocId;
         }        
       }
 
@@ -390,7 +376,7 @@ namespace cw
       p->maxMatchLoc = 0;
     }
 
-    rc_t _attach_ref_note( ssf_t* p, unsigned ref_idx, cmScoreEvt_t* evt )
+    rc_t _attach_ref_note( ssf_t* p, unsigned ref_idx, sfscore::event_t* evt )
     {
       rc_t rc = kOkRC;
       ssf_ref_note_t* rn = p->refNoteA + p->refNoteN + 1;
@@ -399,7 +385,7 @@ namespace cw
       rn->evt           = evt;
       rn->top           = rn->ref->col_bottom;
       rn->cnt           = 0;
-      rn->cwLocId       = evt==nullptr ? 0 : evt->csvEventId;
+      rn->cwLocId       = evt==nullptr ? 0 : evt->oLocId;
       rn->link          = rn->ref->refNoteL;
       
       rn->ref->refNoteL = rn;      
@@ -431,7 +417,7 @@ namespace cw
       for(unsigned ri=PRE_REF_IDX+1; ri<p->refN; ++ri)
         if( p->refA[ri].tid == kLocTId )
           for(unsigned j=0; j<p->refA[ri].u.loc->evtCnt; ++j)
-            if( p->refA[ri].u.loc->evtArray[j]->type == kNonEvtScId && p->refNoteN < p->refNoteAllocN )
+            if( p->refA[ri].u.loc->evtArray[j]->type == score_parse::kNoteOnTId && p->refNoteN < p->refNoteAllocN )
             {
               if((rc = _attach_ref_note(p,ri,p->refA[ri].u.loc->evtArray[j])) != kOkRC )
                 goto errLabel;
@@ -441,14 +427,14 @@ namespace cw
       return rc;      
     }
 
-    ssf_ref_note_t* _find_ref_note( ssf_t* p, const cmScoreEvt_t* e )
+    ssf_ref_note_t* _find_ref_note( ssf_t* p, const sfscore::event_t* e )
     {
       ssf_ref_note_t*  rn = nullptr;
       for(unsigned i=0; i<p->refN; ++i)
       {
         ssf_ref_t* r = p->refA + i;
         // if this is the ref record for the target location
-        if( r->tid == kLocTId and r->u.loc->index == e->locIdx )
+        if( r->tid == kLocTId and r->u.loc->index == e->oLocId )
         {
           // locate the ref note associated with e
           for(rn=r->refNoteL; rn!=nullptr; rn=rn->link )
@@ -510,23 +496,23 @@ namespace cw
       // for each performed MIDI note
       for(unsigned muid=0; muid<midiN; ++muid)
       {
-        cmScoreEvt_t*    e   = nullptr;
-        ssf_ref_note_t*  rn  = nullptr;
-        ssf_ref_note_t*  rn0 = nullptr;
-        ssf_perf_note_t* pn0 = nullptr;
+        const sfscore::event_t* e       = nullptr;
+        ssf_ref_note_t*         rn      = nullptr;
+        ssf_ref_note_t*         rn0     = nullptr;
+        ssf_perf_note_t*        pn0     = nullptr;
+        unsigned                resultN = result_count(p->trackH);
+        const sftrack::result_t* resultA = result_base(p->trackH);
         
         // look for a 'match' record that refers to this perf note
         // by interating through the matcher->res[] result array
-        for(unsigned j=0; j<p->matcher->ri; ++j)
+        for(unsigned j=0; j<resultN; ++j)
         {
-
           // if this matcher result record matches the perf'd MIDI note ...
-          if( p->matcher->res[j].muid == muid )
+          if( resultA[j].muid == muid )
           {
             // this result record matches this perf'd note - but it was not matched
-            if( p->matcher->res[j].scEvtIdx == kInvalidIdx )
+            if( resultA[j].scEvtIdx == kInvalidIdx )
               continue;
-
 
             // **** PRE-PERF NOTES SHOULD NEVER HAVE A MATCH - BUT FOR SOME
             // REASON THE scEvtIdx on the PRE is 0 instead of kInvalidIdx
@@ -534,7 +520,7 @@ namespace cw
             // RECORDS - BY DEFINITION - CANNOT HAVE A VALID MATCH
             
             // ... locate the score evt assoc'd with this 'match' record
-            if((e = cmScoreEvt( p->cmScH, p->matcher->res[j].scEvtIdx )) != nullptr )
+            if((e = sfscore::event( p->scoreH, resultA[j].scEvtIdx )) != nullptr )
             {
               if((rn = _find_ref_note( p, e )) == nullptr )
                 break;
@@ -558,11 +544,11 @@ namespace cw
                 pn0->dupl_list = pn;
               }
 
-              if( e->locIdx < p->minMatchLoc )
-                p->minMatchLoc = e->locIdx;
+              if( e->oLocId < p->minMatchLoc )
+                p->minMatchLoc = e->oLocId;
               
-              if( e->locIdx > p->maxMatchLoc )
-                p->maxMatchLoc = e->locIdx;
+              if( e->oLocId > p->maxMatchLoc )
+                p->maxMatchLoc = e->oLocId;
               
             }
             else
@@ -602,7 +588,7 @@ namespace cw
       install_css(p->svgH,".multi_match","stroke",0x0000FF,"rgb");
     }
     
-    ssf_t* _create( cmScH_t cmScH, cmScMatcher* matcher, const ssf_note_on_t* midiA, unsigned midiN  )
+    ssf_t* _create( sfscore::handle_t scoreH, sftrack::handle_t trackH, const ssf_note_on_t* midiA, unsigned midiN  )
     {
       rc_t rc;
       ssf_t* p = mem::allocZ<ssf_t>();
@@ -610,8 +596,8 @@ namespace cw
       unsigned x_coord = 0;
       unsigned y_coord = 0;
       
-      p->cmScH   = cmScH;
-      p->matcher = matcher;
+      p->scoreH = scoreH;
+      p->trackH = trackH;
   
       // create the SVG file object
       if((rc = svg::create(p->svgH)) != kOkRC )
@@ -643,8 +629,8 @@ namespace cw
   }
 }
 
-cw::rc_t cw::score_follower::svgScoreFollowWrite( cmScH_t         cmScH,
-                                                  cmScMatcher*    matcher,                                                  
+cw::rc_t cw::score_follower::svgScoreFollowWrite( sfscore::handle_t scoreH,
+                                                  sftrack::handle_t trackH,                                                  
                                                   ssf_note_on_t*  midiA,
                                                   unsigned        midiN,
                                                   const char*     out_fname,
@@ -653,7 +639,7 @@ cw::rc_t cw::score_follower::svgScoreFollowWrite( cmScH_t         cmScH,
   rc_t rc = kOkRC;
   ssf_t* p;
 
-  if((p = _create(cmScH, matcher, midiA, midiN )) == nullptr )
+  if((p = _create(scoreH, trackH, midiA, midiN )) == nullptr )
   {
     rc = cwLogError(rc,"Score follower SVG writer initialization failed.");
     goto errLabel;
