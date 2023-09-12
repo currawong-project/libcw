@@ -7,7 +7,7 @@
 #include "cwFileSys.h"
 #include "cwMidi.h"
 #include "cwMidiFile.h"
-
+#include "cwText.h"
 
 #ifdef cwBIG_ENDIAN
 #define mfSwap16(v)  (v)
@@ -1207,6 +1207,31 @@ namespace cw
 
         return rc;
       }
+
+      rc_t _testRptBeginEnd( const object_t* cfg )
+      {
+        rc_t rc;
+        const char* midi_fname = nullptr;
+        unsigned msg_cnt = 0;
+        bool noteon_only_fl;
+        if((rc = cfg->getv("midi_fname",midi_fname,
+                           "note_on_only_fl", noteon_only_fl,
+                           "msg_cnt",msg_cnt)) != kOkRC )
+        {
+          rc = cwLogError(rc,"MIDI file rpt beg/end arg. parse failed.");
+          goto errLabel;
+        }
+        
+        if((rc = report_begin_end(midi_fname,msg_cnt,noteon_only_fl)) != kOkRC )
+        {
+          rc = cwLogError(rc,"MIDI file rpt beg/end failed.");
+          goto errLabel;
+          
+        }
+      errLabel:
+        return rc;
+      }
+      
       
     }
   }
@@ -2037,7 +2062,7 @@ namespace cw
       void _printHdr( const file_t* mfp, log::handle_t logH )
       {
         if( mfp->fn != NULL )
-          cwLogPrintH(logH,"%s ",mfp->fn);
+          cwLogPrintH(logH,"%s\n",mfp->fn);
 
         cwLogPrintH(logH,"fmt:%i ticksPerQN:%i tracks:%i\n",mfp->fmtId,mfp->ticksPerQN,mfp->trkN);
 
@@ -2412,6 +2437,61 @@ cw::rc_t  cw::midi::file::report( const char* midiFn, log::handle_t logH )
   return rc;
 }
 
+cw::rc_t cw::midi::file::report_begin_end( const char* midiFn, unsigned msg_cnt, bool noteon_only_fl, log::handle_t logH )
+{
+  handle_t mfH;
+  rc_t     rc;
+
+  // Selector function
+  auto sel = []( auto noteon_fl, const trackMsg_t* m){ return (m!=nullptr) && ((!noteon_fl) || (noteon_fl && isNoteOn(m))); };
+
+  if( !logH.isValid() )
+    logH = log::globalHandle();
+  
+  if((rc = open(mfH,midiFn)) != kOkRC )
+  {
+    rc = cwLogError(rc,"Unable to open the MIDI file: %s\n",cwStringNullGuard(midiFn));
+    goto errLabel;
+  }
+
+  else
+  {
+    file_t* p = _handleToPtr(mfH);
+
+    _printHdr(p,logH);
+
+    msg_cnt = std::min(msg_cnt,p->msgN);
+
+    const trackMsg_t** msgV = _msgArray(p);
+    unsigned           mn   = 0;
+      
+    for(unsigned mi=0; mn<msg_cnt && mi<p->msgN; ++mi)
+      if( sel(noteon_only_fl,msgV[mi] ) )
+      {
+        _printMsg(logH,msgV[mi]);
+        ++mn;
+      }
+
+    if( p->msgN > 0 )
+    {
+      int mi = p->msgN-1;
+      for(mn=0; mn<msg_cnt && mi>=0; --mi)
+        if( sel(noteon_only_fl,msgV[mi]) )
+          ++mn;
+
+      for(; mi<(int)p->msgN; ++mi)
+        if( sel(noteon_only_fl,msgV[mi]) )
+          _printMsg(logH,msgV[mi]);
+    }
+    
+  }
+ errLabel:
+  close(mfH);
+
+  return rc;
+}
+
+
 
 void cw::midi::file::printControlNumbers( const char* fn )
 {
@@ -2456,14 +2536,17 @@ cw::rc_t cw::midi::file::test( const object_t* cfg )
   {
     if((o = cfg->child_ele(i)) != nullptr )
     {
-      if( strcmp(o->pair_label(),"rpt")==0 )
+      if( textIsEqual(o->pair_label(),"rpt") )
         rc = _testReport(o->pair_value());
       
-      if( strcmp(o->pair_label(),"csv")==0 )
+      if( textIsEqual(o->pair_label(),"csv") )
         rc = _testCsv(o->pair_value());
       
-      if( strcmp(o->pair_label(),"batch_convert")==0 )
+      if( textIsEqual(o->pair_label(),"batch_convert") )
         rc = _testBatchConvert(o->pair_value());
+
+      if( textIsEqual(o->pair_label(),"rpt_beg_end") )
+        rc = _testRptBeginEnd(o->pair_value());
     }
   }
   

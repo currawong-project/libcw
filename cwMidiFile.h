@@ -224,6 +224,8 @@ namespace cw
       // Generate a text file reportusing cmMIdiFilePrintMsgs()
       rc_t report( const char* midiFn, log::handle_t logH );
 
+      rc_t report_begin_end( const char* midiFn, unsigned msg_cnt=10, bool pitch_only_fl=true, log::handle_t logH=log::handle_t() );
+
       void printControlNumbers( const char* midiFileName );
 
       rc_t test( const object_t* cfg );
