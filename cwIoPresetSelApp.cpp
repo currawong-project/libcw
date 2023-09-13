@@ -26,7 +26,11 @@
 #include "cwIoFlow.h"
 #include "cwPresetSel.h"
 #include "cwVelTableTuner.h"
-#include "cwCmInterface.h"
+//#include "cwCmInterface.h"
+#include "cwDynRefTbl.h"
+#include "cwScoreParse.h"
+#include "cwSfScore.h"
+#include "cwSfTrack.h"
 #include "cwScoreFollower.h"
 
 
@@ -280,11 +284,10 @@ namespace cw
       unsigned        in_audio_begin_loc;
       double          in_audio_offset_sec;
 
-      cm::handle_t               cmCtxH;
       score_follower::handle_t   sfH;
       midi_record_play::handle_t mrpH;
 
-      score::handle_t scoreH;
+      perf_score::handle_t scoreH;
       loc_map_t*      locMap;    
       unsigned        locMapN;
 
@@ -390,14 +393,14 @@ namespace cw
       const char* flow_proc_dict_fn = nullptr;
       const char* midi_record_dir;
       
-      if((rc                                         = cfg->getv( "params", params_cfgRef,
+      if((rc = cfg->getv( "params", params_cfgRef,
                           "flow",   app->flow_cfg)) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"Preset Select App 'params' cfg record not found.");
         goto errLabel;
       }
         
-      if((rc                                                                           = params_cfgRef->getv( "record_dir",           app->record_dir,
+      if((rc = params_cfgRef->getv( "record_dir",           app->record_dir,
                                     "record_fn",            app->record_fn,
                                     "record_fn_ext",        app->record_fn_ext,
                                     "score_fn",             app->scoreFn,
@@ -735,11 +738,10 @@ namespace cw
       mem::release(app.midiLoadFname);
       vtbl::destroy(app.vtH);
       destroy(app.sfH);
-      destroy(app.cmCtxH);
       preset_sel::destroy(app.psH);
       io_flow::destroy(app.ioFlowH);
       midi_record_play::destroy(app.mrpH);
-      score::destroy( app.scoreH );
+      perf_score::destroy( app.scoreH );
       mem::release(app.locMap);
       return kOkRC;
     }
@@ -889,7 +891,7 @@ namespace cw
           if( newMatchOccurredFl )
           {
             unsigned        matchLocN = 0;
-            const unsigned* matchLocA = current_match_id_array( app->sfH, matchLocN );
+            const unsigned* matchLocA = current_result_index_array( app->sfH, matchLocN );
 
             unsigned maxLocId = 0;
 
@@ -905,7 +907,7 @@ namespace cw
 
             loc = maxLocId;
             
-            clear_match_id_array(app->sfH);
+            clear_result_index_array(app->sfH);
           }
                 
         }
@@ -939,7 +941,7 @@ namespace cw
               snprintf(buf,buf_byte_cnt,"ch:%i status:0x%02x d0:%i d1:%i",ch,status,d0,d1);
             }
             else
-              score::event_to_string( app->scoreH, id, buf, buf_byte_cnt );
+              perf_score::event_to_string( app->scoreH, id, buf, buf_byte_cnt );
             printf("%s\n",buf);
           }
 
@@ -1033,8 +1035,8 @@ namespace cw
     rc_t  _loc_to_frame_index( app_t* app, unsigned loc, unsigned& frameIdxRef )
     {
       rc_t                  rc   = kOkRC;
-      const score::event_t* e0   = nullptr;
-      const score::event_t* e1   = nullptr;
+      const perf_score::event_t* e0   = nullptr;
+      const perf_score::event_t* e1   = nullptr;
       double                srate     = 0;
       double                secs = 0;
 
@@ -1858,19 +1860,19 @@ namespace cw
     rc_t _load_midi_player( app_t* app, unsigned& midiEventCntRef )
     {
       rc_t                          rc         = kOkRC;
-      const score::event_t*         e          = nullptr;
+      const perf_score::event_t*         e          = nullptr;
       unsigned                      midiEventN = 0;      
       midi_record_play::midi_msg_t* m          = nullptr;
       midiEventCntRef = 0;
       
       // get the count of MIDI events
-      if((e = score::base_event( app->scoreH )) != nullptr )
+      if((e = perf_score::base_event( app->scoreH )) != nullptr )
         for(; e != nullptr; e=e->link)
           if( e->status != 0 )
             midiEventN  += 1;
 
       // copy the MIDI events
-      if((e = score::base_event( app->scoreH )) != nullptr )
+      if((e = perf_score::base_event( app->scoreH )) != nullptr )
       {
         // allocate the locMap[]
         app->locMap  = mem::resizeZ<loc_map_t>( app->locMap, midiEventN ); 
@@ -1990,9 +1992,9 @@ namespace cw
       _set_status(app,"Loading...");
 
       // load the performance or score
-      if((rc= score::create( app->scoreH, perf_fn )) != kOkRC )
+      if((rc= perf_score::create( app->scoreH, perf_fn )) != kOkRC )
       {
-        cwLogError(rc,"Score create failed on '%s'.",app->scoreFn);
+        cwLogError(rc,"Score create failed on '%s'.",perf_fn);
         goto errLabel;          
       }
       
@@ -2455,7 +2457,7 @@ namespace cw
       object_t*            cfg   = nullptr;
       unsigned             sfResetLoc;
       
-      if((rc = score::create_from_midi_csv( app->scoreH, app->midiLoadFname )) != kOkRC )
+      if((rc = perf_score::create_from_midi_csv( app->scoreH, app->midiLoadFname )) != kOkRC )
       {
         rc = cwLogError(rc,"Piano score performance load failed on '%s'.",cwStringNullGuard(app->midiLoadFname));
         goto errLabel;
@@ -3318,15 +3320,8 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
 
   get_value( app.psH, kInvalidId, preset_sel::kMasterSyncDelayMsVarId, kInvalidId, app.dfltSyncDelayMs );  
 
-  // create the 'cm' context object - which is needed by the score follower
-  if((rc = create(app.cmCtxH)) != kOkRC )
-  {
-    rc = cwLogError(kOpFailRC,"cm context create failed.");
-    goto errLabel;
-  }
-
   // create the score follower
-  if((rc = create(app.sfH, app.score_follower_cfg, app.cmCtxH, sysSampleRate )) != kOkRC )
+  if((rc = create(app.sfH, app.score_follower_cfg, sysSampleRate )) != kOkRC )
   {
     rc = cwLogError(kOpFailRC,"score follower create failed.");
     goto errLabel;
