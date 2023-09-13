@@ -3,7 +3,7 @@
 
 namespace cw
 {
-  namespace score
+  namespace perf_score
   {
     typedef handle<struct score_str> handle_t;
 
@@ -25,6 +25,7 @@ namespace cw
       unsigned bpm;           // tempo BPM or 0  
       char     grace_mark[4]; // grace mark or 0
       unsigned bar;           // bar number or 0
+      unsigned barPitchIdx;   // bar pitch index
       unsigned section;       // section number or 0
       struct event_str* link; // list link
     } event_t;
@@ -44,17 +45,7 @@ namespace cw
     const event_t* base_event( handle_t h );
 
     const event_t* loc_to_event( handle_t h, unsigned loc );
-    
-    /*
-    unsigned       loc_count( handle_t h );
-    bool           is_loc_valid( handle_t h, unsigned locId );
-    unsigned       loc_to_measure( handle_t h, unsigned locId );
-    unsigned       loc_to_next_note_on_measure( handle_t h, unsigned locId );
-    double         locs_to_diff_seconds( handle_t h, unsigned loc0Id, unsigned loc1Id );
-    */
-    
-    //const event_t* uid_to_event( handle_t h, unsigned uid );
-
+    void loc_to_pitch_context( handle_t h, uint8_t* preNoteCtxA, uint8_t* postNoteCtxA, unsigned ctxN );
 
     // Format the event as a string for printing.
     rc_t  event_to_string( handle_t h, unsigned uid, char* buf, unsigned buf_byte_cnt );

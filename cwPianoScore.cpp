@@ -8,10 +8,11 @@
 #include "cwTime.h"
 #include "cwFile.h"
 #include "cwCsv.h"
+#include "cwVectOps.h"
 
 namespace cw
 {
-  namespace score
+  namespace perf_score
   {
     typedef struct score_str
     {
@@ -45,6 +46,27 @@ namespace cw
         e = e0;
       }
       return rc;
+    }
+
+    void _set_bar_pitch_index( score_t* p )
+    {
+      unsigned cntA[ midi::kMidiNoteCnt ];
+      unsigned barNumb = kInvalidId;
+      
+      for(event_t* e=p->base; e!=nullptr; e=e->link)
+      {
+        if( barNumb != e->meas )
+        {
+          vop::fill(cntA,midi::kMidiNoteCnt,0);
+          barNumb = e->meas;
+        }
+
+        if( midi::isNoteOn(e->status,e->d1) )
+        {
+          e->barPitchIdx = cntA[ e->d0 ];
+          cntA[ e->d0 ] += 1;
+        }
+      }      
     }
 
     unsigned _scan_to_end_of_field( const char* lineBuf, unsigned buf_idx, unsigned bufCharCnt )
@@ -132,6 +154,10 @@ namespace cw
         {
           switch( field_idx )
           {
+            case kMeas_FIdx:
+              rc = _parse_csv_unsigned( line_buf, bfi, efi, e->meas );
+              break;
+              
             case kLoc_FIdx:
               rc = _parse_csv_unsigned( line_buf, bfi, efi, e->loc );
               break;
@@ -408,7 +434,7 @@ namespace cw
 }
 
 
-cw::rc_t cw::score::create( handle_t& hRef, const char* fn )
+cw::rc_t cw::perf_score::create( handle_t& hRef, const char* fn )
 {
   rc_t rc;
   object_t* cfg = nullptr;
@@ -420,6 +446,8 @@ cw::rc_t cw::score::create( handle_t& hRef, const char* fn )
   p = mem::allocZ< score_t >();
   
   rc = _parse_csv(p,fn);
+
+  _set_bar_pitch_index(p);
   
   hRef.set(p);
 
@@ -434,7 +462,7 @@ cw::rc_t cw::score::create( handle_t& hRef, const char* fn )
   return rc;
 }
 
-cw::rc_t cw::score::create( handle_t& hRef, const object_t* cfg )
+cw::rc_t cw::perf_score::create( handle_t& hRef, const object_t* cfg )
 {
   rc_t rc;
   if((rc = destroy(hRef)) != kOkRC )
@@ -449,6 +477,8 @@ cw::rc_t cw::score::create( handle_t& hRef, const object_t* cfg )
     goto errLabel;
   }
 
+  _set_bar_pitch_index(p);
+  
   p->has_locs_fl = true;
   
   hRef.set(p);
@@ -460,7 +490,7 @@ cw::rc_t cw::score::create( handle_t& hRef, const object_t* cfg )
   return rc;
 }
 
-cw::rc_t cw::score::create_from_midi_csv( handle_t& hRef, const char* fn )
+cw::rc_t cw::perf_score::create_from_midi_csv( handle_t& hRef, const char* fn )
 {
   rc_t rc;
   if((rc = destroy(hRef)) != kOkRC )
@@ -475,6 +505,8 @@ cw::rc_t cw::score::create_from_midi_csv( handle_t& hRef, const char* fn )
     goto errLabel;
   }
 
+  _set_bar_pitch_index(p);
+  
   p->has_locs_fl = false;
   
   hRef.set(p);
@@ -487,7 +519,7 @@ cw::rc_t cw::score::create_from_midi_csv( handle_t& hRef, const char* fn )
 }
 
 
-cw::rc_t cw::score::destroy( handle_t& hRef )
+cw::rc_t cw::perf_score::destroy( handle_t& hRef )
 {
   rc_t rc = kOkRC;
   
@@ -505,14 +537,14 @@ cw::rc_t cw::score::destroy( handle_t& hRef )
   return rc; 
 }
 
-bool cw::score::has_loc_info_flag( handle_t h )
+bool cw::perf_score::has_loc_info_flag( handle_t h )
 {
   score_t* p = _handleToPtr(h);
   return p->has_locs_fl;
 }
 
 
-unsigned       cw::score::event_count( handle_t h )
+unsigned       cw::perf_score::event_count( handle_t h )
 {
   score_t* p = _handleToPtr(h);
   unsigned n = 0;
@@ -522,70 +554,26 @@ unsigned       cw::score::event_count( handle_t h )
   return n;  
 }
 
-const cw::score::event_t* cw::score::base_event( handle_t h )
+const cw::perf_score::event_t* cw::perf_score::base_event( handle_t h )
 {
   score_t* p = _handleToPtr(h);
   return p->base;
 }
 
-const cw::score::event_t* cw::score::loc_to_event( handle_t h, unsigned loc )
+const cw::perf_score::event_t* cw::perf_score::loc_to_event( handle_t h, unsigned loc )
 {
   score_t* p = _handleToPtr(h);  
   return _loc_to_event(p,loc);
 }
 
-/*
-unsigned       cw::score::loc_count( handle_t h )
+void cw::perf_score::loc_to_pitch_context( handle_t h, uint8_t* preNoteCtxA, uint8_t* postNoteCtxA, unsigned ctxN )
 {
-  score_t* p  = _handleToPtr(h);
-  return p->maxLocId;
-}
-
-bool cw::score::is_loc_valid( handle_t h, unsigned locId )
-{
-  score_t* p  = _handleToPtr(h);
-  return locId < p->maxLocId;
-}
-
-unsigned cw::score::loc_to_measure( handle_t h, unsigned locId )
-{
-  score_t* p  = _handleToPtr(h);
-  const event_t* e;
-  if((e = _loc_to_event(p,locId)) == nullptr )
-    return 0;
-
-  return kInvalidId;
-}
-
-unsigned  cw::score::loc_to_next_note_on_measure( handle_t h, unsigned locId )
-{
-  score_t* p  = _handleToPtr(h);
-  const event_t* e = _loc_to_event(p,locId);
+  score_t* p = _handleToPtr(h);
   
-  while( e != nullptr )
-    if( midi::isNoteOn(e->status,e->d1))
-      return e->meas;
-      
-  return kInvalidId;
 }
 
-double  cw::score::locs_to_diff_seconds( handle_t h, unsigned loc0Id, unsigned loc1Id )
-{
-  score_t* p  = _handleToPtr(h);
-  const event_t* e0 = _loc_to_event(p,loc0Id);
-  const event_t* e1 = _loc_to_event(p,loc1Id);
 
-  return e1->sec - e0->sec;  
-}
-
-const cw::score::event_t* cw::score::uid_to_event( handle_t h, unsigned uid )
-{
-  //hscore_t* p  = _handleToPtr(h);
-  return nullptr;
-}
-*/
-
-cw::rc_t  cw::score::event_to_string( handle_t h, unsigned uid, char* buf, unsigned buf_byte_cnt )
+cw::rc_t  cw::perf_score::event_to_string( handle_t h, unsigned uid, char* buf, unsigned buf_byte_cnt )
 {
   score_t*       p  = _handleToPtr(h);
   const event_t* e  = nullptr;
@@ -611,7 +599,7 @@ cw::rc_t  cw::score::event_to_string( handle_t h, unsigned uid, char* buf, unsig
   return rc;
 }
 
-cw::rc_t cw::score::test( const object_t* cfg )
+cw::rc_t cw::perf_score::test( const object_t* cfg )
 {
   handle_t     h;
   rc_t         rc    = kOkRC;
