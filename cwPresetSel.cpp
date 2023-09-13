@@ -7,6 +7,11 @@
 #include "cwTime.h"
 #include "cwPresetSel.h"
 #include "cwFile.h"
+#include "cwPianoScore.h"
+#include "cwMidi.h"
+#include "cwDynRefTbl.h"
+#include "cwScoreParse.h"
+#include "cwSfScore.h"
 
 namespace cw
 {
@@ -463,8 +468,7 @@ namespace cw
 
       return rc;
      
-    }
-    
+    }    
   }
 }
 
@@ -1204,5 +1208,168 @@ cw::rc_t cw::preset_sel::report( handle_t h )
     cwLogInfo("%3i id:%3i end loc:%3i end min:%f",i,f->fragId,f->endLoc, mins);
   }
 
+  return rc;
+}
+
+
+cw::rc_t cw::preset_sel::translate_frags( const object_t* cfg )
+{
+  rc_t                  rc              = kOkRC;
+  const char*           cur_frag_fname  = nullptr;
+  const char*           cur_score_fname = nullptr;
+  const char*           new_score_fname = nullptr;
+  const char*           out_frag_fname  = nullptr;
+  const object_t*       presetsNode     = nullptr;
+  const object_t*       dynTblNode      = nullptr;
+  double                srate           = 0;
+  handle_t              presetH;
+  perf_score::handle_t  pianoScoreH;
+  dyn_ref_tbl::handle_t dynTblH;
+  score_parse::handle_t scoreParseH;
+  sfscore::handle_t     scoreH;
+  
+  enum { kNoteN=3 };
+
+  typedef struct
+  {
+    unsigned loc;
+    
+    uint8_t  pitch;
+    unsigned barNumb;
+    unsigned barPitchIdx;
+    
+    unsigned hash;
+    
+    uint8_t  preNote[kNoteN];
+    uint8_t  postNote[kNoteN];
+  } loc_t;
+  
+  typedef struct
+  {
+    loc_t begLoc;
+    loc_t endLoc;
+  } tfrag_t;
+
+  unsigned      tfragN   = 0;
+  tfrag_t*      tfragA   = nullptr;
+  
+  if((rc = cfg->getv("cur_frag_fname",  cur_frag_fname,
+                     "cur_score_fname", cur_score_fname,
+                     "new_score_fname", new_score_fname,
+                     "out_frag_fname",  out_frag_fname,
+                     "presets", presetsNode,
+                     "srate",srate,
+                     "dyn_ref", dynTblNode )) != kOkRC )
+  {
+    rc = cwLogError(rc,"Arg. parse failed on 'translate_frags'.");
+    goto errLabel;
+  }
+
+  // Create the preset_sel object.
+  if((rc = create(presetH,presetsNode)) != kOkRC )
+  {
+    rc = cwLogError(rc,"Object preset_sel create failed.");
+    goto errLabel;    
+  }
+
+  // Read the current fragment file
+  if((rc = read(presetH,cur_frag_fname)) != kOkRC )
+  {
+    rc = cwLogError(rc,"Object preset_sel read failed on '%s'.",cwStringNullGuard(cur_frag_fname));
+    goto errLabel;        
+  }
+
+  // Create the piano score.
+  if((rc = perf_score::create(pianoScoreH,cur_score_fname)) != kOkRC )
+  {
+    rc = cwLogError(rc,"Piano score failed on '%s'.",cwStringNullGuard(cur_score_fname));
+    goto errLabel;        
+  }
+  else
+  {
+    const frag_t* src_frag = get_fragment_base(presetH);
+
+    // Allocate the tranlate fragment array
+    tfragN = fragment_count(presetH);
+    tfragA = mem::allocZ<tfrag_t>(tfragN);
+
+    // Get the locations of the current fragments
+    for(unsigned i=0; i<tfragN; ++i, src_frag=src_frag->link)
+    {
+      const perf_score::event_t* e;
+      unsigned src_beg_loc = src_frag->endLoc - 1;
+      unsigned src_end_loc = src_frag->endLoc;
+    
+      // Get event for begin location.
+      if((e = loc_to_event(pianoScoreH, src_beg_loc )) == nullptr )
+      {
+        rc = cwLogError(kInvalidStateRC,"The beg-loc %i for fragment was not found in the score.",src_beg_loc);
+        goto errLabel;
+      }
+
+      loc_to_pitch_context(pianoScoreH,tfragA[i].begLoc.preNote,tfragA[i].begLoc.postNote,kNoteN);
+
+      tfragA[i].begLoc.loc         = src_beg_loc;
+      tfragA[i].begLoc.pitch       = e->d0;
+      tfragA[i].begLoc.barNumb     = e->meas;
+      tfragA[i].begLoc.barPitchIdx = e->barPitchIdx;
+      tfragA[i].begLoc.hash        = score_parse::form_hash(score_parse::kNoteOnTId, e->meas, e->d0, e->barPitchIdx );
+
+      //printf("Beg: loc:%i bar:%i bpi:%i p:%i : ",src_beg_loc,e->meas,e->barPitchIdx,e->d0);
+      
+      // Get event for end location.
+      if((e = loc_to_event(pianoScoreH, src_end_loc )) == nullptr )
+      {
+        rc = cwLogError(kInvalidStateRC,"The end-loc %i for fragment was not found in the score.",src_end_loc);
+        goto errLabel;
+      }
+
+      loc_to_pitch_context(pianoScoreH,tfragA[i].endLoc.preNote,tfragA[i].endLoc.postNote,kNoteN);
+
+      tfragA[i].endLoc.loc         = src_end_loc;
+      tfragA[i].endLoc.pitch       = e->d0;
+      tfragA[i].endLoc.barNumb     = e->meas;
+      tfragA[i].endLoc.barPitchIdx = e->barPitchIdx;
+      tfragA[i].endLoc.hash        = score_parse::form_hash(score_parse::kNoteOnTId, e->meas, e->d0, e->barPitchIdx );
+
+      //printf("End: loc:%i bar:%i bpi:%i p:%i\n",src_end_loc,e->meas,e->barPitchIdx,e->d0);      
+    }
+
+    // Create dynamic table.
+    if((rc = dyn_ref_tbl::create(dynTblH,dynTblNode)) != kOkRC )
+    {
+      rc = cwLogError(rc,"Dynamic table create failed.");
+      goto errLabel;
+    }
+
+    // Create score parser.
+    if((rc = score_parse::create( scoreParseH, new_score_fname, srate, dynTblH )) != kOkRC )
+    {
+      rc = cwLogError(rc,"Score parser create failed.");
+      goto errLabel;
+    }
+    
+    // Create sfscore.
+    if((rc = sfscore::create(scoreH,scoreParseH)) != kOkRC )
+    {
+      rc = cwLogError(rc,"sfscore create failed.");
+      goto errLabel;
+    }
+
+    for(unsigned i=0; i<tfragN; ++i)
+    {
+      
+    }
+  }
+  
+ errLabel:
+  destroy(dynTblH);
+  destroy(scoreParseH);
+  destroy(scoreH);
+  destroy(pianoScoreH);
+  destroy(presetH);
+  
+  mem::release(tfragA);
+  
   return rc;
 }
