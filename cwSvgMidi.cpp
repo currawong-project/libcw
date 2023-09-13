@@ -290,17 +290,17 @@ namespace cw
     rc_t _load_from_piano_score( midi_state::handle_t msH, const char* piano_score_fname )
     {
       rc_t            rc = kOkRC;
-      score::handle_t scH;
+      perf_score::handle_t scH;
       unsigned n = 0;
       
-      if((rc = score::create( scH, piano_score_fname )) != kOkRC )
+      if((rc = perf_score::create( scH, piano_score_fname )) != kOkRC )
       {
         rc = cwLogError(rc,"The piano score load failed.");
         goto errLabel;
       }
       else
       {
-        const score::event_t* e = base_event(scH);
+        const perf_score::event_t* e = base_event(scH);
     
         for(; e!=nullptr; e=e->link)
         {
