@@ -23,8 +23,10 @@ cw::rc_t cw::score_test::test( const object_t* cfg )
   const object_t*       sftrackNode     = nullptr;
   bool                  parse_fl        = false;
   bool                  parse_report_fl = false;
+  bool                  parse_warn_fl   = false;
   bool                  score_fl        = false;
   bool                  score_report_fl = false;
+  bool                  score_warn_fl   = false;
   bool                  match_fl        = false;
   bool                  track_fl        = false;
   double                srate           = 0;
@@ -41,8 +43,10 @@ cw::rc_t cw::score_test::test( const object_t* cfg )
                       "sftrack", sftrackNode,
                       "parse_fl", parse_fl,
                       "parse_report_fl", parse_report_fl,
+                      "parse_warn_fl", parse_warn_fl,
                       "score_fl", score_fl,
                       "score_report_fl", score_report_fl,
+                      "score_warn_fl", score_warn_fl,
                       "match_fl", match_fl,
                       "track_fl", track_fl)) != kOkRC )
   {
@@ -61,7 +65,7 @@ cw::rc_t cw::score_test::test( const object_t* cfg )
   if( parse_fl )
   {
     // create the score_parse object
-    if((rc = score_parse::create(spH,cm_score_fname,srate,dynRefH)) != kOkRC )
+    if((rc = score_parse::create(spH,cm_score_fname,srate,dynRefH,parse_warn_fl)) != kOkRC )
     {
       rc = cwLogError(rc,"Score parse failed on '%s'.",cwStringNullGuard(cm_score_fname));
       goto errLabel;
