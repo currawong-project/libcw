@@ -67,17 +67,17 @@ libcwSRC += src/libcw/cwIoMidiRecordPlay.cpp  src/libcw/cwIoAudioRecordPlay.cpp 
 libcwHDR += src/libcw/cwIoPresetSelApp.h     src/libcw/cwPianoScore.h    src/libcw/cwPresetSel.h   src/libcw/cwVelTableTuner.h
 libcwSRC += src/libcw/cwIoPresetSelApp.cpp   src/libcw/cwPianoScore.cpp  src/libcw/cwPresetSel.cpp src/libcw/cwVelTableTuner.cpp
 
-libcwHDR +=   src/libcw/cwScoreFollower.h   
-libcwSRC +=   src/libcw/cwScoreFollower.cpp 
+libcwHDR += src/libcw/cwDynRefTbl.h   src/libcw/cwScoreParse.h   src/libcw/cwSfScore.h   
+libcwSRC += src/libcw/cwDynRefTbl.cpp src/libcw/cwScoreParse.cpp src/libcw/cwSfScore.cpp
 
-libcwHDR += src/libcw/cwDynRefTbl.h   src/libcw/cwScoreParse.h   src/libcw/cwSfScore.h   src/libcw/cwSfMatch.h   src/libcw/cwScoreTest.h
-libcwSRC += src/libcw/cwDynRefTbl.cpp src/libcw/cwScoreParse.cpp src/libcw/cwSfScore.cpp src/libcw/cwSfMatch.cpp src/libcw/cwScoreTest.cpp
+libcwHDR += src/libcw/cwSfMatch.h   src/libcw/cwSfTrack.h   src/libcw/cwScoreTest.h
+libcwSRC += src/libcw/cwSfMatch.cpp src/libcw/cwSfTrack.cpp src/libcw/cwScoreTest.cpp
 
-libcwHDR += src/libcw/cwSfTrack.h
-libcwSRC += src/libcw/cwSfTrack.cpp
+libcwHDR +=   src/libcw/cwScoreFollowerPerf.h src/libcw/cwScoreFollower.h   src/libcw/cwPerfMeas.h    src/libcw/cwScoreFollowTest.h
+libcwSRC +=                                   src/libcw/cwScoreFollower.cpp src/libcw/cwPerfMeas.cpp  src/libcw/cwScoreFollowTest.cpp
 
-libcwHDR += src/libcw/cwScoreFollowerPerf.h src/libcw/cwMidiState.h   src/libcw/cwSvgMidi.h   src/libcw/cwSvgScoreFollow.h
-libcwSRC +=                                 src/libcw/cwMidiState.cpp src/libcw/cwSvgMidi.cpp src/libcw/cwSvgScoreFollow.cpp
+libcwHDR += src/libcw/cwMidiState.h   src/libcw/cwSvgMidi.h   src/libcw/cwSvgScoreFollow.h
+libcwSRC += src/libcw/cwMidiState.cpp src/libcw/cwSvgMidi.cpp src/libcw/cwSvgScoreFollow.cpp
 
 
 
