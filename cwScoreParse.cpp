@@ -635,7 +635,7 @@ namespace cw
       set_t*   cur_set    = nullptr;
       unsigned setId      = 0;
       unsigned setNoteIdx = 0;
-      unsigned endLoc     = kInvalidIdx;
+      unsigned endLocId     = kInvalidIdx;
         
       for(unsigned vi=0; vi<kVarCnt; ++vi)
         for(unsigned ei=0; ei<p->eventN; ++ei)
@@ -647,15 +647,16 @@ namespace cw
           // then the set is complete
           // (this handles the case where there are multiple events
           //  on the same end set location)
-          if( endLoc != kInvalidIdx && (e->eLocId > endLoc || ei==p->eventN-1) )
+          if( endLocId != kInvalidIdx && (e->eLocId > endLocId || ei==p->eventN-1) )
           {
             cur_set->eventA  = mem::allocZ<event_t*>(cur_set->eventN);
             setId           += 1;
             setNoteIdx       = 0;
             cur_set          = nullptr;
-            endLoc           = kInvalidIdx;
+            endLocId         = kInvalidIdx;
           }
-            
+
+          // if this event 
           if( e->varA[vi].flags != 0 )
           {
             
@@ -667,11 +668,11 @@ namespace cw
             cur_set->eventN        += 1;
             
             if( cwIsFlag(e->varA[vi].flags,kSetEndVarFl) )
-              endLoc = e->eLocId;              
+              endLocId = e->eLocId;              
           }
         }
     }
-    
+
     void _fill_sets( score_parse_t* p )
     {
       for(unsigned ei=0; ei<p->eventN; ++ei)
@@ -687,6 +688,44 @@ namespace cw
       
     }
 
+    unsigned _set_count( score_parse_t* p )
+    {
+      unsigned n = 0;
+      for(set_t* s = p->begSetL; s!=nullptr; s=s->link)
+        ++n;
+      return n;      
+    }
+        
+    void _order_set_ids_by_time( score_parse_t* p )
+    {
+      typedef struct set_order_str
+      {
+        unsigned beg_evt_idx;
+        set_t*   set;
+      } set_order_t;
+      
+      unsigned     setAllocN = _set_count(p);
+      unsigned     setN      = 0;
+      set_order_t* setA      = mem::allocZ<set_order_t>(setAllocN);
+      
+      for(set_t* s=p->begSetL; s!=nullptr; s=s->link)
+      {
+        if( s->eventN > 0 )
+        {
+          setA[setN].beg_evt_idx = s->eventA[0]->index;
+          setA[setN].set         = s;
+          setN += 1;
+        }
+      }
+
+      std::sort( setA, setA+setN, [](auto a, auto b){return a.beg_evt_idx<b.beg_evt_idx;});
+
+      unsigned set_id = 0;
+      std::for_each( setA, setA+setN, [&](auto a){ a.set->id = set_id++;  });
+
+      mem::release(setA);
+    }
+    
     rc_t _validate_sets( score_parse_t* p )
     {
       rc_t rc = kOkRC;
@@ -1037,6 +1076,8 @@ cw::rc_t cw::score_parse::create( handle_t& hRef, const char* fname, double srat
 
   _fill_sets(p);
 
+  _order_set_ids_by_time( p );
+  
   if((rc = _validate_sets(p)) != kOkRC )
     goto errLabel;
   
@@ -1115,10 +1156,7 @@ const cw::score_parse::section_t* cw::score_parse::section_list( handle_t h )
 unsigned cw::score_parse::set_count( handle_t h )
 {
   score_parse_t* p = _handleToPtr(h);
-  unsigned n = 0;
-  for(set_t* s = p->begSetL; s!=nullptr; s=s->link)
-    ++n;
-  return n;
+  return _set_count(p);
 }
 
 const cw::score_parse::set_t* cw::score_parse::set_list( handle_t h )
