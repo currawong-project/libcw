@@ -746,10 +746,10 @@ cw::object_t* cw::newObject( const char* v, object_t* parent)
 { return _objCreateValueNode<const char*>( parent, v ); }
 
 cw::object_t* cw::newDictObject( object_t* parent )
-{ return  _objAllocate( kDictTId, parent); }
+{ return _objAppendRightMostNode(parent,  _objAllocate( kDictTId, parent) ); }
     
 cw::object_t* cw::newListObject( object_t* parent )
-{ return  _objAllocate( kListTId, parent ); }
+{ return _objAppendRightMostNode(parent,  _objAllocate( kListTId, parent) ); }
 
 cw::object_t* cw::newPairObject( const char* label, object_t* value, object_t* parent)
 {
