@@ -13,10 +13,10 @@ namespace cw
   {
     typedef struct dyn_ref_tbl_str
     {
-      dyn_ref_t* dynRefA;
-      unsigned   dynRefN;
-      unsigned*   levelLookupA;
-      unsigned   levelLookupN;
+      dyn_ref_t* dynRefA;       // dynRefA[ dynRefN ] one entry per dyn. level
+      unsigned   dynRefN;       //
+      unsigned*  levelLookupA;  // levelLoopA[ levelLookupN ] - one entry per velocity value (0-127)
+      unsigned   levelLookupN;  // levelLooupN = kMidiVelCnt
       
     } dyn_ref_tbl_t;
 
@@ -31,6 +31,7 @@ namespace cw
             
       std::for_each(p->dynRefA, p->dynRefA+p->dynRefN, relse );
       mem::release(p->dynRefA);
+      mem::release(p->levelLookupA);
       mem::release(p);
       return rc;
     }
@@ -39,13 +40,15 @@ namespace cw
     {
 
       for(midi::byte_t vel=0; vel<midi::kMidiVelCnt; ++vel)
-        for(unsigned i=0; i<p->levelLookupN; ++i)
+        for(unsigned i=0; i<p->dynRefN; ++i)
           if( p->dynRefA[i].velocity >= vel )
           {
             midi::byte_t d0 = p->dynRefA[i].velocity - vel;          
             midi::byte_t d1 = i>0 ? (vel -  p->dynRefA[i-1].velocity) : d0;          
             unsigned     j = d0 <= d1 ? i : i-1;
-          
+
+            assert( vel <= p->levelLookupN );
+            
             p->levelLookupA[vel] = p->dynRefA[j].level;
             break;
           }
