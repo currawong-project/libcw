@@ -960,7 +960,7 @@ cw::rc_t cw::sfscore::destroy( handle_t& hRef )
 void     cw::sfscore::clear_all_performance_data( handle_t h )
 {
   sfscore_t* p  = _handleToPtr(h);
-  std::for_each( p->eventA, p->eventA + p->eventN, [](event_t& e){ e.perfFl=false; e.perfVel=0, e.perfSec=0, e.perfMatchCost=std::numeric_limits<double>::max(); } );
+  std::for_each( p->eventA, p->eventA + p->eventN, [](event_t& e){ e.perfFl=false; e.perfCnt=0; e.perfVel=0, e.perfSec=0, e.perfMatchCost=std::numeric_limits<double>::max(); } );
   std::for_each( p->setA,    p->setA  + p->setN,   [](set_t&   s){ s.perfEventCnt=0; s.perfUpdateCnt=false; } );
 }
 
@@ -997,7 +997,8 @@ cw::rc_t cw::sfscore::set_perf( handle_t h, unsigned event_idx, double secs, uin
       }
     }
   }
-  
+
+  e->perfCnt     += 1;
   e->perfFl       = true;
   e->perfVel      = vel;
   e->perfSec      = secs;

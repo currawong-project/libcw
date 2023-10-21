@@ -53,14 +53,16 @@ namespace cw
       unsigned     varN;         // Length of varA[]
 
       unsigned     bpm;           // beats per minute
-      double       bpm_rval; 
+      double       bpm_rval;      // 
       double       relTempo;      // relative tempo (1=min tempo)
 
       bool         perfFl;        // has this event been performed
+      unsigned     perfCnt;       // count of time this event was performed (if perfCnt > 1 then the event was duplicated during performance)
       double       perfSec;       // performance event time
       uint8_t      perfVel;       // performance event velocity
       unsigned     perfDynLevel;  // performance dynamic level
       double       perfMatchCost; // performance match cost (or DBL_MAX if not valid)
+      
       
     } event_t;
 
