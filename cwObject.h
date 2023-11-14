@@ -88,6 +88,9 @@ namespace cw
   } objType_t;
 
 
+  struct object_str* newPairObject( const char* label, struct object_str* v, struct object_str* parent );
+  struct object_str* newListObject( struct object_str* parent );
+
   typedef struct object_str
   {
     objType_t*         type    = nullptr;
@@ -245,6 +248,40 @@ namespace cw
       struct object_str* insert_pair( const char* label, const T& v )
     {  return newPairObject(label, v, this); }
 
+
+    rc_t _putv()  { return kOkRC; } 
+
+    // getv("label0",v0,"label1",v1, ... )
+    template< typename T0, typename T1, typename... ARGS >
+       rc_t _putv( T0 label, const T1& val, ARGS&&... args ) 
+    {
+
+      insert_pair(label,val);
+      
+      _putv(std::forward<ARGS>(args)...); // ... recurse to find next label/value pair
+
+      return kOkRC;
+    }
+
+    
+    // getv("label0",v0,"label1",v1, ... )
+    template< typename T0, typename T1, typename... ARGS >
+      rc_t putv( T0 label, const T1& val, ARGS&&... args )
+    { return _putv(label,val,args...); }
+
+    
+    template< typename T >
+    struct object_str* put_numeric_list( const char* label, const T* v, unsigned vN )
+    {
+      struct object_str* pair = newPairObject(label,newListObject(nullptr),this)->parent;
+      struct object_str* list = pair->pair_value();
+      for(unsigned i=0; i<vN; ++i)
+        newObject(v[i],list);
+
+      return pair;
+    }
+
+    
 
     template< typename T>
     rc_t set( const char* label, const T& value )

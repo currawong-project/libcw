@@ -3,6 +3,7 @@
 #include "cwCommonImpl.h"
 #include "cwMem.h"
 #include "cwText.h"
+#include "cwFile.h"
 #include "cwObject.h"
 #include "cwMidi.h"
 #include "cwDynRefTbl.h"
@@ -35,30 +36,49 @@ namespace cw
     struct calc_str;
     
     typedef struct section_str
-    {
-      
+    {      
       const struct section_str* prev_section; // section prior to this section
       const sfscore::section_t* section;      // score section this section_t represents
       struct calc_str*          calc;         // calc record for this section
       bool                      triggeredFl;  // This section has already been triggered
     } section_t;
+
+    typedef struct meas_info_str
+    {
+      unsigned              missEvtN;      // count of skipped events
+      unsigned              missLocN;      // count of missed locations
+      unsigned              transposeLocN; // count of transposed locations
+      unsigned              interpLocN;    // count of interpolated locations
+
+      unsigned vN;  // vN=locN for even,tempo vN=evtN for dyn
+      
+      double*               locSecV;       // locSecV[vN]
+      unsigned*             locSecNV;      // locSecNV[vN] count of performed and interpolated notes (interpolated notes will have a False in the associated statusV[] location)
+      double*               dSecV;         // dSecV[vN]
+      bool*                 statusV;       // statusV[vN] - true if this location was performed by at least one note
+      struct meas_info_str* link;
+    } meas_info_t;
+
+    struct loc_str;
     
     typedef struct set_str
     {
-      const sfscore::set_t* set;   // score set this set_t represents
+      struct loc_str*       loc;       // end location for this set
+      const sfscore::set_t* set;       // score set this set_t represents
+      meas_info_t*          meas_info; // 
       unsigned              lastPerfUpdateCnt; 
-      double                value; // The value associated with this set. DBL_MAX on initialization
-      struct calc_str*      calc;  // calc record to which this set belongs
-      struct set_str*       alink; // perf_meas_t* links
-      struct set_str*       slink; // loc_t.setL links
-      struct set_str*       clink; // calc_t.setL links
+      double                value;     // The value associated with this set. DBL_MAX on initialization
+      struct calc_str*      calc;      // calc record to which this set belongs
+      struct set_str*       alink;     // perf_meas_t* links
+      struct set_str*       slink;     // loc_t.setL links
+      struct set_str*       clink;     // calc_t.setL links
     } set_t;
 
     // The 'calc_t' record hold pointers to all the sets assigned to a given section.
     // The record is different from a section record because it has a location assignment
     // prior to the section which it is represents. This allows all the sets for
     // a given section to be evaluated prior to the section being triggered.
-    // The 'calc' record is assigned to the location of the last event in it's latest set. 
+    // The 'calc' record is assigned to the location of the last event in it's last set. 
     typedef struct calc_str
     {
       set_t*     setL;             // list of sets that this calc is applied to (links via set_t.clink)
@@ -66,7 +86,7 @@ namespace cw
       double     value[ kValCnt ]; // Aggregate var values for this section
     } calc_t;
     
-    typedef struct
+    typedef struct loc_str
     {
       unsigned   locId;         // oloc location id and the index of this record into p->locA[]
       section_t* section;       // section that begins on this location
@@ -104,6 +124,22 @@ namespace cw
       
       return locId;
     }
+
+    void _destroy_meas_info_records( set_t* set )
+    {
+      meas_info_t* m = set->meas_info;
+      while( m!=nullptr )
+      {
+        meas_info_t* m0 = m->link;
+        mem::release(m->locSecV);
+        mem::release(m->locSecNV);
+        mem::release(m->dSecV);
+        mem::release(m->statusV);
+        mem::release(m);
+        m = m0;
+      }
+      
+    }
     
     rc_t _destroy( perf_meas_t* p )
     {
@@ -115,6 +151,9 @@ namespace cw
         while(s!=nullptr)
         {
           set_t* s0 = s->slink;
+          
+          _destroy_meas_info_records(s);
+          
           mem::release(s);
           s = s0;
         }
@@ -136,6 +175,29 @@ namespace cw
 
       cwLogError(kInvalidIdRC,"The setId '%i' is not valid.", setId );
       return nullptr;
+    }
+
+    meas_info_t* _create_meas_info_record( set_t* set )
+    {
+      meas_info_t* m = mem::allocZ<meas_info_t>();
+      m->vN          = set->set->varId==score_parse::kDynVarIdx ? set->set->evtCnt :  set->set->locN;
+      m->locSecV     = mem::allocZ<double>( m->vN );
+      m->locSecNV    = mem::allocZ<unsigned>( m->vN );
+      m->dSecV       = mem::allocZ<double>( m->vN );
+      m->statusV     = mem::allocZ<bool>( m->vN );
+      
+      if( set->meas_info == nullptr )
+        set->meas_info = m;
+      else
+      {
+        meas_info_t* m0 = set->meas_info;
+        while( m0->link != nullptr )
+          m0 = m0->link;
+
+        m0->link = m;
+      }
+
+      return m;
     }
     
     calc_t* _create_calc_record( perf_meas_t* p, sfscore::section_t* section )
@@ -259,24 +321,28 @@ namespace cw
         const sfscore::event_t* e = set->set->evtArray[i];
         if( e->perfFl )
         {
-          double d = e->dynLevel>e->perfDynLevel ? e->dynLevel - e->perfDynLevel : e->perfDynLevel - e->dynLevel;
-          sum += d * d;
+          sum += e->dynLevel>e->perfDynLevel ? e->dynLevel - e->perfDynLevel : e->perfDynLevel - e->dynLevel;
           n += 1;
         }
       }
 
-      set->value = n==0 ? 0 : sqrt(sum/n);
+      set->value = n==0 ? 0 : sum/n;
     }
 
     // Calc chord onset time as the avg. onset over of all notes in the chord.
-    rc_t _calc_loc_sec( const sfscore::set_t* set, double* locV, unsigned* locNV, unsigned& evtSkipN_Ref )
+    rc_t _calc_loc_sec( set_t* pm_set  )
     {
       rc_t rc = kOkRC;
 
-      evtSkipN_Ref = 0;
+      const sfscore::set_t* set = pm_set->set;
+      meas_info_t*          m   = pm_set->meas_info;
       
-      vop::zero(locV,  set->locN);
-      vop::zero(locNV, set->locN);
+      m->missEvtN = 0;
+
+      assert(  set->locN == m->vN );
+      
+      vop::zero(m->locSecV,  set->locN);
+      vop::zero(m->locSecNV, set->locN);
       
       // Get the time for each location by taking the mean
       // of all events on the same location.
@@ -287,7 +353,7 @@ namespace cw
       {
         if( !set->evtArray[i]->perfFl )
         {
-          ++evtSkipN_Ref;
+          ++m->missEvtN;
         }
         else
         {        
@@ -303,94 +369,105 @@ namespace cw
             goto errLabel;
           }
 
-          locV[ li] += set->evtArray[i]->perfSec;
-          locNV[li] += 1;
+          m->locSecV[ li] += set->evtArray[i]->perfSec;
+          m->locSecNV[li] += 1;
         }
       }
 
       // Calc. mean.
       for(unsigned i=0; i<set->locN; ++i)
-        if( locNV[i] > 0 )
-          locV[i] /= locNV[i];
+        if( m->locSecNV[i] > 0 )
+          m->locSecV[i] /= m->locSecNV[i];
       
     errLabel:
       return rc;
     }
 
-    void _interpolate_time_of_missing_notes( perf_meas_t* p, const sfscore::set_t* set, double* locV, unsigned* locNV, bool* statusV, unsigned& bi_ref, unsigned& ei_ref, unsigned& insertN_ref )
+    void _interpolate_time_of_missing_notes( perf_meas_t* p, set_t* pm_set, unsigned& bi_ref, unsigned& ei_ref )
     {
       bi_ref      = kInvalidIdx;
       ei_ref      = kInvalidIdx;
-      insertN_ref = 0;
       
+      const sfscore::set_t* set = pm_set->set;
+      meas_info_t* m = pm_set->meas_info;
       unsigned missN = 0;
       unsigned ei    = kInvalidIdx;
       unsigned bi    = kInvalidIdx;
+
+      assert(  set->locN == m->vN );
       
-      vop::fill(statusV, set->locN, false);
+      vop::fill(m->statusV, set->locN, false);
    
       // for each location
       for(unsigned i=0; i<set->locN; ++i)
       {
-        // if this location was missed or out of time order
-        if( locNV[i] == 0 || (ei != kInvalidIdx && (locV[i]-locV[ei])<0)  )
+        // if this location was missed 
+        if( m->locSecNV[i] == 0   )
         {
           missN += 1;
+          m->missLocN += 1;
+          continue;
         }
-        else
-        {
-          // if there are unplayed notes between this note
-          // and the last played note at 'ei' then 
-          // fill in the missing note times by splitting
-          // the gap time evenly - note that this will
-          // bias the evenness std to be lower than it
-          // should be.
-          if( missN > 0 && ei!=kInvalidIdx )
-          {            
-            double dsec = (locV[i] - locV[ei])/(missN+1);
-            for(unsigned j=ei+1; j<i; ++j)
-            {
-              locV[j] = locV[j-1] + dsec;
-              insertN_ref += 1;
-            }
-          }
 
-          if( bi == kInvalidIdx )
-            bi = i;
+        // if this location was not in time order
+        if( ei != kInvalidIdx && (m->locSecV[i]-m->locSecV[ei])<0 )
+        {
+          missN += 1;
+          m->transposeLocN += 1;
+          continue;
+        }
+
+        
+        // if there are unplayed notes between this note
+        // and the last played note at 'ei' then 
+        // fill in the missing note times by splitting
+        // the gap time evenly - note that this will
+        // bias the evenness std to be lower than it
+        // should be.
+        if( missN > 0 && ei!=kInvalidIdx )
+        {            
+          double dsec = (m->locSecV[i] - m->locSecV[ei])/(missN+1);
+          for(unsigned j=ei+1; j<i; ++j)
+          {
+            m->locSecV[j] = m->locSecV[j-1] + dsec;
+            m->interpLocN += 1;
+          }
+        }
+
+        if( bi == kInvalidIdx )
+          bi = i;
           
-          statusV[i] = true;
-          missN = 0;
-          ei    = i;  // ei=last valid location in locV[]
-        }                
+        m->statusV[i] = true;
+        missN = 0;
+        ei    = i;  // ei=last valid location in m->locSecV[]
+        
       }
       
       bi_ref = bi;
       ei_ref = ei;
+
+      //vop::print( m->locSecV,  set->locN, "%f ", "locSecV:" );
+      //vop::print( m->locSecNV, set->locN, "%i ", "locSecN:" );
+      //vop::print( m->statusV,  set->locN, "%i ", "ok:");
+        
     }
 
     rc_t _eval_one_even_set(perf_meas_t* p, set_t* pm_set )
     {
-      rc_t rc = kOkRC;
-      
-      const sfscore::set_t* set = pm_set->set;
-      
-      double   locV[    set->locN ]; 
-      unsigned locNV[   set->locN ];
-      double   stdV[    set->locN ];
-      bool     statusV[ set->locN ];
-      
-      unsigned bi       = kInvalidIdx;
-      unsigned ei       = kInvalidIdx;
-      unsigned insertN  = 0;
-      unsigned evtSkipN = 0;
-      unsigned locSkipN = 0;
+      rc_t                  rc  = kOkRC;      
+      const sfscore::set_t* set = pm_set->set;      
+      unsigned              bi  = kInvalidIdx;
+      unsigned              ei  = kInvalidIdx;
+      meas_info_t*          m   = pm_set->meas_info;
 
-      if((rc = _calc_loc_sec(set,locV,locNV,evtSkipN)) != kOkRC )
+      assert(  set->locN == m->vN );
+      
+      if((rc = _calc_loc_sec(pm_set)) != kOkRC )
         goto errLabel;
 
-      _interpolate_time_of_missing_notes(p, set, locV, locNV, statusV, bi, ei, insertN );
+      _interpolate_time_of_missing_notes(p, pm_set, bi, ei );
       
-      vop::zero(stdV,     set->locN);
+      vop::zero(m->dSecV, set->locN);
 
       // Calc the std. deviation of the note delta times
       // of all notes [bi:ei].  Note that if the notes
@@ -404,17 +481,13 @@ namespace cw
         // calc the delta time for each time in locV[]
         unsigned stdN = 0;
         for(unsigned i=bi+1; i<=ei; ++i)
-          stdV[stdN++] = locV[i] - locV[i-1];
+          m->dSecV[stdN++] = m->locSecV[i] - m->locSecV[i-1];
         
         
-        printf("Skipped evt:%i Skipped locs:%i Insert:%i bi:%i ei:%i final N:%i\n",evtSkipN,locSkipN,insertN,bi,ei,stdN);
-        vop::print( locV,  set->locN, "%f ", "locV:" );
-        vop::print( locNV, set->locN, "%i ", "locN:" );
-        vop::print( stdV, stdN, "%f ", "std:" );
-        vop::print( statusV, set->locN, "%i ", "ok:");
-
+        //printf("Even: skipped evt:%i skipped locs:%i interp:%i bi:%i ei:%i final N:%i\n",m->missEvtN,m->missLocN,m->interpLocN,bi,ei,stdN);
+        //vop::print( m->dSecV, stdN, "%f ", "std:" );
             
-        pm_set->value = vop::std(stdV, stdN );
+        pm_set->value = vop::std(m->dSecV, stdN );
       }
 
     errLabel:
@@ -422,9 +495,42 @@ namespace cw
     }
 
     
-    void _eval_one_tempo_set(perf_meas_t* p, set_t* set )
+    rc_t _eval_one_tempo_set(perf_meas_t* p, set_t* pm_set )
     {
-      set->value = 3.0;
+      rc_t                  rc  = kOkRC;      
+      const sfscore::set_t* set = pm_set->set;      
+      meas_info_t*          m   = pm_set->meas_info;
+      unsigned              bi  = kInvalidIdx;
+      unsigned              ei  = kInvalidIdx;
+
+      assert(  set->locN == m->vN );
+      
+      if((rc = _calc_loc_sec(pm_set)) != kOkRC )
+        goto errLabel;
+
+      _interpolate_time_of_missing_notes(p, pm_set, bi, ei );
+      
+      vop::zero(m->dSecV, set->locN);
+
+      if( (ei - bi)+1 > 2 )
+      {
+        // calc the delta time for each time in locV[]
+        unsigned dsecN = 0;
+        for(unsigned i=bi+1; i<=ei; ++i)
+          m->dSecV[dsecN++] = m->locSecV[i] - m->locSecV[i-1];
+                
+        //printf("Tempo: skipped evt:%i skipped locs:%i interp:%i bi:%i ei:%i final N:%i\n",m->missEvtN,m->missLocN,m->interpLocN,bi,ei,dsecN);
+        //vop::print( m->dSecV, dsecN, "%f ", "dsecV:" );
+
+        double sec_per_beat = vop::mean(m->dSecV, dsecN );
+        double bpm = 60.0/sec_per_beat;
+        
+        
+        pm_set->value = bpm;
+      }
+
+    errLabel:
+      return rc;      
     }
 
     void _aggregate_dynamic_meas_set_values( perf_meas_t* p, calc_t* calc )
@@ -442,7 +548,7 @@ namespace cw
       calc->value[ kTempoValIdx ] = _calc_set_list_mean( calc->setL, score_parse::kTempoVarIdx );
     }
 
-    void _eval_cost_calc( perf_meas_t* p, calc_t* calc )
+    void _aggregate_cost_meas_set_values( perf_meas_t* p, calc_t* calc )
     {
       if( calc->section->prev_section != nullptr )
       {
@@ -462,7 +568,7 @@ namespace cw
             }
         
         
-        calc->value[ kMatchCostValIdx ] = sum / n;
+        calc->value[ kMatchCostValIdx ] = n==0 ? 0 : sum / n;
       }
     }
 
@@ -535,6 +641,7 @@ namespace cw
         _aggregate_dynamic_meas_set_values(p,calc);
         _aggregate_even_meas_set_values(p,calc);
         _aggregate_tempo_meas_set_values(p,calc);
+        _aggregate_cost_meas_set_values(p,calc);
       }
       return rc;
     }
@@ -586,6 +693,42 @@ namespace cw
     errLabel:
       return rc;
     }
+
+    template< typename T >
+    rc_t _write_result_vector(file::handle_t fH, section_t* section, set_t* set, const char* opLabel, const char* fmt, const T* vect, unsigned locN)
+    {
+      rc_t rc;
+      
+      if((rc = file::printf(fH,"%s,%i,%s,%s,%i,",
+                            section->section->label,
+                            set==nullptr ? -1 : set->set->id,
+                            set==nullptr ? "" : score_parse::var_index_to_char(set->set->varId),
+                            opLabel,
+                            locN)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Perf. measure vector header write failed.");
+        goto errLabel;
+      }
+
+      for(const T* v=vect; v<vect+locN; ++v)
+        if((rc = file::printf(fH,fmt,*v)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Perf. measure vector write failed.");
+          goto errLabel;
+        }
+
+      if((rc = file::printf(fH,"\n")) != kOkRC )
+      {
+          rc = cwLogError(rc,"Perf. measure vector EOL failed.");
+          goto errLabel;
+      }
+      
+    errLabel:
+      return rc;      
+    }
+    
+    double dbl_max_to_neg_one( double x )
+    { return x==std::numeric_limits<double>::max() ? -1.0 : x; }
     
   }
 }
@@ -620,11 +763,14 @@ cw::rc_t cw::perf_meas::create( handle_t& hRef, sfscore::handle_t scoreH )
     {
       // ... link the sets onto this location record
       set_t* set      = mem::allocZ<set_t>();
-      set->set        = s;
+      set->loc        = p->locA + i;
+      set->set        = s;      
       set->slink      = p->locA[i].setL;
-      p->locA[i].setL = set;
+      p->locA[i].setL = set;      
       set->alink      = p->setL;
       p->setL         = set;
+
+      _create_meas_info_record(set);
     }
     
     // if this location is the start of a new section
@@ -802,4 +948,150 @@ void cw::perf_meas::report( handle_t h )
       
   }
 }
+
+
+cw::rc_t cw::perf_meas::write_result_json( handle_t h,
+                                           const char* player_name,
+                                           const char* perf_date,
+                                           unsigned perf_take_numb,
+                                           const char* out_fname )
+{
+  rc_t         rc       = kOkRC;
+  perf_meas_t* p        = _handleToPtr(h);
+  object_t*    root     = newDictObject();
+  object_t*    sectionL = root->insert_pair("sectionL",newListObject());
+  
+  for(loc_t* loc=p->locA; loc<p->locA+p->locN; ++loc)    
+    if( loc->section != nullptr && loc->section->calc != nullptr )
+    {
+      object_t*     sect   = newDictObject(sectionL);
+      const double* valueV = loc->section->calc->value;
+      object_t*     setL   = newListObject();
+       
+      sect->putv("label",loc->section->section->label,
+                 "player_name",player_name,
+                 "perf_date",perf_date,
+                 "perf_take_numb",perf_take_numb,
+                 "locId",loc->locId,
+                 "dyn",dbl_max_to_neg_one(valueV[kDynValIdx]),
+                 "even",dbl_max_to_neg_one(valueV[kEvenValIdx]),
+                 "tempo",dbl_max_to_neg_one(valueV[kTempoValIdx]),
+                 "cost",dbl_max_to_neg_one(valueV[kMatchCostValIdx]),
+                 "setL",setL);
+
+      for(set_t* set=loc->section->calc->setL; set!=nullptr; set=set->clink)
+      {
+        object_t* set_o = newDictObject(setL);
+        
+        set_o->putv("type",score_parse::var_index_to_char(set->set->varId),
+                    "setId",set->set->id,
+                    "locId",set->loc->locId,
+                    "value",dbl_max_to_neg_one(set->value),
+                    "missEvtN",set->meas_info->missEvtN,
+                    "missLocN",set->meas_info->missLocN,
+                    "transposeLocN",set->meas_info->transposeLocN,
+                    "interpLocN",set->meas_info->interpLocN);
+
+        set_o->put_numeric_list("locSecV",  set->meas_info->locSecV,  set->meas_info->vN );
+        set_o->put_numeric_list("locSecNV", set->meas_info->locSecNV, set->meas_info->vN );
+        set_o->put_numeric_list("dSecV",    set->meas_info->dSecV,    set->meas_info->vN );
+        set_o->put_numeric_list("statusV",  set->meas_info->statusV,  set->meas_info->vN );
+
+      }
+    }
+  
+  if((rc = objectToFile(out_fname,root)) != kOkRC )
+  {
+    rc = cwLogError(rc,"Perf. measurement JSON file write failed.");
+    goto errLabel;
+  }
+      
+ errLabel:
+  root->free();
+
+  return rc;          
+}
+
+cw::rc_t cw::perf_meas::write_result_csv( handle_t h, const char* out_fname )
+{
+  rc_t rc = kOkRC;
+  perf_meas_t* p = _handleToPtr(h);
+  file::handle_t fH;
+
+  if((rc = file::open(fH,out_fname, file::kWriteFl)) != kOkRC )
+  {
+    rc = cwLogError(rc,"Perf. measure result file create failed on '%s'.",cwStringNullGuard(out_fname));
+    goto errLabel;
+  }
+
+  if((rc = file::printf(fH,"section,set,type,op,value,missEvtN,missLocN,transposeLocN,interpLocN\n")) != kOkRC )
+  {
+    rc = cwLogError(rc,"Perf. measure title write failed.");
+    goto errLabel;
+  }
+  
+  for(loc_t* loc=p->locA; loc<p->locA+p->locN; ++loc)    
+    if( loc->section != nullptr && loc->section->calc != nullptr )
+    {
+      if((rc = _write_result_vector(fH,loc->section,nullptr,"section","%f,",loc->section->calc->value,kValCnt)) != kOkRC )
+      {
+          rc = cwLogError(rc,"Perf. measure file write result section header failed.");
+          goto errLabel;          
+      }
+
+      for(set_t* set=loc->section->calc->setL; set!=nullptr; set=set->clink)
+      {
+
+        if((rc = file::printf(fH,"%s,%i,%s,summary,%f,%i,%i,%i,%i\n",
+                              loc->section->section->label,
+                              set->set->id,
+                              score_parse::var_index_to_char(set->set->varId),
+                              set->value != std::numeric_limits<double>::max() ? set->value : 0,
+                              set->meas_info->missEvtN,
+                              set->meas_info->missLocN,
+                              set->meas_info->transposeLocN,
+                              set->meas_info->interpLocN)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Perf. measure file write result failed.");
+          goto errLabel;          
+        }
+
+        if((rc = _write_result_vector(fH,loc->section,set,"locSecV","%f,",set->meas_info->locSecV,set->set->locN)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Perf.measure locSecV[] write result failed.");
+          goto errLabel;
+        }
+
+        if((rc = _write_result_vector(fH,loc->section,set,"locSecNV","%i,",set->meas_info->locSecNV,set->set->locN)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Perf.measure locSecNV[] write result failed.");
+          goto errLabel;
+        }
+
+        if((rc = _write_result_vector(fH,loc->section,set,"dSecV","%f,", set->meas_info->dSecV,set->set->locN)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Perf.measure dSecV[] write result failed.");
+          goto errLabel;
+        }
+
+        if((rc = _write_result_vector(fH,loc->section,set,"statusV","%i,",set->meas_info->statusV,set->set->locN)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Perf.measure status[] write result failed.");
+          goto errLabel;
+        }
+        
+      }
+    }
+
+  if((rc = file::close(fH)) != kOkRC )
+  {
+    rc = cwLogError(rc,"Perf. meas. file close failed.");
+    goto errLabel;
+  }
+  
+ errLabel:
+  return rc;
+    
+}
+
   

@@ -33,7 +33,9 @@ namespace cw
 
     void report( handle_t h );
     
-    
+    rc_t write_result_csv( handle_t h, const char* out_fname );
+
+    rc_t write_result_json( handle_t h, const char* player_name, const char* perf_date, unsigned perf_take_numb, const char* out_fname );
     
     
   }

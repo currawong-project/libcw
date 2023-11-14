@@ -47,6 +47,9 @@ namespace cw
       bool            meas_setup_report_fl;
       
       char*           out_dir;
+
+      bool            write_perf_meas_json_fl;
+      const char*     out_perf_meas_json_fname;
       
       bool            write_svg_file_fl;
       const char*     out_svg_fname;
@@ -93,6 +96,10 @@ namespace cw
                          "meas_setup_report_fl", p->meas_setup_report_fl,
                          
                          "out_dir",             out_dir,
+                         
+                         "write_perf_meas_json_fl",  p->write_perf_meas_json_fl,
+                         "out_perf_meas_json_fname", p->out_perf_meas_json_fname,
+                         
                          "write_svg_file_fl",   p->write_svg_file_fl,
                          "out_svg_fname",       p->out_svg_fname,
                          
@@ -133,17 +140,20 @@ namespace cw
                                  perf_meas::handle_t     perfMeasH,
                                  unsigned                perf_idx )
     {
-      rc_t                           rc          = kOkRC;
-      bool                           pre_test_fl = p->pre_test_fl;
-      bool                           enable_fl   = true;
-      const char*                    perf_label  = nullptr;
-      const char*                    midi_fname  = nullptr;
-      char*                          out_dir     = nullptr;
-      char*                          fname       = nullptr;
-      unsigned                       start_loc   = 0;
-      const object_t*                perf        = nullptr;
-      unsigned                       msgN        = 0;
-      const midi::file::trackMsg_t** msgA        = nullptr;
+      rc_t                           rc             = kOkRC;
+      bool                           pre_test_fl    = p->pre_test_fl;
+      bool                           enable_fl      = true;
+      const char*                    perf_label     = nullptr;
+      const char*                    player_name    = nullptr;
+      const char*                    perf_date      = nullptr;
+      unsigned                       perf_take_numb = kInvalidId;
+      const char*                    midi_fname     = nullptr;
+      char*                          out_dir        = nullptr;
+      char*                          fname          = nullptr;
+      unsigned                       start_loc      = 0;
+      const object_t*                perf           = nullptr;
+      unsigned                       msgN           = 0;
+      const midi::file::trackMsg_t** msgA           = nullptr;
       midi::file::handle_t           mfH;      
 
       // get the perf. record
@@ -156,6 +166,9 @@ namespace cw
       // parse the performance record
       if((rc = perf->getv("label",perf_label,
                           "enable_fl",enable_fl,
+                          "player",player_name,
+                          "perf_date",perf_date,
+                          "take",perf_take_numb,
                           "start_loc", start_loc,
                           "midi_fname", midi_fname)) != kOkRC )
       {
@@ -236,7 +249,7 @@ namespace cw
             pre_test_fl = false;
           }
 
-          printf("%f %li %5i %3x %3i %3i\n",sec, smpIdx, m->uid, m->status, m->u.chMsgPtr->d0, m->u.chMsgPtr->d1);
+          //printf("%f %li %5i %3x %3i %3i\n",sec, smpIdx, m->uid, m->status, m->u.chMsgPtr->d0, m->u.chMsgPtr->d1);
 
           // send the note-on to the score follower
           if((rc = exec(sfH, sec, smpIdx, m->uid, m->status, m->u.chMsgPtr->d0, m->u.chMsgPtr->d1, newMatchFl )) != kOkRC )
@@ -291,6 +304,27 @@ namespace cw
             clear_result_index_array( sfH );
           }
         }
+      }
+
+      if( p->write_perf_meas_json_fl )
+      {
+        // create the JSON output filename
+        if((fname = filesys::makeFn(out_dir,p->out_perf_meas_json_fname,nullptr,nullptr)) == nullptr )
+        {
+          cwLogError(kOpFailRC,"The output perf. meas. filename formation failed.");
+          goto errLabel;
+        }
+
+        cwLogInfo("Writing JSON score-follow perf. meas. result to:%s",cwStringNullGuard(fname));
+      
+        if((rc = write_result_json(perfMeasH,player_name,perf_date,perf_take_numb,fname)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Perf. meas. report file create failed.");
+          goto errLabel;
+        }
+      
+        mem::release(fname);
+        
       }
 
 
