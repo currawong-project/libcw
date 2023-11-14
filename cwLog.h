@@ -25,7 +25,11 @@ namespace cw
   
     typedef void (*logOutputCbFunc_t)( void* cbArg, unsigned level, const char* text );
     typedef void (*logFormatCbFunc_t)( void* cbArg, logOutputCbFunc_t outFunc, void* outCbArg, unsigned flags, unsigned level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t rc, const char* msg );
-  
+
+    logLevelId_t levelFromString( const char* label );
+    const char* levelToString( logLevelId_t level );
+
+    
     rc_t create(  handle_t& hRef, unsigned level=kDebug_LogLevel, logOutputCbFunc_t outCb=nullptr, void* outCbArg=nullptr,  logFormatCbFunc_t fmtCb=nullptr, void* fmtCbArg=nullptr  );
     rc_t destroy( handle_t& hRef );
 
@@ -79,23 +83,11 @@ namespace cw
 #define cwLogVFatalH(h,rc,fmt, vl) cw::log::msg( h, cw::log::kFatal_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, rc, fmt, vl )
 #define cwLogFatalH( h,rc,fmt,...) cw::log::msg( h, cw::log::kFatal_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, rc, fmt, ##__VA_ARGS__ )
 
-#ifdef cwLOG_DEBUG
-
 #define cwLogVDebugRC(rc,fmt, vl) cwLogVDebugH( cw::log::globalhandle(), (rc), (fmt), (vl) )
 #define cwLogDebugRC( rc,fmt,...) cwLogDebugH(  cw::log::globalHandle(), (rc), (fmt), ##__VA_ARGS__ )
 
 #define cwLogVDebug(fmt, vl)      cwLogVDebugH( cw::log::globalHandle(), cw::kOkRC, (fmt), (vl) )
 #define cwLogDebug( fmt,...)      cwLogDebugH(  cw::log::globalHandle(), cw::kOkRC, (fmt), ##__VA_ARGS__ )
-
-#else
-
-#define cwLogVDebugRC(rc,fmt, vl)
-#define cwLogDebugRC( rc,fmt,...)
-
-#define cwLogVDebug(fmt, vl)
-#define cwLogDebug( fmt,...)
-
-#endif
 
 #define cwLogVPrint(fmt, vl)       cwLogVPrintH( cw::log::globalHandle(), (fmt), (vl) )
 #define cwLogPrint( fmt,...)       cwLogPrintH(  cw::log::globalHandle(), (fmt), ##__VA_ARGS__ )

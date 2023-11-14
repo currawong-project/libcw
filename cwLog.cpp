@@ -26,8 +26,8 @@ namespace cw
     {
      { kPrint_LogLevel, "" },
      { kDebug_LogLevel,   "debug" },
-     { kInfo_LogLevel,    "info " },
-     { kWarning_LogLevel, "warn " },
+     { kInfo_LogLevel,    "info" },
+     { kWarning_LogLevel, "warn" },
      { kError_LogLevel,   "error" },
      { kFatal_LogLevel,   "fatal" },
      { kInvalid_LogLevel, "<invalid>" }
@@ -56,6 +56,23 @@ cw::rc_t cw::log::create(  handle_t& hRef, unsigned level, logOutputCbFunc_t out
   
   return rc; 
 }
+
+cw::log::logLevelId_t cw::log::levelFromString( const char* label )
+{
+  for(unsigned i=0; logLevelLabelArray[i].id != kInvalid_LogLevel; ++i)
+    if( strcasecmp(label,logLevelLabelArray[i].label) == 0 )
+      return (logLevelId_t)logLevelLabelArray[i].id;
+  return kInvalid_LogLevel;
+}
+
+const char* cw::log::levelToString( logLevelId_t level )
+{
+  for(unsigned i=0; logLevelLabelArray[i].id != kInvalid_LogLevel; ++i)
+    if( logLevelLabelArray[i].id == level )
+      return logLevelLabelArray[i].label;
+  return nullptr;
+}
+
 
 cw::rc_t cw::log::destroy( handle_t& hRef )
 {
@@ -94,11 +111,14 @@ cw::rc_t cw::log::msg( handle_t h, unsigned level, const char* function, const c
 
 cw::rc_t cw::log::msg( handle_t h, unsigned level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t returnCode, const char* fmt, ... )
 {
-  rc_t rc;
-  va_list vl;
-  va_start(vl,fmt);
-  rc = msg( h, level, function, filename, line, systemErrorCode, returnCode, fmt, vl );
-  va_end(vl);
+  rc_t rc = returnCode;
+  if( level >= _handleToPtr(h)->level )
+  {
+    va_list vl;
+    va_start(vl,fmt);
+    rc = msg( h, level, function, filename, line, systemErrorCode, returnCode, fmt, vl );
+    va_end(vl);
+  }
   return rc;
 }
 
