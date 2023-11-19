@@ -58,70 +58,97 @@ namespace cw
   }
 }
 
-bool cw::filesys::isDir( const char* dirStr )
+bool cw::filesys::isDir( const char* dir0 )
 {
+  char* dir;
   struct stat s;
-
+  bool result = false;
+  
   errno = 0;
 
-  if( dirStr == nullptr )
+  if( dir0 == nullptr )
     return false;
 
-  if( stat(dirStr,&s)  != 0 )
+  dir = expandPath(dir0);
+  
+  if( stat(dir,&s)  != 0 )
   {
     // if the dir does not exist
     if( errno == ENOENT )
       return false;
 
-    cwLogSysError( kOpFailRC, errno, "'stat' failed on '%s'",dirStr);
-    return false;
+    cwLogSysError( kOpFailRC, errno, "'stat' failed on '%s'",cwStringNullGuard(dir));
+    goto errLabel;
   }
  
-  return S_ISDIR(s.st_mode);
-}
+  result = S_ISDIR(s.st_mode);
 
-bool cw::filesys::isFile( const char* fnStr )
-{
-  struct stat s;
-  errno = 0;
-
-  if( fnStr == nullptr )
-    return false;
+ errLabel:
+  mem::release(dir);
   
-  if( stat(fnStr,&s)  != 0 )
-  {
-
-    // if the file does not exist
-    if( errno == ENOENT )
-      return false;
-
-    cwLogSysError( kOpFailRC, errno, "'stat' failed on '%s'.",fnStr);
-    return false;
-  }
- 
-  return S_ISREG(s.st_mode);
+  return result;
 }
 
-
-bool cw::filesys::isLink( const char* fnStr )
+bool cw::filesys::isFile( const char* fn0 )
 {
+  char* fn = nullptr;
+  bool result = false;
   struct stat s;
   errno = 0;
 
-  if( fnStr == nullptr )
-    return false;
+  if( fn0 == nullptr )
+    goto errLabel;
 
-  if( lstat(fnStr,&s)  != 0 )
+  fn = expandPath(fn0);
+  
+  if( stat(fn,&s)  != 0 )
+  {
+
+    // if the file does not exist
+    if( errno == ENOENT )
+      return false;
+
+    cwLogSysError( kOpFailRC, errno, "'stat' failed on '%s'.",cwStringNullGuard(fn));
+    goto errLabel;
+  }
+ 
+  result = S_ISREG(s.st_mode);
+
+ errLabel:
+  mem::release(fn);
+  
+  return result;
+}
+
+
+bool cw::filesys::isLink( const char* fn0 )
+{
+  bool result = false;
+  char* fn = nullptr;
+  struct stat s;
+  errno = 0;
+
+  if( fn0 == nullptr )
+    goto errLabel;
+
+  fn = expandPath(fn0);
+
+  if( lstat(fn,&s)  != 0 )
   {
     // if the file does not exist
     if( errno == ENOENT )
       return false;
 
-    cwLogSysError( kOpFailRC, errno, "'stat' failed on '%s'.",fnStr);
-    return false;
+    cwLogSysError( kOpFailRC, errno, "'stat' failed on '%s'.",cwStringNullGuard(fn));
+    goto errLabel;
   }
  
-  return S_ISLNK(s.st_mode);
+  result = S_ISLNK(s.st_mode);
+  
+ errLabel:
+  mem::release(fn);
+  
+  return result;
 }
 
 
