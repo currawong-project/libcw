@@ -96,6 +96,7 @@ namespace cw
     
     typedef struct perf_meas_str
     {
+      params_t          params;
       sfscore::handle_t scoreH;
 
       loc_t*            locA;   // locA[locN] 
@@ -586,8 +587,9 @@ namespace cw
         {
           s->lastPerfUpdateCnt = s->set->perfUpdateCnt;
 
-          cwLogInfo("Set %i eval.",s->set->id);
-
+          if( p->params.print_rt_events_fl )
+            cwLogInfo("Set %i eval.",s->set->id);
+          
           switch( s->set->varId )
           {
             case score_parse::kDynVarIdx:
@@ -629,7 +631,8 @@ namespace cw
                   && are_all_loc_set_events_performed( p->scoreH, loc_idx ))))
       {
 
-        cwLogInfo("Calc: Loc:%i  nci:%i",loc_idx,p->next_calc_loc_idx );
+        if( p->params.print_rt_events_fl )
+          cwLogInfo("Calc: Loc:%i  nci:%i",loc_idx,p->next_calc_loc_idx );
         
         calc_t* calc = p->locA[ p->next_calc_loc_idx ].calc;
         assert( calc != nullptr );
@@ -733,7 +736,7 @@ namespace cw
   }
 }
 
-cw::rc_t cw::perf_meas::create( handle_t& hRef, sfscore::handle_t scoreH )
+cw::rc_t cw::perf_meas::create( handle_t& hRef, sfscore::handle_t scoreH, const params_t& params )
 {
   rc_t rc;
   if((rc = destroy(hRef)) != kOkRC )
@@ -744,6 +747,7 @@ cw::rc_t cw::perf_meas::create( handle_t& hRef, sfscore::handle_t scoreH )
   const section_t*      prev_section = nullptr;
   
   p->scoreH               = scoreH;
+  p->params               = params;
   p->locN                 = loc_count(scoreH);
   p->locA                 = mem::allocZ<loc_t>(p->locN);
   p->next_section_loc_idx = kInvalidIdx;
@@ -962,7 +966,7 @@ cw::rc_t cw::perf_meas::write_result_json( handle_t h,
   object_t*    sectionL = root->insert_pair("sectionL",newListObject());
   
   for(loc_t* loc=p->locA; loc<p->locA+p->locN; ++loc)    
-    if( loc->section != nullptr && loc->section->calc != nullptr )
+    if( loc->section != nullptr && loc->section->calc != nullptr && loc->section->triggeredFl )
     {
       object_t*     sect   = newDictObject(sectionL);
       const double* valueV = loc->section->calc->value;

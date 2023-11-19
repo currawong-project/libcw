@@ -22,7 +22,12 @@ namespace cw
       unsigned      valueN;       // Count of elements in valueA[]      
     } result_t;
 
-    rc_t create(  handle_t& hRef, sfscore::handle_t scoreH );
+    typedef struct params_str
+    {
+      bool print_rt_events_fl;
+    } params_t;
+
+    rc_t create(  handle_t& hRef, sfscore::handle_t scoreH, const params_t& params );
     rc_t destroy( handle_t& hRef );
 
     rc_t reset( handle_t h, unsigned init_locId );
