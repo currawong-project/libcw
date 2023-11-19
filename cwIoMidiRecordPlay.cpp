@@ -1099,14 +1099,14 @@ namespace cw
 
     }
     
-    rc_t  _write_midi_meta_file(const char* meta_fn, unsigned beg_loc, unsigned end_loc)
+    rc_t  _write_midi_meta_file(const char* meta_fn, unsigned beg_loc, unsigned end_loc, unsigned take_numb)
     {
       rc_t rc = kOkRC;
       const unsigned bufCharN = 256;
       char buf[ bufCharN+1 ];
       int bN;
       
-      if((bN = snprintf(buf,bufCharN,"{ begLoc:%i, endLoc:%i }",beg_loc,end_loc)) == 0)
+      if((bN = snprintf(buf,bufCharN,"{ take:%i begLoc:%i, endLoc:%i }",take_numb,beg_loc,end_loc)) == 0)
       {
         rc = cwLogError(kOpFailRC,"The meta data buffer formation failed.");
         goto errLabel;
@@ -1415,6 +1415,32 @@ namespace cw
         }
       }
         
+      return rc;
+    }
+
+    rc_t _get_take_number( const char* dir, unsigned& take_numb_ref )
+    {
+      rc_t rc = kOkRC;
+      
+      take_numb_ref = -1;
+
+      const char* suffix;
+      if((suffix = lastMatchChar(dir,'_')) == nullptr )
+      {
+        rc = kSyntaxErrorRC;
+        goto errLabel;
+      }
+      
+      if(sscanf(suffix+1,"%i",&take_numb_ref) != 1)
+      {
+        rc = kSyntaxErrorRC;
+        goto errLabel;
+      }
+
+    errLabel:
+      if( rc != kOkRC )
+        rc = cwLogError(rc,"The suffix of the directory name containing the 'am' file is not an underscore separated integer. (%s).",cwStringNullGuard(dir));
+
       return rc;
     }
 
@@ -2013,26 +2039,35 @@ cw::rc_t cw::midi_record_play::am_to_midi_dir( const char* inDir, unsigned beg_l
 
   for(unsigned i=0; i<dirEntryCnt and rc==kOkRC; ++i)
   {
+    unsigned take_numb;
     char* am_fn   = filesys::makeFn(  dirEntryArray[i].name, "midi", "am", NULL);
     char* midi_fn = filesys::makeFn(  dirEntryArray[i].name, "midi", "mid", NULL);    
     char* csv_fn = filesys::makeFn(   dirEntryArray[i].name, "midi", "csv", NULL);
     char* meta_fn = filesys::makeFn(  dirEntryArray[i].name, "meta", "cfg", NULL);
+    
+    if((rc = _get_take_number( dirEntryArray[i].name, take_numb )) != kOkRC )
+      goto errLabel;
 
     cwLogInfo("0x%x AM:%s MIDI:%s", dirEntryArray[i].flags, dirEntryArray[i].name, midi_fn);
     
     if((rc = am_to_midi_file( am_fn, midi_fn, csv_fn)) != kOkRC )
       goto errLabel;
 
-    if((rc = _write_midi_meta_file(meta_fn,beg_loc,end_loc)) != kOkRC )
+    if((rc = _write_midi_meta_file(meta_fn,beg_loc,end_loc,take_numb)) != kOkRC )
       goto errLabel;
     
     mem::release(am_fn);
     mem::release(midi_fn);
+    mem::release(csv_fn);
+    mem::release(meta_fn);
 
   }
   
  errLabel:
   mem::release(dirEntryArray);
+
+  if( rc != kOkRC )
+    rc = cwLogError(rc,"AM to MIDI conversion failed on '%s'.",inDir);
   
   return rc;  
 }
