@@ -36,6 +36,11 @@ namespace cw
   // or nullptr if 's' is null.
   const char* nextNonWhiteCharEOS( const char* s );
 
+  // Return a pointer to the first occurrence of 'c' in s[] or nullptr
+  // if 'c' does not occur in s[]
+  const char* firstMatchChar( const char* s, char c );
+  // Find the last occurrent of 'c' in s[]. 
+  const char* lastMatchChar( const char* s, char c ); 
   
   bool isInteger( const char* );        // text contains only [0-9]
   bool isReal( const char* );           // text contains only [0-9] with one decimal place

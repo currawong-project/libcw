@@ -82,6 +82,35 @@ const char* cw::nextNonWhiteChar( const char* s )
 const char* cw::nextNonWhiteCharEOS( const char* s )
 { return _nextNonWhiteChar(s,true); }
 
+const char* cw::firstMatchChar( const char* s, char c )
+{
+  if( s == nullptr )
+    return nullptr;
+  
+  for(; *s; ++s)
+    if(*s == c)
+      return s;
+  return nullptr;
+}
+
+const char* cw::lastMatchChar( const char* s, char c )
+{
+  unsigned sn;
+  
+  if( s == nullptr )
+    return nullptr;
+  
+  sn = textLength(s);
+  if( sn == 0 )
+    return nullptr;
+  
+  for(const char* s1=s+(sn-1); s<=s1; --s1)
+    if( *s1 == c )
+      return s1;
+    
+  return nullptr;
+}
+
 bool cw::isInteger( const char* s )
 {
   for(; *s; ++s)
