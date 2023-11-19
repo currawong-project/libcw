@@ -824,19 +824,19 @@ namespace cw
       }
 
       // if the output msg array was not allocated - then allocate it here 
-                  if( msgArrayCntRef == 0 || msgArrayRef == nullptr )
-                  {
-                    alloc_fl = true;
-                    msgArrayRef = mem::allocZ<am_midi_msg_t>(recordN);
-                  }
-                  else // if the msg array was allocated but is too small - then decrease the count of records to be read from the file
-                  {
-                    if( recordN > msgArrayCntRef )
-                    {
-                      cwLogWarning("The count of message in Audio-MIDI file '%s' reduced from %i to %i.", fn, recordN, msgArrayCntRef );
-                      recordN = msgArrayCntRef;          
-                    }
-                  }
+      if( msgArrayCntRef == 0 || msgArrayRef == nullptr )
+      {
+        alloc_fl = true;
+        msgArrayRef = mem::allocZ<am_midi_msg_t>(recordN);
+      }
+      else // if the msg array was allocated but is too small - then decrease the count of records to be read from the file
+      {
+        if( recordN > msgArrayCntRef )
+        {
+          cwLogWarning("The count of message in Audio-MIDI file '%s' reduced from %i to %i.", fn, recordN, msgArrayCntRef );
+          recordN = msgArrayCntRef;          
+        }
+      }
 
       if( version == 0 )
       {
@@ -978,16 +978,10 @@ namespace cw
       return rc;
     }
 
-    rc_t _write_csv( midi_record_play_t* p, const char* fn )
+    rc_t _write_msgs_to_csv( const char* fn, const am_midi_msg_t* msgArray, unsigned msgArrayCnt )
     {
-      rc_t           rc = kOkRC;
+      rc_t rc = kOkRC;
       file::handle_t fH;
-
-      if( p->iMsgArrayInIdx == 0 )
-      {
-        cwLogWarning("Nothing to write.");
-        return rc;
-      }
 
       // open the file
       if((rc = file::open(fH,fn,file::kWriteFl)) != kOkRC )
@@ -998,11 +992,11 @@ namespace cw
 
       file::printf(fH,"dev,port,microsec,id,sec,ch,status,sci_pitch,d0,d1\n");
       
-      for(unsigned i=0; i<p->iMsgArrayInIdx; ++i)
+      for(unsigned i=0; i<msgArrayCnt; ++i)
       {
-        const am_midi_msg_t* m = p->iMsgArray + i;
+        const am_midi_msg_t* m = msgArray + i;
 
-        double secs = time::elapsedSecs( p->iMsgArray[0].timestamp, p->iMsgArray[i].timestamp );
+        double secs = time::elapsedSecs( msgArray[0].timestamp, msgArray[i].timestamp );
         
         char sciPitch[ midi::kMidiSciPitchCharCnt + 1 ];
         if( m->status == midi::kNoteOnMdId )
@@ -1022,8 +1016,29 @@ namespace cw
     errLabel:
       file::close(fH);
 
-      cwLogInfo("Saved %i events to '%s'.", p->iMsgArrayInIdx, fn );
+      return rc;
+      
+    }
 
+    rc_t _write_csv( midi_record_play_t* p, const char* fn )
+    {
+      rc_t           rc = kOkRC;
+
+      if( p->iMsgArrayInIdx == 0 )
+      {
+        cwLogWarning("Nothing to write.");
+        return rc;
+      }
+
+      if((rc = _write_msgs_to_csv( fn, p->iMsgArray, p->iMsgArrayInIdx )) != kOkRC )
+        goto errLabel;
+
+      cwLogInfo("Saved %i events to '%s'.", p->iMsgArrayInIdx, fn );
+      
+    errLabel:
+      if(rc != kOkRC )
+        rc = cwLogError(rc,"Write to '%s' failed.", fn );
+      
       return rc;
     }
 
@@ -1084,6 +1099,28 @@ namespace cw
 
     }
     
+    rc_t  _write_midi_meta_file(const char* meta_fn, unsigned beg_loc, unsigned end_loc)
+    {
+      rc_t rc = kOkRC;
+      const unsigned bufCharN = 256;
+      char buf[ bufCharN+1 ];
+      int bN;
+      
+      if((bN = snprintf(buf,bufCharN,"{ begLoc:%i, endLoc:%i }",beg_loc,end_loc)) == 0)
+      {
+        rc = cwLogError(kOpFailRC,"The meta data buffer formation failed.");
+        goto errLabel;
+      }
+      
+      if((rc = file::fnWrite(meta_fn,buf,bN)) != kOkRC )
+        goto errLabel;
+
+    errLabel:
+      if( rc != kOkRC )
+        rc = cwLogError(rc,"MIDI meta file write failed on '%s'.",cwStringNullGuard(meta_fn));
+      
+      return rc;
+    }
 
     rc_t _midi_file_write( const char* fn, const am_midi_msg_t* msgArray, unsigned msgArrayCnt )
     {
@@ -1926,7 +1963,7 @@ void cw::midi_record_play::half_pedal_params( handle_t h, unsigned noteDelayMs, 
       
 }
 
-cw::rc_t cw::midi_record_play::am_to_midi_file( const char* am_filename, const char* midi_filename )
+cw::rc_t cw::midi_record_play::am_to_midi_file( const char* am_filename, const char* midi_filename, const char* csv_filename )
 {  
   rc_t           rc          = kOkRC;
   unsigned       msgArrayCnt = 0;
@@ -1944,11 +1981,19 @@ cw::rc_t cw::midi_record_play::am_to_midi_file( const char* am_filename, const c
     goto errLabel;
   }
 
-  if((rc = _midi_file_write( midi_filename, msgArray, msgArrayCnt )) != kOkRC )
-  {
-    rc = cwLogError(rc,"Unable to write AM file '%s' to '%s'.", cwStringNullGuard(am_filename),cwStringNullGuard(midi_filename));
-    goto errLabel;
-  }
+  if( midi_filename != nullptr )
+    if((rc = _midi_file_write( midi_filename, msgArray, msgArrayCnt )) != kOkRC )
+    {
+      rc = cwLogError(rc,"Unable to write AM file '%s' to '%s'.", cwStringNullGuard(am_filename),cwStringNullGuard(midi_filename));
+      goto errLabel;
+    }
+
+  if( csv_filename != nullptr )
+    if((rc = _write_msgs_to_csv( csv_filename, msgArray, msgArrayCnt )) != kOkRC )
+    {
+      rc = cwLogError(rc,"Unable to write AM file '%s' to '%s'.", cwStringNullGuard(am_filename),cwStringNullGuard(csv_filename));
+      goto errLabel;
+    }
 
  errLabel:
   mem::release(msgArray);
@@ -1957,7 +2002,7 @@ cw::rc_t cw::midi_record_play::am_to_midi_file( const char* am_filename, const c
   
 }
 
-cw::rc_t cw::midi_record_play::am_to_midi_dir( const char* inDir )
+cw::rc_t cw::midi_record_play::am_to_midi_dir( const char* inDir, unsigned beg_loc, unsigned end_loc )
 {  
   rc_t                 rc            = kOkRC;
   filesys::dirEntry_t* dirEntryArray = nullptr;
@@ -1969,11 +2014,17 @@ cw::rc_t cw::midi_record_play::am_to_midi_dir( const char* inDir )
   for(unsigned i=0; i<dirEntryCnt and rc==kOkRC; ++i)
   {
     char* am_fn   = filesys::makeFn(  dirEntryArray[i].name, "midi", "am", NULL);
-    char* midi_fn = filesys::makeFn(  dirEntryArray[i].name, "midi", "mid", NULL);
+    char* midi_fn = filesys::makeFn(  dirEntryArray[i].name, "midi", "mid", NULL);    
+    char* csv_fn = filesys::makeFn(   dirEntryArray[i].name, "midi", "csv", NULL);
+    char* meta_fn = filesys::makeFn(  dirEntryArray[i].name, "meta", "cfg", NULL);
 
     cwLogInfo("0x%x AM:%s MIDI:%s", dirEntryArray[i].flags, dirEntryArray[i].name, midi_fn);
+    
+    if((rc = am_to_midi_file( am_fn, midi_fn, csv_fn)) != kOkRC )
+      goto errLabel;
 
-    rc = am_to_midi_file( am_fn, midi_fn );
+    if((rc = _write_midi_meta_file(meta_fn,beg_loc,end_loc)) != kOkRC )
+      goto errLabel;
     
     mem::release(am_fn);
     mem::release(midi_fn);
@@ -1990,6 +2041,9 @@ cw::rc_t cw::midi_record_play::am_to_midi_file( const object_t* cfg )
 {
   rc_t        rc    = kOkRC;
   const char* inDir = nullptr;
+  unsigned    beg_loc;
+  unsigned    end_loc;
+  
   //
   if( cfg == nullptr )
   {
@@ -1998,14 +2052,14 @@ cw::rc_t cw::midi_record_play::am_to_midi_file( const object_t* cfg )
   }
 
   //
-  if((rc = cfg->getv("inDir",inDir)) != kOkRC )
+  if((rc = cfg->getv("inDir",inDir,"beg_loc",beg_loc,"end_loc",end_loc)) != kOkRC )
   {
     rc = cwLogError(rc,"AM to MIDI file: Unable to parse input arg's.");
     goto errLabel;
   }
 
   //
-  if((rc = am_to_midi_dir(inDir)) != kOkRC )
+  if((rc = am_to_midi_dir(inDir,beg_loc,end_loc)) != kOkRC )
   {
     rc = cwLogError(rc,"AM to MIDI file conversion on directory:'%s' failed.", cwStringNullGuard(inDir));
     goto errLabel;

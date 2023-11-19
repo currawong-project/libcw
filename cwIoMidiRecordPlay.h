@@ -79,14 +79,11 @@ namespace cw
     unsigned event_loc( handle_t h );   // play mode: loc of next event to play record mode:kInvalidId
 
     unsigned last_store_index( handle_t h );
-
     
     rc_t exec( handle_t h, const io::msg_t& msg );
 
     unsigned    label_to_device_index( handle_t h, const char* devLabel );
     const char* device_index_to_label( handle_t h, unsigned devIdx );
-    
-
 
     unsigned device_count( handle_t h );
     bool is_device_enabled( handle_t h, unsigned devIdx );
@@ -95,10 +92,10 @@ namespace cw
 
     void half_pedal_params( handle_t h, unsigned noteDelayMs, unsigned pitch, unsigned vel, unsigned pedal_vel, unsigned noteDurMs, unsigned downDelayMs );
 
-    // Convert an audio-midi file to a MIDI file
-    rc_t am_to_midi_file( const char* am_filename, const char* midi_filename );
-    rc_t am_to_midi_dir( const char* inDir );
-    rc_t am_to_midi_file( const object_t* cfg );
+    // Convert an audio-midi file to a MIDI file and/or a CSV file
+    rc_t am_to_midi_file( const char* am_filename, const char* midi_filename = nullptr, const char* csv_filename = nullptr );
+    rc_t am_to_midi_dir( const char* inDir, unsigned beg_loc, unsigned end_loc );    
+    rc_t am_to_midi_file( const object_t* cfg ); // See main.cfg: 'am_to_midi_file'
 
     unsigned dev_count( handle_t h );
 
