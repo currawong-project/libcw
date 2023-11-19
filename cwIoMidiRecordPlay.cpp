@@ -2033,6 +2033,12 @@ cw::rc_t cw::midi_record_play::am_to_midi_dir( const char* inDir, unsigned beg_l
   rc_t                 rc            = kOkRC;
   filesys::dirEntry_t* dirEntryArray = nullptr;
   unsigned             dirEntryCnt   = 0;
+
+  if( !filesys::isDir(inDir) )
+  {
+    rc = cwLogError(kInvalidArgRC,"The directory '%s' does not exist.",cwStringNullGuard(inDir));
+    goto errLabel;
+  }
   
   if(( dirEntryArray = filesys::dirEntries( inDir, filesys::kDirFsFl | filesys::kFullPathFsFl, &dirEntryCnt )) == nullptr )
     goto errLabel;
@@ -2075,32 +2081,62 @@ cw::rc_t cw::midi_record_play::am_to_midi_dir( const char* inDir, unsigned beg_l
 cw::rc_t cw::midi_record_play::am_to_midi_file( const object_t* cfg )
 {
   rc_t        rc    = kOkRC;
-  const char* inDir = nullptr;
-  unsigned    beg_loc;
-  unsigned    end_loc;
   
-  //
-  if( cfg == nullptr )
+  // verify that the cfg is a list
+  if( cfg == nullptr || cfg->is_list() == false)
   {
-    rc = cwLogError(kInvalidArgRC,"AM to MIDI file: No input directory.");
+    rc = cwLogError(kInvalidArgRC,"AM to MIDI file: invalid cfg.");
     goto errLabel;
   }
 
-  //
-  if((rc = cfg->getv("inDir",inDir,"beg_loc",beg_loc,"end_loc",end_loc)) != kOkRC )
+  // for each job specified in the list
+  for(unsigned i=0; i<cfg->child_count(); ++i)
   {
-    rc = cwLogError(rc,"AM to MIDI file: Unable to parse input arg's.");
-    goto errLabel;
-  }
+    const object_t* job_cfg   = nullptr;
+    bool            enable_fl = false;
+    const object_t* dirL      = nullptr;
+    unsigned        beg_loc   = kInvalidId;
+    unsigned        end_loc   = kInvalidId;
 
-  //
-  if((rc = am_to_midi_dir(inDir,beg_loc,end_loc)) != kOkRC )
-  {
-    rc = cwLogError(rc,"AM to MIDI file conversion on directory:'%s' failed.", cwStringNullGuard(inDir));
-    goto errLabel;
+    // verify that each job spec is a dict
+    if(( job_cfg = cfg->child_ele(i)) == nullptr || job_cfg->is_dict() == false )
+    {
+      rc = cwLogError(kSyntaxErrorRC,"The AM to MIDI job spec. at index %i is invalid.",i);
+      goto errLabel;
+    }
+
+    // read the job spec
+    if((rc = job_cfg->getv("enable_fl",enable_fl,"dirL",dirL,"beg_loc",beg_loc,"end_loc",end_loc)) != kOkRC || dirL->is_list() == false )
+    {
+      rc = cwLogError(rc,"AM to MIDI file: Unable to parse input arg's at index %i",i);
+      goto errLabel;
+    }
+
+    if( enable_fl )
+      for(unsigned j=0; j<dirL->child_count(); ++j)
+      {
+        const object_t* dir_obj;
+        const char* dir;
+        if((dir_obj = dirL->child_ele(j)) == nullptr || (dir_obj->is_string() == false) || ((rc = dir_obj->value(dir)) != kOkRC) || (dir == nullptr) )
+        {
+          rc = cwLogError(kSyntaxErrorRC,"The AM to MIDI job directory in job spec. %i and directory index %i is invalid.",i,j);
+          goto errLabel;
+        }
+
+        if((rc = am_to_midi_dir(dir,beg_loc,end_loc)) != kOkRC )
+        {
+          rc = cwLogError(rc,"AM to MIDI file conversion on directory:'%s' failed.", cwStringNullGuard(dir));
+          goto errLabel;
+        }
+      }
+    
   }
 
  errLabel:
+
+  if( rc != kOkRC )
+    rc = cwLogError(rc,"AM to MIDI file conversion failed.");
+  
   return rc;
   
 }
