@@ -251,11 +251,14 @@ cw::rc_t cw::file::write(   handle_t h, const void* buf, unsigned bufByteCnt )
 
   if( p->lastRC != kOkRC )
     return p->lastRC;
-  
-  errno = 0;
-  if( fwrite(buf,bufByteCnt,1,p->fp) != 1 )
-    return p->lastRC = cwLogSysError(kWriteFailRC,errno,"File write failed on '%s'.", cwStringNullGuard(p->fnStr));
 
+  if( bufByteCnt )
+  {
+    errno = 0;
+    if( fwrite(buf,bufByteCnt,1,p->fp) != 1 )
+      return p->lastRC = cwLogSysError(kWriteFailRC,errno,"File write failed on '%s'.", cwStringNullGuard(p->fnStr));
+  }
+  
   return kOkRC;
 }
 
