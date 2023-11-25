@@ -466,9 +466,207 @@ namespace cw
       if(rc != kOkRC )
         rc = cwLogError(rc,"Variable value access failed on fragment '%i' variable:%i preset:%i",fragId,varId,presetId);
 
+      return rc;     
+    }
+
+    rc_t _report_with_piano_score( preset_sel_t* p, const char* rpt_fname, perf_score::handle_t pianoScoreH )
+    {
+      rc_t                       rc = kOkRC;  
+      const perf_score::event_t* e  = base_event( pianoScoreH );
+      file::handle_t fH;
+
+      if((rc = open(fH,rpt_fname,file::kWriteFl)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Preset sel Piano Score report open failed.");
+        goto errLabel;
+      }
+      
+
+      if( e == nullptr )
+      {
+        cwLogWarning("The piano score is empty during preset reporting.");
+      }
+      else
+      {
+        const frag_t* frag     = p->fragL;
+        unsigned      frag_loc = frag == nullptr ? 0 : frag->endLoc;
+        unsigned      frag_id  = 0;
+        unsigned      colN     = 0;
+        
+        double   esec  = 0;
+        for(; e!=nullptr; e=e->link)
+        {
+          // if this event is on a new location - then print a newline
+          if( esec != e->sec )
+          {
+            esec = e->sec;
+            if( colN )
+            {
+              printf(fH,"\n");
+              colN = 0;
+            }
+          }
+
+          // if this event is  on the next fragment end loc
+          if( e->loc == frag_loc )
+          {
+            // this event is on the next frag 
+            if( colN != 0 )
+              printf(fH,"\n");
+            
+            printf(fH,"%3i %5i %3i ",frag_id, frag_loc, e->meas);
+            colN = 1;
+            
+            if( frag != nullptr )
+            {
+              frag = frag->link;
+              if( frag != nullptr )
+              {
+                frag_loc = frag->endLoc;
+                frag_id += 1;
+              }
+            }
+          }
+
+          // if this event is a note-on then print the pitch
+          if( midi::isNoteOn( e->status, e->d1 ))
+          {            
+            if( colN == 0 )
+            {
+              printf(fH,"          %3i ",e->meas);
+              colN = 1;
+            }
+
+            printf(fH,"%s ",e->sci_pitch);
+            colN += 1;
+          }
+        }
+      }
+
+    errLabel:
+      close(fH);
+      
       return rc;
-     
-    }    
+    }
+
+    rc_t _report_with_sfscore(  preset_sel_t* p, const char* rpt_fname, sfscore::handle_t scoreH  )
+    {
+      rc_t                    rc       = kOkRC;  
+      unsigned                eventN   = event_count( scoreH );
+      const frag_t*           frag     = p->fragL;
+      unsigned                frag_loc = frag == nullptr ? 0 : frag->endLoc;
+      unsigned                frag_id  = 0;
+      const sfscore::event_t *e        = event( scoreH, 0);
+      file::handle_t fH;
+
+      if((rc = open(fH,rpt_fname,file::kWriteFl)) != kOkRC )
+      {
+        rc = cwLogError(rc,"File open failed on sfscore preset sel report file.");
+        goto errLabel;
+      }
+      
+      if( e == nullptr )
+      {
+        cwLogWarning("The score is empty during preset sel reporting.");
+      }
+      else
+      {
+        unsigned eloc = e->oLocId;
+        unsigned colN = 0;
+        for(unsigned i=0; i<eventN; ++i)
+        {
+
+          e  = event( scoreH, i);
+
+          // are we on a new location?
+          if( eloc != e->oLocId )
+          {
+            eloc = e->oLocId;
+            colN = 0;
+            printf(fH,"\n");            
+          }
+
+          // is this the location of the next fragment
+          if( eloc >= frag_loc )
+          {
+            if( colN != 0 )
+              printf(fH,"\n");
+            
+            
+            printf(fH,"%3i %5i %3i ",frag_id,frag_loc,e->barNumb);
+            colN = 1;
+            if( frag != nullptr )
+            {
+              frag = frag->link;
+              if( frag != nullptr )
+              {
+                frag_loc = frag->endLoc;
+                frag_id += 1;
+              }
+            }
+          }
+
+          if( colN == 0 )
+          {
+            printf(fH,"          %3i ",e->barNumb);
+            colN = 1;
+          }
+
+          //printf(fH,"%s ",e->sciPitch);
+          printf(fH,"%s ",midi::midiToSciPitch(e->pitch));
+          colN += 1;
+      
+        }
+      }
+    errLabel:
+      close(fH);
+      
+      return rc;
+    }
+
+    const perf_score::event_t* _loc_to_prev_note_on( perf_score::handle_t pianoScoreH, unsigned loc )
+    {
+      const perf_score::event_t* e;
+      unsigned orig_loc = loc;
+      
+      for(; loc>0; --loc)
+      {
+        if((e = loc_to_event(pianoScoreH, loc )) != nullptr )          
+          if( orig_loc==1 or midi::isNoteOn(e->status,e->d1) )
+            break;
+      }
+
+      if( orig_loc!=1 && loc == 0 )
+      {
+        cwLogError(kInvalidStateRC,"No sounding note found before loc: %i.",orig_loc );
+        e = nullptr;
+      }
+      
+      return e;
+    }
+
+
+    const perf_score::event_t* _loc_to_next_note_on( perf_score::handle_t pianoScoreH, unsigned loc )
+    {
+      const perf_score::event_t* e;
+      
+      if((e = loc_to_event(pianoScoreH, loc )) == nullptr )
+      {
+        cwLogError(kInvalidStateRC,"The loc %i for fragment was not found in the score.",loc);
+        goto errLabel;        
+      }
+
+      for(; e!=nullptr; e=e->link)
+        if( midi::isNoteOn(e->status,e->d1) )
+          break;
+
+      if( e == nullptr )
+        cwLogError(kInvalidStateRC,"No sounding note found after loc: %i.",loc );
+
+    errLabel:
+      return e;
+    }
+    
   }
 }
 
@@ -1212,6 +1410,7 @@ cw::rc_t cw::preset_sel::report( handle_t h )
 }
 
 
+
 cw::rc_t cw::preset_sel::translate_frags( const object_t* cfg )
 {
   rc_t                  rc              = kOkRC;
@@ -1219,6 +1418,8 @@ cw::rc_t cw::preset_sel::translate_frags( const object_t* cfg )
   const char*           cur_score_fname = nullptr;
   const char*           new_score_fname = nullptr;
   const char*           out_frag_fname  = nullptr;
+  const char*           cur_rpt_fname   = nullptr;
+  const char*           new_rpt_fname   = nullptr;
   const object_t*       presetsNode     = nullptr;
   const object_t*       dynTblNode      = nullptr;
   double                srate           = 0;
@@ -1233,7 +1434,7 @@ cw::rc_t cw::preset_sel::translate_frags( const object_t* cfg )
   typedef struct
   {
     unsigned loc;
-    
+    unsigned opId; // see cwScoreParse k???TId
     uint8_t  pitch;
     unsigned barNumb;
     unsigned barPitchIdx;
@@ -1246,6 +1447,7 @@ cw::rc_t cw::preset_sel::translate_frags( const object_t* cfg )
   
   typedef struct
   {
+    frag_t* frag;
     loc_t begLoc;
     loc_t endLoc;
   } tfrag_t;
@@ -1257,6 +1459,8 @@ cw::rc_t cw::preset_sel::translate_frags( const object_t* cfg )
                      "cur_score_fname", cur_score_fname,
                      "new_score_fname", new_score_fname,
                      "out_frag_fname",  out_frag_fname,
+                     "cur_score_rpt_fname",cur_rpt_fname,
+                     "new_score_rpt_fname",new_rpt_fname,
                      "presets", presetsNode,
                      "srate",srate,
                      "dyn_ref", dynTblNode )) != kOkRC )
@@ -1287,8 +1491,12 @@ cw::rc_t cw::preset_sel::translate_frags( const object_t* cfg )
   }
   else
   {
-    const frag_t* src_frag = get_fragment_base(presetH);
+    preset_sel_t* p           = _handleToPtr(presetH);
+    frag_t*       src_frag    = p->fragL;
+    unsigned      src_beg_loc = 1;
 
+    _report_with_piano_score( p, cur_rpt_fname, pianoScoreH );
+    
     // Allocate the tranlate fragment array
     tfragN = fragment_count(presetH);
     tfragA = mem::allocZ<tfrag_t>(tfragN);
@@ -1296,43 +1504,50 @@ cw::rc_t cw::preset_sel::translate_frags( const object_t* cfg )
     // Get the locations of the current fragments
     for(unsigned i=0; i<tfragN; ++i, src_frag=src_frag->link)
     {
+      tfragA[i].frag = src_frag;
+      
       const perf_score::event_t* e;
-      unsigned src_beg_loc = src_frag->endLoc - 1;
       unsigned src_end_loc = src_frag->endLoc;
-    
+      
       // Get event for begin location.
-      if((e = loc_to_event(pianoScoreH, src_beg_loc )) == nullptr )
+      if((e = _loc_to_next_note_on(pianoScoreH, src_beg_loc )) == nullptr )
       {
         rc = cwLogError(kInvalidStateRC,"The beg-loc %i for fragment was not found in the score.",src_beg_loc);
         goto errLabel;
       }
 
-      loc_to_pitch_context(pianoScoreH,tfragA[i].begLoc.preNote,tfragA[i].begLoc.postNote,kNoteN);
+      //loc_to_pitch_context(pianoScoreH,tfragA[i].begLoc.preNote,tfragA[i].begLoc.postNote,kNoteN);
 
       tfragA[i].begLoc.loc         = src_beg_loc;
+      tfragA[i].begLoc.opId        = midi::isNoteOn(e->status,e->d1) ? score_parse::kNoteOnTId : score_parse::kBarTId;
       tfragA[i].begLoc.pitch       = e->d0;
       tfragA[i].begLoc.barNumb     = e->meas;
       tfragA[i].begLoc.barPitchIdx = e->barPitchIdx;
-      tfragA[i].begLoc.hash        = score_parse::form_hash(score_parse::kNoteOnTId, e->meas, e->d0, e->barPitchIdx );
+      tfragA[i].begLoc.hash        = score_parse::form_hash(tfragA[i].begLoc.opId, e->meas, e->d0, e->barPitchIdx );
 
-      //printf("Beg: loc:%i bar:%i bpi:%i p:%i : ",src_beg_loc,e->meas,e->barPitchIdx,e->d0);
+      printf("Beg: loc:%i bar:%i st:0x%x bpi:%i p:%i : %s\n",src_beg_loc,e->meas,e->status,e->barPitchIdx,e->d0,midi::midiToSciPitch(e->d0));
       
       // Get event for end location.
-      if((e = loc_to_event(pianoScoreH, src_end_loc )) == nullptr )
+      if((e = _loc_to_prev_note_on(pianoScoreH, src_end_loc )) == nullptr )
       {
         rc = cwLogError(kInvalidStateRC,"The end-loc %i for fragment was not found in the score.",src_end_loc);
         goto errLabel;
       }
 
-      loc_to_pitch_context(pianoScoreH,tfragA[i].endLoc.preNote,tfragA[i].endLoc.postNote,kNoteN);
+      //loc_to_pitch_context(pianoScoreH,tfragA[i].endLoc.preNote,tfragA[i].endLoc.postNote,kNoteN);
+
+      
 
       tfragA[i].endLoc.loc         = src_end_loc;
+      tfragA[i].endLoc.opId        = midi::isNoteOn(e->status,e->d1) ? score_parse::kNoteOnTId : score_parse::kBarTId;
       tfragA[i].endLoc.pitch       = e->d0;
       tfragA[i].endLoc.barNumb     = e->meas;
       tfragA[i].endLoc.barPitchIdx = e->barPitchIdx;
-      tfragA[i].endLoc.hash        = score_parse::form_hash(score_parse::kNoteOnTId, e->meas, e->d0, e->barPitchIdx );
+      tfragA[i].endLoc.hash        = score_parse::form_hash(tfragA[i].endLoc.opId, e->meas, e->d0, e->barPitchIdx );
 
-      //printf("End: loc:%i bar:%i bpi:%i p:%i\n",src_end_loc,e->meas,e->barPitchIdx,e->d0);      
+      printf("End: loc:%i bar:%i op:%i bpi:%i p:%i : %s\n",src_end_loc,e->meas,tfragA[i].endLoc.opId,e->barPitchIdx,e->d0,midi::midiToSciPitch(e->d0));
+
+      src_beg_loc = src_end_loc + 1;
     }
 
     // Create dynamic table.
@@ -1356,10 +1571,61 @@ cw::rc_t cw::preset_sel::translate_frags( const object_t* cfg )
       goto errLabel;
     }
 
+    //tfrag_t* t0 = nullptr;
     for(unsigned i=0; i<tfragN; ++i)
     {
+      const sfscore::event_t* e = nullptr;
+      tfrag_t*                t = tfragA + i;
+
+      // bar's do not exist as events in sfscore so we have to ask for the first note
+      // in the bar as a proxy to the bar line.
+      if( t->endLoc.opId == score_parse::kBarTId )
+      {
+        if((e = bar_to_event( scoreH, t->endLoc.barNumb )) == nullptr )
+        {
+          cwLogError(kOpFailRC,"Beg loc %i bar event (meas:%i) not found.",t->begLoc.loc, t->begLoc.barNumb);
+          goto errLabel;
+        }
+      }
+      else
+      {
+        // Locate this event in sfscore
+        if((e = hash_to_event( scoreH, t->endLoc.hash )) == nullptr )
+        {        
+          cwLogError(kOpFailRC,"Beg loc %i pitch event (meas:%i op:%i pitch:%i bpi:%i : hash:0x%x) not found.",t->begLoc.loc, t->begLoc.opId, t->begLoc.barNumb, t->begLoc.pitch,t->begLoc.barPitchIdx,t->begLoc.hash);
+          goto errLabel;
+        }
+
+        if(0)
+        {
+          unsigned op0,bar0,bpi0;
+          unsigned op1,bar1,bpi1;
+          uint8_t pitch0,pitch1;
+          
+          score_parse::parse_hash( t->begLoc.hash, op0, bar0, pitch0, bpi0 );
+          score_parse::parse_hash( e->hash, op1, bar1, pitch1, bpi1 );
+          printf("%3i %2i %3i %3i %3i\n",i,op0,bar0,pitch0,bpi0);
+          printf("%3i %2i %3i %3i %3i : %i\n",i,op1,bar1,pitch1,bpi1,e->pitch);
+        }
+      }
+
       
+      //printf("%i\n",e->oLocId);
+      //if( t0 != nullptr )
+      //   t0->frag->endLoc = e->oLocId;
+      //t0 = t;
+      t->frag->endLoc = e->oLocId;
     }
+
+    _report_with_sfscore(  p, new_rpt_fname, scoreH );
+
+    // write the translated file
+    if((rc = write(presetH,out_frag_fname)) != kOkRC )
+    {
+      rc = cwLogError(rc,"Translated preset fragment write failed. on '%s'.", cwStringNullGuard(out_frag_fname));
+      goto errLabel;        
+    }
+    
   }
   
  errLabel:
@@ -1373,3 +1639,4 @@ cw::rc_t cw::preset_sel::translate_frags( const object_t* cfg )
   
   return rc;
 }
+
