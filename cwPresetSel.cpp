@@ -1409,6 +1409,26 @@ cw::rc_t cw::preset_sel::report( handle_t h )
   return rc;
 }
 
+cw::rc_t cw::preset_sel::report_presets( handle_t h )
+{
+  rc_t          rc = kOkRC;
+  preset_sel_t* p  = _handleToPtr(h);
+  unsigned beg_loc = 1;
+  frag_t* f = p->fragL;
+  
+  for(; f!=nullptr; f=f->link)
+  {
+    printf("%5i %5i ",beg_loc,f->endLoc);
+    for(unsigned i=0; i<f->presetN; ++i)
+      if( f->presetA[i].playFl || f->presetA[i].order!=0 )
+        printf("(%s-%i) ", p->presetLabelA[ f->presetA[i].preset_idx ].label, f->presetA[i].order);
+    printf("\n");
+    beg_loc = f->endLoc+1;
+  }
+  
+  
+  return rc;
+}
 
 
 cw::rc_t cw::preset_sel::translate_frags( const object_t* cfg )

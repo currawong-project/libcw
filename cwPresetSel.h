@@ -128,6 +128,7 @@ namespace cw
     rc_t write( handle_t h, const char* fn );
     rc_t read(  handle_t h, const char* fn );
     rc_t report( handle_t h );
+    rc_t report_presets( handle_t h );
 
     rc_t translate_frags( const object_t* obj );
     
