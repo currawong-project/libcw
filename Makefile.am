@@ -70,8 +70,8 @@ libcwSRC += src/libcw/cwIoPresetSelApp.cpp   src/libcw/cwPianoScore.cpp  src/lib
 libcwHDR += src/libcw/cwDynRefTbl.h   src/libcw/cwScoreParse.h   src/libcw/cwSfScore.h   
 libcwSRC += src/libcw/cwDynRefTbl.cpp src/libcw/cwScoreParse.cpp src/libcw/cwSfScore.cpp
 
-libcwHDR += src/libcw/cwSfMatch.h   src/libcw/cwSfTrack.h   src/libcw/cwScoreTest.h
-libcwSRC += src/libcw/cwSfMatch.cpp src/libcw/cwSfTrack.cpp src/libcw/cwScoreTest.cpp
+libcwHDR += src/libcw/cwSfMatch.h   src/libcw/cwSfTrack.h   src/libcw/cwSfAnalysis.h   src/libcw/cwScoreTest.h
+libcwSRC += src/libcw/cwSfMatch.cpp src/libcw/cwSfTrack.cpp src/libcw/cwSfAnalysis.cpp src/libcw/cwScoreTest.cpp  
 
 libcwHDR +=   src/libcw/cwScoreFollowerPerf.h src/libcw/cwScoreFollower.h   src/libcw/cwPerfMeas.h    src/libcw/cwScoreFollowTest.h
 libcwSRC +=                                   src/libcw/cwScoreFollower.cpp src/libcw/cwPerfMeas.cpp  src/libcw/cwScoreFollowTest.cpp
