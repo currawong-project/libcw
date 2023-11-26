@@ -394,6 +394,26 @@ namespace cw
       }
       return rc;
     }
+
+    rc_t _set_hash( score_parse_t* p, unsigned opId, unsigned barNumb, uint8_t midiPitch, unsigned barPitchIdx, unsigned& hashRef )
+    {
+      rc_t rc = kOkRC;
+
+      hashRef = 0;
+      
+      unsigned hash = form_hash(opId,barNumb,midiPitch,barPitchIdx);
+              
+      if( _hash_to_event(p,hash) != nullptr )
+      {
+        rc = cwLogError(kInvalidStateRC,"The event hash '%x' is is duplicated.",hash);
+        goto errLabel;
+      }
+
+      hashRef = hash;
+      
+    errLabel:
+      return rc;
+    }
     
     rc_t _parse_events( score_parse_t* p, csv::handle_t csvH )
     {
@@ -444,6 +464,15 @@ namespace cw
               cur_bar_numb = e->barNumb;
               bar_evt_idx  = 0;
               vop::zero(barPitchCntV,midi::kMidiNoteCnt);
+
+              if((rc = _set_hash( p, e->opId, cur_bar_numb, 0, 0, e->hash )) != kOkRC )
+              {
+                rc = cwLogError(rc,"Error setting event hash for bar line:%i",cur_bar_numb);
+                goto errLabel;
+              }
+
+              //printf("%i : 0x%x\n",cur_bar_numb,e->hash);
+              
             }
             break;
             
@@ -491,16 +520,13 @@ namespace cw
             if((rc = _parse_note_on_row(p,csvH,e)) == kOkRC )
             {
               e->barPitchIdx = barPitchCntV[e->d0];
-              
-              unsigned hash = form_hash(e->opId,cur_bar_numb,e->d0,e->barPitchIdx);
-              
-              if( _hash_to_event(p,hash) != nullptr )
+
+              if((rc = _set_hash( p, e->opId, cur_bar_numb, e->d0, e->barPitchIdx, e->hash )) != kOkRC )
               {
-                rc = cwLogError(kInvalidStateRC,"The event hash '%x' is is duplicated.",hash);
-                break;
+                rc = cwLogError(rc,"Error setting hash for note-on event: bar:%i pitch:%i bpi:%i", cur_bar_numb, e->d0, e->barPitchIdx );
+                goto errLabel;
               }
               
-              e->hash        = hash;
               barPitchCntV[e->d0] += 1;
             }
             break;
