@@ -16,7 +16,8 @@ namespace cw
       unsigned         index;             // index of this record in the internal section array
       struct loc_str*  measLocPtr;        // last location of last set to be applied to this section
       struct loc_str*  locPtr;            // location where this section starts
-      unsigned         begEvtIndex;       // score element index where this section starts    
+      unsigned         begEvtIndex;       // score element index where this section starts
+      unsigned         endEvtIndex;       // last element in this section
       unsigned         setCnt;            // Count of elements in setArray[]
       struct set_str** setArray;          // Ptrs to sets which are applied to this section.
       
@@ -37,7 +38,7 @@ namespace cw
       double       durSecs;      // Duration in seconds
       unsigned     index;        // Index of this event in the event array.
       unsigned     oLocId;       // Index of the onset location (oloc) containing this event
-      midi::byte_t pitch;        // MIDI pitch of this note or the MIDI pedal id of pedal down/up msg (64=sustain 65=sostenuto 66=soft)
+      midi::byte_t pitch;        // MIDI pictch of this note or the MIDI pedal id of pedal down/up msg (64=sustain 65=sostenuto 66=soft)
       midi::byte_t vel;          // MIDI velocity of this note
       unsigned     flags;        // Attribute flags for this event
       unsigned     dynLevel;     // Dynamcis value pppp to ffff (1 to 11) for this note.
@@ -48,6 +49,7 @@ namespace cw
       unsigned     line;         // Line number of this event in the score file.
       unsigned     parseEvtIdx;  // Index of event from score_parse event index.
       unsigned     hash;         // unique hash id for this note
+      char*        sciPitch;     // Sci. pitch of this note
 
       var_t*       varA;         // varA[varN] set's this event belongs to
       unsigned     varN;         // Length of varA[]
@@ -67,7 +69,7 @@ namespace cw
     } event_t;
 
     // A 'set' is a collection of events that are grouped in time and all marked with a given attribute.
-    // (e.g. eveness, tempo, dynamcs ... )o
+    // (e.g. eveness, tempo, dynamcs ... )
     typedef struct set_str
     {
       unsigned        id;           // Unique id for this set
@@ -128,6 +130,9 @@ namespace cw
     const event_t*   event( handle_t h, unsigned idx );
     
     const event_t*   hash_to_event( handle_t h, unsigned hash );
+    
+    // Return the first event in the bar.
+    const event_t*   bar_to_event( handle_t h, unsigned barNumb );
 
     unsigned         loc_count( handle_t h );
     const loc_t*     loc_base( handle_t h );
@@ -137,6 +142,8 @@ namespace cw
 
     unsigned         section_count( handle_t h );
     const section_t* section_base( handle_t h );
+
+    const section_t* event_index_to_section( handle_t h, unsigned event_idx );
 
     
     void report( handle_t h, const char* out_fname=nullptr );

@@ -4,6 +4,7 @@
 #include "cwMem.h"
 #include "cwText.h"
 #include "cwObject.h"
+#include "cwFile.h"
 #include "cwMidi.h"
 #include "cwFileSys.h"
 #include "cwDynRefTbl.h"
@@ -89,8 +90,10 @@ namespace cw
 
 
       for(unsigned i=0; i<p->eventN; ++i)
+      {
+        mem::release(p->eventA[i].sciPitch);
         mem::release(p->eventA[i].varA);
-      
+      }
       mem::release(p->eventA);
 
       if( p->deleteParserH_Fl )
@@ -161,8 +164,10 @@ namespace cw
           e->line        = pe->csvRowNumb;
           e->parseEvtIdx = pe->index;
           e->hash        = pe->hash;
+          e->sciPitch    = pe->sciPitch == nullptr ? nullptr : mem::duplStr(pe->sciPitch);
           e->bpm         = pe->bpm;
           e->bpm_rval    = pe->bpm_rval;
+          
 
           e->varN = std::count_if( pe->varA, pe->varA + score_parse::kVarCnt, [](const score_parse::event_var_t& x){ return x.flags!=0; });
           e->varA = mem::allocZ<var_t>(e->varN);
@@ -266,25 +271,39 @@ namespace cw
             const score_parse::event_t* eventA      = event_array( p->parserH );
             unsigned                    eventN      = event_count( p->parserH );
             event_t*                    begEvt      = nullptr; 
-
-            // advance to the first onset event 
-            for(unsigned i = beg_evt_idx; i<=end_evt_idx && i<eventN; ++i)
-              if( eventA[i].oLocId != kInvalidId )
-              {
-                begEvt = _hash_to_event(p,eventA[i].hash);
-                break;
-              }
+            event_t*                    endEvt      = nullptr;
             
+            // advance to the first and last onset event
+            for(unsigned i = beg_evt_idx; i<=end_evt_idx && i<eventN; ++i)
+            {
+              if( eventA[i].oLocId != kInvalidId  )
+              {
+                if( begEvt == nullptr )
+                  begEvt = _hash_to_event(p,eventA[i].hash);
+                
+                event_t* e;
+                if((e = _hash_to_event(p,eventA[i].hash)) != nullptr )
+                  endEvt = e;
+              }
+              
+            }
 
             if( begEvt == nullptr )
             {
               rc = cwLogError(kInvalidStateRC,"The section '%s' does not have a 'begin' event with hash:%x.",cwStringNullGuard(ps->label),ps->begEvent->hash);
               goto errLabel;
             }
-          
+
+            if( endEvt == nullptr )
+            {
+              rc = cwLogError(kInvalidStateRC,"The section '%s' does not have an 'end' event with hash:%x.",cwStringNullGuard(ps->label),ps->endEvent->hash);
+              goto errLabel;
+            }
+            
             section->label              = mem::duplStr(ps->label);
             section->index              = i;
             section->begEvtIndex        = begEvt->index;
+            section->endEvtIndex        = endEvt->index;
             section->locPtr             = p->locA + p->eventA[begEvt->index].oLocId;
             section->locPtr->begSectPtr = section;
 
@@ -433,7 +452,7 @@ namespace cw
       // Get the min BPM
       auto min_evt = std::min_element(eventA,eventA+eventN,[](auto& x0, auto& x1){ return x0.bpm<x1.bpm; });
       
-      cwLogInfo("min tempo:%i at CSV row:%i\n",min_evt->bpm,min_evt->csvRowNumb);
+      cwLogInfo("min tempo:%i at CSV row:%i",min_evt->bpm,min_evt->csvRowNumb);
 
       if( min_evt->bpm == 0 )
       {
@@ -787,7 +806,7 @@ namespace cw
     }
     
     
-    void _report_print( sfscore_t* p, rpt_event_t* rptA, unsigned rptN )
+    void _report_print( sfscore_t* p, rpt_event_t* rptA, unsigned rptN, file::handle_t fH )
     {
       unsigned    bar0      = 0;
       const char* sec0      = nullptr;
@@ -795,25 +814,28 @@ namespace cw
       const char* sec_str   = "S:";
       const char* bar_str   = "B:";
       
-      printf("e idx oloc   secs   bpm b_rval rtmpo op  sectn  sdx  bar  bdx scip vel  frac g\n");
-      printf("----- ----- ------- --- ------ ----- --- ------ --- ----- --- ---- --- ----- -\n");
 
   
       for(rpt_event_t* r=rptA; r<rptA+rptN; ++r)
       {
         const event_t* e = r->event;
         const section_t* section = r->section;
-        
-        const char* d_bar_str = bar0 != e->barNumb ? bar_str : blank_str;
-        const char* d_sec_str = textIsEqual(sec0,section->label) ? blank_str : sec_str;
-        
-        char sciPitch[5];
-        midi::midiToSciPitch( e->pitch, sciPitch, 5 );
 
+        bool        new_bar_fl = bar0 != e->barNumb;        
+        const char* d_bar_str  = new_bar_fl ? bar_str : blank_str;
+        const char* d_sec_str  = textIsEqual(sec0,section->label) ? blank_str : sec_str;
+
+        if( r==rptA || new_bar_fl  )
+        {
+          printf(fH,"%i :\n",e->barNumb);
+          printf(fH,"e idx oloc   secs   bpm b_rval rtmpo op  sectn  sdx  bar  bdx scip vel  frac g     hash  \n");
+          printf(fH,"----- ----- ------- --- ------ ----- --- ------ --- ----- --- ---- --- ----- - ----------\n");
+        }
+        
         bar0 = e->barNumb;
         sec0 = section->label;
 
-        printf("%5i %5i %7.3f %3i %6.4f %5.3f %3s %2s%4s %3i %2s%3i %3i %4s %3i %5.3f %c ",
+        printf(fH,"%5i %5i %7.3f %3i %6.4f %5.3f %3s %2s%4s %3i %2s%3i %3i %4s %3i %5.3f %c 0x%x ",
                e->index,
                e->oLocId,
                e->secs,
@@ -827,10 +849,11 @@ namespace cw
                d_bar_str,
                e->barNumb,
                e->barNoteIdx,
-               sciPitch,
+               e->sciPitch,
                e->vel,
                e->frac,
-               cwIsFlag(e->flags,score_parse::kGraceFl) ? 'g' : ' ');
+               cwIsFlag(e->flags,score_parse::kGraceFl) ? 'g' : ' ',
+               e->hash);
 
         // for each possible var type
         for(unsigned vi=0; vi<score_parse::kVarCnt; ++vi)
@@ -840,20 +863,21 @@ namespace cw
 
           // if this event is not a included in a set of type 'vi'
           if( var >= e->varA+e->varN )
-            printf("           ");
+            printf(fH,"           ");
           else
           {
             const char* sect_label = var->set->sectArray[0]==nullptr ? "****" : var->set->sectArray[0]->label;
-            printf("%s-%03i-%s ",score_parse::var_flags_to_char(var->flags), var->set->id, sect_label);
+            printf(fH,"%s-%03i-%s ",score_parse::var_flags_to_char(var->flags), var->set->id, sect_label);
           }
         }
 
-        printf("\n");
+        printf(fH,"\n");
       }
       
     }
 
-    rpt_event_t* _report_create( sfscore_t* p )
+    rpt_event_t*
+    _report_create( sfscore_t* p )
     {
       rpt_event_t* rptA = mem::allocZ<rpt_event_t>( p->eventN );
       unsigned curSectionIdx = 0;
@@ -889,7 +913,7 @@ namespace cw
       return rptA;
     }
 
-    rc_t _report( sfscore_t* p )
+    rc_t _report( sfscore_t* p, const char* fname )
     {
       rc_t rc = kOkRC;
 
@@ -897,8 +921,18 @@ namespace cw
 
       if((rptA = _report_create(p)) != nullptr )
       {
+        file::handle_t fH;
 
-        _report_print(p,rptA,p->eventN);
+        if((rc = file::open(fH,fname,file::kWriteFl)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Score report file open failed on '%s'.",cwStringNullGuard(fname));
+          goto errLabel;
+        }
+         
+        _report_print(p,rptA,p->eventN, fH);
+
+      errLabel:
+        close(fH);
         mem::release(rptA);
       }
       
@@ -1060,11 +1094,22 @@ const cw::sfscore::event_t* cw::sfscore::event( handle_t h, unsigned idx )
 const cw::sfscore::event_t* cw::sfscore::hash_to_event( handle_t h, unsigned hash )
 {
   sfscore_t* p = _handleToPtr(h);
-  for(unsigned i=0; p->eventN; ++i)
+  for(unsigned i=0; i<p->eventN; ++i)
     if( p->eventA[i].hash == hash )
+      return p->eventA + i;
+  
+  return nullptr;
+}
+
+const cw::sfscore::event_t*   cw::sfscore::bar_to_event( handle_t h, unsigned barNumb )
+{
+  sfscore_t* p = _handleToPtr(h);
+  for(unsigned i=0; i<p->eventN; ++i)
+    if( p->eventA[i].barNumb == barNumb )
       return p->eventA + i;
   return nullptr;
 }
+
 
 unsigned cw::sfscore::loc_count( handle_t h )
 {
@@ -1102,10 +1147,20 @@ const cw::sfscore::section_t* cw::sfscore::section_base( handle_t h )
   return p->sectionA;
 }
 
+const cw::sfscore::section_t* cw::sfscore::event_index_to_section( handle_t h, unsigned event_idx )
+{
+  sfscore_t * p = _handleToPtr(h);
+  for(unsigned i=0; i<p->sectionN; ++i)
+    if( p->sectionA[i].begEvtIndex <= event_idx && event_idx <= p->sectionA[i].endEvtIndex )
+      return p->sectionA + i;
+  return nullptr;
+}
+
+
 void cw::sfscore::report( handle_t h, const char* out_fname )
 {
   sfscore_t* p = _handleToPtr(h);
   printf("Score Report\n");
-  _report(p);
+  _report(p,out_fname);
 }
 
