@@ -2,6 +2,7 @@
 #include "cwLog.h"
 #include "cwCommonImpl.h"
 #include "cwMem.h"
+#include "cwText.h"
 #include "cwObject.h"
 #include "cwPianoScore.h"
 #include "cwMidi.h"
@@ -9,6 +10,8 @@
 #include "cwFile.h"
 #include "cwCsv.h"
 #include "cwVectOps.h"
+
+#define INVALID_PERF_MEAS (-1)
 
 namespace cw
 {
@@ -87,6 +90,14 @@ namespace cw
       return buf_idx;
     }
 
+    rc_t  _parse_csv_string( const char* lineBuf, unsigned bfi, unsigned efi, char* val, unsigned valCharN )
+    {
+      unsigned n = std::min(efi-bfi,valCharN);
+      strncpy(val,lineBuf+bfi,n);
+      val[std::min(n,valCharN-1)] = 0;
+      return kOkRC;
+    }
+        
     rc_t  _parse_csv_double( const char* lineBuf, unsigned bfi, unsigned efi, double &valueRef )
     {
       errno = 0;
@@ -130,9 +141,10 @@ namespace cw
         kBpm_FIdx,
         kGrace_FIdx,
         kPedal_FIdx,
-        kDyn_FIdx,
         kEven_FIdx,
+        kDyn_FIdx,
         kTempo_FIdx,
+        kCost_FIdx,
         kMax_FIdx
       };
 
@@ -185,6 +197,34 @@ namespace cw
             case kSection_FIdx:
               rc = _parse_csv_unsigned( line_buf, bfi, efi, e->section );
               break;
+
+            case kSPitch_FIdx:
+              rc = _parse_csv_string( line_buf, bfi, efi, e->sci_pitch, sizeof(e->sci_pitch) );              
+              break;
+
+            case kEven_FIdx:
+              e->even = INVALID_PERF_MEAS;
+              if( efi > bfi+1 )
+                rc = _parse_csv_double( line_buf, bfi, efi, e->even );
+              break;
+              
+            case kDyn_FIdx:
+              e->dyn = INVALID_PERF_MEAS;
+              if( efi > bfi+1 )
+                rc = _parse_csv_double( line_buf, bfi, efi, e->dyn );
+              break;
+              
+            case kTempo_FIdx:
+              e->tempo = INVALID_PERF_MEAS;
+              if( efi > bfi+1 )
+                rc = _parse_csv_double( line_buf, bfi, efi, e->tempo );
+              break;
+              
+            case kCost_FIdx:
+              e->cost = INVALID_PERF_MEAS;
+              if( efi > bfi+1 )
+                rc = _parse_csv_double( line_buf, bfi, efi, e->cost );
+              break;
               
             default:
               break;
@@ -201,6 +241,28 @@ namespace cw
       return rc;      
     }
 
+    bool _does_file_have_loc_info( const char* fn )
+    {
+      rc_t          rc              = kOkRC;
+      bool          has_loc_info_fl = false;
+      csv::handle_t csvH;
+      
+      if((rc = create( csvH, fn)) != kOkRC )
+        goto errLabel;
+
+      for(unsigned i=0; i<col_count(csvH); ++i)
+        if( textIsEqual( col_title(csvH,i), "loc") )
+        {
+          has_loc_info_fl = true;
+          break;
+        }
+            
+      destroy(csvH);
+    errLabel:
+      
+      return has_loc_info_fl;
+        
+    }
     
     rc_t _parse_csv( score_t* p, const char* fn )
     {
@@ -227,14 +289,19 @@ namespace cw
       p->uid_mapN = 0;
       
       for(unsigned line=0; line<line_count; ++line)
+      {
+        if((rc = getLineAuto( fH, &lineBufPtr, &lineBufCharCnt )) != kOkRC )
+        {
+          if( rc != kEofRC )
+            rc = cwLogError( rc, "Line read failed on '%s' line number '%i'.",cwStringNullGuard(fn),line+1);
+          else
+            rc = kOkRC;
+          
+          goto errLabel;
+        }
+
         if( line > 0 ) // skip column title line
         {
-
-          if((rc = getLineAuto( fH, &lineBufPtr, &lineBufCharCnt )) != kOkRC )
-          {
-            rc = cwLogError( rc, "Line read failed on '%s' line number '%i'.",cwStringNullGuard(fn),line+1);
-            goto errLabel;
-          }
 
           e = mem::allocZ<event_t>();
           
@@ -266,7 +333,7 @@ namespace cw
           p->uid_mapN += 1;        
         }
       
-      
+      }
 
     errLabel:
       mem::release(lineBufPtr);
@@ -444,20 +511,36 @@ cw::rc_t cw::perf_score::create( handle_t& hRef, const char* fn )
     return rc;
   
   p = mem::allocZ< score_t >();
-  
-  rc = _parse_csv(p,fn);
 
-  _set_bar_pitch_index(p);
-  
+  if( _does_file_have_loc_info(fn) )
+  {
+    if((rc = _parse_csv(p,fn)) != kOkRC )
+      goto errLabel;
+
+    _set_bar_pitch_index(p);
+    
+    p->has_locs_fl = true;    
+  }
+  else
+  {
+    if((rc = _parse_midi_csv(p, fn)) != kOkRC )
+      goto errLabel;
+    
+    p->has_locs_fl = false;    
+  }
+    
   hRef.set(p);
 
-  p->has_locs_fl = true;
-  
+ errLabel:  
   if( cfg != nullptr )
     cfg->free();
 
   if( rc != kOkRC )
+  {
     destroy(hRef);
+    rc = cwLogError(rc,"Performance score create failed on '%s'.",fn);
+  }
+
   
   return rc;
 }
@@ -564,12 +647,6 @@ const cw::perf_score::event_t* cw::perf_score::loc_to_event( handle_t h, unsigne
 {
   score_t* p = _handleToPtr(h);  
   return _loc_to_event(p,loc);
-}
-
-void cw::perf_score::loc_to_pitch_context( handle_t h, uint8_t* preNoteCtxA, uint8_t* postNoteCtxA, unsigned ctxN )
-{
-  score_t* p = _handleToPtr(h);
-  
 }
 
 

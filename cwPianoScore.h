@@ -16,7 +16,7 @@ namespace cw
       unsigned tick;          // event tick location
       double   sec;           // event absolute time in seconds
       double   rval;          // event rythmic value 2=1/2 1/4 .5=2 or 0
-      char     sci_pitch[4];  // scientific pitch
+      char     sci_pitch[5];  // scientific pitch
       char     dmark[6];      // dynamic mark (e.g. "pp","mf","fff")
       unsigned dlevel;        // dynamic level as an integer associated with dyn. mark 
       unsigned status;        // MIDI status < type | channel > or 0
@@ -25,12 +25,18 @@ namespace cw
       unsigned bpm;           // tempo BPM or 0  
       char     grace_mark[4]; // grace mark or 0
       unsigned bar;           // bar number or 0
-      unsigned barPitchIdx;   // bar pitch index
+      unsigned barPitchIdx;   // bar pitch index or 0 
       unsigned section;       // section number or 0
+
+      double   even;
+      double   dyn;
+      double   tempo;
+      double   cost;
+      
       struct event_str* link; // list link
     } event_t;
         
-    rc_t create(  handle_t& hRef, const char* fn );
+    rc_t create(  handle_t& hRef, const char* csv_fname );
     rc_t create(  handle_t& hRef, const object_t* cfg );
 
     // Read a CSV as written by cwIoMidiRecordPlay.save_csv().
@@ -45,7 +51,6 @@ namespace cw
     const event_t* base_event( handle_t h );
 
     const event_t* loc_to_event( handle_t h, unsigned loc );
-    void loc_to_pitch_context( handle_t h, uint8_t* preNoteCtxA, uint8_t* postNoteCtxA, unsigned ctxN );
 
     // Format the event as a string for printing.
     rc_t  event_to_string( handle_t h, unsigned uid, char* buf, unsigned buf_byte_cnt );
