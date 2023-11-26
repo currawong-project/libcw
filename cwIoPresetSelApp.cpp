@@ -10,6 +10,7 @@
 #include "cwTime.h"
 #include "cwMidiDecls.h"
 #include "cwMidi.h"
+#include "cwMidiFile.h"
 #include "cwUiDecls.h"
 #include "cwIo.h"
 #include "cwScoreFollowerPerf.h"
@@ -252,6 +253,10 @@ namespace cw
     typedef struct perf_recording_str
     {
       char*                      fname;     // perf recording
+      unsigned                   sess_numb;
+      unsigned                   take_numb;
+      unsigned                   beg_loc;
+      unsigned                   end_loc;
       char*                      label;     // menu label
       unsigned                   id;        // menu appId
       unsigned                   uuId;      // menu uuid
@@ -491,6 +496,80 @@ namespace cw
       
       return rc;
     }
+    
+
+    void _set_statusv( app_t* app, const char* fmt, va_list vl )
+    {
+      const int sN = 128;
+      char      s[sN];
+      vsnprintf(s,sN,fmt,vl);      
+      uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kStatusId), s );
+      //printf("Status:%s\n",s);
+    }
+
+    
+    void _set_status( app_t* app, const char* fmt, ... )
+    {
+      va_list vl;
+      va_start(vl,fmt);
+      _set_statusv(app, fmt, vl );
+      va_end(vl);
+    }
+
+    void _clear_status( app_t* app )
+    {
+      _set_status(app,"Ok");
+    }
+
+    void _log_output_func( void* arg, unsigned level, const char* text )
+    {
+      app_t*   app     = (app_t*)arg;
+      unsigned logUuId = uiFindElementUuId( app->ioH, kLogId);
+
+      uiSetLogLine( app->ioH, logUuId, text );
+      log::defaultOutput(nullptr,level,text);
+    }
+
+    void _free_perf_recording_recd( perf_recording_t* prp )
+    {
+      if( prp != nullptr )
+      {
+        mem::release( prp->label );
+        mem::release( prp->fname );
+        mem::release(prp->vel_tblA);
+        mem::release(prp );
+      }
+    }
+
+    rc_t _free( app_t& app )      
+    {
+      if( app.flow_proc_dict != nullptr )
+        app.flow_proc_dict->free();
+
+      perf_recording_t* prp = app.perfRecordingBeg;
+      while(prp != nullptr )
+      {
+        perf_recording_t* tmp = prp->link;
+        _free_perf_recording_recd(prp);
+        prp = tmp;
+      }
+      
+
+      mem::release((char*&)app.record_backup_dir);
+      mem::release((char*&)app.record_dir);
+      mem::release((char*&)app.scoreFn);
+      mem::release(app.midiRecordDir);
+      mem::release(app.midiLoadFname);
+      vtbl::destroy(app.vtH);
+      destroy(app.sfH);
+      preset_sel::destroy(app.psH);
+      io_flow::destroy(app.ioFlowH);
+      midi_record_play::destroy(app.mrpH);
+      perf_score::destroy( app.scoreH );
+      mem::release(app.locMap);
+      return kOkRC;
+    }
+
 
     rc_t _load_perf_recording_menu( app_t* app )
     {
@@ -524,7 +603,7 @@ namespace cw
       
       return rc;
     }
-
+    
     rc_t _parse_perf_recording_vel_tbl( app_t* app, const object_t* velTblCfg, vel_tbl_t*& velTblA_Ref, unsigned& velTblN_Ref )
     {
       rc_t rc = kOkRC;
@@ -556,13 +635,96 @@ namespace cw
       return rc;
     }
 
+    rc_t _create_perf_recording_recd( app_t* app, const char* dir, const char* recording_folder, const char* fname, const object_t* velTblCfg )
+    {
+      rc_t              rc         = kOkRC;
+      perf_recording_t* prp        = nullptr;
+      object_t*         meta_cfg   = nullptr;
+      const char*       take_label = nullptr;
+      char*             perf_fname = nullptr;
+      char*             meta_fname = nullptr;
+      bool              skip_fl    = false;
+      // create the performance recording file path
+      if((perf_fname = filesys::makeFn(dir,fname,nullptr,recording_folder,nullptr)) == nullptr )
+      {
+        rc = cwLogError(kOpFailRC,"The performance file name formation failed on directory '%s'.",cwStringNullGuard(recording_folder));
+        goto errLabel;
+      }
+
+      // if path does not identify an existing file  - skip it
+      if( !filesys::isFile(perf_fname) )
+        goto errLabel;
+
+      if((meta_fname = filesys::makeFn(dir,"meta","cfg",recording_folder,nullptr)) == nullptr )
+      {
+        rc = cwLogError(kOpFailRC,"The performance meta file name formation failed on directory '%s'.",cwStringNullGuard(recording_folder));
+        goto errLabel;          
+      }
+      
+      // parse the perf. meta file
+      if((rc = objectFromFile( meta_fname, meta_cfg )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Performance meta file '%s' parse failed.",cwStringNullGuard(meta_fname));
+        goto errLabel;
+      }
+
+      // allocate the perf_recording_t recd
+      prp = mem::allocZ<perf_recording_t>();
+        
+      // read the meta file values
+      if((rc = meta_cfg->getv("take_label",take_label,
+                              "session_number",prp->sess_numb,
+                              "take_number",prp->take_numb,
+                              "beg_loc",prp->beg_loc,
+                              "end_loc",prp->end_loc,
+                              "skip_score_follow_fl",skip_fl)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Performance meta file '%s' parse failed.",cwStringNullGuard(meta_fname));
+        goto errLabel;          
+      }
+
+      if( skip_fl )
+      {
+        cwLogWarning("'Skip score follow flag' set.Skipping recorded performance '%s'.",cwStringNullGuard(take_label));
+        goto errLabel;
+      }
+                           
+      prp->label = mem::duplStr(take_label);
+      prp->fname = mem::duplStr(perf_fname);
+        
+      if((rc = _parse_perf_recording_vel_tbl(app, velTblCfg, prp->vel_tblA, prp->vel_tblN )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Parse failed on vel table entry for the recorded performance in '%s'.",cwStringNullGuard(dir));
+        goto errLabel;
+      }
+
+      if( app->perfRecordingEnd == nullptr )
+      {
+        app->perfRecordingBeg = prp;
+        app->perfRecordingEnd = prp;
+      }
+      else
+      {          
+        app->perfRecordingEnd->link = prp;            
+        app->perfRecordingEnd = prp;
+      }
+
+    errLabel:
+      if( rc != kOkRC || skip_fl )
+        _free_perf_recording_recd( prp );
+
+      mem::release(meta_fname);
+      mem::release(perf_fname);
+      return rc;
+      
+    }
+
     rc_t _parse_perf_recording_dir( app_t* app, const char* dir, const char* fname, const object_t* velTblCfg )
     {
       rc_t                 rc  = kOkRC;
       filesys::dirEntry_t* deA  = nullptr;
       unsigned             deN = 0;
-      char*                path = nullptr;
-
+      
       // get the directory entries based on 'dir'
       if((deA = filesys::dirEntries( dir, filesys::kDirFsFl, &deN )) == nullptr )
       {
@@ -574,49 +736,11 @@ namespace cw
         cwLogWarning("The performance recording directory '%s' was found to be empty.",cwStringNullGuard(dir));
 
       // for each directory entry
-      for(unsigned i = 0; i<deN && rc == kOkRC; ++i)
-      {
-        perf_recording_t* prp = nullptr;
-        
-        mem::release(path);
-
-        // create the performance recording file path
-        if((path = filesys::makeFn(dir,fname,nullptr,deA[i].name,nullptr)) == nullptr )
-        {
-          rc = cwLogError(kOpFailRC,"The performance file name formation failed on directory '%s'.",cwStringNullGuard(deA[i].name));
+      for(unsigned i=0; i<deN; ++i)
+        if((rc = _create_perf_recording_recd(app, dir, deA[i].name, fname, velTblCfg )) != kOkRC )
           goto errLabel;
-        }
-
-        if( !filesys::isFile(path) )
-          continue;
-        
-        // link in the perf. recording fname to app->perfRecording list
-        prp = mem::allocZ<perf_recording_t>();
-
-        prp->fname = mem::duplStr(path);
-        prp->label = mem::duplStr(deA[i].name);
-
-        if((rc = _parse_perf_recording_vel_tbl(app, velTblCfg, prp->vel_tblA, prp->vel_tblN )) != kOkRC )
-        {
-          rc = cwLogError(rc,"Parse failed on vel table at directory entry index '%i'.",i);
-          // don't goto errLabel because the perf_recording record would be leaked
-        }
-        
-        if( app->perfRecordingEnd == nullptr )
-        {
-          app->perfRecordingBeg = prp;
-          app->perfRecordingEnd = prp;
-        }
-        else
-        {          
-          app->perfRecordingEnd->link = prp;            
-          app->perfRecordingEnd = prp;
-        }
-        
-      }
-
+      
     errLabel:
-      mem::release(path);
       mem::release(deA);
       return rc;
 
@@ -661,9 +785,8 @@ namespace cw
         {
           rc = cwLogError(rc ,"Error creating the performance directory entry at index '%i'.",i);
           goto errLabel;          
-        }
-        
-      }
+        }        
+      }      
 
       if((rc = _load_perf_recording_menu( app )) != kOkRC )
       {
@@ -680,72 +803,6 @@ namespace cw
     }
 
     
-
-    void _set_statusv( app_t* app, const char* fmt, va_list vl )
-    {
-      const int sN = 128;
-      char      s[sN];
-      vsnprintf(s,sN,fmt,vl);      
-      uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kStatusId), s );
-      //printf("Status:%s\n",s);
-    }
-
-    
-    void _set_status( app_t* app, const char* fmt, ... )
-    {
-      va_list vl;
-      va_start(vl,fmt);
-      _set_statusv(app, fmt, vl );
-      va_end(vl);
-    }
-
-    void _clear_status( app_t* app )
-    {
-      _set_status(app,"Ok");
-    }
-
-    void _log_output_func( void* arg, unsigned level, const char* text )
-    {
-      app_t*   app     = (app_t*)arg;
-      unsigned logUuId = uiFindElementUuId( app->ioH, kLogId);
-
-      uiSetLogLine( app->ioH, logUuId, text );
-      log::defaultOutput(nullptr,level,text);
-    }
-
-
-    rc_t _free( app_t& app )      
-    {
-      if( app.flow_proc_dict != nullptr )
-        app.flow_proc_dict->free();
-
-      perf_recording_t* prp = app.perfRecordingBeg;
-      while(prp != nullptr )
-      {
-        perf_recording_t* tmp = prp->link;
-        mem::release(prp->fname);
-        mem::release(prp->label);
-        mem::release(prp->vel_tblA);
-        mem::release(prp);
-        prp = tmp;
-      }
-      
-
-      mem::release((char*&)app.record_backup_dir);
-      mem::release((char*&)app.record_dir);
-      mem::release((char*&)app.scoreFn);
-      mem::release(app.midiRecordDir);
-      mem::release(app.midiLoadFname);
-      vtbl::destroy(app.vtH);
-      destroy(app.sfH);
-      preset_sel::destroy(app.psH);
-      io_flow::destroy(app.ioFlowH);
-      midi_record_play::destroy(app.mrpH);
-      perf_score::destroy( app.scoreH );
-      mem::release(app.locMap);
-      return kOkRC;
-    }
-
     double _get_system_sample_rate( app_t* app, const char* groupLabel )
     {
       unsigned groupIdx = kInvalidIdx;
@@ -768,7 +825,7 @@ namespace cw
       return srate;
     }
 
-    rc_t _apply_preset( app_t* app, unsigned loc, const preset_sel::frag_t* frag=nullptr  )      
+    rc_t _apply_preset( app_t* app, unsigned loc, const perf_score::event_t* score_evt=nullptr, const preset_sel::frag_t* frag=nullptr  )      
     {
       // if frag is NULL this is the beginning of a play session
       if( frag == nullptr )
@@ -798,7 +855,10 @@ namespace cw
           printf("Apply preset: '%s' : loc:%i\n", preset_idx==kInvalidIdx ? "<invalid>" : preset_label, loc );
 
           _set_status(app,"Apply preset: '%s'.", preset_idx == kInvalidIdx ? "<invalid>" : preset_label);
-          
+
+          if( score_evt != nullptr )
+            printf("Meas:e:%f d:%f t:%f c:%f\n",score_evt->even,score_evt->dyn,score_evt->tempo,score_evt->cost);
+
           if( preset_label != nullptr )
           {
             io_flow::apply_preset( app->ioFlowH, flow_cross::kNextDestId, preset_label );
@@ -916,7 +976,7 @@ namespace cw
       return loc;      
     }
     
-    void _midi_play_callback( void* arg, unsigned actionId, unsigned id, const time::spec_t timestamp, unsigned loc, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
+    void _midi_play_callback( void* arg, unsigned actionId, unsigned id, const time::spec_t timestamp, unsigned loc, const void* msg_arg, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
     {
       app_t* app = (app_t*)arg;
       switch( actionId )
@@ -960,8 +1020,9 @@ namespace cw
             if( loc != INVALID_LOC  && app->trackMidiFl )
             {
               if( preset_sel::track_loc( app->psH, loc, f ) )  
-              {          
-                _apply_preset( app, loc, f );
+              {
+
+                _apply_preset( app, loc, (const perf_score::event_t*)msg_arg, f );
                 
                 if( f != nullptr )
                   _do_select_frag( app, f->guiUuId );
@@ -1003,7 +1064,7 @@ namespace cw
             if( midi::isChStatus(mm->status) )
             {
               if(midi_record_play::send_midi_msg( app->mrpH, midi_record_play::kSampler_MRP_DevIdx, mm->status & 0x0f, mm->status & 0xf0, mm->d0, mm->d1 ) == kOkRC )                
-                _midi_play_callback( app, midi_record_play::kMidiEventActionId, id, timestamp, loc, mm->status & 0x0f, mm->status & 0xf0, mm->d0, mm->d1 );
+                _midi_play_callback( app, midi_record_play::kMidiEventActionId, id, timestamp, loc, nullptr, mm->status & 0x0f, mm->status & 0xf0, mm->d0, mm->d1 );
             }
 
           }
@@ -1234,7 +1295,7 @@ namespace cw
       }
 
       // apply the preset which is active at the start time
-      if((rc = _apply_preset( app, frag->begPlayLoc, frag )) != kOkRC )
+      if((rc = _apply_preset( app, frag->begPlayLoc, nullptr, frag )) != kOkRC )
       {
         rc = cwLogError(rc,"Preset application failed on fragment at id '%i'.",fragId);
         goto errLabel;        
@@ -1860,7 +1921,7 @@ namespace cw
     rc_t _load_midi_player( app_t* app, unsigned& midiEventCntRef )
     {
       rc_t                          rc         = kOkRC;
-      const perf_score::event_t*         e          = nullptr;
+      const perf_score::event_t*    e          = nullptr;
       unsigned                      midiEventN = 0;      
       midi_record_play::midi_msg_t* m          = nullptr;
       midiEventCntRef = 0;
@@ -1894,6 +1955,7 @@ namespace cw
             m[i].d1     = e->d1;
             m[i].id     = e->uid;
             m[i].loc    = e->loc;
+            m[i].arg    = e;
 
             app->locMap[i].loc = e->loc;
             app->locMap[i].timestamp = m[i].timestamp;
@@ -1982,12 +2044,12 @@ namespace cw
       
       return rc;
     }
-    
+
     rc_t _do_load( app_t* app, const char* perf_fn, const vel_tbl_t* vtA=nullptr, unsigned vtN=0 )
     {
       rc_t     rc         = kOkRC;
       unsigned midiEventN = 0;
-
+      
       cwLogInfo("Loading");
       _set_status(app,"Loading...");
 
@@ -2011,7 +2073,7 @@ namespace cw
         rc = cwLogError(rc,"Velocity table assignment failed.");
         goto errLabel;                  
       }
-
+      
       // A performance is loaded so enable the UI
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStartBtnId ), true );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStopBtnId ),  true );
@@ -2037,10 +2099,11 @@ namespace cw
 
       // set the range of the SF reset number
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kSfResetBtnId ),   true );
-      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kSfResetLocNumbId ),   true );      
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kSfResetLocNumbId ),   true );
+
       io::uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, kSfResetLocNumbId), app->minLoc, app->maxLoc, 1, 0, app->beg_play_loc );
       io::uiSendValue( app->ioH, io::uiFindElementUuId(app->ioH, kSfResetLocNumbId), app->minLoc);
-
+      
       cwLogInfo("'%s' loaded.",perf_fn);
 
     errLabel:
@@ -2768,6 +2831,7 @@ namespace cw
           //score_follower::write_svg_file(app->sfH,"/home/kevin/temp/temp_sf.html");
           //score_follower::midi_state_rt_report( app->sfH, "/home/kevin/temp/temp_midi_state_rt_report.txt" );
           //score_follower::score_report(app->sfH,"/home/kevin/temp/temp_cm_score_report.txt");
+          preset_sel::report_presets(app->psH);
           break;
 
         case kSaveBtnId:
