@@ -25,6 +25,7 @@ namespace cw
     rc_t destroy( handle_t& hRef );
 
     bool is_enabled( handle_t h );
+    void enable( handle_t h, bool enable_fl );
     
     // Set the starting search location and calls clear_match_id_array().
     rc_t reset( handle_t h, unsigned loc );
@@ -76,6 +77,9 @@ namespace cw
     // Use the stored MIDI data received since the last call to reset to generate a report
     // using midi_state::report_events().
     rc_t midi_state_rt_report( handle_t h, const char* out_fname );
+
+    rc_t write_sync_perf_csv( handle_t h, const char* out_fname,  const midi::file::trackMsg_t** msgA, unsigned msgN );
+
 
   }
 }

@@ -5,6 +5,7 @@
 #include "cwText.h"
 #include "cwObject.h"
 #include "cwMidi.h"
+#include "cwFile.h"
 #include "cwFileSys.h"
 #include "cwMidi.h"
 #include "cwMidiFile.h"
@@ -46,13 +47,13 @@ namespace cw
       sftrack::handle_t   trackH;
       //perf_meas::handle_t measH;
       
-      unsigned*    result_idxA;
-      unsigned     result_idx_allocN;
-      unsigned     result_idx_curN;
+      unsigned*    result_idxA;        //
+      unsigned     result_idx_allocN;  //
+      unsigned     result_idx_curN;    //
 
-      ssf_note_on_t* perfA;       // stored performance
-      unsigned       perfN;
-      unsigned       perf_idx;
+      ssf_note_on_t* perfA;            // perfA[ perfN ] stored performance
+      unsigned       perfN;            //
+      unsigned       perf_idx;         
 
       dyn_ref_tbl::handle_t dynRefH;
 
@@ -314,9 +315,16 @@ cw::rc_t cw::score_follower::destroy( handle_t& hRef )
 
 bool cw::score_follower::is_enabled( handle_t h )
 {
-  score_follower_t* p    = _handleToPtr(h);
+  score_follower_t* p = _handleToPtr(h);
   return p->enableFl;
 }
+
+void cw::score_follower::enable( handle_t h, bool enable_fl )
+{
+  score_follower_t* p = _handleToPtr(h);
+  p->enableFl = enable_fl;
+}
+
 
 cw::rc_t cw::score_follower::reset( handle_t h, unsigned locId )
 {
@@ -326,7 +334,7 @@ cw::rc_t cw::score_follower::reset( handle_t h, unsigned locId )
   if( locId != kInvalidId )
   {
 
-    printf("SF Reset: loc:%i\n",locId);
+    cwLogInfo("SF Reset: loc:%i",locId);
     
     if((rc = reset( p->trackH, locId )) != kOkRC )
     {
@@ -566,5 +574,92 @@ cw::rc_t cw::score_follower::midi_state_rt_report( handle_t h, const char* out_f
   return rc;
 }
 
+cw::rc_t cw::score_follower::write_sync_perf_csv( handle_t h, const char* out_fname,  const midi::file::trackMsg_t** msgA, unsigned msgN )
+{
+  score_follower_t* p       = _handleToPtr(h);  
+  rc_t              rc      = kOkRC;
+  unsigned          resultN = result_count(p->trackH);
+  auto              resultA = result_base(p->trackH);
+  file::handle_t    fH;
 
+  if( msgN == 0 )
+  {
+    cwLogWarning("Nothing to write.");
+    return rc;
+  }
 
+  if( resultN == 0 )
+  {
+    cwLogWarning("The score follower does not have any score sync. info.");
+    return rc;
+  }
+
+  // open the file
+  if((rc = file::open(fH,out_fname,file::kWriteFl)) != kOkRC )
+  {
+    rc = cwLogError(kOpenFailRC,"Unable to create the file '%s'.",cwStringNullGuard(out_fname));
+    goto errLabel;
+  }
+
+  // write the header line
+  file::printf(fH,"meas,index,voice,loc,tick,sec,dur,rval,dots,sci_pitch,dmark,dlevel,status,d0,d1,bar,section,bpm,grace,pedal\n");
+      
+  for(unsigned i=0; i<msgN; ++i)
+  {
+    const midi::file::trackMsg_t* m = msgA[i];
+
+    double secs = (msgA[i]->amicro - msgA[0]->amicro)/1000000.0;
+        
+    // write the event line
+    if( midi::isChStatus(m->status) )
+    {
+      uint8_t d0 = m->u.chMsgPtr->d0;
+      uint8_t d1 = m->u.chMsgPtr->d1;
+          
+      if(  midi::isNoteOn(m->status,d1) )
+      {
+        const unsigned INVALID_LOC = 0;
+        
+        char sciPitch[ midi::kMidiSciPitchCharCnt + 1 ];
+        unsigned bar = 0;
+        midi::midiToSciPitch( d0, sciPitch, midi::kMidiSciPitchCharCnt );
+        unsigned loc = INVALID_LOC;
+        
+        for(unsigned i=0; i<resultN; ++i)
+        {
+          // FIX THIS:
+          // THE perfA[] INDEX IS STORED IN resultA[i].muid
+          assert( resultA[i].muid != kInvalidIdx && resultA[i].muid < p->perfN );
+          
+          if( p->perfA[resultA[i].muid].muid == m->uid )
+          {
+            assert( resultA[i].pitch == d0 );
+            loc = resultA[i].oLocId == kInvalidId ? INVALID_LOC : resultA[i].oLocId;
+            break;
+          }
+        }
+        
+        rc = file::printf(fH, "%i,%i,%i,%i,0,%f,0.0,0.0,0,%s,,,%i,%i,%i,,,,,\n",
+                          bar,i,1,loc,secs,sciPitch,m->status,d0,d1);
+      }        
+      else
+      {
+        rc = file::printf(fH, ",%i,,,%i,%f,,,,,,,%i,%i,%i,,,,,\n",i,0,secs,m->status,d0,d1);
+      }
+    }
+        
+    if( rc != kOkRC )
+    {
+      rc  = cwLogError(rc,"Write failed on line:%i", i+1 );
+      goto errLabel;
+    }
+  }
+
+ errLabel:
+  file::close(fH);
+
+  cwLogInfo("Saved %i events to sync perf. file. '%s'.", msgN, out_fname );
+
+  return rc;
+  
+}
