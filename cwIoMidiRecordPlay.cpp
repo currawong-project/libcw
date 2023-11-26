@@ -45,6 +45,7 @@ namespace cw
       unsigned      id;
       time::spec_t  timestamp;
       unsigned      loc;
+      const void*   arg;
       uint8_t       ch;
       uint8_t       status;
       uint8_t       d0;
@@ -521,7 +522,7 @@ namespace cw
       return am;
     }
 
-    rc_t _event_callback( midi_record_play_t* p, unsigned id, const time::spec_t timestamp, unsigned loc, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1, unsigned chordNoteCnt, bool log_fl=true )
+    rc_t _event_callback( midi_record_play_t* p, unsigned id, const time::spec_t timestamp, unsigned loc, const void* arg, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1, unsigned chordNoteCnt, bool log_fl=true )
     {
       rc_t rc = kOkRC;
       // if we have arrived at the stop time (but we may still be waiting for note-end messages)
@@ -626,7 +627,7 @@ namespace cw
 
         // don't inform the app if we are past the end time
         if( !after_stop_time_fl and p->cb )
-          p->cb( p->cb_arg, kMidiEventActionId, id, timestamp, loc, ch, status, d0, d1 );
+          p->cb( p->cb_arg, kMidiEventActionId, id, timestamp, loc, arg, ch, status, d0, d1 );
 
         if( log_fl && p->logOutFl )
         {
@@ -643,21 +644,21 @@ namespace cw
 
     rc_t _transmit_msg( midi_record_play_t* p, const am_midi_msg_t* am, bool log_fl=true )
     {
-      return _event_callback( p, am->id, am->timestamp, am->loc, am->ch, am->status, am->d0, am->d1, am->chordNoteCnt, log_fl );
+      return _event_callback( p, am->id, am->timestamp, am->loc, am->arg, am->ch, am->status, am->d0, am->d1, am->chordNoteCnt, log_fl );
     }
 
     rc_t _transmit_note( midi_record_play_t* p, unsigned ch, unsigned pitch, unsigned vel, unsigned microsecs )
     {
       time::spec_t ts = {0};
       time::microsecondsToSpec( ts, microsecs );
-      return _event_callback( p, kInvalidId, ts, kInvalidId, ch, midi::kNoteOnMdId, pitch, vel, 0 );
+      return _event_callback( p, kInvalidId, ts, kInvalidId, nullptr, ch, midi::kNoteOnMdId, pitch, vel, 0 );
     }
 
     rc_t _transmit_ctl(  midi_record_play_t* p, unsigned ch, unsigned ctlId, unsigned ctlVal, unsigned microsecs )
     {
       time::spec_t ts = {0};
       time::microsecondsToSpec( ts, microsecs );
-      return _event_callback( p, kInvalidId, ts, kInvalidId, ch, midi::kCtlMdId, ctlId, ctlVal, 0 );
+      return _event_callback( p, kInvalidId, ts, kInvalidId, nullptr, ch, midi::kCtlMdId, ctlId, ctlVal, 0 );
     }
     
     rc_t _transmit_pedal( midi_record_play_t* p, unsigned ch, unsigned pedalCtlId, bool pedalDownFl, unsigned microsecs )
@@ -1096,17 +1097,16 @@ namespace cw
       cwLogInfo("Saved %i events to '%s'.", p->iMsgArrayInIdx, fn );
 
       return rc;
-
     }
     
-    rc_t  _write_midi_meta_file(const char* meta_fn, unsigned beg_loc, unsigned end_loc, unsigned take_numb)
+    rc_t _write_midi_meta_file(const char* meta_fn, const char* player_name, const char* take_label, unsigned sess_numb, unsigned take_numb, unsigned beg_loc, unsigned end_loc)
     {
       rc_t rc = kOkRC;
       const unsigned bufCharN = 256;
       char buf[ bufCharN+1 ];
       int bN;
       
-      if((bN = snprintf(buf,bufCharN,"{ take:%i begLoc:%i, endLoc:%i }",take_numb,beg_loc,end_loc)) == 0)
+      if((bN = snprintf(buf,bufCharN,"{ player_name: \"%s\", take_label: \"%s\", session_number: %i, take_number: %i, beg_loc: %i, end_loc: %i, skip_score_follow_fl: false }",player_name,take_label,sess_numb,take_numb,beg_loc,end_loc)) == 0)
       {
         rc = cwLogError(kOpFailRC,"The meta data buffer formation failed.");
         goto errLabel;
@@ -1312,7 +1312,7 @@ namespace cw
         _midi_state_clear(p);
       
         if( p->cb != nullptr )
-          p->cb( p->cb_arg, kPlayerStoppedActionId, kInvalidId, t1, kInvalidId, 0, 0, 0, 0 );
+          p->cb( p->cb_arg, kPlayerStoppedActionId, kInvalidId, t1, kInvalidId, nullptr, 0, 0, 0, 0 );
       }
       
       return rc;
@@ -1794,6 +1794,7 @@ cw::rc_t cw::midi_record_play::load( handle_t h, const midi_msg_t* msg, unsigned
     p->msgArray[i].id        = msg[i].id;
     p->msgArray[i].timestamp = msg[i].timestamp;
     p->msgArray[i].loc       = msg[i].loc;
+    p->msgArray[i].arg       = msg[i].arg;
     p->msgArray[i].ch        = msg[i].ch;
     p->msgArray[i].status    = msg[i].status;
     p->msgArray[i].d0        = msg[i].d0;
@@ -2028,11 +2029,12 @@ cw::rc_t cw::midi_record_play::am_to_midi_file( const char* am_filename, const c
   
 }
 
-cw::rc_t cw::midi_record_play::am_to_midi_dir( const char* inDir, unsigned beg_loc, unsigned end_loc )
+cw::rc_t cw::midi_record_play::am_to_midi_dir( const char* player_name, const char* prefix_label, unsigned sess_numb, unsigned beg_loc, unsigned end_loc, const char* inDir )
 {  
   rc_t                 rc            = kOkRC;
   filesys::dirEntry_t* dirEntryArray = nullptr;
   unsigned             dirEntryCnt   = 0;
+  char*                take_label    = nullptr; 
 
   if( !filesys::isDir(inDir) )
   {
@@ -2046,22 +2048,24 @@ cw::rc_t cw::midi_record_play::am_to_midi_dir( const char* inDir, unsigned beg_l
   for(unsigned i=0; i<dirEntryCnt and rc==kOkRC; ++i)
   {
     unsigned take_numb;
-    char* am_fn   = filesys::makeFn(  dirEntryArray[i].name, "midi", "am", NULL);
-    char* midi_fn = filesys::makeFn(  dirEntryArray[i].name, "midi", "mid", NULL);    
-    char* csv_fn = filesys::makeFn(   dirEntryArray[i].name, "midi", "csv", NULL);
-    char* meta_fn = filesys::makeFn(  dirEntryArray[i].name, "meta", "cfg", NULL);
+    char* am_fn      = filesys::makeFn(  dirEntryArray[i].name, "midi", "am", NULL);
+    char* midi_fn    = filesys::makeFn(  dirEntryArray[i].name, "midi", "mid", NULL);    
+    char* csv_fn     = filesys::makeFn(  dirEntryArray[i].name, "midi", "csv", NULL);
+    char* meta_fn    = filesys::makeFn(  dirEntryArray[i].name, "meta", "cfg", NULL);
     
     if((rc = _get_take_number( dirEntryArray[i].name, take_numb )) != kOkRC )
       goto errLabel;
 
+    take_label = mem::printf(take_label,"%s_%i",prefix_label,take_numb);
+    
     cwLogInfo("0x%x AM:%s MIDI:%s", dirEntryArray[i].flags, dirEntryArray[i].name, midi_fn);
     
     if((rc = am_to_midi_file( am_fn, midi_fn, csv_fn)) != kOkRC )
       goto errLabel;
 
-    if((rc = _write_midi_meta_file(meta_fn,beg_loc,end_loc,take_numb)) != kOkRC )
+    if((rc = _write_midi_meta_file(meta_fn,player_name,take_label,sess_numb,take_numb,beg_loc,end_loc)) != kOkRC )
       goto errLabel;
-    
+
     mem::release(am_fn);
     mem::release(midi_fn);
     mem::release(csv_fn);
@@ -2071,6 +2075,7 @@ cw::rc_t cw::midi_record_play::am_to_midi_dir( const char* inDir, unsigned beg_l
   
  errLabel:
   mem::release(dirEntryArray);
+  mem::release(take_label);
 
   if( rc != kOkRC )
     rc = cwLogError(rc,"AM to MIDI conversion failed on '%s'.",inDir);
@@ -2092,11 +2097,14 @@ cw::rc_t cw::midi_record_play::am_to_midi_file( const object_t* cfg )
   // for each job specified in the list
   for(unsigned i=0; i<cfg->child_count(); ++i)
   {
-    const object_t* job_cfg   = nullptr;
-    bool            enable_fl = false;
-    const object_t* dirL      = nullptr;
-    unsigned        beg_loc   = kInvalidId;
-    unsigned        end_loc   = kInvalidId;
+    const object_t* job_cfg      = nullptr;
+    bool            enable_fl    = false;
+    const char*     prefix_label = nullptr;
+    const char*     player_name  = nullptr;
+    unsigned        sess_numb    = 0;
+    unsigned        beg_loc      = kInvalidId;
+    unsigned        end_loc      = kInvalidId;
+    const char*     dir          = nullptr;
 
     // verify that each job spec is a dict
     if(( job_cfg = cfg->child_ele(i)) == nullptr || job_cfg->is_dict() == false )
@@ -2106,30 +2114,26 @@ cw::rc_t cw::midi_record_play::am_to_midi_file( const object_t* cfg )
     }
 
     // read the job spec
-    if((rc = job_cfg->getv("enable_fl",enable_fl,"dirL",dirL,"beg_loc",beg_loc,"end_loc",end_loc)) != kOkRC || dirL->is_list() == false )
+    if((rc = job_cfg->getv("enable_fl",    enable_fl,
+                           "player_name",  player_name,
+                           "prefix_label", prefix_label,
+                           "sess_numb",    sess_numb,
+                           "beg_loc",      beg_loc,
+                           "end_loc",      end_loc,
+                           "dir",          dir)) != kOkRC )
     {
       rc = cwLogError(rc,"AM to MIDI file: Unable to parse input arg's at index %i",i);
       goto errLabel;
     }
 
     if( enable_fl )
-      for(unsigned j=0; j<dirL->child_count(); ++j)
+    {
+      if((rc = am_to_midi_dir(player_name,prefix_label,sess_numb,beg_loc,end_loc,dir)) != kOkRC )
       {
-        const object_t* dir_obj;
-        const char* dir;
-        if((dir_obj = dirL->child_ele(j)) == nullptr || (dir_obj->is_string() == false) || ((rc = dir_obj->value(dir)) != kOkRC) || (dir == nullptr) )
-        {
-          rc = cwLogError(kSyntaxErrorRC,"The AM to MIDI job directory in job spec. %i and directory index %i is invalid.",i,j);
-          goto errLabel;
-        }
-
-        if((rc = am_to_midi_dir(dir,beg_loc,end_loc)) != kOkRC )
-        {
-          rc = cwLogError(rc,"AM to MIDI file conversion on directory:'%s' failed.", cwStringNullGuard(dir));
-          goto errLabel;
-        }
+        rc = cwLogError(rc,"AM to MIDI file conversion on directory:'%s' failed.", cwStringNullGuard(dir));
+        goto errLabel;
       }
-    
+    }    
   }
 
  errLabel:

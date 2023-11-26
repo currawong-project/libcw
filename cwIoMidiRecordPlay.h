@@ -13,6 +13,7 @@ namespace cw
       unsigned      id;
       time::spec_t  timestamp;
       unsigned      loc;
+      const void*   arg;
       uint8_t       ch;
       uint8_t       status;
       uint8_t       d0;
@@ -24,7 +25,7 @@ namespace cw
       kPlayerStoppedActionId
     };
 
-    typedef void (*event_callback_t)( void* arg, unsigned actionId, unsigned id, const time::spec_t timestamp, unsigned loc, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 );
+    typedef void (*event_callback_t)( void* arg, unsigned actionId, unsigned id, const time::spec_t timestamp, unsigned loc, const void* msg_arg, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 );
     
     enum
     {
@@ -94,7 +95,7 @@ namespace cw
 
     // Convert an audio-midi file to a MIDI file and/or a CSV file
     rc_t am_to_midi_file( const char* am_filename, const char* midi_filename = nullptr, const char* csv_filename = nullptr );
-    rc_t am_to_midi_dir( const char* inDir, unsigned beg_loc, unsigned end_loc );    
+    rc_t am_to_midi_dir( const char* player_name, const char* prefix_label, unsigned sess_numb, unsigned beg_loc, unsigned end_loc, const char* inDir );    
     rc_t am_to_midi_file( const object_t* cfg ); // See main.cfg: 'am_to_midi_file'
 
     unsigned dev_count( handle_t h );
