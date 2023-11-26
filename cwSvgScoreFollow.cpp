@@ -6,6 +6,7 @@
 #include "cwText.h"
 #include "cwTime.h"
 #include "cwMidi.h"
+#include "cwMidiFile.h"
 #include "cwPianoScore.h"
 #include "cwSvg.h"
 #include "cwDynRefTbl.h"
