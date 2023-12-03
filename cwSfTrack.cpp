@@ -19,6 +19,7 @@ namespace cw
   {
     typedef struct sftrack_str
     {
+      sfscore::handle_t    scH;
       callback_func_t      cbFunc;
       void*                cbArg;
       sfmatch::handle_t    matchH;
@@ -73,10 +74,11 @@ namespace cw
 
       unsigned              locN = loc_count(p->matchH);
       const sfmatch::loc_t* loc  = loc_base(p->matchH);
+
       
       // convert scLocIdx to an index into p->mp->loc[]
       unsigned i = 0;
-      while(1)
+      for(unsigned safety_idx=0; safety_idx<10; ++safety_idx)
       {
         for(i=0; i<locN; ++i)
           if( loc[i].scLocIdx == scLocIdx )
@@ -187,6 +189,17 @@ namespace cw
         }
       }
 
+      // BUG BUG BUG BUG:
+      // for some reason oLocId seems to be set to scEvtIdx and so we replace it
+      // with the correct value here - but this problem seems to originate in sfMatch
+      // which is where it should be fixed
+      if( scEvtIdx != kInvalidIdx )
+      {
+        const sfscore::event_t* evt = event( p->scH, scEvtIdx );
+        assert(evt != nullptr );
+        oLocId = evt->oLocId;
+      }
+      
       rp->index    = result_idx;
       rp->oLocId   = oLocId;
       rp->scEvtIdx = scEvtIdx;
@@ -374,7 +387,8 @@ cw::rc_t cw::sftrack::create( handle_t&         hRef,
     cwLogError(rc,"sfmatch create failed.");
     goto errLabel;
   }
-  
+
+  p->scH        = scH;
   p->cbFunc     = cbFunc;
   p->cbArg      = cbArg;
   p->mn         = midiWndN;
