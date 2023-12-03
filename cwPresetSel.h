@@ -14,6 +14,7 @@ namespace cw
       bool     seqFl;       // play this preset during sequencing.
       unsigned preset_idx;  // preset index into preset_labelA[].
       unsigned order;       //
+      char*    alt_str;
     } preset_t;
 
     typedef struct frag_str
@@ -31,8 +32,10 @@ namespace cw
       unsigned         endPlayLoc;
       char*            note;
 
-      preset_t*        presetA;
+      preset_t*        presetA;  // presetA[ presetN ] - status of each preset
       unsigned         presetN;
+
+      unsigned*        altPresetIdxA;  // altPresetIdxA[ alt_count() ] selected preset idx for each alt.
 
       bool             uiSelectFl;
       bool             seqAllFl; // Set if all preset.seqFl's should be treated as though they are set to true.
@@ -40,7 +43,6 @@ namespace cw
       struct frag_str* link;
       struct frag_str* prev;
     } frag_t;
-
 
     enum {
       kGuiUuIdVarId,
@@ -57,12 +59,10 @@ namespace cw
       kPlaySeqAllBtnVarId,
       kNoteVarId,
       
-      kPresetOrderVarId,     //  preset order value
-      kPresetSelectVarId,    //  select a preset to play
-      kPresetSeqSelectVarId, //  sequence preset selections to play
-      kPlayEnableVarId,      //  include in the segment to play
-      kDryFlVarId,           //  play this fragment dry
-
+      kPresetOrderVarId,     //  preset order number
+      kPresetAltVarId,       //  preset alternative string
+      kPresetSelectVarId,    //  select a preset to play (play flag)
+      kPresetSeqSelectVarId, //  sequence preset selections to play (seq flag)
 
       kBaseMasterVarId,       // All 'master' variables have id's greater than kBaseMasterVarId
       kMasterWetInGainVarId,
@@ -76,7 +76,11 @@ namespace cw
 
     unsigned    preset_count( handle_t h );
     const char* preset_label( handle_t h, unsigned preset_idx );
-    
+
+    // Count/label of alternatives (alt_idx==0 is 'no alternative selected)
+    unsigned    alt_count( handle_t h );
+    const char* alt_label( handle_t h, unsigned alt_idx );
+        
     unsigned      fragment_count(    handle_t h );
     const frag_t* get_fragment_base( handle_t h );
     const frag_t* get_fragment(      handle_t h, unsigned fragId );
@@ -89,6 +93,8 @@ namespace cw
     rc_t delete_fragment( handle_t h, unsigned fragId );
 
     bool is_fragment_end_loc( handle_t h, unsigned loc );
+
+    rc_t set_alternative( handle_t h, unsigned alt_idx );
 
     // Return the fragment id of the 'selected' fragment.
     unsigned ui_select_fragment_id( handle_t h );

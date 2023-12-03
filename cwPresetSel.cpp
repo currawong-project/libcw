@@ -5,6 +5,7 @@
 #include "cwText.h"
 #include "cwObject.h"
 #include "cwTime.h"
+#include "cwVectOps.h"
 #include "cwPresetSel.h"
 #include "cwFile.h"
 #include "cwPianoScore.h"
@@ -21,11 +22,20 @@ namespace cw
     {
       char* label;
     } preset_label_t;
+
+    typedef struct alt_label_str
+    {
+      char*    label;
+    } alt_label_t;
+
     
     typedef struct preset_sel_str
     {
       preset_label_t*  presetLabelA;
       unsigned         presetLabelN;
+
+      alt_label_t*     altLabelA;
+      unsigned         altLabelN;
       
       double           defaultGain;
       double           defaultWetDryGain;
@@ -43,6 +53,8 @@ namespace cw
       double           master_sync_delay_ms;
 
       unsigned         sel_frag_id; // fragment id assoc'd with last selected frag. ui element
+
+      unsigned         cur_alt_idx;
       
     } preset_sel_t;
 
@@ -62,6 +74,26 @@ namespace cw
 
       return kInvalidIdx;
     }
+
+    const char* _alt_index_to_label( preset_sel_t* p, unsigned alt_idx )
+    {
+      if( alt_idx >= p->altLabelN )
+        return nullptr;
+      
+      return p->altLabelA[ alt_idx ].label;
+    }
+
+    
+    unsigned _alt_char_to_index( preset_sel_t* p, char label )
+    {
+      // Note that we start at 1 because 0 is the <no select label>
+      for(unsigned i=1; i<p->altLabelN; ++i)
+        if( p->altLabelA[i].label[0] == std::toupper(label) )
+          return i;
+
+      return kInvalidIdx;
+    }
+
     
     rc_t _delete_fragment( preset_sel_t*  p, unsigned fragId )
     {
@@ -76,6 +108,9 @@ namespace cw
             p->fragL = f1->link;
           else
             f0->link = f1->link;
+
+          for(unsigned i=0; i<f1->presetN; ++i)
+            mem::release(f1->presetA[i].alt_str);
 
           // release the fragment
           mem::release(f1->note);
@@ -104,10 +139,119 @@ namespace cw
       for(unsigned i=0; i<p->presetLabelN; ++i)
         mem::release( p->presetLabelA[i].label );
       mem::release( p->presetLabelA );
+
+      for(unsigned i=0; i<p->altLabelN; ++i)
+        mem::release( p->altLabelA[i].label );
+      mem::release( p->altLabelA );
+      
       p->presetLabelN = 0;
       mem::release(p);
 
       return kOkRC;
+    }
+
+    void _print_preset_alts( preset_sel_t* p, const frag_t* f, const char* label )
+    {
+      printf("%s : ",label);
+      for(unsigned i=0; i<p->altLabelN; ++i)
+        printf("%i ",f->altPresetIdxA[i]);
+      printf("\n");
+    }
+    
+    void _clear_all_preset_alts( preset_sel_t* p, frag_t* f, unsigned preset_idx )
+    {
+      // skip the 0th alt because it is controlled by the 'select' play flag
+      for(unsigned i=1; i<p->altLabelN; ++i)
+        if( f->altPresetIdxA[i] == preset_idx )
+          f->altPresetIdxA[i] = kInvalidIdx;
+    }
+    
+    // clear preset of all alternative pointers
+    void _deselect_preset_as_alt( preset_sel_t* p, frag_t* f, unsigned preset_idx )
+    {
+      assert( preset_idx < f->presetN);
+      
+      mem::release(f->presetA[ preset_idx ].alt_str);
+
+      _clear_all_preset_alts(p,f,preset_idx);
+      
+    }
+
+    void _remove_alt_char( frag_t* f, unsigned preset_idx, char c )
+    {
+      assert( preset_idx < f->presetN );
+
+      if( f->presetA[preset_idx].alt_str != nullptr )
+      {
+        char* s = f->presetA[preset_idx].alt_str;
+        bool fl = false;
+        for(unsigned i=0; s[i]; ++i)
+        {
+          if( s[i] == c )
+            fl = true;
+          
+          if(fl)
+            s[i] = s[i+1];
+        }
+
+        if( textLength(f->presetA[preset_idx].alt_str) == 0)
+          mem::release(f->presetA[preset_idx].alt_str);
+
+      }
+    }
+
+    rc_t _set_alt( preset_sel_t* p, frag_t* f, unsigned preset_idx, char c )
+    {
+      rc_t rc = kOkRC;
+      unsigned alt_idx;
+      
+      if((alt_idx = _alt_char_to_index(p,c)) == kInvalidIdx )
+      {
+        if( !std::isspace(c) )
+          cwLogWarning("The alternative '%c' is not valid.",c);
+        rc = kInvalidArgRC;
+      }
+      else
+      {
+        assert( alt_idx <= p->altLabelN );
+      
+        if( f->altPresetIdxA[ alt_idx ] != kInvalidIdx )
+          _remove_alt_char(f,f->altPresetIdxA[ alt_idx ],c);
+      
+        f->altPresetIdxA[ alt_idx ] = preset_idx;
+      }
+
+      return rc;
+    }
+    
+    void _set_alt_str( preset_sel_t* p, frag_t* f, unsigned sel_preset_idx, const char* alt_str )
+    {
+      if( alt_str == nullptr )
+      {
+        _deselect_preset_as_alt(p,f,sel_preset_idx);
+      }
+      else
+      {
+        unsigned alt_strN           = textLength(alt_str);
+        char alt_str_buf[ alt_strN+1  ] = {0};
+        unsigned asi                = 0;
+          
+        // clear the alt's pointing to the selected preset - because the 'alt_str' has changed
+        // and some previous alt's may have been removed.
+        _clear_all_preset_alts( p, f, sel_preset_idx );
+
+        // scan each char in the alt_str[] and update f->altPresetIdxA[]
+        for(unsigned i=0; alt_str[i]; ++i)
+          if( _set_alt(p, f, sel_preset_idx, alt_str[i] ) == kOkRC )
+          {
+            // if this was a legal alt label then add it to alt_str_buf[]
+            assert( asi < alt_strN );
+            alt_str_buf[ asi++ ] = alt_str[i];
+          } 
+        
+        // store the preset's new alt str.
+        f->presetA[ sel_preset_idx ].alt_str = mem::reallocStr(f->presetA[ sel_preset_idx ].alt_str, alt_str_buf);
+      }
     }
 
     frag_t* _find_frag( preset_sel_t* p, unsigned fragId )
@@ -207,10 +351,6 @@ namespace cw
       return nullptr;
     }
 
-
-
-
-
     bool _loc_is_in_frag( const frag_t* f, unsigned loc )
     {
       // if f is the earliest fragment
@@ -287,9 +427,10 @@ namespace cw
         f->guiUuId = value;
         break;
         
-      case kPresetSelectVarId:
+      case kPresetSelectVarId:        
         for(unsigned i=0; i<f->presetN; ++i)
-          f->presetA[i].playFl = f->presetA[i].preset_idx == presetId ? value : false;
+          if((f->presetA[i].playFl = f->presetA[i].preset_idx == presetId ? value : false) == true)
+            f->altPresetIdxA[0] = i;
          break;
 
       case kPresetSeqSelectVarId:
@@ -300,6 +441,10 @@ namespace cw
       case kPresetOrderVarId:
         if((rc = _validate_preset_id(f, presetId )) == kOkRC )
           f->presetA[ presetId ].order = value;
+        break;
+        
+      case kPresetAltVarId:
+        assert(0);
         break;
         
       case kInGainVarId:
@@ -406,6 +551,10 @@ namespace cw
         if((rc = _validate_preset_id(f, presetId )) == kOkRC )
           valueRef = f->presetA[ presetId ].order;
         break;
+
+      case kPresetAltVarId:
+        assert(0);
+        break;  
         
       case kInGainVarId:
         valueRef = f->igain;
@@ -675,7 +824,8 @@ cw::rc_t cw::preset_sel::create(  handle_t& hRef, const object_t* cfg  )
 {
   rc_t            rc                   = kOkRC;
   preset_sel_t*   p                    = nullptr;
-  const object_t* labelL               = nullptr;
+  const object_t* preset_labelL        = nullptr;
+  const object_t* alt_labelL           = nullptr;
   const char*     default_preset_label = nullptr;
   
   if((rc = destroy(hRef)) != kOkRC )
@@ -684,7 +834,8 @@ cw::rc_t cw::preset_sel::create(  handle_t& hRef, const object_t* cfg  )
   p = mem::allocZ<preset_sel_t>();
 
   // parse the cfg
-  if((rc = cfg->getv( "preset_labelL",                labelL,
+  if((rc = cfg->getv( "preset_labelL",                preset_labelL,
+                      "alt_labelL",                   alt_labelL,
                       "default_gain",                 p->defaultGain,
                       "default_wet_dry_gain",         p->defaultWetDryGain,
                       "default_fade_ms",              p->defaultFadeOutMs,
@@ -699,14 +850,14 @@ cw::rc_t cw::preset_sel::create(  handle_t& hRef, const object_t* cfg  )
   }
 
   // allocate the label array
-  p->presetLabelN = labelL->child_count();
+  p->presetLabelN = preset_labelL->child_count();
   p->presetLabelA = mem::allocZ<preset_label_t>(p->presetLabelN);
 
   // get the preset labels
   for(unsigned i=0; i<p->presetLabelN; ++i)
   {
     const char*     label     = nullptr;
-    const object_t* labelNode = labelL->child_ele(i);
+    const object_t* labelNode = preset_labelL->child_ele(i);
 
     if( labelNode!=nullptr )
       rc = labelNode->value(label);
@@ -719,6 +870,32 @@ cw::rc_t cw::preset_sel::create(  handle_t& hRef, const object_t* cfg  )
     
     p->presetLabelA[i].label = mem::duplStr(label);
   }
+
+
+  // allocate the label array
+  p->altLabelN = alt_labelL->child_count() + 1;
+  p->altLabelA = mem::allocZ<alt_label_t>(p->altLabelN);
+
+  p->altLabelA[0].label = mem::duplStr("*");
+
+  // get the alt labels
+  for(unsigned i=1,j=0; i<p->altLabelN; ++i,++j)
+  {
+    const char*     label     = nullptr;
+    const object_t* labelNode = alt_labelL->child_ele(j);
+
+    if( labelNode!=nullptr )
+      rc = labelNode->value(label);
+    
+    if( rc != kOkRC || label == nullptr || textLength(label) == 0 )
+    {
+      rc = cwLogError(kInvalidStateRC,"A empty alt label was encountered while reading the alt label list.");
+      goto errLabel;
+    }
+    
+    p->altLabelA[i].label = mem::duplStr(label);
+  }
+  
 
   p->defaultPresetIdx = kInvalidIdx;
   if( default_preset_label != nullptr )
@@ -764,6 +941,17 @@ const char* cw::preset_sel::preset_label( handle_t h, unsigned preset_idx )
   return _preset_label(p,preset_idx);
 }
 
+unsigned    cw::preset_sel::alt_count( handle_t h )
+{
+  preset_sel_t* p = _handleToPtr(h);
+  return p->altLabelN;
+}
+
+const char* cw::preset_sel::alt_label( handle_t h, unsigned alt_idx )
+{
+  preset_sel_t* p = _handleToPtr(h);
+  return _alt_index_to_label(p,alt_idx);
+}
 
 unsigned cw::preset_sel::fragment_count( handle_t h )
 {
@@ -841,10 +1029,14 @@ cw::rc_t cw::preset_sel::create_fragment( handle_t h, unsigned end_loc, time::sp
   f->fadeOutMs     = p->defaultFadeOutMs;
   f->presetA       = mem::allocZ<preset_t>(p->presetLabelN);
   f->presetN       = p->presetLabelN;
+  f->altPresetIdxA = mem::allocZ<unsigned>(p->altLabelN);
   f->fragId        = _generate_unique_frag_id(p);
   f->begPlayLoc    = 0;
   f->endPlayLoc    = end_loc;
   f->note          = mem::duplStr("");
+
+  // set all but the first 
+  vop::fill(f->altPresetIdxA+1,p->altLabelN-1,kInvalidIdx);
   
   // set the return value
   fragIdRef        = f->fragId;
@@ -949,7 +1141,21 @@ bool cw::preset_sel::is_fragment_end_loc( handle_t h, unsigned loc )
   return _loc_to_frag(p,loc) != nullptr;
 }
 
+cw::rc_t cw::preset_sel::set_alternative( handle_t h, unsigned alt_idx )
+{
+  rc_t          rc = kOkRC;
+  preset_sel_t* p  = _handleToPtr(h);
+  
+  if( alt_idx >= p->altLabelN )
+  {
+    rc = cwLogError(kInvalidArgRC,"The alternative index %i is invalid.",alt_idx);
+    goto errLabel;
+  }
 
+  p->cur_alt_idx = alt_idx;
+ errLabel:
+  return rc;
+}
 
 unsigned cw::preset_sel::ui_select_fragment_id( handle_t h )
 {
@@ -960,7 +1166,6 @@ unsigned cw::preset_sel::ui_select_fragment_id( handle_t h )
   
   return kInvalidId;  
 }
-
 
 void cw::preset_sel::ui_select_fragment( handle_t h, unsigned fragId, bool selectFl )
 {
@@ -998,6 +1203,16 @@ cw::rc_t cw::preset_sel::set_value( handle_t h, unsigned fragId, unsigned varId,
     if( value != nullptr )
       f->note = mem::duplStr(value);
     break;
+
+  case kPresetAltVarId:
+    if((rc = _validate_preset_id(f, presetId )) == kOkRC )
+    {
+      _set_alt_str( p, f, presetId, value );
+      
+      cwLogInfo("Set Preset Alt : %s",value);
+    }   
+    break;
+    
   default:
     rc = cwLogError(kInvalidIdRC,"There is no preset variable of type 'string' with var id:%i.",varId);
   }
@@ -1030,7 +1245,21 @@ cw::rc_t cw::preset_sel::get_value( handle_t h, unsigned fragId, unsigned varId,
   case kNoteVarId:
     valueRef = f->note;
     break;
-    
+
+  case kPresetAltVarId:
+    if((rc = _validate_preset_id(f, presetId )) == kOkRC )
+    {
+
+      if( f->presetA[ presetId].alt_str == nullptr )
+        f->presetA[ presetId].alt_str = mem::duplStr("");
+      
+      valueRef = f->presetA[ presetId].alt_str;
+
+      //cwLogInfo("Get Preset Alt Flags: 0x%x : %s",f->presetA[ presetId].altFlags,valueRef);
+
+    }
+    break;
+        
   default:
     rc = cwLogError(kInvalidIdRC,"There is no preset variable of type 'string' with var id:%i.",varId);
   }
@@ -1133,16 +1362,32 @@ bool cw::preset_sel::track_loc( handle_t h, unsigned loc, const cw::preset_sel::
   return frag_changed_fl;
 }
 
-
-
 unsigned cw::preset_sel::fragment_play_preset_index( handle_t h, const frag_t* frag, unsigned preset_seq_idx )
 {
-  unsigned      n                   = 0;
-  preset_sel_t* p                   = _handleToPtr(h);
+  unsigned      n = 0;
+  preset_sel_t* p = _handleToPtr(h);
+
+  //cwLogInfo("preset_seq_idx:%i frag id:%i sel_frag_id:%i cur_alt_idx:%i ",preset_seq_idx,frag->fragId,p->sel_frag_id, p->cur_alt_idx);
+
+  //_print_preset_alts( p, frag, "" );
+    
+  if( preset_seq_idx==kInvalidIdx || frag->fragId != p->sel_frag_id )
+  {
+    assert( p->cur_alt_idx < p->altLabelN );
+
+    unsigned preset_idx = frag->altPresetIdxA[ p->cur_alt_idx ];
+    if( preset_idx == kInvalidIdx )
+      preset_idx = frag->altPresetIdxA[0];
+    
+    return preset_idx;
+  }
+  
+
   
   // for each preset
   for(unsigned i=0; i<frag->presetN; ++i)
   {
+    /*
     // if 'preset_seq_idx' is not valid ...
     if( preset_seq_idx==kInvalidIdx || frag->fragId != p->sel_frag_id )
     {
@@ -1152,6 +1397,7 @@ unsigned cw::preset_sel::fragment_play_preset_index( handle_t h, const frag_t* f
     }
     else
     {
+    */
       // ... otherwise select the 'nth' preset whose 'seqFl' is set      
       if( frag->presetA[i].seqFl || frag->seqAllFl )
       {
@@ -1159,7 +1405,7 @@ unsigned cw::preset_sel::fragment_play_preset_index( handle_t h, const frag_t* f
           return frag->presetA[i].preset_idx;
         ++n;
       }
-    }
+      //}
   }
   
   return kInvalidIdx;
@@ -1222,6 +1468,7 @@ cw::rc_t cw::preset_sel::write( handle_t h, const char* fn )
       object_t* presetD_obj = newDictObject( nullptr );
 
       newPairObject("order",                         f->presetA[i].order,        presetD_obj );
+      newPairObject("alt_str",                       f->presetA[i].alt_str,      presetD_obj );
       newPairObject("preset_label", _preset_label(p, f->presetA[i].preset_idx ), presetD_obj );
       newPairObject("play_fl",                       f->presetA[i].playFl,       presetD_obj );
 
@@ -1353,6 +1600,7 @@ cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
     {
       const object_t*   r      = presetL_obj->child_ele(i);
       unsigned    order        = 0;
+      const char* alt_str      = nullptr;
       const char* preset_label = nullptr;
       unsigned    preset_idx   = kInvalidIdx;
       bool        playFl       = false;
@@ -1366,6 +1614,12 @@ cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
         goto errLabel;
       }
 
+      if((rc = r->getv_opt("alt_str", alt_str )) != kOkRC )
+      {
+        rc = cwLogError(rc,"The fragment preset at index '%i' optional parse failed during restore.",i);
+        goto errLabel;
+      }
+
       // locate the preset index associated with the preset label
       if((preset_idx = _preset_label_to_index(p,preset_label)) == kInvalidIdx )
       {
@@ -1373,8 +1627,15 @@ cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
         goto errLabel;
       }
 
-      f->presetA[ preset_idx ].order  = order;
-      f->presetA[ preset_idx ].playFl = playFl;
+      f->presetA[ preset_idx ].order     = order;
+      f->presetA[ preset_idx ].alt_str   = mem::duplStr(alt_str);
+      f->presetA[ preset_idx ].playFl    = playFl;
+
+      _set_alt_str( p, f, i, alt_str );
+
+      if( playFl )
+        f->altPresetIdxA[0] = preset_idx;
+      
     }
 
   }
@@ -1555,8 +1816,6 @@ cw::rc_t cw::preset_sel::translate_frags( const object_t* cfg )
       }
 
       //loc_to_pitch_context(pianoScoreH,tfragA[i].endLoc.preNote,tfragA[i].endLoc.postNote,kNoteN);
-
-      
 
       tfragA[i].endLoc.loc         = src_end_loc;
       tfragA[i].endLoc.opId        = midi::isNoteOn(e->status,e->d1) ? score_parse::kNoteOnTId : score_parse::kBarTId;

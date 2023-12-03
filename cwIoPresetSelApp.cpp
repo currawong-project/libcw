@@ -34,7 +34,6 @@
 #include "cwSfTrack.h"
 #include "cwScoreFollower.h"
 
-
 #define INVALID_LOC (0)
 
 namespace cw
@@ -75,6 +74,7 @@ namespace cw
       kSaveBtnId,
       kLoadBtnId,
       kPerfSelId,
+      kAltSelId,
 
       kEnaRecordCheckId,
       kMidiSaveBtnId,
@@ -120,6 +120,7 @@ namespace cw
       kFragPresetSelId,
       kFragPresetSeqSelId,
       kFragPresetOrderId,
+      kFragPresetAltId,
       
       kFragInGainId,
       kFragOutGainId,
@@ -172,6 +173,7 @@ namespace cw
       { kPanelDivId,     kSaveBtnId,      "saveBtnId" },
       { kPanelDivId,     kLoadBtnId,      "loadBtnId" },
       { kPanelDivId,     kPerfSelId,      "perfSelId" },
+      { kPanelDivId,     kAltSelId,       "altSelId" },
 
       { kPanelDivId,     kEnaRecordCheckId,  "enaRecordCheckId" },
       { kPanelDivId,     kMidiSaveBtnId,     "midiSaveBtnId" },
@@ -603,6 +605,38 @@ namespace cw
       
       return rc;
     }
+
+    rc_t _load_alt_menu( app_t* app )
+    {
+      rc_t              rc  = kOkRC;
+      unsigned          uuid;
+      unsigned          selectUuId = kInvalidId;
+      
+      // get the peformance menu UI uuid
+      if((selectUuId = io::uiFindElementUuId( app->ioH, kAltSelId )) == kInvalidId )
+      {
+        rc = cwLogError(rc,"The 'alt' list base UI element does not exist.");
+        goto errLabel;        
+      }      
+
+      for(unsigned altId=0; altId<alt_count(app->psH); ++altId)
+      {
+        const char* label = alt_label(app->psH,altId);
+        assert( label != nullptr );
+        
+        // create an option entry in the selection ui
+        if((rc = uiCreateOption( app->ioH, uuid, selectUuId, nullptr, altId, kInvalidId, "optClass", label )) != kOkRC )
+        {          
+          rc = cwLogError(kSyntaxErrorRC,"The 'alt' menu create failed on %s.",cwStringNullGuard(label));
+          goto errLabel;
+        }        
+      }
+      
+    errLabel:
+      
+      return rc;
+    }
+
     
     rc_t _parse_perf_recording_vel_tbl( app_t* app, const object_t* velTblCfg, vel_tbl_t*& velTblA_Ref, unsigned& velTblN_Ref )
     {
@@ -794,6 +828,7 @@ namespace cw
         goto errLabel;
       }
 
+      
     errLabel:
 
       if(rc != kOkRC )
@@ -1443,6 +1478,7 @@ namespace cw
       {
         bool     bValue;
         unsigned uValue;
+        const char* sValue;
         unsigned fragPanelUuId;
         
         // The uiChan is the fragment endLoc
@@ -1459,6 +1495,7 @@ namespace cw
         {
           _update_frag_ui( app, fragId, preset_sel::kPresetSelectVarId,   preset_idx, fragPresetRowUuId, kFragPresetSelId,    preset_idx,  bValue );          
           _update_frag_ui( app, fragId, preset_sel::kPresetOrderVarId,    preset_idx, fragPresetRowUuId, kFragPresetOrderId,  preset_idx,  uValue );          
+          _update_frag_ui( app, fragId, preset_sel::kPresetAltVarId,      preset_idx, fragPresetRowUuId, kFragPresetAltId,    preset_idx,  sValue );          
           _update_frag_ui( app, fragId, preset_sel::kPresetSeqSelectVarId,preset_idx, fragPresetRowUuId, kFragPresetSeqSelId, preset_idx,  bValue );          
         }
 
@@ -1548,7 +1585,7 @@ namespace cw
       //  _clear_status(app);
       //else
       if( !enableFl )
-        _set_status(app,"Invalid fragment play range.");
+        _set_status(app,"Invalid fragment play range. beg:%i end:%i",begPlayLoc,endPlayLoc);
 
     }
 
@@ -1584,6 +1621,10 @@ namespace cw
       switch( blob->varId )
       {
         case preset_sel::kPresetSelectVarId:
+          _update_frag_select_flags( app, blob->fragId);
+          break;
+
+        case preset_sel::kPresetAltVarId:          
           _update_frag_select_flags( app, blob->fragId);
           break;
 
@@ -1631,7 +1672,6 @@ namespace cw
       ui_blob_t blob = { .fragId = fragId, .varId=varId, .presetId=presetId };
       return io::uiSetBlob( app->ioH, uuId, &blob, sizeof(blob) );      
     }
-
     
     rc_t _create_frag_preset_ctl( app_t* app, unsigned fragId, unsigned fragPresetRowUuId, unsigned presetN, unsigned preset_idx )
     {
@@ -1657,6 +1697,25 @@ namespace cw
       // store a connection for the select control back to the fragment record
       _frag_set_ui_blob(app, uuId, fragId, preset_sel::kPresetSelectVarId, preset_idx );
 
+      /*
+      // order/alt row container
+      if((rc = io::uiCreateDiv( app->ioH, rowUuId, colUuId, nullEleName, invalidAppId, chanId, "uiRow", nullptr )) != kOkRC )
+        goto errLabel;
+      
+      // preset order number
+      if((rc = io::uiCreateNumb( app->ioH, uuId,  rowUuId, nullEleName, kFragPresetOrderId, chanId, "uiNumber fragLittleNumb", nullptr, 0, presetN, 1, 0 )) != kOkRC )
+        goto errLabel;
+
+      // store a connection for the order control back to the fragment record
+      _frag_set_ui_blob(app, uuId, fragId, preset_sel::kPresetOrderVarId, preset_idx );
+      
+      // preset alt letter
+      if((rc = io::uiCreateStr( app->ioH, uuId,  rowUuId, nullEleName, kFragPresetAltId, chanId, "uiString fragLittleNumb", nullptr )) != kOkRC )
+        goto errLabel;
+
+      // store a connection for the order control back to the fragment record
+      _frag_set_ui_blob(app, uuId, fragId, preset_sel::kPresetAltVarId, preset_idx );
+      */
 
       // preset order number
       if((rc = io::uiCreateNumb( app->ioH, uuId,  colUuId, nullEleName, kFragPresetOrderId, chanId, nullClass, nullptr, 0, presetN, 1, 0 )) != kOkRC )
@@ -1664,7 +1723,14 @@ namespace cw
 
       // store a connection for the order control back to the fragment record
       _frag_set_ui_blob(app, uuId, fragId, preset_sel::kPresetOrderVarId, preset_idx );
+      
+      // preset alt letter
+      if((rc = io::uiCreateStr( app->ioH, uuId,  colUuId, nullEleName, kFragPresetAltId, chanId, nullClass, nullptr )) != kOkRC )
+        goto errLabel;
 
+      // store a connection for the order control back to the fragment record
+      _frag_set_ui_blob(app, uuId, fragId, preset_sel::kPresetAltVarId, preset_idx );
+      
       // preset sequence select check
       if((rc = io::uiCreateCheck( app->ioH, uuId, colUuId, nullEleName, kFragPresetSeqSelId, chanId, nullClass, nullptr )) != kOkRC )
         goto errLabel;
@@ -1682,7 +1748,7 @@ namespace cw
     {
       rc_t     rc                = kOkRC;
       unsigned fragListUuId      = io::uiFindElementUuId( app->ioH, kFragListId );
-      unsigned   fragChanId      = fragId; //endLoc; // use the frag. endLoc as the channel id
+      unsigned fragChanId        = fragId; //endLoc; // use the frag. endLoc as the channel id
       unsigned fragPanelUuId     = kInvalidId;
       unsigned fragPresetRowUuId = kInvalidId;
       unsigned presetN           = preset_sel::preset_count( app->psH );
@@ -1806,11 +1872,12 @@ namespace cw
         if( app->psNextFrag == nullptr )
         {
 
-          // the fragments are loaded enable the 'load' menu
+          // the fragments are loaded enable the 'load' and 'alt' menu
           io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kPerfSelId ),   true );
+          io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kAltSelId ),   true );
           
           cwLogInfo("Fragment restore complete: elapsed secs:%f",time::elapsedSecs(app->psLoadT0));
-          
+          io::uiRealTimeReport(app->ioH);
         }
       }
 
@@ -2031,6 +2098,8 @@ namespace cw
           goto errLabel;
         }
 
+        cwLogInfo("Applied velocity table: %s to dev: %s.", cwStringNullGuard(vtA[i].name), cwStringNullGuard(vtA[i].device) );
+
         assignN += 1;
       }
 
@@ -2147,6 +2216,8 @@ namespace cw
         goto errLabel;
       }
 
+      printf("Loading:%s %p %i\n",prp->fname,prp->vel_tblA, prp->vel_tblN);
+      
       // load the requested performance
       if((rc = _do_load(app,prp->fname,prp->vel_tblA, prp->vel_tblN)) != kOkRC )
       {
@@ -2157,7 +2228,28 @@ namespace cw
     errLabel:
       return rc;
     }
-    
+
+    rc_t _on_alt_select(app_t* app, unsigned optionAppId )
+    {
+      rc_t rc = kOkRC;
+      if( optionAppId == kInvalidId || optionAppId >= alt_count(app->psH))
+      {
+        rc = cwLogError(kInvalidArgRC,"The selected 'alt' id (%i) is invalid.",optionAppId);
+        goto errLabel;
+      }
+
+      if((rc = set_alternative( app->psH, optionAppId )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Alt selection failed.");
+        goto errLabel;
+      }
+      
+      cwLogInfo("Alt:%s selected.",alt_label(app->psH, optionAppId));
+
+    errLabel:
+      return rc;
+    }
+
     
     rc_t _on_ui_start( app_t* app )
     {
@@ -2819,7 +2911,7 @@ namespace cw
           break;
             
         case kReportBtnId:
-          preset_sel::report( app->psH );
+          //preset_sel::report( app->psH );
           //io_flow::apply_preset( app->ioFlowH, 2000.0, app->tmp==0 ? "a" : "b");
           //app->tmp = !app->tmp;
           //io_flow::print(app->ioFlowH);
@@ -2840,6 +2932,10 @@ namespace cw
 
         case kPerfSelId:
           _on_perf_select(app,m.value->u.u);          
+          break;
+
+        case kAltSelId:
+          _on_alt_select(app,m.value->u.u);
           break;
         
         case kMidiThruCheckId:
@@ -2994,7 +3090,11 @@ namespace cw
         case kFragPresetOrderId:
           _on_ui_frag_value( app, m.uuId, m.value->u.u );
           break;
-            
+
+        case kFragPresetAltId:          
+          _on_ui_frag_value( app, m.uuId, m.value->u.s );
+          break;
+          
         case kFragPresetSelId:
           _on_ui_frag_value( app, m.uuId, m.value->u.b );
           break;
@@ -3409,6 +3509,13 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
   if((rc= _load_perf_dir_selection_menu(&app)) != kOkRC )
   {
     rc = cwLogError(rc,"The performance list UI create failed.");
+    goto errLabel;
+  }
+
+  // create the alt. selection menu
+  if((rc = _load_alt_menu(&app)) != kOkRC )
+  {
+    rc = cwLogError(rc,"The 'alt' list UI create failed.");
     goto errLabel;
   }
   
