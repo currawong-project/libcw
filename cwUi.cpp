@@ -96,8 +96,7 @@ namespace cw
       unsigned*       sessA;    // sessA[ sessN ] array of wsSessId's
       unsigned        sessN;
       unsigned        sessAllocN;
-
-      
+           
       bool     msgCacheEnableFl;
       unsigned msgCacheSessId;
       char*    msgCache;
@@ -105,6 +104,9 @@ namespace cw
       unsigned msgCacheDataN;
       unsigned msgCacheN;
       unsigned msgCacheMsgN;
+
+      unsigned sentMsgN;
+      unsigned recvMsgN;
 
     } ui_t;
 
@@ -326,6 +328,14 @@ namespace cw
       return nullptr;
     }
 
+    rc_t _send_callback( ui_t* p, unsigned wsSessId, const void* msg, unsigned msgByteN )
+    {
+      p->sentMsgN += 1;
+      rc_t rc = p->sendCbFunc( p->sendCbArg, wsSessId, msg, msgByteN );
+      
+      return rc;
+    }
+
     
     rc_t _cache_flush( ui_t* p )
     {
@@ -338,7 +348,7 @@ namespace cw
         p->msgCache[ p->msgCacheN+1 ] = '}';
         p->msgCache[ p->msgCacheN+2 ] = 0;
               
-        rc = p->sendCbFunc( p->sendCbArg, p->msgCacheSessId, p->msgCache, strlen(p->msgCache) );
+        rc = _send_callback(p, p->msgCacheSessId, p->msgCache, strlen(p->msgCache) );
 
         p->msgCacheN      = snprintf(p->msgCache,p->msgCacheAllocN,"{\"op\":\"cache\", \"array\": [");     
         p->msgCacheSessId = kInvalidId;
@@ -369,7 +379,7 @@ namespace cw
         rc = _cache_flush(p);
 
       if( msgByteN > p->msgCacheDataN )
-        rc = p->sendCbFunc( p->sendCbArg, wsSessId, msg, msgByteN );
+        rc = _send_callback(p, wsSessId, msg, msgByteN );
       else
       {
         assert( p->msgCacheN + msgByteCommaN <= p->msgCacheDataN );
@@ -396,7 +406,7 @@ namespace cw
       if( p->msgCacheEnableFl )
         rc = _cache_send( p, sessId, msg, msgByteCnt );
       else
-        rc =  p->sendCbFunc( p->sendCbArg, sessId, msg, msgByteCnt );
+        rc =  _send_callback(p, sessId, msg, msgByteCnt );
 
       return rc;
     }
@@ -1295,6 +1305,7 @@ cw::rc_t cw::ui::create(
       if((rc = _createFromObj( p, main_obj, kInvalidId, kRootUuId, kInvalidId )) != kOkRC )
         rc = cwLogError(rc,"Create from UI resource failed.");
   }
+
   
   h.set(p);
 
@@ -1454,6 +1465,8 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* void_msg,
   while( (msg = _get_msg_from_recv_buffer(p)) != NULL )
   {
 
+    p->recvMsgN += 1;
+    
     // parse the 'opId' from the message
     opId = _labelToOpId(msg);
   
@@ -2110,12 +2123,15 @@ void cw::ui::report( handle_t h )
         e->attr->child_ele(i)->to_string(p->buf,p->bufN);
         printf("%s, ", p->buf );
       }
-      printf("\n");
-    
-    }
-  
+      printf("\n");    
+    }  
 }
 
+void cw::ui::realTimeReport( handle_t h )
+{
+  ui_t* p  = _handleToPtr(h);
+  printf("UI msg count: recv:%i send:%i\n",p->recvMsgN,p->sentMsgN);
+}
 
 
 namespace cw

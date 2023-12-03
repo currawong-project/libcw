@@ -171,7 +171,7 @@ namespace cw
 
     
     void report( handle_t h );
-    
+    void realTimeReport( handle_t h );
     
     
     namespace ws

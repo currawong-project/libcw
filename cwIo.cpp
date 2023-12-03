@@ -3734,3 +3734,11 @@ void cw::io::uiReport( handle_t h )
   if(_handleToUiHandle(h,uiH) == kOkRC )
     ui::report(uiH);
 }
+
+void cw::io::uiRealTimeReport( handle_t h )
+{
+  ui::handle_t uiH;
+  if(_handleToUiHandle(h,uiH) == kOkRC )
+    ui::realTimeReport(uiH);
+}
+

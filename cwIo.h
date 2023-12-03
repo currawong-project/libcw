@@ -398,6 +398,7 @@ namespace cw
     rc_t uiSendValue( handle_t h, unsigned uuId, double value );
     rc_t uiSendValue( handle_t h, unsigned uuId, const char* value );
 
+    void uiRealTimeReport( handle_t h );
     void uiReport( handle_t h );
     
   }
