@@ -54,6 +54,21 @@ namespace cw
 unsigned cw::textLength( const char* s )
 { return s == nullptr ? 0 : strlen(s); }
 
+void textToLower( char* s )
+{
+  if( s != nullptr )
+    for(; *s; ++s)
+      *s = std::tolower(*s);
+}
+
+void textToUpper( char* s )
+{
+  if( s != nullptr )
+    for(; *s; ++s)
+      *s = std::toupper(*s);
+}
+
+
 int cw::textCompare( const char* s0, const char* s1 )
 {
   if( s0 == nullptr || s1 == nullptr )

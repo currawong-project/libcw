@@ -6,6 +6,9 @@ namespace cw
 {
   // Return 0 if s is null.
   unsigned textLength( const char* s );
+
+  void textToLower( char* s );
+  void textToUpper( char* s );
   
   // Note: if both s0 and s1 are nullptr then a match is indicated
   int textCompare( const char* s0, const char* s1 );
