@@ -197,7 +197,6 @@ namespace cw
       mem::release(p->midiDevA);
       mem::release(p->msgArray);
       mem::release(p->iMsgArray);
-      printf("P:%p\n",p);
       mem::release(p);
     
       return rc;
@@ -2206,9 +2205,15 @@ cw::rc_t cw::midi_record_play::vel_table_set( handle_t h, unsigned devIdx, const
     dev->velTableArray = mem::resize<uint8_t>(dev->velTableArray,tblN);
     dev->velTableN     = tblN;
   }
+
+  printf("Apply Vel Table to %s : ", cwStringNullGuard(p->midiDevA[devIdx].label));
   
   for(unsigned i=0; i<tblN; ++i)
+  {
     dev->velTableArray[i] = tbl[i];
+    printf("%i->%i  ",i,tbl[i]);
+  }
+  printf("\n");
   
   return kOkRC;
 }
