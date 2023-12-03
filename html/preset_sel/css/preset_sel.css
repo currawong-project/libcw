@@ -40,12 +40,10 @@
     width: 80%;
 }
 
-/*
-.uiCheckDiv,.uiStringDiv,.uiNumberDiv label  {
-    border: 1px solid black;
-    width: 100px;
+.fragPresetCtl .uiString {
+    border: 1px solid LightSteelBlue;
+    width: 80%;
 }
-*/
 
 .fragNote {
     width: 575px;
@@ -54,4 +52,8 @@
 .uiRow {
     padding-bottom: 5px;
     padding-top: 5px;
+}
+
+.velTunerPanel {
+    border: 1px solid black;
 }
