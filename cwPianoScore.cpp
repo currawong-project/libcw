@@ -17,7 +17,33 @@ namespace cw
 {
   namespace perf_score
   {
-    typedef struct score_str
+    /*
+    enum {
+      kMeasColIdx = 0,
+      kLocColIdx,
+      kSecColIdx,
+      kSciPitchColIdx,
+      kStatusColIdx,
+      kD0ColIdx,
+      kD1ColIdx,
+      kBarColIdx,
+      kSectionColIdx,
+      kEvenColIdx,
+      kDynColIdx,
+      kTempoColIdx,
+      kCostColIdx,
+      kColCnt
+    };
+
+    typedef struct col_map_str
+    {
+      unsigned    colId;
+      const char* label;
+      bool        enableFl;
+    } col_map_t;
+    */
+  
+  typedef struct score_str
     {
       event_t* base;
       event_t* end;
@@ -31,6 +57,24 @@ namespace cw
       
     } score_t;
 
+    /*
+    col_map_t col_map_array[] = { 
+      { kMeasColIdx,     "meas",      true },
+      { kLocColIdx,      "loc",       true },
+      { kLocColIdx,      "oloc",      false },
+      { kSecColIdx,      "sec",       true },
+      { kSciPitchColIdx, "sci_pitch", true },
+      { kStatusColIdx,   "status",    true },
+      { kD0ColIdx,       "d0",        true },
+      { kD1ColIdx,       "d1",        true },
+      { kBarColIdx,      "bar",       true },
+      { kSectionColIdx,  "section",   true },
+      { kEvenColIdx,     "even",      true },
+      { kDynColIdx,      "dyn",       true },
+      { kTempoColIdx,    "tempo",     true },
+      { kCostColIdx,     "cost",      true },
+    };
+    */
     score_t* _handleToPtr(handle_t h)
     {
       return handleToPtr<handle_t,score_t>(h);
@@ -72,6 +116,164 @@ namespace cw
       }      
     }
 
+
+    rc_t _read_csv_line( score_t* p,  bool score_fl, csv::handle_t csvH )
+    {
+      rc_t     rc = kOkRC;
+      event_t* e  = mem::allocZ<event_t>();
+      const char* sci_pitch;
+      unsigned sci_pitch_char_cnt;
+      
+      if((rc = getv(csvH,
+                    "meas",e->meas,
+                    "loc",e->loc,
+                    "sec",e->sec,
+                    "sci_pitch", sci_pitch,
+                    "status", e->status,
+                    "d0", e->d0,
+                    "d1", e->d1,
+                    "bar", e->bar,
+                    "section", e->section )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Error parsing CSV.");
+        goto errLabel;
+      }
+
+      if( score_fl )
+      {
+        if((rc = getv(csvH,"oloc",e->loc )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Error parsing CSV.");
+          goto errLabel;
+        }
+        
+      }
+      else
+      {
+        if((rc = getv(csvH,
+                    "even", e->even,
+                    "dyn", e->dyn,
+                    "tempo", e->tempo,
+                    "cost", e->cost )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Error parsing CSV.");
+          goto errLabel;
+        }        
+      }
+
+      if((rc = field_char_count( csvH, title_col_index(csvH,"sci_pitch"), sci_pitch_char_cnt )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Error retrieving the sci. pitch char count.");
+        goto errLabel;
+      }
+      
+      strncpy(e->sci_pitch,sci_pitch,sizeof(e->sci_pitch));
+      
+      if( p->end == nullptr )
+      {
+        p->base = e;
+        p->end  = e;
+      }
+      else
+      {
+        p->end->link = e;
+        p->end = e;
+      }
+
+      // track the max 'loc' id
+      if( e->loc > p->maxLocId )
+        p->maxLocId = e->loc;
+
+      if( p->min_uid == kInvalidId || e->uid < p->min_uid )
+        p->min_uid = e->uid;
+
+      p->uid_mapN += 1;        
+      
+      
+    errLabel:
+
+      if( rc != kOkRC )
+        mem::release(e);
+      
+      return rc;
+    }
+    
+    rc_t _read_csv( score_t* p, const char* csvFname )
+    {
+      csv::handle_t csvH;
+      rc_t        rc       = kOkRC;
+      bool        score_fl = false;
+      /*
+      //unsigned    titleN   = sizeof(col_map_array)/sizeof(col_map_array[0]);
+      //const char* titleA[ titleN ];
+
+      for(unsigned i=0; i<titleN; ++i)
+      {
+        titleA[i] = col_map_array[i].label;
+        assert( col_map_array[i].colId == i );
+      }
+      */
+      
+      if((rc = csv::create(csvH,csvFname)) != kOkRC )
+      {
+        rc = cwLogError(rc,"CSV create failed on '%s'.");
+        goto errLabel;
+      }
+
+      if( title_col_index(csvH,"oloc") != kInvalidIdx )
+        score_fl = true;
+
+      /*
+      for(unsigned i=0; i<titleN; ++i)
+        if( col_map_array[i].enableFl )
+        {
+          if((col_map_array[i].colIdx = title_col_index(csvH,col_map_array[i].label)) == kInvalidIdx )
+          {
+            rc = cwLogError(rc,"The performance score column '%s' was not found in the score file:'%s'.",col_map_array[i].label,cwStringNullGuard(csvFname));
+            goto errLabel;
+          }
+        }
+      */
+      
+      for(unsigned i=0; (rc = next_line(csvH)) == kOkRC; ++i )
+        if((rc = _read_csv_line(p,score_fl,csvH)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Error reading CSV line number:%i.",i+1);
+          goto errLabel;
+        }
+
+      if( rc == kEofRC )
+        rc = kOkRC;
+
+    errLabel:
+      destroy(csvH);
+      return rc;
+    }
+
+    bool _does_file_have_loc_info( const char* fn )
+    {
+      rc_t          rc              = kOkRC;
+      bool          has_loc_info_fl = false;
+      csv::handle_t csvH;
+      
+      if((rc = create( csvH, fn)) != kOkRC )
+        goto errLabel;
+
+      for(unsigned i=0; i<col_count(csvH); ++i)
+        if( textIsEqual( col_title(csvH,i), "loc") )
+        {
+          has_loc_info_fl = true;
+          break;
+        }
+            
+      destroy(csvH);
+    errLabel:
+      
+      return has_loc_info_fl;
+        
+    }
+    
+    /*
     unsigned _scan_to_end_of_field( const char* lineBuf, unsigned buf_idx, unsigned bufCharCnt )
     {
       for(; buf_idx < bufCharCnt; ++buf_idx )
@@ -152,7 +354,7 @@ namespace cw
       unsigned bfi       = 0; 
       unsigned efi       = 0;
       unsigned field_idx = 0;
-      
+
 
       for(field_idx=0; field_idx != kMax_FIdx; ++field_idx)
       {        
@@ -241,28 +443,6 @@ namespace cw
       return rc;      
     }
 
-    bool _does_file_have_loc_info( const char* fn )
-    {
-      rc_t          rc              = kOkRC;
-      bool          has_loc_info_fl = false;
-      csv::handle_t csvH;
-      
-      if((rc = create( csvH, fn)) != kOkRC )
-        goto errLabel;
-
-      for(unsigned i=0; i<col_count(csvH); ++i)
-        if( textIsEqual( col_title(csvH,i), "loc") )
-        {
-          has_loc_info_fl = true;
-          break;
-        }
-            
-      destroy(csvH);
-    errLabel:
-      
-      return has_loc_info_fl;
-        
-    }
     
     rc_t _parse_csv( score_t* p, const char* fn )
     {
@@ -341,7 +521,7 @@ namespace cw
         
       return rc;
     }
-
+    */
     rc_t _parse_event_list( score_t* p, const object_t* cfg )
     {
       rc_t            rc;
@@ -514,7 +694,8 @@ cw::rc_t cw::perf_score::create( handle_t& hRef, const char* fn )
 
   if( _does_file_have_loc_info(fn) )
   {
-    if((rc = _parse_csv(p,fn)) != kOkRC )
+    // if((rc = _parse_csv(p,fn)) != kOkRC )
+    if((rc = _read_csv( p, fn )) != kOkRC )
       goto errLabel;
 
     _set_bar_pitch_index(p);
