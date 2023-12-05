@@ -300,8 +300,10 @@ namespace cw
 
       unsigned insertLoc;       // last valid insert location id received from the GUI
       
-      unsigned minLoc;          // min/max locations of the currently loaded performance
-      unsigned maxLoc;
+      unsigned minScoreLoc;          // min/max locations of the currently loaded score
+      unsigned maxScoreLoc;          //
+      unsigned minPerfLoc;           // min/max locations of the currently loaded performance
+      unsigned maxPerfLoc;
       
       unsigned beg_play_loc;    // beg/end play loc's from the UI
       unsigned end_play_loc;
@@ -1416,7 +1418,7 @@ namespace cw
       //io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId),   midi_record_play::event_index(app->mrpH) );
       //io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kTotalMidiEvtCntId), midi_record_play::event_count(app->mrpH) );
       
-      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kTotalMidiEvtCntId), app->maxLoc-app->minLoc );
+      io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kTotalMidiEvtCntId), app->maxPerfLoc-app->minPerfLoc );
     }
 
     // Update the UI with the value from the the fragment data record.
@@ -1585,7 +1587,10 @@ namespace cw
       //  _clear_status(app);
       //else
       if( !enableFl )
+      {
         _set_status(app,"Invalid fragment play range. beg:%i end:%i",begPlayLoc,endPlayLoc);
+        cwLogError(kInvalidArgRC,"Invalid fragment play range. beg:%i end:%i",begPlayLoc,endPlayLoc);
+      }
 
     }
 
@@ -1773,12 +1778,12 @@ namespace cw
 
       // Set the fragment panel order.
       io::uiSetOrderKey( app->ioH, fragPanelUuId, endLoc );
-
+      
       // Set the fragment beg/end play range
       get_value( app->psH, fragId, preset_sel::kBegPlayLocVarId, kInvalidId, fragBegLoc );
-      uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragBegPlayLocId, fragChanId), app->minLoc, app->maxLoc, 1, 0, fragBegLoc );
-      uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragEndPlayLocId, fragChanId), app->minLoc, app->maxLoc, 1, 0, endLoc );
 
+      uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragBegPlayLocId, fragChanId), app->minScoreLoc, app->maxScoreLoc, 1, 0, fragBegLoc );
+      uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragEndPlayLocId, fragChanId), app->minScoreLoc, app->maxScoreLoc, 1, 0, endLoc );
 
       // Attach blobs to the UI to allow convenient access back to the prese_sel data record
       _frag_set_ui_blob(app, io::uiFindElementUuId(app->ioH, fragPanelUuId, kFragInGainId,     fragChanId), fragId, preset_sel::kInGainVarId,        kInvalidId );
@@ -1830,6 +1835,8 @@ namespace cw
         rc = cwLogError(rc,"File write failed on preset select.");
         goto errLabel;
       }
+
+      get_loc_range(app->psH,app->minScoreLoc,app->maxScoreLoc);
 
       // Settting psNextFrag to a non-null value causes the
       app->psNextFrag = preset_sel::get_fragment_base(app->psH);
@@ -1889,7 +1896,8 @@ namespace cw
       
       return rc;
     }
-    
+
+    /*
     rc_t _restore_fragment_data( app_t* app )
     {
       rc_t                      rc = kOkRC;
@@ -1920,6 +1928,8 @@ namespace cw
         goto errLabel;
       }
 
+      get_loc_range(app->psH,app->minScoreLoc,app->maxScoreLoc);
+  
       //preset_sel::report( app->psH );
 
       f = preset_sel::get_fragment_base(app->psH);
@@ -1944,7 +1954,7 @@ namespace cw
       
       return rc;
     }
-    
+    */
     rc_t _on_ui_save( app_t* app )
     {
       rc_t  rc  = kOkRC;
@@ -2005,8 +2015,8 @@ namespace cw
         // allocate the locMap[]
         app->locMap  = mem::resizeZ<loc_map_t>( app->locMap, midiEventN ); 
         app->locMapN = midiEventN;
-        app->minLoc  = INVALID_LOC;
-        app->maxLoc  = INVALID_LOC;
+        app->minPerfLoc  = INVALID_LOC;
+        app->maxPerfLoc  = INVALID_LOC;
                 
         // allocate the the player msg array
         m = mem::allocZ<midi_record_play::midi_msg_t>( midiEventN );
@@ -2029,15 +2039,15 @@ namespace cw
 
             if( e->loc != INVALID_LOC )
             {
-              if( app->minLoc == INVALID_LOC )
-                app->minLoc = e->loc;
+              if( app->minPerfLoc == INVALID_LOC )
+                app->minPerfLoc = e->loc;
               else            
-                app->minLoc = std::min(app->minLoc,e->loc);
+                app->minPerfLoc = std::min(app->minPerfLoc,e->loc);
               
-              if( app->maxLoc == INVALID_LOC )
-                app->maxLoc = e->loc;
+              if( app->maxPerfLoc == INVALID_LOC )
+                app->maxPerfLoc = e->loc;
               else            
-                app->maxLoc = std::max(app->maxLoc,e->loc);
+                app->maxPerfLoc = std::max(app->maxPerfLoc,e->loc);
             }
             
             ++i;
@@ -2054,7 +2064,7 @@ namespace cw
 
         midiEventCntRef = midiEventN;
 
-        cwLogInfo("%i MIDI events loaded from score. Loc Min:%i Max:%i", midiEventN , app->minLoc, app->maxLoc);
+        cwLogInfo("%i MIDI events loaded from score. Loc Min:%i Max:%i", midiEventN , app->minPerfLoc, app->maxPerfLoc);
       }
       
     errLabel:
@@ -2122,7 +2132,7 @@ namespace cw
       cwLogInfo("Loading");
       _set_status(app,"Loading...");
 
-      // load the performance or score
+      // load the performance
       if((rc= perf_score::create( app->scoreH, perf_fn )) != kOkRC )
       {
         cwLogError(rc,"Score create failed on '%s'.",perf_fn);
@@ -2153,12 +2163,12 @@ namespace cw
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kInsertLocId ), true );
       
       // set the UI begin/end play to the locations of the newly loaded performance
-      app->end_play_loc = app->maxLoc;
-      app->beg_play_loc = app->minLoc;
+      app->end_play_loc = app->maxPerfLoc;
+      app->beg_play_loc = app->minPerfLoc;
 
       // Update the master range of the play beg/end number widgets
-      io::uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, kBegPlayLocNumbId), app->minLoc, app->maxLoc, 1, 0, app->beg_play_loc );
-      io::uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, kEndPlayLocNumbId), app->minLoc, app->maxLoc, 1, 0, app->end_play_loc );
+      io::uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, kBegPlayLocNumbId), app->minPerfLoc, app->maxPerfLoc, 1, 0, app->beg_play_loc );
+      io::uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, kEndPlayLocNumbId), app->minPerfLoc, app->maxPerfLoc, 1, 0, app->end_play_loc );
 
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kBegPlayLocNumbId ), true );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kEndPlayLocNumbId ), true );
@@ -2170,8 +2180,8 @@ namespace cw
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kSfResetBtnId ),   true );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kSfResetLocNumbId ),   true );
 
-      io::uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, kSfResetLocNumbId), app->minLoc, app->maxLoc, 1, 0, app->beg_play_loc );
-      io::uiSendValue( app->ioH, io::uiFindElementUuId(app->ioH, kSfResetLocNumbId), app->minLoc);
+      io::uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, kSfResetLocNumbId), app->minPerfLoc, app->maxPerfLoc, 1, 0, app->beg_play_loc );
+      io::uiSendValue( app->ioH, io::uiFindElementUuId(app->ioH, kSfResetLocNumbId), app->minPerfLoc);
       
       cwLogInfo("'%s' loaded.",perf_fn);
 

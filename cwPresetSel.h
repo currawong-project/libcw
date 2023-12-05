@@ -80,6 +80,8 @@ namespace cw
     // Count/label of alternatives (alt_idx==0 is 'no alternative selected)
     unsigned    alt_count( handle_t h );
     const char* alt_label( handle_t h, unsigned alt_idx );
+
+    void get_loc_range( handle_t h, unsigned& minLocRef, unsigned& maxLocRef );
         
     unsigned      fragment_count(    handle_t h );
     const frag_t* get_fragment_base( handle_t h );
