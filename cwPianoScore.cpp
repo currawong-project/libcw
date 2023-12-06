@@ -167,7 +167,7 @@ namespace cw
         goto errLabel;
       }
       
-      strncpy(e->sci_pitch,sci_pitch,sizeof(e->sci_pitch));
+      strncpy(e->sci_pitch,sci_pitch,sizeof(e->sci_pitch)-1);
       
       if( p->end == nullptr )
       {
@@ -570,16 +570,21 @@ namespace cw
             goto errLabel;
           }
 
-          
+
+          textCopy( e->sci_pitch,sizeof(e->sci_pitch),sci_pitch);
+          textCopy( e->dmark,sizeof(e->dmark),dmark);
+          textCopy( e->grace_mark, sizeof(e->grace_mark),grace_mark);
+          /*
           if( sci_pitch != nullptr )
-            strncpy(e->sci_pitch,sci_pitch,sizeof(e->sci_pitch));
+            strncpy(e->sci_pitch,sci_pitch,sizeof(e->sci_pitch)-1);
           
           if( dmark != nullptr )
-            strncpy(e->dmark,dmark,sizeof(e->dmark));
+            strncpy(e->dmark,dmark,sizeof(e->dmark)-1);
 
           if( grace_mark != nullptr )
-            strncpy(e->grace_mark,grace_mark,sizeof(e->grace_mark));
-
+            strncpy(e->grace_mark,grace_mark,sizeof(e->grace_mark)-1);
+          */
+          
           // assign the UID
           e->uid = i;          
           

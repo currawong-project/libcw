@@ -7,6 +7,13 @@ namespace cw
   // Return 0 if s is null.
   unsigned textLength( const char* s );
 
+  // If dst is non-null then dst is always 0-terminated.
+  // If src will be truncated if srcN > dstN-1.
+  // If dst is null then null is returned
+  // if src is null then dst[0] = 0.
+  // if srcN is 0 then textLength(src) is used for srcN
+  const char* textCopy( char* dst, unsigned dstN, const char* src, unsigned srcN=0 );
+
   void textToLower( char* s );
   void textToUpper( char* s );
   

@@ -54,6 +54,30 @@ namespace cw
 unsigned cw::textLength( const char* s )
 { return s == nullptr ? 0 : strlen(s); }
 
+const char* cw::textCopy( char* dst, unsigned dstN, const char* src, unsigned srcN )
+{
+  if( dst == nullptr || dstN == 0 )
+    return nullptr;
+
+  if( srcN == 0 )
+    srcN = textLength(src);
+  
+  if( src == nullptr || srcN==0 || dstN==1 )
+  {
+    dst[0] = 0;
+  }
+  else
+  {
+    
+    assert( dstN >= 2 );
+    unsigned n = std::min( dstN-1, srcN );
+    memcpy(dst,src,n);
+    dst[n] = 0;
+  }
+  return dst;
+}
+
+
 void textToLower( char* s )
 {
   if( s != nullptr )

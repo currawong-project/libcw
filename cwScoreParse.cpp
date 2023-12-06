@@ -263,7 +263,7 @@ namespace cw
     
     rc_t _parse_note_on_row( score_parse_t* p, csv::handle_t csvH, event_t* e  )
     {
-      rc_t rc,rc0,rc1,rc2;
+      rc_t rc,rc0=kOkRC,rc1=kOkRC,rc2=kOkRC;
       const char* sciPitch   = nullptr;
       const char* dmark      = nullptr;
       const char* graceLabel = nullptr;
