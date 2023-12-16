@@ -14,6 +14,8 @@
 #include "cwScoreParse.h"
 #include "cwSfScore.h"
 
+#define INVALID_LOC 0
+
 namespace cw
 {
   namespace preset_sel
@@ -872,7 +874,7 @@ cw::rc_t cw::preset_sel::create(  handle_t& hRef, const object_t* cfg  )
   }
 
 
-  // allocate the label array
+  // allocate the alt label array
   p->altLabelN = alt_labelL->child_count() + 1;
   p->altLabelA = mem::allocZ<alt_label_t>(p->altLabelN);
 
@@ -952,6 +954,25 @@ const char* cw::preset_sel::alt_label( handle_t h, unsigned alt_idx )
   preset_sel_t* p = _handleToPtr(h);
   return _alt_index_to_label(p,alt_idx);
 }
+
+void cw::preset_sel::get_loc_range( handle_t h, unsigned& minLocRef, unsigned& maxLocRef )
+{
+  preset_sel_t* p = _handleToPtr(h);
+
+  if( p->fragL == nullptr )
+  {
+    minLocRef = INVALID_LOC;
+    maxLocRef = INVALID_LOC;
+  }
+  else
+  {
+    minLocRef = 1;
+
+    for(const frag_t* f = p->fragL; f!=nullptr; f=f->link)
+      maxLocRef = f->endLoc;
+  }
+}
+
 
 unsigned cw::preset_sel::fragment_count( handle_t h )
 {
