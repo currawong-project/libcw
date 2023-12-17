@@ -2,6 +2,11 @@ namespace cw
 {
   namespace score_parse
   {
+
+    enum {
+      kInvalidLocId = 0
+    };
+    
     enum {
       kInvalidTId,
       kBarTId,

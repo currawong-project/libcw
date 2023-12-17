@@ -14,7 +14,6 @@
 #include "cwScoreParse.h"
 #include "cwSfScore.h"
 
-#define INVALID_LOC 0
 
 namespace cw
 {
@@ -961,8 +960,8 @@ void cw::preset_sel::get_loc_range( handle_t h, unsigned& minLocRef, unsigned& m
 
   if( p->fragL == nullptr )
   {
-    minLocRef = INVALID_LOC;
-    maxLocRef = INVALID_LOC;
+    minLocRef = score_parse::kInvalidLocId;
+    maxLocRef = score_parse::kInvalidLocId;
   }
   else
   {

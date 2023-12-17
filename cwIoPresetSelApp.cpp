@@ -34,7 +34,6 @@
 #include "cwSfTrack.h"
 #include "cwScoreFollower.h"
 
-#define INVALID_LOC (0)
 
 namespace cw
 {
@@ -972,7 +971,7 @@ namespace cw
 
     unsigned _get_loc_from_score_follower( app_t* app, double secs, unsigned muid, uint8_t status, uint8_t d0, uint8_t d1 )
     {
-      unsigned loc = INVALID_LOC;
+      unsigned loc = score_parse::kInvalidLocId;
             
       // if this is a MIDI note-on event - then udpate the score follower
       if( midi::isNoteOn(status,d1) && muid != kInvalidIdx )
@@ -1054,7 +1053,7 @@ namespace cw
           
             // TODO: ZERO SHOULD BE A VALID LOC VALUE - MAKE -1 THE INVALID LOC VALUE
             
-            if( loc != INVALID_LOC  && app->trackMidiFl )
+            if( loc != score_parse::kInvalidLocId  && app->trackMidiFl )
             {
               if( preset_sel::track_loc( app->psH, loc, f ) )  
               {
@@ -1140,7 +1139,7 @@ namespace cw
 
       frameIdxRef = kInvalidIdx;
       
-      if( app->in_audio_begin_loc != INVALID_LOC )
+      if( app->in_audio_begin_loc != score_parse::kInvalidLocId )
       {
         if((e0 = loc_to_event(app->scoreH,app->in_audio_begin_loc)) == nullptr )
         {
@@ -2015,8 +2014,8 @@ namespace cw
         // allocate the locMap[]
         app->locMap  = mem::resizeZ<loc_map_t>( app->locMap, midiEventN ); 
         app->locMapN = midiEventN;
-        app->minPerfLoc  = INVALID_LOC;
-        app->maxPerfLoc  = INVALID_LOC;
+        app->minPerfLoc  = score_parse::kInvalidLocId;
+        app->maxPerfLoc  = score_parse::kInvalidLocId;
                 
         // allocate the the player msg array
         m = mem::allocZ<midi_record_play::midi_msg_t>( midiEventN );
@@ -2037,14 +2036,14 @@ namespace cw
             app->locMap[i].loc = e->loc;
             app->locMap[i].timestamp = m[i].timestamp;
 
-            if( e->loc != INVALID_LOC )
+            if( e->loc != score_parse::kInvalidLocId )
             {
-              if( app->minPerfLoc == INVALID_LOC )
+              if( app->minPerfLoc == score_parse::kInvalidLocId )
                 app->minPerfLoc = e->loc;
               else            
                 app->minPerfLoc = std::min(app->minPerfLoc,e->loc);
               
-              if( app->maxPerfLoc == INVALID_LOC )
+              if( app->maxPerfLoc == score_parse::kInvalidLocId )
                 app->maxPerfLoc = e->loc;
               else            
                 app->maxPerfLoc = std::max(app->maxPerfLoc,e->loc);
