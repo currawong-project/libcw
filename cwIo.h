@@ -230,8 +230,10 @@ namespace cw
     //
     // Audio
     //
-    
+
+    bool            audioIsEnabled(            handle_t h );
     unsigned        audioDeviceCount(          handle_t h );
+    unsigned        audioActiveDeviceCount(    handle_t h );
     unsigned        audioDeviceLabelToIndex(   handle_t h, const char* label );
     const char*     audioDeviceLabel(          handle_t h, unsigned devIdx );
     rc_t            audioDeviceSetUserId(      handle_t h, unsigned devIdx, unsigned userId );
@@ -397,6 +399,8 @@ namespace cw
     rc_t uiSendValue( handle_t h, unsigned uuId, float value );
     rc_t uiSendValue( handle_t h, unsigned uuId, double value );
     rc_t uiSendValue( handle_t h, unsigned uuId, const char* value );
+
+    rc_t uiSendMsg( handle_t h, const char* msg );
 
     void uiRealTimeReport( handle_t h );
     void uiReport( handle_t h );

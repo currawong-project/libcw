@@ -2106,6 +2106,8 @@ namespace cw
           rc = ui::ws::create(p->wsUiH, args, p, _uiCallback, args.uiRsrc, p->uiMapA, p->uiMapN);
           
           ui::ws::releaseArgs(args);
+
+          //ui::enableCache( ui::ws::uiHandle(p->wsUiH) );
         
         }
       }
@@ -2667,6 +2669,19 @@ cw::rc_t cw::io::midiDeviceSend( handle_t h, unsigned devIdx, unsigned portIdx, 
 //
 // Audio
 //
+
+bool        cw::io::audioIsEnabled(            handle_t h )
+{
+  io_t* p = _handleToPtr(h);
+  for(unsigned devIdx=0; devIdx<p->audioDevN; ++devIdx)
+  {
+    audioDev_t* ad;
+    if((ad = _audioDeviceIndexToRecd(p,devIdx)) != nullptr && ad->activeFl )
+      return true;
+  }
+
+  return false;
+}
 
 unsigned    cw::io::audioDeviceCount(          handle_t h )
 {
@@ -3727,6 +3742,16 @@ cw::rc_t cw::io::uiSendValue( handle_t h, unsigned uuId, const char* value )
     rc = ui::sendValueString(uiH,  uuId, value );
   return rc;
 }
+
+cw::rc_t cw::io::uiSendMsg( handle_t h, const char* msg )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::sendMsg(uiH, msg);
+  return rc;
+}
+
 
 void cw::io::uiReport( handle_t h )
 {
