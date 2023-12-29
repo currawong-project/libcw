@@ -40,6 +40,12 @@ namespace cw
       lws_pollfd* _pollfdA;     // socket handle array used by poll()
       int         _pollfdMaxN;
       int         _pollfdN;
+
+      unsigned _sendMsgCnt;    // Count of msg's sent 
+      unsigned _sendMaxByteN;  // Max size across all sent msg's
+
+      unsigned _recvMsgCnt;    // Count of msg's recv'd
+      unsigned _recvMaxByteN;  // Max size across all recv'd msg's
       
     } websock_t;
 
@@ -264,7 +270,11 @@ namespace cw
           //printf("recv: sess:%i proto:%s : %p : len:%li\n",sess->id,proto->name,ws->_cbFunc,len);
         
           if( ws->_cbFunc != nullptr && len>0)
+          {
             ws->_cbFunc(ws->_cbArg,proto->id,sess->id,kMessageTId,in,len);
+            ws->_recvMsgCnt += 1;
+            ws->_recvMaxByteN = std::max(ws->_recvMaxByteN,(unsigned)len);
+          }
 
           break;
 
@@ -320,6 +330,8 @@ namespace cw
     rc_t _destroy( websock_t* p )
     {
       msg_t* m;
+
+      cwLogInfo("Websock: sent: msgs:%i largest msg:%i - recv: msgs:%i largest msg:%i - LWS_PRE:%i",p->_sendMsgCnt,p->_sendMaxByteN,p->_recvMsgCnt,p->_recvMaxByteN,LWS_PRE);
     
       if( p->_ctx != nullptr )
       {
@@ -500,6 +512,9 @@ cw::rc_t cw::websock::send(handle_t h,  unsigned protocolId, unsigned sessionId,
 
   websock_t* p = _handleToPtr(h);
   p->_q->push(m);
+
+  p->_sendMsgCnt += 1;
+  p->_sendMaxByteN = std::max(p->_sendMaxByteN,byteN);
   
   return rc;
 }
