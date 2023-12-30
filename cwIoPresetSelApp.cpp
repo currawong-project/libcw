@@ -27,7 +27,6 @@
 #include "cwIoFlow.h"
 #include "cwPresetSel.h"
 #include "cwVelTableTuner.h"
-//#include "cwCmInterface.h"
 #include "cwDynRefTbl.h"
 #include "cwScoreParse.h"
 #include "cwSfScore.h"
@@ -895,7 +894,7 @@ namespace cw
           if( score_evt != nullptr )
             printf("Meas:e:%f d:%f t:%f c:%f\n",score_evt->even,score_evt->dyn,score_evt->tempo,score_evt->cost);
 
-          if( preset_label != nullptr )
+          if( preset_label != nullptr && app->ioFlowH.isValid() )
           {
             io_flow::apply_preset( app->ioFlowH, flow_cross::kNextDestId, preset_label );
 
@@ -1878,6 +1877,8 @@ namespace cw
         if( app->psNextFrag == nullptr )
         {
 
+          io::uiSendMsg( app->ioH, "{ \"op\":\"attach\" }" );
+          
           // the fragments are loaded enable the 'load' and 'alt' menu
           io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kPerfSelId ),   true );
           io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kAltSelId ),   true );
@@ -2734,9 +2735,11 @@ namespace cw
       if((rc = preset_sel::set_value( app->psH, kInvalidId, varId, kInvalidId, value )) != kOkRC )
         rc = cwLogError(rc,"Master value set failed on varId:%i %s.%s.",varId,cwStringNullGuard(inst_label),cwStringNullGuard(var_label));
       else
-        if((rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, inst_label,  var_label,    flow::kAnyChIdx, (dsp::real_t)value )) != kOkRC )
-          rc = cwLogError(rc,"Master value send failed on %s.%s.",cwStringNullGuard(inst_label),cwStringNullGuard(var_label));
-      
+      {
+        if( app->ioFlowH.isValid() )
+          if((rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, inst_label,  var_label,    flow::kAnyChIdx, (dsp::real_t)value )) != kOkRC )
+            rc = cwLogError(rc,"Master value send failed on %s.%s.",cwStringNullGuard(inst_label),cwStringNullGuard(var_label));
+      }
       return rc;
     }
 
@@ -2771,13 +2774,15 @@ namespace cw
         case kPvWndSmpCntId:
           var_label        = "wndSmpN";
           app->pvWndSmpCnt = m.value->u.u;
-          rc               = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "pva",  var_label,    flow::kAnyChIdx, m.value->u.u );
+          if( app->ioFlowH.isValid() )
+            rc  = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "pva",  var_label,    flow::kAnyChIdx, m.value->u.u );
           break;
 	  
         case kSdBypassId:
           var_label       = "bypass";
           app->sdBypassFl = m.value->u.b;
-          rc              = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "sd",  var_label,    flow::kAnyChIdx, m.value->u.b );
+          if( app->ioFlowH.isValid() )
+            rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "sd",  var_label,    flow::kAnyChIdx, m.value->u.b );
           break;
 	  
         case kSdInGainId:
@@ -2818,14 +2823,15 @@ namespace cw
         case kCmpBypassId:
           var_label = "cmp-bypass";
           app->cmpBypassFl = m.value->u.b;
-          rc        = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "cmp",  "bypass",    flow::kAnyChIdx, m.value->u.b );
+          if( app->ioFlowH.isValid() )
+            rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "cmp",  "bypass",    flow::kAnyChIdx, m.value->u.b );
           break;
 	  
         default:
           assert(0);
       }
 
-      if( m.value->tid == ui::kDoubleTId )
+      if( m.value->tid == ui::kDoubleTId && app->ioFlowH.isValid() )
         rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "sd",  var_label,    flow::kAnyChIdx, (dsp::real_t)m.value->u.d );
 
       if(rc != kOkRC )
@@ -2856,8 +2862,9 @@ namespace cw
         io::uiSendValue( app->ioH, io::uiFindElementUuId( app->ioH, kSyncDelayMsId ), app->dfltSyncDelayMs );        
       }
 
-      if((rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "sync_delay",  "delayMs",    flow::kAnyChIdx, (dsp::real_t)value )) != kOkRC )
-        rc = cwLogError(rc,"Error setting sync delay 'flow' value.");
+      if( app->ioFlowH.isValid() )
+        if((rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "sync_delay",  "delayMs",    flow::kAnyChIdx, (dsp::real_t)value )) != kOkRC )
+          rc = cwLogError(rc,"Error setting sync delay 'flow' value.");
       
       
       app->useLiveMidiFl = useLiveMidiFl;
@@ -2916,7 +2923,8 @@ namespace cw
           break;
 
         case kNetPrintBtnId:
-          io_flow::print_network(app->ioFlowH,flow_cross::kCurDestId);
+          if( app->ioFlowH.isValid() )
+            io_flow::print_network(app->ioFlowH,flow_cross::kCurDestId);
           break;
             
         case kReportBtnId:
@@ -3529,10 +3537,17 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
   }
   
   // create the IO Flow controller
-  if(app.flow_cfg==nullptr || app.flow_proc_dict==nullptr || (rc = io_flow::create(app.ioFlowH,app.ioH,sysSampleRate,app.crossFadeCnt,*app.flow_proc_dict,*app.flow_cfg)) != kOkRC )
+  if( !audioIsEnabled(app.ioH) )
   {
-    rc = cwLogError(rc,"The IO Flow controller create failed.");
-    goto errLabel;
+    cwLogInfo("Audio disabled.");
+  }
+  else
+  {
+    if(app.flow_cfg==nullptr || app.flow_proc_dict==nullptr || (rc = io_flow::create(app.ioFlowH,app.ioH,sysSampleRate,app.crossFadeCnt,*app.flow_proc_dict,*app.flow_cfg)) != kOkRC )
+    {
+      rc = cwLogError(rc,"The IO Flow controller create failed.");
+      goto errLabel;
+    }
   }
   
   // start the IO framework instance
@@ -3542,6 +3557,8 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
     goto errLabel;    
   }
 
+  //io::uiReport(app.ioH);
+  
   // execute the io framework
   while( !io::isShuttingDown(app.ioH))
   {
