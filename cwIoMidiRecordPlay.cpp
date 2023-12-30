@@ -2159,24 +2159,23 @@ unsigned cw::midi_record_play::dev_count( handle_t h )
 
 cw::rc_t cw::midi_record_play::vel_table_disable( handle_t h, unsigned devIdx )
 {
-  rc_t                rc = kOkRC;  
-  midi_record_play_t* p  = _handleToPtr(h);
-  
-  if( devIdx != kInvalidIdx )
+  rc_t                rc        = kOkRC;  
+  midi_record_play_t* p         = _handleToPtr(h);
+  unsigned            begDevIdx = devIdx==kInvalidIdx ? 0           : devIdx;
+  unsigned            endDevIdx = devIdx==kInvalidIdx ? p->midiDevN : begDevIdx+1;
+
+  if( devIdx != kInvalidIdx && devIdx > p->midiDevN )
   {
-    if( devIdx > p->midiDevN )
-    {
-      rc = cwLogError(kInvalidArgRC,"The device index '%i'is invalid.",devIdx);
-      goto errLabel;
-    }
-    
-    p->midiDevA[devIdx].velTableArray = nullptr;
+    rc = cwLogError(kInvalidArgRC,"The device index '%i'is invalid.",devIdx);
+    goto errLabel;
   }
-  else
+
+  for(unsigned i=begDevIdx; i<endDevIdx; ++i)
   {
-    for(unsigned i=0; i<p->midiDevN; ++i)
-      p->midiDevA[i].velTableArray = nullptr;
+    mem::release(p->midiDevA[i].velTableArray);
+    p->midiDevA[i].velTableN = 0;
   }
+
   
  errLabel:
   return rc;
