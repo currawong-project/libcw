@@ -12,7 +12,7 @@ void* cw::mem::_alloc( void* p0, unsigned n, unsigned flags )
 
     n += 2*sizeof(unsigned); // add space for the size of the block
     
-    // if there is no existing block
+    // if there is an existing block
     if( p0 != nullptr )
     {
       // get a pointer to the base of the exsting block
