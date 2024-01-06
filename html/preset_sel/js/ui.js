@@ -3,169 +3,22 @@ var _rootId    = "0";
 var _nextEleId = 0;
 var _focusId   = null;
 var _focusVal  = null;
+var _rootDivEle = null;
+var _rootEle = null;
 
 function set_app_title( suffix, className )
 {
     var ele = document.getElementById('connectTitleId');
-    ele.innerHTML = suffix
-    ele.className = className
-}
-
-
-function uiOnError( msg, r)
-{
-    console.log("Error:" + msg);
-}
-
-function uiGetParent( r )
-{
-    parent_ele = document.getElementById(r.parent_id);
-    
-    if( parent_ele == null )
+    if(ele != null)
     {
-	uiOnError("Parent not found. parent_id:" + r.parent_id,r);
+	ele.innerHTML = suffix
+	ele.className = className
     }
-
-    return parent_ele;
-}
-
-function uiCreateEle( r )
-{
-    var parent_ele;
-    
-    if((parent_ele = uiGetParent(r)) != null )
-    {    
-	ele            = document.createElement(r.ele_type)
-	ele.id         = r.ele_id;
-	ele.className  = r.value;
-	
-	parent_ele.appendChild(ele)
+    else
+    {
+	console.log("Ele. not found. Set title failed.")
     }
 }
-
-function uiRemoveChildren( r )
-{
-    ele = document.getElementById(r.ele_id)
-    
-    while (ele.firstChild)
-    {
-	ele.removeChild(ele.firstChild);
-    }  
-}
-
-function uiDivCreate( r )
-{ uiCreateEle(r) }
-
-function uiLabelCreate( r )
-{
-    var parent_ele;
-    
-    if((parent_ele = uiGetParent(r)) != null )
-    {
-	ele            = document.createElement("label")
-	ele.htmlFor    = r.ele_id
-	ele.innerHTML  = r.value;
-	parent_ele.appendChild(ele)
-    }
-    
-}
-
-function uiSelectCreate( r )
-{
-    uiCreateEle(r)
-}
-
-function uiSelectClear( r )
-{ uiRemoveChildren(r) }
-
-function uiSelectInsert( r )
-{
-    var select_ele;
-    
-    if((select_ele = uiGetParent(r)) != null )    
-    {
-	var option    = document.createElement('option');
-
-	option.id        = r.ele_id;
-	option.innerHTML = r.value;
-	option.value     = r.ele_id;
-	option.onclick   = function() { uiOnSelectClick(this) }
-	
-	select_ele.appendChild(option)
-    }
-}
-
-function uiSelectChoose( r )
-{
-    var select_ele;
-    
-    if((select_ele = uiGetParent(r)) != null )    
-    {
-	if( select_ele.hasChildNodes())
-	{
-	    var children = select_ele.childNodes
-	    for(var i=0; i<children.length; i++)
-	    {
-		if( children[i].id == r.ele_id )
-		{
-		    select_ele.selectedIndex = i
-		    break;
-		}	
-	    }
-	}
-    }
-}
-
-function uiOnSelectClick( ele )
-{
-    cmdstr = "mode ui ele_type select op choose parent_id "+ele.parentElement.id+" option_id " + ele.id
-    websocket.send(cmdstr);
-
-}
-
-function uiNumberOnKeyUp( e )
-{
-    if( e.keyCode == 13 )
-    {
-	//console.log(e)
-	cmdstr = "mode ui ele_type number op change parent_id "+e.srcElement.parentElement.id+" ele_id " + e.srcElement.id + " value " + e.srcElement.value    
-	websocket.send(cmdstr);
-    }
-}
-
-
-function uiNumberCreate( r )
-{
-    var parent_ele;
-    
-    if((parent_ele = uiGetParent(r)) != null )        
-    {
-	ele    = document.createElement("input")
-	ele.id = r.ele_id
-	ele.setAttribute('type','number')
-	ele.addEventListener('keyup',uiNumberOnKeyUp)
-	parent_ele.appendChild(ele)
-    }
-}
-
-function uiNumberSet( r )
-{
-    var ele;
-
-    //console.log("ele_id:" + r.ele_id + " parent_id:" + r.parent_id + " value:" + r.value)
-    
-    if((ele = document.getElementById(r.parent_id)) != null)
-    {
-	switch( r.ele_id )
-	{
-	    case "0":  ele.min   = r.value; break;
-	    case "1":  ele.max   = r.value; break;
-	    case "2":  ele.step  = r.value; break;
-	    case "3":  ele.value = r.value; break;
-	}
-    }
-}
-
 
 
 function dom_child_by_id( parentEle, child_id )
@@ -204,9 +57,31 @@ function dom_set_number( ele_id, val )
 
 
 //==============================================================================
-
 function dom_id_to_ele( id )
-{ return document.getElementById(id); }
+{
+    var ele = null;
+    
+    if( _rootEle == null )
+    {
+	console.log("fail dtoe: root null");
+    }
+    else
+    {
+	if( id == _rootId )
+	    return _rootEle
+	
+	//ele =  _rootEle.getElementById(id);
+	
+	ele = document.getElementById(id)
+	if( ele == null )
+	{
+	    console.log("fail dtoe:" + id + " " + typeof(id) );
+	}
+    }
+    return ele
+}
+
+// { return document.getElementById(id); }
 
 function dom_set_checkbox( ele_id, fl )
 { dom_id_to_ele(ele_id).checked = fl }
@@ -1197,6 +1072,11 @@ function ui_destroy( d )
 	ele.parentElement.removeChild( ele )
 }
 
+function ui_attach( d )
+{
+    console.log("ATTACH");
+    //_rootDivEle.appendChild(_rootEle)
+}
 
 
 function ws_send( s )
@@ -1213,7 +1093,7 @@ function _ws_on_msg( d )
 	case 'cache':
 	ui_cache( d )
 	break;
-	
+
 	case 'create':
 	ui_create( d )
 	break;
@@ -1228,6 +1108,10 @@ function _ws_on_msg( d )
 
 	case 'set':
 	ui_set( d )
+	break;
+
+	case 'attach':
+	ui_attach(d)
 	break;
 	
 	default:
@@ -1275,7 +1159,7 @@ function ws_form_url(urlSuffix)
     return pcol + u[0] + "/" + urlSuffix;
 }
 
-function main()
+function main_0()
 {
     d = { "className":"uiAppDiv", "uuId":_rootId }
     rootEle = ui_create_div( document.body, d )
@@ -1290,7 +1174,28 @@ function main()
     _ws.onmessage    = ws_on_msg
     _ws.onopen       = ws_on_open 
     _ws.onclose      = ws_on_close;
+}
 
+function main()
+{
+    d = { "className":"uiAppDiv", "uuId":"rootDivEleId" }
+    _rootDivEle = ui_create_div( document.body, d )
+
+    //_rootEle = document.createDocumentFragment();
+    _rootEle = _rootDivEle
     
+    _rootEle.uuId = 0;
+    _rootEle.id = _nextEleId;
+    _nextEleId += 1;
+
+    //console.log(ws_form_url(""))
+    
+    _ws = new WebSocket(ws_form_url(""),"ui_protocol")
+    
+    _ws.onmessage    = ws_on_msg
+    _ws.onopen       = ws_on_open 
+    _ws.onclose      = ws_on_close;
+
+    console.log("main() done.")
 }
 
