@@ -305,17 +305,16 @@ namespace cw
     {
       if( appId == kRootAppId )
         return kRootUuId;
-      
+
       for(unsigned i=0; i<p->eleN; ++i)
-        if( p->eleA[i]!=nullptr && p->eleA[i]->logical_parent != nullptr ) //skip the root
+        if(    p->eleA[i]        != nullptr
+            && p->eleA[i]->appId == appId
+            && ( parentUuId == kInvalidId || (p->eleA[i]->logical_parent!=nullptr && p->eleA[i]->logical_parent->uuId == parentUuId) )
+            && ( chanId     == kInvalidId ||  p->eleA[i]->chanId == chanId ) )
         {
-          if( ( parentUuId       == kInvalidId || p->eleA[i]->logical_parent->uuId == parentUuId ) &&
-              ( chanId           == kInvalidId || p->eleA[i]->chanId               == chanId )     &&
-              p->eleA[i]->appId == appId  )
-          {
-              return p->eleA[i]->uuId;
-          }          
+          return p->eleA[i]->uuId;
         }
+
       return kInvalidId;
     }
     
@@ -608,7 +607,7 @@ namespace cw
       // if there are no available slots
       if( avail_ele_idx == p->eleAllocN )
       {
-        p->eleAllocN += 128;
+        p->eleAllocN *= 2;
         p->eleA       = mem::resizeZ<ele_t*>(p->eleA,p->eleAllocN);
       }
 
@@ -1268,7 +1267,7 @@ cw::rc_t cw::ui::create(
   ui_t* p      = mem::allocZ<ui_t>();
 
 
-  p->eleAllocN  = 128;
+  p->eleAllocN  = 1024;
   p->eleA       = mem::allocZ<ele_t*>( p->eleAllocN );
   p->eleN       = 0;
   p->uiCbFunc   = uiCbFunc;
@@ -2103,6 +2102,12 @@ cw::rc_t cw::ui::sendValueString( handle_t h, unsigned uuId, const char* value )
   //return _sendValue<const char*>(p,kInvalidId,uuId,"\"%s\"",value,"value",strlen(value)+10);
 }
 
+cw::rc_t cw::ui::sendMsg( handle_t h, const char* msg )
+{
+  ui_t* p  = _handleToPtr(h);
+  return _websockSend(p,kInvalidId,msg);
+}
+
 void cw::ui::report( handle_t h )
 {
   ui_t* p  = _handleToPtr(h);
@@ -2198,8 +2203,9 @@ namespace cw
 
       rc_t _webSockSend( void* cbArg, unsigned wsSessId, const void* msg, unsigned msgByteN )
       {
-        ui_ws_t* p = static_cast<ui_ws_t*>(cbArg);
-        return websock::send( p->wsH, kUiProtocolId, wsSessId, msg, msgByteN );
+        //ui_ws_t* p = static_cast<ui_ws_t*>(cbArg);
+        //return websock::send( p->wsH, kUiProtocolId, wsSessId, msg, msgByteN );
+        return kOkRC;
       }
       
     }

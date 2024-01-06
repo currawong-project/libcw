@@ -169,6 +169,7 @@ namespace cw
     rc_t sendValueDouble( handle_t h, unsigned uuId, double value );
     rc_t sendValueString( handle_t h, unsigned uuId, const char* value );
 
+    rc_t sendMsg( handle_t h, const char* msg );
     
     void report( handle_t h );
     void realTimeReport( handle_t h );
@@ -224,6 +225,8 @@ namespace cw
 
       // This function should be called periodically to send and receive
       // queued messages to and from the websocket.
+      // Note that this call may block for up to 'wsTimeOutMs' milliseconds
+      // on the websocket handle.
       rc_t exec( handle_t h );
 
       // This function executes the internal default websock callback function.
