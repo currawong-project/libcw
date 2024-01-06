@@ -3443,7 +3443,7 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
   unsigned              bigMapN = mapN + vtMapN;
   ui::appIdMap_t        bigMap[ bigMapN ];
   double                sysSampleRate = 0;
-  
+
   for(unsigned i=0; i<mapN; ++i)
     bigMap[i] = mapA[i];
   
@@ -3558,12 +3558,23 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
   }
 
   //io::uiReport(app.ioH);
+
   
   // execute the io framework
   while( !io::isShuttingDown(app.ioH))
   {
+    time::spec_t t0;
+    time::get(t0);
+
+    // This call may block on the websocket handle.
     io::exec(app.ioH);
-    sleepMs( app.psNextFrag != nullptr? 1 : 50 );
+    
+    unsigned dMs = time::elapsedMs(t0);
+    if( dMs < 50 && app.psNextFrag == nullptr )
+    {      
+      sleepMs( 50-dMs );      
+    }
+
   }
 
   // stop the io framework
