@@ -13,8 +13,8 @@ namespace cw
       bool     playFl;      // play this preset
       bool     seqFl;       // play this preset during sequencing.
       unsigned preset_idx;  // preset index into preset_labelA[].
-      unsigned order;       //
-      char*    alt_str;
+      unsigned order;       // selection label
+      char*    alt_str;     // 'alt' label
     } preset_t;
 
     typedef struct frag_str

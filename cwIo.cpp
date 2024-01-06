@@ -2366,6 +2366,7 @@ cw::rc_t cw::io::exec( handle_t h, void* execCbArg )
   if( p->wsUiH.isValid() )
   {
     ui::flushCache( ui::ws::uiHandle( p->wsUiH ));
+    // Note this call blocks on the websocket handle: See cwUi.h:ws:exec()
     rc = ui::ws::exec( p->wsUiH );
   }
   
