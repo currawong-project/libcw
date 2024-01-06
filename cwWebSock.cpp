@@ -313,7 +313,7 @@ namespace cw
 
           msg_t* t = m1->link;
       
-          mem::free(m1->msg);
+          //mem::free(m1->msg);
           mem::free(m1);
 
           m1 = t;
@@ -344,7 +344,7 @@ namespace cw
       
         while((m = p->_q->pop()) != nullptr)
         {
-          mem::free(m->msg);
+          //mem::free(m->msg);
           mem::free(m);
         }
       
@@ -363,7 +363,7 @@ namespace cw
         {
           msg_t* tmp = m->link;
       
-          mem::free(m->msg);
+          //mem::free(m->msg);
           mem::free(m);
           m = tmp;
         }
@@ -502,10 +502,15 @@ cw::rc_t cw::websock::destroy( handle_t& h )
 cw::rc_t cw::websock::send(handle_t h,  unsigned protocolId, unsigned sessionId, const void* msg, unsigned byteN )
 {
   rc_t rc = kOkRC;
+
+  uint8_t* mem = mem::allocZ<uint8_t>( sizeof(msg_t) + LWS_PRE + byteN  );
+  //msg_t* m = mem::allocZ<msg_t>(1);
+  //m->msg   = mem::allocZ<unsigned char>(byteN);
+
+  msg_t* m = (msg_t*)mem;
+  m->msg = mem + sizeof(msg_t);
   
-  msg_t* m = mem::allocZ<msg_t>(1);
-  m->msg   = mem::allocZ<unsigned char>(byteN);
-  memcpy(m->msg,msg,byteN);
+  memcpy(m->msg+LWS_PRE,msg,byteN);
   m->msgByteN   = byteN;
   m->protocolId = protocolId;
   m->sessionId = sessionId;
@@ -593,12 +598,13 @@ cw::rc_t cw::websock::exec( handle_t h, unsigned timeOutMs )
 
 
     // add the pre-padding bytes to the msg
-    unsigned char* msg = mem::allocZ<unsigned char>(LWS_PRE + m->msgByteN);
-    memcpy( msg+LWS_PRE, m->msg, m->msgByteN );
+    //unsigned char* msg = mem::allocZ<unsigned char>(LWS_PRE + m->msgByteN);
+    //memcpy( msg+LWS_PRE, m->msg, m->msgByteN );
 
-    mem::free(m->msg); // free the original msg buffer
+    //mem::free(m->msg); // free the original msg buffer
     
-    m->msg            = msg;               
+    //m->msg            = msg;
+    
     m->msgId          = ps->nextNewMsgId;  // set the msg id
     ps->begMsg->link  = m;                 // put the msg on the front of the outgoing  queue
     ps->begMsg        = m;                 // 
