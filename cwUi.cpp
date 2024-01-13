@@ -2203,9 +2203,8 @@ namespace cw
 
       rc_t _webSockSend( void* cbArg, unsigned wsSessId, const void* msg, unsigned msgByteN )
       {
-        //ui_ws_t* p = static_cast<ui_ws_t*>(cbArg);
-        //return websock::send( p->wsH, kUiProtocolId, wsSessId, msg, msgByteN );
-        return kOkRC;
+        ui_ws_t* p = static_cast<ui_ws_t*>(cbArg);
+        return websock::send( p->wsH, kUiProtocolId, wsSessId, msg, msgByteN );
       }
       
     }
