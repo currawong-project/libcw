@@ -21,6 +21,7 @@
 #include "cwMath.h"
 #include "cwDspTypes.h"
 #include "cwMtx.h"
+#include "cwFlowDecl.h"
 #include "cwFlow.h"
 #include "cwFlowTypes.h"
 #include "cwFlowCross.h"
@@ -860,7 +861,7 @@ namespace cw
       return srate;
     }
 
-    rc_t _apply_preset( app_t* app, unsigned loc, const perf_score::event_t* score_evt=nullptr, const preset_sel::frag_t* frag=nullptr  )      
+    rc_t _apply_preset( app_t* app, unsigned loc, const perf_score::event_t* score_evt=nullptr, const preset_sel::frag_t* frag=nullptr  )
     {
       // if frag is NULL this is the beginning of a play session
       if( frag == nullptr )
@@ -873,37 +874,65 @@ namespace cw
         cwLogInfo("No preset fragment was found for the requested timestamp.");
       else
       {
-        unsigned preset_idx;
+        unsigned    preset_idx        = kInvalidIdx;
+        const char* preset_label      = nullptr;
+        const char* preset_type_label = "<None>";
+        rc_t        apply_rc          = kOkRC;
         
         // if the preset sequence player is active then apply the next selected seq. preset
         // otherwise select the next primary preset for ths fragment
         unsigned seq_idx_n = app->seqActiveFl ? app->seqPresetIdx : kInvalidIdx;
-        
-        // get the preset index to play for this fragment
-        if((preset_idx = fragment_play_preset_index(app->psH, frag,seq_idx_n)) == kInvalidIdx )
-          cwLogInfo("No preset has been assigned to the fragment at end loc. '%i'.",frag->endLoc );
-        else
-        {        
-          const char* preset_label = preset_sel::preset_label(app->psH,preset_idx);
 
-          // don't display preset updates unless the score is actually loaded          
-          printf("Apply preset: '%s' : loc:%i\n", preset_idx==kInvalidIdx ? "<invalid>" : preset_label, loc );
-
-          _set_status(app,"Apply preset: '%s'.", preset_idx == kInvalidIdx ? "<invalid>" : preset_label);
-
-          if( score_evt != nullptr )
+        if( score_evt != nullptr )            
             printf("Meas:e:%f d:%f t:%f c:%f\n",score_evt->even,score_evt->dyn,score_evt->tempo,score_evt->cost);
+        
 
+        // if we are not automatically sequencing through the presets and a score event was given
+        if( seq_idx_n == kInvalidIdx && score_evt != nullptr && frag->multiPresetN>0 )
+        {
+          double   coeffV[] = { score_evt->even, score_evt->dyn, score_evt->tempo, score_evt->cost };
+          unsigned coeffN   = sizeof(coeffV)/sizeof(coeffV[0]);
+            
+          flow::multi_preset_selector_t mp_sel = { .type_id=0, .coeffV=coeffV, .coeffN=coeffN, .presetA=frag->multiPresetA, .presetN=frag->multiPresetN };
+            
+          apply_rc = io_flow::apply_preset( app->ioFlowH, flow_cross::kNextDestId, mp_sel );
+
+          preset_label = mp_sel.presetN>0 && mp_sel.presetA[0].preset_label!=nullptr ? mp_sel.presetA[0].preset_label : nullptr;
+
+          preset_type_label = "multi";
+            
+        }
+        else
+        {          
+          // get the preset index to play for this fragment
+          if((preset_idx = fragment_play_preset_index(app->psH, frag, seq_idx_n)) == kInvalidIdx )
+            cwLogInfo("No preset has been assigned to the fragment at end loc. '%i'.",frag->endLoc );
+          else
+            preset_label = preset_sel::preset_label(app->psH,preset_idx);
+          
           if( preset_label != nullptr && app->ioFlowH.isValid() )
           {
-            io_flow::apply_preset( app->ioFlowH, flow_cross::kNextDestId, preset_label );
+            apply_rc = io_flow::apply_preset( app->ioFlowH, flow_cross::kNextDestId, preset_label );
 
-            io_flow::set_variable_value( app->ioFlowH, flow_cross::kNextDestId, "wet_in_gain", "gain", flow::kAnyChIdx, (dsp::real_t)frag->igain );
-            io_flow::set_variable_value( app->ioFlowH, flow_cross::kNextDestId, "wet_out_gain","gain", flow::kAnyChIdx, (dsp::real_t)frag->ogain );
-            io_flow::set_variable_value( app->ioFlowH, flow_cross::kNextDestId, "wd_bal",      "in",   flow::kAnyChIdx, (dsp::real_t)frag->wetDryGain );
-            
-            io_flow::begin_cross_fade( app->ioFlowH, frag->fadeOutMs );
+            preset_type_label = "single";
           }
+
+          // don't display preset updates unless the score is actually loaded          
+          printf("Apply %s preset: '%s' : loc:%i status:%i\n", preset_type_label, preset_label==nullptr ? "<invalid>" : preset_label, loc, apply_rc );
+
+          _set_status(app,"Apply %s preset: '%s'.", preset_type_label, preset_label==nullptr ? "<invalid>" : preset_label);
+          
+        }          
+        
+        // apply the fragment defined gain settings
+        if( app->ioFlowH.isValid() )
+        {
+          io_flow::set_variable_value( app->ioFlowH, flow_cross::kNextDestId, "wet_in_gain", "gain", flow::kAnyChIdx, (dsp::real_t)frag->igain );
+          io_flow::set_variable_value( app->ioFlowH, flow_cross::kNextDestId, "wet_out_gain","gain", flow::kAnyChIdx, (dsp::real_t)frag->ogain );
+          io_flow::set_variable_value( app->ioFlowH, flow_cross::kNextDestId, "wd_bal",      "in",   flow::kAnyChIdx, (dsp::real_t)frag->wetDryGain );
+
+          // activate the cross-fade
+          io_flow::begin_cross_fade( app->ioFlowH, frag->fadeOutMs );
         }
       }
 
