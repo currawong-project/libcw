@@ -21,6 +21,8 @@ namespace cw
     // activate the next network.
     rc_t apply_preset( handle_t h, flow_cross::destId_t destId, const char* presetLabel );
 
+    rc_t apply_preset( handle_t h, flow_cross::destId_t destId, const flow::multi_preset_selector_t& multi_preset_sel );
+
     rc_t set_variable_value( handle_t h, flow_cross::destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, bool value );
     rc_t set_variable_value( handle_t h, flow_cross::destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, int value );
     rc_t set_variable_value( handle_t h, flow_cross::destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, unsigned value );

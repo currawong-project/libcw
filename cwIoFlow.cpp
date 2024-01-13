@@ -10,6 +10,7 @@
 #include "cwMtx.h"
 
 #include "cwDspTypes.h"
+#include "cwFlowDecl.h"
 #include "cwFlow.h"
 #include "cwFlowTypes.h"
 #include "cwFlowCross.h"
@@ -418,6 +419,9 @@ cw::rc_t cw::io_flow::apply_preset( handle_t h, unsigned crossFadeMs, const char
 
 cw::rc_t cw::io_flow::apply_preset( handle_t h, flow_cross::destId_t destId, const char* presetLabel )
 { return apply_preset( _handleToPtr(h)->crossFlowH, destId, presetLabel ); }
+
+cw::rc_t cw::io_flow::apply_preset( handle_t h, flow_cross::destId_t destId, const flow::multi_preset_selector_t& multi_preset_sel )
+{ return apply_preset( _handleToPtr(h)->crossFlowH, destId, multi_preset_sel ); }
 
 cw::rc_t cw::io_flow::set_variable_value( handle_t h, flow_cross::destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, bool value )
 { return flow_cross::set_variable_value( _handleToPtr(h)->crossFlowH, destId, inst_label, var_label, chIdx, value ); }

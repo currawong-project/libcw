@@ -9,6 +9,7 @@
 #include "cwMtx.h"
 #include "cwDspTypes.h" // real_t, sample_t
 #include "cwDspTransforms.h"
+#include "cwFlowDecl.h"
 #include "cwFlow.h"
 #include "cwFlowTypes.h"
 #include "cwFlowProc.h"
@@ -421,6 +422,18 @@ cw::rc_t cw::flow_cross::apply_preset( handle_t h, destId_t destId, const char* 
       
   if((rc = flow::apply_preset( p->netA[flow_idx].flowH, presetLabel )) != kOkRC )
     rc = cwLogError(rc,"Preset application '%s' failed.",cwStringNullGuard(presetLabel));
+
+  return rc;  
+}
+
+cw::rc_t cw::flow_cross::apply_preset( handle_t h, destId_t destId, const flow::multi_preset_selector_t& multi_preset_sel )
+{
+  rc_t          rc       = kOkRC;
+  flow_cross_t* p        = _handleToPtr(h);
+  unsigned      flow_idx = _get_flow_index(p, destId );
+      
+  if((rc = flow::apply_preset( p->netA[flow_idx].flowH, multi_preset_sel )) != kOkRC )
+    rc = cwLogError(rc,"Muti-preset application failed.");
 
   return rc;  
 }
