@@ -8,6 +8,7 @@
 #include "cwVectOps.h"
 #include "cwMtx.h"
 #include "cwDspTypes.h" // real_t, sample_t
+#include "cwFlowDecl.h"
 #include "cwFlow.h"
 #include "cwFlowTypes.h"
 #include "cwFlowProc.h"
@@ -922,7 +923,7 @@ namespace cw
 
       // get the variable
       if((rc = _get_variable(p,inst_label,var_label,chIdx,inst,var)) != kOkRC )
-	goto errLabel;
+        goto errLabel;
       
       // set the variable value
       if((rc = var_set( inst, var->vid, chIdx, value )) != kOkRC )
@@ -944,7 +945,7 @@ namespace cw
 
       // get the variable 
       if((rc = _get_variable(p,inst_label,var_label,chIdx,inst,var)) != kOkRC )
-	goto errLabel;
+        goto errLabel;
       
       // get the variable value
       if((rc = var_get( inst, var->vid, chIdx, valueRef )) != kOkRC )
@@ -956,7 +957,62 @@ namespace cw
     errLabel:
       return rc;
     }
-    
+
+    unsigned _select_ranked_ele_by_rank_prob( const preset_order_t* rankV, unsigned rankN )
+    {     
+      unsigned threshV[ rankN ];
+      unsigned uniqueRankV[ rankN ];      
+      unsigned uniqueRankN = 0;
+      unsigned sel_idx = rankN - 1; //
+
+      if( rankN == 0 )
+        return kInvalidIdx;
+
+      if( rankN == 1 )
+        return 0;
+
+      // for each possible rank value
+      for(unsigned i=0; i<rankN; ++i)
+      {
+        // locate the rank in the uniqueRankV[]
+        unsigned j=0;
+        for(; j<uniqueRankN; ++j)
+          if( uniqueRankV[j]==rankV[i].order )
+            break;
+
+        // if the rank was not found then include it here
+        if( j == uniqueRankN )
+          uniqueRankV[uniqueRankN++] = rankV[i].order;
+
+      }
+
+      // uniqueRankV[] now includes the set of possible rank values
+      
+      // Take the produce of all possible values.
+      // (this will be evenly divisible by all values)
+      unsigned prod = vop::prod(uniqueRankV,uniqueRankN);
+
+      unsigned thresh = 0;
+      for(unsigned i=0; i<rankN; ++i)
+        threshV[i] = (thresh += rankV[i].order * prod);
+
+      // Thresh is now set to the max possible random value.
+      
+      // Generate a random number between 0 and thresh
+      double   fval = (double)std::rand() * thresh / RAND_MAX;
+
+      unsigned thresh0 = 0;
+      for(unsigned i=0; i<rankN; ++i)
+      {
+        if( thresh0 <= fval && fval < threshV[i] )
+        {
+          sel_idx = i;
+          break;
+        }
+      }
+
+      return sel_idx;
+    }
     
     
   }
@@ -1164,6 +1220,39 @@ cw::rc_t cw::flow::apply_preset( handle_t h, const char* presetLabel )
  errLabel:
   return rc;
 }
+
+cw::rc_t cw::flow::apply_preset( handle_t h, const multi_preset_selector_t& multi_preset_sel )
+{
+  rc_t rc = kOkRC;
+
+  if( multi_preset_sel.presetN > 0  )
+  {
+    unsigned sel_preset_idx;
+    
+    if((sel_preset_idx = _select_ranked_ele_by_rank_prob( multi_preset_sel.presetA, multi_preset_sel.presetN )) == kInvalidIdx )
+    {
+      rc = cwLogWarning("The multi-preset select function failed. Selecting preset 0.");
+      sel_preset_idx = 0;
+    }
+
+    if( multi_preset_sel.presetA[sel_preset_idx].preset_label == nullptr )
+    {
+      rc = cwLogError(kInvalidStateRC,"The selected multi-preset  label is empty.");
+      goto errLabel;
+    }
+
+    cwLogInfo("Multi-preset select:%s :  %i from %i", cwStringNullGuard(multi_preset_sel.presetA[sel_preset_idx].preset_label),
+              sel_preset_idx, multi_preset_sel.presetN );
+
+    
+    rc = apply_preset( h, multi_preset_sel.presetA[sel_preset_idx].preset_label );
+  }
+  
+  errLabel:
+  
+  return rc;
+}
+
 
 cw::rc_t cw::flow::set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, bool value )
 { return _set_variable_value( _handleToPtr(h), inst_label, var_label, chIdx, value ); }

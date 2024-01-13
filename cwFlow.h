@@ -46,6 +46,7 @@ namespace cw
         
     } external_device_t;
 
+
     void print_abuf( const struct abuf_str* abuf );
     void print_external_device( const external_device_t* dev );
     
@@ -66,6 +67,7 @@ namespace cw
     rc_t exec(    handle_t h );
 
     rc_t apply_preset( handle_t h, const char* presetLabel );
+    rc_t apply_preset( handle_t h, const multi_preset_selector_t& multi_preset_sel );
         
     rc_t set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, bool value     );
     rc_t set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, int value      );
