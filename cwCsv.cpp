@@ -420,6 +420,12 @@ unsigned cw::csv::title_col_index( handle_t h, const char* title )
   return _title_to_col_index(p,title);
 }
 
+bool cw::csv::has_field( handle_t h, const char* title )
+{
+  csv_t* p = _handleToPtr(h);
+  return _title_to_col_index(p,title) != kInvalidIdx;
+}
+
 
 cw::rc_t cw::csv::rewind( handle_t h )
 {
