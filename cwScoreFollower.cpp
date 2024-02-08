@@ -638,9 +638,10 @@ cw::rc_t cw::score_follower::write_sync_perf_csv( handle_t h, const char* out_fn
           
       if(  midi::isNoteOn(m->status,d1) )
       {        
-        unsigned bar = 0;
-        unsigned loc = score_parse::kInvalidLocId;
-        unsigned dlevel = -1;
+        unsigned    bar           = 0;
+        const char* sectionLabel  = "";
+        unsigned    loc           = score_parse::kInvalidLocId;
+        unsigned    dlevel        = -1;
         char sciPitch[ midi::kMidiSciPitchCharCnt + 1 ];
         
         midi::midiToSciPitch( d0, sciPitch, midi::kMidiSciPitchCharCnt );
@@ -664,18 +665,19 @@ cw::rc_t cw::score_follower::write_sync_perf_csv( handle_t h, const char* out_fn
               goto errLabel;
             }
 
-            bar        = e->barNumb;
-            curBarNumb = std::max(bar,curBarNumb);
-            dlevel     = e->dynLevel;
-            loc = resultA[i].oLocId == kInvalidId ? score_parse::kInvalidLocId : resultA[i].oLocId;
+            bar          = e->barNumb;
+            sectionLabel = e->section != nullptr ? e->section->label : "";
+            curBarNumb   = std::max(bar,curBarNumb);
+            dlevel       = e->dynLevel;
+            loc          = resultA[i].oLocId == kInvalidId ? score_parse::kInvalidLocId : resultA[i].oLocId;
             break;
           }
         }
 
        
         
-        rc = file::printf(fH, "%i,%i,%i,%i,0,%f,0.0,0.0,0,%s,,%i,%i,%i,%i,,,,,%i,%i,%i\n",
-                          bar,i,1,loc,secs,sciPitch,dlevel,m->status,d0,d1,dampPedalDownFl,softPedalDownFl,sostPedalDownFl);
+        rc = file::printf(fH, "%i,%i,%i,%i,0,%f,0.0,0.0,0,%s,,%i,%i,%i,%i,,%s,,,%i,%i,%i\n",
+                          bar,i,1,loc,secs,sciPitch,dlevel,m->status,d0,d1,sectionLabel,dampPedalDownFl,softPedalDownFl,sostPedalDownFl);
       }        
       else
       {
