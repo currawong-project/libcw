@@ -213,7 +213,7 @@ namespace cw
 
     void _xmit_midi( midi_record_play_t* p, unsigned devIdx, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
     {
-      if( !p->supressMidiXmitFl )
+      if( !p->supressMidiXmitFl && p->midiDevA[devIdx].enableFl )
         io::midiDeviceSend( p->ioH, p->midiDevA[devIdx].midiOutDevIdx, p->midiDevA[devIdx].midiOutPortIdx, status + ch, d0, d1 );      
     }
         
@@ -1465,8 +1465,6 @@ cw::rc_t cw::midi_record_play::create( handle_t& hRef,
 
   p = mem::allocZ<midi_record_play_t>();
 
-  printf("P0:%p\n",p);
-  
   p->ioH = ioH; // p->ioH is used in _destory() so initialize it here
 
   // parse the cfg 
