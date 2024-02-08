@@ -15,7 +15,10 @@ namespace cw
     {
       unsigned              type_id;
       const double*         coeffV;
+      const double*         coeffMinV;
+      const double*         coeffMaxV;
       unsigned              coeffN;
+      
       const preset_order_t* presetA;
       unsigned              presetN;
     } multi_preset_selector_t;

@@ -444,6 +444,36 @@ namespace cw
       return rc1;
     }
 
+    rc_t _var_channelize( instance_t* inst, const char* preset_label,  const char* type_src_label, const char* value_label, const object_t* value )
+    {
+      rc_t rc = kOkRC;
+      
+      variable_t*     dummy       = nullptr;
+
+      // verify that a valid value exists
+      if( value == nullptr )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"Unexpected missig value on %s preset '%s' instance '%s' variable '%s'.", type_src_label, preset_label, inst->label, cwStringNullGuard(value_label) );
+        goto errLabel;
+      }
+
+      // if a list of values was given
+      if( value->is_list() )
+      {
+        for(unsigned chIdx=0; chIdx<value->child_count(); ++chIdx)
+          if((rc = var_channelize( inst, value_label, chIdx, value->child_ele(chIdx), kInvalidId, dummy )) != kOkRC )
+            goto errLabel;
+      }
+      else // otherwise a single value was given
+      {          
+        if((rc = var_channelize( inst, value_label, kAnyChIdx, value, kInvalidId, dummy )) != kOkRC )
+          goto errLabel;
+      }
+
+    errLabel:
+      return rc;
+    }
+    
     rc_t _preset_channelize_vars( instance_t* inst, const char* type_src_label, const char* preset_label, const object_t* preset_cfg )
     {
       rc_t rc = kOkRC;
@@ -463,27 +493,8 @@ namespace cw
       {
         const object_t* value       = preset_cfg->child_ele(i)->pair_value();
         const char*     value_label = preset_cfg->child_ele(i)->pair_label();
-        variable_t*     dummy       = nullptr;
-
-        // verify that a valid value exists
-        if( value == nullptr )
-        {
-          rc = cwLogError(kSyntaxErrorRC,"Unexpected missig value on %s preset '%s' instance '%s' variable '%s'.", type_src_label, preset_label, inst->label, cwStringNullGuard(value_label) );
+        if((rc = _var_channelize( inst, preset_label, type_src_label, value_label, value )) != kOkRC )
           goto errLabel;
-        }
-
-        // if a list of values was given
-        if( value->is_list() )
-        {
-          for(unsigned chIdx=0; chIdx<value->child_count(); ++chIdx)
-            if((rc = var_channelize( inst, value_label, chIdx, value->child_ele(chIdx), kInvalidId, dummy )) != kOkRC )
-              goto errLabel;
-        }
-        else // otherwise a single value was given
-        {          
-          if((rc = var_channelize( inst, value_label, kAnyChIdx, value, kInvalidId, dummy )) != kOkRC )
-            goto errLabel;
-        }
         
         
       }
@@ -496,6 +507,342 @@ namespace cw
     }
 
 
+    template< typename T >
+    T _interp_dual_value( T v0, T v1, double coeff )
+    {
+      T y;
+      if( v0 == v1 )
+        y = v0;
+      else
+        y = (T)(v0 + (v1-v0)*coeff );
+
+      printf("%f %f -> %f\n",(double)v0,(double)v1,(double)y);
+      return y;
+    }
+
+    rc_t _set_var_from_dual_preset_scalar_scalar( instance_t* inst, const char* var_label, const object_t* scalar_0, const object_t* scalar_1, double coeff, unsigned chIdx )
+    {
+      rc_t rc = kOkRC;
+      object_t interped_value;
+      variable_t* dummy = nullptr;
+
+      // one of the input values must exist
+      if( scalar_0==nullptr && scalar_1==nullptr )
+      {
+        rc = cwLogError(kInvalidArgRC,"The numeric types of both operands of a dual value are null.");
+        goto errLabel;
+      }
+
+      // It's possible that one or the other input value does not exist
+      if( scalar_0 == nullptr )
+        scalar_0 = scalar_1;
+      else
+      {
+        if( scalar_1 == nullptr )
+          scalar_1 = scalar_0;
+      }
+
+      // verify that the input values are the same type
+      if( scalar_0->type->id != scalar_1->type->id )
+      {
+        rc = cwLogError(kInvalidArgRC,"The numeric types of both operands of a dual value preset must match. (%s != %s).",cwStringNullGuard(scalar_0->type->label),cwStringNullGuard(scalar_1->type->label));
+        goto errLabel;
+      }
+
+      printf("%s:%s :",inst->label,var_label);
+      
+      switch( scalar_0->type->id )
+      {
+        case kInt32TId:
+          interped_value.set_value( _interp_dual_value(scalar_0->u.i32,scalar_1->u.i32,coeff) );
+          break;
+        case kUInt32TId:
+          interped_value.set_value( _interp_dual_value(scalar_0->u.u32,scalar_1->u.u32,coeff) );
+          break;
+        case kInt64TId:
+          assert(0);
+          //interped_value.set_value( _interp_dual_value(scalar_0->u.i64,scalar_1->u.i64,coeff) );          
+          break;
+        case kUInt64TId:
+          assert(0);
+          //interped_value.set_value( _interp_dual_value(scalar_0->u.u64,scalar_1->u.u64,coeff) );          
+          break;
+        case kFloatTId:
+          interped_value.set_value( _interp_dual_value(scalar_0->u.f,scalar_1->u.f,coeff) );          
+          break;
+        case kDoubleTId:
+          interped_value.set_value( _interp_dual_value(scalar_0->u.d,scalar_1->u.d,coeff) );          
+          break;
+          
+        default:
+          rc = cwLogError(kInvalidStateRC,"Preset dual values of type '%s' cannot be interpolated.",cwStringNullGuard(scalar_0->type->label));
+          goto errLabel;
+      }
+
+      
+      if((rc = var_channelize( inst, var_label, chIdx, &interped_value, kInvalidId, dummy )) != kOkRC )
+      {
+        rc = cwLogError(kInvalidArgRC,"Dual value preset application failed.");
+        goto errLabel;
+      }
+
+    errLabel:
+      return rc;
+    }
+
+    rc_t _set_var_from_dual_preset_list_list( instance_t* inst, const char* var_label, const object_t* list_0, const object_t* list_1, double coeff )
+    {
+      rc_t rc = kOkRC;
+      
+      if( list_0->child_count() != list_1->child_count() )
+        return cwLogError(kInvalidArgRC,"If two lists are to be applied as a dual preset they must be the same length.");
+
+      for(unsigned chIdx=0; chIdx<list_0->child_count(); ++chIdx)
+        if((rc = _set_var_from_dual_preset_scalar_scalar(inst,var_label,list_0->child_ele(chIdx),list_1->child_ele(chIdx),coeff,chIdx)) != kOkRC )
+          goto errLabel;
+
+    errLabel:
+      return rc;
+    }
+
+    rc_t _set_var_from_dual_preset_scalar_list( instance_t* inst, const char* var_label, const object_t* scalar, const object_t* list, double coeff )
+    {
+      rc_t rc = kOkRC;
+      for(unsigned chIdx=0; chIdx<list->child_count(); ++chIdx)
+        if((rc = _set_var_from_dual_preset_scalar_scalar(inst,var_label,scalar,list->child_ele(chIdx),coeff,chIdx)) != kOkRC )
+          goto errLabel;
+      
+    errLabel:
+      return rc;
+    }
+
+    rc_t _set_var_from_dual_preset_list_scalar( instance_t* inst, const char* var_label, const object_t* list, const object_t* scalar, double coeff )
+    {
+      rc_t rc = kOkRC;
+      for(unsigned chIdx=0; chIdx<list->child_count(); ++chIdx)
+        if((rc = _set_var_from_dual_preset_scalar_scalar(inst,var_label,list->child_ele(chIdx),scalar,coeff,chIdx)) != kOkRC )
+          goto errLabel;
+      
+    errLabel:
+      return rc;
+    }
+    
+    rc_t _set_var_from_dual_preset_scalar_scalar( instance_t* inst, const char* var_label, const object_t* scalar_0, const object_t* scalar_1, double coeff )
+    {
+      return _set_var_from_dual_preset_scalar_scalar(inst,var_label,scalar_0,scalar_1,coeff,kAnyChIdx);
+    }
+    
+
+    rc_t _is_legal_dual_value( const object_t* value )
+    {
+      rc_t rc = kOkRC;
+      
+      if( value->is_list() )
+      {
+        if( value->child_count() == 0 )
+        {
+          rc = cwLogError(kInvalidArgRC,"Empty lists values cannot be applied as part of a dual value preset.");
+          goto errLabel;
+        }
+
+      }
+      else
+      {
+        switch( value->type->id )
+        {
+          case kInt32TId:
+          case kUInt32TId:
+          case kInt64TId:
+          case kUInt64TId:
+          case kFloatTId:
+          case kDoubleTId:
+            break;
+          default:
+            rc = cwLogError(kInvalidArgRC,"Objects of type '%s' cannot be applied as part of a dual value preset.",cwStringNullGuard(value->type->label));
+        }
+      }
+      
+    errLabel:
+      return rc;
+      
+    }
+    
+    rc_t _set_var_from_dual_preset( instance_t* inst, const char* var_label, const object_t* value_0, const object_t* value_1, double coeff )
+    {
+      rc_t rc = kOkRC;
+
+      // dual values must be either numeric scalars or lists
+      if((rc = _is_legal_dual_value(value_0)) != kOkRC || (rc = _is_legal_dual_value(value_1)) != kOkRC)
+         goto errLabel;
+              
+      
+      // if both values are lists then they must be the same length
+      if( value_0->is_list() && value_1->is_list() )
+      {
+        rc = _set_var_from_dual_preset_list_list( inst, var_label, value_0, value_1, coeff );
+        goto errLabel;
+      }
+      else
+      {
+        // if value_0 is a list and value_1 is a scalar
+        if( value_0->is_list() )
+        {
+          rc = _set_var_from_dual_preset_list_scalar( inst, var_label, value_0, value_1, coeff );
+          goto errLabel;
+        }
+        else
+        {
+          // if value_1 is a list and value_0 is a scalar
+          if( value_1->is_list() )
+          {
+            rc = _set_var_from_dual_preset_scalar_list( inst, var_label, value_0, value_1, coeff );
+            goto errLabel;
+          }
+          else // both values are scalars
+          {
+            rc = _set_var_from_dual_preset_scalar_scalar( inst, var_label, value_0, value_1, coeff );
+            goto errLabel;
+          }
+        }
+      }
+
+    errLabel:
+      return rc;
+    }
+    
+    rc_t _multi_preset_channelize_vars( instance_t* inst, const char* type_src_label, const char** presetLabelA, const object_t** preset_cfgA, unsigned presetN, double coeff )
+    {
+      rc_t rc = kOkRC;
+
+      const char* preset_label_0 = "<None>";
+      const char* preset_label_1 = "<None>";
+
+      //cwLogInfo("Channelizing '%s' preset %i vars for '%s'.",type_src_label, preset_cfg==nullptr ? 0 : preset_cfg->child_count(), inst->label );
+
+      if( presetN < 2 )
+      {
+        rc = cwLogError(kInvalidArgRC,"There must be at least 2 presets selected to interpolate between preset variable dictionaries.");
+        goto errLabel;
+      }
+
+      if( presetN > 2 )
+      {
+        cwLogWarning("More than two presets dictionaries were specified for interpolation. Only the first two will be used.");
+        goto errLabel;
+      }
+
+      preset_label_0 = presetLabelA[0];
+      preset_label_1 = presetLabelA[1];
+      
+      // validate each of the preset records is a dict
+      for(unsigned i=0; i<presetN; ++i)
+        if( !preset_cfgA[i]->is_dict() )
+        {
+          rc = cwLogError(kSyntaxErrorRC,"The preset record '%s' on %s '%s' is not a dictionary.", presetLabelA[i], type_src_label, inst->class_desc->label );
+          goto errLabel;
+        }
+
+
+      // for each preset variable in the first preset var dict
+      for(unsigned i=0; i<preset_cfgA[0]->child_count(); ++i)
+      {
+        const char*     var_label   = preset_cfgA[0]->child_ele(i)->pair_label();
+        const object_t* value_0     = preset_cfgA[0]->child_ele(i)->pair_value();
+
+        const object_t* value_1     = preset_cfgA[1]->find_child(var_label);
+
+        if( value_0 == nullptr && value_1 == nullptr )
+        {
+          rc = cwLogError(kSyntaxErrorRC,"Unexpected missig values on %s preset '%s' instance '%s' variable '%s'.", type_src_label, presetLabelA[0], inst->label, cwStringNullGuard(var_label) );
+          goto errLabel;
+        }
+
+        if( value_0 == nullptr )
+        {
+          cwLogWarning("The preset variable '%s' was not found for the preset: '%s'. Falling back to single value assign.",cwStringNullGuard(var_label),cwStringNullGuard(presetLabelA[0]));
+
+          rc = _var_channelize( inst, preset_label_1, "dual class", var_label, value_1 );
+          goto errLabel;
+        }
+        
+        if( value_1 == nullptr )
+        {
+          cwLogWarning("The preset variable '%s' was not found for the preset: '%s'. Falling back to single value assign.",cwStringNullGuard(var_label),cwStringNullGuard(presetLabelA[1]));
+          
+          rc = _var_channelize( inst, preset_label_0, "dual class", var_label, value_0 );
+          goto errLabel;
+        }
+
+
+        if((rc = _set_var_from_dual_preset( inst, var_label, value_0, value_1, coeff )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Multi preset application failed on variable:%s.",cwStringNullGuard(var_label));
+          goto errLabel;
+        }
+      }
+
+    errLabel:
+      if( rc != kOkRC )
+        rc = cwLogError(rc,"Apply %s multi-preset failed on instance:%s class:%s presetA:%s presetB:%s.", type_src_label, inst->label, inst->class_desc->label, preset_label_0, preset_label_1 );
+
+      return rc;
+    }
+
+
+    rc_t _class_multi_preset_channelize_vars(instance_t* inst, const char** class_preset_labelA, unsigned presetN, double coeff )
+    {
+      rc_t            rc = kOkRC;
+      const object_t* presetCfgA[ presetN ];
+      const char*     presetLabelA[ presetN ];
+      unsigned        presetCfgN = 0;
+      
+      for(unsigned i=0; i<presetN; ++i)
+      {
+        if( class_preset_labelA[i] != nullptr )
+        {
+          const preset_t* pr;
+          
+          // locate the requestd preset record
+          if((pr = class_preset_find(inst->class_desc, class_preset_labelA[i])) == nullptr )
+          {
+            rc = cwLogError(kInvalidIdRC,"The preset '%s' could not be found for the instance '%s'.", class_preset_labelA[i], inst->label);
+            goto errLabel;
+          }
+
+          if( pr->cfg == nullptr )
+          {
+            rc = cwLogError(kInvalidIdRC,"The value of preset '%s' was empty in instance '%s'.", class_preset_labelA[i], inst->label);
+            goto errLabel;            
+          }
+
+          presetCfgA[  presetCfgN] = pr->cfg;
+          presetLabelA[presetCfgN] = class_preset_labelA[i];
+          presetCfgN++;
+        }
+      }
+
+      // dispatch based on the count of presets located
+      switch( presetCfgN )
+      {
+        case 0:
+          rc = cwLogError(kInvalidArgRC,"No valid class preset records were found while attempting apply a multi-preset.");
+          break;
+          
+        case 1:
+          // only one valid preset was located - apply it directly
+          rc = _preset_channelize_vars( inst, "class", presetLabelA[0], presetCfgA[0]);
+          break;
+          
+        default:
+          // more than one preset was located - apply it's interpolated values
+          rc = _multi_preset_channelize_vars( inst, "class", presetLabelA, presetCfgA, presetCfgN, coeff);
+      }
+      
+      
+    errLabel:                  
+      return rc;
+      
+    }
     
     rc_t _class_preset_channelize_vars( instance_t* inst, const char* preset_label )
     {
@@ -1013,8 +1360,87 @@ namespace cw
 
       return sel_idx;
     }
+
+    double _calc_multi_preset_dual_coeff( const multi_preset_selector_t& mps )
+    {
+      double result = 0;
+      unsigned resultN = 0;
+      
+      if( mps.coeffN == 0 )
+      {
+        result = 0.5;
+      }
+      else
+      {  
+        for(unsigned i=0; i<mps.coeffN; ++i)
+        {
+          /*
+
+            Temporarily commented out because coeffV[] values
+            have already been normalized.
+            
+          double norm_factor = (mps.coeffMaxV[i] - mps.coeffMinV[i]);
+          
+          if( norm_factor <= 0 )
+            cwLogWarning("Invalid normalization factor in aggregated distance measurement.");
+          else
+            norm_factor = 1;
+          
+          
+          result += std::max( mps.coeffMinV[i], std::min( mps.coeffMaxV[i], mps.coeffV[i] ) ) / norm_factor;
+          */
+
+          // WOULD DISTANCE BE BETTER THAN AVERAGE????
+          
+          if( mps.coeffV[i] != 0 )
+          {
+            result += mps.coeffV[i];
+            resultN += 1;
+          }
+        }
+
+        if( resultN <= 0 )
+            cwLogWarning("Invalid normalization factor in aggregated distance measurement.");
+        else
+          result = std::min(1.0,std::max(0.0,result/mps.coeffN));
+      }
+      
+      
+      return result;
+    }
     
-    
+    rc_t _find_network_preset_instance_pair( flow_t* p, const char* preset_label, const char* instance_label, const object_t*& preset_val_ref )
+    {
+      rc_t rc = kOkRC;
+      const object_t* net_preset_pair = nullptr;
+      
+      preset_val_ref = nullptr;
+  
+      // locate the cfg of the requested preset
+      if((net_preset_pair = _find_network_preset(p, preset_label )) == nullptr )
+      {
+        rc = cwLogError(kInvalidIdRC,"The network preset '%s' could not be found.", cwStringNullGuard(preset_label) );
+        goto errLabel;
+      }
+
+      // locate the instance matching 'instance_label'.
+      for(unsigned i=0; i<net_preset_pair->child_count(); ++i)
+      {
+        const object_t* inst_pair;
+        if((inst_pair = net_preset_pair->child_ele(i)) != nullptr && inst_pair->is_pair() && textIsEqual(inst_pair->pair_label(),instance_label) )
+        {      
+
+          preset_val_ref = inst_pair->pair_value();
+
+          goto errLabel;
+        }
+      }
+  
+      rc = cwLogError(kInvalidArgRC,"The preset instance label '%s' was not found.",cwStringNullGuard(preset_label));
+  
+    errLabel:
+      return rc;
+    }
   }
 }
 
@@ -1059,8 +1485,10 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   }
 
   // parse the main audio file processor cfg record
-  if((rc = networkCfg.getv("framesPerCycle",   p->framesPerCycle,                               
-                           "network",         network)) != kOkRC )
+  if((rc = networkCfg.getv("framesPerCycle",      p->framesPerCycle,
+                           "multiPresetProbFl",   p->multiPresetProbFl,
+                           "multiPresetInterpFl", p->multiPresetInterpFl,
+                           "network",             network)) != kOkRC )
   {
     rc = cwLogError(kSyntaxErrorRC,"Error parsing the required flow configuration parameters.");
     goto errLabel;
@@ -1193,6 +1621,7 @@ cw::rc_t cw::flow::apply_preset( handle_t h, const char* presetLabel )
         _class_preset_channelize_vars(inst, class_preset_label );
       }
       else
+      {
         // if the preset value is a dict then apply it directly
         if( preset_value_cfg->is_dict() )
         {
@@ -1208,7 +1637,7 @@ cw::rc_t cw::flow::apply_preset( handle_t h, const char* presetLabel )
           rc = cwLogError(kSyntaxErrorRC,"The network preset '%s' instance '%s' does not have a string or dictionary value.", presetLabel, inst_label );
           goto errLabel;
         }
-      
+      }
     }
     else
     {
@@ -1216,40 +1645,216 @@ cw::rc_t cw::flow::apply_preset( handle_t h, const char* presetLabel )
       goto errLabel;        
     }      
   }
+
+  cwLogInfo("Activated preset:%s",presetLabel);
+ errLabel:
+  return rc;
+}
+
+cw::rc_t cw::flow::apply_dual_preset( handle_t h, const char* presetLabel_0, const char* presetLabel_1, double coeff )
+{
+  rc_t    rc = kOkRC;
+  flow_t* p  = _handleToPtr(h);
+  const object_t* net_preset_value_0;
+
+  printf("*** Applying dual: %s %s : %f\n",presetLabel_0, presetLabel_1, coeff );
+  
+  // locate the cfg of the requested preset
+  if((net_preset_value_0 = _find_network_preset(p, presetLabel_0 )) == nullptr )
+  {
+    rc = cwLogError(kInvalidIdRC,"The network preset '%s' could not be found.", presetLabel_0 );
+    goto errLabel;
+  }
+
+  // for each instance in the preset
+  for(unsigned i=0; i<net_preset_value_0->child_count(); ++i)
+  {
+    const object_t* preset_pair_0      = net_preset_value_0->child_ele(i);
+    const char*     inst_label         = preset_pair_0->pair_label(); 
+    const object_t* preset_value_cfg_0 = preset_pair_0->pair_value();
+    instance_t*     inst               = nullptr;
+    const object_t* preset_value_cfg_1 = nullptr;
+    const int two = 2;
+    const char* class_preset_labelA[two];
+    
+    // get the instance label/value pair
+    if((preset_pair_0 = net_preset_value_0->child_ele(i)) == nullptr || !preset_pair_0->is_pair() )
+    {
+      rc = cwLogError(kSyntaxErrorRC,"An invalid preset value pair was encountered in '%s'.",presetLabel_0);
+      goto errLabel;
+    }
+
+    // verify that the preset value is a string or dict
+    if( preset_pair_0->pair_value()==nullptr || (!preset_value_cfg_0->is_dict() && !preset_value_cfg_0->is_string() ))
+    {
+      rc = cwLogError(kSyntaxErrorRC,"The preset value pair for instance '%s' in '%s' is not a 'dict' or 'string'.",inst_label,presetLabel_0);
+      goto errLabel;
+    }
+
+    // locate the instance associated with the primary and secondary preset
+    if((inst = instance_find(p,inst_label)) == nullptr )
+    {
+      rc = cwLogError(kInvalidIdRC,"The network instance '%s' refered to in network preset '%s' could not be found.",cwStringNullGuard(inst_label),cwStringNullGuard(presetLabel_0));
+      goto errLabel;
+    }
+            
+    // locate the second instance/preset value pair 
+    if((rc = _find_network_preset_instance_pair( p, presetLabel_1, inst_label, preset_value_cfg_1 )) != kOkRC )
+    {
+      rc = cwLogError(kInvalidIdRC,"The second network instance '%s' refered to in network preset '%s' could not be found.",inst_label,presetLabel_1);
+      goto errLabel;
+    }
+    
+    // TODO: We require that the instance presets both be of the same type: string or dict.
+    // There's no good reason for this, as string's resolve to class dict presets anyway.
+    // Fix this!
+    if( !(preset_value_cfg_0->is_dict() == preset_value_cfg_1->is_dict() && preset_value_cfg_0->is_string() == preset_value_cfg_1->is_string()) )
+    {
+      rc = cwLogError(kInvalidIdRC,"The value type (string or dict) of dual network presets must match. (%s != %s)",preset_value_cfg_0->type->label,preset_value_cfg_1->type->label);
+      goto errLabel;
+    }
+
+    preset_value_cfg_0->value(class_preset_labelA[0]);
+    preset_value_cfg_1->value(class_preset_labelA[1]);
+    
+    
+    // if the preset value is a string then look it up in the class dictionary
+    if( preset_value_cfg_0->is_string() )
+    {
+      rc = _class_multi_preset_channelize_vars(inst, class_preset_labelA, two, coeff );        
+    }
+    else
+    {
+      assert( preset_value_cfg_1->is_dict() );
+        
+      const object_t* preset_value_cfgA[] = { preset_value_cfg_0, preset_value_cfg_1};
+                  
+      if((rc =  _multi_preset_channelize_vars( inst, "network", class_preset_labelA, preset_value_cfgA, two, coeff )) != kOkRC )
+      {
+        rc = cwLogError(rc,"The dual preset  '%s':'%s' application failed on instance '%s'.", cwStringNullGuard(class_preset_labelA[0]), cwStringNullGuard(class_preset_labelA[1]), inst_label );
+        goto errLabel;
+      }
+    }
+  }
+
   
  errLabel:
+
+  if( rc != kOkRC )
+    rc = cwLogError(rc,"The dual preset  '%s':'%s' application failed.", cwStringNullGuard(presetLabel_0), cwStringNullGuard(presetLabel_1) );
+
   return rc;
 }
 
 cw::rc_t cw::flow::apply_preset( handle_t h, const multi_preset_selector_t& multi_preset_sel )
 {
-  rc_t rc = kOkRC;
+  rc_t        rc           = kOkRC;
+  const char* label0       = nullptr;
+  const char* label1       = nullptr;
+  const char* prob_label   = nullptr;
+  
+  flow_t* p  = _handleToPtr(h);
 
-  if( multi_preset_sel.presetN > 0  )
+  // verify that the set of presets to select from is not empty
+  if( multi_preset_sel.presetN == 0 )
   {
-    unsigned sel_preset_idx;
-    
-    if((sel_preset_idx = _select_ranked_ele_by_rank_prob( multi_preset_sel.presetA, multi_preset_sel.presetN )) == kInvalidIdx )
+    cwLogError(kInvalidArgRC,"A multi-preset application was requested but no presets were provided.");
+    goto errLabel;    
+  }
+
+  // if probabistic selection was requested and is possible
+  if( p->multiPresetProbFl && multi_preset_sel.presetN > 1 )
+  {    
+    auto presetA  = multi_preset_sel.presetA;
+    auto presetN = multi_preset_sel.presetN;
+
+    // if we are interpolating then the base preset is always the first one in presetA[]
+    // so do not include it as a candidate for probabilistic selection
+    if( p->multiPresetInterpFl  )
     {
-      rc = cwLogWarning("The multi-preset select function failed. Selecting preset 0.");
-      sel_preset_idx = 0;
+      presetA += 1;
+      presetN -= 1;
+      
+      // if only one preset remains in the list then prob. selection is not possible
+      if( presetN == 1 )
+        prob_label = presetA[0].preset_label;
     }
 
-    if( multi_preset_sel.presetA[sel_preset_idx].preset_label == nullptr )
+    // select a preset based using the ranked-prob. algorithm.
+    if( prob_label == nullptr )
     {
-      rc = cwLogError(kInvalidStateRC,"The selected multi-preset  label is empty.");
-      goto errLabel;
+      unsigned prob_sel_idx;
+      
+      if((prob_sel_idx = _select_ranked_ele_by_rank_prob( presetA, presetN )) == kInvalidIdx )
+        rc = cwLogWarning("The multi-preset select function failed. Selecting preset 0.");
+      else
+      {
+        prob_label = presetA[prob_sel_idx].preset_label;
+        
+        cwLogInfo("Multi-preset prob. select:%s :  %i from %i",
+                  cwStringNullGuard(prob_label),
+                  prob_sel_idx,
+                  multi_preset_sel.presetN );
+        
+      }
     }
+  }
 
-    cwLogInfo("Multi-preset select:%s :  %i from %i", cwStringNullGuard(multi_preset_sel.presetA[sel_preset_idx].preset_label),
-              sel_preset_idx, multi_preset_sel.presetN );
+  // prob_label now holds a probablistically selected preset label
+  // or null if prob. sel. was not requested or failed
+  
+  switch( multi_preset_sel.presetN )
+  {
+    case 0:
+      assert(0); // we avoided this case at the top of the function
+      break;
+      
+    case 1:
+      // if there is only one preset to select from 
+      label0 = multi_preset_sel.presetA[0].preset_label;
+      break;
 
-    
-    rc = apply_preset( h, multi_preset_sel.presetA[sel_preset_idx].preset_label );
+    default:
+      // There are at least two presets ...
+      // ... and prob. select was not requested or failed
+      if( prob_label  == nullptr )
+      {
+        label0 = multi_preset_sel.presetA[0].preset_label;
+        label1 = p->multiPresetInterpFl ? multi_preset_sel.presetA[1].preset_label : nullptr;
+      }
+      else // ... and a prob. selection exists
+      {
+        // if we need two presets 
+        if( p->multiPresetInterpFl )
+        {
+          label0 = multi_preset_sel.presetA[0].preset_label; 
+          label1 = prob_label;
+        }          
+        else // otherwise we need only one
+        {
+          label0 = prob_label;
+          label1 = nullptr;
+        }        
+      }      
   }
   
-  errLabel:
+  if( label0 == nullptr )
+  {
+    rc = cwLogError(kInvalidStateRC,"The selected multi-preset label is empty.");
+    goto errLabel;
+  }
+
+  if( label1 == nullptr )
+  {
+    rc = apply_preset( h, label0 );
+  }
+  else
+  {
+    double coeff = _calc_multi_preset_dual_coeff(multi_preset_sel);
+    rc = apply_dual_preset( h, label0, label1, coeff );
+  }
   
+errLabel:  
   return rc;
 }
 

@@ -68,6 +68,8 @@ namespace cw
 
     rc_t apply_preset( handle_t h, const char* presetLabel );
     rc_t apply_preset( handle_t h, const multi_preset_selector_t& multi_preset_sel );
+    rc_t apply_dual_preset( handle_t h, const char* presetLabel_0, const char* presetLabel_1, double coeff );
+
         
     rc_t set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, bool value     );
     rc_t set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, int value      );
