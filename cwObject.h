@@ -211,7 +211,7 @@ namespace cw
         if( cwIsNotFlag(flags, kOptionalFl) )
           return cwLogError(kInvalidIdRC,"The pair label '%s' could not be found.",cwStringNullGuard(label));
         
-        return kLabelNotFoundRC;
+        return kEleNotFoundRC;
         
       }
       return o->value(v);
@@ -226,7 +226,7 @@ namespace cw
       rc_t rc = get(label,valRef,flags);
 
       // if no error occurred ....
-      if( rc == kOkRC || (rc == kLabelNotFoundRC && cwIsFlag(flags,kOptionalFl)))
+      if( rc == kOkRC || (rc == kEleNotFoundRC && cwIsFlag(flags,kOptionalFl)))
         rc =  _getv(flags, std::forward<ARGS>(args)...); // ... recurse to find next label/value pair
       else
         rc = cwLogError(rc,"Object parse failed for the pair label:'%s'.",cwStringNullGuard(label));

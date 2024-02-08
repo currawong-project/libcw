@@ -697,7 +697,7 @@ namespace cw
       if((rc = o->get("name",eleName, cw::kOptionalFl)) != kOkRC )
       {
         // div's and titles don't need a 'name'
-        if( rc == kLabelNotFoundRC && (divAliasFl || textCompare(eleType,"label")==0) )
+        if( rc == kEleNotFoundRC && (divAliasFl || textCompare(eleType,"label")==0) )
           rc = kOkRC;
         else
         {
@@ -2225,7 +2225,7 @@ cw::rc_t cw::ui::ws::parseArgs(  const object_t& o, args_t& args, const char* ob
     op = &o;
   else
     if((op = o.find(object_label)) == nullptr )
-      return cwLogError(kLabelNotFoundRC,"The ui configuration label '%s' was not found.", cwStringNullGuard(object_label));
+      return cwLogError(kEleNotFoundRC,"The ui configuration label '%s' was not found.", cwStringNullGuard(object_label));
   
   if((rc = op->getv(
         "physRootDir", args.physRootDir,

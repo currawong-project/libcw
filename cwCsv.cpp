@@ -237,7 +237,7 @@ namespace cw
       for(unsigned i=0; i<titleN; ++i)
         if( _title_to_col_index( p, titleA[i] ) == kInvalidIdx )
         {
-          rc = cwLogError(kLabelNotFoundRC,"The required column '%s' does not exist.",titleA[i]);
+          rc = cwLogError(kEleNotFoundRC,"The required column '%s' does not exist.",titleA[i]);
           goto errLabel;
         }
 
