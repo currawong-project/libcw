@@ -7,6 +7,15 @@ namespace cw
   {
     typedef handle<struct score_str> handle_t;
 
+    typedef struct stats_str
+    {
+      unsigned id;   // see: perf_meas::k???VarIdx
+      double min;
+      double max;
+      double mean;
+      double std;      
+    } stats_t;
+
     typedef struct event_str
     {
       unsigned uid;           // unique id for this event
@@ -28,10 +37,17 @@ namespace cw
       unsigned barPitchIdx;   // bar pitch index or 0 
       unsigned section;       // section number or 0
 
+      bool    valid_stats_fl; // is statsA valid in this record[]
+      stats_t statsA[ perf_meas::kValCnt ];
+      
       double   even;
       double   dyn;
       double   tempo;
       double   cost;
+
+      double featV[    perf_meas::kValCnt ];
+      double featMinV[ perf_meas::kValCnt ];
+      double featMaxV[ perf_meas::kValCnt ];
       
       struct event_str* link; // list link
     } event_t;

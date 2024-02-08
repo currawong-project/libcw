@@ -4,12 +4,21 @@
 #include "cwMem.h"
 #include "cwText.h"
 #include "cwObject.h"
-#include "cwPianoScore.h"
+
+
+
 #include "cwMidi.h"
 #include "cwTime.h"
 #include "cwFile.h"
 #include "cwCsv.h"
 #include "cwVectOps.h"
+
+#include "cwDynRefTbl.h"
+#include "cwScoreParse.h"
+#include "cwSfScore.h"
+#include "cwSfTrack.h"
+#include "cwPerfMeas.h"
+#include "cwPianoScore.h"
 
 #define INVALID_PERF_MEAS (-1)
 
@@ -72,6 +81,67 @@ namespace cw
       }      
     }
 
+    void _setup_feat_vectors( score_t* p )
+    {
+      for(event_t* e=p->base; e!=nullptr; e=e->link)
+        if( e->valid_stats_fl )
+        {
+          for(unsigned i=0; i<perf_meas::kValCnt; ++i)
+          {
+            unsigned stat_idx = e->statsA[i].id;
+            
+            switch( e->statsA[i].id )
+            {
+              case perf_meas::kEvenValIdx:      e->featV[ stat_idx ] = e->even;  break;
+              case perf_meas::kDynValIdx:       e->featV[ stat_idx ] = e->dyn;   break;
+              case perf_meas::kTempoValIdx:     e->featV[ stat_idx ] = e->tempo; break;
+              case perf_meas::kMatchCostValIdx: e->featV[ stat_idx ] = e->cost;  break;
+            }
+            
+            e->featMinV[ stat_idx ] = e->statsA[i].min;
+            e->featMaxV[ stat_idx ] = e->statsA[i].max;
+            
+          }
+        }
+
+    }
+
+
+    rc_t _read_meas_stats( score_t* p, csv::handle_t csvH, event_t* e )
+    {
+      rc_t rc;
+      
+      if((rc = getv(csvH,                    
+                    "even_min",  e->statsA[ perf_meas::kEvenValIdx ].min,
+                    "even_max",  e->statsA[ perf_meas::kEvenValIdx ].max,
+                    "even_mean", e->statsA[ perf_meas::kEvenValIdx ].mean,
+                    "even_std",  e->statsA[ perf_meas::kEvenValIdx ].std,
+                    "dyn_min",   e->statsA[ perf_meas::kDynValIdx ].min,
+                    "dyn_max",   e->statsA[ perf_meas::kDynValIdx ].max,
+                    "dyn_mean",  e->statsA[ perf_meas::kDynValIdx ].mean,
+                    "dyn_std",   e->statsA[ perf_meas::kDynValIdx ].std,
+                    "tempo_min", e->statsA[ perf_meas::kTempoValIdx ].min,
+                    "tempo_max", e->statsA[ perf_meas::kTempoValIdx ].max,
+                    "tempo_mean",e->statsA[ perf_meas::kTempoValIdx ].mean,
+                    "tempo_std", e->statsA[ perf_meas::kTempoValIdx ].std,
+                    "cost_min",  e->statsA[ perf_meas::kMatchCostValIdx ].min,
+                    "cost_max",  e->statsA[ perf_meas::kMatchCostValIdx ].max,
+                    "cost_mean", e->statsA[ perf_meas::kMatchCostValIdx ].mean,
+                    "cost_std",  e->statsA[ perf_meas::kMatchCostValIdx ].std )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Error parsing CSV meas. stats field.");
+        goto errLabel;        
+      }
+
+      e->statsA[ perf_meas::kEvenValIdx ].id     = perf_meas::kEvenValIdx;
+      e->statsA[ perf_meas::kDynValIdx ].id       = perf_meas::kDynValIdx;
+      e->statsA[ perf_meas::kTempoValIdx ].id     = perf_meas::kTempoValIdx;
+      e->statsA[ perf_meas::kMatchCostValIdx ].id = perf_meas::kMatchCostValIdx;
+
+    errLabel:
+      
+      return rc;
+    }
 
     rc_t _read_csv_line( score_t* p,  bool score_fl, csv::handle_t csvH )
     {
@@ -79,7 +149,8 @@ namespace cw
       event_t* e  = mem::allocZ<event_t>();
       const char* sci_pitch;
       unsigned sci_pitch_char_cnt;
-      
+      int has_stats_fl = 0;
+        
       if((rc = getv(csvH,
                     "meas",e->meas,
                     "loc",e->loc,
@@ -89,12 +160,21 @@ namespace cw
                     "d0", e->d0,
                     "d1", e->d1,
                     "bar", e->bar,
-                    "section", e->section )) != kOkRC )
+                    "section", e->section)) != kOkRC )
       {
         rc = cwLogError(rc,"Error parsing CSV.");
         goto errLabel;
       }
 
+      if( has_field(csvH,"has_stats_fl") )
+        if((rc = getv(csvH,"has_stats_fl",has_stats_fl)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Error parsing optional fields.");
+          goto errLabel;
+        }
+      
+      e->valid_stats_fl = has_stats_fl;
+      
       if( score_fl )
       {
         if((rc = getv(csvH,"oloc",e->loc )) != kOkRC )
@@ -102,19 +182,28 @@ namespace cw
           rc = cwLogError(rc,"Error parsing CSV.");
           goto errLabel;
         }
+
+        if( e->section > 0 && has_stats_fl )
+          if((rc = _read_meas_stats(p,csvH,e)) != kOkRC )
+            goto errLabel;
         
       }
       else
       {
         if((rc = getv(csvH,
-                    "even", e->even,
-                    "dyn", e->dyn,
-                    "tempo", e->tempo,
-                    "cost", e->cost )) != kOkRC )
+                      "even", e->even,
+                      "dyn", e->dyn,
+                      "tempo", e->tempo,
+                      "cost", e->cost)) != kOkRC )
         {
           rc = cwLogError(rc,"Error parsing CSV.");
           goto errLabel;
-        }        
+        }
+
+        if( has_stats_fl )
+          if((rc = _read_meas_stats(p,csvH,e)) != kOkRC )
+            goto errLabel;
+          
       }
 
       if((rc = field_char_count( csvH, title_col_index(csvH,"sci_pitch"), sci_pitch_char_cnt )) != kOkRC )
@@ -377,7 +466,6 @@ cw::rc_t cw::perf_score::create( handle_t& hRef, const char* fn )
 
   if( _does_file_have_loc_info(fn) )
   {
-    // if((rc = _parse_csv(p,fn)) != kOkRC )
     if((rc = _read_csv( p, fn )) != kOkRC )
       goto errLabel;
 
@@ -392,6 +480,8 @@ cw::rc_t cw::perf_score::create( handle_t& hRef, const char* fn )
     
     p->has_locs_fl = false;    
   }
+
+  _setup_feat_vectors(p);
     
   hRef.set(p);
 
@@ -552,6 +642,8 @@ cw::rc_t cw::perf_score::test( const object_t* cfg )
     goto errLabel;
   }
 
+  cwLogInfo("Creating score from '%s'.",cwStringNullGuard(fname));
+  
   if((rc = create( h, fname )) != kOkRC )
   {
     rc = cwLogError(rc,"Score create failed.");
