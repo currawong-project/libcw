@@ -57,25 +57,12 @@ namespace cw
         time::spec_t     baseTimeStamp;
       } device_t;
 
+#define _cmMpErrMsg( rc,  alsaRc, str )       cwLogError(kOpFailRC,"%s : ALSA Error:%i %s",(str),(alsaRc),snd_strerror(alsaRc))
+#define _cmMpErrMsg1( rc, alsaRc, fmt, arg )  cwLogError(kOpFailRC, fmt"%s : ALSA Error:%i %s",(arg),(alsaRc),snd_strerror(alsaRc))
+      
       device_t* _handleToPtr( handle_t h ){ return handleToPtr<handle_t,device_t>(h); }
 
-      rc_t _cmMpErrMsgV(rc_t rc, int alsaRc, const char* fmt, va_list vl )
-      {
-        if( alsaRc < 0 )
-          cwLogError(kOpFailRC,"ALSA Error:%i %s",alsaRc,snd_strerror(alsaRc));
-
-        return cwLogVError(rc,fmt,vl);  
-      }
-
-      rc_t _cmMpErrMsg(rc_t rc, int alsaRc, const char* fmt, ... )
-      {
-        va_list vl;
-        va_start(vl,fmt);
-        rc = _cmMpErrMsgV(rc,alsaRc,fmt,vl);
-        va_end(vl);
-        return rc;
-      }
-
+            
       unsigned _cmMpGetPortCnt( snd_seq_t* h, snd_seq_port_info_t* pip, bool inputFl )
       {
         unsigned i = 0;
@@ -432,7 +419,7 @@ namespace cw
               snd_seq_port_subscribe_set_time_update(subs, 1);
               snd_seq_port_subscribe_set_time_real(subs, 1);
               if((arc = snd_seq_subscribe_port(p->h, subs)) < 0)
-                rc = _cmMpErrMsg(kOpFailRC,arc,"Input port to app. subscription failed on port '%s'.",cwStringNullGuard(port));
+                rc = _cmMpErrMsg1(kOpFailRC,arc,"Input port to app. subscription failed on port '%s'.",cwStringNullGuard(port));
 
               ++j;
             }
@@ -450,7 +437,7 @@ namespace cw
               snd_seq_port_subscribe_set_sender(subs, &p->alsa_addr);
               snd_seq_port_subscribe_set_dest(  subs, &addr);
               if((arc = snd_seq_subscribe_port(p->h, subs)) < 0 )
-                rc = _cmMpErrMsg(kOpFailRC,arc,"App to output port subscription failed on port '%s'.",cwStringNullGuard(port));
+                rc = _cmMpErrMsg1(kOpFailRC,arc,"App to output port subscription failed on port '%s'.",cwStringNullGuard(port));
        
               ++k;
             }
@@ -792,7 +779,7 @@ cw::rc_t  cw::midi::device::send( handle_t h, unsigned devIdx, unsigned portIdx,
       break;
 
     default:
-      rc = _cmMpErrMsg(kInvalidArgRC,0,"Cannot send an invalid MIDI status byte:0x%x.",status & 0xf0);
+      rc = _cmMpErrMsg1(kInvalidArgRC,0,"Cannot send an invalid MIDI status byte:0x%x.",status & 0xf0);
       goto errLabel;
   }
 
