@@ -362,8 +362,10 @@ cw::rc_t cw::io_flow::create( handle_t&       hRef,
   
  errLabel:
   if( rc != kOkRC )
+  {
+    rc = cwLogError(rc,"io_flow create failed.");
     _destroy(p);
-
+  }
   
   
   return rc;
