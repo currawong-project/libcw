@@ -9,11 +9,14 @@
 #include "cwFlowDecl.h"
 #include "cwPresetSel.h"
 #include "cwFile.h"
-#include "cwPianoScore.h"
+
 #include "cwMidi.h"
 #include "cwDynRefTbl.h"
 #include "cwScoreParse.h"
 #include "cwSfScore.h"
+#include "cwPerfMeas.h"
+
+#include "cwPianoScore.h"
 
 
 namespace cw
