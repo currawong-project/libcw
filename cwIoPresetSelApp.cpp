@@ -16,7 +16,6 @@
 #include "cwScoreFollowerPerf.h"
 #include "cwIoMidiRecordPlay.h"
 #include "cwIoPresetSelApp.h"
-#include "cwPianoScore.h"
 #include "cwVectOps.h"
 #include "cwMath.h"
 #include "cwDspTypes.h"
@@ -32,6 +31,8 @@
 #include "cwScoreParse.h"
 #include "cwSfScore.h"
 #include "cwSfTrack.h"
+#include "cwPerfMeas.h"
+#include "cwPianoScore.h"
 #include "cwScoreFollower.h"
 
 
@@ -293,7 +294,7 @@ namespace cw
       score_follower::handle_t   sfH;
       midi_record_play::handle_t mrpH;
 
-      perf_score::handle_t scoreH;
+      perf_score::handle_t perfScoreH;
       loc_map_t*      locMap;    
       unsigned        locMapN;
 
@@ -568,7 +569,7 @@ namespace cw
       preset_sel::destroy(app.psH);
       io_flow::destroy(app.ioFlowH);
       midi_record_play::destroy(app.mrpH);
-      perf_score::destroy( app.scoreH );
+      perf_score::destroy( app.perfScoreH );
       mem::release(app.locMap);
       return kOkRC;
     }
@@ -883,19 +884,30 @@ namespace cw
         // otherwise select the next primary preset for ths fragment
         unsigned seq_idx_n = app->seqActiveFl ? app->seqPresetIdx : kInvalidIdx;
 
-        if( score_evt != nullptr )            
-            printf("Meas:e:%f d:%f t:%f c:%f\n",score_evt->even,score_evt->dyn,score_evt->tempo,score_evt->cost);
-        
+        if( score_evt != nullptr )
+        {
+          //printf("Meas:e:%f d:%f t:%f c:%f\n",score_evt->even,score_evt->dyn,score_evt->tempo,score_evt->cost);
+          printf("Meas:e:%f d:%f t:%f c:%f\n",score_evt->featV[perf_meas::kEvenValIdx],score_evt->featV[perf_meas::kDynValIdx],score_evt->featV[perf_meas::kTempoValIdx],score_evt->featV[perf_meas::kMatchCostValIdx]);
+        }
 
         // if we are not automatically sequencing through the presets and a score event was given
         if( seq_idx_n == kInvalidIdx && score_evt != nullptr && frag->multiPresetN>0 )
         {
-          double   coeffV[] = { score_evt->even, score_evt->dyn, score_evt->tempo, score_evt->cost };
-          unsigned coeffN   = sizeof(coeffV)/sizeof(coeffV[0]);
+          //double   coeffV[] = { score_evt->even, score_evt->dyn, score_evt->tempo, score_evt->cost };
+          //unsigned coeffN   = sizeof(coeffV)/sizeof(coeffV[0]);
             
-          flow::multi_preset_selector_t mp_sel = { .type_id=0, .coeffV=coeffV, .coeffN=coeffN, .presetA=frag->multiPresetA, .presetN=frag->multiPresetN };
+          flow::multi_preset_selector_t mp_sel =
+            { .type_id=0,
+              .coeffV=score_evt->featV,
+              .coeffMinV=score_evt->featMinV,
+              .coeffMaxV=score_evt->featMaxV,
+              .coeffN=perf_meas::kValCnt,
+              .presetA=frag->multiPresetA,
+              .presetN=frag->multiPresetN
+            };
             
-          apply_rc = io_flow::apply_preset( app->ioFlowH, flow_cross::kNextDestId, mp_sel );
+          if( app->ioFlowH.isValid() )
+            apply_rc = io_flow::apply_preset( app->ioFlowH, flow_cross::kNextDestId, mp_sel );
 
           preset_label = mp_sel.presetN>0 && mp_sel.presetA[0].preset_label!=nullptr ? mp_sel.presetA[0].preset_label : nullptr;
 
@@ -910,9 +922,10 @@ namespace cw
           else
             preset_label = preset_sel::preset_label(app->psH,preset_idx);
           
-          if( preset_label != nullptr && app->ioFlowH.isValid() )
+          if( preset_label != nullptr )
           {
-            apply_rc = io_flow::apply_preset( app->ioFlowH, flow_cross::kNextDestId, preset_label );
+            if( app->ioFlowH.isValid() )
+              apply_rc = io_flow::apply_preset( app->ioFlowH, flow_cross::kNextDestId, preset_label );
 
             preset_type_label = "single";
           }
@@ -1065,7 +1078,7 @@ namespace cw
               snprintf(buf,buf_byte_cnt,"ch:%i status:0x%02x d0:%i d1:%i",ch,status,d0,d1);
             }
             else
-              perf_score::event_to_string( app->scoreH, id, buf, buf_byte_cnt );
+              perf_score::event_to_string( app->perfScoreH, id, buf, buf_byte_cnt );
             printf("%s\n",buf);
           }
 
@@ -1099,7 +1112,7 @@ namespace cw
       }
     }
 
-    rc_t  _on_live_midi( app_t* app, const io::msg_t& msg )
+    rc_t  _on_live_midi_event( app_t* app, const io::msg_t& msg )
     {
       rc_t rc = kOkRC;
 
@@ -1169,14 +1182,14 @@ namespace cw
       
       if( app->in_audio_begin_loc != score_parse::kInvalidLocId )
       {
-        if((e0 = loc_to_event(app->scoreH,app->in_audio_begin_loc)) == nullptr )
+        if((e0 = loc_to_event(app->perfScoreH,app->in_audio_begin_loc)) == nullptr )
         {
           rc = cwLogError(kInvalidArgRC,"The score event associated with the 'in_audio_beg_loc' loc:%i could not be found.",loc);
           goto errLabel;
         }
       }
       
-      if((e1 = loc_to_event(app->scoreH,loc)) == nullptr )
+      if((e1 = loc_to_event(app->perfScoreH,loc)) == nullptr )
       {
         rc = cwLogError(kInvalidArgRC,"The score event associated with the begin play loc:%i could not be found.",loc);
         goto errLabel;
@@ -1205,7 +1218,7 @@ namespace cw
 
     bool _is_performance_loaded( app_t* app )
     {
-      return app->scoreH.isValid() and event_count(app->scoreH) > 0;
+      return app->perfScoreH.isValid() and event_count(app->perfScoreH) > 0;
     }
 
     rc_t _do_sf_reset( app_t* app, unsigned loc )
@@ -2033,13 +2046,13 @@ namespace cw
       midiEventCntRef = 0;
       
       // get the count of MIDI events
-      if((e = perf_score::base_event( app->scoreH )) != nullptr )
+      if((e = perf_score::base_event( app->perfScoreH )) != nullptr )
         for(; e != nullptr; e=e->link)
           if( e->status != 0 )
             midiEventN  += 1;
 
       // copy the MIDI events
-      if((e = perf_score::base_event( app->scoreH )) != nullptr )
+      if((e = perf_score::base_event( app->perfScoreH )) != nullptr )
       {
         // allocate the locMap[]
         app->locMap  = mem::resizeZ<loc_map_t>( app->locMap, midiEventN ); 
@@ -2153,7 +2166,7 @@ namespace cw
       return rc;
     }
 
-    rc_t _do_load( app_t* app, const char* perf_fn, const vel_tbl_t* vtA=nullptr, unsigned vtN=0 )
+    rc_t _do_load_perf_score( app_t* app, const char* perf_fn, const vel_tbl_t* vtA=nullptr, unsigned vtN=0 )
     {
       rc_t     rc         = kOkRC;
       unsigned midiEventN = 0;
@@ -2162,7 +2175,7 @@ namespace cw
       _set_status(app,"Loading...");
 
       // load the performance
-      if((rc= perf_score::create( app->scoreH, perf_fn )) != kOkRC )
+      if((rc= perf_score::create( app->perfScoreH, perf_fn )) != kOkRC )
       {
         cwLogError(rc,"Score create failed on '%s'.",perf_fn);
         goto errLabel;          
@@ -2255,10 +2268,10 @@ namespace cw
         goto errLabel;
       }
 
-      printf("Loading:%s %p %i\n",prp->fname,prp->vel_tblA, prp->vel_tblN);
+      printf("Loading:%s\n",prp->fname );
       
       // load the requested performance
-      if((rc = _do_load(app,prp->fname,prp->vel_tblA, prp->vel_tblN)) != kOkRC )
+      if((rc = _do_load_perf_score(app,prp->fname,prp->vel_tblA, prp->vel_tblN)) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"The performance load failed.");
         goto errLabel;
@@ -2643,6 +2656,7 @@ namespace cw
       return rc;
     }
 
+    /*
     rc_t _on_midi_load_btn_0(app_t* app)
     {      
       rc_t                 rc    = kOkRC;
@@ -2651,13 +2665,13 @@ namespace cw
       object_t*            cfg   = nullptr;
       unsigned             sfResetLoc;
       
-      if((rc = perf_score::create_from_midi_csv( app->scoreH, app->midiLoadFname )) != kOkRC )
+      if((rc = perf_score::create_from_midi_csv( app->perfScoreH, app->midiLoadFname )) != kOkRC )
       {
         rc = cwLogError(rc,"Piano score performance load failed on '%s'.",cwStringNullGuard(app->midiLoadFname));
         goto errLabel;
       }
 
-      if((rc = _do_load(app,nullptr)) != kOkRC )
+      if((rc = _do_load_perf_score(app,nullptr)) != kOkRC )
       {
         rc = cwLogError(rc,"Performance load failed on '%s'.",cwStringNullGuard(app->midiLoadFname));
         goto errLabel;
@@ -2698,12 +2712,13 @@ namespace cw
       
       return rc;
     }
+    */
 
     rc_t _on_midi_load_btn(app_t* app)
     {      
       rc_t                 rc    = kOkRC;
 
-      if((rc = _do_load(app,app->midiLoadFname)) != kOkRC )
+      if((rc = _do_load_perf_score(app,app->midiLoadFname)) != kOkRC )
       {
         rc = cwLogError(rc,"Piano score performance load failed on '%s'.",cwStringNullGuard(app->midiLoadFname));
         goto errLabel;        
@@ -2713,7 +2728,6 @@ namespace cw
     errLabel:      
       return rc;
     }
-
     
     rc_t _on_midi_load_fname(app_t* app, const char* fname)
     {
@@ -2869,7 +2883,7 @@ namespace cw
       return rc;
     }
 
-    rc_t _on_live_midi_fl( app_t* app, bool useLiveMidiFl )
+    rc_t _on_live_midi_checkbox( app_t* app, bool useLiveMidiFl )
     {
       rc_t rc = kOkRC;
       dsp::real_t value;
@@ -2932,7 +2946,7 @@ namespace cw
       if((rc = _fragment_load_data(app)) != kOkRC )
         rc = cwLogError(rc,"Preset data restore failed.");
 
-      _on_live_midi_fl(app,app->useLiveMidiFl);
+      _on_live_midi_checkbox(app,app->useLiveMidiFl);
 
       return rc;
     }
@@ -2998,8 +3012,7 @@ namespace cw
           break;
 
         case kLiveCheckId:
-          //app->useLiveMidiFl = m.value->u.b;
-          _on_live_midi_fl(app, m.value->u.b );
+          _on_live_midi_checkbox(app, m.value->u.b );
           break;
           
         case kTrackMidiCheckId:
@@ -3410,7 +3423,7 @@ namespace cw
           
         case io::kMidiTId:
           if( app->useLiveMidiFl && app->mrpH.isValid() )
-            _on_live_midi( app, *m );
+            _on_live_midi_event( app, *m );
           break;
           
         case io::kAudioTId:        
@@ -3578,6 +3591,8 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
       goto errLabel;
     }
   }
+
+  printf("ioFlow is %s valid.\n",app.ioFlowH.isValid() ? "" : "not");
   
   // start the IO framework instance
   if((rc = io::start(app.ioH)) != kOkRC )
