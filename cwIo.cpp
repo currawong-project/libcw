@@ -31,6 +31,7 @@
 #include "cwWebSock.h"
 #include "cwUi.h"
 
+#include "cwVectOps.h"
 
 namespace cw
 {
@@ -164,7 +165,11 @@ namespace cw
       ui::appIdMap_t*               uiMapA;      // Application supplied id's for the UI resource supplied with the cfg script via 'uiCfgFn'.
       unsigned                      uiMapN;      //
       bool                          uiAsyncFl;
-      
+
+      sample_t                      latency_meas_thresh_db;
+      sample_t                      latency_meas_thresh_lin;
+      bool                          latency_meas_enable_fl;
+      latency_meas_result_t         latency_meas_result;
     } io_t;
   
 
@@ -1070,7 +1075,7 @@ namespace cw
       return true;          
     }
 
-    // Get sample ponters or advance the pointers on the buffer associates with each device.
+    // Get sample pointers or advance the pointers on the buffer associates with each device.
     enum { kAudioGroupGetBuf, kAudioGroupAdvBuf };
     void _audioGroupProcSampleBufs( io_t* p, audioGroup_t* ag, unsigned processTypeId, unsigned inputFl  )
     {
@@ -1097,6 +1102,39 @@ namespace cw
         }
         
         chIdx += agd->chCnt;
+      }
+    }
+
+    void _audio_latency_measure( io_t* p, const audio_msg_t& msg )
+    {
+      if( p->latency_meas_enable_fl )
+      {
+        
+        if( msg.iBufChCnt && p->latency_meas_result.audio_in_ts.tv_nsec == 0 )
+        {
+          sample_t rms = vop::rms(msg.iBufArray[0], msg.dspFrameCnt );
+          
+          if( rms > p->latency_meas_thresh_lin  )
+            time::get(p->latency_meas_result.audio_in_ts);
+          
+          if( rms > p->latency_meas_result.audio_in_rms_max )
+            p->latency_meas_result.audio_in_rms_max = rms;
+        }
+        
+        if( msg.oBufChCnt && p->latency_meas_result.audio_out_ts.tv_nsec == 0 )
+        {
+          sample_t rms = vop::rms(msg.oBufArray[0], msg.dspFrameCnt );
+          
+          if( rms > p->latency_meas_thresh_lin  )
+            time::get(p->latency_meas_result.audio_out_ts);
+          
+          if( rms > p->latency_meas_result.audio_out_rms_max )
+            p->latency_meas_result.audio_out_rms_max = rms;
+        }
+        
+        p->latency_meas_enable_fl = p->latency_meas_result.audio_in_ts.tv_nsec == 0 ||
+                                    p->latency_meas_result.audio_out_ts.tv_nsec == 0;
+          
       }
     }
 
@@ -1134,6 +1172,8 @@ namespace cw
           if((rc = _ioCallback( ag->p, ag->asyncFl, &msg)) != kOkRC )
             cwLogError(rc,"Audio app callback failed %i.",ag->asyncFl);
 
+          _audio_latency_measure( ag->p, ag->msg );
+          
           _audioGroupProcSampleBufs( ag->p, ag, kAudioGroupAdvBuf, true );
           _audioGroupProcSampleBufs( ag->p, ag, kAudioGroupAdvBuf, false );
         }
@@ -3751,6 +3791,77 @@ cw::rc_t cw::io::uiSendMsg( handle_t h, const char* msg )
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
     rc = ui::sendMsg(uiH, msg);
   return rc;
+}
+
+void cw::io::latency_measure_setup(handle_t h)
+{
+  io_t* p = _handleToPtr(h);
+  p->latency_meas_enable_fl                = true;
+  p->latency_meas_thresh_db  = -50;
+  p->latency_meas_thresh_lin = pow(10.0,p->latency_meas_thresh_db/20.0);
+  p->latency_meas_result.note_on_input_ts  = {0};
+  p->latency_meas_result.note_on_output_ts = {0};
+  p->latency_meas_result.audio_in_ts       = {0};
+  p->latency_meas_result.audio_out_ts      = {0};
+  p->latency_meas_result.audio_in_rms_max  = 0;
+  p->latency_meas_result.audio_out_rms_max = 0;
+
+  if( p->midiH.isValid() )
+    latency_measure_setup(p->midiH);  
+}
+
+cw::io::latency_meas_result_t cw::io::latency_measure_result(handle_t h)
+{
+  io_t* p = _handleToPtr(h);
+
+  if( p->midiH.isValid() )
+  {
+    midi::device::latency_meas_result_t r = latency_measure_result(p->midiH);
+
+    p->latency_meas_result.note_on_input_ts  = r.note_on_input_ts;
+    p->latency_meas_result.note_on_output_ts = r.note_on_output_ts;
+  }
+  
+  return p->latency_meas_result;
+}
+
+void cw::io::latency_measure_report(handle_t h)
+{
+  io_t* p = _handleToPtr(h);  
+  latency_meas_result_t r = latency_measure_result(h);
+  unsigned t0,t1;
+
+  if( r.note_on_input_ts.tv_nsec )
+  {
+    if( r.note_on_output_ts.tv_nsec )
+    {
+      t0 = time::elapsedMicros(r.note_on_input_ts,r.note_on_output_ts);
+      printf("midi in  - midi out:  %6i\n",t0);
+    }
+
+    if( r.audio_in_ts.tv_nsec )
+    {
+      t0 = time::elapsedMicros(r.note_on_output_ts,r.audio_in_ts);
+      t1 = time::elapsedMicros(r.note_on_input_ts,r.audio_in_ts);
+      printf("midi out - audio in:  %6i %6i\n",t0,t1);
+    }
+
+    if( r.audio_out_ts.tv_nsec )
+    {
+      t0 = time::elapsedMicros(r.audio_in_ts,r.audio_out_ts);
+      t1 = time::elapsedMicros(r.note_on_input_ts,r.audio_out_ts);
+      printf("audio in - audio out: %6i %6i\n",t0,t1);
+    }
+
+  }
+
+  printf("Thresh: %f %f db\n",p->latency_meas_thresh_db,p->latency_meas_thresh_lin);
+  if( r.audio_in_rms_max != 0 )
+    printf("audio in max:%f %f dB\n", r.audio_in_rms_max, 20.0*log10(r.audio_in_rms_max));
+  
+  if( r.audio_out_rms_max != 0 )
+    printf("audio out max:%f %f dB\n", r.audio_out_rms_max, 20.0*log10(r.audio_out_rms_max));
+  
 }
 
 

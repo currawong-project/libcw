@@ -406,6 +406,21 @@ namespace cw
 
     rc_t uiSendMsg( handle_t h, const char* msg );
 
+
+    typedef struct
+    {
+      time::spec_t note_on_input_ts;
+      time::spec_t note_on_output_ts;
+      time::spec_t audio_in_ts;
+      time::spec_t audio_out_ts;
+      sample_t     audio_in_rms_max;
+      sample_t     audio_out_rms_max;
+    } latency_meas_result_t;
+      
+    void latency_measure_setup(handle_t h);
+    latency_meas_result_t latency_measure_result(handle_t h);
+    void latency_measure_report(handle_t h);
+    
     void uiRealTimeReport( handle_t h );
     void uiReport( handle_t h );
     

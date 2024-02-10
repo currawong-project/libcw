@@ -55,6 +55,11 @@ namespace cw
         unsigned         prvTimeMicroSecs; // time of last recognized event in microseconds
         unsigned         eventCnt;         // count of recognized events
         time::spec_t     baseTimeStamp;
+
+        bool                  latency_meas_enable_in_fl;
+        bool                  latency_meas_enable_out_fl;
+        latency_meas_result_t latency_meas_result;
+        
       } device_t;
 
 #define _cmMpErrMsg( rc,  alsaRc, str )       cwLogError(kOpFailRC,"%s : ALSA Error:%i %s",(str),(alsaRc),snd_strerror(alsaRc))
@@ -104,34 +109,33 @@ namespace cw
         *d1 = v & 0x7f;
       }
 
-      rc_t _cmMpPoll(device_t* p)
+      rc_t _handle_alsa_device( device_t* p )
       {
-        rc_t rc        = kOkRC;
-        int  timeOutMs = 50;
-
+        rc_t rc = kOkRC;
+        
         snd_seq_event_t *ev;
+        
 
-        if (poll(p->alsa_fd, p->alsa_fdCnt, timeOutMs) > 0) 
+        do
         {
-          int rc = 1;
-
-          do
-          {
-            rc = snd_seq_event_input(p->h,&ev);
+            int alsa_rc = snd_seq_event_input(p->h,&ev);
 
             // if no input
-            if( rc == -EAGAIN )
+            if( alsa_rc == -EAGAIN )
             {
               // TODO: report or at least count error
               break;
             }
             
             // if input buffer overrun
-            if( rc == -ENOSPC )
+            if( alsa_rc == -ENOSPC )
             {
               // TODO: report or at least count error
               break;
             }
+
+            // TODO: Improve performance of _cmMpClientIdToDev() and _cmMpInPortIdToPort().
+            // They currently use linear searchs!
             
             // get the device this event arrived from
             if( p->prvRcvDev==NULL || p->prvRcvDev->clientId != ev->source.client )
@@ -163,6 +167,15 @@ namespace cw
                 status = kNoteOnMdId;
                 d0     = ev->data.note.note;
                 d1     = ev->data.note.velocity;
+
+                if( p->latency_meas_enable_in_fl )
+                {
+                  p->latency_meas_enable_in_fl = false;
+                  time::get(p->latency_meas_result.note_on_input_ts);
+                  //p->latency_meas_result.note_on_input_ts.tv_sec  = ev->time.time.tv_sec;
+                  //p->latency_meas_result.note_on_input_ts.tv_nsec = ev->time.time.tv_nsec;
+                }
+                
                 //printf("%s (%i : %i) (%i)\n", snd_seq_ev_is_abstime(ev)?"abs":"rel",ev->time.time.tv_sec,ev->time.time.tv_nsec, deltaMicroSecs/1000);
                 break;
 
@@ -263,6 +276,18 @@ namespace cw
           }while( snd_seq_event_input_pending(p->h,0));
 
           parser::transmit(p->prvRcvPort->parserH);
+
+          return rc;
+      }
+
+      rc_t _cmMpPoll(device_t* p)
+      {
+        rc_t rc        = kOkRC;
+        int  timeOutMs = 50;
+
+        if (poll(p->alsa_fd, p->alsa_fdCnt, timeOutMs) > 0) 
+        {
+          rc = _handle_alsa_device(p);
         }  
 
         return rc;
@@ -739,6 +764,12 @@ cw::rc_t  cw::midi::device::send( handle_t h, unsigned devIdx, unsigned portIdx,
       ev.type               = SND_SEQ_EVENT_NOTEON;     
       ev.data.note.note     = d0;
       ev.data.note.velocity = d1;
+
+      if( p->latency_meas_enable_out_fl )
+      {
+        p->latency_meas_enable_out_fl = false;
+        time::get(p->latency_meas_result.note_on_output_ts);
+      }
       break;
 
     case kPolyPresMdId: 
@@ -876,6 +907,21 @@ bool        cw::midi::device::usesCallback(    handle_t h, unsigned devIdx, unsi
   return false;
 }
 
+void cw::midi::device::latency_measure_setup(handle_t h)
+{
+  device_t* p  = _handleToPtr(h);
+  
+  p->latency_meas_result.note_on_input_ts  = {0};
+  p->latency_meas_result.note_on_output_ts = {0};
+  p->latency_meas_enable_in_fl           = true;
+  p->latency_meas_enable_out_fl          = true;
+}
+
+cw::midi::device::latency_meas_result_t cw::midi::device::latency_measure_result(handle_t h)
+{
+  device_t* p  = _handleToPtr(h);
+  return p->latency_meas_result;
+}
 
 
 void cw::midi::device::report( handle_t h, textBuf::handle_t tbH )

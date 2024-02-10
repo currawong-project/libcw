@@ -89,6 +89,16 @@ namespace cw
       rc_t installCallback( handle_t h, unsigned devIdx, unsigned portIdx, cbFunc_t cbFunc, void* cbDataPtr );
       rc_t removeCallback(  handle_t h, unsigned devIdx, unsigned portIdx, cbFunc_t cbFunc, void* cbDataPtr );
       bool usesCallback(    handle_t h, unsigned devIdx, unsigned portIdx, cbFunc_t cbFunc, void* cbDataPtr );
+
+      typedef struct
+      {
+        time::spec_t note_on_input_ts;
+        time::spec_t note_on_output_ts;
+      } latency_meas_result_t;
+
+      // Reset the latency measurement process.
+      void latency_measure_setup(handle_t h);      
+      latency_meas_result_t latency_measure_result(handle_t h);
       
       void report( handle_t h, textBuf::handle_t tbH);
       

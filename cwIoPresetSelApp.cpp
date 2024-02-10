@@ -49,6 +49,7 @@ namespace cw
       kIoReportBtnId,
       kNetPrintBtnId,
       kReportBtnId,
+      kLatencyBtnId,
       
       kStartBtnId,
       kStopBtnId,
@@ -148,6 +149,7 @@ namespace cw
       { kPanelDivId,     kIoReportBtnId,  "ioReportBtnId" },
       { kPanelDivId,     kNetPrintBtnId,  "netPrintBtnId" },
       { kPanelDivId,     kReportBtnId,    "reportBtnId" },
+      { kPanelDivId,     kLatencyBtnId,   "latencyBtnId" },
         
       { kPanelDivId,     kStartBtnId,        "startBtnId" },
       { kPanelDivId,     kStopBtnId,         "stopBtnId" },
@@ -1117,10 +1119,10 @@ namespace cw
       rc_t rc = kOkRC;
 
       if( msg.u.midi != nullptr )
-      {
-        
-        const io::midi_msg_t& m = *msg.u.midi;
+      {        
+        const io::midi_msg_t& m   = *msg.u.midi;
         const midi::packet_t* pkt = m.pkt;
+        
         // for each midi msg
         for(unsigned j = 0; j<pkt->msgCnt; ++j)
         {
@@ -1131,8 +1133,8 @@ namespace cw
           }
           else                  // this is a triple
           {
-            midi::msg_t* mm = pkt->msgArray + j;
             time::spec_t timestamp;
+            midi::msg_t* mm = pkt->msgArray + j;
             unsigned     id = app->enableRecordFl ? last_store_index(app->mrpH) : kInvalidId;
             unsigned     loc = app->beg_play_loc;
             
@@ -1346,9 +1348,6 @@ namespace cw
             evt_cnt = midi_record_play::event_count(app->mrpH);
           
         io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), evt_cnt  );
-      
-        
-
       }
       
     errLabel:
@@ -2984,6 +2983,11 @@ namespace cw
           //score_follower::midi_state_rt_report( app->sfH, "/home/kevin/temp/temp_midi_state_rt_report.txt" );
           //score_follower::score_report(app->sfH,"/home/kevin/temp/temp_cm_score_report.txt");
           preset_sel::report_presets(app->psH);
+          break;
+
+        case kLatencyBtnId:
+          latency_measure_report(app->ioH);
+          latency_measure_setup(app->ioH);
           break;
 
         case kSaveBtnId:
