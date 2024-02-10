@@ -152,7 +152,7 @@ namespace cw
       const trackMsg_t* trackMsg( handle_t h, unsigned trackIdx );
 
       // Returns the total count of records in the midi file and the
-      // number in the array returned by cmMidiFileMsgArray(). 
+      // number in the array returned by msgArray(). 
       // Return kInvalidCnt if 'h' is invalid.
       unsigned msgCount( handle_t h );
 
@@ -221,7 +221,7 @@ namespace cw
 
       rc_t genCsvFile( const char* midiFn, const char* csvFn, bool printWarningsFl=true );
 
-      // Generate a text file reportusing cmMIdiFilePrintMsgs()
+      // Generate a text file report using printMsgs()
       rc_t report( const char* midiFn, log::handle_t logH );
 
       rc_t report_begin_end( const char* midiFn, unsigned msg_cnt=10, bool pitch_only_fl=true, log::handle_t logH=log::handle_t() );

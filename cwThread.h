@@ -15,10 +15,12 @@ namespace cw
   
     typedef handle<struct thread_str> handle_t;
 
+    // Return false to indicate that the thread should terminate.
     typedef bool (*cbFunc_t)( void* arg );
 
     typedef  unsigned long long thread_id_t;
 
+    // The thread is in the 'paused' state after it is created.
     // stateMicros = total time out duration for switching to the  exit state or for switching in/out of pause state. 
     // pauseMicros = duration of thread sleep interval when in paused state.
     rc_t create( handle_t& hRef, cbFunc_t func, void* funcArg, int stateTimeOutMicros=100000, int pauseMicros=10000 );

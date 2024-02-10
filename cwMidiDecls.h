@@ -16,7 +16,7 @@ namespace cw
 
     typedef struct packet_str
     {
-      void*         cbDataPtr; // Application supplied reference value from mdParserCreate()
+      void*         cbDataPtr; // Application supplied reference value
       unsigned      devIdx;    // The device the msg originated from
       unsigned      portIdx;   // The port index on the source device
       msg_t*        msgArray;  // Pointer to an array of 'msgCnt' mdMsg records or NULL if sysExMsg is non-NULL
