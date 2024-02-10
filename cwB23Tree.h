@@ -19,10 +19,10 @@ namespace cw
 
       typedef enum {
         kInvalidNodeTId,
-        k1LeafTId,
-        k2LeafTId,
-        k2NodeTId,
-        k3NodeTId
+        k1LeafTId,  // leaf where kv0 is in use but kv1 is not
+        k2LeafTId,  // leaf where kv0 and kv1 are in use
+        k2NodeTId,  // node with a lo,hi branch but no middle branch
+        k3NodeTId   // node with a lo,hi, and middle branch
       } node_tid_t;
       
       typedef struct value_str
@@ -42,7 +42,13 @@ namespace cw
         
       } key_value_t;
 
-
+      struct node_str;
+      typedef struct match_result_str
+      {
+        struct node_str* node;
+        key_value_t*     kv;
+        unsigned         kv_idx; // 0 or 1          
+      } match_result_t;
       
       typedef struct node_str
       {
@@ -50,9 +56,9 @@ namespace cw
         unsigned nid;
         
         struct node_str* parent;
-        struct node_str* l_link;
-        struct node_str* m_link;
-        struct node_str* h_link;
+        struct node_str* l_link; // low link
+        struct node_str* m_link; // middle link
+        struct node_str* h_link; // high link
 
         // If kv1 is not empty then kv1.key is > kv0.key
         key_value_t kv0; // kv0 always contains a valid key-value pair
@@ -65,6 +71,7 @@ namespace cw
 
         // Leaf nodes have no child pointers, but may have one or two key-value pairs.
         bool is_leaf() const   { return this->l_link == nullptr; }
+        bool is_not_leaf() const { return !is_leaf(); }
 
         bool is_1_leaf() const { return is_leaf() && kv1.is_empty(); }
         bool is_2_leaf() const { return is_leaf() && kv1.is_not_empty(); }
@@ -92,6 +99,69 @@ namespace cw
         }
 
         
+        unsigned height() const
+        {
+          if( is_leaf() )
+            return 0;
+          
+          return l_link->height() + 1;
+        }
+
+
+        match_result_t is_key_in_node( K key )
+        {
+          match_result_t r;
+          
+          if( kv0.key == key )
+          {
+            r.node   = this;
+            r.kv     = &kv0;
+            r.kv_idx = 0;
+          }
+          else
+          {
+            if( kv1.is_not_empty() and kv1.key == key )
+            {
+              r.node   = this;
+              r.kv     = &kv1;
+              r.kv_idx = 1;
+            }
+            else
+            {
+              r.node = nullptr;
+              r.kv   = nullptr;
+              r.kv_idx = 2;
+            }
+            
+          }
+         
+          return r;
+        }
+
+        // Return the next node to this node given the key.
+        // Return nullptr if this is a leaf node.
+        struct node_str* next( K key )
+        {
+          node_t* n = nullptr;
+
+          assert( is_key_in_node(key) == false );
+
+          if( key < kv0.key )
+          {
+            n = l_link;
+          }
+          else
+          {
+            if(  key > (kv1.is_not_empty() ? kv1.key : kv0.key) )
+              n = h_link;
+            else
+              n = m_link;
+          }
+
+          return n;
+        }
+        
+        
       } node_t;
 
       typedef struct node_block_str
@@ -115,7 +185,8 @@ namespace cw
       node_block_t*  _end_node_block = nullptr;   // Last block in node block linked list (always partially empty)
       value_block_t* _beg_value_block = nullptr;  // First node in value block linked list
       value_block_t* _end_value_block = nullptr;  // Last block in value block linked list (always partially empty)
-      node_t*        _free_node_list = nullptr;   // Linked list, through 'parent' of avail nodes. 
+      node_t*        _free_node_list = nullptr;   // Linked list, through 'parent' of avail nodes.
+      value_t*       _free_value_list = nullptr;  // 
       unsigned       _nodes_per_block = 0;
       unsigned       _values_per_block = 0;
       unsigned       _nid = 0;
@@ -133,34 +204,23 @@ namespace cw
         return "<unk>";
       }
 
-      
-      // Return the node closest to the given key.
-      // 
-      node_t* key_to_node( K key )
+
+      // Return the node and kv that matches the key.
+      match_result_t key_to_node( K key )
       {
+        match_result_t r;
         node_t* n = _root;
         while(n != nullptr)
         {
-          if( n->kv0.key == key )
+          r = n->is_key_in_node(key);
+          
+          if( r.node != nullptr   )
             break;
 
-          if( n->kv1.is_not_empty() and n->kv1.key == key )
-            break;
-
-          if( key < n->kv0.key )
-          {
-            n = n->l_link;
-          }
-          else
-          {
-            if(  key > (n->kv1.is_not_empty() ? n->kv1.key : n->kv0.key) )
-              n = n->h_link;
-            else
-              n = n->m_link;
-          }
+          n = n->next(key);
         }
 
-        return n;
+        return r;
       }
       
       node_block_t*  _alloc_node_block( unsigned nodes_per_block )
@@ -199,12 +259,23 @@ namespace cw
 
       void _alloc_value( key_value_t& kv, V new_value )
       {
-        if( _end_value_block==nullptr || _end_value_block->next_avail_value_idx >= _end_value_block->valueN )
-          _alloc_value_block(_values_per_block);
+        value_t* v = nullptr;
+        
+        if( _free_value_list != nullptr )
+        {
+          v = _free_value_list;
+          _free_value_list = v->link;
+          v->link = nullptr;          
+        }
+        else
+        {
+          if( _end_value_block==nullptr || _end_value_block->next_avail_value_idx >= _end_value_block->valueN )
+            _alloc_value_block(_values_per_block);
 
-        assert( _end_value_block!= nullptr && _end_value_block->next_avail_value_idx < _end_value_block->valueN );
+          assert( _end_value_block!= nullptr && _end_value_block->next_avail_value_idx < _end_value_block->valueN );
 
-        value_t* v = _end_value_block->valueA + _end_value_block->next_avail_value_idx++;
+          v = _end_value_block->valueA + _end_value_block->next_avail_value_idx++;
+        }
 
         v->value = new_value;
         v->link = kv.valueL;
@@ -275,8 +346,31 @@ namespace cw
         return n;
       }
 
-      void _free_node( node_t* node )
+      void _free_key_value( key_value_t& kv )
       {
+        // Free values by placing the values on the _free_value_list;
+        value_t* v  = kv.valueL;
+        while( v != nullptr )
+        {
+          value_t* v0 = v->link;
+
+          // TODO: figure out how to call release on v->value
+          // if release<T>(v->value) exists
+          // release<T>(v->value);
+          
+          v->link = _free_value_list;
+          _free_value_list = v;
+          v = v0;
+        }
+
+        kv.set_empty();
+      }
+
+      void _free_node( node_t* node )
+      {        
+        _free_key_value(node->kv0);
+        _free_key_value(node->kv1);
+        
         // track free nodes by forming a list using the 'parent' pointer
         node->parent = _free_node_list;
         _free_node_list = node;
@@ -462,7 +556,7 @@ namespace cw
           
           if( n->is_2_node() )
           {
-            // if n is a 2-node the sub-tree is absorved ...
+            // if n is a 2-node the sub-tree is absorbed ...
             _2_node_to_3_node(n,sub_tree); 
             break; // .. and we are done
           }
@@ -474,7 +568,7 @@ namespace cw
             // create a balanced 2-node from the 3-node + sub-tree
             _3_node_to_balanced_2_node(n,sub_tree);
 
-            // the tree may now be imbalanced to continue upward
+            // the tree may now be imbalanced so continue upward
             sub_tree = n;
             n = n->parent;
           }
@@ -485,12 +579,14 @@ namespace cw
       {
         while(1)
         {
+          // If the key already exists at node n->kv0 then insert it in the kv0 value list
           if( key == n->kv0.key )
           {
             _alloc_value(n->kv0,value);
             return;
           }
 
+          // If the key already exists at node n->kv1 then inser it in the kv1 value list
           if( n->kv1.is_not_empty() && key == n->kv1.key )
           { 
             _alloc_value(n->kv1,value);
@@ -506,7 +602,7 @@ namespace cw
           case k2LeafTId:
             if( key == 10 )
             {
-              printf("break");
+              printf("break\n");
             }
             _insert_up( n->parent, _2_leaf_to_2_node_sub_tree(n, key, value ));
             return; // the new k/v inserted on the upward path
@@ -534,14 +630,119 @@ namespace cw
           _insert_down(_root,key,value);        
       }
 
-      void delete( K key )
+
+      match_result_t _in_order_successor( const match_result_t& mr0 )
       {
+        assert( mr0.node != nullptr && mr0.node->is_not_leaf() );
+
+        match_result_t r;
+        node_t* n;
+
+        // if mr0 is a 2 node or the high value of a 3 node
+        if( mr0.node->is_2_node() || (mr0.node->is_3_node() && mr0.kv_idx == 1) )
+          n = mr0.node->h_link; // get right subtree
+        else
+        {
+          assert( mr0.node->is_3_node() && mr0.kv_idx == 0 );
+          n = mr0.node->m_link;
+        }
+          
+        // go to left most leaf
+        while( n->is_not_leaf() )
+          n = n->l_link;
+
+        r.node   = n;
+        r.kv     = &n->kv0;
+        r.kv_idx = 0;
+
+        return r;
+      }
+
+      void remove_key_value( K key, const V& value )
+      {
+      }
+
+
+      rc_t remove_key( K key )
+      {
+        rc_t rc = kOkRC;
+        
+        match_result_t mr0 = key_to_node(key);
+        match_result_t mr1;
+
+        // the key does not exist in the tree.
+        if( mr0.node == nullptr )
+        {
+          rc = cwLogError(kEleNotFoundRC,"The element to remove was not found.");
+          goto errLabel;          
+        }       
+
+
+        
+        
+        // if the target node is a leaf
+        if( mr0.node->is_leaf() )
+        {
+          if( mr0.node->is_2_leaf() )
+          {
+            if( mr0.kv_idx == 0 )
+              _move_key_value(*mr0.kv0,*mr0.kv1);
+            
+            //done: no hole exists in the leaf node
+            goto errLabel;
+          }
+          
+          mr1 = mr0; 
+        }
+        else // the target node is a 2 or 3 node
+        {
+          // locate the in-order sucessor
+          mr1 = _in_order_successor(mr0);
+
+          // the in-order successor must exist if n is a 2 or 3 node
+          assert( mr0->kv!= nullptr && mr1.kv != nullptr );
+
+          // move the in order successor value to the target node
+          _move_key_value(*mr0.kv,*mr1.kv);
+          
+          // mr1.kv is now empty
+
+          // if mr1.node->kv0 is now empty
+          if(mr1.node->is_2_leaf() && mr1.kv_idx == 0 )
+          {
+            _move_key_value(*mr1.kv0,*mr1.kv1);
+            
+            // done: mr1.node is now a 1 leaf - we're done
+            assert( mr1.node->is_1_leaf() );
+              
+            goto errLabel;
+          }
+
+          
+        }
+
+        assert( mr1.node != nullptr && mr1.node->is_leaf() );          
+        
+        if(  mr1->is_2_leaf() )
+        {
+        }
+        else
+        {
+          
+        }
+        
+
+        
+        
         // if key is found on internal node - replace with in-order successor.
         // if in-order successor is on a non-leaf node continue replacing
         // with in-order successor until the replacement leaves a hole
         // in a leaf node.
         // If the terminal node with the hole is a 2-leaf then change it to a 1-leaf : DONE
         // if the terminal node is a 3-leaf then
+
+      errLabel:
+        return rc;
       }
 
       
@@ -553,13 +754,13 @@ namespace cw
           _print(n->l_link,level + 1);
 
         unsigned pnid = n->parent==nullptr ? 666 : n->parent->nid;
-        printf("%i k0:%i %s id:%i par:%i\n",level,n->kv0.key,node_tid_to_label(n->type_id()),n->nid,pnid);
+        printf("%i h:%i k0:%i %s id:%i par:%i\n",level,n->height(),n->kv0.key,node_tid_to_label(n->type_id()),n->nid,pnid);
         
         if( n->m_link != nullptr )
           _print(n->m_link,level+1);
         
         if( n->kv1.is_not_empty() )
-          printf("%i k1:%i %s id:%i par:%i\n",level,n->kv1.key,node_tid_to_label(n->type_id()),n->nid,pnid);
+          printf("%i h:%i k1:%i %s id:%i par:%i\n",level,n->height(),n->kv1.key,node_tid_to_label(n->type_id()),n->nid,pnid);
             
         if( n->h_link != nullptr )
           _print(n->h_link,level+1);
