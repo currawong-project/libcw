@@ -25,8 +25,8 @@ libcwSRC += src/libcw/cwThread.cpp  src/libcw/cwMutex.cpp src/libcw/cwThreadMach
 libcwHDR += src/libcw/cwMpScNbQueue.h src/libcw/cwSpScBuf.h   src/libcw/cwSpScQueueTmpl.h
 libcwSRC +=                           src/libcw/cwSpScBuf.cpp src/libcw/cwSpScQueueTmpl.cpp
 
-libcwHDR += src/libcw/cwAudioFile.h     src/libcw/cwMidiFile.h
-libcwSRC += src/libcw/cwAudioFile.cpp   src/libcw/cwMidiFile.cpp
+libcwHDR += src/libcw/cwAudioFile.h     src/libcw/cwMidiFile.h    src/libcw/cwMidiFileDev.h
+libcwSRC += src/libcw/cwAudioFile.cpp   src/libcw/cwMidiFile.cpp  src/libcw/cwMidiFileDev.cpp
 
 libcwHDR += src/libcw/cwAudioFileOps.h    src/libcw/cwAudioTransforms.h   src/libcw/cwDspTransforms.h   src/libcw/cwAudioFileProc.h    src/libcw/cwPvAudioFileProc.h
 libcwSRC += src/libcw/cwAudioFileOps.cpp  src/libcw/cwAudioTransforms.cpp src/libcw/cwDspTransforms.cpp src/libcw/cwAudioFileProc.cpp  src/libcw/cwPvAudioFileProc.cpp
