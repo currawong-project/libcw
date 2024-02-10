@@ -44,11 +44,16 @@ void cw::time::get( spec_t& t )
 #include <sys/time.h> // gettimeofday()
 void cw::time::get( spec_t& t )
 {
-  // NOTcw::mutex::lock(h,timeout) relies on using 
-  // CLOCK_REALTIME.  If the source of this clock changes
-  // then change cw::mutex::loc(h,timeout) as well  
-  clock_gettime(CLOCK_REALTIME,&t);
+  clock_gettime(CLOCK_MONOTONIC,&t);
 }
+
+cw::time::spec_t cw::time::current_time()
+{
+  spec_t t;
+  clock_gettime(CLOCK_REALTIME,&t);
+  return t;
+}
+
 #endif
 
 // this assumes that the seconds have been normalized to a recent start time
@@ -177,8 +182,8 @@ cw::rc_t cw::time::now( spec_t& ts )
   
   memset(&ts,0,sizeof(ts));
   
-  if((errRC = clock_gettime(CLOCK_REALTIME, &ts)) != 0 )
-  		rc = cwLogSysError(kInvalidOpRC,errRC,"Unable to obtain system time.");
+  if((errRC = clock_gettime(CLOCK_MONOTONIC, &ts)) != 0 )
+    rc = cwLogSysError(kInvalidOpRC,errRC,"Unable to obtain system time.");
 
   return rc;
 }

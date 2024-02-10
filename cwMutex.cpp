@@ -104,7 +104,11 @@ cw::rc_t cw::mutex::lock( handle_t h, unsigned timeout_milliseconds )
   int      sysRc;
   time::spec_t ts;
 
-  time::get(ts);
+  // Apparently timedlock depends on using CLOCK_REALTIME vs CLOCK_MONOTONIC
+  // so we can't call to time::current_time() which uses CLOCK_MONOTONIC.
+  // TODO: See this: https://stackoverflow.com/questions/14248033/clock-monotonic-and-pthread-mutex-timedlock-pthread-cond-timedwait
+  // and consider changing this to use CLOCK_MONOTONIC.
+  clock_gettime(CLOCK_REALTIME,&ts); 
   time::advanceMs(ts,timeout_milliseconds);
   
   
