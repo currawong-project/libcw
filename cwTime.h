@@ -76,8 +76,11 @@ namespace cw
     void secondsToSpec(      spec_t& ts, unsigned sec );
     double specToSeconds(  const spec_t& ts );
 
+    unsigned long long specToMicroseconds( const spec_t& ts );
+
     void millisecondsToSpec( spec_t& ts, unsigned ms );
-    void microsecondsToSpec( spec_t& ts, unsigned us );
+    void microsecondsToSpec( spec_t& ts, unsigned long long us );
+    spec_t microsecondsToSpec( unsigned long long us );
 
     // Return count of bytes in in buf[]
     unsigned formatDateTime( char* buf, unsigned bufN, bool includeDateFl=false );

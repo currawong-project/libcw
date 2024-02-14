@@ -218,51 +218,40 @@ void cw::time::subtractMicros( spec_t& ts, unsigned micros )
   
 }
 
+
 void cw::time::advanceMicros( spec_t& ts, unsigned us )
 {
-  if( us > 1000000 )
-  {
-    // strip off whole seconds from usec
-    unsigned sec = us / 1000000; 
+  const unsigned us_per_sec =    1000000;
+  const unsigned ns_per_sec = 1000000000;
 
-    // find the remaining fractional second in microseconds
-    us = (us - sec*1000000);
-
-    ts.tv_sec  += sec;
-  }
+  unsigned sec = us / us_per_sec;
   
-  ts.tv_nsec +=  us * 1000; // convert microseconds to nanoseconds
+  ts.tv_sec  += sec;
+  ts.tv_nsec += (us - sec*us_per_sec)*1000;
 
-  // stip off whole seconds from tv_nsec
-  while( ts.tv_nsec > 1000000000 )
-  {
-    ts.tv_nsec -= 1000000000;
-    ts.tv_sec +=1;
-  }    
+  sec = ts.tv_nsec / ns_per_sec;
   
+  ts.tv_sec  += sec;
+  ts.tv_nsec -= sec * ns_per_sec;
 }
+
+
 
 void cw::time::advanceMs( spec_t& ts, unsigned ms )
 {
-  if( ms > 1000 )
-  {
-    // strip off whole seconds from ms
-    unsigned sec = ms / 1000; 
 
-    // find the remaining fractional second in milliseconds
-    ms = (ms - sec*1000);
+  const unsigned ms_per_sec = 1000;
+  const unsigned ns_per_sec = 1000000000;
 
-    ts.tv_sec  += sec;
-  }
+  unsigned sec = ms / ms_per_sec;
+
+  ts.tv_sec += sec;
+  ts.tv_nsec += (ms - (sec*ms_per_sec)) * 1000000;
+
+  sec = ts.tv_nsec / ns_per_sec;
   
-  ts.tv_nsec +=  ms * 1000000; // convert millisconds to nanoseconds
-
-  // stip off whole seconds from tv_nsec
-  while( ts.tv_nsec > 1000000000 )
-  {
-    ts.tv_nsec -= 1000000000;
-    ts.tv_sec +=1;
-  }    
+  ts.tv_sec  += sec;
+  ts.tv_nsec -= sec * ns_per_sec;
 }
 
 cw::rc_t cw::time::futureMs( spec_t& ts, unsigned ms )
@@ -282,7 +271,7 @@ void cw::time::secondsToSpec(      spec_t& ts, unsigned sec )
 
 double cw::time::specToSeconds(  const spec_t& t )
 {
-  spec_t ts = t;
+  spec_t ts  = t;
   double sec = ts.tv_sec;
   while( ts.tv_nsec >= 1000000000 )
   {
@@ -291,6 +280,19 @@ double cw::time::specToSeconds(  const spec_t& t )
   }
   
   return sec + ((double)ts.tv_nsec)/1e9;
+}
+
+unsigned long long cw::time::specToMicroseconds( const spec_t& ts )
+{
+  const unsigned long long us_per_sec =    1000000;
+  const unsigned long long ns_per_sec = 1000000000;
+  
+  unsigned long long us  = ts.tv_sec * us_per_sec;
+  unsigned long long sec = ts.tv_nsec / ns_per_sec;
+  us += sec * us_per_sec;
+  us += (ts.tv_nsec - (sec * ns_per_sec))/1000;
+
+  return us;
 }
 
 
@@ -303,14 +305,23 @@ void cw::time::millisecondsToSpec( spec_t& ts, unsigned ms )
   ts.tv_nsec = ns;  
 }
 
-void cw::time::microsecondsToSpec( spec_t& ts, unsigned us )
+void cw::time::microsecondsToSpec( spec_t& ts, unsigned long long us )
 {
-  unsigned sec = us/1000000;
-  unsigned ns  = (us - (sec*1000000)) * 1000;
+  const unsigned long long usPerSec = 1000000;
+  unsigned long long sec = us/usPerSec;
+  unsigned long long ns  = (us - (sec*usPerSec)) * 1000;
   
   ts.tv_sec  = sec;
   ts.tv_nsec = ns;  
 }
+
+cw::time::spec_t cw::time::microsecondsToSpec( unsigned long long us )
+{
+  spec_t ts;
+  microsecondsToSpec(ts,us);
+  return ts;
+}
+
 
 
 unsigned cw::time::formatDateTime( char* buffer, unsigned bufN, bool includeDateFl )
