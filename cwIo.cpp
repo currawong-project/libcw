@@ -9,7 +9,7 @@
 #include "cwIo.h"
 
 #include "cwMidi.h"
-#include "cwMidiPort.h"
+#include "cwMidiDevice.h"
 
 
 #include "cwObject.h"
@@ -609,7 +609,7 @@ namespace cw
         msg_t                 m;
         midi_msg_t            mm;
         const midi::packet_t* pkt = pktArray + i;        
-        io_t*                 p   = reinterpret_cast<io_t*>(pkt->cbDataPtr);
+        io_t*                 p   = reinterpret_cast<io_t*>(pkt->cbArg);
         rc_t                  rc  = kOkRC;
 
         
@@ -633,7 +633,6 @@ namespace cw
     rc_t _midiPortCreate( io_t* p, const object_t* c )
     {
       rc_t     rc             = kOkRC;
-      unsigned parserBufByteN = 1024;
       const object_t* cfg = nullptr;
 
       // get the MIDI port cfg
@@ -643,14 +642,12 @@ namespace cw
         return kOkRC;
       }
       
-      if((rc = cfg->getv("parserBufByteN", parserBufByteN,
-                         "asyncFl", p->midiAsyncFl )) != kOkRC )
+      if((rc = cfg->getv("asyncFl", p->midiAsyncFl )) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"MIDI configuration parse failed.");
       }
           
-      // initialie the MIDI system
-      if((rc = create(p->midiH, _midiCallback, p, parserBufByteN, "app")) != kOkRC )
+      if((rc = create(p->midiH, _midiCallback, p, cfg)) != kOkRC )
         return rc;
 
       
@@ -3807,7 +3804,7 @@ void cw::io::latency_measure_setup(handle_t h)
   p->latency_meas_result.audio_out_rms_max = 0;
 
   if( p->midiH.isValid() )
-    latency_measure_setup(p->midiH);  
+    latency_measure_reset(p->midiH);  
 }
 
 cw::io::latency_meas_result_t cw::io::latency_measure_result(handle_t h)
@@ -3816,10 +3813,10 @@ cw::io::latency_meas_result_t cw::io::latency_measure_result(handle_t h)
 
   if( p->midiH.isValid() )
   {
-    midi::device::latency_meas_result_t r = latency_measure_result(p->midiH);
+    midi::device::latency_meas_combined_result_t r = latency_measure_result(p->midiH);
 
-    p->latency_meas_result.note_on_input_ts  = r.note_on_input_ts;
-    p->latency_meas_result.note_on_output_ts = r.note_on_output_ts;
+    p->latency_meas_result.note_on_input_ts  = r.alsa_dev.note_on_input_ts;
+    p->latency_meas_result.note_on_output_ts = r.alsa_dev.note_on_output_ts;
   }
   
   return p->latency_meas_result;

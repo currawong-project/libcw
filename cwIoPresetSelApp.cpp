@@ -1142,8 +1142,8 @@ namespace cw
             
             if( midi::isChStatus(mm->status) )
             {
-              if(midi_record_play::send_midi_msg( app->mrpH, midi_record_play::kSampler_MRP_DevIdx, mm->status & 0x0f, mm->status & 0xf0, mm->d0, mm->d1 ) == kOkRC )                
-                _midi_play_callback( app, midi_record_play::kMidiEventActionId, id, timestamp, loc, nullptr, mm->status & 0x0f, mm->status & 0xf0, mm->d0, mm->d1 );
+              if(midi_record_play::send_midi_msg( app->mrpH, midi_record_play::kSampler_MRP_DevIdx, mm->ch, mm->status, mm->d0, mm->d1 ) == kOkRC )                
+                _midi_play_callback( app, midi_record_play::kMidiEventActionId, id, timestamp, loc, nullptr, mm->ch, mm->status, mm->d0, mm->d1 );
             }
 
           }

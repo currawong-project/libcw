@@ -1355,7 +1355,7 @@ namespace cw
               {
                 //printf("R:%i %i %i\n",mm->status, mm->d0, mm->d1);
         
-                const am_midi_msg_t* am = _midi_store( p, pkt->devIdx, pkt->portIdx, mm->timeStamp, mm->status & 0x0f, mm->status & 0xf0, mm->d0, mm->d1 );
+                const am_midi_msg_t* am = _midi_store( p, pkt->devIdx, pkt->portIdx, mm->timeStamp, mm->ch, mm->status, mm->d0, mm->d1 );
 
                 if( p->thruFl && am != nullptr )
                   _transmit_msg( p, am, false );
