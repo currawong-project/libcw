@@ -1,14 +1,11 @@
 #ifndef cwMidiPort_H
 #define cwMidiPort_H
 
-#include "cwMidiDecls.h"
 
 namespace cw
 {
   namespace midi
   {
-
-    //(  { file_desc:"Device independent MIDI port related code." kw:[midi]}
 
     // Flags used to identify input and output ports on MIDI devices
     enum 
@@ -17,60 +14,29 @@ namespace cw
      kOutMpFl = 0x02 
     };
 
-    typedef void (*cbFunc_t)( const packet_t* pktArray, unsigned pktCnt );
 
-    //)
-    //(  { label:parser file_desc:"MIDI event parser converts raw MIDI events into packet_t messages." kw:[midi]}
-
-    //===============================================================================================
-    // MIDI Parser
-    //
-    
-    namespace parser
-    {
-      typedef handle<struct parser_str> handle_t;
-      
-      // 'cbFunc' and 'cbDataPtr' are optional.  If 'cbFunc' is not supplied in the call to
-      // create() it may be supplied later by installCallback().
-      // 'bufByteCnt' defines is the largest complete system-exclusive message the parser will 
-      // by able to transmit. System-exclusive messages larger than this will be broken into 
-      // multiple sequential callbacks. 
-      rc_t     create(  handle_t& hRef, unsigned devIdx, unsigned portIdx, cbFunc_t cbFunc, void* cbArg, unsigned bufByteCnt );
-      rc_t     destroy( handle_t& hRef );
-      unsigned errorCount( handle_t h );
-      void     parseMidiData(    handle_t h, const time::spec_t* timestamp, const uint8_t* buf, unsigned bufByteCnt );
-
-      // The following two functions are intended to be used togetther.
-      // Use midiTriple() to insert pre-parsed msg's to the output buffer,
-      // and then use transmit() to send the buffer via the parsers callback function.
-      // Set the data bytes to 0xff if they are not used by the message.
-      rc_t midiTriple( handle_t h, const time::spec_t* timestamp, uint8_t status, uint8_t d0, uint8_t d1 );
-      rc_t transmit(    handle_t h ); 
-
-      // Install/Remove additional callbacks.
-      rc_t installCallback( handle_t h, cbFunc_t cbFunc, void* cbDataPtr );
-      rc_t removeCallback(  handle_t h, cbFunc_t cbFunc, void* cbDataPtr );
-
-      // Returns true if the parser uses the given callback.
-      bool hasCallback(     handle_t h, cbFunc_t cbFunc, void* cbDataPtr );
-      
-    }
-
-    //)
-    //(  { label:cmMidiPort file_desc:"Device independent MIDI port." kw:[midi]}
-
-    //===============================================================================================
-    // MIDI Device Interface
-    //
-    
 
     namespace device
     {
       typedef handle< struct device_str> handle_t;
+
       
-      // 'cbFunc' and 'cbDataPtr' are optional (they may be set to NULL).  In this case
-      // 'cbFunc' and 'cbDataPtr' may be set in a later call to cmMpInstallCallback().
-      rc_t create( handle_t& h, cbFunc_t cbFunc, void* cbDataPtr, unsigned parserBufByteCnt, const char* appNameStr );
+      
+      rc_t create( handle_t&   h,
+                   cbFunc_t    cbFunc,
+                   void*       cbArg,
+                   const char* filePortLabelA[], // filePortLabelA[ maxFileCnt ]
+                   unsigned    maxFileCnt,       // count of file dev ports
+                   const char* appNameStr,
+                   const char* fileDevName = "file_dev",
+                   unsigned    fileDevReadAheadMicros = 3000,
+                   unsigned    parserBufByteCnt = 1024  );
+
+      rc_t create( handle_t&       h,
+                   cbFunc_t        cbFunc,
+                   void*           cbArg,
+                   const object_t* args );
+      
       rc_t destroy( handle_t& h);
       bool isInitialized( handle_t h );
 
@@ -80,15 +46,19 @@ namespace cw
       unsigned    portCount(  handle_t h, unsigned devIdx, unsigned flags );
       const char* portName(   handle_t h, unsigned devIdx, unsigned flags, unsigned portIdx );
       unsigned    portNameToIndex( handle_t h, unsigned devIdx, unsigned flags, const char* portName );
+      rc_t        portEnable(      handle_t h, unsigned devIdx, unsigned flags, unsigned portIdx, bool enableFl );
+      
       rc_t        send(       handle_t h, unsigned devIdx, unsigned portIdx, uint8_t st, uint8_t d0, uint8_t d1 );
       rc_t        sendData(   handle_t h, unsigned devIdx, unsigned portIdx, const uint8_t* dataPtr, unsigned byteCnt );
 
-      // Set devIdx to -1 to assign the callback to all devices.
-      // Set portIdx to -1 to assign the callback to all ports on the specified devices.
-      // 
-      rc_t installCallback( handle_t h, unsigned devIdx, unsigned portIdx, cbFunc_t cbFunc, void* cbDataPtr );
-      rc_t removeCallback(  handle_t h, unsigned devIdx, unsigned portIdx, cbFunc_t cbFunc, void* cbDataPtr );
-      bool usesCallback(    handle_t h, unsigned devIdx, unsigned portIdx, cbFunc_t cbFunc, void* cbDataPtr );
+      rc_t        openMidiFile( handle_t h, unsigned devIdx, unsigned portIdx, const char* fname );
+      rc_t        seekToMsg(    handle_t h, unsigned devIdx, unsigned portIdx, unsigned msgIdx );
+      rc_t        setEndMsg(    handle_t h, unsigned devIdx, unsigned portidx, unsigned msgIdx );
+
+      rc_t start( handle_t h );
+      rc_t stop( handle_t h );
+      rc_t pause( handle_t h, bool pause_fl );
+      
 
       typedef struct
       {
@@ -96,13 +66,21 @@ namespace cw
         time::spec_t note_on_output_ts;
       } latency_meas_result_t;
 
-      // Reset the latency measurement process.
-      void latency_measure_setup(handle_t h);      
-      latency_meas_result_t latency_measure_result(handle_t h);
-      
+      typedef struct
+      {
+        latency_meas_result_t alsa_dev;
+        latency_meas_result_t file_dev;
+      } latency_meas_combined_result_t;
+
+      // Reset the latency measurement process.  Record the time of the first
+      // incoming note-on msg and the first outgoing note-on msg.
+      void latency_measure_reset(handle_t h);      
+      latency_meas_combined_result_t latency_measure_result(handle_t h);
+
+      rc_t report( handle_t h );
       void report( handle_t h, textBuf::handle_t tbH);
       
-      rc_t test();
+      rc_t testReport();      
     }
   }
 }
