@@ -37,7 +37,7 @@ namespace cw
     inline thread_t* _handleToPtr(handle_t h) { return handleToPtr<handle_t,thread_t>(h); }
 
     // Called from client thread to wait for the internal thread to transition to a specified state.
-    rc_t _waitForState( thread_t* p, unsigned stateId )
+    rc_t _waitForState( thread_t* p, stateId_t stateId )
     {
       unsigned waitTimeMicroSecs = 0;
       stateId_t curStateId;
@@ -54,7 +54,7 @@ namespace cw
         waitTimeMicroSecs += p->sleepMicros;
 
       }while( waitTimeMicroSecs < p->stateMicros );
-      
+
       return curStateId==stateId ? kOkRC :  kTimeOutRC;
     }
 
@@ -143,6 +143,7 @@ cw::rc_t cw::thread::create( handle_t& hRef, cbFunc_t func, void* funcArg, int s
     rc = cwLogSysError(kOpFailRC,sysRC,"Thread attribute init failed.");
   }
   else
+  {
     /* 
 
     // Creating the thread in a detached state should prevent it from leaking memory when 
@@ -160,6 +161,7 @@ cw::rc_t cw::thread::create( handle_t& hRef, cbFunc_t func, void* funcArg, int s
         p->stateId = kNotInitThId;
         rc = cwLogSysError(kOpFailRC,sysRC,"Thread create failed.");
       }
+  }
   
   hRef.set(p);
   return rc;
@@ -205,7 +207,7 @@ cw::rc_t cw::thread::pause( handle_t h, unsigned cmdFlags )
   thread_t* p          = _handleToPtr(h);
   stateId_t curStateId = p->stateId.load(std::memory_order_acquire);
   bool      isPausedFl = curStateId == kPausedThId;
-  unsigned  waitId;
+  stateId_t waitId;
  
   if( isPausedFl == pauseFl )
     return kOkRC;
@@ -225,7 +227,7 @@ cw::rc_t cw::thread::pause( handle_t h, unsigned cmdFlags )
     rc = _waitForState(p,waitId);
 
   if( rc != kOkRC )
-    cwLogError(rc,"Thread timed out waiting for '%s'.", pauseFl ? "pause" : "un-pause");
+    cwLogError(rc,"Thread timed out waiting for '%s'. pauseMicros:%i stateMicros:%i sleepMicros:%i", pauseFl ? "pause" : "un-pause",p->pauseMicros,p->stateMicros,p->sleepMicros);
   
   return rc;
   
@@ -255,6 +257,19 @@ cw::thread::thread_id_t cw::thread::id()
   id.u.pthread_id = pthread_self();
   return id.u.id;
 }
+
+unsigned cw::thread::stateTimeOutMicros( handle_t h)
+{
+  thread_t* p = _handleToPtr(h);
+  return p->stateMicros;
+}
+
+unsigned cw::thread::pauseMicros( handle_t h )
+{
+  thread_t* p = _handleToPtr(h);
+  return p->pauseMicros;
+}
+
 
 namespace cw
 {

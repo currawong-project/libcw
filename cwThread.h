@@ -35,6 +35,9 @@ namespace cw
 
     // Return the thread id of the calling context.
     thread_id_t id();
+
+    unsigned stateTimeOutMicros( handle_t h);
+    unsigned pauseMicros( handle_t h );
   }
   rc_t threadTest();
 }
