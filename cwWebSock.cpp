@@ -40,6 +40,12 @@ namespace cw
       lws_pollfd* _pollfdA;     // socket handle array used by poll()
       int         _pollfdMaxN;
       int         _pollfdN;
+
+      unsigned _sendMsgCnt;    // Count of msg's sent 
+      unsigned _sendMaxByteN;  // Max size across all sent msg's
+
+      unsigned _recvMsgCnt;    // Count of msg's recv'd
+      unsigned _recvMaxByteN;  // Max size across all recv'd msg's
       
     } websock_t;
 
@@ -264,7 +270,11 @@ namespace cw
           //printf("recv: sess:%i proto:%s : %p : len:%li\n",sess->id,proto->name,ws->_cbFunc,len);
         
           if( ws->_cbFunc != nullptr && len>0)
+          {
             ws->_cbFunc(ws->_cbArg,proto->id,sess->id,kMessageTId,in,len);
+            ws->_recvMsgCnt += 1;
+            ws->_recvMaxByteN = std::max(ws->_recvMaxByteN,(unsigned)len);
+          }
 
           break;
 
@@ -303,7 +313,7 @@ namespace cw
 
           msg_t* t = m1->link;
       
-          mem::free(m1->msg);
+          //mem::free(m1->msg);
           mem::free(m1);
 
           m1 = t;
@@ -320,6 +330,8 @@ namespace cw
     rc_t _destroy( websock_t* p )
     {
       msg_t* m;
+
+      cwLogInfo("Websock: sent: msgs:%i largest msg:%i - recv: msgs:%i largest msg:%i - LWS_PRE:%i",p->_sendMsgCnt,p->_sendMaxByteN,p->_recvMsgCnt,p->_recvMaxByteN,LWS_PRE);
     
       if( p->_ctx != nullptr )
       {
@@ -332,7 +344,7 @@ namespace cw
       
         while((m = p->_q->pop()) != nullptr)
         {
-          mem::free(m->msg);
+          //mem::free(m->msg);
           mem::free(m);
         }
       
@@ -351,7 +363,7 @@ namespace cw
         {
           msg_t* tmp = m->link;
       
-          mem::free(m->msg);
+          //mem::free(m->msg);
           mem::free(m);
           m = tmp;
         }
@@ -490,16 +502,24 @@ cw::rc_t cw::websock::destroy( handle_t& h )
 cw::rc_t cw::websock::send(handle_t h,  unsigned protocolId, unsigned sessionId, const void* msg, unsigned byteN )
 {
   rc_t rc = kOkRC;
+
+  uint8_t* mem = mem::allocZ<uint8_t>( sizeof(msg_t) + LWS_PRE + byteN  );
+  //msg_t* m = mem::allocZ<msg_t>(1);
+  //m->msg   = mem::allocZ<unsigned char>(byteN);
+
+  msg_t* m = (msg_t*)mem;
+  m->msg = mem + sizeof(msg_t);
   
-  msg_t* m = mem::allocZ<msg_t>(1);
-  m->msg   = mem::allocZ<unsigned char>(byteN);
-  memcpy(m->msg,msg,byteN);
+  memcpy(m->msg+LWS_PRE,msg,byteN);
   m->msgByteN   = byteN;
   m->protocolId = protocolId;
   m->sessionId = sessionId;
 
   websock_t* p = _handleToPtr(h);
   p->_q->push(m);
+
+  p->_sendMsgCnt += 1;
+  p->_sendMaxByteN = std::max(p->_sendMaxByteN,byteN);
   
   return rc;
 }
@@ -578,12 +598,13 @@ cw::rc_t cw::websock::exec( handle_t h, unsigned timeOutMs )
 
 
     // add the pre-padding bytes to the msg
-    unsigned char* msg = mem::allocZ<unsigned char>(LWS_PRE + m->msgByteN);
-    memcpy( msg+LWS_PRE, m->msg, m->msgByteN );
+    //unsigned char* msg = mem::allocZ<unsigned char>(LWS_PRE + m->msgByteN);
+    //memcpy( msg+LWS_PRE, m->msg, m->msgByteN );
 
-    mem::free(m->msg); // free the original msg buffer
+    //mem::free(m->msg); // free the original msg buffer
     
-    m->msg            = msg;               
+    //m->msg            = msg;
+    
     m->msgId          = ps->nextNewMsgId;  // set the msg id
     ps->begMsg->link  = m;                 // put the msg on the front of the outgoing  queue
     ps->begMsg        = m;                 // 

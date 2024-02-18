@@ -237,7 +237,7 @@ namespace cw
       for(unsigned i=0; i<titleN; ++i)
         if( _title_to_col_index( p, titleA[i] ) == kInvalidIdx )
         {
-          rc = cwLogError(kLabelNotFoundRC,"The required column '%s' does not exist.",titleA[i]);
+          rc = cwLogError(kEleNotFoundRC,"The required column '%s' does not exist.",titleA[i]);
           goto errLabel;
         }
 
@@ -418,6 +418,12 @@ unsigned cw::csv::title_col_index( handle_t h, const char* title )
 {
   csv_t* p = _handleToPtr(h);
   return _title_to_col_index(p,title);
+}
+
+bool cw::csv::has_field( handle_t h, const char* title )
+{
+  csv_t* p = _handleToPtr(h);
+  return _title_to_col_index(p,title) != kInvalidIdx;
 }
 
 

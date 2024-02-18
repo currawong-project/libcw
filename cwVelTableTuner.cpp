@@ -5,7 +5,6 @@
 #include "cwText.h"
 #include "cwObject.h"
 #include "cwTime.h"
-#include "cwPresetSel.h"
 #include "cwFile.h"
 #include "cwFileSys.h"
 #include "cwMidi.h"

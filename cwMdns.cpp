@@ -1317,7 +1317,7 @@ cw::rc_t cw::net::mdns::test()
   }
 
     // create the TCP listening thread
-  if((rc = thread::create( app.tcpThreadH, tcpReceiveCallback, &app )) != kOkRC )
+  if((rc = thread::create( app.tcpThreadH, tcpReceiveCallback, &app, "mdns" )) != kOkRC )
     goto errLabel;
 
   

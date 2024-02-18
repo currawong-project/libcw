@@ -870,8 +870,8 @@ namespace cw
                   am->devIdx    = pkt->devIdx;
                   am->portIdx   = pkt->portIdx;
                   am->timestamp = mm->timeStamp;
-                  am->ch        = mm->status & 0x0f;
-                  am->status    = mm->status & 0xf0;
+                  am->ch        = mm->ch;
+                  am->status    = mm->status;
                   am->d0        = mm->d0;
                   am->d1        = mm->d1;
 

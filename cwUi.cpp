@@ -57,7 +57,7 @@ namespace cw
       unsigned                 appId;
       char*                    eleName;
     } appIdMapRecd_t;
-      
+
     
     typedef struct ele_str
     {
@@ -74,12 +74,21 @@ namespace cw
 
       bool            destroyFl;  // used by the deleteElement() algorithm
     } ele_t;
+
+
+    const unsigned hashN = 0xffff;
     
+    typedef struct bucket_str
+    {
+      ele_t*             ele;
+      struct bucket_str* link;
+    } bucket_t;
+
     typedef struct ui_str
     {
       unsigned        eleAllocN; // size of eleA[]
       unsigned        eleN;     // count of ele's in use
-      ele_t**         eleA;     // eleA[ eleAllocN ] 
+      ele_t**         eleA;     // eleA[ eleAllocN ]
       uiCallback_t    uiCbFunc; // app. cb func
       void*           uiCbArg;  // app. cb func arg.
       sendCallback_t  sendCbFunc;
@@ -108,10 +117,58 @@ namespace cw
       unsigned sentMsgN;
       unsigned recvMsgN;
 
+      bucket_t hashA[ hashN ];
+
     } ui_t;
 
     ui_t* _handleToPtr( handle_t h )
     { return handleToPtr<handle_t,ui_t>(h); }
+
+    unsigned short _gen_hash_index( unsigned parentUuId, unsigned appId )
+    {
+      assert( parentUuId != kInvalidId && appId != kInvalidId );
+      unsigned hc = parentUuId + cwSwap32(appId);
+      
+      return (unsigned short)(((hc & 0xffff0000)>>16) + (hc & 0x0000ffff));
+    }
+    
+
+    void _store_ele_in_hash_table( ui_t* p, ele_t* e )
+    {
+      unsigned parentUuId  = e->logical_parent == nullptr ? kInvalidIdx : e->logical_parent->uuId;
+      
+      if( parentUuId == kInvalidId || e->appId == kInvalidId )
+        return;
+      
+      unsigned short hash_idx = _gen_hash_index( parentUuId, e->appId );
+      
+      if( p->hashA[ hash_idx ].ele == nullptr )
+        p->hashA[ hash_idx ].ele = e;
+      else
+      {
+        bucket_t* b = mem::allocZ<bucket_t>();
+        b->link = p->hashA[ hash_idx ].link;
+        b->ele  = e;
+        p->hashA[hash_idx].link = b;
+      }
+      
+    }
+
+    unsigned _find_ele_in_hash_table( ui_t* p, unsigned parentUuId, unsigned appId, unsigned chanId )
+    {
+      if( parentUuId != kInvalidId && appId != kInvalidId )
+      {
+        unsigned hash_idx = _gen_hash_index(parentUuId,appId);
+        bucket_t* b = p->hashA + hash_idx;
+
+        for(; b!=nullptr; b=b->link)
+          if( b->ele->appId==appId && b->ele->logical_parent->uuId==parentUuId && (chanId==kInvalidId || b->ele->chanId==chanId) )
+            return b->ele->uuId;
+      }
+      
+      return kInvalidId;
+      
+    }
 
     void _print_eles( ui_t* p )
     {
@@ -305,17 +362,24 @@ namespace cw
     {
       if( appId == kRootAppId )
         return kRootUuId;
-      
+
+      // try looking up the result in the hash table
+      unsigned uuid;
+      if((uuid =  _find_ele_in_hash_table(p,parentUuId,appId,chanId)) != kInvalidId )
+        return uuid;
+
+      // if the result could not be found in the hash table (possibly because parentUuId is set to the wildcard i.e. kInvalidId)
+      // then do an exhaustive search
       for(unsigned i=0; i<p->eleN; ++i)
-        if( p->eleA[i]!=nullptr && p->eleA[i]->logical_parent != nullptr ) //skip the root
+        if(    p->eleA[i]        != nullptr
+            && p->eleA[i]->appId == appId
+            && ( parentUuId == kInvalidId || (p->eleA[i]->logical_parent!=nullptr && p->eleA[i]->logical_parent->uuId == parentUuId) )
+            && ( chanId     == kInvalidId ||  p->eleA[i]->chanId == chanId ) )
         {
-          if( ( parentUuId       == kInvalidId || p->eleA[i]->logical_parent->uuId == parentUuId ) &&
-              ( chanId           == kInvalidId || p->eleA[i]->chanId               == chanId )     &&
-              p->eleA[i]->appId == appId  )
-          {
-              return p->eleA[i]->uuId;
-          }          
+
+          return p->eleA[i]->uuId;
         }
+
       return kInvalidId;
     }
     
@@ -550,6 +614,9 @@ namespace cw
 
     unsigned _find_and_available_element_slot( ui_t* p )
     {
+      if( p->eleN < p->eleAllocN && p->eleA[ p->eleN ] == nullptr )
+        return p->eleN;
+      
       for(unsigned i=0; i<p->eleN; ++i)
         if( p->eleA[i] == nullptr )
           return i;
@@ -608,7 +675,7 @@ namespace cw
       // if there are no available slots
       if( avail_ele_idx == p->eleAllocN )
       {
-        p->eleAllocN += 128;
+        p->eleAllocN *= 2;
         p->eleA       = mem::resizeZ<ele_t*>(p->eleA,p->eleAllocN);
       }
 
@@ -634,6 +701,8 @@ namespace cw
         if((m = _findAppIdMap(p, e->logical_parent->appId, eleName)) != nullptr )
           e->appId = m->appId;
       }
+
+      _store_ele_in_hash_table(p, e );
 
       //printf("uuid:%i appId:%i par-uuid:%i %s\n", e->uuId,e->appId,e->parent==nullptr ? -1 : e->parent->uuId, cwStringNullGuard(e->eleName));
        
@@ -698,7 +767,7 @@ namespace cw
       if((rc = o->get("name",eleName, cw::kOptionalFl)) != kOkRC )
       {
         // div's and titles don't need a 'name'
-        if( rc == kLabelNotFoundRC && (divAliasFl || textCompare(eleType,"label")==0) )
+        if( rc == kEleNotFoundRC && (divAliasFl || textCompare(eleType,"label")==0) )
           rc = kOkRC;
         else
         {
@@ -1268,7 +1337,7 @@ cw::rc_t cw::ui::create(
   ui_t* p      = mem::allocZ<ui_t>();
 
 
-  p->eleAllocN  = 128;
+  p->eleAllocN  = 1024;
   p->eleA       = mem::allocZ<ele_t*>( p->eleAllocN );
   p->eleN       = 0;
   p->uiCbFunc   = uiCbFunc;
@@ -2025,6 +2094,7 @@ cw::rc_t cw::ui::destroyElement( handle_t h, unsigned uuId )
     if( p->eleA[i] != nullptr && p->eleA[i]->destroyFl )
     {
       _destroy_element( p->eleA[i] );
+      
       p->eleA[i] = nullptr;        
     }
 
@@ -2104,6 +2174,12 @@ cw::rc_t cw::ui::sendValueString( handle_t h, unsigned uuId, const char* value )
   
   // +10 allows for extra value buffer space for double quotes and slashed
   //return _sendValue<const char*>(p,kInvalidId,uuId,"\"%s\"",value,"value",strlen(value)+10);
+}
+
+cw::rc_t cw::ui::sendMsg( handle_t h, const char* msg )
+{
+  ui_t* p  = _handleToPtr(h);
+  return _websockSend(p,kInvalidId,msg);
 }
 
 void cw::ui::report( handle_t h )
@@ -2223,7 +2299,7 @@ cw::rc_t cw::ui::ws::parseArgs(  const object_t& o, args_t& args, const char* ob
     op = &o;
   else
     if((op = o.find(object_label)) == nullptr )
-      return cwLogError(kLabelNotFoundRC,"The ui configuration label '%s' was not found.", cwStringNullGuard(object_label));
+      return cwLogError(kEleNotFoundRC,"The ui configuration label '%s' was not found.", cwStringNullGuard(object_label));
   
   if((rc = op->getv(
         "physRootDir", args.physRootDir,
@@ -2496,7 +2572,7 @@ cw::rc_t cw::ui::srv::create(  handle_t& h,
     goto errLabel;
   }
 
-  if((rc = thread::create( p->thH, _threadCallback, p )) != kOkRC )
+  if((rc = thread::create( p->thH, _threadCallback, p, "ui", thread::kDefaultStateTimeOutMicros, thread::kDefaultPauseMicros )) != kOkRC )
   {
     cwLogError(rc,"The websock UI server thread create failed.");
     goto errLabel;

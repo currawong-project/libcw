@@ -412,7 +412,7 @@ int main( int argc, const char* argv[] )
 
   
   // create the TCP listening thread
-  if((rc = thread::create( app.tcpThreadH, tcpReceiveCallback, &app )) != kOkRC )
+  if((rc = thread::create( app.tcpThreadH, tcpReceiveCallback, &app, "avahi_suf" )) != kOkRC )
     goto errLabel;
   
   // Allocate Avahi thread 

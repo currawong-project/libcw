@@ -164,7 +164,11 @@ namespace cw
     rc_t start( handle_t h );
     rc_t pause( handle_t h );
     rc_t stop(  handle_t h );
+    
+    // Note that this call blocks on the the UI websocket handle.
+    // See ui:ws:exec().
     rc_t exec(  handle_t h, void* execCbArg=nullptr );
+    
     bool isShuttingDown( handle_t h );
     void report( handle_t h );
     void realTimeReport( handle_t h );
@@ -173,7 +177,7 @@ namespace cw
     //
     // Thread
     //
-    rc_t  threadCreate(    handle_t h, unsigned id, bool asyncFl, void* arg );
+    rc_t  threadCreate(    handle_t h, unsigned id, bool asyncFl, void* arg, const char* label );
 
     //----------------------------------------------------------------------------------------------------------
     //
@@ -230,8 +234,10 @@ namespace cw
     //
     // Audio
     //
-    
+
+    bool            audioIsEnabled(            handle_t h );
     unsigned        audioDeviceCount(          handle_t h );
+    unsigned        audioActiveDeviceCount(    handle_t h );
     unsigned        audioDeviceLabelToIndex(   handle_t h, const char* label );
     const char*     audioDeviceLabel(          handle_t h, unsigned devIdx );
     rc_t            audioDeviceSetUserId(      handle_t h, unsigned devIdx, unsigned userId );
@@ -398,6 +404,23 @@ namespace cw
     rc_t uiSendValue( handle_t h, unsigned uuId, double value );
     rc_t uiSendValue( handle_t h, unsigned uuId, const char* value );
 
+    rc_t uiSendMsg( handle_t h, const char* msg );
+
+
+    typedef struct
+    {
+      time::spec_t note_on_input_ts;
+      time::spec_t note_on_output_ts;
+      time::spec_t audio_in_ts;
+      time::spec_t audio_out_ts;
+      sample_t     audio_in_rms_max;
+      sample_t     audio_out_rms_max;
+    } latency_meas_result_t;
+      
+    void latency_measure_setup(handle_t h);
+    latency_meas_result_t latency_measure_result(handle_t h);
+    void latency_measure_report(handle_t h);
+    
     void uiRealTimeReport( handle_t h );
     void uiReport( handle_t h );
     

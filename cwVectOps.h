@@ -147,6 +147,26 @@ namespace cw
       return acc;
     }
 
+
+    //==================================================================================================================
+    // absolute value
+    //
+    template<typename T>
+    T* abs( T* v, unsigned n )
+    {
+      for(unsigned i=0; i<n; ++i)
+        v[i] = abs(v[i]);
+      return v;
+    }
+
+    template<typename T0, typename T1>
+    T0* abs( T0* v0, const T1* v1, unsigned n )
+    {
+      for(unsigned i=0; i<n; ++i)
+        v0[i] = abs(v1[i]);
+      return v0;
+    }
+    
     
     //==================================================================================================================
     // Arithmetic

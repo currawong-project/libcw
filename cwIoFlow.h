@@ -10,6 +10,8 @@ namespace cw
     rc_t create( handle_t& hRef, io::handle_t ioH, double srate, unsigned crossFadeCnt, const object_t& flow_class_dict, const object_t& cfg );
     rc_t destroy( handle_t& hRef );
 
+    unsigned preset_cfg_flags( handle_t h );
+    
     rc_t exec( handle_t h, const io::msg_t& msg );
 
 
@@ -20,6 +22,8 @@ namespace cw
     // If the preset is applied to the 'next' network instance then use 'begin_cross_fade()' to
     // activate the next network.
     rc_t apply_preset( handle_t h, flow_cross::destId_t destId, const char* presetLabel );
+
+    rc_t apply_preset( handle_t h, flow_cross::destId_t destId, const flow::multi_preset_selector_t& multi_preset_sel );
 
     rc_t set_variable_value( handle_t h, flow_cross::destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, bool value );
     rc_t set_variable_value( handle_t h, flow_cross::destId_t destId, const char* inst_label, const char* var_label, unsigned chIdx, int value );

@@ -13,8 +13,8 @@ namespace cw
       bool     playFl;      // play this preset
       bool     seqFl;       // play this preset during sequencing.
       unsigned preset_idx;  // preset index into preset_labelA[].
-      unsigned order;       //
-      char*    alt_str;
+      unsigned order;       // selection label
+      char*    alt_str;     // 'alt' label   
     } preset_t;
 
     typedef struct frag_str
@@ -34,6 +34,9 @@ namespace cw
 
       preset_t*        presetA;  // presetA[ presetN ] - status of each preset
       unsigned         presetN;
+
+      flow::preset_order_t*  multiPresetA;  // array of active presets in this frag. sequenced by ascending 'order'.
+      unsigned               multiPresetN;
 
       unsigned*        altPresetIdxA;  // altPresetIdxA[ alt_count() ] selected preset idx for each alt.
 
@@ -80,6 +83,8 @@ namespace cw
     // Count/label of alternatives (alt_idx==0 is 'no alternative selected)
     unsigned    alt_count( handle_t h );
     const char* alt_label( handle_t h, unsigned alt_idx );
+
+    void get_loc_range( handle_t h, unsigned& minLocRef, unsigned& maxLocRef );
         
     unsigned      fragment_count(    handle_t h );
     const frag_t* get_fragment_base( handle_t h );

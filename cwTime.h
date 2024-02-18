@@ -20,6 +20,7 @@ namespace cw
 
     // Get the time 
     void get( spec_t& tRef );
+    spec_t current_time(); // same as get()
 
     // Return the elapsed time (t1 - t0) in microseconds
     // t1 is assumed to be at a later time than t0.
@@ -61,7 +62,7 @@ namespace cw
 
     void setZero( spec_t& t0 );
 
-    rc_t now( spec_t& ts );
+    rc_t now( spec_t& ts ); // same as get()
 
     void subtractMicros( spec_t& ts, unsigned us );
     
@@ -75,8 +76,11 @@ namespace cw
     void secondsToSpec(      spec_t& ts, unsigned sec );
     double specToSeconds(  const spec_t& ts );
 
+    unsigned long long specToMicroseconds( const spec_t& ts );
+
     void millisecondsToSpec( spec_t& ts, unsigned ms );
-    void microsecondsToSpec( spec_t& ts, unsigned us );
+    void microsecondsToSpec( spec_t& ts, unsigned long long us );
+    spec_t microsecondsToSpec( unsigned long long us );
 
     // Return count of bytes in in buf[]
     unsigned formatDateTime( char* buf, unsigned bufN, bool includeDateFl=false );

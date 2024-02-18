@@ -7,6 +7,12 @@
 #include "cwTime.h"
 #include "cwMidi.h"
 #include "cwMidiFile.h"
+
+#include "cwDynRefTbl.h"
+#include "cwScoreParse.h"
+#include "cwSfScore.h"
+#include "cwPerfMeas.h"
+
 #include "cwPianoScore.h"
 #include "cwSvg.h"
 #include "cwMidiState.h"

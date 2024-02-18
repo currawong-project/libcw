@@ -16,7 +16,7 @@ namespace cw
 
     // Create an additional thread. Note that the additional thread will be started by the next
     // call to 'start()'.
-    rc_t add(   handle_t h, threadFunc_t threadFunc, void* arg );
+    rc_t add(   handle_t h, threadFunc_t threadFunc, void* arg, const char* label );
 
     // Start all threads    
     rc_t start( handle_t h );

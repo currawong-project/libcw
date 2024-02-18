@@ -110,7 +110,7 @@ cw::rc_t cw::net::srv::create(
   if((rc = socket::create( p->sockH, port, flags, timeOutMs, remoteAddr, remotePort, localAddr )) != kOkRC )
     goto errLabel;
 
-  if((rc = thread::create( p->threadH, _threadFunc, p )) != kOkRC )
+  if((rc = thread::create( p->threadH, _threadFunc, p, "tcp_sock_srv" )) != kOkRC )
     goto errLabel;
 
   p->flags          = srvFlags;

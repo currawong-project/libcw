@@ -23,24 +23,24 @@ namespace cw
       callback_func_t      cbFunc;
       void*                cbArg;
       sfmatch::handle_t    matchH;
-      unsigned             mn;       // size of midiBuf[] 
-      sfmatch::midi_t*     midiBuf;  // midiBuf[mn]
+      unsigned             mn;       // length of midiBuf[]  
+      sfmatch::midi_t*     midiBuf;  // midiBuf[mn]   MIDI event window
 
-      result_t*            res;      // res[rn]
+      result_t*            res;      // res[rn] result buffer
       unsigned             rn;       // length of res[] (set to 2*score event count)
       unsigned             ri;       // next avail res[] recd.
 
       double               s_opt;          // 
       unsigned             missCnt;        // current count of consecutive trailing non-matches
-      unsigned             ili;            // index into loc[] to start scan following reset
-      unsigned             eli;            // index into loc[] of the last positive match. 
-      unsigned             mni;            // current count of MIDI events since the last call to cmScMatcherReset()
+      unsigned             ili;            // index into sfmatch_t.loc[] to start scan following reset
+      unsigned             eli;            // index into sfmatch_t.loc[] of the last positive match. 
+      unsigned             mni;            // current count of MIDI events since the last call to reset()
       unsigned             mbi;            // index of oldest MIDI event in midiBuf[]; stays at 0 when the buffer is full.
       unsigned             begSyncLocIdx;  // start of score window, in mp->loc[], of best match in previous scan
       unsigned             initHopCnt;     // max window hops during the initial (when the MIDI buffer fills for first time) sync scan 
-      unsigned             stepCnt;        // count of forward/backward score loc's to examine for a match during cmScMatcherStep().
-      unsigned             maxMissCnt;     // max. number of consecutive non-matches during step prior to executing a scan.
-      unsigned             scanCnt;        // current count of times a resync-scan was executed during cmScMatcherStep()
+      unsigned             stepCnt;        // count of forward/backward score loc's to examine for a match during _step().
+      unsigned             maxMissCnt;     // max. number of consecutive non-matches during step prior to executing a _scan().
+      unsigned             scanCnt;        // current count of times a resync-scan was executed during _step()
 
       unsigned             flags;
     } sftrack_t;

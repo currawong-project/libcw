@@ -7,6 +7,7 @@
 #include "cwVectOps.h"
 #include "cwMtx.h"
 #include "cwDspTypes.h" // real_t, sample_t
+#include "cwFlowDecl.h"
 #include "cwFlow.h"
 #include "cwFlowTypes.h"
 

@@ -6,13 +6,18 @@
 #include "cwObject.h"
 #include "cwTime.h"
 #include "cwVectOps.h"
+#include "cwFlowDecl.h"
 #include "cwPresetSel.h"
 #include "cwFile.h"
-#include "cwPianoScore.h"
+
 #include "cwMidi.h"
 #include "cwDynRefTbl.h"
 #include "cwScoreParse.h"
 #include "cwSfScore.h"
+#include "cwPerfMeas.h"
+
+#include "cwPianoScore.h"
+
 
 namespace cw
 {
@@ -872,7 +877,7 @@ cw::rc_t cw::preset_sel::create(  handle_t& hRef, const object_t* cfg  )
   }
 
 
-  // allocate the label array
+  // allocate the alt label array
   p->altLabelN = alt_labelL->child_count() + 1;
   p->altLabelA = mem::allocZ<alt_label_t>(p->altLabelN);
 
@@ -952,6 +957,25 @@ const char* cw::preset_sel::alt_label( handle_t h, unsigned alt_idx )
   preset_sel_t* p = _handleToPtr(h);
   return _alt_index_to_label(p,alt_idx);
 }
+
+void cw::preset_sel::get_loc_range( handle_t h, unsigned& minLocRef, unsigned& maxLocRef )
+{
+  preset_sel_t* p = _handleToPtr(h);
+
+  if( p->fragL == nullptr )
+  {
+    minLocRef = score_parse::kInvalidLocId;
+    maxLocRef = score_parse::kInvalidLocId;
+  }
+  else
+  {
+    minLocRef = 1;
+
+    for(const frag_t* f = p->fragL; f!=nullptr; f=f->link)
+      maxLocRef = f->endLoc;
+  }
+}
+
 
 unsigned cw::preset_sel::fragment_count( handle_t h )
 {
@@ -1041,7 +1065,6 @@ cw::rc_t cw::preset_sel::create_fragment( handle_t h, unsigned end_loc, time::sp
   // set the return value
   fragIdRef        = f->fragId;
 
-
   // intiialize the preset array elements
   for(unsigned i=0; i<p->presetLabelN; ++i)
   {
@@ -1127,6 +1150,7 @@ cw::rc_t cw::preset_sel::delete_fragment( handle_t h, unsigned fragId )
 
       // release the fragment
       mem::release(f->presetA);
+      mem::release(f->multiPresetA);
       mem::release(f);
       
       return kOkRC;
@@ -1477,7 +1501,6 @@ cw::rc_t cw::preset_sel::write( handle_t h, const char* fn )
   }
 
   newPairObject("fragL",             fragL_obj,              root);
-  newPairObject("fragN",             fragN,                  root);
   newPairObject("masterWetInGain",   p->master_wet_in_gain,  root );
   newPairObject("masterWetOutGain",  p->master_wet_out_gain, root );
   newPairObject("masterDryGain",     p->master_dry_gain,     root );
@@ -1515,7 +1538,6 @@ cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
   rc_t            rc    = kOkRC;
   preset_sel_t*   p     = _handleToPtr(h);  
   object_t*       root  = nullptr;
-  unsigned        fragN = 0;
   const object_t* fragL_obj = nullptr;
 
   // parse the preset  file
@@ -1529,8 +1551,7 @@ cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
   _destroy_all_frags(p);
 
   // parse the root level
-  if((rc = root->getv( "fragN",            fragN,
-                       "fragL",            fragL_obj,
+  if((rc = root->getv( "fragL",            fragL_obj,
                        "masterWetInGain",  p->master_wet_in_gain,
                        "masterWetOutGain", p->master_wet_out_gain,
                        "masterDryGain",    p->master_dry_gain,
@@ -1540,13 +1561,14 @@ cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
     goto errLabel;
   }
 
+
   // for each fragment
-  for(unsigned i=0; i<fragN; ++i)
+  for(unsigned i=0; i<fragL_obj->child_count(); ++i)
   {
     frag_t* f = nullptr;
     const object_t* r = fragL_obj->child_ele(i);
 
-    unsigned fragId=kInvalidId,endLoc=0,presetN=0,begPlayLoc=0,endPlayLoc=0;
+    unsigned fragId=kInvalidId,endLoc=0,presetN=0,multiPresetN=0,begPlayLoc=0,endPlayLoc=0;
     double igain=0,ogain=0,wetDryGain=0,fadeOutMs=0;
     const char* note = nullptr;
     const object_t* presetL_obj = nullptr;
@@ -1627,6 +1649,9 @@ cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
         goto errLabel;
       }
 
+      if( order > 0 || playFl )
+        multiPresetN += 1;
+
       f->presetA[ preset_idx ].order     = order;
       f->presetA[ preset_idx ].alt_str   = mem::duplStr(alt_str);
       f->presetA[ preset_idx ].playFl    = playFl;
@@ -1636,6 +1661,32 @@ cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
       if( playFl )
         f->altPresetIdxA[0] = preset_idx;
       
+    }
+
+    // create the multiPresetA[]
+    if( multiPresetN>0 )
+    {
+      f->multiPresetA = mem::allocZ<flow::preset_order_t>(multiPresetN);
+      f->multiPresetN = multiPresetN;
+
+      for(unsigned i=0,j=1; i<presetN; ++i)
+        if( f->presetA[i].order > 0 || f->presetA[i].playFl )
+        {
+          unsigned out_idx = f->presetA[i].playFl ? 0 : j++;
+
+          assert( out_idx < multiPresetN );
+          
+          f->multiPresetA[out_idx].preset_label = _preset_label( p, f->presetA[i].preset_idx );
+          f->multiPresetA[out_idx].order        = f->presetA[i].order;
+        }
+
+      // sort
+      if( multiPresetN > 1 )
+      {
+        std::sort(f->multiPresetA+1,
+                  f->multiPresetA+f->multiPresetN-1,
+                  [](const flow::preset_order_t& a,const flow::preset_order_t& b){ return a.order<b.order; } );
+      }
     }
 
   }
@@ -1691,7 +1742,14 @@ cw::rc_t cw::preset_sel::report_presets( handle_t h )
   return rc;
 }
 
+cw::rc_t cw::preset_sel::translate_frags( const object_t* cfg )
+{
+  return cwLogError(kNotImplementedRC,"translate_frags() is not implemented.");
+}
 
+
+#undef NOT_DEF
+#ifdef NOT_DEF
 cw::rc_t cw::preset_sel::translate_frags( const object_t* cfg )
 {
   rc_t                  rc              = kOkRC;
@@ -1918,4 +1976,4 @@ cw::rc_t cw::preset_sel::translate_frags( const object_t* cfg )
   
   return rc;
 }
-
+#endif

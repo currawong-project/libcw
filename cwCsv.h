@@ -22,6 +22,7 @@ namespace cw
     
     const char* col_title( handle_t h, unsigned idx );
     unsigned title_col_index( handle_t h, const char* title );
+    bool has_field( handle_t h, const char* title );
 
     // Reset the CSV to make the title line current.
     // The next call to 'next_line()' will make the first data row current.

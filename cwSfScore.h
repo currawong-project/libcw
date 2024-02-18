@@ -9,6 +9,8 @@ namespace cw
     struct loc_str;
     struct set_str;
 
+    typedef score_parse::stats_t stats_t;
+
     // The score can be divided into arbitrary non-overlapping sections.
     typedef struct section_str
     {
@@ -20,8 +22,7 @@ namespace cw
       unsigned         endEvtIndex;       // last element in this section
       unsigned         setCnt;            // Count of elements in setArray[]
       struct set_str** setArray;          // Ptrs to sets which are applied to this section.
-      
-      //double           vars[  score_parse::kVarCnt ]; // Set to DBL_MAX by default.
+      //stats_t          statsA[ score_parse::kStatCnt ];
     } section_t;
 
     typedef struct var_str
@@ -43,6 +44,7 @@ namespace cw
       unsigned     flags;        // Attribute flags for this event
       unsigned     dynLevel;     // Dynamcis value pppp to ffff (1 to 11) for this note.
       double       frac;         // Note's time value for tempo and non-grace evenness notes.
+      section_t*   section;      // The section to which this event belongs
       unsigned     barNumb;      // Bar id of the measure containing this event.
       unsigned     barNoteIdx;   // Index of this note in this bar
       unsigned     csvRowNumb;   // File row number (not index) from which this record originated

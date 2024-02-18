@@ -38,7 +38,7 @@ namespace cw
    kOpFailRC,               // 19
    kSyntaxErrorRC,          // 20
    kBufTooSmallRC,          // 21
-   kLabelNotFoundRC,        // 22 - use by cwObject to indicate that an optional value does not exist.
+   kEleNotFoundRC,          // 22 - use by cwObject to indicate that an optional value does not exist.
    kDuplicateRC,            // 23 - an invalid duplicate was detected
    kAssertFailRC,           // 24 - used with cwLogFatal
    kInvalidDataTypeRC,      // 25

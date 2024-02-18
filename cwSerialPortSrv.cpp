@@ -92,7 +92,7 @@ cw::rc_t cw::serialPortSrv::create( handle_t& h, unsigned pollPeriodMs, unsigned
   if((rc = serialPort::create( p->mgrH, recvBufByteN)) != kOkRC )
       goto errLabel;
 
-  if((rc = thread::create( p->threadH, threadCallback, p)) != kOkRC )
+  if((rc = thread::create( p->threadH, threadCallback, p, "serial_srv")) != kOkRC )
     goto errLabel;
 
   p->pollPeriodMs = pollPeriodMs;

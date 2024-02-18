@@ -242,6 +242,20 @@ namespace cw
     errLabel:
       return rc;
     }
+
+    rc_t _assign_section_to_events( sfscore_t* p )
+    {
+      for(unsigned si=0,ei=0; si<p->sectionN ; ++si)
+      {
+        // the last event in a section is the event just prior to the first event in the next section
+        unsigned end_evt_idx = si>=p->sectionN-1 ? p->eventN : p->sectionA[si+1].begEvtIndex;
+        
+        for(; ei<end_evt_idx; ++ei)
+          p->eventA[ ei ].section = p->sectionA + si;
+        
+      }
+      return kOkRC;
+    }
     
     rc_t _create_section_array( sfscore_t* p )
     {
@@ -783,6 +797,9 @@ namespace cw
         goto errLabel;
   
       if((rc = _create_section_array( p )) != kOkRC )
+        goto errLabel;
+
+      if((rc = _assign_section_to_events(p)) != kOkRC )
         goto errLabel;
 
       if((rc = _create_set_array( p )) != kOkRC )

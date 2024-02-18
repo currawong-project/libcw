@@ -210,7 +210,10 @@ namespace cw
 
       const object_t*      presetCfg;      // presets designed for this network
       
-      unsigned             framesPerCycle; // sample frames per cycle (64)
+      unsigned             framesPerCycle;  // sample frames per cycle (64)
+      bool                 multiPriPresetProbFl; // If set then probability is used to choose presets on multi-preset application
+      bool                 multiSecPresetProbFl; // 
+      bool                 multiPresetInterpFl; // If set then interpolation is applied between two selectedd presets on multi-preset application
       unsigned             cycleIndex;     // Incremented with each processing cycle      
       unsigned             maxCycleCount;  // count of cycles to run on flow::exec() or 0 if there is no limit.
       

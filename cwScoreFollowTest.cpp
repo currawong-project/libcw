@@ -290,7 +290,7 @@ namespace cw
     rc_t _gen_synced_perf_files( test_t* p,
                                  sfscore::handle_t        scoreH,
                                  score_follower::handle_t sfH,
-                                 perf_meas::handle_t      perfMeasH )
+                                 perf_meas::handle_t      perfMeasH)
     {
       rc_t            rc        = kOkRC;
       const object_t* jobL      = nullptr;
@@ -344,7 +344,10 @@ namespace cw
           unsigned  beg_loc              = kInvalidId;
           unsigned  end_loc              = kInvalidId;
           bool      skip_score_follow_fl = false;
-                    
+
+
+          cwLogInfo("\nProcessing:%s",cwStringNullGuard(dirEntryArray[i].name));
+          
           // read the meta object
           if((rc = objectFromFile( meta_fname, meta_obj)) != kOkRC )
             rc = cwLogError(rc,"An object could not be formed from the meta data file '%s'.",cwStringNullGuard(meta_fname));
@@ -365,7 +368,7 @@ namespace cw
                                                   p->srate,
                                                   p->print_rt_events_fl,
                                                   false,
-                                                  sync_perf_fname)) != kOkRC )
+                                                  sync_perf_fname )) != kOkRC )
                 {
                   rc = cwLogError(rc,"The score follower failed on '%s'. Consider setting the 'skip_score_follow_fl' in '%s'.",cwStringNullGuard(midi_fname),cwStringNullGuard(meta_fname));
                 }

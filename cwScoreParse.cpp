@@ -163,6 +163,38 @@ namespace cw
       return s;
     }
 
+    rc_t _parse_section_stats( score_parse_t* p, csv::handle_t csvH, event_t* e )
+    {
+      rc_t rc;
+      
+      if((rc = getv(csvH,
+                    "even_min",  e->section->statsA[ kEvenStatIdx ].min,
+                    "even_max",  e->section->statsA[ kEvenStatIdx ].max,
+                    "even_mean", e->section->statsA[ kEvenStatIdx ].mean,
+                    "even_std",  e->section->statsA[ kEvenStatIdx ].std,
+                    "dyn_min",   e->section->statsA[ kDynStatIdx ].min,
+                    "dyn_max",   e->section->statsA[ kDynStatIdx ].max,
+                    "dyn_mean",  e->section->statsA[ kDynStatIdx ].mean,
+                    "dyn_std",   e->section->statsA[ kDynStatIdx ].std,
+                    "tempo_min", e->section->statsA[ kTempoStatIdx ].min,
+                    "tempo_max", e->section->statsA[ kTempoStatIdx ].max,
+                    "tempo_mean",e->section->statsA[ kTempoStatIdx ].mean,
+                    "tempo_std", e->section->statsA[ kTempoStatIdx ].std,
+                    "cost_min",  e->section->statsA[ kCostStatIdx ].min,
+                    "cost_max",  e->section->statsA[ kCostStatIdx ].max,
+                    "cost_mean", e->section->statsA[ kCostStatIdx ].mean,
+                    "cost_std",  e->section->statsA[ kCostStatIdx ].std )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Error parsing CSV meas. stats field.");
+        goto errLabel;        
+      }
+
+    errLabel:
+      
+      return rc;
+    }
+
+    
     rc_t _parse_section_row( score_parse_t* p, csv::handle_t csvH, event_t* e  )
     {
       rc_t rc;
@@ -179,6 +211,9 @@ namespace cw
         rc = cwLogError(kOpFailRC,"Section find/create failed for section: '%s'.",cwStringNullGuard(sectionLabel));
         goto errLabel;
       }
+
+      //if((rc = _parse_section_stats(p,csvH,e)) != kOkRC )
+      //  goto errLabel;        
 
       e->section->csvRowNumb = e->csvRowNumb;
       

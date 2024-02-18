@@ -2,6 +2,11 @@ namespace cw
 {
   namespace score_parse
   {
+
+    enum {
+      kInvalidLocId = 0
+    };
+    
     enum {
       kInvalidTId,
       kBarTId,
@@ -43,8 +48,26 @@ namespace cw
       kVarCnt
     };
 
+    typedef enum {
+      kDynStatIdx,
+      kEvenStatIdx,
+      kTempoStatIdx,
+      kCostStatIdx,
+      kStatCnt
+    } stats_idx_t;
+
     struct set_str;
     struct event_str;
+
+    typedef struct stats_str
+    {
+      stats_idx_t id;   
+      double min;
+      double max;
+      double mean;
+      double std;      
+    } stats_t;
+    
     typedef struct section_str
     {
       char*               label;       // This sections label
@@ -55,6 +78,9 @@ namespace cw
       struct event_str*   endEvent;    // last event in this section
       struct event_str*   begSetEvent; // first set event in this section
       struct event_str*   endSetEvent; // last set event in this section
+      
+      stats_t             statsA[ kStatCnt ];
+      
       struct section_str* link;        // p->sectionL links
     } section_t;
 

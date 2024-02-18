@@ -4,13 +4,8 @@
 #include "cwMem.h"
 #include "cwTime.h"
 #include "cwMidi.h"
-#include "cwTextBuf.h"
-
-#include "cwMidiPort.h"
-
-//===================================================================================================
-//
-//
+#include "cwMidiDecls.h"
+#include "cwMidiParser.h"
 
 namespace cw
 {
@@ -63,7 +58,7 @@ namespace cw
         cbRecd_t* c = p->cbChain;
         for(; c!=NULL; c=c->linkPtr)
         {
-          pkt->cbDataPtr = c->cbDataPtr;
+          pkt->cbArg = c->cbDataPtr;
           c->cbFunc( pkt, pktCnt );
         }
       }
@@ -89,7 +84,6 @@ namespace cw
         p->pkt.msgArray = NULL;
         p->pkt.sysExMsg = p->buf;
         p->pkt.msgCnt   = p->bufIdx;
-        //p->cbFunc( &p->pkt, 1 );
         _cmMpParserCb(p,&p->pkt,1);
         p->bufIdx = 0;
 
@@ -110,7 +104,9 @@ namespace cw
 
         // fill the buffer msg
         msgPtr->timeStamp = *timeStamp;
-        msgPtr->status  = p->status;
+        msgPtr->status  = p->status & 0xf0;
+        msgPtr->ch      = p->status & 0x0f;
+        msgPtr->uid     = kInvalidId;
 
         switch( p->dataCnt )
         {
@@ -171,10 +167,6 @@ cw::rc_t cw::midi::parser::create( handle_t& hRef, unsigned devIdx, unsigned por
   p->pkt.devIdx        = devIdx;
   p->pkt.portIdx       = portIdx;
 
-  //p->cbChain           = cmMemAllocZ( cbRecd_t, 1 );
-  //p->cbChain->cbFunc    = cbFunc;
-  //p->cbChain->cbDataPtr = cbDataPtr;
-  //p->cbChain->linkPtr   = NULL;
   p->cbChain           = NULL;
   p->buf               = mem::allocZ<uint8_t>( bufByteCnt );
   p->bufByteCnt        = bufByteCnt;
@@ -406,6 +398,7 @@ cw::rc_t  cw::midi::parser::transmit( handle_t h )
   return kOkRC;
 }
 
+
 cw::rc_t      cw::midi::parser::installCallback( handle_t h, cbFunc_t  cbFunc, void* cbDataPtr )
 {
   parser_t*   p        = _handleToPtr(h);
@@ -474,95 +467,3 @@ bool cw::midi::parser::hasCallback( handle_t h, cbFunc_t cbFunc, void* cbArg )
   return false;
 }
 
-//====================================================================================================
-//
-//
-
-unsigned    cw::midi::device::nameToIndex(handle_t h, const char* deviceName)
-{
-  assert(deviceName!=NULL);
-  unsigned i;
-  unsigned n = count(h);
-  for(i=0; i<n; ++i)
-    if( strcmp(name(h,i),deviceName)==0)
-      return i;
-  return kInvalidIdx;
-}
-
-unsigned    cw::midi::device::portNameToIndex( handle_t h, unsigned devIdx, unsigned flags, const char* portNameStr )
-{
-  unsigned i;
-  unsigned n = portCount(h,devIdx,flags);
-  for(i=0; i<n; ++i)
-    if( strcmp(portName(h,devIdx,flags,i),portNameStr)==0)
-      return i;
-
-  return kInvalidIdx;
-}
-
-//====================================================================================================
-//
-//
-
-namespace cw
-{
-  namespace midi
-  {
-    namespace device
-    {
-
-      void testCallback( const packet_t* pktArray, unsigned pktCnt )
-      {
-        unsigned i,j;
-        for(i=0; i<pktCnt; ++i)
-        {
-          const packet_t* p = pktArray + i;
-
-          for(j=0; j<p->msgCnt; ++j)
-            if( p->msgArray != NULL )
-            {
-              if( ((p->msgArray[j].status & 0xf0) == kNoteOnMdId) && (p->msgArray[j].d1>0))
-                printf("%ld %ld 0x%x %i %i\n", p->msgArray[j].timeStamp.tv_sec, p->msgArray[j].timeStamp.tv_nsec, p->msgArray[j].status,p->msgArray[j].d0, p->msgArray[j].d1);
-            }
-            else
-            {
-              printf("0x%x ",p->sysExMsg[j]);
-            }
-        }
-      }
-    } // device
-  } // midi
-} // cw
-    
-cw::rc_t cw::midi::device::test()
-{
-  rc_t              rc               = kOkRC;
-  char              ch;
-  unsigned          parserBufByteCnt = 1024;
-  textBuf::handle_t tbH;
-  handle_t          h;
-
-  // initialie the MIDI system
-  if((rc = create(h,testCallback,NULL,parserBufByteCnt,"app")) != kOkRC )
-    return rc;
-
-  // create a text buffer to hold the MIDI system report text
-  if((rc = textBuf::create(tbH)) != kOkRC )
-    goto errLabel;
-
-  // generate and print the MIDI system report
-  report(h,tbH);
-  cwLogInfo("%s",textBuf::text(tbH));
-  
-  cwLogInfo("any key to send note-on (<q>=quit)\n");
-
-  while((ch = getchar()) != 'q')
-  {
-    send(h,2,0,0x90,60,60);
-  } 
-
- errLabel:
-  textBuf::destroy(tbH);
-  destroy(h);
-  return rc;
-}

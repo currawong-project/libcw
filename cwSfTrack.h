@@ -50,10 +50,12 @@ namespace cw
     // Notes:
     // The cwSfTrack maintains an internal cwSfMatch object which is used to attempt to find the
     // best match between the current MIDI active note buffer and the current score search area.
-    // 'scWndN' is used to set the cwSfMatch 'locN' argument.
-    // 'midiWndN' sets the length of the MIDI FIFO which is used to match to the score with
-    // each recceived MIDI note.
-    // 'midiWndN' must be <= 'scWndN'.
+    //
+    // 'scWndN' is used to set the cwSfMatch 'locN' argument. It defines the length of the
+    // score window over which the MIDI event window will slide, while searching for the best match.
+    //
+    // 'midiWndN' sets the length of the MIDI FIFO winodw which is used to match to the score with
+    // each recceived MIDI note.  'midiWndN' must be <= 'scWndN'.
 
     rc_t destroy( handle_t& hRef );
 

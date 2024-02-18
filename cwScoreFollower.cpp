@@ -121,6 +121,21 @@ namespace cw
       return rc;
     }
 
+    bool _processPedal(const char* pedalLabel, unsigned barNumb, bool curPedalDownStateFl, uint8_t d1)
+    {
+      bool newStateFl = midi::isPedalDown(d1);
+      /*
+      if( newStateFl == curPedalDownStateFl )
+      {
+        const char* upDownLabel = newStateFl ? "down" : "up";
+        cwLogWarning("Double %s pedal %s in bar number:%i.",pedalLabel,upDownLabel,barNumb);
+      }
+      */
+      
+      return newStateFl;
+    }
+    
+
     rc_t _destroy( score_follower_t* p)
     {
       destroy(p->dynRefH);
@@ -576,10 +591,14 @@ cw::rc_t cw::score_follower::midi_state_rt_report( handle_t h, const char* out_f
 
 cw::rc_t cw::score_follower::write_sync_perf_csv( handle_t h, const char* out_fname,  const midi::file::trackMsg_t** msgA, unsigned msgN )
 {
-  score_follower_t* p       = _handleToPtr(h);  
-  rc_t              rc      = kOkRC;
-  unsigned          resultN = result_count(p->trackH);
-  auto              resultA = result_base(p->trackH);
+  score_follower_t* p               = _handleToPtr(h);  
+  rc_t              rc              = kOkRC;
+  unsigned          resultN         = result_count(p->trackH);
+  auto              resultA         = result_base(p->trackH);
+  bool              dampPedalDownFl = false;
+  bool              sostPedalDownFl = false;
+  bool              softPedalDownFl = false;
+  unsigned          curBarNumb          = 1;
   file::handle_t    fH;
 
   if( msgN == 0 )
@@ -602,7 +621,7 @@ cw::rc_t cw::score_follower::write_sync_perf_csv( handle_t h, const char* out_fn
   }
 
   // write the header line
-  file::printf(fH,"meas,index,voice,loc,tick,sec,dur,rval,dots,sci_pitch,dmark,dlevel,status,d0,d1,bar,section,bpm,grace,pedal\n");
+  file::printf(fH,"meas,index,voice,loc,tick,sec,dur,rval,dots,sci_pitch,dmark,dlevel,status,d0,d1,bar,section,bpm,grace,damp_down_fl,soft_down_fl,sost_down_fl\n");
       
   for(unsigned i=0; i<msgN; ++i)
   {
@@ -615,36 +634,74 @@ cw::rc_t cw::score_follower::write_sync_perf_csv( handle_t h, const char* out_fn
     {
       uint8_t d0 = m->u.chMsgPtr->d0;
       uint8_t d1 = m->u.chMsgPtr->d1;
+
           
       if(  midi::isNoteOn(m->status,d1) )
-      {
-        const unsigned INVALID_LOC = 0;
-        
+      {        
+        unsigned    bar           = 0;
+        const char* sectionLabel  = "";
+        unsigned    loc           = score_parse::kInvalidLocId;
+        unsigned    dlevel        = -1;
         char sciPitch[ midi::kMidiSciPitchCharCnt + 1 ];
-        unsigned bar = 0;
-        midi::midiToSciPitch( d0, sciPitch, midi::kMidiSciPitchCharCnt );
-        unsigned loc = INVALID_LOC;
         
+        midi::midiToSciPitch( d0, sciPitch, midi::kMidiSciPitchCharCnt );
+
+        // locate score matching record for this performed note
         for(unsigned i=0; i<resultN; ++i)
         {
+          const sfscore::event_t* e;
           // FIX THIS:
           // THE perfA[] INDEX IS STORED IN resultA[i].muid
+          // this isn't right.
           assert( resultA[i].muid != kInvalidIdx && resultA[i].muid < p->perfN );
           
-          if( p->perfA[resultA[i].muid].muid == m->uid )
+          if( p->perfA[resultA[i].muid].muid == m->uid && resultA[i].scEvtIdx != kInvalidIdx)
           {
             assert( resultA[i].pitch == d0 );
-            loc = resultA[i].oLocId == kInvalidId ? INVALID_LOC : resultA[i].oLocId;
+
+            if((e = event( p->scoreH, resultA[i].scEvtIdx )) == nullptr )
+            {
+              cwLogError(kInvalidStateRC,"The performed, and matched, note with muid %i does not have a valid score event index.",m->uid);
+              goto errLabel;
+            }
+
+            bar          = e->barNumb;
+            sectionLabel = e->section != nullptr ? e->section->label : "";
+            curBarNumb   = std::max(bar,curBarNumb);
+            dlevel       = e->dynLevel;
+            loc          = resultA[i].oLocId == kInvalidId ? score_parse::kInvalidLocId : resultA[i].oLocId;
             break;
           }
         }
+
+       
         
-        rc = file::printf(fH, "%i,%i,%i,%i,0,%f,0.0,0.0,0,%s,,,%i,%i,%i,,,,,\n",
-                          bar,i,1,loc,secs,sciPitch,m->status,d0,d1);
+        rc = file::printf(fH, "%i,%i,%i,%i,0,%f,0.0,0.0,0,%s,,%i,%i,%i,%i,,%s,,,%i,%i,%i\n",
+                          bar,i,1,loc,secs,sciPitch,dlevel,m->status,d0,d1,sectionLabel,dampPedalDownFl,softPedalDownFl,sostPedalDownFl);
       }        
       else
       {
-        rc = file::printf(fH, ",%i,,,%i,%f,,,,,,,%i,%i,%i,,,,,\n",i,0,secs,m->status,d0,d1);
+
+        if( midi::isPedal(m->status,d0) )
+        {
+          switch( d0 )
+          {
+            case midi::kSustainCtlMdId:
+              dampPedalDownFl = _processPedal("damper",curBarNumb,dampPedalDownFl,d1);
+              break;
+              
+            case midi::kSostenutoCtlMdId:
+              sostPedalDownFl = _processPedal("sostenuto",curBarNumb,sostPedalDownFl,d1);
+              break;
+                
+            case midi::kSoftPedalCtlMdId:
+              softPedalDownFl = _processPedal("soft",curBarNumb,softPedalDownFl,d1);
+              break;
+          }  
+        }
+        
+        rc = file::printf(fH, ",%i,,,%i,%f,,,,,,,%i,%i,%i,,,,,%i,%i,%i\n",i,0,secs,m->status,d0,d1,dampPedalDownFl,softPedalDownFl,sostPedalDownFl);
+        
       }
     }
         

@@ -36,6 +36,15 @@ namespace cw
     
       return rc;    
     }
+
+    time::spec_t _future_ms(unsigned timeout_milliseconds)
+    {
+      time::spec_t ts;
+      clock_gettime(CLOCK_REALTIME,&ts); 
+      time::advanceMs(ts,timeout_milliseconds);
+      return ts;
+    }
+    
   }
 }
 
@@ -102,10 +111,15 @@ cw::rc_t cw::mutex::lock( handle_t h, unsigned timeout_milliseconds )
   rc_t     rc = kOkRC;
   mutex_t* p  = _handleToPtr(h);
   int      sysRc;
-  time::spec_t ts;
+  time::spec_t ts = _future_ms(timeout_milliseconds);
 
-  time::get(ts);
-  time::advanceMs(ts,timeout_milliseconds);
+  // Apparently timedlock depends on using CLOCK_REALTIME vs CLOCK_MONOTONIC
+  // so we can't call to time::current_time() which uses CLOCK_MONOTONIC.
+  // TODO: See this: https://stackoverflow.com/questions/14248033/clock-monotonic-and-pthread-mutex-timedlock-pthread-cond-timedwait
+  // and consider changing this to use CLOCK_MONOTONIC.
+  //clock_gettime(CLOCK_REALTIME,&ts); 
+  //time::advanceMs(ts,timeout_milliseconds);
+  
   
   
   switch(sysRc = pthread_mutex_timedlock(&p->mutex,&ts) )
@@ -170,9 +184,10 @@ cw::rc_t cw::mutex::waitOnCondVar( handle_t h, bool lockThenWaitFl, unsigned tim
   else  // ... otherwise use the cond. var. wait with timeout API
   {
 
-    struct timespec ts;
+    struct timespec ts = _future_ms(timeOutMs);
     
-    if((rc = time::futureMs(ts,timeOutMs)) == kOkRC )    
+    
+    //if((rc = time::futureMs(ts,timeOutMs)) == kOkRC )    
       if((sysRC = pthread_cond_timedwait(&p->cvar,&p->mutex,&ts)) != 0 )
       {
         if( sysRC == ETIMEDOUT )

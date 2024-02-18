@@ -213,7 +213,7 @@ namespace cw
 
     void _xmit_midi( midi_record_play_t* p, unsigned devIdx, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
     {
-      if( !p->supressMidiXmitFl )
+      if( !p->supressMidiXmitFl && p->midiDevA[devIdx].enableFl )
         io::midiDeviceSend( p->ioH, p->midiDevA[devIdx].midiOutDevIdx, p->midiDevA[devIdx].midiOutPortIdx, status + ch, d0, d1 );      
     }
         
@@ -1355,7 +1355,7 @@ namespace cw
               {
                 //printf("R:%i %i %i\n",mm->status, mm->d0, mm->d1);
         
-                const am_midi_msg_t* am = _midi_store( p, pkt->devIdx, pkt->portIdx, mm->timeStamp, mm->status & 0x0f, mm->status & 0xf0, mm->d0, mm->d1 );
+                const am_midi_msg_t* am = _midi_store( p, pkt->devIdx, pkt->portIdx, mm->timeStamp, mm->ch, mm->status, mm->d0, mm->d1 );
 
                 if( p->thruFl && am != nullptr )
                   _transmit_msg( p, am, false );
@@ -1465,8 +1465,6 @@ cw::rc_t cw::midi_record_play::create( handle_t& hRef,
 
   p = mem::allocZ<midi_record_play_t>();
 
-  printf("P0:%p\n",p);
-  
   p->ioH = ioH; // p->ioH is used in _destory() so initialize it here
 
   // parse the cfg 
@@ -2159,24 +2157,23 @@ unsigned cw::midi_record_play::dev_count( handle_t h )
 
 cw::rc_t cw::midi_record_play::vel_table_disable( handle_t h, unsigned devIdx )
 {
-  rc_t                rc = kOkRC;  
-  midi_record_play_t* p  = _handleToPtr(h);
-  
-  if( devIdx != kInvalidIdx )
+  rc_t                rc        = kOkRC;  
+  midi_record_play_t* p         = _handleToPtr(h);
+  unsigned            begDevIdx = devIdx==kInvalidIdx ? 0           : devIdx;
+  unsigned            endDevIdx = devIdx==kInvalidIdx ? p->midiDevN : begDevIdx+1;
+
+  if( devIdx != kInvalidIdx && devIdx > p->midiDevN )
   {
-    if( devIdx > p->midiDevN )
-    {
-      rc = cwLogError(kInvalidArgRC,"The device index '%i'is invalid.",devIdx);
-      goto errLabel;
-    }
-    
-    p->midiDevA[devIdx].velTableArray = nullptr;
+    rc = cwLogError(kInvalidArgRC,"The device index '%i'is invalid.",devIdx);
+    goto errLabel;
   }
-  else
+
+  for(unsigned i=begDevIdx; i<endDevIdx; ++i)
   {
-    for(unsigned i=0; i<p->midiDevN; ++i)
-      p->midiDevA[i].velTableArray = nullptr;
+    mem::release(p->midiDevA[i].velTableArray);
+    p->midiDevA[i].velTableN = 0;
   }
+
   
  errLabel:
   return rc;

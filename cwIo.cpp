@@ -9,7 +9,7 @@
 #include "cwIo.h"
 
 #include "cwMidi.h"
-#include "cwMidiPort.h"
+#include "cwMidiDevice.h"
 
 
 #include "cwObject.h"
@@ -31,6 +31,7 @@
 #include "cwWebSock.h"
 #include "cwUi.h"
 
+#include "cwVectOps.h"
 
 namespace cw
 {
@@ -164,7 +165,11 @@ namespace cw
       ui::appIdMap_t*               uiMapA;      // Application supplied id's for the UI resource supplied with the cfg script via 'uiCfgFn'.
       unsigned                      uiMapN;      //
       bool                          uiAsyncFl;
-      
+
+      sample_t                      latency_meas_thresh_db;
+      sample_t                      latency_meas_thresh_lin;
+      bool                          latency_meas_enable_fl;
+      latency_meas_result_t         latency_meas_result;
     } io_t;
   
 
@@ -366,7 +371,7 @@ namespace cw
 
       time::get(t->nextTime);
             
-      if((rc = thread_mach::add(p->threadMachH,_timerThreadCb,t)) != kOkRC )
+      if((rc = thread_mach::add(p->threadMachH,_timerThreadCb,t, label)) != kOkRC )
       {
         rc = cwLogError(rc,"Timer thread assignment failed.");        
       }
@@ -604,7 +609,7 @@ namespace cw
         msg_t                 m;
         midi_msg_t            mm;
         const midi::packet_t* pkt = pktArray + i;        
-        io_t*                 p   = reinterpret_cast<io_t*>(pkt->cbDataPtr);
+        io_t*                 p   = reinterpret_cast<io_t*>(pkt->cbArg);
         rc_t                  rc  = kOkRC;
 
         
@@ -628,7 +633,6 @@ namespace cw
     rc_t _midiPortCreate( io_t* p, const object_t* c )
     {
       rc_t     rc             = kOkRC;
-      unsigned parserBufByteN = 1024;
       const object_t* cfg = nullptr;
 
       // get the MIDI port cfg
@@ -638,14 +642,12 @@ namespace cw
         return kOkRC;
       }
       
-      if((rc = cfg->getv("parserBufByteN", parserBufByteN,
-                         "asyncFl", p->midiAsyncFl )) != kOkRC )
+      if((rc = cfg->getv("asyncFl", p->midiAsyncFl )) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"MIDI configuration parse failed.");
       }
           
-      // initialie the MIDI system
-      if((rc = create(p->midiH, _midiCallback, p, parserBufByteN, "app")) != kOkRC )
+      if((rc = create(p->midiH, _midiCallback, p, cfg)) != kOkRC )
         return rc;
 
       
@@ -846,7 +848,7 @@ namespace cw
 
       // create the socket thread
       if( p->sockN > 0 )
-        if((rc = thread_mach::add(p->threadMachH,_socketThreadFunc,p)) != kOkRC )
+        if((rc = thread_mach::add(p->threadMachH,_socketThreadFunc,p,"io_socket")) != kOkRC )
         {
           rc = cwLogError(rc,"Error creating socket thread.");
           goto errLabel;
@@ -1070,7 +1072,7 @@ namespace cw
       return true;          
     }
 
-    // Get sample ponters or advance the pointers on the buffer associates with each device.
+    // Get sample pointers or advance the pointers on the buffer associates with each device.
     enum { kAudioGroupGetBuf, kAudioGroupAdvBuf };
     void _audioGroupProcSampleBufs( io_t* p, audioGroup_t* ag, unsigned processTypeId, unsigned inputFl  )
     {
@@ -1097,6 +1099,39 @@ namespace cw
         }
         
         chIdx += agd->chCnt;
+      }
+    }
+
+    void _audio_latency_measure( io_t* p, const audio_msg_t& msg )
+    {
+      if( p->latency_meas_enable_fl )
+      {
+        
+        if( msg.iBufChCnt && p->latency_meas_result.audio_in_ts.tv_nsec == 0 )
+        {
+          sample_t rms = vop::rms(msg.iBufArray[0], msg.dspFrameCnt );
+          
+          if( rms > p->latency_meas_thresh_lin  )
+            time::get(p->latency_meas_result.audio_in_ts);
+          
+          if( rms > p->latency_meas_result.audio_in_rms_max )
+            p->latency_meas_result.audio_in_rms_max = rms;
+        }
+        
+        if( msg.oBufChCnt && p->latency_meas_result.audio_out_ts.tv_nsec == 0 )
+        {
+          sample_t rms = vop::rms(msg.oBufArray[0], msg.dspFrameCnt );
+          
+          if( rms > p->latency_meas_thresh_lin  )
+            time::get(p->latency_meas_result.audio_out_ts);
+          
+          if( rms > p->latency_meas_result.audio_out_rms_max )
+            p->latency_meas_result.audio_out_rms_max = rms;
+        }
+        
+        p->latency_meas_enable_fl = p->latency_meas_result.audio_in_ts.tv_nsec == 0 ||
+                                    p->latency_meas_result.audio_out_ts.tv_nsec == 0;
+          
       }
     }
 
@@ -1134,6 +1169,8 @@ namespace cw
           if((rc = _ioCallback( ag->p, ag->asyncFl, &msg)) != kOkRC )
             cwLogError(rc,"Audio app callback failed %i.",ag->asyncFl);
 
+          _audio_latency_measure( ag->p, ag->msg );
+          
           _audioGroupProcSampleBufs( ag->p, ag, kAudioGroupAdvBuf, true );
           _audioGroupProcSampleBufs( ag->p, ag, kAudioGroupAdvBuf, false );
         }
@@ -1530,7 +1567,7 @@ namespace cw
           }
 
           // create the audio group thread
-          if((rc = thread_mach::add(p->threadMachH,_audioGroupThreadFunc,p->audioGroupA+i)) != kOkRC )
+          if((rc = thread_mach::add(p->threadMachH,_audioGroupThreadFunc,p->audioGroupA+i,"io_audio_group")) != kOkRC )
           {
             rc = cwLogError(rc,"Error creating audio group thread.");
             goto errLabel;
@@ -2106,6 +2143,8 @@ namespace cw
           rc = ui::ws::create(p->wsUiH, args, p, _uiCallback, args.uiRsrc, p->uiMapA, p->uiMapN);
           
           ui::ws::releaseArgs(args);
+
+          //ui::enableCache( ui::ws::uiHandle(p->wsUiH) );
         
         }
       }
@@ -2364,6 +2403,7 @@ cw::rc_t cw::io::exec( handle_t h, void* execCbArg )
   if( p->wsUiH.isValid() )
   {
     ui::flushCache( ui::ws::uiHandle( p->wsUiH ));
+    // Note this call blocks on the websocket handle: See cwUi.h:ws:exec()
     rc = ui::ws::exec( p->wsUiH );
   }
   
@@ -2422,7 +2462,7 @@ void cw::io::realTimeReport( handle_t h )
 // Thread
 //
 
-cw::rc_t cw::io::threadCreate( handle_t h, unsigned id, bool asyncFl, void* arg )
+cw::rc_t cw::io::threadCreate( handle_t h, unsigned id, bool asyncFl, void* arg, const char* label )
 {
   rc_t      rc = kOkRC;
   io_t*     p  = _handleToPtr(h);
@@ -2435,7 +2475,7 @@ cw::rc_t cw::io::threadCreate( handle_t h, unsigned id, bool asyncFl, void* arg 
   t->link    = p->threadL;
   p->threadL = t;
 
-  if((rc = thread_mach::add( p->threadMachH, _threadFunc, t )) != kOkRC )
+  if((rc = thread_mach::add( p->threadMachH, _threadFunc, t, label )) != kOkRC )
     rc = cwLogError(rc,"Thread create failed.");
  
   return rc;
@@ -2667,6 +2707,19 @@ cw::rc_t cw::io::midiDeviceSend( handle_t h, unsigned devIdx, unsigned portIdx, 
 //
 // Audio
 //
+
+bool        cw::io::audioIsEnabled(            handle_t h )
+{
+  io_t* p = _handleToPtr(h);
+  for(unsigned devIdx=0; devIdx<p->audioDevN; ++devIdx)
+  {
+    audioDev_t* ad;
+    if((ad = _audioDeviceIndexToRecd(p,devIdx)) != nullptr && ad->activeFl )
+      return true;
+  }
+
+  return false;
+}
 
 unsigned    cw::io::audioDeviceCount(          handle_t h )
 {
@@ -3727,6 +3780,87 @@ cw::rc_t cw::io::uiSendValue( handle_t h, unsigned uuId, const char* value )
     rc = ui::sendValueString(uiH,  uuId, value );
   return rc;
 }
+
+cw::rc_t cw::io::uiSendMsg( handle_t h, const char* msg )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::sendMsg(uiH, msg);
+  return rc;
+}
+
+void cw::io::latency_measure_setup(handle_t h)
+{
+  io_t* p = _handleToPtr(h);
+  p->latency_meas_enable_fl                = true;
+  p->latency_meas_thresh_db  = -50;
+  p->latency_meas_thresh_lin = pow(10.0,p->latency_meas_thresh_db/20.0);
+  p->latency_meas_result.note_on_input_ts  = {0};
+  p->latency_meas_result.note_on_output_ts = {0};
+  p->latency_meas_result.audio_in_ts       = {0};
+  p->latency_meas_result.audio_out_ts      = {0};
+  p->latency_meas_result.audio_in_rms_max  = 0;
+  p->latency_meas_result.audio_out_rms_max = 0;
+
+  if( p->midiH.isValid() )
+    latency_measure_reset(p->midiH);  
+}
+
+cw::io::latency_meas_result_t cw::io::latency_measure_result(handle_t h)
+{
+  io_t* p = _handleToPtr(h);
+
+  if( p->midiH.isValid() )
+  {
+    midi::device::latency_meas_combined_result_t r = latency_measure_result(p->midiH);
+
+    p->latency_meas_result.note_on_input_ts  = r.alsa_dev.note_on_input_ts;
+    p->latency_meas_result.note_on_output_ts = r.alsa_dev.note_on_output_ts;
+  }
+  
+  return p->latency_meas_result;
+}
+
+void cw::io::latency_measure_report(handle_t h)
+{
+  io_t* p = _handleToPtr(h);  
+  latency_meas_result_t r = latency_measure_result(h);
+  unsigned t0,t1;
+
+  if( r.note_on_input_ts.tv_nsec )
+  {
+    if( r.note_on_output_ts.tv_nsec )
+    {
+      t0 = time::elapsedMicros(r.note_on_input_ts,r.note_on_output_ts);
+      printf("midi in  - midi out:  %6i\n",t0);
+    }
+
+    if( r.audio_in_ts.tv_nsec )
+    {
+      t0 = time::elapsedMicros(r.note_on_output_ts,r.audio_in_ts);
+      t1 = time::elapsedMicros(r.note_on_input_ts,r.audio_in_ts);
+      printf("midi out - audio in:  %6i %6i\n",t0,t1);
+    }
+
+    if( r.audio_out_ts.tv_nsec )
+    {
+      t0 = time::elapsedMicros(r.audio_in_ts,r.audio_out_ts);
+      t1 = time::elapsedMicros(r.note_on_input_ts,r.audio_out_ts);
+      printf("audio in - audio out: %6i %6i\n",t0,t1);
+    }
+
+  }
+
+  printf("Thresh: %f %f db\n",p->latency_meas_thresh_db,p->latency_meas_thresh_lin);
+  if( r.audio_in_rms_max != 0 )
+    printf("audio in max:%f %f dB\n", r.audio_in_rms_max, 20.0*log10(r.audio_in_rms_max));
+  
+  if( r.audio_out_rms_max != 0 )
+    printf("audio out max:%f %f dB\n", r.audio_out_rms_max, 20.0*log10(r.audio_out_rms_max));
+  
+}
+
 
 void cw::io::uiReport( handle_t h )
 {
