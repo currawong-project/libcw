@@ -25,6 +25,8 @@ namespace cw
 
     rc_t destroy( handle_t& hRef );
 
+    unsigned preset_cfg_flags( handle_t h );
+    
     // Run one cycle of the network.
     rc_t exec_cycle( handle_t h );
     

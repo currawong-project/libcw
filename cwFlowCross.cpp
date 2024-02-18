@@ -356,6 +356,15 @@ cw::rc_t cw::flow_cross::destroy( handle_t& hRef )
   return rc;  
 }
 
+unsigned cw::flow_cross::preset_cfg_flags( handle_t h )
+{
+  flow_cross_t* p = _handleToPtr(h);
+  if( p->netN > 0 )
+    return preset_cfg_flags( p->netA[0].flowH );
+  
+  return 0;
+}
+
 
 cw::rc_t cw::flow_cross::exec_cycle( handle_t h )
 {

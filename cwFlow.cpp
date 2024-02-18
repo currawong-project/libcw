@@ -1305,6 +1305,88 @@ namespace cw
       return rc;
     }
 
+    unsigned _select_ranked_ele_by_rank_prob( const preset_order_t* presetA, const bool* selV , unsigned presetN )
+    {
+
+      // get a count of the candidate presets
+      unsigned rankN = selV==nullptr ? presetN : std::count_if(selV,selV+presetN,[](const bool& x){ return x; });
+
+      if( rankN == 0 )
+      {
+        cwLogWarning("All preset candidates have been eliminated.");
+        return kInvalidIdx;
+      }
+
+      unsigned rankV[  rankN ];
+      unsigned idxMapA[ rankN ];
+
+      // fill rankV[] with candidates 'order' value
+      for(unsigned i=0,j=0; i<presetN; ++i)
+        if( selV==nullptr || selV[i] )
+        {
+          assert( j < rankN );
+          rankV[j]   = presetA[i].order;
+          idxMapA[j] = i;
+          ++j;
+        }
+
+      // if only one element remains to be selected
+      if( rankN == 1 )
+        return idxMapA[0];
+
+      assert( rankN > 1 );
+      
+      unsigned threshV[ rankN ];
+      unsigned uniqueRankV[ rankN ];      
+      unsigned uniqueRankN = 0;
+      unsigned sel_idx = rankN - 1; //
+
+      // for each possible rank value
+      for(unsigned i=0; i<rankN; ++i)
+      {
+        // locate the rank in the uniqueRankV[]
+        unsigned j=0;
+        for(; j<uniqueRankN; ++j)
+          if( uniqueRankV[j]==rankV[i] )
+            break;
+
+        // if the rank was not found then include it here
+        if( j == uniqueRankN )
+          uniqueRankV[uniqueRankN++] = rankV[i];
+
+      }
+
+      // uniqueRankV[] now includes the set of possible rank values
+      
+      // Take the product of all possible values.
+      // (this will be evenly divisible by all values)
+      unsigned prod = vop::prod(uniqueRankV,uniqueRankN);
+
+      unsigned thresh = 0;
+      for(unsigned i=0; i<rankN; ++i)
+        threshV[i] = (thresh += rankV[i] * prod);
+
+      // Thresh is now set to the max possible random value.
+      
+      // Generate a random number between 0 and thresh
+      double   fval = (double)std::rand() * thresh / RAND_MAX;
+
+      unsigned thresh0 = 0;
+      for(unsigned i=0; i<rankN; ++i)
+      {
+        if( thresh0 <= fval && fval < threshV[i] )
+        {
+          sel_idx = i;
+          break;
+        }
+      }
+
+      assert( sel_idx < rankN );
+      
+      return idxMapA[sel_idx];
+    }
+
+    /*
     unsigned _select_ranked_ele_by_rank_prob( const preset_order_t* rankV, unsigned rankN )
     {     
       unsigned threshV[ rankN ];
@@ -1335,7 +1417,7 @@ namespace cw
 
       // uniqueRankV[] now includes the set of possible rank values
       
-      // Take the produce of all possible values.
+      // Take the product of all possible values.
       // (this will be evenly divisible by all values)
       unsigned prod = vop::prod(uniqueRankV,uniqueRankN);
 
@@ -1360,6 +1442,22 @@ namespace cw
 
       return sel_idx;
     }
+    */
+    
+    const char* _select_ranked_ele_label_by_rank_prob( const preset_order_t* rankV, const bool* selA, unsigned rankN )
+    {
+      unsigned sel_idx;
+
+      if((sel_idx = _select_ranked_ele_by_rank_prob( rankV, selA, rankN )) == kInvalidIdx )
+      {
+        cwLogWarning("The multi-preset select function failed. Selecting preset 0.");
+        sel_idx = 0;
+      }
+
+      return rankV[sel_idx].preset_label;
+
+    }
+    
 
     double _calc_multi_preset_dual_coeff( const multi_preset_selector_t& mps )
     {
@@ -1486,7 +1584,8 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
 
   // parse the main audio file processor cfg record
   if((rc = networkCfg.getv("framesPerCycle",      p->framesPerCycle,
-                           "multiPresetProbFl",   p->multiPresetProbFl,
+                           "multiPriPresetProbFl", p->multiPriPresetProbFl,
+                           "multiSecPresetProbFl", p->multiSecPresetProbFl,
                            "multiPresetInterpFl", p->multiPresetInterpFl,
                            "network",             network)) != kOkRC )
   {
@@ -1551,6 +1650,23 @@ cw::rc_t cw::flow::destroy( handle_t& hRef )
   hRef.clear();
   
   return rc;
+}
+
+unsigned cw::flow::preset_cfg_flags( handle_t h )
+{
+  flow_t*  p     = _handleToPtr(h);
+  unsigned flags = 0;
+  
+  if( p->multiPriPresetProbFl )
+    flags |= kPriPresetProbFl;
+  
+  if( p->multiSecPresetProbFl )
+    flags |= kSecPresetProbFl;
+  
+  if( p->multiPresetInterpFl )
+    flags |= kInterpPresetFl;
+
+  return flags;
 }
 
 
@@ -1657,7 +1773,7 @@ cw::rc_t cw::flow::apply_dual_preset( handle_t h, const char* presetLabel_0, con
   flow_t* p  = _handleToPtr(h);
   const object_t* net_preset_value_0;
 
-  printf("*** Applying dual: %s %s : %f\n",presetLabel_0, presetLabel_1, coeff );
+  cwLogInfo("*** Applying dual: %s %s : %f\n",presetLabel_0, presetLabel_1, coeff );
   
   // locate the cfg of the requested preset
   if((net_preset_value_0 = _find_network_preset(p, presetLabel_0 )) == nullptr )
@@ -1746,14 +1862,122 @@ cw::rc_t cw::flow::apply_dual_preset( handle_t h, const char* presetLabel_0, con
   return rc;
 }
 
+cw::rc_t cw::flow::apply_preset( handle_t h, const multi_preset_selector_t& mps )
+{
+  rc_t        rc        = kOkRC;
+  const char* label0    = nullptr;
+  const char* label1    = nullptr;
+  bool        priProbFl = cwIsFlag(mps.flags, kPriPresetProbFl );
+  bool        secProbFl = cwIsFlag(mps.flags, kSecPresetProbFl );
+  bool        interpFl  = cwIsFlag(mps.flags, kInterpPresetFl );
+
+  printf("preset flags: pri:%i sec:%i interp:%i\n",priProbFl,secProbFl,interpFl);
+  
+ // verify that the set of candidate presets is not empty
+  if( mps.presetN == 0 )
+  {
+    cwLogError(kInvalidArgRC,"A multi-preset application was requested but no presets were provided.");
+    goto errLabel;    
+  }
+
+  // if only a single candidate preset exists or needs to be selected
+  if( interpFl==false || mps.presetN==1 )
+  {
+    // if only a single candidate preset is available or pri. probablity is not enabled 
+    if( mps.presetN == 1 || priProbFl==false )
+      label0 = mps.presetA[0].preset_label;
+    else
+    {
+      if( priProbFl )
+        label0 = _select_ranked_ele_label_by_rank_prob( mps.presetA, nullptr, mps.presetN );
+      else
+        label0 = mps.presetA[0].preset_label;
+    }
+  }
+  else  // interpolation has been selected and at least 2 presets exist
+  {    
+    unsigned pri_sel_idx = 0;
+        
+    // select the primary preset
+    if( priProbFl )
+      pri_sel_idx = _select_ranked_ele_by_rank_prob( mps.presetA, nullptr, mps.presetN );
+    else
+    {
+      // select all presets assigned to order == 1
+      bool selA[ mps.presetN ];
+      for(unsigned i=0; i<mps.presetN; ++i)
+        selA[i]= mps.presetA[i].order==1;
+
+      // select the preset among all presets marked as 1
+      pri_sel_idx = _select_ranked_ele_by_rank_prob( mps.presetA, selA, mps.presetN );
+    }
+
+    if( pri_sel_idx == kInvalidIdx )
+      pri_sel_idx    = 0;
+    
+    // the primary preset has now been selected
+
+    // if there is only one candidate secondary preset
+    if( mps.presetN == 2)
+    {
+      assert( pri_sel_idx <= 1 );
+      label1               = mps.presetA[ pri_sel_idx == 0 ? 1 : 0 ].preset_label;
+    }
+    else                        // at least two remaining presets exist to select between
+    {
+      // mark the selected primary preset as not-available
+      bool selA[ mps.presetN ];
+      vop::fill(selA,mps.presetN,true);
+      selA[pri_sel_idx] = false;
+
+      // if the second preset should be selected probabilistically
+      if( secProbFl )
+        label1 = _select_ranked_ele_label_by_rank_prob( mps.presetA, selA, mps.presetN );
+      else 
+      {
+        // select the best preset that is not the primary preset
+        for(unsigned i=0; i<mps.presetN; ++i)
+          if( i != pri_sel_idx )
+          {
+            label1 = mps.presetA[i].preset_label;
+            break;
+          }
+        
+      }
+    }
+    
+    assert( pri_sel_idx != kInvalidIdx );
+    label0               = mps.presetA[ pri_sel_idx ].preset_label;
+  }
+    
+  assert(label0 != nullptr );
+  
+  if( label1 == nullptr )
+  {
+    rc = apply_preset( h, label0 );
+  }
+  else
+  {
+    double coeff = _calc_multi_preset_dual_coeff(mps);
+    rc = apply_dual_preset( h, label0, label1, coeff );
+  }
+  
+
+errLabel:
+  return rc;
+}
+
+
+/*
 cw::rc_t cw::flow::apply_preset( handle_t h, const multi_preset_selector_t& multi_preset_sel )
 {
-  rc_t        rc           = kOkRC;
-  const char* label0       = nullptr;
-  const char* label1       = nullptr;
-  const char* prob_label   = nullptr;
-  
-  flow_t* p  = _handleToPtr(h);
+  rc_t        rc                   = kOkRC;
+  const char* label0               = nullptr;
+  const char* label1               = nullptr;
+  const char* prob_label           = nullptr;
+  bool        multiPriPresetProbFl = cwIsFlag(multi_preset_sel.flags, kPriPresetProbFl );
+  bool        multiSecPresetProbFl = cwIsFlag(multi_preset_sel.flags, kSecPresetProbFl );
+  bool        multiPresetInterpFl  = cwIsFlag(multi_preset_sel.flags, kInterpPresetFl );
 
   // verify that the set of presets to select from is not empty
   if( multi_preset_sel.presetN == 0 )
@@ -1763,14 +1987,14 @@ cw::rc_t cw::flow::apply_preset( handle_t h, const multi_preset_selector_t& mult
   }
 
   // if probabistic selection was requested and is possible
-  if( p->multiPresetProbFl && multi_preset_sel.presetN > 1 )
+  if( multiPresetProbFl && multi_preset_sel.presetN > 1 )
   {    
     auto presetA  = multi_preset_sel.presetA;
     auto presetN = multi_preset_sel.presetN;
 
     // if we are interpolating then the base preset is always the first one in presetA[]
     // so do not include it as a candidate for probabilistic selection
-    if( p->multiPresetInterpFl  )
+    if( multiPresetInterpFl  )
     {
       presetA += 1;
       presetN -= 1;
@@ -1820,12 +2044,12 @@ cw::rc_t cw::flow::apply_preset( handle_t h, const multi_preset_selector_t& mult
       if( prob_label  == nullptr )
       {
         label0 = multi_preset_sel.presetA[0].preset_label;
-        label1 = p->multiPresetInterpFl ? multi_preset_sel.presetA[1].preset_label : nullptr;
+        label1 = multiPresetInterpFl ? multi_preset_sel.presetA[1].preset_label : nullptr;
       }
       else // ... and a prob. selection exists
       {
         // if we need two presets 
-        if( p->multiPresetInterpFl )
+        if( multiPresetInterpFl )
         {
           label0 = multi_preset_sel.presetA[0].preset_label; 
           label1 = prob_label;
@@ -1857,7 +2081,7 @@ cw::rc_t cw::flow::apply_preset( handle_t h, const multi_preset_selector_t& mult
 errLabel:  
   return rc;
 }
-
+*/
 
 cw::rc_t cw::flow::set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, bool value )
 { return _set_variable_value( _handleToPtr(h), inst_label, var_label, chIdx, value ); }

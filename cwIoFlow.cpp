@@ -387,7 +387,13 @@ cw::rc_t cw::io_flow::destroy( handle_t& hRef )
 
   return rc;
 }
-    
+
+unsigned cw::io_flow::preset_cfg_flags( handle_t h )
+{
+  io_flow_t* p  = _handleToPtr(h);
+  return preset_cfg_flags(p->crossFlowH);
+}
+
 
 cw::rc_t cw::io_flow::exec( handle_t h, const io::msg_t& msg )
 {

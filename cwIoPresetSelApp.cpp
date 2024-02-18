@@ -50,6 +50,7 @@ namespace cw
       kNetPrintBtnId,
       kReportBtnId,
       kLatencyBtnId,
+
       
       kStartBtnId,
       kStopBtnId,
@@ -76,7 +77,12 @@ namespace cw
       kLoadBtnId,
       kPerfSelId,
       kAltSelId,
+      
+      kPriPresetProbCheckId,
+      kSecPresetProbCheckId,
+      kPresetInterpCheckId,
 
+      
       kEnaRecordCheckId,
       kMidiSaveBtnId,
       kMidiLoadBtnId,
@@ -176,6 +182,9 @@ namespace cw
       { kPanelDivId,     kLoadBtnId,      "loadBtnId" },
       { kPanelDivId,     kPerfSelId,      "perfSelId" },
       { kPanelDivId,     kAltSelId,       "altSelId" },
+      { kPanelDivId,     kPriPresetProbCheckId, "presetProbPriCheckId" },
+      { kPanelDivId,     kSecPresetProbCheckId, "presetProbSecCheckId" },
+      { kPanelDivId,     kPresetInterpCheckId, "presetInterpCheckId" },
 
       { kPanelDivId,     kEnaRecordCheckId,  "enaRecordCheckId" },
       { kPanelDivId,     kMidiSaveBtnId,     "midiSaveBtnId" },
@@ -321,6 +330,8 @@ namespace cw
       unsigned crossFadeCnt;
 
       bool printMidiFl;
+
+      unsigned multiPresetFlags;
 
       bool     seqActiveFl;     // true if the sequence is currently active (set by 'Play Seq' btn)
       unsigned seqStartedFl;    // set by the first seq idle callback
@@ -899,13 +910,13 @@ namespace cw
           //unsigned coeffN   = sizeof(coeffV)/sizeof(coeffV[0]);
             
           flow::multi_preset_selector_t mp_sel =
-            { .type_id=0,
-              .coeffV=score_evt->featV,
-              .coeffMinV=score_evt->featMinV,
-              .coeffMaxV=score_evt->featMaxV,
-              .coeffN=perf_meas::kValCnt,
-              .presetA=frag->multiPresetA,
-              .presetN=frag->multiPresetN
+            { .flags     = app->multiPresetFlags,
+              .coeffV    = score_evt->featV,
+              .coeffMinV = score_evt->featMinV,
+              .coeffMaxV = score_evt->featMaxV,
+              .coeffN    = perf_meas::kValCnt,
+              .presetA   = frag->multiPresetA,
+              .presetN   = frag->multiPresetN
             };
             
           if( app->ioFlowH.isValid() )
@@ -3001,6 +3012,18 @@ namespace cw
         case kAltSelId:
           _on_alt_select(app,m.value->u.u);
           break;
+
+        case kPriPresetProbCheckId:
+          app->multiPresetFlags = cwEnaFlag(app->multiPresetFlags,flow::kPriPresetProbFl,m.value->u.b);
+          break;
+          
+        case kSecPresetProbCheckId:
+          app->multiPresetFlags = cwEnaFlag(app->multiPresetFlags,flow::kSecPresetProbFl,m.value->u.b);
+          break;
+
+        case kPresetInterpCheckId:
+          app->multiPresetFlags = cwEnaFlag(app->multiPresetFlags,flow::kInterpPresetFl,m.value->u.b);
+          break;
         
         case kMidiThruCheckId:
           cwLogInfo("MIDI thru:%i",m.value->u.b);        
@@ -3236,6 +3259,18 @@ namespace cw
           
         case kSamplerMidiCheckId:
           _on_echo_midi_enable( app, m.uuId, midi_record_play::kSampler_MRP_DevIdx );
+          break;
+
+        case kPriPresetProbCheckId:
+          io::uiSendValue( app->ioH, m.uuId, preset_cfg_flags(app->ioFlowH) & flow::kPriPresetProbFl );
+          break;
+
+        case kSecPresetProbCheckId:
+          io::uiSendValue( app->ioH, m.uuId, preset_cfg_flags(app->ioFlowH) & flow::kSecPresetProbFl );
+          break;
+          
+        case kPresetInterpCheckId:
+          io::uiSendValue( app->ioH, m.uuId, preset_cfg_flags(app->ioFlowH) & flow::kInterpPresetFl );
           break;
           
         case kWetInGainId:
@@ -3594,6 +3629,7 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
       rc = cwLogError(rc,"The IO Flow controller create failed.");
       goto errLabel;
     }
+    app.multiPresetFlags = preset_cfg_flags(app.ioFlowH);
   }
 
   printf("ioFlow is %s valid.\n",app.ioFlowH.isValid() ? "" : "not");
