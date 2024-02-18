@@ -272,7 +272,7 @@ namespace cw
         // Set msg_idx to kInvalidIdx to make the last p->fileA[file_idx].msgN the end index.
         rc_t _set_end_msg_index( file_dev_t* p, unsigned file_idx, unsigned msg_idx )
         {
-          rc_t rc;
+          rc_t rc = kOkRC;
           unsigned i = 0;
 
           if( file_idx == kInvalidIdx )
