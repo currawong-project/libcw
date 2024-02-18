@@ -1368,7 +1368,7 @@ cw::rc_t cw::audio::device::alsa::create( handle_t& hRef, struct driver_str*& dr
     p->pollfds         = mem::allocZ<struct pollfd>(    p->pollfdsAllocCnt );
     p->pollfdsDesc     = mem::allocZ<pollfdsDesc_t>(p->pollfdsAllocCnt );
 
-    if((rc = thread::create(p->thH,_threadFunc,p)) != kOkRC )
+    if((rc = thread::create(p->thH,_threadFunc,p,"alsa_audio")) != kOkRC )
     {
       rc = cwLogError(rc,"Thread create failed.");
     }

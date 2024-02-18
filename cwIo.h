@@ -177,7 +177,7 @@ namespace cw
     //
     // Thread
     //
-    rc_t  threadCreate(    handle_t h, unsigned id, bool asyncFl, void* arg );
+    rc_t  threadCreate(    handle_t h, unsigned id, bool asyncFl, void* arg, const char* label );
 
     //----------------------------------------------------------------------------------------------------------
     //

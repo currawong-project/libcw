@@ -216,7 +216,8 @@ cw::rc_t cw::midi::device::create( handle_t&   hRef,
   
   if((rc = thread::create(p->threadH,
                           _thread_func,
-                          p)) != kOkRC )
+                          p,
+                          "midi_dev")) != kOkRC )
   {
     rc = cwLogError(rc,"The MIDI file device thread create failed.");
     goto errLabel;
@@ -556,7 +557,7 @@ errLabel:
 
 cw::rc_t cw::midi::device::start( handle_t h )
 {
-  rc_t rc;
+  rc_t rc = kOkRC;
   device_t* p = _handleToPtr(h);
 
   if( p->fileDevStateId != kPlayingStateId )

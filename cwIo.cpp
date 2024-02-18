@@ -371,7 +371,7 @@ namespace cw
 
       time::get(t->nextTime);
             
-      if((rc = thread_mach::add(p->threadMachH,_timerThreadCb,t)) != kOkRC )
+      if((rc = thread_mach::add(p->threadMachH,_timerThreadCb,t, label)) != kOkRC )
       {
         rc = cwLogError(rc,"Timer thread assignment failed.");        
       }
@@ -848,7 +848,7 @@ namespace cw
 
       // create the socket thread
       if( p->sockN > 0 )
-        if((rc = thread_mach::add(p->threadMachH,_socketThreadFunc,p)) != kOkRC )
+        if((rc = thread_mach::add(p->threadMachH,_socketThreadFunc,p,"io_socket")) != kOkRC )
         {
           rc = cwLogError(rc,"Error creating socket thread.");
           goto errLabel;
@@ -1567,7 +1567,7 @@ namespace cw
           }
 
           // create the audio group thread
-          if((rc = thread_mach::add(p->threadMachH,_audioGroupThreadFunc,p->audioGroupA+i)) != kOkRC )
+          if((rc = thread_mach::add(p->threadMachH,_audioGroupThreadFunc,p->audioGroupA+i,"io_audio_group")) != kOkRC )
           {
             rc = cwLogError(rc,"Error creating audio group thread.");
             goto errLabel;
@@ -2462,7 +2462,7 @@ void cw::io::realTimeReport( handle_t h )
 // Thread
 //
 
-cw::rc_t cw::io::threadCreate( handle_t h, unsigned id, bool asyncFl, void* arg )
+cw::rc_t cw::io::threadCreate( handle_t h, unsigned id, bool asyncFl, void* arg, const char* label )
 {
   rc_t      rc = kOkRC;
   io_t*     p  = _handleToPtr(h);
@@ -2475,7 +2475,7 @@ cw::rc_t cw::io::threadCreate( handle_t h, unsigned id, bool asyncFl, void* arg 
   t->link    = p->threadL;
   p->threadL = t;
 
-  if((rc = thread_mach::add( p->threadMachH, _threadFunc, t )) != kOkRC )
+  if((rc = thread_mach::add( p->threadMachH, _threadFunc, t, label )) != kOkRC )
     rc = cwLogError(rc,"Thread create failed.");
  
   return rc;

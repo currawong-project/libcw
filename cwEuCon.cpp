@@ -942,7 +942,7 @@ namespace cw
         return cwLogError(rc,"Unable to create EuCon server.");
 
       // Create the application thread
-      if((rc = thread::create( app.thH, appThreadFunc, &app )) != kOkRC )
+      if((rc = thread::create( app.thH, appThreadFunc, &app, "eu_con" )) != kOkRC )
         return cwLogError(rc,"App thread create failed.");
 
       // Start the application thread

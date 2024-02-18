@@ -664,7 +664,7 @@ cw::rc_t    cw::audio::device::file::create( handle_t& hRef, struct driver_str*&
   p->driver.deviceSeek           = deviceSeek;
   p->driver.deviceRealTimeReport = deviceRealTimeReport;
 
-  if((rc = create( p->threadH, _threadCbFunc, p )) != kOkRC )
+  if((rc = create( p->threadH, _threadCbFunc, p, "audio_dev_test" )) != kOkRC )
   {
     rc = cwLogError(rc,"Audio device file thread create failed.");
     goto errLabel;

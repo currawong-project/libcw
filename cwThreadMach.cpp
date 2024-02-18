@@ -25,13 +25,13 @@ namespace cw
     thread_mach_t* _handleToPtr( handle_t h )
     { return handleToPtr<handle_t,thread_mach_t>(h); }
 
-    rc_t _add( thread_mach_t* p, threadFunc_t func, void* arg )
+    rc_t _add( thread_mach_t* p, threadFunc_t func, void* arg, const char* label )
     {
       rc_t rc = kOkRC;
 
       thread_t* t = mem::allocZ<thread_t>();
 
-      if((rc = thread::create(t->thH, func, arg )) != kOkRC )
+      if((rc = thread::create(t->thH, func, arg, label==nullptr ? "thread_mach" : label )) != kOkRC )
       {
         rc = cwLogError(rc,"Thread create failed.");
         goto errLabel;
@@ -90,7 +90,7 @@ cw::rc_t cw::thread_mach::create( handle_t& hRef, threadFunc_t threadFunc, void*
   {
     void* arg = ctxA + (i*contexRecdByteN);
 
-    if((rc = _add(p, threadFunc, arg)) != kOkRC )
+    if((rc = _add(p, threadFunc, arg, nullptr)) != kOkRC )
       goto errLabel;
   }
 
@@ -103,10 +103,10 @@ cw::rc_t cw::thread_mach::create( handle_t& hRef, threadFunc_t threadFunc, void*
   return rc;
 }
 
-cw::rc_t cw::thread_mach::add( handle_t h, threadFunc_t threadFunc, void* arg )
+cw::rc_t cw::thread_mach::add( handle_t h, threadFunc_t threadFunc, void* arg, const char* label )
 {
   thread_mach_t* p = _handleToPtr(h);
-  return _add(p,threadFunc,arg);
+  return _add(p,threadFunc,arg, label);
 }
 
 cw::rc_t cw::thread_mach::destroy( handle_t& hRef )

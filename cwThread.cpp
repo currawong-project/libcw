@@ -31,6 +31,7 @@ namespace cw
       unsigned  pauseMicros;
       unsigned  sleepMicros;
       pthread_attr_t attr;
+      char* label;
       
     } thread_t;
 
@@ -120,7 +121,7 @@ namespace cw
 }
 
 
-cw::rc_t cw::thread::create( handle_t& hRef, cbFunc_t func, void* funcArg, int stateMicros, int pauseMicros )
+cw::rc_t cw::thread::create( handle_t& hRef, cbFunc_t func, void* funcArg, const char* label, int stateMicros, int pauseMicros )
 {
   rc_t rc;
   int  sysRC;
@@ -136,6 +137,7 @@ cw::rc_t cw::thread::create( handle_t& hRef, cbFunc_t func, void* funcArg, int s
   p->pauseMicros = pauseMicros;
   p->stateId     = kPausedThId;
   p->sleepMicros = 15000;
+  p->label       = mem::duplStr(label);
 
   if((sysRC = pthread_attr_init(&p->attr)) != 0)
   {
@@ -162,8 +164,16 @@ cw::rc_t cw::thread::create( handle_t& hRef, cbFunc_t func, void* funcArg, int s
         rc = cwLogSysError(kOpFailRC,sysRC,"Thread create failed.");
       }
   }
+
+  if( label != nullptr )
+    pthread_setname_np(p->pThreadH, label);
+
   
   hRef.set(p);
+
+  
+  cwLogInfo("Thread %s id:%p created.",cwStringNullGuard(label), p->pThreadH);
+  
   return rc;
 }
   
@@ -182,16 +192,16 @@ cw::rc_t cw::thread::destroy( handle_t& hRef )
 
   // wait for the thread to exit and then deallocate the thread object
   if((rc = _waitForState(p,kExitedThId)) != kOkRC )
-    return  cwLogError(rc,"Thread timed out waiting for destroy.");
+    return  cwLogError(rc,"Thread '%s' timed out waiting for destroy.",p->label);
 
   // Block until the thread is actually fully cleaned up
   if((sysRC = pthread_join(p->pThreadH,NULL)) != 0)
-    rc = cwLogSysError(kOpFailRC,sysRC,"Thread join failed.");
+    rc = cwLogSysError(kOpFailRC,sysRC,"Thread '%s' join failed.",p->label);
       
   //if( pthread_attr_destroy(&p->attr) != 0 )
   //  rc = cwLogError(kOpFailRC,"Thread attribute destroy failed.");
     
-  
+  mem::release(p->label);
   mem::release(p);
   hRef.clear();
   
@@ -227,7 +237,7 @@ cw::rc_t cw::thread::pause( handle_t h, unsigned cmdFlags )
     rc = _waitForState(p,waitId);
 
   if( rc != kOkRC )
-    cwLogError(rc,"Thread timed out waiting for '%s'. pauseMicros:%i stateMicros:%i sleepMicros:%i", pauseFl ? "pause" : "un-pause",p->pauseMicros,p->stateMicros,p->sleepMicros);
+    cwLogError(rc,"Thread '%s' timed out waiting for '%s'. pauseMicros:%i stateMicros:%i sleepMicros:%i", p->label, pauseFl ? "pause" : "un-pause",p->pauseMicros,p->stateMicros,p->sleepMicros);
   
   return rc;
   
@@ -257,6 +267,13 @@ cw::thread::thread_id_t cw::thread::id()
   id.u.pthread_id = pthread_self();
   return id.u.id;
 }
+
+const char* cw::thread::label( handle_t h )
+{
+  thread_t* p = _handleToPtr(h);
+  return p->label==nullptr ? "<no_thread_label>" : p->label;
+}
+
 
 unsigned cw::thread::stateTimeOutMicros( handle_t h)
 {
@@ -288,7 +305,7 @@ cw::rc_t cw::threadTest()
   rc_t     rc;
   char     c   = 0;
   
-  if((rc = thread::create(h,_threadTestCb,&val)) != kOkRC )
+  if((rc = thread::create(h,_threadTestCb,&val,"thread_test")) != kOkRC )
     return rc;
   
   if((rc = thread::pause(h,0)) != kOkRC )

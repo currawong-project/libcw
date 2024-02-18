@@ -68,7 +68,7 @@ cw::rc_t cw::websockSrv::create(
     goto errLabel;
   
 
-  if((rc = thread::create(p->_thread,_websockSrvThreadCb,p)) != kOkRC )
+  if((rc = thread::create(p->_thread,_websockSrvThreadCb,p,"web_sock_srv")) != kOkRC )
     goto errLabel;
   
   p->_timeOutMs = timeOutMs;

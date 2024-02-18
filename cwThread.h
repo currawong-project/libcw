@@ -5,6 +5,8 @@ namespace cw
 {
   namespace thread
   {
+    const int kDefaultStateTimeOutMicros=100000;
+    const int kDefaultPauseMicros =       10000;
     typedef enum
     {
      kNotInitThId,
@@ -23,7 +25,13 @@ namespace cw
     // The thread is in the 'paused' state after it is created.
     // stateMicros = total time out duration for switching to the  exit state or for switching in/out of pause state. 
     // pauseMicros = duration of thread sleep interval when in paused state.
-    rc_t create( handle_t& hRef, cbFunc_t func, void* funcArg, int stateTimeOutMicros=100000, int pauseMicros=10000 );
+    rc_t create( handle_t& hRef,
+                 cbFunc_t func,
+                 void* funcArg,
+                 const char* label,  // Assign a label which will show up via `top -H` or `ps -T`.
+                 int stateTimeOutMicros=kDefaultStateTimeOutMicros,
+                 int pauseMicros=kDefaultPauseMicros );
+    
     rc_t destroy( handle_t& hRef );
 
   
@@ -35,6 +43,7 @@ namespace cw
 
     // Return the thread id of the calling context.
     thread_id_t id();
+    const char* label( handle_t h );
 
     unsigned stateTimeOutMicros( handle_t h);
     unsigned pauseMicros( handle_t h );

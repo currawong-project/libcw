@@ -365,7 +365,7 @@ cw::rc_t cw::nbmem::test_multi_threaded()
     ctx.threadA[i].varA = mem::allocZ<void*>(threadVarN);
     ctx.threadA[i].varN = threadVarN;
     
-    if((rc = thread::create(ctx.threadA[i].threadH, _test_thread_func, ctx.threadA + i )) != kOkRC )
+    if((rc = thread::create(ctx.threadA[i].threadH, _test_thread_func, ctx.threadA + i, "nb_mem" )) != kOkRC )
       break;
   }
   

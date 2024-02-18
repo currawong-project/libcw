@@ -120,7 +120,7 @@ cw::rc_t cw::net::socket::test( portNumber_t localPort, const char* remoteAddr, 
   if((rc = create(app.sockH,localPort, kBlockingFl,timeOutMs, NULL, kInvalidPortNumber )) != kOkRC )
     return rc;
 
-  if((rc = thread::create( app.threadH, _dgramThreadFunc, &app )) != kOkRC )
+  if((rc = thread::create( app.threadH, _dgramThreadFunc, &app, "tcp_sock_test_tcp" )) != kOkRC )
     goto errLabel;
 
   if((rc = thread::unpause( app.threadH )) != kOkRC )
@@ -176,7 +176,7 @@ cw::rc_t cw::net::socket::test_tcp( portNumber_t localPort, const char* remoteAd
     return rc;
 
   // create the listening thread (which is really only used by the server)
-  if((rc = thread::create( app.threadH, streamFl ? _tcpStreamThreadFunc : _dgramThreadFunc, &app )) != kOkRC )
+  if((rc = thread::create( app.threadH, streamFl ? _tcpStreamThreadFunc : _dgramThreadFunc, &app, "tcp_sock_test" )) != kOkRC )
     goto errLabel;
 
   // if this is a streaming client then connect to the server (which must have already been started)

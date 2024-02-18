@@ -1211,7 +1211,7 @@ cw::rc_t cw::socksrv::createMgrSrv(  handle_t& hRef, unsigned timeOutMs, unsigne
     goto errLabel;
 
   // create the thread
-  if((rc = thread::create( p->thH, _threadFunc, p)) != kOkRC )
+  if((rc = thread::create( p->thH, _threadFunc, p, "sock")) != kOkRC )
     goto errLabel;
 
   p->timeOutMs = timeOutMs;
