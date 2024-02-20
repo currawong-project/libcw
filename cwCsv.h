@@ -43,6 +43,8 @@ namespace cw
     rc_t parse_field( handle_t h, unsigned colIdx, unsigned& valRef );
     rc_t parse_field( handle_t h, unsigned colIdx, int& valRef );
     rc_t parse_field( handle_t h, unsigned colIdx, double& valRef );
+    rc_t parse_field( handle_t h, unsigned colIdx, bool& valRef );
+    
     
     // The returned pointer is a pointer into an internal 'line' buffer.
     // The reference is therefore only valid until the next call to next_line().
@@ -52,6 +54,7 @@ namespace cw
     rc_t parse_field( handle_t h, const char* colLabel, unsigned& valRef );
     rc_t parse_field( handle_t h, const char* colLabel, int& valRef );
     rc_t parse_field( handle_t h, const char* colLabel, double& valRef );
+    rc_t parse_field( handle_t h, const char* colLabel, bool& valRef );
     
     // The returned pointer is a pointer into an internal 'line' buffer.
     // The reference is therefore only valid until the next call to next_line().
