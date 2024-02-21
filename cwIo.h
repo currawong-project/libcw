@@ -228,6 +228,15 @@ namespace cw
     const char* midiDevicePortName(  handle_t h, unsigned devIdx, bool inputFl, unsigned portIdx );
     unsigned    midiDevicePortIndex( handle_t h, unsigned devIdx, bool inputFl, const char* portName );    
     rc_t        midiDeviceSend(      handle_t h, unsigned devIdx, unsigned portIdx, uint8_t status, uint8_t d0, uint8_t d1 );
+    
+    rc_t        midiOpenMidiFile(    handle_t h, unsigned devIdx, unsigned portIdx, const char* fname );
+    rc_t        midiLoadMsgPacket(   handle_t h, const midi::packet_t& pkt ); // Note: Set devIdx/portIdx via pkt.devIdx/pkt.portIdx
+    unsigned    midiMsgCount(        handle_t h, unsigned devIdx, unsigned portIdx );
+    rc_t        midiSeekToMsg(       handle_t h, unsigned devIdx, unsigned portIdx, unsigned msgIdx );
+    rc_t        midiSetEndMsg(       handle_t h, unsigned devIdx, unsigned portidx, unsigned msgIdx );
+    rc_t        midiFileStart(       handle_t h );
+    rc_t        midiFileStop(        handle_t h );
+    rc_t        midiFilePause(       handle_t h, bool pauseFl );
 
 
     //----------------------------------------------------------------------------------------------------------
