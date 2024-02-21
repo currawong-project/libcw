@@ -66,6 +66,8 @@ namespace cw
         } exec_result_t;
 
 
+        unsigned msg_count( handle_t h, unsigned file_idx );
+        
         // Set the next msg to be returned.
         rc_t seek_to_msg_index( handle_t h, unsigned file_idx, unsigned msg_idx );
         rc_t set_end_msg_index( handle_t h, unsigned file_idx, unsigned msg_idx );

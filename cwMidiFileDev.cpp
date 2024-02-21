@@ -716,6 +716,19 @@ errLabel:
   return rc;
 }
 
+unsigned cw::midi::device::file_dev::msg_count( handle_t h, unsigned file_idx )
+{
+  file_dev_t* p = _handleToPtr(h);
+  rc_t rc;
+  
+  if((rc = _validate_file_existence(p,file_idx)) != kOkRC )
+    goto errLabel;
+  
+  return p->msgN;
+    
+errLabel:
+  return 0;
+}
 
 cw::rc_t cw::midi::device::file_dev::seek_to_msg_index( handle_t h, unsigned file_idx, unsigned msg_idx )
 {

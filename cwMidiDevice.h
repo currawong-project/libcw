@@ -52,6 +52,8 @@ namespace cw
       rc_t        sendData(   handle_t h, unsigned devIdx, unsigned portIdx, const uint8_t* dataPtr, unsigned byteCnt );
 
       rc_t        openMidiFile( handle_t h, unsigned devIdx, unsigned portIdx, const char* fname );
+      rc_t        loadMsgPacket(handle_t h, const packet_t& pkt ); // Note: Set devIdx/portIdx via pkt.devIdx/pkt.portIdx
+      unsigned    msgCount(     handle_t h, unsigned devIdx, unsigned portIdx );
       rc_t        seekToMsg(    handle_t h, unsigned devIdx, unsigned portIdx, unsigned msgIdx );
       rc_t        setEndMsg(    handle_t h, unsigned devIdx, unsigned portidx, unsigned msgIdx );
 
