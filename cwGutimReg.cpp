@@ -183,7 +183,7 @@ cw::rc_t cw::gutim::reg::create(  handle_t& hRef, const char* fname )
     
 errLabel:
     if(rc != kOkRC )
-      rc = _destroy(p);
+      _destroy(p);
 
     destroy(csvH);
     
@@ -247,4 +247,31 @@ void cw::gutim::reg::report( handle_t h )
     
   }
 
+}
+
+
+cw::rc_t cw::gutim::reg::test( const object_t* cfg )
+{
+  const char* dir = nullptr;
+  rc_t        rc  = kOkRC;
+  handle_t    h;
+  
+  if((rc = cfg->getv("dir",dir)) != kOkRC )
+  {
+    rc = cwLogError(rc,"The arg. parse GUTIM registry test.");
+    goto errLabel;
+  }
+
+  if((rc = create(h,dir)) != kOkRC )
+  {
+    rc = cwLogError(rc,"The GUTIM registry create failed.");
+    goto errLabel;
+  }
+  
+  report(h);
+  
+errLabel:
+  destroy(h);
+  
+  return rc;
 }
