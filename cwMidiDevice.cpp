@@ -144,6 +144,9 @@ namespace cw
         }
         
 
+        // TODO: Consider replacing the poll() with epoll_wait2() is apparently
+        // optimized for more accurate time outs.
+        
         // Block here waiting for ALSA events or timeout when the next file msg should be sent
         int sysRC = poll( p->alsaPollfdA, p->alsaPollfdN, sleep_millis );
         
