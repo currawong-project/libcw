@@ -30,7 +30,7 @@ namespace cw
       file_t   file_record( handle_t h, unsigned file_idx );
 
       void report( handle_t h );
-      
+      rc_t test( const object_t* cfg );
       
     }
   }
