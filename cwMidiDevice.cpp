@@ -144,6 +144,9 @@ namespace cw
         }
         
 
+        // TODO: Consider replacing the poll() with epoll_wait2() is apparently
+        // optimized for more accurate time outs.
+        
         // Block here waiting for ALSA events or timeout when the next file msg should be sent
         int sysRC = poll( p->alsaPollfdA, p->alsaPollfdN, sleep_millis );
         
@@ -511,13 +514,46 @@ cw::rc_t cw::midi::device::openMidiFile( handle_t h, unsigned devIdx, unsigned p
 
 errLabel:
   return rc;
+}
 
+cw::rc_t cw::midi::device::loadMsgPacket( handle_t h, const packet_t& pkt )
+{
+  rc_t rc = kOkRC;
+  device_t* p  = _handleToPtr(h);
+
+  if( _devIdxToFileDevIdx(p,pkt.devIdx) == kInvalidIdx )
+  {
+    cwLogError(kInvalidArgRC,"The device index %i does not identify a valid file device.",pkt.devIdx);
+    goto errLabel;
+  }
+
+  if((rc = load_messages( p->fileDevH, pkt.portIdx, pkt.msgArray, pkt.msgCnt)) != kOkRC )
+    goto errLabel;
+
+errLabel:
+  return rc;
+}
+
+unsigned cw::midi::device::msgCount( handle_t h, unsigned devIdx, unsigned portIdx )
+{
+  device_t* p  = _handleToPtr(h);
+  
+  if(_devIdxToFileDevIdx(p,devIdx) == kInvalidIdx )
+  {
+    cwLogError(kInvalidArgRC,"The device index %i does not identify a valid file device.",devIdx);
+    goto errLabel;
+  }
+
+  return msg_count( p->fileDevH, portIdx);
+  
+errLabel:
+  return 0;
 }
 
 cw::rc_t cw::midi::device::seekToMsg( handle_t h, unsigned devIdx, unsigned portIdx, unsigned msgIdx )
 {
   rc_t      rc = kOkRC;
-  device_t* p          = _handleToPtr(h);
+  device_t* p  = _handleToPtr(h);
   
   if(_devIdxToFileDevIdx(p,devIdx) == kInvalidIdx )
   {

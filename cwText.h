@@ -16,16 +16,33 @@ namespace cw
 
   void textToLower( char* s );
   void textToUpper( char* s );
+
+  void textToLower( char* dst, const char* src, unsigned dstN );
+  void textToUpper( char* dst, const char* src, unsigned dstN );
   
   // Note: if both s0 and s1 are nullptr then a match is indicated
-  int textCompare( const char* s0, const char* s1 );
-  int textCompare( const char* s0, const char* s1, unsigned n);
+  int textCompare(  const char* s0, const char* s1 );
+  int textCompare(  const char* s0, const char* s1, unsigned n);
+  
+  // Case insensitive compare
+  int textCompareI( const char* s0, const char* s1 );
+  int textCompareI( const char* s0, const char* s1, unsigned n);
   
   inline bool textIsEqual( const char* s0, const char* s1 )             { return textCompare(s0,s1) == 0; }
   inline bool textIsEqual( const char* s0, const char* s1, unsigned n ) { return textCompare(s0,s1,n) == 0; }
 
+  // Case insensitive is-equal
+  inline bool textIsEqualI( const char* s0, const char* s1 )             { return textCompareI(s0,s1) == 0; }
+  inline bool textIsEqualI( const char* s0, const char* s1, unsigned n ) { return textCompareI(s0,s1,n) == 0; }
+  
   inline bool textIsNotEqual( const char* s0, const char* s1 )             { return !textIsEqual(s0,s1);   }
   inline bool textIsNotEqual( const char* s0, const char* s1, unsigned n ) { return !textIsEqual(s0,s1,n); }
+
+  // Case insensitive is-not-equal
+  inline bool textIsNotEqualI( const char* s0, const char* s1 )             { return !textIsEqualI(s0,s1);   }
+  inline bool textIsNotEqualI( const char* s0, const char* s1, unsigned n ) { return !textIsEqualI(s0,s1,n); }
+
+  
   
   // Return a pointer to the next white space char
   // or nullptr if 's' is null are there are no whitespace char's.

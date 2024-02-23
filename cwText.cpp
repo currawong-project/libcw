@@ -30,23 +30,6 @@ namespace cw
 
     return eosFl ? s : nullptr;
   }
-  /*
-  unsigned _toText( char* buf, unsigned bufN, unsigned char v )
-  {
-    if( bufN < 1 )
-      return 0;
-    buf[0] = v;
-    return 1;
-  }
-
-  unsigned _toText( char* buf, unsigned bufN, char v )
-  {
-    if( bufN < 1 )
-      return 0;
-    buf[0] = v;
-    return 1;
-  }
-  */
   
 }
 
@@ -77,21 +60,43 @@ const char* cw::textCopy( char* dst, unsigned dstN, const char* src, unsigned sr
   return dst;
 }
 
-
-void textToLower( char* s )
+void cw::textToLower( char* s )
 {
   if( s != nullptr )
     for(; *s; ++s)
       *s = std::tolower(*s);
 }
 
-void textToUpper( char* s )
+void cw::textToUpper( char* s )
 {
   if( s != nullptr )
     for(; *s; ++s)
       *s = std::toupper(*s);
 }
 
+void cw::textToLower( char* dst, const char* src, unsigned dstN )
+{
+  if( src != nullptr && dstN>0 )
+  {
+    unsigned sn = std::min(dstN,textLength(src)+1);
+    unsigned i;
+    for(i=0; i<sn; ++i)
+      dst[i] = std::tolower( src[i] );
+    dst[i-1] = 0;
+  }
+}
+
+void cw::textToUpper( char* dst, const char* src, unsigned dstN )
+{
+  if( src != nullptr && dstN>0 )
+  {
+    unsigned sn = std::min(dstN,textLength(src)+1);
+    unsigned i;
+    for(i=0; i<sn; ++i)
+      dst[i] = std::toupper( src[i] );
+    dst[i-1] = 0;
+  }
+}
 
 int cw::textCompare( const char* s0, const char* s1 )
 {
@@ -107,6 +112,26 @@ int cw::textCompare( const char* s0, const char* s1, unsigned n)
     return s0==s1 ? 0 : 1; // if both pointers are nullptr then trigger a match
 
   return strncmp(s0,s1,n);  
+}
+
+int cw::textCompareI( const char* s0, const char* s1 )
+{
+  char b0N = textLength(s0)+1;
+  char b1N = textLength(s1)+1;
+  char b0[ b0N ];
+  char b1[ b1N ];
+  textToLower(b0,s0,b0N);
+  textToLower(b1,s1,b1N);
+  return textCompare(b0,b1);
+}
+
+int cw::textCompareI( const char* s0, const char* s1, unsigned n )
+{
+  char b0[ n+1 ];
+  char b1[ n+1 ];
+  textToLower(b0,s0,n+1);
+  textToLower(b1,s1,n+1);
+  return textCompare(b0,b1,n);
 }
 
 const char* cw::nextWhiteChar( const char* s )

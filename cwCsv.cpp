@@ -310,7 +310,37 @@ namespace cw
       return rc;  
     }
 
+    rc_t _parse_bool_field( csv_t* p, unsigned colIdx, bool& valRef )
+    {
+      rc_t        rc       = kOkRC;
+      const char* fieldStr = nullptr;
 
+      if((rc = _get_field_str(p,colIdx,fieldStr)) != kOkRC )
+        goto errLabel;
+      else
+      {
+        if( textIsEqualI(fieldStr,"true")  )
+          valRef = true;
+        else
+          if( textIsEqualI(fieldStr,"false") )
+            valRef = false;
+          else
+            rc = cwLogError(kSyntaxErrorRC,"The value of a boolean must be either 'true' or 'false'.");            
+      }
+      
+    errLabel:  
+      return rc;  
+    }
+
+    rc_t _parse_bool_field( csv_t* p, const char* colLabel, bool& valRef )
+    {
+      unsigned colIdx;
+      if((colIdx = _title_to_col_index(p, colLabel)) == kInvalidIdx )
+        return cwLogError(kInvalidArgRC,"The column label '%s' is not valid.",cwStringNullGuard(colLabel));
+      
+      return _parse_bool_field(p,colIdx,valRef);
+    }
+    
     
   }
 }
@@ -496,6 +526,12 @@ cw::rc_t cw::csv::field_char_count( handle_t h, unsigned colIdx, unsigned& charC
   return rc;
 }
 
+cw::rc_t cw::csv::parse_field( handle_t h, unsigned colIdx, bool& valRef )
+{
+  csv_t* p = _handleToPtr(h);
+  return _parse_bool_field( p, colIdx, valRef )  ;
+}
+
 cw::rc_t cw::csv::parse_field( handle_t h, unsigned colIdx, uint8_t& valRef )
 {
   csv_t* p = _handleToPtr(h);
@@ -524,6 +560,12 @@ cw::rc_t cw::csv::parse_field( handle_t h, unsigned colIdx, const char*& valRef 
 {
   csv_t* p = _handleToPtr(h);
   return _parse_string_field( p, colIdx, valRef );
+}
+
+cw::rc_t cw::csv::parse_field( handle_t h, const char* colLabel, bool& valRef )
+{
+  csv_t* p = _handleToPtr(h);
+  return _parse_bool_field(p, colLabel, valRef );
 }
 
 cw::rc_t cw::csv::parse_field( handle_t h, const char* colLabel, uint8_t& valRef )

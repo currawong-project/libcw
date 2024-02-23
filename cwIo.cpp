@@ -2703,6 +2703,48 @@ cw::rc_t cw::io::midiDeviceSend( handle_t h, unsigned devIdx, unsigned portIdx, 
   return midi::device::send( p->midiH, devIdx, portIdx, status, d0, d1 );
 }
 
+cw::rc_t  cw::io::midiOpenMidiFile( handle_t h, unsigned devIdx, unsigned portIdx, const char* fname )
+{
+  return midi::device::openMidiFile( _handleToPtr(h)->midiH, devIdx, portIdx, fname );
+}
+
+cw::rc_t  cw::io::midiLoadMsgPacket( handle_t h, const midi::packet_t& pkt )
+{
+  return midi::device::loadMsgPacket( _handleToPtr(h)->midiH, pkt );
+}
+
+unsigned  cw::io::midiMsgCount( handle_t h, unsigned devIdx, unsigned portIdx )
+{
+  return midi::device::msgCount( _handleToPtr(h)->midiH, devIdx, portIdx );
+}
+
+cw::rc_t  cw::io::midiSeekToMsg( handle_t h, unsigned devIdx, unsigned portIdx, unsigned msgIdx )
+{
+  return midi::device::seekToMsg( _handleToPtr(h)->midiH, devIdx, portIdx, msgIdx );
+}
+
+cw::rc_t  cw::io::midiSetEndMsg( handle_t h, unsigned devIdx, unsigned portIdx, unsigned msgIdx )
+{
+  return midi::device::setEndMsg( _handleToPtr(h)->midiH, devIdx, portIdx, msgIdx );
+}
+
+cw::rc_t   cw::io::midiFileStart( handle_t h )
+{
+  return midi::device::start( _handleToPtr(h)->midiH );
+}
+
+cw::rc_t   cw::io::midiFileStop( handle_t h )
+{
+  return midi::device::stop( _handleToPtr(h)->midiH );
+}
+
+cw::rc_t   cw::io::midiFilePause( handle_t h, bool pauseFl )
+{
+  return midi::device::pause( _handleToPtr(h)->midiH, pauseFl );
+}
+
+
+
 //----------------------------------------------------------------------------------------------------------
 //
 // Audio

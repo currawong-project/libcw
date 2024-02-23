@@ -71,8 +71,8 @@ libcwSRC += src/libcw/cwIo.cpp src/libcw/cwIoTest.cpp   src/libcw/cwIoMinTest.cp
 libcwHDR += src/libcw/cwIoMidiRecordPlay.h    src/libcw/cwIoAudioRecordPlay.h   src/libcw/cwIoAudioMidiApp.h    src/libcw/cwIoFlow.h
 libcwSRC += src/libcw/cwIoMidiRecordPlay.cpp  src/libcw/cwIoAudioRecordPlay.cpp src/libcw/cwIoAudioMidiApp.cpp  src/libcw/cwIoFlow.cpp
 
-libcwHDR += src/libcw/cwIoPresetSelApp.h     src/libcw/cwPianoScore.h    src/libcw/cwPresetSel.h   src/libcw/cwVelTableTuner.h
-libcwSRC += src/libcw/cwIoPresetSelApp.cpp   src/libcw/cwPianoScore.cpp  src/libcw/cwPresetSel.cpp src/libcw/cwVelTableTuner.cpp
+libcwHDR += src/libcw/cwIoPresetSelApp.h     src/libcw/cwPianoScore.h    src/libcw/cwPresetSel.h   src/libcw/cwVelTableTuner.h    src/libcw/cwGutimReg.h
+libcwSRC += src/libcw/cwIoPresetSelApp.cpp   src/libcw/cwPianoScore.cpp  src/libcw/cwPresetSel.cpp src/libcw/cwVelTableTuner.cpp  src/libcw/cwGutimReg.cpp
 
 libcwHDR += src/libcw/cwDynRefTbl.h   src/libcw/cwScoreParse.h   src/libcw/cwSfScore.h   
 libcwSRC += src/libcw/cwDynRefTbl.cpp src/libcw/cwScoreParse.cpp src/libcw/cwSfScore.cpp
