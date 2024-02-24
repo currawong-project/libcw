@@ -1372,7 +1372,10 @@ cw::rc_t cw::ui::create(
       cwLogWarning("The UI resource does not have a 'main' element.");
     else
       if((rc = _createFromObj( p, main_obj, kInvalidId, kRootUuId, kInvalidId )) != kOkRC )
+      {
         rc = cwLogError(rc,"Create from UI resource failed.");
+        goto errLabel;
+      }
   }
 
   
