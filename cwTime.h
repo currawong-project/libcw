@@ -24,8 +24,8 @@ namespace cw
 
     // Return the elapsed time (t1 - t0) in microseconds
     // t1 is assumed to be at a later time than t0.
-    unsigned elapsedMicros( const spec_t&  t0, const spec_t& t1 );
-    unsigned elapsedMicros( const spec_t&  t0 );
+    unsigned long long elapsedMicros( const spec_t&  t0, const spec_t& t1 );
+    unsigned long long elapsedMicros( const spec_t&  t0 );
 
     // Wrapper on elapsedMicros()
     unsigned elapsedMs( const spec_t&  t0, const spec_t& t1 );

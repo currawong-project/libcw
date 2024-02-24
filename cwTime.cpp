@@ -50,29 +50,69 @@ void cw::time::get( spec_t& t )
 cw::time::spec_t cw::time::current_time()
 {
   spec_t t;
-  clock_gettime(CLOCK_REALTIME,&t);
+  get(t);
   return t;
 }
 
 #endif
 
-// this assumes that the seconds have been normalized to a recent start time
-// so as to avoid overflow
-unsigned cw::time::elapsedMicros( const spec_t& t0, const spec_t& t1 )
+unsigned long long cw::time::elapsedMicros( const spec_t& t0, const spec_t& t1 )
 {
+  const unsigned long long ns_per_sec = 1000000000;
+  const unsigned long long us_per_sec = 1000000;
+  const unsigned long long ns_per_us =  1000;
+
+  // we assume that the time is normalized
+  assert( t0.tv_nsec < (const long long)ns_per_sec );
+  assert( t1.tv_nsec < (const long long)ns_per_sec );
+
+  if( t0.tv_sec > t1.tv_sec )
+  {
+    cwLogWarning("Negative elapsed time detected.");
+    spec_t tt0 = t1;
+    spec_t tt1 = t0;
+    return elapsedMicros(tt0,tt1);
+  }
+  
+
+  // t1 does not cross a 'seconds' boundary with t0
+  if( t0.tv_sec == t1.tv_sec )
+  {
+    // then t0 nsecs must be <= t1 nsecs
+    assert( t0.tv_nsec <= t1.tv_nsec );
+    return (t1.tv_nsec - t0.tv_nsec)/ns_per_us;
+  }
+
+  
+  // t1 occurs in a different second than t0
+  unsigned long long d_sec   = (t1.tv_sec - t0.tv_sec) - 1; // difference in seconds
+  unsigned long long d_nsec0 = ns_per_sec - t0.tv_nsec;     // time from t0 to next seconds boundary
+  unsigned long long d_nsec1 = t1.tv_nsec;                  // time from t1 to prev. seconds boundary
+
+  return (d_sec*us_per_sec) + ((d_nsec0 + d_nsec1)/ns_per_us);
+}
+
+/*
+unsigned long long cw::time::elapsedMicros0( const spec_t& t0, const spec_t& t1 )
+{
+  const unsigned long long us_per_sec = 1000000;
+  const unsigned long long ns_per_us  =    1000;
+  
   // convert seconds to usecs
-  long u0 = t0.tv_sec * 1000000;
-  long u1 = t1.tv_sec * 1000000;
+  unsigned long long u0 = t0.tv_sec * us_per_sec;
+  unsigned long long u1 = t1.tv_sec * us_per_sec;
+
 
   // convert nanoseconds to usec
-  u0 += t0.tv_nsec / 1000;
-  u1 += t1.tv_nsec / 1000;
+  u0 += t0.tv_nsec / ns_per_us;
+  u1 += t1.tv_nsec / ns_per_us;
 
   // take diff between t1 and t0
   return u1 - u0;
 }
+*/
 
-unsigned cw::time::elapsedMicros( const spec_t& t0 )
+unsigned long long cw::time::elapsedMicros( const spec_t& t0 )
 {
   spec_t t1;
   get(t1);
@@ -80,7 +120,7 @@ unsigned cw::time::elapsedMicros( const spec_t& t0 )
 }
 
 unsigned cw::time::elapsedMs( const spec_t&  t0, const spec_t& t1 )
-{ return elapsedMicros(t0,t1)/1000; }
+{ return (unsigned)(elapsedMicros(t0,t1)/1000); }
 
 unsigned cw::time::elapsedMs( const spec_t&  t0 )
 {
@@ -391,6 +431,9 @@ cw::rc_t cw::time::test()
 
   printf("usec:%i\n",usec);
 
+  t0 = current_time();
+  sleepMs(1000);
+  printf("sleep %i ms\n",elapsedMs(t0));
 
 
   return kOkRC;
