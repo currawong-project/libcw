@@ -3647,17 +3647,17 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
   // execute the io framework
   while( !io::isShuttingDown(app.ioH))
   {
-    time::spec_t t0;
-    time::get(t0);
+    //time::spec_t t0;
+    //time::get(t0);
 
     // This call may block on the websocket handle.
     io::exec(app.ioH);
     
-    unsigned dMs = time::elapsedMs(t0);
-    if( dMs < 50 && app.psNextFrag == nullptr )
-    {      
-      sleepMs( 50-dMs );      
-    }
+    //unsigned dMs = time::elapsedMs(t0);
+    //if( dMs < 50 && app.psNextFrag == nullptr )
+    //{      
+    //  sleepMs( 50-dMs );      
+    //}
 
   }
 
