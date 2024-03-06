@@ -394,6 +394,7 @@ cw::rc_t cw::score_follower::exec(  handle_t h,
   
   newMatchFlRef = false;
 
+  // This call results in a callback to: _score_follower_cb()
   // Note: pass p->perf_idx as 'muid' to the score follower
   rc = exec(  p->trackH, sec, smpIdx, p->perf_idx, status, d0, d1, &scLocIdx );
   
