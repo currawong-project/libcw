@@ -503,6 +503,7 @@ namespace cw
       const object_t* port_array   = nullptr;
       unsigned        pollPeriodMs = 50;
       unsigned        recvBufByteN = 512;
+      bool            enableFl     = false;
 
       // get the serial port list node
       if((cfg = c->find("serial")) == nullptr)
@@ -512,7 +513,8 @@ namespace cw
       }
 
       // the serial header values
-      if((rc = cfg->getv("pollPeriodMs", pollPeriodMs,
+      if((rc = cfg->getv("enableFl",enableFl,
+                         "pollPeriodMs", pollPeriodMs,
                          "recvBufByteN", recvBufByteN,
                          "array",        port_array)) != kOkRC )
       {
@@ -521,6 +523,13 @@ namespace cw
       }
 
       p->serialN = port_array->child_count();
+      
+      if( enableFl==false || p->serialN == 0 )
+      {
+        cwLogInfo("Serial port sub-system disabled.");
+        goto errLabel;
+      }
+
       p->serialA = mem::allocZ<serialPort_t>(p->serialN);
 
       
@@ -632,9 +641,10 @@ namespace cw
     
     rc_t _midiPortCreate( io_t* p, const object_t* c )
     {
-      rc_t     rc             = kOkRC;
-      const object_t* cfg = nullptr;
-
+      rc_t            rc       = kOkRC;
+      const object_t* cfg      = nullptr;
+      bool            enableFl = false;
+      
       // get the MIDI port cfg
       if((cfg = c->find("midi")) == nullptr)
       {
@@ -642,14 +652,19 @@ namespace cw
         return kOkRC;
       }
       
-      if((rc = cfg->getv("asyncFl", p->midiAsyncFl )) != kOkRC )
+      if((rc = cfg->getv( "enableFl", enableFl, 
+                          "asyncFl", p->midiAsyncFl )) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"MIDI configuration parse failed.");
       }
-          
-      if((rc = create(p->midiH, _midiCallback, p, cfg)) != kOkRC )
-        return rc;
 
+      if( !enableFl )
+        cwLogInfo("MIDI device system disabled.");
+      else
+      {
+        if((rc = create(p->midiH, _midiCallback, p, cfg)) != kOkRC )
+          return rc;
+      }
       
       return rc;
     }
@@ -762,6 +777,7 @@ namespace cw
       unsigned        maxSocketCnt   = 10;
       unsigned        recvBufByteCnt = 4096;
       const object_t* socketL        = nullptr;
+      bool            enableFl       = false;
       
       // get the socket configuration node
       if((node = cfg->find("socket")) == nullptr )
@@ -772,10 +788,11 @@ namespace cw
 
       // get the required socket arguments
       if(( rc = node->getv(
-            "maxSocketCnt",       maxSocketCnt,
-            "recvBufByteCnt",     recvBufByteCnt,
-            "threadTimeOutMs",    p->sockThreadTimeOutMs,
-            "socketL",            socketL )) != kOkRC )
+             "enableFl",           enableFl,
+             "maxSocketCnt",       maxSocketCnt,
+             "recvBufByteCnt",     recvBufByteCnt,
+             "threadTimeOutMs",    p->sockThreadTimeOutMs,
+             "socketL",            socketL )) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"Unable to parse the 'socket' configuration node.");
         goto errLabel;
@@ -786,6 +803,13 @@ namespace cw
 
       // create the socket control array
       p->sockN = socketL->child_count();
+
+      if( enableFl == false || p->sockN == 0 )
+      {
+        cwLogInfo("Socket system disabled.");
+        goto errLabel;
+      }
+      
       p->sockA = mem::allocZ<socket_t>(p->sockN);
 
       // create the socket manager
@@ -2023,8 +2047,27 @@ namespace cw
     {      
       rc_t                     rc       = kOkRC;
       audio::device::driver_t* audioDrv = nullptr;
-      const object_t* cfg;
+      const object_t*          cfg      = nullptr;
+      bool                     enableFl = false;
+      
+      // get the audio port node
+      if((cfg = c->find("audio")) == nullptr )
+      {
+        cwLogWarning("No 'audio' configuration node.");
+        goto errLabel;
+      }
 
+      if((rc = cfg->getv("enableFl",enableFl)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Error reading top level audio cfg.");
+        goto errLabel;
+      }
+
+      if( !enableFl )
+      {
+        cwLogInfo("Audio sub-system disabled.");
+        goto errLabel;
+      }
       
       // initialize the audio device interface  
       if((rc = audio::device::create(p->audioH)) != kOkRC )
@@ -2047,39 +2090,30 @@ namespace cw
         goto errLabel;
       }
 
-      // get the audio port node
-      if((cfg = c->find("audio")) == nullptr )
-      {
-        cwLogWarning("No 'audio' configuration node.");
-      }
-      else
-      {
-
-        // create the audio device sub-system - audio device files must be created
-        // before they can be referenced in _audioParseConfig().
-        if((rc = _audioCreateDeviceFiles(p,cfg,audioDrv)) != kOkRC )
+      // create the audio device sub-system - audio device files must be created
+      // before they can be referenced in _audioParseConfig().
+      if((rc = _audioCreateDeviceFiles(p,cfg,audioDrv)) != kOkRC )
         {
           rc = cwLogError(rc,"The audio device file creation failed.");
           goto errLabel;
         }
 
-        // register audio device file driver
-        if( audioDrv != nullptr )
-          if((rc = audio::device::registerDriver( p->audioH, audioDrv )) != kOkRC )
-          {
-            rc = cwLogError(rc,"The audio device file driver registration failed.");
-            goto errLabel;
-          }
-
-        // read the configuration information and setup the audio hardware
-        if((rc = _audioParseConfig( p, cfg )) != kOkRC )
+      // register audio device file driver
+      if( audioDrv != nullptr )
+        if((rc = audio::device::registerDriver( p->audioH, audioDrv )) != kOkRC )
         {
-          rc = cwLogError(rc,"Audio device configuration failed.");
+          rc = cwLogError(rc,"The audio device file driver registration failed.");
           goto errLabel;
         }
 
-        audio::device::report( p->audioH );
+      // read the configuration information and setup the audio hardware
+      if((rc = _audioParseConfig( p, cfg )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Audio device configuration failed.");
+        goto errLabel;
       }
+
+      audio::device::report( p->audioH );
       
     errLabel:
       return rc;
@@ -2113,6 +2147,7 @@ namespace cw
       const char*     uiCfgLabel = "ui";
       ui::ws::args_t  args       = {};
       const object_t* ui_cfg     = nullptr;
+      bool            enableFl   = false;
 
       // Duplicate the application id map
       if( mapN > 0 )
@@ -2131,9 +2166,16 @@ namespace cw
       if((ui_cfg = c->find(uiCfgLabel)) != nullptr )
       {
 
-        if((rc = ui_cfg->getv("asyncFl",p->uiAsyncFl)) != kOkRC )
+        if((rc = ui_cfg->getv("enableFl",enableFl,
+                              "asyncFl",p->uiAsyncFl)) != kOkRC )
         {
           rc = cwLogError(rc,"UI configuration parse failed.");
+          goto errLabel;
+        }
+
+        if( !enableFl )
+        {
+          cwLogInfo("UI sub-system disabled.");
           goto errLabel;
         }
 
