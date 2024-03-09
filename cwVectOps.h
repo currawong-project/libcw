@@ -137,6 +137,11 @@ namespace cw
         return std::numeric_limits<T>::max();
       return v[mi];
     }
+
+
+    //==================================================================================================================
+    // misc
+    //
     
     template< typename T0, typename T1 >
       T0 mac( const T0* v0, const T1* v1, unsigned n )
@@ -147,6 +152,24 @@ namespace cw
       return acc;
     }
 
+    template< typename T0, typename T1 >
+    T0* scale_add( T0* v0, T0 scale_0, const T1* v1, T1 scale_1, unsigned n )
+    {
+      for(unsigned i=0; i<n; ++i)
+        v0[i] = (v0[i] * scale_0) +  (v1[i] * scale_1);
+      
+      return v0;
+    }
+
+    template< typename T0, typename T1, typename T2 >
+      T0* scale_add( T0* v0, const T1* v1, T1 scale_1, const T2* v2, T2 scale_2, unsigned n )
+    {
+      for(unsigned i=0; i<n; ++i)
+        v0[i] = (v1[i] * scale_1) +  (v2[i] * scale_2);
+      
+      return v0;
+    }
+    
 
     //==================================================================================================================
     // absolute value
