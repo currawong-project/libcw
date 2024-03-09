@@ -516,7 +516,7 @@ namespace cw
       else
         y = (T)(v0 + (v1-v0)*coeff );
 
-      printf("%f %f -> %f\n",(double)v0,(double)v1,(double)y);
+      //printf("%f %f -> %f\n",(double)v0,(double)v1,(double)y);
       return y;
     }
 
@@ -1773,7 +1773,7 @@ cw::rc_t cw::flow::apply_dual_preset( handle_t h, const char* presetLabel_0, con
   flow_t* p  = _handleToPtr(h);
   const object_t* net_preset_value_0;
 
-  cwLogInfo("*** Applying dual: %s %s : %f\n",presetLabel_0, presetLabel_1, coeff );
+  cwLogInfo("*** Applying dual: %s %s : %f",presetLabel_0, presetLabel_1, coeff );
   
   // locate the cfg of the requested preset
   if((net_preset_value_0 = _find_network_preset(p, presetLabel_0 )) == nullptr )
@@ -1871,7 +1871,7 @@ cw::rc_t cw::flow::apply_preset( handle_t h, const multi_preset_selector_t& mps 
   bool        secProbFl = cwIsFlag(mps.flags, kSecPresetProbFl );
   bool        interpFl  = cwIsFlag(mps.flags, kInterpPresetFl );
 
-  printf("preset flags: pri:%i sec:%i interp:%i\n",priProbFl,secProbFl,interpFl);
+  //printf("preset flags: pri:%i sec:%i interp:%i\n",priProbFl,secProbFl,interpFl);
   
  // verify that the set of candidate presets is not empty
   if( mps.presetN == 0 )
@@ -1921,7 +1921,7 @@ cw::rc_t cw::flow::apply_preset( handle_t h, const multi_preset_selector_t& mps 
     if( mps.presetN == 2)
     {
       assert( pri_sel_idx <= 1 );
-      label1               = mps.presetA[ pri_sel_idx == 0 ? 1 : 0 ].preset_label;
+      label1  = mps.presetA[ pri_sel_idx == 0 ? 1 : 0 ].preset_label;
     }
     else                        // at least two remaining presets exist to select between
     {
