@@ -8,7 +8,8 @@ namespace cw
     enum {
       kPriPresetProbFl   = 0x01,
       kSecPresetProbFl   = 0x02,
-      kInterpPresetFl    = 0x04
+      kInterpPresetFl    = 0x04,
+      kAllowAllPresetFl  = 0x08
     };
     
     typedef struct preset_order_str

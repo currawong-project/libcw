@@ -38,6 +38,8 @@ namespace cw
     {
       preset_label_t*  presetLabelA;
       unsigned         presetLabelN;
+      
+      flow::preset_order_t* presetOrderA;  // presetOrderA[ presetLabelN ]
 
       alt_label_t*     altLabelA;
       unsigned         altLabelN;
@@ -60,6 +62,7 @@ namespace cw
       unsigned         sel_frag_id; // fragment id assoc'd with last selected frag. ui element
 
       unsigned         cur_alt_idx;
+
       
     } preset_sel_t;
 
@@ -144,7 +147,8 @@ namespace cw
       for(unsigned i=0; i<p->presetLabelN; ++i)
         mem::release( p->presetLabelA[i].label );
       mem::release( p->presetLabelA );
-
+      mem::release( p->presetOrderA );
+      
       for(unsigned i=0; i<p->altLabelN; ++i)
         mem::release( p->altLabelA[i].label );
       mem::release( p->altLabelA );
@@ -857,6 +861,7 @@ cw::rc_t cw::preset_sel::create(  handle_t& hRef, const object_t* cfg  )
   // allocate the label array
   p->presetLabelN = preset_labelL->child_count();
   p->presetLabelA = mem::allocZ<preset_label_t>(p->presetLabelN);
+  p->presetOrderA = mem::allocZ<flow::preset_order_t>(p->presetLabelN);
 
   // get the preset labels
   for(unsigned i=0; i<p->presetLabelN; ++i)
@@ -874,6 +879,8 @@ cw::rc_t cw::preset_sel::create(  handle_t& hRef, const object_t* cfg  )
     }
     
     p->presetLabelA[i].label = mem::duplStr(label);
+    p->presetOrderA[i].preset_label = p->presetLabelA[i].label;
+    p->presetOrderA[i].order = 1;
   }
 
 
@@ -944,6 +951,12 @@ const char* cw::preset_sel::preset_label( handle_t h, unsigned preset_idx )
 {
   preset_sel_t* p = _handleToPtr(h);
   return _preset_label(p,preset_idx);
+}
+
+const cw::flow::preset_order_t* cw::preset_sel::preset_order_array( handle_t h )
+{
+  preset_sel_t* p = _handleToPtr(h);
+  return p->presetOrderA;
 }
 
 unsigned    cw::preset_sel::alt_count( handle_t h )

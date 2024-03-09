@@ -54,6 +54,9 @@ namespace cw
       
       kStartBtnId,
       kStopBtnId,
+      kBegPlayLocNumbId,
+      kEndPlayLocNumbId,
+      kLockLoctnCheckId,      
       kLiveCheckId,
       kTrackMidiCheckId,
 
@@ -81,6 +84,7 @@ namespace cw
       kPriPresetProbCheckId,
       kSecPresetProbCheckId,
       kPresetInterpCheckId,
+      kPresetAllowAllCheckId,
 
       
       kEnaRecordCheckId,
@@ -90,8 +94,6 @@ namespace cw
       kSfResetBtnId,
       kSfResetLocNumbId,
 
-      kBegPlayLocNumbId,
-      kEndPlayLocNumbId,
 
       kInsertLocId,
       kInsertBtnId,
@@ -159,6 +161,9 @@ namespace cw
         
       { kPanelDivId,     kStartBtnId,        "startBtnId" },
       { kPanelDivId,     kStopBtnId,         "stopBtnId" },
+      { kPanelDivId,     kBegPlayLocNumbId,  "begLocNumbId" },
+      { kPanelDivId,     kEndPlayLocNumbId,  "endLocNumbId" },      
+      { kPanelDivId,     kLockLoctnCheckId,  "locLoctnCheckId" },
       { kPanelDivId,     kLiveCheckId,       "liveCheckId" },
       { kPanelDivId,     kTrackMidiCheckId,  "trackMidiCheckId" },
 
@@ -182,9 +187,11 @@ namespace cw
       { kPanelDivId,     kLoadBtnId,      "loadBtnId" },
       { kPanelDivId,     kPerfSelId,      "perfSelId" },
       { kPanelDivId,     kAltSelId,       "altSelId" },
-      { kPanelDivId,     kPriPresetProbCheckId, "presetProbPriCheckId" },
-      { kPanelDivId,     kSecPresetProbCheckId, "presetProbSecCheckId" },
-      { kPanelDivId,     kPresetInterpCheckId, "presetInterpCheckId" },
+      { kPanelDivId,     kPriPresetProbCheckId,  "presetProbPriCheckId" },
+      { kPanelDivId,     kSecPresetProbCheckId,  "presetProbSecCheckId" },
+      { kPanelDivId,     kPresetInterpCheckId,   "presetInterpCheckId" },
+      { kPanelDivId,     kPresetAllowAllCheckId, "presetAllowAllCheckId" },
+      
 
       { kPanelDivId,     kEnaRecordCheckId,  "enaRecordCheckId" },
       { kPanelDivId,     kMidiSaveBtnId,     "midiSaveBtnId" },
@@ -193,8 +200,6 @@ namespace cw
       { kPanelDivId,     kSfResetBtnId,      "sfResetBtnId" },
       { kPanelDivId,     kSfResetLocNumbId,  "sfResetLocNumbId" },
 
-      { kPanelDivId,     kBegPlayLocNumbId,  "begLocNumbId" },
-      { kPanelDivId,     kEndPlayLocNumbId,  "endLocNumbId" },
 
       { kPanelDivId,     kInsertLocId,    "insertLocId" },
       { kPanelDivId,     kInsertBtnId,    "insertBtnId" },
@@ -318,6 +323,7 @@ namespace cw
       
       unsigned beg_play_loc;    // beg/end play loc's from the UI
       unsigned end_play_loc;
+      bool     lockLoctnFl;
 
       preset_sel::handle_t      psH;      
       const preset_sel::frag_t* psNextFrag;
@@ -363,6 +369,10 @@ namespace cw
 
       perf_recording_t* perfRecordingBeg;
       perf_recording_t* perfRecordingEnd;
+
+      const char* dflt_perf_label;
+      unsigned    dflt_perf_app_id;
+      
       
     } app_t;
 
@@ -435,6 +445,7 @@ namespace cw
                                     "crossFadeCount",       app->crossFadeCnt,
                                     "beg_play_loc",         app->beg_play_loc,
                                     "end_play_loc",         app->end_play_loc,
+            "dflt_perf_label",      app->dflt_perf_label,
                                     "live_mode_fl",         app->useLiveMidiFl,
                                     "enable_recording_fl",  app->enableRecordFl,
                                     "midi_record_dir",      midi_record_dir,
@@ -611,6 +622,13 @@ namespace cw
           rc = cwLogError(kSyntaxErrorRC,"The performance recording menu create failed on %s.",prp->label);
           goto errLabel;
         }
+
+        if( app->dflt_perf_label )
+          if( textIsEqual(prp->label,app->dflt_perf_label) )
+          {
+            app->dflt_perf_app_id = kPerfOptionBaseId+id;
+            cwLogInfo("The default performance '%s' was found.",prp->label);
+          }
 
         prp->id = id;
         id     += 1;
@@ -915,14 +933,14 @@ namespace cw
               .coeffMinV = score_evt->featMinV,
               .coeffMaxV = score_evt->featMaxV,
               .coeffN    = perf_meas::kValCnt,
-              .presetA   = frag->multiPresetA,
-              .presetN   = frag->multiPresetN
+              .presetA   = cwIsFlag(app->multiPresetFlags,flow::kAllowAllPresetFl) ? preset_order_array(app->psH) : frag->multiPresetA,
+              .presetN   = cwIsFlag(app->multiPresetFlags,flow::kAllowAllPresetFl) ? preset_count(app->psH)       : frag->multiPresetN
             };
             
           if( app->ioFlowH.isValid() )
             apply_rc = io_flow::apply_preset( app->ioFlowH, flow_cross::kNextDestId, mp_sel );
 
-          preset_label = mp_sel.presetN>0 && mp_sel.presetA[0].preset_label!=nullptr ? mp_sel.presetA[0].preset_label : nullptr;
+          preset_label = "(multi)"; //mp_sel.presetN>0 && mp_sel.presetA[0].preset_label!=nullptr ? mp_sel.presetA[0].preset_label : nullptr;
 
           preset_type_label = "multi";
             
@@ -945,10 +963,10 @@ namespace cw
 
           // don't display preset updates unless the score is actually loaded          
           printf("Apply %s preset: '%s' : loc:%i status:%i\n", preset_type_label, preset_label==nullptr ? "<invalid>" : preset_label, loc, apply_rc );
-
-          _set_status(app,"Apply %s preset: '%s'.", preset_type_label, preset_label==nullptr ? "<invalid>" : preset_label);
           
         }          
+
+        _set_status(app,"Apply %s preset: '%s'.", preset_type_label, preset_label==nullptr ? "<invalid>" : preset_label);
         
         // apply the fragment defined gain settings
         if( app->ioFlowH.isValid() )
@@ -1900,6 +1918,10 @@ namespace cw
 
       return rc;
     }
+
+rc_t _on_perf_select(app_t* app, unsigned optionAppId );
+rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
+
     
     rc_t _fragment_restore_ui( app_t* app )
     {
@@ -1937,6 +1959,24 @@ namespace cw
           
           cwLogInfo("Fragment restore complete: elapsed secs:%f",time::elapsedSecs(app->psLoadT0));
           io::uiRealTimeReport(app->ioH);
+
+          /*
+          if( app->dflt_perf_app_id != kInvalidId )
+          {
+            uiSendValue( app->ioH, io::uiFindElementUuId(app->ioH, kPerfSelId), app->dflt_perf_app_id );
+
+            _on_perf_select(app, app->dflt_perf_app_id );
+
+            
+
+            uiSendValue( app->ioH, io::uiFindElementUuId(app->ioH, kBegPlayLocNumbId), 2538 );
+            uiSendValue( app->ioH, io::uiFindElementUuId(app->ioH, kEndPlayLocNumbId), 3517 );
+
+            _on_ui_play_loc(app, kBegPlayLocNumbId, 2538);
+            _on_ui_play_loc(app, kBegPlayLocNumbId, 3517);
+
+          }
+          */
         }
       }
 
@@ -2178,8 +2218,11 @@ namespace cw
 
     rc_t _do_load_perf_score( app_t* app, const char* perf_fn, const vel_tbl_t* vtA=nullptr, unsigned vtN=0 )
     {
-      rc_t     rc         = kOkRC;
-      unsigned midiEventN = 0;
+      rc_t     rc          = kOkRC;
+      unsigned midiEventN  = 0;
+      
+      // only lock the current beg/end location settings if a valid perf. score is already loaded
+      bool     lockLoctnFl = app->perfScoreH.isValid() && app->lockLoctnFl;
       
       cwLogInfo("Loading");
       _set_status(app,"Loading...");
@@ -2208,6 +2251,7 @@ namespace cw
       // A performance is loaded so enable the UI
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStartBtnId ), true );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStopBtnId ),  true );
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kLockLoctnCheckId ),  true );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kLiveCheckId ),  true );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kEnaRecordCheckId ),  true );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kTrackMidiCheckId ),  true );
@@ -2215,9 +2259,12 @@ namespace cw
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kInsertLocId ), true );
       
       // set the UI begin/end play to the locations of the newly loaded performance
-      app->end_play_loc = app->maxPerfLoc;
-      app->beg_play_loc = app->minPerfLoc;
-
+      if( !lockLoctnFl )
+      {
+        app->end_play_loc = app->maxPerfLoc;
+        app->beg_play_loc = app->minPerfLoc;
+      }
+      
       // Update the master range of the play beg/end number widgets
       io::uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, kBegPlayLocNumbId), app->minPerfLoc, app->maxPerfLoc, 1, 0, app->beg_play_loc );
       io::uiSetNumbRange( app->ioH, io::uiFindElementUuId(app->ioH, kEndPlayLocNumbId), app->minPerfLoc, app->maxPerfLoc, 1, 0, app->end_play_loc );
@@ -3024,7 +3071,12 @@ namespace cw
         case kPresetInterpCheckId:
           app->multiPresetFlags = cwEnaFlag(app->multiPresetFlags,flow::kInterpPresetFl,m.value->u.b);
           break;
-        
+          
+        case kPresetAllowAllCheckId:
+          app->multiPresetFlags = cwEnaFlag(app->multiPresetFlags,flow::kAllowAllPresetFl,m.value->u.b);
+          break;
+
+          
         case kMidiThruCheckId:
           cwLogInfo("MIDI thru:%i",m.value->u.b);        
           _set_midi_thru_state(app, m.value->u.b);
@@ -3036,6 +3088,18 @@ namespace cw
             
         case kStopBtnId:
           _do_stop_play(app);
+          break;
+          
+        case kBegPlayLocNumbId:
+          _on_ui_play_loc(app, m.appId, m.value->u.i);
+          break;
+          
+        case kEndPlayLocNumbId:
+          _on_ui_play_loc(app, m.appId, m.value->u.i);
+          break;
+
+        case kLockLoctnCheckId:
+          app->lockLoctnFl = m.value->u.b;
           break;
 
         case kLiveCheckId:
@@ -3074,14 +3138,6 @@ namespace cw
           _on_master_value( app, "sync_delay","delayMs",preset_sel::kMasterSyncDelayMsVarId, (double)m.value->u.i );          
           break;
           
-        case kBegPlayLocNumbId:
-          _on_ui_play_loc(app, m.appId, m.value->u.i);
-          break;
-          
-        case kEndPlayLocNumbId:
-          _on_ui_play_loc(app, m.appId, m.value->u.i);
-          break;
-
         case kInsertLocId:
           _on_ui_insert_loc(app, m.value->u.u );
           break;
@@ -3272,6 +3328,10 @@ namespace cw
         case kPresetInterpCheckId:
           io::uiSendValue( app->ioH, m.uuId, preset_cfg_flags(app->ioFlowH) & flow::kInterpPresetFl );
           break;
+
+        case kPresetAllowAllCheckId:
+          io::uiSendValue( app->ioH, m.uuId, preset_cfg_flags(app->ioFlowH) & flow::kAllowAllPresetFl );
+          break;
           
         case kWetInGainId:
           _on_echo_master_value( app, preset_sel::kMasterWetInGainVarId, m.uuId );
@@ -3300,7 +3360,7 @@ namespace cw
         case kLiveCheckId:
           io::uiSendValue( app->ioH, m.uuId, app->useLiveMidiFl );
           break;
-	  
+
         case kTrackMidiCheckId:
           io::uiSendValue( app->ioH, m.uuId, app->trackMidiFl );
           break;
@@ -3514,7 +3574,8 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
                 .sdUpr	     = -1.1,
                 .sdLwr	     = 2.0,
                 .sdMix	     = 0.0,
-                .cmpBypassFl = false
+                .cmpBypassFl = false,
+                .dflt_perf_app_id = kInvalidId
 		
   };
   const object_t* params_cfg = nullptr;

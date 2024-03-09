@@ -80,6 +80,9 @@ namespace cw
     unsigned    preset_count( handle_t h );
     const char* preset_label( handle_t h, unsigned preset_idx );
 
+    // Return preset_order[ preset_count() ] w/ all order's = 1
+    const flow::preset_order_t* preset_order_array( handle_t h );
+
     // Count/label of alternatives (alt_idx==0 is 'no alternative selected)
     unsigned    alt_count( handle_t h );
     const char* alt_label( handle_t h, unsigned alt_idx );
