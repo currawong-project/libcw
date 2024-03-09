@@ -74,8 +74,8 @@ namespace cw
     // Step forward/back by p->stepCnt from p->eli.
     // p->eli must therefore be valid prior to calling this function.
     // If more than p->maxMissCnt consecutive MIDI events are 
-    // missed then automatically run cmScAlignScan().
-    // Return cmEofRC if the end of the score is encountered.
+    // missed then automatically run _scan ().
+    // Return kEofRC if the end of the score is encountered.
     // Return cmSubSysFailRC if an internal scan resync. failed.
     //rc_t _step( handle_t h );
 

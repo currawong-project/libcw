@@ -376,7 +376,8 @@ namespace cw
           mem::release(midi_fname);
           mem::release(sync_perf_fname);
           mem::release(meta_fname);
-          meta_obj->free();
+          if( meta_obj != nullptr )
+            meta_obj->free();
         }
 
         mem::release(dirEntryArray);
@@ -409,6 +410,7 @@ namespace cw
       unsigned                       start_loc      = 0;
       unsigned                       end_loc        = 0;
       const object_t*                perf           = nullptr;
+      filesys::pathPart_t*                    pathParts      = nullptr;
       midi::file::handle_t           mfH;      
 
       // get the perf. record
@@ -434,13 +436,25 @@ namespace cw
 
       if( !enable_fl )
         goto errLabel;
-          
-      // create the output directory
+
+      if((pathParts = filesys::pathParts(midi_fname)) == nullptr )
+      {
+        rc = cwLogError(kOpFailRC,"MIDI file name parse failed on '%s'.",cwStringNullGuard(midi_fname));
+        goto errLabel;                
+      }
+
+      /*
+      // create the output filename
       if((out_dir = filesys::makeFn(p->out_dir,perf_label,nullptr,nullptr)) == nullptr )
       {
         rc = cwLogError(kOpFailRC,"Directory name formation failed on '%s'.",cwStringNullGuard(out_dir));
         goto errLabel;        
       }
+      */
+
+      out_dir = mem::duplStr(pathParts->dirStr);
+      
+      mem::release(pathParts);
 
       // create the output directory
       if((rc = filesys::makeDir(out_dir)) != kOkRC )
@@ -567,6 +581,7 @@ namespace cw
 
       
     errLabel:
+      mem::release(pathParts);
       mem::release(out_dir);
       mem::release(fname);
       close(mfH);

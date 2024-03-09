@@ -74,7 +74,7 @@ namespace cw
     // Write the score to 'out_fname'.
     void score_report( handle_t h, const char* out_fname );
 
-    // Use the stored MIDI data received since the last call to reset to generate a report
+    // Use the stored MIDI data, received since the last call to reset(), to generate a report
     // using midi_state::report_events().
     rc_t midi_state_rt_report( handle_t h, const char* out_fname );
 
