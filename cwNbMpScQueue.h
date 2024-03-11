@@ -7,10 +7,12 @@ Non-blocking, Lock-free Queue:
 
 Push
 ----
-0. Produceers go to next block, if the write-position is valid,
-then fetch-add the write-position forward to allocate space.
+0. Produceers go down the a list of blocks (nbmpscq.blockL)
+if a block is not already full then it atomically
+fetch-add's block->write_idx by the size of the the element
+to be inserted.
 
-1. If after the fetch-add the area is valid then 
+1. If after the fetch-add the write_idx is <= block->byteN then 
    - atomically incr ele-count, 
    - copy in ele 
    - place the block,ele-offset,ele-byte-cnt onto the NbMpScQueue().
@@ -34,8 +36,12 @@ namespace cw
     typedef handle<struct nbmpscq_str> handle_t;
 
     rc_t create( handle_t& hRef, unsigned initBlkN, unsigned blkByteN );
+    
     rc_t destroy( handle_t& hRef );
 
+    // push() is called by multiple producer threads to insert
+    // an element in the queue.  Note that the 'blob' is copied into
+    // the queue and therefore can be released by the caller.
     rc_t push( handle_t h, const void* blob, unsigned blobByteN );
 
     typedef struct blob_str
@@ -43,8 +49,14 @@ namespace cw
       const void* blob;
       unsigned blobByteN;
     } blob_t;
-    
-    blob_t  next( handle_t h );
+
+    // get() is called by the single consumer thread to access the
+    // current blob at the front of the queue.  Note that this call
+    // does not change the state of the queue.
+    blob_t  get( handle_t h );
+
+    // advance() disposes of the blob at the front of the
+    // queue and makes the next blob current.
     rc_t advance( handle_t h );
 
     rc_t test( const object_t* cfg );
