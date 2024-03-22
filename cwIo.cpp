@@ -526,6 +526,7 @@ namespace cw
       
       if( enableFl==false || p->serialN == 0 )
       {
+        p->serialN = 0;
         cwLogInfo("Serial port sub-system disabled.");
         goto errLabel;
       }
@@ -806,6 +807,7 @@ namespace cw
 
       if( enableFl == false || p->sockN == 0 )
       {
+        p->sockN = 0;
         cwLogInfo("Socket system disabled.");
         goto errLabel;
       }
