@@ -75,7 +75,8 @@ namespace cw
         } alsa_device_t;
 
 #define _cmMpErrMsg( rc,  alsaRc, str )       cwLogError(kOpFailRC,"%s : ALSA Error:%i %s",(str),(alsaRc),snd_strerror(alsaRc))
-#define _cmMpErrMsg1( rc, alsaRc, fmt, arg )  cwLogError(kOpFailRC, fmt"%s : ALSA Error:%i %s",(arg),(alsaRc),snd_strerror(alsaRc))
+#define _cmMpErrMsg1( rc, alsaRc, fmt, arg )  cwLogError(kOpFailRC, fmt" : ALSA Error:%i %s",(arg),(alsaRc),snd_strerror(alsaRc))
+#define _cmMpWarnMsg2( alsaRc, fmt, arg0, arg1 )  cwLogWarning(fmt" : ALSA Error:%i %s",(arg0),(arg1),(alsaRc),snd_strerror(alsaRc))
       
         alsa_device_t* _handleToPtr( handle_t h ){ return handleToPtr<handle_t,alsa_device_t>(h); }
 
@@ -301,8 +302,9 @@ namespace cw
           snd_seq_client_info_t*    cip  = NULL;
           snd_seq_port_info_t*      pip  = NULL;
           snd_seq_port_subscribe_t *subs = NULL;
-          unsigned                  i,j,k,arc;
-
+          unsigned                  i,j,k;
+          int arc;
+          
           for(i=0; i<kCtoD_MapN; ++i)
             p->clientIdToDevIdxMap[i] = kInvalidIdx;
 
@@ -354,10 +356,15 @@ namespace cw
           snd_seq_port_info_set_timestamp_queue(pip, p->alsa_queue);
 
           // create the client port
-          if((p->alsa_addr.port = snd_seq_create_port(p->h,pip)) < 0 )
+          //if((p->alsa_addr.port = snd_seq_create_port(p->h,pip)) < 0 )
+          if((arc = snd_seq_create_port(p->h,pip)) < 0 )
           {
-            rc = _cmMpErrMsg(kOpFailRC,p->alsa_addr.port,"ALSA client port creation failed.");
+            rc = _cmMpErrMsg(kOpFailRC,arc,"ALSA client port creation failed.");
             goto errLabel;
+          }
+          else
+          {
+            p->alsa_addr.port = arc;
           }
 
 
@@ -426,7 +433,9 @@ namespace cw
               unsigned       caps = snd_seq_port_info_get_capability(pip);
               snd_seq_addr_t addr = *snd_seq_port_info_get_addr(pip);
 
-              if( cwIsFlag(caps,SND_SEQ_PORT_CAP_READ) )
+              //printf("0x%x 0x%x %s %s\n",type,caps,name,port);
+
+              if( cwIsFlag(caps,SND_SEQ_PORT_CAP_READ) && cwIsFlag(caps,SND_SEQ_PORT_CAP_SUBS_READ) )
               {
                 assert(j<p->devArray[i].iPortCnt);
                 p->devArray[i].iPortArray[j].inputFl   = true;
@@ -443,12 +452,12 @@ namespace cw
                 snd_seq_port_subscribe_set_time_update(subs, 1);
                 snd_seq_port_subscribe_set_time_real(subs, 1);
                 if((arc = snd_seq_subscribe_port(p->h, subs)) < 0)
-                  rc = _cmMpErrMsg1(kOpFailRC,arc,"Input port to app. subscription failed on port '%s'.",cwStringNullGuard(port));
+                  _cmMpWarnMsg2(arc,"Input port to app. subscription failed on device:%s port '%s'.",cwStringNullGuard(name),cwStringNullGuard(port));
 
                 ++j;
               }
 
-              if( cwIsFlag(caps,SND_SEQ_PORT_CAP_WRITE) )
+              if( cwIsFlag(caps,SND_SEQ_PORT_CAP_WRITE) && cwIsFlag(caps,SND_SEQ_PORT_CAP_SUBS_WRITE) && cwIsNotFlag(type,SND_SEQ_PORT_TYPE_APPLICATION) )
               {
                 assert(k<p->devArray[i].oPortCnt);
                 p->devArray[i].oPortArray[k].inputFl   = false;
@@ -461,7 +470,7 @@ namespace cw
                 snd_seq_port_subscribe_set_sender(subs, &p->alsa_addr);
                 snd_seq_port_subscribe_set_dest(  subs, &addr);
                 if((arc = snd_seq_subscribe_port(p->h, subs)) < 0 )
-                  rc = _cmMpErrMsg1(kOpFailRC,arc,"App to output port subscription failed on port '%s'.",cwStringNullGuard(port));
+                  _cmMpWarnMsg2(arc,"App to output port subscription failed on device:%s port '%s'.",cwStringNullGuard(name), cwStringNullGuard(port));
        
                 ++k;
               }
