@@ -71,6 +71,8 @@ namespace cw
     
     bool is_empty( handle_t h );
 
+    unsigned count( handle_t h );
+
     rc_t test( const object_t* cfg );
     
   }

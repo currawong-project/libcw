@@ -785,3 +785,9 @@ cw::rc_t cw::websock::exec( handle_t h, unsigned timeOutMs )
   
   return rc;
 }
+
+void cw::websock::report( handle_t h )
+{
+  websock_t* p  = _handleToPtr(h);
+  printf("Websock: msgs sent:%i recvd:%i que count:%i\n",p->_sendMsgCnt,p->_recvMsgCnt,count(p->_qH));
+}

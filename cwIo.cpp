@@ -2497,7 +2497,7 @@ void cw::io::realTimeReport( handle_t h )
 {
   io_t* p = _handleToPtr(h);
   audio::device::realTimeReport(p->audioH);
-
+  uiRealTimeReport(h);
 }
 
 
@@ -3957,8 +3957,8 @@ void cw::io::uiReport( handle_t h )
 
 void cw::io::uiRealTimeReport( handle_t h )
 {
-  ui::handle_t uiH;
-  if(_handleToUiHandle(h,uiH) == kOkRC )
-    ui::realTimeReport(uiH);
+  ui::ws::handle_t uiH;
+  if(_handleToWsUiHandle(h,uiH) == kOkRC )
+    ui::ws::realTimeReport(uiH);
 }
 

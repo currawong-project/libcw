@@ -236,6 +236,9 @@ namespace cw
       
       websock::handle_t websockHandle( handle_t h );
       ui::handle_t      uiHandle( handle_t h );
+
+      void realTimeReport( handle_t h );
+      
     }
 
     namespace srv
