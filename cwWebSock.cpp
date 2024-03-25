@@ -174,8 +174,10 @@ namespace cw
           cwLogInfo("Websocket connection closed.\n");
       
           ws->_connSessionN -= 1;
+          
+          cwAssert( protoState->sessionN > 0 );
+
           protoState->sessionN   -= 1;
-          cwAssert( protoState->sessionN >= 0 );
 
           if( ws->_cbFunc != nullptr)
             ws->_cbFunc(ws->_cbArg,proto->id,sess->id,kDisconnectTId,nullptr,0);
@@ -542,16 +544,16 @@ cw::rc_t cw::websock::create(
   int logs = LLL_USER | LLL_ERR | LLL_WARN | LLL_NOTICE;
 	lws_set_log_level(logs, nullptr);
 
-  p->_event_loop_ops_custom = {
-    .name                  = "custom",
-    .init_vhost_listen_wsi = _custom_sock_accept,
-    .init_pt               = _custom_init_private,
-    .wsi_logical_close     = _custom_wsi_logical_close,
-    .sock_accept           = _custom_sock_accept,
-    .io                    = _custom_io,
-    .evlib_size_pt         = sizeof(struct pt_eventlibs_custom) 
-  };
+  p->_event_loop_ops_custom = {};
+  p->_event_loop_ops_custom.name                  = "custom";
+  p->_event_loop_ops_custom.init_vhost_listen_wsi = _custom_sock_accept;
+  p->_event_loop_ops_custom.init_pt               = _custom_init_private;
+  p->_event_loop_ops_custom.wsi_logical_close     = _custom_wsi_logical_close;
+  p->_event_loop_ops_custom.sock_accept           = _custom_sock_accept;
+  p->_event_loop_ops_custom.io                    = _custom_io;
+  p->_event_loop_ops_custom.evlib_size_pt         = sizeof(struct pt_eventlibs_custom);
 
+    
   p->_evlib_custom = {
     .hdr = {
       "custom event loop",
