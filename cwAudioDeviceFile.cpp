@@ -1102,14 +1102,14 @@ cw::rc_t cw::audio::device::file::test( const object_t* cfg)
   rc_t               rc2            = kOkRC;
   const char*        ifname         = nullptr;
   const char*        ofname         = nullptr;
-  struct driver_str  driver         = {0};
+  struct driver_str  driver         = {};
   struct driver_str* driver_ptr     = &driver;
   unsigned           bitsPerSample  = 0; // zero indicates floating point sample format for output audio file
   unsigned           sleepMicrosec  = 0;
   const char*        devLabel       = "dev_file";
   unsigned           devIdx         = 0;
   unsigned           framesPerCycle = 0;
-  cb_object_t        obj            = { 0 };
+  cb_object_t        obj            = {};
   void*              cbArg          = &obj;
   audiofile::info_t  info;
   handle_t           h;

@@ -207,7 +207,7 @@ namespace cw
         case kFloatId:
           printf("Float: %f\n",v->u.f);
           p->appFloat = v->u.f;
-
+          break;
 
         case kPanelBtn1Id:
           {

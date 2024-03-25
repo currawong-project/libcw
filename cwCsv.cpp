@@ -113,6 +113,7 @@ namespace cw
               continue;
                 
             state = c==dquote ? kInQuotedField : kInField;
+            [[fallthrough]];
             
           case kInField:
             if(c == field_seperator_char )

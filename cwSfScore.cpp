@@ -606,7 +606,7 @@ namespace cw
       // Both of these assertions should have been previously verified
       // by the score validation process.      
       assert( set->locN >= 2 );
-      assert( set->evtCnt >= 0 );
+      //assert( set->evtCnt >= 0 );
 
       bool printFl = false; //set->evtArray[0]->barNumb == 272;
       

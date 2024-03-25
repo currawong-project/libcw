@@ -723,7 +723,7 @@ unsigned           cw::lex::getNextToken( handle_t h )
     }
 
     // update the lexer state
-    p->curTokenId      = maxIdx==kInvalidIdx ? kUnknownLexTId : p->mfp[ maxIdx ].typeId;    
+    p->curTokenId      = maxIdx==kInvalidIdx ? (unsigned)kUnknownLexTId : p->mfp[ maxIdx ].typeId;    
     p->curTokenCharIdx = p->ci;
     p->curTokenCharCnt = maxCharCnt;
       

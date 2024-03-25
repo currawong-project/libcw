@@ -670,7 +670,7 @@ cw::rc_t cw::score_follower::write_sync_perf_csv( handle_t h, const char* out_fn
             sectionLabel = e->section != nullptr ? e->section->label : "";
             curBarNumb   = std::max(bar,curBarNumb);
             dlevel       = e->dynLevel;
-            loc          = resultA[i].oLocId == kInvalidId ? score_parse::kInvalidLocId : resultA[i].oLocId;
+            loc          = resultA[i].oLocId == kInvalidId ? (unsigned)score_parse::kInvalidLocId : resultA[i].oLocId;
             break;
           }
         }

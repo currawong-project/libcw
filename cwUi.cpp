@@ -2116,7 +2116,8 @@ cw::rc_t cw::ui::registerAppIdMap(  handle_t h, const appIdMap_t* map, unsigned 
 cw::rc_t cw::ui::sendValueBool( handle_t h, unsigned uuId, bool value )
 {
   ui_t* p  = _handleToPtr(h);
-  value_t v = { .tid=kBoolTId };
+  value_t v = {};
+  v.tid = kBoolTId;
   v.u.b = value;
   return _sendValue(p,kInvalidId,uuId,v);
   
@@ -2126,7 +2127,8 @@ cw::rc_t cw::ui::sendValueBool( handle_t h, unsigned uuId, bool value )
 cw::rc_t cw::ui::sendValueInt( handle_t h, unsigned uuId, int value )
 {
   ui_t* p  = _handleToPtr(h);
-  value_t v = { .tid=kIntTId };
+  value_t v = {};
+  v.tid = kIntTId;
   v.u.i = value;
   return _sendValue(p,kInvalidId,uuId,v);
   
@@ -2137,7 +2139,8 @@ cw::rc_t cw::ui::sendValueUInt( handle_t h, unsigned uuId, unsigned value )
 {
   ui_t* p  = _handleToPtr(h);
 
-  value_t v = { .tid=kUIntTId };
+  value_t v = {};
+  v.tid = kUIntTId;
   v.u.u = value;
   return _sendValue(p,kInvalidId,uuId,v);
   
@@ -2147,7 +2150,8 @@ cw::rc_t cw::ui::sendValueUInt( handle_t h, unsigned uuId, unsigned value )
 cw::rc_t cw::ui::sendValueFloat( handle_t h, unsigned uuId, float value )
 {
   ui_t* p  = _handleToPtr(h);
-  value_t v = { .tid=kFloatTId };
+  value_t v = { };
+  v.tid = kFloatTId;
   v.u.f = value;
   return _sendValue(p,kInvalidId,uuId,v);
   
@@ -2158,7 +2162,8 @@ cw::rc_t cw::ui::sendValueFloat( handle_t h, unsigned uuId, float value )
 cw::rc_t cw::ui::sendValueDouble( handle_t h, unsigned uuId, double value )
 {
   ui_t* p  = _handleToPtr(h);
-  value_t v = { .tid=kDoubleTId };
+  value_t v = {};
+  v.tid=kDoubleTId;
   v.u.d = value;
   return _sendValue(p,kInvalidId,uuId,v);
   
@@ -2168,7 +2173,8 @@ cw::rc_t cw::ui::sendValueDouble( handle_t h, unsigned uuId, double value )
 cw::rc_t cw::ui::sendValueString( handle_t h, unsigned uuId, const char* value )
 {
   ui_t* p  = _handleToPtr(h);
-  value_t v = { .tid=kStringTId };
+  value_t v = {};
+  v.tid = kStringTId;
   v.u.s = value;
   return _sendValue(p,kInvalidId,uuId,v);
   

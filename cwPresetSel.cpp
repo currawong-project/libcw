@@ -405,10 +405,12 @@ namespace cw
 
     rc_t _validate_preset_id( const frag_t* frag, unsigned preset_id )
     {
-      bool fl =  (preset_id < frag->presetN) && (frag->presetA[ preset_id ].preset_idx == preset_id);
-
-      return fl ? kOkRC : cwLogError(kInvalidIdRC,"The preset id '%i' is invalid on the fragment at loc:%i.",preset_id,frag->endLoc);
-        
+      rc_t rc = kOkRC;
+      
+      if(  (preset_id >= frag->presetN) || (frag->presetA[ preset_id ].preset_idx != preset_id)  )
+        rc = cwLogError(kInvalidIdRC,"The preset id '%i' is invalid on the fragment at loc:%i.",preset_id,frag->endLoc);
+      
+      return rc;        
     }
 
     bool _is_master_var_id( unsigned varId )

@@ -648,14 +648,14 @@ namespace cw
 
     rc_t _transmit_note( midi_record_play_t* p, unsigned ch, unsigned pitch, unsigned vel, unsigned microsecs )
     {
-      time::spec_t ts = {0};
+      time::spec_t ts = {};
       time::microsecondsToSpec( ts, microsecs );
       return _event_callback( p, kInvalidId, ts, kInvalidId, nullptr, ch, midi::kNoteOnMdId, pitch, vel, 0 );
     }
 
     rc_t _transmit_ctl(  midi_record_play_t* p, unsigned ch, unsigned ctlId, unsigned ctlVal, unsigned microsecs )
     {
-      time::spec_t ts = {0};
+      time::spec_t ts = {};
       time::microsecondsToSpec( ts, microsecs );
       return _event_callback( p, kInvalidId, ts, kInvalidId, nullptr, ch, midi::kCtlMdId, ctlId, ctlVal, 0 );
     }
@@ -1826,7 +1826,7 @@ unsigned cw::midi_record_play::label_to_device_index( handle_t h, const char* de
 const char* cw::midi_record_play::device_index_to_label( handle_t h, unsigned devIdx )
 {
   midi_record_play_t* p = _handleToPtr(h);
-  return  0 <= devIdx && devIdx < p->midiDevN ? p->midiDevA[devIdx].label : nullptr;
+  return  devIdx < p->midiDevN ? p->midiDevA[devIdx].label : nullptr;
 }
 
 cw::rc_t cw::midi_record_play::seek( handle_t h, time::spec_t seek_timestamp )
@@ -1897,7 +1897,7 @@ unsigned cw::midi_record_play::event_loc( handle_t h )
 {
   midi_record_play_t* p  = _handleToPtr(h);
   
-  if( !p->recordFl && 0 <= p->msgArrayOutIdx &&  p->msgArrayOutIdx <  p->msgArrayN )
+  if( !p->recordFl && p->msgArrayOutIdx <  p->msgArrayN )
     return p->msgArray[ p->msgArrayOutIdx ].loc;
   
   return kInvalidId;

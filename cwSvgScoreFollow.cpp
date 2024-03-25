@@ -218,7 +218,7 @@ namespace cw
         // write the ref-note 
         for(ssf_ref_note_t* rn=r->refNoteL; rn!=nullptr; rn = rn->link)
         {
-          unsigned pitch = rn->evt == nullptr ? midi::kInvalidMidiPitch : rn->evt->pitch;
+          unsigned pitch = rn->evt == nullptr ? (unsigned)midi::kInvalidMidiPitch : rn->evt->pitch;
           unsigned cnt   = rn->cnt > 1 ? rn->cnt : kInvalidCnt;
           bool noMatchFl = rn->cnt == 0;
           if((rc = _write_rect_pitch( p, r->left-offset_x, rn->top, "ref_note", pitch, noMatchFl, cnt, rn->cwLocId )) != kOkRC )

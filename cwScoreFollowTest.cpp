@@ -236,7 +236,7 @@ namespace cw
 
                 if( perfMeasH.isValid() )
                 {
-                  perf_meas::result_t pmr = {0};
+                  perf_meas::result_t pmr = {};
 
                   // Call performance measurement unit
                   if( perf_meas::exec( perfMeasH, e, pmr ) == kOkRC && pmr.loc != kInvalidIdx && pmr.valueA != nullptr )
@@ -603,7 +603,7 @@ cw::rc_t cw::score_follow_test::test( const object_t* cfg )
   perf_meas::handle_t      perfMeasH;
   perf_meas::params_t perf_meas_params;
   
-  test_t t = {0};
+  test_t t = {};
 
   t.sf_args.enableFl = true;
   

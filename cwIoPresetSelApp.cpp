@@ -445,7 +445,7 @@ namespace cw
                                     "crossFadeCount",       app->crossFadeCnt,
                                     "beg_play_loc",         app->beg_play_loc,
                                     "end_play_loc",         app->end_play_loc,
-            "dflt_perf_label",      app->dflt_perf_label,
+                                    "dflt_perf_label",      app->dflt_perf_label,
                                     "live_mode_fl",         app->useLiveMidiFl,
                                     "enable_recording_fl",  app->enableRecordFl,
                                     "midi_record_dir",      midi_record_dir,
@@ -3564,20 +3564,21 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
 {
 
   rc_t rc;
-  app_t app = { .trackMidiFl = true,
-                .pvWndSmpCnt = 512,
-                .sdBypassFl  = false,
-                .sdInGain    = 1.0,
-                .sdCeiling   = 20.0,
-                .sdExpo	     = 2.0,
-                .sdThresh    = 60.0,
-                .sdUpr	     = -1.1,
-                .sdLwr	     = 2.0,
-                .sdMix	     = 0.0,
-                .cmpBypassFl = false,
-                .dflt_perf_app_id = kInvalidId
-		
-  };
+  app_t app = {};
+  app.trackMidiFl      = true;
+  app.pvWndSmpCnt      = 512;
+  app.sdBypassFl       = false;
+  app.sdInGain         = 1.0;
+  app.sdCeiling        = 20.0;
+  app.sdExpo           = 2.0;
+  app.sdThresh         = 60.0;
+  app.sdUpr            = -1.1;
+  app.sdLwr            = 2.0;
+  app.sdMix            = 0.0;
+  app.cmpBypassFl      = false;
+  app.dflt_perf_app_id = kInvalidId;
+	
+  
   const object_t* params_cfg = nullptr;
 
   unsigned              vtMapN  = vtbl::get_ui_id_map_count();
