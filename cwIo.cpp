@@ -3880,10 +3880,10 @@ void cw::io::latency_measure_setup(handle_t h)
   p->latency_meas_enable_fl                = true;
   p->latency_meas_thresh_db  = -50;
   p->latency_meas_thresh_lin = pow(10.0,p->latency_meas_thresh_db/20.0);
-  p->latency_meas_result.note_on_input_ts  = {0};
-  p->latency_meas_result.note_on_output_ts = {0};
-  p->latency_meas_result.audio_in_ts       = {0};
-  p->latency_meas_result.audio_out_ts      = {0};
+  p->latency_meas_result.note_on_input_ts  = {};
+  p->latency_meas_result.note_on_output_ts = {};
+  p->latency_meas_result.audio_in_ts       = {};
+  p->latency_meas_result.audio_out_ts      = {};
   p->latency_meas_result.audio_in_rms_max  = 0;
   p->latency_meas_result.audio_out_rms_max = 0;
 

@@ -302,7 +302,7 @@ cw::rc_t cw::afop::file_processor( const char* srcFn, const char* dstFn, proc_fu
   audiofile::handle_t          srcAfH;
   audiofile::handle_t          dstAfH;
   audiofile::info_t            info;
-  proc_ctx_t                   proc_ctx  = {0};
+  proc_ctx_t                   proc_ctx  = {};
 
   if( hopSmpN > wndSmpN )
     return cwLogError(kInvalidArgRC,"The hop sample count (%i) cannot exceed the window sample count (%i).", hopSmpN, wndSmpN );

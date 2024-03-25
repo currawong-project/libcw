@@ -23,7 +23,7 @@ namespace cw
       class_members_t* members;
     } library_t;
     
-    library_t library[] = {
+    library_t g_library[] = {
       { "audio_in",        &audio_in::members },
       { "audio_out",       &audio_out::members },
       { "audioFileIn",     &audioFileIn::members },
@@ -49,7 +49,7 @@ namespace cw
 
     class_members_t* _find_library_record( const char* label )
     {
-      for(library_t* l = library; l->label != nullptr; ++l)
+      for(library_t* l = g_library; l->label != nullptr; ++l)
         if( textCompare(l->label,label) == 0)
           return l->members;
 
@@ -86,7 +86,7 @@ namespace cw
       return rc;
     }
     
-    rc_t  _parse_class_cfg(flow_t* p, const library_t* library, const object_t* classCfg)
+    rc_t  _parse_class_cfg(flow_t* p, const object_t* classCfg)
     {
       rc_t rc = kOkRC;
 
@@ -1012,7 +1012,7 @@ namespace cw
     rc_t _create_instance( flow_t* p, const object_t* inst_cfg )
     {
       rc_t              rc         = kOkRC;
-      inst_parse_vars_t pvars      = {0};
+      inst_parse_vars_t pvars      = {};
       instance_t*       inst       = nullptr;
       class_desc_t*     class_desc = nullptr;      
 
@@ -1576,7 +1576,7 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   p->deviceN    = deviceN;
 
   // parse the class description array
-  if((rc = _parse_class_cfg(p,library,&classCfg)) != kOkRC )
+  if((rc = _parse_class_cfg(p,&classCfg)) != kOkRC )
   {
     rc = cwLogError(kSyntaxErrorRC,"Error parsing the class description list.");
     goto errLabel;    
