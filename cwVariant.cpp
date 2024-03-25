@@ -46,7 +46,7 @@ namespace cw
       { kPtrVFl | kFloatVFl,  "float_ptr",  "p", sizeof(float) },
       { kPtrVFl | kDoubleVFl, "double_ptr", "p", sizeof(double) },
 
-      { 0, nullptr, 0 }
+      { 0, nullptr, nullptr, 0 }
 
     };
   
