@@ -1,5 +1,5 @@
-#ifndef cwMidiPort_H
-#define cwMidiPort_H
+#ifndef cwMidiDevice_H
+#define cwMidiDevice_H
 
 
 namespace cw
