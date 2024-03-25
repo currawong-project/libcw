@@ -1832,11 +1832,11 @@ void cw::midi::file::calcNoteDurations( handle_t h, unsigned flags )
     {
       unsigned  k = ch*kMidiNoteCnt + d0;
 
-      // there should be no existing sounding note instance for this pitch
+      // if the note gate is not activated (i.e. key is up) but the note is still sounding (e.g. held by pedal)
       if( noteGateM[k] == 0 && noteM[k] != NULL )
       {
-        if( warningFl )
-          cwLogWarning("%i : Missing note-off instance for note on:%s",m->uid,midi::midiToSciPitch(d0,NULL,0));
+        //if( warningFl )
+        //  cwLogWarning("%i : Missing note-off instance for note on:%s",m->uid,midi::midiToSciPitch(d0,NULL,0));
 
         if( cwIsFlag(flags,kDropReattacksMfFl) )
         {
