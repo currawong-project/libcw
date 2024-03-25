@@ -57,14 +57,14 @@ cw::time::spec_t cw::time::current_time()
 #endif
 
 unsigned long long cw::time::elapsedMicros( const spec_t& t0, const spec_t& t1 )
-{
+{  
   const unsigned long long ns_per_sec = 1000000000;
   const unsigned long long us_per_sec = 1000000;
   const unsigned long long ns_per_us =  1000;
 
   // we assume that the time is normalized
-  assert( t0.tv_nsec < (const long long)ns_per_sec );
-  assert( t1.tv_nsec < (const long long)ns_per_sec );
+  assert( t0.tv_nsec < (long long)ns_per_sec );
+  assert( t1.tv_nsec < (long long)ns_per_sec );
 
   if( t0.tv_sec > t1.tv_sec )
   {

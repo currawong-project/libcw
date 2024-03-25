@@ -705,7 +705,7 @@ namespace cw
     cw::rc_t _set_pitch( vtbl_t* p, unsigned vseqPitch )
     {
       rc_t rc = kOkRC;
-      if( 0<= vseqPitch && vseqPitch < 128)
+      if( vseqPitch < 128)
         p->vseqPitch = vseqPitch;
       else
       {
@@ -716,7 +716,7 @@ namespace cw
 
     cw::rc_t _validate_midi_value( vtbl_t* p, unsigned midiValue )
     {
-      if( 0 <= midiValue && midiValue < 128 )
+      if( midiValue < 128 )
         return kOkRC;
 
       return _set_status(p,kInvalidArgRC,"%i is an invalid 8 bit MIDI value.",midiValue);
