@@ -2647,7 +2647,7 @@ cw::rc_t cw::dataset::test( const object_t* cfg )
           printf("%3i : ",j);
           
           // print the first 5 images from each batch to an SVG file
-          for(unsigned i=0; i<0; ++i,++imageN)
+          for(unsigned i=0; i<5; ++i,++imageN)
           {
             printf("%i ", numbV[i] );
 
