@@ -408,6 +408,18 @@ bool cw::nbmpscq::is_empty( handle_t h )
   return next == nullptr;
 }
 
+unsigned cw::nbmpscq::count( handle_t h )
+{
+  nbmpscq_t* p = _handleToPtr(h);
+
+  block_t* b = p->blockL;
+  int eleN = 0;
+  for(; b!=nullptr; b=b->link)
+    eleN += b->eleN.load(std::memory_order_acquire);
+
+  return eleN;
+}
+
 cw::rc_t cw::nbmpscq::test( const object_t* cfg )
 {
   rc_t rc=kOkRC,rc0,rc1;
