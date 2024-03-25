@@ -138,7 +138,7 @@ namespace cw
 {
 
   
-#define cwAssert(cond) while(1){ if(!(cond)){ cwLogFatal(kAssertFailRC,"Assert failed on condition:%s",#cond ); } break; }
+#define cwAssert(C) while(1){ if(!(C)){ cwLogFatal(kAssertFailRC,"Assert failed on condition:%s",#C ); } break; }
 
 
   
