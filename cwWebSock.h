@@ -56,6 +56,8 @@ namespace cw
 
     // Call periodically from the same thread to send/recv messages.
     rc_t exec( handle_t h, unsigned timeOutMs );
+
+    void report( handle_t h );
     
   }  
 
