@@ -2210,6 +2210,7 @@ void cw::ui::realTimeReport( handle_t h )
 {
   ui_t* p  = _handleToPtr(h);
   printf("UI msg count: recv:%i send:%i\n",p->recvMsgN,p->sentMsgN);
+  
 }
 
 
@@ -2498,6 +2499,12 @@ cw::ui::handle_t cw::ui::ws::uiHandle( handle_t h )
   return p->uiH;
 }
 
+void cw::ui::ws::realTimeReport( handle_t h )
+{
+  ui_ws_t* p  = _handleToPtr(h);
+  report(p->wsH);
+  realTimeReport(p->uiH);  
+}
 
  
 namespace cw
@@ -2668,3 +2675,4 @@ cw::ui::handle_t      cw::ui::srv::uiHandle( handle_t h )
   ui_ws_srv_t* p = _handleToPtr(h);
   return ws::uiHandle(p->wsUiH);
 }
+
