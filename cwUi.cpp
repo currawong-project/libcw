@@ -117,7 +117,7 @@ namespace cw
       unsigned sentMsgN;
       unsigned recvMsgN;
 
-      bucket_t hashA[ hashN ];
+      bucket_t hashA[ hashN+1 ]; 
 
     } ui_t;
 
@@ -129,7 +129,11 @@ namespace cw
       assert( parentUuId != kInvalidId && appId != kInvalidId );
       unsigned hc = parentUuId + cwSwap32(appId);
       
-      return (unsigned short)(((hc & 0xffff0000)>>16) + (hc & 0x0000ffff));
+      unsigned short hash_idx = (unsigned short)(((hc & 0xffff0000)>>16) + (hc & 0x0000ffff));
+
+      assert( hash_idx <= hashN );
+      
+      return hash_idx;
     }
     
 
@@ -223,6 +227,18 @@ namespace cw
         mem::release(m->eleName);
         mem::release(m);
         m = m0;
+      }
+
+      // Note: hashA[] has hashN+1 elements
+      for(unsigned i=0; i<=hashN; ++i)
+      {
+        bucket_t* b = p->hashA[i].link;
+        while( b!=nullptr )
+        {
+          bucket_t* b0 = b->link;
+          mem::release(b);
+          b = b0;
+        }
       }
 
       mem::release(p->sessA);
