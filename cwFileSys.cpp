@@ -75,7 +75,7 @@ bool cw::filesys::isDir( const char* dir0 )
   {
     // if the dir does not exist
     if( errno == ENOENT )
-      return false;
+      goto errLabel;
 
     cwLogSysError( kOpFailRC, errno, "'stat' failed on '%s'",cwStringNullGuard(dir));
     goto errLabel;
@@ -106,7 +106,7 @@ bool cw::filesys::isFile( const char* fn0 )
 
     // if the file does not exist
     if( errno == ENOENT )
-      return false;
+      goto errLabel;
 
     cwLogSysError( kOpFailRC, errno, "'stat' failed on '%s'.",cwStringNullGuard(fn));
     goto errLabel;
@@ -137,7 +137,7 @@ bool cw::filesys::isLink( const char* fn0 )
   {
     // if the file does not exist
     if( errno == ENOENT )
-      return false;
+      goto errLabel;
 
     cwLogSysError( kOpFailRC, errno, "'stat' failed on '%s'.",cwStringNullGuard(fn));
     goto errLabel;
