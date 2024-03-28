@@ -102,38 +102,52 @@ namespace cw
       return kInvalidIdx;
     }
 
-    
-    rc_t _delete_fragment( preset_sel_t*  p, unsigned fragId )
-    {
-      frag_t*       f0 = nullptr;
-      frag_t*       f1 = p->fragL;
-  
-      for(; f1!=nullptr; f1=f1->link)
-      {
-        if( f1->fragId == fragId )
-        {
-          if( f0 == nullptr )
-            p->fragL = f1->link;
-          else
-            f0->link = f1->link;
 
-          for(unsigned i=0; i<f1->presetN; ++i)
-            mem::release(f1->presetA[i].alt_str);
+    rc_t _delete_fragment( preset_sel_t* p, unsigned fragId )
+    {
+      rc_t    rc = kOkRC;
+      frag_t* f = p->fragL;
+  
+      for(; f!=nullptr; f=f->link)
+      {
+        if( f->fragId == fragId )
+        {
+          // if this is the first frag in the list
+          if( f->prev == nullptr )
+            p->fragL = f->link;
+          else
+          {
+
+            // link the prev fragment to the next fragment
+            f->prev->link = f->link;
+
+            // dur of prev frag now include the dur of the deleted frag
+            f->prev->endLoc = f->endLoc; 
+          }
+
+          // link the next fragment back to the previous fragment
+          if( f->link != nullptr )
+            f->link->prev = f->prev;
+
+          for(unsigned i=0; i<f->presetN; ++i)
+            mem::release(f->presetA[i].alt_str);
 
           // release the fragment
-          mem::release(f1->note);
-          mem::release(f1->presetA);
-          mem::release(f1);
-      
-          return kOkRC;
+          mem::release(f->note);
+          mem::release(f->presetA);
+          mem::release(f->altPresetIdxA);
+          mem::release(f->multiPresetA);
+          mem::release(f);
+          goto errLabel;
         }
-    
-        f0 = f1;
       }
-  
-      return kOkRC;
-    }
 
+      rc = cwLogError(kEleNotFoundRC,"The fragment with id %i was not found.",fragId);
+
+    errLabel:
+      return rc;
+    }
+    
     void _destroy_all_frags( preset_sel_t* p )
     {
       while( p->fragL != nullptr)
@@ -242,7 +256,7 @@ namespace cw
       else
       {
         unsigned alt_strN           = textLength(alt_str);
-        char alt_str_buf[ alt_strN+1  ] = {0};
+        char alt_str_buf[ alt_strN+1  ];
         unsigned asi                = 0;
           
         // clear the alt's pointing to the selected preset - because the 'alt_str' has changed
@@ -257,6 +271,9 @@ namespace cw
             assert( asi < alt_strN );
             alt_str_buf[ asi++ ] = alt_str[i];
           } 
+
+        assert( asi <= alt_strN );
+        alt_str_buf[asi] = 0;
         
         // store the preset's new alt str.
         f->presetA[ sel_preset_idx ].alt_str = mem::reallocStr(f->presetA[ sel_preset_idx ].alt_str, alt_str_buf);
@@ -1145,33 +1162,7 @@ cw::rc_t cw::preset_sel::create_fragment( handle_t h, unsigned end_loc, time::sp
 cw::rc_t cw::preset_sel::delete_fragment( handle_t h, unsigned fragId )
 {
   preset_sel_t* p  = _handleToPtr(h);
-  frag_t*       f = p->fragL;
-  
-  for(; f!=nullptr; f=f->link)
-    if( f->fragId == fragId )
-    {
-      if( f->prev == nullptr )
-        p->fragL = f->link;
-      else
-      {
-        // the previous fragment's end-loc become the
-        // endloc of the deleted fragment
-        f->prev->endLoc = f->endLoc;
-        f->prev->link = f->link;
-      }
-
-      if( f->link != nullptr )
-        f->link->prev = f->prev;
-
-      // release the fragment
-      mem::release(f->presetA);
-      mem::release(f->multiPresetA);
-      mem::release(f);
-      
-      return kOkRC;
-    }
-  
-  return cwLogError(kInvalidArgRC,"The fragment '%i' could not be found to delete.",fragId);
+  return _delete_fragment(p,fragId);
 }
 
 bool cw::preset_sel::is_fragment_end_loc( handle_t h, unsigned loc )
