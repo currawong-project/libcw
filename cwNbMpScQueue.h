@@ -39,10 +39,19 @@ namespace cw
     
     rc_t destroy( handle_t& hRef );
 
+    //
+    // Producer Function
+    // 
+
     // push() is called by multiple producer threads to insert
     // an element in the queue.  Note that the 'blob' is copied into
     // the queue and therefore can be released by the caller.
     rc_t push( handle_t h, const void* blob, unsigned blobByteN );
+
+
+    //
+    // Consumer Functions 
+    //
 
     typedef struct blob_str
     {
@@ -68,9 +77,14 @@ namespace cw
     // set to 'nullptr'. The following call will then revert to returning
     // the oldest stored record.
     blob_t peek( handle_t h );
-    
+
+    // Reset peek to point to the oldest stored record.
+    void   peek_reset( handle_t h );
+
+    // Return true if the queue is empty.
     bool is_empty( handle_t h );
 
+    // Count of elements in the queue.
     unsigned count( handle_t h );
 
     rc_t test( const object_t* cfg );
