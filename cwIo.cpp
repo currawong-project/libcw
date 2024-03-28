@@ -2439,7 +2439,8 @@ cw::rc_t cw::io::stop( handle_t h )
   return rc;
 }
 
-cw::rc_t cw::io::exec( handle_t h, void* execCbArg )
+
+cw::rc_t cw::io::exec( handle_t h, unsigned timeOutMs, void* execCbArg )
 {
   rc_t rc = kOkRC;
   io_t* p = _handleToPtr(h);
@@ -2447,8 +2448,9 @@ cw::rc_t cw::io::exec( handle_t h, void* execCbArg )
   if( p->wsUiH.isValid() )
   {
     ui::flushCache( ui::ws::uiHandle( p->wsUiH ));
+    
     // Note this call blocks on the websocket handle: See cwUi.h:ws:exec()
-    rc = ui::ws::exec( p->wsUiH );
+    rc = ui::ws::exec( p->wsUiH, timeOutMs );
   }
   
   time::get(p->t0);
@@ -2490,7 +2492,7 @@ void cw::io::report( handle_t h )
     }
 
   for(unsigned i=0; i<audioDeviceCount(h); ++i)
-    printf("audio: %s\n", audioDeviceName(h,i));  
+    printf("audio: %s\n", cwStringNullGuard(audioDeviceName(h,i)));  
 }
 
 void cw::io::realTimeReport( handle_t h )

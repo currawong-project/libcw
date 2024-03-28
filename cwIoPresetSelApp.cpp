@@ -372,6 +372,7 @@ namespace cw
 
       const char* dflt_perf_label;
       unsigned    dflt_perf_app_id;
+      unsigned    run_dur_secs;
       
       
     } app_t;
@@ -446,6 +447,7 @@ namespace cw
                                     "beg_play_loc",         app->beg_play_loc,
                                     "end_play_loc",         app->end_play_loc,
                                     "dflt_perf_label",      app->dflt_perf_label,
+                                    "run_dur_secs",         app->run_dur_secs,
                                     "live_mode_fl",         app->useLiveMidiFl,
                                     "enable_recording_fl",  app->enableRecordFl,
                                     "midi_record_dir",      midi_record_dir,
@@ -553,8 +555,8 @@ namespace cw
     {
       app_t*   app     = (app_t*)arg;
       unsigned logUuId = uiFindElementUuId( app->ioH, kLogId);
-
-      uiSetLogLine( app->ioH, logUuId, text );
+      
+      //uiSetLogLine( app->ioH, logUuId, text );
       log::defaultOutput(nullptr,level,text);
     }
 
@@ -711,6 +713,7 @@ namespace cw
       char*             perf_fname = nullptr;
       char*             meta_fname = nullptr;
       bool              skip_fl    = false;
+      
       // create the performance recording file path
       if((perf_fname = filesys::makeFn(dir,fname,nullptr,recording_folder,nullptr)) == nullptr )
       {
@@ -782,8 +785,11 @@ namespace cw
 
       mem::release(meta_fname);
       mem::release(perf_fname);
-      return rc;
+
+      if( meta_cfg != nullptr )
+        meta_cfg->free();
       
+      return rc;      
     }
 
     rc_t _parse_perf_recording_dir( app_t* app, const char* dir, const char* fname, const object_t* velTblCfg )
@@ -1813,7 +1819,7 @@ namespace cw
 
     errLabel:
       if(rc != kOkRC )
-        rc = cwLogError(rc,"Preset control index '%i' create failed.");
+        rc = cwLogError(rc,"Preset control index '%i' create failed.", preset_idx);
       return rc;
     }
 
@@ -1900,7 +1906,7 @@ namespace cw
       // read the preset data file
       if((rc = preset_sel::read( app->psH, fn)) != kOkRC )
       {
-        rc = cwLogError(rc,"File write failed on preset select.");
+        rc = cwLogError(rc,"File read failed on preset select.");
         goto errLabel;
       }
 
@@ -3019,7 +3025,7 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
           break;
 
         case kIoReportBtnId:
-          io::report( app->ioH );
+          io::realTimeReport( app->ioH );
           break;
 
         case kNetPrintBtnId:
@@ -3586,6 +3592,7 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
   unsigned              bigMapN = mapN + vtMapN;
   ui::appIdMap_t        bigMap[ bigMapN ];
   double                sysSampleRate = 0;
+  time::spec_t          start_time = time::current_time();
 
   for(unsigned i=0; i<mapN; ++i)
     bigMap[i] = mapA[i];
@@ -3709,18 +3716,27 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
   // execute the io framework
   while( !io::isShuttingDown(app.ioH))
   {
-    //time::spec_t t0;
-    //time::get(t0);
+    const unsigned wsTimeOutMs = 50;
+    time::spec_t t0 = time::current_time();
+
+    unsigned timeOutMs = app.psNextFrag != nullptr ? 0 : wsTimeOutMs;
 
     // This call may block on the websocket handle.
-    io::exec(app.ioH);
-    
-    //unsigned dMs = time::elapsedMs(t0);
-    //if( dMs < 50 && app.psNextFrag == nullptr )
-    //{      
-    //  sleepMs( 50-dMs );      
-    //}
+    io::exec(app.ioH,timeOutMs);
 
+    time::spec_t t1  = time::current_time();
+    unsigned     dMs = time::elapsedMs(t0,t1);
+    
+    if( dMs < wsTimeOutMs && app.psNextFrag == nullptr )
+    {      
+      sleepMs( wsTimeOutMs-dMs );      
+    }
+
+    if( app.run_dur_secs != 0 && time::elapsedMs( start_time )/1000 > app.run_dur_secs )
+    {
+      printf("Run duration expired (%i secs).  Shutting down.\n",app.run_dur_secs);
+      io::stop(app.ioH);
+    }
   }
 
   // stop the io framework

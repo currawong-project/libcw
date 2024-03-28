@@ -164,10 +164,11 @@ namespace cw
     rc_t start( handle_t h );
     rc_t pause( handle_t h );
     rc_t stop(  handle_t h );
-    
-    // Note that this call blocks on the the UI websocket handle.
+
+
+    // Note that this call blocks on the the UI websocket handle for up to 'timeOutMs'.
     // See ui:ws:exec().
-    rc_t exec(  handle_t h, void* execCbArg=nullptr );
+    rc_t exec(  handle_t h, unsigned timeOutMs, void* execCbArg=nullptr );
     
     bool isShuttingDown( handle_t h );
     void report( handle_t h );

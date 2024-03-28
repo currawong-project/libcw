@@ -308,8 +308,16 @@ cw::rc_t cw::io::test( const object_t* cfg )
   // execuite the io framework
   while( !isShuttingDown(app.ioH))
   {
-    exec(app.ioH);
-    sleepMs(50);
+    const unsigned wsTimeOutMs = 50;
+    time::spec_t t0 = time::current_time();
+    
+    exec(app.ioH,wsTimeOutMs);
+    
+    time::spec_t t1  = time::current_time();
+    unsigned     dMs = time::elapsedMs(t0,t1);
+    
+    if( dMs < wsTimeOutMs ) 
+      sleepMs(wsTimeOutMs-dMs);
   }
 
  errLabel:
