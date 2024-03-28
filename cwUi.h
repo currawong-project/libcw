@@ -188,8 +188,9 @@ namespace cw
         unsigned        rcvBufByteN;
         unsigned        xmtBufByteN;
         unsigned        fmtBufByteN;
-        unsigned        wsTimeOutMs;
         unsigned        idleMsgPeriodMs; // min period without messages before an idle message is generated
+        unsigned        queueBlkCnt;
+        unsigned        queueBlkByteCnt;
       } args_t;
 
       rc_t parseArgs( const object_t& o, args_t& args, const char* object_label="ui" );
@@ -214,20 +215,20 @@ namespace cw
                     unsigned          appIdMapN        = 0,
                     websock::cbFunc_t wsCbFunc         = nullptr,        
                     const char*       dfltPageFn       = "index.html",        
-                    unsigned          websockTimeOutMs = 50,
                     unsigned          idleMsgPeriodMs  = 50,
                     unsigned          rcvBufByteN      = 1024,
                     unsigned          xmtBufByteN      = 1024,
-                    unsigned          fmtBufByteN      = 4096                    
-                    );
+                    unsigned          fmtBufByteN      = 4096,
+                    unsigned          queueBlkCnt      = 4,
+                    unsigned          queueBlkByteCnt  = 4096 );
 
       rc_t destroy( handle_t& h );
 
       // This function should be called periodically to send and receive
       // queued messages to and from the websocket.
       // Note that this call may block for up to 'wsTimeOutMs' milliseconds
-      // on the websocket handle.
-      rc_t exec( handle_t h );
+      // while waiting for incoming websocket messages.
+      rc_t exec( handle_t h, unsigned wsTimeOutMs );
 
       // This function executes the internal default websock callback function.
       // It is useful if the user provides a custom websock callback function
@@ -236,8 +237,7 @@ namespace cw
       
       websock::handle_t websockHandle( handle_t h );
       ui::handle_t      uiHandle( handle_t h );
-
-      void realTimeReport( handle_t h );
+      void              realTimeReport( handle_t h );
       
     }
 
@@ -247,27 +247,31 @@ namespace cw
       typedef handle<struct ui_ws_srv_str> handle_t;
 
       rc_t create( handle_t& h,
-        const ws::args_t&     args,
-        void*             cbArg,
-        uiCallback_t      uiCbFunc,        
-        const appIdMap_t* appIdMapA = nullptr,
-        unsigned          appIdMapN = 0,        
-        websock::cbFunc_t wsCbFunc  = nullptr );
+                   const ws::args_t& args,
+                   void*             cbArg,
+                   uiCallback_t      uiCbFunc,        
+                   const appIdMap_t* appIdMapA = nullptr,
+                   unsigned          appIdMapN = 0,
+                   unsigned          wsTimeOutMs = 50,                   
+                   websock::cbFunc_t wsCbFunc  = nullptr );
       
       rc_t create(  handle_t& h,
-        unsigned          port,
-        const char*       physRootDir,
-        void*             cbArg,
-        uiCallback_t      uiCbFunc,
-        const object_t*   uiRsrc           = nullptr,
-        const appIdMap_t* appIdMapA        = nullptr,
-        unsigned          appIdMapN        = 0,        
-        websock::cbFunc_t wsCbFunc         = nullptr,
-        const char*       dfltPageFn       = "index.html",
-        unsigned          websockTimeOutMs = 50,
-        unsigned          rcvBufByteN      = 1024,
-        unsigned          xmtBufByteN      = 1024,
-        unsigned          fmtBufByteN      = 4096 );
+                    unsigned          port,
+                    const char*       physRootDir,
+                    void*             cbArg,
+                    uiCallback_t      uiCbFunc,
+                    const object_t*   uiRsrc           = nullptr,
+                    const appIdMap_t* appIdMapA        = nullptr,
+                    unsigned          appIdMapN        = 0,        
+                    unsigned          wsTimeOutMs      = 50,
+                    websock::cbFunc_t wsCbFunc         = nullptr,
+                    const char*       dfltPageFn       = "index.html",
+                    unsigned          idleMsgPeriodMs  = 50,                    
+                    unsigned          rcvBufByteN      = 1024,
+                    unsigned          xmtBufByteN      = 1024,
+                    unsigned          fmtBufByteN      = 4096,
+                    unsigned          queueBlkCnt      = 4,
+                    unsigned          queueBlkByteCnt  = 4096 );
 
 
       rc_t destroy( handle_t& h );
