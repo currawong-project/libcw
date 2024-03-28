@@ -45,7 +45,9 @@ namespace cw
       const char*       dfltHtmlPageFn,
       int               port,
       const protocol_t* protocolA,
-      unsigned          protocolN );
+      unsigned          protocolN,
+      unsigned          queueBlkCnt,
+      unsigned          queueBlkByteCnt );
 
     rc_t destroy( handle_t& h );
 

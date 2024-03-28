@@ -462,11 +462,14 @@ namespace cw
     }
 
 
-    rc_t _exec( websock_t* p, unsigned timeOutMs )
+    rc_t _exec( websock_t* p, unsigned timeOutMs, bool* msg_fl_ref=nullptr )
     {
       rc_t rc         = kOkRC;  
       int  adjTimeOut = lws_service_adjust_timeout(p->_ctx, timeOutMs, 0);
       int  sysRC      = 0;
+
+      if( msg_fl_ref != nullptr )
+        *msg_fl_ref = false;
 
       if( p->_pollfdN > 0 )
         sysRC = poll(p->_pollfdA, p->_pollfdN, adjTimeOut);
@@ -509,9 +512,74 @@ namespace cw
         {
           // check if it is an fd owned by the application 
         }
+
+        if( msg_fl_ref != nullptr )
+          *msg_fl_ref = true;
+
       }
       
     errLabel:
+      return rc;
+    }
+
+    // Call _exec() repeatedly for at least timeOutMs-5 milliseconds.
+    rc_t _timed_exec_0( websock_t* p, unsigned timeOutMs )
+    {
+      rc_t rc = kOkRC;
+      time::spec_t t0 = time::current_time();
+      unsigned dMs = 0;
+      unsigned adjTimeOutMs;
+
+      do {
+
+        adjTimeOutMs = timeOutMs - dMs;
+
+        if((rc = _exec(p,adjTimeOutMs)) != kOkRC )
+          break;
+        
+        dMs = time::elapsedMs(t0);
+        
+      }while( dMs+5 < timeOutMs );
+
+      return rc;
+    }
+
+    // Call _exec() as long as incoming messages are received.
+    rc_t _timed_exec_1( websock_t* p, unsigned timeOutMs )
+    {
+      rc_t rc = kOkRC;
+      bool fl = false;
+      
+      do {
+
+        fl = false;
+        if((rc = _exec(p,5,&fl)) != kOkRC )
+          break;
+        
+      }while( fl );
+
+      return rc;
+    }
+
+    // Call _exec() as long as incoming messages are received.
+    // or 'timeOutMs' time elapses.
+    rc_t _timed_exec_2( websock_t* p, unsigned timeOutMs )
+    {
+      rc_t         rc  = kOkRC;
+      bool         fl  = false;
+      time::spec_t t0  = time::current_time();
+      unsigned     dMs = 0;
+      
+      do {
+
+        fl = false;
+        if((rc = _exec(p,5,&fl)) != kOkRC )
+          break;
+
+        dMs = time::elapsedMs(t0);
+        
+      }while( fl && (dMs+5 < timeOutMs) );
+
       return rc;
     }
     
@@ -526,7 +594,9 @@ cw::rc_t cw::websock::create(
   const char*       dfltHtmlPageFn,
   int               port,
   const protocol_t* protocolArgA,
-  unsigned          protocolN )
+  unsigned          protocolN,
+  unsigned          queueBlkCnt,
+  unsigned          queueBlkByteCnt )
 {
   rc_t                             rc;
 	struct lws_context_creation_info info;
@@ -571,7 +641,6 @@ cw::rc_t cw::websock::create(
   {
     // Allocate the application protocol state array where this application can keep protocol related info
     auto protocolState = mem::allocZ<protocolState_t>(1);
-    //auto dummy         = mem::allocZ<msg_t>(1);
     
     protocolState->thisPtr = p;
     protocolState->begMsg  = nullptr;
@@ -605,7 +674,7 @@ cw::rc_t cw::websock::create(
 	foreign_loops[0] = p;                  // pass in the custom poll object as the foreign loop object we will bind to
 	info.foreign_loops = foreign_loops;
 
-  if((rc = nbmpscq::create(p->_qH,3,4*4096)) != kOkRC )
+  if((rc = nbmpscq::create(p->_qH,queueBlkCnt,queueBlkByteCnt)) != kOkRC )
   {
     rc = cwLogError(rc,"Websock queue create failed.");
     goto errLabel;
@@ -718,14 +787,18 @@ cw::rc_t cw::websock::exec( handle_t h, unsigned timeOutMs )
   time::spec_t t0 = time::current_time();
 
   // service any pending websocket activity - with no timeout
-  lws_service_tsi(p->_ctx, -1, 0 );
+  //_timed_exec_1(p,timeOutMs/2);
+  _exec(p,0);
 
+  
   // clean already sent messages from each protocol outgoing msg list
   for(unsigned i=0; i<p->_protocolN-1; ++i)
   {
     protocolState_t* ps = static_cast<protocolState_t*>(p->_protocolA[i].user);
     _cleanProtocolStateList( p, ps );
   }
+
+  nbmpscq::peek_reset(p->_qH);
 
   // Get the next pending outgoing message.
   while(1)
@@ -751,7 +824,7 @@ cw::rc_t cw::websock::exec( handle_t h, unsigned timeOutMs )
     protocolState_t* ps = static_cast<protocolState_t*>(protocol->user);
 
     // remove messages from the protocol message queue which have already been sent
-    //_cleanProtocolStateList( p, ps );
+    _cleanProtocolStateList( p, ps );
 
     // Put the msg in the front of the protocal state list (msg's are removed from the back of the list)
     m->msgId          = ps->nextNewMsgId;  // set the msg id
@@ -771,13 +844,16 @@ cw::rc_t cw::websock::exec( handle_t h, unsigned timeOutMs )
 
     // we want one callback for each session
     for(unsigned i=0; i<ps->sessionN; ++i)
+    {
       lws_callback_on_writable_all_protocol(p->_ctx,protocol);
 
-    lws_service_tsi(p->_ctx, -1, 0 );
+      _exec(p,0);
+
+    }
   }
 
   // block waiting for incoming messages
-  _exec(p,timeOutMs);
+  _timed_exec_2(p,timeOutMs);
   
   p->_execSumMs += time::elapsedMs(t0);
   p->_execN += 1;
@@ -789,5 +865,19 @@ cw::rc_t cw::websock::exec( handle_t h, unsigned timeOutMs )
 void cw::websock::report( handle_t h )
 {
   websock_t* p  = _handleToPtr(h);
+
   printf("Websock: msgs sent:%i recvd:%i que count:%i\n",p->_sendMsgCnt,p->_recvMsgCnt,count(p->_qH));
+
+  // clean already sent messages from each protocol outgoing msg list
+  for(unsigned i=0; i<p->_protocolN-1; ++i)
+  {
+    protocolState_t* ps = static_cast<protocolState_t*>(p->_protocolA[i].user);
+
+    const msg_t* m;
+    unsigned     cnt = 0;
+    for(m=ps->endMsg; m!=nullptr; m=m->link)
+      cnt += 1;
+
+    printf("Protocol:%i %i\n",i,cnt);
+  }  
 }
