@@ -611,7 +611,7 @@ namespace cw
     //
     // MIDI
     //
-    void _midiCallback( const midi::packet_t* pktArray, unsigned pktCnt )
+    void _midiCallback( void* cbArg, const midi::packet_t* pktArray, unsigned pktCnt )
     {
       unsigned i;
       for(i=0; i<pktCnt; ++i)
@@ -619,7 +619,7 @@ namespace cw
         msg_t                 m;
         midi_msg_t            mm;
         const midi::packet_t* pkt = pktArray + i;        
-        io_t*                 p   = reinterpret_cast<io_t*>(pkt->cbArg);
+        io_t*                 p   = reinterpret_cast<io_t*>(cbArg);
         rc_t                  rc  = kOkRC;
 
         
@@ -2114,10 +2114,12 @@ namespace cw
         rc = cwLogError(rc,"Audio device configuration failed.");
         goto errLabel;
       }
-
-      audio::device::report( p->audioH );
       
     errLabel:
+
+      if( rc != kOkRC && p->audioH.isValid()  )
+        audio::device::report( p->audioH );
+      
       return rc;
     }
 
@@ -2495,6 +2497,15 @@ void cw::io::report( handle_t h )
     printf("audio: %s\n", cwStringNullGuard(audioDeviceName(h,i)));  
 }
 
+
+void cw::io::hardwareReport( handle_t h )
+{
+  io_t* p = _handleToPtr(h);
+  audio::device::report( p->audioH );
+  midi::device::report(p->midiH);  
+}
+
+
 void cw::io::realTimeReport( handle_t h )
 {
   io_t* p = _handleToPtr(h);
@@ -2747,6 +2758,24 @@ cw::rc_t cw::io::midiDeviceSend( handle_t h, unsigned devIdx, unsigned portIdx, 
 {
   io_t* p = _handleToPtr(h);
   return midi::device::send( p->midiH, devIdx, portIdx, status, d0, d1 );
+}
+
+unsigned cw::io::midiDeviceMaxBufferMsgCount( handle_t h )
+{
+  io_t* p = _handleToPtr(h);
+  return midi::device::maxBufferMsgCount(p->midiH );
+}
+
+const cw::midi::ch_msg_t* cw::io::midiDeviceBuffer(      handle_t h, unsigned& msgCntRef )
+{
+  io_t* p = _handleToPtr(h);
+  return midi::device::getBuffer(p->midiH, msgCntRef );
+}
+
+cw::rc_t                  cw::io::midiDeviceClearBuffer( handle_t h, unsigned msgCnt )
+{
+  io_t* p = _handleToPtr(h);
+  return midi::device::clearBuffer(p->midiH, msgCnt );
 }
 
 cw::rc_t  cw::io::midiOpenMidiFile( handle_t h, unsigned devIdx, unsigned portIdx, const char* fname )
