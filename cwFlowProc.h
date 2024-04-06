@@ -2,6 +2,8 @@ namespace cw
 {
   namespace flow
   {
+    namespace midi_in         { extern class_members_t members;  }
+    namespace midi_out        { extern class_members_t members;  }
     namespace audio_in        { extern class_members_t members;  }
     namespace audio_out       { extern class_members_t members;  }
     namespace audioFileIn     { extern class_members_t members;  }

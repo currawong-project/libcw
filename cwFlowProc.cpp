@@ -2,12 +2,18 @@
 #include "cwLog.h"
 #include "cwCommonImpl.h"
 #include "cwMem.h"
+#include "cwText.h"
 #include "cwObject.h"
 #include "cwAudioFile.h"
 #include "cwVectOps.h"
 #include "cwMtx.h"
 
 #include "cwDspTypes.h" // real_t, sample_t
+
+#include "cwTime.h"
+#include "cwMidiDecls.h"
+
+
 #include "cwFlowDecl.h"
 #include "cwFlow.h"
 #include "cwFlowTypes.h"
@@ -164,6 +170,251 @@ namespace cw
       
     }    
 
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // midi_in
+    //
+    
+    namespace midi_in
+    {
+      enum
+      {
+        kDevLabelPId,
+        kPortLabelPId,
+        kOutPId
+      };
+      
+      typedef struct
+      {
+        midi::ch_msg_t*    buf;
+        unsigned           bufN;
+        bool               dev_filt_fl;
+        bool               port_filt_fl;        
+        external_device_t* ext_dev;
+      } inst_t;
+      
+      rc_t create( instance_t* ctx )
+      {
+        rc_t        rc         = kOkRC;
+        const char* dev_label  = nullptr;
+        const char* port_label = nullptr;        
+        inst_t*     inst       = mem::allocZ<inst_t>();
+        
+        ctx->userPtr = inst;
+
+        // Register variable and get their current value
+        if((rc = var_register_and_get( ctx, kAnyChIdx,
+                                       kDevLabelPId,  "dev_label",  dev_label,
+                                       kPortLabelPId, "port_label", port_label )) != kOkRC )
+          
+        {
+          goto errLabel;
+        }
+
+        if((rc = var_register( ctx, kAnyChIdx,kOutPId, "out")) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+
+        inst->dev_filt_fl = true;
+        inst->port_filt_fl = true;
+        
+        if( textIsEqual(dev_label,"<all>") )
+        {
+          inst->dev_filt_fl = false;
+          dev_label = nullptr;
+        }
+          
+        if( textIsEqual(dev_label,"<all>") )
+        {
+          inst->port_filt_fl = false;
+          port_label = nullptr;
+        }
+        
+        
+        
+        if((inst->ext_dev = external_device_find( ctx->ctx, dev_label, kMidiDevTypeId, kInFl, port_label )) == nullptr )
+        {
+          rc = cwLogError(kOpFailRC,"The MIDI input device '%s' port '%s' could not be found.", cwStringNullGuard(dev_label), cwStringNullGuard(port_label));
+          goto errLabel;
+        }
+
+        // Allocate a buffer large enough to hold the max. number of messages arriving on a single call to exec().
+        inst->bufN = inst->ext_dev->u.m.maxMsgCnt;
+        inst->buf = mem::allocZ<midi::ch_msg_t>( inst->bufN );
+
+        // create one output audio buffer
+        rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, nullptr, 0  );
+
+
+      errLabel: 
+        return rc;
+      }
+
+      rc_t destroy( instance_t* ctx )
+      {
+        rc_t rc = kOkRC;
+
+        inst_t* inst = (inst_t*)ctx->userPtr;
+        mem::release(inst->buf);
+
+        mem::release(inst);
+        
+        return rc;
+      }
+
+      rc_t value( instance_t* ctx, variable_t* var )
+      { return kOkRC; }
+      
+      rc_t exec( instance_t* ctx )
+      {
+        rc_t     rc           = kOkRC;
+
+        inst_t*  inst         = (inst_t*)ctx->userPtr;
+        mbuf_t*  mbuf         = nullptr;
+
+
+        // get the output variable
+        if((rc = var_get(ctx,kOutPId,kAnyChIdx,mbuf)) != kOkRC )
+        {
+          rc = cwLogError(kInvalidStateRC,"The MIDI file instance '%s' does not have a valid MIDI output buffer.",ctx->label);
+        }
+        else
+        {
+          // if the device filter is not set
+          if( !inst->dev_filt_fl)
+          {
+            mbuf->msgA = inst->ext_dev->u.m.msgArray;
+            mbuf->msgN = inst->ext_dev->u.m.msgCnt;
+          }
+          else // the device filter is set
+          {
+            const midi::ch_msg_t* m = inst->ext_dev->u.m.msgArray;
+            unsigned j = 0;
+            for(unsigned i=0; i<inst->ext_dev->u.m.msgCnt && j<inst->bufN; ++i)
+              if( m->devIdx == inst->ext_dev->ioDevIdx && (!inst->port_filt_fl || m->portIdx == inst->ext_dev->ioPortIdx) )
+                inst->buf[j++] = m[i];
+
+            mbuf->msgN = j;
+            mbuf->msgA = inst->buf;
+          }
+
+          
+        }
+        
+        return rc;
+      }
+
+      class_members_t members = {
+        .create = create,
+        .destroy = destroy,
+        .value   = value,
+        .exec = exec,
+        .report = nullptr
+      };
+      
+    }
+
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // midi_out
+    //
+    
+    namespace midi_out
+    {
+      enum
+      {
+        kInPId,
+        kDevLabelPId,
+        kPortLabelPId
+      };
+      
+      typedef struct
+      {
+        external_device_t* ext_dev;
+      } inst_t;
+      
+      rc_t create( instance_t* ctx )
+      {
+        rc_t        rc         = kOkRC; //
+        inst_t*     inst       = mem::allocZ<inst_t>(); //
+        const char* dev_label  = nullptr;
+        const char* port_label = nullptr;
+        mbuf_t*     mbuf       = nullptr;
+        
+        ctx->userPtr = inst;
+        
+        // Register variables and get their current value
+        if((rc = var_register_and_get( ctx, kAnyChIdx,
+                                       kDevLabelPId, "dev_label", dev_label,
+                                       kPortLabelPId,"port_label", port_label,
+                                       kInPId,       "in",         mbuf)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((inst->ext_dev = external_device_find( ctx->ctx, dev_label, kMidiDevTypeId, kOutFl, port_label )) == nullptr )
+        {
+          rc = cwLogError(kOpFailRC,"The audio output device description '%s' could not be found.", cwStringNullGuard(dev_label));
+          goto errLabel;
+        }        
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( instance_t* ctx )
+      {
+        rc_t    rc   = kOkRC;
+        inst_t* inst = (inst_t*)ctx->userPtr;
+
+        mem::release(inst);
+
+        return rc;
+      }
+
+      rc_t value( instance_t* ctx, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+      
+      rc_t exec( instance_t* ctx )
+      {
+        rc_t          rc     = kOkRC;
+        inst_t*       inst   = (inst_t*)ctx->userPtr;
+        const mbuf_t* src_mbuf = nullptr;
+
+        if((rc = var_get(ctx,kInPId,kAnyChIdx,src_mbuf)) != kOkRC )
+          rc = cwLogError(kInvalidStateRC,"The MIDI output instance '%s' does not have a valid input connection.",ctx->label);
+        else
+        {
+          for(unsigned i=0; i<src_mbuf->msgN; ++i)
+          {            
+            const midi::ch_msg_t* m = src_mbuf->msgA + i;
+            inst->ext_dev->u.m.sendTripleFunc( inst->ext_dev, m->ch, m->status, m->d0, m->d1 );
+          }
+        }
+        
+        return rc;
+      }
+
+      class_members_t members = {
+        .create = create,
+        .destroy = destroy,
+        .value = value,
+        .exec = exec,
+        .report = nullptr
+      };
+      
+    }
+
+
+
+    
     
     //------------------------------------------------------------------------------------------------------------------
     //

@@ -8,6 +8,8 @@
 #include "cwVectOps.h"
 #include "cwMtx.h"
 #include "cwDspTypes.h" // real_t, sample_t
+#include "cwTime.h"
+#include "cwMidiDecls.h"
 #include "cwFlowDecl.h"
 #include "cwFlow.h"
 #include "cwFlowTypes.h"
@@ -24,6 +26,8 @@ namespace cw
     } library_t;
     
     library_t g_library[] = {
+      { "midi_in",         &midi_in::members },
+      { "midi_out",        &midi_out::members },
       { "audio_in",        &audio_in::members },
       { "audio_out",       &audio_out::members },
       { "audioFileIn",     &audioFileIn::members },
@@ -292,7 +296,7 @@ namespace cw
 
       if( src_var->value == nullptr )
       {
-        rc = cwLogError(kSyntaxErrorRC,"The source value is null on the connection input:%s %s source:%s %s .", in_inst->label, in_var_label, src_inst->label, suffix);
+        rc = cwLogError(kSyntaxErrorRC,"The source value is null on the connection input:'%s' %s source:'%s' '%s' .", in_inst->label, in_var_label, src_inst->label, suffix);
         goto errLabel;
       }
 
@@ -1549,7 +1553,7 @@ void cw::flow::print_abuf( const abuf_t* abuf )
 
 void cw::flow::print_external_device( const external_device_t* dev )
 {
-  printf("Dev: %10s id:%3i type:%3i fl:0x%x : ", cwStringNullGuard(dev->label),dev->ioDevId,dev->typeId,dev->flags);
+  printf("Dev: %10s type:%3i fl:0x%x : ", cwStringNullGuard(dev->devLabel),dev->typeId,dev->flags);
   if( dev->typeId == kAudioDevTypeId )
     print_abuf(dev->u.a.abuf);
   printf("\n");
@@ -1603,6 +1607,19 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
     goto errLabel;
   }
 
+  for(unsigned i=0; i<deviceN; ++i)
+    if( deviceA[i].typeId == kAudioDevTypeId )
+    {
+      if( deviceA[i].u.a.abuf == NULL )
+      {
+        rc = cwLogError(kInvalidArgRC,"The audio '%s' device does not have a valid audio buffer.",cwStringNullGuard(deviceA[i].devLabel));
+        goto errLabel;
+      }
+      else
+        if( deviceA[i].u.a.abuf->frameN != p->framesPerCycle )
+          cwLogWarning("The audio frame count (%i) for audio device '%s' does not match the Flow framesPerCycle (%i).",deviceA[i].u.a.abuf->frameN,p->framesPerCycle);
+    }
+  
   // print the class dict
   if( printClassDictFl )
       class_dict_print( p );
@@ -1692,7 +1709,10 @@ cw::rc_t cw::flow::exec(    handle_t h )
     
     p->cycleIndex += 1;
     if( p->maxCycleCount > 0 && p->cycleIndex >= p->maxCycleCount )
+    {
+       cwLogInfo("'maxCycleCnt' reached: %i. Shutting down flow.",p->maxCycleCount);
       break;
+    }
   }
 
   return rc;

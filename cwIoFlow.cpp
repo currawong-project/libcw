@@ -8,6 +8,8 @@
 #include "cwTime.h"
 #include "cwVectOps.h"
 #include "cwMtx.h"
+#include "cwTime.h"
+#include "cwMidiDecls.h"
 
 #include "cwDspTypes.h"
 #include "cwFlowDecl.h"
@@ -87,7 +89,7 @@ namespace cw
 
       mem::release(p->audioGroupA);
       mem::release(p);
-      
+       
       return kOkRC;
     }
 
@@ -95,10 +97,13 @@ namespace cw
     {
       unsigned devN = 0;
       
-      //devN += midiDeviceCount(p->ioH);
       devN += socketCount(p->ioH);
       devN += serialDeviceCount(p->ioH);
 
+      unsigned midiDevN = midiDeviceCount(p->ioH);
+      for(unsigned i=0; i<midiDevN; ++i)
+        devN += midiDevicePortCount(p->ioH,i,true) + midiDevicePortCount(p->ioH,i,false);
+      
       for(unsigned i=0; i<p->audioGroupN; ++i)
         devN +=  p->audioGroupA[i].iDeviceN + p->audioGroupA[i].oDeviceN;
       
@@ -146,23 +151,38 @@ namespace cw
       }
     }
 
-
-    void _setup_device_cfg( flow::external_device_t* d, const char* devLabel, unsigned ioDevId, unsigned typeId, unsigned flags )
+    rc_t _send_midi_triple( flow::external_device_t* dev, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
     {
-      d->label   = devLabel;
-      d->ioDevId = ioDevId;
-      d->typeId  = typeId;
-      d->flags   = flags;
+      return midiDeviceSend(((io_flow_t*)dev->reserved)->ioH, dev->ioDevIdx, dev->ioPortIdx, status |= ch, d0, d1);
     }
 
+    void _setup_device_cfg( io_flow_t* p, flow::external_device_t* d, const char* devLabel, unsigned ioDevIdx, unsigned typeId, unsigned flags, const char* midiPortLabel=nullptr, unsigned midiPortIdx=kInvalidIdx )
+    {
+      d->reserved  = p;
+      d->devLabel  = devLabel;
+      d->portLabel = midiPortLabel;
+      d->typeId    = typeId;
+      d->flags     = flags;
+      d->ioDevIdx  = ioDevIdx;
+      d->ioPortIdx = midiPortIdx;
+    }
+
+    void _setup_midi_device_cfg( io_flow_t* p, flow::external_device_t* d, const char* devLabel, unsigned ioDevIdx, unsigned flags, unsigned ioMidiPortIdx  )
+    {
+      const char* midiPortLabel = io::midiDevicePortName(p->ioH,ioDevIdx, flags & flow::kInFl ? true : false,ioMidiPortIdx);
+      _setup_device_cfg( p, d, devLabel, ioDevIdx, flow::kMidiDevTypeId, flags, midiPortLabel, ioMidiPortIdx );
+      d->u.m.maxMsgCnt = io::midiDeviceMaxBufferMsgCount(p->ioH);
+      d->u.m.sendTripleFunc = _send_midi_triple; 
+    }
+    
     void _setup_audio_device_cfg( io_flow_t* p, flow::external_device_t* d, audio_group_t* ag, audio_dev_t* ad, unsigned flags )
     {
-      _setup_device_cfg( d, io::audioDeviceLabel(p->ioH,ad->ioDevIdx), ad->ioDevId, flow::kAudioDevTypeId, flags );
+      _setup_device_cfg( p, d, io::audioDeviceLabel(p->ioH,ad->ioDevIdx), ad->ioDevIdx, flow::kAudioDevTypeId, flags );
 
       // Each audio device is given a flow::abuf to hold incoming or outgoing audio.
       // This buffer also allows the 'audio_in' and 'audio_out' flow procs to configure themselves.
       d->u.a.abuf = &ad->abuf;
-    }
+    }    
 
     void _setup_generic_device_array( io_flow_t* p )
     {
@@ -175,17 +195,27 @@ namespace cw
 
       // get serial devices
       for(unsigned di=0; i<p->deviceN && di<serialDeviceCount(p->ioH); ++di,++i)
-        _setup_device_cfg( p->deviceA + i, io::serialDeviceLabel(p->ioH,di), io::serialDeviceId(p->ioH,di), flow::kSerialDevTypeId, flow::kInFl | flow::kOutFl );
-
-      // get midi devices
-      //for(unsigned di=0; i<p->deviceN && di<midiDeviceCount(p->ioH); ++di,++i)
-      //  _setup_device_cfg( p->deviceA + i, io::midiDeviceLabel(p->ioH,di), di, flow::kMidiDevTypeId, flow::kInFl | flow::kOutFl );
+        _setup_device_cfg( p, p->deviceA + i, io::serialDeviceLabel(p->ioH,di), di, flow::kSerialDevTypeId, flow::kInFl | flow::kOutFl );
 
       // get sockets
       for(unsigned di=0; i<p->deviceN && di<socketCount(p->ioH); ++di,++i)
-        _setup_device_cfg( p->deviceA + i, io::socketLabel(p->ioH,di), io::socketUserId(p->ioH,di), flow::kSocketDevTypeId, flow::kInFl | flow::kOutFl );
+        _setup_device_cfg( p, p->deviceA + i, io::socketLabel(p->ioH,di), di, flow::kSocketDevTypeId, flow::kInFl | flow::kOutFl );
         
 
+      // get midi devices
+      for(unsigned di=0; i<p->deviceN && di<midiDeviceCount(p->ioH); ++di)
+      {
+        // input port setup
+        for(unsigned pi=0; pi<midiDevicePortCount(p->ioH,di,true); ++pi,++i)
+          _setup_midi_device_cfg( p, p->deviceA + i, io::midiDeviceName(p->ioH,di), di, flow::kInFl, pi);
+
+        // output port setup
+        for(unsigned pi=0; pi<midiDevicePortCount(p->ioH,di,false); ++pi,++i)
+          _setup_midi_device_cfg( p, p->deviceA + i, io::midiDeviceName(p->ioH,di), di, flow::kOutFl, pi);
+        
+      }
+      
+      
       // get the audio devices
       for(unsigned gi=0; gi<p->audioGroupN; ++gi)
       {
@@ -197,6 +227,9 @@ namespace cw
         for(unsigned di=0; i<p->deviceN && di<ag->oDeviceN; ++di,++i)
           _setup_audio_device_cfg( p, p->deviceA + i, ag, ag->oDeviceA + di, flow::kOutFl );
       }
+
+
+      assert( i == p->deviceN );
 
     }
 
@@ -253,6 +286,18 @@ namespace cw
     {      
       rc_t rc = kOkRC;
       flow::abuf_t* abuf = nullptr;
+
+      // Get an array of incoming MIDI events which have occurred since the last call to 'io::midiDeviceBuffer()'
+      unsigned midiBufMsgCnt        = 0;
+      const midi::ch_msg_t* midiBuf = midiDeviceBuffer(p->ioH,midiBufMsgCnt);
+
+      // Give each MIDI input device a pointer to the incoming MIDI msgs
+      for(unsigned i=0; i<p->deviceN; ++i)
+        if( p->deviceA[i].typeId == flow::kMidiDevTypeId && cwIsFlag(p->deviceA[i].flags,flow::kInFl) )
+        {
+          p->deviceA[i].u.m.msgArray = midiBuf;
+          p->deviceA[i].u.m.msgCnt   = midiBufMsgCnt;
+        }
 
       // if there is incoming (recorded) audio 
       if( m.iBufChCnt > 0 )
@@ -318,6 +363,9 @@ namespace cw
       }
         
     errLabel:
+      // Drop the MIDI messages that were processed on this call.
+      midiDeviceClearBuffer(p->ioH,midiBufMsgCnt);
+        
       return rc;
     }
 

@@ -7,6 +7,8 @@
 #include "cwVectOps.h"
 #include "cwMtx.h"
 #include "cwDspTypes.h" // real_t, sample_t
+#include "cwTime.h"
+#include "cwMidiDecls.h"
 #include "cwFlowDecl.h"
 #include "cwFlow.h"
 #include "cwFlowTypes.h"
@@ -18,21 +20,22 @@ namespace cw
   {
     idLabelPair_t typeLabelFlagsA[] = {
       
-      { kBoolTFl, "bool" },
-      { kUIntTFl, "uint" },
-      { kIntTFl,  "int", },
-      { kFloatTFl,  "float"},
-      { kRealTFl,   "real"},
-      { kDoubleTFl,  "double"},
+      { kBoolTFl,  "bool" },
+      { kUIntTFl,  "uint" },
+      { kIntTFl,   "int", },
+      { kFloatTFl, "float"},
+      { kRealTFl,  "real"},
+      { kDoubleTFl,"double"},
       
-      { kBoolMtxTFl, "bool_mtx" },
-      { kUIntMtxTFl, "uint_mtx" },
-      { kIntMtxTFl,  "int_mtx"  },
-      { kFloatMtxTFl,  "float_mtx" },
-      { kDoubleMtxTFl,  "double_mtx" },
+      { kBoolMtxTFl,  "bool_mtx" },
+      { kUIntMtxTFl,  "uint_mtx" },
+      { kIntMtxTFl,   "int_mtx"  },
+      { kFloatMtxTFl, "float_mtx" },
+      { kDoubleMtxTFl,"double_mtx" },
       
       { kABufTFl,   "audio" },
       { kFBufTFl,   "spectrum" },
+      { kMBufTFl,   "midi" },
       { kStringTFl, "string" },
       { kTimeTFl,   "time" },
       { kInvalidTFl, nullptr }
@@ -73,6 +76,9 @@ namespace cw
           fbuf_destroy( v->u.fbuf );
           break;
 
+        case kMBufTFl:
+          mbuf_destroy( v->u.mbuf );
+          break;
           
         case kBoolMtxTFl:
         case kUIntMtxTFl:
@@ -99,8 +105,7 @@ namespace cw
     }
 
     void _value_duplicate( value_t& dst, const value_t& src )
-    {
-        
+    {        
       switch( src.flags & kTypeMask )
       {
         case kInvalidTFl:
@@ -125,6 +130,10 @@ namespace cw
           dst.flags = src.flags;
           break;
 
+        case kMBufTFl:
+          dst.u.mbuf = src.u.mbuf == nullptr ? nullptr : mbuf_duplicate(src.u.mbuf);
+          dst.flags = src.flags;
+          break;
           
         case kBoolMtxTFl:
         case kUIntMtxTFl:
@@ -180,6 +189,15 @@ namespace cw
             printf("fbuf: chN:%i srate:%8.1f ", v->u.fbuf->chN, v->u.fbuf->srate );
             for(unsigned i=0; i<v->u.fbuf->chN; ++i)
               printf("(binN:%i hopSmpN:%i) ", v->u.fbuf->binN_V[i], v->u.fbuf->hopSmpN_V[i] );
+          }
+          break;
+
+        case kMBufTFl:
+          if( v->u.mbuf == nullptr )
+            printf("mbuf: <null>");
+          else
+          {
+            printf("mbuf: cnt: %i", v->u.mbuf->msgN );
           }
           break;
           
@@ -345,6 +363,28 @@ namespace cw
       return rc;        
     }
 
+    rc_t _val_get( value_t* val, mbuf_t*& valRef )
+    {
+      rc_t rc = kOkRC;
+      if( cwIsFlag(val->flags & kTypeMask, kMBufTFl) )
+        valRef = val->u.mbuf;
+      else
+      {
+        valRef = nullptr;
+        rc = cwLogError(kTypeMismatchRC,"The type 0x%x could not be converted to an mbuf_t.",val->flags);
+      }
+      return rc;
+    }
+    
+    rc_t _val_get( value_t* val, const mbuf_t*& valRef )
+    {
+      mbuf_t* non_const_val;
+      rc_t rc = kOkRC;
+      if((rc = _val_get(val,non_const_val)) == kOkRC )
+        valRef = non_const_val;
+      return rc;        
+    }
+    
 
     template< typename T >
     rc_t _val_get_driver( const variable_t* var, T& valRef )
@@ -492,6 +532,14 @@ namespace cw
       var->local_value[ local_value_idx ].flags = kABufTFl;
       cwLogMod("%s.%s ch:%i %s (abuf).",var->inst->label,var->label,var->chIdx,abuf==nullptr ? "null" : "valid");
     }
+
+    template<>
+    void _var_setter<mbuf_t*>( variable_t* var, unsigned local_value_idx, mbuf_t* val )
+    {
+      var->local_value[ local_value_idx ].u.mbuf   = val;
+      var->local_value[ local_value_idx ].flags = kMBufTFl;
+      cwLogMod("%s.%s ch:%i %s (abuf).",var->inst->label,var->label,var->chIdx,mbuf==nullptr ? "null" : "valid");
+    }
     
     template<>
     void _var_setter<fbuf_t*>( variable_t* var, unsigned local_value_idx, fbuf_t* val )
@@ -609,6 +657,19 @@ namespace cw
       return rc;
     }
 
+    rc_t  _var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, mbuf_t* mbuf )
+    {
+      rc_t rc;
+      variable_t* var = nullptr;
+      if((rc = var_register_and_set( inst, var_label, vid, chIdx, var)) != kOkRC )
+        return rc;
+
+      if( var != nullptr )
+        _var_set_driver( var, kMBufTFl, mbuf );
+
+      return rc;
+    }
+    
     rc_t  _var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, fbuf_t* fbuf )
     {
       rc_t rc;
@@ -1010,6 +1071,25 @@ cw::flow::fbuf_t*  cw::flow::fbuf_duplicate( const fbuf_t* src )
 }
 
 
+cw::flow::mbuf_t* cw::flow::mbuf_create( const midi::ch_msg_t* msgA, unsigned msgN )
+{
+  mbuf_t* m = mem::allocZ<mbuf_t>();
+  m->msgA = msgA;
+  m->msgN = msgN;
+  return m;
+}
+
+void cw::flow::mbuf_destroy( mbuf_t*& buf )
+{
+  mem::release(buf);
+}
+
+cw::flow::mbuf_t* cw::flow::mbuf_duplicate( const mbuf_t* src )
+{
+  return mbuf_create(src->msgA,src->msgN);
+}
+
+
 unsigned cw::flow::value_type_label_to_flag( const char* s )
 {
   unsigned flags = labelToId(typeLabelFlagsA,s,kInvalidTFl);
@@ -1089,10 +1169,13 @@ cw::rc_t cw::flow::instance_find( flow_t* p, const char* inst_label, instance_t*
   return cwLogError(kInvalidArgRC,"The instance '%s' was not found.", inst_label );
 }
 
-cw::flow::external_device_t* cw::flow::external_device_find( flow_t* p, const char* device_label, unsigned typeId, unsigned inOrOutFl )
+cw::flow::external_device_t* cw::flow::external_device_find( flow_t* p, const char* device_label, unsigned typeId, unsigned inOrOutFl, const char* midiPortLabel )
 {
   for(unsigned i=0; i<p->deviceN; ++i)
-    if( cw::textIsEqual(p->deviceA[i].label,device_label) && p->deviceA[i].typeId==typeId && cwIsFlag(p->deviceA[i].flags,inOrOutFl ))
+    if( (device_label==nullptr || cw::textIsEqual(p->deviceA[i].devLabel,device_label))
+        && p->deviceA[i].typeId==typeId
+        && cwIsFlag(p->deviceA[i].flags,inOrOutFl)
+        && (midiPortLabel==nullptr || cw::textIsEqual(p->deviceA[i].portLabel,midiPortLabel)) )
       return p->deviceA + i;
   
   cwLogError(kInvalidArgRC,"The %s device named '%s' could not be found.", cwIsFlag(inOrOutFl,kInFl) ? "in" : "out", device_label );
@@ -1381,6 +1464,21 @@ cw::rc_t cw::flow::var_register_and_set( instance_t* inst, const char* var_label
   return rc;
 }
 
+cw::rc_t        cw::flow::var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, midi::ch_msg_t* msgA, unsigned msgN  )
+{
+  rc_t rc = kOkRC;
+  mbuf_t* mbuf;
+  
+  if((mbuf = mbuf_create(msgA,msgN)) == nullptr )
+    return cwLogError(kOpFailRC,"mbuf create failed on instance:'%s' variable:'%s'.", inst->label, var_label);
+
+  if((rc = _var_register_and_set( inst, var_label, vid, chIdx, mbuf )) != kOkRC )
+    mbuf_destroy(mbuf);
+
+  return rc;
+}
+
+
 cw::rc_t cw::flow::var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_real_t** magV, const fd_real_t** phsV, const fd_real_t** hzV )
 {
   unsigned maxBinN_V[ chN ];
@@ -1422,6 +1520,13 @@ cw::rc_t  cw::flow::var_get( const variable_t* var, const fbuf_t*& valRef )
 
 cw::rc_t  cw::flow::var_get( variable_t* var, fbuf_t*& valRef )
 { return _val_get_driver(var,valRef); }
+
+cw::rc_t  cw::flow::var_get( const variable_t* var, const mbuf_t*& valRef )
+{ return _val_get_driver(var,valRef); }
+
+cw::rc_t  cw::flow::var_get( variable_t* var, mbuf_t*& valRef )
+{ return _val_get_driver(var,valRef); }
+
 
 cw::rc_t cw::flow::var_set( instance_t* inst, unsigned vid, unsigned chIdx, bool val )
 {

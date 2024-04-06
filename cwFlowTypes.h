@@ -4,16 +4,22 @@ namespace cw
   {
 
     #define kRealTFl kFloatTFl
-    typedef dsp::real_t   real_t;
-    typedef dsp::sample_t sample_t;
+    typedef dsp::real_t    real_t;
+    typedef dsp::sample_t  sample_t;
     typedef dsp::fd_real_t fd_real_t;
-    typedef dsp::srate_t  srate_t;
-    typedef unsigned      uint_t;
-    typedef int           int_t;
+    typedef dsp::srate_t   srate_t;
+    typedef unsigned       uint_t;
+    typedef int            int_t;
     
     
     typedef unsigned vid_t;
 
+    enum {
+      kFbufVectN = 3,  // count of signal vectors in fbuf (mag,phs,hz)
+      kAnyChIdx = kInvalidIdx,
+      kLocalValueN = 2
+    };
+        
     typedef struct abuf_str
     {
       struct value_str*  base;
@@ -24,12 +30,6 @@ namespace cw
     } abuf_t;
 
 
-    enum {
-      kFbufVectN = 3,  // count of signal vectors in fbuf (mag,phs,hz)
-      kAnyChIdx = kInvalidIdx,
-      kLocalValueN = 2
-    };
-    
     typedef struct fbuf_str
     {      
       struct value_str* base;
@@ -39,12 +39,19 @@ namespace cw
       unsigned*         maxBinN_V; // max value that binN_V[i] is allowed to take
       unsigned*         binN_V;    // binN_V[ chN ] count of sample frames per channel
       unsigned*         hopSmpN_V; // hopSmpN_V[ chN ] hop sample count 
-      fd_real_t**        magV;      // magV[ chN ][ binN ]
-      fd_real_t**        phsV;      // phsV[ chN ][ binN ]
-      fd_real_t**        hzV;       // hzV[ chN ][ binN ]
+      fd_real_t**       magV;      // magV[ chN ][ binN ]
+      fd_real_t**       phsV;      // phsV[ chN ][ binN ]
+      fd_real_t**       hzV;       // hzV[ chN ][ binN ]
       bool*             readyFlV;  // readyFlV[chN] true if this channel is ready to be processed (used to sync. fbuf rate to abuf rate)
-      fd_real_t*         buf;       // memory used by this buffer (or NULL if magV,phsV,hzV point are proxied to another buffer)      
+      fd_real_t*        buf;       // memory used by this buffer (or NULL if magV,phsV,hzV point are proxied to another buffer)      
     } fbuf_t;
+
+    typedef struct mbuf_str
+    {
+      struct value_str*     base;
+      const midi::ch_msg_t* msgA;
+      unsigned              msgN;
+    } mbuf_t;
 
     enum
     {
@@ -64,10 +71,11 @@ namespace cw
       
       kABufTFl     = 0x00000800,
       kFBufTFl     = 0x00001000,
-      kStringTFl   = 0x00002000,
-      kTimeTFl     = 0x00004000,
+      kMBufTFl     = 0x00002000,
+      kStringTFl   = 0x00004000,
+      kTimeTFl     = 0x00008000,
 
-      kTypeMask    = 0x00007fff,
+      kTypeMask    = 0x0000ffff,
 
     };
 
@@ -96,6 +104,7 @@ namespace cw
         
         abuf_t*   abuf;
         fbuf_t*   fbuf;
+        mbuf_t*   mbuf;
         
         char*     s;
         char*     fname;
@@ -115,11 +124,11 @@ namespace cw
         
     typedef rc_t (*member_func_t)( struct instance_str* ctx );
     typedef rc_t (*member_value_func_t)( struct instance_str* ctx, struct variable_str* var );
+    
     enum
     {
-      kSrcVarFl = 0x01,
-      kSrcOptVarFl = 0x02
-      
+      kSrcVarFl    = 0x01,
+      kSrcOptVarFl = 0x02 
     };
     
     typedef struct class_members_str
@@ -242,6 +251,10 @@ namespace cw
     fbuf_t*        fbuf_create( srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_real_t** magV=nullptr, const fd_real_t** phsV=nullptr, const fd_real_t** hzV=nullptr );
     void           fbuf_destroy( fbuf_t*& buf );
     fbuf_t*        fbuf_duplicate( const fbuf_t* src );
+
+    mbuf_t*        mbuf_create( const midi::ch_msg_t* msgA=nullptr, unsigned msgN=0 );
+    void           mbuf_destroy( mbuf_t*& buf );
+    mbuf_t*        mbuf_duplicate( const mbuf_t* src );
     
     inline bool    value_is_abuf( const value_t* v ) { return v->flags & kABufTFl; }
     inline bool    value_is_fbuf( const value_t* v ) { return v->flags & kFBufTFl; }
@@ -274,7 +287,7 @@ namespace cw
     
     instance_t*        instance_find( flow_t* p, const char* inst_label );
     rc_t               instance_find( flow_t* p, const char* inst_label, instance_t*& instPtrRef );
-    external_device_t* external_device_find( flow_t* p, const char* device_label, unsigned typeId, unsigned inOrOutFl );
+    external_device_t* external_device_find( flow_t* p, const char* device_label, unsigned typeId, unsigned inOrOutFl, const char* midiPortLabel=nullptr );
 
     void               instance_print( instance_t* inst );
 
@@ -374,6 +387,7 @@ namespace cw
     rc_t           var_register_and_set( instance_t* inst, const char* label,     unsigned vid, unsigned chIdx, variable_t*& varRef );
     
     rc_t           var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, unsigned frameN );
+    rc_t           var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, midi::ch_msg_t* midiA, unsigned midiN );
     rc_t           var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_real_t** magV=nullptr, const fd_real_t** phsV=nullptr, const fd_real_t** hzV=nullptr );
     rc_t           var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_real_t** magV=nullptr, const fd_real_t** phsV=nullptr, const fd_real_t** hzV=nullptr );
 
@@ -427,6 +441,8 @@ namespace cw
     rc_t           var_get(       variable_t* var, abuf_t*&       valRef );    
     rc_t           var_get( const variable_t* var, const fbuf_t*& valRef );
     rc_t           var_get(       variable_t* var, fbuf_t*&       valRef );
+    rc_t           var_get( const variable_t* var, const mbuf_t*& valRef );
+    rc_t           var_get(       variable_t* var, mbuf_t*&       valRef );
 
     template< typename T>
     rc_t var_get( instance_t* inst, unsigned vid, unsigned chIdx, T& valRef)
