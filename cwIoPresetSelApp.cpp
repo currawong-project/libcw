@@ -47,6 +47,8 @@ namespace cw
       kPanelDivId = 1000,
       kQuitBtnId,
       kIoReportBtnId,
+      kIoHwReportBtnId,
+      kIoRtReportBtnId,
       kNetPrintBtnId,
       kReportBtnId,
       kLatencyBtnId,
@@ -155,6 +157,8 @@ namespace cw
       { ui::kRootAppId,  kPanelDivId,     "panelDivId" },
       { kPanelDivId,     kQuitBtnId,      "quitBtnId" },
       { kPanelDivId,     kIoReportBtnId,  "ioReportBtnId" },
+      { kPanelDivId,     kIoHwReportBtnId, "ioHwReportBtnId" },
+      { kPanelDivId,     kIoRtReportBtnId, "ioRtReportBtnId" },
       { kPanelDivId,     kNetPrintBtnId,  "netPrintBtnId" },
       { kPanelDivId,     kReportBtnId,    "reportBtnId" },
       { kPanelDivId,     kLatencyBtnId,   "latencyBtnId" },
@@ -3025,6 +3029,14 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
           break;
 
         case kIoReportBtnId:
+          io::report( app->ioH );
+          break;
+
+        case kIoHwReportBtnId:
+          io::hardwareReport( app->ioH );
+          break;
+          
+        case kIoRtReportBtnId:
           io::realTimeReport( app->ioH );
           break;
 
