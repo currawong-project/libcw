@@ -86,7 +86,7 @@ namespace cw
         return kOkRC;
       }
       
-      void _test_callback( const packet_t* pktArray, unsigned pktCnt )
+      void _test_callback( void* cbArg, const packet_t* pktArray, unsigned pktCnt )
       {
         unsigned i,j;
         time::spec_t cur_time = time::current_time();
@@ -95,7 +95,7 @@ namespace cw
         {
           const packet_t* p = pktArray + i;
 
-          test_t* t = (test_t*)p->cbArg;
+          test_t* t = (test_t*)cbArg;
 
           for(j=0; j<p->msgCnt; ++j)
             if( p->msgArray != NULL )

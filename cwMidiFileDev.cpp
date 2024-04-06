@@ -428,13 +428,12 @@ namespace cw
           if( p->cbFunc != nullptr )
           {
             packet_t pkt = {};
-            pkt.cbArg    = p->cbArg;
             pkt.devIdx   = p->base_dev_idx;
             pkt.portIdx  = file_idx;
             pkt.msgArray = msgA;
             pkt.msgCnt   = msgN;
             
-            p->cbFunc( &pkt, 1 );
+            p->cbFunc( p->cbArg, &pkt, 1 );
           }
         }
 
