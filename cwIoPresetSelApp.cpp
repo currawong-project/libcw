@@ -297,7 +297,7 @@ namespace cw
       const char* record_fn_ext;
       const char* record_backup_dir;
       
-      const char*     scoreFn;
+      //const char*     scoreFn;
       const object_t* perfDirL;
       const char*     velTableFname;
       const char*     velTableBackupDir;
@@ -392,13 +392,13 @@ namespace cw
           app->record_fn = argv[i+1];
           goto found_fl;
         }
-        
+        /*
         if( textCompare(argv[i],"score_fn") == 0 )
         {
           app->scoreFn = argv[i+1];
           goto found_fl;
         }
-
+        */
         if( textCompare(argv[i],"beg_play_loc") == 0 )
         {
           string_to_number( argv[i+1], app->beg_play_loc );
@@ -440,7 +440,7 @@ namespace cw
       if((rc = params_cfgRef->getv( "record_dir",           app->record_dir,
                                     "record_fn",            app->record_fn,
                                     "record_fn_ext",        app->record_fn_ext,
-                                    "score_fn",             app->scoreFn,
+            //"score_fn",             app->scoreFn,
                                     "perfDirL",             app->perfDirL,
                                     "flow_proc_dict_fn",    flow_proc_dict_fn,                                    
                                     "midi_play_record",     app->midi_play_record_cfg,
@@ -474,11 +474,13 @@ namespace cw
       _apply_command_line_args(app,argc,argv);
 
 
+      /*
       if((app->scoreFn    = filesys::expandPath( app->scoreFn )) == nullptr )
       {
         rc = cwLogError(kInvalidArgRC,"The score file name is invalid.");
         goto errLabel;
       }
+      */
       
       if((app->record_dir = filesys::expandPath(app->record_dir)) == nullptr )
       {
@@ -591,7 +593,7 @@ namespace cw
 
       mem::release((char*&)app.record_backup_dir);
       mem::release((char*&)app.record_dir);
-      mem::release((char*&)app.scoreFn);
+      //mem::release((char*&)app.scoreFn);
       mem::release(app.midiRecordDir);
       mem::release(app.midiLoadFname);
       vtbl::destroy(app.vtH);
@@ -1139,7 +1141,6 @@ namespace cw
             {
               if( preset_sel::track_loc( app->psH, loc, f ) )  
               {
-
                 _apply_preset( app, loc, (const perf_score::event_t*)msg_arg, f );
                 
                 if( f != nullptr )
@@ -2135,7 +2136,7 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
             m[i].id     = e->uid;
             m[i].loc    = e->loc;
             m[i].arg    = e;
-
+            
             app->locMap[i].loc = e->loc;
             app->locMap[i].timestamp = m[i].timestamp;
 
@@ -2226,7 +2227,7 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
       return rc;
     }
 
-    rc_t _do_load_perf_score( app_t* app, const char* perf_fn, const vel_tbl_t* vtA=nullptr, unsigned vtN=0 )
+    rc_t _do_load_perf_score( app_t* app, const char* perf_fn, const vel_tbl_t* vtA=nullptr, unsigned vtN=0, unsigned beg_loc=score_parse::kInvalidLocId, unsigned end_loc=score_parse::kInvalidLocId )
     {
       rc_t     rc          = kOkRC;
       unsigned midiEventN  = 0;
@@ -2271,8 +2272,8 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
       // set the UI begin/end play to the locations of the newly loaded performance
       if( !lockLoctnFl )
       {
-        app->end_play_loc = app->maxPerfLoc;
-        app->beg_play_loc = app->minPerfLoc;
+        app->end_play_loc = end_loc==score_parse::kInvalidLocId ? app->maxPerfLoc : end_loc;
+        app->beg_play_loc = beg_loc==score_parse::kInvalidLocId ? app->minPerfLoc : beg_loc;
       }
       
       // Update the master range of the play beg/end number widgets
@@ -2338,7 +2339,7 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
       printf("Loading:%s\n",prp->fname );
       
       // load the requested performance
-      if((rc = _do_load_perf_score(app,prp->fname,prp->vel_tblA, prp->vel_tblN)) != kOkRC )
+      if((rc = _do_load_perf_score(app,prp->fname,prp->vel_tblA, prp->vel_tblN, prp->beg_loc, prp->end_loc)) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"The performance load failed.");
         goto errLabel;
