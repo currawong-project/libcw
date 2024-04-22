@@ -907,7 +907,7 @@ cw::rc_t cw::objectFromString( const char* s, object_t*& objRef )
           s[n] = 0;
           
           //char*    v       = mem::duplStr(lex::tokenText(lexH),lex::tokenCharCount(lexH));
-          unsigned identFl = lexId == lex::kIdentLexTId ? kIdentFl    : 0;          
+          unsigned identFl = lexId != lex::kQStrLexTId ? kIdentFl    : 0;          
           
           _objCreateValueNode<char*>( cnp, s, "string", identFl );
         }
