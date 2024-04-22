@@ -432,7 +432,7 @@ struct in_addr {
 
     export LD_LIBRARY_PATH=~/sdk/libwebsockets/build/out/lib
 
-*** Raspberry Pi Build Notes:
+### Raspberry Pi Build Notes:
 
     cd sdk
     mkdir libwebsockets
@@ -444,10 +444,10 @@ struct in_addr {
 
 
     
-*** Flow Notes:
+### Flow Notes:
 
 
-- When a variable has a variant with a numberic channel should the 'all' channel variant be removed?
+- When a variable has a variant with a numeric channel should the 'all' channel variant be removed?
 
 - Check for duplicate 'vid'-'chIdx' pairs in var_regster().
   (The concatenation of 'vid' and 'chIdx' should be unique 
@@ -469,16 +469,21 @@ specific types, to pass through. For example a 'selector' (n inputs, 1 output) o
 
 DONE:  Add a version of var_register() that both registers and returns the value of the variable.
 
-*** Flow Instance Creation:
+### Flow Instance Creation:
 
-1. Create all vars from the class description and initially set their
-value to the default value given in the class.  chIdx=kAnyChIdx.
+0. Parse the 'in' list and create any 'mult' variables whose 
+'in-var' contains an integer or underscore suffix. See
+"'in' List Syntax and Semantics" below.
+
+1. Create all vars from the class description, that were not
+already instantiated during 'in' list processing, and set their
+initial value to the default value given in the class.  chIdx=kAnyChIdx.
 
 Note that all vars must be included in the class description.
 
 
-2. Apply the preset record from the class description according to the
-label given in the instance definition. 
+2. Apply the preset records from the class description according to the
+'presets' list given in the instance definition. 
 
 If the variable values are given as a scalar then the existing
 variable is simply given a new value.
@@ -489,17 +494,23 @@ index of the value in the list. This is referred
 to as 'channelizing' the variable because the variable will then
 be represented by multiple physical variable records - one for each channel.
 This means that all variables will have their initial record, with the chIdx set to 'any',
-and then they may also have further variable records will for each explicit
+and then they may also have further variable records for each explicit
 channel number. The complete list of channelized variable record 
 is kept, in channel order, using the 'ch_link' links with the base of the list
 on the 'any' record.
 
-3. Apply the variable values defined in the instance 'args' record.
-This application is treated similarly to the 'class' 
-preset. If the variable value is presented in a list then
-the value is assigned to a specific channel if the channel
-already exists then the value is simply replaced, if the
-channel does not exist then the variable is 'channelized'.
+3. Apply the variable values defined in a instance 'args' record.
+The 'args' record may have multiple sets of args. 
+If the preset instance includes an 'argsLabel' value then this record
+is selected to be applied.  If No 'argsLabel' is given then
+the record named 'default' is selected.  If there is no record
+named 'default' then no record is applied.
+
+The application of the args record proceeds exactly the same as
+applying a 'class' preset. If the variable value is presented in a
+list then the value is assigned to a specific channel. If the channel
+already exists then the value is simply replaced. If the channel does
+not exist then the variable is 'channelized'.
 
 4. The varaibles listed in the 'in' list of the instance cfg.
 are connected to their source variables.
@@ -520,5 +531,345 @@ access to registered variables.
 
 
 
+# Notes on 'poly' and 'mult':
+
+The 'in' statement is formed by a list of _Connect Expressions_ :
+
+`<input_var>:<source_inst.source_var>`
+
+There are three forms of connect expressions:
+
+1. Simple Connect Expression: Both the input and source labels
+identify vars in the input and source instance.
+
+2. Manual Mult Connect Expression: The input identifer ends with an
+integer.  This expression indicates that an input var will be
+instantiated and connected to the source var.  The integer indicates
+the suffix (sfx) id of the input var. e.g. `in0:osc.out`,`in1:filt.out`.
+      
+3. PolyMult Connect Expression: The source identifier has an
+underscore suffix.  This form indicates that there will one instance of
+this var for each poly instance that the source var instances is
+contained by. e.g. `in:osc_.out` If `osc` is contained by an order 3
+poly then statement will create and connect three instances of `in` -
+`in0:osc0.out`,`in1:osc1.out` and `in2:osc2.out`.
+
+Notes:
+- For an input variable to be used in either of the 'Manual' or 'PolyMult' 
+forms the var class desc must have the 'mult' attribute.
+
+- If any var has an integer suffix then this is converted to it's sfx id.
+
+- If the input var of a poly mult expression has an integer suffix then this is taken to be the
+base sfx id for that poly connection.  Other connections in the same statement will be
+incremented from that base value.  e.g `in3:osc_.out` becomes
+`in3:osc0.out`,`in4:osc1.out` and `in5:osc2.out`.
+
+- The first and last poly source instance can be indicated by specifying a 
+begin poly index and count before and after the source index underscore:
+e.g. `in:osc3_3.out` becomes: `in0:osc3.out`,`in1:osc4.out` and `in2:osc5.out`.
+
+- A similar scheme can be used to indicate particular source instance vars:
+`in:osc.out1_2` becomes `in0:osc.out1`,`in1:osc.out2`
+
+- It is a compile time error to have more than one input variable with the same sfx id.
+
+'in' List Syntax and Semantics:
+===============================
+
+Syntax:
+-------
+The 'in' list has the follow syntax:
+`in: { in-stmt* }`
+`in-stmt`     -> `in-var-id`":" `src_expr`
+`src-expr`    -> `src-proc-id`"."`src-var-id`
+`in-var-id`   -> `var-id`
+`src-proc-id` -> `var-id`
+`src-var-id`  -> `var-id`
+`var-id`      -> `label` { `label-sfx` }
+`label-sfx`   -> { `pri-int`} {{"_"} `sec-int` }
+`pri-int`     -> int
+`sec-int`     -> int
+
+
+Semantics:
+----------
+
+### `in-var-id`
+
+- The `label` part of the `in-var-id`  must match to a 
+var description in the input proc class description.
+
+- If no `label-sfx` is given then no special action
+need by taken at var creation time. This var will be
+created by default and later connected to the source inst/var.
+
+
+- (0) If the "_" is given:
+    + This is an "iterating" in-stmt where multiple 
+	  input vars will be created and connected.
+	
+	+ If no `pri-int` is given  then the `pri-int` defaults to 0.
+	
+	+ If the `pri-int` is given then it indicates that 
+      an instance of this var should be created where
+      the `pri-int` becomes the sfx-id of the var instance.
+
+	+ If `sec-int` is given then it gives the 
+      count of input vars which will be created. The
+	  sfx-id of each new input var begins with `pri-int` 
+	  and increments for each new var.
+
+    + (1) If no `sec-int` is given then the `sec-int` is implied by the count
+	  of source variables indicated in the `src-expr`.
+
+
+- If no "_" is given:
+    + No `sec-int` can exist without a "_".
+	
+    + If a `pri-int` is given then a single
+	  input var is created and the `pri-int` 
+	  gives the sfx-id.  This single input
+	  var is then connected to a single src var.
+	  
+	+ If no `pri-int` is given
+	  then the default var is created
+	  with kBaseSfxId and is connected
+      to a single source var.
+
+
+### `src-proc-id`
+
+- The `label` part of the `src-proc-id` must match to a 
+previously created proc instance in the current network.
+
+- If a `label-sfx` is given then the `pri-int` gives
+the sfx-id of the first proc inst to connect to.
+If no `pri-int` is given then the first sfx-id 
+defaults to 0. 
+
+
+- If "_" is given:
+	+ This is an "iterating" src-proc and therefore
+	  the in-var must also be iterating. See (0)
+
+	+ If a `sec-int` is given then this gives the count of
+      connections across multiple proc instances with
+	  sfx-id's beginnign with `pri-int`.  Note that if
+	  `sec-int` is given then the `in-var-id` must be
+	  iterating and NOT specify an iteration count,
+	  as in (1) above.
+	  
+	+ If no `sec-int` is given then the 
+	  `sec-int` defaults to the count of
+	  available proc instances with the given `label` 
+	  following the source proc inst `pri-int`.
+
+
+
+- If "_" is not given then this is not an
+  iterating proc inst. 
+  
+    + If the input var is iterating
+      then it must specify the iteration count or
+	  the `src-var-id` must be iterating.
+	  
+	+ If the `pri-int` is given then it specifies
+	  the sfx-id of the src-proc
+	  
+	+ If the `pri-int` is not given 
+	
+	    - If the src-net is the same as the in-var net then
+	      the sfx-id of the in-var proc is used as the src-proc sfx-id
+
+
+### `src-var-id`
+
+- The `label` part of the `in-var-id`  must match to a 
+var description in the source proc class descriptions.
+
+- If a `label-sfx` is given then the `pri-int` gives
+the sfx-id of the first source var to connect to
+on the source proc instance. If no `pri-int` is
+given then the first sfx-id defaults to 0.
+
+- If a "_" is given:
+    + This is an "iterating"
+	  source var and therefore the input var
+	  must specifiy an iterating connection and
+	  the source proc inst must not specify an iterating 
+	  connection. See (0) above.
+
+	+ If a `sec-int` is given then this gives the count of
+      connections across multiple source vars with
+	  sfx-id's beginnign with `pri-int`.  Note that if
+	  `sec-int` is given then the `in-var-id` must be
+	  iterating and NOT specify an iteration count,
+	  as in (1) above.
+
+
+	+ If `sec-int` is given
+	  then the `sec-int` defaults to the count of
+	  available source vars with the given `label` 
+	  following the source var `pri-int`.
+
+- If "_" is not given then this is not an
+  iterating source var. If the input var is iterating
+  then it must specify the iteration count or
+  the `src-proc-id` must be iterating.
+
+
+### Notes:
+
+- If the `in-var-id` is iterating but neither `src-proc-id`
+or `src-var-id` are iterating then the `in-var-id` must
+specify the iteration count and the connection will be
+made to exactly one source var on the source proc inst.
+
+- If `in-var-id` is iterating then the iterations count
+must come from exactly one place:
+    + the input var `sec-int`
+	+ the source proc `sec-int`
+	+ the source var `sec-int`
+	
+This means that only one literal iter count can be 
+given per `in-stmt`.  It is a syntax error if
+more than one literal iter counts are given.
+
+- Use cases
+    + connect one input to one source
+	+ connect multiple inputs to the same var on multiple procs
+	+ connect multiple inputs to multiple vars on one proc
+	+ connect multiple inputs to one var on one proc
+
+Var Updates and Preset Application
+==================================
+
+Variable addresses are formed from the following parameters:
+`(<proc_label><proc_label_sfx_id>)*,var_label,var_label_sfx_id, ch_idx`
+
+In the cases of poly procs (procs with public internal networks) it
+may not always be possible to know the `<proc_label_sfx_id>` without
+asking for it at runtime.  For example for the cross-fader control the
+application must ask for the `<proc_label_sfx_id>` current or next
+poly channel depending on which one it is targetting.
+
+It is notable that any proc with an internal network has
+to solve this problem.  The problem is especially acute
+for proc's which change the 'current' poly channel at runtime.
+
+The alternative is to include the concept of special values 
+in the address (e.g. kInvalidIdx means the application isn't
+sure and the network should decide how to resolve the address)
+The problem with this is that the information
+to make that decision may require more information than
+just a simple 'special value' can encode. It also means
+complicating the var set/get pipeline with 'escape' routines.
+
+There are at least two known use cases which need to address 
+this issue:
+1. The cross-fader: The application may wish to address
+  updates to the current or next poly channel but this
+  channel can't be determined until runtime.
+
+- The application asks for the current or next `proc_label_sfx_id`
+  at runtime depending on what its interested in doing, 
+  and sets the update address accordingly.
+  
+  
+- Two interface objects are setup as sources for the `xfade_ctl` 
+  object.  The address of each of these objects can be 
+  determined prior to runtime. The application then simply addresses
+  the object corresponding to method (direct vs deferred) it requires.
+  This solution is particularly appealing because it means that
+  presets may be completely resolved to their potential 
+  target procs (there would be up to 'poly-count' potential targets)
+  prior to runtime.
+  
+  As it stands now the problem with this approach is that it
+  does not allow for the message to be resolved to its final
+  destination. If the message is addressed to a proxy proc
+  then that proxy must mimic all the vars on the object which
+  it is providing an interface for. (This is actually possible
+  and may be a viable solution???) 
+    
+  One solution to this is to create a data type which is an
+  address/value packet.  The packet would then be directed
+  to a router which would in turn use the value to forward
+  the packet to the next destination.  Each router that the
+  packet passed through would strip off a value and
+  pass along the message. This is sensible since the 'value'
+  associated with a router is in fact another address.
+  
+2. The polyphonic sampler: 
+
+- How can voices be addressed once they are started?
+  + A given note is started - how do we later address that note to turn it off?
+    Answer: MIDI pitch and channel - only one note may be sounding on a given MIDI pitch and channel at any one time.
+	
+    - Extending ths idea to the xfader: There are two channels: current and deferred,
+	but which are redirected to point to 2 of the 3  physical channels .... this would
+	require the idea of 'redirected' networks, i.e. networks whose proc lists were
+	really pointers to the physical procs.
+	  - sd_poly maintains the physical networks as it is currently implemnted.
+	  - xfade_ctl maintains the redirected networks - requests for proc/var addresses 
+	    on the redirected networks will naturally resolve to physical networks. 
+
+	  - Required modifications:
+	      + variable getters and setters must use a variable args scheme specify the var address:
+		    `(proc-name,proc-sfx-id)*, var-name,var-sfx-id`
+			Example: `xfad_ctl,0,pva,1,wnd_len,0,0`
+	            - The first 0 is known because there is only one `xfad_ctl`.
+				- The 1 indicates the 'deferred' channel.				
+				- The second 0 is known because there is only one `wnd_len` per `pva`.
+				- The third 0 indicates the channel index of the var.
+			
+		  + the address resolver must then recognize how to follow internal networks
+		      
+		  + Networks must be maintained as lists of pointers to procs
+		    rather than a linked list of physical pointers.
+			
+		  + `xfade_ctl` must be instantiated after `sd_poly` and be able
+			  to access the internal network built by `sd_poly`. 
+		  
+	
+Generalizing the Addressing
+---------------------------
+Change the set/get interface to include a list of (proc-label,proc-sfx-id) 
+to determine the address of the var. 
+
+Note that this still requires knowing the final address in advance.
+In general a router will not know how to resolve a msg to the 
+next destination without having a final address.
+In otherwords setting 'proc-sfx-id' to kInvalidId is not
+resolvable without more information.
+
+   
+
+
+### TODO:
+
+- Documentation w/ examples.
+
+- Compile presets: at load time the presets should be resolved
+  to the proc and vars to which they will be assigned.
+
+- flow classes and variable should have a consistent naming style: camelCase or snake_case.
+
+- Variable attributes should be meaningful. e.g. src,src_opt,mult,init, ....
+  Should we check for 'src' or 'mult' attribute on var's?
+
+- DONE: 'poly' should be implemented as a proc-inst with an internal network - but the 
+elements of the network should be visible outside of it.
+
+- 'sub' should be implemented as proc-inst with an internal network, but the
+elements of the network should not be visible outside of it. Instead it should
+include the idea of input and output ports which act as proxies to the physical
+ports of the internal elements.
+
+- 'poly' and 'sub' should be arbitrarily nestable. 
+
+
+- Reduce runtime over head for var get/set operations.
 
 
