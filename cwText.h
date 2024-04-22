@@ -65,8 +65,11 @@ namespace cw
 
   // Return a pointer to the first occurrence of 'c' in s[] or nullptr
   // if 'c' does not occur in s[]
+  char*       firstMatchChar( char* s, char c );
   const char* firstMatchChar( const char* s, char c );
+  
   // Find the last occurrent of 'c' in s[]. 
+  char*       lastMatchChar( char* s, char c ); 
   const char* lastMatchChar( const char* s, char c ); 
   
   bool isInteger( const char* );        // text contains only [0-9]
