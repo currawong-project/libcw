@@ -6,11 +6,12 @@
 #include "cwObject.h"
 #include "cwTime.h"
 #include "cwVectOps.h"
+#include "cwMidi.h"
+#include "cwMidiDecls.h"
 #include "cwFlowDecl.h"
 #include "cwPresetSel.h"
 #include "cwFile.h"
 
-#include "cwMidi.h"
 #include "cwDynRefTbl.h"
 #include "cwScoreParse.h"
 #include "cwSfScore.h"

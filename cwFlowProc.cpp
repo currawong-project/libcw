@@ -17,6 +17,7 @@
 #include "cwFlowDecl.h"
 #include "cwFlow.h"
 #include "cwFlowTypes.h"
+#include "cwFlowNet.h"
 #include "cwFlowProc.h"
 
 #include "cwFile.h"
@@ -89,6 +90,119 @@ namespace cw
       };
       
     }    
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // poly
+    //
+    namespace poly
+    {
+      enum
+      {
+        kCountPId,
+        kOrderPId,
+      };
+      
+      typedef struct
+      {
+        unsigned   count;
+        network_t  net;
+        network_order_id_t orderId;
+      } inst_t;
+
+
+      rc_t create( instance_t* proc )
+      {
+        rc_t            rc          = kOkRC;        
+        inst_t*         inst        = mem::allocZ<inst_t>();
+        const object_t* networkCfg  = nullptr;
+        const char*     order_label = nullptr;
+        
+        proc->userPtr = inst;
+        
+        if((rc  = var_register_and_get( proc, kAnyChIdx,
+                                        kCountPId, "count", kBaseSfxId, inst->count,
+                                        kOrderPId, "order", kBaseSfxId, order_label )) != kOkRC )
+          goto errLabel;
+
+        if( inst->count == 0 )
+        {
+          cwLogWarning("The 'poly' %s:%i was given a count of 0.",proc->label,proc->label_sfx_id);
+          goto errLabel;
+        }
+
+        if((rc = proc->proc_cfg->getv("network",networkCfg)) != kOkRC )
+        {
+          rc = cwLogError(rc,"The 'network' cfg. was not found.");
+          goto errLabel;
+        }
+
+        // get the network exec. order type
+        if( textIsEqual(order_label,"net") )
+          inst->orderId = kNetFirstPolyOrderId;
+        else
+        {
+          if( textIsEqual(order_label,"proc") )
+            inst->orderId = kProcFirstPolyOrderId;
+          else
+          {
+            rc = cwLogError(kInvalidArgRC,"'%s' is not one of the valid order types (i.e. 'net','proc').",order_label);
+            goto errLabel;
+          }
+        }
+        
+        if((rc = network_create(proc->ctx,networkCfg,inst->net,inst->count )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Creation failed on the internal network.");
+          goto errLabel;
+        }
+
+
+        // Set the internal net pointer in the base proc instance
+        // so that network based utilities can scan it
+        proc->internal_net = &inst->net;
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( instance_t* proc )
+      {
+        inst_t* p = (inst_t*)proc->userPtr;
+        network_destroy(p->net);
+
+        
+        mem::release( proc->userPtr );
+        return kOkRC;
+      }
+
+      rc_t value( instance_t* ctx, variable_t* var )
+      {
+        return kOkRC;
+      }
+
+      rc_t exec( instance_t* ctx )
+      {
+        inst_t* p = (inst_t*)ctx->userPtr;
+        rc_t   rc = kOkRC;
+
+        if((rc = exec_cycle(p->net)) != kOkRC )
+        {
+          rc = cwLogError(rc,"poly internal network exec failed.");
+        }
+        
+        return rc;
+      }
+
+      class_members_t members = {
+        .create               = create,
+        .destroy              = destroy,
+        .value                = value,
+        .exec                 = exec,
+        .report               = nullptr
+      };
+      
+    }    
     
     //------------------------------------------------------------------------------------------------------------------
     //
@@ -115,12 +229,12 @@ namespace cw
         real_t in_value = 0.5;
         ctx->userPtr = mem::allocZ<inst_t>();
         
-        if((rc  = var_register_and_get( ctx, kAnyChIdx, kInPId, "in", in_value )) != kOkRC )
+        if((rc  = var_register_and_get( ctx, kAnyChIdx, kInPId, "in", kBaseSfxId, in_value )) != kOkRC )
           goto errLabel;
 
         if((rc = var_register_and_set( ctx, kAnyChIdx,
-                                       kOutPId,    "out", in_value,
-                                       kInvOutPId, "inv_out", (real_t)(1.0-in_value) )) != kOkRC )
+                                       kOutPId,    "out",     kBaseSfxId, in_value,
+                                       kInvOutPId, "inv_out", kBaseSfxId, (real_t)(1.0-in_value) )) != kOkRC )
         {
           goto errLabel;
         }
@@ -205,14 +319,14 @@ namespace cw
 
         // Register variable and get their current value
         if((rc = var_register_and_get( ctx, kAnyChIdx,
-                                       kDevLabelPId,  "dev_label",  dev_label,
-                                       kPortLabelPId, "port_label", port_label )) != kOkRC )
+                                       kDevLabelPId,  "dev_label",  kBaseSfxId, dev_label,
+                                       kPortLabelPId, "port_label", kBaseSfxId, port_label )) != kOkRC )
           
         {
           goto errLabel;
         }
 
-        if((rc = var_register( ctx, kAnyChIdx,kOutPId, "out")) != kOkRC )
+        if((rc = var_register( ctx, kAnyChIdx, kOutPId, "out", kBaseSfxId)) != kOkRC )
         {
           goto errLabel;
         }
@@ -246,7 +360,7 @@ namespace cw
         inst->buf = mem::allocZ<midi::ch_msg_t>( inst->bufN );
 
         // create one output audio buffer
-        rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, nullptr, 0  );
+        rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, 0  );
 
 
       errLabel: 
@@ -349,9 +463,9 @@ namespace cw
         
         // Register variables and get their current value
         if((rc = var_register_and_get( ctx, kAnyChIdx,
-                                       kDevLabelPId, "dev_label", dev_label,
-                                       kPortLabelPId,"port_label", port_label,
-                                       kInPId,       "in",         mbuf)) != kOkRC )
+                                       kDevLabelPId, "dev_label",  kBaseSfxId, dev_label,
+                                       kPortLabelPId,"port_label", kBaseSfxId, port_label,
+                                       kInPId,       "in",         kBaseSfxId, mbuf)) != kOkRC )
         {
           goto errLabel;
         }
@@ -444,7 +558,7 @@ namespace cw
         ctx->userPtr = inst;
 
         // Register variable and get their current value
-        if((rc = var_register_and_get( ctx, kAnyChIdx, kDevLabelPId, "dev_label", inst->dev_label )) != kOkRC )
+        if((rc = var_register_and_get( ctx, kAnyChIdx, kDevLabelPId, "dev_label", kBaseSfxId, inst->dev_label )) != kOkRC )
         {
           goto errLabel;
         }
@@ -457,7 +571,7 @@ namespace cw
         
 
         // create one output audio buffer
-        rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, inst->ext_dev->u.a.abuf->srate, inst->ext_dev->u.a.abuf->chN, ctx->ctx->framesPerCycle );
+        rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, inst->ext_dev->u.a.abuf->srate, inst->ext_dev->u.a.abuf->chN, ctx->ctx->framesPerCycle );
 
       errLabel:
         return rc;
@@ -542,8 +656,8 @@ namespace cw
 
         // Register variables and get their current value
         if((rc = var_register_and_get( ctx, kAnyChIdx,
-                                       kDevLabelPId, "dev_label", inst->dev_label,
-                                       kInPId,       "in",        src_abuf)) != kOkRC )
+                                       kDevLabelPId, "dev_label", kBaseSfxId, inst->dev_label,
+                                       kInPId,       "in",        kBaseSfxId, src_abuf)) != kOkRC )
         {
           goto errLabel;
         }
@@ -638,16 +752,16 @@ namespace cw
         inst_t* inst = mem::allocZ<inst_t>();
         ctx->userPtr = inst;
 
-        if((rc = var_register( ctx, kAnyChIdx, kOnOffFlPId, "on_off" )) != kOkRC )
+        if((rc = var_register( ctx, kAnyChIdx, kOnOffFlPId, "on_off", kBaseSfxId)) != kOkRC )
         {
           goto errLabel;
         }
 
         // Register variable and get their current value
         if((rc = var_register_and_get( ctx, kAnyChIdx,
-                                       kFnamePId, "fname", inst->filename,
-                                       kSeekSecsPId, "seekSecs", seekSecs,
-                                       kEofFlPId, "eofFl", inst->eofFl )) != kOkRC )
+                                       kFnamePId,    "fname",    kBaseSfxId, inst->filename,
+                                       kSeekSecsPId, "seekSecs", kBaseSfxId, seekSecs,
+                                       kEofFlPId,    "eofFl",    kBaseSfxId, inst->eofFl )) != kOkRC )
         {
           goto errLabel;
         }
@@ -669,7 +783,7 @@ namespace cw
         cwLogInfo("Audio '%s' srate:%f chs:%i frames:%i %f seconds.",inst->filename,info.srate,info.chCnt,info.frameCnt, info.frameCnt/info.srate );
 
         // create one output audio buffer - with the same configuration as the source audio file
-        rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, info.srate, info.chCnt, ctx->ctx->framesPerCycle );
+        rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, info.srate, info.chCnt, ctx->ctx->framesPerCycle );
 
       errLabel:
         return rc;
@@ -795,9 +909,9 @@ namespace cw
 
         // Register variables and get their current value
         if((rc = var_register_and_get( ctx, kAnyChIdx,
-                                       kFnamePId, "fname", inst->filename,
-                                       kBitsPId,  "bits",  audioFileBits,
-                                       kInPId,    "in",    src_abuf )) != kOkRC )
+                                       kFnamePId, "fname", kBaseSfxId, inst->filename,
+                                       kBitsPId,  "bits",  kBaseSfxId, audioFileBits,
+                                       kInPId,    "in",    kBaseSfxId, src_abuf )) != kOkRC )
         {
           goto errLabel;
         }
@@ -902,16 +1016,16 @@ namespace cw
         ctx->userPtr = mem::allocZ<inst_t>();
 
         // get the source audio buffer
-        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",abuf )) != kOkRC )
+        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",kBaseSfxId,abuf )) != kOkRC )
           goto errLabel;
 
         // register the gain 
         for(unsigned i=0; i<abuf->chN; ++i)
-          if((rc = var_register( ctx, i, kGainPId, "gain" )) != kOkRC )
+          if((rc = var_register( ctx, i, kGainPId, "gain", kBaseSfxId )) != kOkRC )
             goto errLabel;
           
         // create the output audio buffer
-        rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, abuf->srate, abuf->chN, abuf->frameN );
+        rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, abuf->srate, abuf->chN, abuf->frameN );
 
 
       errLabel:
@@ -1021,7 +1135,7 @@ namespace cw
         ctx->userPtr = inst;
 
         // get the source audio buffer
-        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",abuf )) != kOkRC )
+        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",kBaseSfxId, abuf )) != kOkRC )
           goto errLabel;
 
         if( abuf->chN )
@@ -1030,20 +1144,20 @@ namespace cw
           
           inst->chSelMap = mem::allocZ<bool>(abuf->chN);
           
-          if((rc = var_channel_count(ctx,"select",selChN)) != kOkRC )
+          if((rc = var_channel_count(ctx,"select",kBaseSfxId,selChN)) != kOkRC )
             goto errLabel;
           
           // register the gain 
           for(unsigned i=0; i<abuf->chN; ++i)
           {
             if( i < selChN )
-              if((rc = var_register_and_get( ctx, i, kSelectPId, "select", inst->chSelMap[i] )) != kOkRC )
+              if((rc = var_register_and_get( ctx, i, kSelectPId, "select", kBaseSfxId, inst->chSelMap[i] )) != kOkRC )
                 goto errLabel;
 
             if( inst->chSelMap[i] )
             {
               // register an output gain control
-              if((rc = var_register( ctx, inst->outChN, kGainPId, "gain")) != kOkRC )
+              if((rc = var_register( ctx, inst->outChN, kGainPId, "gain", kBaseSfxId)) != kOkRC )
                 goto errLabel;
 
               // count the number of selected channels to determine the count of output channels
@@ -1055,7 +1169,7 @@ namespace cw
           if( inst->outChN == 0 )
             cwLogWarning("The audio split instance '%s' has no selected channels.",ctx->label);
           else
-            rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, abuf->srate, inst->outChN, abuf->frameN );
+            rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, abuf->srate, inst->outChN, abuf->frameN );
         }
 
       errLabel:
@@ -1162,7 +1276,7 @@ namespace cw
         ctx->userPtr = inst;
 
         // get the source audio buffer
-        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",abuf )) != kOkRC )
+        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",kBaseSfxId,abuf )) != kOkRC )
           goto errLabel;
 
         if( abuf->chN )
@@ -1172,13 +1286,13 @@ namespace cw
           // register the gain 
           for(unsigned i=0; i<abuf->chN; ++i)
           {
-            if((rc = var_register_and_get( ctx, i, kDuplicatePId, "duplicate", inst->chDuplMap[i] )) != kOkRC )
+            if((rc = var_register_and_get( ctx, i, kDuplicatePId, "duplicate", kBaseSfxId, inst->chDuplMap[i] )) != kOkRC )
               goto errLabel;
 
             if( inst->chDuplMap[i] )
             {
               // register an input gain control
-              if((rc = var_register( ctx, inst->outChN, kGainPId, "gain")) != kOkRC )
+              if((rc = var_register( ctx, inst->outChN, kGainPId, "gain", kBaseSfxId)) != kOkRC )
                 goto errLabel;
 
               // count the number of selected channels to determine the count of output channels
@@ -1190,7 +1304,7 @@ namespace cw
           if( inst->outChN == 0 )
             cwLogWarning("The audio split instance '%s' has no selected channels.",ctx->label);
           else
-            rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, abuf->srate, inst->outChN, abuf->frameN );
+            rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, abuf->srate, inst->outChN, abuf->frameN );
         }
 
       errLabel:
@@ -1309,11 +1423,11 @@ namespace cw
           // TODO: allow non-contiguous source labels
           
           // the source labels must be contiguous
-          if( !var_has_value( ctx, label, kAnyChIdx ) )
+          if( !var_has_value( ctx, label, kBaseSfxId, kAnyChIdx ) )
             break;
           
           // get the source audio buffer
-          if((rc = var_register_and_get(ctx, kAnyChIdx,kInBasePId+i,label,abuf )) != kOkRC )
+          if((rc = var_register_and_get(ctx, kAnyChIdx,kInBasePId+i,label,kBaseSfxId, abuf )) != kOkRC )
           {
             goto errLabel;
           }
@@ -1337,11 +1451,11 @@ namespace cw
 
         // register the gain 
         for(unsigned i=0; i<outChN; ++i)
-          if((rc = var_register( ctx, i, kGainPId, "gain" )) != kOkRC )
+          if((rc = var_register( ctx, i, kGainPId, "gain", kBaseSfxId )) != kOkRC )
             goto errLabel;
           
         // create the output audio buffer
-        rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, srate, outChN, frameN );
+        rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, srate, outChN, frameN );
 
       errLabel:
         return rc;
@@ -1473,8 +1587,8 @@ namespace cw
         
         // get the source audio buffer
         if((rc = var_register_and_get(ctx, kAnyChIdx,
-                                      kIn0PId,"in0",abuf0,
-                                      kIn1PId,"in1",abuf1 )) != kOkRC )
+                                      kIn0PId,"in0",kBaseSfxId,abuf0,
+                                      kIn1PId,"in1",kBaseSfxId,abuf1 )) != kOkRC )
         {
           goto errLabel;
         }
@@ -1484,11 +1598,11 @@ namespace cw
         outChN = std::max(abuf0->chN, abuf1->chN);
 
         // register the gain
-        var_register_and_get( ctx, kAnyChIdx, kGain0PId, "gain0", dum );
-        var_register_and_get( ctx, kAnyChIdx, kGain1PId, "gain1", dum );
+        var_register_and_get( ctx, kAnyChIdx, kGain0PId, "gain0", kBaseSfxId, dum );
+        var_register_and_get( ctx, kAnyChIdx, kGain1PId, "gain1", kBaseSfxId, dum );
           
         // create the output audio buffer
-        rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, abuf0->srate, outChN, abuf0->frameN );
+        rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, abuf0->srate, outChN, abuf0->frameN );
 
       errLabel:
         return rc;
@@ -1601,7 +1715,7 @@ namespace cw
         ctx->userPtr = inst;
 
         // Register variables and get their current value
-        if((rc = var_register_and_get( ctx, kAnyChIdx, kChCntPid, "chCnt", chCnt)) != kOkRC )
+        if((rc = var_register_and_get( ctx, kAnyChIdx, kChCntPid, "chCnt", kBaseSfxId, chCnt)) != kOkRC )
         {
           goto errLabel;
         }
@@ -1609,15 +1723,15 @@ namespace cw
         // register each oscillator variable
         for(unsigned i=0; i<chCnt; ++i)
           if((rc = var_register_and_get( ctx, i,
-                                         kSratePId,  "srate", srate,
-                                         kFreqHzPId, "hz",    hz,
-                                         kGainPId,   "gain",  gain)) != kOkRC )
+                                         kSratePId,  "srate", kBaseSfxId, srate,
+                                         kFreqHzPId, "hz",    kBaseSfxId, hz,
+                                         kGainPId,   "gain",  kBaseSfxId, gain)) != kOkRC )
           {
             goto errLabel;
           }
 
         // create one output audio buffer
-        rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, srate, chCnt, ctx->ctx->framesPerCycle );
+        rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, srate, chCnt, ctx->ctx->framesPerCycle );
 
         inst->phaseA = mem::allocZ<real_t>( chCnt );
         
@@ -1719,7 +1833,7 @@ namespace cw
         inst_t*       inst   = mem::allocZ<inst_t>();
         ctx->userPtr = inst;
 
-        if((rc = var_register_and_get( ctx, kAnyChIdx,kInPId, "in", srcBuf )) != kOkRC )
+        if((rc = var_register_and_get( ctx, kAnyChIdx,kInPId, "in", kBaseSfxId, srcBuf )) != kOkRC )
         {
           cwLogError(kInvalidArgRC,"Unable to access the 'src' buffer.");
         }
@@ -1746,10 +1860,10 @@ namespace cw
             bool hzFl = false;
             
             if((rc = var_register_and_get( ctx, i,
-                                           kMaxWndSmpNPId, "maxWndSmpN", maxWndSmpN,
-                                           kWndSmpNPId, "wndSmpN", wndSmpN,
-                                           kHopSmpNPId, "hopSmpN", hopSmpN,
-                                           kHzFlPId,    "hzFl",    hzFl )) != kOkRC )
+                                           kMaxWndSmpNPId, "maxWndSmpN", kBaseSfxId, maxWndSmpN,
+                                           kWndSmpNPId, "wndSmpN",       kBaseSfxId, wndSmpN,
+                                           kHopSmpNPId, "hopSmpN",       kBaseSfxId, hopSmpN,
+                                           kHzFlPId,    "hzFl",          kBaseSfxId, hzFl )) != kOkRC )
             {
               goto errLabel;
             }
@@ -1771,7 +1885,7 @@ namespace cw
 
         
           // create the fbuf 'out'
-          if((rc = var_register_and_set(ctx, "out", kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, maxBinNV, binNV, hopNV, magV, phsV, hzV )) != kOkRC )
+          if((rc = var_register_and_set(ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, maxBinNV, binNV, hopNV, magV, phsV, hzV )) != kOkRC )
           {
             cwLogError(kOpFailRC,"The output freq. buffer could not be created.");
             goto errLabel;
@@ -1902,7 +2016,7 @@ namespace cw
         inst_t*       inst   = mem::allocZ<inst_t>();
         ctx->userPtr = inst;
 
-        if((rc = var_register_and_get( ctx, kAnyChIdx,kInPId, "in", srcBuf)) != kOkRC )
+        if((rc = var_register_and_get( ctx, kAnyChIdx,kInPId, "in", kBaseSfxId, srcBuf)) != kOkRC )
         {
           goto errLabel;
         }
@@ -1925,11 +2039,11 @@ namespace cw
             }
           }
 
-          if((rc = var_register( ctx, kAnyChIdx, kInPId, "in" )) != kOkRC )
+          if((rc = var_register( ctx, kAnyChIdx, kInPId, "in", kBaseSfxId)) != kOkRC )
             goto errLabel;
 
           // create the abuf 'out'
-          rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, ctx->ctx->framesPerCycle );
+          rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, ctx->ctx->framesPerCycle );
         }
         
       errLabel:
@@ -2035,7 +2149,7 @@ namespace cw
         ctx->userPtr = inst;
 
         // verify that a source buffer exists
-        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",srcBuf )) != kOkRC )
+        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",kBaseSfxId,srcBuf )) != kOkRC )
         {
           rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",ctx->label);
           goto errLabel;
@@ -2070,13 +2184,13 @@ namespace cw
             spec_dist_t* sd = inst->sdA[i];
 
             if((rc = var_register_and_get( ctx, i,
-                                           kBypassPId,   "bypass",   sd->bypassFl,
-                                           kCeilingPId,  "ceiling",  sd->ceiling,
-                                           kExpoPId,     "expo",     sd->expo,
-                                           kThreshPId,   "thresh",   sd->thresh,
-                                           kUprSlopePId, "upr",      sd->uprSlope,
-                                           kLwrSlopePId, "lwr",      sd->lwrSlope,
-                                           kMixPId,      "mix",      sd->mix )) != kOkRC )
+                                           kBypassPId,   "bypass",   kBaseSfxId, sd->bypassFl,
+                                           kCeilingPId,  "ceiling",  kBaseSfxId, sd->ceiling,
+                                           kExpoPId,     "expo",     kBaseSfxId, sd->expo,
+                                           kThreshPId,   "thresh",   kBaseSfxId, sd->thresh,
+                                           kUprSlopePId, "upr",      kBaseSfxId, sd->uprSlope,
+                                           kLwrSlopePId, "lwr",      kBaseSfxId, sd->lwrSlope,
+                                           kMixPId,      "mix",      kBaseSfxId, sd->mix )) != kOkRC )
             {
               goto errLabel;
             }
@@ -2084,7 +2198,7 @@ namespace cw
           }
           
           // create the output buffer
-          if((rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, srcBuf->maxBinN_V, srcBuf->binN_V, srcBuf->hopSmpN_V, magV, phsV, hzV )) != kOkRC )
+          if((rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, srcBuf->maxBinN_V, srcBuf->binN_V, srcBuf->hopSmpN_V, magV, phsV, hzV )) != kOkRC )
             goto errLabel;
         }
         
@@ -2223,7 +2337,7 @@ namespace cw
         ctx->userPtr = inst;
 
         // verify that a source buffer exists
-        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",srcBuf )) != kOkRC )
+        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",kBaseSfxId,srcBuf )) != kOkRC )
         {
           rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",ctx->label);
           goto errLabel;
@@ -2243,15 +2357,15 @@ namespace cw
 
             // get the compressor variable values
             if((rc = var_register_and_get( ctx, i,
-                                           kBypassPId,   "bypass",    bypassFl,
-                                           kInGainPId,   "igain",     igain,
-                                           kThreshPId,   "thresh",    thresh,
-                                           kRatioPId,    "ratio",     ratio,
-                                           kAtkMsPId,    "atk_ms",    atk_ms,
-                                           kRlsMsPId,    "rls_ms",    rls_ms,
-                                           kWndMsPId,    "wnd_ms",    wnd_ms,
-                                           kMaxWndMsPId, "maxWnd_ms", maxWnd_ms,
-                                           kOutGainPId,  "ogain",     ogain )) != kOkRC )
+                                           kBypassPId,   "bypass",    kBaseSfxId, bypassFl,
+                                           kInGainPId,   "igain",     kBaseSfxId, igain,
+                                           kThreshPId,   "thresh",    kBaseSfxId, thresh,
+                                           kRatioPId,    "ratio",     kBaseSfxId, ratio,
+                                           kAtkMsPId,    "atk_ms",    kBaseSfxId, atk_ms,
+                                           kRlsMsPId,    "rls_ms",    kBaseSfxId, rls_ms,
+                                           kWndMsPId,    "wnd_ms",    kBaseSfxId, wnd_ms,
+                                           kMaxWndMsPId, "maxWnd_ms", kBaseSfxId, maxWnd_ms,
+                                           kOutGainPId,  "ogain",     kBaseSfxId, ogain )) != kOkRC )
             {
               goto errLabel;
             }
@@ -2266,7 +2380,7 @@ namespace cw
           }
           
           // create the output audio buffer
-          if((rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, srcBuf->frameN )) != kOkRC )
+          if((rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, srcBuf->frameN )) != kOkRC )
             goto errLabel;
         }
         
@@ -2411,7 +2525,7 @@ namespace cw
         ctx->userPtr = inst;
 
         // verify that a source buffer exists
-        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",srcBuf )) != kOkRC )
+        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",kBaseSfxId,srcBuf )) != kOkRC )
         {
           rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",ctx->label);
           goto errLabel;
@@ -2431,10 +2545,10 @@ namespace cw
 
             // get the limiter variable values
             if((rc = var_register_and_get( ctx, i,
-                                           kBypassPId,   "bypass",    bypassFl,
-                                           kInGainPId,   "igain",     igain,
-                                           kThreshPId,   "thresh",    thresh,
-                                           kOutGainPId,  "ogain",     ogain )) != kOkRC )
+                                           kBypassPId,   "bypass",    kBaseSfxId, bypassFl,
+                                           kInGainPId,   "igain",     kBaseSfxId, igain,
+                                           kThreshPId,   "thresh",    kBaseSfxId, thresh,
+                                           kOutGainPId,  "ogain",     kBaseSfxId, ogain )) != kOkRC )
             {
               goto errLabel;
             }
@@ -2449,7 +2563,7 @@ namespace cw
           }
           
           // create the output audio buffer
-          if((rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, srcBuf->frameN )) != kOkRC )
+          if((rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, srcBuf->frameN )) != kOkRC )
             goto errLabel;
         }
         
@@ -2585,7 +2699,7 @@ namespace cw
         ctx->userPtr = inst;
 
         // get the source audio buffer
-        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",abuf )) != kOkRC )
+        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",kBaseSfxId,abuf )) != kOkRC )
           goto errLabel;
 
 
@@ -2596,8 +2710,8 @@ namespace cw
         for(unsigned i=0; i<abuf->chN; ++i)
         {
           if((rc = var_register_and_get( ctx, i,
-                                         kMaxDelayMsPId, "maxDelayMs", maxDelayMs,
-                                         kDelayMsPId,    "delayMs",    delayMs)) != kOkRC )
+                                         kMaxDelayMsPId, "maxDelayMs", kBaseSfxId, maxDelayMs,
+                                         kDelayMsPId,    "delayMs",    kBaseSfxId, delayMs)) != kOkRC )
           {
             goto errLabel;
           }
@@ -2617,7 +2731,7 @@ namespace cw
         inst->delayBuf = abuf_create( abuf->srate, abuf->chN, inst->maxDelayFrameN );
         
         // create the output audio buffer
-        rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, abuf->srate, abuf->chN, abuf->frameN );
+        rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, abuf->srate, abuf->chN, abuf->frameN );
 
 
       errLabel:
@@ -2775,7 +2889,7 @@ namespace cw
         ctx->userPtr = inst;
 
         // verify that a source buffer exists
-        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",srcBuf )) != kOkRC )
+        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",kBaseSfxId,srcBuf )) != kOkRC )
         {
           rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",ctx->label);
           goto errLabel;
@@ -2795,8 +2909,8 @@ namespace cw
 
             // get the dc_filter variable values
             if((rc = var_register_and_get( ctx, i,
-                                           kBypassPId,   "bypass",    bypassFl,
-                                           kGainPId,     "gain",      gain )) != kOkRC )
+                                           kBypassPId,   "bypass",    kBaseSfxId, bypassFl,
+                                           kGainPId,     "gain",      kBaseSfxId, gain )) != kOkRC )
             {
               goto errLabel;
             }
@@ -2811,7 +2925,7 @@ namespace cw
           }
           
           // create the output audio buffer
-          if((rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, srcBuf->frameN )) != kOkRC )
+          if((rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, srcBuf->frameN )) != kOkRC )
             goto errLabel;
         }
         
@@ -2931,7 +3045,7 @@ namespace cw
         ctx->userPtr = inst;
 
         // verify that a source buffer exists
-        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",srcBuf )) != kOkRC )
+        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",kBaseSfxId,srcBuf )) != kOkRC )
         {
           rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",ctx->label);
           goto errLabel;
@@ -2950,18 +3064,18 @@ namespace cw
 	    
             // get the audio_meter variable values
             if((rc = var_register_and_get( ctx, i,
-                                           kDbFlPId,   "dbFl",    dbFl,
-                                           kWndMsPId, "wndMs",    wndMs,
-                                           kPeakDbPId, "peakDb",  peakThreshDb )) != kOkRC )
+                                           kDbFlPId,   "dbFl",    kBaseSfxId, dbFl,
+                                           kWndMsPId, "wndMs",    kBaseSfxId, wndMs,
+                                           kPeakDbPId, "peakDb",  kBaseSfxId, peakThreshDb )) != kOkRC )
             {
               goto errLabel;
             }
 
             // get the audio_meter variable values
             if((rc = var_register( ctx, i,
-                                   kOutPId,   "out",
-                                   kPeakFlPId, "peakFl",
-                                   kClipFlPId, "clipFl" )) != kOkRC )
+                                   kOutPId,   "out",     kBaseSfxId,
+                                   kPeakFlPId, "peakFl", kBaseSfxId, 
+                                   kClipFlPId, "clipFl", kBaseSfxId )) != kOkRC )
             {
               goto errLabel;
             }
@@ -3075,15 +3189,15 @@ namespace cw
         ctx->userPtr = mem::allocZ<inst_t>();
 
         // get the source audio buffer
-        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",abuf )) != kOkRC )
+        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",kBaseSfxId,abuf )) != kOkRC )
           goto errLabel;
 
         // register the marker input 
-        if((rc = var_register_and_set( ctx, kAnyChIdx, kMarkPId, "mark", 0.0f )) != kOkRC )
+        if((rc = var_register_and_set( ctx, kAnyChIdx, kMarkPId, "mark", kBaseSfxId, 0.0f )) != kOkRC )
           goto errLabel;
           
         // create the output audio buffer
-        rc = var_register_and_set( ctx, "out", kOutPId, kAnyChIdx, abuf->srate, abuf->chN, abuf->frameN );
+        rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, abuf->srate, abuf->chN, abuf->frameN );
 
       errLabel:
         return rc;
@@ -3147,6 +3261,307 @@ namespace cw
       };
       
     }
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // xfade_ctl
+    //
+    namespace xfade_ctl
+    {
+      enum {
+        kNetLabelPId,
+        kNetLabelSfxPId,
+        kSrateRefPId,
+        kDurMsPId,
+        kTriggerPId,
+        kGainPId,
+      };
+      
+      typedef struct
+      {
+        unsigned    xfadeDurMs;        // crossfade duration in milliseconds
+        instance_t* net_proc;          // source 'poly' network
+        network_t   net;               // internal proxy network 
+        unsigned    poly_ch_cnt;      // set to 2 (one for 'cur' poly-ch., one for 'next' poly-ch.)
+        unsigned    net_proc_cnt;      // count of proc's in a single poly-channel (net_proc->proc_arrayN/poly_cnt)
+        unsigned    cur_poly_ch_idx;  // 
+        unsigned    next_poly_ch_idx; //
+        float*      target_gainA;     // target_gainA[net_proc->poly_cnt]
+        float*      cur_gainA;        // cur_gainA[net_proc->poly_cnt]
+        double      srate;
+        
+      } inst_t;
+
+      void _trigger_xfade( inst_t* p )
+      {
+        // begin fading out the cur channel
+        p->target_gainA[ p->cur_poly_ch_idx ] = 0;
+        
+        // the next poly-ch become the cur poly-ch
+        p->cur_poly_ch_idx  = p->next_poly_ch_idx;
+
+        // the next poly-ch advances
+        p->next_poly_ch_idx = p->next_poly_ch_idx+1 >= p->poly_ch_cnt ? 0 : p->next_poly_ch_idx+1;
+
+        // j selects a block of 'net_proc_cnt' slots in the proxy network which will become the 'next' channel
+        unsigned j = p->next_poly_ch_idx * p->net_proc_cnt;
+
+        // set the [j:j+poly_proc_cnt] pointers in the proxy net to the actual proc instances in the source net
+        for(unsigned i=0; i<p->net_proc->internal_net->proc_arrayN; ++i)
+          if( p->net_proc->internal_net->proc_array[i]->label_sfx_id == p->next_poly_ch_idx )
+          {
+            assert( p->next_poly_ch_idx * p->net_proc_cnt <= j
+                    && j < p->next_poly_ch_idx * p->net_proc_cnt + p->net_proc_cnt
+                    && j < p->net.proc_arrayN );
+            
+            p->net.proc_array[j++] = p->net_proc->internal_net->proc_array[i];
+          }
+
+        // begin fading in the new cur channel
+        p->target_gainA[ p->cur_poly_ch_idx ] = 1;
+
+        // if the next channel is not already at 0 send it in that direction
+        p->target_gainA[ p->next_poly_ch_idx ] = 0; 
+
+      }
+
+
+
+      rc_t create( instance_t* ctx )
+      {
+        rc_t        rc            = kOkRC;
+        const char* netLabel      = nullptr;
+        unsigned    netLabelSfxId = kBaseSfxId;
+        bool        trigFl        = false;
+        variable_t* gainVar       = nullptr;
+        abuf_t*     srateSrc      = nullptr;
+        double      dum;
+
+        inst_t* p = mem::allocZ<inst_t>();
+
+        ctx->userPtr = p;
+        
+        p->poly_ch_cnt = 2;
+        
+        if((rc = var_register_and_get(ctx,kAnyChIdx,
+                                      kNetLabelPId,       "net",       kBaseSfxId, netLabel,
+                                      kNetLabelSfxPId,    "netSfxId",  kBaseSfxId, netLabelSfxId,
+                                      kSrateRefPId,       "srateSrc",  kBaseSfxId, srateSrc,
+                                      kDurMsPId,          "durMs",     kBaseSfxId, p->xfadeDurMs,
+                                      kTriggerPId,         "trigger",  kBaseSfxId, trigFl,
+                                      kGainPId,            "gain",     kBaseSfxId, dum)) != kOkRC )
+        {
+          goto errLabel; 
+        }
+
+        // locate the source poly-network for this xfad-ctl
+        if((rc = instance_find(*ctx->net,netLabel,netLabelSfxId,p->net_proc)) != kOkRC )
+        {
+          cwLogError(rc,"The xfade_ctl source network proc instance '%s:%i' was not found.",cwStringNullGuard(netLabel),netLabelSfxId);
+          goto errLabel;
+        }
+
+        if( p->net_proc->internal_net->poly_cnt < 3 )
+        {
+          cwLogError(rc,"The xfade_ctl source network must have at least 3 poly channels. %i < 3",p->net_proc->internal_net->poly_cnt);
+          goto errLabel;
+        }
+          
+
+        // create the gain output variables - one output for each poly-channel
+        for(unsigned i=1; i<p->net_proc->internal_net->poly_cnt; ++i)
+        {
+          variable_t* dum;
+          if((rc = var_create(ctx, "gain", i, kGainPId+i, kAnyChIdx, nullptr, dum )) != kOkRC )
+          {
+            cwLogError(rc,"'gain:%i' create failed.",i);
+            goto errLabel;
+          }
+        }
+
+        // count of proc's in one poly-ch of the poly network
+        p->net_proc_cnt = p->net_proc->internal_net->proc_arrayN / p->net_proc->internal_net->poly_cnt;
+
+        // create the proxy network
+        p->net.proc_arrayAllocN = p->net_proc_cnt * p->poly_ch_cnt;
+        p->net.proc_arrayN = p->net.proc_arrayAllocN;
+        p->net.proc_array  = mem::allocZ<instance_t*>(p->net.proc_arrayAllocN);
+        p->target_gainA    = mem::allocZ<float>(p->net_proc->internal_net->poly_cnt);
+        p->cur_gainA       = mem::allocZ<float>(p->net_proc->internal_net->poly_cnt);
+        p->srate           = srateSrc->srate;
+        
+        // make the proxy network public - xfad_ctl now looks like the source network
+        // because it has the same proc instances
+        ctx->internal_net = &p->net;
+
+        // setup the channels such that the first active channel after _trigger_xfade()
+        // will be channel 0
+        p->cur_poly_ch_idx  = 1;
+        p->next_poly_ch_idx = 2;
+        _trigger_xfade(p);  // cur=2 nxt=0 initialize inst ptrs in range: p->net[0:net_proc_cnt]
+        _trigger_xfade(p);  // cur=0 nxt=1 initialize inst ptrs in range: p->net[net_proc_cnt:2*net_proc_cnt]
+
+
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( instance_t* ctx )
+      {
+        inst_t* p = (inst_t*)ctx->userPtr;
+        mem::release(p->net.proc_array);
+        mem::release(p->target_gainA);
+        mem::release(p->cur_gainA);
+        mem::release(ctx->userPtr);
+        
+        return kOkRC;
+      }
+
+      rc_t value( instance_t* ctx, variable_t* var )
+      { return kOkRC; }
+
+      // return sign of expression as a float
+      float _signum( float v ) { return (0.0f < v) - (v < 0.0f); }
+      
+      rc_t exec( instance_t* ctx )
+      {
+        rc_t    rc     = kOkRC;
+        inst_t* p      = (inst_t*)ctx->userPtr;
+        bool    trigFl = false;
+
+        // check if a cross-fade has been triggered
+        if((rc = var_get(ctx,kTriggerPId,kAnyChIdx,trigFl)) == kOkRC )
+        {
+          _trigger_xfade(p);
+          
+          var_set(ctx,kTriggerPId,kAnyChIdx,false);
+        }
+        
+        // time in sample frames to complete a xfade
+        double xfade_dur_smp        = p->xfadeDurMs * p->srate / 1000.0;
+
+        // fraction of a xfade which will be completed in on exec() cycle
+        float delta_gain_per_cycle =  (float)(ctx->ctx->framesPerCycle / xfade_dur_smp);
+
+        // update the cross-fade gain outputs
+        for(unsigned i=0; i<p->net_proc->internal_net->poly_cnt; ++i)
+        {
+          p->cur_gainA[i] += _signum(p->target_gainA[i] - p->cur_gainA[i]) * delta_gain_per_cycle;
+          
+          p->cur_gainA[i] = std::min(1.0f, std::max(0.0f, p->cur_gainA[i]));
+          
+          var_set(ctx,kGainPId+i,kAnyChIdx,p->cur_gainA[i]);
+        }
+        
+      errLabel:
+        return rc;
+      }
+
+      class_members_t members = {
+        .create = create,
+        .destroy = destroy,
+        .value   = value,
+        .exec = exec,
+        .report = nullptr
+      };
+      
+    }    
+    
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // poly_mixer
+    //
+    namespace poly_mixer
+    {
+      enum {
+        kOutGainPId,
+        kOutPId,
+        
+      };
+      
+      typedef struct
+      {
+        unsigned inBaseVId;
+        unsigned gainBaseVId;
+      } inst_t;
+
+
+      rc_t create( instance_t* ctx )
+      {
+        rc_t          rc     = kOkRC;
+        /*
+        const abuf_t* abuf0  = nullptr; //
+        const abuf_t* abuf1  = nullptr;
+        unsigned      outChN = 0;
+        double dum;
+        
+        // get the source audio buffer
+        if((rc = var_register_and_get(ctx, kAnyChIdx,
+                                      kIn0PId,"in0",kBaseSfxId,abuf0,
+                                      kIn1PId,"in1",kBaseSfxId,abuf1 )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        assert( abuf0->frameN == abuf1->frameN );
+
+        outChN = std::max(abuf0->chN, abuf1->chN);
+
+        // register the gain
+        var_register_and_get( ctx, kAnyChIdx, kGain0PId, "gain0", kBaseSfxId, dum );
+        var_register_and_get( ctx, kAnyChIdx, kGain1PId, "gain1", kBaseSfxId, dum );
+
+        // create the output audio buffer
+        rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, abuf0->srate, outChN, abuf0->frameN );
+        */
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( instance_t* ctx )
+      { return kOkRC; }
+
+      rc_t value( instance_t* ctx, variable_t* var )
+      { return kOkRC; }
+
+      
+      rc_t exec( instance_t* ctx )
+      {
+        rc_t          rc    = kOkRC;
+        /*
+        abuf_t*       obuf  = nullptr;
+        //const abuf_t* ibuf0 = nullptr;
+        //const abuf_t* ibuf1 = nullptr;
+
+        if((rc = var_get(ctx,kOutPId, kAnyChIdx, obuf)) != kOkRC )
+          goto errLabel;
+
+        //if((rc = var_get(ctx,kIn0PId, kAnyChIdx, ibuf0 )) != kOkRC )
+        //  goto errLabel;
+        
+        //if((rc = var_get(ctx,kIn1PId, kAnyChIdx, ibuf1 )) != kOkRC )
+        //  goto errLabel;
+
+        vop::zero(obuf->buf, obuf->frameN*obuf->chN );
+        
+        _mix( ctx, kIn0PId, kGain0PId, obuf );
+        _mix( ctx, kIn1PId, kGain1PId, obuf );
+        */
+        
+      errLabel:
+        return rc;
+      }
+
+      class_members_t members = {
+        .create = create,
+        .destroy = destroy,
+        .value   = value,
+        .exec = exec,
+        .report = nullptr
+      };
+      
+    }    
     
     
   } // flow

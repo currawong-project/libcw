@@ -2,6 +2,7 @@ namespace cw
 {
   namespace flow
   {
+    namespace poly            { extern class_members_t members;  }
     namespace midi_in         { extern class_members_t members;  }
     namespace midi_out        { extern class_members_t members;  }
     namespace audio_in        { extern class_members_t members;  }
@@ -24,5 +25,7 @@ namespace cw
     namespace balance         { extern class_members_t members;  }
     namespace audio_meter     { extern class_members_t members;  }
     namespace audio_marker    { extern class_members_t members;  }
+    namespace xfade_ctl       { extern class_members_t members;  }
+    namespace poly_mixer      { extern class_members_t members;  }
   }
 }
