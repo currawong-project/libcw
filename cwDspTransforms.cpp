@@ -21,9 +21,9 @@ namespace cw
   {
     namespace compressor
     {
-      void _ms_to_samples( obj_t*p, real_t ms, unsigned& outRef )
+      void _ms_to_samples( obj_t*p, ftime_t ms, unsigned& outRef )
       {
-        outRef = std::max((real_t)1,(real_t)floor(ms * p->srate / 1000.0));
+        outRef = std::max(1u,(unsigned)floor(ms * p->srate / 1000.0));
       }
     }
   }
@@ -33,7 +33,7 @@ namespace cw
 // compressor
 //
 
-cw::rc_t cw::dsp::compressor::create( obj_t*& p, real_t srate, unsigned procSmpCnt, real_t inGain, real_t rmsWndMaxMs, real_t rmsWndMs, real_t threshDb, real_t ratio_num, real_t atkMs, real_t rlsMs, real_t outGain, bool bypassFl )
+cw::rc_t cw::dsp::compressor::create( obj_t*& p, srate_t srate, unsigned procSmpCnt, coeff_t inGain, ftime_t rmsWndMaxMs, ftime_t rmsWndMs, coeff_t threshDb, coeff_t ratio_num, ftime_t atkMs, ftime_t rlsMs, coeff_t outGain, bool bypassFl )
 {
   p = mem::allocZ<obj_t>();
       
@@ -105,8 +105,8 @@ cw::rc_t cw::dsp::compressor::exec( obj_t* p, const sample_t* x, sample_t* y, un
   p->rmsWnd[ p->rmsWndIdx ] = vop::rms(xx, n);               // calc and store signal RMS
   p->rmsWndIdx              = (p->rmsWndIdx + 1) % p->rmsWndCnt; // advance the RMS storage buffer
 
-  real_t rmsLin = vop::mean(p->rmsWnd,p->rmsWndCnt);                   // calc avg RMS
-  real_t rmsDb  = std::max(-100.0,20 * log10(std::max((real_t)0.00001,rmsLin)));  // convert avg RMS to dB
+  coeff_t rmsLin = vop::mean(p->rmsWnd,p->rmsWndCnt);                   // calc avg RMS
+  coeff_t rmsDb  = std::max(-100.0,20 * log10(std::max((coeff_t)0.00001,rmsLin)));  // convert avg RMS to dB
   rmsDb += 100.0;
 
   // if the compressor is bypassed
@@ -147,17 +147,17 @@ cw::rc_t cw::dsp::compressor::exec( obj_t* p, const sample_t* x, sample_t* y, un
 }
 
     
-void cw::dsp::compressor::set_attack_ms(  obj_t* p, real_t ms )
+void cw::dsp::compressor::set_attack_ms(  obj_t* p, ftime_t ms )
 {
   _ms_to_samples(p,ms,p->atkSmp);
 }
     
-void cw::dsp::compressor::set_release_ms( obj_t* p, real_t ms )
+void cw::dsp::compressor::set_release_ms( obj_t* p, ftime_t ms )
 {
   _ms_to_samples(p,ms,p->rlsSmp);
 }
     
-void cw::dsp::compressor::set_rms_wnd_ms( obj_t* p, real_t ms )
+void cw::dsp::compressor::set_rms_wnd_ms( obj_t* p, ftime_t ms )
 {
   p->rmsWndCnt = std::max((unsigned)1,(unsigned)floor(ms * p->srate / (1000.0 * p->procSmpCnt)));
 
@@ -170,7 +170,7 @@ void cw::dsp::compressor::set_rms_wnd_ms( obj_t* p, real_t ms )
 // Limiter
 //
 
-cw::rc_t cw::dsp::limiter::create( obj_t*& p, real_t srate, unsigned procSmpCnt, real_t thresh, real_t igain, real_t ogain, bool bypassFl )
+cw::rc_t cw::dsp::limiter::create( obj_t*& p, srate_t srate, unsigned procSmpCnt, coeff_t thresh, coeff_t igain, coeff_t ogain, bool bypassFl )
 {
   p = mem::allocZ<obj_t>();
 
@@ -196,7 +196,7 @@ cw::rc_t cw::dsp::limiter::exec( obj_t* p, const sample_t* x, sample_t* y, unsig
   }
   else
   {
-    real_t T = p->thresh * p->ogain;
+    coeff_t T = p->thresh * p->ogain;
   
     for(unsigned i=0; i<n; ++i)
     {
@@ -227,7 +227,7 @@ cw::rc_t cw::dsp::limiter::exec( obj_t* p, const sample_t* x, sample_t* y, unsig
 // dc-filter
 //
 
-cw::rc_t cw::dsp::dc_filter::create( obj_t*& p, real_t srate, unsigned procSmpCnt, real_t gain, bool bypassFl )
+cw::rc_t cw::dsp::dc_filter::create( obj_t*& p, srate_t srate, unsigned procSmpCnt, coeff_t gain, bool bypassFl )
 {
   p = mem::allocZ<obj_t>();
 
@@ -255,12 +255,12 @@ cw::rc_t cw::dsp::dc_filter::exec( obj_t* p, const sample_t* x, sample_t* y, uns
   if( p->bypassFl )
     vop::copy(y,x,n);
   else
-    vop::filter<sample_t,real_t>(y,n,x,n,p->b0, p->b, p->a,  p->d, 1 );
+    vop::filter<sample_t,coeff_t>(y,n,x,n,p->b0, p->b, p->a,  p->d, 1 );
 
   return kOkRC;
 }
 
-cw::rc_t cw::dsp::dc_filter::set( obj_t* p, real_t gain, bool bypassFl )
+cw::rc_t cw::dsp::dc_filter::set( obj_t* p, coeff_t gain, bool bypassFl )
 {
   p->gain = gain;
   p->bypassFl = bypassFl;
@@ -272,7 +272,7 @@ cw::rc_t cw::dsp::dc_filter::set( obj_t* p, real_t gain, bool bypassFl )
 // Recorder
 //
 
-cw::rc_t cw::dsp::recorder::create(  obj_t*& pRef, real_t srate, real_t max_secs, unsigned chN )
+cw::rc_t cw::dsp::recorder::create(  obj_t*& pRef, srate_t srate, ftime_t max_secs, unsigned chN )
 {
   obj_t* p     = mem::allocZ<obj_t>();
   p->srate     = srate;
@@ -383,7 +383,7 @@ namespace cw {
   }
 }
 
-cw::rc_t cw::dsp::audio_meter::create( obj_t*& p, real_t srate, real_t maxWndMs, real_t wndMs, real_t peakThreshDb )
+cw::rc_t cw::dsp::audio_meter::create( obj_t*& p, srate_t srate, ftime_t maxWndMs, ftime_t wndMs, coeff_t peakThreshDb )
 {
   rc_t rc = kOkRC;
 
@@ -475,7 +475,7 @@ void cw::dsp::audio_meter::reset( obj_t* p )
   p->clipCnt = 0;
 }
 
-void cw::dsp::audio_meter::set_window_ms( obj_t* p, real_t wndMs )
+void cw::dsp::audio_meter::set_window_ms( obj_t* p, ftime_t wndMs )
 {
   unsigned wndSmpN  = (unsigned)((wndMs * p->srate)/1000.0);
 
