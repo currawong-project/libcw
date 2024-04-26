@@ -147,7 +147,7 @@ namespace cw
     void _complete_input_connections( instance_t* inst )
     {
       for(variable_t* var=inst->varL; var!=nullptr; var=var->var_link)
-        if(var->chIdx == kAnyChIdx && is_connected_to_external_proc(var) )
+        if(var->chIdx == kAnyChIdx && is_connected_to_source_proc(var) )
         {
 
           variable_t* base_src_var = var->src_var;
@@ -238,6 +238,9 @@ namespace cw
       {
         const object_t* value       = preset_cfg->child_ele(i)->pair_value();
         const char*     value_label = preset_cfg->child_ele(i)->pair_label();
+
+        //cwLogInfo("variable:%s",value_label);
+        
         if((rc = _var_channelize( inst, preset_label, type_src_label, value_label, value )) != kOkRC )
           goto errLabel;
         
@@ -1285,14 +1288,12 @@ namespace cw
               goto errLabel;
             }
           }
-        }
-        
+        }        
       }
 
     errLabel:
       
-      return rc;
-      
+      return rc;      
     }
 
     bool _is_var_inst_already_created( const char* var_label, const proc_inst_parse_state_t& pstate )
@@ -1368,7 +1369,7 @@ namespace cw
             goto errLabel;
           }
 
-          // locate source value
+          // locate source variable
           if((rc = var_find( src_proc, src_var_label, src_var_sfx_id, kAnyChIdx, src_var)) != kOkRC )
           {
             rc = cwLogError(rc,"The src-var '%s:i' was not found.", in_stmt.src_var_ele.label, src_var_sfx_id);
@@ -1567,11 +1568,13 @@ namespace cw
       // All the class presets values have now been set and those variables
       // that were expressed with a list have numeric channel indexes assigned.
 
-      // Apply the proc instance preset values.
+      // Apply the proc instance 'args:{}' values.
       if( pstate.arg_cfg != nullptr )
+      {
         if((rc = _proc_inst_args_channelize_vars( inst, pstate.arg_label, pstate.arg_cfg )) != kOkRC )
           goto errLabel;
-
+      }
+      
       // All the instance arg values have now been set and those variables
       // that were expressed with a list have numeric channel indexes assigned.
 
@@ -1607,20 +1610,6 @@ namespace cw
 
       
       inst_ref = inst;
-      
-      /*
-      // insert an instance in the network
-      if( net.network_tail == nullptr )
-      {
-        net.network_head = inst;
-        net.network_tail = inst;
-      }
-      else
-      {
-        net.network_tail->link = inst;
-        net.network_tail       = inst;
-      }      
-      */
       
     errLabel:
       if( rc != kOkRC )
