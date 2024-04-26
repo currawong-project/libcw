@@ -853,7 +853,7 @@ namespace cw
     //)
 
     //(
-    void test()
+    rc_t test()
     {
       rc_t     rc  = kOkRC;
       unsigned tid = kInvalidId;
@@ -866,14 +866,16 @@ namespace cw
         "/* block \n"
         "comment */"
         "\"quoted string\""
-        "ident1"
+        "ident1 "
+        "1234.56f"
+        "345u"
         "                       // last line comment";
 
       // initialize a lexer with a buffer of text
       if((rc = lex::create(h,buf,strlen(buf), kReturnSpaceLexFl | kReturnCommentsLexFl)) != kOkRC )
       {
-        cwLogError(rc,"Lexer initialization failed.");
-        return;
+        rc = cwLogError(rc,"Lexer initialization failed.");
+        goto errLabel;
       }
 
       // register some additional recoginizers
@@ -884,7 +886,7 @@ namespace cw
       while( (tid = lex::getNextToken(h)) != kEofLexTId )
       {
         // print information about each token
-        cwLogInfo("%i %i %s '%.*s' (%i) ", 
+        cwLogInfo("ln:%i col:%i tok:%s '%.*s' len:%i ", 
           lex::currentLineNumber(h), 
           lex::currentColumnNumber(h), 
           lex::idToLabel(h,tid), 
@@ -899,10 +901,8 @@ namespace cw
           int    iv = lex::tokenInt(h);
           double dv = lex::tokenDouble(h);
 
-          cwLogInfo("%i %f",iv,dv);
+          cwLogInfo("Number: int:%i dbl:%f unsigned:%i float:%i",iv,dv,tokenIsUnsigned(h),tokenIsSinglePrecision(h));
         }
-
-        cwLogInfo("\n");
 
         // handle errors
         if( tid == kErrorLexTId )
@@ -912,10 +912,12 @@ namespace cw
         }
 
       }
-
+      
       // finalize the lexer 
       lex::destroy(h);
 
+    errLabel:
+      return rc;
     }
   }
 }

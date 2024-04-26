@@ -129,7 +129,7 @@ namespace cw
     const char* idToLabel( handle_t h, unsigned typeId );
 
     // Lexer testing stub.
-    void test(  );
+    rc_t test(  );
   }
 }
 
