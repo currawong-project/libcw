@@ -8,7 +8,7 @@
 #include "cwVectOps.h"
 #include "cwMtx.h"
 
-#include "cwDspTypes.h" // real_t, sample_t
+#include "cwDspTypes.h" // srate_t, sample_t, coeff_t, ...
 
 #include "cwTime.h"
 #include "cwMidiDecls.h"
@@ -43,40 +43,40 @@ namespace cw
       } inst_t;
 
 
-      rc_t create( instance_t* ctx )
+      rc_t create( instance_t* proc )
       {
         rc_t    rc   = kOkRC;        
-        inst_t* inst = mem::allocZ<inst_t>();
-        ctx->userPtr = inst;
+        inst_t* p = mem::allocZ<inst_t>();
+        proc->userPtr = p;
 
         // Custom create code goes here
 
         return rc;
       }
 
-      rc_t destroy( instance_t* ctx )
+      rc_t destroy( instance_t* proc )
       {
         rc_t rc = kOkRC;
 
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* p = (inst_t*)proc->userPtr;
 
         // Custom clean-up code goes here
 
-        mem::release(inst);
+        mem::release(p);
         
         return rc;
       }
 
-      rc_t value( instance_t* ctx, variable_t* var )
+      rc_t value( instance_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         return rc;
       }
 
-      rc_t exec( instance_t* ctx )
+      rc_t exec( instance_t* proc )
       {
-        rc_t     rc           = kOkRC;
-        //inst_t*  inst         = (inst_t*)ctx->userPtr;
+        rc_t rc      = kOkRC;
+        //inst_t*  p = (inst_t*)proc->userPtr;
         
         return rc;
       }
@@ -91,6 +91,7 @@ namespace cw
       
     }    
 
+    
     //------------------------------------------------------------------------------------------------------------------
     //
     // poly
@@ -219,14 +220,14 @@ namespace cw
       
       typedef struct
       {
-        real_t value; 
+        coeff_t value; 
       } inst_t;
 
 
       rc_t create( instance_t* ctx )
       {
         rc_t rc = kOkRC;        
-        real_t in_value = 0.5;
+        coeff_t in_value = 0.5;
         ctx->userPtr = mem::allocZ<inst_t>();
         
         if((rc  = var_register_and_get( ctx, kAnyChIdx, kInPId, "in", kBaseSfxId, in_value )) != kOkRC )
@@ -234,7 +235,7 @@ namespace cw
 
         if((rc = var_register_and_set( ctx, kAnyChIdx,
                                        kOutPId,    "out",     kBaseSfxId, in_value,
-                                       kInvOutPId, "inv_out", kBaseSfxId, (real_t)(1.0-in_value) )) != kOkRC )
+                                       kInvOutPId, "inv_out", kBaseSfxId, (coeff_t)(1.0-in_value) )) != kOkRC )
         {
           goto errLabel;
         }
@@ -259,11 +260,11 @@ namespace cw
         rc_t   rc = kOkRC;
         inst_t* inst = (inst_t*)(ctx->userPtr);
         
-        real_t value = 1;
+        coeff_t value = 1;
         
         var_get(ctx, kInPId,     kAnyChIdx, value);
         var_set(ctx, kOutPId,    kAnyChIdx, value);
-        var_set(ctx, kInvOutPId, kAnyChIdx, (real_t)(1.0 - value) );
+        var_set(ctx, kInvOutPId, kAnyChIdx, (coeff_t)(1.0 - value) );
 
         if( inst->value != value )
         {
@@ -748,7 +749,7 @@ namespace cw
       {
         rc_t rc = kOkRC;
         audiofile::info_t info;
-        real_t seekSecs;
+        ftime_t seekSecs;
         inst_t* inst = mem::allocZ<inst_t>();
         ctx->userPtr = inst;
 
@@ -808,7 +809,7 @@ namespace cw
       rc_t value( instance_t* ctx, variable_t* var )
       {
         rc_t rc = kOkRC;
-        real_t seekSecs = 0;
+        ftime_t seekSecs = 0;
         inst_t* inst = (inst_t*)ctx->userPtr;
 
         if((rc = var_get(ctx,kSeekSecsPId,kAnyChIdx,seekSecs)) != kOkRC )
@@ -1005,8 +1006,8 @@ namespace cw
       typedef struct inst_str
       {
         unsigned n;
-        real_t vgain;
-        real_t gain;
+        coeff_t vgain;
+        coeff_t gain;
       } inst_t;
 
       rc_t create( instance_t* ctx )
@@ -1041,7 +1042,7 @@ namespace cw
 
       rc_t value( instance_t* ctx, variable_t* var )
       {
-        real_t value = 0;
+        coeff_t value = 0;
         inst_t* inst = (inst_t*)ctx->userPtr;
         var_get(ctx,kGainPId,0,value);
         
@@ -1631,7 +1632,7 @@ namespace cw
           {
             const sample_t* isig = ibuf->buf + i*ibuf->frameN;
             sample_t*       osig = obuf->buf + i*obuf->frameN;
-            real_t          gain = 1;
+            coeff_t          gain = 1;
 
             if((rc = var_get(ctx, gainPId, kAnyChIdx, gain)) != kOkRC )
               goto errLabel;
@@ -1694,13 +1695,15 @@ namespace cw
         kSratePId,
         kChCntPid,
         kFreqHzPId,
+        kPhasePId,
+        kDcPId,
         kGainPId,
         kOutPId
       };
       
       typedef struct
       {
-        real_t *phaseA;
+        double *phaseA;
       } inst_t;
       
       rc_t create( instance_t* ctx )
@@ -1709,8 +1712,10 @@ namespace cw
         inst_t*  inst  = mem::allocZ<inst_t>();
         srate_t  srate = 0;
         unsigned chCnt = 0;
-        real_t   gain;
-        real_t   hz;
+        coeff_t   gain;
+        coeff_t   hz;
+        coeff_t   phase;
+        coeff_t   dc;
         
         ctx->userPtr = inst;
 
@@ -1725,6 +1730,8 @@ namespace cw
           if((rc = var_register_and_get( ctx, i,
                                          kSratePId,  "srate", kBaseSfxId, srate,
                                          kFreqHzPId, "hz",    kBaseSfxId, hz,
+                                         kPhasePId,  "phase", kBaseSfxId, phase,
+                                         kDcPId,     "dc",    kBaseSfxId, dc,
                                          kGainPId,   "gain",  kBaseSfxId, gain)) != kOkRC )
           {
             goto errLabel;
@@ -1733,7 +1740,7 @@ namespace cw
         // create one output audio buffer
         rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, srate, chCnt, ctx->ctx->framesPerCycle );
 
-        inst->phaseA = mem::allocZ<real_t>( chCnt );
+        inst->phaseA = mem::allocZ<double>( chCnt );
         
 
       errLabel:
@@ -1772,13 +1779,15 @@ namespace cw
         {
           for(unsigned i=0; i<abuf->chN; ++i)
           {
-            real_t    gain  = val_get<real_t>( ctx, kGainPId, i );
-            real_t    hz    = val_get<real_t>( ctx, kFreqHzPId, i );
-            srate_t   srate = val_get<srate_t>( ctx, kSratePId, i );                        
+            coeff_t    gain  = val_get<coeff_t>( ctx, kGainPId, i );
+            coeff_t    hz    = val_get<coeff_t>( ctx, kFreqHzPId, i );
+            coeff_t    phase = val_get<coeff_t>( ctx, kPhasePId, i );
+            coeff_t    dc    = val_get<coeff_t>( ctx, kDcPId, i );
+            srate_t   srate = val_get<srate_t>(ctx, kSratePId, i );                        
             sample_t* v     = abuf->buf + (i*abuf->frameN);
             
             for(unsigned j=0; j<abuf->frameN; ++j)
-              v[j] = (sample_t)(gain * sin( inst->phaseA[i] + (2.0 * M_PI * j * hz/srate)));
+              v[j] = (sample_t)((gain * sin( inst->phaseA[i] + phase + (2.0 * M_PI * j * hz/srate)))+dc);
 
             inst->phaseA[i] += 2.0 * M_PI * abuf->frameN * hz/srate;            
           }
@@ -1803,7 +1812,7 @@ namespace cw
     //
     namespace pv_analysis
     {
-      typedef struct dsp::pv_anl::obj_str<sample_t,fd_real_t> pv_t;
+      typedef struct dsp::pv_anl::obj_str<sample_t,fd_sample_t> pv_t;
 
       enum {
         kInPId,
@@ -1843,9 +1852,9 @@ namespace cw
           inst->pvN = srcBuf->chN;
           inst->pvA = mem::allocZ<pv_t*>( inst->pvN );  // allocate pv channel array
           
-          const fd_real_t* magV[ srcBuf->chN ];
-          const fd_real_t* phsV[ srcBuf->chN ];
-          const fd_real_t* hzV[  srcBuf->chN ];
+          const fd_sample_t* magV[ srcBuf->chN ];
+          const fd_sample_t* phsV[ srcBuf->chN ];
+          const fd_sample_t* hzV[  srcBuf->chN ];
           unsigned maxBinNV[ srcBuf->chN ];
           unsigned binNV[ srcBuf->chN ];
           unsigned hopNV[ srcBuf->chN ];
@@ -1991,7 +2000,7 @@ namespace cw
     //
     namespace pv_synthesis
     {
-      typedef struct dsp::pv_syn::obj_str<sample_t,fd_real_t> pv_t;
+      typedef struct dsp::pv_syn::obj_str<sample_t,fd_sample_t> pv_t;
 
       enum {
         kInPId,
@@ -2117,7 +2126,7 @@ namespace cw
     //
     namespace spec_dist
     {
-      typedef struct dsp::spec_dist::obj_str<fd_real_t,fd_real_t> spec_dist_t;
+      typedef struct dsp::spec_dist::obj_str<fd_sample_t,fd_sample_t> spec_dist_t;
 
       enum
       {
@@ -2160,9 +2169,9 @@ namespace cw
           inst->sdN = srcBuf->chN;
           inst->sdA = mem::allocZ<spec_dist_t*>( inst->sdN );  
 
-          const fd_real_t* magV[ srcBuf->chN ];
-          const fd_real_t* phsV[ srcBuf->chN ];
-          const fd_real_t*  hzV[ srcBuf->chN ];
+          const fd_sample_t* magV[ srcBuf->chN ];
+          const fd_sample_t* phsV[ srcBuf->chN ];
+          const fd_sample_t*  hzV[ srcBuf->chN ];
 
           //if((rc = var_register(ctx, kAnyChIdx, kInPId, "in")) != kOkRC )
           //  goto errLabel;
@@ -2351,7 +2360,8 @@ namespace cw
           // create a compressor object for each input channel
           for(unsigned i=0; i<srcBuf->chN; ++i)
           {
-            real_t igain, maxWnd_ms, wnd_ms, thresh, ratio, atk_ms, rls_ms, ogain;
+            coeff_t igain, thresh, ratio, ogain;
+            ftime_t maxWnd_ms, wnd_ms, atk_ms, rls_ms;
             bool bypassFl;
 
 
@@ -2406,7 +2416,7 @@ namespace cw
       {
         rc_t    rc   = kOkRC;
         inst_t* inst = (inst_t*)ctx->userPtr;
-        real_t  tmp;
+        ftime_t  tmp;
 
         if( var->chIdx != kAnyChIdx && var->chIdx < inst->cmpN )
         {
@@ -2539,7 +2549,7 @@ namespace cw
           // create a limiter object for each input channel
           for(unsigned i=0; i<srcBuf->chN; ++i)
           {
-            real_t igain, thresh, ogain;
+            coeff_t igain, thresh, ogain;
             bool bypassFl;
 
 
@@ -2589,7 +2599,7 @@ namespace cw
       {
         rc_t    rc   = kOkRC;
         inst_t* inst = (inst_t*)ctx->userPtr;
-        real_t  rtmp;
+        coeff_t  rtmp;
         bool btmp;
 
         if( var->chIdx != kAnyChIdx && var->chIdx < inst->limN )
@@ -2693,8 +2703,8 @@ namespace cw
         rc_t          rc         = kOkRC;
         const abuf_t* abuf       = nullptr; //
         inst_t*       inst       = mem::allocZ<inst_t>();
-        real_t        delayMs    = 0;
-        real_t        maxDelayMs = 0;
+        ftime_t        delayMs    = 0;
+        ftime_t        maxDelayMs = 0;
 
         ctx->userPtr = inst;
 
@@ -2755,7 +2765,7 @@ namespace cw
         rc_t     rc          = kOkRC;
         inst_t*  inst        = (inst_t*)ctx->userPtr;
         abuf_t*  ibuf        = nullptr;
-        real_t   delayMs     = 0;
+        ftime_t   delayMs     = 0;
         unsigned delayFrameN = 0;
         
         if((rc = var_get(ctx,kInPId, kAnyChIdx, ibuf )) != kOkRC )
@@ -2903,7 +2913,7 @@ namespace cw
           // create a dc_filter object for each input channel
           for(unsigned i=0; i<srcBuf->chN; ++i)
           {
-            real_t gain;
+            coeff_t gain;
             bool bypassFl;
 
 
@@ -2972,7 +2982,7 @@ namespace cw
        
         for(unsigned i=0; i<chN; ++i)
         {
-          real_t gain   = val_get<real_t>( ctx, kGainPId,   i );
+          coeff_t gain   = val_get<coeff_t>( ctx, kGainPId,   i );
           bool bypassFl = val_get<bool>(   ctx, kBypassPId, i );
 
           dsp::dc_filter::set( inst->dcfA[i], gain, bypassFl );
@@ -3059,7 +3069,8 @@ namespace cw
           // create a audio_meter object for each input channel
           for(unsigned i=0; i<srcBuf->chN; ++i)
           {
-            real_t wndMs, peakThreshDb;
+            ftime_t wndMs;
+            coeff_t peakThreshDb;
             bool dbFl;
 	    
             // get the audio_meter variable values
@@ -3080,7 +3091,7 @@ namespace cw
               goto errLabel;
             }
 	    
-            unsigned maxWndMs = std::max(wndMs,1000.0f);
+            unsigned maxWndMs = std::max(wndMs,1000.0);
 	    
             // create the audio_meter instance
             if((rc = dsp::audio_meter::create( inst->mtrA[i], srcBuf->srate, maxWndMs, wndMs, peakThreshDb)) != kOkRC )
@@ -3179,7 +3190,7 @@ namespace cw
 
       typedef struct inst_str
       {
-        real_t mark;
+        sample_t mark;
       } inst_t;
 
       rc_t create( instance_t* ctx )
@@ -3562,7 +3573,693 @@ namespace cw
       };
       
     }    
+
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // sample_hold
+    //
+    namespace sample_hold
+    {
+      enum
+      {
+        kInPId,
+        kPeriodMsPId,
+        kOutPId,
+        kMeanPId,
+      };
+
+      typedef struct inst_str
+      {
+        unsigned chN;            // count of audio input channels and output sample variables.
+        unsigned bufAllocFrmN;   // count of sample frames allocated in the sample buffer
+        unsigned periodFrmN;     // count of sample frames in the sample period
+        unsigned ii;             // next buf[][] frame index to receive an incoming audio sample
+        sample_t** buf;          // buf[chN][bufSmpAllocN]
+      } inst_t;
+
+      unsigned _period_ms_to_smp( srate_t srate, unsigned framesPerCycle, double periodMs )
+      {
+        unsigned frmN =  (unsigned)(srate * periodMs / 1000.0);
+        return std::max(framesPerCycle,frmN);
+      }
+
+      unsigned _period_ms_to_smp( srate_t srate, unsigned framesPerCycle, unsigned bufSmpAllocN, double periodMs )
+      {
+        unsigned frmN = _period_ms_to_smp(srate,framesPerCycle, periodMs );
+        
+        // clip sample period to the max. buffer length.
+        return std::min(bufSmpAllocN,frmN);
+      }
+
+      sample_t _mean( inst_t* p, unsigned chIdx, unsigned oi, unsigned n0, unsigned n1 )
+      {
+        sample_t sum = 0;
+        
+        for(unsigned i=0; i<n0; ++i)
+          sum += p->buf[chIdx][oi + i ];
+        
+        for(unsigned i=0; i<n1; ++i)
+          sum += p->buf[chIdx][i];
+        
+        return n0+n1==0 ? 0 : sum/(n0+n1);
+      }
+
+      void _destroy( inst_t* p )
+      {
+        for(unsigned i=0; i<p->chN; ++i)
+          mem::release(p->buf[i]);
+        mem::release(p->buf);
+        mem::release(p);        
+      }
+      
+      rc_t create( instance_t* ctx )
+      {
+        rc_t          rc       = kOkRC;
+        const abuf_t* abuf     = nullptr; //
+        double        periodMs = 0;
+        
+        ctx->userPtr = mem::allocZ<inst_t>();
+        inst_t* p = (inst_t*)ctx->userPtr;
+
+        // get the source audio buffer
+        if((rc = var_register_and_get(ctx, kAnyChIdx,
+                                      kInPId,       "in",       kBaseSfxId, abuf,
+                                      kPeriodMsPId, "period_ms",kBaseSfxId, periodMs)) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+        p->chN          = abuf->chN;
+        p->bufAllocFrmN = _period_ms_to_smp( abuf->srate, ctx->ctx->framesPerCycle, periodMs );
+        p->periodFrmN   = p->bufAllocFrmN;
+        p->buf          = mem::allocZ<sample_t*>(abuf->chN);
+
+        for(unsigned i=0; i<abuf->chN; ++i)
+        {
+          p->buf[i] = mem::allocZ<sample_t>(p->bufAllocFrmN);
+          if((rc = var_register_and_set(ctx, i,
+                                        kOutPId,  "out",  kBaseSfxId, 0.0f,
+                                        kMeanPId, "mean", kBaseSfxId, 0.0f)) != kOkRC )
+          {
+            goto errLabel;
+          }
+        }
+
+      errLabel:
+        if(rc != kOkRC )
+          _destroy(p);
+        return rc;
+      }
+
+      rc_t destroy( instance_t* ctx )
+      {
+        inst_t* p = (inst_t*)(ctx->userPtr);
+        _destroy(p);
+        return kOkRC;
+      }
+
+      rc_t value( instance_t* ctx, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        
+        switch( var->vid )
+        {
+          case kPeriodMsPId:
+            {
+              double periodMs;
+              const abuf_t* abuf;
+              inst_t*  p = (inst_t*)(ctx->userPtr);
+                      
+              var_get(ctx,kInPId,kAnyChIdx,abuf);
+              
+              if((rc = var_get(var,periodMs)) == kOkRC )
+              {
+                p->periodFrmN = _period_ms_to_smp( abuf->srate, ctx->ctx->framesPerCycle, p->bufAllocFrmN, periodMs );
+              }
+            }
+            break;
+            
+          default:
+            break;
+            
+        }
+        
+        return rc;
+      }
+
+      rc_t exec( instance_t* ctx )
+      {
+        rc_t          rc   = kOkRC;
+        const abuf_t* ibuf = nullptr;
+        inst_t*       p    = (inst_t*)(ctx->userPtr);
+        unsigned      chN  = 0;
+        unsigned      oi   = 0;
+        unsigned      n0   = 0;
+       unsigned       n1   = 0;
+
+        // get the src buffer
+        if((rc = var_get(ctx,kInPId, kAnyChIdx, ibuf )) != kOkRC )
+          goto errLabel;
+
+        chN = std::min(ibuf->chN,p->chN);
+        
+        // Copy samples into buf.
+        for(unsigned i=0; i<ibuf->chN; ++i)
+        {
+          sample_t* isig = ibuf->buf + i*ibuf->frameN;
+          sample_t* obuf = p->buf[i];
+          unsigned  k = p->ii;
+          
+          for(unsigned j=0; j<ibuf->frameN; ++j)
+          {
+            obuf[k++] = isig[j];
+            if( k>= p->bufAllocFrmN )
+              k -= p->bufAllocFrmN;
+          }
+        }
+
+        // advance the input index
+        p->ii += ibuf->frameN;
+        if( p->ii >= p->bufAllocFrmN )
+          p->ii -= p->bufAllocFrmN;
+
+        
+        // if the sampling buf is in range oi:ii
+        if( p->ii >= p->periodFrmN )
+        {
+          oi = p->ii - p->periodFrmN;
+          n0 = p->ii - oi;
+          n1 = 0;
+        }
+        else // the sampling buf is in two parts: bufAllocN-ii:bufAllocN, 0:ii
+        {
+          oi = p->bufAllocFrmN - (p->periodFrmN - p->ii);
+          n0 = p->bufAllocFrmN - oi;
+          n1 = p->ii;
+        }
+        
+        for(unsigned i=0; i<ibuf->chN; ++i)
+        {
+          // the output is the first sample in the buffer
+          var_set(ctx,kOutPId,i, p->buf[i][oi] );
+
+          if( var_is_a_source(ctx,kMeanPId,i) )
+            var_set(ctx,kMeanPId,i, _mean(p,i,oi,n0,n1));
+        }
+                
+      errLabel:
+        return rc;
+      }
+
+      
+      class_members_t members = {
+        .create = create,
+        .destroy = destroy,
+        .value = value,
+        .exec = exec,
+        .report = nullptr
+      };
+      
+    }
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // Number
+    //
+    namespace number
+    {
+      enum {
+        kInPId,
+        kBoolPId,
+        kUIntPId,
+        kIntPId,
+        kFloatPId,
+        kOutPId
+      };
+      
+      typedef struct
+      {
+        bool delta_fl;
+        double value;
+      } inst_t;
+
+
+      rc_t create( instance_t* proc )
+      {
+        rc_t    rc   = kOkRC;        
+        inst_t* p = mem::allocZ<inst_t>();
+        proc->userPtr = p;
+
+        if((rc  = var_register_and_get(proc,kAnyChIdx,
+                                       kInPId,"in",kBaseSfxId,p->value)) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+        if((rc = var_register_and_set(proc,kAnyChIdx,
+                                      kBoolPId,"bool",kBaseSfxId,p->value != 0,
+                                      kUIntPId,"uint",kBaseSfxId,(unsigned)p->value,
+                                      kIntPId,"int",kBaseSfxId,(int)p->value,
+                                      kFloatPId,"float",kBaseSfxId,(float)p->value,
+                                      kOutPId,"out",kBaseSfxId,p->value )) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+        p->delta_fl = true;
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( instance_t* proc )
+      {
+        rc_t rc = kOkRC;
+
+        inst_t* p = (inst_t*)proc->userPtr;
+        mem::release(p);        
+        return rc;
+      }
+
+      rc_t value( instance_t* proc, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        if( var->vid == kInPId )
+        {
+          double v;
+          if((rc = var_get(var,v)) == kOkRC )
+          {
+            inst_t* p = (inst_t*)proc->userPtr;
+            if( !p->delta_fl )
+              p->delta_fl = v != p->value;
+            p->value    = v;
+            
+          }
+        }
+        return rc;
+      }
+
+      rc_t exec( instance_t* proc )
+      {
+        rc_t rc      = kOkRC;
+        inst_t*  p = (inst_t*)proc->userPtr;
+
+        if( p->delta_fl )
+        {
+          p->delta_fl = false;
+          var_set(proc,kBoolPId,kAnyChIdx,p->value!=0);
+          var_set(proc,kUIntPId,kAnyChIdx,(unsigned)fabs(p->value));
+          var_set(proc,kIntPId,kAnyChIdx,(int)p->value);
+          var_set(proc,kFloatPId,kAnyChIdx,(float)p->value);
+          var_set(proc,kOutPId,kAnyChIdx,p->value);
+        }
+        
+        return rc;
+      }
+
+      class_members_t members = {
+        .create = create,
+        .destroy = destroy,
+        .value   = value,
+        .exec = exec,
+        .report = nullptr
+      };
+      
+    }    
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // Timer
+    //
+    namespace timer
+    {
+      enum {
+        kSratePId,
+        kPeriodMsPId,
+        kOutPId,
+      };
+      
+      typedef struct
+      {
+        unsigned periodFrmN;
+        unsigned periodPhase;
+      } inst_t;
+
+      unsigned _period_ms_to_frame_count( instance_t* proc, inst_t* p, srate_t srate, ftime_t periodMs )
+      {
+        return std::max((unsigned)(srate * periodMs / 1000.0), proc->ctx->framesPerCycle);
+      }
+
+      rc_t create( instance_t* proc )
+      {
+        rc_t    rc       = kOkRC;
+        ftime_t  periodMs = 0;
+        srate_t srate    = 0;
+        inst_t* p        = mem::allocZ<inst_t>();
+        proc->userPtr    = p;
+        
+
+        if((rc = var_register_and_get(proc,kAnyChIdx,
+                                      kSratePId,    "srate",    kBaseSfxId,srate,
+                                      kPeriodMsPId, "period_ms",kBaseSfxId,periodMs)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((rc = var_register_and_set(proc,kAnyChIdx,
+                                      kOutPId,       "out",     kBaseSfxId,false)) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+        p->periodFrmN = _period_ms_to_frame_count(proc,p,srate,periodMs);
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( instance_t* proc )
+      {
+        rc_t    rc = kOkRC;
+        inst_t* p  = (inst_t*)proc->userPtr;
+        mem::release(p);        
+        return rc;
+      }
+
+      rc_t value( instance_t* proc, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        switch( var->vid )
+        {
+          case kPeriodMsPId:
+            {
+              double periodMs;
+              srate_t srate;
+              inst_t*  p = (inst_t*)(proc->userPtr);
+                      
+              var_get(proc,kSratePId,kAnyChIdx,srate);
+              
+              if((rc = var_get(var,periodMs)) == kOkRC )
+                p->periodFrmN = _period_ms_to_frame_count( proc, p, srate, periodMs );
+            }
+            break;
+            
+          default:
+            break;
+        }
+        return rc;
+      }
+
+      rc_t exec( instance_t* proc )
+      {
+        rc_t    rc = kOkRC;
+        inst_t* p  = (inst_t*)proc->userPtr;
+
+        p->periodPhase += proc->ctx->framesPerCycle;
+
+        
+        if( p->periodPhase >= p->periodFrmN )
+        {
+          p->periodPhase -= p->periodFrmN;
+          
+          bool val = false;
+          var_get(proc,kOutPId,kAnyChIdx,val);
+
+          //printf("%i %i %i\n",p->periodPhase,p->periodFrmN,val);
+          
+          var_set(proc,kOutPId,kAnyChIdx,!val);
+        }
+        
+        return rc;
+      }
+
+      class_members_t members = {
+        .create = create,
+        .destroy = destroy,
+        .value   = value,
+        .exec = exec,
+        .report = nullptr
+      };
+      
+    }    
     
+    
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // Counter
+    //
+    namespace counter
+    {
+      enum {
+        kTriggerPId,
+        kResetPId,
+        kInitPId,
+        kMinPId,
+        kMaxPId,
+        kIncPId,
+        kRepeatPId,
+        kModePId,
+        kOutPId
+      };
+
+      enum {        
+        kModuloModeId,
+        kReverseModeId,
+        kClipModeId,
+        kInvalidModeId
+      };
+      
+      typedef struct
+      {
+        unsigned mode_id;
+        
+        bool trig_val;
+        bool delta_fl;
+
+        bool reset_val;
+        bool reset_fl;
+
+        bool done_fl;
+
+        double dir;
+        
+      } inst_t;
+
+      idLabelPair_t modeArray[] = {
+        { kModuloModeId, "modulo" },
+        { kReverseModeId, "reverse" },
+        { kClipModeId,    "clip" },
+        { kInvalidId, "<invalid>"}
+      };
+
+
+      unsigned _string_to_mode_id( const char* mode_label, unsigned& mode_id_ref )
+      {
+        rc_t rc = kOkRC;
+        mode_id_ref = kInvalidId;
+        for(unsigned i=0; modeArray[i].id != kInvalidId; ++i)
+          if( textIsEqual(modeArray[i].label,mode_label) )
+          {
+            mode_id_ref = modeArray[i].id;
+            return kOkRC;            
+          }
+        
+        return cwLogError(kInvalidArgRC,"'%s' is not a valid counter 'mode'.",cwStringNullGuard(mode_label));
+      }
+
+      rc_t create( instance_t* proc )
+      {
+        rc_t    rc    = kOkRC;        
+        inst_t* p     = mem::allocZ<inst_t>();
+        proc->userPtr = p;
+        double  init_val;
+        const char* mode_label;
+
+        if((rc = var_register_and_get(proc, kAnyChIdx,
+                                      kTriggerPId, "trigger", kBaseSfxId, p->trig_val,
+                                      kResetPId,   "reset",   kBaseSfxId, p->reset_val,
+                                      kInitPId,    "init",    kBaseSfxId, init_val,
+                                      kModePId,    "mode",    kBaseSfxId, mode_label)) != kOkRC )
+        {
+          goto errLabel;
+        }
+                                      
+        
+        if((rc = var_register(proc, kAnyChIdx,
+                              kMinPId,     "min",     kBaseSfxId,
+                              kMaxPId,     "max",     kBaseSfxId,
+                              kIncPId,     "inc",     kBaseSfxId,
+                              kRepeatPId,  "repeat_fl",  kBaseSfxId)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((rc = var_register_and_set(proc,kAnyChIdx,
+                                      kOutPId,"out",kBaseSfxId,init_val)) != kOkRC )
+        {
+          goto errLabel;
+        }
+                                      
+
+        if((rc = _string_to_mode_id(mode_label,p->mode_id)) != kOkRC )
+          goto errLabel;
+        
+        p->dir = 1.0;
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( instance_t* proc )
+      {
+        rc_t rc = kOkRC;
+
+        inst_t* p = (inst_t*)proc->userPtr;
+        mem::release(p);
+        
+        return rc;
+      }
+
+      rc_t value( instance_t* proc, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        inst_t* p = (inst_t*)proc->userPtr;
+
+        switch( var->vid )
+        {
+          case kTriggerPId:
+            {
+              bool v;
+              
+              if((rc = var_get(var,v)) == kOkRC )
+              {
+                if( !p->delta_fl )
+                  p->delta_fl = p->trig_val != v;
+                
+                p->trig_val = v;            
+              }
+            }
+            break;
+
+          case kModePId:
+            {
+              const char* s;
+              if((rc = var_get(var,s)) == kOkRC )
+                rc = _string_to_mode_id(s,p->mode_id);
+            }
+            break;
+              
+        }
+        
+        return rc;
+      }
+
+      rc_t exec( instance_t* proc )
+      {
+        rc_t rc      = kOkRC;
+        inst_t* p = (inst_t*)proc->userPtr;
+
+        
+        bool v;
+        if((rc = var_get(proc,kTriggerPId,kAnyChIdx,v)) != kOkRC )
+        {
+          cwLogError(rc,"Fail!");
+          goto errLabel;
+        }
+
+        p->delta_fl = v != p->trig_val;
+        p->trig_val = v;
+
+        if( p->delta_fl )
+        {
+          p->delta_fl = false;
+          
+          double cnt,inc,minv,maxv;
+          var_get(proc,kOutPId,kAnyChIdx,cnt);
+          var_get(proc,kIncPId,kAnyChIdx,inc);
+          var_get(proc,kMinPId,kAnyChIdx,minv);
+          var_get(proc,kMaxPId,kAnyChIdx,maxv);
+
+          double incr = p->dir * inc;
+          cnt += incr;
+
+          if( minv > cnt || cnt > maxv )
+          {
+            bool repeat_fl;
+            var_get(proc,kRepeatPId,kAnyChIdx,repeat_fl);
+
+            if( !repeat_fl )
+              p->done_fl = true;
+            else
+            {
+              if( cnt > maxv)
+              {
+                switch( p->mode_id )
+                {
+                  case kModuloModeId:
+                    cnt -= (maxv-minv) + incr;
+                    break;
+
+                  case kReverseModeId:
+                    p->dir = -1 * p->dir;
+                    cnt = maxv - (cnt - maxv);
+                    break;
+
+                  case kClipModeId:
+                    cnt = maxv;
+                    break;
+
+                  default:
+                    assert(0);
+                    
+                }
+              }
+
+              if( cnt < minv)
+              {
+                switch( p->mode_id )
+                {
+                  case kModuloModeId:
+                    cnt += (maxv - minv) + incr;
+                    break;
+                    
+                  case kReverseModeId:
+                    p->dir = -1 * p->dir;
+                    cnt = minv + (minv-cnt);
+                    break;
+                    
+                  case kClipModeId:
+                    cnt = minv;
+                    break;
+                    
+                  default:
+                    assert(0);
+                }                
+              }
+            }
+          }
+
+          if( !p->done_fl )
+          {
+            printf("cnt:%f\n",cnt);
+            var_set(proc,kOutPId,kAnyChIdx,cnt);
+          }
+        }
+
+      errLabel:
+        return rc;
+      }
+
+      class_members_t members = {
+        .create = create,
+        .destroy = destroy,
+        .value   = value,
+        .exec = exec,
+        .report = nullptr
+      };
+      
+    }    
     
   } // flow
 } // cw

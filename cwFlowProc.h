@@ -27,5 +27,10 @@ namespace cw
     namespace audio_marker    { extern class_members_t members;  }
     namespace xfade_ctl       { extern class_members_t members;  }
     namespace poly_mixer      { extern class_members_t members;  }
+    namespace sample_hold     { extern class_members_t members;  }
+    namespace number          { extern class_members_t members;  }
+    namespace timer           { extern class_members_t members;  }
+    namespace counter         { extern class_members_t members;  }
+    
   }
 }
