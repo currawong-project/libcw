@@ -850,6 +850,10 @@ resolvable without more information.
 ### TODO:
 
 - Documentation w/ examples.
+  + Write the rules for each member function.
+    
+- value() should return a special return-code value to indicate that the
+value should not be updated.
 
 - Compile presets: at load time the presets should be resolved
   to the proc and vars to which they will be assigned.
@@ -858,6 +862,8 @@ resolvable without more information.
 
 - Variable attributes should be meaningful. e.g. src,src_opt,mult,init, ....
   Should we check for 'src' or 'mult' attribute on var's?
+  
+- Enforce var attributes.
 
 - DONE: 'poly' should be implemented as a proc-inst with an internal network - but the 
 elements of the network should be visible outside of it.
@@ -867,12 +873,11 @@ elements of the network should not be visible outside of it. Instead it should
 include the idea of input and output ports which act as proxies to the physical
 ports of the internal elements.
 
-- 'poly' and 'sub' should be arbitrarily nestable. 
+- 'poly' and 'sub' should be arbitrarily nestable. DONE?
 
 
 - Reduce runtime over head for var get/set operations.
 
-- enforce var attributes 
 
 - Allow multiple types on an input.
    For example 'adder' should have a single input 
@@ -882,8 +887,13 @@ ports of the internal elements.
 
 - Make a standard way to turn on output printing from any port on any instance
 This might be a better approach to logging than having a 'printer' object.
-Add proc instance field: `log:[ var_label_0, var_label_1 ] `
+Add proc instance field: `log:{ var_label_0:0, var_label_1:0 } `
 
-- The 'poly' frawework is not quite complete. 
 
-- 
+Next:
+
+- Implement 'preset' proc. This will involve implementing the 'cfg' datatype.
+
+- Finish the 'poly' frawework. We are making 'mult' var's, but do any of the procs explicitly deal with them?
+
+- Turn on variable 'broadcast'.  Why was it turned off? ... maybe multiple updates?
