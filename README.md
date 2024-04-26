@@ -845,7 +845,7 @@ In otherwords setting 'proc-sfx-id' to kInvalidId is not
 resolvable without more information.
 
    
-
+   
 
 ### TODO:
 
@@ -872,4 +872,18 @@ ports of the internal elements.
 
 - Reduce runtime over head for var get/set operations.
 
+- enforce var attributes 
 
+- Allow multiple types on an input.
+   For example 'adder' should have a single input 
+   which can by any numeric type.
+   
+- Allow min/max values on numeric variables.
+
+- Make a standard way to turn on output printing from any port on any instance
+This might be a better approach to logging than having a 'printer' object.
+Add proc instance field: `log:[ var_label_0, var_label_1 ] `
+
+- The 'poly' frawework is not quite complete. 
+
+- 
