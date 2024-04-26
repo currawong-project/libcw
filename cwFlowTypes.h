@@ -3,13 +3,13 @@ namespace cw
   namespace flow
   {
 
-    #define kRealTFl kFloatTFl
-    typedef dsp::real_t    real_t;
-    typedef dsp::sample_t  sample_t;
-    typedef dsp::fd_real_t fd_real_t;
-    typedef dsp::srate_t   srate_t;
-    typedef unsigned       uint_t;
-    typedef int            int_t;
+    typedef dsp::coeff_t     coeff_t;
+    typedef dsp::sample_t    sample_t;
+    typedef dsp::fd_sample_t fd_sample_t;
+    typedef dsp::srate_t     srate_t;
+    typedef dsp::ftime_t     ftime_t;
+    typedef unsigned         uint_t;
+    typedef int              int_t;
     
     
     typedef unsigned vid_t;
@@ -40,11 +40,11 @@ namespace cw
       unsigned*         maxBinN_V; // max value that binN_V[i] is allowed to take
       unsigned*         binN_V;    // binN_V[ chN ] count of sample frames per channel
       unsigned*         hopSmpN_V; // hopSmpN_V[ chN ] hop sample count 
-      fd_real_t**       magV;      // magV[ chN ][ binN ]
-      fd_real_t**       phsV;      // phsV[ chN ][ binN ]
-      fd_real_t**       hzV;       // hzV[ chN ][ binN ]
+      fd_sample_t**       magV;      // magV[ chN ][ binN ]
+      fd_sample_t**       phsV;      // phsV[ chN ][ binN ]
+      fd_sample_t**       hzV;       // hzV[ chN ][ binN ]
       bool*             readyFlV;  // readyFlV[chN] true if this channel is ready to be processed (used to sync. fbuf rate to abuf rate)
-      fd_real_t*        buf;       // memory used by this buffer (or NULL if magV,phsV,hzV point are proxied to another buffer)      
+      fd_sample_t*        buf;       // memory used by this buffer (or NULL if magV,phsV,hzV point are proxied to another buffer)      
     } fbuf_t;
 
     typedef struct mbuf_str
@@ -66,15 +66,15 @@ namespace cw
       kBoolMtxTFl  = 0x00000020,
       kUIntMtxTFl  = 0x00000040,
       kIntMtxTFl   = 0x00000080,
-      kRealMtxTFl  = 0x00000100,
-      kFloatMtxTFl = 0x00000200,
-      kDoubleMtxTFl= 0x00000400,
+      kFloatMtxTFl = 0x00000100,
+      kDoubleMtxTFl= 0x00000200,
       
-      kABufTFl     = 0x00000800,
-      kFBufTFl     = 0x00001000,
-      kMBufTFl     = 0x00002000,
-      kStringTFl   = 0x00004000,
-      kTimeTFl     = 0x00008000,
+      kABufTFl     = 0x00000400,
+      kFBufTFl     = 0x00000800,
+      kMBufTFl     = 0x00001000,
+      kStringTFl   = 0x00002000,
+      kTimeTFl     = 0x00004000,
+      kCfgTFl      = 0x00008000,
 
       kTypeMask    = 0x0000ffff,
 
@@ -85,7 +85,6 @@ namespace cw
       union {
         struct mtx::mtx_str< unsigned >* u;
         struct mtx::mtx_str< int >*      i;
-        struct mtx::mtx_str< real_t >*   r;
         struct mtx::mtx_str< float >*    f;
         struct mtx::mtx_str< double >*   d;
       } u;
@@ -95,20 +94,20 @@ namespace cw
     {
       unsigned flags;
       union {
-        bool      b;
-        uint_t    u;
-        int_t     i;
-        float     f;
-        double    d;
-
-        mtx_t*    mtx;
+        bool            b;
+        uint_t          u;
+        int_t           i;
+        float           f;
+        double          d;
         
-        abuf_t*   abuf;
-        fbuf_t*   fbuf;
-        mbuf_t*   mbuf;
+        mtx_t*          mtx;        
+        abuf_t*         abuf;
+        fbuf_t*         fbuf;
+        mbuf_t*         mbuf;
         
-        char*     s;
-        char*     fname;
+        char*           s;
+        
+        const object_t* cfg;
 
       } u;
       
@@ -269,8 +268,8 @@ namespace cw
     rc_t            abuf_set_channel( abuf_t* buf, unsigned chIdx, const sample_t* v, unsigned vN );
     const sample_t* abuf_get_channel( abuf_t* buf, unsigned chIdx );
 
-    fbuf_t*        fbuf_create( srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_real_t** magV=nullptr, const fd_real_t** phsV=nullptr, const fd_real_t** hzV=nullptr );
-    fbuf_t*        fbuf_create( srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_real_t** magV=nullptr, const fd_real_t** phsV=nullptr, const fd_real_t** hzV=nullptr );
+    fbuf_t*        fbuf_create( srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_sample_t** magV=nullptr, const fd_sample_t** phsV=nullptr, const fd_sample_t** hzV=nullptr );
+    fbuf_t*        fbuf_create( srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_sample_t** magV=nullptr, const fd_sample_t** phsV=nullptr, const fd_sample_t** hzV=nullptr );
     void           fbuf_destroy( fbuf_t*& buf );
     fbuf_t*        fbuf_duplicate( const fbuf_t* src );
 
@@ -332,8 +331,12 @@ namespace cw
     // `value_cfg` is optional. Set it to NULL to ignore
     rc_t           var_register( instance_t* inst, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, const object_t* value_cfg, variable_t*& varRef );
 
-    // Returns true if this var is connected to an external proc variable
-    bool           is_connected_to_external_proc( const variable_t* var );
+    // Returns true if this var is connected to an source proc variable
+    bool           is_connected_to_source_proc( const variable_t* var );
+
+    // Return true if this var is acting as a source for another var.
+    bool           is_a_source_var( const variable_t* var );
+
 
     //-----------------
     //
@@ -411,8 +414,8 @@ namespace cw
     
     rc_t           var_register_and_set( instance_t* inst, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, unsigned frameN );
     rc_t           var_register_and_set( instance_t* inst, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, midi::ch_msg_t* midiA, unsigned midiN );
-    rc_t           var_register_and_set( instance_t* inst, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_real_t** magV=nullptr, const fd_real_t** phsV=nullptr, const fd_real_t** hzV=nullptr );
-    rc_t           var_register_and_set( instance_t* inst, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_real_t** magV=nullptr, const fd_real_t** phsV=nullptr, const fd_real_t** hzV=nullptr );
+    rc_t           var_register_and_set( instance_t* inst, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_sample_t** magV=nullptr, const fd_sample_t** phsV=nullptr, const fd_sample_t** hzV=nullptr );
+    rc_t           var_register_and_set( instance_t* inst, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_sample_t** magV=nullptr, const fd_sample_t** phsV=nullptr, const fd_sample_t** hzV=nullptr );
 
     inline rc_t _var_register_and_set(cw::flow::instance_t*, unsigned int ) { return kOkRC; }
 
@@ -424,7 +427,8 @@ namespace cw
       variable_t* var = nullptr;
       if((rc = var_register_and_set( inst, var_label, sfx_id, vid, chIdx, var)) == kOkRC )
       {
-        var_set( inst, vid, chIdx, val );
+        if((rc = var_set( inst, vid, chIdx, val )) != kOkRC )
+          return rc;
         
         if((rc = _var_register_and_set( inst, chIdx, std::forward<ARGS>(args)...)) != kOkRC )
           return rc;
@@ -444,6 +448,8 @@ namespace cw
 
     bool           var_exists(    instance_t* inst, const char* label, unsigned sfx_id, unsigned chIdx );
     bool           var_has_value( instance_t* inst, const char* label, unsigned sfx_id, unsigned chIdx );
+    bool           var_is_a_source( instance_t* inst, const char* label, unsigned sfx_id, unsigned chIdx );
+    bool           var_is_a_source( instance_t* inst, unsigned vid, unsigned chIdx );
 
     rc_t           var_find(   instance_t* inst, const char* var_label, unsigned sfx_id, unsigned chIdx, const variable_t*& varRef );
     rc_t           var_find(   instance_t* inst, const char* var_label, unsigned sfx_id, unsigned chIdx,       variable_t*& varRef );

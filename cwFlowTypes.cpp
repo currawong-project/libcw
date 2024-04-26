@@ -24,7 +24,6 @@ namespace cw
       { kUIntTFl,  "uint" },
       { kIntTFl,   "int", },
       { kFloatTFl, "float"},
-      { kRealTFl,  "real"},
       { kDoubleTFl,"double"},
       
       { kBoolMtxTFl,  "bool_mtx" },
@@ -38,6 +37,14 @@ namespace cw
       { kMBufTFl,   "midi" },
       { kStringTFl, "string" },
       { kTimeTFl,   "time" },
+      { kCfgTFl,    "cfg" },
+
+      // alias types to map to cwDspTypes.h
+      { kFloatTFl, "srate"},
+      { kFloatTFl, "sample"},
+      { kFloatTFl, "coeff"},
+      { kDoubleTFl, "ftime" },
+
       { kInvalidTFl, nullptr }
     };
 
@@ -461,12 +468,18 @@ namespace cw
     rc_t _var_broadcast_new_value( variable_t* var )
     {
       rc_t rc = kOkRC;
-      /*
+      
       // notify each connected var that the value has changed
       for(variable_t* con_var = var->connect_link; con_var!=nullptr; con_var=con_var->connect_link)
-        if((rc = con_var->inst->class_desc->members->value( con_var->inst, con_var )) != kOkRC )
-          break;
-      */
+      {
+        // the var->local_value[] slot used by the source variable may have changed - update the destination variable
+        // so that it points to the correct value.
+        con_var->value = var->value;
+       
+        //if((rc = con_var->inst->class_desc->members->value( con_var->inst, con_var )) != kOkRC )
+        //  break;
+       
+      }
       return rc;
     }
 
@@ -548,7 +561,7 @@ namespace cw
       var->local_value[ local_value_idx ].flags  = kFBufTFl;
       cwLogMod("%s:%i.%s:%i ch:%i %s (fbuf).",var->inst->label,var->inst->label_sfx_id,var->label,var->label_sfx_id,var->chIdx,fbuf==nullptr ? "null" : "valid");
     }
-    
+        
     template< typename T >
     rc_t _var_set_template( variable_t* var, unsigned typeFlag, T val )
     {
@@ -604,7 +617,7 @@ namespace cw
     }
     
     
-    bool is_connected_to_external_proc( const variable_t* var )
+    bool is_connected_to_source_proc( const variable_t* var )
     {
       // if this var does not have a 'src_ptr' then it can't be connected to an external proc
       if( var->src_var == nullptr || var->value == nullptr )
@@ -618,13 +631,16 @@ namespace cw
       return true;
     }
 
+    bool is_a_source_var( const variable_t* var )
+    { return var->connect_link != nullptr; }
+
     template< typename T >
     rc_t _var_set_driver( variable_t* var, unsigned typeFlag, T value )
     {
       rc_t rc;
 
       // if this variable is fed from the output of an external proc - then it's local value cannot be set
-      if(is_connected_to_external_proc(var)   )
+      if(is_connected_to_source_proc(var)   )
         return kOkRC;
       
 
@@ -687,6 +703,7 @@ namespace cw
     {
       rc_t rc = kOkRC;
 
+      // get the variable type - note that the value type (value->flags) may be differnt
       unsigned typeFlag = var->varDesc->type & kTypeMask;
       
       switch( typeFlag )
@@ -882,7 +899,7 @@ namespace cw
 
     void _var_print( const variable_t* var )
     {
-      const char* conn_label  = is_connected_to_external_proc(var) ? "extern" : "      ";
+      const char* conn_label  = is_connected_to_source_proc(var) ? "extern" : "      ";
     
       printf("  %20s:%5i id:%4i ch:%3i : %s  : ", var->label, var->label_sfx_id, var->vid, var->chIdx, conn_label );
     
@@ -969,7 +986,7 @@ const cw::flow::sample_t*   cw::flow::abuf_get_channel( abuf_t* abuf, unsigned c
   return abuf->buf + (chIdx*abuf->frameN);
 }
 
-cw::flow::fbuf_t* cw::flow::fbuf_create( srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_real_t** magV, const fd_real_t** phsV, const fd_real_t** hzV )
+cw::flow::fbuf_t* cw::flow::fbuf_create( srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_sample_t** magV, const fd_sample_t** phsV, const fd_sample_t** hzV )
 {
   for(unsigned i=0; i<chN; ++i)
     if( binN_V[i] > maxBinN_V[i] )
@@ -985,9 +1002,9 @@ cw::flow::fbuf_t* cw::flow::fbuf_create( srate_t srate, unsigned chN, const unsi
   f->maxBinN_V = mem::allocZ<unsigned>(chN);
   f->binN_V    = mem::allocZ<unsigned>(chN);
   f->hopSmpN_V = mem::allocZ<unsigned>(chN); 
-  f->magV      = mem::allocZ<fd_real_t*>(chN);
-  f->phsV      = mem::allocZ<fd_real_t*>(chN);
-  f->hzV       = mem::allocZ<fd_real_t*>(chN);
+  f->magV      = mem::allocZ<fd_sample_t*>(chN);
+  f->phsV      = mem::allocZ<fd_sample_t*>(chN);
+  f->hzV       = mem::allocZ<fd_sample_t*>(chN);
   f->readyFlV  = mem::allocZ<bool>(chN);
 
   vop::copy( f->binN_V, binN_V, chN );
@@ -998,17 +1015,17 @@ cw::flow::fbuf_t* cw::flow::fbuf_create( srate_t srate, unsigned chN, const unsi
   {
     for(unsigned chIdx=0; chIdx<chN; ++chIdx)
     {      
-      f->magV[ chIdx ] = (fd_real_t*)magV[chIdx];
-      f->phsV[ chIdx ] = (fd_real_t*)phsV[chIdx];
-      f->hzV[  chIdx ] = (fd_real_t*)hzV[chIdx];
+      f->magV[ chIdx ] = (fd_sample_t*)magV[chIdx];
+      f->phsV[ chIdx ] = (fd_sample_t*)phsV[chIdx];
+      f->hzV[  chIdx ] = (fd_sample_t*)hzV[chIdx];
     }
   }
   else
   {
     unsigned maxTotalBinsN = vop::sum( maxBinN_V, chN );
         
-    fd_real_t* buf       = mem::allocZ<fd_real_t>( kFbufVectN * maxTotalBinsN );
-    fd_real_t* m         = buf;
+    fd_sample_t* buf       = mem::allocZ<fd_sample_t>( kFbufVectN * maxTotalBinsN );
+    fd_sample_t* m         = buf;
     for(unsigned chIdx=0; chIdx<chN; ++chIdx)
     {   
       f->magV[chIdx] = m + 0 * f->binN_V[chIdx];
@@ -1026,7 +1043,7 @@ cw::flow::fbuf_t* cw::flow::fbuf_create( srate_t srate, unsigned chN, const unsi
 }
 
 
-cw::flow::fbuf_t*  cw::flow::fbuf_create( srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_real_t** magV, const fd_real_t** phsV, const fd_real_t** hzV )
+cw::flow::fbuf_t*  cw::flow::fbuf_create( srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_sample_t** magV, const fd_sample_t** phsV, const fd_sample_t** hzV )
 {
   unsigned maxBinN_V[ chN ];
   unsigned binN_V[ chN ];
@@ -1249,12 +1266,10 @@ cw::rc_t  cw::flow::var_channelize( instance_t* inst, const char* var_label, uns
     rc = cwLogError(kInvalidStateRC,"The base ('any') channel variable could not be located on '%s:%i.%s:%i'.",inst->label,inst->label_sfx_id,var_label,sfx_id);
     goto errLabel;
   }
-
-  
+ 
   // locate the variable with the stated chIdx
   var = _var_find_on_label_and_ch( inst, var_label, sfx_id, chIdx );
   
-
   // 'src' variables cannot be channelized
   if( cwIsFlag(base_var->varDesc->flags,kSrcVarFl) )
   {
@@ -1287,6 +1302,7 @@ cw::rc_t  cw::flow::var_channelize( instance_t* inst, const char* var_label, uns
     // a correctly channelized var was found - but we still may need to set the value
     if( value_cfg != nullptr )
     {
+      //cwLogInfo("%s ch:%i",var_label,chIdx);
       rc = _set_var_value_from_cfg( var, value_cfg );
     }
     else
@@ -1300,7 +1316,7 @@ cw::rc_t  cw::flow::var_channelize( instance_t* inst, const char* var_label, uns
   
  errLabel:
   if( rc != kOkRC )
-    rc = cwLogError(rc,"Channelize failed for variable '%s:%i' on instance '%s:i' ch:%i.", var_label, sfx_id, inst->label, inst->label_sfx_id, chIdx );
+    rc = cwLogError(rc,"Channelize failed for variable '%s:%i' on instance '%s:%i' ch:%i.", var_label, sfx_id, inst->label, inst->label_sfx_id, chIdx );
   
   return rc;
 }
@@ -1319,6 +1335,31 @@ bool cw::flow::var_has_value( instance_t* inst, const char* label, unsigned sfx_
   return varPtr->value != nullptr;
 }
 
+bool  cw::flow::var_is_a_source( instance_t* inst, const char* label, unsigned sfx_id, unsigned chIdx )
+{
+  rc_t rc;
+  variable_t* varPtr = nullptr;
+  if((rc = var_find( inst, label, sfx_id, chIdx, varPtr)) != kOkRC )
+  {
+    cwLogError(kEleNotFoundRC,"The variable '%s:%i' was not found on proc:'%s:%i'. 'source' state query is invalid.",cwStringNullGuard(label),sfx_id,cwStringNullGuard(inst->label),inst->label_sfx_id);
+    return false;
+  }
+  
+  return is_a_source_var(varPtr);
+}
+
+bool  cw::flow::var_is_a_source( instance_t* inst, unsigned vid, unsigned chIdx )
+{
+  rc_t rc;
+  variable_t* varPtr = nullptr;
+  if((rc = var_find( inst, vid, chIdx, varPtr)) != kOkRC )
+  {
+    cwLogError(kEleNotFoundRC,"The variable with vid '%i' was not found on proc:'%s:%i'. 'source' state query is invalid.",vid,cwStringNullGuard(inst->label),inst->label_sfx_id);
+    return false;
+  }
+  
+  return is_a_source_var(varPtr);
+}
 
 cw::rc_t cw::flow::var_find( instance_t* inst, unsigned vid, unsigned chIdx, variable_t*& varRef )
 {
@@ -1471,7 +1512,7 @@ cw::rc_t        cw::flow::var_register_and_set( instance_t* inst, const char* va
   return rc;
 }
 
-cw::rc_t cw::flow::var_register_and_set( instance_t* inst, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_real_t** magV, const fd_real_t** phsV, const fd_real_t** hzV )
+cw::rc_t cw::flow::var_register_and_set( instance_t* inst, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_sample_t** magV, const fd_sample_t** phsV, const fd_sample_t** hzV )
 {
   rc_t rc = kOkRC;
   fbuf_t* fbuf;
@@ -1499,7 +1540,7 @@ cw::rc_t        cw::flow::var_register_and_set( instance_t* inst, const char* va
 }
 
 
-cw::rc_t cw::flow::var_register_and_set( instance_t* inst, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_real_t** magV, const fd_real_t** phsV, const fd_real_t** hzV )
+cw::rc_t cw::flow::var_register_and_set( instance_t* inst, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_sample_t** magV, const fd_sample_t** phsV, const fd_sample_t** hzV )
 {
   unsigned maxBinN_V[ chN ];
   unsigned binN_V[ chN ];
