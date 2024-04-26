@@ -4198,12 +4198,14 @@ namespace cw
                 switch( p->mode_id )
                 {
                   case kModuloModeId:
-                    cnt = minv + (cnt-maxv);
+                    while(cnt > maxv )
+                      cnt = minv + (cnt-maxv);
                     break;
 
                   case kReverseModeId:
                     p->dir = -1 * p->dir;
-                    cnt = maxv - (cnt-maxv);
+                    while( cnt > maxv )
+                      cnt = maxv - (cnt-maxv);
                     break;
 
                   case kClipModeId:
@@ -4221,12 +4223,14 @@ namespace cw
                 switch( p->mode_id )
                 {
                   case kModuloModeId:
-                    cnt = maxv - (minv-cnt);
+                    while( cnt < minv )
+                      cnt = maxv - (minv-cnt);
                     break;
                     
                   case kReverseModeId:
                     p->dir = -1 * p->dir;
-                    cnt = minv + (minv-cnt);
+                    while(cnt < minv )
+                      cnt = minv + (minv-cnt);
                     break;
                     
                   case kClipModeId:
