@@ -869,11 +869,17 @@ cw::rc_t cw::objectFromString( const char* s, object_t*& objRef )
         break;
         
       case lex::kRealLexTId:
-        _objCreateValueNode( cnp, lex::tokenDouble(lexH), "real" );
+        if( tokenIsSinglePrecision(lexH) )
+          _objCreateValueNode( cnp, lex::tokenFloat(lexH),"float" );
+         else
+          _objCreateValueNode( cnp, lex::tokenDouble(lexH), "double" );
         break;
         
       case lex::kIntLexTId:
-        _objCreateValueNode( cnp, lex::tokenInt(lexH), "int" );
+        if( tokenIsUnsigned(lexH) )
+          _objCreateValueNode( cnp, lex::tokenUInt(lexH), "uint" );
+        else
+          _objCreateValueNode( cnp, lex::tokenInt(lexH), "int" );
         break;
         
       case lex::kHexLexTId:

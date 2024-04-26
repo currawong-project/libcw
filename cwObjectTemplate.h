@@ -74,6 +74,12 @@ namespace cw
     return obj;
   }
 
+  template<> object_t* _objSetLeafValue<float>( object_t* obj,  float value )
+  {
+    obj->u.f  = value;
+    obj->type = _objIdToType(kFloatTId);
+    return obj;
+  }
   
   template<> object_t* _objSetLeafValue<double>( object_t* obj,  double value )
   {
