@@ -983,9 +983,9 @@ namespace cw
         // apply the fragment defined gain settings
         if( app->ioFlowH.isValid() )
         {
-          io_flow::set_variable_value( app->ioFlowH, flow_cross::kNextDestId, "wet_in_gain", "gain", flow::kAnyChIdx, (dsp::real_t)frag->igain );
-          io_flow::set_variable_value( app->ioFlowH, flow_cross::kNextDestId, "wet_out_gain","gain", flow::kAnyChIdx, (dsp::real_t)frag->ogain );
-          io_flow::set_variable_value( app->ioFlowH, flow_cross::kNextDestId, "wd_bal",      "in",   flow::kAnyChIdx, (dsp::real_t)frag->wetDryGain );
+          io_flow::set_variable_value( app->ioFlowH, flow_cross::kNextDestId, "wet_in_gain", "gain", flow::kAnyChIdx, (dsp::coeff_t)frag->igain );
+          io_flow::set_variable_value( app->ioFlowH, flow_cross::kNextDestId, "wet_out_gain","gain", flow::kAnyChIdx, (dsp::coeff_t)frag->ogain );
+          io_flow::set_variable_value( app->ioFlowH, flow_cross::kNextDestId, "wd_bal",      "in",   flow::kAnyChIdx, (dsp::coeff_t)frag->wetDryGain );
 
           // activate the cross-fade
           io_flow::begin_cross_fade( app->ioFlowH, frag->fadeOutMs );
@@ -2848,7 +2848,7 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
       else
       {
         if( app->ioFlowH.isValid() )
-          if((rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, inst_label,  var_label,    flow::kAnyChIdx, (dsp::real_t)value )) != kOkRC )
+          if((rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, inst_label,  var_label,    flow::kAnyChIdx, (dsp::coeff_t)value )) != kOkRC )
             rc = cwLogError(rc,"Master value send failed on %s.%s.",cwStringNullGuard(inst_label),cwStringNullGuard(var_label));
       }
       return rc;
@@ -2943,7 +2943,7 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
       }
 
       if( m.value->tid == ui::kDoubleTId && app->ioFlowH.isValid() )
-        rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "sd",  var_label,    flow::kAnyChIdx, (dsp::real_t)m.value->u.d );
+        rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "sd",  var_label,    flow::kAnyChIdx, (dsp::coeff_t)m.value->u.d );
 
       if(rc != kOkRC )
         rc = cwLogError(rc,"Attempt to set a spec-dist variable '%s'",var_label );
@@ -2954,7 +2954,7 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
     rc_t _on_live_midi_checkbox( app_t* app, bool useLiveMidiFl )
     {
       rc_t rc = kOkRC;
-      dsp::real_t value;
+      dsp::ftime_t value;
       
       if( useLiveMidiFl )
       {
@@ -2974,7 +2974,7 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
       }
 
       if( app->ioFlowH.isValid() )
-        if((rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "sync_delay",  "delayMs",    flow::kAnyChIdx, (dsp::real_t)value )) != kOkRC )
+        if((rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "sync_delay",  "delayMs",    flow::kAnyChIdx, (dsp::ftime_t)value )) != kOkRC )
           rc = cwLogError(rc,"Error setting sync delay 'flow' value.");
       
       
