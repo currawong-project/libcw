@@ -1,0 +1,192 @@
+
+
+
+# Flow Documentation:
+
+Flow is an audio processing framework that is designed to 
+facilitate the specification of real-time and non-real-time music 
+and audio processing networks and the application of network state data. 
+
+
+
+
+
+
+## Building Neworks:
+
+
+### A Simple Network.
+```
+```
+
+
+
+### Polyphonic Network.
+
+3. Network with sub-nets.
+
+
+## Processing Unit Class
+
+type   | Description
+-------|-------------------------------------
+string | 
+bool   |
+int    | `int32_t`
+uint   | `uint32_t`
+float  | f32
+double | f64
+srate  | (float) Sample rate type
+sample | (float) Audio sample type
+coeff  | (float) Value that will be directly applied to a sample value (e.g added or multiplied)
+ftime  | (double) Fractional seconds
+
+See list in cwFlowTypes.cpp : typeLabelFlagsA[]
+
+
+### Processing Units (proc)
+
+A 'process' or **proc** is a set of functions and **variables**.
+
+A **network** is a set of proc's with interconnected variable.
+By default most proc variables can be connected to, or act as sources for,
+other proc variables.  A variable consists of a label, a type (e.g. int,real,audio,...),
+some attribtes (more about those below), a default value, and a documentation string. 
+
+One of the goals of 'flow' is to naturally handle multi-channel audio signals.
+To this end many audio processors create multiple internal sub-processes
+to handle each audio channel based on the number of input audio channels.
+
+For example an audio gain processor consists of three variables: an input audio variable,
+an output audio variable and a gain coefficient. When the gain unit is
+created it will create an independent sub-process to handle each channel.
+If the input audio signal has multiple channels than the gain processor
+will internally duplicate each of the three variables. This allows
+independent control of the gain of each of the audio channels.
+In 'flow' parlance each of the sub-processes is referred to as a **channel**.
+A variable that can duplicated in this way is referred to as a **multi-channel variable**.
+
+'flow' has a second form of variable multiplicity. This form occurs when
+a variable is duplicated based on how it is connected in the network.
+For example a simple audio mixer might have an undefined number of audio inputs
+and a single audio output. The number of audio inputs is only defined
+once it is connected in the network.  This notion of variable multiplicity
+is different from a **channel** because each of the incoming audio
+signals may themselves contain multiple channels - each of which should
+be individually addressable.  However, it should also be possible
+to address each of the incoming signals as a single entity. To
+accomplish this we use the concept of the **mult-variable**. A mult-variable
+amounts to creating an array of variables based on a single variable description,
+where the array length is determined at network compile time. mult-variables
+are distinguished by labels with integer suffixes.
+
+
+
+
+
+
+
+
+The functions are:
+
+Name     | Description
+---------|------------------------------------------------------------------------
+create   | Implements the custom elements of the proc instantiation.
+destroy  | Destroy resources that were acquired in create().
+value    | Variable values will pass through this function as they are assigned.
+exec     | Implements the custom execution functionality of this process.
+report   | Print the state of the process.
+
+
+
+
+
+
+
+### Var Syntax
+
+__label__ : { type: __type__, value: __value__, doc:"q-string" }
+
+Part   | Description
+-------|-------------------------------------------------------
+label  | Variable name
+type   | Variable type.  See Data types below.
+value  | The default value of the variable.
+doc    | Documentation string for this variable.
+
+Notes:
+
+- Whenever possible default values should be provided for the
+variable - even if the value is meaningless - like 0.0.  This is
+important because during proc instantiation, prior to the custom
+create() call, variables listed in the proc instance's 'in' statement
+are connected to their respective sources.  If the source does not
+have a valid value then the instantiation will fail.  This consitutes
+a failure because it is guaranteed that when the custom create()
+function is called all variables in the 'in' statement will be
+resolved to a source variable with a valid value.  This allows the
+proc instance to have the information it needs to configure itself.
+
+There is one subtle case where the default value becomes important. When the
+variables in an 'in' statement are initially connected to their source they are
+connected to the 'any-channel' source variable because they
+do not have a specific channel yet.  Specific channel can only be known
+during or after the custom create() function is called.  Since the way
+a given proc. distributes channels will vary from one proc. to the
+next.
+
+If during initial variable connection the source happens to be a
+variable with channels then the values that were assigned to those
+channels, in the source proc. create() function, will not show up on
+the 'any-channel'.  If no default value was assigned to the source
+variable then the 'any-channel' will have no value, and the connection
+will fail with an error message like this: 
+
+```
+"The source value is null on the connection input:foo:0 source:blah:0.bar:0".
+```
+
+Note that although variables are initially connected to the
+'any-channel' source variable, prior to the their proc's create() call,
+after the create() call, when the variables do have a valid channel
+number, they are reconnected to a specific channel on the source
+variable.
+
+
+### Preset Syntax:
+
+
+### Data Types:
+
+Types    | Description             |
+---------|-------------------------|
+bool     | `bool`
+int      | `int32_t`
+uint     | `uint32_t`
+real     | `double`
+audio    | multi-channel audio
+spectrum | multi-channel spectrum
+
+### Variable Flags:
+
+Flag             | Description
+-----------------|-------------------------------------------------------------------------------------------
+`init`           | This variale is set at proc instantation and never changes.
+`src`            | This variable must be connect to a source variable in the instance 'in' statement or be set to a default value. See 1.
+`no_src`         | This variable may not be connected to a source variable. See 1.
+`no_dflt_create` | This variable is not created automatically as part of the proc instantiation. See 2.
+`mult`           | This variable may be duplicated in the instance 'in' statement. See 3.
+
+
+Notes:
+1. Unless the `no_src` attribute is set any variable may be connected to a source variable
+in the proc instantation 'in' statement.
+
+2. By default all variables are created prior to the proc `create()` function being called.
+Variable with the `no_dflt_create` attribute will not be created.  This is useful in cases
+where information needs to be accessed in the `create()` function in order to determine
+some basic parameters of the variable  For example a proc that needs to create multiple output
+variables based on the number of input audio channels cannot know how many output variables
+it may need until it accesses the number of audio channels it has been instantiated with.
+
+
