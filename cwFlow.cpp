@@ -9,7 +9,7 @@
 #include "cwAudioFile.h"
 #include "cwVectOps.h"
 #include "cwMtx.h"
-#include "cwDspTypes.h" // real_t, sample_t
+#include "cwDspTypes.h" // coeff_t, sample_t, srate_t ...
 #include "cwTime.h"
 #include "cwMidiDecls.h"
 #include "cwFlowDecl.h"
@@ -54,6 +54,10 @@ namespace cw
       { "audio_marker",    &audio_marker::members },
       { "xfade_ctl",       &xfade_ctl::members },
       { "poly_mixer",      &poly_mixer::members },
+      { "sample_hold",     &sample_hold::members },
+      { "number",          &number::members },
+      { "timer",           &timer::members },
+      { "counter",         &counter::members },
       { nullptr, nullptr }
     };
 
@@ -197,7 +201,7 @@ namespace cw
             // convert the type string to a numeric type flag
             if( (type_flag = value_type_label_to_flag( type_str )) == kInvalidTId )
             {
-              rc = cwLogError(rc,"Invalid type flag: '%s' class:'%s' value:'%s'.", type_str, cd->label, vd->label );
+              rc = cwLogError(kSyntaxErrorRC,"Invalid type flag: '%s' class:'%s' value:'%s'.", type_str, cd->label, vd->label );
               goto errLabel;            
             }
 
@@ -400,9 +404,6 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
 
   // parse the main audio file processor cfg record
   if((rc = flowCfg.getv("framesPerCycle",      p->framesPerCycle,
-                        "multiPriPresetProbFl", p->multiPriPresetProbFl,
-                        "multiSecPresetProbFl", p->multiSecPresetProbFl,
-                        "multiPresetInterpFl", p->multiPresetInterpFl,
                         "network",             networkCfg)) != kOkRC )
   {
     rc = cwLogError(kSyntaxErrorRC,"Error parsing the required flow configuration parameters.");
@@ -411,6 +412,9 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
 
   // parse the optional args
   if((rc = flowCfg.getv_opt("maxCycleCount",    p->maxCycleCount,
+                            "multiPriPresetProbFl", p->multiPriPresetProbFl,
+                            "multiSecPresetProbFl", p->multiSecPresetProbFl,
+                            "multiPresetInterpFl", p->multiPresetInterpFl,
                             "printClassDictFl", printClassDictFl,
                             "printNetworkFl",   printNetworkFl)) != kOkRC )
   {
@@ -591,20 +595,37 @@ void cw::flow::print_network( handle_t h )
 }
 
 
-cw::rc_t cw::flow::test(  const object_t* cfg )
+cw::rc_t cw::flow::test(  const object_t* cfg, int argc, const char* argv[] )
 {
   rc_t rc = kOkRC;
   handle_t flowH;
 
   object_t* class_cfg = nullptr;
+  const object_t* test_cases_cfg = nullptr;
+  const object_t* test_cfg = nullptr;
   const char* flow_proc_fname;
+
+  if( argc < 2 || textLength(argv[1]) == 0 )
+  {
+    rc = cwLogError(kInvalidArgRC,"No 'test-case' label was given on the command line.");
+    goto errLabel;
+  }
   
-  if((rc = cfg->getv("flow_proc_fname",flow_proc_fname)) != kOkRC )
+  if((rc = cfg->getv("flow_proc_fname",flow_proc_fname,
+                     "test_cases",test_cases_cfg)) != kOkRC )
   {
     rc = cwLogError(rc,"The name of the flow_proc_dict file could not be parsed.");
     goto errLabel;
   }
 
+  // find the user requested test case
+  if((test_cfg = test_cases_cfg->find_child(argv[1])) == nullptr )
+  {
+    rc = cwLogError(kInvalidArgRC,"The test case named '%s' was not found.",argv[0]);
+    goto errLabel;
+  }  
+
+  // parse the flow-proc-cfg
   if((rc = objectFromFile(flow_proc_fname,class_cfg)) != kOkRC )
   {
     rc = cwLogError(rc,"The flow proc dict could not be read from '%s'.",cwStringNullGuard(flow_proc_fname));
@@ -612,7 +633,7 @@ cw::rc_t cw::flow::test(  const object_t* cfg )
   }
 
   // create the flow object
-  if((rc = create( flowH, *class_cfg, *cfg)) != kOkRC )
+  if((rc = create( flowH, *class_cfg, *test_cfg)) != kOkRC )
   {
     rc = cwLogError(rc,"Flow object create failed.");
     goto errLabel;

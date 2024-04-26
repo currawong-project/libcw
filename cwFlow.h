@@ -50,7 +50,7 @@ namespace cw
     void print_class_list( handle_t h );
     void print_network( handle_t h );
 
-    rc_t test( const object_t* cfg );
+    rc_t test( const object_t* cfg, int argc, const char* argv[] );
 
     
     
