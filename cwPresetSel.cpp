@@ -40,6 +40,7 @@ namespace cw
       unsigned         presetLabelN;
       
       flow::preset_order_t* presetOrderA;  // presetOrderA[ presetLabelN ]
+      flow::preset_order_t* multiPresetA; // activePresetA[ presetLabelN ]
 
       alt_label_t*     altLabelA;
       unsigned         altLabelN;
@@ -148,6 +149,7 @@ namespace cw
         mem::release( p->presetLabelA[i].label );
       mem::release( p->presetLabelA );
       mem::release( p->presetOrderA );
+      mem::release( p->multiPresetA );
       
       for(unsigned i=0; i<p->altLabelN; ++i)
         mem::release( p->altLabelA[i].label );
@@ -826,6 +828,48 @@ namespace cw
     errLabel:
       return e;
     }
+
+    const flow::preset_order_t* _load_active_multi_preset_array( preset_sel_t* p, const frag_t* f, unsigned& cnt_ref )
+    {
+      bool has_zero_fl = false;
+      cnt_ref = 0;
+      
+      for(unsigned i=0,j=1; i<f->presetN; ++i)
+      {
+        if( f->presetA[i].order > 0 || f->presetA[i].playFl )
+        {
+          unsigned out_idx;
+          
+          // Exactly one preset can have the 'playFl' set.
+          // This is the highest priority preset.
+          // It is always placed in the first slot.
+          if( !f->presetA[i].playFl )
+            out_idx = j++;
+          else
+          {
+            out_idx = 0;
+            has_zero_fl = true;
+          }
+
+          assert( out_idx < p->presetLabelN );
+          
+          p->multiPresetA[out_idx].preset_label = _preset_label( p, f->presetA[i].preset_idx );
+          p->multiPresetA[out_idx].order        = f->presetA[i].order;
+          ++cnt_ref;
+        }
+      }
+            
+      // sort the presets on 'order' - being careful to not move the zeroth preset (if it exists)
+      if( (has_zero_fl && cnt_ref > 2) || (!has_zero_fl && cnt_ref>1)  )
+      {
+        std::sort(p->multiPresetA+1,
+                  p->multiPresetA+(cnt_ref-1),
+                  [](const flow::preset_order_t& a,const flow::preset_order_t& b){ return a.order<b.order; } );
+      }
+
+      
+      return has_zero_fl ? p->multiPresetA : p->multiPresetA+1;
+    }
     
   }
 }
@@ -864,7 +908,8 @@ cw::rc_t cw::preset_sel::create(  handle_t& hRef, const object_t* cfg  )
   p->presetLabelN = preset_labelL->child_count();
   p->presetLabelA = mem::allocZ<preset_label_t>(p->presetLabelN);
   p->presetOrderA = mem::allocZ<flow::preset_order_t>(p->presetLabelN);
-
+  p->multiPresetA = mem::allocZ<flow::preset_order_t>(p->presetLabelN);
+  
   // get the preset labels
   for(unsigned i=0; i<p->presetLabelN; ++i)
   {
@@ -1165,7 +1210,7 @@ cw::rc_t cw::preset_sel::delete_fragment( handle_t h, unsigned fragId )
 
       // release the fragment
       mem::release(f->presetA);
-      mem::release(f->multiPresetA);
+      //mem::release(f->multiPresetA);
       mem::release(f);
       
       return kOkRC;
@@ -1471,6 +1516,17 @@ unsigned cw::preset_sel::fragment_seq_count( handle_t h, unsigned fragId )
 }
 
 
+const cw::flow::preset_order_t*  cw::preset_sel::fragment_active_presets( handle_t h, const frag_t* f, unsigned& count_ref )
+{
+  preset_sel_t* p  = _handleToPtr(h);
+
+  count_ref = 0;
+  
+  return _load_active_multi_preset_array(p,f,count_ref);
+
+}
+
+
 cw::rc_t cw::preset_sel::write( handle_t h, const char* fn )
 {
   rc_t          rc        = kOkRC;
@@ -1547,6 +1603,7 @@ cw::rc_t cw::preset_sel::write( handle_t h, const char* fn )
   
   return rc;
 }
+
 
 cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
 {
@@ -1678,32 +1735,18 @@ cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
       
     }
 
+    /*
     // create the multiPresetA[]
     if( multiPresetN>0 )
     {
-      f->multiPresetA = mem::allocZ<flow::preset_order_t>(multiPresetN);
-      f->multiPresetN = multiPresetN;
+      // make multiPresetA as large as possible
+      f->multiPresetA = mem::allocZ<flow::preset_order_t>(p->presetLabelN);
 
-      for(unsigned i=0,j=1; i<presetN; ++i)
-        if( f->presetA[i].order > 0 || f->presetA[i].playFl )
-        {
-          unsigned out_idx = f->presetA[i].playFl ? 0 : j++;
+      _load_multi_preset_array(p,f);
 
-          assert( out_idx < multiPresetN );
-          
-          f->multiPresetA[out_idx].preset_label = _preset_label( p, f->presetA[i].preset_idx );
-          f->multiPresetA[out_idx].order        = f->presetA[i].order;
-        }
-
-      // sort
-      if( multiPresetN > 1 )
-      {
-        std::sort(f->multiPresetA+1,
-                  f->multiPresetA+f->multiPresetN-1,
-                  [](const flow::preset_order_t& a,const flow::preset_order_t& b){ return a.order<b.order; } );
-      }
     }
-
+    */
+    
   }
   
 

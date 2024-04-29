@@ -922,25 +922,31 @@ namespace cw
         }
 
         // if we are not automatically sequencing through the presets and a score event was given
-        if( seq_idx_n == kInvalidIdx && score_evt != nullptr && frag->multiPresetN>0 )
+        if( seq_idx_n == kInvalidIdx && score_evt != nullptr  )
         {
-          //double   coeffV[] = { score_evt->even, score_evt->dyn, score_evt->tempo, score_evt->cost };
-          //unsigned coeffN   = sizeof(coeffV)/sizeof(coeffV[0]);
-            
+          unsigned multiPresetN = 0;
+
+          bool allowAnyFl = cwIsFlag(app->multiPresetFlags,flow::kAllowAllPresetFl) && cwIsFlag(app->multiPresetFlags,flow::kPriPresetProbFl);
+          
           flow::multi_preset_selector_t mp_sel =
             { .flags     = app->multiPresetFlags,
               .coeffV    = score_evt->featV,
               .coeffMinV = score_evt->featMinV,
               .coeffMaxV = score_evt->featMaxV,
               .coeffN    = perf_meas::kValCnt,
-              .presetA   = cwIsFlag(app->multiPresetFlags,flow::kAllowAllPresetFl) ? preset_order_array(app->psH) : frag->multiPresetA,
-              .presetN   = cwIsFlag(app->multiPresetFlags,flow::kAllowAllPresetFl) ? preset_count(app->psH)       : frag->multiPresetN
+              .presetA   = allowAnyFl ? preset_order_array(app->psH) : fragment_active_presets(app->psH,frag,multiPresetN),
+              .presetN   = allowAnyFl ? preset_count(app->psH)       : multiPresetN
             };
-            
-          if( app->ioFlowH.isValid() )
-            apply_rc = io_flow::apply_preset( app->ioFlowH, flow_cross::kNextDestId, mp_sel );
 
-          preset_label = "(multi)"; //mp_sel.presetN>0 && mp_sel.presetA[0].preset_label!=nullptr ? mp_sel.presetA[0].preset_label : nullptr;
+          if( mp_sel.presetA == nullptr || mp_sel.presetN == 0 )
+            cwLogWarning("No active presets were found for loc:%i at end loc:%i.",loc,frag->endLoc);
+          else
+          {
+            if( app->ioFlowH.isValid() )
+              apply_rc = io_flow::apply_preset( app->ioFlowH, flow_cross::kNextDestId, mp_sel );
+          }
+          
+          preset_label = "(multi)"; 
 
           preset_type_label = "multi";
             
@@ -1130,6 +1136,7 @@ namespace cw
               if( preset_sel::track_loc( app->psH, loc, f ) )  
               {
 
+                printf("Loc:%i\n",loc);
                 _apply_preset( app, loc, (const perf_score::event_t*)msg_arg, f );
                 
                 if( f != nullptr )
@@ -1956,6 +1963,8 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
           // the fragments are loaded enable the 'load' and 'alt' menu
           io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kPerfSelId ),   true );
           io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kAltSelId ),   true );
+
+          _set_status(app,"Load complete.");
           
           cwLogInfo("Fragment restore complete: elapsed secs:%f",time::elapsedSecs(app->psLoadT0));
           io::uiRealTimeReport(app->ioH);

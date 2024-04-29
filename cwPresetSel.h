@@ -35,10 +35,12 @@ namespace cw
       preset_t*        presetA;  // presetA[ presetN ] - status of each preset
       unsigned         presetN;
 
-      flow::preset_order_t*  multiPresetA;  // array of active presets in this frag. sequenced by ascending 'order'.
-      unsigned               multiPresetN;
+      // array of stored presets in this frag. sequenced by ascending 'order'.
+      //flow::preset_order_t*  multiPresetA;  
+      //unsigned               multiPresetN;
 
-      unsigned*        altPresetIdxA;  // altPresetIdxA[ alt_count() ] selected preset idx for each alt.
+      // altPresetIdxA[ alt_count() ] selected preset idx for each alt.
+      unsigned*        altPresetIdxA;  
 
       bool             uiSelectFl;
       bool             seqAllFl; // Set if all preset.seqFl's should be treated as though they are set to true.
@@ -138,6 +140,8 @@ namespace cw
 
     // Return the count of presets whose 'seqFl' is set.
     unsigned fragment_seq_count( handle_t h, unsigned fragId );
+
+    const flow::preset_order_t*  fragment_active_presets( handle_t h, const frag_t* f, unsigned& count_ref );
     
     rc_t write( handle_t h, const char* fn );
     rc_t read(  handle_t h, const char* fn );
