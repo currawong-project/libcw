@@ -853,7 +853,7 @@ namespace cw
     //)
 
     //(
-    void test()
+    rc_t test()
     {
       rc_t     rc  = kOkRC;
       unsigned tid = kInvalidId;
@@ -872,8 +872,8 @@ namespace cw
       // initialize a lexer with a buffer of text
       if((rc = lex::create(h,buf,strlen(buf), kReturnSpaceLexFl | kReturnCommentsLexFl)) != kOkRC )
       {
-        cwLogError(rc,"Lexer initialization failed.");
-        return;
+        rc = cwLogError(rc,"Lexer initialization failed.");
+        goto errLabel;
       }
 
       // register some additional recoginizers
@@ -913,9 +913,12 @@ namespace cw
 
       }
 
+    errLabel:
       // finalize the lexer 
       lex::destroy(h);
 
+      
+      return rc;
     }
   }
 }
