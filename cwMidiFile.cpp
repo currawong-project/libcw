@@ -2117,7 +2117,7 @@ namespace cw
 
       rc_t _printCsvHdr( cw::file::handle_t fH )
       {
-        return cw::file::printf(fH,"UID,trk,dtick,atick,amicro,type,ch,D0,D1\n");        
+        return cw::file::printf(fH,"UID,trk,dtick,atick,amicro,type,ch,D0,D1,sci_pitch\n");        
       }
       
       rc_t _printCsvRow( cw::file::handle_t fH, const trackMsg_t* m )
