@@ -2,6 +2,7 @@
 #include "cwLog.h"
 #include "cwCommonImpl.h"
 #include "cwMem.h"
+#include "cwMath.h"
 #include "cwText.h"
 #include "cwObject.h"
 #include "cwVectOps.h"
@@ -45,6 +46,10 @@ namespace cw
       { kFloatTFl, "coeff"},
       { kDoubleTFl, "ftime" },
 
+      { kUIntTFl | kIntTFl | kFloatTFl | kDoubleTFl, "numeric" },
+
+      { kRuntimeTFl, "runtime" },
+
       { kInvalidTFl, nullptr }
     };
 
@@ -63,7 +68,7 @@ namespace cw
       if( v == nullptr )
         return;
         
-      switch( v->flags & kTypeMask )
+      switch( v->tflag & kTypeMask )
       {
         case kInvalidTFl:
           break;
@@ -98,9 +103,12 @@ namespace cw
         case kStringTFl:
           mem::release( v->u.s );
           break;
-                    
+          
         case kTimeTFl:
           assert(0);
+          break;
+
+        case kCfgTFl:
           break;
 
         default:
@@ -108,12 +116,12 @@ namespace cw
           break;
       }
 
-      v->flags = kInvalidTFl;
+      v->tflag = kInvalidTFl;
     }
 
     void _value_duplicate( value_t& dst, const value_t& src )
     {        
-      switch( src.flags & kTypeMask )
+      switch( src.tflag & kTypeMask )
       {
         case kInvalidTFl:
           break;
@@ -129,17 +137,17 @@ namespace cw
         case kABufTFl:
           
           dst.u.abuf = src.u.abuf == nullptr ? nullptr : abuf_duplicate(src.u.abuf);
-          dst.flags = src.flags;
+          dst.tflag = src.tflag;
           break;
           
         case kFBufTFl:
           dst.u.fbuf = src.u.fbuf == nullptr ? nullptr : fbuf_duplicate(src.u.fbuf);
-          dst.flags = src.flags;
+          dst.tflag = src.tflag;
           break;
 
         case kMBufTFl:
           dst.u.mbuf = src.u.mbuf == nullptr ? nullptr : mbuf_duplicate(src.u.mbuf);
-          dst.flags = src.flags;
+          dst.tflag = src.tflag;
           break;
           
         case kBoolMtxTFl:
@@ -152,13 +160,17 @@ namespace cw
           
         case kStringTFl:
           dst.u.s = mem::duplStr( dst.u.s );
-          dst.flags = src.flags;
+          dst.tflag = src.tflag;
           break;
                     
         case kTimeTFl:
           assert(0);
           break;
 
+        case kCfgTFl:
+          dst = src;
+          break;
+          
         default:
           assert(0);
           break;
@@ -171,16 +183,16 @@ namespace cw
       if( v == nullptr )
         return;
         
-      switch( v->flags & kTypeMask )
+      switch( v->tflag & kTypeMask )
       {
         case kInvalidTFl:
           break;
           
-        case kBoolTFl:  printf("%s ", v->u.b ? "True" : "False" ); break;          
-        case kUIntTFl:  printf("%i ", v->u.u ); break;
-        case kIntTFl:   printf("%i ", v->u.i ); break;          
-        case kFloatTFl: printf("%f ", v->u.f ); break;
-        case kDoubleTFl:printf("%f ", v->u.d ); break;
+        case kBoolTFl:  printf("b:%s ", v->u.b ? "true" : "false" ); break;          
+        case kUIntTFl:  printf("u:%i ", v->u.u ); break;
+        case kIntTFl:   printf("i:%i ", v->u.i ); break;          
+        case kFloatTFl: printf("f:%f ", v->u.f ); break;
+        case kDoubleTFl:printf("d:%f ", v->u.d ); break;
         case kABufTFl:
           if( v->u.abuf == nullptr )
             printf("abuf: <null>");
@@ -224,6 +236,11 @@ namespace cw
           assert(0);
           break;
 
+        case kCfgTFl:
+          if( v->u.cfg != nullptr )
+            v->u.cfg->print();
+          break;
+          
         default:
           assert(0);
           break;
@@ -235,23 +252,46 @@ namespace cw
     rc_t _val_get( const value_t* val, bool& valRef )
     {
       rc_t rc = kOkRC;
-      switch( val->flags & kTypeMask )
+      switch( val->tflag & kTypeMask )
       {
         case kBoolTFl:   valRef = val->u.b; break;
         case kUIntTFl:   valRef = val->u.u!=0; break;
         case kIntTFl:    valRef = val->u.i!=0; break;
         case kFloatTFl:  valRef = val->u.f!=0; break;
-        case kDoubleTFl: valRef = val->u.d!=0; break;
+        case kDoubleTFl: valRef = val->u.d!=0; break;        
         default:
-          rc = cwLogError(kTypeMismatchRC,"The type 0x%x could not be converted to a bool.",val->flags);
+          rc = cwLogError(kTypeMismatchRC,"The type %s (0x%x) could not be converted to a bool.",_typeFlagToLabel(val->tflag),val->tflag);
       }
+      return rc;
+    }
+
+    rc_t _val_set( value_t* val, bool v )
+    {
+      rc_t rc = kOkRC;
+      
+      switch( val->tflag & kTypeMask )
+      {
+        case kBoolTFl:   val->u.b=v; break;
+        case kUIntTFl:   val->u.u=v; break;
+        case kIntTFl:    val->u.i=v; break;
+        case kFloatTFl:  val->u.f=v; break;
+        case kDoubleTFl: val->u.d=v; break;
+        case kInvalidTFl:
+          val->u.b   = v;
+          val->tflag = kBoolTFl;
+          break;
+
+        default:
+          rc = cwLogError(kTypeMismatchRC,"A bool could not be converted to a %s (0x%x).",_typeFlagToLabel(val->tflag),val->tflag);          
+      }
+      
       return rc;
     }
     
     rc_t _val_get( const value_t* val, uint_t& valRef )
     {
       rc_t rc = kOkRC;
-      switch( val->flags & kTypeMask )
+      switch( val->tflag & kTypeMask )
       {
         case kBoolTFl:   valRef = val->u.b ? 1 : 0; break;
         case kUIntTFl:   valRef = val->u.u; break;
@@ -259,15 +299,38 @@ namespace cw
         case kFloatTFl:  valRef = (uint_t)val->u.f; break;
         case kDoubleTFl: valRef = (uint_t)val->u.d; break;
         default:
-          rc = cwLogError(kTypeMismatchRC,"The type 0x%x could not be converted to a uint_t.",val->flags);
+          rc = cwLogError(kTypeMismatchRC,"The type %s (0x%x) could not be converted to a uint.",_typeFlagToLabel(val->tflag),val->tflag);
       }
       return rc;
     }
+
+    rc_t _val_set( value_t* val, uint_t v )
+    {
+      rc_t rc = kOkRC;
       
+      switch( val->tflag & kTypeMask )
+      {
+        case kBoolTFl:   val->u.b=v!=0; break;
+        case kUIntTFl:   val->u.u=v; break;
+        case kIntTFl:    val->u.i=v; break;
+        case kFloatTFl:  val->u.f=v; break;
+        case kDoubleTFl: val->u.d=v; break;
+        case kInvalidTFl:
+          val->u.u  = v;
+          val->tflag = kUIntTFl;
+          break;
+
+        default:
+          rc = cwLogError(kTypeMismatchRC,"A uint could not be converted to a  %s (0x%x).",_typeFlagToLabel(val->tflag),val->tflag);          
+      }
+      
+      return rc;
+    }
+    
     rc_t _val_get( const value_t* val, int_t& valRef )
     {
       rc_t rc = kOkRC;
-      switch( val->flags & kTypeMask )
+      switch( val->tflag & kTypeMask )
       {
         case kBoolTFl:   valRef = val->u.b ? 1 : 0; break;
         case kUIntTFl:   valRef = (int_t)val->u.u; break;
@@ -275,15 +338,40 @@ namespace cw
         case kFloatTFl:  valRef = (int_t)val->u.f; break;
         case kDoubleTFl: valRef = (int_t)val->u.d; break;
         default:
-          rc = cwLogError(kTypeMismatchRC,"The type 0x%x could not be converted to a int_t.",val->flags);
+          rc = cwLogError(kTypeMismatchRC,"The type %s (0x%x) could not be converted to an int.",_typeFlagToLabel(val->tflag),val->tflag);
+          
       }
       return rc;
     }
 
+    rc_t _val_set( value_t* val, int_t v )
+    {
+      rc_t rc = kOkRC;
+      
+      switch( val->tflag & kTypeMask )
+      {
+        case kBoolTFl:   val->u.b=v!=0; break;
+        case kUIntTFl:   val->u.u=v; break;
+        case kIntTFl:    val->u.i=v; break;
+        case kFloatTFl:  val->u.f=v; break;
+        case kDoubleTFl: val->u.d=v; break;
+        case kInvalidTFl:
+          val->u.i   = v;
+          val->tflag = kIntTFl;
+          break;
+
+        default:
+          rc = cwLogError(kTypeMismatchRC,"An int could not be converted to a %s (0x%x).",_typeFlagToLabel(val->tflag),val->tflag);          
+      }
+      
+      return rc;
+    }
+    
+
     rc_t _val_get( const value_t* val, float& valRef )
     {
       rc_t rc = kOkRC;
-      switch( val->flags & kTypeMask )
+      switch( val->tflag & kTypeMask )
       {
         case kBoolTFl:   valRef = val->u.b ? 1 : 0; break;
         case kUIntTFl:   valRef = (float)val->u.u; break;
@@ -291,15 +379,38 @@ namespace cw
         case kFloatTFl:  valRef = (float)val->u.f; break;
         case kDoubleTFl: valRef = (float)val->u.d; break;
         default:
-          rc = cwLogError(kTypeMismatchRC,"The type 0x%x could not be converted to a float.", val->flags);
+          rc = cwLogError(kTypeMismatchRC,"The type %s (0x%x) could not be converted to a float.",_typeFlagToLabel(val->tflag),val->tflag);
       }
       return rc;
     }
 
+    rc_t _val_set( value_t* val, float v )
+    {
+      rc_t rc = kOkRC;
+      
+      switch( val->tflag & kTypeMask )
+      {
+        case kBoolTFl:   val->u.b=v!=0; break;
+        case kUIntTFl:   val->u.u=(unsigned)v; break;
+        case kIntTFl:    val->u.i=(int)v; break;
+        case kFloatTFl:  val->u.f=v; break;
+        case kDoubleTFl: val->u.d=v; break;
+        case kInvalidTFl:
+          val->u.f   = v;
+          val->tflag = kFloatTFl;
+          break;
+
+        default:
+          rc = cwLogError(kTypeMismatchRC,"A float could not be converted to a %s (0x%x).",_typeFlagToLabel(val->tflag),val->tflag);          
+      }
+      
+      return rc;
+    }
+    
     rc_t _val_get( const value_t* val, double& valRef )
     {
       rc_t rc = kOkRC;
-      switch( val->flags & kTypeMask )
+      switch( val->tflag & kTypeMask )
       {
         case kBoolTFl:   valRef = val->u.b ? 1 : 0; break;
         case kUIntTFl:   valRef = (double)val->u.u; break;
@@ -307,33 +418,77 @@ namespace cw
         case kFloatTFl:  valRef = (double)val->u.f; break;
         case kDoubleTFl: valRef =         val->u.d; break;
         default:
-          rc = cwLogError(kTypeMismatchRC,"The type 0x%x could not be converted to a double.",val->flags);
+          rc = cwLogError(kTypeMismatchRC,"The type %s (0x%x) could not be converted to a double.",_typeFlagToLabel(val->tflag),val->tflag);
       }
       return rc;
     }
 
+    rc_t _val_set( value_t* val, double v )
+    {
+      rc_t rc = kOkRC;
+      
+      switch( val->tflag & kTypeMask )
+      {
+        case kBoolTFl:   val->u.b=v!=0; break;
+        case kUIntTFl:   val->u.u=(unsigned)v; break;
+        case kIntTFl:    val->u.i=(int)v; break;
+        case kFloatTFl:  val->u.f=(float)v; break;
+        case kDoubleTFl: val->u.d=v; break;
+        case kInvalidTFl:
+          val->u.d   = v;
+          val->tflag = kDoubleTFl;
+          break;
+
+        default:
+          rc = cwLogError(kTypeMismatchRC,"A double could not be converted to a %s (0x%x).",_typeFlagToLabel(val->tflag),val->tflag);          
+      }
+      
+      return rc;
+    }
+    
     rc_t _val_get( const value_t* val, const char*& valRef )
     {
       rc_t rc = kOkRC;
-      if( cwIsFlag(val->flags & kTypeMask, kStringTFl) )
+      if( cwIsFlag(val->tflag & kTypeMask, kStringTFl) )
         valRef = val->u.s;
       else
       {
-        rc = cwLogError(kTypeMismatchRC,"The type 0x%x could not be converted to a string.",val->flags);
+        rc = cwLogError(kTypeMismatchRC,"The type %s (0x%x) could not be converted to a string.",_typeFlagToLabel(val->tflag),val->tflag);        
         valRef = nullptr;
       }
       
       return rc;
     }
 
+    rc_t _val_set( value_t* val, const char* v )
+    {
+      rc_t rc = kOkRC;
+      
+      switch( val->tflag & kTypeMask )
+      {
+        case kStringTFl:
+          val->u.s=mem::duplStr(v); break;
+          
+        case kInvalidTFl:
+          val->u.s   = mem::duplStr(v);
+          val->tflag = kStringTFl;
+          break;
+
+        default:
+          rc = cwLogError(kTypeMismatchRC,"A string could not be converted to a %s (0x%x).",_typeFlagToLabel(val->tflag),val->tflag);          
+      }
+      
+      return rc;
+    }
+    
     rc_t _val_get( value_t* val, abuf_t*& valRef )
     {
       rc_t rc = kOkRC;
-      if( cwIsFlag(val->flags & kTypeMask, kABufTFl) )
+      if( cwIsFlag(val->tflag & kTypeMask, kABufTFl) )
         valRef = val->u.abuf;
       else
       {
-        rc = cwLogError(kTypeMismatchRC,"The type 0x%x could not be converted to an abuf_t.",val->flags);
+        rc = cwLogError(kTypeMismatchRC,"The type %s (0x%x) could not be converted to an abuf.",_typeFlagToLabel(val->tflag),val->tflag);        
         valRef = nullptr;
       }
       return rc;
@@ -348,15 +503,37 @@ namespace cw
       return rc;        
     }
 
+    rc_t _val_set( value_t* val, abuf_t* v )
+    {
+      rc_t rc = kOkRC;
+      
+      switch( val->tflag & kTypeMask )
+      {
+        case kABufTFl:
+          val->u.abuf=v;
+          break;
+          
+        case kInvalidTFl:
+          val->u.abuf=v;
+          val->tflag = kABufTFl;
+          break;
+
+        default:
+          rc = cwLogError(kTypeMismatchRC,"A audio signal could not be converted to a %s (0x%x).",_typeFlagToLabel(val->tflag),val->tflag);          
+      }
+      
+      return rc;
+    }
+        
     rc_t _val_get( value_t* val, fbuf_t*& valRef )
     {
       rc_t rc = kOkRC;
-      if( cwIsFlag(val->flags & kTypeMask, kFBufTFl) )
+      if( cwIsFlag(val->tflag & kTypeMask, kFBufTFl) )
         valRef = val->u.fbuf;
       else
       {
         valRef = nullptr;
-        rc = cwLogError(kTypeMismatchRC,"The type 0x%x could not be converted to an fbuf_t.",val->flags);
+        rc = cwLogError(kTypeMismatchRC,"The type %s (0x%x) could not be converted to an fbuf.",_typeFlagToLabel(val->tflag),val->tflag);        
       }
       return rc;
     }
@@ -370,18 +547,63 @@ namespace cw
       return rc;        
     }
 
+    rc_t _val_set( value_t* val, fbuf_t* v )
+    {
+      rc_t rc = kOkRC;
+      
+      switch( val->tflag & kTypeMask )
+      {
+        case kFBufTFl:
+          val->u.fbuf=v;
+          break;
+          
+        case kInvalidTFl:
+          val->u.fbuf=v;
+          val->tflag = kFBufTFl;
+          break;
+
+        default:
+          rc = cwLogError(kTypeMismatchRC,"A spectrum signal could not be converted to a %s (0x%x).",_typeFlagToLabel(val->tflag),val->tflag);          
+      }
+      
+      return rc;
+    }
+        
     rc_t _val_get( value_t* val, mbuf_t*& valRef )
     {
       rc_t rc = kOkRC;
-      if( cwIsFlag(val->flags & kTypeMask, kMBufTFl) )
+      if( cwIsFlag(val->tflag & kTypeMask, kMBufTFl) )
         valRef = val->u.mbuf;
       else
       {
         valRef = nullptr;
-        rc = cwLogError(kTypeMismatchRC,"The type 0x%x could not be converted to an mbuf_t.",val->flags);
+        rc = cwLogError(kTypeMismatchRC,"The type %s (0x%x) could not be converted to an mbuf.",_typeFlagToLabel(val->tflag),val->tflag);        
       }
       return rc;
     }
+
+    rc_t _val_set( value_t* val, mbuf_t* v )
+    {
+      rc_t rc = kOkRC;
+      
+      switch( val->tflag & kTypeMask )
+      {
+        case kMBufTFl:
+          val->u.mbuf=v;
+          break;
+          
+        case kInvalidTFl:
+          val->u.mbuf=v;
+          val->tflag = kMBufTFl;
+          break;
+
+        default:
+          rc = cwLogError(kTypeMismatchRC,"A MIDI signal could not be converted to a %s (0x%x).",_typeFlagToLabel(val->tflag),val->tflag);          
+      }
+      
+      return rc;
+    }
+    
     
     rc_t _val_get( value_t* val, const mbuf_t*& valRef )
     {
@@ -391,7 +613,43 @@ namespace cw
         valRef = non_const_val;
       return rc;        
     }
+
+    rc_t _val_get( value_t* val, const object_t*& valRef )
+    {
+      rc_t rc = kOkRC;
+      
+      if( cwIsFlag(val->tflag & kTypeMask, kCfgTFl) )
+        valRef = val->u.cfg;
+      else
+      {
+        valRef = nullptr;
+        rc = cwLogError(kTypeMismatchRC,"The type %s (0x%x) could not be converted to a cfg.",_typeFlagToLabel(val->tflag),val->tflag);        
+        
+      }
+      return rc;        
+    }
     
+    rc_t _val_set( value_t* val, const object_t* v )
+    {
+      rc_t rc = kOkRC;
+      
+      switch( val->tflag & kTypeMask )
+      {
+        case kCfgTFl:
+          val->u.cfg=v;
+          break;
+          
+        case kInvalidTFl:
+          val->u.cfg=v;
+          val->tflag = kCfgTFl;
+          break;
+
+        default:
+          rc = cwLogError(kTypeMismatchRC,"A cfg. could not be converted to a %s (0x%x).",_typeFlagToLabel(val->tflag),val->tflag);          
+      }
+      
+      return rc;
+    }
 
     template< typename T >
     rc_t _val_get_driver( const variable_t* var, T& valRef )
@@ -403,8 +661,8 @@ namespace cw
         return cwLogError(kInvalidStateRC,"No value has been assigned to the variable: %s:%i.%s:%i ch:%i.",cwStringNullGuard(var->inst->label),var->inst->label_sfx_id,cwStringNullGuard(var->label),var->label_sfx_id,var->chIdx);
 
       return _val_get(var->value,valRef);
-    }
-
+    
+}
     rc_t _var_find_to_set( instance_t* inst, unsigned vid, unsigned chIdx, unsigned typeFl, variable_t*& varRef )
     {
       rc_t rc = kOkRC;
@@ -414,8 +672,14 @@ namespace cw
       if((rc = var_find(inst,vid,chIdx,varRef)) == kOkRC )
       {
         // validate the type of the variable against the description
+        /*
         if( !cwIsFlag(varRef->varDesc->type,typeFl ) )
-          rc = cwLogError(kTypeMismatchRC,"Type mismatch. Instance:%s:%i variable:%s:%i with type 0x%x does not match requested type:0x%x.",varRef->inst->label,varRef->inst->label_sfx_id,varRef->label,varRef->label_sfx_id,varRef->varDesc->type,typeFl);
+          rc = cwLogError(kTypeMismatchRC,"Type mismatch. Instance:%s:%i variable:%s:%i with type %s (0x%x) does not match requested type: %s (0x%x).",
+                          varRef->inst->label,varRef->inst->label_sfx_id,
+                          varRef->label,
+                          varRef->label_sfx_id,_typeFlagToLabel(varRef->varDesc->type),varRef->varDesc->type,
+                          _typeFlagToLabel(typeFl),typeFl);
+        */
     
       }
 
@@ -453,137 +717,119 @@ namespace cw
       return nullptr;
     }
     
+    rc_t _var_find_on_label_and_ch( instance_t* inst, const char* var_label, unsigned sfx_id, unsigned chIdx, variable_t*& var_ref )
+    {
+      rc_t rc = kOkRC;
+      if((var_ref = _var_find_on_label_and_ch(inst,var_label,sfx_id,chIdx)) == nullptr )
+        rc = cwLogError(kEleNotFoundRC,"The variable '%s:%i' cannot be found on the proc:%s.",cwStringNullGuard(var_label),sfx_id,cwStringNullGuard(inst->label));
+      return rc;
+    }
     
     rc_t _validate_var_assignment( variable_t* var, unsigned typeFl )
     {
       if( cwIsFlag(var->varDesc->flags, kSrcVarFl ) )
         return cwLogError(kInvalidStateRC, "The variable '%s:%i' on instance '%s:%i' cannot be set because it is a 'src' variable.", var->label, var->label_sfx_id, var->inst->label,var->inst->label_sfx_id);
-      
+      /*
       if( !cwIsFlag(var->varDesc->type, typeFl ) )
         return cwLogError(kTypeMismatchRC, "The variable '%s:%i' on instance '%s:%i' is not a  '%s'.", var->label, var->label_sfx_id, var->inst->label, var->inst->label_sfx_id, _typeFlagToLabel( typeFl ));
-
+      */
+      
       return kOkRC;
     }
 
+    void _var_print( const variable_t* var )
+    {
+      const char* conn_label  = is_connected_to_source_proc(var) ? "extern" : "      ";
+    
+      printf("  %20s:%5i id:%4i ch:%3i : %s  : ", var->label, var->label_sfx_id, var->vid, var->chIdx, conn_label );
+    
+      if( var->value == nullptr )
+        _value_print( &var->local_value[0] );
+      else
+        _value_print( var->value );
+
+      if( var->src_var != nullptr )
+        printf(" src:%s:%i.%s:%i",var->src_var->inst->label,var->src_var->inst->label_sfx_id,var->src_var->label,var->src_var->label_sfx_id);
+
+      printf("\n");    
+    }
+    
+    
     rc_t _var_broadcast_new_value( variable_t* var )
     {
       rc_t rc = kOkRC;
       
       // notify each connected var that the value has changed
-      for(variable_t* con_var = var->connect_link; con_var!=nullptr; con_var=con_var->connect_link)
+      for(variable_t* con_var = var->dst_head; con_var!=nullptr; con_var=con_var->dst_link)
       {
         // the var->local_value[] slot used by the source variable may have changed - update the destination variable
         // so that it points to the correct value.
         con_var->value = var->value;
-       
-        //if((rc = con_var->inst->class_desc->members->value( con_var->inst, con_var )) != kOkRC )
-        //  break;
-       
+        
+        cwLogMod("%s:%i %s:%i -> %s:%i %s:%i\n",
+                 var->inst->label,var->inst->label_sfx_id,
+                 var->label,var->label_sfx_id,
+                 con_var->inst->label,con_var->inst->label_sfx_id,
+                 con_var->label,con_var->label_sfx_id );
+
+        // Call the value() function on the connected variable
+        if((rc = var_call_custom_value_func(con_var)) != kOkRC )
+          break;
+               
       }
       return rc;
     }
 
-    template< typename T >
-    void _var_setter( variable_t* var, unsigned local_value_idx, T val )
-    {
-      cwLogError(kAssertFailRC,"Unimplemented variable setter.");
-      assert(0);
-    }
 
-    template<>
-    void _var_setter<bool>( variable_t* var, unsigned local_value_idx, bool val )
-    {
-      var->local_value[ local_value_idx ].u.b   = val;
-      var->local_value[ local_value_idx ].flags = kBoolTFl;
-      cwLogMod("%s:%i.%s:%i ch:%i %i (bool).",var->inst->label,var->inst->label_sfx_id,var->label,var->label_sfx_id,var->chIdx,val);
-    }
-
-    template<>
-    void _var_setter<unsigned>( variable_t* var, unsigned local_value_idx, unsigned val )
-    {
-      var->local_value[ local_value_idx ].u.u   = val;
-      var->local_value[ local_value_idx ].flags = kUIntTFl;
-      cwLogMod("%s:%i.%s:%i ch:%i %i (uint).",var->inst->label,var->inst->label_sfx_id,var->label,var->label_sfx_id,var->chIdx,val);
-    }
-
-    template<>
-    void _var_setter<int>( variable_t* var, unsigned local_value_idx, int val )
-    {
-      var->local_value[ local_value_idx ].u.i   = val;
-      var->local_value[ local_value_idx ].flags = kIntTFl;
-      cwLogMod("%s:%i.%s:%i ch:%i %i (int).",var->inst->label,var->inst->label_sfx_id,var->label,var->label_sfx_id,var->chIdx,val);
-    }
-
-    template<>
-    void _var_setter<float>( variable_t* var, unsigned local_value_idx, float val )
-    {
-      var->local_value[ local_value_idx ].u.f   = val;
-      var->local_value[ local_value_idx ].flags = kFloatTFl;
-      cwLogMod("%s:%i.%s:%i ch:%i %f (float).",var->inst->label,var->inst->label_sfx_id,var->label,var->label_sfx_id,var->chIdx,val);
-    }
-
-    template<>
-    void _var_setter<double>( variable_t* var, unsigned local_value_idx, double val )
-    {
-      var->local_value[ local_value_idx ].u.d   = val;
-      var->local_value[ local_value_idx ].flags = kDoubleTFl;
-      cwLogMod("%s:%i.%s:%i ch:%i %f (double).",var->inst->label,var->inst->label_sfx_id,var->label,var->label_sfx_id,var->chIdx,val);
-    }
-
-    template<>
-    void _var_setter<const char*>( variable_t* var, unsigned local_value_idx, const char* val )
-    {      
-      var->local_value[ local_value_idx ].u.s   = mem::duplStr(val);
-      var->local_value[ local_value_idx ].flags = kStringTFl;
-      cwLogMod("%s:%i.%s:%i ch:%i %s (string).",var->inst->label,var->inst->label_sfx_id,var->label,var->label_sfx_id,var->chIdx,val);
-    }
-
-    template<>
-    void _var_setter<abuf_t*>( variable_t* var, unsigned local_value_idx, abuf_t* val )
-    {
-      var->local_value[ local_value_idx ].u.abuf   = val;
-      var->local_value[ local_value_idx ].flags = kABufTFl;
-      cwLogMod("%s:%i.%s:%i ch:%i %s (abuf).",var->inst->label,var->inst->label_sfx_id,var->label,var->label_sfx_id,var->chIdx,abuf==nullptr ? "null" : "valid");
-    }
-
-    template<>
-    void _var_setter<mbuf_t*>( variable_t* var, unsigned local_value_idx, mbuf_t* val )
-    {
-      var->local_value[ local_value_idx ].u.mbuf   = val;
-      var->local_value[ local_value_idx ].flags = kMBufTFl;
-      cwLogMod("%s:%i.%s:%i ch:%i %s (abuf).",var->inst->label,var->inst->label_sfx_id,var->label,var->label_sfx_id,var->chIdx,mbuf==nullptr ? "null" : "valid");
-    }
     
-    template<>
-    void _var_setter<fbuf_t*>( variable_t* var, unsigned local_value_idx, fbuf_t* val )
-    {
-      var->local_value[ local_value_idx ].u.fbuf = val;
-      var->local_value[ local_value_idx ].flags  = kFBufTFl;
-      cwLogMod("%s:%i.%s:%i ch:%i %s (fbuf).",var->inst->label,var->inst->label_sfx_id,var->label,var->label_sfx_id,var->chIdx,fbuf==nullptr ? "null" : "valid");
-    }
-        
-    template< typename T >
-    rc_t _var_set_template( variable_t* var, unsigned typeFlag, T val )
+    // 'typeFlag' is the type (tflag) of 'val'.
+    template< typename T >    
+    rc_t _var_set_template( variable_t* var, unsigned argTypeFlag, T val )
     {
       rc_t rc;
-      
+      // var->type is the allowable type for this var's value.
+      unsigned value_type_flag    = var->type;
+
       unsigned next_local_value_idx = (var->local_value_idx + 1) % kLocalValueN;
       
       // store the pointer to the current value of this variable
       value_t* original_value     = var->value;
       unsigned original_value_idx = var->local_value_idx;
-
+      
       // verify that this is a legal assignment
-      if((rc = _validate_var_assignment( var, typeFlag )) != kOkRC )
-      {        
+      if((rc = _validate_var_assignment( var, argTypeFlag )) != kOkRC )
         goto errLabel;
-      }
       
       // release the previous value in the next slot
       _value_release(&var->local_value[next_local_value_idx]);
 
+      // if the value type of this variable has not been established
+      if( value_type_flag == kInvalidTFl  )
+      {
+        // if the var desc is a single type then use that ....
+        if( math::isPowerOfTwo(var->varDesc->type) )
+          value_type_flag = var->varDesc->type;
+        else // ... Otherwise select a type from the one of the possible flags given by the var desc
+          value_type_flag = var->varDesc->type & argTypeFlag;
+
+        // if the incoming type is not in the set of allowable types then it is an error
+        if( value_type_flag == 0  )
+        {
+          rc = cwLogError(kTypeMismatchRC,"The type 0x%x is not valid for the variable: %s:%i %s:%i type:0x%x.",
+                          argTypeFlag,var->inst->label,var->inst->label_sfx_id,var->label,var->label_sfx_id,var->varDesc->type);
+          goto errLabel;
+        }
+      }
+      
+      // set the type of the LHS to force the incoming value to be coerced to this type
+      var->local_value[ next_local_value_idx ].tflag = value_type_flag;
+
       // set the new local value
-      _var_setter(var,next_local_value_idx,val);
+      if((rc = _val_set(var->local_value + next_local_value_idx, val )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Value set failed on '%s:%i %s:%i",var->inst->label,var->inst->label_sfx_id,var->label,var->label_sfx_id);
+        goto errLabel;
+      }
 
       // make the new local value current
       var->value           = var->local_value + next_local_value_idx;
@@ -597,8 +843,10 @@ namespace cw
         // call because calls' to 'proc.value()' will see the instance in a incomplete state)
         // Note 2: If this call returns an error then the value assignment is cancelled
         // and the value does not change.
-        rc = var->inst->class_desc->members->value( var->inst, var );        
+        var_call_custom_value_func( var );
       }
+
+      //printf("%p set: %s:%s  0x%x\n",var->value, var->inst->label,var->label,var->value->tflag);
 
       if( rc == kOkRC )
       {
@@ -617,25 +865,11 @@ namespace cw
     }
     
     
-    bool is_connected_to_source_proc( const variable_t* var )
-    {
-      // if this var does not have a 'src_ptr' then it can't be connected to an external proc
-      if( var->src_var == nullptr || var->value == nullptr )
-        return false;
+    
 
-      // if this var is using a local value then it can't be connected to an external proc
-      for(unsigned i=0; i<kLocalValueN; ++i)
-        if( var->value == var->local_value + i )
-          return false;
-
-      return true;
-    }
-
-    bool is_a_source_var( const variable_t* var )
-    { return var->connect_link != nullptr; }
-
+    // 'valueTypeFlag' is the type (tflag) of 'value'
     template< typename T >
-    rc_t _var_set_driver( variable_t* var, unsigned typeFlag, T value )
+    rc_t _var_set_driver( variable_t* var, unsigned valueTypeFlag, T value )
     {
       rc_t rc;
 
@@ -647,15 +881,18 @@ namespace cw
       // if this assignment targets a specific channel ...
       if( var->chIdx != kAnyChIdx )
       {
-        rc = _var_set_template( var, typeFlag, value ); // ...  then set it alone
+        rc = _var_set_template( var, valueTypeFlag, value ); // ...  then set it alone
       }
       else // ... otherwise set all channels.
       {
         for(; var!=nullptr; var=var->ch_link)
-          if((rc = _var_set_template( var, typeFlag, value )) != kOkRC)
+          if((rc = _var_set_template( var, valueTypeFlag, value )) != kOkRC)
             break;
       }
 
+      if(rc != kOkRC )
+        rc = cwLogError(rc,"Variable value set failed on '%s:%i %s:%i",cwStringNullGuard(var->inst->label),var->inst->label_sfx_id,cwStringNullGuard(var->label),var->label_sfx_id);
+      
       return rc;
     }
 
@@ -703,24 +940,77 @@ namespace cw
     {
       rc_t rc = kOkRC;
 
-      // get the variable type - note that the value type (value->flags) may be differnt
-      unsigned typeFlag = var->varDesc->type & kTypeMask;
+      // Determine the flow variable type of cfg. argument 'value'.
+      unsigned value_flag = 0;
       
-      switch( typeFlag )
+      switch( value->type->id )
+      {
+        case kCharTId:  
+        case kUInt8TId:
+        case kUInt16TId:
+        case kUInt32TId:
+          value_flag = kUIntTFl;
+          break;
+          
+        case kInt8TId:
+        case kInt16TId:
+        case kInt32TId:
+          value_flag = kIntTFl;
+          break;
+          
+        case kInt64TId:
+        case kUInt64TId:
+          rc = cwLogError(kInvalidArgRC,"The flow system does not currently implement 64bit integers.");
+          goto errLabel;
+          break;
+          
+        case kFloatTId:
+          value_flag = kFloatTFl;
+          break;
+          
+        case kDoubleTId:
+          value_flag = kDoubleTFl;
+          break;
+          
+        case kBoolTId:
+          value_flag = kBoolTFl;
+          break;
+          
+        case kStringTId:
+        case kCStringTId:
+          value_flag = kStringTFl;
+          break;
+          
+        default:
+          value_flag = kCfgTFl;
+        
+      }
+
+      /*
+      if( !cwIsFlag(var->varDesc->type & kTypeMask, value_flag) )
+      {
+        rc = cwLogError(kTypeMismatchRC,"The var desc class type 0x%x does not permit the var to be instantiated with the type %s (0x%x).",var->varDesc->type,_typeFlagToLabel(value_flag),value_flag);
+        goto errLabel;
+      }
+      */
+      
+      switch( value_flag )
       {
         case kBoolTFl:
           {
             bool v;
+            // assign the value of 'value' to to 'v' (do type conversion if necessary)
             if((rc = value->value(v)) == kOkRC )
-              rc = _var_set_driver( var, typeFlag, v );
+              // set the value of 'var' where 'v' is the new value and 'value_flag' is the type of 'v'.
+              rc = _var_set_driver( var, value_flag, v );
           }
-          break;
+           break;
           
         case kUIntTFl:
           {
             unsigned v;
             if((rc = value->value(v)) == kOkRC )
-              rc = _var_set_driver( var, typeFlag, v );
+              rc = _var_set_driver( var, value_flag, v );
           }
           break;
           
@@ -728,7 +1018,7 @@ namespace cw
           {
             int v;
             if((rc = value->value(v)) == kOkRC )
-              rc = _var_set_driver( var, typeFlag, v );
+              rc = _var_set_driver( var, value_flag, v );
           }
           break;
           
@@ -736,7 +1026,7 @@ namespace cw
           {
             float v;
             if((rc = value->value(v)) == kOkRC )
-              rc = _var_set_driver( var, typeFlag, v );
+              rc = _var_set_driver( var, value_flag, v );
           }
           break;
 
@@ -744,7 +1034,7 @@ namespace cw
           {
             double v;
             if((rc = value->value(v)) == kOkRC )
-              rc = _var_set_driver( var, typeFlag, v );
+              rc = _var_set_driver( var, value_flag, v );
           }
           break;
           
@@ -752,21 +1042,31 @@ namespace cw
           {
             const char* v;
             if((rc = value->value(v)) == kOkRC )
-              rc = _var_set_driver( var, typeFlag, v );
+              rc = _var_set_driver( var, value_flag, v );
           }
           break;
 
-        default:
-          rc = cwLogError(kOpFailRC,"The variable type 0x%x cannot yet be set via a preset.", var->varDesc->type );
+        case kCfgTFl:
+          {
+            //const object_t* v;
+            //if((rc = value->value(v)) == kOkRC )
+            rc = _var_set_driver( var, value_flag, value );
+          }
+          break;
+          
+       default:
+          rc = cwLogError(kOpFailRC,"The variable type 0x%x cannot yet be set via a cfg.", var->varDesc->type );
           goto errLabel;
       }
 
     errLabel:
       if( rc != kOkRC )
         rc = cwLogError(kSyntaxErrorRC,"The %s:%i.%s:%i could not extract a type:%s from a configuration value.",var->inst->label,var->inst->label_sfx_id,var->label,var->label_sfx_id,_typeFlagToLabel(var->varDesc->type & kTypeMask));
+      
       return rc;
       
     }
+    
 
     rc_t  _var_map_id_to_index(  instance_t* inst, unsigned vid, unsigned chIdx, unsigned& idxRef )
     {
@@ -830,9 +1130,51 @@ namespace cw
       
     }
 
+    /*
+    void _var_set_value_to_typed_null( variable_t* var, unsigned type_flag )
+    {
+      for(unsigned i=0; i<kLocalValueN; ++i)
+      {
+        assert( var->local_value[i].tflag == kInvalidTFl );
+        
+        // set the var-value to a typed null value - this will force later settings to be coerced to this type
+        set_null( var->local_value[i], type_flag );
+      }
+
+      var->value = var->local_value;
+      
+    }
+    */
+    
+    rc_t _var_set_type( variable_t* var, unsigned type_flag )
+    {
+      rc_t rc = kOkRC;
+
+      if( cwIsNotFlag(var->classVarDesc->type,kRuntimeTFl) )
+      {
+        rc = cwLogError(kOpFailRC,"It is invalid to change the type of a statically (non-runtime) type variable.");
+        goto errLabel;
+      }
+      
+      if( var->localVarDesc == nullptr )
+      {
+        var->localVarDesc    = mem::allocZ<var_desc_t>();
+        *(var->localVarDesc) = *(var->classVarDesc);
+        var->localVarDesc->link = nullptr;    
+      }
+  
+      var->localVarDesc->type = type_flag;
+      var->varDesc            = var->localVarDesc;
+
+      //_var_set_value_to_typed_null(var,type_flag);
+      
+    errLabel:
+      return rc;
+    }
+    
     // Create a variable and set it's value from 'value_cfg'.
     // If 'value_cfg' is null then use the value from var->varDesc->val_cfg.
-    rc_t _var_create( instance_t* inst, const char* var_label, unsigned sfx_id, unsigned id, unsigned chIdx, const object_t* value_cfg, variable_t*& varRef )
+    rc_t _var_create( instance_t* inst, const char* var_label, unsigned sfx_id, unsigned id, unsigned chIdx, const object_t* value_cfg, unsigned altTypeFl, variable_t*& varRef )
     {
       rc_t        rc  = kOkRC;
       variable_t* var = nullptr;
@@ -858,19 +1200,24 @@ namespace cw
       var = mem::allocZ<variable_t>();
 
       var->varDesc      = vd;
+      var->classVarDesc = vd;
       var->inst         = inst;
       var->label        = mem::duplStr(var_label);
       var->label_sfx_id = sfx_id;
       var->vid          = id;
       var->chIdx        = chIdx;
       var->value        = nullptr;
+      var->type         = kInvalidTFl;
 
+      if( altTypeFl != kInvalidTFl )
+        _var_set_type(var,altTypeFl);
+      
       // if no value was given then set the value to the value given in the class
       if( value_cfg == nullptr )
         value_cfg = var->varDesc->val_cfg;
 
       // if value_cfg is valid set the variable value
-      if( value_cfg != nullptr )
+      if( value_cfg != nullptr && cwIsNotFlag(vd->type,kRuntimeTFl))
         if((rc = _set_var_value_from_cfg( var, value_cfg )) != kOkRC )
           goto errLabel;
 
@@ -897,23 +1244,6 @@ namespace cw
       return rc;
     }
 
-    void _var_print( const variable_t* var )
-    {
-      const char* conn_label  = is_connected_to_source_proc(var) ? "extern" : "      ";
-    
-      printf("  %20s:%5i id:%4i ch:%3i : %s  : ", var->label, var->label_sfx_id, var->vid, var->chIdx, conn_label );
-    
-      if( var->value == nullptr )
-        _value_print( &var->local_value[0] );
-      else
-        _value_print( var->value );
-
-      if( var->src_var != nullptr )
-        printf(" src:%s:%i.%s:%i",var->src_var->inst->label,var->src_var->inst->label_sfx_id,var->src_var->label,var->src_var->label_sfx_id);
-
-      printf("\n");    
-    }
-    
     
     rc_t _preset_set_var_value( instance_t* inst, const char* var_label, unsigned sfx_id, unsigned chIdx, const object_t* value )
     {
@@ -932,9 +1262,6 @@ namespace cw
 
       return rc;
     }
-
-
-    
   }
 }
 
@@ -1042,7 +1369,6 @@ cw::flow::fbuf_t* cw::flow::fbuf_create( srate_t srate, unsigned chN, const unsi
   return f;  
 }
 
-
 cw::flow::fbuf_t*  cw::flow::fbuf_create( srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_sample_t** magV, const fd_sample_t** phsV, const fd_sample_t** hzV )
 {
   unsigned maxBinN_V[ chN ];
@@ -1053,10 +1379,7 @@ cw::flow::fbuf_t*  cw::flow::fbuf_create( srate_t srate, unsigned chN, unsigned 
   vop::fill( binN_V, chN, binN );
   vop::fill( hopSmpN_V, chN, binN );
   return fbuf_create( srate, chN, maxBinN_V, binN_V, hopSmpN_V, magV, phsV, hzV );
-
 }
-
-
 
 void cw::flow::fbuf_destroy( fbuf_t*& fbuf )
 {
@@ -1120,6 +1443,9 @@ unsigned cw::flow::value_type_label_to_flag( const char* s )
   return flags;
 }
 
+const char* cw::flow::value_type_flag_to_label( unsigned flag )
+{  return _typeFlagToLabel(flag); }
+  
 
 cw::flow::class_desc_t* cw::flow::class_desc_find( flow_t* p, const char* label )
 {
@@ -1186,6 +1512,48 @@ void cw::flow::network_print( const network_t& net )
   }
 }
 
+cw::rc_t cw::flow::instance_validate( instance_t* inst )
+{
+  rc_t rc = kOkRC;
+
+  for(variable_t* var=inst->varL; var!=nullptr; var=var->var_link)
+  {
+    if( var->label == nullptr )
+    {
+      rc = cwLogError(kInvalidStateRC,"A var with no label was encountered.");
+      continue;      
+    }
+    
+    if( var->value == nullptr )
+    {
+      rc = cwLogError(kInvalidStateRC,"The var '%s:%i' has no value.",var->label,var->label_sfx_id);
+      continue;      
+    }
+
+    if(!math::isPowerOfTwo( var->value->tflag ) )
+    {
+      rc = cwLogError(kInvalidStateRC,"The var '%s:%i' has the invalid type flag:0x%x",var->label,var->label_sfx_id,var->value->tflag);
+      continue;
+    }
+
+    if( !(var->varDesc->type & var->value->tflag) )
+    {
+      rc = cwLogError(kInvalidStateRC, "The value type flag '%s' (0x%x) of the var '%s:%i' is not found in the variable class type flags: '%s' (0x%x)",
+                      _typeFlagToLabel(var->value->tflag),var->value->tflag,
+                      var->label,var->label_sfx_id,
+                      _typeFlagToLabel(var->varDesc->type),var->varDesc->type);
+      continue;
+    }
+
+    // By setting the var->type field all future assignments to this variable
+    // must be coercible to this type.  See _var_set_template()
+    var->type = var->value->tflag;
+  }
+  
+  return rc;
+}
+
+
 cw::flow::instance_t* cw::flow::instance_find( network_t& net, const char* inst_label, unsigned sfx_id )
 {
   for(unsigned i=0; i<net.proc_arrayN; ++i)
@@ -1231,6 +1599,14 @@ void cw::flow::instance_print( instance_t* inst )
     inst->class_desc->members->report( inst );
 }
 
+unsigned cw::flow::instance_var_count( instance_t* inst )
+{
+  unsigned n = 0;
+  for(variable_t* var=inst->varL; var!=nullptr; var=var->var_link)
+    ++n;
+
+  return n;
+}
 
 
 void cw::flow::_var_destroy( variable_t* var )
@@ -1239,17 +1615,21 @@ void cw::flow::_var_destroy( variable_t* var )
   {
     for(unsigned i=0; i<kLocalValueN; ++i)
       _value_release(var->local_value+i);
+
+    if( var->localVarDesc != nullptr )
+      mem::release(var->localVarDesc);
+    
     mem::release(var->label);
     mem::release(var);
   }
 }
 
 
-cw::rc_t cw::flow::var_create( instance_t* inst, const char* var_label, unsigned sfx_id, unsigned id, unsigned chIdx, const object_t* value_cfg, variable_t*& varRef )
+cw::rc_t cw::flow::var_create( instance_t* inst, const char* var_label, unsigned sfx_id, unsigned id, unsigned chIdx, const object_t* value_cfg, unsigned altTypeFl, variable_t*& varRef )
 {
   rc_t rc = kOkRC;
- 
-  rc = _var_create( inst, var_label, sfx_id, id, chIdx, value_cfg, varRef );
+
+  rc = _var_create( inst, var_label, sfx_id, id, chIdx, value_cfg, altTypeFl, varRef );
 
   return rc;
 }
@@ -1281,7 +1661,7 @@ cw::rc_t  cw::flow::var_channelize( instance_t* inst, const char* var_label, uns
   if( var == nullptr && chIdx != kAnyChIdx )
   {
     // create the channelized var
-    if((rc = _var_create( inst, var_label, sfx_id, vid, chIdx, value_cfg, var )) != kOkRC )
+    if((rc = _var_create( inst, var_label, sfx_id, vid, chIdx, value_cfg, kInvalidTFl, var )) != kOkRC )
       goto errLabel;
 
     // if no value was set then set the value from the 'any' channel
@@ -1320,6 +1700,85 @@ cw::rc_t  cw::flow::var_channelize( instance_t* inst, const char* var_label, uns
   
   return rc;
 }
+
+cw::rc_t cw::flow::var_call_custom_value_func( variable_t* var )
+{
+  rc_t rc;
+  if((rc = var->inst->class_desc->members->value( var->inst, var )) != kOkRC )
+    goto errLabel;
+  
+  if( var->flags & kLogVarFl )
+  {
+    printf("%10s:%5i", var->inst->label,var->inst->label_sfx_id);
+    _var_print(var);
+  }
+  
+errLabel:
+  return rc;
+  
+}
+
+cw::rc_t cw::flow::var_flags( instance_t* inst, unsigned chIdx, const char* var_label, unsigned sfx_id, unsigned& flags_ref )
+{
+  rc_t        rc  = kOkRC;
+  variable_t* var = nullptr;
+  
+  flags_ref = 0;
+  
+  if((rc = _var_find_on_label_and_ch(inst,var_label,sfx_id,chIdx,var)) != kOkRC )
+    goto errLabel;
+
+  flags_ref = var->flags;
+
+errLabel:
+  return rc;
+}
+    
+cw::rc_t cw::flow::var_set_flags( instance_t* inst, unsigned chIdx, const char* var_label, unsigned sfx_id, unsigned flag )
+{
+  rc_t        rc  = kOkRC;
+  variable_t* var = nullptr;
+  
+  if((rc = _var_find_on_label_and_ch(inst,var_label,sfx_id,chIdx,var)) != kOkRC )
+    goto errLabel;
+  
+
+  var->flags |= flag;
+
+errLabel:
+  return rc;
+}
+    
+cw::rc_t cw::flow::var_clr_flags( instance_t* inst, unsigned chIdx, const char* var_label, unsigned sfx_id, unsigned flag )
+{
+  rc_t        rc  = kOkRC;
+  variable_t* var = nullptr;
+  
+  if((rc = _var_find_on_label_and_ch(inst,var_label,sfx_id,chIdx,var)) != kOkRC )
+    goto errLabel;
+
+  var->flags = cwClrFlag(var->flags,flag);
+errLabel:
+  return rc;
+}
+/*
+cw::rc_t cw::flow::var_set_type( instance_t* inst, unsigned chIdx, const char* var_label, unsigned sfx_id, unsigned type_flag )  
+{
+  rc_t rc = kOkRC;
+  variable_t* var = nullptr;
+  
+  if((rc = _var_find_on_label_and_ch(inst,var_label,sfx_id,chIdx,var)) != kOkRC )
+    goto errLabel;
+
+  rc = _var_set_type(var,type_flag);
+  
+errLabel:
+  if( rc != kOkRC )
+    rc = cwLogError(rc,"Type set failed on the variable:'%s:%i",cwStringNullGuard(var_label),sfx_id);
+  
+  return rc;
+}
+*/            
 
 bool cw::flow::var_exists( instance_t* inst, const char* label, unsigned sfx_id, unsigned chIdx )
 { return _var_find_on_label_and_ch(inst,label,sfx_id,chIdx) != nullptr; }
@@ -1492,6 +1951,60 @@ cw::rc_t cw::flow::var_register( instance_t* inst, const char* var_label, unsign
   return rc;
 }
 
+bool cw::flow::is_connected_to_source_proc( const variable_t* var )
+{
+  // if this var does not have a 'src_ptr' then it can't be connected to an external proc
+  if( var->src_var == nullptr || var->value == nullptr )
+    return false;
+
+  // if this var is using a local value then it can't be connected to an external proc
+  for(unsigned i=0; i<kLocalValueN; ++i)
+    if( var->value == var->local_value + i )
+      return false;
+
+  return true;
+}
+
+bool cw::flow::is_a_source_var( const variable_t* var )
+{ return var->dst_head != nullptr; }
+
+cw::rc_t  cw::flow::var_mult_sfx_id_array( instance_t* inst, const char* var_label, unsigned* idA, unsigned idAllocN, unsigned& idN_ref )
+{
+  rc_t rc = kOkRC;
+
+  idN_ref = 0;
+
+  // for each variable whose 'label' is 'var_label'
+  for(variable_t* var=inst->varL; var!=nullptr; var=var->var_link)
+    if( textIsEqual(var->label,var_label) )
+    {
+      // scan idA[] for a matching sfx_id
+      unsigned i=0;
+      for(; i<idN_ref; ++i)
+        if( idA[i] == var->label_sfx_id )
+          break;
+
+      // if the sfx_id of this var has not yet been included in idA[]
+      if( i == idN_ref )
+      {
+        // ... and we still have space left in the output arrau
+        if( idN_ref >= idAllocN )
+        {
+          rc = cwLogError(kBufTooSmallRC,"The mult-sfx-id result array is too small for the var:'%s'.",cwStringNullGuard(var_label));
+          goto errLabel;
+        }
+
+        // store this sfx_id in idA[]
+        idA[idN_ref++] = var->label_sfx_id;
+      }
+    }
+  
+errLabel:
+  if( rc != kOkRC )
+    idN_ref = 0;
+  
+  return rc;
+}
 
 cw::rc_t cw::flow::var_register_and_set( instance_t* inst, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, variable_t*& varRef )
 {
@@ -1588,6 +2101,54 @@ cw::rc_t  cw::flow::var_get( const variable_t* var, const mbuf_t*& valRef )
 cw::rc_t  cw::flow::var_get( variable_t* var, mbuf_t*& valRef )
 { return _val_get_driver(var,valRef); }
 
+cw::rc_t  cw::flow::var_get( const variable_t* var, const object_t*& valRef )
+{ return _val_get_driver(var,valRef); }
+
+cw::rc_t cw::flow::var_set( variable_t* var, const value_t* val )
+{
+  rc_t rc = kOkRC;
+  
+  switch( val->tflag )
+  {
+    case kBoolTFl:   rc = _var_set_driver(var,val->tflag,val->u.b); break;
+    case kUIntTFl:   rc = _var_set_driver(var,val->tflag,val->u.u); break;
+    case kIntTFl:    rc = _var_set_driver(var,val->tflag,val->u.i); break;
+    case kFloatTFl:  rc = _var_set_driver(var,val->tflag,val->u.f); break;
+    case kDoubleTFl: rc = _var_set_driver(var,val->tflag,val->u.d); break;
+    case kStringTFl: rc = _var_set_driver(var,val->tflag,val->u.s); break;
+    case kCfgTFl:    rc = _var_set_driver(var,val->tflag,val->u.cfg); break;
+    case kABufTFl:   rc = _var_set_driver(var,val->tflag,val->u.abuf); break;
+    case kFBufTFl:   rc = _var_set_driver(var,val->tflag,val->u.fbuf); break;
+    case kMBufTFl:   rc = _var_set_driver(var,val->tflag,val->u.mbuf); break;
+    default:
+      rc = cwLogError(kNotImplementedRC,"The var_set() from value_t has not been implemented for the type 0x%x.",val->tflag);
+  }
+
+  return rc;
+}
+
+
+cw::rc_t cw::flow::var_set( variable_t* var, bool val )            { return _var_set_driver(var,kBoolTFl,val); }
+cw::rc_t cw::flow::var_set( variable_t* var, uint_t val )          { return _var_set_driver(var,kUIntTFl,val); }
+cw::rc_t cw::flow::var_set( variable_t* var, int_t val )           { return _var_set_driver(var,kIntTFl,val); }
+cw::rc_t cw::flow::var_set( variable_t* var, float val )           { return _var_set_driver(var,kFloatTFl,val); }
+cw::rc_t cw::flow::var_set( variable_t* var, double val )          { return _var_set_driver(var,kDoubleTFl,val); }
+cw::rc_t cw::flow::var_set( variable_t* var, const char* val )     { return _var_set_driver(var,kStringTFl,val); }
+cw::rc_t cw::flow::var_set( variable_t* var, abuf_t* val )         { return _var_set_driver(var,kABufTFl,val); }
+cw::rc_t cw::flow::var_set( variable_t* var, fbuf_t* val )         { return _var_set_driver(var,kFBufTFl,val); }
+cw::rc_t cw::flow::var_set( variable_t* var, mbuf_t* val )         { return _var_set_driver(var,kMBufTFl,val); }
+cw::rc_t cw::flow::var_set( variable_t* var, const object_t* val ) { return _var_set_driver(var,kCfgTFl,val); }
+
+cw::rc_t cw::flow::var_set( instance_t* inst, unsigned vid, unsigned chIdx, const value_t* val )
+{
+  rc_t        rc  = kOkRC;
+  variable_t* var = nullptr;
+  
+  if((rc = _var_find_to_set(inst, vid, chIdx, val->tflag, var )) == kOkRC )
+    rc = var_set(var,val);
+  
+  return rc;
+}    
 
 cw::rc_t cw::flow::var_set( instance_t* inst, unsigned vid, unsigned chIdx, bool val )
 {
@@ -1595,7 +2156,7 @@ cw::rc_t cw::flow::var_set( instance_t* inst, unsigned vid, unsigned chIdx, bool
   variable_t* var = nullptr;
   
   if((rc = _var_find_to_set(inst, vid, chIdx, kBoolTFl, var )) == kOkRC )
-    _var_set_driver( var, kBoolTFl, val );
+    rc = _var_set_driver( var, kBoolTFl, val );
   
   return rc;    
 }
@@ -1606,7 +2167,7 @@ cw::rc_t cw::flow::var_set( instance_t* inst, unsigned vid, unsigned chIdx, uint
   variable_t* var = nullptr;
   
   if((rc = _var_find_to_set(inst, vid, chIdx, kUIntTFl, var )) == kOkRC )
-    _var_set_driver( var, kUIntTFl, val );
+    rc = _var_set_driver( var, kUIntTFl, val );
   
   return rc;    
 }
@@ -1617,7 +2178,7 @@ cw::rc_t cw::flow::var_set( instance_t* inst, unsigned vid, unsigned chIdx, int_
   variable_t* var = nullptr;
   
   if((rc = _var_find_to_set(inst, vid, chIdx, kIntTFl, var )) == kOkRC )
-    _var_set_driver( var, kIntTFl, val );
+    rc = _var_set_driver( var, kIntTFl, val );
   
   return rc;    
 }
@@ -1628,7 +2189,7 @@ cw::rc_t cw::flow::var_set( instance_t* inst, unsigned vid, unsigned chIdx, floa
   variable_t* var = nullptr;
   
   if((rc = _var_find_to_set(inst, vid, chIdx, kFloatTFl, var )) == kOkRC )
-    _var_set_driver( var, kFloatTFl, val );
+    rc = _var_set_driver( var, kFloatTFl, val );
   
   return rc;    
 }
@@ -1639,7 +2200,7 @@ cw::rc_t cw::flow::var_set( instance_t* inst, unsigned vid, unsigned chIdx, doub
   variable_t* var = nullptr;
   
   if((rc = _var_find_to_set(inst, vid, chIdx, kDoubleTFl, var )) == kOkRC )
-    _var_set_driver( var, kDoubleTFl, val );
+    rc = _var_set_driver( var, kDoubleTFl, val );
   
   return rc;    
 }
@@ -1650,10 +2211,22 @@ cw::rc_t cw::flow::var_set( instance_t* inst, unsigned vid, unsigned chIdx, cons
   variable_t* var = nullptr;
   
   if((rc = _var_find_to_set(inst, vid, chIdx, kStringTFl, var )) == kOkRC )
-    _var_set_driver( var, kStringTFl, val );
+    rc = _var_set_driver( var, kStringTFl, val );
   
   return rc;    
 }
+
+cw::rc_t cw::flow::var_set( instance_t* inst, unsigned vid, unsigned chIdx, const object_t* val )
+{
+  rc_t        rc  = kOkRC;
+  variable_t* var = nullptr;
+  
+  if((rc = _var_find_to_set(inst, vid, chIdx, kCfgTFl, var )) == kOkRC )
+    rc = _var_set_driver( var, kCfgTFl, val );
+  
+  return rc;    
+}
+
 
 const cw::flow::preset_t* cw::flow::class_preset_find( class_desc_t* cd, const char* preset_label )
 {

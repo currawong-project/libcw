@@ -724,10 +724,10 @@ namespace cw
     
     //------------------------------------------------------------------------------------------------------------------
     //
-    // AudioFileIn
+    // audio_file_in
     //
     
-    namespace audioFileIn
+    namespace audio_file_in
     {
       enum
       {
@@ -881,10 +881,10 @@ namespace cw
 
     //------------------------------------------------------------------------------------------------------------------
     //
-    // AudioFileOut
+    // audio_file_out
     //
     
-    namespace audioFileOut
+    namespace audio_file_out
     {
       enum
       {
@@ -1753,6 +1753,7 @@ namespace cw
 
         inst_t* inst = (inst_t*)ctx->userPtr;
 
+        mem::release(inst->phaseA);
         mem::release(inst);
         
         return rc;
@@ -3346,7 +3347,7 @@ namespace cw
         bool        trigFl        = false;
         variable_t* gainVar       = nullptr;
         abuf_t*     srateSrc      = nullptr;
-        double      dum;
+        double      dum_dbl;
 
         inst_t* p = mem::allocZ<inst_t>();
 
@@ -3360,7 +3361,7 @@ namespace cw
                                       kSrateRefPId,       "srateSrc",  kBaseSfxId, srateSrc,
                                       kDurMsPId,          "durMs",     kBaseSfxId, p->xfadeDurMs,
                                       kTriggerPId,         "trigger",  kBaseSfxId, trigFl,
-                                      kGainPId,            "gain",     kBaseSfxId, dum)) != kOkRC )
+                                      kGainPId,            "gain",     kBaseSfxId, dum_dbl)) != kOkRC )
         {
           goto errLabel; 
         }
@@ -3383,7 +3384,7 @@ namespace cw
         for(unsigned i=1; i<p->net_proc->internal_net->poly_cnt; ++i)
         {
           variable_t* dum;
-          if((rc = var_create(ctx, "gain", i, kGainPId+i, kAnyChIdx, nullptr, dum )) != kOkRC )
+          if((rc = var_create(ctx, "gain", i, kGainPId+i, kAnyChIdx, nullptr, kInvalidTFl, dum )) != kOkRC )
           {
             cwLogError(rc,"'gain:%i' create failed.",i);
             goto errLabel;
@@ -3790,44 +3791,21 @@ namespace cw
     namespace number
     {
       enum {
-        kInPId,
-        kBoolPId,
-        kUIntPId,
-        kIntPId,
-        kFloatPId,
-        kOutPId
+        kValuePId,
       };
       
-      typedef struct
-      {
-        bool delta_fl;
-        double value;
-      } inst_t;
 
 
       rc_t create( instance_t* proc )
       {
-        rc_t    rc   = kOkRC;        
-        inst_t* p = mem::allocZ<inst_t>();
-        proc->userPtr = p;
+        rc_t        rc    = kOkRC;        
+        double      value = 0;
 
         if((rc  = var_register_and_get(proc,kAnyChIdx,
-                                       kInPId,"in",kBaseSfxId,p->value)) != kOkRC )
+                                       kValuePId,"value",kBaseSfxId,value)) != kOkRC )
         {
           goto errLabel;
         }
-        
-        if((rc = var_register_and_set(proc,kAnyChIdx,
-                                      kBoolPId,"bool",kBaseSfxId,p->value != 0,
-                                      kUIntPId,"uint",kBaseSfxId,(unsigned)p->value,
-                                      kIntPId,"int",kBaseSfxId,(int)p->value,
-                                      kFloatPId,"float",kBaseSfxId,(float)p->value,
-                                      kOutPId,"out",kBaseSfxId,p->value )) != kOkRC )
-        {
-          goto errLabel;
-        }
-        
-        p->delta_fl = true;
 
       errLabel:
         return rc;
@@ -3836,45 +3814,18 @@ namespace cw
       rc_t destroy( instance_t* proc )
       {
         rc_t rc = kOkRC;
-
-        inst_t* p = (inst_t*)proc->userPtr;
-        mem::release(p);        
         return rc;
       }
 
       rc_t value( instance_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
-        if( var->vid == kInPId )
-        {
-          double v;
-          if((rc = var_get(var,v)) == kOkRC )
-          {
-            inst_t* p = (inst_t*)proc->userPtr;
-            if( !p->delta_fl )
-              p->delta_fl = v != p->value;
-            p->value    = v;
-            
-          }
-        }
         return rc;
       }
 
       rc_t exec( instance_t* proc )
       {
         rc_t rc      = kOkRC;
-        inst_t*  p = (inst_t*)proc->userPtr;
-
-        if( p->delta_fl )
-        {
-          p->delta_fl = false;
-          var_set(proc,kBoolPId,kAnyChIdx,p->value!=0);
-          var_set(proc,kUIntPId,kAnyChIdx,(unsigned)fabs(p->value));
-          var_set(proc,kIntPId,kAnyChIdx,(int)p->value);
-          var_set(proc,kFloatPId,kAnyChIdx,(float)p->value);
-          var_set(proc,kOutPId,kAnyChIdx,p->value);
-        }
-        
         return rc;
       }
 
@@ -3978,6 +3929,7 @@ namespace cw
 
         p->periodPhase += proc->ctx->framesPerCycle;
 
+        //printf("%i %i\n",p->periodPhase,p->periodFrmN);
         
         if( p->periodPhase >= p->periodFrmN )
         {
@@ -4020,6 +3972,7 @@ namespace cw
         kIncPId,
         kRepeatPId,
         kModePId,
+        kOutTypePId,
         kOutPId
       };
 
@@ -4075,12 +4028,16 @@ namespace cw
         proc->userPtr = p;
         double  init_val;
         const char* mode_label;
+        variable_t* dum = nullptr;
+        const char* out_type_label;
+        unsigned out_type_fl;
 
         if((rc = var_register_and_get(proc, kAnyChIdx,
                                       kTriggerPId, "trigger", kBaseSfxId, p->trig_val,
                                       kResetPId,   "reset",   kBaseSfxId, p->reset_val,
                                       kInitPId,    "init",    kBaseSfxId, init_val,
-                                      kModePId,    "mode",    kBaseSfxId, mode_label)) != kOkRC )
+                                      kModePId,    "mode",    kBaseSfxId, mode_label,
+                                      kOutTypePId, "out_type",kBaseSfxId, out_type_label)) != kOkRC )
         {
           goto errLabel;
         }
@@ -4095,12 +4052,25 @@ namespace cw
           goto errLabel;
         }
 
-        if((rc = var_register_and_set(proc,kAnyChIdx,
-                                      kOutPId,"out",kBaseSfxId,init_val)) != kOkRC )
+        // get the type of the output
+        if(out_type_label==nullptr || (out_type_fl = value_type_label_to_flag( out_type_label )) == kInvalidTFl )
+        {
+          rc = cwLogError(kInvalidArgRC,"The output type '%s' is not a valid type.",cwStringNullGuard(out_type_label));
+          goto errLabel;
+        }
+
+
+        if((rc = var_create( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, out_type_fl, dum )) != kOkRC )
         {
           goto errLabel;
         }
-                                      
+
+        if((rc = var_set( proc, kOutPId, kAnyChIdx, 0u )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Unable to set the initial counter value to %f.",init_val);
+          goto errLabel;
+        }
+                                                                    
 
         if((rc = _string_to_mode_id(mode_label,p->mode_id)) != kOkRC )
           goto errLabel;
@@ -4131,7 +4101,6 @@ namespace cw
           case kTriggerPId:
             {
               bool v;
-              
               if((rc = var_get(var,v)) == kOkRC )
               {
                 if( !p->delta_fl )
@@ -4159,97 +4128,92 @@ namespace cw
       {
         rc_t rc      = kOkRC;
         inst_t* p = (inst_t*)proc->userPtr;
-
-        
+        double cnt,inc,minv,maxv;        
         bool v;
+
+        if( !p->delta_fl )
+          return rc;
+        
+        p->delta_fl = false;
         if((rc = var_get(proc,kTriggerPId,kAnyChIdx,v)) != kOkRC )
         {
           cwLogError(rc,"Fail!");
           goto errLabel;
         }
-
-        p->delta_fl = v != p->trig_val;
+         
         p->trig_val = v;
 
-        if( p->delta_fl )
+        var_get(proc,kOutPId,kAnyChIdx,cnt);
+        var_get(proc,kIncPId,kAnyChIdx,inc);
+        var_get(proc,kMinPId,kAnyChIdx,minv);
+        var_get(proc,kMaxPId,kAnyChIdx,maxv);
+
+        cnt += p->dir * inc;
+
+        if( minv > cnt || cnt > maxv )
         {
-          p->delta_fl = false;
-          
-          double cnt,inc,minv,maxv;
-          var_get(proc,kOutPId,kAnyChIdx,cnt);
-          var_get(proc,kIncPId,kAnyChIdx,inc);
-          var_get(proc,kMinPId,kAnyChIdx,minv);
-          var_get(proc,kMaxPId,kAnyChIdx,maxv);
+          bool repeat_fl;
+          var_get(proc,kRepeatPId,kAnyChIdx,repeat_fl);
 
-          double incr = p->dir * inc;
-          cnt += incr;
-
-          if( minv > cnt || cnt > maxv )
+          if( !repeat_fl )
+            p->done_fl = true;
+          else
           {
-            bool repeat_fl;
-            var_get(proc,kRepeatPId,kAnyChIdx,repeat_fl);
-
-            if( !repeat_fl )
-              p->done_fl = true;
-            else
+            if( cnt > maxv)
             {
-              if( cnt > maxv)
+              switch( p->mode_id )
               {
-                switch( p->mode_id )
-                {
-                  case kModuloModeId:
-                    while(cnt > maxv )
-                      cnt = minv + (cnt-maxv);
-                    break;
+                case kModuloModeId:
+                  while(cnt > maxv )
+                    cnt = minv + (cnt-maxv);
+                  break;
 
-                  case kReverseModeId:
-                    p->dir = -1 * p->dir;
-                    while( cnt > maxv )
-                      cnt = maxv - (cnt-maxv);
-                    break;
+                case kReverseModeId:
+                  p->dir = -1 * p->dir;
+                  while( cnt > maxv )
+                    cnt = maxv - (cnt-maxv);
+                  break;
 
-                  case kClipModeId:
-                    cnt = maxv;
-                    break;
+                case kClipModeId:
+                  cnt = maxv;
+                  break;
 
-                  default:
-                    assert(0);
+                default:
+                  assert(0);
                     
-                }
-              }
-
-              if( cnt < minv)
-              {
-                switch( p->mode_id )
-                {
-                  case kModuloModeId:
-                    while( cnt < minv )
-                      cnt = maxv - (minv-cnt);
-                    break;
-                    
-                  case kReverseModeId:
-                    p->dir = -1 * p->dir;
-                    while(cnt < minv )
-                      cnt = minv + (minv-cnt);
-                    break;
-                    
-                  case kClipModeId:
-                    cnt = minv;
-                    break;
-                    
-                  default:
-                    assert(0);
-                }                
               }
             }
-          }
 
-          if( !p->done_fl )
-          {
-            printf("cnt:%f\n",cnt);
-            var_set(proc,kOutPId,kAnyChIdx,cnt);
+            if( cnt < minv)
+            {
+              switch( p->mode_id )
+              {
+                case kModuloModeId:
+                  while( cnt < minv )
+                    cnt = maxv - (minv-cnt);
+                  break;
+                    
+                case kReverseModeId:
+                  p->dir = -1 * p->dir;
+                  while(cnt < minv )
+                    cnt = minv + (minv-cnt);
+                  break;
+                    
+                case kClipModeId:
+                  cnt = minv;
+                  break;
+                    
+                default:
+                  assert(0);
+              }                
+            }
           }
         }
+
+        // if the counter has not reached it's terminal state
+        if( !p->done_fl )
+          var_set(proc,kOutPId,kAnyChIdx,cnt);
+        
 
       errLabel:
         return rc;
@@ -4264,6 +4228,631 @@ namespace cw
       };
       
     }    
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // List
+    //
+    namespace list
+    {
+      enum
+      {
+        kInPId,
+        kListPId,
+        kOutPId
+      };
+      
+      typedef struct
+      {
+        unsigned        listN;   // the length of the list
+        const object_t* list;    // the list
+        unsigned        typeFl;  // the output type
+        unsigned        index;     // the last index referenced
+        bool            deltaFl;
+      } inst_t;
+
+      rc_t _determine_type( const object_t* list, unsigned& typeFl_ref )
+      {
+        rc_t rc = kOkRC;
+
+        typeFl_ref = kInvalidTFl;
+        
+        enum { bool_idx, uint_idx, int_idx, float_idx, double_idx, string_idx, cfg_idx, typeN };
+        typedef struct type_map_str
+        {
+          unsigned idx;
+          unsigned typeFl;
+          unsigned cnt;
+        } type_map_t;
+
+        type_map_t typeA[] = {
+          { bool_idx,   kBoolTFl,   0 },
+          { uint_idx,   kUIntTFl,   0 },
+          { int_idx,    kIntTFl,    0 },
+          { float_idx,  kFloatTFl,  0 },
+          { double_idx, kDoubleTFl, 0 },
+          { string_idx, kStringTFl, 0 },
+          { cfg_idx,    kCfgTFl,    0 },          
+        };
+
+
+        // count the number of each type of element in the list.
+        for(unsigned i=0; i<list->child_count(); ++i)
+        {
+          const object_t* c = list->child_ele(i);
+
+          switch( c->type->id )
+          {
+            case kCharTId:   typeA[uint_idx].cnt+=1; break;
+            case kInt8TId:   typeA[int_idx].cnt +=1; break;             
+            case kUInt8TId:  typeA[uint_idx].cnt+=1; break;
+            case kInt16TId:  typeA[int_idx].cnt +=1; break;
+            case kUInt16TId: typeA[uint_idx].cnt+=1; break;
+            case kInt32TId:  typeA[int_idx].cnt +=1; break;
+            case kUInt32TId: typeA[uint_idx].cnt+=1; break;
+            case kFloatTId:  typeA[float_idx].cnt+=1; break;
+            case kDoubleTId: typeA[double_idx].cnt+=1; break;
+            case kBoolTId:   typeA[bool_idx].cnt+=1; break;
+            case kStringTId: typeA[string_idx].cnt+=1; break;
+            case kCStringTId:typeA[string_idx].cnt+=1; break;
+              break;
+              
+            default:
+              switch( c->type->id )
+              {
+                case kVectTId:
+                case kPairTId:
+                case kListTId:
+                case kDictTId:
+                  typeA[cfg_idx].cnt +=1;
+                  break;
+                
+                default:
+                  rc = cwLogError(kSyntaxErrorRC,"The object type '0x%x' is not a valid list entry type. %i",c->type->flags,list->child_count());
+                  goto errLabel;
+              }
+          }
+
+          unsigned type_flag = kInvalidTFl; // type flag of one of the reference types
+          unsigned type_cnt = 0;            // count of types
+
+          for(unsigned i=0; i<typeN; ++i)
+            if( typeA[i].cnt > 0 )
+            {
+              type_cnt += 1;
+              type_flag = typeA[i].typeFl;
+            }
+
+          // it is an error if more than one type of element was included in the list - 
+          // and one of those types was string or cfg - having multiple numeric types
+          // is ok because they can be converted between each other - but string, and cfg's
+          // cannot be converted to numbers, nor can the be converted between each other.
+          if( type_cnt > 1 && (typeA[string_idx].cnt>0 || typeA[cfg_idx].cnt>0) )
+          {
+            rc = cwLogError(kInvalidArgRC,"The list types. The list must be all numerics, all strings, or all cfg. types.");
+            for(unsigned i=0; i<typeN; ++i)
+              if( typeA[i].cnt > 0 )
+                cwLogInfo("%i %s",typeA[i].cnt, value_type_flag_to_label(typeA[i].typeFl));
+            
+            goto errLabel;
+          }
+
+          typeFl_ref = type_flag;
+        }
+
+
+      errLabel:
+        return rc;
+      }
+
+      template< typename T >
+      rc_t _set_out_tmpl( instance_t* proc, inst_t* p, unsigned idx, T& v )
+      {
+        rc_t rc;
+        const object_t* ele;        
+
+        // get the list element to output
+        if((ele = p->list->child_ele(idx)) == nullptr )
+        {
+          rc = cwLogError(kEleNotFoundRC,"The list element at index %i could not be accessed.",idx);
+          goto errLabel;
+        }
+
+        // get the value of the list element
+        if((rc = ele->value(v)) != kOkRC )
+        {
+          rc = cwLogError(rc,"List value access failed on index %i",idx);
+          goto errLabel;
+        }
+
+        // set the output
+        if((rc = var_set(proc,kOutPId,kAnyChIdx,v)) != kOkRC )
+        {
+          rc = cwLogError(rc,"List output failed on index %i",idx);
+          goto errLabel;          
+        }
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _set_output( instance_t* proc, inst_t* p )
+      {
+        rc_t rc;
+        unsigned idx;
+        
+        if((rc = var_get(proc,kInPId,kAnyChIdx,idx)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Unable to get the list index.");
+          goto errLabel;
+        }
+
+        // if the index has not changed then there is nothing to do
+        if( idx == p->index )
+          goto errLabel;
+
+        switch( p->typeFl )
+        {
+          case kUIntTFl:
+            {
+              unsigned v;
+              rc = _set_out_tmpl(proc,p,idx,v);
+            }
+            break;
+            
+          case kIntTFl:
+            {
+              int v;
+              rc = _set_out_tmpl(proc,p,idx,v);
+            }
+            break;
+            
+          case kFloatTFl:
+            {
+              float v;
+              rc = _set_out_tmpl(proc,p,idx,v);
+            }
+            break;
+            
+          case kDoubleTFl:
+            {
+              double v;
+              rc = _set_out_tmpl(proc,p,idx,v); 
+            }
+            break;
+            
+          case kStringTFl:
+            {
+              const char* v;
+              rc = _set_out_tmpl(proc,p,idx,v);
+            }
+            break;
+            
+          case kCfgTFl:
+            {
+              const object_t* v;
+              rc = _set_out_tmpl(proc,p,idx,v);
+            }
+            break;
+            
+          default:
+            rc = cwLogError(kInvalidArgRC,"The list type flag %s (0x%x) is not valid.",value_type_flag_to_label(p->typeFl),p->typeFl);
+            break;
+            
+        }
+
+        if(rc != kOkRC )
+          goto errLabel;
+
+        p->index = idx;
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t create( instance_t* proc )
+      {
+        rc_t    rc   = kOkRC;        
+        inst_t* p = mem::allocZ<inst_t>();
+        unsigned index;
+        proc->userPtr = p;
+        
+        variable_t* dum = nullptr;
+
+        p->index = kInvalidIdx;
+        p->typeFl = kInvalidTFl;
+        p->deltaFl = false;
+        
+        if((rc = var_register_and_get(proc, kAnyChIdx,
+                                      kInPId, "in",    kBaseSfxId, index,
+                                      kListPId,"list", kBaseSfxId, p->list)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if( !p->list->is_list() )
+        {
+          cwLogError(kSyntaxErrorRC,"The list cfg. value is not a list.");
+          goto errLabel;
+        }
+
+        p->listN = p->list->child_count();
+
+        // determine what type of element is in the list
+        // (all elements in the this list must be of the same type: numeric,string,cfg)
+        if((rc = _determine_type( p->list, p->typeFl )) != kOkRC )
+          goto errLabel;
+
+        // create the output variable
+        if((rc = var_create( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, p->typeFl, dum )) != kOkRC )
+        {
+          rc = cwLogError(rc,"'out' var create failed.");
+          goto errLabel;
+        }
+
+        // set the initial value of the output 
+        if((rc = _set_output(proc,p)) != kOkRC )
+          goto errLabel;
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( instance_t* proc )
+      {
+        rc_t rc = kOkRC;
+
+        inst_t* p = (inst_t*)proc->userPtr;
+
+        mem::release(p);
+        
+        return rc;
+      }
+
+      rc_t value( instance_t* proc, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        if( var->vid == kInPId )
+        {
+          inst_t*  p   = (inst_t*)proc->userPtr;
+          unsigned idx;
+          if( var_get(var,idx) == kOkRC && idx != p->index)
+            p->deltaFl = true;
+        }
+        return rc;
+      }
+
+      rc_t exec( instance_t* proc )
+      {
+        rc_t rc = kOkRC;
+        inst_t*  p   = (inst_t*)proc->userPtr;
+
+        if( p->deltaFl )
+        {
+          rc = _set_output(proc, p );
+          p->deltaFl = false;
+        }
+        return rc;
+      }
+
+      class_members_t members = {
+        .create = create,
+        .destroy = destroy,
+        .value   = value,
+        .exec = exec,
+        .report = nullptr
+      };
+      
+    }    
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // add
+    //
+    namespace add
+    {
+      enum {
+        kOutPId,
+        kOTypePId,
+        kInPId
+      };
+      
+      typedef struct
+      {
+        bool delta_fl;
+        unsigned inN;
+      } inst_t;
+
+
+      template< typename T >
+      rc_t _sum( instance_t* proc, variable_t* var )
+      {
+        rc_t rc      = kOkRC;
+        inst_t*  p = (inst_t*)proc->userPtr;
+        
+        T sum = 0;
+        
+        // read and sum the inputs
+        for(unsigned i=0; i<p->inN; ++i)
+        {
+          T val;
+          if((rc = var_get(proc,kInPId+i,kAnyChIdx,val)) == kOkRC )            
+            sum += val;
+          else
+          {
+            rc = cwLogError(rc,"Operand index %i read failed.",i);
+            goto errLabel;
+          }
+        }
+
+        // set the output
+        if((rc = var_set(var,sum)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Result set failed.");
+          goto errLabel;
+        }
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _exec( instance_t* proc, variable_t* out_var=nullptr )
+      {
+        rc_t rc = kOkRC;
+        inst_t* p = (inst_t*)(proc->userPtr);
+
+        if( !p->delta_fl )
+          return rc;
+
+        p->delta_fl = false;
+
+        if( out_var == nullptr )
+          if((rc = var_find(proc,kOutPId,kAnyChIdx,out_var)) != kOkRC )
+          {
+            rc = cwLogError(rc,"The output variable could not be found.");
+            goto errLabel;
+          }
+        
+        switch( out_var->varDesc->type )
+        {
+          case kBoolTFl:   rc = _sum<bool>(proc,out_var);     break;
+          case kUIntTFl:   rc = _sum<unsigned>(proc,out_var); break; 
+          case kIntTFl:    rc = _sum<int>(proc,out_var);      break;
+          case kFloatTFl:  rc = _sum<float>(proc,out_var);    break;
+          case kDoubleTFl: rc = _sum<double>(proc,out_var);   break;
+          default:
+            rc = cwLogError(kInvalidArgRC,"The output type %s (0x%x) is not valid.",value_type_flag_to_label(out_var->value->tflag),out_var->value->tflag);
+            goto errLabel;
+        }
+
+        if(rc != kOkRC )
+          rc = cwLogError(kOpFailRC,"Sum failed.");
+
+      errLabel:
+        return rc;
+
+      }
+      
+      rc_t create( instance_t* proc )
+      {
+        rc_t    rc   = kOkRC;        
+        inst_t* p = mem::allocZ<inst_t>();
+        proc->userPtr = p;
+
+        variable_t* out_var        = nullptr;
+        const char* out_type_label = nullptr;
+        unsigned    out_type_flag  = kInvalidTFl;
+        unsigned    sfxIdAllocN    = instance_var_count(proc);
+        unsigned    sfxIdA[ sfxIdAllocN ];
+        p->inN = 0;
+
+        // get a count of the number of input variables
+        if((rc = var_mult_sfx_id_array(proc, "in", sfxIdA, sfxIdAllocN, p->inN )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Unable to obtain the array of mult label-sfx-id's for the variable 'in'.");
+          goto errLabel;
+        }
+
+        // if the adder has no inputs
+        if( p->inN == 0 )
+        {
+          rc = cwLogError(rc,"The 'add' unit '%s' appears to not have any inputs.",cwStringNullGuard(proc->label));
+          goto errLabel;
+        }
+
+        // sort the input id's in ascending order
+        std::sort(sfxIdA, sfxIdA + p->inN, [](unsigned& a,unsigned& b){ return a<b; } );
+
+        // register each of the input vars
+        for(unsigned i=0; i<p->inN; ++i)
+        {
+          variable_t* dum;
+          if((rc = var_register(proc, "in", sfxIdA[i], kInPId+i, kAnyChIdx, nullptr, dum )) != kOkRC )
+          {
+            rc = cwLogError(rc,"Variable registration failed for the variable 'in:%i'.",sfxIdA[i]);;
+            goto errLabel;
+          }
+        }
+
+        // Get the output type label as a string
+        if((rc = var_register_and_get(proc,kAnyChIdx,kOTypePId,"otype",kBaseSfxId,out_type_label)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Variable registration failed for the variable 'otype:0'.");;
+          goto errLabel;          
+        }
+
+        // Convert the output type label into a flag
+        if((out_type_flag = value_type_label_to_flag(out_type_label)) == kInvalidTFl )
+        {
+          rc = cwLogError(rc,"The type label '%s' does not identify a valid type.",cwStringNullGuard(out_type_label));;
+          goto errLabel;          
+        }
+
+        // Create the output var
+        if((rc = var_create( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, out_type_flag, out_var )) != kOkRC )
+        {          
+          rc = cwLogError(rc,"The output variable create failed.");
+          goto errLabel;
+        }
+
+        /*
+        if((rc = var_set(proc,kOutPId,kAnyChIdx,0.0)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Initial output variable set failed.");
+          goto errLabel;          
+        }
+        */
+        
+        p->delta_fl=true;
+        _exec(proc,out_var);
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( instance_t* proc )
+      {
+        rc_t rc = kOkRC;
+
+        inst_t* p = (inst_t*)proc->userPtr;
+
+        mem::release(p);
+        
+        return rc;
+      }
+
+      rc_t value( instance_t* proc, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        inst_t* p = (inst_t*)(proc->userPtr);
+        
+        if( kInPId <= var->vid && var->vid < kInPId+p->inN )
+          p->delta_fl = true;
+        
+        return rc;
+      }
+
+      rc_t exec( instance_t* proc )
+      {
+        return _exec(proc);
+      }
+
+      class_members_t members = {
+        .create = create,
+        .destroy = destroy,
+        .value   = value,
+        .exec = exec,
+        .report = nullptr
+      };      
+    }    
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // preset
+    //
+    namespace preset
+    {
+      enum { kInPId };
+      
+      enum { kPresetLabelCharN=255 };
+      
+      typedef struct
+      {
+        char preset_label[ kPresetLabelCharN+1];
+      } inst_t;
+
+
+      rc_t _set_preset( instance_t* proc, inst_t* p, const char* preset_label )
+      {
+        rc_t rc = kOkRC;
+
+        if( preset_label == nullptr )
+        {
+          if((rc = var_get(proc, kInPId, kAnyChIdx, preset_label)) != kOkRC )
+          {
+            rc = cwLogError(rc,"The variable 'in read failed.");
+            goto errLabel;
+          }
+        }
+
+        if( preset_label == nullptr )
+        {
+          rc = cwLogError(kInvalidArgRC,"Preset application failed due to blank preset label.");
+          goto errLabel;
+        }
+
+        if((rc = network_apply_preset(*proc->net, preset_label)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Appy preset '%s' failed.",cwStringNullGuard(preset_label));
+          goto errLabel;
+        }
+        
+        if( textLength(preset_label) >= kPresetLabelCharN )
+          strncpy(p->preset_label,preset_label,kPresetLabelCharN);
+        else
+        {
+          rc = cwLogError(kBufTooSmallRC,"The preset label '%s' is to long.",cwStringNullGuard(preset_label));
+          goto errLabel;
+        }
+
+      errLabel:
+        return rc;
+        
+      }
+      
+      rc_t create( instance_t* proc )
+      {
+        rc_t    rc   = kOkRC;        
+        inst_t* p = mem::allocZ<inst_t>();
+        proc->userPtr = p;
+        const char* label = nullptr;
+
+        p->preset_label[0] = 0;
+        
+        if((rc = var_register_and_get(proc,kAnyChIdx,kInPId,"in",kBaseSfxId,label)) != kOkRC )
+          goto errLabel;
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( instance_t* proc )
+      {
+        rc_t rc = kOkRC;
+
+        inst_t* p = (inst_t*)proc->userPtr;
+
+        // Custom clean-up code goes here
+
+        mem::release(p);
+        
+        return rc;
+      }
+
+      rc_t value( instance_t* proc, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+
+      rc_t exec( instance_t* proc )
+      {
+        rc_t rc      = kOkRC;
+        //inst_t*  p = (inst_t*)proc->userPtr;
+        
+        return rc;
+      }
+
+      class_members_t members = {
+        .create = create,
+        .destroy = destroy,
+        .value   = value,
+        .exec = exec,
+        .report = nullptr
+      };
+      
+    }    
+
+
     
   } // flow
 } // cw

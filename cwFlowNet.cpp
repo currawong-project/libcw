@@ -66,8 +66,10 @@ namespace cw
     void _connect_vars( variable_t* src_var, variable_t* in_var )
     {
       // connect in_var into src_var's outgoing var chain
-      in_var->connect_link  = src_var->connect_link;
-      src_var->connect_link = in_var;
+      in_var->dst_link  = src_var->dst_tail;
+      src_var->dst_tail = in_var;
+      if( src_var->dst_head == nullptr )
+        src_var->dst_head = in_var;
 
       assert( src_var->value != nullptr );
           
@@ -171,7 +173,42 @@ namespace cw
           }
         }
     }
-    
+
+    rc_t _set_log_flags(instance_t* proc, const object_t* log_labels)
+    {
+      rc_t rc = kOkRC;
+      
+      if( log_labels == nullptr )
+        return rc;
+
+      if( !log_labels->is_dict() )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The log spec on '%s:%i' is not a dictionary.",cwStringNullGuard(proc->label),proc->label_sfx_id);
+        goto errLabel;
+      }
+
+      for(unsigned i=0; i<log_labels->child_count(); ++i)
+      {
+        const object_t* pair;
+        unsigned sfx_id;
+        
+        if((pair = log_labels->child_ele(i)) == nullptr || pair->pair_label()==nullptr || pair->pair_value()==nullptr || (rc=pair->pair_value()->value(sfx_id))!=kOkRC )
+        {
+          rc = cwLogError(kSyntaxErrorRC,"Syntax error on log var identifier.");
+          goto errLabel;
+        }
+
+        if((rc = var_set_flags( proc, kAnyChIdx, pair->pair_label(), sfx_id, kLogVarFl )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Unable to set var flags on '%s:%i' var:'%s:%i'.",cwStringNullGuard(proc->label),proc->label_sfx_id,pair->pair_label(),sfx_id);
+          goto errLabel;          
+        }
+      }
+
+    errLabel:
+      return rc;
+    }
+
     rc_t _call_value_func_on_all_variables( instance_t* inst )
     {
       rc_t rc  = kOkRC;
@@ -181,40 +218,49 @@ namespace cw
         if( inst->varMapA[i] != nullptr && inst->varMapA[i]->vid != kInvalidId )
         {
           variable_t* var = inst->varMapA[i];
-          
-          if((rc = var->inst->class_desc->members->value( var->inst, var )) != kOkRC )
+
+          if((rc = var_call_custom_value_func( var )) != kOkRC )
             rc1 = cwLogError(rc,"The proc instance '%s:%i' reported an invalid valid on variable:%s chIdx:%i.", var->inst->label, var->inst->label_sfx_id, var->label, var->chIdx );
         }
       
       return rc1;
     }
 
-    rc_t _var_channelize( instance_t* inst, const char* preset_label,  const char* type_src_label, const char* value_label, const object_t* value )
+    rc_t _var_channelize( instance_t* inst, const char* preset_label,  const char* type_src_label, const char* var_label, const object_t* value )
     {
       rc_t rc = kOkRC;
       
-      variable_t*     dummy       = nullptr;
+      variable_t* dummy = nullptr;
+      var_desc_t* vd    = nullptr;
 
       // verify that a valid value exists
       if( value == nullptr )
       {
-        rc = cwLogError(kSyntaxErrorRC,"Unexpected missig value on %s preset '%s' instance '%s' variable '%s'.", type_src_label, preset_label, inst->label, cwStringNullGuard(value_label) );
+        rc = cwLogError(kSyntaxErrorRC,"Unexpected missig value on %s preset '%s' instance '%s' variable '%s'.", type_src_label, preset_label, inst->label, cwStringNullGuard(var_label) );
         goto errLabel;
       }
-
-      // if a list of values was given
-      if( value->is_list() )
+      else
       {
-        for(unsigned chIdx=0; chIdx<value->child_count(); ++chIdx)
-          if((rc = var_channelize( inst, value_label, kBaseSfxId, chIdx, value->child_ele(chIdx), kInvalidId, dummy )) != kOkRC )
-            goto errLabel;
-      }
-      else // otherwise a single value was given
-      {          
-        if((rc = var_channelize( inst, value_label, kBaseSfxId, kAnyChIdx, value, kInvalidId, dummy )) != kOkRC )
-          goto errLabel;
-      }
+        bool is_var_cfg_type_fl = (vd = var_desc_find( inst->class_desc, var_label ))!=nullptr && cwIsFlag(vd->type,kCfgTFl);
+        bool is_list_fl         = value->is_list();
+        bool is_list_of_list_fl = is_list_fl && value->child_count() > 0 && value->child_ele(0)->is_list();
+        bool parse_list_fl      = (is_list_fl && !is_var_cfg_type_fl) || (is_list_of_list_fl && is_var_cfg_type_fl);
 
+        // if a list of values was given and the var type is not a 'cfg' type or if a list of lists was given
+        if( parse_list_fl )
+        {
+          // then each value in the list is assigned to the associated channel
+          for(unsigned chIdx=0; chIdx<value->child_count(); ++chIdx)
+            if((rc = var_channelize( inst, var_label, kBaseSfxId, chIdx, value->child_ele(chIdx), kInvalidId, dummy )) != kOkRC )
+              goto errLabel;
+        }
+        else // otherwise a single value was given
+        {          
+          if((rc = var_channelize( inst, var_label, kBaseSfxId, kAnyChIdx, value, kInvalidId, dummy )) != kOkRC )
+            goto errLabel;
+        }
+      }
+        
     errLabel:
       return rc;
     }
@@ -236,12 +282,12 @@ namespace cw
       // for each preset variable
       for(unsigned i=0; i<preset_cfg->child_count(); ++i)
       {
-        const object_t* value       = preset_cfg->child_ele(i)->pair_value();
-        const char*     value_label = preset_cfg->child_ele(i)->pair_label();
+        const object_t* value     = preset_cfg->child_ele(i)->pair_value();
+        const char*     var_label = preset_cfg->child_ele(i)->pair_label();
 
         //cwLogInfo("variable:%s",value_label);
         
-        if((rc = _var_channelize( inst, preset_label, type_src_label, value_label, value )) != kOkRC )
+        if((rc = _var_channelize( inst, preset_label, type_src_label, var_label, value )) != kOkRC )
           goto errLabel;
         
         
@@ -707,6 +753,7 @@ namespace cw
       const char*     arg_label;        //
       const object_t* preset_labels;    //
       const object_t* arg_cfg;          //
+      const object_t* log_labels;       // 
       const object_t* in_dict;          // cfg. node to the in-list
       in_stmt_t*      in_array;         // in_array[ in_arrayN ] in-stmt array
       unsigned        in_arrayN;        // count of in-stmt's in the in-list.
@@ -1253,8 +1300,15 @@ namespace cw
       {
         in_stmt_t&      in_stmt          = pstate.in_array[i];
         const object_t* in_pair          = pstate.in_dict->child_ele(i); // in:src pair
-        const char*     in_var_str       = in_pair->pair_label(); // 'in' var string
+        const char*     in_var_str       = nullptr;
         const char*     src_proc_var_str = nullptr;
+
+        // validate the basic syntax
+        if( in_pair == nullptr || (in_var_str = in_pair->pair_label()) == nullptr || in_pair->pair_value()==nullptr )
+        {
+          cwLogError(rc,"Malformed dictionary encountered in 'in' statement.");
+          goto errLabel;
+        }
 
         // get the src net/proc/var string
         if((rc = in_pair->pair_value()->value(src_proc_var_str)) != kOkRC )
@@ -1282,6 +1336,7 @@ namespace cw
                                  kInvalidId,
                                  kAnyChIdx,
                                  in_stmt.in_var_desc->val_cfg,
+                                 kInvalidTFl,
                                  dum )) != kOkRC )
             {
               rc = cwLogError(rc,"in-stmt var create failed on '%s:%s'.",cwStringNullGuard(in_var_str),cwStringNullGuard(src_proc_var_str));
@@ -1432,9 +1487,10 @@ namespace cw
       
       // parse the optional args
       if((rc = proc_inst_cfg->pair_value()->getv_opt("args",     arg_dict,
-                                                "in",       pstate.in_dict,
-                                                "argLabel", pstate.arg_label,
-                                                "preset",   pstate.preset_labels)) != kOkRC )
+                                                     "in",       pstate.in_dict,
+                                                     "argLabel", pstate.arg_label,
+                                                     "preset",   pstate.preset_labels,
+                                                     "log",      pstate.log_labels )) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"The instance cfg. '%s' missing: 'type'.",pstate.inst_label);
         goto errLabel;        
@@ -1550,16 +1606,16 @@ namespace cw
 
       // Instantiate all the variables in the class description - that were not already created in _parse_in_list()
       for(var_desc_t* vd=class_desc->varDescL; vd!=nullptr; vd=vd->link)
-        if( !_is_var_inst_already_created( vd->label, pstate ) )
+        if( !_is_var_inst_already_created( vd->label, pstate ) && cwIsNotFlag(vd->type,kRuntimeTFl) )
         {
           variable_t* var = nullptr;        
-          if((rc = var_create( inst, vd->label, kBaseSfxId, kInvalidId, kAnyChIdx, vd->val_cfg, var )) != kOkRC )
+          if((rc = var_create( inst, vd->label, kBaseSfxId, kInvalidId, kAnyChIdx, vd->val_cfg, kInvalidTFl, var )) != kOkRC )
             goto errLabel;
         }
 
       // All the variables that can be used by this instance have now been created
       // and the chIdx of each variable is set to 'any'.
-
+      
       // If a 'preset' field was included in the class cfg then apply the specified class preset
       if( pstate.preset_labels != nullptr )      
         if((rc = _class_apply_presets(inst, pstate.preset_labels )) != kOkRC )
@@ -1584,36 +1640,52 @@ namespace cw
       // Connect the in-list variables to their sources.
       if((rc = _connect_in_vars(net, inst, pstate)) != kOkRC )
       {
-        rc = cwLogError(rc,"Creation of the proc instance '%s:%i' failed during input connection processing.",cwStringNullGuard(inst->label),inst->label_sfx_id);
+        rc = cwLogError(rc,"Input connection processing failed.");
         goto errLabel;
       }
-      
+
       // Complete the instantiation of the proc instance by calling the custom instance creation function.
 
       // Call the custom instance create() function.
       if((rc = class_desc->members->create( inst )) != kOkRC )
       {
-        rc = cwLogError(kInvalidArgRC,"Instantiation failed on instance '%s:%i'.", inst->label,inst->label_sfx_id );
+        rc = cwLogError(kInvalidArgRC,"Custom instantiation failed." );
         goto errLabel;
       }
 
       // Create the instance->varMap[] lookup array
       if((rc =_create_instance_var_map( inst )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Variable map creation failed.");
         goto errLabel;
+      }
 
       // the custom creation function may have added channels to in-list vars fix up those connections here.
       _complete_input_connections(inst);
 
+      // set the log flags again so that vars created by the instance can be included in the log output
+      if((rc = _set_log_flags(inst,pstate.log_labels)) != kOkRC )
+        goto errLabel;
+      
       // call the 'value()' function to inform the instance of the current value of all of it's variables.
       if((rc = _call_value_func_on_all_variables( inst )) != kOkRC )
         goto errLabel;
 
+      if((rc = instance_validate(inst)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Proc instance validation failed.");
+        goto errLabel;
+      }
       
       inst_ref = inst;
       
     errLabel:
       if( rc != kOkRC )
+      {
+        rc = cwLogError(rc,"Proc instantiation failed on '%s:%i'.",cwStringNullGuard(pstate.inst_label),sfx_id);
         _destroy_inst(inst);
+      }
+      
       _destroy_pstate(pstate);
       
       return rc;      

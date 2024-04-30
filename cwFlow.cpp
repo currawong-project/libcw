@@ -34,8 +34,8 @@ namespace cw
       { "midi_out",        &midi_out::members },
       { "audio_in",        &audio_in::members },
       { "audio_out",       &audio_out::members },
-      { "audioFileIn",     &audioFileIn::members },
-      { "audioFileOut",    &audioFileOut::members },
+      { "audio_file_in",   &audio_file_in::members },
+      { "audio_file_out",  &audio_file_out::members },
       { "audio_gain",      &audio_gain::members },
       { "audio_split",     &audio_split::members },
       { "audio_duplicate", &audio_duplicate::members },
@@ -58,6 +58,9 @@ namespace cw
       { "number",          &number::members },
       { "timer",           &timer::members },
       { "counter",         &counter::members },
+      { "list",            &list::members },
+      { "add",             &add::members },
+      { "preset",          &preset::members },
       { nullptr, nullptr }
     };
 
@@ -621,7 +624,7 @@ cw::rc_t cw::flow::test(  const object_t* cfg, int argc, const char* argv[] )
   // find the user requested test case
   if((test_cfg = test_cases_cfg->find_child(argv[1])) == nullptr )
   {
-    rc = cwLogError(kInvalidArgRC,"The test case named '%s' was not found.",argv[0]);
+    rc = cwLogError(kInvalidArgRC,"The test case named '%s' was not found.",argv[1]);
     goto errLabel;
   }  
 

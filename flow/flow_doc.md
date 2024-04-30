@@ -23,7 +23,32 @@ and audio processing networks and the application of network state data.
 
 ### Polyphonic Network.
 
-3. Network with sub-nets.
+### Network with sub-nets.
+
+## Proc Instance Syntax:
+
+```
+<label> : { 'class':<class>, "in":{<in_stmt>*}, "preset":<class_preset_label>, "log":<log_dict> "argLabel":<arg_preset_label>, "args":<args_dict> }
+```
+
+__args__ : This is a dictionary of named variable value records. 
+__preset__ : This string references a class preset to use for initializing this proc instance.
+__argLabel__ : This string references an `args` dictionary parameter set to be applied after the __preset__ class preset.
+If this argument is not given then it is automatically assigned the value "default". (What if there is not __arg__ record named default?
+What if the are no __arg__ records at all?)
+__log__ : This is a dictionary of `<var_label>:<sfx_id>` pairs whose value should be printed to the console when they change at runtime.
+
+
+Notes: 
+1. All fields except 'class' are optional.
+2. The class preset named by __preset__ is always applied before the __arg__ values referenced by  __argLabel__.
+
+
+
+
+- When a preset is given as a list of values each entry in the list is taken as the value for
+the associated channel.  When a list value is given to a var that is of type 'cfg' the list is passed
+as a single value. 
 
 
 ## Processing Unit Class
@@ -40,6 +65,7 @@ srate  | (float) Sample rate type
 sample | (float) Audio sample type
 coeff  | (float) Value that will be directly applied to a sample value (e.g added or multiplied)
 ftime  | (double) Fractional seconds
+runtime| The type is left up to the processors custom 'create' function. These vars are not automatically created.
 
 See list in cwFlowTypes.cpp : typeLabelFlagsA[]
 
@@ -166,6 +192,11 @@ uint     | `uint32_t`
 real     | `double`
 audio    | multi-channel audio
 spectrum | multi-channel spectrum
+cfg      | 
+srate    | platform defined sample rate type
+sample   | platform defined audio sample type
+coeff    | platform defined signal processing coefficient type
+
 
 ### Variable Flags:
 
@@ -180,7 +211,10 @@ Flag             | Description
 
 Notes:
 1. Unless the `no_src` attribute is set any variable may be connected to a source variable
-in the proc instantation 'in' statement.
+in the proc instantation 'in' statement.  `no_src` variables are output variables whose
+value is calculated by the proc and therefore don't make sense to be fed from 
+some other entity.
+
 
 2. By default all variables are created prior to the proc `create()` function being called.
 Variable with the `no_dflt_create` attribute will not be created.  This is useful in cases

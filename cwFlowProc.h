@@ -7,8 +7,8 @@ namespace cw
     namespace midi_out        { extern class_members_t members;  }
     namespace audio_in        { extern class_members_t members;  }
     namespace audio_out       { extern class_members_t members;  }
-    namespace audioFileIn     { extern class_members_t members;  }
-    namespace audioFileOut    { extern class_members_t members;  }
+    namespace audio_file_in   { extern class_members_t members;  }
+    namespace audio_file_out  { extern class_members_t members;  }
     namespace audio_gain      { extern class_members_t members;  }    
     namespace audio_split     { extern class_members_t members;  }
     namespace audio_merge     { extern class_members_t members;  }
@@ -31,6 +31,9 @@ namespace cw
     namespace number          { extern class_members_t members;  }
     namespace timer           { extern class_members_t members;  }
     namespace counter         { extern class_members_t members;  }
+    namespace list            { extern class_members_t members;  }
+    namespace add             { extern class_members_t members;  }
+    namespace preset          { extern class_members_t members;  }
     
   }
 }

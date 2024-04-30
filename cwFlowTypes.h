@@ -40,11 +40,11 @@ namespace cw
       unsigned*         maxBinN_V; // max value that binN_V[i] is allowed to take
       unsigned*         binN_V;    // binN_V[ chN ] count of sample frames per channel
       unsigned*         hopSmpN_V; // hopSmpN_V[ chN ] hop sample count 
-      fd_sample_t**       magV;      // magV[ chN ][ binN ]
-      fd_sample_t**       phsV;      // phsV[ chN ][ binN ]
-      fd_sample_t**       hzV;       // hzV[ chN ][ binN ]
+      fd_sample_t**     magV;      // magV[ chN ][ binN ]
+      fd_sample_t**     phsV;      // phsV[ chN ][ binN ]
+      fd_sample_t**     hzV;       // hzV[ chN ][ binN ]
       bool*             readyFlV;  // readyFlV[chN] true if this channel is ready to be processed (used to sync. fbuf rate to abuf rate)
-      fd_sample_t*        buf;       // memory used by this buffer (or NULL if magV,phsV,hzV point are proxied to another buffer)      
+      fd_sample_t*      buf;       // memory used by this buffer (or NULL if magV,phsV,hzV point are proxied to another buffer)      
     } fbuf_t;
 
     typedef struct mbuf_str
@@ -78,6 +78,8 @@ namespace cw
 
       kTypeMask    = 0x0000ffff,
 
+      kRuntimeTFl  = 0x80000000
+
     };
 
     typedef struct mtx_str
@@ -92,7 +94,8 @@ namespace cw
     
     typedef struct value_str
     {
-      unsigned flags;
+      unsigned tflag;
+      
       union {
         bool            b;
         uint_t          u;
@@ -108,6 +111,7 @@ namespace cw
         char*           s;
         
         const object_t* cfg;
+        void* p;
 
       } u;
       
@@ -116,8 +120,9 @@ namespace cw
     } value_t;
 
 
-    inline bool is_numeric( const value_t* v ) { return cwIsFlag(v->flags,kBoolTFl|kUIntTFl|kIntTFl|kFloatTFl|kDoubleTFl); }
-    inline bool is_matrix(  const value_t* v ) { return cwIsFlag(v->flags,kBoolMtxTFl|kUIntMtxTFl|kIntMtxTFl|kFloatMtxTFl|kDoubleMtxTFl); }
+    inline void set_null( value_t& v, unsigned tflag ) { v.tflag=tflag; v.u.p=nullptr; }
+    inline bool is_numeric( const value_t* v ) { return cwIsFlag(v->tflag,kBoolTFl|kUIntTFl|kIntTFl|kFloatTFl|kDoubleTFl); }
+    inline bool is_matrix(  const value_t* v ) { return cwIsFlag(v->tflag,kBoolMtxTFl|kUIntMtxTFl|kIntMtxTFl|kFloatMtxTFl|kDoubleMtxTFl); }
         
     struct instance_str;
     struct variable_str;
@@ -170,24 +175,40 @@ namespace cw
       unsigned          polyLimitN; // max. poly copies of this class per network_t or 0 if no limit
     } class_desc_t;
 
+    enum {
+      kInvalidVarFl = 0x00,
+      kLogVarFl     = 0x01
+    };
 
     // Note: The concatenation of 'vid' and 'chIdx' should form a unique identifier among all variables
     // on a given 'instance'.
     typedef struct variable_str
     {
       struct instance_str* inst;         // pointer to this variables instance
+      
       char*                label;        // this variables label
-      unsigned             label_sfx_id; // the label suffix id of this variable or kInvalidIdx if this has no suffix
-      unsigned             vid;          // this variables numeric id ( cat(vid,chIdx) forms a unique variable identifier on this 'inst'
-      var_desc_t*          varDesc;      // the variable description for this variable
-      value_t              local_value[ kLocalValueN ];  // the local value instance (actual value if this is not a 'src' variable)
-      unsigned             local_value_idx; // local_value[] is double buffered to allow the cur value of the buf[] to be held while the next value is validated (see _var_set_template())
-      value_t*             value;        // pointer to the value associated with this variable   
+      unsigned             label_sfx_id; // the label suffix id of this variable or kInvalidIdx if this has no suffix      
+      unsigned             vid;          // this variables numeric id ( cat(vid,chIdx) forms a unique variable identifier on this 'inst'      
       unsigned             chIdx;        // channel index
-      struct variable_str* src_var;      // pointer to this input variables source link (or null if it uses the local_value)
-      struct variable_str* var_link;     // instance.varL link list
-      struct variable_str* connect_link; // list of outgoing connections
+      unsigned             flags;        // kLogVarFl
+      unsigned             type;         // This is the value type as established when the var is initialized - it never changes for the life of the var.
+            
+      var_desc_t*          classVarDesc; // pointer to this variables class var desc
+      var_desc_t*          localVarDesc; // pointer to this variables local var desc - if it doesn't match classVarDesc.
+      var_desc_t*          varDesc;      // the effective variable description for this variable (set to classVarDesc or localVarDesc)
+      
+      value_t              local_value[ kLocalValueN ]; // the local value instance (actual value if this is not a 'src' variable)
+      unsigned             local_value_idx;             // local_value[] is double buffered to allow the cur value of the buf[] to be held while the next value is validated (see _var_set_template())
+      struct variable_str* src_var;                     // pointer to this input variables source link (or null if it uses the local_value)
+      value_t*             value;                       // pointer to the value associated with this variable
+      
+      struct variable_str* var_link;     // instance.varL list link
       struct variable_str* ch_link;      // list of channels that share this variable (rooted on 'any' channel - in order by channel number)
+
+      struct variable_str* dst_head;     // Pointer to list of out-going connections (null on var's that do not have out-going connections)
+      struct variable_str* dst_tail;     // 
+      struct variable_str* dst_link;     // Link used by dst_head list.
+
     } variable_t;
 
     
@@ -277,11 +298,13 @@ namespace cw
     void           mbuf_destroy( mbuf_t*& buf );
     mbuf_t*        mbuf_duplicate( const mbuf_t* src );
     
-    inline bool    value_is_abuf( const value_t* v ) { return v->flags & kABufTFl; }
-    inline bool    value_is_fbuf( const value_t* v ) { return v->flags & kFBufTFl; }
+    inline bool    value_is_abuf( const value_t* v ) { return v->tflag & kABufTFl; }
+    inline bool    value_is_fbuf( const value_t* v ) { return v->tflag & kFBufTFl; }
 
     unsigned       value_type_label_to_flag( const char* type_desc );
-
+    const char*    value_type_flag_to_label( unsigned flag );
+    
+    
     //------------------------------------------------------------------------------------------------------------------------
     //
     // Class and Variable Description
@@ -305,6 +328,8 @@ namespace cw
     //
     // Instance
     //
+
+    rc_t               instance_validate( instance_t* inst );
     
     instance_t*        instance_find( network_t& net, const char* inst_label, unsigned sfx_id );
     rc_t               instance_find( network_t& net, const char* inst_label, unsigned sfx_id, instance_t*& instPtrRef );
@@ -312,6 +337,9 @@ namespace cw
     external_device_t* external_device_find( flow_t* p, const char* device_label, unsigned typeId, unsigned inOrOutFl, const char* midiPortLabel=nullptr );
 
     void               instance_print( instance_t* inst );
+
+    // Count of all var instances on this proc.  This is a count of the length of inst->varL.
+    unsigned           instance_var_count( instance_t* inst );
 
 
     
@@ -321,12 +349,25 @@ namespace cw
     //
 
     // Create a variable but do not assign it a value.  Return a pointer to the new variable.
-    // Note: `value_cfg` is optional. Set it to NULL to ignore
-    rc_t           var_create( instance_t* inst, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, const object_t* value_cfg, variable_t*& varRef );
+    // Notes:
+    // 1) `value_cfg` is optional. Set it to NULL to ignore
+    // 2) If `altTypeFl` is not set to kInvalidTFl then the var is assigned this type.
+    rc_t           var_create( instance_t* inst, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, const object_t* value_cfg, unsigned altTypeFlag, variable_t*& varRef );
 
     // Channelizing creates a new var record with an explicit channel index to replace the
     // automatically generated variable whose channel index is set to  'all'.
     rc_t           var_channelize( instance_t* inst, const char* var_label, unsigned sfx_id, unsigned chIdx, const object_t* value_cfg, unsigned vid, variable_t*& varRef );
+
+    // Set the var. type at runtime.
+    //rc_t           var_set_type( instance_t* inst, unsigned chIdx, const char* var_label, unsigned sfx_id, unsigned type_flags );
+
+    // Wrapper around call to var->inst->members->value()
+    rc_t           var_call_custom_value_func( variable_t* var );
+
+    // Sets and get the var->flags field
+    unsigned       var_flags(     instance_t* inst, unsigned chIdx, const char* var_label, unsigned sfx_id, unsigned& flags_ref );
+    rc_t           var_set_flags( instance_t* inst, unsigned chIdx, const char* var_label, unsigned sfx_id, unsigned flags );
+    rc_t           var_clr_flags( instance_t* inst, unsigned chIdx, const char* var_label, unsigned sfx_id, unsigned flags );
 
     // `value_cfg` is optional. Set it to NULL to ignore
     rc_t           var_register( instance_t* inst, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, const object_t* value_cfg, variable_t*& varRef );
@@ -336,8 +377,9 @@ namespace cw
 
     // Return true if this var is acting as a source for another var.
     bool           is_a_source_var( const variable_t* var );
-
-
+    
+    rc_t           var_mult_sfx_id_array( instance_t* inst, const char* var_label, unsigned* idA, unsigned idAllocN, unsigned& idN_ref );
+    
     //-----------------
     //
     // var_register
@@ -461,18 +503,19 @@ namespace cw
     rc_t           var_channel_count( const variable_t* var, unsigned& chCntRef );
     
     
-    rc_t           var_get( const variable_t* var, bool&          valRef );
-    rc_t           var_get( const variable_t* var, uint_t&        valRef );
-    rc_t           var_get( const variable_t* var, int_t&         valRef );
-    rc_t           var_get( const variable_t* var, float&         valRef );
-    rc_t           var_get( const variable_t* var, double&        valRef );
-    rc_t           var_get( const variable_t* var, const char*&   valRef );    
-    rc_t           var_get( const variable_t* var, const abuf_t*& valRef );    
-    rc_t           var_get(       variable_t* var, abuf_t*&       valRef );    
-    rc_t           var_get( const variable_t* var, const fbuf_t*& valRef );
-    rc_t           var_get(       variable_t* var, fbuf_t*&       valRef );
-    rc_t           var_get( const variable_t* var, const mbuf_t*& valRef );
-    rc_t           var_get(       variable_t* var, mbuf_t*&       valRef );
+    rc_t var_get( const variable_t* var, bool&            valRef );
+    rc_t var_get( const variable_t* var, uint_t&          valRef );
+    rc_t var_get( const variable_t* var, int_t&           valRef );
+    rc_t var_get( const variable_t* var, float&           valRef );
+    rc_t var_get( const variable_t* var, double&          valRef );
+    rc_t var_get( const variable_t* var, const char*&     valRef );    
+    rc_t var_get( const variable_t* var, const abuf_t*&   valRef );    
+    rc_t var_get(       variable_t* var, abuf_t*&         valRef );    
+    rc_t var_get( const variable_t* var, const fbuf_t*&   valRef );
+    rc_t var_get(       variable_t* var, fbuf_t*&         valRef );
+    rc_t var_get( const variable_t* var, const mbuf_t*&   valRef );
+    rc_t var_get(       variable_t* var, mbuf_t*&         valRef );
+    rc_t var_get( const variable_t* var, const object_t*& valRef );
 
     template< typename T>
     rc_t var_get( instance_t* inst, unsigned vid, unsigned chIdx, T& valRef)
@@ -494,14 +537,28 @@ namespace cw
       return value;
     }
 
-    rc_t           var_set( instance_t* inst, unsigned vid, unsigned chIdx, bool val );
-    rc_t           var_set( instance_t* inst, unsigned vid, unsigned chIdx, uint_t val );
-    rc_t           var_set( instance_t* inst, unsigned vid, unsigned chIdx, int_t val );
-    rc_t           var_set( instance_t* inst, unsigned vid, unsigned chIdx, float val );
-    rc_t           var_set( instance_t* inst, unsigned vid, unsigned chIdx, double val );
-    rc_t           var_set( instance_t* inst, unsigned vid, unsigned chIdx, const char* val );
-    rc_t           var_set( instance_t* inst, unsigned vid, unsigned chIdx, abuf_t* val );
-    rc_t           var_set( instance_t* inst, unsigned vid, unsigned chIdx, fbuf_t* val );
+    rc_t var_set( variable_t* var, const value_t* val );
+    rc_t var_set( variable_t* var, bool val );
+    rc_t var_set( variable_t* var, uint_t val );
+    rc_t var_set( variable_t* var, int_t val );
+    rc_t var_set( variable_t* var, float val );
+    rc_t var_set( variable_t* var, double val );
+    rc_t var_set( variable_t* var, const char* val );
+    rc_t var_set( variable_t* var, abuf_t* val );
+    rc_t var_set( variable_t* var, fbuf_t* val );
+    rc_t var_set( variable_t* var, mbuf_t* val );
+    rc_t var_set( variable_t* var, const object_t* val );
+    
+    rc_t var_set( instance_t* inst, unsigned vid, unsigned chIdx, const value_t* val );
+    rc_t var_set( instance_t* inst, unsigned vid, unsigned chIdx, bool val );
+    rc_t var_set( instance_t* inst, unsigned vid, unsigned chIdx, uint_t val );
+    rc_t var_set( instance_t* inst, unsigned vid, unsigned chIdx, int_t val );
+    rc_t var_set( instance_t* inst, unsigned vid, unsigned chIdx, float val );
+    rc_t var_set( instance_t* inst, unsigned vid, unsigned chIdx, double val );
+    rc_t var_set( instance_t* inst, unsigned vid, unsigned chIdx, const char* val );
+    rc_t var_set( instance_t* inst, unsigned vid, unsigned chIdx, abuf_t* val );
+    rc_t var_set( instance_t* inst, unsigned vid, unsigned chIdx, fbuf_t* val );
+    rc_t var_set( instance_t* inst, unsigned vid, unsigned chIdx, const object_t* val );
 
     const preset_t* class_preset_find( class_desc_t* cd, const char* preset_label );
     
