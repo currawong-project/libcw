@@ -141,6 +141,11 @@ namespace cw
     inline bool is_dict()      const { return type != nullptr && type->id == kDictTId; }
     inline bool is_list()      const { return type != nullptr && type->id == kListTId; }
     inline bool is_string()    const { return type != nullptr && (type->id == kStringTId || type->id == kCStringTId); }
+    inline bool is_unsigned_integer() const { return type->id==kCharTId || type->id==kUInt8TId || type->id==kUInt16TId || type->id==kUInt32TId || type->id==kUInt64TId; }
+    inline bool is_signed_integer()   const { return                   type->id==kInt8TId  || type->id==kInt16TId  || type->id==kInt32TId  || type->id==kInt64TId;  }
+    inline bool is_floating_point()   const { return type->id==kFloatTId || type->id==kDoubleTId; }
+    inline bool is_integer()          const { return is_unsigned_integer() || is_signed_integer(); }
+    inline bool is_numeric()          const { return is_integer() || is_floating_point(); }
     inline bool is_type( unsigned tid ) const { return type != nullptr && type->id == tid; }
 
     rc_t value( void* dst, unsigned dstTypeId );
