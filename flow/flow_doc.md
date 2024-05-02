@@ -179,6 +179,24 @@ number, they are reconnected to a specific channel on the source
 variable.
 
 
+### Var Semantics
+
+#### Var Types:
+
+- Variables final types are determined during their owner proc instantiation.
+Once the type is set it never changes for the life of the proc.
+
+- When reading a variable value the value will be coerced to the type of the output variable.
+For example:  `int v; var_get(var,v)` will coerce the value of `var` to an `int`.
+
+- When writing a variable the value will be coerced to the type of the variable.
+For example: If the type of `var` in `var_set(var,float_val)` is `double` then the value of `float_val` will be coerced to a double.
+
+- The type a variables value is set in `variable_t.type` and always consists of a single bit field.
+(i.e. `assert(isPowerOfTwo(variable_t.type))`)
+
+- The type of the value assigned to a variable (`variable_t.value->tflag`) must always exactly match `variable_t.type`.
+
 ### Preset Syntax:
 
 
