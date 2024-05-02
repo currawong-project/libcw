@@ -31,6 +31,39 @@ namespace cw
 
   namespace flow
   {
+    
+    template< typename inst_t >
+    rc_t std_destroy( instance_t* proc )
+    {
+      inst_t* p = (inst_t*)proc->userPtr;
+      rc_t rc = _destroy(proc,p);
+      mem::release(proc->userPtr);
+      return rc;
+    }
+    
+    template< typename inst_t >
+    rc_t std_create( instance_t* proc )
+    {
+      rc_t rc = kOkRC;
+      proc->userPtr = mem::allocZ<inst_t>();
+      if((rc = _create(proc,(inst_t*)proc->userPtr)) != kOkRC )
+        std_destroy<inst_t>(proc);
+      return rc;        
+    }
+
+    template< typename inst_t >
+    rc_t std_value( instance_t* proc, variable_t* var )
+    { return _value(proc,(inst_t*)proc->userPtr, var); }
+        
+    template< typename inst_t >
+    rc_t std_exec( instance_t* proc )
+    { return _exec(proc,(inst_t*)proc->userPtr); }
+
+    template< typename inst_t >
+    rc_t std_report( instance_t* proc )
+    { return _report(proc,(inst_t*)proc->userPtr); }
+
+    
     //------------------------------------------------------------------------------------------------------------------
     //
     // Template
@@ -43,50 +76,46 @@ namespace cw
       } inst_t;
 
 
-      rc_t create( instance_t* proc )
+      rc_t _create( instance_t* proc, inst_t* p )
       {
         rc_t    rc   = kOkRC;        
-        inst_t* p = mem::allocZ<inst_t>();
-        proc->userPtr = p;
 
         // Custom create code goes here
 
         return rc;
       }
 
-      rc_t destroy( instance_t* proc )
+      rc_t _destroy( instance_t* proc, inst_t* p )
       {
         rc_t rc = kOkRC;
-
-        inst_t* p = (inst_t*)proc->userPtr;
 
         // Custom clean-up code goes here
 
-        mem::release(p);
-        
         return rc;
       }
 
-      rc_t value( instance_t* proc, variable_t* var )
+      rc_t _value( instance_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
         return rc;
       }
 
-      rc_t exec( instance_t* proc )
+      rc_t _exec( instance_t* proc, inst_t* p )
       {
         rc_t rc      = kOkRC;
-        //inst_t*  p = (inst_t*)proc->userPtr;
         
         return rc;
       }
 
+      rc_t _report( instance_t* proc, inst_t* p )
+      { return kOkRC; }
+
       class_members_t members = {
-        .create = create,
-        .destroy = destroy,
-        .value   = value,
-        .exec = exec,
-        .report = nullptr
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .value   = std_value<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
       };
       
     }    
@@ -972,7 +1001,7 @@ namespace cw
 
           // print a minutes counter
           inst->durSmpN += src_abuf->frameN;          
-          if( inst->durSmpN % ((unsigned)src_abuf->srate*60) == 0 )
+          if( src_abuf->srate!=0 && inst->durSmpN % ((unsigned)src_abuf->srate*60) == 0 )
             printf("audio file out: %5.1f min\n", inst->durSmpN/(src_abuf->srate*60));
           
         }
@@ -1720,15 +1749,29 @@ namespace cw
         ctx->userPtr = inst;
 
         // Register variables and get their current value
-        if((rc = var_register_and_get( ctx, kAnyChIdx, kChCntPid, "chCnt", kBaseSfxId, chCnt)) != kOkRC )
+        if((rc = var_register_and_get( ctx, kAnyChIdx,
+                                       kChCntPid, "chCnt", kBaseSfxId, chCnt,
+                                       kSratePId, "srate", kBaseSfxId, srate)) != kOkRC )
         {
           goto errLabel;
         }
 
+        // Sample rate logic:
+        // The sample rate may be set directly, or sourced.
+        // If the srate is 0 then this indicates that the system sample rate should be used.
+        // if the sample rate is sourced and 0 it is a configuration error.
+
+        // if no sample rate was given then use the system sample rate.
+        if( srate == 0 )
+          srate = ctx->ctx->sample_rate;
+        
         // register each oscillator variable
         for(unsigned i=0; i<chCnt; ++i)
+        {
+          unsigned ch_srate = 0;
+          
           if((rc = var_register_and_get( ctx, i,
-                                         kSratePId,  "srate", kBaseSfxId, srate,
+                                         kSratePId,  "srate", kBaseSfxId, ch_srate,
                                          kFreqHzPId, "hz",    kBaseSfxId, hz,
                                          kPhasePId,  "phase", kBaseSfxId, phase,
                                          kDcPId,     "dc",    kBaseSfxId, dc,
@@ -1737,8 +1780,15 @@ namespace cw
             goto errLabel;
           }
 
+          // if no srate was set on this channel then use the default sample rate
+          if( ch_srate == 0 )
+            if((rc = var_set(ctx,kSratePId,i,srate)) != kOkRC )
+              goto errLabel;
+        }
+        
         // create one output audio buffer
-        rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, srate, chCnt, ctx->ctx->framesPerCycle );
+        rc = var_register_and_set( ctx, "out", kBaseSfxId,
+                                   kOutPId, kAnyChIdx, srate, chCnt, ctx->ctx->framesPerCycle );
 
         inst->phaseA = mem::allocZ<double>( chCnt );
         
@@ -3286,22 +3336,25 @@ namespace cw
         kSrateRefPId,
         kDurMsPId,
         kTriggerPId,
+        kPresetPId,
         kGainPId,
       };
       
       typedef struct
       {
-        unsigned    xfadeDurMs;        // crossfade duration in milliseconds
-        instance_t* net_proc;          // source 'poly' network
-        network_t   net;               // internal proxy network 
+        unsigned    xfadeDurMs;       // crossfade duration in milliseconds
+        instance_t* net_proc;         // source 'poly' network
+        network_t   net;              // internal proxy network 
         unsigned    poly_ch_cnt;      // set to 2 (one for 'cur' poly-ch., one for 'next' poly-ch.)
-        unsigned    net_proc_cnt;      // count of proc's in a single poly-channel (net_proc->proc_arrayN/poly_cnt)
+        unsigned    net_proc_cnt;     // count of proc's in a single poly-channel (net_proc->proc_arrayN/poly_cnt)
         unsigned    cur_poly_ch_idx;  // 
         unsigned    next_poly_ch_idx; //
         float*      target_gainA;     // target_gainA[net_proc->poly_cnt]
         float*      cur_gainA;        // cur_gainA[net_proc->poly_cnt]
         double      srate;
-        
+        bool        preset_delta_fl;
+        bool        trigFl;
+        bool        trigVal;
       } inst_t;
 
       void _trigger_xfade( inst_t* p )
@@ -3333,16 +3386,17 @@ namespace cw
         p->target_gainA[ p->cur_poly_ch_idx ] = 1;
 
         // if the next channel is not already at 0 send it in that direction
-        p->target_gainA[ p->next_poly_ch_idx ] = 0; 
+        p->target_gainA[ p->next_poly_ch_idx ] = 0;
+
+        //printf("xfad:%i %i : %i\n",p->cur_poly_ch_idx, p->next_poly_ch_idx,p->poly_ch_cnt);
 
       }
-
-
 
       rc_t create( instance_t* ctx )
       {
         rc_t        rc            = kOkRC;
         const char* netLabel      = nullptr;
+        const char* presetLabel   = nullptr;
         unsigned    netLabelSfxId = kBaseSfxId;
         bool        trigFl        = false;
         variable_t* gainVar       = nullptr;
@@ -3353,15 +3407,15 @@ namespace cw
 
         ctx->userPtr = p;
         
-        p->poly_ch_cnt = 2;
         
         if((rc = var_register_and_get(ctx,kAnyChIdx,
                                       kNetLabelPId,       "net",       kBaseSfxId, netLabel,
                                       kNetLabelSfxPId,    "netSfxId",  kBaseSfxId, netLabelSfxId,
                                       kSrateRefPId,       "srateSrc",  kBaseSfxId, srateSrc,
                                       kDurMsPId,          "durMs",     kBaseSfxId, p->xfadeDurMs,
-                                      kTriggerPId,         "trigger",  kBaseSfxId, trigFl,
-                                      kGainPId,            "gain",     kBaseSfxId, dum_dbl)) != kOkRC )
+                                      kTriggerPId,        "trigger",   kBaseSfxId, p->trigVal,
+                                      kPresetPId,         "preset",    kBaseSfxId, presetLabel,
+                                      kGainPId,           "gain",      kBaseSfxId, dum_dbl)) != kOkRC )
         {
           goto errLabel; 
         }
@@ -3378,7 +3432,9 @@ namespace cw
           cwLogError(rc,"The xfade_ctl source network must have at least 3 poly channels. %i < 3",p->net_proc->internal_net->poly_cnt);
           goto errLabel;
         }
-          
+
+        p->poly_ch_cnt = p->net_proc->internal_net->poly_cnt;
+
 
         // create the gain output variables - one output for each poly-channel
         for(unsigned i=1; i<p->net_proc->internal_net->poly_cnt; ++i)
@@ -3396,11 +3452,11 @@ namespace cw
 
         // create the proxy network
         p->net.proc_arrayAllocN = p->net_proc_cnt * p->poly_ch_cnt;
-        p->net.proc_arrayN = p->net.proc_arrayAllocN;
-        p->net.proc_array  = mem::allocZ<instance_t*>(p->net.proc_arrayAllocN);
-        p->target_gainA    = mem::allocZ<float>(p->net_proc->internal_net->poly_cnt);
-        p->cur_gainA       = mem::allocZ<float>(p->net_proc->internal_net->poly_cnt);
-        p->srate           = srateSrc->srate;
+        p->net.proc_arrayN      = p->net.proc_arrayAllocN;
+        p->net.proc_array       = mem::allocZ<instance_t*>(p->net.proc_arrayAllocN);
+        p->target_gainA         = mem::allocZ<float>(p->net_proc->internal_net->poly_cnt);
+        p->cur_gainA            = mem::allocZ<float>(p->net_proc->internal_net->poly_cnt);
+        p->srate                = srateSrc->srate;
         
         // make the proxy network public - xfad_ctl now looks like the source network
         // because it has the same proc instances
@@ -3431,7 +3487,27 @@ namespace cw
       }
 
       rc_t value( instance_t* ctx, variable_t* var )
-      { return kOkRC; }
+      {
+        rc_t rc = kOkRC;
+        inst_t* p = (inst_t*)ctx->userPtr;
+        
+        if(var->vid == kTriggerPId )
+        {
+          bool v;
+          if((rc = var_get(var,v)) == kOkRC )
+          {
+            if( !p->trigFl )
+              p->trigFl = p->trigVal != v;
+                
+            p->trigVal = v;
+          }
+          //printf("tr:%i %i %i\n",v,p->trigVal,p->trigFl);
+
+          
+        }
+
+        return kOkRC;
+      }
 
       // return sign of expression as a float
       float _signum( float v ) { return (0.0f < v) - (v < 0.0f); }
@@ -3440,14 +3516,12 @@ namespace cw
       {
         rc_t    rc     = kOkRC;
         inst_t* p      = (inst_t*)ctx->userPtr;
-        bool    trigFl = false;
 
         // check if a cross-fade has been triggered
-        if((rc = var_get(ctx,kTriggerPId,kAnyChIdx,trigFl)) == kOkRC )
+        if(p->trigFl )
         {
+          p->trigFl = false;
           _trigger_xfade(p);
-          
-          var_set(ctx,kTriggerPId,kAnyChIdx,false);
         }
         
         // time in sample frames to complete a xfade
@@ -3482,95 +3556,181 @@ namespace cw
     
     //------------------------------------------------------------------------------------------------------------------
     //
-    // poly_mixer
+    // poly_merge
     //
-    namespace poly_mixer
+
+    namespace poly_merge
     {
-      enum {
+      enum
+      {
         kOutGainPId,
         kOutPId,
-        
+        kInBasePId,
       };
-      
+        
       typedef struct
       {
-        unsigned inBaseVId;
-        unsigned gainBaseVId;
+        unsigned inAudioVarCnt;
+        unsigned gainVarCnt;
+        unsigned baseGainPId;
       } inst_t;
 
 
-      rc_t create( instance_t* ctx )
+      rc_t _create( instance_t* proc, inst_t* p )
       {
-        rc_t          rc     = kOkRC;
-        /*
-        const abuf_t* abuf0  = nullptr; //
-        const abuf_t* abuf1  = nullptr;
-        unsigned      outChN = 0;
-        double dum;
+        rc_t    rc   = kOkRC;        
+
+        unsigned inAudioChCnt = 0;
+        srate_t  srate        = 0;
+        unsigned audioFrameN  = 0;
+        unsigned sfxIdAllocN  = instance_var_count(proc);
+        unsigned sfxIdA[ sfxIdAllocN ];
+          
+
+        // register the output gain variable
+        if((rc = var_register(proc,kAnyChIdx,kOutGainPId,"out_gain",kBaseSfxId)) != kOkRC )
+          goto errLabel;
+          
         
-        // get the source audio buffer
-        if((rc = var_register_and_get(ctx, kAnyChIdx,
-                                      kIn0PId,"in0",kBaseSfxId,abuf0,
-                                      kIn1PId,"in1",kBaseSfxId,abuf1 )) != kOkRC )
+        // get the the sfx_id's of the input audio variables 
+        if((rc = var_mult_sfx_id_array(proc, "in", sfxIdA, sfxIdAllocN, p->inAudioVarCnt )) != kOkRC )
+          goto errLabel;
+
+        // for each input audio variable
+        for(unsigned i=0; i<p->inAudioVarCnt; ++i)
         {
+          abuf_t* abuf;
+
+          // register the input audio variable
+          if((rc = var_register_and_get(proc,kAnyChIdx,kInBasePId+i,"in",sfxIdA[i],abuf)) != kOkRC )
+            goto errLabel;
+            
+
+          // the sample rate of off input audio signals must be the same
+          if( srate != 0 && abuf->srate != srate )
+          {
+            rc = cwLogError(kInvalidArgRC,"All signals on a poly merge must have the same sample rate.");
+            goto errLabel;
+          }
+
+          srate = abuf->srate;
+
+          // the count of frames in all audio signals must be the same
+          if( audioFrameN != 0 && abuf->frameN != audioFrameN )
+          {
+            rc = cwLogError(kInvalidArgRC,"All signals on a poly merge must have the same frame count.");
+            goto errLabel;
+          }
+          
+          audioFrameN = abuf->frameN;
+          
+          inAudioChCnt += abuf->chN;
+        }
+
+        // Get the sfx-id's of the input gain variables
+        if((rc = var_mult_sfx_id_array(proc, "gain", sfxIdA, sfxIdAllocN, p->gainVarCnt )) != kOkRC )
+          goto errLabel;
+        
+
+        // There must be one gain variable for each audio input or exactly one gain variable 
+        if( p->gainVarCnt != p->inAudioVarCnt && p->gainVarCnt != 1 )
+        {
+          rc = cwLogError(kInvalidArgRC,"The count of gain variables must be the same as the count of audio variables are there must be one gain variable.");
           goto errLabel;
         }
 
-        assert( abuf0->frameN == abuf1->frameN );
+        // set the baseInGainPId
+        p->baseGainPId = kInBasePId + p->inAudioVarCnt;
 
-        outChN = std::max(abuf0->chN, abuf1->chN);
+        // register each of the input gain variables
+        for(unsigned i=0; i<p->gainVarCnt; ++i)
+        {
+          coeff_t dum;
+          if((rc = var_register(proc,kAnyChIdx,p->baseGainPId + i,"gain",sfxIdA[i])) != kOkRC )
+            goto errLabel;
+          
+        }
 
-        // register the gain
-        var_register_and_get( ctx, kAnyChIdx, kGain0PId, "gain0", kBaseSfxId, dum );
-        var_register_and_get( ctx, kAnyChIdx, kGain1PId, "gain1", kBaseSfxId, dum );
+        rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, srate, inAudioChCnt, audioFrameN );
 
-        // create the output audio buffer
-        rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, abuf0->srate, outChN, abuf0->frameN );
-        */
       errLabel:
         return rc;
       }
 
-      rc_t destroy( instance_t* ctx )
-      { return kOkRC; }
+      rc_t _destroy( instance_t* proc, inst_t* p )
+      {
+        return kOkRC;
+      }
 
-      rc_t value( instance_t* ctx, variable_t* var )
-      { return kOkRC; }
+      rc_t _value( instance_t* proc, inst_t* p, variable_t* var )
+      {
+        return kOkRC;
+      }
 
+      unsigned _merge_in_one_audio_var( instance_t* proc, const abuf_t* ibuf, abuf_t* obuf, unsigned outChIdx, coeff_t gain )
+      {
+        // for each channel          
+        for(unsigned i=0; i<ibuf->chN  && outChIdx<obuf->chN; ++i)
+        {            
+          sample_t* isig = ibuf->buf + i        * ibuf->frameN;
+          sample_t* osig = obuf->buf + outChIdx * obuf->frameN;
+
+          // apply the gain
+          for(unsigned j=0; j<ibuf->frameN; ++j)
+            osig[j] = gain * isig[j];
+
+          outChIdx += 1;
+        }  
+
+        return outChIdx;
+      }
       
-      rc_t exec( instance_t* ctx )
+      rc_t _exec( instance_t* proc, inst_t* p )
       {
         rc_t          rc    = kOkRC;
-        /*
         abuf_t*       obuf  = nullptr;
-        //const abuf_t* ibuf0 = nullptr;
-        //const abuf_t* ibuf1 = nullptr;
+        unsigned      oChIdx = 0;
+        coeff_t       igain   = 1;
+        coeff_t       ogain   = 1;
 
-        if((rc = var_get(ctx,kOutPId, kAnyChIdx, obuf)) != kOkRC )
+        // get the output audio buffer
+        if((rc = var_get(proc,kOutPId, kAnyChIdx, obuf)) != kOkRC )
           goto errLabel;
 
-        //if((rc = var_get(ctx,kIn0PId, kAnyChIdx, ibuf0 )) != kOkRC )
-        //  goto errLabel;
-        
-        //if((rc = var_get(ctx,kIn1PId, kAnyChIdx, ibuf1 )) != kOkRC )
-        //  goto errLabel;
+        // get the output audio gain
+        if((rc = var_get(proc,kOutGainPId, kAnyChIdx, ogain)) != kOkRC )
+          goto errLabel;
 
-        vop::zero(obuf->buf, obuf->frameN*obuf->chN );
-        
-        _mix( ctx, kIn0PId, kGain0PId, obuf );
-        _mix( ctx, kIn1PId, kGain1PId, obuf );
-        */
-        
+        // for each audio input variable
+        for(unsigned i=0; i<p->inAudioVarCnt; ++i)
+        {
+          const abuf_t* ibuf = nullptr;
+
+          // get the input audio buffer
+          if((rc = var_get(proc,kInBasePId+i, kAnyChIdx, ibuf )) != kOkRC )
+            goto errLabel;
+
+          // get the input gain
+          if( i < p->gainVarCnt )
+            var_get(proc,p->baseGainPId+i,kAnyChIdx,igain);
+
+          // merge the input audio signal into the output audio buffer
+          oChIdx = _merge_in_one_audio_var( proc, ibuf, obuf, oChIdx, igain * ogain );
+        }        
+
       errLabel:
         return rc;
       }
 
+      rc_t _report( instance_t* proc, inst_t* p )
+      { return kOkRC; }
+
       class_members_t members = {
-        .create = create,
-        .destroy = destroy,
-        .value   = value,
-        .exec = exec,
-        .report = nullptr
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .value   = std_value<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
       };
       
     }    
@@ -3877,6 +4037,9 @@ namespace cw
         {
           goto errLabel;
         }
+
+        if( srate == 0 )
+          var_set(proc,kSratePId,kAnyChIdx,proc->ctx->sample_rate);
 
         if((rc = var_register_and_set(proc,kAnyChIdx,
                                       kOutPId,       "out",     kBaseSfxId,false)) != kOkRC )
@@ -4745,12 +4908,14 @@ namespace cw
       };      
     }    
 
+
     //------------------------------------------------------------------------------------------------------------------
     //
     // preset
     //
     namespace preset
     {
+
       enum { kInPId };
       
       enum { kPresetLabelCharN=255 };
@@ -4758,100 +4923,112 @@ namespace cw
       typedef struct
       {
         char preset_label[ kPresetLabelCharN+1];
+        bool delta_fl;
       } inst_t;
 
 
-      rc_t _set_preset( instance_t* proc, inst_t* p, const char* preset_label )
+      rc_t _set_preset( instance_t* proc, inst_t* p )
       {
         rc_t rc = kOkRC;
+        unsigned presetLabelCharN = 0;
+        const char* preset_label = nullptr;
 
-        if( preset_label == nullptr )
+        // get the preset label
+        if((rc = var_get(proc, kInPId, kAnyChIdx, preset_label)) != kOkRC )
         {
-          if((rc = var_get(proc, kInPId, kAnyChIdx, preset_label)) != kOkRC )
-          {
-            rc = cwLogError(rc,"The variable 'in read failed.");
-            goto errLabel;
-          }
+          rc = cwLogError(rc,"The variable 'in read failed.");
+          goto errLabel;
         }
 
-        if( preset_label == nullptr )
+        // at this point a valid preset-label must exist
+        if( preset_label == nullptr || (presetLabelCharN=textLength(preset_label))==0 )
         {
           rc = cwLogError(kInvalidArgRC,"Preset application failed due to blank preset label.");
           goto errLabel;
         }
 
+        // if the preset-label has not changed since the last preset application - then there is nothing to do
+        if( textIsEqual(preset_label,p->preset_label) )
+          goto errLabel;
+          
+
+        // verify the preset-label is not too long
+        if( presetLabelCharN > kPresetLabelCharN )
+        {
+          rc = cwLogError(kBufTooSmallRC,"The preset label '%s' is to long.",cwStringNullGuard(preset_label));
+          goto errLabel;
+        }
+        
+        cwRuntimeCheck(proc->net != nullptr );
+        
+        // apply the preset
         if((rc = network_apply_preset(*proc->net, preset_label)) != kOkRC )
         {
           rc = cwLogError(rc,"Appy preset '%s' failed.",cwStringNullGuard(preset_label));
           goto errLabel;
         }
-        
-        if( textLength(preset_label) >= kPresetLabelCharN )
-          strncpy(p->preset_label,preset_label,kPresetLabelCharN);
-        else
-        {
-          rc = cwLogError(kBufTooSmallRC,"The preset label '%s' is to long.",cwStringNullGuard(preset_label));
-          goto errLabel;
-        }
+
+        // store the applied preset-label 
+        textCopy(p->preset_label,kPresetLabelCharN,preset_label,presetLabelCharN);
 
       errLabel:
         return rc;
         
       }
-      
-      rc_t create( instance_t* proc )
+
+      rc_t _create( instance_t* proc, inst_t* p )
       {
         rc_t    rc   = kOkRC;        
-        inst_t* p = mem::allocZ<inst_t>();
-        proc->userPtr = p;
+
+        // Custom create code goes here
         const char* label = nullptr;
 
         p->preset_label[0] = 0;
+        p->delta_fl = true;
         
         if((rc = var_register_and_get(proc,kAnyChIdx,kInPId,"in",kBaseSfxId,label)) != kOkRC )
           goto errLabel;
 
+        // we can't apply a preset here because the network is not yet constructed
       errLabel:
         return rc;
       }
 
-      rc_t destroy( instance_t* proc )
+      rc_t _destroy( instance_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      rc_t _value( instance_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
-
-        inst_t* p = (inst_t*)proc->userPtr;
-
-        // Custom clean-up code goes here
-
-        mem::release(p);
+        if( var->vid == kInPId )
+          p->delta_fl = true;
         
         return rc;
       }
 
-      rc_t value( instance_t* proc, variable_t* var )
-      {
-        rc_t rc = kOkRC;
-        return rc;
-      }
-
-      rc_t exec( instance_t* proc )
+      rc_t _exec( instance_t* proc, inst_t* p )
       {
         rc_t rc      = kOkRC;
-        //inst_t*  p = (inst_t*)proc->userPtr;
+        
+        if( p->delta_fl )
+          rc = _set_preset(proc,p);
         
         return rc;
       }
 
+      rc_t _report( instance_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      
       class_members_t members = {
-        .create = create,
-        .destroy = destroy,
-        .value   = value,
-        .exec = exec,
-        .report = nullptr
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .value   = std_value<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
       };
       
     }    
-
 
     
   } // flow

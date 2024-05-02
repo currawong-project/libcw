@@ -53,7 +53,7 @@ namespace cw
       { "audio_meter",     &audio_meter::members },
       { "audio_marker",    &audio_marker::members },
       { "xfade_ctl",       &xfade_ctl::members },
-      { "poly_mixer",      &poly_mixer::members },
+      { "poly_merge",      &poly_merge::members },
       { "sample_hold",     &sample_hold::members },
       { "number",          &number::members },
       { "timer",           &timer::members },
@@ -244,78 +244,6 @@ namespace cw
     }
 
 
-    /*
-    rc_t _setup_input( flow_t* p, instance_t* in_inst, const char* in_var_label, const char* src_proc_label, const char* src_var_label )
-    {
-      rc_t        rc        = kOkRC;
-      unsigned    src_charN = textLength(src_label_arg);
-      variable_t* src_var   = nullptr;
-      instance_t* src_inst  = nullptr;
-      variable_t* in_var    = nullptr;
-      
-      char        sbuf[ src_charN+1 ];
-        
-      // copy the id into the buf
-      strncpy(sbuf,src_label_arg,src_charN+1);
-
-      // advance suffix to the '.'
-      char* suffix = sbuf;
-      while( *suffix && *suffix != '.')
-        ++suffix;
-
-      // if a '.' suffix was found
-      if( *suffix )
-      {
-        *suffix = 0;
-        ++suffix;
-      }
-
-      // locate source instance
-      if((rc = instance_find(p, sbuf, kBaseSfxId, src_inst )) != kOkRC )
-      {
-        rc = cwLogError(kSyntaxErrorRC,"The source instance '%s' was not found.", cwStringNullGuard(sbuf) );
-        goto errLabel;
-      }
-
-      // locate source value
-      if((rc = var_find( src_inst, suffix, kBaseSfxId, kAnyChIdx, src_var)) != kOkRC )
-      {
-        rc = cwLogError(rc,"The source var '%s' was not found on the source instance '%s'.", cwStringNullGuard(suffix), cwStringNullGuard(sbuf));
-        goto errLabel;
-      }
-
-      // locate input value
-      if((rc = var_find( in_inst, in_var_label, kBaseSfxId, kAnyChIdx, in_var )) != kOkRC )
-      {
-        rc = cwLogError(rc,"The input value '%s' was not found on the instance '%s'.", cwStringNullGuard(in_var_label), cwStringNullGuard(in_inst->label));
-        goto errLabel;        
-      }
-
-      // verify that the src_value type is included in the in_value type flags
-      if( cwIsNotFlag(in_var->varDesc->type, src_var->varDesc->type) )
-      {
-        rc = cwLogError(kSyntaxErrorRC,"The type flags don't match on input:%s %s source:%s %s .", in_inst->label, in_var_label, src_inst->label, suffix);        
-        goto errLabel;                
-      }
-
-      if( src_var->value == nullptr )
-      {
-        rc = cwLogError(kSyntaxErrorRC,"The source value is null on the connection input:'%s' %s source:'%s' '%s' .", in_inst->label, in_var_label, src_inst->label, suffix);
-        goto errLabel;
-      }
-
-      _connect_vars( src_var, in_var );
-
-      //cwLogInfo("'%s:%s' connected to source '%s:%s' %p.", in_inst->label, in_var_label, src_inst->label, suffix, in_var->value );
-      
-    errLabel:
-      return rc;
-    }
-    */
-
-
-
-    
     
     rc_t _destroy( flow_t* p)
     {
@@ -406,20 +334,24 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   }
 
   // parse the main audio file processor cfg record
-  if((rc = flowCfg.getv("framesPerCycle",      p->framesPerCycle,
-                        "network",             networkCfg)) != kOkRC )
+  if((rc = flowCfg.getv("network",             networkCfg)) != kOkRC )
   {
     rc = cwLogError(kSyntaxErrorRC,"Error parsing the required flow configuration parameters.");
     goto errLabel;
   }
 
+  p->framesPerCycle = kDefaultFramesPerCycle;
+  p->sample_rate    = kDefaultSampleRate;
+
   // parse the optional args
-  if((rc = flowCfg.getv_opt("maxCycleCount",    p->maxCycleCount,
+  if((rc = flowCfg.getv_opt("framesPerCycle",       p->framesPerCycle,
+                            "sample_rate",          p->sample_rate,
+                            "maxCycleCount",        p->maxCycleCount,
                             "multiPriPresetProbFl", p->multiPriPresetProbFl,
                             "multiSecPresetProbFl", p->multiSecPresetProbFl,
-                            "multiPresetInterpFl", p->multiPresetInterpFl,
-                            "printClassDictFl", printClassDictFl,
-                            "printNetworkFl",   printNetworkFl)) != kOkRC )
+                            "multiPresetInterpFl",  p->multiPresetInterpFl,
+                            "printClassDictFl",     printClassDictFl,
+                            "printNetworkFl",       printNetworkFl)) != kOkRC )
   {
     rc = cwLogError(kSyntaxErrorRC,"Error parsing the optional flow configuration parameters.");
     goto errLabel;

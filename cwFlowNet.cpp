@@ -63,20 +63,6 @@ namespace cw
 
     rc_t  _var_map_id_to_index(  instance_t* inst, unsigned vid, unsigned chIdx, unsigned& idxRef );
 
-    void _connect_vars( variable_t* src_var, variable_t* in_var )
-    {
-      // connect in_var into src_var's outgoing var chain
-      in_var->dst_link  = src_var->dst_tail;
-      src_var->dst_tail = in_var;
-      if( src_var->dst_head == nullptr )
-        src_var->dst_head = in_var;
-
-      assert( src_var->value != nullptr );
-          
-      in_var->value    = src_var->value;
-      in_var->src_var = src_var;
-    }
-
     rc_t _create_instance_var_map( instance_t* inst )
     {
       rc_t        rc        = kOkRC;
@@ -146,6 +132,7 @@ namespace cw
       
     }
 
+    /*
     void _complete_input_connections( instance_t* inst )
     {
       for(variable_t* var=inst->varL; var!=nullptr; var=var->var_link)
@@ -173,7 +160,8 @@ namespace cw
           }
         }
     }
-
+    */
+    
     rc_t _set_log_flags(instance_t* proc, const object_t* log_labels)
     {
       rc_t rc = kOkRC;
@@ -1223,7 +1211,7 @@ namespace cw
         // get the var class desc. for the in-var
         if(( in_stmt.in_var_desc = var_desc_find(inst->class_desc,in_stmt.in_var_ele.label)) == nullptr )
         {
-          rc = cwLogError(rc,"Unable to locate the var class desc for the in-var from '%s'.",cwStringNullGuard(in_stmt.in_var_ele.label));
+          rc = cwLogError(kEleNotFoundRC,"Unable to locate the var class desc for the in-var from '%s'.",cwStringNullGuard(in_stmt.in_var_ele.label));
           goto errLabel;
         }
 
@@ -1446,7 +1434,7 @@ namespace cw
           }
 
           //
-          _connect_vars( src_var, in_var );
+          var_connect( src_var, in_var );
         }                
       }
 
@@ -1661,7 +1649,7 @@ namespace cw
       }
 
       // the custom creation function may have added channels to in-list vars fix up those connections here.
-      _complete_input_connections(inst);
+      //_complete_input_connections(inst);
 
       // set the log flags again so that vars created by the instance can be included in the log output
       if((rc = _set_log_flags(inst,pstate.log_labels)) != kOkRC )
@@ -2033,7 +2021,8 @@ cw::rc_t cw::flow::exec_cycle( network_t& net )
   for(unsigned i=0; i<net.proc_arrayN; ++i)
   {
     if((rc = net.proc_array[i]->class_desc->members->exec(net.proc_array[i])) != kOkRC )
-    {          
+    {
+      rc = cwLogError(rc,"Execution failed on the proc:%s:%i.",cwStringNullGuard(net.proc_array[i]->label),net.proc_array[i]->label_sfx_id);
       break;
     }
   }

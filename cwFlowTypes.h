@@ -18,7 +18,9 @@ namespace cw
       kBaseSfxId = 0,
       kFbufVectN = 3,  // count of signal vectors in fbuf (mag,phs,hz)
       kAnyChIdx = kInvalidIdx,
-      kLocalValueN = 2
+      kLocalValueN = 2,
+      kDefaultFramesPerCycle=64,
+      kDefaultSampleRate=48000
     };
         
     typedef struct abuf_str
@@ -78,8 +80,9 @@ namespace cw
 
       kTypeMask    = 0x0000ffff,
 
-      kRuntimeTFl  = 0x80000000
+      kRuntimeTFl  = 0x80000000,
 
+      kNumericFlags = kBoolMtxTFl | kUIntMtxTFl | kIntMtxTFl | kFloatMtxTFl | kDoubleMtxTFl
     };
 
     typedef struct mtx_str
@@ -111,7 +114,7 @@ namespace cw
         char*           s;
         
         const object_t* cfg;
-        void* p;
+        void*           p;
 
       } u;
       
@@ -119,10 +122,6 @@ namespace cw
       
     } value_t;
 
-
-    inline void set_null( value_t& v, unsigned tflag ) { v.tflag=tflag; v.u.p=nullptr; }
-    inline bool is_numeric( const value_t* v ) { return cwIsFlag(v->tflag,kBoolTFl|kUIntTFl|kIntTFl|kFloatTFl|kDoubleTFl); }
-    inline bool is_matrix(  const value_t* v ) { return cwIsFlag(v->tflag,kBoolMtxTFl|kUIntMtxTFl|kIntMtxTFl|kFloatMtxTFl|kDoubleMtxTFl); }
         
     struct instance_str;
     struct variable_str;
@@ -187,7 +186,8 @@ namespace cw
       struct instance_str* inst;         // pointer to this variables instance
       
       char*                label;        // this variables label
-      unsigned             label_sfx_id; // the label suffix id of this variable or kInvalidIdx if this has no suffix      
+      unsigned             label_sfx_id; // the label suffix id of this variable or kBaseSfxId if this has no suffix
+      
       unsigned             vid;          // this variables numeric id ( cat(vid,chIdx) forms a unique variable identifier on this 'inst'      
       unsigned             chIdx;        // channel index
       unsigned             flags;        // kLogVarFl
@@ -262,6 +262,7 @@ namespace cw
 
       
       unsigned             framesPerCycle;  // sample frames per cycle (64)
+      srate_t              sample_rate;     // default sample rate (48000.0)
       bool                 multiPriPresetProbFl; // If set then probability is used to choose presets on multi-preset application
       bool                 multiSecPresetProbFl; // 
       bool                 multiPresetInterpFl; // If set then interpolation is applied between two selectedd presets on multi-preset application
@@ -282,6 +283,14 @@ namespace cw
     //
     // Value Only
     //
+
+    inline void set_null( value_t& v, unsigned tflag ) { v.tflag=tflag; v.u.p=nullptr; }
+    inline bool is_numeric( const value_t* v ) { return cwIsFlag(v->tflag,kBoolTFl|kUIntTFl|kIntTFl|kFloatTFl|kDoubleTFl); }
+    inline bool is_matrix(  const value_t* v ) { return cwIsFlag(v->tflag,kNumericFlags); }
+
+    // if all of the src flags are set in the dst flags then the two types are convertable.
+    inline bool can_convert( unsigned src_tflag, unsigned dst_tflag ) { return (src_tflag&dst_tflag)==src_tflag; }
+
     
     abuf_t*         abuf_create( srate_t srate, unsigned chN, unsigned frameN );
     void            abuf_destroy( abuf_t*& buf );
@@ -309,11 +318,13 @@ namespace cw
     //
     // Class and Variable Description
     //
+
+    class_desc_t*  class_desc_find(  flow_t* p, const char* class_desc_label );
     
     var_desc_t*    var_desc_find( class_desc_t* cd, const char* var_label );
     rc_t           var_desc_find( class_desc_t* cd, const char* label, var_desc_t*& vdRef );
 
-    class_desc_t*  class_desc_find(  flow_t* p, const char* class_desc_label );
+    const preset_t* class_preset_find( class_desc_t* cd, const char* preset_label );
     
     void           class_dict_print( flow_t* p );
 
@@ -341,7 +352,6 @@ namespace cw
     // Count of all var instances on this proc.  This is a count of the length of inst->varL.
     unsigned           instance_var_count( instance_t* inst );
 
-
     
     //------------------------------------------------------------------------------------------------------------------------
     //
@@ -357,9 +367,6 @@ namespace cw
     // Channelizing creates a new var record with an explicit channel index to replace the
     // automatically generated variable whose channel index is set to  'all'.
     rc_t           var_channelize( instance_t* inst, const char* var_label, unsigned sfx_id, unsigned chIdx, const object_t* value_cfg, unsigned vid, variable_t*& varRef );
-
-    // Set the var. type at runtime.
-    //rc_t           var_set_type( instance_t* inst, unsigned chIdx, const char* var_label, unsigned sfx_id, unsigned type_flags );
 
     // Wrapper around call to var->inst->members->value()
     rc_t           var_call_custom_value_func( variable_t* var );
@@ -377,7 +384,11 @@ namespace cw
 
     // Return true if this var is acting as a source for another var.
     bool           is_a_source_var( const variable_t* var );
-    
+
+    // Connect in_var to src_var. 
+    void           var_connect( variable_t* src_var, variable_t* in_var );
+
+    // Get all the label-sfx-id's associated with a give var label
     rc_t           var_mult_sfx_id_array( instance_t* inst, const char* var_label, unsigned* idA, unsigned idAllocN, unsigned& idN_ref );
     
     //-----------------
@@ -502,6 +513,10 @@ namespace cw
     rc_t           var_channel_count( instance_t* inst, const char* label, unsigned sfx_idx, unsigned& chCntRef );
     rc_t           var_channel_count( const variable_t* var, unsigned& chCntRef );
     
+
+    //
+    // var_get() coerces the value of the variable to the type of the returned value.
+    //
     
     rc_t var_get( const variable_t* var, bool&            valRef );
     rc_t var_get( const variable_t* var, uint_t&          valRef );
@@ -537,6 +552,12 @@ namespace cw
       return value;
     }
 
+    //
+    //  var_set() coerces the incoming value to the type of the variable (var->type)
+    //
+
+    rc_t var_set_from_preset( variable_t* var, const object_t* val );
+
     rc_t var_set( variable_t* var, const value_t* val );
     rc_t var_set( variable_t* var, bool val );
     rc_t var_set( variable_t* var, uint_t val );
@@ -560,7 +581,6 @@ namespace cw
     rc_t var_set( instance_t* inst, unsigned vid, unsigned chIdx, fbuf_t* val );
     rc_t var_set( instance_t* inst, unsigned vid, unsigned chIdx, const object_t* val );
 
-    const preset_t* class_preset_find( class_desc_t* cd, const char* preset_label );
     
   }
 }
