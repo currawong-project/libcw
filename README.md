@@ -529,7 +529,7 @@ before registering the variable.
 6. The internal variable id map is created to implement  fast
 access to registered variables.
 
-
+7. The 
 
 # Notes on 'poly' and 'mult':
 
@@ -624,7 +624,7 @@ created by default and later connected to the source inst/var.
 	  of source variables indicated in the `src-expr`.
 
 
-- If no "_" is given:
+- If "_" is not given:
     + No `sec-int` can exist without a "_".
 	
     + If a `pri-int` is given then a single
@@ -850,10 +850,10 @@ resolvable without more information.
 ### TODO:
 
 - Documentation w/ examples.
-  + Write the rules for each member function.
+  + Write the rules for each implementing member function.
     
 - value() should return a special return-code value to indicate that the
-value should not be updated.
+value should not be updated and distinguish it from an error code - which should stop the system.
 
 - Compile presets: at load time the presets should be resolved
   to the proc and vars to which they will be assigned.
@@ -865,6 +865,20 @@ value should not be updated.
   
 - Enforce var attributes.
 
+-  String assignment is allocating  memory:
+   See: `rc_t _val_set( value_t* val, const char* v ) cwFlowTypes.cpp line:464.`
+
+- Should the var's with multiple channels remove the 'kAnyChIdx'?
+This may be a good idea because 'kAnyChIdx' will in general not be used
+if a var has been channelized - and yet it is possible for another 
+var to connect to it as a source ... which doesn't provoke an error
+but would almost certainly not do what the user expects.
+
+- DONE: verifiy that all proc variables values have a valid type - (i.e. (type & typeMask) != 0)
+  when the proc instance create is complete. This checks that both the type is assigned and
+  a valid value has been assigned - since the type is assigned the first time a value is set.
+  
+  
 - DONE: 'poly' should be implemented as a proc-inst with an internal network - but the 
 elements of the network should be visible outside of it.
 
@@ -876,18 +890,21 @@ ports of the internal elements.
 - 'poly' and 'sub' should be arbitrarily nestable. DONE?
 
 
-- Reduce runtime over head for var get/set operations.
+- Reduce runtime overhead for var get/set operations.
 
 
-- Allow multiple types on an input.
+- DONE: Allow multiple types on an input.
    For example 'adder' should have a single input 
    which can by any numeric type.
    
 - Allow min/max values on numeric variables.
 
-- Make a standard way to turn on output printing from any port on any instance
+- DONE: Make a standard way to turn on output printing from any port on any instance
 This might be a better approach to logging than having a 'printer' object.
 Add proc instance field: `log:{ var_label_0:0, var_label_1:0 } `
+
+- log: should print the values for all channels - right now it is only
+printing the values for kAnyChIdx
 
 
 Next:
