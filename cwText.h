@@ -8,7 +8,7 @@ namespace cw
   unsigned textLength( const char* s );
 
   // If dst is non-null then dst is always 0-terminated.
-  // If src will be truncated if srcN > dstN-1.
+  // src will be truncated if srcN > dstN-1.
   // If dst is null then null is returned
   // if src is null then dst[0] = 0.
   // if srcN is 0 then textLength(src) is used for srcN
