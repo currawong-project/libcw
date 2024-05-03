@@ -46,7 +46,8 @@ namespace cw
       { kFloatTFl, "coeff"},
       { kDoubleTFl, "ftime" },
 
-      { kBoolTFl | kUIntTFl | kIntTFl | kFloatTFl | kDoubleTFl, "numeric" },
+      { kNumericTFl, "numeric" },
+      { kAllTFl,     "all" },
 
       { kRuntimeTFl, "runtime" },
 

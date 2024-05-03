@@ -82,7 +82,9 @@ namespace cw
 
       kRuntimeTFl  = 0x80000000,
 
-      kNumericFlags = kBoolMtxTFl | kUIntMtxTFl | kIntMtxTFl | kFloatMtxTFl | kDoubleMtxTFl
+      kNumericTFl = kBoolTFl | kUIntTFl | kIntTFl | kFloatTFl | kDoubleTFl,
+      kMtxTFl     = kBoolMtxTFl | kUIntMtxTFl | kIntMtxTFl | kFloatMtxTFl | kDoubleMtxTFl,
+      kAllTFl     = kTypeMask
     };
 
     typedef struct mtx_str
@@ -285,8 +287,8 @@ namespace cw
     //
 
     inline void set_null( value_t& v, unsigned tflag ) { v.tflag=tflag; v.u.p=nullptr; }
-    inline bool is_numeric( const value_t* v ) { return cwIsFlag(v->tflag,kBoolTFl|kUIntTFl|kIntTFl|kFloatTFl|kDoubleTFl); }
-    inline bool is_matrix(  const value_t* v ) { return cwIsFlag(v->tflag,kNumericFlags); }
+    inline bool is_numeric( const value_t* v ) { return cwIsFlag(v->tflag,kNumericTFl); }
+    inline bool is_matrix(  const value_t* v ) { return cwIsFlag(v->tflag,kMtxTFl); }
 
     // if all of the src flags are set in the dst flags then the two types are convertable.
     inline bool can_convert( unsigned src_tflag, unsigned dst_tflag ) { return (src_tflag&dst_tflag)==src_tflag; }
