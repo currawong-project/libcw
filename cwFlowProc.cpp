@@ -3339,54 +3339,44 @@ namespace cw
         kPresetPId,
         kGainPId,
       };
+
+      typedef struct poly_ch_str
+      {
+        network_t net;
+        coeff_t   target_gain;
+        coeff_t   cur_gain;
+      } poly_ch_t;
       
       typedef struct
       {
         unsigned    xfadeDurMs;       // crossfade duration in milliseconds
         instance_t* net_proc;         // source 'poly' network
-        network_t   net;              // internal proxy network 
-        unsigned    poly_ch_cnt;      // set to 2 (one for 'cur' poly-ch., one for 'next' poly-ch.)
+        poly_ch_t*  netA;             // netA[ poly_ch_cnt ] internal proxy network 
+        unsigned    poly_ch_cnt;      // count of poly channels in net_proc
         unsigned    net_proc_cnt;     // count of proc's in a single poly-channel (net_proc->proc_arrayN/poly_cnt)
-        unsigned    cur_poly_ch_idx;  // 
-        unsigned    next_poly_ch_idx; //
-        float*      target_gainA;     // target_gainA[net_proc->poly_cnt]
-        float*      cur_gainA;        // cur_gainA[net_proc->poly_cnt]
-        double      srate;
-        bool        preset_delta_fl;
-        bool        trigFl;
-        bool        trigVal;
+        unsigned    cur_poly_ch_idx;  // This is the active channel.
+        unsigned    next_poly_ch_idx; // This is the next channel that will be active.
+        srate_t     srate;            // Sample rate used for time base
+        bool        preset_delta_fl;  // Preset change trigger flag.
+        bool        trigFl;           // Cross-fade trigger flag.
       } inst_t;
 
       void _trigger_xfade( inst_t* p )
       {
         // begin fading out the cur channel
-        p->target_gainA[ p->cur_poly_ch_idx ] = 0;
+        p->netA[p->cur_poly_ch_idx].target_gain = 0;
         
         // the next poly-ch become the cur poly-ch
         p->cur_poly_ch_idx  = p->next_poly_ch_idx;
 
         // the next poly-ch advances
         p->next_poly_ch_idx = p->next_poly_ch_idx+1 >= p->poly_ch_cnt ? 0 : p->next_poly_ch_idx+1;
-
-        // j selects a block of 'net_proc_cnt' slots in the proxy network which will become the 'next' channel
-        unsigned j = p->next_poly_ch_idx * p->net_proc_cnt;
-
-        // set the [j:j+poly_proc_cnt] pointers in the proxy net to the actual proc instances in the source net
-        for(unsigned i=0; i<p->net_proc->internal_net->proc_arrayN; ++i)
-          if( p->net_proc->internal_net->proc_array[i]->label_sfx_id == p->next_poly_ch_idx )
-          {
-            assert( p->next_poly_ch_idx * p->net_proc_cnt <= j
-                    && j < p->next_poly_ch_idx * p->net_proc_cnt + p->net_proc_cnt
-                    && j < p->net.proc_arrayN );
-            
-            p->net.proc_array[j++] = p->net_proc->internal_net->proc_array[i];
-          }
-
+        
         // begin fading in the new cur channel
-        p->target_gainA[ p->cur_poly_ch_idx ] = 1;
+        p->netA[p->cur_poly_ch_idx].target_gain = 1;
 
         // if the next channel is not already at 0 send it in that direction
-        p->target_gainA[ p->next_poly_ch_idx ] = 0;
+        p->netA[p->next_poly_ch_idx].target_gain = 0;
 
         //printf("xfad:%i %i : %i\n",p->cur_poly_ch_idx, p->next_poly_ch_idx,p->poly_ch_cnt);
 
@@ -3398,24 +3388,23 @@ namespace cw
         const char* netLabel      = nullptr;
         const char* presetLabel   = nullptr;
         unsigned    netLabelSfxId = kBaseSfxId;
-        bool        trigFl        = false;
-        variable_t* gainVar       = nullptr;
         abuf_t*     srateSrc      = nullptr;
-        double      dum_dbl;
+        coeff_t     dum_dbl;
 
         inst_t* p = mem::allocZ<inst_t>();
 
         ctx->userPtr = p;
-        
-        
+
+        if((rc = var_register(ctx,kAnyChIdx,kTriggerPId,"trigger", kBaseSfxId )) != kOkRC )
+          goto errLabel;
+                
         if((rc = var_register_and_get(ctx,kAnyChIdx,
-                                      kNetLabelPId,       "net",       kBaseSfxId, netLabel,
-                                      kNetLabelSfxPId,    "netSfxId",  kBaseSfxId, netLabelSfxId,
-                                      kSrateRefPId,       "srateSrc",  kBaseSfxId, srateSrc,
-                                      kDurMsPId,          "durMs",     kBaseSfxId, p->xfadeDurMs,
-                                      kTriggerPId,        "trigger",   kBaseSfxId, p->trigVal,
-                                      kPresetPId,         "preset",    kBaseSfxId, presetLabel,
-                                      kGainPId,           "gain",      kBaseSfxId, dum_dbl)) != kOkRC )
+                                      kNetLabelPId,    "net",       kBaseSfxId, netLabel,
+                                      kNetLabelSfxPId, "netSfxId",  kBaseSfxId, netLabelSfxId,
+                                      kSrateRefPId,    "srateSrc",  kBaseSfxId, srateSrc,
+                                      kDurMsPId,       "durMs",     kBaseSfxId, p->xfadeDurMs,
+                                      kPresetPId,      "preset",    kBaseSfxId, presetLabel,
+                                      kGainPId,        "gain",      kBaseSfxId, dum_dbl)) != kOkRC )
         {
           goto errLabel; 
         }
@@ -3435,9 +3424,8 @@ namespace cw
 
         p->poly_ch_cnt = p->net_proc->internal_net->poly_cnt;
 
-
         // create the gain output variables - one output for each poly-channel
-        for(unsigned i=1; i<p->net_proc->internal_net->poly_cnt; ++i)
+        for(unsigned i=1; i<p->poly_ch_cnt; ++i)
         {
           variable_t* dum;
           if((rc = var_create(ctx, "gain", i, kGainPId+i, kAnyChIdx, nullptr, kInvalidTFl, dum )) != kOkRC )
@@ -3450,17 +3438,29 @@ namespace cw
         // count of proc's in one poly-ch of the poly network
         p->net_proc_cnt = p->net_proc->internal_net->proc_arrayN / p->net_proc->internal_net->poly_cnt;
 
-        // create the proxy network
-        p->net.proc_arrayAllocN = p->net_proc_cnt * p->poly_ch_cnt;
-        p->net.proc_arrayN      = p->net.proc_arrayAllocN;
-        p->net.proc_array       = mem::allocZ<instance_t*>(p->net.proc_arrayAllocN);
-        p->target_gainA         = mem::allocZ<float>(p->net_proc->internal_net->poly_cnt);
-        p->cur_gainA            = mem::allocZ<float>(p->net_proc->internal_net->poly_cnt);
-        p->srate                = srateSrc->srate;
+        p->netA = mem::allocZ<poly_ch_t>(p->poly_ch_cnt);
         
-        // make the proxy network public - xfad_ctl now looks like the source network
-        // because it has the same proc instances
-        ctx->internal_net = &p->net;
+        // create the proxy network networks
+        for(unsigned i=0; i<p->poly_ch_cnt; ++i)
+        {
+          p->netA[i].net.proc_arrayAllocN = p->net_proc_cnt;
+          p->netA[i].net.proc_arrayN      = p->netA[i].net.proc_arrayAllocN;
+          p->netA[i].net.proc_array       = mem::allocZ<instance_t*>(p->netA[i].net.proc_arrayAllocN);
+          p->netA[i].net.presetsCfg       = p->net_proc->internal_net->presetsCfg;
+
+          for(unsigned j=0,k=0; j<p->net_proc->internal_net->proc_arrayN; ++j)
+            if( p->net_proc->internal_net->proc_array[j]->label_sfx_id == i )
+            {
+              assert( k < p->net_proc_cnt );
+              p->netA[i].net.proc_array[k++] = p->net_proc->internal_net->proc_array[j];
+            }          
+        }
+
+        if( srateSrc == nullptr )
+          p->srate = ctx->ctx->sample_rate;
+        else
+          p->srate = srateSrc->srate;
+
 
         // setup the channels such that the first active channel after _trigger_xfade()
         // will be channel 0
@@ -3468,8 +3468,6 @@ namespace cw
         p->next_poly_ch_idx = 2;
         _trigger_xfade(p);  // cur=2 nxt=0 initialize inst ptrs in range: p->net[0:net_proc_cnt]
         _trigger_xfade(p);  // cur=0 nxt=1 initialize inst ptrs in range: p->net[net_proc_cnt:2*net_proc_cnt]
-
-
         
       errLabel:
         return rc;
@@ -3478,9 +3476,10 @@ namespace cw
       rc_t destroy( instance_t* ctx )
       {
         inst_t* p = (inst_t*)ctx->userPtr;
-        mem::release(p->net.proc_array);
-        mem::release(p->target_gainA);
-        mem::release(p->cur_gainA);
+        for(unsigned i=0; i<p->poly_ch_cnt; ++i)
+          mem::release(p->netA[i].net.proc_array);
+        
+        mem::release(p->netA);
         mem::release(ctx->userPtr);
         
         return kOkRC;
@@ -3488,24 +3487,20 @@ namespace cw
 
       rc_t value( instance_t* ctx, variable_t* var )
       {
-        rc_t rc = kOkRC;
-        inst_t* p = (inst_t*)ctx->userPtr;
-        
-        if(var->vid == kTriggerPId )
+        rc_t    rc = kOkRC;
+        inst_t* p  = (inst_t*)ctx->userPtr;
+
+        switch( var->vid )
         {
-          bool v;
-          if((rc = var_get(var,v)) == kOkRC )
-          {
-            if( !p->trigFl )
-              p->trigFl = p->trigVal != v;
-                
-            p->trigVal = v;
-          }
-          //printf("tr:%i %i %i\n",v,p->trigVal,p->trigFl);
+          case kTriggerPId:
+            p->trigFl = true;
+            break;
 
-          
+          case kPresetPId:
+            p->preset_delta_fl = true;
+            break;
         }
-
+        
         return kOkRC;
       }
 
@@ -3517,28 +3512,51 @@ namespace cw
         rc_t    rc     = kOkRC;
         inst_t* p      = (inst_t*)ctx->userPtr;
 
-        // check if a cross-fade has been triggered
-        if(p->trigFl )
-        {
-          p->trigFl = false;
-          _trigger_xfade(p);
-        }
-        
         // time in sample frames to complete a xfade
         double xfade_dur_smp        = p->xfadeDurMs * p->srate / 1000.0;
 
         // fraction of a xfade which will be completed in on exec() cycle
         float delta_gain_per_cycle =  (float)(ctx->ctx->framesPerCycle / xfade_dur_smp);
 
+
+        if( p->preset_delta_fl )
+        {
+          const char* preset_label = nullptr;
+          
+          p->preset_delta_fl = false;
+
+          if((rc = var_get(ctx,kPresetPId,kAnyChIdx,preset_label)) != kOkRC )
+          {
+            rc = cwLogError(rc,"Preset label access failed.");
+            goto errLabel;
+          }
+          
+          if((rc = network_apply_preset(p->netA[p->next_poly_ch_idx].net, preset_label,p->next_poly_ch_idx)) != kOkRC )
+          {
+            rc = cwLogError(rc,"Appy preset '%s' failed.",cwStringNullGuard(preset_label));
+            goto errLabel;
+          }
+        }
+        
+        // check if a cross-fade has been triggered
+        if(p->trigFl )
+        {
+          p->trigFl = false;
+          _trigger_xfade(p);
+        }
+
         // update the cross-fade gain outputs
         for(unsigned i=0; i<p->net_proc->internal_net->poly_cnt; ++i)
         {
-          p->cur_gainA[i] += _signum(p->target_gainA[i] - p->cur_gainA[i]) * delta_gain_per_cycle;
+          p->netA[i].cur_gain += _signum(p->netA[i].target_gain - p->netA[i].cur_gain) * delta_gain_per_cycle;
           
-          p->cur_gainA[i] = std::min(1.0f, std::max(0.0f, p->cur_gainA[i]));
+          p->netA[i].cur_gain = std::min(1.0f, std::max(0.0f, p->netA[i].cur_gain));
           
-          var_set(ctx,kGainPId+i,kAnyChIdx,p->cur_gainA[i]);
+          var_set(ctx,kGainPId+i,kAnyChIdx,p->netA[i].cur_gain);
         }
+        
+        
+
         
       errLabel:
         return rc;
@@ -4402,7 +4420,8 @@ namespace cw
       {
         kInPId,
         kListPId,
-        kOutPId
+        kOutPId,
+        kValueBasePId
       };
       
       typedef struct
@@ -4509,7 +4528,7 @@ namespace cw
       }
 
       template< typename T >
-      rc_t _set_out_tmpl( instance_t* proc, inst_t* p, unsigned idx, T& v )
+      rc_t _set_out_tmpl( instance_t* proc, inst_t* p, unsigned idx, unsigned vid, T& v )
       {
         rc_t rc;
         const object_t* ele;        
@@ -4529,10 +4548,68 @@ namespace cw
         }
 
         // set the output
-        if((rc = var_set(proc,kOutPId,kAnyChIdx,v)) != kOkRC )
+        if((rc = var_set(proc,vid,kAnyChIdx,v)) != kOkRC )
         {
           rc = cwLogError(rc,"List output failed on index %i",idx);
           goto errLabel;          
+        }
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _set_output( instance_t* proc, inst_t* p, unsigned idx, unsigned vid )
+      {
+        rc_t rc;
+
+        switch( p->typeFl )
+        {
+          case kUIntTFl:
+            {
+              unsigned v;
+              rc = _set_out_tmpl(proc,p,idx,vid,v);
+            }
+            break;
+            
+          case kIntTFl:
+            {
+              int v;
+              rc = _set_out_tmpl(proc,p,idx,vid,v);
+            }
+            break;
+            
+          case kFloatTFl:
+            {
+              float v;
+              rc = _set_out_tmpl(proc,p,idx,vid,v);
+            }
+            break;
+            
+          case kDoubleTFl:
+            {
+              double v;
+              rc = _set_out_tmpl(proc,p,idx,vid,v); 
+            }
+            break;
+            
+          case kStringTFl:
+            {
+              const char* v;
+              rc = _set_out_tmpl(proc,p,idx,vid,v);
+            }
+            break;
+            
+          case kCfgTFl:
+            {
+              const object_t* v;
+              rc = _set_out_tmpl(proc,p,idx,vid,v);
+            }
+            break;
+            
+          default:
+            rc = cwLogError(kInvalidArgRC,"The list type flag %s (0x%x) is not valid.",value_type_flag_to_label(p->typeFl),p->typeFl);
+            break;
+            
         }
 
       errLabel:
@@ -4554,64 +4631,16 @@ namespace cw
         if( idx == p->index )
           goto errLabel;
 
-        switch( p->typeFl )
-        {
-          case kUIntTFl:
-            {
-              unsigned v;
-              rc = _set_out_tmpl(proc,p,idx,v);
-            }
-            break;
-            
-          case kIntTFl:
-            {
-              int v;
-              rc = _set_out_tmpl(proc,p,idx,v);
-            }
-            break;
-            
-          case kFloatTFl:
-            {
-              float v;
-              rc = _set_out_tmpl(proc,p,idx,v);
-            }
-            break;
-            
-          case kDoubleTFl:
-            {
-              double v;
-              rc = _set_out_tmpl(proc,p,idx,v); 
-            }
-            break;
-            
-          case kStringTFl:
-            {
-              const char* v;
-              rc = _set_out_tmpl(proc,p,idx,v);
-            }
-            break;
-            
-          case kCfgTFl:
-            {
-              const object_t* v;
-              rc = _set_out_tmpl(proc,p,idx,v);
-            }
-            break;
-            
-          default:
-            rc = cwLogError(kInvalidArgRC,"The list type flag %s (0x%x) is not valid.",value_type_flag_to_label(p->typeFl),p->typeFl);
-            break;
-            
-        }
-
-        if(rc != kOkRC )
+        if((rc = _set_output(proc,p,idx, kOutPId )) != kOkRC )
           goto errLabel;
 
         p->index = idx;
-        
+
       errLabel:
         return rc;
       }
+        
+      
 
       rc_t create( instance_t* proc )
       {
@@ -4656,6 +4685,24 @@ namespace cw
         // set the initial value of the output 
         if((rc = _set_output(proc,p)) != kOkRC )
           goto errLabel;
+                
+        // create the output variable
+        for(unsigned i=0; i<p->listN; ++i)
+        {
+          if((rc = var_create( proc, "value", i, kValueBasePId+i, kAnyChIdx, nullptr, p->typeFl, dum )) != kOkRC )
+          {
+            rc = cwLogError(rc,"'value%i' var create failed.",i);
+            goto errLabel;
+          }
+
+          if((rc = _set_output(proc, p, i, kValueBasePId+i )) != kOkRC )
+          {
+            rc = cwLogError(rc,"'value%i' output failed.",i);
+            goto errLabel;            
+          }
+
+        }
+       
         
       errLabel:
         return rc;
