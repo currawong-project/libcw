@@ -862,8 +862,7 @@ value should not be updated and distinguish it from an error code - which should
 
 - Variable attributes should be meaningful. e.g. src,src_opt,mult,init, ....
   Should we check for 'src' or 'mult' attribute on var's?
-  
-- Enforce var attributes.
+  (In other words: Enforce var attributes.)
 
 -  String assignment is allocating  memory:
    See: `rc_t _val_set( value_t* val, const char* v ) cwFlowTypes.cpp line:464.`
@@ -889,9 +888,11 @@ ports of the internal elements.
 
 - 'poly' and 'sub' should be arbitrarily nestable. DONE?
 
-
 - Reduce runtime overhead for var get/set operations.
+  
+- Implement matrix types.
 
+- Should the `object_t` be used in place of `value_t`?
 
 - DONE: Allow multiple types on an input.
    For example 'adder' should have a single input 
@@ -909,8 +910,53 @@ printing the values for kAnyChIdx
 
 Next:
 
-- Implement 'preset' proc. This will involve implementing the 'cfg' datatype.
+There is no way for a proc in a poly context to use it's poly channel number to 
+select a mult variable.
 
-- Finish the 'poly' frawework. We are making 'mult' var's, but do any of the procs explicitly deal with them?
+The counter modulo mode is not working as expected.
 
-- Turn on variable 'broadcast'.  Why was it turned off? ... maybe multiple updates?
+
+
+- DONE: Implement 'preset' proc. This will involve implementing the 'cfg' datatype.
+
+- DONE: Finish the 'poly' frawework. We are making 'mult' var's, but do any of the procs explicitly deal with them?
+
+- DONE: Turn on variable 'broadcast'.  Why was it turned off? ... maybe multiple updates?
+
+```
+	
+mod_osc: {
+
+	vars:
+	{
+      hz:            { type:hz_lfo.dc,     doc:"Audio frequency" },
+	  hz_mod_hz:     { type:hz_lfo.hz,     doc:"Frequency modulator hz" },
+	  hz_mod_depth:  { type:hz_lfo.gain,   doc:Frequency modulator depth" },
+	  amp_mod_hz:    { type:amp_lfo.hz,    doc:Amplitude modulator hz" },
+	  amp_mod_depth: { type:amp_lfo.gain,  doc:Amplutide modulator depth."},
+	  out:           { type:gain.out       doc:"Oscillator output."},
+	}
+	
+	presets: {
+	  
+	}
+
+	network: {
+	  procs: {
+		  hz_lfo:   { class: sine_tone,   in:{ dc:hz, gain:hz_mod_depth, hz:hz_mod_hz }, args: { default:{ chCnt:1, hz:3, dc:440, gain:110 }}}
+	      hz_sh:    { class: sample_hold, in:{ in:hz_lfo.out }}
+
+		  amp_lfo:   { class: sine_tone,   in:{ gain:amp_mod_depth, hz:amp_mod_hz }, args: { default:{ chCnt:1, hz:3, gain:110 }}}
+	      amp_sh:    { class: sample_hold, in:{ in:amp_lfo.out }}
+
+	      osc:   { class: sine_tone,   in:{ hz: hz_sh.out }}	
+		  gain:  { class: audio_gain,  in:{ in:osc.out, gain:amp_sh.out}}
+	  }
+	  
+	  presets: {
+	  }
+	
+	}
+
+}
+```
