@@ -70,7 +70,10 @@ namespace cw
       return rc;
     }
 
-    rc_t network_apply_preset( network_t& net, const char* presetLabel );
+    // 'proc_label_sfx_id' is the proc label_sfx_id to be used to identify all proc's which will
+    // be updated by the preset application. This is used to identify the set of procs to be updated
+    // for 'poly' networks.
+    rc_t network_apply_preset( network_t& net, const char* presetLabel, unsigned proc_label_sfx_id=kBaseSfxId );
     rc_t network_apply_dual_preset( network_t& net, const char* presetLabel_0, const char* presetLabel_1, double coeff );      
     rc_t network_apply_preset( network_t& net, const multi_preset_selector_t& mps );
     

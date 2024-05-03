@@ -2061,7 +2061,7 @@ errLabel:
 }
 
 
-cw::rc_t cw::flow::network_apply_preset( network_t& net, const char* presetLabel )
+cw::rc_t cw::flow::network_apply_preset( network_t& net, const char* presetLabel, unsigned proc_label_sfx_id )
 {
   rc_t    rc = kOkRC;
   const object_t* net_preset_value;
@@ -2085,7 +2085,7 @@ cw::rc_t cw::flow::network_apply_preset( network_t& net, const char* presetLabel
       instance_t* inst;
 
       // locate the instance
-      if((inst = instance_find(net,inst_label,kBaseSfxId)) == nullptr )
+      if((inst = instance_find(net,inst_label,proc_label_sfx_id)) == nullptr )
       {
         rc = cwLogError(kInvalidIdRC,"The network instance '%s' refered to in network preset '%s' could not be found.",inst_label,presetLabel);
         goto errLabel;
