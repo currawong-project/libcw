@@ -10,7 +10,8 @@ namespace cw
       kSecPresetProbFl     = 0x02,
       kInterpPresetFl      = 0x04,
       kAllowAllPresetFl    = 0x08,
-      kDryPriorityPresetFl = 0x10
+      kDryPriorityPresetFl = 0x10,
+      kDrySelectedPresetFl = 0x20,
     };
     
     typedef struct preset_order_str

@@ -32,7 +32,9 @@ namespace cw
       unsigned         endPlayLoc;
       char*            note;
 
-      bool             dryOnlyFl; 
+      bool             dryOnlyFl;      // there is one active preset and it is dry
+      bool             drySelectedFl;  // the dry preset was selected ('playFl' is set)
+      
       preset_t*        presetA;  // presetA[ presetN ] - status of each preset
       unsigned         presetN;
 
@@ -139,8 +141,9 @@ namespace cw
     unsigned fragment_seq_count( handle_t h, unsigned fragId );
 
     enum {
-      kAllActiveFl = 0x01,
-      kDryPriorityFl  = 0x02
+      kAllActiveFl    = 0x01,
+      kDryPriorityFl  = 0x02,
+      kDrySelectedFl  = 0x04
     };
     
     const flow::preset_order_t*  fragment_active_presets( handle_t h, const frag_t* f, unsigned flags, unsigned& count_ref );
