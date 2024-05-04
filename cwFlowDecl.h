@@ -6,10 +6,11 @@ namespace cw
   namespace flow
   {
     enum {
-      kPriPresetProbFl   = 0x01,
-      kSecPresetProbFl   = 0x02,
-      kInterpPresetFl    = 0x04,
-      kAllowAllPresetFl  = 0x08
+      kPriPresetProbFl     = 0x01,
+      kSecPresetProbFl     = 0x02,
+      kInterpPresetFl      = 0x04,
+      kAllowAllPresetFl    = 0x08,
+      kDryPriorityPresetFl = 0x10
     };
     
     typedef struct preset_order_str

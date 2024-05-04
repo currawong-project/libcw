@@ -47,6 +47,9 @@ namespace cw
       kPanelDivId = 1000,
       kQuitBtnId,
       kIoReportBtnId,
+      kIoRtReportBtnId,
+      kPresetReportBtnId,
+      kMRP_ReportBtnId,
       kNetPrintBtnId,
       kReportBtnId,
       kLatencyBtnId,
@@ -85,6 +88,7 @@ namespace cw
       kSecPresetProbCheckId,
       kPresetInterpCheckId,
       kPresetAllowAllCheckId,
+      kPresetDryPriorityCheckId,
 
       
       kEnaRecordCheckId,
@@ -155,8 +159,11 @@ namespace cw
       { ui::kRootAppId,  kPanelDivId,     "panelDivId" },
       { kPanelDivId,     kQuitBtnId,      "quitBtnId" },
       { kPanelDivId,     kIoReportBtnId,  "ioReportBtnId" },
+      { kPanelDivId,     kIoRtReportBtnId,"ioRtReportBtnId" },
       { kPanelDivId,     kNetPrintBtnId,  "netPrintBtnId" },
       { kPanelDivId,     kReportBtnId,    "reportBtnId" },
+      { kPanelDivId,     kPresetReportBtnId, "presetReportBtnId" },
+      { kPanelDivId,     kMRP_ReportBtnId, "MRP_ReportBtnId" },      
       { kPanelDivId,     kLatencyBtnId,   "latencyBtnId" },
         
       { kPanelDivId,     kStartBtnId,        "startBtnId" },
@@ -191,6 +198,8 @@ namespace cw
       { kPanelDivId,     kSecPresetProbCheckId,  "presetProbSecCheckId" },
       { kPanelDivId,     kPresetInterpCheckId,   "presetInterpCheckId" },
       { kPanelDivId,     kPresetAllowAllCheckId, "presetAllowAllCheckId" },
+      { kPanelDivId,     kPresetDryPriorityCheckId, "presetDryPriorityCheckId" },
+      
       
 
       { kPanelDivId,     kEnaRecordCheckId,  "enaRecordCheckId" },
@@ -926,16 +935,23 @@ namespace cw
         {
           unsigned multiPresetN = 0;
 
-          bool allowAnyFl = cwIsFlag(app->multiPresetFlags,flow::kAllowAllPresetFl) && cwIsFlag(app->multiPresetFlags,flow::kPriPresetProbFl);
-          
+          // allow-any-fl = pri-prob-fl && allow-any-flag
+          bool allowAnyFl    = cwIsFlag(app->multiPresetFlags,flow::kAllowAllPresetFl) && cwIsFlag(app->multiPresetFlags,flow::kPriPresetProbFl);
+          bool dryPriorityFl = cwIsFlag(app->multiPresetFlags,flow::kDryPriorityPresetFl) && cwIsFlag(app->multiPresetFlags,flow::kPriPresetProbFl);
+
+          unsigned activePresetFlags  = 0;
+
+          activePresetFlags = cwEnaFlag(activePresetFlags, preset_sel::kAllActiveFl,   allowAnyFl);
+          activePresetFlags = cwEnaFlag(activePresetFlags, preset_sel::kDryPriorityFl, dryPriorityFl);
+                    
           flow::multi_preset_selector_t mp_sel =
             { .flags     = app->multiPresetFlags,
               .coeffV    = score_evt->featV,
               .coeffMinV = score_evt->featMinV,
               .coeffMaxV = score_evt->featMaxV,
               .coeffN    = perf_meas::kValCnt,
-              .presetA   = allowAnyFl ? preset_order_array(app->psH) : fragment_active_presets(app->psH,frag,multiPresetN),
-              .presetN   = allowAnyFl ? preset_count(app->psH)       : multiPresetN
+              .presetA   = fragment_active_presets(app->psH,frag,activePresetFlags,multiPresetN),
+              .presetN   = multiPresetN
             };
 
           if( mp_sel.presetA == nullptr || mp_sel.presetN == 0 )
@@ -3031,6 +3047,10 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
           io::report( app->ioH );
           break;
 
+        case kIoRtReportBtnId:
+          io::realTimeReport(app->ioH);
+          break;
+          
         case kNetPrintBtnId:
           if( app->ioFlowH.isValid() )
             io_flow::print_network(app->ioFlowH,flow_cross::kCurDestId);
@@ -3045,13 +3065,19 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
           //midi_record_play::save_csv(app->mrpH,"/home/kevin/temp/mrp_1.csv");
           //printf("%i %i\n",app->beg_play_loc,app->end_play_loc);
           //io::realTimeReport(app->ioH);
-          //midi_record_play::report(app->mrpH);
           //score_follower::write_svg_file(app->sfH,"/home/kevin/temp/temp_sf.html");
           //score_follower::midi_state_rt_report( app->sfH, "/home/kevin/temp/temp_midi_state_rt_report.txt" );
           //score_follower::score_report(app->sfH,"/home/kevin/temp/temp_cm_score_report.txt");
+          break;
+          
+        case kPresetReportBtnId:
           preset_sel::report_presets(app->psH);
           break;
 
+        case kMRP_ReportBtnId:
+          midi_record_play::report(app->mrpH);
+          break;
+          
         case kLatencyBtnId:
           latency_measure_report(app->ioH);
           latency_measure_setup(app->ioH);
@@ -3083,6 +3109,10 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
           
         case kPresetAllowAllCheckId:
           app->multiPresetFlags = cwEnaFlag(app->multiPresetFlags,flow::kAllowAllPresetFl,m.value->u.b);
+          break;
+
+        case kPresetDryPriorityCheckId:
+          app->multiPresetFlags = cwEnaFlag(app->multiPresetFlags,flow::kDryPriorityPresetFl,m.value->u.b);
           break;
 
           
@@ -3340,6 +3370,10 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
 
         case kPresetAllowAllCheckId:
           io::uiSendValue( app->ioH, m.uuId, preset_cfg_flags(app->ioFlowH) & flow::kAllowAllPresetFl );
+          break;
+
+        case kPresetDryPriorityCheckId:
+          io::uiSendValue( app->ioH, m.uuId, preset_cfg_flags(app->ioFlowH) & flow::kDryPriorityPresetFl );
           break;
           
         case kWetInGainId:

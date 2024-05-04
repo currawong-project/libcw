@@ -1870,8 +1870,10 @@ cw::rc_t cw::flow::apply_preset( handle_t h, const multi_preset_selector_t& mps 
   bool        priProbFl = cwIsFlag(mps.flags, kPriPresetProbFl );
   bool        secProbFl = cwIsFlag(mps.flags, kSecPresetProbFl );
   bool        interpFl  = cwIsFlag(mps.flags, kInterpPresetFl );
+  bool        allFl     = cwIsFlag(mps.flags, kAllowAllPresetFl);
+  bool        dryFl     = cwIsFlag(mps.flags, kDryPriorityPresetFl);
 
-  //printf("preset flags: pri:%i sec:%i interp:%i\n",priProbFl,secProbFl,interpFl);
+  printf("preset flags: pri:%i sec:%i interp:%i all:%i dry:%i\n",priProbFl,secProbFl,interpFl,allFl,dryFl);
   
  // verify that the set of candidate presets is not empty
   if( mps.presetN == 0 )

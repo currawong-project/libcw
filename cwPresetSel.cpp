@@ -829,7 +829,7 @@ namespace cw
       return e;
     }
 
-    const flow::preset_order_t* _load_active_multi_preset_array( preset_sel_t* p, const frag_t* f, unsigned& cnt_ref )
+    const flow::preset_order_t* _load_active_multi_preset_array( preset_sel_t* p, const frag_t* f, unsigned flags, unsigned& cnt_ref )
     {
       bool has_zero_fl = false;
       cnt_ref = 0;
@@ -1516,14 +1516,23 @@ unsigned cw::preset_sel::fragment_seq_count( handle_t h, unsigned fragId )
 }
 
 
-const cw::flow::preset_order_t*  cw::preset_sel::fragment_active_presets( handle_t h, const frag_t* f, unsigned& count_ref )
+const cw::flow::preset_order_t*  cw::preset_sel::fragment_active_presets( handle_t h, const frag_t* f, unsigned flags, unsigned& count_ref )
 {
   preset_sel_t* p  = _handleToPtr(h);
-
-  count_ref = 0;
+  const flow::preset_order_t* preset_order;
   
-  return _load_active_multi_preset_array(p,f,count_ref);
+  count_ref = 0;
 
+  // if this is a dry-only fragment and dryOnlFy is set or if all active flag is not set
+  if( (cwIsFlag(flags,kDryPriorityFl) && f->dryOnlyFl) || cwIsNotFlag(flags,kAllActiveFl) )
+    preset_order = _load_active_multi_preset_array(p,f,flags,count_ref);
+  else
+  {
+    preset_order = p->presetOrderA;
+    count_ref    = p->presetLabelN;
+  }
+
+  return preset_order;
 }
 
 
@@ -1607,10 +1616,11 @@ cw::rc_t cw::preset_sel::write( handle_t h, const char* fn )
 
 cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
 {
-  rc_t            rc    = kOkRC;
-  preset_sel_t*   p     = _handleToPtr(h);  
-  object_t*       root  = nullptr;
-  const object_t* fragL_obj = nullptr;
+  rc_t            rc           = kOkRC;
+  preset_sel_t*   p            = _handleToPtr(h);  
+  object_t*       root         = nullptr;
+  const object_t* fragL_obj    = nullptr;
+  unsigned        dryPresetIdx = _preset_label_to_index(p,"dry");
 
   // parse the preset  file
   if((rc = objectFromFile(fn,root)) != kOkRC )
@@ -1640,11 +1650,19 @@ cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
     frag_t* f = nullptr;
     const object_t* r = fragL_obj->child_ele(i);
 
-    unsigned fragId=kInvalidId,endLoc=0,presetN=0,multiPresetN=0,begPlayLoc=0,endPlayLoc=0;
-    double igain=0,ogain=0,wetDryGain=0,fadeOutMs=0;
-    const char* note = nullptr;
-    const object_t* presetL_obj = nullptr;
-    time::spec_t end_ts;
+    unsigned        fragId       = kInvalidId;
+    unsigned        endLoc       = 0;
+    unsigned        presetN      = 0;
+    unsigned        activePresetN = 0;
+    unsigned        begPlayLoc   = 0;
+    unsigned        endPlayLoc   = 0;
+    double          igain        = 0;
+    double          ogain        = 0;
+    double          wetDryGain   = 0;
+    double          fadeOutMs    = 0;
+    const char*     note         = nullptr;
+    const object_t* presetL_obj  = nullptr;
+    time::spec_t    end_ts;
 
     // parse the fragment record
     if((rc = r->getv("fragId",fragId,
@@ -1722,7 +1740,7 @@ cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
       }
 
       if( order > 0 || playFl )
-        multiPresetN += 1;
+        activePresetN += 1;
 
       f->presetA[ preset_idx ].order     = order;
       f->presetA[ preset_idx ].alt_str   = mem::duplStr(alt_str);
@@ -1735,18 +1753,9 @@ cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
       
     }
 
-    /*
-    // create the multiPresetA[]
-    if( multiPresetN>0 )
-    {
-      // make multiPresetA as large as possible
-      f->multiPresetA = mem::allocZ<flow::preset_order_t>(p->presetLabelN);
+    // if only one preset is active and the dry preset is active
+    f->dryOnlyFl = activePresetN==1 && (f->presetA[dryPresetIdx].order>0 || f->presetA[dryPresetIdx].playFl);
 
-      _load_multi_preset_array(p,f);
-
-    }
-    */
-    
   }
   
 
@@ -1773,7 +1782,7 @@ cw::rc_t cw::preset_sel::report( handle_t h )
     unsigned elapsedMs = time::elapsedMs(t0,f->endTimestamp);
     double mins = elapsedMs / 60000.0;
     
-    cwLogInfo("%3i id:%3i end loc:%3i end min:%f",i,f->fragId,f->endLoc, mins);
+    cwLogInfo("%3i id:%3i end loc:%3i end min:%f dry-only:%i",i,f->fragId,f->endLoc, mins, f->dryOnlyFl);
   }
 
   return rc;
@@ -1788,11 +1797,12 @@ cw::rc_t cw::preset_sel::report_presets( handle_t h )
   
   for(; f!=nullptr; f=f->link)
   {
-    printf("%5i %5i ",beg_loc,f->endLoc);
+    const char* dry_label = f->dryOnlyFl ? "dry" : "";
+    cwLogPrint("%5i %5i %3s ",beg_loc,f->endLoc,dry_label);
     for(unsigned i=0; i<f->presetN; ++i)
       if( f->presetA[i].playFl || f->presetA[i].order!=0 )
-        printf("(%s-%i) ", p->presetLabelA[ f->presetA[i].preset_idx ].label, f->presetA[i].order);
-    printf("\n");
+        cwLogPrint("(%s-%i) ", p->presetLabelA[ f->presetA[i].preset_idx ].label, f->presetA[i].order);
+    cwLogPrint("\n");
     beg_loc = f->endLoc+1;
   }
   
