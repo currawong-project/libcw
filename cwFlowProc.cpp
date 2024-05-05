@@ -120,6 +120,80 @@ namespace cw
       
     }    
 
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // subnet
+    //
+    namespace subnet
+    {
+      typedef struct
+      {
+        network_t net;
+      } inst_t;
+
+
+      rc_t _create( instance_t* proc, inst_t* p )
+      {
+        rc_t            rc         = kOkRC;        
+        const object_t* networkCfg = nullptr;
+        
+        if((rc = proc->class_desc->cfg->getv("network",networkCfg)) != kOkRC )
+        {
+          rc = cwLogError(rc,"The subnet 'network' cfg. was not found.");
+          goto errLabel;
+        }
+
+        if((rc = network_create(proc->ctx,networkCfg,p->net,proc->varL)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Creation failed on the subnet internal network.");
+          goto errLabel;
+        }
+
+        // Set the internal net pointer in the base proc instance
+        // so that network based utilities can scan it
+        proc->internal_net = &p->net;
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( instance_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        network_destroy(p->net);
+
+        return rc;
+      }
+
+      rc_t _value( instance_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+
+      rc_t _exec( instance_t* proc, inst_t* p )
+      {
+        rc_t rc      = kOkRC;
+
+        if((rc = exec_cycle(p->net)) != kOkRC )
+          rc = cwLogError(rc,"poly internal network exec failed.");
+        
+        return rc;
+      }
+
+      rc_t _report( instance_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .value   = std_value<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    
     
     //------------------------------------------------------------------------------------------------------------------
     //
@@ -147,6 +221,7 @@ namespace cw
         inst_t*         inst        = mem::allocZ<inst_t>();
         const object_t* networkCfg  = nullptr;
         const char*     order_label = nullptr;
+        variable_t*     proxyVarL   = nullptr;
         
         proc->userPtr = inst;
         
@@ -181,7 +256,7 @@ namespace cw
           }
         }
         
-        if((rc = network_create(proc->ctx,networkCfg,inst->net,inst->count )) != kOkRC )
+        if((rc = network_create(proc->ctx,networkCfg,inst->net,proxyVarL,inst->count)) != kOkRC )
         {
           rc = cwLogError(rc,"Creation failed on the internal network.");
           goto errLabel;
@@ -1003,7 +1078,9 @@ namespace cw
           inst->durSmpN += src_abuf->frameN;          
           if( src_abuf->srate!=0 && inst->durSmpN % ((unsigned)src_abuf->srate*60) == 0 )
             printf("audio file out: %5.1f min\n", inst->durSmpN/(src_abuf->srate*60));
-          
+
+          //if( 48000 <= inst->durSmpN  && inst->durSmpN < 49000 )
+          //  printf("break\n");
         }
         
         return rc;
@@ -1785,6 +1862,8 @@ namespace cw
             if((rc = var_set(ctx,kSratePId,i,srate)) != kOkRC )
               goto errLabel;
         }
+
+        printf("%s: sr:%f hz:%f phs:%f dc:%f gain:%f\n",ctx->label,srate,hz,phase,dc,gain);
         
         // create one output audio buffer
         rc = var_register_and_set( ctx, "out", kBaseSfxId,
@@ -1840,7 +1919,10 @@ namespace cw
             for(unsigned j=0; j<abuf->frameN; ++j)
               v[j] = (sample_t)((gain * sin( inst->phaseA[i] + phase + (2.0 * M_PI * j * hz/srate)))+dc);
 
-            inst->phaseA[i] += 2.0 * M_PI * abuf->frameN * hz/srate;            
+            inst->phaseA[i] += 2.0 * M_PI * abuf->frameN * hz/srate;
+
+            //if( i==0 )
+            //  printf("hz:%f gain:%f phs:%f : %f\n",hz,gain,inst->phaseA[i],v[0]);
           }
         }
         

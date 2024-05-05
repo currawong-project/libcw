@@ -1263,8 +1263,16 @@ namespace cw
       
       return rc;      
     }
+
+    const variable_t* _find_proxy_var( const char* procInstLabel, const char* varLabel, const variable_t* proxyVarL )
+    {
+      for(const variable_t* proxyVar=proxyVarL; proxyVar!=nullptr; proxyVar=proxyVar->var_link)
+        if( textIsEqual(proxyVar->varDesc->proxyProcLabel,procInstLabel) && textIsEqual(proxyVar->varDesc->proxyVarLabel,varLabel) )
+          return proxyVar;
+      return nullptr;
+    }
     
-    rc_t _parse_in_list( network_t& net, instance_t* inst, proc_inst_parse_state_t& pstate )
+    rc_t _parse_in_list( network_t& net, instance_t* inst, variable_t* proxyVarL, proc_inst_parse_state_t& pstate )
     {
       rc_t            rc     = kOkRC;
       
@@ -1315,6 +1323,16 @@ namespace cw
         // create the var
         if( in_stmt.create_in_fl )
         {
+          const variable_t* proxy_var;
+          
+          // a variable cannot be in the 'in' list if it is used a a subnet variable
+          if((proxy_var = _find_proxy_var(inst->label, in_stmt.in_var_ele.label, proxyVarL)) != nullptr )
+          {
+            rc = cwLogError(kSyntaxErrorRC,"The variable:'%s' cannot be used as the in-var of an 'in' statement if it is a subnet variable: '%s'.",cwStringNullGuard(in_stmt.in_var_ele.label),cwStringNullGuard(proxy_var->label));
+            goto errLabel;
+          }
+
+          
           for(unsigned i=0; i<in_stmt.iter_cnt; ++i)
           {
             variable_t* dum = nullptr;        
@@ -1339,12 +1357,105 @@ namespace cw
       return rc;      
     }
 
-    bool _is_var_inst_already_created( const char* var_label, const proc_inst_parse_state_t& pstate )
+    // This function is used to create the variables on procs
+    // inside subnets which are represented by interface variables
+    // on the subnet wrapper.
+    // 'inst' is a proc on the subnet's internal proc list
+    // 'wrap_varL' is a list of all the variables on the wrapper proc.
+    // These wrapper variables mirror variables on some of the internal subnet proc's.
+    // The function finds the variables in wrap_varL that mirror
+    // variables in 'inst' and instantiates them.  It then connects the wrapper
+    // variable to the proc-inst variable for input variables or
+    // proc-inst variable to the wrapper variable for output variables.
+    rc_t  _create_proxied_vars( instance_t* inst, variable_t* wrap_varL )
+    {
+      rc_t rc = kOkRC;
+      
+      for(variable_t* wrap_var=wrap_varL; wrap_var!=nullptr; wrap_var=wrap_var->var_link )
+      {
+        // if this wrap_var is on this proc (inst->label)
+        if( textIsEqual(wrap_var->varDesc->proxyProcLabel,inst->label) )
+        {
+          
+          variable_t* var;
+
+          if((rc = var_create( inst, wrap_var->varDesc->proxyVarLabel, wrap_var->label_sfx_id, kInvalidId, wrap_var->chIdx, nullptr, kInvalidTFl, var )) != kOkRC )
+          {
+            rc = cwLogError(rc,"Subnet variable creation failed for %s:%s on wrapper variable:%s:%s.",cwStringNullGuard(wrap_var->varDesc->proxyProcLabel),cwStringNullGuard(wrap_var->varDesc->proxyVarLabel),cwStringNullGuard(wrap_var->inst->label),cwStringNullGuard(wrap_var->label));
+            goto errLabel;
+          }
+
+          //printf("Proxy matched: %s %s %s : flags:%i.\n",inst->label, wrap_var->varDesc->proxyVarLabel, wrap_var->label,wrap_var->varDesc->flags );
+
+          var->flags |= kProxiedVarFl;
+          
+          if( cwIsFlag(wrap_var->varDesc->flags,kSubnetOutVarFl) )
+            var->flags |= kProxiedOutVarFl;
+        }
+      }
+
+    errLabel:
+      return rc;
+    }
+
+    variable_t* _find_wrap_var( variable_t* wrap_varL, variable_t* var )
+    {
+      for(variable_t* wrap_var=wrap_varL; wrap_var!=nullptr; wrap_var=wrap_var->var_link)
+        if( textIsEqual(wrap_var->varDesc->proxyProcLabel,var->inst->label) && textIsEqual(wrap_var->varDesc->proxyVarLabel,var->label) && (wrap_var->label_sfx_id==var->label_sfx_id) )
+          return wrap_var;
+        
+      return nullptr;
+    }
+    
+    rc_t _connect_wrapped_vars( instance_t* inst, variable_t* wrap_varL )
+    {
+      rc_t rc = kOkRC;
+      for(variable_t* var=inst->varL; var!=nullptr; var=var->var_link)
+      {
+        if( cwIsFlag(var->flags,kProxiedVarFl) )
+        {
+          variable_t* wrap_var;
+          if((wrap_var = _find_wrap_var(wrap_varL,var)) == nullptr )
+          {
+            rc = cwLogError(kEleNotFoundRC,"The wrapped variable '%s:%i' not found on '%s:%i'.",var->label,var->label_sfx_id,inst->label,inst->label_sfx_id);
+            goto errLabel;
+          }
+          
+          if( cwIsFlag(var->flags,kProxiedOutVarFl) )
+          {
+            //printf("Proxy connection: %i %s:%i-%s:%i -> %s:%i-%s:%i\n",var->flags,
+            //       var->inst->label,var->inst->label_sfx_id,var->label,var->label_sfx_id,
+            //       wrap_var->inst->label,wrap_var->inst->label_sfx_id,wrap_var->label,wrap_var->label_sfx_id );
+            
+            var_connect(var,wrap_var);
+          }
+          else
+          {
+            //printf("Proxy connection: %i %s:%i-%s:%i -> %s:%i-%s:%i\n",var->flags,
+            //       wrap_var->inst->label,wrap_var->inst->label_sfx_id,wrap_var->label,wrap_var->label_sfx_id,
+            //       var->inst->label,var->inst->label_sfx_id,var->label,var->label_sfx_id );
+            
+            var_connect(wrap_var,var);
+          }          
+        }
+      }
+
+      errLabel:
+        return rc;
+    }
+    
+
+    
+    bool _is_var_inst_already_created( instance_t* inst, const char* var_label, const proc_inst_parse_state_t& pstate )
     {
       for(unsigned i=0; i<pstate.in_arrayN; ++i)
         if( textIsEqual(pstate.in_array[i].in_var_ele.label,var_label) && pstate.in_array[i].create_in_fl )
           return true;
 
+      for(variable_t* var=inst->varL; var!=nullptr; var=var->var_link)
+        if( textIsEqual(var->label,var_label) )
+          return true;
+      
       return false;
     }
 
@@ -1545,7 +1656,12 @@ namespace cw
       return n;
     }
 
-    rc_t _create_instance( flow_t* p, const object_t* proc_inst_cfg, unsigned sfx_id, network_t& net, instance_t*& inst_ref )
+    rc_t _create_instance( flow_t*         p,
+                           const object_t* proc_inst_cfg,
+                           unsigned        sfx_id,
+                           network_t&      net,
+                           variable_t*     proxyVarL,
+                           instance_t*&    inst_ref )
     {
       rc_t                    rc         = kOkRC;
       proc_inst_parse_state_t pstate     = {};
@@ -1558,7 +1674,7 @@ namespace cw
       if((rc = _parse_proc_inst_cfg( net, proc_inst_cfg, sfx_id, pstate )) != kOkRC )
         goto errLabel;
       
-      // locate the class desc
+      // locate the proc class desc
       if(( class_desc = class_desc_find(p,pstate.inst_clas_label)) == nullptr )
       {
         rc = cwLogError(kSyntaxErrorRC,"The flow class '%s' was not found.",cwStringNullGuard(pstate.inst_clas_label));
@@ -1586,15 +1702,22 @@ namespace cw
       inst->net           = &net;
 
       // parse the in-list ,fill in pstate.in_array, and create var instances for var's referenced by in-list
-      if((rc = _parse_in_list( net, inst, pstate )) != kOkRC )
+      if((rc = _parse_in_list( net, inst, proxyVarL, pstate )) != kOkRC )
       {
         rc = cwLogError(rc,"in-list parse failed on proc instance '%s:%i'.",cwStringNullGuard(inst->label),sfx_id);
         goto errLabel;
       }
 
+      // create the vars that are connected to the wrapper proxy vars
+      if((rc = _create_proxied_vars( inst, proxyVarL )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Proxy vars create failed on proc instance '%s:%i'.",cwStringNullGuard(inst->label),sfx_id);
+        goto errLabel;
+      }
+
       // Instantiate all the variables in the class description - that were not already created in _parse_in_list()
       for(var_desc_t* vd=class_desc->varDescL; vd!=nullptr; vd=vd->link)
-        if( !_is_var_inst_already_created( vd->label, pstate ) && cwIsNotFlag(vd->type,kRuntimeTFl) )
+        if( !_is_var_inst_already_created( inst, vd->label, pstate ) && cwIsNotFlag(vd->type,kRuntimeTFl) )
         {
           variable_t* var = nullptr;        
           if((rc = var_create( inst, vd->label, kBaseSfxId, kInvalidId, kAnyChIdx, vd->val_cfg, kInvalidTFl, var )) != kOkRC )
@@ -1632,6 +1755,14 @@ namespace cw
         goto errLabel;
       }
 
+      // Connect the wrapped vars in this subnet proc
+      if((rc = _connect_wrapped_vars( inst, proxyVarL )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Wrapped connection processing failed.");
+        goto errLabel;
+      }
+
+      
       // Complete the instantiation of the proc instance by calling the custom instance creation function.
 
       // Call the custom instance create() function.
@@ -1924,10 +2055,11 @@ namespace cw
   }
 }
 
-cw::rc_t cw::flow::network_create( flow_t* p,
-                                   const object_t* networkCfg,
-                                   network_t& net,
-                                   unsigned polyCnt,
+cw::rc_t cw::flow::network_create( flow_t*            p,
+                                   const object_t*    networkCfg,
+                                   network_t&         net,
+                                   variable_t*        proxyVarL,
+                                   unsigned           polyCnt,
                                    network_order_id_t orderId )
 {
   rc_t     rc     = kOkRC;
@@ -1956,8 +2088,8 @@ cw::rc_t cw::flow::network_create( flow_t* p,
   }
 
   net.proc_arrayAllocN = polyCnt * net.procsCfg->child_count();
-  net.proc_array  = mem::allocZ<instance_t*>(net.proc_arrayAllocN);
-  net.proc_arrayN = 0;
+  net.proc_array       = mem::allocZ<instance_t*>(net.proc_arrayAllocN);
+  net.proc_arrayN      = 0;
 
   for(unsigned i=0; i<outerN; ++i)
   {
@@ -1973,7 +2105,7 @@ cw::rc_t cw::flow::network_create( flow_t* p,
         assert(net.proc_arrayN < net.proc_arrayAllocN );
         
         // create the proc instance
-        if( (rc= _create_instance( p, proc_cfg, sfx_id, net, net.proc_array[net.proc_arrayN] ) ) != kOkRC )
+        if( (rc= _create_instance( p, proc_cfg, sfx_id, net, proxyVarL, net.proc_array[net.proc_arrayN] ) ) != kOkRC )
         {
           //rc = cwLogError(rc,"The instantiation at proc index %i is invalid.",net.proc_arrayN);
           goto errLabel;

@@ -14,11 +14,12 @@ namespace cw
     void print_external_device( const external_device_t* dev );
     
 
-    rc_t create( handle_t&             hRef,
-                 const object_t&       classCfg,
-                 const object_t&       networkCfg,
-                 external_device_t*    deviceA = nullptr,
-                 unsigned              deviceN = 0);
+    rc_t create( handle_t&          hRef,
+                 const object_t*    classCfg,
+                 const object_t*    networkCfg,
+                 const object_t*    subnetCfg = nullptr,   
+                 external_device_t* deviceA   = nullptr,
+                 unsigned           deviceN   = 0);
 
     rc_t destroy( handle_t& hRef );
 

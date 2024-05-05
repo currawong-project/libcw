@@ -25,7 +25,6 @@ namespace cw
         
     typedef struct abuf_str
     {
-      struct value_str*  base;
       srate_t            srate;   // signal sample rate
       unsigned           chN;     // count of channels
       unsigned           frameN;  // count of sample frames per channel
@@ -35,7 +34,6 @@ namespace cw
 
     typedef struct fbuf_str
     {      
-      struct value_str* base;
       srate_t           srate;     // signal sample rate
       unsigned          flags;     // See kXXXFbufFl
       unsigned          chN;       // count of channels
@@ -51,7 +49,6 @@ namespace cw
 
     typedef struct mbuf_str
     {
-      struct value_str*     base;
       const midi::ch_msg_t* msgA;
       unsigned              msgN;
     } mbuf_t;
@@ -136,7 +133,8 @@ namespace cw
       kNoVarFl     = 0x00,
       kSrcVarFl    = 0x01,
       kSrcOptVarFl = 0x02,
-      kMultVarFl   = 0x04
+      kMultVarFl   = 0x04,
+      kSubnetOutVarFl = 0x08
     };
     
     typedef struct class_members_str
@@ -156,6 +154,10 @@ namespace cw
       unsigned             type;    // Value type id (e.g. kBoolTFl, kIntTFl, ...)
       unsigned             flags;   // Attributes for this var. (e.g. kSrcVarFl )
       const char*          docText; // User help string for this var.
+      
+      char*                proxyProcLabel;
+      char*                proxyVarLabel;
+      
       struct var_desc_str* link;    // class_desc->varDescL list link
     } var_desc_t;
 
@@ -168,17 +170,19 @@ namespace cw
     
     typedef struct class_desc_str
     {
-      const object_t*   cfg;       // 
+      const object_t*   cfg;       // class cfg 
       const char*       label;     // class label;      
-      var_desc_t*       varDescL;  // varDescA[varDescN] value description list
+      var_desc_t*       varDescL;  // varDescL variable description linked on var_desc_t.link
       preset_t*         presetL;   // presetA[ presetN ]
       class_members_t*  members;   // member functions for this class
       unsigned          polyLimitN; // max. poly copies of this class per network_t or 0 if no limit
     } class_desc_t;
 
     enum {
-      kInvalidVarFl = 0x00,
-      kLogVarFl     = 0x01
+      kInvalidVarFl    = 0x00,
+      kLogVarFl        = 0x01,
+      kProxiedVarFl    = 0x02,
+      kProxiedOutVarFl = 0x04
     };
 
     // Note: The concatenation of 'vid' and 'chIdx' should form a unique identifier among all variables
@@ -274,6 +278,10 @@ namespace cw
       class_desc_t*        classDescA;     // 
       unsigned             classDescN;     //
 
+      class_desc_t*        subnetDescA;     // 
+      unsigned             subnetDescN;     //
+      
+
       external_device_t*   deviceA;        // deviceA[ deviceN ] external device description array
       unsigned             deviceN;        //
       
@@ -321,14 +329,15 @@ namespace cw
     // Class and Variable Description
     //
 
-    class_desc_t*  class_desc_find(  flow_t* p, const char* class_desc_label );
+    class_desc_t*     class_desc_find(  flow_t* p, const char* class_desc_label );
     
-    var_desc_t*    var_desc_find( class_desc_t* cd, const char* var_label );
-    rc_t           var_desc_find( class_desc_t* cd, const char* label, var_desc_t*& vdRef );
+    var_desc_t*       var_desc_find(       class_desc_t* cd, const char* var_label );
+    const var_desc_t* var_desc_find( const class_desc_t* cd, const char* var_label );
+    rc_t              var_desc_find(       class_desc_t* cd, const char* var_label, var_desc_t*& vdRef );
 
-    const preset_t* class_preset_find( class_desc_t* cd, const char* preset_label );
+    const preset_t*   class_preset_find( const class_desc_t* cd, const char* preset_label );
     
-    void           class_dict_print( flow_t* p );
+    void              class_dict_print( flow_t* p );
 
     
     //------------------------------------------------------------------------------------------------------------------------

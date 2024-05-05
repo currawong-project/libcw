@@ -1093,6 +1093,21 @@ namespace cw
       return rc;
     }
 
+    void _class_desc_print( const class_desc_t* cd )
+    {
+      const var_desc_t*   vd = cd->varDescL;
+      printf("%s\n",cwStringNullGuard(cd->label));
+        
+      for(; vd!=nullptr; vd=vd->link)
+      {
+        const char* srcFlStr    = vd->flags & kSrcVarFl    ? "src"      : "   ";
+        const char* srcOptFlStr = vd->flags & kSrcOptVarFl ? "srcOpt"   : "      ";
+        const char* plyMltFlStr = vd->flags & kMultVarFl   ? "mult"     : "    ";
+          
+        printf("  %10s 0x%08x %s %s %s %s\n", cwStringNullGuard(vd->label), vd->type, srcFlStr, srcOptFlStr, plyMltFlStr, cwStringNullGuard(vd->docText) );
+      }  
+    }
+    
   }
 }
 
@@ -1280,20 +1295,29 @@ const char* cw::flow::value_type_flag_to_label( unsigned flag )
 cw::flow::class_desc_t* cw::flow::class_desc_find( flow_t* p, const char* label )
 {
   for(unsigned i=0; i<p->classDescN; ++i)
-    if( textCompare(p->classDescA[i].label,label) == 0 )
+    if( textIsEqual(p->classDescA[i].label,label))
       return p->classDescA + i;
+
+  for(unsigned i=0; i<p->subnetDescN; ++i)
+    if( textIsEqual(p->subnetDescA[i].label,label))
+      return p->subnetDescA + i;
+  
   return nullptr;
 }
 
-
-cw::flow::var_desc_t* cw::flow::var_desc_find( class_desc_t* cd, const char* label )
+const cw::flow::var_desc_t* cw::flow::var_desc_find( const class_desc_t* cd, const char* label )
 {
-  var_desc_t* vd = cd->varDescL;
+  const var_desc_t* vd = cd->varDescL;
       
   for(; vd != nullptr; vd=vd->link )
     if( textCompare(vd->label,label) == 0 )
       return vd;
   return nullptr;
+}
+
+cw::flow::var_desc_t* cw::flow::var_desc_find( class_desc_t* cd, const char* label )
+{
+  return (var_desc_t*)var_desc_find( (const class_desc_t*)cd, label);
 }
 
 cw::rc_t cw::flow::var_desc_find( class_desc_t* cd, const char* label, var_desc_t*& vdRef )
@@ -1303,7 +1327,7 @@ cw::rc_t cw::flow::var_desc_find( class_desc_t* cd, const char* label, var_desc_
   return kOkRC;
 }
 
-const cw::flow::preset_t* cw::flow::class_preset_find( class_desc_t* cd, const char* preset_label )
+const cw::flow::preset_t* cw::flow::class_preset_find( const class_desc_t* cd, const char* preset_label )
 {
   const preset_t* pr;
   for(pr=cd->presetL; pr!=nullptr; pr=pr->link)
@@ -1316,20 +1340,10 @@ const cw::flow::preset_t* cw::flow::class_preset_find( class_desc_t* cd, const c
 void cw::flow::class_dict_print( flow_t* p )
 {
   for(unsigned i=0; i<p->classDescN; ++i)
-  {
-    class_desc_t* cd = p->classDescA + i;
-    var_desc_t*   vd = cd->varDescL;
-    printf("%s\n",cwStringNullGuard(cd->label));
-        
-    for(; vd!=nullptr; vd=vd->link)
-    {
-      const char* srcFlStr    = vd->flags & kSrcVarFl    ? "src"      : "   ";
-      const char* srcOptFlStr = vd->flags & kSrcOptVarFl ? "srcOpt"   : "      ";
-      const char* plyMltFlStr = vd->flags & kMultVarFl   ? "mult"     : "    ";
-          
-      printf("  %10s 0x%08x %s %s %s %s\n", cwStringNullGuard(vd->label), vd->type, srcFlStr, srcOptFlStr, plyMltFlStr, cwStringNullGuard(vd->docText) );
-    }
-  }
+    _class_desc_print(p->classDescA+i);
+  
+  for(unsigned i=0; i<p->subnetDescN; ++i)
+    _class_desc_print(p->subnetDescA+i);
 }
 
 

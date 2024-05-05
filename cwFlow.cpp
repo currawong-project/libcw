@@ -29,6 +29,7 @@ namespace cw
     } library_t;
     
     library_t g_library[] = {
+      { "subnet",          &subnet::members },
       { "poly",            &poly::members },
       { "midi_in",         &midi_in::members },
       { "midi_out",        &midi_out::members },
@@ -175,7 +176,7 @@ namespace cw
           // get the class member functions
           if((cd->members = _find_library_record(cd->label)) == nullptr )
           {
-            rc = cwLogError(kSyntaxErrorRC,"The '%s' class member function record could not be found..", cd->label );
+            rc = cwLogError(kSyntaxErrorRC,"The '%s' class member function record could not be found.", cd->label );
             goto errLabel;                    
           }
 
@@ -243,21 +244,319 @@ namespace cw
       return rc;
     }
 
+    rc_t _find_subnet_proc_class_desc( flow_t* p, const object_t* subnetProcD, const char* procInstLabel, const class_desc_t*& class_desc_ref )
+    {
+      rc_t                rc          = kOkRC;
+      const object_t*     procInstD   = nullptr;
+      const object_t*     classStr    = nullptr;
+      const class_desc_t* class_desc  = nullptr;
+      const char*         class_label = nullptr;
 
+      class_desc_ref = nullptr;
+        
+      // find the proc inst dict in the subnet
+      if((procInstD = subnetProcD->find_child(procInstLabel)) == nullptr )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The proc instance '%s' from the proxy var list could not be foud in the subnet.",cwStringNullGuard(procInstLabel));
+        goto errLabel;
+      }
+
+      // find the proc class label of the proc inst
+      if((classStr = procInstD->find_child("class")) == nullptr || (rc = classStr->value(class_label))!=kOkRC)
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The 'class' field could not be found in the '%s' proc instance record.", cwStringNullGuard(procInstLabel));
+        goto errLabel;
+      }
+
+      // find the associated class desc record
+      if((class_desc_ref = class_desc_find(p,class_label)) == nullptr)
+      {
+        rc = cwLogError(kEleNotFoundRC,"The class desc record '%s' for the proc instance '%s' could not be found.",class_label,cwStringNullGuard(procInstLabel));
+        goto errLabel;
+      }
+
+    errLabel:
+      
+      return rc;
+    }
+
+
+    rc_t _parse_subnet_var_proxy_string( const char* proxyStr, char*& procLabel_ref, char*& varLabel_ref )
+    {
+      rc_t rc       = kOkRC;
+      procLabel_ref = nullptr;
+      varLabel_ref  = nullptr;
+
+      const char* period;
+
+      // find the separating period
+      if((period = firstMatchChar(proxyStr,'.')) == nullptr )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The separating '.' could not be found in the proxy string '%s'.",cwStringNullGuard(proxyStr));
+        goto errLabel;
+      }
+
+      // validate the length of the proc inst label
+      if( period-proxyStr == 0 )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"No proxy proc instance was found in the proxy string '%s'.",cwStringNullGuard(proxyStr));
+        goto errLabel;        
+      }
+
+      // validate the length of the var label
+      if( textLength(period+1) == 0 )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"No proxy var was found in the proxy string '%s'.",cwStringNullGuard(proxyStr));
+        goto errLabel;        
+      }
+
+      
+      procLabel_ref = mem::duplStr(proxyStr,period-proxyStr);
+      varLabel_ref  = mem::duplStr(period+1);
+
+    errLabel:
+      return rc;
+    }
+
+    void _var_desc_release( var_desc_t*& vd )
+    {
+      mem::release(vd->proxyProcLabel);
+      mem::release(vd->proxyVarLabel);
+      mem::release(vd);
+    }
+
+    rc_t _create_subnet_var_desc( flow_t* p, class_desc_t* wrapProcClassDesc, const object_t* subnetProcD, const object_t* varDescPair, var_desc_t*& vd_ref )
+    {
+      rc_t                rc               = kOkRC;
+      const object_t*     flagsCfg         = nullptr;
+      const char*         proxyStr         = nullptr;
+      const char*         docStr           = nullptr;
+      const char*         varLabel         = nullptr;
+      char*               proxyProcLabel   = nullptr;
+      char*               proxyVarLabel    = nullptr;
+      unsigned            proxyVarFlags    = 0;
+      const class_desc_t* proxy_class_desc = nullptr;
+      const var_desc_t*   proxy_var_desc   = nullptr;
+      bool                subnetOutVarFl   = false;
+      var_desc_t*         var_desc         = mem::allocZ<var_desc_t>();
+      
+      vd_ref = nullptr;
+
+      // verify that the var label is valid
+      if(!varDescPair->is_pair() || (varLabel=varDescPair->pair_label())==nullptr || varDescPair->pair_value()==nullptr || !varDescPair->pair_value()->is_dict() )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The proxy var entry is not valid.");
+        goto errLabel;
+      }
+
+      // parse the var desc dictionary
+      if((rc = varDescPair->pair_value()->getv("proxy",proxyStr,
+                                               "doc",  docStr)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Parsing failed on the proxy var dictionary.");
+        goto errLabel;
+      }
+
+      // parse the var desc dictionary optional fields
+      if((rc = varDescPair->pair_value()->getv_opt("flags", flagsCfg)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Optional attribute parsing failed on the proxy var dictionary.");
+        goto errLabel;
+      }
+      
+      // parse the proxy string into it's two parts: <proc>.<var>
+      if((rc = _parse_subnet_var_proxy_string( proxyStr, proxyProcLabel, proxyVarLabel )) != kOkRC )
+      {
+        goto errLabel;
+      }
+      
+      // locate the class desc associated with proxy proc
+      if((rc = _find_subnet_proc_class_desc( p, subnetProcD, proxyProcLabel, proxy_class_desc )) != kOkRC )
+      {
+        goto errLabel;
+      }
+
+      // locate the var desc associated with the proxy proc var
+      if((proxy_var_desc = var_desc_find( proxy_class_desc, proxyVarLabel)) == nullptr )
+      {
+        rc = cwLogError(kEleNotFoundRC,"The variable desc '%s.%s' could not be found.",cwStringNullGuard(proxyProcLabel),cwStringNullGuard(proxyVarLabel));
+        goto errLabel;                        
+      }
+
+      // most of the fields for the proxy are taken directly from the the actual var ...
+      *var_desc = *proxy_var_desc;
+      
+      var_desc->label   = varLabel;  // ... but the label and doc are overwritten from subnet desc.
+      var_desc->docText = docStr;
+      var_desc->proxyProcLabel = proxyProcLabel;
+      var_desc->proxyVarLabel  = proxyVarLabel;
+      var_desc->link    = nullptr;
+
+      if((rc = _is_var_flag_set( flagsCfg, "out", wrapProcClassDesc->label, var_desc->label, subnetOutVarFl )) != kOkRC )
+        goto errLabel;
+
+      var_desc->flags = cwEnaFlag(var_desc->flags, kSubnetOutVarFl, subnetOutVarFl);
+      
+      vd_ref = var_desc;
+
+    errLabel:
+
+      if( rc != kOkRC )
+      {        
+        rc = cwLogError(rc,"The creation of proxy var '%s' failed.",cwStringNullGuard(varLabel));
+        _var_desc_release(var_desc);
+      }
+      
+      return rc;
+    }
     
-    rc_t _destroy( flow_t* p)
+    rc_t _parse_subnet_vars( flow_t* p, class_desc_t* class_desc, const object_t* subnetProcD, const object_t* varD )
     {
       rc_t rc = kOkRC;
 
-      if( p == nullptr )
-        return rc;
-
-      network_destroy(p->net);
+      unsigned varN = 0;
       
-      // release the class records
-      for(unsigned i=0; i<p->classDescN; ++i)
+      if( !varD->is_dict() )
       {
-        class_desc_t* cd  = p->classDescA + i;
+        rc = cwLogError(kSyntaxErrorRC,"The proxy variable dictionary is invalid.");
+        goto errLabel;
+      }
+
+      varN = varD->child_count();
+
+      // Fill the class_Desc.varDescL list from the subnet 'vars' dictioanry
+      for(unsigned i=0; i<varN; ++i)
+      {
+        const object_t* child_pair = varD->child_ele(i);
+        var_desc_t*     var_desc   = nullptr;
+
+        if((rc = _create_subnet_var_desc( p, class_desc, subnetProcD, child_pair, var_desc )) != kOkRC )
+          goto errLabel;
+
+
+        var_desc->link = class_desc->varDescL;
+        class_desc->varDescL = var_desc;
+
+        //printf("Wrapper var-desc created: %i of %i : %s:%s proxy:%s:%s flags:%i.\n", i, varN, class_desc->label, var_desc->label, var_desc->proxyProcLabel,var_desc->proxyVarLabel,var_desc->flags);
+        
+      }
+
+    errLabel:
+      return rc;
+    }
+
+    rc_t _create_subnet_class_desc( flow_t* p, const object_t* class_obj, class_desc_t* class_desc )
+    {
+      rc_t            rc                  = kOkRC;
+      const object_t* varD                = nullptr;
+      const object_t* subnetD             = nullptr;
+      const object_t* subnetProcD         = nullptr;
+      const object_t* subnetPresetD       = nullptr;          
+      const char*     subnetProcDescLabel = nullptr;
+
+      // Validate the subnet proc desc label and value
+      if( class_obj==nullptr || !class_obj->is_pair() || class_obj->pair_value()==nullptr || !class_obj->pair_value()->is_dict() || (subnetProcDescLabel = class_obj->pair_label()) == nullptr )
+      {
+        rc = cwLogError(kInvalidArgRC,"An invalid subnet description '%s' was encountered.",cwStringNullGuard(subnetProcDescLabel));
+        goto errLabel;
+      }
+
+      // verify that another subnet with the same name does not already exist
+      if( class_desc_find(p,subnetProcDescLabel) != nullptr )
+      {
+        rc = cwLogError(kInvalidStateRC,"A subnet named '%s' already exists.",subnetProcDescLabel);
+        goto errLabel;
+      }
+
+      class_desc->cfg    = class_obj->pair_value();
+      class_desc->label  = class_obj->pair_label();
+
+      // get the 'subnet' members record
+      if((class_desc->members = _find_library_record("subnet")) == nullptr )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The 'subnet' class member function record could not be found." );
+        goto errLabel;                    
+      }
+                
+      // get the variable description 
+      if((rc = class_desc->cfg->getv_opt("vars",  varD,
+                                         "network", subnetD)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Parse failed while parsing subnet desc:'%s'", cwStringNullGuard(class_desc->label) );
+        goto errLabel;                      
+      }
+
+      // get the subnet proc and preset dictionaries
+      if((rc = subnetD->getv("procs",   subnetProcD,
+                             "presets", subnetPresetD)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Parse failed on the 'network' element.");
+        goto errLabel;
+      }
+
+      // fill class_desc.varDescL from the subnet vars dictionary
+      if((rc = _parse_subnet_vars( p, class_desc, subnetProcD, varD )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Subnet 'vars' processing failed.");
+        goto errLabel;          
+      }
+
+      
+    errLabel:
+      if(rc != kOkRC )
+        rc = cwLogError(rc,"'proc' class description creation failed for the subnet '%s'. ",cwStringNullGuard(subnetProcDescLabel));
+        
+      return rc;
+    }
+        
+  
+    rc_t  _parse_subnet_cfg(flow_t* p, const object_t* subnetCfg)
+    {
+      rc_t rc = kOkRC;
+      
+      if( !subnetCfg->is_dict() )
+        return cwLogError(kSyntaxErrorRC,"The subnet class description dictionary does not have dictionary syntax.");
+              
+      unsigned subnetDescN = subnetCfg->child_count();
+      p->subnetDescA = mem::allocZ<class_desc_t>( subnetDescN );      
+
+      // for each subnet description
+      for(unsigned i=0; i<subnetDescN; ++i)
+      {
+        const object_t* subnet_obj = subnetCfg->child_ele(i);
+
+        if((rc = _create_subnet_class_desc(p, subnet_obj, p->subnetDescA + i )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Subnet class description create failed on the subnet at index:%i.",i);
+          goto errLabel;
+        }
+
+        // we have to update the size of the subnet class array
+        // as we go because we may want to find subnets classes within
+        // subnets which are definted later and so the length p->subnetA[]
+        // must be correct 
+        p->subnetDescN += 1;
+      }
+
+      assert( subnetDescN == p->subnetDescN );
+    errLabel:
+
+      if( rc != kOkRC )
+      {
+        rc = cwLogError(rc,"Subnet processing failed.");
+        
+      }
+      
+      return rc;
+
+    }
+
+    void _release_class_desc_array( class_desc_t*& classDescA, unsigned classDescN )
+    {
+      // release the class records
+      for(unsigned i=0; i<classDescN; ++i)
+      {
+        class_desc_t* cd  = classDescA + i;
 
         // release the var desc list
         var_desc_t*   vd0 = cd->varDescL;
@@ -265,7 +564,7 @@ namespace cw
         while( vd0 != nullptr )
         {
           vd1 = vd0->link;
-          mem::release(vd0);
+          _var_desc_release(vd0);
           vd0 = vd1;
         }
 
@@ -280,8 +579,20 @@ namespace cw
         }
       }
 
-      mem::release(p->classDescA);
+      mem::release(classDescA);      
+    }
+    
+    rc_t _destroy( flow_t* p)
+    {
+      rc_t rc = kOkRC;
 
+      if( p == nullptr )
+        return rc;
+
+      network_destroy(p->net);
+      
+      _release_class_desc_array(p->classDescA,p->classDescN);
+      _release_class_desc_array(p->subnetDescA,p->subnetDescN);
       
       mem::release(p);
       
@@ -308,8 +619,9 @@ void cw::flow::print_external_device( const external_device_t* dev )
 
 
 cw::rc_t cw::flow::create( handle_t&          hRef,
-                           const object_t&    classCfg,
-                           const object_t&    flowCfg,
+                           const object_t*    classCfg,
+                           const object_t*    flowCfg,
+                           const object_t*    subnetCfg,
                            external_device_t* deviceA,
                            unsigned           deviceN )
 {
@@ -317,24 +629,32 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   const object_t* networkCfg       = nullptr; 
   bool            printClassDictFl = false;
   bool            printNetworkFl   = false;
+  variable_t*     proxyVarL        = nullptr;
   
   if(( rc = destroy(hRef)) != kOkRC )
     return rc;
 
   flow_t* p   = mem::allocZ<flow_t>();
-  p->flowCfg    = &flowCfg;   // TODO: duplicate cfg?
+  p->flowCfg    = flowCfg;   // TODO: duplicate cfg?
   p->deviceA    = deviceA;
   p->deviceN    = deviceN;
 
   // parse the class description array
-  if((rc = _parse_class_cfg(p,&classCfg)) != kOkRC )
+  if((rc = _parse_class_cfg(p,classCfg)) != kOkRC )
   {
     rc = cwLogError(kSyntaxErrorRC,"Error parsing the class description list.");
     goto errLabel;    
   }
 
+  if( subnetCfg != nullptr )
+    if((rc = _parse_subnet_cfg(p,subnetCfg)) != kOkRC )
+    {
+      rc = cwLogError(kSyntaxErrorRC,"Error parsing the subnet list.");
+      goto errLabel;          
+    }
+
   // parse the main audio file processor cfg record
-  if((rc = flowCfg.getv("network",             networkCfg)) != kOkRC )
+  if((rc = flowCfg->getv("network", networkCfg)) != kOkRC )
   {
     rc = cwLogError(kSyntaxErrorRC,"Error parsing the required flow configuration parameters.");
     goto errLabel;
@@ -344,7 +664,7 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   p->sample_rate    = kDefaultSampleRate;
 
   // parse the optional args
-  if((rc = flowCfg.getv_opt("framesPerCycle",       p->framesPerCycle,
+  if((rc = flowCfg->getv_opt("framesPerCycle",      p->framesPerCycle,
                             "sample_rate",          p->sample_rate,
                             "maxCycleCount",        p->maxCycleCount,
                             "multiPriPresetProbFl", p->multiPriPresetProbFl,
@@ -375,7 +695,7 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
       class_dict_print( p );
 
   // instantiate the network
-  if((rc = network_create(p,networkCfg,p->net)) != kOkRC )
+  if((rc = network_create(p,networkCfg,p->net,proxyVarL)) != kOkRC )
   {
     rc = cwLogError(rc,"Network creation failed.");
     goto errLabel;
@@ -535,10 +855,12 @@ cw::rc_t cw::flow::test(  const object_t* cfg, int argc, const char* argv[] )
   rc_t rc = kOkRC;
   handle_t flowH;
 
-  object_t* class_cfg = nullptr;
-  const object_t* test_cases_cfg = nullptr;
-  const object_t* test_cfg = nullptr;
-  const char* flow_proc_fname;
+  const char*     proc_cfg_fname   = nullptr;
+  const char*     subnet_cfg_fname = nullptr;
+  const object_t* test_cases_cfg   = nullptr;
+  object_t*       class_cfg        = nullptr;
+  object_t*       subnet_cfg       = nullptr;
+  const object_t* test_cfg         = nullptr;
 
   if( argc < 2 || textLength(argv[1]) == 0 )
   {
@@ -546,10 +868,17 @@ cw::rc_t cw::flow::test(  const object_t* cfg, int argc, const char* argv[] )
     goto errLabel;
   }
   
-  if((rc = cfg->getv("flow_proc_fname",flow_proc_fname,
-                     "test_cases",test_cases_cfg)) != kOkRC )
+  if((rc                                                 = cfg->getv("proc_cfg_fname",proc_cfg_fname,
+                     "test_cases",     test_cases_cfg)) != kOkRC )
   {
     rc = cwLogError(rc,"The name of the flow_proc_dict file could not be parsed.");
+    goto errLabel;
+  }
+
+  // get the subnet cfg filename
+  if((rc = cfg->getv_opt("subnet_cfg_fname",subnet_cfg_fname)) != kOkRC )
+  {
+    rc = cwLogError(rc,"The name of the subnet file could not be parsed.");
     goto errLabel;
   }
 
@@ -560,15 +889,22 @@ cw::rc_t cw::flow::test(  const object_t* cfg, int argc, const char* argv[] )
     goto errLabel;
   }  
 
-  // parse the flow-proc-cfg
-  if((rc = objectFromFile(flow_proc_fname,class_cfg)) != kOkRC )
+  // parse the proc dict. file
+  if((rc = objectFromFile(proc_cfg_fname,class_cfg)) != kOkRC )
   {
-    rc = cwLogError(rc,"The flow proc dict could not be read from '%s'.",cwStringNullGuard(flow_proc_fname));
+    rc = cwLogError(rc,"The proc dictionary could not be read from '%s'.",cwStringNullGuard(proc_cfg_fname));
     goto errLabel;
   }
 
+  // parse the subnet dict file
+  if((rc = objectFromFile(subnet_cfg_fname,subnet_cfg)) != kOkRC )
+  {
+    rc = cwLogError(rc,"The subnet dictionary could not be read from '%s'.",cwStringNullGuard(subnet_cfg_fname));
+    goto errLabel;
+  }
+  
   // create the flow object
-  if((rc = create( flowH, *class_cfg, *test_cfg)) != kOkRC )
+  if((rc = create( flowH, class_cfg, test_cfg, subnet_cfg)) != kOkRC )
   {
     rc = cwLogError(rc,"Flow object create failed.");
     goto errLabel;

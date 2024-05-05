@@ -114,7 +114,6 @@ namespace cw
     {
       dev->ioDevIdx    = ioDevIdx;
       dev->ioDevId     = audioDeviceUserId( p->ioH, ioDevIdx );
-      dev->abuf.base   = nullptr;
       dev->abuf.srate  = audioDeviceSampleRate(   p->ioH, ioDevIdx );
       dev->abuf.chN    = audioDeviceChannelCount( p->ioH, ioDevIdx, inOrOutFl );
       dev->abuf.frameN = dspFrameCnt;
