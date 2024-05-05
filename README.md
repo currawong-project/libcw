@@ -907,13 +907,34 @@ Add proc instance field: `log:{ var_label_0:0, var_label_1:0 } `
 - log: should print the values for all channels - right now it is only
 printing the values for kAnyChIdx
 
-
 Next:
 
-There is no way for a proc in a poly context to use it's poly channel number to 
-select a mult variable.
+- subnet vars should be the same as non-subnet vars but include the 'proxy' field.
+  In particular they should get default values.
+  
+- subnets should have presets written in terms of the subnet vars rather than the network vars
 
-The counter modulo mode is not working as expected.
+- improve the subnet creating code by using consistent naming - use proxy or wrap but not both
+
+- improve code comments on subnet creation
+
+- write a paragraph in the flow_doc.md about overall approach taken to subnet implementation
+
+
+
+BUGS:
+- The counter modulo mode is not working as expected.
+
+- There is no way for a proc in a poly context to use it's poly channel number to 
+select a mult variable.  For example in an osc in a poly has no way to select
+the frequency of the osc by conneting to a non-poly proc - like a list.
+Consider: 
+1. Use a difference 'in' statememt (e.g. 'poly-in' but the 
+   same syntax used for connecting 'mult' variables.)
+2. Include the proc name in the 'in' var to indicate a poly index is being iterated
+   e.g. `lfo: { class:sine_tone, in:{ osc_.dc:list.value_ } }` 
+
+
 
 
 
@@ -925,38 +946,4 @@ The counter modulo mode is not working as expected.
 
 ```
 	
-mod_osc: {
-
-	vars:
-	{
-      hz:            { type:hz_lfo.dc,     doc:"Audio frequency" },
-	  hz_mod_hz:     { type:hz_lfo.hz,     doc:"Frequency modulator hz" },
-	  hz_mod_depth:  { type:hz_lfo.gain,   doc:Frequency modulator depth" },
-	  amp_mod_hz:    { type:amp_lfo.hz,    doc:Amplitude modulator hz" },
-	  amp_mod_depth: { type:amp_lfo.gain,  doc:Amplutide modulator depth."},
-	  out:           { type:gain.out       doc:"Oscillator output."},
-	}
-	
-	presets: {
-	  
-	}
-
-	network: {
-	  procs: {
-		  hz_lfo:   { class: sine_tone,   in:{ dc:hz, gain:hz_mod_depth, hz:hz_mod_hz }, args: { default:{ chCnt:1, hz:3, dc:440, gain:110 }}}
-	      hz_sh:    { class: sample_hold, in:{ in:hz_lfo.out }}
-
-		  amp_lfo:   { class: sine_tone,   in:{ gain:amp_mod_depth, hz:amp_mod_hz }, args: { default:{ chCnt:1, hz:3, gain:110 }}}
-	      amp_sh:    { class: sample_hold, in:{ in:amp_lfo.out }}
-
-	      osc:   { class: sine_tone,   in:{ hz: hz_sh.out }}	
-		  gain:  { class: audio_gain,  in:{ in:osc.out, gain:amp_sh.out}}
-	  }
-	  
-	  presets: {
-	  }
-	
-	}
-
-}
 ```
