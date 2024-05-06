@@ -877,11 +877,10 @@ but would almost certainly not do what the user expects.
   when the proc instance create is complete. This checks that both the type is assigned and
   a valid value has been assigned - since the type is assigned the first time a value is set.
   
-  
 - DONE: 'poly' should be implemented as a proc-inst with an internal network - but the 
 elements of the network should be visible outside of it.
 
-- 'sub' should be implemented as proc-inst with an internal network, but the
+- DONE: 'sub' should be implemented as proc-inst with an internal network, but the
 elements of the network should not be visible outside of it. Instead it should
 include the idea of input and output ports which act as proxies to the physical
 ports of the internal elements.
@@ -904,21 +903,41 @@ ports of the internal elements.
 This might be a better approach to logging than having a 'printer' object.
 Add proc instance field: `log:{ var_label_0:0, var_label_1:0 } `
 
-- log: should print the values for all channels - right now it is only
-printing the values for kAnyChIdx
+- log: 
+    + should print the values for all channels - right now it is only
+	printing the values for kAnyChIdx
+	+ log should print values for abuf (mean,max), fbuf (mean,max) mag, mbuf
 
 Next:
 
-- subnet vars should be the same as non-subnet vars but include the 'proxy' field.
-  In particular they should get default values.
+- Complete subnets:
+	+ subnet var desc's should be the same as non+subnet vars but also include the 'proxy' field.
+	In particular they should get default values.
+	If a var desc is part of a subnet then it must have a proxy.
+	The output variables of var desc's must have the 'out' attribute
+
+	+ subnets should have presets written in terms of the subnet vars rather than the network vars
+
+	+ improve the subnet creating code by using consistent naming + use proxy or wrap but not both
+
+	+ improve code comments on subnet creation
+
+	+ write a paragraph in the flow_doc.md about overall approach taken to subnet implementation.
+	
+- Implement the var attributes and attribute checking.
+- Implement dynamic loading of procs.
+- Implement a debug mode to aid in building networks and subnets (or is logging good enough)
+- Implement multi-field messages.
+- Implement the ability to set backward connections - from late to early proc's.
+  This can be done by implementing the same process as 'in_stmt' but in a separate 
+  'out_stmt'. The difficulty is that it prevents doing some checks until the network
+  is completely specified.  For example if audio inputs can accept connections from 
+  later proc's then they will not have all of their inputs when they are instantiated.
+  One way around this is to instantiate them with an initial set of inputs but then
+  allow those inputs to be replaced by a later connection.
   
-- subnets should have presets written in terms of the subnet vars rather than the network vars
+- DONE: Fix up the coding language - change the use of `instance_t` to `proc_t` and `inst` to `proc`, change use of `ctx` in cwFlowProc
 
-- improve the subnet creating code by using consistent naming - use proxy or wrap but not both
-
-- improve code comments on subnet creation
-
-- write a paragraph in the flow_doc.md about overall approach taken to subnet implementation
 
 
 
@@ -935,7 +954,11 @@ Consider:
    e.g. `lfo: { class:sine_tone, in:{ osc_.dc:list.value_ } }` 
 
 
-
+Host Environments:
+------------------
+- CLI, no GUI, no I/O, non-real-time only.
+- CLI, no GUI, w/ I/O and real-time
+- GUI, with configurable control panels
 
 
 - DONE: Implement 'preset' proc. This will involve implementing the 'cfg' datatype.
