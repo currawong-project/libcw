@@ -131,14 +131,16 @@ report   | Print the state of the process.
 
 ### Var Syntax
 
-__label__ : { type: __type__, value: __value__, doc:"q-string" }
+__label__ : { type: __type__, { value: __value__ }, {proxy: __proxy__}, {flags:[{__flag__}*]}, doc:"q-string" }
 
 Part   | Description
 -------|-------------------------------------------------------
 label  | Variable name
 type   | Variable type.  See Data types below.
 value  | The default value of the variable.
+proxy  | 
 doc    | Documentation string for this variable.
+flags  | 
 
 Notes:
 
