@@ -164,13 +164,7 @@ void cw::log::setFormatCb( handle_t h, logFormatCbFunc_t fmtFunc, void* fmtCbArg
 
 
 const char* cw::log::levelToLabel( unsigned level )
-{
-  const char* label;
-  if((label = idToLabel(logLevelLabelArray,level,kInvalid_LogLevel)) == nullptr)
-    label = "<unknown>";
-  
-  return label;
-}
+{  return idToLabel(logLevelLabelArray,level,kInvalid_LogLevel); }
 
 
 
