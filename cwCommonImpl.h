@@ -160,6 +160,9 @@ namespace cw
   } idLabelPair_t;
 
   // Return nullptr if id is not found.
+  const char* idToLabelNull( const idLabelPair_t* array, unsigned id, unsigned eolId );
+
+  // Returns label in 'eolId' slot if id is not found.
   const char* idToLabel( const idLabelPair_t* array, unsigned id, unsigned eolId );
   
   // Returns eolId if the id is not found.
