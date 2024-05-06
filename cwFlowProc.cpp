@@ -33,7 +33,7 @@ namespace cw
   {
     
     template< typename inst_t >
-    rc_t std_destroy( instance_t* proc )
+    rc_t std_destroy( proc_t* proc )
     {
       inst_t* p = (inst_t*)proc->userPtr;
       rc_t rc = _destroy(proc,p);
@@ -42,7 +42,7 @@ namespace cw
     }
     
     template< typename inst_t >
-    rc_t std_create( instance_t* proc )
+    rc_t std_create( proc_t* proc )
     {
       rc_t rc = kOkRC;
       proc->userPtr = mem::allocZ<inst_t>();
@@ -52,15 +52,15 @@ namespace cw
     }
 
     template< typename inst_t >
-    rc_t std_value( instance_t* proc, variable_t* var )
+    rc_t std_value( proc_t* proc, variable_t* var )
     { return _value(proc,(inst_t*)proc->userPtr, var); }
         
     template< typename inst_t >
-    rc_t std_exec( instance_t* proc )
+    rc_t std_exec( proc_t* proc )
     { return _exec(proc,(inst_t*)proc->userPtr); }
 
     template< typename inst_t >
-    rc_t std_report( instance_t* proc )
+    rc_t std_report( proc_t* proc )
     { return _report(proc,(inst_t*)proc->userPtr); }
 
     
@@ -76,7 +76,7 @@ namespace cw
       } inst_t;
 
 
-      rc_t _create( instance_t* proc, inst_t* p )
+      rc_t _create( proc_t* proc, inst_t* p )
       {
         rc_t    rc   = kOkRC;        
 
@@ -85,7 +85,7 @@ namespace cw
         return rc;
       }
 
-      rc_t _destroy( instance_t* proc, inst_t* p )
+      rc_t _destroy( proc_t* proc, inst_t* p )
       {
         rc_t rc = kOkRC;
 
@@ -94,20 +94,20 @@ namespace cw
         return rc;
       }
 
-      rc_t _value( instance_t* proc, inst_t* p, variable_t* var )
+      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
         return rc;
       }
 
-      rc_t _exec( instance_t* proc, inst_t* p )
+      rc_t _exec( proc_t* proc, inst_t* p )
       {
         rc_t rc      = kOkRC;
         
         return rc;
       }
 
-      rc_t _report( instance_t* proc, inst_t* p )
+      rc_t _report( proc_t* proc, inst_t* p )
       { return kOkRC; }
 
       class_members_t members = {
@@ -132,7 +132,7 @@ namespace cw
       } inst_t;
 
 
-      rc_t _create( instance_t* proc, inst_t* p )
+      rc_t _create( proc_t* proc, inst_t* p )
       {
         rc_t            rc         = kOkRC;        
         const object_t* networkCfg = nullptr;
@@ -157,7 +157,7 @@ namespace cw
         return rc;
       }
 
-      rc_t _destroy( instance_t* proc, inst_t* p )
+      rc_t _destroy( proc_t* proc, inst_t* p )
       {
         rc_t rc = kOkRC;
 
@@ -166,13 +166,13 @@ namespace cw
         return rc;
       }
 
-      rc_t _value( instance_t* proc, inst_t* p, variable_t* var )
+      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
         return rc;
       }
 
-      rc_t _exec( instance_t* proc, inst_t* p )
+      rc_t _exec( proc_t* proc, inst_t* p )
       {
         rc_t rc      = kOkRC;
 
@@ -182,7 +182,7 @@ namespace cw
         return rc;
       }
 
-      rc_t _report( instance_t* proc, inst_t* p )
+      rc_t _report( proc_t* proc, inst_t* p )
       { return kOkRC; }
 
       class_members_t members = {
@@ -215,7 +215,7 @@ namespace cw
       } inst_t;
 
 
-      rc_t create( instance_t* proc )
+      rc_t create( proc_t* proc )
       {
         rc_t            rc          = kOkRC;        
         inst_t*         inst        = mem::allocZ<inst_t>();
@@ -271,7 +271,7 @@ namespace cw
         return rc;
       }
 
-      rc_t destroy( instance_t* proc )
+      rc_t destroy( proc_t* proc )
       {
         inst_t* p = (inst_t*)proc->userPtr;
         network_destroy(p->net);
@@ -281,14 +281,14 @@ namespace cw
         return kOkRC;
       }
 
-      rc_t value( instance_t* ctx, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         return kOkRC;
       }
 
-      rc_t exec( instance_t* ctx )
+      rc_t exec( proc_t* proc )
       {
-        inst_t* p = (inst_t*)ctx->userPtr;
+        inst_t* p = (inst_t*)proc->userPtr;
         rc_t   rc = kOkRC;
 
         if((rc = exec_cycle(p->net)) != kOkRC )
@@ -328,16 +328,16 @@ namespace cw
       } inst_t;
 
 
-      rc_t create( instance_t* ctx )
+      rc_t create( proc_t* proc )
       {
         rc_t rc = kOkRC;        
         coeff_t in_value = 0.5;
-        ctx->userPtr = mem::allocZ<inst_t>();
+        proc->userPtr = mem::allocZ<inst_t>();
         
-        if((rc  = var_register_and_get( ctx, kAnyChIdx, kInPId, "in", kBaseSfxId, in_value )) != kOkRC )
+        if((rc  = var_register_and_get( proc, kAnyChIdx, kInPId, "in", kBaseSfxId, in_value )) != kOkRC )
           goto errLabel;
 
-        if((rc = var_register_and_set( ctx, kAnyChIdx,
+        if((rc = var_register_and_set( proc, kAnyChIdx,
                                        kOutPId,    "out",     kBaseSfxId, in_value,
                                        kInvOutPId, "inv_out", kBaseSfxId, (coeff_t)(1.0-in_value) )) != kOkRC )
         {
@@ -348,27 +348,27 @@ namespace cw
         return rc;
       }
 
-      rc_t destroy( instance_t* ctx )
+      rc_t destroy( proc_t* proc )
       {
-        mem::release( ctx->userPtr );
+        mem::release( proc->userPtr );
         return kOkRC;
       }
 
-      rc_t value( instance_t* ctx, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         return kOkRC;
       }
 
-      rc_t exec( instance_t* ctx )
+      rc_t exec( proc_t* proc )
       {
         rc_t   rc = kOkRC;
-        inst_t* inst = (inst_t*)(ctx->userPtr);
+        inst_t* inst = (inst_t*)(proc->userPtr);
         
         coeff_t value = 1;
         
-        var_get(ctx, kInPId,     kAnyChIdx, value);
-        var_set(ctx, kOutPId,    kAnyChIdx, value);
-        var_set(ctx, kInvOutPId, kAnyChIdx, (coeff_t)(1.0 - value) );
+        var_get(proc, kInPId,     kAnyChIdx, value);
+        var_set(proc, kOutPId,    kAnyChIdx, value);
+        var_set(proc, kInvOutPId, kAnyChIdx, (coeff_t)(1.0 - value) );
 
         if( inst->value != value )
         {
@@ -380,11 +380,11 @@ namespace cw
       }
 
       class_members_t members = {
-        .create               = create,
-        .destroy              = destroy,
-        .value                = value,
-        .exec                 = exec,
-        .report               = nullptr
+        .create  = create,
+        .destroy = destroy,
+        .value   = value,
+        .exec    = exec,
+        .report  = nullptr
       };
       
     }    
@@ -413,17 +413,17 @@ namespace cw
         external_device_t* ext_dev;
       } inst_t;
       
-      rc_t create( instance_t* ctx )
+      rc_t create( proc_t* proc )
       {
         rc_t        rc         = kOkRC;
         const char* dev_label  = nullptr;
         const char* port_label = nullptr;        
         inst_t*     inst       = mem::allocZ<inst_t>();
         
-        ctx->userPtr = inst;
+        proc->userPtr = inst;
 
         // Register variable and get their current value
-        if((rc = var_register_and_get( ctx, kAnyChIdx,
+        if((rc = var_register_and_get( proc, kAnyChIdx,
                                        kDevLabelPId,  "dev_label",  kBaseSfxId, dev_label,
                                        kPortLabelPId, "port_label", kBaseSfxId, port_label )) != kOkRC )
           
@@ -431,7 +431,7 @@ namespace cw
           goto errLabel;
         }
 
-        if((rc = var_register( ctx, kAnyChIdx, kOutPId, "out", kBaseSfxId)) != kOkRC )
+        if((rc = var_register( proc, kAnyChIdx, kOutPId, "out", kBaseSfxId)) != kOkRC )
         {
           goto errLabel;
         }
@@ -454,7 +454,7 @@ namespace cw
         
         
         
-        if((inst->ext_dev = external_device_find( ctx->ctx, dev_label, kMidiDevTypeId, kInFl, port_label )) == nullptr )
+        if((inst->ext_dev = external_device_find( proc->ctx, dev_label, kMidiDevTypeId, kInFl, port_label )) == nullptr )
         {
           rc = cwLogError(kOpFailRC,"The MIDI input device '%s' port '%s' could not be found.", cwStringNullGuard(dev_label), cwStringNullGuard(port_label));
           goto errLabel;
@@ -465,18 +465,18 @@ namespace cw
         inst->buf = mem::allocZ<midi::ch_msg_t>( inst->bufN );
 
         // create one output audio buffer
-        rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, 0  );
+        rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, 0  );
 
 
       errLabel: 
         return rc;
       }
 
-      rc_t destroy( instance_t* ctx )
+      rc_t destroy( proc_t* proc )
       {
         rc_t rc = kOkRC;
 
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
         mem::release(inst->buf);
 
         mem::release(inst);
@@ -484,21 +484,21 @@ namespace cw
         return rc;
       }
 
-      rc_t value( instance_t* ctx, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       { return kOkRC; }
       
-      rc_t exec( instance_t* ctx )
+      rc_t exec( proc_t* proc )
       {
         rc_t     rc           = kOkRC;
 
-        inst_t*  inst         = (inst_t*)ctx->userPtr;
+        inst_t*  inst         = (inst_t*)proc->userPtr;
         mbuf_t*  mbuf         = nullptr;
 
 
         // get the output variable
-        if((rc = var_get(ctx,kOutPId,kAnyChIdx,mbuf)) != kOkRC )
+        if((rc = var_get(proc,kOutPId,kAnyChIdx,mbuf)) != kOkRC )
         {
-          rc = cwLogError(kInvalidStateRC,"The MIDI file instance '%s' does not have a valid MIDI output buffer.",ctx->label);
+          rc = cwLogError(kInvalidStateRC,"The MIDI file instance '%s' does not have a valid MIDI output buffer.",proc->label);
         }
         else
         {
@@ -527,11 +527,11 @@ namespace cw
       }
 
       class_members_t members = {
-        .create = create,
+        .create  = create,
         .destroy = destroy,
         .value   = value,
-        .exec = exec,
-        .report = nullptr
+        .exec    = exec,
+        .report  = nullptr
       };
       
     }
@@ -556,7 +556,7 @@ namespace cw
         external_device_t* ext_dev;
       } inst_t;
       
-      rc_t create( instance_t* ctx )
+      rc_t create( proc_t* proc )
       {
         rc_t        rc         = kOkRC; //
         inst_t*     inst       = mem::allocZ<inst_t>(); //
@@ -564,10 +564,10 @@ namespace cw
         const char* port_label = nullptr;
         mbuf_t*     mbuf       = nullptr;
         
-        ctx->userPtr = inst;
+        proc->userPtr = inst;
         
         // Register variables and get their current value
-        if((rc = var_register_and_get( ctx, kAnyChIdx,
+        if((rc = var_register_and_get( proc, kAnyChIdx,
                                        kDevLabelPId, "dev_label",  kBaseSfxId, dev_label,
                                        kPortLabelPId,"port_label", kBaseSfxId, port_label,
                                        kInPId,       "in",         kBaseSfxId, mbuf)) != kOkRC )
@@ -575,7 +575,7 @@ namespace cw
           goto errLabel;
         }
 
-        if((inst->ext_dev = external_device_find( ctx->ctx, dev_label, kMidiDevTypeId, kOutFl, port_label )) == nullptr )
+        if((inst->ext_dev = external_device_find( proc->ctx, dev_label, kMidiDevTypeId, kOutFl, port_label )) == nullptr )
         {
           rc = cwLogError(kOpFailRC,"The audio output device description '%s' could not be found.", cwStringNullGuard(dev_label));
           goto errLabel;
@@ -585,30 +585,30 @@ namespace cw
         return rc;
       }
 
-      rc_t destroy( instance_t* ctx )
+      rc_t destroy( proc_t* proc )
       {
         rc_t    rc   = kOkRC;
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
 
         mem::release(inst);
 
         return rc;
       }
 
-      rc_t value( instance_t* ctx, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         return rc;
       }
       
-      rc_t exec( instance_t* ctx )
+      rc_t exec( proc_t* proc )
       {
         rc_t          rc     = kOkRC;
-        inst_t*       inst   = (inst_t*)ctx->userPtr;
+        inst_t*       inst   = (inst_t*)proc->userPtr;
         const mbuf_t* src_mbuf = nullptr;
 
-        if((rc = var_get(ctx,kInPId,kAnyChIdx,src_mbuf)) != kOkRC )
-          rc = cwLogError(kInvalidStateRC,"The MIDI output instance '%s' does not have a valid input connection.",ctx->label);
+        if((rc = var_get(proc,kInPId,kAnyChIdx,src_mbuf)) != kOkRC )
+          rc = cwLogError(kInvalidStateRC,"The MIDI output instance '%s' does not have a valid input connection.",proc->label);
         else
         {
           for(unsigned i=0; i<src_mbuf->msgN; ++i)
@@ -654,21 +654,21 @@ namespace cw
         external_device_t* ext_dev;
       } inst_t;
       
-      rc_t create( instance_t* ctx )
+      rc_t create( proc_t* proc )
       {
         rc_t rc = kOkRC;
         
         inst_t*                  inst = mem::allocZ<inst_t>();
         
-        ctx->userPtr = inst;
+        proc->userPtr = inst;
 
         // Register variable and get their current value
-        if((rc = var_register_and_get( ctx, kAnyChIdx, kDevLabelPId, "dev_label", kBaseSfxId, inst->dev_label )) != kOkRC )
+        if((rc = var_register_and_get( proc, kAnyChIdx, kDevLabelPId, "dev_label", kBaseSfxId, inst->dev_label )) != kOkRC )
         {
           goto errLabel;
         }
 
-        if((inst->ext_dev = external_device_find( ctx->ctx, inst->dev_label, kAudioDevTypeId, kInFl )) == nullptr )
+        if((inst->ext_dev = external_device_find( proc->ctx, inst->dev_label, kAudioDevTypeId, kInFl )) == nullptr )
         {
           rc = cwLogError(kOpFailRC,"The audio input device description '%s' could not be found.", cwStringNullGuard(inst->dev_label));
           goto errLabel;
@@ -676,40 +676,40 @@ namespace cw
         
 
         // create one output audio buffer
-        rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, inst->ext_dev->u.a.abuf->srate, inst->ext_dev->u.a.abuf->chN, ctx->ctx->framesPerCycle );
+        rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, inst->ext_dev->u.a.abuf->srate, inst->ext_dev->u.a.abuf->chN, proc->ctx->framesPerCycle );
 
       errLabel:
         return rc;
       }
 
-      rc_t destroy( instance_t* ctx )
+      rc_t destroy( proc_t* proc )
       {
         rc_t rc = kOkRC;
 
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
 
         mem::release(inst);
         
         return rc;
       }
 
-      rc_t value( instance_t* ctx, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         return rc;
       }
       
-      rc_t exec( instance_t* ctx )
+      rc_t exec( proc_t* proc )
       {
         rc_t     rc           = kOkRC;
-        inst_t*  inst         = (inst_t*)ctx->userPtr;
+        inst_t*  inst         = (inst_t*)proc->userPtr;
         abuf_t*  abuf         = nullptr;
 
 
         // verify that a source buffer exists
-        if((rc = var_get(ctx,kOutPId,kAnyChIdx,abuf)) != kOkRC )
+        if((rc = var_get(proc,kOutPId,kAnyChIdx,abuf)) != kOkRC )
         {
-          rc = cwLogError(kInvalidStateRC,"The audio file instance '%s' does not have a valid audio output buffer.",ctx->label);
+          rc = cwLogError(kInvalidStateRC,"The audio file instance '%s' does not have a valid audio output buffer.",proc->label);
         }
         else
         {
@@ -752,22 +752,22 @@ namespace cw
 
       } inst_t;
       
-      rc_t create( instance_t* ctx )
+      rc_t create( proc_t* proc )
       {
         rc_t          rc            = kOkRC;                 //
         inst_t*       inst          = mem::allocZ<inst_t>(); //
         const abuf_t* src_abuf      = nullptr;
-        ctx->userPtr = inst;
+        proc->userPtr = inst;
 
         // Register variables and get their current value
-        if((rc = var_register_and_get( ctx, kAnyChIdx,
+        if((rc = var_register_and_get( proc, kAnyChIdx,
                                        kDevLabelPId, "dev_label", kBaseSfxId, inst->dev_label,
                                        kInPId,       "in",        kBaseSfxId, src_abuf)) != kOkRC )
         {
           goto errLabel;
         }
 
-        if((inst->ext_dev = external_device_find( ctx->ctx, inst->dev_label, kAudioDevTypeId, kOutFl )) == nullptr )
+        if((inst->ext_dev = external_device_find( proc->ctx, inst->dev_label, kAudioDevTypeId, kOutFl )) == nullptr )
         {
           rc = cwLogError(kOpFailRC,"The audio output device description '%s' could not be found.", cwStringNullGuard(inst->dev_label));
           goto errLabel;
@@ -777,30 +777,30 @@ namespace cw
         return rc;
       }
 
-      rc_t destroy( instance_t* ctx )
+      rc_t destroy( proc_t* proc )
       {
         rc_t    rc   = kOkRC;
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
 
         mem::release(inst);
 
         return rc;
       }
 
-      rc_t value( instance_t* ctx, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         return rc;
       }
       
-      rc_t exec( instance_t* ctx )
+      rc_t exec( proc_t* proc )
       {
         rc_t          rc     = kOkRC;
-        inst_t*       inst   = (inst_t*)ctx->userPtr;
+        inst_t*       inst   = (inst_t*)proc->userPtr;
         const abuf_t* src_abuf = nullptr;
 
-        if((rc = var_get(ctx,kInPId,kAnyChIdx,src_abuf)) != kOkRC )
-          rc = cwLogError(kInvalidStateRC,"The audio file instance '%s' does not have a valid input connection.",ctx->label);
+        if((rc = var_get(proc,kInPId,kAnyChIdx,src_abuf)) != kOkRC )
+          rc = cwLogError(kInvalidStateRC,"The audio file instance '%s' does not have a valid input connection.",proc->label);
         else
         {
           unsigned  chN    = std::min(inst->ext_dev->u.a.abuf->chN,    src_abuf->chN);
@@ -849,21 +849,21 @@ namespace cw
         const char*         filename;
       } inst_t;
       
-      rc_t create( instance_t* ctx )
+      rc_t create( proc_t* proc )
       {
         rc_t rc = kOkRC;
         audiofile::info_t info;
         ftime_t seekSecs;
         inst_t* inst = mem::allocZ<inst_t>();
-        ctx->userPtr = inst;
+        proc->userPtr = inst;
 
-        if((rc = var_register( ctx, kAnyChIdx, kOnOffFlPId, "on_off", kBaseSfxId)) != kOkRC )
+        if((rc = var_register( proc, kAnyChIdx, kOnOffFlPId, "on_off", kBaseSfxId)) != kOkRC )
         {
           goto errLabel;
         }
 
         // Register variable and get their current value
-        if((rc = var_register_and_get( ctx, kAnyChIdx,
+        if((rc = var_register_and_get( proc, kAnyChIdx,
                                        kFnamePId,    "fname",    kBaseSfxId, inst->filename,
                                        kSeekSecsPId, "seekSecs", kBaseSfxId, seekSecs,
                                        kEofFlPId,    "eofFl",    kBaseSfxId, inst->eofFl )) != kOkRC )
@@ -888,17 +888,17 @@ namespace cw
         cwLogInfo("Audio '%s' srate:%f chs:%i frames:%i %f seconds.",inst->filename,info.srate,info.chCnt,info.frameCnt, info.frameCnt/info.srate );
 
         // create one output audio buffer - with the same configuration as the source audio file
-        rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, info.srate, info.chCnt, ctx->ctx->framesPerCycle );
+        rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, info.srate, info.chCnt, proc->ctx->framesPerCycle );
 
       errLabel:
         return rc;
       }
 
-      rc_t destroy( instance_t* ctx )
+      rc_t destroy( proc_t* proc )
       {
         rc_t rc = kOkRC;
 
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
 
         if((rc = audiofile::close(inst->afH)) != kOkRC )
         {
@@ -910,13 +910,13 @@ namespace cw
         return rc;
       }
 
-      rc_t value( instance_t* ctx, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         ftime_t seekSecs = 0;
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
 
-        if((rc = var_get(ctx,kSeekSecsPId,kAnyChIdx,seekSecs)) != kOkRC )
+        if((rc = var_get(proc,kSeekSecsPId,kAnyChIdx,seekSecs)) != kOkRC )
           goto errLabel;
 
         if((rc = seek( inst->afH, (unsigned)lround(seekSecs * audiofile::sampleRate(inst->afH) ) )) != kOkRC )
@@ -930,22 +930,22 @@ namespace cw
         return kOkRC;
       }
       
-      rc_t exec( instance_t* ctx )
+      rc_t exec( proc_t* proc )
       {
         rc_t     rc           = kOkRC;
         unsigned actualFrameN = 0;
-        inst_t*  inst         = (inst_t*)ctx->userPtr;
+        inst_t*  inst         = (inst_t*)proc->userPtr;
         abuf_t*  abuf         = nullptr;
         bool     onOffFl      = false;
 
         // get the 'on-off; flag
-        if((rc = var_get(ctx,kOnOffFlPId,kAnyChIdx,onOffFl)) != kOkRC )
+        if((rc = var_get(proc,kOnOffFlPId,kAnyChIdx,onOffFl)) != kOkRC )
           goto errLabel;
 
         // verify that a source buffer exists
-        if((rc = var_get(ctx,kOutPId,kAnyChIdx,abuf)) != kOkRC )
+        if((rc = var_get(proc,kOutPId,kAnyChIdx,abuf)) != kOkRC )
         {
-          rc = cwLogError(kInvalidStateRC,"The audio file instance '%s' does not have a valid audio output buffer.",ctx->label);
+          rc = cwLogError(kInvalidStateRC,"The audio file instance '%s' does not have a valid audio output buffer.",proc->label);
         }
         else
         {
@@ -1004,16 +1004,16 @@ namespace cw
         unsigned            durSmpN;
       } inst_t;
       
-      rc_t create( instance_t* ctx )
+      rc_t create( proc_t* proc )
       {
         rc_t          rc            = kOkRC;                 //
         unsigned      audioFileBits = 0;                     // set audio file sample format to 'float32'.
         inst_t*       inst          = mem::allocZ<inst_t>(); //
         const abuf_t* src_abuf      = nullptr;
-        ctx->userPtr = inst;
+        proc->userPtr = inst;
 
         // Register variables and get their current value
-        if((rc = var_register_and_get( ctx, kAnyChIdx,
+        if((rc = var_register_and_get( proc, kAnyChIdx,
                                        kFnamePId, "fname", kBaseSfxId, inst->filename,
                                        kBitsPId,  "bits",  kBaseSfxId, audioFileBits,
                                        kInPId,    "in",    kBaseSfxId, src_abuf )) != kOkRC )
@@ -1032,10 +1032,10 @@ namespace cw
         return rc;
       }
 
-      rc_t destroy( instance_t* ctx )
+      rc_t destroy( proc_t* proc )
       {
         rc_t    rc   = kOkRC;
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
 
         // close the audio file
         if((rc = audiofile::close( inst->afH )) != kOkRC )
@@ -1050,20 +1050,20 @@ namespace cw
         return rc;
       }
 
-      rc_t value( instance_t* ctx, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         return rc;
       }
       
-      rc_t exec( instance_t* ctx )
+      rc_t exec( proc_t* proc )
       {
         rc_t          rc     = kOkRC;
-        inst_t*       inst   = (inst_t*)ctx->userPtr;
+        inst_t*       inst   = (inst_t*)proc->userPtr;
         const abuf_t* src_abuf = nullptr;
         
-        if((rc = var_get(ctx,kInPId,kAnyChIdx,src_abuf)) != kOkRC )
-          rc = cwLogError(kInvalidStateRC,"The audio file instance '%s' does not have a valid input connection.",ctx->label);
+        if((rc = var_get(proc,kInPId,kAnyChIdx,src_abuf)) != kOkRC )
+          rc = cwLogError(kInvalidStateRC,"The audio file instance '%s' does not have a valid input connection.",proc->label);
         else
         {
           sample_t*     chBuf[ src_abuf->chN ];
@@ -1072,7 +1072,7 @@ namespace cw
             chBuf[i] = src_abuf->buf + (i*src_abuf->frameN);
         
           if((rc = audiofile::writeFloat(inst->afH, src_abuf->frameN, src_abuf->chN, chBuf )) != kOkRC )
-            rc = cwLogError(rc,"Audio file write failed on instance: '%s'.", ctx->label );
+            rc = cwLogError(rc,"Audio file write failed on instance: '%s'.", proc->label );
 
           // print a minutes counter
           inst->durSmpN += src_abuf->frameN;          
@@ -1116,63 +1116,63 @@ namespace cw
         coeff_t gain;
       } inst_t;
 
-      rc_t create( instance_t* ctx )
+      rc_t create( proc_t* proc )
       {
         rc_t          rc     = kOkRC;
         const abuf_t* abuf    = nullptr; //
-        ctx->userPtr = mem::allocZ<inst_t>();
+        proc->userPtr = mem::allocZ<inst_t>();
 
         // get the source audio buffer
-        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",kBaseSfxId,abuf )) != kOkRC )
+        if((rc = var_register_and_get(proc, kAnyChIdx,kInPId,"in",kBaseSfxId,abuf )) != kOkRC )
           goto errLabel;
 
         // register the gain 
         for(unsigned i=0; i<abuf->chN; ++i)
-          if((rc = var_register( ctx, i, kGainPId, "gain", kBaseSfxId )) != kOkRC )
+          if((rc = var_register( proc, i, kGainPId, "gain", kBaseSfxId )) != kOkRC )
             goto errLabel;
           
         // create the output audio buffer
-        rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, abuf->srate, abuf->chN, abuf->frameN );
+        rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, abuf->srate, abuf->chN, abuf->frameN );
 
 
       errLabel:
         return rc;
       }
 
-      rc_t destroy( instance_t* ctx )
+      rc_t destroy( proc_t* proc )
       {
-        inst_t* inst = (inst_t*)(ctx->userPtr);
+        inst_t* inst = (inst_t*)(proc->userPtr);
         mem::release(inst);
         return kOkRC;
       }
 
-      rc_t value( instance_t* ctx, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         coeff_t value = 0;
-        inst_t* inst = (inst_t*)ctx->userPtr;
-        var_get(ctx,kGainPId,0,value);
+        inst_t* inst = (inst_t*)proc->userPtr;
+        var_get(proc,kGainPId,0,value);
         
         if( inst->vgain != value )
         {
           inst->vgain = value;
-          //printf("VALUE GAIN: %s %s : %f\n", ctx->label, var->label, value );
+          //printf("VALUE GAIN: %s %s : %f\n", proc->label, var->label, value );
         }
         return kOkRC;
       }
 
-      rc_t exec( instance_t* ctx )
+      rc_t exec( proc_t* proc )
       {
         rc_t     rc           = kOkRC;
         const abuf_t* ibuf = nullptr;
         abuf_t*       obuf = nullptr;
-        inst_t*  inst = (inst_t*)(ctx->userPtr);
+        inst_t*  inst = (inst_t*)(proc->userPtr);
 
         // get the src buffer
-        if((rc = var_get(ctx,kInPId, kAnyChIdx, ibuf )) != kOkRC )
+        if((rc = var_get(proc,kInPId, kAnyChIdx, ibuf )) != kOkRC )
           goto errLabel;
 
         // get the dst buffer
-        if((rc = var_get(ctx,kOutPId, kAnyChIdx, obuf)) != kOkRC )
+        if((rc = var_get(proc,kOutPId, kAnyChIdx, obuf)) != kOkRC )
           goto errLabel;
 
         // for each channel
@@ -1182,7 +1182,7 @@ namespace cw
           sample_t* osig = obuf->buf + i*obuf->frameN;
           sample_t  gain = 1;
           
-          var_get(ctx,kGainPId,i,gain);
+          var_get(proc,kGainPId,i,gain);
 
           // apply the gain
           for(unsigned j=0; j<ibuf->frameN; ++j)
@@ -1191,8 +1191,8 @@ namespace cw
           if( i==0 && gain != inst->gain )
           {
             inst->gain = gain;
-            //printf("EXEC GAIN: %s %f\n",ctx->label,gain);
-            //instance_print(ctx);
+            //printf("EXEC GAIN: %s %f\n",proc->label,gain);
+            //proc_print(proc);
           }
         }  
         
@@ -1233,16 +1233,16 @@ namespace cw
       } inst_t;
 
 
-      rc_t create( instance_t* ctx )
+      rc_t create( proc_t* proc )
       {
         rc_t          rc   = kOkRC;        
         const abuf_t* abuf = nullptr; //        
         inst_t*       inst = mem::allocZ<inst_t>();
         
-        ctx->userPtr = inst;
+        proc->userPtr = inst;
 
         // get the source audio buffer
-        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",kBaseSfxId, abuf )) != kOkRC )
+        if((rc = var_register_and_get(proc, kAnyChIdx,kInPId,"in",kBaseSfxId, abuf )) != kOkRC )
           goto errLabel;
 
         if( abuf->chN )
@@ -1251,20 +1251,20 @@ namespace cw
           
           inst->chSelMap = mem::allocZ<bool>(abuf->chN);
           
-          if((rc = var_channel_count(ctx,"select",kBaseSfxId,selChN)) != kOkRC )
+          if((rc = var_channel_count(proc,"select",kBaseSfxId,selChN)) != kOkRC )
             goto errLabel;
           
           // register the gain 
           for(unsigned i=0; i<abuf->chN; ++i)
           {
             if( i < selChN )
-              if((rc = var_register_and_get( ctx, i, kSelectPId, "select", kBaseSfxId, inst->chSelMap[i] )) != kOkRC )
+              if((rc = var_register_and_get( proc, i, kSelectPId, "select", kBaseSfxId, inst->chSelMap[i] )) != kOkRC )
                 goto errLabel;
 
             if( inst->chSelMap[i] )
             {
               // register an output gain control
-              if((rc = var_register( ctx, inst->outChN, kGainPId, "gain", kBaseSfxId)) != kOkRC )
+              if((rc = var_register( proc, inst->outChN, kGainPId, "gain", kBaseSfxId)) != kOkRC )
                 goto errLabel;
 
               // count the number of selected channels to determine the count of output channels
@@ -1274,20 +1274,20 @@ namespace cw
           
           // create the output audio buffer
           if( inst->outChN == 0 )
-            cwLogWarning("The audio split instance '%s' has no selected channels.",ctx->label);
+            cwLogWarning("The audio split instance '%s' has no selected channels.",proc->label);
           else
-            rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, abuf->srate, inst->outChN, abuf->frameN );
+            rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, abuf->srate, inst->outChN, abuf->frameN );
         }
 
       errLabel:
         return rc;
       }
 
-      rc_t destroy( instance_t* ctx )
+      rc_t destroy( proc_t* proc )
       {
         rc_t rc = kOkRC;
 
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
 
         mem::release(inst->chSelMap);
 
@@ -1296,28 +1296,28 @@ namespace cw
         return rc;
       }
 
-      rc_t value( instance_t* ctx, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         return rc;
       }
 
-      rc_t exec( instance_t* ctx )
+      rc_t exec( proc_t* proc )
       {
         rc_t          rc       = kOkRC;
         const abuf_t* ibuf     = nullptr;
         abuf_t*       obuf     = nullptr;
-        inst_t*       inst     = (inst_t*)ctx->userPtr;
+        inst_t*       inst     = (inst_t*)proc->userPtr;
         unsigned      outChIdx = 0;
         
         if( inst->outChN )
         {
           // get the src buffer
-          if((rc = var_get(ctx,kInPId, kAnyChIdx, ibuf )) != kOkRC )
+          if((rc = var_get(proc,kInPId, kAnyChIdx, ibuf )) != kOkRC )
             goto errLabel;
 
           // get the dst buffer
-          if((rc = var_get(ctx,kOutPId, kAnyChIdx, obuf)) != kOkRC )
+          if((rc = var_get(proc,kOutPId, kAnyChIdx, obuf)) != kOkRC )
             goto errLabel;
 
           // for each channel          
@@ -1329,7 +1329,7 @@ namespace cw
               sample_t* osig = obuf->buf + outChIdx * obuf->frameN;
               sample_t  gain = 1;
           
-              var_get(ctx,kGainPId,outChIdx,gain);
+              var_get(proc,kGainPId,outChIdx,gain);
 
               // apply the gain
               for(unsigned j=0; j<ibuf->frameN; ++j)
@@ -1374,16 +1374,16 @@ namespace cw
       } inst_t;
 
 
-      rc_t create( instance_t* ctx )
+      rc_t create( proc_t* proc )
       {
         rc_t          rc   = kOkRC;        
         const abuf_t* abuf = nullptr; //        
         inst_t*       inst = mem::allocZ<inst_t>();
         
-        ctx->userPtr = inst;
+        proc->userPtr = inst;
 
         // get the source audio buffer
-        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",kBaseSfxId,abuf )) != kOkRC )
+        if((rc = var_register_and_get(proc, kAnyChIdx,kInPId,"in",kBaseSfxId,abuf )) != kOkRC )
           goto errLabel;
 
         if( abuf->chN )
@@ -1393,13 +1393,13 @@ namespace cw
           // register the gain 
           for(unsigned i=0; i<abuf->chN; ++i)
           {
-            if((rc = var_register_and_get( ctx, i, kDuplicatePId, "duplicate", kBaseSfxId, inst->chDuplMap[i] )) != kOkRC )
+            if((rc = var_register_and_get( proc, i, kDuplicatePId, "duplicate", kBaseSfxId, inst->chDuplMap[i] )) != kOkRC )
               goto errLabel;
 
             if( inst->chDuplMap[i] )
             {
               // register an input gain control
-              if((rc = var_register( ctx, inst->outChN, kGainPId, "gain", kBaseSfxId)) != kOkRC )
+              if((rc = var_register( proc, inst->outChN, kGainPId, "gain", kBaseSfxId)) != kOkRC )
                 goto errLabel;
 
               // count the number of selected channels to determine the count of output channels
@@ -1409,20 +1409,20 @@ namespace cw
           
           // create the output audio buffer
           if( inst->outChN == 0 )
-            cwLogWarning("The audio split instance '%s' has no selected channels.",ctx->label);
+            cwLogWarning("The audio split instance '%s' has no selected channels.",proc->label);
           else
-            rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, abuf->srate, inst->outChN, abuf->frameN );
+            rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, abuf->srate, inst->outChN, abuf->frameN );
         }
 
       errLabel:
         return rc;
       }
 
-      rc_t destroy( instance_t* ctx )
+      rc_t destroy( proc_t* proc )
       {
         rc_t rc = kOkRC;
 
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
 
         mem::release(inst->chDuplMap);
 
@@ -1431,28 +1431,28 @@ namespace cw
         return rc;
       }
 
-      rc_t value( instance_t* ctx, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         return rc;
       }
 
-      rc_t exec( instance_t* ctx )
+      rc_t exec( proc_t* proc )
       {
         rc_t          rc       = kOkRC;
         const abuf_t* ibuf     = nullptr;
         abuf_t*       obuf     = nullptr;
-        inst_t*       inst     = (inst_t*)ctx->userPtr;
+        inst_t*       inst     = (inst_t*)proc->userPtr;
         unsigned      outChIdx = 0;
         
         if( inst->outChN )
         {
           // get the src buffer
-          if((rc = var_get(ctx,kInPId, kAnyChIdx, ibuf )) != kOkRC )
+          if((rc = var_get(proc,kInPId, kAnyChIdx, ibuf )) != kOkRC )
             goto errLabel;
 
           // get the dst buffer
-          if((rc = var_get(ctx,kOutPId, kAnyChIdx, obuf)) != kOkRC )
+          if((rc = var_get(proc,kOutPId, kAnyChIdx, obuf)) != kOkRC )
             goto errLabel;
 
           // for each input channel          
@@ -1461,7 +1461,7 @@ namespace cw
             sample_t* isig = ibuf->buf + i * ibuf->frameN;
             sample_t  gain = 1;
           
-            var_get(ctx,kGainPId,i,gain);
+            var_get(proc,kGainPId,i,gain);
             
             for(unsigned j=0; j<inst->chDuplMap[i]; ++j )
             {            
@@ -1508,7 +1508,7 @@ namespace cw
       } inst_t;
 
 
-      rc_t create( instance_t* ctx )
+      rc_t create( proc_t* proc )
       {
         rc_t          rc     = kOkRC;
         unsigned      outChN = 0;
@@ -1517,7 +1517,7 @@ namespace cw
         
         inst_t*       inst = mem::allocZ<inst_t>();
         
-        ctx->userPtr = inst;
+        proc->userPtr = inst;
         
         for(unsigned i=0; 1; ++i)
         {
@@ -1530,11 +1530,11 @@ namespace cw
           // TODO: allow non-contiguous source labels
           
           // the source labels must be contiguous
-          if( !var_has_value( ctx, label, kBaseSfxId, kAnyChIdx ) )
+          if( !var_has_value( proc, label, kBaseSfxId, kAnyChIdx ) )
             break;
           
           // get the source audio buffer
-          if((rc = var_register_and_get(ctx, kAnyChIdx,kInBasePId+i,label,kBaseSfxId, abuf )) != kOkRC )
+          if((rc = var_register_and_get(proc, kAnyChIdx,kInBasePId+i,label,kBaseSfxId, abuf )) != kOkRC )
           {
             goto errLabel;
           }
@@ -1558,29 +1558,29 @@ namespace cw
 
         // register the gain 
         for(unsigned i=0; i<outChN; ++i)
-          if((rc = var_register( ctx, i, kGainPId, "gain", kBaseSfxId )) != kOkRC )
+          if((rc = var_register( proc, i, kGainPId, "gain", kBaseSfxId )) != kOkRC )
             goto errLabel;
           
         // create the output audio buffer
-        rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, srate, outChN, frameN );
+        rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, srate, outChN, frameN );
 
       errLabel:
         return rc;
       }
 
-      rc_t destroy( instance_t* ctx )
+      rc_t destroy( proc_t* proc )
       { 
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
         
         mem::release(inst);
 
         return kOkRC;
       }
 
-      rc_t value( instance_t* ctx, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       { return kOkRC; }
 
-      unsigned _exec( instance_t* ctx, const abuf_t* ibuf, abuf_t* obuf, unsigned outChIdx )
+      unsigned _exec( proc_t* proc, const abuf_t* ibuf, abuf_t* obuf, unsigned outChIdx )
       {
         // for each channel          
         for(unsigned i=0; i<ibuf->chN  && outChIdx<obuf->chN; ++i)
@@ -1590,7 +1590,7 @@ namespace cw
           sample_t* osig = obuf->buf + outChIdx * obuf->frameN;
           sample_t  gain = 1;
           
-          var_get(ctx,kGainPId,outChIdx,gain);
+          var_get(proc,kGainPId,outChIdx,gain);
 
           // apply the gain
           for(unsigned j=0; j<ibuf->frameN; ++j)
@@ -1603,7 +1603,7 @@ namespace cw
       }
 
       /*
-        rc_t exec( instance_t* ctx )
+        rc_t exec( proc_t* proc )
         {
         rc_t          rc    = kOkRC;
         const abuf_t* ibuf0 = nullptr;
@@ -1611,17 +1611,17 @@ namespace cw
         abuf_t*       obuf  = nullptr;
         unsigned      oChIdx = 0;
         
-        if((rc = var_get(ctx,kIn0PId, kAnyChIdx, ibuf0 )) != kOkRC )
+        if((rc = var_get(proc,kIn0PId, kAnyChIdx, ibuf0 )) != kOkRC )
         goto errLabel;
 
-        if((rc = var_get(ctx,kIn1PId, kAnyChIdx, ibuf1 )) != kOkRC )
+        if((rc = var_get(proc,kIn1PId, kAnyChIdx, ibuf1 )) != kOkRC )
         goto errLabel;
         
-        if((rc = var_get(ctx,kOutPId, kAnyChIdx, obuf)) != kOkRC )
+        if((rc = var_get(proc,kOutPId, kAnyChIdx, obuf)) != kOkRC )
         goto errLabel;
 
-        oChIdx = _exec( ctx, ibuf0, obuf, oChIdx );
-        oChIdx = _exec( ctx, ibuf1, obuf, oChIdx );
+        oChIdx = _exec( proc, ibuf0, obuf, oChIdx );
+        oChIdx = _exec( proc, ibuf1, obuf, oChIdx );
 
         assert( oChIdx == obuf->chN );
 
@@ -1630,24 +1630,24 @@ namespace cw
         }
       */
       
-      rc_t exec( instance_t* ctx )
+      rc_t exec( proc_t* proc )
       {
         rc_t          rc    = kOkRC;
-        inst_t*       inst     = (inst_t*)ctx->userPtr;
+        inst_t*       inst     = (inst_t*)proc->userPtr;
         abuf_t*       obuf  = nullptr;
         unsigned      oChIdx = 0;
         
-        if((rc = var_get(ctx,kOutPId, kAnyChIdx, obuf)) != kOkRC )
+        if((rc = var_get(proc,kOutPId, kAnyChIdx, obuf)) != kOkRC )
           goto errLabel;
 
         for(unsigned i=0; i<inst->srcN; ++i)
         {
           const abuf_t* ibuf = nullptr;
 
-          if((rc = var_get(ctx,kInBasePId+i, kAnyChIdx, ibuf )) != kOkRC )
+          if((rc = var_get(proc,kInBasePId+i, kAnyChIdx, ibuf )) != kOkRC )
             goto errLabel;
 
-          oChIdx = _exec( ctx, ibuf, obuf, oChIdx );
+          oChIdx = _exec( proc, ibuf, obuf, oChIdx );
         }
 
       errLabel:
@@ -1684,7 +1684,7 @@ namespace cw
       } inst_t;
 
 
-      rc_t create( instance_t* ctx )
+      rc_t create( proc_t* proc )
       {
         rc_t          rc     = kOkRC;
         const abuf_t* abuf0  = nullptr; //
@@ -1693,7 +1693,7 @@ namespace cw
         double dum;
         
         // get the source audio buffer
-        if((rc = var_register_and_get(ctx, kAnyChIdx,
+        if((rc = var_register_and_get(proc, kAnyChIdx,
                                       kIn0PId,"in0",kBaseSfxId,abuf0,
                                       kIn1PId,"in1",kBaseSfxId,abuf1 )) != kOkRC )
         {
@@ -1705,28 +1705,28 @@ namespace cw
         outChN = std::max(abuf0->chN, abuf1->chN);
 
         // register the gain
-        var_register_and_get( ctx, kAnyChIdx, kGain0PId, "gain0", kBaseSfxId, dum );
-        var_register_and_get( ctx, kAnyChIdx, kGain1PId, "gain1", kBaseSfxId, dum );
+        var_register_and_get( proc, kAnyChIdx, kGain0PId, "gain0", kBaseSfxId, dum );
+        var_register_and_get( proc, kAnyChIdx, kGain1PId, "gain1", kBaseSfxId, dum );
           
         // create the output audio buffer
-        rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, abuf0->srate, outChN, abuf0->frameN );
+        rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, abuf0->srate, outChN, abuf0->frameN );
 
       errLabel:
         return rc;
       }
 
-      rc_t destroy( instance_t* ctx )
+      rc_t destroy( proc_t* proc )
       { return kOkRC; }
 
-      rc_t value( instance_t* ctx, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       { return kOkRC; }
 
-      rc_t _mix( instance_t* ctx, unsigned inPId, unsigned gainPId, abuf_t* obuf )
+      rc_t _mix( proc_t* proc, unsigned inPId, unsigned gainPId, abuf_t* obuf )
       {
         rc_t          rc   = kOkRC;
         const abuf_t* ibuf = nullptr;
         
-        if((rc = var_get(ctx, inPId, kAnyChIdx, ibuf )) != kOkRC )
+        if((rc = var_get(proc, inPId, kAnyChIdx, ibuf )) != kOkRC )
           goto errLabel;
 
 
@@ -1740,7 +1740,7 @@ namespace cw
             sample_t*       osig = obuf->buf + i*obuf->frameN;
             coeff_t          gain = 1;
 
-            if((rc = var_get(ctx, gainPId, kAnyChIdx, gain)) != kOkRC )
+            if((rc = var_get(proc, gainPId, kAnyChIdx, gain)) != kOkRC )
               goto errLabel;
             
             for(unsigned j=0; j<obuf->frameN; ++j)
@@ -1753,26 +1753,26 @@ namespace cw
         
       }
 
-      rc_t exec( instance_t* ctx )
+      rc_t exec( proc_t* proc )
       {
         rc_t          rc    = kOkRC;
         abuf_t*       obuf  = nullptr;
         //const abuf_t* ibuf0 = nullptr;
         //const abuf_t* ibuf1 = nullptr;
 
-        if((rc = var_get(ctx,kOutPId, kAnyChIdx, obuf)) != kOkRC )
+        if((rc = var_get(proc,kOutPId, kAnyChIdx, obuf)) != kOkRC )
           goto errLabel;
 
-        //if((rc = var_get(ctx,kIn0PId, kAnyChIdx, ibuf0 )) != kOkRC )
+        //if((rc = var_get(proc,kIn0PId, kAnyChIdx, ibuf0 )) != kOkRC )
         //  goto errLabel;
         
-        //if((rc = var_get(ctx,kIn1PId, kAnyChIdx, ibuf1 )) != kOkRC )
+        //if((rc = var_get(proc,kIn1PId, kAnyChIdx, ibuf1 )) != kOkRC )
         //  goto errLabel;
 
         vop::zero(obuf->buf, obuf->frameN*obuf->chN );
         
-        _mix( ctx, kIn0PId, kGain0PId, obuf );
-        _mix( ctx, kIn1PId, kGain1PId, obuf );
+        _mix( proc, kIn0PId, kGain0PId, obuf );
+        _mix( proc, kIn1PId, kGain1PId, obuf );
         
       errLabel:
         return rc;
@@ -1812,7 +1812,7 @@ namespace cw
         double *phaseA;
       } inst_t;
       
-      rc_t create( instance_t* ctx )
+      rc_t create( proc_t* proc )
       {
         rc_t     rc    = kOkRC;
         inst_t*  inst  = mem::allocZ<inst_t>();
@@ -1823,10 +1823,10 @@ namespace cw
         coeff_t   phase;
         coeff_t   dc;
         
-        ctx->userPtr = inst;
+        proc->userPtr = inst;
 
         // Register variables and get their current value
-        if((rc = var_register_and_get( ctx, kAnyChIdx,
+        if((rc = var_register_and_get( proc, kAnyChIdx,
                                        kChCntPid, "chCnt", kBaseSfxId, chCnt,
                                        kSratePId, "srate", kBaseSfxId, srate)) != kOkRC )
         {
@@ -1840,14 +1840,14 @@ namespace cw
 
         // if no sample rate was given then use the system sample rate.
         if( srate == 0 )
-          srate = ctx->ctx->sample_rate;
+          srate = proc->ctx->sample_rate;
         
         // register each oscillator variable
         for(unsigned i=0; i<chCnt; ++i)
         {
           unsigned ch_srate = 0;
           
-          if((rc = var_register_and_get( ctx, i,
+          if((rc = var_register_and_get( proc, i,
                                          kSratePId,  "srate", kBaseSfxId, ch_srate,
                                          kFreqHzPId, "hz",    kBaseSfxId, hz,
                                          kPhasePId,  "phase", kBaseSfxId, phase,
@@ -1859,15 +1859,15 @@ namespace cw
 
           // if no srate was set on this channel then use the default sample rate
           if( ch_srate == 0 )
-            if((rc = var_set(ctx,kSratePId,i,srate)) != kOkRC )
+            if((rc = var_set(proc,kSratePId,i,srate)) != kOkRC )
               goto errLabel;
         }
 
-        printf("%s: sr:%f hz:%f phs:%f dc:%f gain:%f\n",ctx->label,srate,hz,phase,dc,gain);
+        //printf("%s: sr:%f hz:%f phs:%f dc:%f gain:%f\n",proc->label,srate,hz,phase,dc,gain);
         
         // create one output audio buffer
-        rc = var_register_and_set( ctx, "out", kBaseSfxId,
-                                   kOutPId, kAnyChIdx, srate, chCnt, ctx->ctx->framesPerCycle );
+        rc = var_register_and_set( proc, "out", kBaseSfxId,
+                                   kOutPId, kAnyChIdx, srate, chCnt, proc->ctx->framesPerCycle );
 
         inst->phaseA = mem::allocZ<double>( chCnt );
         
@@ -1876,11 +1876,11 @@ namespace cw
         return rc;
       }
 
-      rc_t destroy( instance_t* ctx )
+      rc_t destroy( proc_t* proc )
       {
         rc_t rc = kOkRC;
 
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
 
         mem::release(inst->phaseA);
         mem::release(inst);
@@ -1888,32 +1888,32 @@ namespace cw
         return rc;
       }
 
-      rc_t value( instance_t* ctx, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         return rc;
       }
       
-      rc_t exec( instance_t* ctx )
+      rc_t exec( proc_t* proc )
       {
         rc_t     rc           = kOkRC;
-        inst_t*  inst         = (inst_t*)ctx->userPtr;
+        inst_t*  inst         = (inst_t*)proc->userPtr;
         abuf_t*  abuf         = nullptr;
 
         // get the output signal buffer
-        if((rc = var_get(ctx,kOutPId,kAnyChIdx,abuf)) != kOkRC )
+        if((rc = var_get(proc,kOutPId,kAnyChIdx,abuf)) != kOkRC )
         {
-          rc = cwLogError(kInvalidStateRC,"The Sine Tone instance '%s' does not have a valid audio output buffer.",ctx->label);
+          rc = cwLogError(kInvalidStateRC,"The Sine Tone instance '%s' does not have a valid audio output buffer.",proc->label);
         }
         else
         {
           for(unsigned i=0; i<abuf->chN; ++i)
           {
-            coeff_t    gain  = val_get<coeff_t>( ctx, kGainPId, i );
-            coeff_t    hz    = val_get<coeff_t>( ctx, kFreqHzPId, i );
-            coeff_t    phase = val_get<coeff_t>( ctx, kPhasePId, i );
-            coeff_t    dc    = val_get<coeff_t>( ctx, kDcPId, i );
-            srate_t   srate = val_get<srate_t>(ctx, kSratePId, i );                        
+            coeff_t    gain  = val_get<coeff_t>( proc, kGainPId, i );
+            coeff_t    hz    = val_get<coeff_t>( proc, kFreqHzPId, i );
+            coeff_t    phase = val_get<coeff_t>( proc, kPhasePId, i );
+            coeff_t    dc    = val_get<coeff_t>( proc, kDcPId, i );
+            srate_t   srate = val_get<srate_t>(proc, kSratePId, i );                        
             sample_t* v     = abuf->buf + (i*abuf->frameN);
             
             for(unsigned j=0; j<abuf->frameN; ++j)
@@ -1967,15 +1967,15 @@ namespace cw
       } inst_t;
     
 
-      rc_t create( instance_t* ctx )
+      rc_t create( proc_t* proc )
       {
         rc_t          rc     = kOkRC;
         const abuf_t* srcBuf = nullptr; //
         unsigned      flags  = 0;
         inst_t*       inst   = mem::allocZ<inst_t>();
-        ctx->userPtr = inst;
+        proc->userPtr = inst;
 
-        if((rc = var_register_and_get( ctx, kAnyChIdx,kInPId, "in", kBaseSfxId, srcBuf )) != kOkRC )
+        if((rc = var_register_and_get( proc, kAnyChIdx,kInPId, "in", kBaseSfxId, srcBuf )) != kOkRC )
         {
           cwLogError(kInvalidArgRC,"Unable to access the 'src' buffer.");
         }
@@ -2001,7 +2001,7 @@ namespace cw
             unsigned hopSmpN = 0;
             bool hzFl = false;
             
-            if((rc = var_register_and_get( ctx, i,
+            if((rc = var_register_and_get( proc, i,
                                            kMaxWndSmpNPId, "maxWndSmpN", kBaseSfxId, maxWndSmpN,
                                            kWndSmpNPId, "wndSmpN",       kBaseSfxId, wndSmpN,
                                            kHopSmpNPId, "hopSmpN",       kBaseSfxId, hopSmpN,
@@ -2010,9 +2010,9 @@ namespace cw
               goto errLabel;
             }
             
-            if((rc = create( inst->pvA[i], ctx->ctx->framesPerCycle, srcBuf->srate, maxWndSmpN, wndSmpN, hopSmpN, flags )) != kOkRC )
+            if((rc = create( inst->pvA[i], proc->ctx->framesPerCycle, srcBuf->srate, maxWndSmpN, wndSmpN, hopSmpN, flags )) != kOkRC )
             {
-              rc = cwLogError(kOpFailRC,"The PV analysis object create failed on the instance '%s'.",ctx->label);
+              rc = cwLogError(kOpFailRC,"The PV analysis object create failed on the instance '%s'.",proc->label);
               goto errLabel;
             }
 
@@ -2027,7 +2027,7 @@ namespace cw
 
         
           // create the fbuf 'out'
-          if((rc = var_register_and_set(ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, maxBinNV, binNV, hopNV, magV, phsV, hzV )) != kOkRC )
+          if((rc = var_register_and_set(proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, maxBinNV, binNV, hopNV, magV, phsV, hzV )) != kOkRC )
           {
             cwLogError(kOpFailRC,"The output freq. buffer could not be created.");
             goto errLabel;
@@ -2038,11 +2038,11 @@ namespace cw
         return rc;
       }
 
-      rc_t destroy( instance_t* ctx )
+      rc_t destroy( proc_t* proc )
       {
         rc_t rc = kOkRC;
 
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
         
         for(unsigned i=0; i<inst->pvN; ++i)
           destroy(inst->pvA[i]);
@@ -2053,10 +2053,10 @@ namespace cw
         return rc;
       }
       
-      rc_t value( instance_t* ctx, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
 
         if( var->chIdx != kAnyChIdx && var->chIdx < inst->pvN )
         {
@@ -2077,24 +2077,24 @@ namespace cw
         return rc;
       }
 
-      rc_t exec( instance_t* ctx )
+      rc_t exec( proc_t* proc )
       {
         rc_t          rc     = kOkRC;
-        inst_t*       inst   = (inst_t*)ctx->userPtr;
+        inst_t*       inst   = (inst_t*)proc->userPtr;
         const abuf_t* srcBuf = nullptr;
         fbuf_t*       dstBuf = nullptr;
 
         // verify that a source buffer exists
-        if((rc = var_get(ctx,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
+        if((rc = var_get(proc,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
         {
-          rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",ctx->label);
+          rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",proc->label);
           goto errLabel;
         }
 
         // verify that the dst buffer exits
-        if((rc = var_get(ctx,kOutPId, kAnyChIdx, dstBuf)) != kOkRC )
+        if((rc = var_get(proc,kOutPId, kAnyChIdx, dstBuf)) != kOkRC )
         {
-          rc = cwLogError(rc,"The instance '%s' does not have a valid output.",ctx->label);
+          rc = cwLogError(rc,"The instance '%s' does not have a valid output.",proc->label);
           goto errLabel;
         }
 
@@ -2151,14 +2151,14 @@ namespace cw
       } inst_t;
     
 
-      rc_t create( instance_t* ctx )
+      rc_t create( proc_t* proc )
       {
         rc_t          rc     = kOkRC;
         const fbuf_t* srcBuf = nullptr; //
         inst_t*       inst   = mem::allocZ<inst_t>();
-        ctx->userPtr = inst;
+        proc->userPtr = inst;
 
-        if((rc = var_register_and_get( ctx, kAnyChIdx,kInPId, "in", kBaseSfxId, srcBuf)) != kOkRC )
+        if((rc = var_register_and_get( proc, kAnyChIdx,kInPId, "in", kBaseSfxId, srcBuf)) != kOkRC )
         {
           goto errLabel;
         }
@@ -2174,29 +2174,29 @@ namespace cw
           {
             unsigned wndSmpN = (srcBuf->binN_V[i]-1)*2;
             
-            if((rc = create( inst->pvA[i], ctx->ctx->framesPerCycle, srcBuf->srate, wndSmpN, srcBuf->hopSmpN_V[i] )) != kOkRC )
+            if((rc = create( inst->pvA[i], proc->ctx->framesPerCycle, srcBuf->srate, wndSmpN, srcBuf->hopSmpN_V[i] )) != kOkRC )
             {
-              rc = cwLogError(kOpFailRC,"The PV synthesis object create failed on the instance '%s'.",ctx->label);
+              rc = cwLogError(kOpFailRC,"The PV synthesis object create failed on the instance '%s'.",proc->label);
               goto errLabel;
             }
           }
 
-          if((rc = var_register( ctx, kAnyChIdx, kInPId, "in", kBaseSfxId)) != kOkRC )
+          if((rc = var_register( proc, kAnyChIdx, kInPId, "in", kBaseSfxId)) != kOkRC )
             goto errLabel;
 
           // create the abuf 'out'
-          rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, ctx->ctx->framesPerCycle );
+          rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, proc->ctx->framesPerCycle );
         }
         
       errLabel:
         return rc;
       }
 
-      rc_t destroy( instance_t* ctx )
+      rc_t destroy( proc_t* proc )
       {
         rc_t rc = kOkRC;
 
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
         for(unsigned i=0; i<inst->pvN; ++i)
           destroy(inst->pvA[i]);
         
@@ -2206,25 +2206,25 @@ namespace cw
         return rc;
       }
 
-      rc_t value( instance_t* ctx, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         return rc;
       }
       
-      rc_t exec( instance_t* ctx )
+      rc_t exec( proc_t* proc )
       {
         rc_t          rc     = kOkRC;
-        inst_t*       inst   = (inst_t*)ctx->userPtr;
+        inst_t*       inst   = (inst_t*)proc->userPtr;
         const fbuf_t* srcBuf = nullptr;
         abuf_t*       dstBuf = nullptr;
         
         // get the src buffer
-        if((rc = var_get(ctx,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
+        if((rc = var_get(proc,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
           goto errLabel;
 
         // get the dst buffer
-        if((rc = var_get(ctx,kOutPId, kAnyChIdx, dstBuf)) != kOkRC )
+        if((rc = var_get(proc,kOutPId, kAnyChIdx, dstBuf)) != kOkRC )
           goto errLabel;
         
         for(unsigned i=0; i<srcBuf->chN; ++i)
@@ -2282,18 +2282,18 @@ namespace cw
       } inst_t;
     
 
-      rc_t create( instance_t* ctx )
+      rc_t create( proc_t* proc )
       {
         rc_t          rc     = kOkRC;
         const fbuf_t* srcBuf = nullptr; //
         inst_t*       inst   = mem::allocZ<inst_t>();
         
-        ctx->userPtr = inst;
+        proc->userPtr = inst;
 
         // verify that a source buffer exists
-        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",kBaseSfxId,srcBuf )) != kOkRC )
+        if((rc = var_register_and_get(proc, kAnyChIdx,kInPId,"in",kBaseSfxId,srcBuf )) != kOkRC )
         {
-          rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",ctx->label);
+          rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",proc->label);
           goto errLabel;
         }
         else
@@ -2306,7 +2306,7 @@ namespace cw
           const fd_sample_t* phsV[ srcBuf->chN ];
           const fd_sample_t*  hzV[ srcBuf->chN ];
 
-          //if((rc = var_register(ctx, kAnyChIdx, kInPId, "in")) != kOkRC )
+          //if((rc = var_register(proc, kAnyChIdx, kInPId, "in")) != kOkRC )
           //  goto errLabel;
         
           // create a spec_dist object for each input channel
@@ -2314,7 +2314,7 @@ namespace cw
           {
             if((rc = create( inst->sdA[i], srcBuf->binN_V[i] )) != kOkRC )
             {
-              rc = cwLogError(kOpFailRC,"The 'spec dist' object create failed on the instance '%s'.",ctx->label);
+              rc = cwLogError(kOpFailRC,"The 'spec dist' object create failed on the instance '%s'.",proc->label);
               goto errLabel;
             }
 
@@ -2325,7 +2325,7 @@ namespace cw
 
             spec_dist_t* sd = inst->sdA[i];
 
-            if((rc = var_register_and_get( ctx, i,
+            if((rc = var_register_and_get( proc, i,
                                            kBypassPId,   "bypass",   kBaseSfxId, sd->bypassFl,
                                            kCeilingPId,  "ceiling",  kBaseSfxId, sd->ceiling,
                                            kExpoPId,     "expo",     kBaseSfxId, sd->expo,
@@ -2340,7 +2340,7 @@ namespace cw
           }
           
           // create the output buffer
-          if((rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, srcBuf->maxBinN_V, srcBuf->binN_V, srcBuf->hopSmpN_V, magV, phsV, hzV )) != kOkRC )
+          if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, srcBuf->maxBinN_V, srcBuf->binN_V, srcBuf->hopSmpN_V, magV, phsV, hzV )) != kOkRC )
             goto errLabel;
         }
         
@@ -2348,11 +2348,11 @@ namespace cw
         return rc;
       }
 
-      rc_t destroy( instance_t* ctx )
+      rc_t destroy( proc_t* proc )
       {
         rc_t rc = kOkRC;
 
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
         for(unsigned i=0; i<inst->sdN; ++i)
           destroy(inst->sdA[i]);
         
@@ -2362,10 +2362,10 @@ namespace cw
         return rc;
       }
       
-      rc_t value( instance_t* ctx, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         rc_t    rc   = kOkRC;
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
 
         if( var->chIdx != kAnyChIdx && var->chIdx < inst->sdN )
         {
@@ -2383,7 +2383,7 @@ namespace cw
             case kLwrSlopePId: rc = var_get( var, val ); sd->lwrSlope = val; break;
             case kMixPId:      rc = var_get( var, val ); sd->mix = val;     break;
             default:
-              cwLogWarning("Unhandled variable id '%i' on instance: %s.", var->vid, ctx->label );
+              cwLogWarning("Unhandled variable id '%i' on instance: %s.", var->vid, proc->label );
           }
 
           //printf("%i sd: ceil:%f expo:%f thresh:%f upr:%f lwr:%f mix:%f : rc:%i val:%f var:%s \n",
@@ -2393,20 +2393,20 @@ namespace cw
         return rc;
       }
 
-      rc_t exec( instance_t* ctx )
+      rc_t exec( proc_t* proc )
       {
         rc_t          rc     = kOkRC;
-        inst_t*       inst   = (inst_t*)ctx->userPtr;
+        inst_t*       inst   = (inst_t*)proc->userPtr;
         const fbuf_t* srcBuf = nullptr;
         fbuf_t*       dstBuf = nullptr;
         unsigned      chN    = 0;
         
         // get the src buffer
-        if((rc = var_get(ctx,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
+        if((rc = var_get(proc,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
           goto errLabel;
 
         // get the dst buffer
-        if((rc = var_get(ctx,kOutPId, kAnyChIdx, dstBuf)) != kOkRC )
+        if((rc = var_get(proc,kOutPId, kAnyChIdx, dstBuf)) != kOkRC )
           goto errLabel;
 
         chN = std::min(srcBuf->chN,inst->sdN);
@@ -2470,18 +2470,18 @@ namespace cw
       } inst_t;
     
 
-      rc_t create( instance_t* ctx )
+      rc_t create( proc_t* proc )
       {
         rc_t          rc     = kOkRC;
         const abuf_t* srcBuf = nullptr; //
         inst_t*       inst   = mem::allocZ<inst_t>();
         
-        ctx->userPtr = inst;
+        proc->userPtr = inst;
 
         // verify that a source buffer exists
-        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",kBaseSfxId,srcBuf )) != kOkRC )
+        if((rc = var_register_and_get(proc, kAnyChIdx,kInPId,"in",kBaseSfxId,srcBuf )) != kOkRC )
         {
-          rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",ctx->label);
+          rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",proc->label);
           goto errLabel;
         }
         else
@@ -2499,7 +2499,7 @@ namespace cw
 
 
             // get the compressor variable values
-            if((rc = var_register_and_get( ctx, i,
+            if((rc = var_register_and_get( proc, i,
                                            kBypassPId,   "bypass",    kBaseSfxId, bypassFl,
                                            kInGainPId,   "igain",     kBaseSfxId, igain,
                                            kThreshPId,   "thresh",    kBaseSfxId, thresh,
@@ -2516,14 +2516,14 @@ namespace cw
             // create the compressor instance
             if((rc = dsp::compressor::create( inst->cmpA[i], srcBuf->srate, srcBuf->frameN, igain, maxWnd_ms, wnd_ms, thresh, ratio, atk_ms, rls_ms, ogain, bypassFl)) != kOkRC )
             {
-              rc = cwLogError(kOpFailRC,"The 'compressor' object create failed on the instance '%s'.",ctx->label);
+              rc = cwLogError(kOpFailRC,"The 'compressor' object create failed on the instance '%s'.",proc->label);
               goto errLabel;
             }
                 
           }
           
           // create the output audio buffer
-          if((rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, srcBuf->frameN )) != kOkRC )
+          if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, srcBuf->frameN )) != kOkRC )
             goto errLabel;
         }
         
@@ -2531,11 +2531,11 @@ namespace cw
         return rc;
       }
 
-      rc_t destroy( instance_t* ctx )
+      rc_t destroy( proc_t* proc )
       {
         rc_t rc = kOkRC;
 
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
         for(unsigned i=0; i<inst->cmpN; ++i)
           destroy(inst->cmpA[i]);
         
@@ -2545,10 +2545,10 @@ namespace cw
         return rc;
       }
       
-      rc_t value( instance_t* ctx, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         rc_t    rc   = kOkRC;
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
         ftime_t  tmp;
 
         if( var->chIdx != kAnyChIdx && var->chIdx < inst->cmpN )
@@ -2567,7 +2567,7 @@ namespace cw
             case kWndMsPId:    rc = var_get( var, tmp ); dsp::compressor::set_rms_wnd_ms(c, tmp ); break;
             case kMaxWndMsPId: break;
             default:
-              cwLogWarning("Unhandled variable id '%i' on instance: %s.", var->vid, ctx->label );
+              cwLogWarning("Unhandled variable id '%i' on instance: %s.", var->vid, proc->label );
           }
           //printf("cmp byp:%i igain:%f ogain:%f rat:%f thresh:%f atk:%i rls:%i wnd:%i : rc:%i val:%f\n",
           //       c->bypassFl, c->inGain, c->outGain,c->ratio_num,c->threshDb,c->atkSmp,c->rlsSmp,c->rmsWndCnt,rc,tmp);
@@ -2577,20 +2577,20 @@ namespace cw
         return rc;
       }
 
-      rc_t exec( instance_t* ctx )
+      rc_t exec( proc_t* proc )
       {
         rc_t          rc     = kOkRC;
-        inst_t*       inst   = (inst_t*)ctx->userPtr;
+        inst_t*       inst   = (inst_t*)proc->userPtr;
         const abuf_t* srcBuf = nullptr;
         abuf_t*       dstBuf = nullptr;
         unsigned      chN    = 0;
         
         // get the src buffer
-        if((rc = var_get(ctx,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
+        if((rc = var_get(proc,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
           goto errLabel;
 
         // get the dst buffer
-        if((rc = var_get(ctx,kOutPId, kAnyChIdx, dstBuf)) != kOkRC )
+        if((rc = var_get(proc,kOutPId, kAnyChIdx, dstBuf)) != kOkRC )
           goto errLabel;
 
         chN = std::min(srcBuf->chN,inst->cmpN);
@@ -2607,15 +2607,15 @@ namespace cw
         return rc;
       }
 
-      rc_t report( instance_t* ctx )
+      rc_t report( proc_t* proc )
       {
         rc_t rc = kOkRC;
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
         for(unsigned i=0; i<inst->cmpN; ++i)
         {
           compressor_t* c = inst->cmpA[i];
           cwLogInfo("%s ch:%i : sr:%f bypass:%i procSmpN:%i igain:%f threshdb:%f ratio:%f atkSmp:%i rlsSmp:%i ogain:%f rmsWndN:%i maxRmsWndN%i",
-                    ctx->label,i,c->srate,c->bypassFl,c->procSmpCnt,c->inGain,c->threshDb,c->ratio_num,c->atkSmp,c->rlsSmp,c->outGain,c->rmsWndCnt,c->rmsWndAllocCnt
+                    proc->label,i,c->srate,c->bypassFl,c->procSmpCnt,c->inGain,c->threshDb,c->ratio_num,c->atkSmp,c->rlsSmp,c->outGain,c->rmsWndCnt,c->rmsWndAllocCnt
                     );
         }
         
@@ -2659,18 +2659,18 @@ namespace cw
       } inst_t;
     
 
-      rc_t create( instance_t* ctx )
+      rc_t create( proc_t* proc )
       {
         rc_t          rc     = kOkRC;
         const abuf_t* srcBuf = nullptr; //
         inst_t*       inst   = mem::allocZ<inst_t>();
         
-        ctx->userPtr = inst;
+        proc->userPtr = inst;
 
         // verify that a source buffer exists
-        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",kBaseSfxId,srcBuf )) != kOkRC )
+        if((rc = var_register_and_get(proc, kAnyChIdx,kInPId,"in",kBaseSfxId,srcBuf )) != kOkRC )
         {
-          rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",ctx->label);
+          rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",proc->label);
           goto errLabel;
         }
         else
@@ -2687,7 +2687,7 @@ namespace cw
 
 
             // get the limiter variable values
-            if((rc = var_register_and_get( ctx, i,
+            if((rc = var_register_and_get( proc, i,
                                            kBypassPId,   "bypass",    kBaseSfxId, bypassFl,
                                            kInGainPId,   "igain",     kBaseSfxId, igain,
                                            kThreshPId,   "thresh",    kBaseSfxId, thresh,
@@ -2699,14 +2699,14 @@ namespace cw
             // create the limiter instance
             if((rc = dsp::limiter::create( inst->limA[i], srcBuf->srate, srcBuf->frameN, igain, thresh, ogain, bypassFl)) != kOkRC )
             {
-              rc = cwLogError(kOpFailRC,"The 'limiter' object create failed on the instance '%s'.",ctx->label);
+              rc = cwLogError(kOpFailRC,"The 'limiter' object create failed on the instance '%s'.",proc->label);
               goto errLabel;
             }
                 
           }
           
           // create the output audio buffer
-          if((rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, srcBuf->frameN )) != kOkRC )
+          if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, srcBuf->frameN )) != kOkRC )
             goto errLabel;
         }
         
@@ -2714,11 +2714,11 @@ namespace cw
         return rc;
       }
 
-      rc_t destroy( instance_t* ctx )
+      rc_t destroy( proc_t* proc )
       {
         rc_t rc = kOkRC;
 
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
         for(unsigned i=0; i<inst->limN; ++i)
           destroy(inst->limA[i]);
         
@@ -2728,10 +2728,10 @@ namespace cw
         return rc;
       }
       
-      rc_t value( instance_t* ctx, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         rc_t    rc   = kOkRC;
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
         coeff_t  rtmp;
         bool btmp;
 
@@ -2746,7 +2746,7 @@ namespace cw
             case kOutGainPId:  rc = var_get( var, rtmp ); c->ogain=rtmp;  break;
             case kThreshPId:   rc = var_get( var, rtmp ); c->thresh=rtmp; break;
             default:
-              cwLogWarning("Unhandled variable id '%i' on instance: %s.", var->vid, ctx->label );
+              cwLogWarning("Unhandled variable id '%i' on instance: %s.", var->vid, proc->label );
           }
           //printf("lim byp:%i igain:%f ogain:%f rat:%f thresh:%f atk:%i rls:%i wnd:%i : rc:%i val:%f\n",
           //       c->bypassFl, c->inGain, c->outGain,c->ratio_num,c->threshDb,c->atkSmp,c->rlsSmp,c->rmsWndCnt,rc,tmp);
@@ -2756,20 +2756,20 @@ namespace cw
         return rc;
       }
 
-      rc_t exec( instance_t* ctx )
+      rc_t exec( proc_t* proc )
       {
         rc_t          rc     = kOkRC;
-        inst_t*       inst   = (inst_t*)ctx->userPtr;
+        inst_t*       inst   = (inst_t*)proc->userPtr;
         const abuf_t* srcBuf = nullptr;
         abuf_t*       dstBuf = nullptr;
         unsigned      chN    = 0;
         
         // get the src buffer
-        if((rc = var_get(ctx,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
+        if((rc = var_get(proc,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
           goto errLabel;
 
         // get the dst buffer
-        if((rc = var_get(ctx,kOutPId, kAnyChIdx, dstBuf)) != kOkRC )
+        if((rc = var_get(proc,kOutPId, kAnyChIdx, dstBuf)) != kOkRC )
           goto errLabel;
 
         chN = std::min(srcBuf->chN,inst->limN);
@@ -2786,15 +2786,15 @@ namespace cw
         return rc;
       }
 
-      rc_t report( instance_t* ctx )
+      rc_t report( proc_t* proc )
       {
         rc_t rc = kOkRC;
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
         for(unsigned i=0; i<inst->limN; ++i)
         {
           limiter_t* c = inst->limA[i];
           cwLogInfo("%s ch:%i : bypass:%i procSmpN:%i igain:%f threshdb:%f  ogain:%f",
-                    ctx->label,i,c->bypassFl,c->procSmpCnt,c->igain,c->thresh,c->ogain );
+                    proc->label,i,c->bypassFl,c->procSmpCnt,c->igain,c->thresh,c->ogain );
         }
         
         return rc;
@@ -2831,7 +2831,7 @@ namespace cw
         unsigned* idxV;           // idxV[ chN ] per channel i/o idx
       } inst_t;
 
-      rc_t create( instance_t* ctx )
+      rc_t create( proc_t* proc )
       {
         rc_t          rc         = kOkRC;
         const abuf_t* abuf       = nullptr; //
@@ -2839,10 +2839,10 @@ namespace cw
         ftime_t        delayMs    = 0;
         ftime_t        maxDelayMs = 0;
 
-        ctx->userPtr = inst;
+        proc->userPtr = inst;
 
         // get the source audio buffer
-        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",kBaseSfxId,abuf )) != kOkRC )
+        if((rc = var_register_and_get(proc, kAnyChIdx,kInPId,"in",kBaseSfxId,abuf )) != kOkRC )
           goto errLabel;
 
 
@@ -2852,7 +2852,7 @@ namespace cw
         // register the gain 
         for(unsigned i=0; i<abuf->chN; ++i)
         {
-          if((rc = var_register_and_get( ctx, i,
+          if((rc = var_register_and_get( proc, i,
                                          kMaxDelayMsPId, "maxDelayMs", kBaseSfxId, maxDelayMs,
                                          kDelayMsPId,    "delayMs",    kBaseSfxId, delayMs)) != kOkRC )
           {
@@ -2861,7 +2861,7 @@ namespace cw
 
           if( delayMs > maxDelayMs )
           {
-            cwLogWarning("'delayMs' (%i) is being reduced to 'maxDelayMs' (%i) on the delay instance:%s.",delayMs,maxDelayMs,ctx->label);
+            cwLogWarning("'delayMs' (%i) is being reduced to 'maxDelayMs' (%i) on the delay instance:%s.",delayMs,maxDelayMs,proc->label);
             delayMs = maxDelayMs;
           }
 
@@ -2874,16 +2874,16 @@ namespace cw
         inst->delayBuf = abuf_create( abuf->srate, abuf->chN, inst->maxDelayFrameN );
         
         // create the output audio buffer
-        rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, abuf->srate, abuf->chN, abuf->frameN );
+        rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, abuf->srate, abuf->chN, abuf->frameN );
 
 
       errLabel:
         return rc;
       }
 
-      rc_t destroy( instance_t* ctx )
+      rc_t destroy( proc_t* proc )
       {
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
 
         mem::release(inst->cntV);
         mem::release(inst->idxV);
@@ -2893,15 +2893,15 @@ namespace cw
         return kOkRC;
       }
 
-      rc_t _update_delay( instance_t* ctx, variable_t* var )
+      rc_t _update_delay( proc_t* proc, variable_t* var )
       {
         rc_t     rc          = kOkRC;
-        inst_t*  inst        = (inst_t*)ctx->userPtr;
+        inst_t*  inst        = (inst_t*)proc->userPtr;
         abuf_t*  ibuf        = nullptr;
         ftime_t   delayMs     = 0;
         unsigned delayFrameN = 0;
         
-        if((rc = var_get(ctx,kInPId, kAnyChIdx, ibuf )) != kOkRC )
+        if((rc = var_get(proc,kInPId, kAnyChIdx, ibuf )) != kOkRC )
           goto errLabel;
 
         if((rc = var_get( var, delayMs )) != kOkRC )
@@ -2927,34 +2927,34 @@ namespace cw
         return rc;
       }
 
-      rc_t value( instance_t* ctx, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         
         switch( var->vid )
         {
           case kDelayMsPId:
-            rc = _update_delay(ctx,var);
+            rc = _update_delay(proc,var);
             break;
         }
 
         return rc;
       }
 
-      rc_t exec( instance_t* ctx )
+      rc_t exec( proc_t* proc )
       {
         rc_t          rc   = kOkRC;
-        inst_t*       inst = (inst_t*)ctx->userPtr;
+        inst_t*       inst = (inst_t*)proc->userPtr;
         const abuf_t* ibuf = nullptr;
         abuf_t*       obuf = nullptr;
         abuf_t*       dbuf = inst->delayBuf;
 
         // get the src buffer
-        if((rc = var_get(ctx,kInPId, kAnyChIdx, ibuf )) != kOkRC )
+        if((rc = var_get(proc,kInPId, kAnyChIdx, ibuf )) != kOkRC )
           goto errLabel;
 
         // get the dst buffer
-        if((rc = var_get(ctx,kOutPId, kAnyChIdx, obuf)) != kOkRC )
+        if((rc = var_get(proc,kOutPId, kAnyChIdx, obuf)) != kOkRC )
           goto errLabel;
 
         // for each channel
@@ -3023,18 +3023,18 @@ namespace cw
       } inst_t;
     
 
-      rc_t create( instance_t* ctx )
+      rc_t create( proc_t* proc )
       {
         rc_t          rc     = kOkRC;
         const abuf_t* srcBuf = nullptr; //
         inst_t*       inst   = mem::allocZ<inst_t>();
         
-        ctx->userPtr = inst;
+        proc->userPtr = inst;
 
         // verify that a source buffer exists
-        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",kBaseSfxId,srcBuf )) != kOkRC )
+        if((rc = var_register_and_get(proc, kAnyChIdx,kInPId,"in",kBaseSfxId,srcBuf )) != kOkRC )
         {
-          rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",ctx->label);
+          rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",proc->label);
           goto errLabel;
         }
         else
@@ -3051,7 +3051,7 @@ namespace cw
 
 
             // get the dc_filter variable values
-            if((rc = var_register_and_get( ctx, i,
+            if((rc = var_register_and_get( proc, i,
                                            kBypassPId,   "bypass",    kBaseSfxId, bypassFl,
                                            kGainPId,     "gain",      kBaseSfxId, gain )) != kOkRC )
             {
@@ -3061,14 +3061,14 @@ namespace cw
             // create the dc_filter instance
             if((rc = dsp::dc_filter::create( inst->dcfA[i], srcBuf->srate, srcBuf->frameN, gain, bypassFl)) != kOkRC )
             {
-              rc = cwLogError(kOpFailRC,"The 'dc_filter' object create failed on the instance '%s'.",ctx->label);
+              rc = cwLogError(kOpFailRC,"The 'dc_filter' object create failed on the instance '%s'.",proc->label);
               goto errLabel;
             }
                 
           }
           
           // create the output audio buffer
-          if((rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, srcBuf->frameN )) != kOkRC )
+          if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, srcBuf->frameN )) != kOkRC )
             goto errLabel;
         }
         
@@ -3076,11 +3076,11 @@ namespace cw
         return rc;
       }
 
-      rc_t destroy( instance_t* ctx )
+      rc_t destroy( proc_t* proc )
       {
         rc_t rc = kOkRC;
 
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
         for(unsigned i=0; i<inst->dcfN; ++i)
           destroy(inst->dcfA[i]);
         
@@ -3090,33 +3090,33 @@ namespace cw
         return rc;
       }
       
-      rc_t value( instance_t* ctx, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         return kOkRC;
       }
 
-      rc_t exec( instance_t* ctx )
+      rc_t exec( proc_t* proc )
       {
         rc_t          rc     = kOkRC;
-        inst_t*       inst   = (inst_t*)ctx->userPtr;
+        inst_t*       inst   = (inst_t*)proc->userPtr;
         const abuf_t* srcBuf = nullptr;
         abuf_t*       dstBuf = nullptr;
         unsigned      chN    = 0;
         
         // get the src buffer
-        if((rc = var_get(ctx,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
+        if((rc = var_get(proc,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
           goto errLabel;
 
         // get the dst buffer
-        if((rc = var_get(ctx,kOutPId, kAnyChIdx, dstBuf)) != kOkRC )
+        if((rc = var_get(proc,kOutPId, kAnyChIdx, dstBuf)) != kOkRC )
           goto errLabel;
 
         chN = std::min(srcBuf->chN,inst->dcfN);
        
         for(unsigned i=0; i<chN; ++i)
         {
-          coeff_t gain   = val_get<coeff_t>( ctx, kGainPId,   i );
-          bool bypassFl = val_get<bool>(   ctx, kBypassPId, i );
+          coeff_t gain   = val_get<coeff_t>( proc, kGainPId,   i );
+          bool bypassFl = val_get<bool>(   proc, kBypassPId, i );
 
           dsp::dc_filter::set( inst->dcfA[i], gain, bypassFl );
           
@@ -3127,15 +3127,15 @@ namespace cw
         return rc;
       }
 
-      rc_t report( instance_t* ctx )
+      rc_t report( proc_t* proc )
       {
         rc_t rc = kOkRC;
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
         for(unsigned i=0; i<inst->dcfN; ++i)
         {
           dc_filter_t* c = inst->dcfA[i];
           cwLogInfo("%s ch:%i : bypass:%i gain:%f",
-                    ctx->label,i,c->bypassFl,c->gain );
+                    proc->label,i,c->bypassFl,c->gain );
         }
         
         return rc;
@@ -3179,18 +3179,18 @@ namespace cw
       } inst_t;
     
 
-      rc_t create( instance_t* ctx )
+      rc_t create( proc_t* proc )
       {
         rc_t          rc     = kOkRC;
         const abuf_t* srcBuf = nullptr; //
         inst_t*       inst   = mem::allocZ<inst_t>();
         
-        ctx->userPtr = inst;
+        proc->userPtr = inst;
 
         // verify that a source buffer exists
-        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",kBaseSfxId,srcBuf )) != kOkRC )
+        if((rc = var_register_and_get(proc, kAnyChIdx,kInPId,"in",kBaseSfxId,srcBuf )) != kOkRC )
         {
-          rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",ctx->label);
+          rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",proc->label);
           goto errLabel;
         }
         else
@@ -3207,7 +3207,7 @@ namespace cw
             bool dbFl;
 	    
             // get the audio_meter variable values
-            if((rc = var_register_and_get( ctx, i,
+            if((rc = var_register_and_get( proc, i,
                                            kDbFlPId,   "dbFl",    kBaseSfxId, dbFl,
                                            kWndMsPId, "wndMs",    kBaseSfxId, wndMs,
                                            kPeakDbPId, "peakDb",  kBaseSfxId, peakThreshDb )) != kOkRC )
@@ -3216,7 +3216,7 @@ namespace cw
             }
 
             // get the audio_meter variable values
-            if((rc = var_register( ctx, i,
+            if((rc = var_register( proc, i,
                                    kOutPId,   "out",     kBaseSfxId,
                                    kPeakFlPId, "peakFl", kBaseSfxId, 
                                    kClipFlPId, "clipFl", kBaseSfxId )) != kOkRC )
@@ -3229,7 +3229,7 @@ namespace cw
             // create the audio_meter instance
             if((rc = dsp::audio_meter::create( inst->mtrA[i], srcBuf->srate, maxWndMs, wndMs, peakThreshDb)) != kOkRC )
             {
-              rc = cwLogError(kOpFailRC,"The 'audio_meter' object create failed on the instance '%s'.",ctx->label);
+              rc = cwLogError(kOpFailRC,"The 'audio_meter' object create failed on the instance '%s'.",proc->label);
               goto errLabel;
             }
                 
@@ -3241,11 +3241,11 @@ namespace cw
         return rc;
       }
 
-      rc_t destroy( instance_t* ctx )
+      rc_t destroy( proc_t* proc )
       {
         rc_t rc = kOkRC;
 
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
         for(unsigned i=0; i<inst->mtrN; ++i)
           destroy(inst->mtrA[i]);
         
@@ -3255,20 +3255,20 @@ namespace cw
         return rc;
       }
       
-      rc_t value( instance_t* ctx, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         return kOkRC;
       }
 
-      rc_t exec( instance_t* ctx )
+      rc_t exec( proc_t* proc )
       {
         rc_t          rc     = kOkRC;
-        inst_t*       inst   = (inst_t*)ctx->userPtr;
+        inst_t*       inst   = (inst_t*)proc->userPtr;
         const abuf_t* srcBuf = nullptr;
         unsigned      chN    = 0;
         
         // get the src buffer
-        if((rc = var_get(ctx,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
+        if((rc = var_get(proc,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
           goto errLabel;
 
         chN = std::min(srcBuf->chN,inst->mtrN);
@@ -3276,24 +3276,24 @@ namespace cw
         for(unsigned i=0; i<chN; ++i)
         {
           dsp::audio_meter::exec( inst->mtrA[i], srcBuf->buf + i*srcBuf->frameN, srcBuf->frameN );
-          var_set(ctx, kOutPId,    i, inst->mtrA[i]->outDb  );
-          var_set(ctx, kPeakFlPId, i, inst->mtrA[i]->peakFl );
-          var_set(ctx, kClipFlPId, i, inst->mtrA[i]->clipFl );
+          var_set(proc, kOutPId,    i, inst->mtrA[i]->outDb  );
+          var_set(proc, kPeakFlPId, i, inst->mtrA[i]->peakFl );
+          var_set(proc, kClipFlPId, i, inst->mtrA[i]->clipFl );
         }
 
       errLabel:
         return rc;
       }
 
-      rc_t report( instance_t* ctx )
+      rc_t report( proc_t* proc )
       {
         rc_t rc = kOkRC;
-        inst_t* inst = (inst_t*)ctx->userPtr;
+        inst_t* inst = (inst_t*)proc->userPtr;
         for(unsigned i=0; i<inst->mtrN; ++i)
         {
           audio_meter_t* c = inst->mtrA[i];
           cwLogInfo("%s ch:%i : %f %f db : pk:%i %i clip:%i %i ",
-                    ctx->label,i,c->outLin,c->outDb,c->peakFl,c->peakCnt,c->clipFl,c->clipCnt );
+                    proc->label,i,c->outLin,c->outDb,c->peakFl,c->peakCnt,c->clipFl,c->clipCnt );
         }
         
         return rc;
@@ -3326,57 +3326,57 @@ namespace cw
         sample_t mark;
       } inst_t;
 
-      rc_t create( instance_t* ctx )
+      rc_t create( proc_t* proc )
       {
         rc_t          rc     = kOkRC;
         const abuf_t* abuf    = nullptr; //
-        ctx->userPtr = mem::allocZ<inst_t>();
+        proc->userPtr = mem::allocZ<inst_t>();
 
         // get the source audio buffer
-        if((rc = var_register_and_get(ctx, kAnyChIdx,kInPId,"in",kBaseSfxId,abuf )) != kOkRC )
+        if((rc = var_register_and_get(proc, kAnyChIdx,kInPId,"in",kBaseSfxId,abuf )) != kOkRC )
           goto errLabel;
 
         // register the marker input 
-        if((rc = var_register_and_set( ctx, kAnyChIdx, kMarkPId, "mark", kBaseSfxId, 0.0f )) != kOkRC )
+        if((rc = var_register_and_set( proc, kAnyChIdx, kMarkPId, "mark", kBaseSfxId, 0.0f )) != kOkRC )
           goto errLabel;
           
         // create the output audio buffer
-        rc = var_register_and_set( ctx, "out", kBaseSfxId, kOutPId, kAnyChIdx, abuf->srate, abuf->chN, abuf->frameN );
+        rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, abuf->srate, abuf->chN, abuf->frameN );
 
       errLabel:
         return rc;
       }
 
-      rc_t destroy( instance_t* ctx )
+      rc_t destroy( proc_t* proc )
       {
-        inst_t* inst = (inst_t*)(ctx->userPtr);
+        inst_t* inst = (inst_t*)(proc->userPtr);
         mem::release(inst);
         return kOkRC;
       }
 
-      rc_t value( instance_t* ctx, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         return kOkRC;
       }
 
-      rc_t exec( instance_t* ctx )
+      rc_t exec( proc_t* proc )
       {
         rc_t          rc   = kOkRC;
         const abuf_t* ibuf = nullptr;
         abuf_t*       obuf = nullptr;
-        //inst_t*       inst = (inst_t*)(ctx->userPtr);
+        //inst_t*       inst = (inst_t*)(proc->userPtr);
         sample_t      mark = 1;
 
         // get the src buffer
-        if((rc = var_get(ctx,kInPId, kAnyChIdx, ibuf )) != kOkRC )
+        if((rc = var_get(proc,kInPId, kAnyChIdx, ibuf )) != kOkRC )
           goto errLabel;
 
         // get the dst buffer
-        if((rc = var_get(ctx,kOutPId, kAnyChIdx, obuf)) != kOkRC )
+        if((rc = var_get(proc,kOutPId, kAnyChIdx, obuf)) != kOkRC )
           goto errLabel;
 
           
-        var_get(ctx,kMarkPId,kAnyChIdx,mark);
+        var_get(proc,kMarkPId,kAnyChIdx,mark);
         
         // for each channel
         for(unsigned i=0; i<ibuf->chN; ++i)
@@ -3389,7 +3389,7 @@ namespace cw
             osig[j] = mark + isig[j];
         }
 
-        var_set(ctx,kMarkPId,kAnyChIdx,0.0f);
+        var_set(proc,kMarkPId,kAnyChIdx,0.0f);
         
       errLabel:
         return rc;
@@ -3432,7 +3432,7 @@ namespace cw
       typedef struct
       {
         unsigned    xfadeDurMs;       // crossfade duration in milliseconds
-        instance_t* net_proc;         // source 'poly' network
+        proc_t* net_proc;         // source 'poly' network
         poly_ch_t*  netA;             // netA[ poly_ch_cnt ] internal proxy network 
         unsigned    poly_ch_cnt;      // count of poly channels in net_proc
         unsigned    net_proc_cnt;     // count of proc's in a single poly-channel (net_proc->proc_arrayN/poly_cnt)
@@ -3464,7 +3464,7 @@ namespace cw
 
       }
 
-      rc_t create( instance_t* ctx )
+      rc_t create( proc_t* proc )
       {
         rc_t        rc            = kOkRC;
         const char* netLabel      = nullptr;
@@ -3475,12 +3475,12 @@ namespace cw
 
         inst_t* p = mem::allocZ<inst_t>();
 
-        ctx->userPtr = p;
+        proc->userPtr = p;
 
-        if((rc = var_register(ctx,kAnyChIdx,kTriggerPId,"trigger", kBaseSfxId )) != kOkRC )
+        if((rc = var_register(proc,kAnyChIdx,kTriggerPId,"trigger", kBaseSfxId )) != kOkRC )
           goto errLabel;
                 
-        if((rc = var_register_and_get(ctx,kAnyChIdx,
+        if((rc = var_register_and_get(proc,kAnyChIdx,
                                       kNetLabelPId,    "net",       kBaseSfxId, netLabel,
                                       kNetLabelSfxPId, "netSfxId",  kBaseSfxId, netLabelSfxId,
                                       kSrateRefPId,    "srateSrc",  kBaseSfxId, srateSrc,
@@ -3492,7 +3492,7 @@ namespace cw
         }
 
         // locate the source poly-network for this xfad-ctl
-        if((rc = instance_find(*ctx->net,netLabel,netLabelSfxId,p->net_proc)) != kOkRC )
+        if((rc = proc_find(*proc->net,netLabel,netLabelSfxId,p->net_proc)) != kOkRC )
         {
           cwLogError(rc,"The xfade_ctl source network proc instance '%s:%i' was not found.",cwStringNullGuard(netLabel),netLabelSfxId);
           goto errLabel;
@@ -3510,7 +3510,7 @@ namespace cw
         for(unsigned i=1; i<p->poly_ch_cnt; ++i)
         {
           variable_t* dum;
-          if((rc = var_create(ctx, "gain", i, kGainPId+i, kAnyChIdx, nullptr, kInvalidTFl, dum )) != kOkRC )
+          if((rc = var_create(proc, "gain", i, kGainPId+i, kAnyChIdx, nullptr, kInvalidTFl, dum )) != kOkRC )
           {
             cwLogError(rc,"'gain:%i' create failed.",i);
             goto errLabel;
@@ -3527,7 +3527,7 @@ namespace cw
         {
           p->netA[i].net.proc_arrayAllocN = p->net_proc_cnt;
           p->netA[i].net.proc_arrayN      = p->netA[i].net.proc_arrayAllocN;
-          p->netA[i].net.proc_array       = mem::allocZ<instance_t*>(p->netA[i].net.proc_arrayAllocN);
+          p->netA[i].net.proc_array       = mem::allocZ<proc_t*>(p->netA[i].net.proc_arrayAllocN);
           p->netA[i].net.presetsCfg       = p->net_proc->internal_net->presetsCfg;
 
           for(unsigned j=0,k=0; j<p->net_proc->internal_net->proc_arrayN; ++j)
@@ -3539,7 +3539,7 @@ namespace cw
         }
 
         if( srateSrc == nullptr )
-          p->srate = ctx->ctx->sample_rate;
+          p->srate = proc->ctx->sample_rate;
         else
           p->srate = srateSrc->srate;
 
@@ -3555,22 +3555,22 @@ namespace cw
         return rc;
       }
 
-      rc_t destroy( instance_t* ctx )
+      rc_t destroy( proc_t* proc )
       {
-        inst_t* p = (inst_t*)ctx->userPtr;
+        inst_t* p = (inst_t*)proc->userPtr;
         for(unsigned i=0; i<p->poly_ch_cnt; ++i)
           mem::release(p->netA[i].net.proc_array);
         
         mem::release(p->netA);
-        mem::release(ctx->userPtr);
+        mem::release(proc->userPtr);
         
         return kOkRC;
       }
 
-      rc_t value( instance_t* ctx, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         rc_t    rc = kOkRC;
-        inst_t* p  = (inst_t*)ctx->userPtr;
+        inst_t* p  = (inst_t*)proc->userPtr;
 
         switch( var->vid )
         {
@@ -3589,16 +3589,16 @@ namespace cw
       // return sign of expression as a float
       float _signum( float v ) { return (0.0f < v) - (v < 0.0f); }
       
-      rc_t exec( instance_t* ctx )
+      rc_t exec( proc_t* proc )
       {
         rc_t    rc     = kOkRC;
-        inst_t* p      = (inst_t*)ctx->userPtr;
+        inst_t* p      = (inst_t*)proc->userPtr;
 
         // time in sample frames to complete a xfade
         double xfade_dur_smp        = p->xfadeDurMs * p->srate / 1000.0;
 
         // fraction of a xfade which will be completed in on exec() cycle
-        float delta_gain_per_cycle =  (float)(ctx->ctx->framesPerCycle / xfade_dur_smp);
+        float delta_gain_per_cycle =  (float)(proc->ctx->framesPerCycle / xfade_dur_smp);
 
 
         if( p->preset_delta_fl )
@@ -3607,7 +3607,7 @@ namespace cw
           
           p->preset_delta_fl = false;
 
-          if((rc = var_get(ctx,kPresetPId,kAnyChIdx,preset_label)) != kOkRC )
+          if((rc = var_get(proc,kPresetPId,kAnyChIdx,preset_label)) != kOkRC )
           {
             rc = cwLogError(rc,"Preset label access failed.");
             goto errLabel;
@@ -3634,7 +3634,7 @@ namespace cw
           
           p->netA[i].cur_gain = std::min(1.0f, std::max(0.0f, p->netA[i].cur_gain));
           
-          var_set(ctx,kGainPId+i,kAnyChIdx,p->netA[i].cur_gain);
+          var_set(proc,kGainPId+i,kAnyChIdx,p->netA[i].cur_gain);
         }
         
         
@@ -3676,14 +3676,14 @@ namespace cw
       } inst_t;
 
 
-      rc_t _create( instance_t* proc, inst_t* p )
+      rc_t _create( proc_t* proc, inst_t* p )
       {
         rc_t    rc   = kOkRC;        
 
         unsigned inAudioChCnt = 0;
         srate_t  srate        = 0;
         unsigned audioFrameN  = 0;
-        unsigned sfxIdAllocN  = instance_var_count(proc);
+        unsigned sfxIdAllocN  = proc_var_count(proc);
         unsigned sfxIdA[ sfxIdAllocN ];
           
 
@@ -3757,17 +3757,17 @@ namespace cw
         return rc;
       }
 
-      rc_t _destroy( instance_t* proc, inst_t* p )
+      rc_t _destroy( proc_t* proc, inst_t* p )
       {
         return kOkRC;
       }
 
-      rc_t _value( instance_t* proc, inst_t* p, variable_t* var )
+      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
       {
         return kOkRC;
       }
 
-      unsigned _merge_in_one_audio_var( instance_t* proc, const abuf_t* ibuf, abuf_t* obuf, unsigned outChIdx, coeff_t gain )
+      unsigned _merge_in_one_audio_var( proc_t* proc, const abuf_t* ibuf, abuf_t* obuf, unsigned outChIdx, coeff_t gain )
       {
         // for each channel          
         for(unsigned i=0; i<ibuf->chN  && outChIdx<obuf->chN; ++i)
@@ -3785,7 +3785,7 @@ namespace cw
         return outChIdx;
       }
       
-      rc_t _exec( instance_t* proc, inst_t* p )
+      rc_t _exec( proc_t* proc, inst_t* p )
       {
         rc_t          rc    = kOkRC;
         abuf_t*       obuf  = nullptr;
@@ -3822,7 +3822,7 @@ namespace cw
         return rc;
       }
 
-      rc_t _report( instance_t* proc, inst_t* p )
+      rc_t _report( proc_t* proc, inst_t* p )
       { return kOkRC; }
 
       class_members_t members = {
@@ -3894,17 +3894,17 @@ namespace cw
         mem::release(p);        
       }
       
-      rc_t create( instance_t* ctx )
+      rc_t create( proc_t* proc )
       {
         rc_t          rc       = kOkRC;
         const abuf_t* abuf     = nullptr; //
         double        periodMs = 0;
         
-        ctx->userPtr = mem::allocZ<inst_t>();
-        inst_t* p = (inst_t*)ctx->userPtr;
+        proc->userPtr = mem::allocZ<inst_t>();
+        inst_t* p = (inst_t*)proc->userPtr;
 
         // get the source audio buffer
-        if((rc = var_register_and_get(ctx, kAnyChIdx,
+        if((rc = var_register_and_get(proc, kAnyChIdx,
                                       kInPId,       "in",       kBaseSfxId, abuf,
                                       kPeriodMsPId, "period_ms",kBaseSfxId, periodMs)) != kOkRC )
         {
@@ -3912,14 +3912,14 @@ namespace cw
         }
         
         p->chN          = abuf->chN;
-        p->bufAllocFrmN = _period_ms_to_smp( abuf->srate, ctx->ctx->framesPerCycle, periodMs );
+        p->bufAllocFrmN = _period_ms_to_smp( abuf->srate, proc->ctx->framesPerCycle, periodMs );
         p->periodFrmN   = p->bufAllocFrmN;
         p->buf          = mem::allocZ<sample_t*>(abuf->chN);
 
         for(unsigned i=0; i<abuf->chN; ++i)
         {
           p->buf[i] = mem::allocZ<sample_t>(p->bufAllocFrmN);
-          if((rc = var_register_and_set(ctx, i,
+          if((rc = var_register_and_set(proc, i,
                                         kOutPId,  "out",  kBaseSfxId, 0.0f,
                                         kMeanPId, "mean", kBaseSfxId, 0.0f)) != kOkRC )
           {
@@ -3933,14 +3933,14 @@ namespace cw
         return rc;
       }
 
-      rc_t destroy( instance_t* ctx )
+      rc_t destroy( proc_t* proc )
       {
-        inst_t* p = (inst_t*)(ctx->userPtr);
+        inst_t* p = (inst_t*)(proc->userPtr);
         _destroy(p);
         return kOkRC;
       }
 
-      rc_t value( instance_t* ctx, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         
@@ -3950,13 +3950,13 @@ namespace cw
             {
               double periodMs;
               const abuf_t* abuf;
-              inst_t*  p = (inst_t*)(ctx->userPtr);
+              inst_t*  p = (inst_t*)(proc->userPtr);
                       
-              var_get(ctx,kInPId,kAnyChIdx,abuf);
+              var_get(proc,kInPId,kAnyChIdx,abuf);
               
               if((rc = var_get(var,periodMs)) == kOkRC )
               {
-                p->periodFrmN = _period_ms_to_smp( abuf->srate, ctx->ctx->framesPerCycle, p->bufAllocFrmN, periodMs );
+                p->periodFrmN = _period_ms_to_smp( abuf->srate, proc->ctx->framesPerCycle, p->bufAllocFrmN, periodMs );
               }
             }
             break;
@@ -3969,18 +3969,18 @@ namespace cw
         return rc;
       }
 
-      rc_t exec( instance_t* ctx )
+      rc_t exec( proc_t* proc )
       {
         rc_t          rc   = kOkRC;
         const abuf_t* ibuf = nullptr;
-        inst_t*       p    = (inst_t*)(ctx->userPtr);
+        inst_t*       p    = (inst_t*)(proc->userPtr);
         unsigned      chN  = 0;
         unsigned      oi   = 0;
         unsigned      n0   = 0;
        unsigned       n1   = 0;
 
         // get the src buffer
-        if((rc = var_get(ctx,kInPId, kAnyChIdx, ibuf )) != kOkRC )
+        if((rc = var_get(proc,kInPId, kAnyChIdx, ibuf )) != kOkRC )
           goto errLabel;
 
         chN = std::min(ibuf->chN,p->chN);
@@ -4023,10 +4023,10 @@ namespace cw
         for(unsigned i=0; i<ibuf->chN; ++i)
         {
           // the output is the first sample in the buffer
-          var_set(ctx,kOutPId,i, p->buf[i][oi] );
+          var_set(proc,kOutPId,i, p->buf[i][oi] );
 
-          if( var_is_a_source(ctx,kMeanPId,i) )
-            var_set(ctx,kMeanPId,i, _mean(p,i,oi,n0,n1));
+          if( var_is_a_source(proc,kMeanPId,i) )
+            var_set(proc,kMeanPId,i, _mean(p,i,oi,n0,n1));
         }
                 
       errLabel:
@@ -4056,7 +4056,7 @@ namespace cw
       
 
 
-      rc_t create( instance_t* proc )
+      rc_t create( proc_t* proc )
       {
         rc_t        rc    = kOkRC;        
         double      value = 0;
@@ -4071,19 +4071,19 @@ namespace cw
         return rc;
       }
 
-      rc_t destroy( instance_t* proc )
+      rc_t destroy( proc_t* proc )
       {
         rc_t rc = kOkRC;
         return rc;
       }
 
-      rc_t value( instance_t* proc, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         return rc;
       }
 
-      rc_t exec( instance_t* proc )
+      rc_t exec( proc_t* proc )
       {
         rc_t rc      = kOkRC;
         return rc;
@@ -4117,12 +4117,12 @@ namespace cw
         unsigned periodPhase;
       } inst_t;
 
-      unsigned _period_ms_to_frame_count( instance_t* proc, inst_t* p, srate_t srate, ftime_t periodMs )
+      unsigned _period_ms_to_frame_count( proc_t* proc, inst_t* p, srate_t srate, ftime_t periodMs )
       {
         return std::max((unsigned)(srate * periodMs / 1000.0), proc->ctx->framesPerCycle);
       }
 
-      rc_t create( instance_t* proc )
+      rc_t create( proc_t* proc )
       {
         rc_t    rc       = kOkRC;
         ftime_t  periodMs = 0;
@@ -4153,7 +4153,7 @@ namespace cw
         return rc;
       }
 
-      rc_t destroy( instance_t* proc )
+      rc_t destroy( proc_t* proc )
       {
         rc_t    rc = kOkRC;
         inst_t* p  = (inst_t*)proc->userPtr;
@@ -4161,7 +4161,7 @@ namespace cw
         return rc;
       }
 
-      rc_t value( instance_t* proc, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         switch( var->vid )
@@ -4185,7 +4185,7 @@ namespace cw
         return rc;
       }
 
-      rc_t exec( instance_t* proc )
+      rc_t exec( proc_t* proc )
       {
         rc_t    rc = kOkRC;
         inst_t* p  = (inst_t*)proc->userPtr;
@@ -4284,7 +4284,7 @@ namespace cw
         return cwLogError(kInvalidArgRC,"'%s' is not a valid counter 'mode'.",cwStringNullGuard(mode_label));
       }
 
-      rc_t create( instance_t* proc )
+      rc_t create( proc_t* proc )
       {
         rc_t    rc    = kOkRC;        
         inst_t* p     = mem::allocZ<inst_t>();
@@ -4344,7 +4344,7 @@ namespace cw
         return rc;
       }
 
-      rc_t destroy( instance_t* proc )
+      rc_t destroy( proc_t* proc )
       {
         rc_t rc = kOkRC;
 
@@ -4354,7 +4354,7 @@ namespace cw
         return rc;
       }
 
-      rc_t value( instance_t* proc, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         inst_t* p = (inst_t*)proc->userPtr;
@@ -4387,7 +4387,7 @@ namespace cw
         return rc;
       }
 
-      rc_t exec( instance_t* proc )
+      rc_t exec( proc_t* proc )
       {
         rc_t rc      = kOkRC;
         inst_t* p = (inst_t*)proc->userPtr;
@@ -4610,7 +4610,7 @@ namespace cw
       }
 
       template< typename T >
-      rc_t _set_out_tmpl( instance_t* proc, inst_t* p, unsigned idx, unsigned vid, T& v )
+      rc_t _set_out_tmpl( proc_t* proc, inst_t* p, unsigned idx, unsigned vid, T& v )
       {
         rc_t rc;
         const object_t* ele;        
@@ -4640,7 +4640,7 @@ namespace cw
         return rc;
       }
 
-      rc_t _set_output( instance_t* proc, inst_t* p, unsigned idx, unsigned vid )
+      rc_t _set_output( proc_t* proc, inst_t* p, unsigned idx, unsigned vid )
       {
         rc_t rc;
 
@@ -4698,7 +4698,7 @@ namespace cw
         return rc;
       }
 
-      rc_t _set_output( instance_t* proc, inst_t* p )
+      rc_t _set_output( proc_t* proc, inst_t* p )
       {
         rc_t rc;
         unsigned idx;
@@ -4724,7 +4724,7 @@ namespace cw
         
       
 
-      rc_t create( instance_t* proc )
+      rc_t create( proc_t* proc )
       {
         rc_t    rc   = kOkRC;        
         inst_t* p = mem::allocZ<inst_t>();
@@ -4790,7 +4790,7 @@ namespace cw
         return rc;
       }
 
-      rc_t destroy( instance_t* proc )
+      rc_t destroy( proc_t* proc )
       {
         rc_t rc = kOkRC;
 
@@ -4801,7 +4801,7 @@ namespace cw
         return rc;
       }
 
-      rc_t value( instance_t* proc, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         if( var->vid == kInPId )
@@ -4814,7 +4814,7 @@ namespace cw
         return rc;
       }
 
-      rc_t exec( instance_t* proc )
+      rc_t exec( proc_t* proc )
       {
         rc_t rc = kOkRC;
         inst_t*  p   = (inst_t*)proc->userPtr;
@@ -4857,7 +4857,7 @@ namespace cw
 
 
       template< typename T >
-      rc_t _sum( instance_t* proc, variable_t* var )
+      rc_t _sum( proc_t* proc, variable_t* var )
       {
         rc_t rc      = kOkRC;
         inst_t*  p = (inst_t*)proc->userPtr;
@@ -4888,7 +4888,7 @@ namespace cw
         return rc;
       }
 
-      rc_t _exec( instance_t* proc, variable_t* out_var=nullptr )
+      rc_t _exec( proc_t* proc, variable_t* out_var=nullptr )
       {
         rc_t rc = kOkRC;
         inst_t* p = (inst_t*)(proc->userPtr);
@@ -4925,7 +4925,7 @@ namespace cw
 
       }
       
-      rc_t create( instance_t* proc )
+      rc_t create( proc_t* proc )
       {
         rc_t    rc   = kOkRC;        
         inst_t* p = mem::allocZ<inst_t>();
@@ -4934,7 +4934,7 @@ namespace cw
         variable_t* out_var        = nullptr;
         const char* out_type_label = nullptr;
         unsigned    out_type_flag  = kInvalidTFl;
-        unsigned    sfxIdAllocN    = instance_var_count(proc);
+        unsigned    sfxIdAllocN    = proc_var_count(proc);
         unsigned    sfxIdA[ sfxIdAllocN ];
         p->inN = 0;
 
@@ -5001,7 +5001,7 @@ namespace cw
         return rc;
       }
 
-      rc_t destroy( instance_t* proc )
+      rc_t destroy( proc_t* proc )
       {
         rc_t rc = kOkRC;
 
@@ -5012,7 +5012,7 @@ namespace cw
         return rc;
       }
 
-      rc_t value( instance_t* proc, variable_t* var )
+      rc_t value( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         inst_t* p = (inst_t*)(proc->userPtr);
@@ -5023,7 +5023,7 @@ namespace cw
         return rc;
       }
 
-      rc_t exec( instance_t* proc )
+      rc_t exec( proc_t* proc )
       {
         return _exec(proc);
       }
@@ -5056,7 +5056,7 @@ namespace cw
       } inst_t;
 
 
-      rc_t _set_preset( instance_t* proc, inst_t* p )
+      rc_t _set_preset( proc_t* proc, inst_t* p )
       {
         rc_t rc = kOkRC;
         unsigned presetLabelCharN = 0;
@@ -5105,7 +5105,7 @@ namespace cw
         
       }
 
-      rc_t _create( instance_t* proc, inst_t* p )
+      rc_t _create( proc_t* proc, inst_t* p )
       {
         rc_t    rc   = kOkRC;        
 
@@ -5123,10 +5123,10 @@ namespace cw
         return rc;
       }
 
-      rc_t _destroy( instance_t* proc, inst_t* p )
+      rc_t _destroy( proc_t* proc, inst_t* p )
       { return kOkRC; }
 
-      rc_t _value( instance_t* proc, inst_t* p, variable_t* var )
+      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
         if( var->vid == kInPId )
@@ -5135,7 +5135,7 @@ namespace cw
         return rc;
       }
 
-      rc_t _exec( instance_t* proc, inst_t* p )
+      rc_t _exec( proc_t* proc, inst_t* p )
       {
         rc_t rc      = kOkRC;
         
@@ -5145,7 +5145,7 @@ namespace cw
         return rc;
       }
 
-      rc_t _report( instance_t* proc, inst_t* p )
+      rc_t _report( proc_t* proc, inst_t* p )
       { return kOkRC; }
 
       
