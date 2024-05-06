@@ -103,6 +103,161 @@ namespace cw
       }
       return rc;
     }
+
+    rc_t _parse_subnet_var_proxy_string( const char* proxyStr, var_desc_t* var_desc )
+    {
+      rc_t rc       = kOkRC;
+
+      const char* period;
+
+      // find the separating period
+      if((period = firstMatchChar(proxyStr,'.')) == nullptr )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The separating '.' could not be found in the proxy string '%s'.",cwStringNullGuard(proxyStr));
+        goto errLabel;
+      }
+
+      // validate the length of the proc inst label
+      if( period-proxyStr == 0 )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"No proxy proc instance was found in the proxy string '%s'.",cwStringNullGuard(proxyStr));
+        goto errLabel;        
+      }
+
+      // validate the length of the var label
+      if( textLength(period+1) == 0 )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"No proxy var was found in the proxy string '%s'.",cwStringNullGuard(proxyStr));
+        goto errLabel;        
+      }
+
+      
+      var_desc->proxyProcLabel = mem::duplStr(proxyStr,period-proxyStr);
+      var_desc->proxyVarLabel  = mem::duplStr(period+1);
+
+    errLabel:
+      return rc;
+    }
+
+
+    rc_t _parse_class_var_attribute_flags(const object_t* var_flags_obj, unsigned& flags_ref)
+    {
+      rc_t     rc           = kOkRC;
+      unsigned result_flags = 0;
+      
+      flags_ref = 0;
+      
+      if( !var_flags_obj->is_list() )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The variable description 'flags' field must be a list.");
+        goto errLabel;
+      }
+        
+      for(unsigned i=0; i<var_flags_obj->child_count(); ++i)
+      {
+        const object_t* flag_obj   = var_flags_obj->child_ele(i);
+        const char*     flag_label = nullptr;
+        unsigned        flag       = 0;
+
+        // validate the flag syntax
+        if( flag_obj == nullptr || !flag_obj->is_string() || flag_obj->value(flag_label)!=kOkRC )
+        {
+          rc = cwLogError(kSyntaxErrorRC,"Invalid variable description flag syntax on flag index %i.",i);
+          goto errLabel;
+        }
+
+        // parse the flag
+        if((flag = var_desc_attr_label_to_flag(flag_label)) == kInvalidVarDescFl )
+        {
+          rc = cwLogError(kInvalidArgRC,"The variable description flag ('%s') at flag index %i is not valid.",cwStringNullGuard(flag_label),i);
+          goto errLabel;
+        }
+
+        result_flags |= flag;        
+      }
+
+      flags_ref = result_flags;
+    errLabel:
+      return rc;
+      
+    }
+    
+    rc_t _parse_class_var_cfg(flow_t* p, class_desc_t* class_desc, const object_t* var_desc_pair, var_desc_t*& var_desc_ref )
+    {
+      rc_t            rc                  = kOkRC;      
+      const object_t* var_flags_obj       = nullptr;
+      const char*     var_value_type_str  = nullptr;
+      const char*     var_label           = nullptr;
+      const char*     proxy_string        = nullptr;
+      var_desc_t*     vd                  = nullptr;
+
+      var_desc_ref = nullptr;
+
+      if(var_desc_pair==nullptr || !var_desc_pair->is_pair() || var_desc_pair->pair_label()==nullptr || (var_label = var_desc_pair->pair_label())==nullptr || var_desc_pair->pair_value()==nullptr || !var_desc_pair->pair_value()->is_dict() )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"An invalid variable description syntax was encountered.");
+        goto errLabel;
+      }
+
+      // Allocate the var. desc record
+      if((vd = var_desc_create( var_label, var_desc_pair->pair_value())) == nullptr )
+      {
+        rc = cwLogError(kObjAllocFailRC,"Variable description allocation failed.");
+        goto errLabel;
+      }
+      
+
+      // get the variable description 
+      if((rc = vd->cfg->getv("doc",  vd->docText)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Parsing failed on class:%s variable: '%s'.", class_desc->label, vd->label );
+        goto errLabel;
+      }
+
+      // get the variable description 
+      if((rc = vd->cfg->getv_opt("flags", var_flags_obj,
+                                 "type", var_value_type_str,
+                                 "value", vd->val_cfg,
+                                 "proxy", proxy_string )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Parsing optional fields failed.");
+        goto errLabel;
+      }
+      
+      // convert the type string to a numeric type flag
+      if( var_value_type_str  != nullptr )
+        if( (vd->type = value_type_label_to_flag( var_value_type_str )) == kInvalidTId )
+        {
+          rc = cwLogError(kSyntaxErrorRC,"Invalid variable description type flag: '%s' was encountered.", var_value_type_str );
+          goto errLabel;            
+        }
+
+      // parse the proxy string into it's two parts: <proc>.<var>
+      if( proxy_string != nullptr )
+      {
+        if((rc = _parse_subnet_var_proxy_string( proxy_string, vd )) != kOkRC )
+          goto errLabel;
+      }
+
+      // parse the var desc attribute flags
+      if( var_flags_obj != nullptr )
+      {
+        vd->flags = 0;
+        if((rc = _parse_class_var_attribute_flags(var_flags_obj, vd->flags)) != kOkRC )
+          goto errLabel;
+      }
+
+      var_desc_ref = vd;
+
+    errLabel:
+      if( rc != kOkRC )
+      {
+        rc = cwLogError(rc,"A variable description create failed on class desc:'%s' var:'%s'.",cwStringNullGuard(class_desc->label),cwStringNullGuard(var_label));
+        var_desc_destroy(vd);
+      }
+
+      return rc;
+    }
     
     rc_t  _parse_class_cfg(flow_t* p, const object_t* classCfg)
     {
@@ -183,56 +338,31 @@ namespace cw
           // for each class value description
           for(unsigned j=0; j<varD->child_count(); ++j)
           {
-            const object_t* var_obj   = varD->child_ele(j);
-            const object_t* var_flags_obj = nullptr;
-            const char*     type_str  = nullptr;
-            unsigned        type_flag = 0;
-            bool            srcVarFl  = false;
-            bool            srcOptFl  = false;
-            var_desc_t*     vd        = mem::allocZ<var_desc_t>();
-
-            vd->label = var_obj->pair_label();
-            vd->cfg   = var_obj->pair_value();
-
-            // get the variable description 
-            if((rc = vd->cfg->getv("type", type_str,
-                                   "doc",  vd->docText)) != kOkRC )
+            const object_t* var_obj       = varD->child_ele(j);
+            var_desc_t* vd = nullptr;
+            
+            if((rc = _parse_class_var_cfg(p, cd, var_obj, vd )) != kOkRC )
             {
-              rc = cwLogError(rc,"Parsing failed on class:%s variable: '%s'.", cd->label, vd->label );
+              rc = cwLogError(rc,"Variable description created failed on the class desc '%s' on the variable description at index '%i'.",cwStringNullGuard(cd->label),j);
               goto errLabel;
             }
 
-            // convert the type string to a numeric type flag
-            if( (type_flag = value_type_label_to_flag( type_str )) == kInvalidTId )
+            if( vd->type == kInvalidTFl )
             {
-              rc = cwLogError(kSyntaxErrorRC,"Invalid type flag: '%s' class:'%s' value:'%s'.", type_str, cd->label, vd->label );
-              goto errLabel;            
-            }
-
-            // get the variable description 
-            if((rc = vd->cfg->getv_opt("flags", var_flags_obj,
-                                       "value",vd->val_cfg)) != kOkRC )
-            {
-              rc = cwLogError(rc,"Parsing optional fields failed on class:%s variable: '%s'.", cd->label, vd->label );
+              rc = cwLogError(rc,"The variable description '%s' in class description '%s' does not have a valid 'type' field.",cwStringNullGuard(vd->label),cwStringNullGuard(cd->label));
               goto errLabel;
             }
 
-            // check for 'src' flag
-            if((rc = _is_var_flag_set( var_flags_obj, "src", cd->label, vd->label, srcVarFl )) != kOkRC )
-              goto errLabel;
+            if( vd->proxyProcLabel != nullptr || vd->proxyVarLabel != nullptr )
+            {
+              cwLogWarning("The 'proxy' field in the variable description '%s' on class description '%s' will be ignored because the variable is not part of a subnet definition.",cwStringNullGuard(vd->label),cwStringNullGuard(cd->label));
+            }
 
-            // check for 'src_opt' flag
-            if((rc = _is_var_flag_set( var_flags_obj, "src_opt", cd->label, vd->label, srcOptFl )) != kOkRC )
-              goto errLabel;
-          
-            vd->type |= type_flag;
-
-            if( srcVarFl )
-              vd->flags |= kSrcVarFl;
-
-            if( srcOptFl )
-              vd->flags |= kSrcOptVarFl;
-
+            if( cwIsFlag(vd->flags,kSubnetOutVarDescFl ) )
+            {
+              cwLogWarning("The 'out' flag in the variable description '%s' on class description '%s' will be ignored because the variable is not part of a subnet definition.",cwStringNullGuard(vd->label),cwStringNullGuard(cd->label));
+            }
+            
             vd->link     = cd->varDescL;
             cd->varDescL = vd;
           }
@@ -281,130 +411,65 @@ namespace cw
     }
 
 
-    rc_t _parse_subnet_var_proxy_string( const char* proxyStr, char*& procLabel_ref, char*& varLabel_ref )
-    {
-      rc_t rc       = kOkRC;
-      procLabel_ref = nullptr;
-      varLabel_ref  = nullptr;
-
-      const char* period;
-
-      // find the separating period
-      if((period = firstMatchChar(proxyStr,'.')) == nullptr )
-      {
-        rc = cwLogError(kSyntaxErrorRC,"The separating '.' could not be found in the proxy string '%s'.",cwStringNullGuard(proxyStr));
-        goto errLabel;
-      }
-
-      // validate the length of the proc inst label
-      if( period-proxyStr == 0 )
-      {
-        rc = cwLogError(kSyntaxErrorRC,"No proxy proc instance was found in the proxy string '%s'.",cwStringNullGuard(proxyStr));
-        goto errLabel;        
-      }
-
-      // validate the length of the var label
-      if( textLength(period+1) == 0 )
-      {
-        rc = cwLogError(kSyntaxErrorRC,"No proxy var was found in the proxy string '%s'.",cwStringNullGuard(proxyStr));
-        goto errLabel;        
-      }
-
-      
-      procLabel_ref = mem::duplStr(proxyStr,period-proxyStr);
-      varLabel_ref  = mem::duplStr(period+1);
-
-    errLabel:
-      return rc;
-    }
-
-    void _var_desc_release( var_desc_t*& vd )
-    {
-      mem::release(vd->proxyProcLabel);
-      mem::release(vd->proxyVarLabel);
-      mem::release(vd);
-    }
-
-    rc_t _create_subnet_var_desc( flow_t* p, class_desc_t* wrapProcClassDesc, const object_t* subnetProcD, const object_t* varDescPair, var_desc_t*& vd_ref )
+    rc_t _create_subnet_var_desc( flow_t* p, class_desc_t* subnetClassDesc, const object_t* subnetProcD, const object_t* varDescPair, var_desc_t*& vd_ref )
     {
       rc_t                rc               = kOkRC;
-      const object_t*     flagsCfg         = nullptr;
-      const char*         proxyStr         = nullptr;
-      const char*         docStr           = nullptr;
-      const char*         varLabel         = nullptr;
-      char*               proxyProcLabel   = nullptr;
-      char*               proxyVarLabel    = nullptr;
-      unsigned            proxyVarFlags    = 0;
       const class_desc_t* proxy_class_desc = nullptr;
       const var_desc_t*   proxy_var_desc   = nullptr;
       bool                subnetOutVarFl   = false;
-      var_desc_t*         var_desc         = mem::allocZ<var_desc_t>();
+      var_desc_t*         var_desc         = nullptr;
       
       vd_ref = nullptr;
 
-      // verify that the var label is valid
-      if(!varDescPair->is_pair() || (varLabel=varDescPair->pair_label())==nullptr || varDescPair->pair_value()==nullptr || !varDescPair->pair_value()->is_dict() )
+      // parse the variable descripiton and create a var_desc_t record
+      if((rc = _parse_class_var_cfg(p, subnetClassDesc, varDescPair, var_desc )) != kOkRC )
       {
-        rc = cwLogError(kSyntaxErrorRC,"The proxy var entry is not valid.");
         goto errLabel;
       }
 
-      // parse the var desc dictionary
-      if((rc = varDescPair->pair_value()->getv("proxy",proxyStr,
-                                               "doc",  docStr)) != kOkRC )
+      if( var_desc->type != 0 )
       {
-        rc = cwLogError(rc,"Parsing failed on the proxy var dictionary.");
-        goto errLabel;
+        cwLogWarning("The 'type' field int the variable description '%s' on the class description '%s' will be ignored because the variable is proxied.",cwStringNullGuard(subnetClassDesc->label),cwStringNullGuard(var_desc->label));
       }
 
-      // parse the var desc dictionary optional fields
-      if((rc = varDescPair->pair_value()->getv_opt("flags", flagsCfg)) != kOkRC )
+      // verify that a proxy-proc-label and proxy-var-label were specified in the variable descripiton
+      if( var_desc->proxyProcLabel == nullptr || var_desc->proxyVarLabel == nullptr )
       {
-        rc = cwLogError(rc,"Optional attribute parsing failed on the proxy var dictionary.");
-        goto errLabel;
-      }
-      
-      // parse the proxy string into it's two parts: <proc>.<var>
-      if((rc = _parse_subnet_var_proxy_string( proxyStr, proxyProcLabel, proxyVarLabel )) != kOkRC )
-      {
+        rc = cwLogError(kSyntaxErrorRC,"The subnet variable description '%s' in the subnet '%s' must have a valid 'proxy' field.",cwStringNullGuard(var_desc->label),cwStringNullGuard(subnetClassDesc->label));
         goto errLabel;
       }
       
       // locate the class desc associated with proxy proc
-      if((rc = _find_subnet_proc_class_desc( p, subnetProcD, proxyProcLabel, proxy_class_desc )) != kOkRC )
+      if((rc = _find_subnet_proc_class_desc( p, subnetProcD, var_desc->proxyProcLabel, proxy_class_desc )) != kOkRC )
       {
         goto errLabel;
       }
 
       // locate the var desc associated with the proxy proc var
-      if((proxy_var_desc = var_desc_find( proxy_class_desc, proxyVarLabel)) == nullptr )
+      if((proxy_var_desc = var_desc_find( proxy_class_desc, var_desc->proxyVarLabel)) == nullptr )
       {
-        rc = cwLogError(kEleNotFoundRC,"The variable desc '%s.%s' could not be found.",cwStringNullGuard(proxyProcLabel),cwStringNullGuard(proxyVarLabel));
+        rc = cwLogError(kEleNotFoundRC,"The subnet proxied variable desc '%s.%s' could not be found in subnet '%s'.",cwStringNullGuard(var_desc->proxyProcLabel),cwStringNullGuard(var_desc->proxyVarLabel),cwStringNullGuard(subnetClassDesc->label));
         goto errLabel;                        
       }
 
-      // most of the fields for the proxy are taken directly from the the actual var ...
-      *var_desc = *proxy_var_desc;
-      
-      var_desc->label   = varLabel;  // ... but the label and doc are overwritten from subnet desc.
-      var_desc->docText = docStr;
-      var_desc->proxyProcLabel = proxyProcLabel;
-      var_desc->proxyVarLabel  = proxyVarLabel;
-      var_desc->link    = nullptr;
+      // get the subnet var_desc type from the proxied var_desc
+      var_desc->type  = proxy_var_desc->type;
 
-      if((rc = _is_var_flag_set( flagsCfg, "out", wrapProcClassDesc->label, var_desc->label, subnetOutVarFl )) != kOkRC )
-        goto errLabel;
+      // augment the subnet var_desc flags from the proxied var_desc
+      var_desc->flags |= proxy_var_desc->flags;
 
-      var_desc->flags = cwEnaFlag(var_desc->flags, kSubnetOutVarFl, subnetOutVarFl);
-      
+      // if no default value was given to the subnet var desc then get it from the proxied var desc
+      if( var_desc->val_cfg == nullptr )
+        var_desc->val_cfg = proxy_var_desc->val_cfg;
+
       vd_ref = var_desc;
 
     errLabel:
 
       if( rc != kOkRC )
       {        
-        rc = cwLogError(rc,"The creation of proxy var '%s' failed.",cwStringNullGuard(varLabel));
-        _var_desc_release(var_desc);
+        rc = cwLogError(rc,"The creation of proxy var '%s' failed.",var_desc==nullptr ? "<unknown>" : cwStringNullGuard(var_desc->label));
+        var_desc_destroy(var_desc);
       }
       
       return rc;
@@ -531,10 +596,9 @@ namespace cw
           goto errLabel;
         }
 
-        // we have to update the size of the subnet class array
-        // as we go because we may want to find subnets classes within
-        // subnets which are definted later and so the length p->subnetA[]
-        // must be correct 
+        // We have to update the size of the subnet class array
+        // as we go because we may want be able to search p->subnetDescA[]
+        // aand to do that we must now the current length.
         p->subnetDescN += 1;
       }
 
@@ -557,26 +621,7 @@ namespace cw
       for(unsigned i=0; i<classDescN; ++i)
       {
         class_desc_t* cd  = classDescA + i;
-
-        // release the var desc list
-        var_desc_t*   vd0 = cd->varDescL;
-        var_desc_t*   vd1 = nullptr;        
-        while( vd0 != nullptr )
-        {
-          vd1 = vd0->link;
-          _var_desc_release(vd0);
-          vd0 = vd1;
-        }
-
-        // release the preset list
-        preset_t* pr0 = cd->presetL;
-        preset_t* pr1 = nullptr;
-        while( pr0 != nullptr )
-        {
-          pr1 = pr0->link;
-          mem::release(pr0);
-          pr0 = pr1;
-        }
+        class_desc_destroy(cd);
       }
 
       mem::release(classDescA);      
@@ -646,6 +691,7 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
     goto errLabel;    
   }
 
+  // parse the subnet descriptions
   if( subnetCfg != nullptr )
     if((rc = _parse_subnet_cfg(p,subnetCfg)) != kOkRC )
     {
@@ -868,7 +914,7 @@ cw::rc_t cw::flow::test(  const object_t* cfg, int argc, const char* argv[] )
     goto errLabel;
   }
   
-  if((rc                                                 = cfg->getv("proc_cfg_fname",proc_cfg_fname,
+  if((rc = cfg->getv("proc_cfg_fname",proc_cfg_fname,
                      "test_cases",     test_cases_cfg)) != kOkRC )
   {
     rc = cwLogError(rc,"The name of the flow_proc_dict file could not be parsed.");
@@ -910,8 +956,6 @@ cw::rc_t cw::flow::test(  const object_t* cfg, int argc, const char* argv[] )
     goto errLabel;
   }
 
-  //print_network(flowH);
-  
   // run the network
   if((rc = exec( flowH )) != kOkRC )
     rc = cwLogError(rc,"Execution failed.");
@@ -927,6 +971,10 @@ cw::rc_t cw::flow::test(  const object_t* cfg, int argc, const char* argv[] )
  errLabel:
   if( class_cfg != nullptr )
     class_cfg->free();
+
+  if( subnet_cfg != nullptr )
+    subnet_cfg->free();
+  
   return rc;
 }
 
