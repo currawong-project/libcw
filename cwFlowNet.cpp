@@ -22,37 +22,13 @@ namespace cw
   namespace flow
   {
 
-    void _destroy_inst( instance_t* inst )
-    {
-      if( inst == nullptr )
-        return;
-      
-      if( inst->class_desc->members->destroy != nullptr && inst->userPtr != nullptr )
-        inst->class_desc->members->destroy( inst );
-
-      // destroy the instance variables
-      variable_t* var0 = inst->varL;
-      variable_t* var1 = nullptr;      
-      while( var0 != nullptr )
-      {
-        var1 = var0->var_link;
-        _var_destroy(var0);
-        var0 = var1;
-      }
-      
-      inst->varL = nullptr;
-      
-      mem::release(inst->label);
-      mem::release(inst->varMapA);
-      mem::release(inst);
-    }
 
     rc_t _network_destroy( network_t& net )
     {
       rc_t rc = kOkRC;
 
       for(unsigned i=0; i<net.proc_arrayN; ++i)
-        _destroy_inst(net.proc_array[i]);
+        proc_destroy(net.proc_array[i]);
 
       mem::release(net.proc_array);
       net.proc_arrayAllocN = 0;
@@ -61,14 +37,14 @@ namespace cw
       return rc;
     }
 
-    rc_t  _var_map_id_to_index(  instance_t* inst, unsigned vid, unsigned chIdx, unsigned& idxRef );
+    rc_t  _var_map_id_to_index(  proc_t* proc, unsigned vid, unsigned chIdx, unsigned& idxRef );
 
-    rc_t _create_instance_var_map( instance_t* inst )
+    rc_t _create_proc_var_map( proc_t* proc )
     {
       rc_t        rc        = kOkRC;
       unsigned    max_vid   = kInvalidId;
       unsigned    max_chIdx = 0;
-      variable_t* var       = inst->varL;
+      variable_t* var       = proc->varL;
       //variable_t* v0        = nullptr;
       
       // determine the max variable vid and max channel index value among all variables
@@ -89,37 +65,37 @@ namespace cw
       if( max_vid != kInvalidId )
       {
         // create the variable map array
-        inst->varMapChN = max_chIdx + 1;
-        inst->varMapIdN = max_vid + 1;
-        inst->varMapN   = inst->varMapIdN * inst->varMapChN;
-        inst->varMapA   = mem::allocZ<variable_t*>( inst->varMapN );
+        proc->varMapChN = max_chIdx + 1;
+        proc->varMapIdN = max_vid + 1;
+        proc->varMapN   = proc->varMapIdN * proc->varMapChN;
+        proc->varMapA   = mem::allocZ<variable_t*>( proc->varMapN );
 
         // assign each variable to a location in the map
-        for(variable_t* var=inst->varL; var!=nullptr; var=var->var_link)
+        for(variable_t* var=proc->varL; var!=nullptr; var=var->var_link)
           if( var->vid != kInvalidId )
           {
             unsigned idx = kInvalidIdx;
 
-            if((rc = _var_map_id_to_index( inst, var->vid, var->chIdx, idx )) != kOkRC )
+            if((rc = _var_map_id_to_index( proc, var->vid, var->chIdx, idx )) != kOkRC )
               goto errLabel;
 
           
             // verify that there are not multiple variables per map position          
-            if( inst->varMapA[ idx ] != nullptr )
+            if( proc->varMapA[ idx ] != nullptr )
             {
-              variable_t* v0 = inst->varMapA[idx];
-              rc = cwLogError(kInvalidStateRC,"The variable '%s' id:%i ch:%i and '%s' id:%i ch:%i share the same variable map position on instance: %s. This is usually cased by duplicate variable id's.",
-                              v0->label,v0->vid,v0->chIdx, var->label,var->vid,var->chIdx,inst->label);
+              variable_t* v0 = proc->varMapA[idx];
+              rc = cwLogError(kInvalidStateRC,"The variable '%s' id:%i ch:%i and '%s' id:%i ch:%i share the same variable map position on proc instance: %s. This is usually cased by duplicate variable id's.",
+                              v0->label,v0->vid,v0->chIdx, var->label,var->vid,var->chIdx,proc->label);
 
               goto errLabel;
             }
 
             // assign this variable to a map position
-            inst->varMapA[ idx ] = var;
+            proc->varMapA[ idx ] = var;
 
             if( var->chIdx != kAnyChIdx && var->value == nullptr )
             {
-              rc = cwLogError(kInvalidStateRC,"The value of the variable '%s' ch:%i on instance:'%s' has not been set.",var->label,var->chIdx,inst->label);
+              rc = cwLogError(kInvalidStateRC,"The value of the variable '%s' ch:%i on proc instance:'%s' has not been set.",var->label,var->chIdx,proc->label);
               goto errLabel;
             }
 
@@ -133,9 +109,9 @@ namespace cw
     }
 
     /*
-    void _complete_input_connections( instance_t* inst )
+    void _complete_input_connections( proc_t* proc )
     {
-      for(variable_t* var=inst->varL; var!=nullptr; var=var->var_link)
+      for(variable_t* var=proc->varL; var!=nullptr; var=var->var_link)
         if(var->chIdx == kAnyChIdx && is_connected_to_source_proc(var) )
         {
 
@@ -144,7 +120,7 @@ namespace cw
           // since 'var' is on the 'any' channel the 'src' var must also be on the 'any' channel
           assert( base_src_var->chIdx == kAnyChIdx );
           
-          //printf("%s %s\n",inst->label,var->label);
+          //printf("%s %s\n",proc->label,var->label);
           
           // for each var channel in the input var
           for(variable_t* in_var = var->ch_link; in_var != nullptr; in_var=in_var->ch_link)
@@ -162,7 +138,7 @@ namespace cw
     }
     */
     
-    rc_t _set_log_flags(instance_t* proc, const object_t* log_labels)
+    rc_t _set_log_flags(proc_t* proc, const object_t* log_labels)
     {
       rc_t rc = kOkRC;
       
@@ -197,24 +173,24 @@ namespace cw
       return rc;
     }
 
-    rc_t _call_value_func_on_all_variables( instance_t* inst )
+    rc_t _call_value_func_on_all_variables( proc_t* proc )
     {
       rc_t rc  = kOkRC;
       rc_t rc1 = kOkRC;
       
-      for(unsigned i=0; i<inst->varMapN; ++i)
-        if( inst->varMapA[i] != nullptr && inst->varMapA[i]->vid != kInvalidId )
+      for(unsigned i=0; i<proc->varMapN; ++i)
+        if( proc->varMapA[i] != nullptr && proc->varMapA[i]->vid != kInvalidId )
         {
-          variable_t* var = inst->varMapA[i];
+          variable_t* var = proc->varMapA[i];
 
           if((rc = var_call_custom_value_func( var )) != kOkRC )
-            rc1 = cwLogError(rc,"The proc instance '%s:%i' reported an invalid valid on variable:%s chIdx:%i.", var->inst->label, var->inst->label_sfx_id, var->label, var->chIdx );
+            rc1 = cwLogError(rc,"The proc proc instance '%s:%i' reported an invalid valid on variable:%s chIdx:%i.", var->proc->label, var->proc->label_sfx_id, var->label, var->chIdx );
         }
       
       return rc1;
     }
 
-    rc_t _var_channelize( instance_t* inst, const char* preset_label,  const char* type_src_label, const char* var_label, const object_t* value )
+    rc_t _var_channelize( proc_t* proc, const char* preset_label,  const char* type_src_label, const char* var_label, const object_t* value )
     {
       rc_t rc = kOkRC;
       
@@ -224,12 +200,12 @@ namespace cw
       // verify that a valid value exists
       if( value == nullptr )
       {
-        rc = cwLogError(kSyntaxErrorRC,"Unexpected missig value on %s preset '%s' instance '%s' variable '%s'.", type_src_label, preset_label, inst->label, cwStringNullGuard(var_label) );
+        rc = cwLogError(kSyntaxErrorRC,"Unexpected missig value on %s preset '%s' proc instance '%s' variable '%s'.", type_src_label, preset_label, proc->label, cwStringNullGuard(var_label) );
         goto errLabel;
       }
       else
       {
-        bool is_var_cfg_type_fl = (vd = var_desc_find( inst->class_desc, var_label ))!=nullptr && cwIsFlag(vd->type,kCfgTFl);
+        bool is_var_cfg_type_fl = (vd = var_desc_find( proc->class_desc, var_label ))!=nullptr && cwIsFlag(vd->type,kCfgTFl);
         bool is_list_fl         = value->is_list();
         bool is_list_of_list_fl = is_list_fl && value->child_count() > 0 && value->child_ele(0)->is_list();
         bool parse_list_fl      = (is_list_fl && !is_var_cfg_type_fl) || (is_list_of_list_fl && is_var_cfg_type_fl);
@@ -239,12 +215,12 @@ namespace cw
         {
           // then each value in the list is assigned to the associated channel
           for(unsigned chIdx=0; chIdx<value->child_count(); ++chIdx)
-            if((rc = var_channelize( inst, var_label, kBaseSfxId, chIdx, value->child_ele(chIdx), kInvalidId, dummy )) != kOkRC )
+            if((rc = var_channelize( proc, var_label, kBaseSfxId, chIdx, value->child_ele(chIdx), kInvalidId, dummy )) != kOkRC )
               goto errLabel;
         }
         else // otherwise a single value was given
         {          
-          if((rc = var_channelize( inst, var_label, kBaseSfxId, kAnyChIdx, value, kInvalidId, dummy )) != kOkRC )
+          if((rc = var_channelize( proc, var_label, kBaseSfxId, kAnyChIdx, value, kInvalidId, dummy )) != kOkRC )
             goto errLabel;
         }
       }
@@ -253,16 +229,16 @@ namespace cw
       return rc;
     }
     
-    rc_t _preset_channelize_vars( instance_t* inst, const char* type_src_label, const char* preset_label, const object_t* preset_cfg )
+    rc_t _preset_channelize_vars( proc_t* proc, const char* type_src_label, const char* preset_label, const object_t* preset_cfg )
     {
       rc_t rc = kOkRC;
 
-      //cwLogInfo("Channelizing '%s' preset %i vars for '%s'.",type_src_label, preset_cfg==nullptr ? 0 : preset_cfg->child_count(), inst->label );
+      //cwLogInfo("Channelizing '%s' preset %i vars for '%s'.",type_src_label, preset_cfg==nullptr ? 0 : preset_cfg->child_count(), proc->label );
       
       // validate the syntax of the preset record
       if( !preset_cfg->is_dict() )
       {
-        rc = cwLogError(kSyntaxErrorRC,"The preset record '%s' on %s '%s' is not a dictionary.", preset_label, type_src_label, inst->class_desc->label );
+        rc = cwLogError(kSyntaxErrorRC,"The preset record '%s' on %s '%s' is not a dictionary.", preset_label, type_src_label, proc->class_desc->label );
         goto errLabel;
       }
 
@@ -275,7 +251,7 @@ namespace cw
 
         //cwLogInfo("variable:%s",value_label);
         
-        if((rc = _var_channelize( inst, preset_label, type_src_label, var_label, value )) != kOkRC )
+        if((rc = _var_channelize( proc, preset_label, type_src_label, var_label, value )) != kOkRC )
           goto errLabel;
         
         
@@ -283,7 +259,7 @@ namespace cw
 
     errLabel:
       if( rc != kOkRC )
-        rc = cwLogError(rc,"Apply %s preset failed on instance:%s class:%s preset:%s.", type_src_label, inst->label, inst->class_desc->label, preset_label );
+        rc = cwLogError(rc,"Apply %s preset failed on proc instance:%s class:%s preset:%s.", type_src_label, proc->label, proc->class_desc->label, preset_label );
 
       return rc;
     }
@@ -302,7 +278,7 @@ namespace cw
       return y;
     }
 
-    rc_t _set_var_from_dual_preset_scalar_scalar( instance_t* inst, const char* var_label, const object_t* scalar_0, const object_t* scalar_1, double coeff, unsigned chIdx )
+    rc_t _set_var_from_dual_preset_scalar_scalar( proc_t* proc, const char* var_label, const object_t* scalar_0, const object_t* scalar_1, double coeff, unsigned chIdx )
     {
       rc_t rc = kOkRC;
       object_t interped_value;
@@ -331,7 +307,7 @@ namespace cw
         goto errLabel;
       }
 
-      printf("%s:%s :",inst->label,var_label);
+      printf("%s:%s :",proc->label,var_label);
       
       switch( scalar_0->type->id )
       {
@@ -362,7 +338,7 @@ namespace cw
       }
 
       
-      if((rc = var_channelize( inst, var_label, kBaseSfxId, chIdx, &interped_value, kInvalidId, dummy )) != kOkRC )
+      if((rc = var_channelize( proc, var_label, kBaseSfxId, chIdx, &interped_value, kInvalidId, dummy )) != kOkRC )
       {
         rc = cwLogError(kInvalidArgRC,"Dual value preset application failed.");
         goto errLabel;
@@ -372,7 +348,7 @@ namespace cw
       return rc;
     }
 
-    rc_t _set_var_from_dual_preset_list_list( instance_t* inst, const char* var_label, const object_t* list_0, const object_t* list_1, double coeff )
+    rc_t _set_var_from_dual_preset_list_list( proc_t* proc, const char* var_label, const object_t* list_0, const object_t* list_1, double coeff )
     {
       rc_t rc = kOkRC;
       
@@ -380,38 +356,38 @@ namespace cw
         return cwLogError(kInvalidArgRC,"If two lists are to be applied as a dual preset they must be the same length.");
 
       for(unsigned chIdx=0; chIdx<list_0->child_count(); ++chIdx)
-        if((rc = _set_var_from_dual_preset_scalar_scalar(inst,var_label,list_0->child_ele(chIdx),list_1->child_ele(chIdx),coeff,chIdx)) != kOkRC )
+        if((rc = _set_var_from_dual_preset_scalar_scalar(proc,var_label,list_0->child_ele(chIdx),list_1->child_ele(chIdx),coeff,chIdx)) != kOkRC )
           goto errLabel;
 
     errLabel:
       return rc;
     }
 
-    rc_t _set_var_from_dual_preset_scalar_list( instance_t* inst, const char* var_label, const object_t* scalar, const object_t* list, double coeff )
+    rc_t _set_var_from_dual_preset_scalar_list( proc_t* proc, const char* var_label, const object_t* scalar, const object_t* list, double coeff )
     {
       rc_t rc = kOkRC;
       for(unsigned chIdx=0; chIdx<list->child_count(); ++chIdx)
-        if((rc = _set_var_from_dual_preset_scalar_scalar(inst,var_label,scalar,list->child_ele(chIdx),coeff,chIdx)) != kOkRC )
+        if((rc = _set_var_from_dual_preset_scalar_scalar(proc,var_label,scalar,list->child_ele(chIdx),coeff,chIdx)) != kOkRC )
           goto errLabel;
       
     errLabel:
       return rc;
     }
 
-    rc_t _set_var_from_dual_preset_list_scalar( instance_t* inst, const char* var_label, const object_t* list, const object_t* scalar, double coeff )
+    rc_t _set_var_from_dual_preset_list_scalar( proc_t* proc, const char* var_label, const object_t* list, const object_t* scalar, double coeff )
     {
       rc_t rc = kOkRC;
       for(unsigned chIdx=0; chIdx<list->child_count(); ++chIdx)
-        if((rc = _set_var_from_dual_preset_scalar_scalar(inst,var_label,list->child_ele(chIdx),scalar,coeff,chIdx)) != kOkRC )
+        if((rc = _set_var_from_dual_preset_scalar_scalar(proc,var_label,list->child_ele(chIdx),scalar,coeff,chIdx)) != kOkRC )
           goto errLabel;
       
     errLabel:
       return rc;
     }
     
-    rc_t _set_var_from_dual_preset_scalar_scalar( instance_t* inst, const char* var_label, const object_t* scalar_0, const object_t* scalar_1, double coeff )
+    rc_t _set_var_from_dual_preset_scalar_scalar( proc_t* proc, const char* var_label, const object_t* scalar_0, const object_t* scalar_1, double coeff )
     {
-      return _set_var_from_dual_preset_scalar_scalar(inst,var_label,scalar_0,scalar_1,coeff,kAnyChIdx);
+      return _set_var_from_dual_preset_scalar_scalar(proc,var_label,scalar_0,scalar_1,coeff,kAnyChIdx);
     }
     
 
@@ -449,7 +425,7 @@ namespace cw
       
     }
     
-    rc_t _set_var_from_dual_preset( instance_t* inst, const char* var_label, const object_t* value_0, const object_t* value_1, double coeff )
+    rc_t _set_var_from_dual_preset( proc_t* proc, const char* var_label, const object_t* value_0, const object_t* value_1, double coeff )
     {
       rc_t rc = kOkRC;
 
@@ -461,7 +437,7 @@ namespace cw
       // if both values are lists then they must be the same length
       if( value_0->is_list() && value_1->is_list() )
       {
-        rc = _set_var_from_dual_preset_list_list( inst, var_label, value_0, value_1, coeff );
+        rc = _set_var_from_dual_preset_list_list( proc, var_label, value_0, value_1, coeff );
         goto errLabel;
       }
       else
@@ -469,7 +445,7 @@ namespace cw
         // if value_0 is a list and value_1 is a scalar
         if( value_0->is_list() )
         {
-          rc = _set_var_from_dual_preset_list_scalar( inst, var_label, value_0, value_1, coeff );
+          rc = _set_var_from_dual_preset_list_scalar( proc, var_label, value_0, value_1, coeff );
           goto errLabel;
         }
         else
@@ -477,12 +453,12 @@ namespace cw
           // if value_1 is a list and value_0 is a scalar
           if( value_1->is_list() )
           {
-            rc = _set_var_from_dual_preset_scalar_list( inst, var_label, value_0, value_1, coeff );
+            rc = _set_var_from_dual_preset_scalar_list( proc, var_label, value_0, value_1, coeff );
             goto errLabel;
           }
           else // both values are scalars
           {
-            rc = _set_var_from_dual_preset_scalar_scalar( inst, var_label, value_0, value_1, coeff );
+            rc = _set_var_from_dual_preset_scalar_scalar( proc, var_label, value_0, value_1, coeff );
             goto errLabel;
           }
         }
@@ -492,14 +468,14 @@ namespace cw
       return rc;
     }
     
-    rc_t _multi_preset_channelize_vars( instance_t* inst, const char* type_src_label, const char** presetLabelA, const object_t** preset_cfgA, unsigned presetN, double coeff )
+    rc_t _multi_preset_channelize_vars( proc_t* proc, const char* type_src_label, const char** presetLabelA, const object_t** preset_cfgA, unsigned presetN, double coeff )
     {
       rc_t rc = kOkRC;
 
       const char* preset_label_0 = "<None>";
       const char* preset_label_1 = "<None>";
 
-      //cwLogInfo("Channelizing '%s' preset %i vars for '%s'.",type_src_label, preset_cfg==nullptr ? 0 : preset_cfg->child_count(), inst->label );
+      //cwLogInfo("Channelizing '%s' preset %i vars for '%s'.",type_src_label, preset_cfg==nullptr ? 0 : preset_cfg->child_count(), proc->label );
 
       if( presetN < 2 )
       {
@@ -520,7 +496,7 @@ namespace cw
       for(unsigned i=0; i<presetN; ++i)
         if( !preset_cfgA[i]->is_dict() )
         {
-          rc = cwLogError(kSyntaxErrorRC,"The preset record '%s' on %s '%s' is not a dictionary.", presetLabelA[i], type_src_label, inst->class_desc->label );
+          rc = cwLogError(kSyntaxErrorRC,"The preset record '%s' on %s '%s' is not a dictionary.", presetLabelA[i], type_src_label, proc->class_desc->label );
           goto errLabel;
         }
 
@@ -535,7 +511,7 @@ namespace cw
 
         if( value_0 == nullptr && value_1 == nullptr )
         {
-          rc = cwLogError(kSyntaxErrorRC,"Unexpected missig values on %s preset '%s' instance '%s' variable '%s'.", type_src_label, presetLabelA[0], inst->label, cwStringNullGuard(var_label) );
+          rc = cwLogError(kSyntaxErrorRC,"Unexpected missig values on %s preset '%s' proc instance '%s' variable '%s'.", type_src_label, presetLabelA[0], proc->label, cwStringNullGuard(var_label) );
           goto errLabel;
         }
 
@@ -543,7 +519,7 @@ namespace cw
         {
           cwLogWarning("The preset variable '%s' was not found for the preset: '%s'. Falling back to single value assign.",cwStringNullGuard(var_label),cwStringNullGuard(presetLabelA[0]));
 
-          rc = _var_channelize( inst, preset_label_1, "dual class", var_label, value_1 );
+          rc = _var_channelize( proc, preset_label_1, "dual class", var_label, value_1 );
           goto errLabel;
         }
         
@@ -551,12 +527,12 @@ namespace cw
         {
           cwLogWarning("The preset variable '%s' was not found for the preset: '%s'. Falling back to single value assign.",cwStringNullGuard(var_label),cwStringNullGuard(presetLabelA[1]));
           
-          rc = _var_channelize( inst, preset_label_0, "dual class", var_label, value_0 );
+          rc = _var_channelize( proc, preset_label_0, "dual class", var_label, value_0 );
           goto errLabel;
         }
 
 
-        if((rc = _set_var_from_dual_preset( inst, var_label, value_0, value_1, coeff )) != kOkRC )
+        if((rc = _set_var_from_dual_preset( proc, var_label, value_0, value_1, coeff )) != kOkRC )
         {
           rc = cwLogError(rc,"Multi preset application failed on variable:%s.",cwStringNullGuard(var_label));
           goto errLabel;
@@ -565,13 +541,13 @@ namespace cw
 
     errLabel:
       if( rc != kOkRC )
-        rc = cwLogError(rc,"Apply %s multi-preset failed on instance:%s class:%s presetA:%s presetB:%s.", type_src_label, inst->label, inst->class_desc->label, preset_label_0, preset_label_1 );
+        rc = cwLogError(rc,"Apply %s multi-preset failed on proc instance:%s class:%s presetA:%s presetB:%s.", type_src_label, proc->label, proc->class_desc->label, preset_label_0, preset_label_1 );
 
       return rc;
     }
 
 
-    rc_t _class_multi_preset_channelize_vars(instance_t* inst, const char** class_preset_labelA, unsigned presetN, double coeff )
+    rc_t _class_multi_preset_channelize_vars(proc_t* proc, const char** class_preset_labelA, unsigned presetN, double coeff )
     {
       rc_t            rc = kOkRC;
       const object_t* presetCfgA[ presetN ];
@@ -585,15 +561,15 @@ namespace cw
           const preset_t* pr;
           
           // locate the requestd preset record
-          if((pr = class_preset_find(inst->class_desc, class_preset_labelA[i])) == nullptr )
+          if((pr = class_preset_find(proc->class_desc, class_preset_labelA[i])) == nullptr )
           {
-            rc = cwLogError(kInvalidIdRC,"The preset '%s' could not be found for the instance '%s'.", class_preset_labelA[i], inst->label);
+            rc = cwLogError(kInvalidIdRC,"The preset '%s' could not be found for the proc instance '%s'.", class_preset_labelA[i], proc->label);
             goto errLabel;
           }
 
           if( pr->cfg == nullptr )
           {
-            rc = cwLogError(kInvalidIdRC,"The value of preset '%s' was empty in instance '%s'.", class_preset_labelA[i], inst->label);
+            rc = cwLogError(kInvalidIdRC,"The value of preset '%s' was empty in proc instance '%s'.", class_preset_labelA[i], proc->label);
             goto errLabel;            
           }
 
@@ -612,12 +588,12 @@ namespace cw
           
         case 1:
           // only one valid preset was located - apply it directly
-          rc = _preset_channelize_vars( inst, "class", presetLabelA[0], presetCfgA[0]);
+          rc = _preset_channelize_vars( proc, "class", presetLabelA[0], presetCfgA[0]);
           break;
           
         default:
           // more than one preset was located - apply it's interpolated values
-          rc = _multi_preset_channelize_vars( inst, "class", presetLabelA, presetCfgA, presetCfgN, coeff);
+          rc = _multi_preset_channelize_vars( proc, "class", presetLabelA, presetCfgA, presetCfgN, coeff);
       }
       
       
@@ -626,7 +602,7 @@ namespace cw
       
     }
     
-    rc_t _class_preset_channelize_vars( instance_t* inst, const char* preset_label )
+    rc_t _class_preset_channelize_vars( proc_t* proc, const char* preset_label )
     {
       rc_t            rc = kOkRC;
       const preset_t* pr;
@@ -635,31 +611,31 @@ namespace cw
         return kOkRC;
       
       // locate the requestd preset record
-      if((pr = class_preset_find(inst->class_desc, preset_label)) == nullptr )
+      if((pr = class_preset_find(proc->class_desc, preset_label)) == nullptr )
       {
-        rc = cwLogError(kInvalidIdRC,"The preset '%s' could not be found for the instance '%s'.", preset_label, inst->label);
+        rc = cwLogError(kInvalidIdRC,"The preset '%s' could not be found for the proc instance '%s'.", preset_label, proc->label);
         goto errLabel;
       }
       
-      rc = _preset_channelize_vars( inst, "class", preset_label, pr->cfg);
+      rc = _preset_channelize_vars( proc, "class", preset_label, pr->cfg);
       
     errLabel:                  
       return rc;
     }
 
 
-    rc_t _class_apply_presets( instance_t* inst, const object_t* preset_labels )
+    rc_t _class_apply_presets( proc_t* proc, const object_t* preset_labels )
     {
       rc_t        rc = kOkRC;
       const char* s  = nullptr;
       
       // if preset_labels is a string
       if( preset_labels->is_string() && preset_labels->value(s)==kOkRC )
-        return _class_preset_channelize_vars(inst,s);
+        return _class_preset_channelize_vars(proc,s);
 
       // if the preset_labels is not a list
       if( !preset_labels->is_list() )
-        rc = cwLogError(kSyntaxErrorRC,"The preset list on instance '%s' is neither a list nor a string.",inst->label);
+        rc = cwLogError(kSyntaxErrorRC,"The preset list on proc instance '%s' is neither a list nor a string.",proc->label);
       else        
       {
         // preset_labels is a list.
@@ -672,12 +648,12 @@ namespace cw
           // verify that the label is a strng
           if( !label_obj->is_string() || label_obj->value(s) != kOkRC )
           {
-            rc = cwLogError(kSyntaxErrorRC,"The preset list does not contain string on instance '%s'.",inst->label);
+            rc = cwLogError(kSyntaxErrorRC,"The preset list does not contain string on proc instance '%s'.",proc->label);
             goto errLabel;
           }
 
           // apply a preset label
-          if((rc = _class_preset_channelize_vars( inst, s)) != kOkRC )
+          if((rc = _class_preset_channelize_vars( proc, s)) != kOkRC )
             goto errLabel;          
         }
       }
@@ -689,14 +665,14 @@ namespace cw
                                  
     
 
-    rc_t _proc_inst_args_channelize_vars( instance_t* inst, const char* arg_label, const object_t* arg_cfg )
+    rc_t _proc_inst_args_channelize_vars( proc_t* proc, const char* arg_label, const object_t* arg_cfg )
     {
       rc_t rc = kOkRC;
       
       if( arg_cfg == nullptr )
         return rc;
 
-      return _preset_channelize_vars( inst, "instance", arg_label, arg_cfg );
+      return _preset_channelize_vars( proc, "proc instance", arg_label, arg_cfg );
       
     }
 
@@ -736,8 +712,8 @@ namespace cw
 
     typedef struct proc_inst_parse_statestr
     {
-      const char*     inst_label;       // 
-      const char*     inst_clas_label;  //
+      const char*     proc_label;       // 
+      const char*     proc_clas_label;  //
       const char*     arg_label;        //
       const object_t* preset_labels;    //
       const object_t* arg_cfg;          //
@@ -867,7 +843,7 @@ namespace cw
       // if a literal proc sfx_id was given then use it otherwise use the default base-sfx-id (0)
       unsigned sfx_id = src_proc_ele.base_sfx_id==kInvalidCnt ? kBaseSfxId : src_proc_ele.base_sfx_id;
       unsigned n;
-      for(n=0; instance_find(net, src_proc_ele.label, sfx_id ) != nullptr; ++n )
+      for(n=0; proc_find(net, src_proc_ele.label, sfx_id ) != nullptr; ++n )
         sfx_id += 1;
 
       if( n == 0 )
@@ -884,15 +860,15 @@ namespace cw
     rc_t _calc_src_var_ele_count(network_t& net, const in_ele_t& src_proc_ele, const in_ele_t& src_var_ele, unsigned& cnt_ref)
     {
       rc_t              rc          = kOkRC;
-      instance_t*       src_proc    = nullptr;
+      proc_t*       src_proc    = nullptr;
       unsigned          proc_sfx_id = src_proc_ele.base_sfx_id==kInvalidCnt ? kBaseSfxId : src_proc_ele.base_sfx_id;
 
       cnt_ref = 0;
 
       // locate the parent proc of this var
-      if((src_proc = instance_find(net,src_proc_ele.label,proc_sfx_id)) == nullptr )
+      if((src_proc = proc_find(net,src_proc_ele.label,proc_sfx_id)) == nullptr )
       {
-        cwLogError(kSyntaxErrorRC,"The src-proc instance '%s:%i' could not be found.",cwStringNullGuard(src_proc_ele.label),proc_sfx_id);
+        cwLogError(kSyntaxErrorRC,"The src-proc proc instance '%s:%i' could not be found.",cwStringNullGuard(src_proc_ele.label),proc_sfx_id);
         goto errLabel;
       }
       else
@@ -921,7 +897,7 @@ namespace cw
     // If the in-var is iterating then the count of iterations must be controlled by exactly one
     // of the 3 parts of the in-stmt: in-var,src_proc, or src_var.  This function determines
     // which element is used to determine the iteration count.
-    rc_t _determine_in_stmt_iter_count_ctl_ele(network_t& net, instance_t* inst, in_stmt_t& in_stmt )
+    rc_t _determine_in_stmt_iter_count_ctl_ele(network_t& net, proc_t* proc, in_stmt_t& in_stmt )
     {
       assert( in_stmt.in_var_ele.is_iter_fl );
       rc_t rc = kOkRC;
@@ -1008,7 +984,7 @@ namespace cw
       return rc;
     }
     
-    rc_t _determine_in_stmt_iter_count( network_t& net,instance_t* inst, in_stmt_t& in_stmt )
+    rc_t _determine_in_stmt_iter_count( network_t& net,proc_t* proc, in_stmt_t& in_stmt )
     {
       rc_t rc = kOkRC;
 
@@ -1095,26 +1071,26 @@ namespace cw
 
 
     // Recursively search the tree of networks rooted on 'net' for the
-    // network named 'net_inst_label'.
-    network_t*  _find_labeled_network( network_t& net, const char* net_inst_label )
+    // network named 'net_proc_label'.
+    network_t*  _find_labeled_network( network_t& net, const char* net_proc_label )
     {
       network_t* labeled_net = nullptr;
 
-      // for each instance in the network
+      // for each proc instance in the network
       for(unsigned i=0; i<net.proc_arrayN && labeled_net==nullptr; ++i)
       {
-        instance_t* inst =  net.proc_array[i];
+        proc_t* proc =  net.proc_array[i];
           
-        // if this instance has an  internal network
-        if( inst->internal_net != nullptr )
+        // if this proc instance has an  internal network
+        if( proc->internal_net != nullptr )
         {
           // if the name of the network matches the key ...
-          if( textIsEqual(inst->label,net_inst_label) )            
-            labeled_net = inst->internal_net; // .. we are done
+          if( textIsEqual(proc->label,net_proc_label) )            
+            labeled_net = proc->internal_net; // .. we are done
           else
           {
             // ... otherwise recurse
-            labeled_net = _find_labeled_network(*inst->internal_net,net_inst_label);
+            labeled_net = _find_labeled_network(*proc->internal_net,net_proc_label);
           }
         }
         
@@ -1123,7 +1099,7 @@ namespace cw
     }
 
     // Set  'in_stmt.src_net' based on 'in_stmt.src_net_label'
-    rc_t _locate_src_net(network_t& net,instance_t* inst, in_stmt_t& in_stmt)
+    rc_t _locate_src_net(network_t& net,proc_t* proc, in_stmt_t& in_stmt)
     {
       rc_t rc = kOkRC;
       network_t* src_net = nullptr;
@@ -1135,10 +1111,10 @@ namespace cw
       else
       {        
         if( textIsEqual(in_stmt.src_net_label,"_") )
-          src_net = &inst->ctx->net;
+          src_net = &proc->ctx->net;
         else
         {
-          if((src_net = _find_labeled_network(inst->ctx->net,in_stmt.src_net_label)) == nullptr )
+          if((src_net = _find_labeled_network(proc->ctx->net,in_stmt.src_net_label)) == nullptr )
           {
             rc = cwLogError(kSyntaxErrorRC,"The source net '%s' was not found.",cwStringNullGuard(in_stmt.src_net_label));
             goto errLabel;
@@ -1155,7 +1131,7 @@ namespace cw
     }
 
 
-    rc_t _create_in_stmt( network_t& net, instance_t* inst, in_stmt_t& in_stmt, const char* in_var_str, const char* src_proc_var_str )
+    rc_t _create_in_stmt( network_t& net, proc_t* proc, in_stmt_t& in_stmt, const char* in_var_str, const char* src_proc_var_str )
     {
       rc_t     rc          = kOkRC;
       unsigned src_char_cnt = 0;
@@ -1209,14 +1185,14 @@ namespace cw
         }
 
         // get the var class desc. for the in-var
-        if(( in_stmt.in_var_desc = var_desc_find(inst->class_desc,in_stmt.in_var_ele.label)) == nullptr )
+        if(( in_stmt.in_var_desc = var_desc_find(proc->class_desc,in_stmt.in_var_ele.label)) == nullptr )
         {
           rc = cwLogError(kEleNotFoundRC,"Unable to locate the var class desc for the in-var from '%s'.",cwStringNullGuard(in_stmt.in_var_ele.label));
           goto errLabel;
         }
 
         // get the src net
-        if((rc = _locate_src_net(net,inst,in_stmt)) != kOkRC )
+        if((rc = _locate_src_net(net,proc,in_stmt)) != kOkRC )
         {
           rc = cwLogError(rc,"Unable to locate the src-net '%s'.",cwStringNullGuard(in_stmt.src_net_label));
           goto errLabel;
@@ -1232,7 +1208,7 @@ namespace cw
 
         // if the src-proc is not iterating and the src-proc was not given a literal sfx-id
         if( in_stmt.src_proc_ele.is_iter_fl==false && in_stmt.src_proc_ele.base_sfx_id==kInvalidId && in_stmt.src_net==&net)
-          in_stmt.src_proc_ele.base_sfx_id = inst->label_sfx_id;
+          in_stmt.src_proc_ele.base_sfx_id = proc->label_sfx_id;
 
         // if this is not an iterating in-stmt ... 
         if( !in_stmt.in_var_ele.is_iter_fl )
@@ -1242,14 +1218,14 @@ namespace cw
         else
         {
           // if the in-stmt is iterating then determine the in-stmt element which controls the iteration count
-          if((rc = _determine_in_stmt_iter_count_ctl_ele(net,inst,in_stmt)) != kOkRC || in_stmt.iter_cnt_ctl_ele==nullptr)
+          if((rc = _determine_in_stmt_iter_count_ctl_ele(net,proc,in_stmt)) != kOkRC || in_stmt.iter_cnt_ctl_ele==nullptr)
           {
             rc = cwLogError(rc,"Unable to determine the iter count control ele.");
             goto errLabel;
           }
 
           // if the in-stmt is iterating then determine the iteration count
-          if((rc = _determine_in_stmt_iter_count(net,inst,in_stmt)) != kOkRC )
+          if((rc = _determine_in_stmt_iter_count(net,proc,in_stmt)) != kOkRC )
           {
             cwLogError(rc,"Unable to determine the in-stmt iteration count.");
             goto errLabel;
@@ -1264,15 +1240,15 @@ namespace cw
       return rc;      
     }
 
-    const variable_t* _find_proxy_var( const char* procInstLabel, const char* varLabel, const variable_t* proxyVarL )
+    const variable_t* _find_proxy_var( const char* procProcLabel, const char* varLabel, const variable_t* proxyVarL )
     {
       for(const variable_t* proxyVar=proxyVarL; proxyVar!=nullptr; proxyVar=proxyVar->var_link)
-        if( textIsEqual(proxyVar->varDesc->proxyProcLabel,procInstLabel) && textIsEqual(proxyVar->varDesc->proxyVarLabel,varLabel) )
+        if( textIsEqual(proxyVar->varDesc->proxyProcLabel,procProcLabel) && textIsEqual(proxyVar->varDesc->proxyVarLabel,varLabel) )
           return proxyVar;
       return nullptr;
     }
     
-    rc_t _parse_in_list( network_t& net, instance_t* inst, variable_t* proxyVarL, proc_inst_parse_state_t& pstate )
+    rc_t _parse_in_list( network_t& net, proc_t* proc, variable_t* proxyVarL, proc_inst_parse_state_t& pstate )
     {
       rc_t            rc     = kOkRC;
       
@@ -1281,7 +1257,7 @@ namespace cw
       
       if( !pstate.in_dict->is_dict() )
       {
-        cwLogError(kSyntaxErrorRC,"The 'in' dict in instance '%s' is not a valid dictionary.",inst->label);
+        cwLogError(kSyntaxErrorRC,"The 'in' dict in proc instance '%s' is not a valid dictionary.",proc->label);
         goto errLabel;
       }
 
@@ -1314,7 +1290,7 @@ namespace cw
         }
 
         // 
-        if((rc= _create_in_stmt(net, inst, in_stmt, in_var_str, src_proc_var_str )) != kOkRC )
+        if((rc= _create_in_stmt(net, proc, in_stmt, in_var_str, src_proc_var_str )) != kOkRC )
         {
           cwLogError(rc,"Parse failed on the in-connection '%s:%s'.",cwStringNullGuard(in_var_str),cwStringNullGuard(src_proc_var_str));
           goto errLabel;
@@ -1326,7 +1302,7 @@ namespace cw
           const variable_t* proxy_var;
           
           // a variable cannot be in the 'in' list if it is used a a subnet variable
-          if((proxy_var = _find_proxy_var(inst->label, in_stmt.in_var_ele.label, proxyVarL)) != nullptr )
+          if((proxy_var = _find_proxy_var(proc->label, in_stmt.in_var_ele.label, proxyVarL)) != nullptr )
           {
             rc = cwLogError(kSyntaxErrorRC,"The variable:'%s' cannot be used as the in-var of an 'in' statement if it is a subnet variable: '%s'.",cwStringNullGuard(in_stmt.in_var_ele.label),cwStringNullGuard(proxy_var->label));
             goto errLabel;
@@ -1337,7 +1313,7 @@ namespace cw
           {
             variable_t* dum = nullptr;        
 
-            if((rc = var_create( inst, in_stmt.in_var_desc->label,
+            if((rc = var_create( proc, in_stmt.in_var_desc->label,
                                  in_stmt.in_var_ele.base_sfx_id + i,
                                  kInvalidId,
                                  kAnyChIdx,
@@ -1357,39 +1333,38 @@ namespace cw
       return rc;      
     }
 
-    // This function is used to create the variables on procs
-    // inside subnets which are represented by interface variables
-    // on the subnet wrapper.
-    // 'inst' is a proc on the subnet's internal proc list
+    // This function is used to create the variables on subnet procs
+    // which are represented by interface variables on the subnet proxy (wrapper) proc.
+    // 'proc' is a proc on the subnet's internal proc list
     // 'wrap_varL' is a list of all the variables on the wrapper proc.
-    // These wrapper variables mirror variables on some of the internal subnet proc's.
-    // The function finds the variables in wrap_varL that mirror
-    // variables in 'inst' and instantiates them.  It then connects the wrapper
-    // variable to the proc-inst variable for input variables or
-    // proc-inst variable to the wrapper variable for output variables.
-    rc_t  _create_proxied_vars( instance_t* inst, variable_t* wrap_varL )
+    // These wrapper variables mirror variables on the internal subnet proc's.
+    // This function finds the variables in wrap_varL that mirror
+    // variables in 'proc' and instantiates them.  
+    rc_t  _create_proxied_vars( proc_t* proc, variable_t* wrap_varL )
     {
       rc_t rc = kOkRC;
-      
+
+      // for each proxy var
       for(variable_t* wrap_var=wrap_varL; wrap_var!=nullptr; wrap_var=wrap_var->var_link )
       {
-        // if this wrap_var is on this proc (inst->label)
-        if( textIsEqual(wrap_var->varDesc->proxyProcLabel,inst->label) )
+        // if this proxy var is on this internal proc (proc->label)
+        if( textIsEqual(wrap_var->varDesc->proxyProcLabel,proc->label) )
         {
           
           variable_t* var;
-
-          if((rc = var_create( inst, wrap_var->varDesc->proxyVarLabel, wrap_var->label_sfx_id, kInvalidId, wrap_var->chIdx, nullptr, kInvalidTFl, var )) != kOkRC )
+          
+          // create the proxied var
+          if((rc = var_create( proc, wrap_var->varDesc->proxyVarLabel, wrap_var->label_sfx_id, kInvalidId, wrap_var->chIdx, nullptr, kInvalidTFl, var )) != kOkRC )
           {
-            rc = cwLogError(rc,"Subnet variable creation failed for %s:%s on wrapper variable:%s:%s.",cwStringNullGuard(wrap_var->varDesc->proxyProcLabel),cwStringNullGuard(wrap_var->varDesc->proxyVarLabel),cwStringNullGuard(wrap_var->inst->label),cwStringNullGuard(wrap_var->label));
+            rc = cwLogError(rc,"Subnet variable creation failed for %s:%s on wrapper variable:%s:%s.",cwStringNullGuard(wrap_var->varDesc->proxyProcLabel),cwStringNullGuard(wrap_var->varDesc->proxyVarLabel),cwStringNullGuard(wrap_var->proc->label),cwStringNullGuard(wrap_var->label));
             goto errLabel;
           }
 
-          //printf("Proxy matched: %s %s %s : flags:%i.\n",inst->label, wrap_var->varDesc->proxyVarLabel, wrap_var->label,wrap_var->varDesc->flags );
+          //printf("Proxy matched: %s %s %s : flags:%i.\n",proc->label, wrap_var->varDesc->proxyVarLabel, wrap_var->label,wrap_var->varDesc->flags );
 
           var->flags |= kProxiedVarFl;
           
-          if( cwIsFlag(wrap_var->varDesc->flags,kSubnetOutVarFl) )
+          if( cwIsFlag(wrap_var->varDesc->flags,kSubnetOutVarDescFl) )
             var->flags |= kProxiedOutVarFl;
         }
       }
@@ -1398,42 +1373,42 @@ namespace cw
       return rc;
     }
 
-    variable_t* _find_wrap_var( variable_t* wrap_varL, variable_t* var )
+    variable_t* _find_proxy_var( variable_t* wrap_varL, variable_t* var )
     {
       for(variable_t* wrap_var=wrap_varL; wrap_var!=nullptr; wrap_var=wrap_var->var_link)
-        if( textIsEqual(wrap_var->varDesc->proxyProcLabel,var->inst->label) && textIsEqual(wrap_var->varDesc->proxyVarLabel,var->label) && (wrap_var->label_sfx_id==var->label_sfx_id) )
+        if( textIsEqual(wrap_var->varDesc->proxyProcLabel,var->proc->label) && textIsEqual(wrap_var->varDesc->proxyVarLabel,var->label) && (wrap_var->label_sfx_id==var->label_sfx_id) )
           return wrap_var;
         
       return nullptr;
     }
     
-    rc_t _connect_wrapped_vars( instance_t* inst, variable_t* wrap_varL )
+    rc_t _connect_proxy_vars( proc_t* proc, variable_t* wrap_varL )
     {
       rc_t rc = kOkRC;
-      for(variable_t* var=inst->varL; var!=nullptr; var=var->var_link)
+      for(variable_t* var=proc->varL; var!=nullptr; var=var->var_link)
       {
         if( cwIsFlag(var->flags,kProxiedVarFl) )
         {
           variable_t* wrap_var;
-          if((wrap_var = _find_wrap_var(wrap_varL,var)) == nullptr )
+          if((wrap_var = _find_proxy_var(wrap_varL,var)) == nullptr )
           {
-            rc = cwLogError(kEleNotFoundRC,"The wrapped variable '%s:%i' not found on '%s:%i'.",var->label,var->label_sfx_id,inst->label,inst->label_sfx_id);
+            rc = cwLogError(kEleNotFoundRC,"The wrapped variable '%s:%i' not found on '%s:%i'.",var->label,var->label_sfx_id,proc->label,proc->label_sfx_id);
             goto errLabel;
           }
           
           if( cwIsFlag(var->flags,kProxiedOutVarFl) )
           {
             //printf("Proxy connection: %i %s:%i-%s:%i -> %s:%i-%s:%i\n",var->flags,
-            //       var->inst->label,var->inst->label_sfx_id,var->label,var->label_sfx_id,
-            //       wrap_var->inst->label,wrap_var->inst->label_sfx_id,wrap_var->label,wrap_var->label_sfx_id );
+            //       var->proc->label,var->proc->label_sfx_id,var->label,var->label_sfx_id,
+            //       wrap_var->proc->label,wrap_var->proc->label_sfx_id,wrap_var->label,wrap_var->label_sfx_id );
             
             var_connect(var,wrap_var);
           }
           else
           {
             //printf("Proxy connection: %i %s:%i-%s:%i -> %s:%i-%s:%i\n",var->flags,
-            //       wrap_var->inst->label,wrap_var->inst->label_sfx_id,wrap_var->label,wrap_var->label_sfx_id,
-            //       var->inst->label,var->inst->label_sfx_id,var->label,var->label_sfx_id );
+            //       wrap_var->proc->label,wrap_var->proc->label_sfx_id,wrap_var->label,wrap_var->label_sfx_id,
+            //       var->proc->label,var->proc->label_sfx_id,var->label,var->label_sfx_id );
             
             var_connect(wrap_var,var);
           }          
@@ -1443,23 +1418,22 @@ namespace cw
       errLabel:
         return rc;
     }
-    
 
-    
-    bool _is_var_inst_already_created( instance_t* inst, const char* var_label, const proc_inst_parse_state_t& pstate )
+    // Check if the var named 'label' already exists in 'proc->varL'.
+    bool _is_var_proc_already_created( proc_t* proc, const char* var_label, const proc_inst_parse_state_t& pstate )
     {
       for(unsigned i=0; i<pstate.in_arrayN; ++i)
         if( textIsEqual(pstate.in_array[i].in_var_ele.label,var_label) && pstate.in_array[i].create_in_fl )
           return true;
 
-      for(variable_t* var=inst->varL; var!=nullptr; var=var->var_link)
+      for(variable_t* var=proc->varL; var!=nullptr; var=var->var_link)
         if( textIsEqual(var->label,var_label) )
           return true;
       
       return false;
     }
 
-    rc_t _connect_in_vars(network_t& net, instance_t* inst, const proc_inst_parse_state_t& pstate)
+    rc_t _connect_in_vars(network_t& net, proc_t* proc, const proc_inst_parse_state_t& pstate)
     {
       rc_t rc = kOkRC;
       
@@ -1471,7 +1445,7 @@ namespace cw
         {
           variable_t* in_var    = nullptr;
           network_t*  src_net   = in_stmt.src_net;
-          instance_t* src_proc  = nullptr;
+          proc_t* src_proc  = nullptr;
           variable_t* src_var   = nullptr;
 
           const char* in_var_label   = in_stmt.in_var_ele.label;
@@ -1510,14 +1484,14 @@ namespace cw
             src_var_sfx_id += j;
           
           // locate input value
-          if((rc = var_find( inst, in_var_label, in_var_sfx_id, kAnyChIdx, in_var )) != kOkRC )
+          if((rc = var_find( proc, in_var_label, in_var_sfx_id, kAnyChIdx, in_var )) != kOkRC )
           {
             rc = cwLogError(rc,"The in-var '%s:%i' was not found.", in_stmt.in_var_ele.label, in_stmt.in_var_ele.base_sfx_id + j);
             goto errLabel;        
           }
           
-          // locate source instance 
-          if((src_proc = instance_find(*src_net, src_proc_label, src_proc_sfx_id )) == nullptr )
+          // locate source proc instance 
+          if((src_proc = proc_find(*src_net, src_proc_label, src_proc_sfx_id )) == nullptr )
           {
             rc = cwLogError(kSyntaxErrorRC,"The src-proc '%s:%i' was not found.", in_stmt.src_proc_ele.label, src_proc_sfx_id );
             goto errLabel;
@@ -1551,7 +1525,7 @@ namespace cw
 
     errLabel:
       if( rc != kOkRC )
-        rc = cwLogError(rc,"Connection failed on proc '%s:%i'.",inst->label,inst->label_sfx_id);
+        rc = cwLogError(rc,"Connection failed on proc '%s:%i'.",proc->label,proc->label_sfx_id);
       return rc;
     }
       
@@ -1564,23 +1538,23 @@ namespace cw
       // validate the syntax of the proc_inst_cfg pair
       if( !_is_non_null_pair(proc_inst_cfg))
       {
-        rc = cwLogError(kSyntaxErrorRC,"The instance cfg. is not a valid pair. No instance label could be parsed.");
+        rc = cwLogError(kSyntaxErrorRC,"The proc instance cfg. is not a valid pair. No proc instance label could be parsed.");
         goto errLabel;
       }
       
-      pstate.inst_label = proc_inst_cfg->pair_label();
+      pstate.proc_label = proc_inst_cfg->pair_label();
 
-      // verify that the instance label is unique
-      if( instance_find(net,pstate.inst_label,sfx_id) != nullptr )
+      // verify that the proc instance label is unique
+      if( proc_find(net,pstate.proc_label,sfx_id) != nullptr )
       {
-        rc = cwLogError(kSyntaxErrorRC,"The proc instance label '%s:%i' has already been used.",pstate.inst_label,sfx_id);
+        rc = cwLogError(kSyntaxErrorRC,"The proc proc instance label '%s:%i' has already been used.",pstate.proc_label,sfx_id);
         goto errLabel;
       }
       
-      // get the instance class label
-      if((rc = proc_inst_cfg->pair_value()->getv("class",pstate.inst_clas_label)) != kOkRC )
+      // get the proc instance class label
+      if((rc = proc_inst_cfg->pair_value()->getv("class",pstate.proc_clas_label)) != kOkRC )
       {
-        rc = cwLogError(kSyntaxErrorRC,"The instance cfg. %s is missing: 'type'.",pstate.inst_label);
+        rc = cwLogError(kSyntaxErrorRC,"The proc instance cfg. %s is missing: 'type'.",pstate.proc_label);
         goto errLabel;        
       }
       
@@ -1591,11 +1565,11 @@ namespace cw
                                                      "preset",   pstate.preset_labels,
                                                      "log",      pstate.log_labels )) != kOkRC )
       {
-        rc = cwLogError(kSyntaxErrorRC,"The instance cfg. '%s' missing: 'type'.",pstate.inst_label);
+        rc = cwLogError(kSyntaxErrorRC,"The proc instance cfg. '%s' missing: 'type'.",pstate.proc_label);
         goto errLabel;        
       }
 
-      // if an argument dict was given in the instance cfg
+      // if an argument dict was given in the proc instance cfg
       if( arg_dict != nullptr  )
       {
         bool rptErrFl = true;
@@ -1603,7 +1577,7 @@ namespace cw
         // verify the arg. dict is actually a dict.
         if( !arg_dict->is_dict() )
         {
-          cwLogError(kSyntaxErrorRC,"The instance argument dictionary on instance '%s' is not a dictionary.",pstate.inst_label);
+          cwLogError(kSyntaxErrorRC,"The proc instance argument dictionary on proc instance '%s' is not a dictionary.",pstate.proc_label);
           goto errLabel;
         }
         
@@ -1621,11 +1595,11 @@ namespace cw
           // if an explicit arg. label was given but it was not found
           if( rptErrFl )
           {
-            rc = cwLogError(kSyntaxErrorRC,"The argument cfg. '%s' was not found on instance cfg. '%s'.",pstate.arg_label,pstate.inst_label);
+            rc = cwLogError(kSyntaxErrorRC,"The argument cfg. '%s' was not found on proc instance cfg. '%s'.",pstate.arg_label,pstate.proc_label);
             goto errLabel;
           }
 
-          // no explicit arg. label was given - make arg_dict the instance arg cfg.
+          // no explicit arg. label was given - make arg_dict the proc instance arg cfg.
           pstate.arg_cfg = arg_dict;
           pstate.arg_label = nullptr;
         }        
@@ -1633,7 +1607,7 @@ namespace cw
 
     errLabel:
       if( rc != kOkRC )
-        rc = cwLogError(kSyntaxErrorRC,"Configuration parsing failed on instance: '%s'.", cwStringNullGuard(pstate.inst_label) );
+        rc = cwLogError(kSyntaxErrorRC,"Configuration parsing failed on proc instance: '%s'.", cwStringNullGuard(pstate.proc_label) );
       
       return rc;
     }
@@ -1645,7 +1619,7 @@ namespace cw
       mem::release(pstate.in_array);
     }
 
-    // Count of proc instances which exist in the network with a given class.
+    // Count of proc proc instances which exist in the network with a given class.
     unsigned _poly_copy_count( const network_t& net, const char* proc_clas_label )
     {
       unsigned n = 0;
@@ -1656,153 +1630,153 @@ namespace cw
       return n;
     }
 
-    rc_t _create_instance( flow_t*         p,
-                           const object_t* proc_inst_cfg,
-                           unsigned        sfx_id,
-                           network_t&      net,
-                           variable_t*     proxyVarL,
-                           instance_t*&    inst_ref )
+    rc_t _create_proc_instance( flow_t*         p,
+                                const object_t* proc_inst_cfg,
+                                unsigned        sfx_id,
+                                network_t&      net,
+                                variable_t*     proxyVarL,
+                                proc_t*&    proc_ref )
     {
       rc_t                    rc         = kOkRC;
       proc_inst_parse_state_t pstate     = {};
-      instance_t*             inst       = nullptr;
+      proc_t*             proc       = nullptr;
       class_desc_t*           class_desc = nullptr;
 
-      inst_ref = nullptr;
+      proc_ref = nullptr;
 
-      // parse the instance configuration 
+      // parse the proc instance configuration 
       if((rc = _parse_proc_inst_cfg( net, proc_inst_cfg, sfx_id, pstate )) != kOkRC )
         goto errLabel;
       
       // locate the proc class desc
-      if(( class_desc = class_desc_find(p,pstate.inst_clas_label)) == nullptr )
+      if(( class_desc = class_desc_find(p,pstate.proc_clas_label)) == nullptr )
       {
-        rc = cwLogError(kSyntaxErrorRC,"The flow class '%s' was not found.",cwStringNullGuard(pstate.inst_clas_label));
+        rc = cwLogError(kSyntaxErrorRC,"The flow class '%s' was not found.",cwStringNullGuard(pstate.proc_clas_label));
         goto errLabel;
       }
 
-      // if the poly instance count has been exceeded for this proc inst class ...
-      if(class_desc->polyLimitN > 0 && _poly_copy_count(net,pstate.inst_clas_label) >= class_desc->polyLimitN )
+      // if the poly proc instance count has been exceeded for this proc proc class ...
+      if(class_desc->polyLimitN > 0 && _poly_copy_count(net,pstate.proc_clas_label) >= class_desc->polyLimitN )
       {
         // ... then silently skip this instantiation
-        cwLogDebug("The poly class copy count has been exceeded for '%s' - skipping instantiation of sfx_id:%i.",pstate.inst_label,sfx_id);
+        cwLogDebug("The poly class copy count has been exceeded for '%s' - skipping instantiation of sfx_id:%i.",pstate.proc_label,sfx_id);
         goto errLabel;
       }
       
-      // instantiate the instance
-      inst = mem::allocZ<instance_t>();
+      // instantiate the proc instance
+      proc = mem::allocZ<proc_t>();
 
-      inst->ctx           = p;
-      inst->label         = mem::duplStr(pstate.inst_label);
-      inst->label_sfx_id  = sfx_id;
-      inst->proc_cfg      = proc_inst_cfg->pair_value();
-      inst->arg_label     = pstate.arg_label;
-      inst->arg_cfg       = pstate.arg_cfg;
-      inst->class_desc    = class_desc;
-      inst->net           = &net;
+      proc->ctx           = p;
+      proc->label         = mem::duplStr(pstate.proc_label);
+      proc->label_sfx_id  = sfx_id;
+      proc->proc_cfg      = proc_inst_cfg->pair_value();
+      proc->arg_label     = pstate.arg_label;
+      proc->arg_cfg       = pstate.arg_cfg;
+      proc->class_desc    = class_desc;
+      proc->net           = &net;
 
-      // parse the in-list ,fill in pstate.in_array, and create var instances for var's referenced by in-list
-      if((rc = _parse_in_list( net, inst, proxyVarL, pstate )) != kOkRC )
+      // parse the in-list ,fill in pstate.in_array, and create var proc instances for var's referenced by in-list
+      if((rc = _parse_in_list( net, proc, proxyVarL, pstate )) != kOkRC )
       {
-        rc = cwLogError(rc,"in-list parse failed on proc instance '%s:%i'.",cwStringNullGuard(inst->label),sfx_id);
+        rc = cwLogError(rc,"in-list parse failed on proc proc instance '%s:%i'.",cwStringNullGuard(proc->label),sfx_id);
         goto errLabel;
       }
 
-      // create the vars that are connected to the wrapper proxy vars
-      if((rc = _create_proxied_vars( inst, proxyVarL )) != kOkRC )
+      // create the vars that are connected to the proxy vars
+      if((rc = _create_proxied_vars( proc, proxyVarL )) != kOkRC )
       {
-        rc = cwLogError(rc,"Proxy vars create failed on proc instance '%s:%i'.",cwStringNullGuard(inst->label),sfx_id);
+        rc = cwLogError(rc,"Proxy vars create failed on proc proc instance '%s:%i'.",cwStringNullGuard(proc->label),sfx_id);
         goto errLabel;
       }
 
       // Instantiate all the variables in the class description - that were not already created in _parse_in_list()
       for(var_desc_t* vd=class_desc->varDescL; vd!=nullptr; vd=vd->link)
-        if( !_is_var_inst_already_created( inst, vd->label, pstate ) && cwIsNotFlag(vd->type,kRuntimeTFl) )
+        if( !_is_var_proc_already_created( proc, vd->label, pstate ) && cwIsNotFlag(vd->type,kRuntimeTFl) )
         {
           variable_t* var = nullptr;        
-          if((rc = var_create( inst, vd->label, kBaseSfxId, kInvalidId, kAnyChIdx, vd->val_cfg, kInvalidTFl, var )) != kOkRC )
+          if((rc = var_create( proc, vd->label, kBaseSfxId, kInvalidId, kAnyChIdx, vd->val_cfg, kInvalidTFl, var )) != kOkRC )
             goto errLabel;
         }
 
-      // All the variables that can be used by this instance have now been created
+      // All the variables that can be used by this proc instance have now been created
       // and the chIdx of each variable is set to 'any'.
       
       // If a 'preset' field was included in the class cfg then apply the specified class preset
       if( pstate.preset_labels != nullptr )      
-        if((rc = _class_apply_presets(inst, pstate.preset_labels )) != kOkRC )
+        if((rc = _class_apply_presets(proc, pstate.preset_labels )) != kOkRC )
           goto errLabel;
 
       // All the class presets values have now been set and those variables
       // that were expressed with a list have numeric channel indexes assigned.
 
-      // Apply the proc instance 'args:{}' values.
+      // Apply the proc proc instance 'args:{}' values.
       if( pstate.arg_cfg != nullptr )
       {
-        if((rc = _proc_inst_args_channelize_vars( inst, pstate.arg_label, pstate.arg_cfg )) != kOkRC )
+        if((rc = _proc_inst_args_channelize_vars( proc, pstate.arg_label, pstate.arg_cfg )) != kOkRC )
           goto errLabel;
       }
       
-      // All the instance arg values have now been set and those variables
+      // All the proc instance arg values have now been set and those variables
       // that were expressed with a list have numeric channel indexes assigned.
 
 
       // TODO: Should the 'all' variable be removed for variables that have numeric channel indexes?
 
       // Connect the in-list variables to their sources.
-      if((rc = _connect_in_vars(net, inst, pstate)) != kOkRC )
+      if((rc = _connect_in_vars(net, proc, pstate)) != kOkRC )
       {
         rc = cwLogError(rc,"Input connection processing failed.");
         goto errLabel;
       }
 
-      // Connect the wrapped vars in this subnet proc
-      if((rc = _connect_wrapped_vars( inst, proxyVarL )) != kOkRC )
+      // Connect the proxied vars in this subnet proc
+      if((rc = _connect_proxy_vars( proc, proxyVarL )) != kOkRC )
       {
-        rc = cwLogError(rc,"Wrapped connection processing failed.");
+        rc = cwLogError(rc,"Proxy connection processing failed.");
         goto errLabel;
       }
 
       
-      // Complete the instantiation of the proc instance by calling the custom instance creation function.
+      // Complete the instantiation of the proc proc instance by calling the custom proc instance creation function.
 
-      // Call the custom instance create() function.
-      if((rc = class_desc->members->create( inst )) != kOkRC )
+      // Call the custom proc instance create() function.
+      if((rc = class_desc->members->create( proc )) != kOkRC )
       {
         rc = cwLogError(kInvalidArgRC,"Custom instantiation failed." );
         goto errLabel;
       }
 
-      // Create the instance->varMap[] lookup array
-      if((rc =_create_instance_var_map( inst )) != kOkRC )
+      // Create the proc instance->varMap[] lookup array
+      if((rc =_create_proc_var_map( proc )) != kOkRC )
       {
         rc = cwLogError(rc,"Variable map creation failed.");
         goto errLabel;
       }
 
       // the custom creation function may have added channels to in-list vars fix up those connections here.
-      //_complete_input_connections(inst);
+      //_complete_input_connections(proc);
 
-      // set the log flags again so that vars created by the instance can be included in the log output
-      if((rc = _set_log_flags(inst,pstate.log_labels)) != kOkRC )
+      // set the log flags again so that vars created by the proc instance can be included in the log output
+      if((rc = _set_log_flags(proc,pstate.log_labels)) != kOkRC )
         goto errLabel;
       
-      // call the 'value()' function to inform the instance of the current value of all of it's variables.
-      if((rc = _call_value_func_on_all_variables( inst )) != kOkRC )
+      // call the 'value()' function to inform the proc instance of the current value of all of it's variables.
+      if((rc = _call_value_func_on_all_variables( proc )) != kOkRC )
         goto errLabel;
 
-      if((rc = instance_validate(inst)) != kOkRC )
+      if((rc = proc_validate(proc)) != kOkRC )
       {
-        rc = cwLogError(rc,"Proc instance validation failed.");
+        rc = cwLogError(rc,"Proc proc instance validation failed.");
         goto errLabel;
       }
       
-      inst_ref = inst;
+      proc_ref = proc;
       
     errLabel:
       if( rc != kOkRC )
       {
-        rc = cwLogError(rc,"Proc instantiation failed on '%s:%i'.",cwStringNullGuard(pstate.inst_label),sfx_id);
-        _destroy_inst(inst);
+        rc = cwLogError(rc,"Proc instantiation failed on '%s:%i'.",cwStringNullGuard(pstate.proc_label),sfx_id);
+        proc_destroy(proc);
       }
       
       _destroy_pstate(pstate);
@@ -2018,7 +1992,7 @@ namespace cw
       return result;
     }
     
-    rc_t _find_network_preset_instance_pair( network_t& net, const char* preset_label, const char* instance_label, const object_t*& preset_val_ref )
+    rc_t _find_network_preset_proc_pair( network_t& net, const char* preset_label, const char* proc_label, const object_t*& preset_val_ref )
     {
       rc_t rc = kOkRC;
       const object_t* net_preset_pair = nullptr;
@@ -2032,20 +2006,20 @@ namespace cw
         goto errLabel;
       }
 
-      // locate the instance matching 'instance_label'.
+      // locate the proc instance matching 'proc_label'.
       for(unsigned i=0; i<net_preset_pair->child_count(); ++i)
       {
-        const object_t* inst_pair;
-        if((inst_pair = net_preset_pair->child_ele(i)) != nullptr && inst_pair->is_pair() && textIsEqual(inst_pair->pair_label(),instance_label) )
+        const object_t* proc_pair;
+        if((proc_pair = net_preset_pair->child_ele(i)) != nullptr && proc_pair->is_pair() && textIsEqual(proc_pair->pair_label(),proc_label) )
         {      
 
-          preset_val_ref = inst_pair->pair_value();
+          preset_val_ref = proc_pair->pair_value();
 
           goto errLabel;
         }
       }
   
-      rc = cwLogError(kInvalidArgRC,"The preset instance label '%s' was not found.",cwStringNullGuard(preset_label));
+      rc = cwLogError(kInvalidArgRC,"The preset proc instance label '%s' was not found.",cwStringNullGuard(preset_label));
   
     errLabel:
       return rc;
@@ -2088,7 +2062,7 @@ cw::rc_t cw::flow::network_create( flow_t*            p,
   }
 
   net.proc_arrayAllocN = polyCnt * net.procsCfg->child_count();
-  net.proc_array       = mem::allocZ<instance_t*>(net.proc_arrayAllocN);
+  net.proc_array       = mem::allocZ<proc_t*>(net.proc_arrayAllocN);
   net.proc_arrayN      = 0;
 
   for(unsigned i=0; i<outerN; ++i)
@@ -2104,8 +2078,8 @@ cw::rc_t cw::flow::network_create( flow_t*            p,
 
         assert(net.proc_arrayN < net.proc_arrayAllocN );
         
-        // create the proc instance
-        if( (rc= _create_instance( p, proc_cfg, sfx_id, net, proxyVarL, net.proc_array[net.proc_arrayN] ) ) != kOkRC )
+        // create the proc proc instance
+        if( (rc= _create_proc_instance( p, proc_cfg, sfx_id, net, proxyVarL, net.proc_array[net.proc_arrayN] ) ) != kOkRC )
         {
           //rc = cwLogError(rc,"The instantiation at proc index %i is invalid.",net.proc_arrayN);
           goto errLabel;
@@ -2162,30 +2136,30 @@ cw::rc_t cw::flow::exec_cycle( network_t& net )
   return rc;
 }
 
-cw::rc_t cw::flow::get_variable( network_t& net, const char* inst_label, const char* var_label, unsigned chIdx, instance_t*& instPtrRef, variable_t*& varPtrRef )
+cw::rc_t cw::flow::get_variable( network_t& net, const char* proc_label, const char* var_label, unsigned chIdx, proc_t*& procPtrRef, variable_t*& varPtrRef )
 {
   rc_t        rc   = kOkRC;
-  instance_t* inst = nullptr;
+  proc_t* proc = nullptr;
   variable_t* var  = nullptr;
 
   varPtrRef = nullptr;
-  instPtrRef = nullptr;
+  procPtrRef = nullptr;
 
-  // locate the proc instance
-  if((inst = instance_find(net,inst_label,kBaseSfxId)) == nullptr )
+  // locate the proc proc instance
+  if((proc = proc_find(net,proc_label,kBaseSfxId)) == nullptr )
   {
-    rc = cwLogError(kInvalidIdRC,"Unknown proc instance label '%s'.", cwStringNullGuard(inst_label));
+    rc = cwLogError(kInvalidIdRC,"Unknown proc proc instance label '%s'.", cwStringNullGuard(proc_label));
     goto errLabel;
   }
 
   // locate the variable
-  if((rc = var_find( inst, var_label, kBaseSfxId, chIdx, var)) != kOkRC )
+  if((rc = var_find( proc, var_label, kBaseSfxId, chIdx, var)) != kOkRC )
   {
-    rc = cwLogError(kInvalidArgRC,"The variable '%s' could not be found on the proc instance '%s'.",cwStringNullGuard(var_label),cwStringNullGuard(inst_label));
+    rc = cwLogError(kInvalidArgRC,"The variable '%s' could not be found on the proc proc instance '%s'.",cwStringNullGuard(var_label),cwStringNullGuard(proc_label));
     goto errLabel;
   }
 
-  instPtrRef = inst;
+  procPtrRef = proc;
   varPtrRef = var;
       
 errLabel:
@@ -2206,20 +2180,20 @@ cw::rc_t cw::flow::network_apply_preset( network_t& net, const char* presetLabel
     goto errLabel;
   }
 
-  // for each instance in the preset
+  // for each proc instance in the preset
   for(unsigned i=0; i<net_preset_value->child_count(); ++i)
   {
-    // get the instance label/value pair
+    // get the proc instance label/value pair
     if((preset_pair = net_preset_value->child_ele(i)) != nullptr && preset_pair->is_pair() )
     {
-      const char* inst_label = preset_pair->pair_label();
+      const char* proc_label = preset_pair->pair_label();
       const object_t* preset_value_cfg = preset_pair->pair_value();
-      instance_t* inst;
+      proc_t* proc;
 
-      // locate the instance
-      if((inst = instance_find(net,inst_label,proc_label_sfx_id)) == nullptr )
+      // locate the proc instance
+      if((proc = proc_find(net,proc_label,proc_label_sfx_id)) == nullptr )
       {
-        rc = cwLogError(kInvalidIdRC,"The network instance '%s' refered to in network preset '%s' could not be found.",inst_label,presetLabel);
+        rc = cwLogError(kInvalidIdRC,"The network proc instance '%s' refered to in network preset '%s' could not be found.",proc_label,presetLabel);
         goto errLabel;
       }
 
@@ -2228,23 +2202,23 @@ cw::rc_t cw::flow::network_apply_preset( network_t& net, const char* presetLabel
       {
         const char* class_preset_label;
         preset_value_cfg->value(class_preset_label);
-        _class_preset_channelize_vars(inst, class_preset_label );
+        _class_preset_channelize_vars(proc, class_preset_label );
       }
       else
       {
         // if the preset value is a dict then apply it directly
         if( preset_value_cfg->is_dict() )
         {
-          if((rc =  _preset_channelize_vars( inst, "network", presetLabel, preset_value_cfg )) != kOkRC )
+          if((rc =  _preset_channelize_vars( proc, "network", presetLabel, preset_value_cfg )) != kOkRC )
           {
-            rc = cwLogError(rc,"The preset  '%s' application failed on instance '%s'.", presetLabel, inst_label );
+            rc = cwLogError(rc,"The preset  '%s' application failed on proc instance '%s'.", presetLabel, proc_label );
             goto errLabel;
           }
           
         }
         else
         {
-          rc = cwLogError(kSyntaxErrorRC,"The network preset '%s' instance '%s' does not have a string or dictionary value.", presetLabel, inst_label );
+          rc = cwLogError(kSyntaxErrorRC,"The network preset '%s' proc instance '%s' does not have a string or dictionary value.", presetLabel, proc_label );
           goto errLabel;
         }
       }
@@ -2276,18 +2250,18 @@ cw::rc_t cw::flow::network_apply_dual_preset( network_t& net, const char* preset
     goto errLabel;
   }
 
-  // for each instance in the preset
+  // for each proc instance in the preset
   for(unsigned i=0; i<net_preset_value_0->child_count(); ++i)
   {
     const object_t* preset_pair_0      = net_preset_value_0->child_ele(i);
-    const char*     inst_label         = preset_pair_0->pair_label(); 
+    const char*     proc_label         = preset_pair_0->pair_label(); 
     const object_t* preset_value_cfg_0 = preset_pair_0->pair_value();
-    instance_t*     inst               = nullptr;
+    proc_t*     proc               = nullptr;
     const object_t* preset_value_cfg_1 = nullptr;
     const int two = 2;
     const char* class_preset_labelA[two];
     
-    // get the instance label/value pair
+    // get the proc instance label/value pair
     if((preset_pair_0 = net_preset_value_0->child_ele(i)) == nullptr || !preset_pair_0->is_pair() )
     {
       rc = cwLogError(kSyntaxErrorRC,"An invalid preset value pair was encountered in '%s'.",presetLabel_0);
@@ -2297,25 +2271,25 @@ cw::rc_t cw::flow::network_apply_dual_preset( network_t& net, const char* preset
     // verify that the preset value is a string or dict
     if( preset_pair_0->pair_value()==nullptr || (!preset_value_cfg_0->is_dict() && !preset_value_cfg_0->is_string() ))
     {
-      rc = cwLogError(kSyntaxErrorRC,"The preset value pair for instance '%s' in '%s' is not a 'dict' or 'string'.",inst_label,presetLabel_0);
+      rc = cwLogError(kSyntaxErrorRC,"The preset value pair for proc instance '%s' in '%s' is not a 'dict' or 'string'.",proc_label,presetLabel_0);
       goto errLabel;
     }
 
-    // locate the instance associated with the primary and secondary preset
-    if((inst = instance_find(net,inst_label,kBaseSfxId)) == nullptr )
+    // locate the proc instance associated with the primary and secondary preset
+    if((proc = proc_find(net,proc_label,kBaseSfxId)) == nullptr )
     {
-      rc = cwLogError(kInvalidIdRC,"The network instance '%s' refered to in network preset '%s' could not be found.",cwStringNullGuard(inst_label),cwStringNullGuard(presetLabel_0));
+      rc = cwLogError(kInvalidIdRC,"The network proc instance '%s' refered to in network preset '%s' could not be found.",cwStringNullGuard(proc_label),cwStringNullGuard(presetLabel_0));
       goto errLabel;
     }
             
-    // locate the second instance/preset value pair 
-    if((rc = _find_network_preset_instance_pair(net, presetLabel_1, inst_label, preset_value_cfg_1 )) != kOkRC )
+    // locate the second proc instance/preset value pair 
+    if((rc = _find_network_preset_proc_pair(net, presetLabel_1, proc_label, preset_value_cfg_1 )) != kOkRC )
     {
-      rc = cwLogError(kInvalidIdRC,"The second network instance '%s' refered to in network preset '%s' could not be found.",inst_label,presetLabel_1);
+      rc = cwLogError(kInvalidIdRC,"The second network proc instance '%s' refered to in network preset '%s' could not be found.",proc_label,presetLabel_1);
       goto errLabel;
     }
     
-    // TODO: We require that the instance presets both be of the same type: string or dict.
+    // TODO: We require that the proc instance presets both be of the same type: string or dict.
     // There's no good reason for this, as string's resolve to class dict presets anyway.
     // Fix this!
     if( !(preset_value_cfg_0->is_dict() == preset_value_cfg_1->is_dict() && preset_value_cfg_0->is_string() == preset_value_cfg_1->is_string()) )
@@ -2331,7 +2305,7 @@ cw::rc_t cw::flow::network_apply_dual_preset( network_t& net, const char* preset
     // if the preset value is a string then look it up in the class dictionary
     if( preset_value_cfg_0->is_string() )
     {
-      rc = _class_multi_preset_channelize_vars(inst, class_preset_labelA, two, coeff );        
+      rc = _class_multi_preset_channelize_vars(proc, class_preset_labelA, two, coeff );        
     }
     else
     {
@@ -2339,9 +2313,9 @@ cw::rc_t cw::flow::network_apply_dual_preset( network_t& net, const char* preset
         
       const object_t* preset_value_cfgA[] = { preset_value_cfg_0, preset_value_cfg_1};
                   
-      if((rc =  _multi_preset_channelize_vars( inst, "network", class_preset_labelA, preset_value_cfgA, two, coeff )) != kOkRC )
+      if((rc =  _multi_preset_channelize_vars( proc, "network", class_preset_labelA, preset_value_cfgA, two, coeff )) != kOkRC )
       {
-        rc = cwLogError(rc,"The dual preset  '%s':'%s' application failed on instance '%s'.", cwStringNullGuard(class_preset_labelA[0]), cwStringNullGuard(class_preset_labelA[1]), inst_label );
+        rc = cwLogError(rc,"The dual preset  '%s':'%s' application failed on proc instance '%s'.", cwStringNullGuard(class_preset_labelA[0]), cwStringNullGuard(class_preset_labelA[1]), proc_label );
         goto errLabel;
       }
     }

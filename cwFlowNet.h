@@ -25,13 +25,13 @@ namespace cw
     rc_t exec_cycle( network_t& net );
 
 
-    rc_t get_variable( network_t& net, const char* inst_label, const char* var_label, unsigned chIdx, instance_t*& instPtrRef, variable_t*& varPtrRef );
+    rc_t get_variable( network_t& net, const char* inst_label, const char* var_label, unsigned chIdx, proc_t*& instPtrRef, variable_t*& varPtrRef );
 
     template< typename T >
     rc_t set_variable_value( network_t& net, const char* inst_label, const char* var_label, unsigned chIdx, T value )
     {
       rc_t rc = kOkRC;
-      instance_t* inst = nullptr;
+      proc_t* inst = nullptr;
       variable_t* var = nullptr;
 
       // get the variable
@@ -53,7 +53,7 @@ namespace cw
     rc_t get_variable_value( network_t& net, const char* inst_label, const char* var_label, unsigned chIdx, T& valueRef )
     {
       rc_t rc = kOkRC;
-      instance_t* inst = nullptr;
+      proc_t* inst = nullptr;
       variable_t* var = nullptr;
 
       // get the variable 
