@@ -675,6 +675,7 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   bool            printClassDictFl = false;
   bool            printNetworkFl   = false;
   variable_t*     proxyVarL        = nullptr;
+  unsigned        maxCycleCount    = kInvalidCnt;
   
   if(( rc = destroy(hRef)) != kOkRC )
     return rc;
@@ -708,11 +709,12 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
 
   p->framesPerCycle = kDefaultFramesPerCycle;
   p->sample_rate    = kDefaultSampleRate;
-
+  p->maxCycleCount  = kInvalidCnt;
+  
   // parse the optional args
   if((rc = flowCfg->getv_opt("framesPerCycle",      p->framesPerCycle,
                             "sample_rate",          p->sample_rate,
-                            "maxCycleCount",        p->maxCycleCount,
+                            "maxCycleCount",        maxCycleCount,
                             "multiPriPresetProbFl", p->multiPriPresetProbFl,
                             "multiSecPresetProbFl", p->multiSecPresetProbFl,
                             "multiPresetInterpFl",  p->multiPresetInterpFl,
@@ -722,6 +724,9 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
     rc = cwLogError(kSyntaxErrorRC,"Error parsing the optional flow configuration parameters.");
     goto errLabel;
   }
+
+  if( maxCycleCount != kInvalidCnt )
+    p->maxCycleCount = maxCycleCount;
 
   for(unsigned i=0; i<deviceN; ++i)
     if( deviceA[i].typeId == kAudioDevTypeId )
@@ -750,6 +755,7 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   if( printNetworkFl )
     network_print(p->net);
 
+  p->isInRuntimeFl = true;
   hRef.set(p);
   
  errLabel:
@@ -806,23 +812,21 @@ cw::rc_t cw::flow::exec(    handle_t h )
   rc_t    rc = kOkRC;
   flow_t* p  = _handleToPtr(h);
 
-  while( true )
+  for(; (p->maxCycleCount==kInvalidCnt || (p->maxCycleCount!=kInvalidCnt && p->cycleIndex < p->maxCycleCount)) && rc == kOkRC; p->cycleIndex++ )
   {  
     rc = exec_cycle(p->net);
 
+    // kEofRC indicates that the network asked to terminate
     if( rc == kEofRC )
     {
       rc = kOkRC;
       break;
     }    
     
-    p->cycleIndex += 1;
-    if( p->maxCycleCount > 0 && p->cycleIndex >= p->maxCycleCount )
-    {
-       cwLogInfo("'maxCycleCnt' reached: %i. Shutting down flow.",p->maxCycleCount);
-      break;
-    }
   }
+
+  if( p->maxCycleCount != kInvalidCnt && p->cycleIndex >= p->maxCycleCount )
+    cwLogInfo("'maxCycleCnt' reached: %i. Shutting down flow.",p->maxCycleCount);
 
   return rc;
 }
