@@ -581,7 +581,8 @@ Syntax:
 -------
 The 'in' list has the follow syntax:
 `in: { in-stmt* }`
-`in-stmt`     -> `in-var-id`":" `src_expr`
+`in-stmt`     -> `in_expr`":" `src_expr`
+`in-expr`     -> `in-proc-id`".`in-var-id`
 `src-expr`    -> `src-proc-id`"."`src-var-id`
 `in-var-id`   -> `var-id`
 `src-proc-id` -> `var-id`
@@ -594,6 +595,20 @@ The 'in' list has the follow syntax:
 
 Semantics:
 ----------
+
+### `in-proc-id`
+
+- The `in-proc-id` is only used when the in-stmt
+is iterating over the in-proc sfx-id. 
+This precludes iterating over the in-var, as discussed below.
+
+In this case the only useful option is to set the 'var-id` to `_`
+as the in-proc is taken as the the proc which the
+in-stmt belongs to.
+
+The iterating source and/or var sfx-id are then set
+to the current proc sfx-id + source `pri-int`.
+
 
 ### `in-var-id`
 
@@ -911,19 +926,31 @@ Add proc instance field: `log:{ var_label_0:0, var_label_1:0 } `
 Next:
 
 - Complete subnets:
-	+ subnet var desc's should be the same as non+subnet vars but also include the 'proxy' field.
+	+ Subnets should have presets written in terms of the subnet vars rather than the network vars
+	or the value application needs to follow the internal variable src_var back to the proxy var.
+
+	+ write a paragraph in the flow_doc.md about overall approach taken to subnet implementation.
+	  Subnets are implemented in the following phases:
+	  - During program initialization the subnet cfg files is scanned and the
+	  proxy vars for each subnet are used to create `class_desc_t` records for each subnet.
+	  - When the subnet is instantiated the proxy vars are instantiated first.
+	  - Then the internal network is instantiated.
+
+	+ DONE: subnet var desc's should be the same as non+subnet vars but also include the 'proxy' field.
 	In particular they should get default values.
 	If a var desc is part of a subnet then it must have a proxy.
 	The output variables of var desc's must have the 'out' attribute
 
-	+ subnets should have presets written in terms of the subnet vars rather than the network vars
 
-	+ improve the subnet creating code by using consistent naming + use proxy or wrap but not both
+	+ DONE: improve the subnet creating code by using consistent naming + use proxy or wrap but not both
 
-	+ improve code comments on subnet creation
+	+ DONE: improve code comments on subnet creation
 
-	+ write a paragraph in the flow_doc.md about overall approach taken to subnet implementation.
-	
+- Implement feedback	
+- Audio inputs should be able to be initialized with a channel count and srate without actually connecting an input.
+  This will allow feedback connections to be attached to them at a later stage of the network 
+  instantiation.
+- Implement subnet preset application.	
 - Implement the var attributes and attribute checking.
 - Implement dynamic loading of procs.
 - Implement a debug mode to aid in building networks and subnets (or is logging good enough)
@@ -936,22 +963,10 @@ Next:
   One way around this is to instantiate them with an initial set of inputs but then
   allow those inputs to be replaced by a later connection.
   
-- DONE: Fix up the coding language - change the use of `instance_t` to `proc_t` and `inst` to `proc`, change use of `ctx` in cwFlowProc
-
-
-
 
 BUGS:
 - The counter modulo mode is not working as expected.
 
-- There is no way for a proc in a poly context to use it's poly channel number to 
-select a mult variable.  For example in an osc in a poly has no way to select
-the frequency of the osc by conneting to a non-poly proc - like a list.
-Consider: 
-1. Use a difference 'in' statememt (e.g. 'poly-in' but the 
-   same syntax used for connecting 'mult' variables.)
-2. Include the proc name in the 'in' var to indicate a poly index is being iterated
-   e.g. `lfo: { class:sine_tone, in:{ osc_.dc:list.value_ } }` 
 
 
 Host Environments:
@@ -967,6 +982,13 @@ Host Environments:
 
 - DONE: Turn on variable 'broadcast'.  Why was it turned off? ... maybe multiple updates?
 
-```
-	
-```
+- DONE: There is no way for a proc in a poly context to use it's poly channel number to 
+select a mult variable.  For example in an osc in a poly has no way to select
+the frequency of the osc by conneting to a non-poly proc - like a list.
+Consider: 
+1. Use a difference 'in' statememt (e.g. 'poly-in' but the 
+   same syntax used for connecting 'mult' variables.)
+2. Include the proc name in the 'in' var to indicate a poly index is being iterated
+   e.g. `lfo: { class:sine_tone, in:{ osc_.dc:list.value_ } }` 
+
+- DONE: Fix up the coding language - change the use of `instance_t` to `proc_t` and `inst` to `proc`, change use of `ctx` in cwFlowProc
