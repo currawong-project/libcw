@@ -31,6 +31,11 @@ and audio processing networks and the application of network state data.
 <label> : { 'class':<class>, "in":{<in_stmt>*}, "preset":<class_preset_label>, "log":<log_dict> "argLabel":<arg_preset_label>, "args":<args_dict> }
 ```
 
+Proc instance and variabel labels consist of two parts a leading identifier and a
+numeric suffix.  The numeric suffix is referred to as the _label_sfx_id_.
+A proc or variable label without a numeric suffix is automatically assigned the label suffix 0.
+
+
 __args__ : This is a dictionary of named variable value records. 
 __preset__ : This string references a class preset to use for initializing this proc instance.
 __argLabel__ : This string references an `args` dictionary parameter set to be applied after the __preset__ class preset.
