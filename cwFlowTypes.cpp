@@ -688,7 +688,7 @@ namespace cw
           return kOkRC;
         }
       }
-      return cwLogError(kInvalidIdRC,"The variable matching id:%i ch:%i on procance '%s:%i' could not be found.", vid, chIdx, proc->label, proc->label_sfx_id);
+      return cwLogError(kInvalidIdRC,"The variable matching id:%i ch:%i on proc '%s:%i' could not be found.", vid, chIdx, proc->label, proc->label_sfx_id);
     }
 
     // Variable lookup: Exact match on label and chIdx
@@ -715,10 +715,10 @@ namespace cw
     rc_t _validate_var_assignment( variable_t* var, unsigned typeFl )
     {
       if( cwIsFlag(var->varDesc->flags, kSrcVarDescFl ) )
-        return cwLogError(kInvalidStateRC, "The variable '%s:%i' on procance '%s:%i' cannot be set because it is a 'src' variable.", var->label, var->label_sfx_id, var->proc->label,var->proc->label_sfx_id);
+        return cwLogError(kInvalidStateRC, "The variable '%s:%i' on proc '%s:%i' cannot be set because it is a 'src' variable.", var->label, var->label_sfx_id, var->proc->label,var->proc->label_sfx_id);
       /*
       if( !cwIsFlag(var->varDesc->type, typeFl ) )
-        return cwLogError(kTypeMismatchRC, "The variable '%s:%i' on procance '%s:%i' is not a  '%s'.", var->label, var->label_sfx_id, var->proc->label, var->proc->label_sfx_id, _typeFlagToLabel( typeFl ));
+        return cwLogError(kTypeMismatchRC, "The variable '%s:%i' on proc '%s:%i' is not a  '%s'.", var->label, var->label_sfx_id, var->proc->label, var->proc->label_sfx_id, _typeFlagToLabel( typeFl ));
       */
       
       return kOkRC;
@@ -840,12 +840,12 @@ namespace cw
       var->value           = var->local_value + next_local_value_idx;
       var->local_value_idx = next_local_value_idx;
       
-      // If the procance is fully initialized ...
+      // If the proc is fully initialized ...
       if( var->proc->varMapA != nullptr )
       {
         // ... then inform the proc. that the value changed
         // Note 1: We don't want to this call to occur if we are inside or prior to 'proc.create()' 
-        // call because calls' to 'proc.value()' will see the procance in a incomplete state)
+        // call because calls' to 'proc.value()' will see the proc in a incomplete state)
         // Note 2: If this call returns an error then the value assignment is cancelled
         // and the value does not change.
         rc = var_call_custom_value_func( var );
@@ -881,7 +881,7 @@ namespace cw
       // if this variable is fed from the output of an external proc - then it's local value cannot be set
       if(is_connected_to_source_proc(var)   )
       {
-        return cwLogError(kInvalidStateRC,"Cannot set the value on a connected variables.");
+        return cwLogError(kInvalidStateRC,"Cannot set the value on the connected variable %s:%i-%s:%i.",var->proc->label,var->proc->label_sfx_id,var->label,var->label_sfx_id);
       }
 
       // if this assignment targets a specific channel ...
@@ -949,7 +949,7 @@ namespace cw
 
       // verify that the map idx is valid
       if( idx >= proc->varMapN )
-        return cwLogError(kAssertFailRC,"The variable map positioning location %i is out of the range %i on procance '%s:%i' vid:%i ch:%i.", idx, proc->varMapN, proc->label,proc->label_sfx_id,vid,chIdx);
+        return cwLogError(kAssertFailRC,"The variable map positioning location %i is out of the range %i on proc '%s:%i' vid:%i ch:%i.", idx, proc->varMapN, proc->label,proc->label_sfx_id,vid,chIdx);
 
       idxRef = idx;
   
@@ -1043,7 +1043,7 @@ namespace cw
       // if this var already exists - it can't be created again
       if((var = _var_find_on_label_and_ch(proc,var_label, sfx_id, chIdx)) != nullptr )
       {
-        rc = cwLogError(kInvalidStateRC,"The variable '%s:%i' ch:%i has already been created on the procance: '%s:%i'.",var_label,sfx_id,chIdx,proc->label,proc->label_sfx_id);
+        rc = cwLogError(kInvalidStateRC,"The variable '%s:%i' ch:%i has already been created on the proc: '%s:%i'.",var_label,sfx_id,chIdx,proc->label,proc->label_sfx_id);
         goto errLabel;
       }
 
@@ -1417,13 +1417,13 @@ void cw::flow::class_dict_print( flow_t* p )
 
 void cw::flow::network_print( const network_t& net )
 {
-  // for each procance in the network
+  // for each proc in the network
   for(unsigned i=0; i<net.proc_arrayN; ++i)
   {
     proc_t* proc = net.proc_array[i];
     proc_print(proc);
 
-    // if this procance has an  internal network
+    // if this proc has an  internal network
     if( proc->internal_net != nullptr )
     {
       printf("------- Begin Nested Network: %s -------\n",cwStringNullGuard(proc->label));
@@ -1520,7 +1520,7 @@ cw::rc_t cw::flow::proc_find( network_t& net, const char* proc_label, unsigned s
   if((procPtrRef = proc_find(net,proc_label,sfx_id)) != nullptr )
     return rc;
       
-  return cwLogError(kInvalidArgRC,"The procance '%s:%i' was not found.", proc_label, sfx_id );
+  return cwLogError(kInvalidArgRC,"The proc '%s:%i' was not found.", proc_label, sfx_id );
 }
 
 cw::flow::external_device_t* cw::flow::external_device_find( flow_t* p, const char* device_label, unsigned typeId, unsigned inOrOutFl, const char* midiPortLabel )
@@ -1698,7 +1698,7 @@ cw::rc_t  cw::flow::var_channelize( proc_t* proc, const char* var_label, unsigne
   
  errLabel:
   if( rc != kOkRC )
-    rc = cwLogError(rc,"Channelize failed for variable '%s:%i' on procance '%s:%i' ch:%i.", var_label, sfx_id, proc->label, proc->label_sfx_id, chIdx );
+    rc = cwLogError(rc,"Channelize failed for variable '%s:%i' on proc '%s:%i' ch:%i.", var_label, sfx_id, proc->label, proc->label_sfx_id, chIdx );
   
   return rc;
 }
@@ -1821,7 +1821,7 @@ cw::rc_t cw::flow::var_find( proc_t* proc, unsigned vid, unsigned chIdx, variabl
       
   varRef = nullptr;
 
-  // if the varMapA[] has not yet been formed (we are inside the procance constructor) then do a slow lookup of the variable
+  // if the varMapA[] has not yet been formed (we are inside the proc constructor) then do a slow lookup of the variable
   if( proc->varMapA == nullptr )
   {
     if((rc = _var_find_on_vid_and_ch(proc,vid,chIdx,var)) != kOkRC )
@@ -1834,7 +1834,7 @@ cw::rc_t cw::flow::var_find( proc_t* proc, unsigned vid, unsigned chIdx, variabl
       var = proc->varMapA[idx];
     else
     {
-      rc = cwLogError(kInvalidIdRC,"The index of variable vid:%i chIdx:%i on procance '%s:%i' could not be calculated and the variable value could not be retrieved.", vid, chIdx, proc->label,proc->label_sfx_id);
+      rc = cwLogError(kInvalidIdRC,"The index of variable vid:%i chIdx:%i on proc '%s:%i' could not be calculated and the variable value could not be retrieved.", vid, chIdx, proc->label,proc->label_sfx_id);
       goto errLabel;
     }
   }
@@ -1861,7 +1861,7 @@ cw::rc_t cw::flow::var_find( proc_t* proc, const char* label, unsigned sfx_id, u
     return kOkRC;
   }
 
-  return cwLogError(kInvalidIdRC,"The procance '%s:%i' does not have a variable named '%s:%i'.", proc->label, proc->label_sfx_id, label, sfx_id );  
+  return cwLogError(kInvalidIdRC,"The proc '%s:%i' does not have a variable named '%s:%i'.", proc->label, proc->label_sfx_id, label, sfx_id );  
 }
 
 cw::rc_t cw::flow::var_find( proc_t* proc, const char* label, unsigned sfx_id, unsigned chIdx, const variable_t*& vRef )
@@ -1892,7 +1892,7 @@ cw::rc_t  cw::flow::var_channel_count( const variable_t* var, unsigned& chCntRef
   
   if((rc = var_find( var->proc, var->label, var->label_sfx_id, kAnyChIdx, v )) != kOkRC )
   {
-    rc = cwLogError(kInvalidStateRC,"The base channel variable procance could not be found for the variable '%s:%i.%s:%i'.",var->proc->label,var->proc->label_sfx_id,var->label,var->label_sfx_id);
+    rc = cwLogError(kInvalidStateRC,"The base channel variable proc could not be found for the variable '%s:%i.%s:%i'.",var->proc->label,var->proc->label_sfx_id,var->label,var->label_sfx_id);
     goto errLabel;
   }
 
@@ -1912,7 +1912,7 @@ cw::rc_t cw::flow::var_register( proc_t* proc, const char* var_label, unsigned s
 
   varRef = nullptr;
 
-  // TODO: check for duplicate 'vid'-'chIdx' pairs on this procance
+  // TODO: check for duplicate 'vid'-'chIdx' pairs on this proc
   // The concatenation of 'vid' and 'chIdx' should be unique 
 
   // if an exact match to label/chIdx was found
@@ -1935,11 +1935,11 @@ cw::rc_t cw::flow::var_register( proc_t* proc, const char* var_label, unsigned s
   if((var = _var_find_on_label_and_ch(proc,var_label,sfx_id,kAnyChIdx)) != nullptr )
     var->vid = vid;
   else
-    rc = cwLogError(kInvalidStateRC,"The variable '%s:%i' procance '%s:%i' has no base channel.", var_label, sfx_id, proc->label, proc->label_sfx_id, chIdx);
+    rc = cwLogError(kInvalidStateRC,"The variable '%s:%i' proc '%s:%i' has no base channel.", var_label, sfx_id, proc->label, proc->label_sfx_id, chIdx);
   
  errLabel:
   if( rc != kOkRC )
-    rc = cwLogError(rc,"Registration failed on variable '%s:%i' procance '%s:%i' ch: %i.", var_label, sfx_id, proc->label, proc->label_sfx_id, chIdx);
+    rc = cwLogError(rc,"Registration failed on variable '%s:%i' proc '%s:%i' ch: %i.", var_label, sfx_id, proc->label, proc->label_sfx_id, chIdx);
   
   return rc;
 }
@@ -1991,6 +1991,15 @@ void cw::flow::var_connect( variable_t* src_var, variable_t* in_var )
   
 }
 
+unsigned  cw::flow::var_mult_count( proc_t* proc, const char* var_label )
+{
+  unsigned n = 0;
+  for(variable_t* var=proc->varL; var!=nullptr; var=var->var_link)
+    if( textIsEqual(var->label,var_label) )
+      ++n;
+  
+  return n;
+}
 
 cw::rc_t  cw::flow::var_mult_sfx_id_array( proc_t* proc, const char* var_label, unsigned* idA, unsigned idAllocN, unsigned& idN_ref )
 {
@@ -2041,7 +2050,7 @@ cw::rc_t        cw::flow::var_register_and_set( proc_t* proc, const char* var_la
   abuf_t* abuf;
   
   if((abuf = abuf_create( srate, chN, frameN )) == nullptr )
-    return cwLogError(kOpFailRC,"abuf create failed on procance:'%s:%i' variable:'%s:%i'.", proc->label, proc->label_sfx_id, var_label,sfx_id);
+    return cwLogError(kOpFailRC,"abuf create failed on proc:'%s:%i' variable:'%s:%i'.", proc->label, proc->label_sfx_id, var_label,sfx_id);
 
   if((rc = _var_register_and_set( proc, var_label, sfx_id, vid, chIdx, abuf )) != kOkRC )
     abuf_destroy(abuf);
@@ -2054,7 +2063,7 @@ cw::rc_t cw::flow::var_register_and_set( proc_t* proc, const char* var_label, un
   rc_t rc = kOkRC;
   fbuf_t* fbuf;
   if((fbuf = fbuf_create( srate, chN, maxBinN_V, binN_V, hopSmpN_V, magV, phsV, hzV )) == nullptr )
-    return cwLogError(kOpFailRC,"fbuf create failed on procance:'%s:%i' variable:'%s:%i'.", proc->label, proc->label_sfx_id, var_label,sfx_id);
+    return cwLogError(kOpFailRC,"fbuf create failed on proc:'%s:%i' variable:'%s:%i'.", proc->label, proc->label_sfx_id, var_label,sfx_id);
 
   if((rc = _var_register_and_set( proc, var_label, sfx_id, vid, chIdx, fbuf )) != kOkRC )
     fbuf_destroy(fbuf);
@@ -2068,7 +2077,7 @@ cw::rc_t        cw::flow::var_register_and_set( proc_t* proc, const char* var_la
   mbuf_t* mbuf;
   
   if((mbuf = mbuf_create(msgA,msgN)) == nullptr )
-    return cwLogError(kOpFailRC,"mbuf create failed on procance:'%s:%i' variable:'%s:%i'.", proc->label, proc->label_sfx_id, var_label, sfx_id);
+    return cwLogError(kOpFailRC,"mbuf create failed on proc:'%s:%i' variable:'%s:%i'.", proc->label, proc->label_sfx_id, var_label, sfx_id);
 
   if((rc = _var_register_and_set( proc, var_label, sfx_id, vid, chIdx, mbuf )) != kOkRC )
     mbuf_destroy(mbuf);
