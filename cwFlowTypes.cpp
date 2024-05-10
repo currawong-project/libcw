@@ -5,6 +5,7 @@
 #include "cwMath.h"
 #include "cwText.h"
 #include "cwObject.h"
+#include "cwFileSys.h"
 #include "cwVectOps.h"
 #include "cwMtx.h"
 #include "cwDspTypes.h" // real_t, sample_t
@@ -198,35 +199,35 @@ namespace cw
         case kInvalidTFl:
           break;
           
-        case kBoolTFl:  printf("b:%s ", v->u.b ? "true" : "false" ); break;          
-        case kUIntTFl:  printf("u:%i ", v->u.u ); break;
-        case kIntTFl:   printf("i:%i ", v->u.i ); break;          
-        case kFloatTFl: printf("f:%f ", v->u.f ); break;
-        case kDoubleTFl:printf("d:%f ", v->u.d ); break;
+        case kBoolTFl:  cwLogPrint("b:%s ", v->u.b ? "true" : "false" ); break;          
+        case kUIntTFl:  cwLogPrint("u:%i ", v->u.u ); break;
+        case kIntTFl:   cwLogPrint("i:%i ", v->u.i ); break;          
+        case kFloatTFl: cwLogPrint("f:%f ", v->u.f ); break;
+        case kDoubleTFl:cwLogPrint("d:%f ", v->u.d ); break;
         case kABufTFl:
           if( v->u.abuf == nullptr )
-            printf("abuf: <null>");
+            cwLogPrint("abuf: <null>");
           else
-            printf("abuf: chN:%i frameN:%i srate:%8.1f ", v->u.abuf->chN, v->u.abuf->frameN, v->u.abuf->srate ); 
+            cwLogPrint("abuf: chN:%i frameN:%i srate:%8.1f ", v->u.abuf->chN, v->u.abuf->frameN, v->u.abuf->srate ); 
           break;
           
         case kFBufTFl:
           if( v->u.fbuf == nullptr )
-            printf("fbuf: <null>");
+            cwLogPrint("fbuf: <null>");
           else
           {
-            printf("fbuf: chN:%i srate:%8.1f ", v->u.fbuf->chN, v->u.fbuf->srate );
+            cwLogPrint("fbuf: chN:%i srate:%8.1f ", v->u.fbuf->chN, v->u.fbuf->srate );
             for(unsigned i=0; i<v->u.fbuf->chN; ++i)
-              printf("(binN:%i hopSmpN:%i) ", v->u.fbuf->binN_V[i], v->u.fbuf->hopSmpN_V[i] );
+              cwLogPrint("(binN:%i hopSmpN:%i) ", v->u.fbuf->binN_V[i], v->u.fbuf->hopSmpN_V[i] );
           }
           break;
 
         case kMBufTFl:
           if( v->u.mbuf == nullptr )
-            printf("mbuf: <null>");
+            cwLogPrint("mbuf: <null>");
           else
           {
-            printf("mbuf: cnt: %i", v->u.mbuf->msgN );
+            cwLogPrint("mbuf: cnt: %i", v->u.mbuf->msgN );
           }
           break;
           
@@ -239,7 +240,7 @@ namespace cw
           break;
           
         case kStringTFl:
-          printf("%s ", v->u.s);
+          cwLogPrint("%s ", v->u.s);
           break;
            
         case kTimeTFl:
@@ -725,13 +726,13 @@ namespace cw
     }
 
     void _var_print_addr( const char* title, const variable_t* v )
-    { printf("%s:%s:%i.%s:%i ",title,v->proc->label,v->proc->label_sfx_id,v->label,v->label_sfx_id); }
+    { cwLogPrint("%s:%s:%i.%s:%i ",title,v->proc->label,v->proc->label_sfx_id,v->label,v->label_sfx_id); }
 
     void _var_print( const variable_t* var )
     {
       const char* conn_label  = is_connected_to_source_proc(var) ? "extern" : "      ";
     
-      printf("  %20s:%5i id:%4i ch:%3i : %s  : ", var->label, var->label_sfx_id, var->vid, var->chIdx, conn_label );
+      cwLogPrint("  %20s:%5i id:%4i ch:%3i : %s  : ", var->label, var->label_sfx_id, var->vid, var->chIdx, conn_label );
     
       if( var->value == nullptr )
         _value_print( &var->local_value[0] );
@@ -739,15 +740,15 @@ namespace cw
         _value_print( var->value );
 
       if( var->src_var != nullptr )
-        printf(" src:%s:%i.%s:%i",var->src_var->proc->label,var->src_var->proc->label_sfx_id,var->src_var->label,var->src_var->label_sfx_id);
+        cwLogPrint(" src:%s:%i.%s:%i",var->src_var->proc->label,var->src_var->proc->label_sfx_id,var->src_var->label,var->src_var->label_sfx_id);
 
       if( var->dst_head != nullptr )
       {
         for(variable_t* v = var->dst_head; v!=nullptr; v=v->dst_link)
-          printf(" dst:%s:%i.%s:%i",v->proc->label,v->proc->label_sfx_id,v->label,v->label_sfx_id);
+          cwLogPrint(" dst:%s:%i.%s:%i",v->proc->label,v->proc->label_sfx_id,v->label,v->label_sfx_id);
       }
 
-      printf("\n");    
+      cwLogPrint("\n");    
     }
     
     
@@ -1105,7 +1106,7 @@ namespace cw
     void _class_desc_print( const class_desc_t* cd )
     {
       const var_desc_t*   vd = cd->varDescL;
-      printf("%s\n",cwStringNullGuard(cd->label));
+      cwLogPrint("%s\n",cwStringNullGuard(cd->label));
         
       for(; vd!=nullptr; vd=vd->link)
       {
@@ -1113,7 +1114,7 @@ namespace cw
         const char* srcOptFlStr = vd->flags & kSrcOptVarDescFl ? "srcOpt"   : "      ";
         const char* plyMltFlStr = vd->flags & kMultVarDescFl   ? "mult"     : "    ";
           
-        printf("  %10s 0x%08x %s %s %s %s\n", cwStringNullGuard(vd->label), vd->type, srcFlStr, srcOptFlStr, plyMltFlStr, cwStringNullGuard(vd->docText) );
+        cwLogPrint("  %10s 0x%08x %s %s %s %s\n", cwStringNullGuard(vd->label), vd->type, srcFlStr, srcOptFlStr, plyMltFlStr, cwStringNullGuard(vd->docText) );
       }  
     }
     
@@ -1287,7 +1288,6 @@ cw::flow::mbuf_t* cw::flow::mbuf_duplicate( const mbuf_t* src )
   return mbuf_create(src->msgA,src->msgN);
 }
 
-
 unsigned cw::flow::value_type_label_to_flag( const char* s )
 {
   unsigned flags = labelToId(_typeLabelFlagsA,s,kInvalidTFl);
@@ -1299,8 +1299,6 @@ unsigned cw::flow::value_type_label_to_flag( const char* s )
 
 const char* cw::flow::value_type_flag_to_label( unsigned flag )
 {  return _typeFlagToLabel(flag); }
-  
-
 
 cw::flow::var_desc_t*  cw::flow::var_desc_create( const char* label, const object_t* cfg )
 {
@@ -1426,9 +1424,9 @@ void cw::flow::network_print( const network_t& net )
     // if this proc has an  internal network
     if( proc->internal_net != nullptr )
     {
-      printf("------- Begin Nested Network: %s -------\n",cwStringNullGuard(proc->label));
+      cwLogPrint("------- Begin Nested Network: %s -------\n",cwStringNullGuard(proc->label));
       network_print(*(proc->internal_net));
-      printf("------- End Nested Network: %s -------\n",cwStringNullGuard(proc->label));
+      cwLogPrint("------- End Nested Network: %s -------\n",cwStringNullGuard(proc->label));
     }
         
   }
@@ -1539,7 +1537,7 @@ cw::flow::external_device_t* cw::flow::external_device_find( flow_t* p, const ch
 
 void cw::flow::proc_print( proc_t* proc )
 {
-  printf("%s:%i\n", proc->label,proc->label_sfx_id);
+  cwLogPrint("%s:%i\n", proc->label,proc->label_sfx_id);
   for(variable_t* var = proc->varL; var!=nullptr; var=var->var_link)
     if( var->chIdx == kAnyChIdx )
       for(variable_t* v0 = var; v0!=nullptr; v0=v0->ch_link)
@@ -1558,6 +1556,20 @@ unsigned cw::flow::proc_var_count( proc_t* proc )
   return n;
 }
 
+char* cw::flow::proc_expand_filename( const proc_t* proc, const char* fname )
+{
+  bool useProjDirFl = proc->ctx->proj_dir != nullptr && textLength(fname) > 1 && fname[0] == '$';
+  char* fn0 = nullptr;
+  
+  if( useProjDirFl )
+    fn0 = filesys::makeFn(proc->ctx->proj_dir,fname+1,nullptr,nullptr);
+
+  char* fn1 = filesys::expandPath(useProjDirFl ? fn0 : fname);
+
+  mem::release(fn0);
+  
+  return fn1;
+}  
 
 
 
@@ -1711,7 +1723,7 @@ cw::rc_t cw::flow::var_call_custom_value_func( variable_t* var )
   
   if( var->flags & kLogVarFl )
   {    
-    printf("%10s:%5i", var->proc->label,var->proc->label_sfx_id);
+    cwLogPrint("%10s:%5i", var->proc->label,var->proc->label_sfx_id);
     
     if( var->chIdx == kAnyChIdx )
       _var_print(var);

@@ -285,9 +285,10 @@ namespace cw
       class_desc_t*        subnetDescA;          // 
       unsigned             subnetDescN;          //
       
-
       external_device_t*   deviceA;              // deviceA[ deviceN ] external device description array
       unsigned             deviceN;              //
+
+      const char*          proj_dir;             // default input/output directory
       
       network_t net;
 
@@ -326,7 +327,6 @@ namespace cw
 
     unsigned       value_type_label_to_flag( const char* type_desc );
     const char*    value_type_flag_to_label( unsigned flag );
-    
     
     //------------------------------------------------------------------------------------------------------------------------
     //
@@ -375,6 +375,11 @@ namespace cw
 
     // Count of all var instances on this proc.  This is a count of the length of proc->varL.
     unsigned           proc_var_count( proc_t* proc );
+
+    // If fname has a '$' prefix then the system project directory is prepended to it.
+    // If fname has a '~' then the users home directory is prepended to it.
+    // The returned string must be release with a call to mem::free().
+    char*              proc_expand_filename( const proc_t* proc, const char* fname );
 
     
     //------------------------------------------------------------------------------------------------------------------------
