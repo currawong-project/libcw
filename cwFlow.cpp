@@ -644,7 +644,6 @@ namespace cw
       return rc;
     }
 
-    
   }
 }
 
@@ -667,6 +666,7 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
                            const object_t*    classCfg,
                            const object_t*    flowCfg,
                            const object_t*    subnetCfg,
+                           const char*        proj_dir,
                            external_device_t* deviceA,
                            unsigned           deviceN )
 {
@@ -710,6 +710,7 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   p->framesPerCycle = kDefaultFramesPerCycle;
   p->sample_rate    = kDefaultSampleRate;
   p->maxCycleCount  = kInvalidCnt;
+  p->proj_dir       = proj_dir;
   
   // parse the optional args
   if((rc = flowCfg->getv_opt("framesPerCycle",      p->framesPerCycle,
@@ -900,87 +901,6 @@ void cw::flow::print_network( handle_t h )
 }
 
 
-cw::rc_t cw::flow::test(  const object_t* cfg, int argc, const char* argv[] )
-{
-  rc_t rc = kOkRC;
-  handle_t flowH;
-
-  const char*     proc_cfg_fname   = nullptr;
-  const char*     subnet_cfg_fname = nullptr;
-  const object_t* test_cases_cfg   = nullptr;
-  object_t*       class_cfg        = nullptr;
-  object_t*       subnet_cfg       = nullptr;
-  const object_t* test_cfg         = nullptr;
-
-  if( argc < 2 || textLength(argv[1]) == 0 )
-  {
-    rc = cwLogError(kInvalidArgRC,"No 'test-case' label was given on the command line.");
-    goto errLabel;
-  }
-  
-  if((rc = cfg->getv("proc_cfg_fname",proc_cfg_fname,
-                     "test_cases",     test_cases_cfg)) != kOkRC )
-  {
-    rc = cwLogError(rc,"The name of the flow_proc_dict file could not be parsed.");
-    goto errLabel;
-  }
-
-  // get the subnet cfg filename
-  if((rc = cfg->getv_opt("subnet_cfg_fname",subnet_cfg_fname)) != kOkRC )
-  {
-    rc = cwLogError(rc,"The name of the subnet file could not be parsed.");
-    goto errLabel;
-  }
-
-  // find the user requested test case
-  if((test_cfg = test_cases_cfg->find_child(argv[1])) == nullptr )
-  {
-    rc = cwLogError(kInvalidArgRC,"The test case named '%s' was not found.",argv[1]);
-    goto errLabel;
-  }  
-
-  // parse the proc dict. file
-  if((rc = objectFromFile(proc_cfg_fname,class_cfg)) != kOkRC )
-  {
-    rc = cwLogError(rc,"The proc dictionary could not be read from '%s'.",cwStringNullGuard(proc_cfg_fname));
-    goto errLabel;
-  }
-
-  // parse the subnet dict file
-  if((rc = objectFromFile(subnet_cfg_fname,subnet_cfg)) != kOkRC )
-  {
-    rc = cwLogError(rc,"The subnet dictionary could not be read from '%s'.",cwStringNullGuard(subnet_cfg_fname));
-    goto errLabel;
-  }
-  
-  // create the flow object
-  if((rc = create( flowH, class_cfg, test_cfg, subnet_cfg)) != kOkRC )
-  {
-    rc = cwLogError(rc,"Flow object create failed.");
-    goto errLabel;
-  }
-
-  // run the network
-  if((rc = exec( flowH )) != kOkRC )
-    rc = cwLogError(rc,"Execution failed.");
-    
-
-  // destroy the flow object
-  if((rc = destroy(flowH)) != kOkRC )
-  {
-    rc = cwLogError(rc,"Close the flow object.");
-    goto errLabel;
-  }
-  
- errLabel:
-  if( class_cfg != nullptr )
-    class_cfg->free();
-
-  if( subnet_cfg != nullptr )
-    subnet_cfg->free();
-  
-  return rc;
-}
 
 
 

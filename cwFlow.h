@@ -17,7 +17,8 @@ namespace cw
     rc_t create( handle_t&          hRef,
                  const object_t*    classCfg,
                  const object_t*    networkCfg,
-                 const object_t*    subnetCfg = nullptr,   
+                 const object_t*    subnetCfg = nullptr,
+                 const char*        projDir   = nullptr,
                  external_device_t* deviceA   = nullptr,
                  unsigned           deviceN   = 0);
 
@@ -51,7 +52,6 @@ namespace cw
     void print_class_list( handle_t h );
     void print_network( handle_t h );
 
-    rc_t test( const object_t* cfg, int argc, const char* argv[] );
 
     
     
