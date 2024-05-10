@@ -34,8 +34,8 @@ libcwSRC += src/libcw/cwAudioFile.cpp   src/libcw/cwMidiFile.cpp
 libcwHDR += src/libcw/cwAudioFileOps.h    src/libcw/cwAudioTransforms.h   src/libcw/cwDspTransforms.h   src/libcw/cwAudioFileProc.h    src/libcw/cwPvAudioFileProc.h
 libcwSRC += src/libcw/cwAudioFileOps.cpp  src/libcw/cwAudioTransforms.cpp src/libcw/cwDspTransforms.cpp src/libcw/cwAudioFileProc.cpp  src/libcw/cwPvAudioFileProc.cpp
 
-libcwHDR += src/libcw/cwFlow.h    src/libcw/cwFlowDecl.h src/libcw/cwFlowTypes.h     src/libcw/cwFlowNet.h   src/libcw/cwFlowProc.h     src/libcw/cwFlowCross.h
-libcwSRC += src/libcw/cwFlow.cpp                         src/libcw/cwFlowTypes.cpp   src/libcw/cwFlowNet.cpp src/libcw/cwFlowProc.cpp   src/libcw/cwFlowCross.cpp
+libcwHDR += src/libcw/cwFlow.h    src/libcw/cwFlowDecl.h src/libcw/cwFlowTypes.h     src/libcw/cwFlowNet.h   src/libcw/cwFlowProc.h     src/libcw/cwFlowCross.h     src/libcw/cwFlowTest.h
+libcwSRC += src/libcw/cwFlow.cpp                         src/libcw/cwFlowTypes.cpp   src/libcw/cwFlowNet.cpp src/libcw/cwFlowProc.cpp   src/libcw/cwFlowCross.cpp   src/libcw/cwFlowTest.cpp
 
 if cwWEBSOCK
 libcwHDR += src/libcw/cwWebSock.h   src/libcw/cwWebSockSvr.h
