@@ -112,7 +112,7 @@ cw::rc_t cw::log::msg( handle_t h, unsigned level, const char* function, const c
 cw::rc_t cw::log::msg( handle_t h, unsigned level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t returnCode, const char* fmt, ... )
 {
   rc_t rc = returnCode;
-  if( level >= _handleToPtr(h)->level )
+  if( level >= _handleToPtr(h)->level || level == kPrint_LogLevel )
   {
     va_list vl;
     va_start(vl,fmt);
@@ -146,6 +146,29 @@ unsigned cw::log::flags( handle_t h )
   return p->flags;
 }
   
+void* cw::log::outputCbArg( handle_t h )
+{
+  log_t* p = _handleToPtr(h);
+  return p->outCbArg;
+}
+
+cw::log::logOutputCbFunc_t cw::log::outputCb( handle_t h )
+{
+  log_t* p = _handleToPtr(h);
+  return p->outCbFunc;
+}
+
+void* cw::log::formatCbArg( handle_t h )
+{
+  log_t* p = _handleToPtr(h);
+  return p->fmtCbArg;
+}
+
+cw::log::logFormatCbFunc_t cw::log::formatCb( handle_t h )
+{
+  log_t* p = _handleToPtr(h);
+  return p->fmtCbFunc;  
+}
 
 void cw::log::setOutputCb( handle_t h, logOutputCbFunc_t outFunc, void* outCbArg )
 {
@@ -214,7 +237,7 @@ void cw::log::defaultFormatter( void* cbArg, logOutputCbFunc_t outFunc, void* ou
 
 
   // don't print the function,file,line when this is an 'info' msg.
-  if( level == kInfo_LogLevel )
+  if( level == kInfo_LogLevel || level == kPrint_LogLevel )
   {
     loStr = "";
     syStr = "";
