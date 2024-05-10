@@ -146,7 +146,7 @@ namespace cw
       net->stateId = net_idx == 0 ? kActiveStateId : kInactiveStateId;
       net->net_idx = net_idx;
       
-      if((rc = flow::create( net->flowH, &classCfg, &networkCfg, nullptr, net->deviceA, deviceN )) == kOkRC )
+      if((rc = flow::create( net->flowH, &classCfg, &networkCfg, nullptr, nullptr, net->deviceA, deviceN )) == kOkRC )
         net->deviceN = deviceN;
       else
       {
