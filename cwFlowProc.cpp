@@ -846,7 +846,7 @@ namespace cw
       {
         audiofile::handle_t afH;
         bool                eofFl;
-        const char*         filename;
+        char*               filename;
       } inst_t;
       
       rc_t create( proc_t* proc )
@@ -854,6 +854,7 @@ namespace cw
         rc_t rc = kOkRC;
         audiofile::info_t info;
         ftime_t seekSecs;
+        const char* fname = nullptr;
         inst_t* inst = mem::allocZ<inst_t>();
         proc->userPtr = inst;
 
@@ -864,12 +865,19 @@ namespace cw
 
         // Register variable and get their current value
         if((rc = var_register_and_get( proc, kAnyChIdx,
-                                       kFnamePId,    "fname",    kBaseSfxId, inst->filename,
+                                       kFnamePId,    "fname",    kBaseSfxId, fname,
                                        kSeekSecsPId, "seekSecs", kBaseSfxId, seekSecs,
                                        kEofFlPId,    "eofFl",    kBaseSfxId, inst->eofFl )) != kOkRC )
         {
           goto errLabel;
         }
+
+        if((inst->filename = proc_expand_filename(proc,fname)) == nullptr )
+        {
+          rc = cwLogError(kInvalidArgRC,"The audio output filename could not be formed.");
+          goto errLabel;
+        }
+        
 
         // open the audio file
         if((rc = audiofile::open(inst->afH,inst->filename,&info)) != kOkRC )
@@ -905,6 +913,7 @@ namespace cw
           rc = cwLogError(kOpFailRC,"The close failed on the audio file '%s'.", cwStringNullGuard(inst->filename) );
         }
 
+        mem::release(inst->filename);
         mem::release(inst);
         
         return rc;
@@ -1000,7 +1009,7 @@ namespace cw
       typedef struct
       {
         audiofile::handle_t afH;
-        const char*         filename;
+        char*               filename;
         unsigned            durSmpN;
       } inst_t;
       
@@ -1010,17 +1019,26 @@ namespace cw
         unsigned      audioFileBits = 0;                     // set audio file sample format to 'float32'.
         inst_t*       inst          = mem::allocZ<inst_t>(); //
         const abuf_t* src_abuf      = nullptr;
+        const char*   fname         = nullptr;
+        
         proc->userPtr = inst;
 
         // Register variables and get their current value
         if((rc = var_register_and_get( proc, kAnyChIdx,
-                                       kFnamePId, "fname", kBaseSfxId, inst->filename,
+                                       kFnamePId, "fname", kBaseSfxId, fname,
                                        kBitsPId,  "bits",  kBaseSfxId, audioFileBits,
                                        kInPId,    "in",    kBaseSfxId, src_abuf )) != kOkRC )
         {
           goto errLabel;
         }
 
+        
+        if((inst->filename = proc_expand_filename(proc,fname)) == nullptr )
+        {
+          rc = cwLogError(kInvalidArgRC,"The audio output filename could not be formed.");
+          goto errLabel;
+        }
+          
         // create the audio file with the same channel count as the incoming signal
         if((rc = audiofile::create( inst->afH, inst->filename, src_abuf->srate, audioFileBits, src_abuf->chN)) != kOkRC )
         {
@@ -1044,6 +1062,7 @@ namespace cw
           goto errLabel;
         }
 
+        mem::release(inst->filename);
         mem::release(inst);
 
       errLabel:
