@@ -723,7 +723,7 @@ given then the first sfx-id defaults to 0.
 	  as in (1) above.
 
 
-	+ If `sec-int` is given
+	+ If `sec-int` is not given
 	  then the `sec-int` defaults to the count of
 	  available source vars with the given `label` 
 	  following the source var `pri-int`.
@@ -756,6 +756,72 @@ more than one literal iter counts are given.
 	+ connect multiple inputs to the same var on multiple procs
 	+ connect multiple inputs to multiple vars on one proc
 	+ connect multiple inputs to one var on one proc
+
+
+### in-stmt Examples:
+
+`in:sproc.svar`   Connect the local variable `in` to the source variable `sproc.svar`.
+
+`in0:sproc.svar`  Create variables `in0` and connect to `sproc.svar`.
+
+`in_2:sproc.svar` Create variables `in0` and `in1` and connect both new variables to `sproc.svar`.
+
+`in_:sproc.svar0_2` Create variables `in0` and `in1` and connect them to `sproc.svar0` and `sproc.svar1`.
+
+`in3_3:sproc.svar` Create variables `in3`,`in4` and `in5` and connect them all to `sproc.svar`.
+
+`in_:sproc.svar1_2` Create variables `in0`,`in1` and connect them to `sproc.svar1` and `sproc.svar2`.
+
+`in1_2:sproc.svar3_` Create variables `in1`,`in2` and connect them to `sproc.svar3` and `sproc.svar4`.
+
+`in_:sproc.svar_` Create vars `in0 ... n-1` where `n` is count of vars on `sproc` with the label `svar`.
+`n` is called the 'mult-count' of `svar`.  The new variables `in0 ... n-1` are also connected to `sproc.svar0 ... n-1`.
+
+`in_:sproc_.svar` Create vars `in0 ... n` where `n` is determineed by the count of procs named `sproc`.
+`n` is called the 'poly-count' of `sproc`. The new variables `in0 ... n-1` are also connected to `sproc.svar0 ... n-1`
+
+If an underscore precedes the in-var then this implies that the connection is being
+made from a poly context. 
+
+`foo : { ... in:{ _.in:sproc.svar_ } ... } ` This example shows an excerpt from the network 
+definition of proc `foo` which is assumed to be a poly proc (there are multiple procs named 'foo' in this network).
+This connection iterates across the procs  `foo:0 ... foo:n-1` connecting the 
+the local variable 'in' to `sproc.svar0 ... n-1`. Where `n` is the poly count of `foo`.
+
+`foo : { ... in:{ 1_3.in:sproc.svar_ } ... }` Connect `foo:1-in:0` to `sproc:svar0` and `foo:2-in:0` to `sproc:svar1`.
+
+`foo : { ... in:{ 1_3.in:sproc_.svar } ... }` Connect `foo:1-in:0` to `sproc0:svar0` and `foo:2-in:0` to `sproc1:svar`.
+
+#### in-stmt Anti-Examples
+
+`in_:sproc_.svar_` This is illegal because there is no way to determine how many `in` variables should be created.
+
+`in:sproc.svar_` This is illegal because it suggests that multiple sources should be connected to a single input variable.
+
+`in:sproc_.svar` This is illegal because it suggests that multiple sources should be connected to a single input variable.
+
+`_.in_:sproc.svar` This is illegal because it suggests simultaneously iterating across both the local proc and var.
+This would be possible if there was a way to separate how the two separate iterations should be distributed 
+to the source. To make this legal would require an additional special character to show how to apply the poly
+iteration and/or var iteration to the source. (e.g. `_.in_:sproc*.svar_`) 
+
+### out-stmt Examples:
+
+`out:iproc.ivar` Connect the local source variable `out` to the input variable `iproc:ivar`.
+
+`out:iproc.ivar_` Connect the local source variable `out` to the input variables `iproc:ivar0` and `iproc:ivar1`.
+
+`out_:iproc.ivar_` Connect the local souce variables `out0 ... out n-1` to the input variables `iproc:ivar0 ... iproc:ivar n-1`
+where `n` is the mult count of the `out`.
+
+`out_:iproc_.ivar` Connect the local souce variables `out0 ... out n-1` to the input variables `iproc0:ivar ... iproc n-1:ivar`
+where `n` is the mult count of the `out`.
+
+
+`_.out:iproc.ivar_` Connect the local source variables `foo0:out`, `foo n-1:out` to the input variables `iproc:ivar0`, `iproc:ivar n-1`.
+where `n` is the poly count of `foo`.
+
+
 
 Var Updates and Preset Application
 ==================================
@@ -950,6 +1016,7 @@ Next:
 - Audio inputs should be able to be initialized with a channel count and srate without actually connecting an input.
   This will allow feedback connections to be attached to them at a later stage of the network 
   instantiation.
+- Remove the multiple 'args' thing and and 'argsLabe'.  'args' should be a simple set of arg's.  
 - Implement subnet preset application.	
 - Implement the var attributes and attribute checking.
 - Implement dynamic loading of procs.
@@ -962,6 +1029,10 @@ Next:
   later proc's then they will not have all of their inputs when they are instantiated.
   One way around this is to instantiate them with an initial set of inputs but then
   allow those inputs to be replaced by a later connection.
+- Look more closely at the way of identify an in-stmt src-net or a out-stmt in-net.
+It's not clear there is a difference between specifying  `_` and the default behaviour.
+Is there a way to tell it to search the entire network from the root? Isn't that 
+what '_' is supposed to do.
   
 
 BUGS:
