@@ -289,7 +289,7 @@ cw::rc_t cw::flow::test(  const object_t* cfg, int argc, const char* argv[] )
     {
       if( !test_all_fl )
       {
-        rc = cwLogError(kInvalidArgRC,"The requested test '%s' is diabled.",test_label);
+        rc = cwLogError(kInvalidArgRC,"The requested test '%s' is disabled.",test_label);
         goto errLabel;
       }
       continue;
