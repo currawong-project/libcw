@@ -19,7 +19,7 @@ and audio processing networks and the application of network state data.
 ```
 ```
 
-
+Use `$` prefix to a filename. Use proc_expand_filename() to prepend `proj_dir` to a file prefixed with `$`.
 
 ### Polyphonic Network.
 
