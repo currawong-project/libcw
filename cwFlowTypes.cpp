@@ -730,7 +730,7 @@ namespace cw
 
     void _var_print( const variable_t* var )
     {
-      const char* conn_label  = is_connected_to_source_proc(var) ? "extern" : "      ";
+      const char* conn_label  = is_connected_to_source(var) ? "extern" : "      ";
     
       cwLogPrint("  %20s:%5i id:%4i ch:%3i : %s  : ", var->label, var->label_sfx_id, var->vid, var->chIdx, conn_label );
     
@@ -880,7 +880,7 @@ namespace cw
       rc_t rc;
 
       // if this variable is fed from the output of an external proc - then it's local value cannot be set
-      if(is_connected_to_source_proc(var)   )
+      if(is_connected_to_source(var)   )
       {
         return cwLogError(kInvalidStateRC,"Cannot set the value on the connected variable %s:%i-%s:%i.",var->proc->label,var->proc->label_sfx_id,var->label,var->label_sfx_id);
       }
@@ -1483,7 +1483,7 @@ cw::rc_t cw::flow::proc_validate( proc_t* proc )
     }
 
     // if var is using a local value (not connected to a source variable) then the type of the value must be valid with the variable class
-    if( !is_connected_to_source_proc(var) && !(var->varDesc->type & var->value->tflag) )
+    if( !is_connected_to_source(var) && !(var->varDesc->type & var->value->tflag) )
     {
       rc = cwLogError(kInvalidStateRC, "The value type flag '%s' (0x%x) of '%s:%i-%s:%i' is not found in the variable class type flags: '%s' (0x%x)",
                       _typeFlagToLabel(var->value->tflag),var->value->tflag,
@@ -1633,7 +1633,7 @@ cw::rc_t  cw::flow::var_channelize( proc_t* proc, const char* var_label, unsigne
     if( value_cfg == nullptr )
     {
       // if the base-var is connected to a source ...
-      if( is_connected_to_source_proc(base_var) )
+      if( is_connected_to_source(base_var) )
       {
         // ... then connect the new var to a source also
         
@@ -1860,8 +1860,6 @@ cw::rc_t cw::flow::var_find( proc_t* proc, unsigned vid, unsigned chIdx, variabl
   return rc;
 }
 
-
-
 cw::rc_t cw::flow::var_find( proc_t* proc, const char* label, unsigned sfx_id, unsigned chIdx, variable_t*& vRef )
 {
   variable_t* var;
@@ -1956,7 +1954,7 @@ cw::rc_t cw::flow::var_register( proc_t* proc, const char* var_label, unsigned s
   return rc;
 }
 
-bool cw::flow::is_connected_to_source_proc( const variable_t* var )
+bool cw::flow::is_connected_to_source( const variable_t* var )
 {
   // if this var does not have a 'src_ptr' then it can't be connected to an external proc
   if( var->src_var == nullptr || var->value == nullptr )
@@ -1987,20 +1985,35 @@ void cw::flow::var_connect( variable_t* src_var, variable_t* in_var )
   src_var->dst_tail = in_var;
   
   in_var->value    = src_var->value;
-  in_var->src_var = src_var;
+  in_var->src_var = src_var;  
+}
 
-  //printf("Connect: ");
-  //_var_print_addr("src",src_var);
-  //_var_print_addr("dst",in_var);
-  //_var_print_addr("HEAD",src_var->dst_head);
+void cw::flow::var_disconnect( variable_t* in_var )
+{
+  if( in_var->src_var != nullptr )
+  {
+    // remote the in_var from the src var's output list
+    variable_t* v0 = nullptr;
+    variable_t* v = in_var->src_var->dst_head;
+    for(; v!=nullptr; v=v->dst_link)
+    {
+      if( v == in_var )
+      {
+        if( v0 == nullptr )
+          in_var->src_var->dst_head = v->dst_link;
+        else
+          v0->dst_link = v->dst_link;
+        break;
+      }
 
-  //if( src_var->dst_head->dst_link != nullptr )
-  //  _var_print_addr("LINK",src_var->dst_head->dst_link);
-  
-  //_var_print_addr("TAIL",src_var->dst_tail);
-  //printf("\n");
+      v0 = v;
+    }
+    
+    // the in_var is always in the src-var's output list
+    assert(v == in_var );
 
-  
+    in_var->src_var = nullptr;
+  }
 }
 
 unsigned  cw::flow::var_mult_count( proc_t* proc, const char* var_label )

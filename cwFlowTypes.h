@@ -173,11 +173,11 @@ namespace cw
     
     typedef struct class_desc_str
     {
-      const object_t*   cfg;       // class cfg 
-      const char*       label;     // class label;      
-      var_desc_t*       varDescL;  // varDescL variable description linked on var_desc_t.link
-      preset_t*         presetL;   // presetA[ presetN ]
-      class_members_t*  members;   // member functions for this class
+      const object_t*   cfg;        // class cfg 
+      const char*       label;      // class label;      
+      var_desc_t*       varDescL;   // varDescL variable description linked on var_desc_t.link
+      preset_t*         presetL;    // presetA[ presetN ]
+      class_members_t*  members;    // member functions for this class
       unsigned          polyLimitN; // max. poly copies of this class per network_t or 0 if no limit
     } class_desc_t;
 
@@ -409,14 +409,18 @@ namespace cw
     // `value_cfg` is optional. Set it to NULL to ignore
     rc_t           var_register( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, const object_t* value_cfg, variable_t*& varRef );
 
-    // Returns true if this var is connected to an source proc variable
-    bool           is_connected_to_source_proc( const variable_t* var );
+    // Returns true if this var is connected to a source proc variable
+    bool           is_connected_to_source( const variable_t* var );
 
     // Return true if this var is acting as a source for another var.
     bool           is_a_source_var( const variable_t* var );
 
     // Connect in_var to src_var. 
     void           var_connect( variable_t* src_var, variable_t* in_var );
+
+    // Disconnect an in_var from it's source
+    void           var_disconnect( variable_t* in_var );
+
 
     // Get the count of 'mult' vars associated with this var label.
     unsigned       var_mult_count( proc_t* proc, const char* var_label );
