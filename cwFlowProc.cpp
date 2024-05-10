@@ -4071,6 +4071,80 @@ namespace cw
     {
       enum {
         kValuePId,
+        kStorePId,
+      };
+
+      typedef struct
+      {
+        bool store_fl;
+      } inst_t;
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+        
+        if((rc = var_register(proc,kAnyChIdx,
+                              kValuePId,"value",kBaseSfxId,
+                              kStorePId,"store",kBaseSfxId)) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        // skip the 'stored' value sent through prior to runtime.
+        if( var->vid == kStorePId && proc->ctx->isInRuntimeFl)
+          p->store_fl = true;
+        
+        return kOkRC;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        if( p->store_fl )
+        {
+          variable_t*  var = nullptr;
+          // Set 'value' from 'store'.
+          // Note that we set the 'value' directly from var->value so that
+          // no extra type converersion is applied. In this case the value
+          // 'store'  will be coerced to the type of 'value'
+          if((rc = var_find(proc, kStorePId, kAnyChIdx, var )) == kOkRC && var->value != nullptr )
+            rc = var_set(proc,kValuePId,kAnyChIdx,var->value);
+
+          p->store_fl = false;
+        }
+        
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .value   = std_value<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    
+
+    /*
+    namespace number
+    {
+      enum {
+        kValuePId,
+        kStorePId,
       };
       
 
@@ -4078,10 +4152,10 @@ namespace cw
       rc_t create( proc_t* proc )
       {
         rc_t        rc    = kOkRC;        
-        double      value = 0;
-
-        if((rc  = var_register_and_get(proc,kAnyChIdx,
-                                       kValuePId,"value",kBaseSfxId,value)) != kOkRC )
+        
+        if((rc  = var_register(proc,kAnyChIdx,
+                               kValuePId,"value",kBaseSfxId,
+                               kStorePId,"store",kBaseSfxId)) != kOkRC )
         {
           goto errLabel;
         }
@@ -4117,7 +4191,8 @@ namespace cw
       };
       
     }    
-
+    */
+    
     //------------------------------------------------------------------------------------------------------------------
     //
     // Timer
