@@ -1012,28 +1012,29 @@ Next:
 
 	+ DONE: improve code comments on subnet creation
 
-- Implement feedback	
 - Audio inputs should be able to be initialized with a channel count and srate without actually connecting an input.
   This will allow feedback connections to be attached to them at a later stage of the network 
   instantiation.
-- Remove the multiple 'args' thing and and 'argsLabe'.  'args' should be a simple set of arg's.  
+- Remove the multiple 'args' thing and and 'argsLabel'.  'args' should be a simple set of arg's.  
 - Implement subnet preset application.	
 - Implement the var attributes and attribute checking.
 - Implement dynamic loading of procs.
 - Implement a debug mode to aid in building networks and subnets (or is logging good enough)
 - Implement multi-field messages.
-- Implement the ability to set backward connections - from late to early proc's.
+- Look more closely at the way of identify an in-stmt src-net or a out-stmt in-net.
+It's not clear there is a difference between specifying  `_` and the default behaviour.
+Is there a way to tell it to search the entire network from the root? Isn't that 
+what '_' is supposed to do.
+  
+- DONE: Implement feedback	
+
+- DONE: Implement the ability to set backward connections - from late to early proc's.
   This can be done by implementing the same process as 'in_stmt' but in a separate 
   'out_stmt'. The difficulty is that it prevents doing some checks until the network
   is completely specified.  For example if audio inputs can accept connections from 
   later proc's then they will not have all of their inputs when they are instantiated.
   One way around this is to instantiate them with an initial set of inputs but then
   allow those inputs to be replaced by a later connection.
-- Look more closely at the way of identify an in-stmt src-net or a out-stmt in-net.
-It's not clear there is a difference between specifying  `_` and the default behaviour.
-Is there a way to tell it to search the entire network from the root? Isn't that 
-what '_' is supposed to do.
-  
 
 BUGS:
 - The counter modulo mode is not working as expected.
