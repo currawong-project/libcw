@@ -57,6 +57,7 @@ namespace cw
       
       kStartBtnId,
       kStopBtnId,
+      kGotoBtnId,
       kBegPlayLocNumbId,
       kEndPlayLocNumbId,
       kLockLoctnCheckId,      
@@ -168,6 +169,8 @@ namespace cw
         
       { kPanelDivId,     kStartBtnId,        "startBtnId" },
       { kPanelDivId,     kStopBtnId,         "stopBtnId" },
+      { kPanelDivId,     kGotoBtnId,         "gotoBtnId" },
+      
       { kPanelDivId,     kBegPlayLocNumbId,  "begLocNumbId" },
       { kPanelDivId,     kEndPlayLocNumbId,  "endLocNumbId" },      
       { kPanelDivId,     kLockLoctnCheckId,  "locLoctnCheckId" },
@@ -1406,6 +1409,27 @@ namespace cw
       return rc;
     }
 
+    rc_t _do_goto( app_t* app, unsigned loc )
+    {
+      rc_t rc = kOkRC;
+      unsigned fragGuiId;
+      if((fragGuiId = loc_to_gui_id(app->psH,loc)) == kInvalidId )
+      {
+        rc = cwLogError(kInvalidArgRC,"The fragment loc '%i' could not be found.");
+        goto errLabel;
+      }
+      
+      if((rc = io::uiSetScrollTop(app->ioH,fragGuiId)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Scroll to top failed on fragment GUI id:%i.",fragGuiId);
+        goto errLabel;
+      }
+
+    errLabel:
+      return rc;
+    }
+    
+
     // This function is used to apply the selected (checked) preset immediately.
     rc_t _apply_current_preset( app_t* app, unsigned fragId )
     {
@@ -2276,6 +2300,7 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
       // A performance is loaded so enable the UI
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStartBtnId ), true );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kStopBtnId ),  true );
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kGotoBtnId ),  true );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kLockLoctnCheckId ),  true );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kLiveCheckId ),  true );
       io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kEnaRecordCheckId ),  true );
@@ -3127,6 +3152,10 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
             
         case kStopBtnId:
           _do_stop_play(app);
+          break;
+
+        case kGotoBtnId:
+          _do_goto(app, app->beg_play_loc);
           break;
           
         case kBegPlayLocNumbId:
