@@ -95,6 +95,7 @@ namespace cw
 
     unsigned frag_to_gui_id( handle_t h, unsigned fragId, bool showErrorFl=true );
     unsigned gui_to_frag_id( handle_t h, unsigned guiUuId, bool showErrorFl=true );
+    unsigned loc_to_gui_id(  handle_t h, unsigned loc );
     
     rc_t create_fragment( handle_t h, unsigned end_loc, time::spec_t endTimestamp, unsigned& fragIdRef );
     rc_t delete_fragment( handle_t h, unsigned fragId );

@@ -1097,6 +1097,19 @@ unsigned cw::preset_sel::gui_to_frag_id( handle_t h, unsigned guiUuId, bool show
   return kInvalidId;
 }
 
+unsigned cw::preset_sel::loc_to_gui_id(  handle_t h, unsigned loc )
+{
+  preset_sel_t* p  = _handleToPtr(h);
+  frag_t* f;
+
+  if((f = _fast_loc_to_frag( p, loc)) == nullptr )
+    return kInvalidId;
+
+  return f->guiUuId;
+
+}
+
+
     
 cw::rc_t cw::preset_sel::create_fragment( handle_t h, unsigned end_loc, time::spec_t end_timestamp, unsigned& fragIdRef )
 {
