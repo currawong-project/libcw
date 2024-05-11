@@ -13,12 +13,12 @@
 
 #include "cwUi.h"
 
-#define UI_CLICKABLE_LABEL "clickable"
-#define UI_SELECT_LABEL    "select"
-#define UI_VISIBLE_LABEL   "visible"
-#define UI_ENABLE_LABEL    "enable"
-#define UI_ORDER_LABEL     "order"
-
+#define UI_CLICKABLE_LABEL  "clickable"
+#define UI_SELECT_LABEL     "select"
+#define UI_VISIBLE_LABEL    "visible"
+#define UI_ENABLE_LABEL     "enable"
+#define UI_ORDER_LABEL      "order"
+#define UI_SCROLL_TOP_LABEL "scroll_top"
 namespace cw
 {
   namespace ui
@@ -2021,6 +2021,9 @@ int cw::ui::getOrderKey( handle_t h, unsigned uuId )
   
   return rc;
 }
+
+cw::rc_t cw::ui::setScrollTop(   handle_t h, unsigned uuId )
+{ return _setPropertyValue( h, UI_SCROLL_TOP_LABEL,uuId,0); }
 
 
 cw::rc_t    cw::ui::setBlob(   handle_t h, unsigned uuId, const void* blob, unsigned blobByteN )

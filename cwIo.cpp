@@ -3765,6 +3765,16 @@ int  cw::io::uiGetOrderKey(    handle_t h, unsigned uuId )
   return orderKey;
 }
 
+cw::rc_t cw::io::uiSetScrollTop(   handle_t h, unsigned uuId )
+{
+  rc_t rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::setScrollTop(uiH,uuId);
+  return rc;
+}
+
+
 cw::rc_t    cw::io::uiSetBlob(   handle_t h, unsigned uuId, const void* blob, unsigned blobByteN )
 {
   rc_t         rc;

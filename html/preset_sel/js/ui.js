@@ -120,7 +120,6 @@ function ui_send_string_value( ele, value ) { ui_send_value(ele,'s',value); }
 function ui_send_click( ele )
 {
     //console.log("click " + ele.id )
-        
     ws_send("click " + ele.id )  
 }
 
@@ -907,7 +906,30 @@ function ui_set_order_key(ele, orderKey)
 
     // no element was found greater than this element  ....
     if( i == parent.children.length )
-	parent.appendChild(ele) // ... insert the element at the end of the child lsit
+	parent.appendChild(ele) // ... insert the element at the end of the child lsit   
+}
+
+function ui_scroll_top(ele)
+{
+    /*
+    var rect = ele.getBoundingClientRect();
+    var prect = ele.parentElement.getBoundingClientRect();
+    console.log(ele.id, rect.top, rect.right, rect.bottom, rect.left, ele.offsetTop);
+    console.log(prect.top, prect.right, prect.bottom, prect.left );
+
+    var scr_ele = document.getElementById(42408)
+    var sr      = scr_ele.getBoundingClientRect()
+    console.log(sr.top, sr.right, sr.bottom, sr.left, scr_ele.offsetTop);
+    
+    ele.parentElement.scrollTop = sr.top - prect.top
+
+    console.log(sr.top, sr.right, sr.bottom, sr.left, scr_ele.offsetTop);
+    */
+
+    var er = ele.getBoundingClientRect()
+    var pr = ele.parentElement.getBoundingClientRect()
+    
+    ele.parentElement.scrollTop = er.top - pr.top
     
 }
 
@@ -950,6 +972,9 @@ function ui_set( d )
 	    case "order":
 	    ui_set_order_key(ele,d.value)
 	    break
+
+	    case "scroll_top":
+	    ui_scroll_top(ele)
 	    
 	}
     }

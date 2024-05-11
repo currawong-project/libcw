@@ -150,6 +150,10 @@ namespace cw
     rc_t setOrderKey(    handle_t h, unsigned uuId, int orderKey );
     int  getOrderKey(    handle_t h, unsigned uuId );
 
+    // Scroll the element identified by 'uuId' to the top of the list.
+    // (uuId must identify a list element whose parent is a 'uiList')
+    rc_t setScrollTop(   handle_t h, unsigned uuId );
+
     rc_t        setBlob(   handle_t h, unsigned uuId, const void* blob, unsigned blobByteN );
     const void* getBlob(   handle_t h, unsigned uuId, unsigned& blobByteN_Ref );
     rc_t        clearBlob( handle_t h, unsigned uuId );

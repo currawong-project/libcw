@@ -394,6 +394,7 @@ namespace cw
     rc_t uiSetOrderKey(    handle_t h, unsigned uuId, int orderKey );
     int  uiGetOrderKey(    handle_t h, unsigned uuId );
 
+    rc_t uiSetScrollTop(   handle_t h, unsigned uuId );
     
     rc_t        uiSetBlob(   handle_t h, unsigned uuId, const void* blob, unsigned blobByteN );
     const void* uiGetBlob(   handle_t h, unsigned uuId, unsigned& blobByteN_Ref );
