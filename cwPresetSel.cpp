@@ -41,6 +41,7 @@ namespace cw
       
       flow::preset_order_t* presetOrderA;  // presetOrderA[ presetLabelN ]
       flow::preset_order_t* multiPresetA; // activePresetA[ presetLabelN ]
+      flow::preset_order_t* dryPresetOrder;   // pointer to the dry preset in presetOrderA[]
 
       alt_label_t*     altLabelA;
       unsigned         altLabelN;
@@ -928,6 +929,9 @@ cw::rc_t cw::preset_sel::create(  handle_t& hRef, const object_t* cfg  )
     p->presetLabelA[i].label = mem::duplStr(label);
     p->presetOrderA[i].preset_label = p->presetLabelA[i].label;
     p->presetOrderA[i].order = 1;
+
+    if( textIsEqual(p->presetOrderA[i].preset_label,"dry") )
+      p->dryPresetOrder = p->presetOrderA + i;
   }
 
 
@@ -964,6 +968,8 @@ cw::rc_t cw::preset_sel::create(  handle_t& hRef, const object_t* cfg  )
   if( p->defaultPresetIdx == kInvalidIdx )
     cwLogError(kInvalidStateRC,"No default preset was set.");
 
+  if( p->dryPresetOrder == nullptr )
+    rc = cwLogError(kInvalidStateRC,"The 'dry' preset was not found.");
   
   
   hRef.set(p);
@@ -1536,13 +1542,28 @@ const cw::flow::preset_order_t*  cw::preset_sel::fragment_active_presets( handle
   
   count_ref = 0;
 
-  // if this is a dry-only fragment and dryOnlFy is set or if all active flag is not set
-  if( (cwIsFlag(flags,kDryPriorityFl) && f->dryOnlyFl) || cwIsNotFlag(flags,kAllActiveFl) )
-    preset_order = _load_active_multi_preset_array(p,f,flags,count_ref);
+  // Note that kAllActiveFl,kDryPriorityFl,kDrySelectedFl will only be set
+  // when the preset is being selected probabilistically
+
+  // if this fragment is dry-selected or dry-only and the associated flags are set
+  // then select then return the 'dry' preset
+  if( (cwIsFlag(flags,kDrySelectedFl) && f->drySelectedFl) || (cwIsFlag(flags,kDryPriorityFl) && f->dryOnlyFl) )
+  {
+    preset_order = p->dryPresetOrder;
+    count_ref  = 1;
+  }
   else
   {
-    preset_order = p->presetOrderA;
-    count_ref    = p->presetLabelN;
+    // if all active is set then return all presets ...
+    if( cwIsFlag(flags,kAllActiveFl) )
+    {
+      preset_order = p->presetOrderA;
+      count_ref    = p->presetLabelN;
+    }
+    else // ... otherwise return the active presets only      
+    {
+      preset_order = _load_active_multi_preset_array(p,f,flags,count_ref);
+    }
   }
 
   return preset_order;
@@ -1762,12 +1783,18 @@ cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
       _set_alt_str( p, f, i, alt_str );
 
       if( playFl )
+      {
         f->altPresetIdxA[0] = preset_idx;
+
+        // if the dry preset is selected
+        if( preset_idx == dryPresetIdx )
+          f->drySelectedFl = true;
+      }
       
     }
 
     // if only one preset is active and the dry preset is active
-    f->dryOnlyFl = activePresetN==1 && (f->presetA[dryPresetIdx].order>0 || f->presetA[dryPresetIdx].playFl);
+    f->dryOnlyFl    = activePresetN==1 && (f->presetA[dryPresetIdx].order>0 || f->presetA[dryPresetIdx].playFl);
 
   }
   
@@ -1795,7 +1822,7 @@ cw::rc_t cw::preset_sel::report( handle_t h )
     unsigned elapsedMs = time::elapsedMs(t0,f->endTimestamp);
     double mins = elapsedMs / 60000.0;
     
-    cwLogInfo("%3i id:%3i end loc:%3i end min:%f dry-only:%i",i,f->fragId,f->endLoc, mins, f->dryOnlyFl);
+    cwLogInfo("%3i id:%3i end loc:%3i end min:%f dry-only:%i dry-sel:%i",i,f->fragId,f->endLoc, mins, f->dryOnlyFl, f->drySelectedFl);
   }
 
   return rc;
@@ -1810,8 +1837,9 @@ cw::rc_t cw::preset_sel::report_presets( handle_t h )
   
   for(; f!=nullptr; f=f->link)
   {
-    const char* dry_label = f->dryOnlyFl ? "dry" : "";
-    cwLogPrint("%5i %5i %3s ",beg_loc,f->endLoc,dry_label);
+    const char* dry_only_label = f->dryOnlyFl ? "only" : "";
+    const char* dry_sel_label  = f->drySelectedFl ? "sel" : "";
+    cwLogPrint("%5i %5i dry-(%4s %3s)",beg_loc,f->endLoc,dry_only_label,dry_sel_label);
     for(unsigned i=0; i<f->presetN; ++i)
       if( f->presetA[i].playFl || f->presetA[i].order!=0 )
         cwLogPrint("(%s-%i) ", p->presetLabelA[ f->presetA[i].preset_idx ].label, f->presetA[i].order);

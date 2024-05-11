@@ -90,6 +90,7 @@ namespace cw
       kPresetInterpCheckId,
       kPresetAllowAllCheckId,
       kPresetDryPriorityCheckId,
+      kPresetDrySelectedCheckId,
 
       
       kEnaRecordCheckId,
@@ -202,6 +203,7 @@ namespace cw
       { kPanelDivId,     kPresetInterpCheckId,   "presetInterpCheckId" },
       { kPanelDivId,     kPresetAllowAllCheckId, "presetAllowAllCheckId" },
       { kPanelDivId,     kPresetDryPriorityCheckId, "presetDryPriorityCheckId" },
+      { kPanelDivId,     kPresetDrySelectedCheckId, "presetDrySelectedCheckId" },
       
       
 
@@ -938,14 +940,16 @@ namespace cw
         {
           unsigned multiPresetN = 0;
 
-          // allow-any-fl = pri-prob-fl && allow-any-flag
-          bool allowAnyFl    = cwIsFlag(app->multiPresetFlags,flow::kAllowAllPresetFl) && cwIsFlag(app->multiPresetFlags,flow::kPriPresetProbFl);
+          // allow-any,dry-priority,dry-selected may only be set when pri-prob is set
+          bool allowAnyFl    = cwIsFlag(app->multiPresetFlags,flow::kAllowAllPresetFl)    && cwIsFlag(app->multiPresetFlags,flow::kPriPresetProbFl);
           bool dryPriorityFl = cwIsFlag(app->multiPresetFlags,flow::kDryPriorityPresetFl) && cwIsFlag(app->multiPresetFlags,flow::kPriPresetProbFl);
+          bool drySelectedFl = cwIsFlag(app->multiPresetFlags,flow::kDrySelectedPresetFl) && cwIsFlag(app->multiPresetFlags,flow::kPriPresetProbFl);
 
           unsigned activePresetFlags  = 0;
 
           activePresetFlags = cwEnaFlag(activePresetFlags, preset_sel::kAllActiveFl,   allowAnyFl);
           activePresetFlags = cwEnaFlag(activePresetFlags, preset_sel::kDryPriorityFl, dryPriorityFl);
+          activePresetFlags = cwEnaFlag(activePresetFlags, preset_sel::kDrySelectedFl, drySelectedFl);
                     
           flow::multi_preset_selector_t mp_sel =
             { .flags     = app->multiPresetFlags,
@@ -3053,6 +3057,12 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
       if((rc = _fragment_load_data(app)) != kOkRC )
         rc = cwLogError(rc,"Preset data restore failed.");
 
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kPresetInterpCheckId ),      false );
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kPresetAllowAllCheckId ),    false );
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kPresetDryPriorityCheckId ), false );
+      io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kPresetDrySelectedCheckId ), false );
+
+      
       _on_live_midi_checkbox(app,app->useLiveMidiFl);
 
       return rc;
@@ -3122,10 +3132,17 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
 
         case kPriPresetProbCheckId:
           app->multiPresetFlags = cwEnaFlag(app->multiPresetFlags,flow::kPriPresetProbFl,m.value->u.b);
+
+          io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kPresetAllowAllCheckId ),    m.value->u.b );
+          io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kPresetDrySelectedCheckId ), m.value->u.b );
+
           break;
           
         case kSecPresetProbCheckId:
           app->multiPresetFlags = cwEnaFlag(app->multiPresetFlags,flow::kSecPresetProbFl,m.value->u.b);
+
+          io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kPresetInterpCheckId ),  m.value->u.b );
+          
           break;
 
         case kPresetInterpCheckId:
@@ -3134,12 +3151,16 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
           
         case kPresetAllowAllCheckId:
           app->multiPresetFlags = cwEnaFlag(app->multiPresetFlags,flow::kAllowAllPresetFl,m.value->u.b);
+          io::uiSetEnable( app->ioH, io::uiFindElementUuId( app->ioH, kPresetDryPriorityCheckId ), m.value->u.b );
           break;
 
         case kPresetDryPriorityCheckId:
           app->multiPresetFlags = cwEnaFlag(app->multiPresetFlags,flow::kDryPriorityPresetFl,m.value->u.b);
           break;
 
+        case kPresetDrySelectedCheckId:
+          app->multiPresetFlags = cwEnaFlag(app->multiPresetFlags,flow::kDrySelectedPresetFl,m.value->u.b);
+          break;
           
         case kMidiThruCheckId:
           cwLogInfo("MIDI thru:%i",m.value->u.b);        
@@ -3403,6 +3424,10 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
 
         case kPresetDryPriorityCheckId:
           io::uiSendValue( app->ioH, m.uuId, preset_cfg_flags(app->ioFlowH) & flow::kDryPriorityPresetFl );
+          break;
+
+        case kPresetDrySelectedCheckId:
+          io::uiSendValue( app->ioH, m.uuId, preset_cfg_flags(app->ioFlowH) & flow::kDrySelectedPresetFl );
           break;
           
         case kWetInGainId:
