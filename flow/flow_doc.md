@@ -3,9 +3,26 @@
 
 # Flow Documentation:
 
-Flow is an audio processing framework that is designed to 
-facilitate the specification of real-time and non-real-time music 
+_flow_ is an experimental audio processing framework which supports 
+the execution of real-time and non-real-time music 
 and audio processing networks and the application of network state data. 
+
+The framework is designed to easily build a certain flavor of 
+audio processing network which is defined by the ability
+to arbitrarily and seemlessly update the state of the network in real-time.
+
+
+A _flow_ program is a data flow network formed from a collection of
+interconnected processing units.  A processing unit is referered
+to as a __proc__. Each processing unit has a function which 
+operates on a set of variables. The network is formed
+by connecting processors together via their variables.
+
+
+Fig. 1 shows a simple network non-real time network
+where the output of a sine oscillator is written to an audio file.
+
+
 
 
 
