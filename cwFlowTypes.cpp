@@ -1347,8 +1347,8 @@ void cw::flow::class_desc_destroy( class_desc_t* class_desc)
   }
 
   // release the preset list
-  preset_t* pr0 = class_desc->presetL;
-  preset_t* pr1 = nullptr;
+  class_preset_t* pr0 = class_desc->presetL;
+  class_preset_t* pr1 = nullptr;
   while( pr0 != nullptr )
   {
     pr1 = pr0->link;
@@ -1393,9 +1393,9 @@ cw::rc_t cw::flow::var_desc_find( class_desc_t* cd, const char* label, var_desc_
   return kOkRC;
 }
 
-const cw::flow::preset_t* cw::flow::class_preset_find( const class_desc_t* cd, const char* preset_label )
+const cw::flow::class_preset_t* cw::flow::class_preset_find( const class_desc_t* cd, const char* preset_label )
 {
-  const preset_t* pr;
+  const class_preset_t* pr;
   for(pr=cd->presetL; pr!=nullptr; pr=pr->link)
     if( textCompare(pr->label,preset_label) == 0 )
       return pr;
@@ -1430,6 +1430,71 @@ void cw::flow::network_print( const network_t& net )
     }
         
   }
+
+  if(net.presetN > 0 )
+  {
+    cwLogPrint("Presets:\n");
+    for(unsigned i=0; i<net.presetN; ++i)
+    {
+      const network_preset_t* net_preset = net.presetA + i;
+      cwLogPrint("%i %s\n",i,net_preset->label);
+      const preset_value_t* net_val = net_preset->value_head;
+      for(; net_val!=nullptr; net_val=net_val->link)
+      {
+        cwLogPrint("    %s:%i %s:%i ",cwStringNullGuard(net_val->proc->label),net_val->proc->label_sfx_id,cwStringNullGuard(net_val->var->label),net_val->var->label_sfx_id);
+        _value_print( &net_val->value );
+        cwLogPrint("\n");
+      }
+    }
+    cwLogPrint("\n");
+  }
+}
+
+const cw::flow::network_preset_t* cw::flow::network_preset_from_label( const network_t& net, const char* preset_label )
+{
+  const network_preset_t* net_preset;
+  for(unsigned i=0; i<net.presetN; ++i)
+    if( textIsEqual(net.presetA[i].label,preset_label))
+      return net.presetA + i;
+  return nullptr;
+}
+
+
+unsigned cw::flow::proc_mult_count( const network_t& net, const char* proc_label )
+{
+  unsigned multN = 0;
+  for(unsigned i=0; i<net.proc_arrayN; ++i)
+    if( textIsEqual(net.proc_array[i]->label,proc_label) )
+      multN += 1;
+
+  return multN;
+}
+    
+cw::rc_t cw::flow::proc_mult_sfx_id_array( const network_t& net, const char* proc_label, unsigned* idA, unsigned idAllocN, unsigned& idN_ref )
+{
+  rc_t     rc    = kOkRC;
+  unsigned multN = 0;
+
+  idN_ref = 0;
+  
+  for(unsigned i=0; i<net.proc_arrayN; ++i)
+    if( textIsEqual(net.proc_array[i]->label,proc_label) )
+    {
+      if( multN >= idAllocN )
+      {
+        rc = cwLogError(kBufTooSmallRC,"The mult-sfx-id result array is too small for the proc:'%s'.",cwStringNullGuard(proc_label));
+        goto errLabel;
+      }
+      
+      idA[multN] = net.proc_array[i]->label_sfx_id;
+      multN += 1;
+    }
+  
+  idN_ref = multN;
+
+errLabel:
+  
+  return kOkRC;  
 }
 
 void cw::flow::proc_destroy( proc_t* proc )
@@ -2161,6 +2226,71 @@ cw::rc_t  cw::flow::var_get( variable_t* var, mbuf_t*& valRef )
 
 cw::rc_t  cw::flow::var_get( const variable_t* var, const object_t*& valRef )
 { return _val_get_driver(var,valRef); }
+
+cw::rc_t cw::flow::cfg_to_value( const object_t* cfg, value_t& value_ref )
+{
+  rc_t rc = kOkRC;
+      
+  switch( cfg->type->id )
+  {
+    case kCharTId:  
+    case kUInt8TId:
+    case kUInt16TId:
+    case kUInt32TId:
+      value_ref.tflag = kUIntTFl;
+      if((rc = cfg->value(value_ref.u.u)) != kOkRC )
+        rc = cwLogError(rc,"Conversion to uint failed.");
+      break;
+          
+    case kInt8TId:
+    case kInt16TId:
+    case kInt32TId:
+      value_ref.tflag = kUIntTFl;
+      if((rc = cfg->value(value_ref.u.i)) != kOkRC )
+        rc = cwLogError(rc,"Conversion to int failed.");
+      break;
+          
+    case kInt64TId:
+    case kUInt64TId:
+      rc = cwLogError(kInvalidArgRC,"The flow system does not currently implement 64bit integers.");
+      goto errLabel;
+      break;
+          
+    case kFloatTId:
+      value_ref.tflag = kFloatTFl;
+      if((rc = cfg->value(value_ref.u.f)) != kOkRC )
+        rc = cwLogError(rc,"Conversion to float failed.");
+      break;
+          
+    case kDoubleTId:
+      value_ref.tflag = kDoubleTFl;
+      if((rc = cfg->value(value_ref.u.d)) != kOkRC )
+        rc = cwLogError(rc,"Conversion to double failed.");
+      break;
+          
+    case kBoolTId:
+      value_ref.tflag = kBoolTFl;
+      if((rc = cfg->value(value_ref.u.b)) != kOkRC )
+        rc = cwLogError(rc,"Conversion to bool failed.");
+      break;
+          
+    case kStringTId:
+    case kCStringTId:
+      value_ref.tflag = kStringTFl;
+      if((rc = cfg->value(value_ref.u.s)) != kOkRC )
+        rc = cwLogError(rc,"Conversion to string failed.");
+      break;
+          
+    default:
+      value_ref.tflag = kCfgTFl;
+      value_ref.u.cfg = cfg;
+        
+  }
+errLabel:
+
+  return rc;
+}
+    
 
 cw::rc_t cw::flow::var_set_from_preset( variable_t* var, const object_t* value )
 {

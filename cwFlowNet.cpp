@@ -23,6 +23,33 @@ namespace cw
   {
 
 
+    void _preset_value_destroy( preset_value_t* v )
+    {
+      mem::release(v);
+    }
+    
+    void _network_preset_destroy(network_preset_t& network_preset)
+    {
+      preset_value_t* pv = network_preset.value_head;
+      while( pv != nullptr )
+      {
+        preset_value_t* pv0 = pv->link;
+        _preset_value_destroy(pv);
+        pv = pv0;
+      }
+      
+      network_preset.value_head = nullptr;
+      network_preset.value_tail = nullptr;
+      
+    }
+    
+    void _network_preset_array_destroy( network_t& net )
+    {
+      for(unsigned i=0; i<net.presetN; ++i)
+        _network_preset_destroy( net.presetA[i] );
+      mem::release(net.presetA);
+    }
+    
     rc_t _network_destroy( network_t& net )
     {
       rc_t rc = kOkRC;
@@ -33,6 +60,11 @@ namespace cw
       mem::release(net.proc_array);
       net.proc_arrayAllocN = 0;
       net.proc_arrayN = 0;
+
+      _network_preset_array_destroy(net);
+
+      mem::release(net.preset_pairA);
+      net.preset_pairN = 0;
       
       return rc;
     }
@@ -112,6 +144,7 @@ namespace cw
       return rc;
     }
 
+#ifdef NOT_DEF    
 
     template< typename T >
     T _interp_dual_value( T v0, T v1, double coeff )
@@ -315,7 +348,8 @@ namespace cw
     errLabel:
       return rc;
     }
-    
+
+
     rc_t _multi_preset_channelize_vars( proc_t* proc, const char* type_src_label, const char** presetLabelA, const object_t** preset_cfgA, unsigned presetN, double coeff )
     {
       rc_t rc = kOkRC;
@@ -406,7 +440,7 @@ namespace cw
       {
         if( class_preset_labelA[i] != nullptr )
         {
-          const preset_t* pr;
+          const class_preset_t* pr;
           
           // locate the requestd preset record
           if((pr = class_preset_find(proc->class_desc, class_preset_labelA[i])) == nullptr )
@@ -449,11 +483,12 @@ namespace cw
       return rc;
       
     }
+#endif
     
     rc_t _class_preset_channelize_vars( proc_t* proc, const char* preset_label )
     {
       rc_t            rc = kOkRC;
-      const preset_t* pr;
+      const class_preset_t* pr;
 
       if( preset_label == nullptr )
         return kOkRC;
@@ -591,63 +626,6 @@ namespace cw
       return idxMapA[sel_idx];
     }
 
-    /*
-    unsigned _select_ranked_ele_by_rank_prob( const preset_order_t* rankV, unsigned rankN )
-    {     
-      unsigned threshV[ rankN ];
-      unsigned uniqueRankV[ rankN ];      
-      unsigned uniqueRankN = 0;
-      unsigned sel_idx = rankN - 1; //
-
-      if( rankN == 0 )
-        return kInvalidIdx;
-
-      if( rankN == 1 )
-        return 0;
-
-      // for each possible rank value
-      for(unsigned i=0; i<rankN; ++i)
-      {
-        // locate the rank in the uniqueRankV[]
-        unsigned j=0;
-        for(; j<uniqueRankN; ++j)
-          if( uniqueRankV[j]==rankV[i].order )
-            break;
-
-        // if the rank was not found then include it here
-        if( j == uniqueRankN )
-          uniqueRankV[uniqueRankN++] = rankV[i].order;
-
-      }
-
-      // uniqueRankV[] now includes the set of possible rank values
-      
-      // Take the product of all possible values.
-      // (this will be evenly divisible by all values)
-      unsigned prod = vop::prod(uniqueRankV,uniqueRankN);
-
-      unsigned thresh = 0;
-      for(unsigned i=0; i<rankN; ++i)
-        threshV[i] = (thresh += rankV[i].order * prod);
-
-      // Thresh is now set to the max possible random value.
-      
-      // Generate a random number between 0 and thresh
-      double   fval = (double)std::rand() * thresh / RAND_MAX;
-
-      unsigned thresh0 = 0;
-      for(unsigned i=0; i<rankN; ++i)
-      {
-        if( thresh0 <= fval && fval < threshV[i] )
-        {
-          sel_idx = i;
-          break;
-        }
-      }
-
-      return sel_idx;
-    }
-    */
     
     const char* _select_ranked_ele_label_by_rank_prob( const preset_order_t* rankV, const bool* selA, unsigned rankN )
     {
@@ -711,7 +689,8 @@ namespace cw
       
       return result;
     }
-    
+
+#ifdef NOT_DEF    
     rc_t _find_network_preset_proc_pair( network_t& net, const char* preset_label, const char* proc_label, const object_t*& preset_val_ref )
     {
       rc_t rc = kOkRC;
@@ -744,7 +723,7 @@ namespace cw
     errLabel:
       return rc;
     }
-
+#endif
                                  
     
     //=======================================================================================================
@@ -914,7 +893,7 @@ namespace cw
       if((bufN = textLength(id_str)) == 0 )
       {
         if( !inProcFl )         
-          rc = cwLogError(kSyntaxErrorRC,"A blank connection id string was encountered.");
+          rc = cwLogError(kSyntaxErrorRC,"A blank id string was encountered.");
         goto errLabel;
       }
       else
@@ -960,7 +939,7 @@ namespace cw
               // a literal iteration count was given - parse it into an integer
               if((rc = string_to_number(underscore + 1,r.sfx_id_count)) != kOkRC )
               {
-                rc = cwLogError(rc,"Unable to parse the secondary integer in the connection label '%s'.",cwStringNullGuard(id_str));
+                rc = cwLogError(rc,"Unable to parse the secondary integer in the id label '%s'.",cwStringNullGuard(id_str));
                 goto errLabel;
               }
             }              
@@ -970,7 +949,7 @@ namespace cw
         // verify that some content remains in the id string
         if( textLength(buf) == 0 )
         {
-          rc = cwLogError(kSyntaxErrorRC,"Unable to parse the connection id string '%s'.",cwStringNullGuard(id_str));
+          rc = cwLogError(kSyntaxErrorRC,"Unable to parse the id string '%s'.",cwStringNullGuard(id_str));
           goto errLabel;
         }
 
@@ -990,7 +969,7 @@ namespace cw
           // a literal base-sfx-id was given - parse it into an integer
           if((rc = string_to_number(digit,r.base_sfx_id)) != kOkRC )
           {
-            rc = cwLogError(rc,"Unable to parse the primary integer in the connection label '%s'.",cwStringNullGuard(id_str));
+            rc = cwLogError(rc,"Unable to parse the primary integer in the id '%s'.",cwStringNullGuard(id_str));
             goto errLabel;            
           }
 
@@ -1001,7 +980,7 @@ namespace cw
         // verify that some content remains in the id string
         if( textLength(buf) == 0 )
         {
-          rc = cwLogError(kSyntaxErrorRC,"Unexpected invalid connection id string '%s'.",cwStringNullGuard(id_str));
+          rc = cwLogError(kSyntaxErrorRC,"Unexpected invalid id '%s'.",cwStringNullGuard(id_str));
           goto errLabel;
 
         }
@@ -2202,20 +2181,10 @@ namespace cw
       _io_stmt_array_destroy(pstate.iStmtA,pstate.iStmtN);
       _io_stmt_array_destroy(pstate.oStmtA,pstate.oStmtN);
 
-      /*
-      for(unsigned i=0; i<pstate.in_arrayN; ++i)
-        _in_stmt_destroy(pstate.in_array[i]);
-      mem::release(pstate.in_array);
-
-      for(unsigned i=0; i<pstate.out_arrayN; ++i)
-        _out_stmt_destroy(pstate.out_array[i]);
-      mem::release(pstate.out_array);
-      */
-      
       mem::release(pstate.proc_label);
     }
 
-    // Count of proc inst instances which exist in the network with a given class.
+    // Count of proc instances which exist in the network with a given class.
     unsigned _poly_copy_count( const network_t& net, const char* proc_clas_label )
     {
       unsigned n = 0;
@@ -2231,7 +2200,7 @@ namespace cw
                        unsigned        sfx_id,
                        network_t&      net,
                        variable_t*     proxyVarL,
-                       proc_t*&    proc_ref )
+                       proc_t*&        proc_ref )
     {
       rc_t                    rc         = kOkRC;
       proc_inst_parse_state_t pstate     = {};
@@ -2286,6 +2255,7 @@ namespace cw
       }
 
       // Instantiate all the variables in the class description - that were not already created in _in_stmt_parse_in_list()
+      // or _subnet_create_proxied_vars().
       for(var_desc_t* vd=class_desc->varDescL; vd!=nullptr; vd=vd->link)
         if( !_is_var_proc_already_created( proc, vd->label, pstate ) && cwIsNotFlag(vd->type,kRuntimeTFl) )
         {
@@ -2298,11 +2268,12 @@ namespace cw
       // and the chIdx of each variable is set to 'any'.
       
       // If a 'preset' field was included in the class cfg then apply the specified class preset
+      // Note that the 'preset' field can be a string or list of strings.
       if( pstate.preset_labels != nullptr )      
         if((rc = _class_apply_presets(proc, pstate.preset_labels )) != kOkRC )
           goto errLabel;
 
-      // All the class presets values have now been set and those variables
+      // The requested class presets values have now been set and those variables
       // that were expressed with a list have numeric channel indexes assigned.
 
       // Apply the proc inst instance 'args:{}' values.
@@ -2315,25 +2286,14 @@ namespace cw
       // All the proc instance arg values have now been set and those variables
       // that were expressed with a list have numeric channel indexes assigned.
 
-
-      // TODO: Should the 'all' variable be removed for variables that have numeric channel indexes?
-
+      // Connect the var's that are referenced in the in-stmt to their respective sources
       if((rc = _io_stmt_connect_vars(net, proc, "in", "src", pstate.iStmtA, pstate.iStmtN)) != kOkRC )
       {
         rc = cwLogError(rc,"Input connection processing failed.");
         goto errLabel;
       }
-
-      /*
-      // Connect the in-list variables to their sources.
-      if((rc = _in_stmt_connect_in_vars(net, proc, pstate)) != kOkRC )
-      {
-        rc = cwLogError(rc,"Input connection processing failed.");
-        goto errLabel;
-      }
-      */
       
-      // Connect the proxied vars in this subnet proc
+      // Connect the proxied vars in this subnet proc to their respective proxy vars.
       if((rc = _subnet_connect_proxy_vars( proc, proxyVarL )) != kOkRC )
       {
         rc = cwLogError(rc,"Proxy connection processing failed.");
@@ -2371,6 +2331,7 @@ namespace cw
       if((rc = _proc_call_value_func_on_all_variables( proc )) != kOkRC )
         goto errLabel;
 
+      // validate the proc's state.
       if((rc = proc_validate(proc)) != kOkRC )
       {
         rc = cwLogError(rc,"proc inst instance validation failed.");
@@ -2389,6 +2350,630 @@ namespace cw
       _pstate_destroy(pstate);
       
       return rc;      
+    }
+
+    //
+    //  Network preset pair table
+    //
+
+    rc_t _network_preset_pair_count( const network_t& net, unsigned& count_ref  )
+    {
+      rc_t rc = kOkRC;
+      
+      count_ref = 0;
+      unsigned n = 0;
+      for(unsigned i=0; i<net.proc_arrayN; ++i)
+      {
+        const proc_t* proc = net.proc_array[i];
+        for(const variable_t* var=proc->varL; var!=nullptr; var=var->var_link)
+          if( var->chIdx == kAnyChIdx )
+          {
+            unsigned varChCnt = 0;
+            if((rc = var_channel_count(var,varChCnt)) != kOkRC )
+            {
+              rc = cwLogError(rc,"The network preset pair count operation failed.");
+              goto errLabel;
+            }
+            
+            n += varChCnt + 1; // Add 1 for the kAnyCh
+          }
+      }
+      
+      count_ref = n;
+    errLabel:
+      
+      return rc;
+    }
+
+    rc_t _network_preset_pair_fill_table( const network_t& net, network_preset_pair_t* nppA, unsigned nppN)
+    {
+      rc_t     rc = kOkRC;
+      unsigned j  = 0;
+      for(unsigned i=0; i<net.proc_arrayN; ++i)
+      {
+        const proc_t* proc = net.proc_array[i];
+        for(const variable_t* var=proc->varL; var!=nullptr; var=var->var_link)
+          if( var->chIdx == kAnyChIdx )
+          {
+            unsigned varChCnt                          = 0;
+            if((rc = var_channel_count(var,varChCnt)) != kOkRC )
+              goto errLabel;
+
+            unsigned k=0;
+            for(const variable_t* ch_var=var; ch_var!=nullptr; ch_var = ch_var->ch_link, ++j,++k )
+            {
+              if( j >= nppN )
+              {
+                rc = cwLogError(kInvalidStateRC,"Unexpected end of preset-pair table was encountered.");
+                goto errLabel;
+              }
+              
+              nppA[j].proc  = proc;
+              nppA[j].var   = ch_var;
+              nppA[j].chIdx = var->chIdx;;
+              nppA[j].chN   = varChCnt;;
+            }
+
+            if( k != varChCnt+1 )
+            {
+              rc = cwLogError(kInvalidStateRC,"An inconsistent var channel count was encountered on '%s:%i'-'%s:%i'.",
+                              cwStringNullGuard(proc->label),proc->label_sfx_id,
+                              cwStringNullGuard(var->label),var->label_sfx_id);
+              goto errLabel;
+            }
+            
+          }
+      }
+
+      if( j != nppN )
+        rc = cwLogError(kInvalidStateRC,"The expected count of entries in the preset_pair table (%i) does not match the actual count (%i).",nppN,j);
+
+    errLabel:
+      if( rc != kOkRC )
+        rc = cwLogError(rc,"Preset pair table fill failed.");
+      return rc;
+    }
+
+    rc_t _network_preset_pair_create_table( network_t& net )
+    {
+      rc_t     rc         = kOkRC;
+      unsigned pair_count = 0;
+
+      // get the total count of variables in this network
+      if((rc = _network_preset_pair_count(net, pair_count  )) != kOkRC )
+        goto errLabel;
+      
+      // allocate the preset pair tble
+      net.preset_pairA = mem::allocZ<network_preset_pair_t>(pair_count);
+      net.preset_pairN = pair_count;
+
+      // fill the preset pair table
+      if((rc= _network_preset_pair_fill_table(net, net.preset_pairA, net.preset_pairN)) != kOkRC )
+        goto errLabel;
+      
+
+    errLabel:
+      if( rc != kOkRC )
+      {
+        rc = cwLogError(rc,"Network preset pair table create failed.");
+        mem::release(net.preset_pairA);
+        net.preset_pairN = 0;
+      }
+      
+      return rc;
+    }
+
+    unsigned _network_preset_pair_find_index( const network_t& net, const variable_t* var )
+    {      
+      for(unsigned i=0; i<net.preset_pairN; ++i)
+      {
+        const network_preset_pair_t* npp = net.preset_pairA + i;
+        
+        if( var->proc == npp->proc && var == npp->var )
+        {
+          assert( var->chIdx == npp->var->chIdx );
+          return i;
+        }
+      }
+
+      return kInvalidIdx;
+    }
+
+    //
+    //  Preset processing
+    //
+    
+    rc_t _parse_network_proc_label( const network_t& net, const network_preset_t& network_preset, const char* proc_label, io_ele_t& proc_id )
+    {
+      rc_t rc = kOkRC;
+      
+      // parse the proc label
+      if((rc= _io_stmt_parse_ele( proc_label, proc_id )) != kOkRC )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"Parse failed on the proc label '%s' of preset '%s'.",cwStringNullGuard(proc_label),cwStringNullGuard(network_preset.label));
+        goto errLabel;
+      }
+
+      // set the proc_id base sfx id
+      if( proc_id.base_sfx_id == kInvalidId )
+        proc_id.base_sfx_id = kBaseSfxId;
+
+      // if not iterating
+      if( !proc_id.is_iter_fl )
+      {
+        proc_id.sfx_id_count = 1;
+      }
+      else
+      {
+        if( proc_id.sfx_id_count == kInvalidCnt )
+          proc_id.sfx_id_count = proc_mult_count(net, proc_label );
+      }
+
+    errLabel:
+      return rc;
+    }
+
+    rc_t _parse_network_proc_var_label( network_t& net, const char* network_preset_label, const object_t* var_pair, const char* proc_label, unsigned proc_label_sfx_id, io_ele_t& var_id )
+    {
+      rc_t        rc        = kOkRC;
+      const char* var_label = nullptr;
+          
+      if( var_pair==nullptr || !var_pair->is_pair() || (var_label=var_pair->pair_label())==nullptr || var_pair->pair_value() == nullptr )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"A syntax error was encountered on a preset pair value on preset '%s:%s'.",cwStringNullGuard(network_preset_label),cwStringNullGuard(proc_label));
+        goto errLabel;
+      }
+
+      // 
+      if((rc= _io_stmt_parse_ele( var_label, var_id )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Parse failed on the var label of preset '%s:%s:%s'.",cwStringNullGuard(network_preset_label),cwStringNullGuard(proc_label),cwStringNullGuard(var_label));
+        goto errLabel;
+      }
+
+      // set the var_id base sfx id
+      if( var_id.base_sfx_id == kInvalidId )
+        var_id.base_sfx_id = kBaseSfxId;
+
+      // if not iterating
+      if( !var_id.is_iter_fl )
+      {
+        var_id.sfx_id_count = 1;
+      }
+      else
+      {
+
+        proc_t* proc;
+
+        // find the var proc
+        if((proc = proc_find(net,proc_label,proc_label_sfx_id)) == nullptr )
+        {
+          rc = cwLogError(kEleNotFoundRC,"The proc '%s' could not be found for network preset '%s'.",cwStringNullGuard(proc_label),cwStringNullGuard(network_preset_label));
+          goto errLabel;
+        }
+                  
+        if( var_id.sfx_id_count == kInvalidCnt )
+          var_id.sfx_id_count = var_mult_count(proc, proc_label );
+      }
+      
+    errLabel:
+      return rc;
+      
+    }
+
+    rc_t _network_preset_get_class_preset( network_t& net, const char* network_preset_label, const char* proc_label,  const object_t* class_preset_label_cfg, const object_t*& class_preset_cfg_ref )
+    {
+      rc_t                  rc                 = kOkRC;
+      const char*           class_preset_label = nullptr;;
+      const class_preset_t* class_preset       = nullptr;
+      class_desc_t*         class_desc         = nullptr;
+      proc_t*               proc               = nullptr;
+
+      class_preset_cfg_ref = nullptr;
+      
+      // get the label of the proc class preset
+      if((rc = class_preset_label_cfg->value(class_preset_label)) != kOkRC )
+      {
+        rc = cwLogError(rc,"The preset label could not be parsed on the preset:'%s:%s'",cwStringNullGuard(network_preset_label),cwStringNullGuard(proc_label));
+        goto errLabel;
+      }
+
+      // locate the proc this preset will be applied to
+      if((proc = proc_find(net, proc_label, kBaseSfxId )) == nullptr )
+      {
+        rc = cwLogError(rc,"The proc '%s' could not be found for the preset:'%s'",cwStringNullGuard(proc_label),cwStringNullGuard(network_preset_label));
+        goto errLabel;
+      }
+      
+      // get the preset record for this proc/preset_label
+      if((class_preset = class_preset_find( proc->class_desc, class_preset_label )) == nullptr )
+      {
+        rc = cwLogError(rc,"The class description for proc '%s' could not be found for the preset:'%s'",cwStringNullGuard(proc_label),cwStringNullGuard(network_preset_label));
+        goto errLabel; 
+     }
+
+      class_preset_cfg_ref = class_preset->cfg;
+
+    errLabel:
+      return rc;
+    }
+
+    rc_t _network_preset_create_channel_value( network_t& net, network_preset_t& network_preset, proc_t* proc, variable_t* var, unsigned chN, const object_t* value_cfg )
+    {
+      rc_t            rc           = kOkRC;
+      unsigned        pairTblIdx   = kInvalidIdx;
+      preset_value_t* preset_value = mem::allocZ<preset_value_t>();
+
+      // cfg to value
+      if((rc = cfg_to_value( value_cfg, preset_value->value )) != kOkRC )
+      {
+        rc = cwLogError(rc,"The preset cfg to value conversion failed on '%s:%i'-'%s:%i'.",cwStringNullGuard(var->label),var->label_sfx_id,cwStringNullGuard(proc->label),proc->label_sfx_id);
+        goto errLabel;
+      }
+
+      // locate the the 
+      if((pairTblIdx = _network_preset_pair_find_index(net, var )) == kInvalidIdx )
+      {
+        rc = cwLogError(rc,"The preset pair record could not be found for '%s:%i'-'%s:%i'.",cwStringNullGuard(var->label),var->label_sfx_id,cwStringNullGuard(proc->label),proc->label_sfx_id);
+        goto errLabel;        
+      }
+
+      preset_value->proc       = proc;
+      preset_value->var        = var;
+      preset_value->chN        = chN;
+      preset_value->pairTblIdx = pairTblIdx;
+
+      if( network_preset.value_head == nullptr )
+        network_preset.value_head = preset_value;
+      else
+        network_preset.value_tail->link = preset_value;
+      
+      network_preset.value_tail = preset_value;
+
+    errLabel:
+      if(rc != kOkRC )
+        _preset_value_destroy(preset_value);
+      
+      return rc;
+    }
+
+    rc_t _network_preset_find_or_create_variable( proc_t* proc, const char* var_label, unsigned var_sfx_id, unsigned chIdx, const object_t* value_cfg, bool allow_create_fl, variable_t*& var_ref )
+    {
+      rc_t        rc  = kOkRC;
+      variable_t* var = nullptr;
+      var_ref         = nullptr;
+      
+      // if the var was not found on 'chIdx'
+      if((rc = var_find(proc, var_label, var_sfx_id, chIdx, var )) != kOkRC )
+      {
+
+        if( !allow_create_fl )
+        {
+          rc = cwLogError(kEleNotFoundRC,"The preset variable '%s:%i' ch:%i could not be found on proc: '%s:%i'.",
+                          cwStringNullGuard(var_label),var_sfx_id,chIdx, cwStringNullGuard(proc->label),proc->label_sfx_id );
+          goto errLabel;
+        }
+        else
+        {
+          variable_t* base_var                                             = nullptr;
+          // get the base var 
+          if((rc = var_find(proc, var_label, kBaseSfxId, kAnyChIdx, var)) != kOkRC )
+          {
+            rc = cwLogError(rc,"The base variable '%s:%i' ch:%i could not be found to pre-emptively create the variable '%s:%i' ch:%i on proc: '%s:%i'.",
+                            cwStringNullGuard(var_label),kBaseSfxId,kAnyChIdx,
+                            cwStringNullGuard(var_label),var_sfx_id,chIdx,
+                            cwStringNullGuard(proc->label),proc->label_sfx_id);
+            goto errLabel;
+          }
+
+          // create the variable
+          if((rc = var_create( proc, var_label, var_sfx_id, kInvalidId, chIdx, value_cfg, kInvalidTFl, var )) != kOkRC )
+          {
+            rc = cwLogError(rc,"Pre-emptive variable creation failed for '%s:%i' ch:%i on proc:'%s:%i'.",
+                            cwStringNullGuard(var_label),var_sfx_id,chIdx,
+                            cwStringNullGuard(proc->label),proc->label_sfx_id);
+            goto errLabel;
+          }
+        }        
+      }
+
+      var_ref = var;
+      
+    errLabel:
+      return rc;
+    }
+      
+    
+    rc_t _network_preset_create_value( network_t&        net,
+                                       network_preset_t& network_preset,
+                                       const char*       proc_label,
+                                       unsigned          proc_sfx_id,
+                                       const char*       var_label,
+                                       unsigned          var_sfx_id,
+                                       const object_t*   value_cfg )
+    {
+      rc_t        rc       = kOkRC;
+      var_desc_t* var_desc = nullptr;
+      proc_t*     proc     = nullptr;
+      
+      
+      // locate the proc this preset will be applied to
+      if((proc = proc_find(net, proc_label, proc_sfx_id )) == nullptr )
+      {
+        rc = cwLogError(kOpFailRC,"The proc '%s:%i' does not exist.",cwStringNullGuard(proc_label),proc_sfx_id);
+        goto errLabel;
+      }
+      else
+      {
+        bool is_var_cfg_type_fl = (var_desc = var_desc_find( proc->class_desc, var_label ))!=nullptr && cwIsFlag(var_desc->type,kCfgTFl);
+        bool is_list_fl         = value_cfg->is_list();
+        bool is_list_of_list_fl = is_list_fl && value_cfg->child_count() > 0 && value_cfg->child_ele(0)->is_list();
+        bool parse_list_fl      = (is_list_fl && !is_var_cfg_type_fl) || (is_list_of_list_fl && is_var_cfg_type_fl);
+
+        // Case 1: By default we assume a single variable instance on channel 'kAnyChIdx' ....
+        unsigned        valueN = 1;
+        unsigned        chIdx  = kAnyChIdx;
+        const object_t* vobj   = value_cfg;
+
+        // Case 2: ... however if a list of preset values was given and the var type is not a 'cfg' type or if a list of lists was given
+        // then we are going to iterate through a list of preset values each on a successive channel index
+        if( parse_list_fl )
+        {
+          chIdx  = 0;
+          valueN = value_cfg->child_count();
+          vobj   = value_cfg->child_ele(0);
+        }
+      
+        // Iterate over each channel
+        for(unsigned i = 0; i<valueN; ++i)
+        {
+          variable_t* var = nullptr;
+
+          // find the var referenced in the preset
+          if((rc = _network_preset_find_or_create_variable( proc, var_label, var_sfx_id, chIdx, vobj, false, var )) != kOkRC )
+            goto errLabel;
+
+          // create a 'preset_value_t' record and prepend it to 'network_preset.valueL'
+          if((rc = _network_preset_create_channel_value(net, network_preset, proc, var, valueN, vobj )) != kOkRC )
+            goto errLabel;
+          
+
+          // Case 2:
+          if( parse_list_fl )
+          {
+            chIdx += 1;
+            vobj   = value_cfg->child_ele(i);
+          }
+        }
+        //printf("%s %s:%i-%s:%i\n",network_preset.label,proc_label,proc_sfx_id,var_label,var_sfx_id);
+      }
+    errLabel:
+      
+      return rc;
+    }
+    
+    
+    rc_t _network_preset_parse( flow_t* p, network_t& net, const object_t* network_preset_dict_cfg, network_preset_t& network_preset )
+    {
+      rc_t rc = kOkRC;
+      unsigned procN = 0;
+      
+      if( network_preset_dict_cfg==nullptr || !network_preset_dict_cfg->is_dict() )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The proc preset dictionary is not a dictionary in network preset:'%s'.",cwStringNullGuard(network_preset.label));
+        goto errLabel;
+      }
+
+      procN = network_preset_dict_cfg->child_count();
+
+      // for each proc in the network preset
+      for(unsigned i=0; i<procN; ++i)
+      {
+        const object_t* var_dict         = nullptr;
+        const object_t* proc_preset_pair = network_preset_dict_cfg->child_ele(i);
+        const char*     proc_label       = nullptr;
+        io_ele_t        proc_id          = {};
+        unsigned        varN             = 0;
+
+        // validate the process preset syntax
+        if( proc_preset_pair==nullptr || !proc_preset_pair->is_pair() || (proc_label=proc_preset_pair->pair_label())==nullptr || proc_preset_pair->pair_value()==nullptr )
+        {
+          rc = cwLogError(kSyntaxErrorRC,"A syntax error was encountered on a preset pair on preset '%s'.",cwStringNullGuard(network_preset.label));
+          goto errLabel;
+        }
+
+        // parse the proc label
+        if((rc= _parse_network_proc_label(net, network_preset, proc_label, proc_id )) != kOkRC )
+          goto errLabel;
+
+        // if the preset refers to a proc class preset
+        if( proc_preset_pair->pair_value()->is_string() )
+        {
+          // get the referenced preset cfg from the class desc
+          if((rc = _network_preset_get_class_preset( net, network_preset.label, proc_id.label,  proc_preset_pair->pair_value(), var_dict )) != kOkRC )
+            goto errLabel;
+        }
+        else // the preset is a dictionary of var/value pairs
+        {
+          // if preset is not a dictionary 
+          if( !proc_preset_pair->pair_value()->is_dict() )
+          {
+            rc = cwLogError(kSyntaxErrorRC,"The preset value dictionary for '%s:%s' is not valid.",cwStringNullGuard(network_preset.label),cwStringNullGuard(proc_id.label));
+            goto errLabel;
+          }
+
+          var_dict = proc_preset_pair->pair_value();
+        }
+
+        // var_dict now refers to a dictionary of var/value pairs for a single proc
+
+        varN = var_dict->child_count();
+
+        // for each proc/sf_id  (the proc label may refer to multiple proc instances)
+        for(unsigned j=0; j<proc_id.sfx_id_count; ++j)
+        {
+
+          // for each variable label:value pair
+          for(unsigned k=0; k<varN; ++k)
+          {
+            io_ele_t var_id = {};
+            const object_t* var_pair = var_dict->child_ele(k);
+            
+            // parse the preset var label
+            if((rc = _parse_network_proc_var_label(net, network_preset.label, var_pair, proc_id.label, proc_id.base_sfx_id + j, var_id )) != kOkRC )
+              goto errLabel;
+
+            // create a preset for each var:sfx_id pair (the var label may refer to multiple var instances) 
+            for(unsigned m=0; m<var_id.sfx_id_count; ++m)
+              if((rc = _network_preset_create_value( net, network_preset, proc_id.label, proc_id.base_sfx_id, var_id.label, var_id.base_sfx_id + m, var_pair->pair_value() )) != kOkRC )
+                goto errLabel;
+
+            mem::release(var_id.label);                
+          }          
+        }
+
+        mem::release(proc_id.label);
+      }
+      
+    errLabel:
+      return rc;
+    }
+    
+    
+    rc_t _network_preset_parse_top_level_dict( flow_t* p, network_t& net, const object_t* preset_cfg )
+    {
+      rc_t rc = kOkRC;
+      unsigned presetAllocN = 0;
+      
+      if( preset_cfg == nullptr )
+        return rc;
+      
+      if( !preset_cfg->is_dict() )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The network preset list is not a dictionary.");
+        goto errLabel;
+      }
+
+      presetAllocN = preset_cfg->child_count();
+      net.presetA  = mem::allocZ<network_preset_t>(presetAllocN);
+      net.presetN  = 0;
+
+      // parse each preset_label pair
+      for(unsigned i=0; i<presetAllocN; ++i)
+      {
+        const object_t* preset_pair_cfg = preset_cfg->child_ele(i);
+        network_preset_t&  network_preset     = net.presetA[i];
+
+        // validate the network preset pair
+        if( preset_pair_cfg==nullptr || !preset_pair_cfg->is_pair() || (network_preset.label = preset_pair_cfg->pair_label())==nullptr || preset_pair_cfg->pair_value()==nullptr || !preset_pair_cfg->pair_value()->is_dict() )
+        {
+          rc = cwLogError(kSyntaxErrorRC,"Invalid syntax encountered on a network preset.");
+          goto errLabel;
+        }
+
+        // parse the dictionary of proc presets
+        if((rc = _network_preset_parse(p, net, preset_pair_cfg->pair_value(), network_preset)) != kOkRC )
+        {
+          rc = cwLogError(kSyntaxErrorRC,"Network preset parse failed on preset:'%s'.",cwStringNullGuard(network_preset.label));
+          goto errLabel;
+          
+        }
+
+        net.presetN += 1;
+      }
+      
+    errLabel:
+      if(rc != kOkRC )
+      {
+        _network_preset_array_destroy(net);
+      }
+
+      return rc;
+    }
+
+
+    template<typename T0, typename T1 >
+    rc_t _preset_set_var_from_dual_interp_1( variable_t* var, T0 v0, T1 v1, double coeff )
+    {
+      return var_set(var, (T0)(v0 + (v1-v0)*coeff ));
+    }
+    
+    template< typename T >
+    rc_t _preset_set_var_from_dual_interp_0( variable_t* var,  T v0, const value_t* v1, double coeff )
+    {
+      rc_t rc = kOkRC;
+      switch( v1->tflag & kTypeMask )
+      {
+        case kUIntTFl:
+          rc = _preset_set_var_from_dual_interp_1(var,v0,v1->u.u,coeff);
+          break;
+          
+        case kIntTFl:
+          rc = _preset_set_var_from_dual_interp_1(var,v0,v1->u.u,coeff);
+          break;
+          
+        case kFloatTFl:
+          rc = _preset_set_var_from_dual_interp_1(var,v0,v1->u.u,coeff);
+          break;
+          
+        case kDoubleTFl:
+          rc = _preset_set_var_from_dual_interp_1(var,v0,v1->u.u,coeff);
+          break;
+          
+        default:
+          rc = cwLogError(kInvalidDataTypeRC,"The second operand of a set by interpolation had a non-numeric data type.");
+      }
+      return rc;
+    }
+
+  
+
+    rc_t _preset_set_var_from_dual( const preset_value_t* preset_val, const value_t* value_1, double coeff )
+    {
+      rc_t rc = kOkRC;
+      unsigned legalTypeMask = kUIntTFl | kIntTFl | kFloatTFl | kDoubleTFl;
+      
+      if( value_1 == nullptr || (preset_val->value.tflag & legalTypeMask)==0 )
+        rc = var_set( preset_val->var, &preset_val->value );
+      else
+      {
+        if( (value_1->tflag & legalTypeMask) == 0 )
+        {
+          rc = cwLogError(kInvalidDataTypeRC,"The type of value-1 (0x%x) is not a scalar number.",value_1->tflag);
+          goto errLabel;
+        }
+
+        switch( preset_val->value.tflag & legalTypeMask )
+        {
+          case kUIntTFl:
+            rc = _preset_set_var_from_dual_interp_0( preset_val->var, preset_val->value.u.u, value_1, coeff );
+            break;
+            
+          case kIntTFl:
+            rc = _preset_set_var_from_dual_interp_0( preset_val->var, preset_val->value.u.i, value_1, coeff );
+            break;
+            
+          case kFloatTFl:
+            rc = _preset_set_var_from_dual_interp_0( preset_val->var, preset_val->value.u.f, value_1, coeff );
+            break;
+            
+          case kDoubleTFl:
+            rc = _preset_set_var_from_dual_interp_0( preset_val->var, preset_val->value.u.d, value_1, coeff );
+            break;
+
+        default:
+          rc = cwLogError(kInvalidDataTypeRC,"The first operand of a set by interpolation had a non-numeric data type.");
+            
+        }
+      }
+
+    errLabel:
+      if(rc != kOkRC )
+        rc = cwLogError(rc,"Set variable from dual preset failed on '%s:%i'-'%s:%i' ch:0.",
+                        cwStringNullGuard(preset_val->proc->label),preset_val->proc->label_sfx_id,
+                        cwStringNullGuard(preset_val->var->label),preset_val->var->label_sfx_id,
+                        preset_val->var->chIdx);
+      return rc;
     }
 
     
@@ -2460,6 +3045,12 @@ cw::rc_t cw::flow::network_create( flow_t*            p,
   }
 
   net.poly_cnt = polyCnt;
+
+
+  if((rc = _network_preset_pair_create_table(net)) != kOkRC )
+    goto errLabel;
+  
+  _network_preset_parse_top_level_dict(p, net, net.presetsCfg );
   
 errLabel:
   if( rc != kOkRC )
@@ -2535,7 +3126,104 @@ errLabel:
   return rc;
 }
 
+cw::rc_t cw::flow::network_apply_preset( network_t& net, const char* preset_label, unsigned proc_label_sfx_id )
+{
+  rc_t                    rc             = kOkRC;
+  const network_preset_t* network_preset = nullptr;
+  const preset_value_t*   preset_value   = nullptr;
 
+  if((network_preset = network_preset_from_label(net, preset_label )) == nullptr )
+  {
+    rc = cwLogError(kInvalidIdRC,"The network preset '%s' could not be found.", preset_label );
+    goto errLabel;
+  }
+
+  for(preset_value=network_preset->value_head; preset_value!=nullptr; preset_value=preset_value->link)
+    if( preset_value->proc->label_sfx_id == proc_label_sfx_id )
+      if((rc = var_set( preset_value->var, &preset_value->value )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Preset value apply failed on '%s:%i'-'%s:%i' in the network preset:'%s'.",
+                        cwStringNullGuard(preset_value->proc->label),preset_value->proc->label_sfx_id,
+                        cwStringNullGuard(preset_value->var->label),preset_value->var->label_sfx_id,
+                        cwStringNullGuard(preset_label));
+        goto errLabel;
+      }
+
+  cwLogInfo("Activated preset:%s",preset_label);
+
+errLabel:
+  return rc;
+ 
+}
+
+cw::rc_t cw::flow::network_apply_dual_preset( network_t& net, const char* preset_label_0, const char* preset_label_1, double coeff )
+{
+  rc_t                    rc      = kOkRC;
+  const network_preset_t* net_ps0 = nullptr;
+  const network_preset_t* net_ps1 = nullptr;
+  
+  if((net_ps0 = network_preset_from_label(net, preset_label_0 )) == nullptr )
+  {
+    rc = cwLogError(kInvalidIdRC,"The network preset '%s' could not be found.", preset_label_0 );
+    goto errLabel;
+  }
+
+  if((net_ps1 = network_preset_from_label(net, preset_label_1 )) == nullptr )
+  {
+    rc = cwLogError(kInvalidIdRC,"The network preset '%s' could not be found.", preset_label_1 );
+    goto errLabel;
+  }
+
+  // clear the value filed of the preset-pair array
+  for(unsigned i=0; i<net.preset_pairN; ++i)
+    net.preset_pairA[i].value = nullptr;
+
+  // set the value pointer in each of the preset-pair records referenced by preset-1
+  for(const preset_value_t* pv1=net_ps1->value_head; pv1!=nullptr; pv1=pv1->link)
+  {
+    if( pv1->var->chIdx != kAnyChIdx )
+      net.preset_pairA[ pv1->pairTblIdx ].value = &pv1->value;
+    else
+    {
+      for(unsigned i=0; i<net.preset_pairA[ pv1->pairTblIdx ].chN; ++i)
+      {
+        net.preset_pairA[ pv1->pairTblIdx+i ].value = &pv1->value;
+        assert( textIsEqual(net.preset_pairA[ pv1->pairTblIdx+i ].var->label,pv1->var->label) && net.preset_pairA[ pv1->pairTblIdx+i ].var->label_sfx_id == pv1->var->label_sfx_id );        
+      }
+    }    
+  }
+
+  // 
+  for(const preset_value_t* pv0=net_ps0->value_head; pv0!=nullptr; pv0=pv0->link)
+  {
+    if( pv0->var->chIdx != kAnyChIdx )
+    {
+      rc = _preset_set_var_from_dual( pv0, net.preset_pairA[ pv0->pairTblIdx ].value, coeff );
+    }
+    else
+    {
+      for(unsigned i=0; i<net.preset_pairA[ pv0->pairTblIdx ].chN; ++i)
+      {
+        if((rc = _preset_set_var_from_dual( pv0, net.preset_pairA[ pv0->pairTblIdx+i ].value, coeff )) != kOkRC )
+          goto errLabel;
+
+        assert( textIsEqual(net.preset_pairA[ pv0->pairTblIdx+i ].var->label,pv0->var->label) && net.preset_pairA[ pv0->pairTblIdx+i ].var->label_sfx_id == pv0->var->label_sfx_id );        
+      }
+    }    
+    
+  }
+
+errLabel:
+  if( rc != kOkRC )
+    rc = cwLogError(rc,"Apply dual-preset failed.");
+  
+  return rc;
+  
+}
+
+
+
+#ifdef NOT_DEF
 cw::rc_t cw::flow::network_apply_preset( network_t& net, const char* presetLabel, unsigned proc_label_sfx_id )
 {
   rc_t    rc = kOkRC;
@@ -2625,10 +3313,10 @@ cw::rc_t cw::flow::network_apply_dual_preset( network_t& net, const char* preset
     const object_t* preset_pair_0      = net_preset_value_0->child_ele(i);
     const char*     proc_label         = preset_pair_0->pair_label(); 
     const object_t* preset_value_cfg_0 = preset_pair_0->pair_value();
-    proc_t*     proc               = nullptr;
+    proc_t*         proc               = nullptr;
     const object_t* preset_value_cfg_1 = nullptr;
-    const int two = 2;
-    const char* class_preset_labelA[two];
+    const int       two                = 2;
+    const char*     class_preset_labelA[two];
     
     // get the proc instance label/value pair
     if((preset_pair_0 = net_preset_value_0->child_ele(i)) == nullptr || !preset_pair_0->is_pair() )
@@ -2698,6 +3386,9 @@ errLabel:
 
   return rc;
 }
+
+#endif
+
 
 cw::rc_t cw::flow::network_apply_preset( network_t& net, const multi_preset_selector_t& mps )
 {

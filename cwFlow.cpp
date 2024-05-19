@@ -310,7 +310,7 @@ namespace cw
               goto errLabel;
             }
 
-            preset_t* preset =  mem::allocZ< preset_t >();
+            class_preset_t* preset =  mem::allocZ< class_preset_t >();
               
             preset->label = pair->pair_label();
             preset->cfg   = pair->pair_value();

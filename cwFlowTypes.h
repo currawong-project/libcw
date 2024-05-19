@@ -164,19 +164,19 @@ namespace cw
       struct var_desc_str* link;    // class_desc->varDescL list link
     } var_desc_t;
 
-    typedef struct preset_str
+    typedef struct class_preset_str
     {
-      const char*        label;
-      const object_t*    cfg;
-      struct preset_str* link;
-    } preset_t;
+      const char*              label;
+      const object_t*          cfg;
+      struct class_preset_str* link;
+    } class_preset_t;
     
     typedef struct class_desc_str
     {
       const object_t*   cfg;        // class cfg 
       const char*       label;      // class label;      
       var_desc_t*       varDescL;   // varDescL variable description linked on var_desc_t.link
-      preset_t*         presetL;    // presetA[ presetN ]
+      class_preset_t*   presetL;    // presetA[ presetN ]
       class_members_t*  members;    // member functions for this class
       unsigned          polyLimitN; // max. poly copies of this class per network_t or 0 if no limit
     } class_desc_t;
@@ -220,26 +220,13 @@ namespace cw
 
     } variable_t;
 
-    
-    struct proc_str;
 
-    typedef struct network_str
-    {
-      const object_t*   procsCfg;   // network proc list
-      const object_t*   presetsCfg; // presets designed for this network
-      unsigned          poly_cnt;   // count of duplicated networks in the list
-      
-      struct proc_str** proc_array;
-      
-      unsigned          proc_arrayAllocN;
-      unsigned          proc_arrayN;
-      
-    } network_t;
+    struct network_str;
     
     typedef struct proc_str
     {
-      struct flow_str* ctx;          // global system context
-      network_t*       net;          // network which owns this proc
+      struct flow_str*    ctx;  // global system context
+      struct network_str* net;  // network which owns this proc
 
       class_desc_t*   class_desc;    //
       
@@ -260,11 +247,57 @@ namespace cw
       unsigned        varMapN;       // varMapN = varMapIdN * varMapChN 
       variable_t**    varMapA;       // varMapA[ varMapN ] = allows fast lookup from ('vid','chIdx) to variable
 
-      network_t*  internal_net;
+      struct network_str*  internal_net;
       
     } proc_t;
 
 
+    typedef struct preset_value_str
+    {
+      proc_t*                  proc;
+      variable_t*              var;
+      value_t                  value;
+      unsigned                 chN;        // count of channels specified by this preset
+      unsigned                 pairTblIdx; // index into the preset pair table for this preset value
+      struct preset_value_str* link;
+    } preset_value_t;
+    
+    typedef struct network_preset_str
+    {
+      const char*     label;
+      preset_value_t* value_head;  // List of preset_value_t for this preset. 
+      preset_value_t* value_tail;
+    } network_preset_t;
+
+    typedef struct network_preset_pair_str
+    {
+      const proc_t*     proc;
+      const variable_t* var;
+      unsigned          chIdx;
+      unsigned          chN;
+      const value_t*    value;
+    } network_preset_pair_t;
+
+    typedef struct network_str
+    {
+      const object_t*   procsCfg;   // network proc list
+      const object_t*   presetsCfg; // presets designed for this network
+      unsigned          poly_cnt;   // count of duplicated networks in the list
+      
+      struct proc_str** proc_array;
+      
+      unsigned          proc_arrayAllocN;
+      unsigned          proc_arrayN;
+
+      network_preset_t* presetA;
+      unsigned          presetN;
+
+      network_preset_pair_t* preset_pairA;
+      unsigned               preset_pairN;
+      
+    } network_t;
+    
+    
     typedef struct flow_str
     {
       const object_t*      flowCfg;     // complete cfg used to create this flow 
@@ -347,7 +380,7 @@ namespace cw
     const var_desc_t* var_desc_find( const class_desc_t* cd, const char* var_label );
     rc_t              var_desc_find(       class_desc_t* cd, const char* var_label, var_desc_t*& vdRef );
 
-    const preset_t*   class_preset_find( const class_desc_t* cd, const char* preset_label );
+    const class_preset_t*   class_preset_find( const class_desc_t* cd, const char* preset_label );
     
     void              class_dict_print( flow_t* p );
 
@@ -356,11 +389,18 @@ namespace cw
     //
     // Network
     //
-    void           network_print(const network_t& net );
+    void     network_print(const network_t& net );
 
+    const network_preset_t* network_preset_from_label( const network_t& net, const char* preset_label );
+    
+    unsigned proc_mult_count( const network_t& net, const char* proc_label );
+    
+    rc_t     proc_mult_sfx_id_array( const network_t& net, const char* proc_label, unsigned* idA, unsigned idAllocN, unsigned& idN_ref );
+        
+    
     //------------------------------------------------------------------------------------------------------------------------
     //
-    // Instance
+    // Proc
     //
 
     void               proc_destroy( proc_t* proc );
@@ -368,7 +408,7 @@ namespace cw
     
     proc_t*            proc_find( network_t& net, const char* proc_label, unsigned sfx_id );
     rc_t               proc_find( network_t& net, const char* proc_label, unsigned sfx_id, proc_t*& procPtrRef );
-    
+
     external_device_t* external_device_find( flow_t* p, const char* device_label, unsigned typeId, unsigned inOrOutFl, const char* midiPortLabel=nullptr );
 
     void               proc_print( proc_t* proc );
@@ -546,10 +586,12 @@ namespace cw
     rc_t           var_find(   proc_t* proc, unsigned vid,                           unsigned chIdx,       variable_t*& varRef );
 
     
-    // Count of numbered channels - does not count the kAnyChIdx variable procance.
+    // Count of numbered channels - does not count the kAnyChIdx variable instance.
     rc_t           var_channel_count( proc_t* proc, const char* label, unsigned sfx_idx, unsigned& chCntRef );
     rc_t           var_channel_count( const variable_t* var, unsigned& chCntRef );
-    
+
+    rc_t           cfg_to_value( const object_t* cfg, value_t& value_ref );
+
 
     //
     // var_get() coerces the value of the variable to the type of the returned value.
