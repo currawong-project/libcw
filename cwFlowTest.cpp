@@ -28,7 +28,7 @@ namespace cw
       file::handle_t         logFileH;
     } exec_test_t;
 
-    rc_t _compare_dirs( const char* dir0, const char* dir1 )
+    rc_t _compare_dirs( const char* dir0, const char* dir1, const char* test_name )
     {
       rc_t                 rc          = kOkRC;
       rc_t                 testRC      = kOkRC;
@@ -49,7 +49,7 @@ namespace cw
 
       // for each test
       for(unsigned i=0; i<dirRefN; ++i)
-        if( dirRefA[i].name != nullptr )
+        if( dirRefA[i].name != nullptr && (test_name==nullptr || textIsEqual(dirRefA[i].name,test_name)) )
         {
           // form the test directory
           if(( testRefDir = filesys::makeFn( dir0, nullptr, nullptr, dirRefA[i].name, nullptr )) == nullptr )
@@ -215,12 +215,17 @@ cw::rc_t cw::flow::test(  const object_t* cfg, int argc, const char* argv[] )
   const char*     proj_dir         = nullptr;
   const char*     test_ref_dir     = nullptr;
   bool            cmp_enable_fl    = false;
+  const char*     test_name        = nullptr;
+  bool            test_all_fl      = false;
 
   if( argc < 2 || textLength(argv[1]) == 0 )
   {
     rc = cwLogError(kInvalidArgRC,"No 'test-case' label was given on the command line.");
     goto errLabel;
   }
+
+  test_name   = argv[1];
+  test_all_fl = textIsEqual(test_name,"all");
   
   if((rc = cfg->getv("proc_cfg_fname",proc_cfg_fname,
                      "test_cases",    test_cases_cfg,
@@ -267,7 +272,6 @@ cw::rc_t cw::flow::test(  const object_t* cfg, int argc, const char* argv[] )
   {
     const object_t* test_cfg_pair       = test_cases_cfg->child_ele(i);
     const char*     test_label          = nullptr;
-    bool            test_all_fl         = textIsEqual(argv[1],"all");
     bool            is_test_disabled_fl = false;
 
     // validate the test cfg pair
@@ -296,7 +300,7 @@ cw::rc_t cw::flow::test(  const object_t* cfg, int argc, const char* argv[] )
     }
 
     // if we are testing all test or this specific test
-    if( test_all_fl || textIsEqual(argv[1],test_label) )
+    if( test_all_fl || textIsEqual(test_name,test_label) )
     {
       if((rc = _exec_test(class_cfg,subnet_cfg,test_cfg,proj_dir,test_label)) != kOkRC )
       {
@@ -312,7 +316,8 @@ cw::rc_t cw::flow::test(  const object_t* cfg, int argc, const char* argv[] )
   // if comparision is enabled
   if( test_ref_dir != nullptr && cmp_enable_fl )
   {
-    _compare_dirs( test_ref_dir, proj_dir );
+    const char* sel_test_name = test_all_fl ? nullptr : test_name;
+    _compare_dirs( test_ref_dir, proj_dir, sel_test_name );
   }
   
   
