@@ -953,6 +953,9 @@ This may be a good idea because 'kAnyChIdx' will in general not be used
 if a var has been channelized - and yet it is possible for another 
 var to connect to it as a source ... which doesn't provoke an error
 but would almost certainly not do what the user expects.
+Note that the kAnyChIdx provides an easy way to set all of the channels
+of a variable to the same value.
+
 
 - DONE: verifiy that all proc variables values have a valid type - (i.e. (type & typeMask) != 0)
   when the proc instance create is complete. This checks that both the type is assigned and
@@ -966,7 +969,7 @@ elements of the network should not be visible outside of it. Instead it should
 include the idea of input and output ports which act as proxies to the physical
 ports of the internal elements.
 
-- 'poly' and 'sub' should be arbitrarily nestable. DONE?
+- DONE: 'poly' and 'sub' should be arbitrarily nestable. 
 
 - Reduce runtime overhead for var get/set operations.
   
@@ -998,9 +1001,12 @@ Next:
 	+ write a paragraph in the flow_doc.md about overall approach taken to subnet implementation.
 	  Subnets are implemented in the following phases:
 	  - During program initialization the subnet cfg files is scanned and the
-	  proxy vars for each subnet are used to create `class_desc_t` records for each subnet.
+	  proxy vars for each subnet are used to create a `class_desc_t` record for each subnet.
 	  - When the subnet is instantiated the proxy vars are instantiated first.
 	  - Then the internal network is instantiated.
+	  - The proxy var's are then connected to the proxied vars. This may require
+	  connecting in either direction: proxy->proxied or proxied->proxy, with the later
+	  case being indicated by an 'out' attribute in proxied 'flags' list.
 
 	+ DONE: subnet var desc's should be the same as non+subnet vars but also include the 'proxy' field.
 	In particular they should get default values.
@@ -1064,3 +1070,33 @@ Consider:
    e.g. `lfo: { class:sine_tone, in:{ osc_.dc:list.value_ } }` 
 
 - DONE: Fix up the coding language - change the use of `instance_t` to `proc_t` and `inst` to `proc`, change use of `ctx` in cwFlowProc
+
+
+
+
+
+Prior to executing the custom constructor the values are assigned to the 
+variables as follows:
+1. Default value as defined by the class are applied when the variable is created.
+2. The proc instance 'preset' class preset is applied.
+3. The proc instance 'args' values are applied.
+
+During this stage of processing preset values may be given for
+variables that do not yet exist. This will commonly occur when a
+variable has multiple channels that will not be created until the
+custom constructor is run.  For these cases the variable will be
+pre-emptively created and the preset value will be applied.  
+
+This approach has the advantage of communicating network information
+to the proc constructor from the network configuration - thereby
+allowing the network programmer to influence the configuration of the
+proc. instance.
+
+
+DONE: After the network is fully instantiated the network and class presets
+are compiled.  At this point all preset values must be resolvable to
+an actual proc variable.  A warning is issued for presets with values
+that cannot be resolved and they are disabled.  The primary reason
+that a preset might not be resolvable is by targetting a variable
+channel that does not exist.
+
