@@ -135,6 +135,8 @@ namespace cw
     // Value containers are parents of leaf nodes. (A dictionary is not a value container because it's children are pairs with are not leaf nodes.)
     inline bool is_value_container() const { return type != nullptr && cwIsFlag(type->flags,kValueContainerFl); }
 
+    inline unsigned type_id() const { return type==nullptr ? (unsigned)kInvalidTId : type->id; }
+
     // Containers have children and use the object.u.children pointer.
     inline bool is_container() const { return type != nullptr && cwIsFlag(type->flags,kContainerFl); }
     inline bool is_pair()      const { return type != nullptr && type->id == kPairTId; }
