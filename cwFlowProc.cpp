@@ -3549,6 +3549,12 @@ namespace cw
           p->netA[i].net.proc_array       = mem::allocZ<proc_t*>(p->netA[i].net.proc_arrayAllocN);
           p->netA[i].net.presetsCfg       = p->net_proc->internal_net->presetsCfg;
 
+          p->netA[i].net.presetA          = p->net_proc->internal_net->presetA;
+          p->netA[i].net.presetN          = p->net_proc->internal_net->presetN;
+          
+          p->netA[i].net.preset_pairA     = p->net_proc->internal_net->preset_pairA;
+          p->netA[i].net.preset_pairN     = p->net_proc->internal_net->preset_pairN;
+
           for(unsigned j=0,k=0; j<p->net_proc->internal_net->proc_arrayN; ++j)
             if( p->net_proc->internal_net->proc_array[j]->label_sfx_id == i )
             {

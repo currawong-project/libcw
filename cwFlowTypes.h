@@ -254,28 +254,52 @@ namespace cw
 
     typedef struct preset_value_str
     {
-      proc_t*                  proc;
-      variable_t*              var;
-      value_t                  value;
-      unsigned                 chN;        // count of channels specified by this preset
-      unsigned                 pairTblIdx; // index into the preset pair table for this preset value
+      proc_t*                  proc;       // proc target for this preset value
+      variable_t*              var;        // var target for this preset value
+      value_t                  value;      // Preset value.
+      //unsigned                 chN;        // Count of channels specified by this preset
+      unsigned                 pairTblIdx; // Index into the preset pair table for this preset value
       struct preset_value_str* link;
     } preset_value_t;
+
+    typedef struct preset_value_list_str
+    {
+      preset_value_t* value_head;  // List of preset_value_t for this preset. 
+      preset_value_t* value_tail;  // Last preset value in the list.
+    } preset_value_list_t;
+
+    struct network_preset_str;
+
+    typedef struct dual_preset_str
+    {
+      const struct network_preset_str* pri;
+      const struct network_preset_str* sec;
+      double      coeff;
+    } dual_preset_t;
+
+    typedef enum {
+      kPresetVListTId,
+      kPresetDualTId
+    } preset_type_id_t;
     
     typedef struct network_preset_str
     {
-      const char*     label;
-      preset_value_t* value_head;  // List of preset_value_t for this preset. 
-      preset_value_t* value_tail;
+      const char*     label;       // Preset label
+      preset_type_id_t tid;
+      
+      union {
+        preset_value_list_t vlist;
+        dual_preset_t       dual;
+      } u;
     } network_preset_t;
 
     typedef struct network_preset_pair_str
     {
-      const proc_t*     proc;
-      const variable_t* var;
-      unsigned          chIdx;
-      unsigned          chN;
-      const value_t*    value;
+      const proc_t*     proc;   //
+      const variable_t* var;    //
+      unsigned          chIdx;  // 
+      unsigned          chN;    //
+      const value_t*    value;  //
     } network_preset_pair_t;
 
     typedef struct network_str

@@ -1438,12 +1438,23 @@ void cw::flow::network_print( const network_t& net )
     {
       const network_preset_t* net_preset = net.presetA + i;
       cwLogPrint("%i %s\n",i,net_preset->label);
-      const preset_value_t* net_val = net_preset->value_head;
-      for(; net_val!=nullptr; net_val=net_val->link)
+      switch( net_preset->tid )
       {
-        cwLogPrint("    %s:%i %s:%i ",cwStringNullGuard(net_val->proc->label),net_val->proc->label_sfx_id,cwStringNullGuard(net_val->var->label),net_val->var->label_sfx_id);
-        _value_print( &net_val->value );
-        cwLogPrint("\n");
+        case kPresetVListTId:
+          {
+            const preset_value_t* net_val = net_preset->u.vlist.value_head;
+            for(; net_val!=nullptr; net_val=net_val->link)
+            {
+              cwLogPrint("    %s:%i %s:%i ",cwStringNullGuard(net_val->proc->label),net_val->proc->label_sfx_id,cwStringNullGuard(net_val->var->label),net_val->var->label_sfx_id);
+              _value_print( &net_val->value );
+              cwLogPrint("\n");
+            }
+          }
+          break;
+          
+        case kPresetDualTId:
+          cwLogPrint("     %s %s %f",net_preset->u.dual.pri->label,net_preset->u.dual.sec->label,net_preset->u.dual.coeff);
+          break;
       }
     }
     cwLogPrint("\n");
@@ -2245,7 +2256,7 @@ cw::rc_t cw::flow::cfg_to_value( const object_t* cfg, value_t& value_ref )
     case kInt8TId:
     case kInt16TId:
     case kInt32TId:
-      value_ref.tflag = kUIntTFl;
+      value_ref.tflag = kIntTFl;
       if((rc = cfg->value(value_ref.u.i)) != kOkRC )
         rc = cwLogError(rc,"Conversion to int failed.");
       break;
