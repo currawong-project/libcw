@@ -266,3 +266,32 @@ variables based on the number of input audio channels cannot know how many outpu
 it may need until it accesses the number of audio channels it has been instantiated with.
 
 
+
+# Applying Dual Presets
+
+- When the network is instantiated the 'network-preset-pair' table is created.
+This table has an entry for every proc/variable/channel instance in the network.
+
+- When the preset preset-value lists are created the associated 'pair'
+record is found in the 'network-preset-pair' table and stored in the preset-value
+`pairTblIdx` field.
+
+To apply a dual preset.
+1. The preset-value list for the two presets are located.
+
+2. The network-preset-pair value field is set to NULL.
+
+3. The value associated with every preset-value in the secondary preset
+is assigned to the associated 'value' field in the preset-pair-table.
+The preset-pair record is found via a fast lookup using the `pairTblIdx` field.
+
+4. For every preset-value in the primary preset-value list the matching
+entry is found in the preset-pair-table. This is done via a fast lookup
+using the `pairTblIdx` field.
+
+5. If the preset-pair record value field is non-NULL then the primary preset-value's 
+value field is then interpolated with the preset-pair record value field 
+the associated network variable is set.
+
+6. If the preset-pair record value field is NULL then the primary preset-value
+is used to set the associated network variable.
