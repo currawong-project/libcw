@@ -785,7 +785,6 @@ namespace cw
       char*           proc_label;        //
       unsigned        proc_label_sfx_id; //
       const char*     proc_clas_label;   //
-      const char*     arg_label;         //
       const object_t* preset_labels;     //
       const object_t* arg_cfg;           //
       const object_t* log_labels;        //
@@ -1861,18 +1860,6 @@ namespace cw
       return false;
     }
     
-    rc_t _proc_inst_args_channelize_vars( proc_t* proc, const char* arg_label, const object_t* arg_cfg )
-    {
-      rc_t rc = kOkRC;
-      
-      if( arg_cfg == nullptr )
-        return rc;
-
-      return _preset_channelize_vars( proc, "proc instance", arg_label, arg_cfg );
-      
-    }
-
-    
     rc_t  _var_map_id_to_index(  proc_t* proc, unsigned vid, unsigned chIdx, unsigned& idxRef );
 
     rc_t _proc_create_var_map( proc_t* proc )
@@ -2126,7 +2113,6 @@ namespace cw
       if((rc = proc_inst_cfg->pair_value()->getv_opt("args",     arg_dict,
                                                      "in",       pstate.in_dict_cfg,
                                                      "out",      pstate.out_dict_cfg,
-                                                     "argLabel", pstate.arg_label,
                                                      "preset",   pstate.preset_labels,
                                                      "log",      pstate.log_labels )) != kOkRC )
       {
@@ -2145,29 +2131,10 @@ namespace cw
           cwLogError(kSyntaxErrorRC,"The proc instance argument dictionary on proc instance '%s:%i' is not a dictionary.",pstate.proc_label,pstate.proc_label_sfx_id);
           goto errLabel;
         }
-        
-        // if no label was given then try 'default'
-        if( pstate.arg_label == nullptr)
-        {
-          pstate.arg_label = "default";
-          rptErrFl = false;
-        }
 
-        // locate the specified argument record
-        if((pstate.arg_cfg = arg_dict->find_child(pstate.arg_label)) == nullptr )
-        {
 
-          // if an explicit arg. label was given but it was not found
-          if( rptErrFl )
-          {
-            rc = cwLogError(kSyntaxErrorRC,"The argument cfg. '%s' was not found on proc instance cfg. '%s:%i'.",pstate.arg_label,pstate.proc_label,pstate.proc_label_sfx_id);
-            goto errLabel;
-          }
+        pstate.arg_cfg = arg_dict;
 
-          // no explicit arg. label was given - make arg_dict the proc instance arg cfg.
-          pstate.arg_cfg = arg_dict;
-          pstate.arg_label = nullptr;
-        }        
       }
 
     errLabel:
@@ -2238,7 +2205,6 @@ namespace cw
       proc->label         = mem::duplStr(pstate.proc_label);
       proc->label_sfx_id  = pstate.proc_label_sfx_id;
       proc->proc_cfg      = proc_inst_cfg->pair_value();
-      proc->arg_label     = pstate.arg_label;
       proc->arg_cfg       = pstate.arg_cfg;
       proc->class_desc    = class_desc;
       proc->net           = &net;
@@ -2282,7 +2248,7 @@ namespace cw
       // Apply the proc inst instance 'args:{}' values.
       if( pstate.arg_cfg != nullptr )
       {
-        if((rc = _proc_inst_args_channelize_vars( proc, pstate.arg_label, pstate.arg_cfg )) != kOkRC )
+        if((rc = _preset_channelize_vars( proc, "proc instance", "args", pstate.arg_cfg )) != kOkRC )
           goto errLabel;
       }
       
@@ -3233,8 +3199,7 @@ const cw::object_t* cw::flow::find_network_preset( const network_t& net, const c
       cwLogError(rc,"Search for network preset named '%s' failed.", cwStringNullGuard(presetLabel));
   }
 
-  return preset_value;
-      
+  return preset_value;     
 }
 
 cw::rc_t cw::flow::exec_cycle( network_t& net )
