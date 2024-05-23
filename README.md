@@ -1073,8 +1073,6 @@ Consider:
 
 
 
-
-
 Prior to executing the custom constructor the values are assigned to the 
 variables as follows:
 1. Default value as defined by the class are applied when the variable is created.
@@ -1100,3 +1098,6 @@ that cannot be resolved and they are disabled.  The primary reason
 that a preset might not be resolvable is by targetting a variable
 channel that does not exist.
 
+
+
+- All cfg to value conversion should go through `cfg_to_value()`.
