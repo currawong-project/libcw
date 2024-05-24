@@ -90,7 +90,7 @@ namespace cw
       {
         bool is_var_cfg_type_fl = (vd = var_desc_find( proc->class_desc, var_label ))!=nullptr && cwIsFlag(vd->type,kCfgTFl);
         bool is_list_fl         = value->is_list();
-        bool is_list_of_list_fl = is_list_fl && value->child_count() > 0 && value->child_ele(0)->is_list();
+        bool is_list_of_list_fl = is_list_fl && value->child_count() > 0 && value->child_ele(0)->is_container();
         bool parse_list_fl      = (is_list_fl && !is_var_cfg_type_fl) || (is_list_of_list_fl && is_var_cfg_type_fl);
 
         // if a list of values was given and the var type is not a 'cfg' type or if a list of lists was given
@@ -2209,7 +2209,7 @@ namespace cw
       proc->class_desc    = class_desc;
       proc->net           = &net;
 
-      // parse the in-list ,fill in pstate.in_array, and create var proc instances for var's referenced by in-list
+      // parse the in-list ,fill in pstate.in_array, and create var instances for var's referenced by in-list
       if((rc = _in_stmt_parse_in_list( net, proc, proxyVarL, pstate )) != kOkRC )
       {
         rc = cwLogError(rc,"in-list parse failed on proc inst instance '%s:%i'.",cwStringNullGuard(proc->label),pstate.proc_label_sfx_id);
@@ -3038,7 +3038,7 @@ namespace cw
 
       for(preset_value=vlist->value_head; preset_value!=nullptr; preset_value=preset_value->link)
       {
-        if( preset_value->proc->label_sfx_id == proc_label_sfx_id )
+        if( proc_label_sfx_id==kInvalidId || preset_value->proc->label_sfx_id == proc_label_sfx_id )
           if((rc = var_set( preset_value->var, &preset_value->value )) != kOkRC )
           {
             rc = cwLogError(rc,"Preset value apply failed on '%s:%i'-'%s:%i'.",
@@ -3052,7 +3052,7 @@ namespace cw
       return rc;
     }
     
-    rc_t _network_apply_dual_preset( network_t& net,  const network_preset_t* net_ps0, const network_preset_t* net_ps1, double coeff )
+    rc_t _network_apply_dual_preset( network_t& net, const network_preset_t* net_ps0, const network_preset_t* net_ps1, double coeff,  unsigned proc_label_sfx_id )
     {
       rc_t rc = kOkRC;
       
@@ -3062,36 +3062,38 @@ namespace cw
 
       // set the value pointer in each of the preset-pair records referenced by preset-1
       for(const preset_value_t* pv1=net_ps1->u.vlist.value_head; pv1!=nullptr; pv1=pv1->link)
-      {
-        if( pv1->var->chIdx != kAnyChIdx )
-          net.preset_pairA[ pv1->pairTblIdx ].value = &pv1->value;
-        else
+        if( proc_label_sfx_id == kInvalidId || pv1->proc->label_sfx_id == proc_label_sfx_id )
         {
-          for(unsigned i=0; i<net.preset_pairA[ pv1->pairTblIdx ].chN; ++i)
+          if( pv1->var->chIdx != kAnyChIdx )
+            net.preset_pairA[ pv1->pairTblIdx ].value = &pv1->value;
+          else
           {
-            net.preset_pairA[ pv1->pairTblIdx+i ].value = &pv1->value;
-            assert( textIsEqual(net.preset_pairA[ pv1->pairTblIdx+i ].var->label,pv1->var->label) && net.preset_pairA[ pv1->pairTblIdx+i ].var->label_sfx_id == pv1->var->label_sfx_id );        
-          }
-        }    
-      }
+            for(unsigned i=0; i<net.preset_pairA[ pv1->pairTblIdx ].chN; ++i)
+            {
+              net.preset_pairA[ pv1->pairTblIdx+i ].value = &pv1->value;
+              assert( textIsEqual(net.preset_pairA[ pv1->pairTblIdx+i ].var->label,pv1->var->label) && net.preset_pairA[ pv1->pairTblIdx+i ].var->label_sfx_id == pv1->var->label_sfx_id );        
+            }
+          }    
+        }
 
       // 
       for(const preset_value_t* pv0=net_ps0->u.vlist.value_head; pv0!=nullptr; pv0=pv0->link)
-      {
-        if( pv0->var->chIdx != kAnyChIdx )
+        if( proc_label_sfx_id == kInvalidId || pv0->proc->label_sfx_id == proc_label_sfx_id )
         {
-          rc = _preset_set_var_from_dual( pv0, net.preset_pairA[ pv0->pairTblIdx ].value, coeff );
-        }
-        else
-        {
-          for(unsigned i=0; i<net.preset_pairA[ pv0->pairTblIdx ].chN; ++i)
+          if( pv0->var->chIdx != kAnyChIdx )
           {
-            if((rc = _preset_set_var_from_dual( pv0, net.preset_pairA[ pv0->pairTblIdx+i ].value, coeff )) != kOkRC )
-              goto errLabel;
-
-            assert( textIsEqual(net.preset_pairA[ pv0->pairTblIdx+i ].var->label,pv0->var->label) && net.preset_pairA[ pv0->pairTblIdx+i ].var->label_sfx_id == pv0->var->label_sfx_id );        
+            rc = _preset_set_var_from_dual( pv0, net.preset_pairA[ pv0->pairTblIdx ].value, coeff );
           }
-        }    
+          else
+          {
+            for(unsigned i=0; i<net.preset_pairA[ pv0->pairTblIdx ].chN; ++i)
+            {
+              if((rc = _preset_set_var_from_dual( pv0, net.preset_pairA[ pv0->pairTblIdx+i ].value, coeff )) != kOkRC )
+                goto errLabel;
+
+              assert( textIsEqual(net.preset_pairA[ pv0->pairTblIdx+i ].var->label,pv0->var->label) && net.preset_pairA[ pv0->pairTblIdx+i ].var->label_sfx_id == pv0->var->label_sfx_id );        
+            }
+          }    
     
       }
 
@@ -3267,7 +3269,7 @@ cw::rc_t cw::flow::network_apply_preset( network_t& net, const char* preset_labe
       break;
       
     case kPresetDualTId:
-      if((rc = _network_apply_dual_preset(net,  network_preset->u.dual.pri, network_preset->u.dual.sec, network_preset->u.dual.coeff )) != kOkRC )
+      if((rc = _network_apply_dual_preset(net, network_preset->u.dual.pri, network_preset->u.dual.sec, network_preset->u.dual.coeff,  proc_label_sfx_id )) != kOkRC )
         goto errLabel;
       break;
       
@@ -3287,7 +3289,7 @@ errLabel:
 }
 
 
-cw::rc_t cw::flow::network_apply_dual_preset( network_t& net, const char* preset_label_0, const char* preset_label_1, double coeff )
+cw::rc_t cw::flow::network_apply_dual_preset( network_t& net, const char* preset_label_0, const char* preset_label_1, double coeff, unsigned proc_label_sfx_id )
 {
   rc_t                    rc      = kOkRC;
   const network_preset_t* net_ps0 = nullptr;
@@ -3305,7 +3307,7 @@ cw::rc_t cw::flow::network_apply_dual_preset( network_t& net, const char* preset
     goto errLabel;
   }
 
-  if((rc = _network_apply_dual_preset(net,  net_ps0, net_ps1, coeff )) != kOkRC )
+  if((rc = _network_apply_dual_preset(net, net_ps0, net_ps1, coeff,  proc_label_sfx_id )) != kOkRC )
     goto errLabel;
 
 errLabel:
@@ -3483,7 +3485,7 @@ errLabel:
 #endif
 
 
-cw::rc_t cw::flow::network_apply_preset( network_t& net, const multi_preset_selector_t& mps )
+cw::rc_t cw::flow::network_apply_preset( network_t& net, const multi_preset_selector_t& mps, unsigned proc_label_sfx_id )
 {
   rc_t        rc        = kOkRC;
   const char* label0    = nullptr;
@@ -3544,7 +3546,7 @@ cw::rc_t cw::flow::network_apply_preset( network_t& net, const multi_preset_sele
       assert( pri_sel_idx <= 1 );
       label1  = mps.presetA[ pri_sel_idx == 0 ? 1 : 0 ].preset_label;
     }
-    else                        // at least two remaining presets exist to select between
+    else  // at least two remaining presets exist to select between
     {
       // mark the selected primary preset as not-available
       bool selA[ mps.presetN ];
@@ -3574,12 +3576,12 @@ cw::rc_t cw::flow::network_apply_preset( network_t& net, const multi_preset_sele
   
   if( label1 == nullptr )
   {
-    rc = network_apply_preset( net, label0 );
+    rc = network_apply_preset( net, label0, proc_label_sfx_id );
   }
   else
   {
     double coeff = _calc_multi_preset_dual_coeff(mps);
-    rc = network_apply_dual_preset( net, label0, label1, coeff );
+    rc = network_apply_dual_preset( net, label0, label1, coeff, proc_label_sfx_id );
   }
   
 
