@@ -252,12 +252,12 @@ namespace cw
     } proc_t;
 
 
+    // preset_value_t holds a preset value and the proc/var to which it will be applied.
     typedef struct preset_value_str
     {
       proc_t*                  proc;       // proc target for this preset value
       variable_t*              var;        // var target for this preset value
       value_t                  value;      // Preset value.
-      //unsigned                 chN;        // Count of channels specified by this preset
       unsigned                 pairTblIdx; // Index into the preset pair table for this preset value
       struct preset_value_str* link;
     } preset_value_t;
@@ -293,6 +293,7 @@ namespace cw
       } u;
     } network_preset_t;
 
+    // Preset-pair record used to apply dual presets.
     typedef struct network_preset_pair_str
     {
       const proc_t*     proc;   //
@@ -316,6 +317,7 @@ namespace cw
       network_preset_t* presetA;
       unsigned          presetN;
 
+      // Preset pair table used by network_apply_dual_preset()
       network_preset_pair_t* preset_pairA;
       unsigned               preset_pairN;
       
@@ -326,15 +328,20 @@ namespace cw
     {
       const object_t*      flowCfg;     // complete cfg used to create this flow 
 
-      bool                 isInRuntimeFl;        // Set when compile-time is complete
-      
       unsigned             framesPerCycle;       // sample frames per cycle (64)
       srate_t              sample_rate;          // default sample rate (48000.0)
+      unsigned             maxCycleCount;        // count of cycles to run on flow::exec() or 0 if there is no limit.
+      const char*          init_net_preset_label;// network initialization preset label or nullptr if there is no net. init. preset
+      
+      bool                 isInRuntimeFl;        // Set when compile-time is complete
+      
+      
+      unsigned             cycleIndex;           // Incremented with each processing cycle      
+
+      
       bool                 multiPriPresetProbFl; // If set then probability is used to choose presets on multi-preset application
       bool                 multiSecPresetProbFl; // 
       bool                 multiPresetInterpFl;  // If set then interpolation is applied between two selectedd presets on multi-preset application
-      unsigned             cycleIndex;           // Incremented with each processing cycle      
-      unsigned             maxCycleCount;        // count of cycles to run on flow::exec() or 0 if there is no limit.
       
       class_desc_t*        classDescA;           // 
       unsigned             classDescN;           //
@@ -384,6 +391,8 @@ namespace cw
 
     unsigned       value_type_label_to_flag( const char* type_desc );
     const char*    value_type_flag_to_label( unsigned flag );
+
+    void           value_print( const value_t* value, bool info_fl=false);
     
     //------------------------------------------------------------------------------------------------------------------------
     //
@@ -659,7 +668,7 @@ namespace cw
     //  var_set() coerces the incoming value to the type of the variable (var->type)
     //
 
-    rc_t var_set_from_preset( variable_t* var, const object_t* val );
+    rc_t var_set_from_cfg( variable_t* var, const object_t* cfg_value );
 
     rc_t var_set( variable_t* var, const value_t* val );
     rc_t var_set( variable_t* var, bool val );

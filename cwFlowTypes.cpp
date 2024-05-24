@@ -189,7 +189,7 @@ namespace cw
 
     }
     
-    void _value_print( const value_t* v )
+    void _value_print( const value_t* v, bool info_fl=true )
     {
       if( v == nullptr )
         return;
@@ -199,35 +199,84 @@ namespace cw
         case kInvalidTFl:
           break;
           
-        case kBoolTFl:  cwLogPrint("b:%s ", v->u.b ? "true" : "false" ); break;          
-        case kUIntTFl:  cwLogPrint("u:%i ", v->u.u ); break;
-        case kIntTFl:   cwLogPrint("i:%i ", v->u.i ); break;          
-        case kFloatTFl: cwLogPrint("f:%f ", v->u.f ); break;
-        case kDoubleTFl:cwLogPrint("d:%f ", v->u.d ); break;
+        case kBoolTFl:
+          
+          cwLogPrint("%s%s ", info_fl ? "b:" : "", v->u.b ? "true" : "false" );
+          break;
+          
+        case kUIntTFl:
+          cwLogPrint("%s%i ", info_fl ? "u:" : "", v->u.u );
+          break;
+          
+        case kIntTFl:
+          cwLogPrint("%s%i ", info_fl ? "i:" : "", v->u.i );
+          break;
+          
+        case kFloatTFl:
+          cwLogPrint("%s%f ", info_fl ? "f:" : "", v->u.f );
+          break;
+          
+        case kDoubleTFl:
+          cwLogPrint("%s%f ", info_fl ? "d:" : "", v->u.d );
+          break;
+          
         case kABufTFl:
-          if( v->u.abuf == nullptr )
-            cwLogPrint("abuf: <null>");
+          if( info_fl )
+          {
+            if( v->u.abuf == nullptr )
+              cwLogPrint("abuf: <null>");
+            else
+              cwLogPrint("abuf: chN:%i frameN:%i srate:%8.1f ", v->u.abuf->chN, v->u.abuf->frameN, v->u.abuf->srate );
+          }
           else
-            cwLogPrint("abuf: chN:%i frameN:%i srate:%8.1f ", v->u.abuf->chN, v->u.abuf->frameN, v->u.abuf->srate ); 
+          {
+            bool null_fl = v->u.abuf==nullptr || v->u.abuf->buf == nullptr;
+            cwLogPrint("(");
+            for(unsigned i=0; i<v->u.abuf->chN; ++i)
+              cwLogPrint("%f ",null_fl ? 0.0 : vop::rms(v->u.abuf->buf + i*v->u.abuf->frameN, v->u.abuf->frameN));
+            cwLogPrint(") ");
+          }
           break;
           
         case kFBufTFl:
-          if( v->u.fbuf == nullptr )
-            cwLogPrint("fbuf: <null>");
+          if( info_fl )
+          {
+            if( v->u.fbuf == nullptr )
+              cwLogPrint("fbuf: <null>");
+            else
+            {
+              cwLogPrint("fbuf: chN:%i srate:%8.1f ", v->u.fbuf->chN, v->u.fbuf->srate );
+              for(unsigned i=0; i<v->u.fbuf->chN; ++i)                
+                cwLogPrint("(binN:%i hopSmpN:%i) ", v->u.fbuf->binN_V[i], v->u.fbuf->hopSmpN_V[i] );
+            }
+          }
           else
           {
-            cwLogPrint("fbuf: chN:%i srate:%8.1f ", v->u.fbuf->chN, v->u.fbuf->srate );
-            for(unsigned i=0; i<v->u.fbuf->chN; ++i)
-              cwLogPrint("(binN:%i hopSmpN:%i) ", v->u.fbuf->binN_V[i], v->u.fbuf->hopSmpN_V[i] );
+            
+            bool null_fl = v->u.fbuf==nullptr || v->u.fbuf->magV == nullptr;
+            cwLogPrint("(");
+            for(unsigned i=0,N=0; i<v->u.fbuf->chN; ++i)
+              cwLogPrint("%f ",null_fl ? 0.0 : vop::mean(v->u.fbuf->magV[i], v->u.fbuf->binN_V[i]));
+            cwLogPrint(") ");
+            
           }
           break;
 
         case kMBufTFl:
-          if( v->u.mbuf == nullptr )
-            cwLogPrint("mbuf: <null>");
+          if( info_fl )
+          {
+            if( v->u.mbuf == nullptr )
+              cwLogPrint("mbuf: <null>");
+            else
+            {
+              cwLogPrint("mbuf: cnt: %i", v->u.mbuf->msgN );
+            }
+          }
           else
           {
-            cwLogPrint("mbuf: cnt: %i", v->u.mbuf->msgN );
+            bool null_fl = v->u.mbuf==nullptr || v->u.mbuf->msgA == nullptr;
+            for(unsigned i=0; i<v->u.mbuf->msgN; ++i)
+              cwLogPrint("(0x%x 0x%x 0x%x) ",v->u.mbuf->msgA[i].status + v->u.mbuf->msgA[i].ch,v->u.mbuf->msgA[i].d0,v->u.mbuf->msgA[i].d1);
           }
           break;
           
@@ -258,7 +307,7 @@ namespace cw
       }
 
     }
-    
+
 
     rc_t _val_get( const value_t* val, bool& valRef )
     {
@@ -1077,11 +1126,22 @@ namespace cw
       
       // if value_cfg is valid set the variable value
       if( value_cfg != nullptr && cwIsNotFlag(vd->type,kRuntimeTFl))
-        if((rc = var_set_from_preset( var, value_cfg )) != kOkRC )
+        if((rc = var_set_from_cfg( var, value_cfg )) != kOkRC )
           goto errLabel;
 
-      var->var_link  = proc->varL;
-      proc->varL = var;
+      // Add the variable to the end of the chain
+      if( proc->varL == nullptr )
+        proc->varL = var;
+      else
+      {
+        variable_t* v = proc->varL;
+        while( v->var_link != nullptr )
+          v=v->var_link;
+        v->var_link = var;
+        
+      }
+      //var->var_link  = proc->varL;
+      //proc->varL = var;
 
       // link the new var into the ch_link list
       if((rc = _var_add_to_ch_list(proc, var )) != kOkRC )
@@ -1120,6 +1180,12 @@ namespace cw
     
   }
 }
+
+void  cw::flow::value_print( const value_t* value, bool info_fl)
+{
+   _value_print(value,info_fl);
+}
+
 
 cw::flow::abuf_t* cw::flow::abuf_create( srate_t srate, unsigned chN, unsigned frameN )
 {
@@ -1513,7 +1579,7 @@ void cw::flow::proc_destroy( proc_t* proc )
   if( proc == nullptr )
     return;
       
-  if( proc->class_desc->members->destroy != nullptr && proc->userPtr != nullptr )
+  if( proc->class_desc->members != nullptr && proc->class_desc->members->destroy != nullptr && proc->userPtr != nullptr )
     proc->class_desc->members->destroy( proc );
 
   // destroy the proc instance variables
@@ -1753,7 +1819,7 @@ cw::rc_t  cw::flow::var_channelize( proc_t* proc, const char* var_label, unsigne
         var_connect( last_src_ch_var, var );
             
       }
-      else
+      else // the base-var is not connected, and no value was provided for the new var
       {
       
         // Set the value of the new variable to the value of the 'any' channel
@@ -1766,14 +1832,13 @@ cw::rc_t  cw::flow::var_channelize( proc_t* proc, const char* var_label, unsigne
     }
     
   }
-  else
+  else // the var was found - set the value
   {
     
     // a correctly channelized var was found - but we still may need to set the value
     if( value_cfg != nullptr )
     {
-      //cwLogInfo("%s ch:%i",var_label,chIdx);
-      rc = var_set_from_preset( var, value_cfg );
+      rc = var_set_from_cfg( var, value_cfg );
     }
     else
     {
@@ -1799,15 +1864,20 @@ cw::rc_t cw::flow::var_call_custom_value_func( variable_t* var )
   
   if( var->flags & kLogVarFl )
   {    
+    cwLogPrint("cycle: %8i ",var->proc->ctx->cycleIndex);
     cwLogPrint("%10s:%5i", var->proc->label,var->proc->label_sfx_id);
     
     if( var->chIdx == kAnyChIdx )
+    {
       _var_print(var);
+    }
     else
     {
       printf("\n");
       for(variable_t* ch_var = var; ch_var!=nullptr; ch_var=ch_var->ch_link)
+      {
         _var_print(ch_var);
+      }
       
     }
   }
@@ -2006,7 +2076,7 @@ cw::rc_t cw::flow::var_register( proc_t* proc, const char* var_label, unsigned s
   {
     // if a value was given - then update the value
     if( value_cfg != nullptr )
-      if((rc = var_set_from_preset( var, value_cfg )) != kOkRC )
+      if((rc = var_set_from_cfg( var, value_cfg )) != kOkRC )
         goto errLabel;    
   }
   else // an exact match was not found - channelize the variable
@@ -2303,124 +2373,17 @@ errLabel:
 }
     
 
-cw::rc_t cw::flow::var_set_from_preset( variable_t* var, const object_t* value )
+cw::rc_t cw::flow::var_set_from_cfg( variable_t* var, const object_t* cfg_value )
 {
   rc_t rc = kOkRC;
+  value_t v;
 
-  //
-  // Determine the flow variable type of cfg. argument 'value'.
-  // 
-  unsigned value_flag = 0;
-      
-  switch( value->type->id )
-  {
-    case kCharTId:  
-    case kUInt8TId:
-    case kUInt16TId:
-    case kUInt32TId:
-      value_flag = kUIntTFl;
-      break;
-          
-    case kInt8TId:
-    case kInt16TId:
-    case kInt32TId:
-      value_flag = kIntTFl;
-      break;
-          
-    case kInt64TId:
-    case kUInt64TId:
-      rc = cwLogError(kInvalidArgRC,"The flow system does not currently implement 64bit integers.");
-      goto errLabel;
-      break;
-          
-    case kFloatTId:
-      value_flag = kFloatTFl;
-      break;
-          
-    case kDoubleTId:
-      value_flag = kDoubleTFl;
-      break;
-          
-    case kBoolTId:
-      value_flag = kBoolTFl;
-      break;
-          
-    case kStringTId:
-    case kCStringTId:
-      value_flag = kStringTFl;
-      break;
-          
-    default:
-      value_flag = kCfgTFl;
-        
-  }
+  if((rc = cfg_to_value(cfg_value, v)) != kOkRC )
+    goto errLabel;
 
-  //
-  // Convert the cfg value to a c++ typed value and then call _var_set_driver() with the c++ value.
-  //
-  switch( value_flag )
-  {
-    case kBoolTFl:
-      {
-        bool v;
-        // assign the value of 'value' to to 'v' (do type conversion if necessary)
-        if((rc = value->value(v)) == kOkRC )
-          // set the value of 'var' where 'v' is the new value and 'value_flag' is the type of 'v'.
-          rc = _var_set_driver( var, value_flag, v );
-      }
-      break;
-          
-    case kUIntTFl:
-      {
-        unsigned v;
-        if((rc = value->value(v)) == kOkRC )
-          rc = _var_set_driver( var, value_flag, v );
-      }
-      break;
-          
-    case kIntTFl:
-      {
-        int v;
-        if((rc = value->value(v)) == kOkRC )
-          rc = _var_set_driver( var, value_flag, v );
-      }
-      break;
-          
-    case kFloatTFl:
-      {
-        float v;
-        if((rc = value->value(v)) == kOkRC )
-          rc = _var_set_driver( var, value_flag, v );
-      }
-      break;
-
-    case kDoubleTFl:
-      {
-        double v;
-        if((rc = value->value(v)) == kOkRC )
-          rc = _var_set_driver( var, value_flag, v );
-      }
-      break;
-          
-    case kStringTFl:
-      {
-        const char* v;
-        if((rc = value->value(v)) == kOkRC )
-          rc = _var_set_driver( var, value_flag, v );
-      }
-      break;
-
-    case kCfgTFl:
-      {
-        rc = _var_set_driver( var, value_flag, value );
-      }
-      break;
-          
-    default:
-      rc = cwLogError(kOpFailRC,"The variable type 0x%x cannot yet be set via a cfg.", var->varDesc->type );
-      goto errLabel;
-  }
-
+  if((rc = var_set(var,&v)) != kOkRC )
+    goto errLabel;
+  
 errLabel:
   if( rc != kOkRC )
     rc = cwLogError(kSyntaxErrorRC,"The %s:%i.%s:%i could not extract a type:%s from a configuration value.",var->proc->label,var->proc->label_sfx_id,var->label,var->label_sfx_id,_typeFlagToLabel(var->varDesc->type & kTypeMask));
