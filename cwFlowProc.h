@@ -35,6 +35,7 @@ namespace cw
     namespace list            { extern class_members_t members;  }
     namespace add             { extern class_members_t members;  }
     namespace preset          { extern class_members_t members;  }
+    namespace print           { extern class_members_t members;  }
     
   }
 }

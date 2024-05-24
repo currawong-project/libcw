@@ -4106,7 +4106,7 @@ namespace cw
       rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
       {
         // skip the 'stored' value sent through prior to runtime.
-        if( var->vid == kStorePId && proc->ctx->isInRuntimeFl)
+        if( var->vid == kStorePId /*&& proc->ctx->isInRuntimeFl*/)
           p->store_fl = true;
         
         return kOkRC;
@@ -4123,9 +4123,10 @@ namespace cw
           // Note that we set the 'value' directly from var->value so that
           // no extra type converersion is applied. In this case the value
           // 'store'  will be coerced to the type of 'value'
-          if((rc = var_find(proc, kStorePId, kAnyChIdx, var )) == kOkRC && var->value != nullptr )
+          if((rc = var_find(proc, kStorePId, kAnyChIdx, var )) == kOkRC && var->value != nullptr && is_connected_to_source(var) )
+          {
             rc = var_set(proc,kValuePId,kAnyChIdx,var->value);
-
+          }
           p->store_fl = false;
         }
         
@@ -4145,59 +4146,6 @@ namespace cw
       
     }    
 
-    /*
-    namespace number
-    {
-      enum {
-        kValuePId,
-        kStorePId,
-      };
-      
-
-
-      rc_t create( proc_t* proc )
-      {
-        rc_t        rc    = kOkRC;        
-        
-        if((rc  = var_register(proc,kAnyChIdx,
-                               kValuePId,"value",kBaseSfxId,
-                               kStorePId,"store",kBaseSfxId)) != kOkRC )
-        {
-          goto errLabel;
-        }
-
-      errLabel:
-        return rc;
-      }
-
-      rc_t destroy( proc_t* proc )
-      {
-        rc_t rc = kOkRC;
-        return rc;
-      }
-
-      rc_t value( proc_t* proc, variable_t* var )
-      {
-        rc_t rc = kOkRC;
-        return rc;
-      }
-
-      rc_t exec( proc_t* proc )
-      {
-        rc_t rc      = kOkRC;
-        return rc;
-      }
-
-      class_members_t members = {
-        .create = create,
-        .destroy = destroy,
-        .value   = value,
-        .exec = exec,
-        .report = nullptr
-      };
-      
-    }    
-    */
     
     //------------------------------------------------------------------------------------------------------------------
     //
@@ -5116,8 +5064,11 @@ namespace cw
       {
         rc_t rc = kOkRC;
         inst_t* p = (inst_t*)(proc->userPtr);
-        
-        if( kInPId <= var->vid && var->vid < kInPId+p->inN )
+
+        // The check for 'isInRuntimeFl' prevents the adder from issuing an output
+        // on cycle 0 - otherwise the delta flag will be set by the adder
+        // receiving pre-runtime messages.
+        if( kInPId <= var->vid && var->vid < kInPId+p->inN && proc->ctx->isInRuntimeFl )
           p->delta_fl = true;
         
         return rc;
@@ -5259,6 +5210,178 @@ namespace cw
       
     }    
 
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // Print
+    //
+    namespace print
+    {
+      enum {
+        kTextPId,
+        kBaseInPId
+      };
+
+      typedef struct
+      {
+        unsigned     eolPId;
+        unsigned     inVarN;
+        const char** labelA;
+        unsigned     labelN;
+      } inst_t;
+
+      rc_t _parse_label_array( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+        const object_t* textListCfg = nullptr;
+        unsigned textListN = 0;
+        
+        // get the text list
+        if((rc = var_get(proc,kTextPId,kAnyChIdx,textListCfg)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if(( textListN = textListCfg->child_count()) != p->labelN )
+        {
+          cwLogWarning("The count of labels does in print proc '%s' does not match the count of inputs plus one. %i != %i",proc->label,textListN,textListCfg->child_count());          
+        }
+
+        // for each string in the list
+        for(unsigned i=0; i<textListN && i<p->labelN; ++i)
+        {
+          const object_t* textCfg = textListCfg->child_ele(i);
+          
+          if( textCfg==nullptr || !textCfg->is_string() )
+            rc = cwLogError(kSyntaxErrorRC,"The print proc '%s' text list must be a list of strings.",proc->label);
+
+          if((rc = textCfg->value(p->labelA[i])) != kOkRC )
+            rc = cwLogError(kSyntaxErrorRC,"The print proc '%s' text label at index could not be read.");
+        }
+
+        // fill in any unspecified labels with blank strings
+        for(unsigned i=textListN; i<p->labelN; ++i)
+          p->labelA[i] = "";
+
+      errLabel:
+        return rc;
+      }
+      
+      
+      rc_t _print_field( proc_t* proc, inst_t* p, unsigned field_idx, const value_t* value )
+      {
+        if( field_idx >= p->inVarN )
+        {
+          assert( p->labelA[p->labelN-1] != nullptr );
+          cwLogPrint("%s\n",p->labelA[p->labelN-1]);          
+        }
+        else
+        {
+          assert( field_idx<p->labelN && p->labelA[field_idx] != nullptr );
+          cwLogPrint("%s ",p->labelA[field_idx]);
+          value_print(value);
+        }
+
+        return kOkRC;
+      }
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t     rc           = kOkRC;        
+        unsigned inVarN       = var_mult_count(proc, "in" );
+        unsigned inVarSfxIdA[ inVarN ];
+
+        if((rc = var_register(proc,kAnyChIdx,kTextPId,"text",kBaseSfxId)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+    
+        if((rc = var_mult_sfx_id_array(proc, "in", inVarSfxIdA, inVarN, p->inVarN )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        for(unsigned i=0; i<p->inVarN; ++i)
+        {
+          if((rc = var_register(proc,kAnyChIdx,kBaseInPId+i,"in",inVarSfxIdA[i])) != kOkRC )
+          {
+            goto errLabel;
+          }
+        }
+        
+        // There must be one label for each input plus an end of line label
+        p->labelN = p->inVarN+1;
+        p->labelA = mem::allocZ<const char*>( p->labelN );
+        p->eolPId = kBaseInPId + p->inVarN;
+
+        // Register the eol_fl with the highest variable id - so that it is called last during the later stage
+        // of proc initialization where the value() function is called for each variable.
+        // This way the EOL message will occur after all the 'in' values have been printed.
+        if((rc = var_register(proc,kAnyChIdx,p->eolPId,"eol_fl",kBaseSfxId)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        for(unsigned i=0; i<p->labelN; ++i)
+          p->labelA[i] = "";
+
+        rc = _parse_label_array(proc,p);
+        
+      errLabel:
+
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        mem::release(p->labelA);
+        p->labelN=0;
+        p->inVarN=0;
+        return kOkRC;
+      }
+
+      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        switch( var->vid )
+        {
+            
+          case kTextPId:
+            _parse_label_array(proc,p);            
+            break;
+            
+          default:
+            //printf("[%i %i] ",proc->ctx->cycleIndex,var->vid);
+
+            if( var->vid == p->eolPId )
+              _print_field(proc,p,p->inVarN,nullptr);
+            else
+            {
+              if( kBaseInPId <= var->vid && var->vid <= kBaseInPId + p->inVarN )
+              {
+                _print_field(proc,p,var->vid - kBaseInPId,var->value);
+              }
+            }
+        }
+
+        // always report success - don't let print() interrupt the network
+        return kOkRC;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .value   = std_value<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    
     
   } // flow
 } // cw
