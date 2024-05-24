@@ -1,6 +1,142 @@
 
 
 
+
+## Proc Class Notation
+
+```
+<class-label> : { 
+                  vars:    { (<var-label>:<var-desc>)* },
+                  presets: { (<var-preset-label>:<var-preset>)* },
+                  poly_limit_cnt: <int> 
+               }
+
+<var-desc> -> { type:<type-id>, value:<value-literal>, doc:<q-string>, flags:[ <attr-label> ] }
+
+<var-preset> -> { <var-label> : <preset-value>  }
+
+<preset-value> -> <value-list> | NUMBER | STRING | CFG
+
+<value-list> -> [ (value-literal)* ] 
+                    
+
+```
+
+### Applying class presets during proc instantiaion
+
+The way class preset values get applied is a function of the type of the variable and the format of the value.
+If a variable is not a _cfg_ type and the preset value is a list, or if the variable is a _cfg_ type
+and the preset value is a list-of-containers then each each value in the list is assigned to successive
+channels on the variable.  This is shown as the __multi-chan__ algorithm in the table below.
+In all other cases the the value is applied to the 'any' channel, which is applied to 
+all existing channels.
+
+|    cfg      |   list  |   LoC           | chan | algorithm                                      |
+| ----------- | ------- | --------------- | ---- | ---------------------------------------------- |
+|      no     |   no    |     no          | any  | single-chan                                    |
+|      no     |   no    |    yes          | n/a  | Value can't be an l-of-c w/o also being a list.| 
+|      no     |  yes    |     no          |  N   | multi-chan                                     |
+|      no     |  yes    |    yes          |  N   | multi-chan                                     |
+|      yes    |   no    |     no          | any  | single-chan                                    |
+|      yes    |   no    |    yes          | n/a  | Value can't be an l-of-c w/o also being a list.|
+|      yes    |  yes    |     no          | any  | single-chan                                    |
+|      yes    |  yes    |    yes          |  N   | multi-chan                                     |
+
+When the class preset is applied during proc instantiation all variables have 
+been instantiated with the base channel. This implies that the __single-chan__ 
+algorithm is only setting the value of the the existig base channel.
+The __multi-chan__ algorithm however will instantiate any channels above the base channel
+that do not already exist by duplicating the base channel and then assigning the preset value.
+
+
+### Notes
+
+1. Legal `<type-id>` values
+
+type     | Description
+---------|-------------------------------------------------------------------------------------------------------------------
+string   | 
+bool     | `true` or `false`
+int      | `int32_t`
+uint     | `uint32_t`. The literal value must be suffixed with a 'u'. [See JSON Notes](#json-notes)
+float    | Single precision float.  The literal value must be suffixed with an 'f'. [See JSON Notes](#json-notes)
+double   | Double precision float
+cfg      | JSON string
+audio    |
+spectrum | 
+midi     |
+srate    | (float) Sample rate type
+sample   | (float) Audio sample type
+coeff    | (float) Value that will be directly applied to a sample value (e.g added or multiplied)
+ftime    | (double) Fractional seconds
+runtime  | The type is left up to the processors custom 'create' function. These variables are not created automatically 
+         | prior to calling the proc custom function.
+all      | 
+numeric  |
+
+
+See list in cwFlowTypes.cpp : typeLabelFlagsA[]
+
+
+2. Attribute labels indicate properties of this variable.
+
+Attribute | Description
+----------|--------------------------------------------------------------
+`src`     | This variable must have a value or be connected to a source or
+          | the proc cannot be instantiated, and therefore the network cannot be instantiated.
+`src_opt` |
+`no_src`  | This variable cannot be connected to a 'source' variable. Variables that are
+          | only used as output usually have this property.
+`init`    | This is an an initialization only variable. 
+          | Changing the value during runtime will have no effect.
+`mult`    | This variable may be instantiated multiple times by the in-statement.
+          | Variables that do not have this property may only be instantiated
+          | once per proc-instance.
+`out`     | This is a subnet output variable. [See Subnet Implementation](#subnet-implementation)
+`no_chan` | This variable cannot be 'channelized'.
+
+## Schema Notation
+
+1. The schemas all describe JSON like structures. For clarity the dictionary braces and
+list brackets are shown.
+
+2. Variables are wrapped in `< >` markers.
+
+3. Entitities wrapped in `( )*` indicate that the wrapped structure may be repeated 0 or more times.
+Entitities wrapped in `( )+` may be repeated 1 or more times.
+
+4. Variables with names ending in `label` indicate identifiers which are unique at least within
+their local scope and possibly some greater scope.  For example proc-class names must be
+unique across all loaded proc-class modules.
+
+5. `<q-string>` indicates arbitrary text.
+
+6. Entities are often optional.  Rather than clutter the notation with additional 
+mark-up to indicate optional entitities this information is inclued in the notes 
+that accompany each schema.
+
+
+
+
+
+## JSON Notes
+
+The 'cfg' language is a JSON like with some added features:
+
+1. Comments can be inserted using C++ `\\` line comment and  `\* *\` block comment syntax.
+
+2. Quotes are not necessary around strings that have no internal whitespace.
+
+3. Numeric literals without decimal places are interpretted as integers, numbers
+with decimal places are interpretted as doubles.  Unsigned and single precision float values
+may be specified using suffix notation
+
+Type     | Suffix   | Example
+---------|----------|--------------
+unsigned |   u      |  10u
+float    |   f      |  12.34f 
+
+
 # Flow Documentation:
 
 _flow_ is an experimental audio processing framework which supports 
@@ -42,10 +178,17 @@ Use `$` prefix to a filename. Use proc_expand_filename() to prepend `proj_dir` t
 
 ### Network with sub-nets.
 
+
+## Proc Class Descriptions
+
+```
+```
+
+
 ## Proc Instance Syntax:
 
 ```
-<label> : { 'class':<class>, "in":{<in_stmt>*}, "preset":<class_preset_label>, "log":<log_dict> "argLabel":<arg_preset_label>, "args":<args_dict> }
+<label> : { 'class':<class>, "in":{<in_stmt>*}, "out":{<out_stmt>}, "preset":<class_preset_label> "args":<args_dict>, "log":<log_dict> }
 ```
 
 Proc instance and variabel labels consist of two parts a leading identifier and a
@@ -55,9 +198,6 @@ A proc or variable label without a numeric suffix is automatically assigned the 
 
 __args__ : This is a dictionary of named variable value records. 
 __preset__ : This string references a class preset to use for initializing this proc instance.
-__argLabel__ : This string references an `args` dictionary parameter set to be applied after the __preset__ class preset.
-If this argument is not given then it is automatically assigned the value "default". (What if there is not __arg__ record named default?
-What if the are no __arg__ records at all?)
 __log__ : This is a dictionary of `<var_label>:<sfx_id>` pairs whose value should be printed to the console when they change at runtime.
 
 
@@ -75,21 +215,6 @@ as a single value.
 
 ## Processing Unit Class
 
-type   | Description
--------|-------------------------------------
-string | 
-bool   |
-int    | `int32_t`
-uint   | `uint32_t`
-float  | f32
-double | f64
-srate  | (float) Sample rate type
-sample | (float) Audio sample type
-coeff  | (float) Value that will be directly applied to a sample value (e.g added or multiplied)
-ftime  | (double) Fractional seconds
-runtime| The type is left up to the processors custom 'create' function. These vars are not automatically created.
-
-See list in cwFlowTypes.cpp : typeLabelFlagsA[]
 
 
 ### Processing Units (proc)
@@ -295,3 +420,15 @@ the associated network variable is set.
 
 6. If the preset-pair record value field is NULL then the primary preset-value
 is used to set the associated network variable.
+
+# Subnet Implementation
+
+Subnets are implemented in the following phases:
+- During program initialization the subnet cfg files is scanned and the
+proxy vars for each subnet are used to create a `class_desc_t` record for each subnet.
+
+- When the subnet is instantiated the proxy vars are instantiated first.
+- Then the internal network is instantiated.
+- The proxy var's are then connected to the proxied vars. This may require
+connecting in either direction: proxy->proxied or proxied->proxy, with the later
+case being indicated by an 'out' attribute in proxied 'flags' list.
