@@ -62,6 +62,7 @@ namespace cw
       { "list",            &list::members },
       { "add",             &add::members },
       { "preset",          &preset::members },
+      { "print",           &print::members },
       { nullptr, nullptr }
     };
 
@@ -714,13 +715,14 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   
   // parse the optional args
   if((rc = flowCfg->getv_opt("framesPerCycle",      p->framesPerCycle,
-                            "sample_rate",          p->sample_rate,
-                            "maxCycleCount",        maxCycleCount,
-                            "multiPriPresetProbFl", p->multiPriPresetProbFl,
-                            "multiSecPresetProbFl", p->multiSecPresetProbFl,
-                            "multiPresetInterpFl",  p->multiPresetInterpFl,
-                            "printClassDictFl",     printClassDictFl,
-                            "printNetworkFl",       printNetworkFl)) != kOkRC )
+                             "sample_rate",          p->sample_rate,
+                             "maxCycleCount",        maxCycleCount,
+                             "preset",               p->init_net_preset_label,
+                             "multiPriPresetProbFl", p->multiPriPresetProbFl,
+                             "multiSecPresetProbFl", p->multiSecPresetProbFl,
+                             "multiPresetInterpFl",  p->multiPresetInterpFl,
+                             "printClassDictFl",     printClassDictFl,
+                             "printNetworkFl",       printNetworkFl)) != kOkRC )
   {
     rc = cwLogError(kSyntaxErrorRC,"Error parsing the optional flow configuration parameters.");
     goto errLabel;
@@ -756,7 +758,12 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   if( printNetworkFl )
     network_print(p->net);
 
+  if( p->init_net_preset_label != nullptr )
+    network_apply_preset( p->net, p->init_net_preset_label );
+  
   p->isInRuntimeFl = true;
+  cwLogInfo("Entering runtime.");
+
   hRef.set(p);
   
  errLabel:
@@ -831,6 +838,7 @@ cw::rc_t cw::flow::exec(    handle_t h )
 
   return rc;
 }
+
 
 cw::rc_t cw::flow::apply_preset( handle_t h, const char* presetLabel )
 {
