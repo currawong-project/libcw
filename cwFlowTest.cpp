@@ -215,7 +215,7 @@ cw::rc_t cw::flow::test(  const object_t* cfg, int argc, const char* argv[] )
   const char*     proj_dir         = nullptr;
   const char*     test_ref_dir     = nullptr;
   bool            cmp_enable_fl    = false;
-  const char*     test_name        = nullptr;
+  const char*     test_name        = nullptr;  
   bool            test_all_fl      = false;
 
   if( argc < 2 || textLength(argv[1]) == 0 )
@@ -235,9 +235,13 @@ cw::rc_t cw::flow::test(  const object_t* cfg, int argc, const char* argv[] )
     goto errLabel;
   }
 
+  // was 'compare' requested
+  if( argc > 2 && textLength(argv[2])!=0 and textIsEqual(argv[2],"compare") )
+    cmp_enable_fl = true;
+    
+
   // get the subnet cfg filename
   if((rc = cfg->getv_opt("subnet_cfg_fname",subnet_cfg_fname,
-                         "cmp_enable_fl", cmp_enable_fl,
                          "test_ref_dir",test_ref_dir)) != kOkRC )
   {
     rc = cwLogError(rc,"The name of the subnet file could not be parsed.");
