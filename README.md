@@ -930,25 +930,48 @@ resolvable without more information.
 
 ### TODO:
 
+- Check for illegal variable names in class descriptions.  (no periods, trailing digits, or trailing underscores)
+- Check for unknown fields where the syntax clearly specifies only certain options.
+
+- Class presets cannot address 'mult' variables (maybe this is ok since 'mult' variables are generally connected to a source.).
+
 - Documentation w/ examples.
   + Write the rules for each implementing member function.
     
 - value() should return a special return-code value to indicate that the
 value should not be updated and distinguish it from an error code - which should stop the system.
 
-- Compile presets: at load time the presets should be resolved
-  to the proc and vars to which they will be assigned.
-
 - flow classes and variable should have a consistent naming style: camelCase or snake_case.
+
+-  String assignment is allocating  memory:
+   See: `rc_t _val_set( value_t* val, const char* v ) cwFlowTypes.cpp line:464.`
+
 
 - Variable attributes should be meaningful. e.g. src,src_opt,mult,init, ....
   Should we check for 'src' or 'mult' attribute on var's?
   (In other words: Enforce var attributes.)
 
--  String assignment is allocating  memory:
-   See: `rc_t _val_set( value_t* val, const char* v ) cwFlowTypes.cpp line:464.`
+- Reduce runtime overhead for var get/set operations.
+  
+- Implement matrix types.
 
-- Should the var's with multiple channels remove the 'kAnyChIdx'?
+- Should the `object_t` be used in place of `value_t`?
+
+- Allow min/max limits on numeric variables.
+
+- log: 
+    + should print the values for all channels - right now it is only
+	printing the values for kAnyChIdx
+	+ log should print values for abuf (mean,max), fbuf (mean,max) mag, mbuf
+
+
+
+- DONE: Compile presets: at load time the presets should be resolved
+  to the proc and vars to which they will be assigned.
+
+
+- DONE: (We are not removing the kAnyChIdx) 
+Should the var's with multiple channels remove the 'kAnyChIdx'?
 This may be a good idea because 'kAnyChIdx' will in general not be used
 if a var has been channelized - and yet it is possible for another 
 var to connect to it as a source ... which doesn't provoke an error
@@ -971,26 +994,14 @@ ports of the internal elements.
 
 - DONE: 'poly' and 'sub' should be arbitrarily nestable. 
 
-- Reduce runtime overhead for var get/set operations.
-  
-- Implement matrix types.
-
-- Should the `object_t` be used in place of `value_t`?
-
 - DONE: Allow multiple types on an input.
    For example 'adder' should have a single input 
    which can by any numeric type.
    
-- Allow min/max values on numeric variables.
 
 - DONE: Make a standard way to turn on output printing from any port on any instance
 This might be a better approach to logging than having a 'printer' object.
 Add proc instance field: `log:{ var_label_0:0, var_label_1:0 } `
-
-- log: 
-    + should print the values for all channels - right now it is only
-	printing the values for kAnyChIdx
-	+ log should print values for abuf (mean,max), fbuf (mean,max) mag, mbuf
 
 Next:
 
@@ -998,15 +1009,7 @@ Next:
 	+ Subnets should have presets written in terms of the subnet vars rather than the network vars
 	or the value application needs to follow the internal variable src_var back to the proxy var.
 
-	+ write a paragraph in the flow_doc.md about overall approach taken to subnet implementation.
-	  Subnets are implemented in the following phases:
-	  - During program initialization the subnet cfg files is scanned and the
-	  proxy vars for each subnet are used to create a `class_desc_t` record for each subnet.
-	  - When the subnet is instantiated the proxy vars are instantiated first.
-	  - Then the internal network is instantiated.
-	  - The proxy var's are then connected to the proxied vars. This may require
-	  connecting in either direction: proxy->proxied or proxied->proxy, with the later
-	  case being indicated by an 'out' attribute in proxied 'flags' list.
+	+ DONE: write a paragraph in the flow_doc.md about overall approach taken to subnet implementation.
 
 	+ DONE: subnet var desc's should be the same as non+subnet vars but also include the 'proxy' field.
 	In particular they should get default values.
@@ -1100,4 +1103,72 @@ channel that does not exist.
 
 
 
-- All cfg to value conversion should go through `cfg_to_value()`.
+- How much of the proc initialization implementation can use the preset compile/apply code?
+- DONE: All cfg to value conversion should go through `cfg_to_value()`.
+
+
+Names:
+ixon - 
+hoot
+caw, screech, warble, coo, peep, hoot, gobble, quack, honk, whistle, tweet, cheep, chirrup, trill, squawk, seet, 
+cluck,cackle,clack
+cock-a-dooodle-doo
+song,tune,aria
+
+
+caw by example:
+0. DONE: Add log object.
+   DONE: Add automatic network preset selection.
+
+1. sine->af
+   in-stmt
+   
+2. sine->af with network preset
+   topics:preset, class info
+
+3. number,timer,counter,list,log
+   topics: log, data types, system parameters
+
+4. sine->delay->mixer->af
+       -------->
+   topics: mult vars, system parameters
+   
+5. topic: modulate sine with sine
+
+6. topic: modulate sine with sine and timed preset change.
+
+7. topic: iterating input stmt 0 - connect multiple inputs to a single source
+          
+8. topic: iterating input stmt 1 - multiple inputs to multiple sources
+
+9. topic: iterating input stmt 2 - two ranges
+
+12. topic: poly
+
+13. topic: poly w/iterating input stmt
+
+14. topic: poly w/ xfade ctl and presets
+
+15. topic: msg feedback
+
+16. topic: audio feedback
+
+17. topic: subnets
+
+18. topic: subnet with presets
+
+19. topic: presets w/ sfx id's
+
+
+
+
+
+
+
+
+
+
+
+   
+   
+   
