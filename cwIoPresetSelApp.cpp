@@ -1417,6 +1417,21 @@ namespace cw
     {
       rc_t rc = kOkRC;
       unsigned fragGuiId;
+
+      // scroll to the top - This is a hack - move this logic in ui.js.
+      if((fragGuiId = loc_to_gui_id(app->psH,1)) == kInvalidId )
+      {
+        rc = cwLogError(kInvalidArgRC,"The fragment loc '%i' could not be found.");
+        goto errLabel;
+      }
+      
+      if((rc = io::uiSetScrollTop(app->ioH,fragGuiId)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Scroll to top failed on fragment GUI id:%i.",fragGuiId);
+        goto errLabel;
+      }
+
+      // scroll to loc
       if((fragGuiId = loc_to_gui_id(app->psH,loc)) == kInvalidId )
       {
         rc = cwLogError(kInvalidArgRC,"The fragment loc '%i' could not be found.");
@@ -3703,7 +3718,8 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
   }
 
   log::setOutputCb( log::globalHandle(),_log_output_func,&app);
-
+  setLevel( log::globalHandle(), log::kPrint_LogLevel );
+    
   //io::report(app.ioH);
 
   // if an input audio file is being used
