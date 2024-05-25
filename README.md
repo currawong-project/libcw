@@ -1118,7 +1118,7 @@ song,tune,aria
 
 caw by example:
 0. DONE: Add log object.
-   DONE: Add automatic network preset selection.
+   DONE: Add initial network preset selection system parameter.
 
 1. sine->af
    in-stmt
