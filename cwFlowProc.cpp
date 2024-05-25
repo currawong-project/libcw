@@ -709,7 +709,7 @@ namespace cw
         // verify that a source buffer exists
         if((rc = var_get(proc,kOutPId,kAnyChIdx,abuf)) != kOkRC )
         {
-          rc = cwLogError(kInvalidStateRC,"The audio file instance '%s' does not have a valid audio output buffer.",proc->label);
+          rc = cwLogError(kInvalidStateRC,"The audio  input instance '%s' does not have a valid audio output buffer.",proc->label);
         }
         else
         {
