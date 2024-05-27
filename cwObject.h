@@ -31,7 +31,8 @@ namespace cw
    kRootTId    = 0x00100000,
 
    kHexFl      = 0x10000000,
-   kIdentFl    = 0x20000000
+   kIdentFl    = 0x20000000,
+   kOptFl      = 0x40000000
    
   };
 
@@ -206,7 +207,115 @@ namespace cw
     const struct object_str* next_child_ele( const struct object_str* ele) const;
     struct       object_str* next_child_ele(       struct object_str* ele);
 
+    typedef struct read_str
+    {
+      const char* label;
+      unsigned    flags;
+      const struct read_str* link;        
+    } read_t;
+
+    template< typename T >
+    rc_t read( const char* label, unsigned flags, T& v ) const
+    {
+      const struct object_str* o;
+      if((o = find(label, 0)) == nullptr )
+      {
+        if( cwIsNotFlag(flags, kOptFl) )
+          return cwLogError(kInvalidIdRC,"The pair label '%s' could not be found.",cwStringNullGuard(label));
+        
+        return kEleNotFoundRC;        
+      }
+      else
+      {
+        flags = cwClrFlag(flags,kOptFl);
+        if( flags &&  cwIsNotFlag(o->type->id,flags) )
+          return cwLogError(kInvalidDataTypeRC,"The field '%s' data type 0x%x does not match 0x%x.",cwStringNullGuard(label),o->type->id,flags);
+      }
+      
+      
+      return o->value(v);
+    }
     
+    rc_t _readv(const read_t* list) const
+    {
+      rc_t rc = kOkRC;
+      
+      unsigned childN = child_count();
+      
+      // for each child of this dict node
+      for(unsigned i=0; i<childN; ++i)
+      {
+        const struct object_str* child = child_ele(i);
+        const char*              label = nullptr;
+        const read_t*            r     = list;
+          
+        if( child == nullptr )
+        {
+          rc = cwLogError(kAssertFailRC,"A null child was encountered.");
+          goto errLabel;
+        }
+
+        if( !child->is_pair() )
+        {
+          rc = cwLogError(kSyntaxErrorRC,"A non-pair element was encountered inside a dictionary.");
+          goto errLabel;
+        }
+
+        if( (label = child->pair_label()) == nullptr )
+        {
+          rc = cwLogError(kInvalidStateRC,"A blank label was encountered as a dictionary label.");
+          goto errLabel;
+        }
+
+        // verify that this is a known label
+        // (all labels in the dictionary must be known - this prevents mispelled fields from being inadverently skipped during parsing)
+        for(; r!=nullptr; r=r->link)
+          if( strcmp(r->label,label) == 0 )
+            break;
+
+        if( r == nullptr )
+        {
+          rc = cwLogError(kSyntaxErrorRC,"The unknown field '%s' was encountered.",cwStringNullGuard(label));
+          goto errLabel;
+        }
+        
+      }
+
+    errLabel:
+      return kOkRC;
+    } 
+
+    // readv("label0",v0,"label1",v1, ... )
+    template< typename T0, typename T1, typename... ARGS >
+    rc_t _readv( const read_t* list, T0 label, unsigned flags, T1& valRef, ARGS&&... args ) const
+    {
+      rc_t rc = read(label,flags,valRef);
+      
+      read_t r = { .label=label, .flags=flags, .link=list };
+
+      // if no error occurred ....
+      if( rc == kOkRC || (rc == kEleNotFoundRC && cwIsFlag(flags,kOptFl)))
+        rc =  _readv(&r, std::forward<ARGS>(args)...); // ... recurse to find next label/value pair
+      else
+        rc = cwLogError(rc,"Object parse failed for the pair label:'%s'.",cwStringNullGuard(label));
+
+      return rc;
+    }
+
+    
+    // readv("label0",flags0,v0,"label1",flags0,v1, ... )
+    // Use kOptFl for optional fields.
+    // Use kListTId and kDictTId to validate the type of container fields.
+    // In general it should not be necessary to validate numeric and string types because
+    // they are validated by virtue of being converted to the returned value.
+    template< typename T0, typename T1, typename... ARGS >
+    rc_t readv( T0 label, unsigned flags, T1& valRef, ARGS&&... args ) const
+      { return _readv(nullptr, label,flags,valRef,args...); }
+
+
+    
+    
+
     // Set flag  'kRecurseFl' to recurse into the object in search of the value.
     // Set flag  'kOptionalFl' if the label is optional and may not exist.
     template< typename T >
