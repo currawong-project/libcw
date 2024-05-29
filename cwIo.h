@@ -164,14 +164,17 @@ namespace cw
     rc_t start( handle_t h );
     rc_t pause( handle_t h );
     rc_t stop(  handle_t h );
-    
-    // Note that this call blocks on the the UI websocket handle.
+
+
+    // Note that this call blocks on the the UI websocket handle for up to 'timeOutMs'.
     // See ui:ws:exec().
-    rc_t exec(  handle_t h, void* execCbArg=nullptr );
+    rc_t exec(  handle_t h, unsigned timeOutMs, void* execCbArg=nullptr );
     
     bool isShuttingDown( handle_t h );
     void report( handle_t h );
+    void hardwareReport( handle_t h );
     void realTimeReport( handle_t h );
+    
 
     //----------------------------------------------------------------------------------------------------------
     //
@@ -228,6 +231,11 @@ namespace cw
     const char* midiDevicePortName(  handle_t h, unsigned devIdx, bool inputFl, unsigned portIdx );
     unsigned    midiDevicePortIndex( handle_t h, unsigned devIdx, bool inputFl, const char* portName );    
     rc_t        midiDeviceSend(      handle_t h, unsigned devIdx, unsigned portIdx, uint8_t status, uint8_t d0, uint8_t d1 );
+
+    unsigned              midiDeviceMaxBufferMsgCount( handle_t h );
+    const midi::ch_msg_t* midiDeviceBuffer(      handle_t h, unsigned& msgCntRef );
+    rc_t                  midiDeviceClearBuffer( handle_t h, unsigned msgCnt ); 
+
     
     rc_t        midiOpenMidiFile(    handle_t h, unsigned devIdx, unsigned portIdx, const char* fname );
     rc_t        midiLoadMsgPacket(   handle_t h, const midi::packet_t& pkt ); // Note: Set devIdx/portIdx via pkt.devIdx/pkt.portIdx

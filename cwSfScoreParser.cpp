@@ -830,7 +830,7 @@ unsigned    cw::sfscore::opcode_label_to_id( const char* label )
 const char* cw::sfscore::opcode_id_to_label( unsigned opcode_id )
 {
   const char* label;
-  if((label = idToLabel( _opcodeMapA, opcode_id, kInvalidEvtScId)) == nullptr )
+  if((label = idToLabelNull( _opcodeMapA, opcode_id, kInvalidEvtScId)) == nullptr )
     cwLogError(kInvalidArgRC,"The event opcode type id '%i' is not valid.",opcode_id);
   
   return label;

@@ -90,6 +90,8 @@ namespace cw
     char* makeVersionedDirectory(const char* recordDir, const char* recordFolder );
     
     rc_t makeDir( const char* dirStr );
+
+    rc_t test( const test::test_args_t& args );
   }
   
 }

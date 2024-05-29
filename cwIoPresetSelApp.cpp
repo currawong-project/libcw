@@ -1,6 +1,7 @@
 #include "cwCommon.h"
 #include "cwLog.h"
 #include "cwCommonImpl.h"
+#include "cwTest.h"
 #include "cwMem.h"
 #include "cwText.h"
 #include "cwNumericConvert.h"
@@ -47,6 +48,7 @@ namespace cw
       kPanelDivId = 1000,
       kQuitBtnId,
       kIoReportBtnId,
+      kIoHwReportBtnId,
       kIoRtReportBtnId,
       kPresetReportBtnId,
       kMRP_ReportBtnId,
@@ -161,11 +163,12 @@ namespace cw
       { ui::kRootAppId,  kPanelDivId,     "panelDivId" },
       { kPanelDivId,     kQuitBtnId,      "quitBtnId" },
       { kPanelDivId,     kIoReportBtnId,  "ioReportBtnId" },
-      { kPanelDivId,     kIoRtReportBtnId,"ioRtReportBtnId" },
+      { kPanelDivId,     kIoHwReportBtnId, "ioHwReportBtnId" },
+      { kPanelDivId,     kIoRtReportBtnId, "ioRtReportBtnId" },
+      { kPanelDivId,     kMRP_ReportBtnId, "MRP_ReportBtnId" },      
+      { kPanelDivId,     kPresetReportBtnId, "presetReportBtnId" },
       { kPanelDivId,     kNetPrintBtnId,  "netPrintBtnId" },
       { kPanelDivId,     kReportBtnId,    "reportBtnId" },
-      { kPanelDivId,     kPresetReportBtnId, "presetReportBtnId" },
-      { kPanelDivId,     kMRP_ReportBtnId, "MRP_ReportBtnId" },      
       { kPanelDivId,     kLatencyBtnId,   "latencyBtnId" },
         
       { kPanelDivId,     kStartBtnId,        "startBtnId" },
@@ -307,7 +310,7 @@ namespace cw
       const char* record_fn_ext;
       const char* record_backup_dir;
       
-      const char*     scoreFn;
+      //const char*     scoreFn;
       const object_t* perfDirL;
       const char*     velTableFname;
       const char*     velTableBackupDir;
@@ -386,6 +389,7 @@ namespace cw
 
       const char* dflt_perf_label;
       unsigned    dflt_perf_app_id;
+      unsigned    run_dur_secs;
       
       
     } app_t;
@@ -401,13 +405,13 @@ namespace cw
           app->record_fn = argv[i+1];
           goto found_fl;
         }
-        
+        /*
         if( textCompare(argv[i],"score_fn") == 0 )
         {
           app->scoreFn = argv[i+1];
           goto found_fl;
         }
-
+        */
         if( textCompare(argv[i],"beg_play_loc") == 0 )
         {
           string_to_number( argv[i+1], app->beg_play_loc );
@@ -449,7 +453,7 @@ namespace cw
       if((rc = params_cfgRef->getv( "record_dir",           app->record_dir,
                                     "record_fn",            app->record_fn,
                                     "record_fn_ext",        app->record_fn_ext,
-                                    "score_fn",             app->scoreFn,
+            //"score_fn",             app->scoreFn,
                                     "perfDirL",             app->perfDirL,
                                     "flow_proc_dict_fn",    flow_proc_dict_fn,                                    
                                     "midi_play_record",     app->midi_play_record_cfg,
@@ -460,6 +464,7 @@ namespace cw
                                     "beg_play_loc",         app->beg_play_loc,
                                     "end_play_loc",         app->end_play_loc,
                                     "dflt_perf_label",      app->dflt_perf_label,
+                                    "run_dur_secs",         app->run_dur_secs,
                                     "live_mode_fl",         app->useLiveMidiFl,
                                     "enable_recording_fl",  app->enableRecordFl,
                                     "midi_record_dir",      midi_record_dir,
@@ -482,11 +487,13 @@ namespace cw
       _apply_command_line_args(app,argc,argv);
 
 
+      /*
       if((app->scoreFn    = filesys::expandPath( app->scoreFn )) == nullptr )
       {
         rc = cwLogError(kInvalidArgRC,"The score file name is invalid.");
         goto errLabel;
       }
+      */
       
       if((app->record_dir = filesys::expandPath(app->record_dir)) == nullptr )
       {
@@ -565,10 +572,10 @@ namespace cw
 
     void _log_output_func( void* arg, unsigned level, const char* text )
     {
-      app_t*   app     = (app_t*)arg;
-      unsigned logUuId = uiFindElementUuId( app->ioH, kLogId);
-
-      uiSetLogLine( app->ioH, logUuId, text );
+      //app_t*   app     = (app_t*)arg;
+      //unsigned logUuId = uiFindElementUuId( app->ioH, kLogId);
+      
+      //uiSetLogLine( app->ioH, logUuId, text );
       log::defaultOutput(nullptr,level,text);
     }
 
@@ -599,7 +606,7 @@ namespace cw
 
       mem::release((char*&)app.record_backup_dir);
       mem::release((char*&)app.record_dir);
-      mem::release((char*&)app.scoreFn);
+      //mem::release((char*&)app.scoreFn);
       mem::release(app.midiRecordDir);
       mem::release(app.midiLoadFname);
       vtbl::destroy(app.vtH);
@@ -725,6 +732,7 @@ namespace cw
       char*             perf_fname = nullptr;
       char*             meta_fname = nullptr;
       bool              skip_fl    = false;
+      
       // create the performance recording file path
       if((perf_fname = filesys::makeFn(dir,fname,nullptr,recording_folder,nullptr)) == nullptr )
       {
@@ -796,8 +804,11 @@ namespace cw
 
       mem::release(meta_fname);
       mem::release(perf_fname);
-      return rc;
+
+      if( meta_cfg != nullptr )
+        meta_cfg->free();
       
+      return rc;      
     }
 
     rc_t _parse_perf_recording_dir( app_t* app, const char* dir, const char* fname, const object_t* velTblCfg )
@@ -1000,9 +1011,9 @@ namespace cw
         // apply the fragment defined gain settings
         if( app->ioFlowH.isValid() )
         {
-          io_flow::set_variable_value( app->ioFlowH, flow_cross::kNextDestId, "wet_in_gain", "gain", flow::kAnyChIdx, (dsp::real_t)frag->igain );
-          io_flow::set_variable_value( app->ioFlowH, flow_cross::kNextDestId, "wet_out_gain","gain", flow::kAnyChIdx, (dsp::real_t)frag->ogain );
-          io_flow::set_variable_value( app->ioFlowH, flow_cross::kNextDestId, "wd_bal",      "in",   flow::kAnyChIdx, (dsp::real_t)frag->wetDryGain );
+          io_flow::set_variable_value( app->ioFlowH, flow_cross::kNextDestId, "wet_in_gain", "gain", flow::kAnyChIdx, (dsp::coeff_t)frag->igain );
+          io_flow::set_variable_value( app->ioFlowH, flow_cross::kNextDestId, "wet_out_gain","gain", flow::kAnyChIdx, (dsp::coeff_t)frag->ogain );
+          io_flow::set_variable_value( app->ioFlowH, flow_cross::kNextDestId, "wd_bal",      "in",   flow::kAnyChIdx, (dsp::coeff_t)frag->wetDryGain );
 
           // activate the cross-fade
           io_flow::begin_cross_fade( app->ioFlowH, frag->fadeOutMs );
@@ -1158,8 +1169,6 @@ namespace cw
             {
               if( preset_sel::track_loc( app->psH, loc, f ) )  
               {
-
-                printf("Loc:%i\n",loc);
                 _apply_preset( app, loc, (const perf_score::event_t*)msg_arg, f );
                 
                 if( f != nullptr )
@@ -1879,7 +1888,7 @@ namespace cw
 
     errLabel:
       if(rc != kOkRC )
-        rc = cwLogError(rc,"Preset control index '%i' create failed.");
+        rc = cwLogError(rc,"Preset control index '%i' create failed.", preset_idx);
       return rc;
     }
 
@@ -1966,7 +1975,7 @@ namespace cw
       // read the preset data file
       if((rc = preset_sel::read( app->psH, fn)) != kOkRC )
       {
-        rc = cwLogError(rc,"File write failed on preset select.");
+        rc = cwLogError(rc,"File read failed on preset select.");
         goto errLabel;
       }
 
@@ -2193,7 +2202,7 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
             m[i].id     = e->uid;
             m[i].loc    = e->loc;
             m[i].arg    = e;
-
+            
             app->locMap[i].loc = e->loc;
             app->locMap[i].timestamp = m[i].timestamp;
 
@@ -2284,7 +2293,7 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
       return rc;
     }
 
-    rc_t _do_load_perf_score( app_t* app, const char* perf_fn, const vel_tbl_t* vtA=nullptr, unsigned vtN=0 )
+    rc_t _do_load_perf_score( app_t* app, const char* perf_fn, const vel_tbl_t* vtA=nullptr, unsigned vtN=0, unsigned beg_loc=score_parse::kInvalidLocId, unsigned end_loc=score_parse::kInvalidLocId )
     {
       rc_t     rc          = kOkRC;
       unsigned midiEventN  = 0;
@@ -2330,8 +2339,8 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
       // set the UI begin/end play to the locations of the newly loaded performance
       if( !lockLoctnFl )
       {
-        app->end_play_loc = app->maxPerfLoc;
-        app->beg_play_loc = app->minPerfLoc;
+        app->end_play_loc = end_loc==score_parse::kInvalidLocId ? app->maxPerfLoc : end_loc;
+        app->beg_play_loc = beg_loc==score_parse::kInvalidLocId ? app->minPerfLoc : beg_loc;
       }
       
       // Update the master range of the play beg/end number widgets
@@ -2397,7 +2406,7 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
       printf("Loading:%s\n",prp->fname );
       
       // load the requested performance
-      if((rc = _do_load_perf_score(app,prp->fname,prp->vel_tblA, prp->vel_tblN)) != kOkRC )
+      if((rc = _do_load_perf_score(app,prp->fname,prp->vel_tblA, prp->vel_tblN, prp->beg_loc, prp->end_loc)) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"The performance load failed.");
         goto errLabel;
@@ -2906,7 +2915,7 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
       else
       {
         if( app->ioFlowH.isValid() )
-          if((rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, inst_label,  var_label,    flow::kAnyChIdx, (dsp::real_t)value )) != kOkRC )
+          if((rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, inst_label,  var_label,    flow::kAnyChIdx, (dsp::coeff_t)value )) != kOkRC )
             rc = cwLogError(rc,"Master value send failed on %s.%s.",cwStringNullGuard(inst_label),cwStringNullGuard(var_label));
       }
       return rc;
@@ -3001,7 +3010,7 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
       }
 
       if( m.value->tid == ui::kDoubleTId && app->ioFlowH.isValid() )
-        rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "sd",  var_label,    flow::kAnyChIdx, (dsp::real_t)m.value->u.d );
+        rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "sd",  var_label,    flow::kAnyChIdx, (dsp::coeff_t)m.value->u.d );
 
       if(rc != kOkRC )
         rc = cwLogError(rc,"Attempt to set a spec-dist variable '%s'",var_label );
@@ -3012,7 +3021,7 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
     rc_t _on_live_midi_checkbox( app_t* app, bool useLiveMidiFl )
     {
       rc_t rc = kOkRC;
-      dsp::real_t value;
+      dsp::ftime_t value;
       
       if( useLiveMidiFl )
       {
@@ -3032,7 +3041,7 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
       }
 
       if( app->ioFlowH.isValid() )
-        if((rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "sync_delay",  "delayMs",    flow::kAnyChIdx, (dsp::real_t)value )) != kOkRC )
+        if((rc = io_flow::set_variable_value( app->ioFlowH, flow_cross::kAllDestId, "sync_delay",  "delayMs",    flow::kAnyChIdx, (dsp::ftime_t)value )) != kOkRC )
           rc = cwLogError(rc,"Error setting sync delay 'flow' value.");
       
       
@@ -3097,10 +3106,14 @@ rc_t _on_ui_play_loc(app_t* app, unsigned appId, unsigned loc);
           io::report( app->ioH );
           break;
 
-        case kIoRtReportBtnId:
-          io::realTimeReport(app->ioH);
+        case kIoHwReportBtnId:
+          io::hardwareReport( app->ioH );
           break;
           
+        case kIoRtReportBtnId:
+          io::realTimeReport( app->ioH );
+          break;
+
         case kNetPrintBtnId:
           if( app->ioFlowH.isValid() )
             io_flow::print_network(app->ioFlowH,flow_cross::kCurDestId);
@@ -3698,6 +3711,7 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
   unsigned              bigMapN = mapN + vtMapN;
   ui::appIdMap_t        bigMap[ bigMapN ];
   double                sysSampleRate = 0;
+  time::spec_t          start_time = time::current_time();
 
   for(unsigned i=0; i<mapN; ++i)
     bigMap[i] = mapA[i];
@@ -3822,18 +3836,27 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
   // execute the io framework
   while( !io::isShuttingDown(app.ioH))
   {
-    //time::spec_t t0;
-    //time::get(t0);
+    const unsigned wsTimeOutMs = 50;
+    time::spec_t t0 = time::current_time();
+
+    unsigned timeOutMs = app.psNextFrag != nullptr ? 0 : wsTimeOutMs;
 
     // This call may block on the websocket handle.
-    io::exec(app.ioH);
-    
-    //unsigned dMs = time::elapsedMs(t0);
-    //if( dMs < 50 && app.psNextFrag == nullptr )
-    //{      
-    //  sleepMs( 50-dMs );      
-    //}
+    io::exec(app.ioH,timeOutMs);
 
+    time::spec_t t1  = time::current_time();
+    unsigned     dMs = time::elapsedMs(t0,t1);
+    
+    if( dMs < wsTimeOutMs && app.psNextFrag == nullptr )
+    {      
+      sleepMs( wsTimeOutMs-dMs );      
+    }
+
+    if( app.run_dur_secs != 0 && time::elapsedMs( start_time )/1000 > app.run_dur_secs )
+    {
+      printf("Run duration expired (%i secs).  Shutting down.\n",app.run_dur_secs);
+      io::stop(app.ioH);
+    }
   }
 
   // stop the io framework

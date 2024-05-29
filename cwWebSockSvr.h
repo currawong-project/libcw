@@ -16,7 +16,9 @@ namespace cw {
       int                        port,
       const websock::protocol_t* protocolA,
       unsigned                   protocolN,
-      unsigned                   websockTimeOutMs );
+      unsigned                   websockTimeOutMs,
+      unsigned                   queueBlkCnt,
+      unsigned                   queueBlkByteCnt);
 
     rc_t destroy( handle_t& h );
 

@@ -39,6 +39,12 @@ namespace cw
     void     setLevel( handle_t h, unsigned level );
     unsigned level( handle_t h );
 
+    void*             outputCbArg( handle_t h );
+    logOutputCbFunc_t outputCb( handle_t h );
+    
+    void*             formatCbArg( handle_t h );
+    logFormatCbFunc_t formatCb( handle_t h );
+    
     void setOutputCb( handle_t h, logOutputCbFunc_t outFunc, void* outCbArg );
     void setFormatCb( handle_t h, logFormatCbFunc_t fmtFunc, void* fmtCbArg );
 

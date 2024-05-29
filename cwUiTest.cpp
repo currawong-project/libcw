@@ -1,6 +1,7 @@
 #include "cwCommon.h"
 #include "cwLog.h"
 #include "cwCommonImpl.h"
+#include "cwTest.h"
 #include "cwMem.h"
 #include "cwThread.h"
 #include "cwWebSock.h"
@@ -378,8 +379,9 @@ namespace cw
 
 cw::rc_t cw::ui::test( const object_t* cfg )
 {
-  rc_t           rc   = kOkRC;
-  ui::ws::args_t args = {};
+  rc_t           rc          = kOkRC;
+  unsigned       wsTimeOutMs = 50;
+  ui::ws::args_t args        = {};
   
   // Application Id's for the resource based UI elements.
   appIdMap_t mapA[] =
@@ -437,7 +439,7 @@ cw::rc_t cw::ui::test( const object_t* cfg )
   //app->uiCfgFn = "/home/kevin/src/cwtest/src/libcw/html/uiTest/ui.cfg";
 
   // create the UI server
-  if((rc = srv::create(app->wsUiSrvH, args, app, _uiTestCallback, mapA, mapN, nullptr )) != kOkRC )
+  if((rc = srv::create(app->wsUiSrvH, args, app, _uiTestCallback, mapA, mapN, wsTimeOutMs, nullptr )) != kOkRC )
     return rc;
 
   if((rc = uiTestCreateUi( app )) != kOkRC )

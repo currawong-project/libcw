@@ -1,6 +1,7 @@
 #include "cwCommon.h"
 #include "cwLog.h"
 #include "cwCommonImpl.h"
+#include "cwTest.h"
 #include "cwTime.h"
 
 #ifdef OS_OSX
@@ -399,7 +400,7 @@ unsigned cw::time::formatDateTime( char* buffer, unsigned bufN, bool includeDate
   return (unsigned)n;
 }
 
-cw::rc_t cw::time::test()
+cw::rc_t cw::time::test(const test::test_args_t& test )
 {
 
   spec_t t0,t1;
@@ -410,15 +411,15 @@ cw::rc_t cw::time::test()
 
   unsigned dMs = elapsedMs(t0,t1);
 
-  printf("dMs:%i : GTE:%i LTE:%i\n",dMs, isGTE(t0,t1), isLTE(t0,t1) );
+  cwLogPrint("dMs:%i : GTE:%i LTE:%i\n",dMs, isGTE(t0,t1), isLTE(t0,t1) );
 
   
   microsecondsToSpec( t0, 2500000 );        // 2.5 seconds
-  printf("%li %li\n",t0.tv_sec,t0.tv_nsec);
+  cwLogPrint("%li %li\n",t0.tv_sec,t0.tv_nsec);
   subtractMicros( t0, 750000 );             // subtract .75 seconds
-  printf("%li %li\n",t0.tv_sec,t0.tv_nsec);
+  cwLogPrint("%li %li\n",t0.tv_sec,t0.tv_nsec);
   subtractMicros( t0, 500000 );             // subtract .5 seconds
-  printf("%li %li\n",t0.tv_sec,t0.tv_nsec);
+  cwLogPrint("%li %li\n",t0.tv_sec,t0.tv_nsec);
 
 
   time::get(t0);
@@ -429,11 +430,11 @@ cw::rc_t cw::time::test()
   
   int usec = time::elapsedMicros(t0,t1);
 
-  printf("usec:%i\n",usec);
+  cwLogPrint("usec:%i\n",usec);
 
   t0 = current_time();
   sleepMs(1000);
-  printf("sleep %i ms\n",elapsedMs(t0));
+  cwLogPrint("sleep %i ms\n",elapsedMs(t0));
 
 
   return kOkRC;

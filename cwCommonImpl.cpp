@@ -13,16 +13,32 @@ namespace cw
     nanosleep(ts,NULL);
   }
 
+  const idLabelPair_t* _idToSlot( const idLabelPair_t* array, unsigned id, unsigned eolId )
+  {
+    const idLabelPair_t* p = array;
+    for(; p->id != eolId; ++p)
+      if( p->id == id )
+        break;
+    
+    return p;    
+  }
+  
+}
+
+
+
+const char* cw::idToLabelNull( const idLabelPair_t* array, unsigned id, unsigned eolId )
+{
+  const idLabelPair_t* p = _idToSlot(array,id,eolId);
+
+  return p->id == eolId ? nullptr : p->label;
 }
 
 const char* cw::idToLabel( const idLabelPair_t* array, unsigned id, unsigned eolId )
 {
-  const idLabelPair_t* p = array;
-  for(; p->id != eolId; ++p)
-    if( p->id == id )
-      return p->label;
+  const idLabelPair_t* p = _idToSlot(array,id,eolId);
 
-  return nullptr;
+  return p->label;
 }
 
 unsigned cw::labelToId( const idLabelPair_t* array, const char* label, unsigned eolId )
@@ -31,15 +47,11 @@ unsigned cw::labelToId( const idLabelPair_t* array, const char* label, unsigned 
 
   if( label != nullptr )
     for(; p->id != eolId; ++p)
-      if( std::strcmp(label,p->label) == 0 )
+      if( p->label != nullptr && std::strcmp(label,p->label) == 0 )
         return p->id;
 
   return eolId;
 }
-
-
-
-
 
 void cw::sleepSec( unsigned secs )
 {

@@ -146,7 +146,7 @@ const char* cw::nextNonWhiteChar( const char* s )
 const char* cw::nextNonWhiteCharEOS( const char* s )
 { return _nextNonWhiteChar(s,true); }
 
-const char* cw::firstMatchChar( const char* s, char c )
+char* cw::firstMatchChar( char* s, char c )
 {
   if( s == nullptr )
     return nullptr;
@@ -157,7 +157,12 @@ const char* cw::firstMatchChar( const char* s, char c )
   return nullptr;
 }
 
-const char* cw::lastMatchChar( const char* s, char c )
+const char* cw::firstMatchChar( const char* s, char c )
+{
+  return firstMatchChar((char*)s,c);
+}
+
+char* cw::lastMatchChar( char* s, char c )
 {
   unsigned sn;
   
@@ -168,11 +173,16 @@ const char* cw::lastMatchChar( const char* s, char c )
   if( sn == 0 )
     return nullptr;
   
-  for(const char* s1=s+(sn-1); s<=s1; --s1)
+  for(char* s1=s+(sn-1); s<=s1; --s1)
     if( *s1 == c )
       return s1;
     
   return nullptr;
+}
+
+const char* cw::lastMatchChar( const char* s, char c )
+{
+  return lastMatchChar((char*)s,c);
 }
 
 bool cw::isInteger( const char* s )

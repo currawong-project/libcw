@@ -1,6 +1,7 @@
 #include "cwCommon.h"
 #include "cwLog.h"
 #include "cwCommonImpl.h"
+#include "cwTest.h"
 #include "cwMem.h"
 #include "cwTime.h"
 #include "cwMidi.h"
@@ -58,8 +59,8 @@ namespace cw
         cbRecd_t* c = p->cbChain;
         for(; c!=NULL; c=c->linkPtr)
         {
-          pkt->cbArg = c->cbDataPtr;
-          c->cbFunc( pkt, pktCnt );
+          //pkt->cbArg = c->cbDataPtr;
+          c->cbFunc( c->cbDataPtr, pkt, pktCnt );
         }
       }
 
@@ -102,10 +103,19 @@ namespace cw
         // get a pointer to the next msg in the buffer
         msg_t* msgPtr = (msg_t*)(p->buf + p->bufIdx);
 
+        if( midi::isChStatus(p->status) )
+        {
+          msgPtr->status  = p->status & 0xf0;
+          msgPtr->ch      = p->status & 0x0f;
+        }
+        else
+        {
+          msgPtr->status  = p->status;
+          msgPtr->ch      = 0;          
+        }
+
         // fill the buffer msg
         msgPtr->timeStamp = *timeStamp;
-        msgPtr->status  = p->status & 0xf0;
-        msgPtr->ch      = p->status & 0x0f;
         msgPtr->uid     = kInvalidId;
 
         switch( p->dataCnt )

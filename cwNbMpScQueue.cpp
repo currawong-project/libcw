@@ -1,6 +1,7 @@
 #include "cwCommon.h"
 #include "cwLog.h"
 #include "cwCommonImpl.h"
+#include "cwTest.h"
 #include "cwMem.h"
 #include "cwTime.h"
 #include "cwObject.h"
@@ -30,12 +31,15 @@ namespace cw
 
     typedef struct node_str
     {
-      std::atomic<struct node_str*> next;
-      block_t*                      block;
-      unsigned                      blobByteN;
+      std::atomic<struct node_str*> next;       // 0
+      block_t*                      block;      // 8
+      unsigned                      blobByteN;  // 16
+      unsigned                      pad;        // 20-24 (mult. of 8)
       // blob data follows
     } node_t;
 
+    static_assert( sizeof(node_t) % 8 == 0 );
+    
     typedef struct nbmpscq_str
     {
       uint8_t* mem;       // Pointer to a single area of memory which holds all blocks.
@@ -51,6 +55,8 @@ namespace cw
       std::atomic<node_t*> head; // last-in
       
       node_t*              tail; // first-out
+
+      node_t*              peek;
       
     } nbmpscq_t;
 
@@ -62,8 +68,18 @@ namespace cw
       rc_t rc = kOkRC;
       if( p != nullptr )
       {
+
+        block_t* b = p->blockL;
+        while( b != nullptr )
+        {
+          block_t* b0 = b->link;
+          mem::release(b->buf);
+          mem::release(b);
+          b=b0;
+        }
+        
+        
         mem::release(p->stub);
-        mem::release(p->mem);
         mem::release(p);
       }
       return rc;
@@ -98,6 +114,22 @@ namespace cw
       p->cleanProcN += 1;
     }
 
+    void _init_blob( blob_t& b, node_t* node )
+    {
+      if( node == nullptr )
+      {
+        b.blob      = nullptr;
+        b.blobByteN = 0;
+      }
+      else
+      {
+        b.blob      = (uint8_t*)(node+1);
+        b.blobByteN = node->blobByteN;
+      }
+
+      b.rc = kOkRC;
+      
+    }
 
     typedef struct shared_str
     {
@@ -133,6 +165,19 @@ namespace cw
       
       return true;
     }
+
+    void _block_report( nbmpscq_t* p )
+    {
+      block_t* b = p->blockL;
+      for(; b!=nullptr; b=b->link)
+      {
+        bool     full_fl = b->full_flag.load(std::memory_order_acquire);
+        unsigned index   = b->index.load(std::memory_order_acquire);
+        int      eleN    = b->eleN.load(std::memory_order_acquire);
+        
+        printf("full:%i idx:%i eleN:%i\n",full_fl,index,eleN);
+      }
+    }
     
           
   }
@@ -142,7 +187,6 @@ cw::rc_t cw::nbmpscq::create( handle_t& hRef, unsigned initBlkN, unsigned blkByt
 {
   rc_t       rc    = kOkRC;
   nbmpscq_t* p     = nullptr;
-  unsigned   byteN = 0;
   
   if((rc = destroy(hRef)) != kOkRC )
     goto errLabel;
@@ -151,18 +195,18 @@ cw::rc_t cw::nbmpscq::create( handle_t& hRef, unsigned initBlkN, unsigned blkByt
   
   p->stub = mem::allocZ<node_t>();
   p->head = p->stub;   // last-in
-  p->tail = p->stub;   // first-out 
+  p->tail = p->stub;   // first-out
+  p->peek = nullptr;
   p->cleanBlkN = 0;
   
   p->blkN     = initBlkN;
   p->blkByteN = blkByteN;
-  byteN       = initBlkN * (sizeof(block_t) + blkByteN );
-  p->mem      = mem::allocZ<uint8_t>(byteN);
-  
-  for(unsigned i=0; i<byteN; i+=(sizeof(block_t) + blkByteN))
+
+  for(unsigned i=0; i<initBlkN; ++i)
   {
-    block_t* b = (block_t*)(p->mem+i);
-    b->buf = (uint8_t*)(b + 1);
+    block_t* b = mem::allocZ<block_t>();
+    b->buf = mem::allocZ<uint8_t>(blkByteN);
+
     b->bufByteN = blkByteN;
     
     b->full_flag.store(false);
@@ -171,6 +215,7 @@ cw::rc_t cw::nbmpscq::create( handle_t& hRef, unsigned initBlkN, unsigned blkByt
     
     b->link = p->blockL;
     p->blockL = b;
+    
   }
 
   hRef.set(p);
@@ -215,6 +260,17 @@ cw::rc_t cw::nbmpscq::push( handle_t h, const void* blob, unsigned blobByteN )
   // Note that this case will immediately overflow the queue.
 
   unsigned nodeByteN = blobByteN + sizeof(node_t);
+
+  // force the size of the node to be a multiple of 8
+  nodeByteN = ((nodeByteN-1) & 0xfffffff8) + 8;
+
+  // We will eventually be addressing node_t records stored in pre-allocated blocks
+  // of memory - be sure that they always begin on 8 byte alignment to conform
+  // to Intel standard.
+  assert( nodeByteN % 8 == 0 );
+
+  if( nodeByteN > p->blkByteN )
+    return cwLogError(kInvalidArgRC,"The blob size is too large:%i > %i.",nodeByteN,p->blkByteN);
   
   for(; b!=nullptr; b=b->link)
   {
@@ -265,7 +321,13 @@ cw::rc_t cw::nbmpscq::push( handle_t h, const void* blob, unsigned blobByteN )
   {
     // TODO: continue to iterate through the blocks waiting for the consumer
     // to make more space available.
+    //_block_report(p);
+
+    // BEWARE: BUG BUG BUG: Since the cwLog makes calls to cwWebSocket
+    // this error message, and subsequent error messages,
+    // will result in a recursive loop which will crash the program.
     rc = cwLogError(kBufTooSmallRC,"NbMpScQueue overflow.");
+    
   }
   
   return rc;
@@ -274,50 +336,102 @@ cw::rc_t cw::nbmpscq::push( handle_t h, const void* blob, unsigned blobByteN )
 
 cw::nbmpscq::blob_t  cw::nbmpscq::get( handle_t h )
 {
-  blob_t blob;
-  nbmpscq_t* p = _handleToPtr(h);
+  blob_t     blob;
+  nbmpscq_t* p    = _handleToPtr(h);
+
+  // We always access the tail element through tail->next.
+  node_t*    node = p->tail->next.load(std::memory_order_acquire); //  ACQUIRE 'next' from producer
+
+  _init_blob( blob, node );
   
-  node_t* t    = p->tail;
-  node_t* n    = t->next.load(std::memory_order_acquire);  //  ACQUIRE 'next' from producer
-  
-  if( n == nullptr )
-  {
-    blob.blob      = nullptr;
-    blob.blobByteN = 0;
-  }
-  else
-  {
-    blob.blob      = (uint8_t*)(n+1);
-    blob.blobByteN = n->blobByteN;
-  }
-  
-  return blob;
-  
+  return blob;  
 }
 
-cw::rc_t cw::nbmpscq::advance( handle_t h )
-{  
-  nbmpscq_t* p = _handleToPtr(h);
-  rc_t    rc   = kOkRC;
-  node_t* t    = p->tail;
-  node_t* next = t->next.load(std::memory_order_acquire); //  ACQUIRE 'next' from producer
+cw::nbmpscq::blob_t cw::nbmpscq::advance( handle_t h )
+{
+  blob_t     blob;  
+  nbmpscq_t* p    = _handleToPtr(h);
+  node_t*    t    = p->tail;
   
+  // We always access the tail element through tail->next.
+  node_t*    next = t->next.load(std::memory_order_acquire); //  ACQUIRE 'next' from producer
+
+  // We always leave the last element on the queue to act as 'stub'.
   if( next != nullptr )
   {    
     p->tail = next;    
 
-    block_t* b = next->block;
-    int eleN = b->eleN.fetch_add(-1,std::memory_order_acq_rel);
+    // first 'stub' will not have a valid block pointer
+    if( t->block != nullptr )
+    {
+      int eleN = t->block->eleN.fetch_add(-1,std::memory_order_acq_rel);
     
-    // next was valid and so eleN must be >= 1
-    assert( eleN >= 1 );
+      // next was valid and so eleN must be >= 1
+      assert( eleN >= 1 );
+    }
     
   }
 
   if( p->cleanBlkN.load(std::memory_order_relaxed) > 0 )
     _clean(p);
 
-  return rc;
+
+  _init_blob(blob,next);
+  
+  return blob;
+}
+
+
+cw::nbmpscq::blob_t cw::nbmpscq::peek( handle_t h )
+{
+  blob_t blob;
+  nbmpscq_t* p = _handleToPtr(h);
+  node_t*    n = p->peek;
+
+  // if p->peek is not set ... 
+  if( n == nullptr )
+  {
+    // ... then set it to the tail
+    n = p->tail->next.load(std::memory_order_acquire);  //  ACQUIRE 'next' from producer
+
+  }
+
+  _init_blob(blob,n);
+
+  if( n != nullptr )
+    p->peek = n->next.load(std::memory_order_acquire);
+  
+  return blob;
+}
+
+void ::cw::nbmpscq::peek_reset(handle_t h)
+{
+  nbmpscq_t* p = _handleToPtr(h);
+  p->peek = nullptr;
+}
+
+
+
+bool cw::nbmpscq::is_empty( handle_t h )
+{
+  nbmpscq_t* p = _handleToPtr(h);
+  
+  node_t* t    = p->tail;
+  node_t* next = t->next.load(std::memory_order_acquire); //  ACQUIRE 'next' from producer
+
+  return next == nullptr;
+}
+
+unsigned cw::nbmpscq::count( handle_t h )
+{
+  nbmpscq_t* p = _handleToPtr(h);
+
+  block_t* b = p->blockL;
+  int eleN = 0;
+  for(; b!=nullptr; b=b->link)
+    eleN += b->eleN.load(std::memory_order_acquire);
+
+  return eleN;
 }
 
 cw::rc_t cw::nbmpscq::test( const object_t* cfg )

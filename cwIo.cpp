@@ -1,6 +1,7 @@
 #include "cwCommon.h"
 #include "cwLog.h"
 #include "cwCommonImpl.h"
+#include "cwTest.h"
 #include "cwMem.h"
 #include "cwObject.h"
 #include "cwText.h"
@@ -611,7 +612,7 @@ namespace cw
     //
     // MIDI
     //
-    void _midiCallback( const midi::packet_t* pktArray, unsigned pktCnt )
+    void _midiCallback( void* cbArg, const midi::packet_t* pktArray, unsigned pktCnt )
     {
       unsigned i;
       for(i=0; i<pktCnt; ++i)
@@ -619,7 +620,7 @@ namespace cw
         msg_t                 m;
         midi_msg_t            mm;
         const midi::packet_t* pkt = pktArray + i;        
-        io_t*                 p   = reinterpret_cast<io_t*>(pkt->cbArg);
+        io_t*                 p   = reinterpret_cast<io_t*>(cbArg);
         rc_t                  rc  = kOkRC;
 
         
@@ -2114,10 +2115,12 @@ namespace cw
         rc = cwLogError(rc,"Audio device configuration failed.");
         goto errLabel;
       }
-
-      audio::device::report( p->audioH );
       
     errLabel:
+
+      if( rc != kOkRC && p->audioH.isValid()  )
+        audio::device::report( p->audioH );
+      
       return rc;
     }
 
@@ -2439,7 +2442,8 @@ cw::rc_t cw::io::stop( handle_t h )
   return rc;
 }
 
-cw::rc_t cw::io::exec( handle_t h, void* execCbArg )
+
+cw::rc_t cw::io::exec( handle_t h, unsigned timeOutMs, void* execCbArg )
 {
   rc_t rc = kOkRC;
   io_t* p = _handleToPtr(h);
@@ -2447,8 +2451,9 @@ cw::rc_t cw::io::exec( handle_t h, void* execCbArg )
   if( p->wsUiH.isValid() )
   {
     ui::flushCache( ui::ws::uiHandle( p->wsUiH ));
+    
     // Note this call blocks on the websocket handle: See cwUi.h:ws:exec()
-    rc = ui::ws::exec( p->wsUiH );
+    rc = ui::ws::exec( p->wsUiH, timeOutMs );
   }
   
   time::get(p->t0);
@@ -2490,14 +2495,23 @@ void cw::io::report( handle_t h )
     }
 
   for(unsigned i=0; i<audioDeviceCount(h); ++i)
-    printf("audio: %s\n", audioDeviceName(h,i));  
+    printf("audio: %s\n", cwStringNullGuard(audioDeviceName(h,i)));  
 }
+
+
+void cw::io::hardwareReport( handle_t h )
+{
+  io_t* p = _handleToPtr(h);
+  audio::device::report( p->audioH );
+  midi::device::report(p->midiH);  
+}
+
 
 void cw::io::realTimeReport( handle_t h )
 {
   io_t* p = _handleToPtr(h);
   audio::device::realTimeReport(p->audioH);
-
+  uiRealTimeReport(h);
 }
 
 
@@ -2745,6 +2759,24 @@ cw::rc_t cw::io::midiDeviceSend( handle_t h, unsigned devIdx, unsigned portIdx, 
 {
   io_t* p = _handleToPtr(h);
   return midi::device::send( p->midiH, devIdx, portIdx, status, d0, d1 );
+}
+
+unsigned cw::io::midiDeviceMaxBufferMsgCount( handle_t h )
+{
+  io_t* p = _handleToPtr(h);
+  return midi::device::maxBufferMsgCount(p->midiH );
+}
+
+const cw::midi::ch_msg_t* cw::io::midiDeviceBuffer(      handle_t h, unsigned& msgCntRef )
+{
+  io_t* p = _handleToPtr(h);
+  return midi::device::getBuffer(p->midiH, msgCntRef );
+}
+
+cw::rc_t                  cw::io::midiDeviceClearBuffer( handle_t h, unsigned msgCnt )
+{
+  io_t* p = _handleToPtr(h);
+  return midi::device::clearBuffer(p->midiH, msgCnt );
 }
 
 cw::rc_t  cw::io::midiOpenMidiFile( handle_t h, unsigned devIdx, unsigned portIdx, const char* fname )
@@ -3967,8 +3999,8 @@ void cw::io::uiReport( handle_t h )
 
 void cw::io::uiRealTimeReport( handle_t h )
 {
-  ui::handle_t uiH;
-  if(_handleToUiHandle(h,uiH) == kOkRC )
-    ui::realTimeReport(uiH);
+  ui::ws::handle_t uiH;
+  if(_handleToWsUiHandle(h,uiH) == kOkRC )
+    ui::ws::realTimeReport(uiH);
 }
 

@@ -1,6 +1,7 @@
 #include "cwCommon.h"
 #include "cwLog.h"
 #include "cwCommonImpl.h"
+#include "cwTest.h"
 #include "cwMem.h"
 #include "cwTime.h"
 #include "cwFileSys.h"
@@ -117,7 +118,7 @@ namespace cw
       unsigned sentMsgN;
       unsigned recvMsgN;
 
-      bucket_t hashA[ hashN ];
+      bucket_t hashA[ hashN+1 ]; 
 
     } ui_t;
 
@@ -129,7 +130,11 @@ namespace cw
       assert( parentUuId != kInvalidId && appId != kInvalidId );
       unsigned hc = parentUuId + cwSwap32(appId);
       
-      return (unsigned short)(((hc & 0xffff0000)>>16) + (hc & 0x0000ffff));
+      unsigned short hash_idx = (unsigned short)(((hc & 0xffff0000)>>16) + (hc & 0x0000ffff));
+
+      assert( hash_idx <= hashN );
+      
+      return hash_idx;
     }
     
 
@@ -162,7 +167,7 @@ namespace cw
         bucket_t* b = p->hashA + hash_idx;
 
         for(; b!=nullptr; b=b->link)
-          if( b->ele->appId==appId && b->ele->logical_parent->uuId==parentUuId && (chanId==kInvalidId || b->ele->chanId==chanId) )
+          if( b->ele != nullptr && b->ele->logical_parent!=nullptr && b->ele->appId==appId && b->ele->logical_parent->uuId==parentUuId && (chanId==kInvalidId || b->ele->chanId==chanId) )
             return b->ele->uuId;
       }
       
@@ -223,6 +228,18 @@ namespace cw
         mem::release(m->eleName);
         mem::release(m);
         m = m0;
+      }
+
+      // Note: hashA[] has hashN+1 elements
+      for(unsigned i=0; i<=hashN; ++i)
+      {
+        bucket_t* b = p->hashA[i].link;
+        while( b!=nullptr )
+        {
+          bucket_t* b0 = b->link;
+          mem::release(b);
+          b = b0;
+        }
       }
 
       mem::release(p->sessA);
@@ -2219,6 +2236,7 @@ void cw::ui::realTimeReport( handle_t h )
 {
   ui_t* p  = _handleToPtr(h);
   printf("UI msg count: recv:%i send:%i\n",p->recvMsgN,p->sentMsgN);
+  
 }
 
 
@@ -2235,7 +2253,6 @@ namespace cw
         void*             cbArg;
         uiCallback_t      uiCbFunc;
         websock::cbFunc_t wsCbFunc;
-        unsigned          wsTimeOutMs;
         unsigned          idleMsgPeriodMs;
         time::spec_t      lastRecvMsgTimeStamp;
       } ui_ws_t;
@@ -2289,7 +2306,7 @@ namespace cw
         ui_ws_t* p = static_cast<ui_ws_t*>(cbArg);
         return websock::send( p->wsH, kUiProtocolId, wsSessId, msg, msgByteN );
       }
-      
+
     }
   }
 }
@@ -2317,12 +2334,17 @@ cw::rc_t cw::ui::ws::parseArgs(  const object_t& o, args_t& args, const char* ob
         "rcvBufByteN", args.rcvBufByteN,
         "xmtBufByteN", args.xmtBufByteN,
         "fmtBufByteN", args.fmtBufByteN,
-        "websockTimeOutMs", args.wsTimeOutMs,
         "idleMsgPeriodMs", args.idleMsgPeriodMs,
+        "queueBlkCnt",     args.queueBlkCnt,
+        "queueBlkByteCnt", args.queueBlkByteCnt,
         "uiCfgFn", uiCfgFn )) != kOkRC )
   {
     rc = cwLogError(rc,"'ui' cfg. parse failed.");
   }
+
+  if( op->find_child("websockTimeOutMs") != nullptr )
+    cwLogWarning("The UI parameter 'websockTimeOutMs' is obsolete and ignored.");
+
 
   // expand the physical root directory
   if((physRootDir = filesys::expandPath( args.physRootDir)) == nullptr )
@@ -2374,11 +2396,12 @@ cw::rc_t cw::ui::ws::create( handle_t& h,
                 appIdMapN,
                 wsCbFunc,
                 args.dfltPageFn,
-                args.wsTimeOutMs,
                 args.idleMsgPeriodMs,
                 args.rcvBufByteN,
                 args.xmtBufByteN,
-                args.fmtBufByteN );
+                args.fmtBufByteN,
+                args.queueBlkCnt,
+                args.queueBlkByteCnt);
 }
 
   
@@ -2392,11 +2415,12 @@ cw::rc_t cw::ui::ws::create(  handle_t& h,
                               unsigned          appIdMapN,
                               websock::cbFunc_t wsCbFunc,
                               const char*       dfltPageFn,
-                              unsigned          websockTimeOutMs,
                               unsigned          idleMsgPeriodMs,
                               unsigned          rcvBufByteN,
                               unsigned          xmtBufByteN,
-                              unsigned          fmtBufByteN )
+                              unsigned          fmtBufByteN,
+                              unsigned          queueBlkCnt,
+                              unsigned          queueBlkByteCnt )
 {
   rc_t rc = kOkRC;
 
@@ -2416,7 +2440,7 @@ cw::rc_t cw::ui::ws::create(  handle_t& h,
   void*             wsCbA     = wsCbFunc==nullptr ? p          : cbArg;
   
   // create the websocket
-  if((rc = websock::create(p->wsH, wsCbF, wsCbA, physRootDir, dfltPageFn, port, protocolA, protocolN )) != kOkRC )
+  if((rc = websock::create(p->wsH, wsCbF, wsCbA, physRootDir, dfltPageFn, port, protocolA, protocolN, queueBlkCnt, queueBlkByteCnt )) != kOkRC )
   {
     cwLogError(rc,"UI Websock create failed.");
     goto errLabel;
@@ -2432,7 +2456,6 @@ cw::rc_t cw::ui::ws::create(  handle_t& h,
   p->cbArg       = cbArg;
   p->uiCbFunc    = uiCbFunc;
   p->wsCbFunc    = wsCbFunc;
-  p->wsTimeOutMs = websockTimeOutMs;
   p->idleMsgPeriodMs = idleMsgPeriodMs;
   // initialize the last received msg
   time::get(p->lastRecvMsgTimeStamp);
@@ -2465,13 +2488,13 @@ cw::rc_t cw::ui::ws::destroy( handle_t& h )
   return rc;
 }
       
-cw::rc_t cw::ui::ws::exec( handle_t h )
+cw::rc_t cw::ui::ws::exec( handle_t h, unsigned wsTimeOutMs )
 {
-  rc_t     rc = kOkRC;
   ui_ws_t* p  = _handleToPtr(h);
+  rc_t     rc = kOkRC;
   time::spec_t t;
   
-  if((rc = websock::exec( p->wsH, p->wsTimeOutMs )) != kOkRC)
+  if((rc = websock::exec( p->wsH, wsTimeOutMs )) != kOkRC)
     cwLogError(rc,"The UI websock execution failed.");
 
   // make the idle callback
@@ -2485,6 +2508,7 @@ cw::rc_t cw::ui::ws::exec( handle_t h )
   
   return rc;
 }
+
 
 cw::rc_t cw::ui::ws::onReceive( handle_t h, unsigned protocolId, unsigned sessionId, websock::msgTypeId_t msg_type, const void* msg, unsigned byteN )
 {
@@ -2508,6 +2532,13 @@ cw::ui::handle_t cw::ui::ws::uiHandle( handle_t h )
 }
 
 
+void cw::ui::ws::realTimeReport( handle_t h )
+{
+  ui_ws_t* p  = _handleToPtr(h);
+  report(p->wsH);
+  realTimeReport(p->uiH);  
+}
+
  
 namespace cw
 {
@@ -2519,6 +2550,7 @@ namespace cw
       {
         ws::handle_t     wsUiH;
         thread::handle_t thH;
+        unsigned         wsTimeOutMs;
       } ui_ws_srv_t;
 
       ui_ws_srv_t* _handleToPtr(handle_t h )
@@ -2543,7 +2575,7 @@ namespace cw
         ui_ws_srv_t* p = static_cast<ui_ws_srv_t*>(arg);
         rc_t rc;
         
-        if((rc = ws::exec(p->wsUiH)) != kOkRC )
+        if((rc = ws::exec(p->wsUiH,p->wsTimeOutMs)) != kOkRC )
         {
           cwLogError(rc,"Websocket UI exec failed.");
         }
@@ -2554,20 +2586,51 @@ namespace cw
   }
 }
 
+cw::rc_t cw::ui::srv::create( handle_t& h,
+                              const ws::args_t&     args,
+                              void*             cbArg,
+                              uiCallback_t      uiCbFunc,
+                              const appIdMap_t* appIdMapA,
+                              unsigned          appIdMapN,
+                              unsigned          wsTimeOutMs,
+                              websock::cbFunc_t wsCbFunc )
+{
+  return create(h,
+                args.port,
+                args.physRootDir,
+                cbArg,
+                uiCbFunc,
+                args.uiRsrc,
+                appIdMapA,
+                appIdMapN,
+                wsTimeOutMs,
+                wsCbFunc,
+                args.dfltPageFn,
+                args.idleMsgPeriodMs,
+                args.rcvBufByteN,
+                args.xmtBufByteN,
+                args.fmtBufByteN,
+                args.queueBlkCnt,
+                args.queueBlkByteCnt );
+}
+      
 cw::rc_t cw::ui::srv::create(  handle_t& h,
-  unsigned          port,
-  const char*       physRootDir,
-  void*             cbArg,
-  uiCallback_t      uiCbFunc,
-  const object_t*   uiRsrc,
-  const appIdMap_t* appIdMapA,
-  unsigned          appIdMapN,
-  websock::cbFunc_t wsCbFunc,
-  const char*       dfltPageFn,
-  unsigned          websockTimeOutMs,
-  unsigned          rcvBufByteN,
-  unsigned          xmtBufByteN,
-  unsigned          fmtBufByteN )
+                               unsigned          port,
+                               const char*       physRootDir,
+                               void*             cbArg,
+                               uiCallback_t      uiCbFunc,
+                               const object_t*   uiRsrc,
+                               const appIdMap_t* appIdMapA,
+                               unsigned          appIdMapN,
+                               unsigned          wsTimeOutMs,
+                               websock::cbFunc_t wsCbFunc,
+                               const char*       dfltPageFn,
+                               unsigned          idleMsgPeriodMs,
+                               unsigned          rcvBufByteN,
+                               unsigned          xmtBufByteN,
+                               unsigned          fmtBufByteN,
+                               unsigned          queueBlkCnt,
+                               unsigned          queueBlkByteCnt )
 {
   rc_t rc = kOkRC;
   if((rc = destroy(h)) != kOkRC )
@@ -2575,7 +2638,7 @@ cw::rc_t cw::ui::srv::create(  handle_t& h,
 
   ui_ws_srv_t* p = mem::allocZ<ui_ws_srv_t>();
   
-  if((rc = ws::create(p->wsUiH, port, physRootDir, cbArg, uiCbFunc, uiRsrc,appIdMapA, appIdMapN, wsCbFunc, dfltPageFn, websockTimeOutMs, rcvBufByteN, xmtBufByteN, fmtBufByteN )) != kOkRC )
+  if((rc = ws::create(p->wsUiH, port, physRootDir, cbArg, uiCbFunc, uiRsrc,appIdMapA, appIdMapN, wsCbFunc, dfltPageFn, idleMsgPeriodMs, rcvBufByteN, xmtBufByteN, fmtBufByteN, queueBlkCnt, queueBlkByteCnt )) != kOkRC )
   {
     cwLogError(rc,"The websock UI creationg failed.");
     goto errLabel;
@@ -2587,6 +2650,8 @@ cw::rc_t cw::ui::srv::create(  handle_t& h,
     goto errLabel;
   }
 
+  p->wsTimeOutMs = wsTimeOutMs;
+  
   h.set(p);
   
  errLabel:
@@ -2595,32 +2660,6 @@ cw::rc_t cw::ui::srv::create(  handle_t& h,
 
   return rc;
 }
-
-cw::rc_t cw::ui::srv::create( handle_t& h,
-  const ws::args_t&     args,
-  void*             cbArg,
-  uiCallback_t      uiCbFunc,
-  const appIdMap_t* appIdMapA,
-  unsigned          appIdMapN,        
-  websock::cbFunc_t wsCbFunc )
-{
-  return create(h,
-    args.port,
-    args.physRootDir,
-    cbArg,
-    uiCbFunc,
-    args.uiRsrc,
-    appIdMapA,
-    appIdMapN,
-    wsCbFunc,
-    args.dfltPageFn,
-    args.wsTimeOutMs,
-    args.rcvBufByteN,
-    args.xmtBufByteN,
-    args.fmtBufByteN );
-}
-      
-
 
 cw::rc_t cw::ui::srv::destroy( handle_t& h )
 {
@@ -2677,3 +2716,4 @@ cw::ui::handle_t      cw::ui::srv::uiHandle( handle_t h )
   ui_ws_srv_t* p = _handleToPtr(h);
   return ws::uiHandle(p->wsUiH);
 }
+
