@@ -676,6 +676,7 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   bool            printNetworkFl   = false;
   variable_t*     proxyVarL        = nullptr;
   unsigned        maxCycleCount    = kInvalidCnt;
+  double          durLimitSecs     = 0;
   
   if(( rc = destroy(hRef)) != kOkRC )
     return rc;
@@ -700,12 +701,6 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
       goto errLabel;          
     }
 
-  // parse the main audio file processor cfg record
-  if((rc = flowCfg->getv("network", networkCfg)) != kOkRC )
-  {
-    rc = cwLogError(kSyntaxErrorRC,"Error parsing the required flow configuration parameters.");
-    goto errLabel;
-  }
 
   p->framesPerCycle = kDefaultFramesPerCycle;
   p->sample_rate    = kDefaultSampleRate;
@@ -713,22 +708,32 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   p->proj_dir       = proj_dir;
   
   // parse the optional args
-  if((rc = flowCfg->getv_opt("framesPerCycle",      p->framesPerCycle,
-                             "sample_rate",          p->sample_rate,
-                             "maxCycleCount",        maxCycleCount,
-                             "preset",               p->init_net_preset_label,
-                             "multiPriPresetProbFl", p->multiPriPresetProbFl,
-                             "multiSecPresetProbFl", p->multiSecPresetProbFl,
-                             "multiPresetInterpFl",  p->multiPresetInterpFl,
-                             "printClassDictFl",     printClassDictFl,
-                             "printNetworkFl",       printNetworkFl)) != kOkRC )
+  if((rc = flowCfg->readv("network",              0,      networkCfg,
+                          "framesPerCycle",       kOptFl, p->framesPerCycle,
+                          "sample_rate",          kOptFl, p->sample_rate,
+                          "maxCycleCount",        kOptFl, maxCycleCount,
+                          "durLimitSecs",         kOptFl, durLimitSecs,
+                          "preset",               kOptFl, p->init_net_preset_label,
+                          "printClassDictFl",     kOptFl, printClassDictFl,
+                          "printNetworkFl",       kOptFl, printNetworkFl,
+                          "multiPriPresetProbFl", kOptFl, p->multiPriPresetProbFl,
+                          "multiSecPresetProbFl", kOptFl, p->multiSecPresetProbFl,
+                          "multiPresetInterpFl",  kOptFl, p->multiPresetInterpFl)) != kOkRC )
   {
-    rc = cwLogError(kSyntaxErrorRC,"Error parsing the optional flow configuration parameters.");
+    rc = cwLogError(kSyntaxErrorRC,"Error parsing the network system parameters.");
     goto errLabel;
   }
 
+
+  // if a maxCycle count was given
   if( maxCycleCount != kInvalidCnt )
     p->maxCycleCount = maxCycleCount;
+  else
+  {
+    // if a durLimitSecs was given - use it to setMaxCycleCount
+    if( durLimitSecs != 0.0 )
+      p->maxCycleCount = (unsigned)((durLimitSecs * p->sample_rate) / p->framesPerCycle);    
+  }
 
   for(unsigned i=0; i<deviceN; ++i)
     if( deviceA[i].typeId == kAudioDevTypeId )
