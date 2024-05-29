@@ -1,7 +1,7 @@
-
 #include "cwCommon.h"
 #include "cwLog.h"
 #include "cwCommonImpl.h"
+#include "cwTest.h"
 #include "cwMem.h"
 #include "cwFileSys.h"
 #include "cwObject.h"
