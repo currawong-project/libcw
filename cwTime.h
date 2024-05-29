@@ -85,7 +85,7 @@ namespace cw
     // Return count of bytes in in buf[]
     unsigned formatDateTime( char* buf, unsigned bufN, bool includeDateFl=false );
 
-    rc_t test();
+    rc_t test( const test::test_args_t& test );
 
     //)
 

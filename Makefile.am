@@ -4,8 +4,8 @@ libcwSRC =
 libcwHDR += src/libcw/cwCommon.h src/libcw/cwCommonImpl.h   src/libcw/cwMem.h   src/libcw/cwLog.h    src/libcw/cwUtility.h
 libcwSRC +=                      src/libcw/cwCommonImpl.cpp src/libcw/cwMem.cpp src/libcw/cwLog.cpp  src/libcw/cwUtility.cpp
 
-libcwHDR += src/libcw/cwString.h   src/libcw/cwMath.h   src/libcw/cwVectOps.h src/libcw/cwMtx.h    src/libcw/cwVariant.h
-libcwSRC += src/libcw/cwString.cpp src/libcw/cwMath.cpp                       src/libcw/cwMtx.cpp  src/libcw/cwVariant.cpp
+libcwHDR += src/libcw/cwString.h   src/libcw/cwMath.h   src/libcw/cwVectOps.h   src/libcw/cwMtx.h    src/libcw/cwVariant.h
+libcwSRC += src/libcw/cwString.cpp src/libcw/cwMath.cpp src/libcw/cwVectOps.cpp src/libcw/cwMtx.cpp  src/libcw/cwVariant.cpp
 
 libcwHDR += src/libcw/cwB23Tree.h
 libcwSRC += src/libcw/cwB23Tree.cpp
@@ -46,8 +46,8 @@ libcwSRC +=                       src/libcw/cwUi.cpp src/libcw/cwUiTest.cpp
 
 endif
 
-libcwHDR += src/libcw/cwKeyboard.h
-libcwSRC += src/libcw/cwKeyboard.cpp
+libcwHDR += src/libcw/cwKeyboard.h    src/libcw/cwTest.h
+libcwSRC += src/libcw/cwKeyboard.cpp  src/libcw/cwTest.cpp
 
 libcwHDR += src/libcw/cwSerialPortDecls.h src/libcw/cwSerialPort.h    src/libcw/cwSerialPortSrv.h
 libcwSRC +=                               src/libcw/cwSerialPort.cpp  src/libcw/cwSerialPortSrv.cpp

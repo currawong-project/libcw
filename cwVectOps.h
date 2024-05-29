@@ -17,10 +17,10 @@ namespace cw
       
       if( label != nullptr )
       {
-        printf("%s : ",label);
+        cwLogPrint("%s : ",label);
         if( colN && n > colN )
         {
-          printf("\n");
+          cwLogPrint("\n");
           newline_fl = true;
         }
       }
@@ -30,19 +30,19 @@ namespace cw
       
       for(unsigned i=0; i<n; ++i)
       {
-        printf(fmt,v0[i]);
+        cwLogPrint(fmt,v0[i]);
 
         newline_fl = false;
         
         if( (n+1) % colN == 0 )
         {
-          printf("\n");
+          cwLogPrint("\n");
           newline_fl = true;
         }
       }
 
       if( !newline_fl )
-        printf("\n");
+        cwLogPrint("\n");
     }
 
 
@@ -545,8 +545,7 @@ namespace cw
   
     }
     
-    
-
+    rc_t test( const test::test_args_t& args );
     
   }
 }

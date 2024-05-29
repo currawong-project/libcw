@@ -4,6 +4,6 @@ namespace cw
   namespace flow
   {
     
-    rc_t test(  const object_t* cfg, int argc, const char* argv[] );
+    rc_t test( const test::test_args_t& args );
   }
 }

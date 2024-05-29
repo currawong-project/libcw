@@ -5,6 +5,7 @@
 #include "cwCommonImpl.h"
 #include "cwMem.h"
 #include "cwFile.h"
+#include "cwTest.h"
 #include "cwLex.h"
 #include "cwText.h"
 #include "cwNumericConvert.h"
@@ -152,37 +153,37 @@ namespace cw
   void _objTypePrintIndent( const char* text, unsigned indent, const char* indentStr=" " )
   {
     for(unsigned i=0; i<indent; ++i)
-      printf("%s",indentStr);
-    printf("%s",text); 
+      cwLogPrint("%s",indentStr);
+    cwLogPrint("%s",text); 
   }
 
   void _objTypePrintChild( const object_t* o, print_ctx_t& c, const char* eolStr=",\n", const char* indentStr=" " )
   {
     _objTypePrintIndent(" ",c.indent,indentStr);
     o->type->print(o,c);
-    printf("%s",eolStr);
+    cwLogPrint("%s",eolStr);
   }
   
-  void _objTypePrintNull(   const object_t* o, print_ctx_t& c ) { printf("NULL "); }
-  void _objTypePrintError(  const object_t* o, print_ctx_t& c ) { printf("Error "); }
-  void _objTypePrintChar(   const object_t* o, print_ctx_t& c ) { printf("%c",o->u.c); }
-  void _objTypePrintInt8(   const object_t* o, print_ctx_t& c ) { printf("%i",o->u.i8); }
-  void _objTypePrintUInt8(  const object_t* o, print_ctx_t& c ) { printf("%i",o->u.u8); }
-  void _objTypePrintInt16(  const object_t* o, print_ctx_t& c ) { printf("%i",o->u.i16); }
-  void _objTypePrintUInt16( const object_t* o, print_ctx_t& c ) { printf("%i",o->u.u16); }
-  void _objTypePrintInt32(  const object_t* o, print_ctx_t& c ) { printf("%i",o->u.i32); }
-  void _objTypePrintUInt32( const object_t* o, print_ctx_t& c ) { printf("%i",o->u.u32); }
-  void _objTypePrintInt64(  const object_t* o, print_ctx_t& c ) { printf("%lli", o->u.i64); }
-  void _objTypePrintUInt64( const object_t* o, print_ctx_t& c ) { printf("%lli", o->u.u64); }
-  void _objTypePrintBool(   const object_t* o, print_ctx_t& c ) { printf("%s",o->u.b ? "true" : "false"); }
-  void _objTypePrintFloat(  const object_t* o, print_ctx_t& c ) { printf("%f",o->u.f); }
-  void _objTypePrintDouble( const object_t* o, print_ctx_t& c ) { printf("%f",o->u.d); }
-  void _objTypePrintString( const object_t* o, print_ctx_t& c ) { printf("%s",o->u.str); }
-  void _objTypePrintVect(   const object_t* o, print_ctx_t& c ) { printf("<vect>"); }
+  void _objTypePrintNull(   const object_t* o, print_ctx_t& c ) { cwLogPrint("NULL "); }
+  void _objTypePrintError(  const object_t* o, print_ctx_t& c ) { cwLogPrint("Error "); }
+  void _objTypePrintChar(   const object_t* o, print_ctx_t& c ) { cwLogPrint("%c",o->u.c); }
+  void _objTypePrintInt8(   const object_t* o, print_ctx_t& c ) { cwLogPrint("%i",o->u.i8); }
+  void _objTypePrintUInt8(  const object_t* o, print_ctx_t& c ) { cwLogPrint("%i",o->u.u8); }
+  void _objTypePrintInt16(  const object_t* o, print_ctx_t& c ) { cwLogPrint("%i",o->u.i16); }
+  void _objTypePrintUInt16( const object_t* o, print_ctx_t& c ) { cwLogPrint("%i",o->u.u16); }
+  void _objTypePrintInt32(  const object_t* o, print_ctx_t& c ) { cwLogPrint("%i",o->u.i32); }
+  void _objTypePrintUInt32( const object_t* o, print_ctx_t& c ) { cwLogPrint("%i",o->u.u32); }
+  void _objTypePrintInt64(  const object_t* o, print_ctx_t& c ) { cwLogPrint("%lli", o->u.i64); }
+  void _objTypePrintUInt64( const object_t* o, print_ctx_t& c ) { cwLogPrint("%lli", o->u.u64); }
+  void _objTypePrintBool(   const object_t* o, print_ctx_t& c ) { cwLogPrint("%s",o->u.b ? "true" : "false"); }
+  void _objTypePrintFloat(  const object_t* o, print_ctx_t& c ) { cwLogPrint("%f",o->u.f); }
+  void _objTypePrintDouble( const object_t* o, print_ctx_t& c ) { cwLogPrint("%f",o->u.d); }
+  void _objTypePrintString( const object_t* o, print_ctx_t& c ) { cwLogPrint("%s",o->u.str); }
+  void _objTypePrintVect(   const object_t* o, print_ctx_t& c ) { cwLogPrint("<vect>"); }
   void _objTypePrintPair(   const object_t* o, print_ctx_t& c )
   {
     o->u.children->type->print(o->u.children,c);
-    printf(": ");
+    cwLogPrint(": ");
     o->u.children->sibling->type->print(o->u.children->sibling,c);    
   }
   
@@ -1013,4 +1014,118 @@ cw::rc_t cw::objectToFile( const char* fn, const object_t* obj )
   return rc;
 }
 
+namespace cw
+{
+  rc_t _object_test_basic( const test::test_args_t& args )
+  {
+    rc_t          rc   = kOkRC;  
+    cw::object_t* o    = nullptr;
+    const char    s [] = "{ a:1, b:2, c:[ 1.23, 4.56 ], d:true, e:false, f:true }";
+
+    int a = 0;
+    int b = 0;
+    const cw::object_t* c = nullptr;
+    bool d,e,f;
+
+    const unsigned bufN = 128;
+    char buf[bufN];
+
+    unsigned i = 0;
+
+    cw::object_t* oo = nullptr;
+  
+    if((rc = cw::objectFromString(s,o)) != kOkRC )
+      goto errLabel;
+
+    int v;
+    if((rc = o->get("b",v)) != kOkRC )
+      goto errLabel;
+  
+    cwLogPrint("value:%i\n",v);
+  
+    o->print();
+
+  
+    if((rc = o->getv("a",a,"b",b)) != kOkRC )
+      goto errLabel;
+  
+    cwLogPrint("G: %i %i\n",a,b);
+
+
+    if((rc = o->readv("a",0,a,
+                      "b",0,b,
+                      "c",cw::kOptFl | cw::kListTId,c,
+                      "d",0,d,
+                      "e",0,e,
+                      "f",0,f)) != kOkRC )
+    {
+      goto errLabel;
+    }
+  
+    cwLogPrint("R: %i %i : %i %i %i\n",a,b,d,e,f);
+
+  
+    i = o->to_string(buf,bufN);
+    cwLogPrint("%i : %s\n",i, buf);
+  
+    oo = o->duplicate();
+
+    oo->print();
+  
+    oo->free();
+  
+    
+    o->free();
+
+  errLabel:
+    return rc;
+  }
+
+  rc_t _object_test_to_json( const test::test_args_t& args )
+  {
+    double   v0[] = {1.23,2.34,3.45};
+    unsigned v0N  = sizeof(v0)/sizeof(v0[0]);
+    int      v1[] = {-1,0,1,2,3,4};
+    unsigned v1N  = sizeof(v1)/sizeof(v1[0]);
+  
+    cw::object_t* d = cw::newDictObject();
+
+    d->putv("A","Abc","B",1.234);
+    d->put_numeric_list("v0",v0,v0N);
+    d->put_numeric_list("v1",v1,v1N);
+
+    char* s = d->to_string();
+    cwLogPrint("%s\n",s);
+    cw::mem::release(s);
+
+    d->free();
+
+    return kOkRC;
+  
+  }
+
+}
+
+
+cw::rc_t cw::object_test( const test::test_args_t& args )
+{
+  rc_t rc = kOkRC;
+
+  if( textIsEqual(args.test_label,"basic") )
+  {
+    rc = _object_test_basic(args);
+    goto errLabel;
+  }
+  
+  if( textIsEqual(args.test_label,"to_json") )
+  {
+    rc = _object_test_to_json(args);
+    goto errLabel;
+  }
+
+  rc = cwLogError(kInvalidArgRC,"Unknown test case module:%s test:%s.",args.module_label,args.test_label);
+  
+errLabel:
+  return cw::kOkRC;
+}
 

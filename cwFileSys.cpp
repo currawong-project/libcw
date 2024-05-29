@@ -1,8 +1,12 @@
 #include "cwCommon.h"
 #include "cwLog.h"
+#include "cwCommonImpl.h"
+
+#include "cwTest.h"
+#include "cwObject.h"
 
 #include "cwFileSys.h"
-#include "cwCommonImpl.h"
+
 #include "cwMem.h"
 #include "cwString.h"
 #include "cwText.h"
@@ -892,4 +896,34 @@ cw::rc_t cw::filesys::makeDir( const char* dirStr )
   mem::release(s);
   
   return kOkRC;
+}
+
+
+cw::rc_t cw::filesys::test( const test::test_args_t& args )
+{
+  rc_t rc = kOkRC;
+
+  filesys::pathPart_t* pp = filesys::pathParts(__FILE__);
+  
+  cwLogPrint("dir:%s",pp->dirStr);
+  cwLogPrint("fn: %s",pp->fnStr);
+  cwLogPrint("ext:%s",pp->extStr);
+
+  char* fn = filesys::makeFn( pp->dirStr, pp->fnStr, pp->extStr, nullptr );
+
+  cwLogPrint("fn: %s",fn);
+
+  mem::release(pp);
+  mem::release(fn);
+
+
+  const char myPath[] = "~/src/foo";
+
+  char* expPath = filesys::expandPath(myPath);
+
+  cwLogPrint("%s %s",myPath,expPath);
+
+  mem::release(expPath);
+  
+  return rc;
 }

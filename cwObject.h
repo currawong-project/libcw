@@ -460,6 +460,8 @@ namespace cw
 
   rc_t objectToFile( const char* fn, const object_t* obj );
 
+  rc_t object_test( const test::test_args_t& args );
+
 
 }
 

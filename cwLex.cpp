@@ -3,7 +3,8 @@
 #include "cwCommonImpl.h"
 #include "cwMem.h"
 #include "cwFile.h"
-
+#include "cwTest.h"
+#include "cwObject.h"
 #include "cwLex.h"
 
 
@@ -853,7 +854,7 @@ namespace cw
     //)
 
     //(
-    rc_t test()
+    rc_t test( const test::test_args_t& args )
     {
       rc_t     rc  = kOkRC;
       unsigned tid = kInvalidId;
