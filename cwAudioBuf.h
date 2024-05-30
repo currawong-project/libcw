@@ -236,7 +236,7 @@ namespace cw
       void report( handle_t h );
 
       // Run a buffer usage simulation to test the class. cmAudioPortTest.c calls this function.
-      rc_t test();
+      rc_t test(const test::test_args_t& args);
 
       //)
 
