@@ -213,7 +213,7 @@ namespace cw
             if( !isEqualFl )
             {
               ok_fl = false;
-              cwLogInfo("Test failed on: '%s'",testRefFn);
+              cwLogInfo("Compare failed on: '%s'",testRefFn);
             }
           }
               
