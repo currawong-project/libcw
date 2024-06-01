@@ -55,7 +55,6 @@ namespace cw
       { "audio_meter",     &audio_meter::members },
       { "audio_marker",    &audio_marker::members },
       { "xfade_ctl",       &xfade_ctl::members },
-      { "poly_merge",      &poly_merge::members },
       { "sample_hold",     &sample_hold::members },
       { "number",          &number::members },
       { "timer",           &timer::members },
