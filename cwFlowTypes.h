@@ -468,7 +468,7 @@ namespace cw
     void           var_destroy( variable_t* var );
 
     // Channelizing creates a new var record with an explicit channel index to replace the
-    // automatically generated variable whose channel index is set to  'all'.
+    // automatically generated variable whose channel index is set to  'kAnyChIdx'.
     rc_t           var_channelize( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx, const object_t* value_cfg, unsigned vid, variable_t*& varRef );
 
     // Wrapper around call to var->proc->members->value()

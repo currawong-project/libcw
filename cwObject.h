@@ -32,7 +32,9 @@ namespace cw
 
    kHexFl      = 0x10000000,
    kIdentFl    = 0x20000000,
-   kOptFl      = 0x40000000
+   
+   kOptFl      = 0x40000000,
+   kReqFl      = 0x00000000,
    
   };
 
@@ -304,10 +306,13 @@ namespace cw
 
     
     // readv("label0",flags0,v0,"label1",flags0,v1, ... )
-    // Use kOptFl for optional fields.
+    // Use kReqFl/kOptFl for required/optional fields.
     // Use kListTId and kDictTId to validate the type of container fields.
     // In general it should not be necessary to validate numeric and string types because
     // they are validated by virtue of being converted to the returned value.
+    // Note that readv() assumes that the list of possible fields given as input is complete
+    // and any fields that it finds which are not in the list are not valid. This
+    // validity check is the main difference between readv() and getv()/getv_opt().
     template< typename T0, typename T1, typename... ARGS >
     rc_t readv( T0 label, unsigned flags, T1& valRef, ARGS&&... args ) const
       { return _readv(nullptr, label,flags,valRef,args...); }
