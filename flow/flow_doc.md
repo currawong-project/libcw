@@ -90,10 +90,10 @@ Attribute | Description
 `init`    | This is an an initialization only variable. 
           | Changing the value during runtime will have no effect.
 `mult`    | This variable may be instantiated multiple times by the in-statement.
-          | Variables that do not have this property may only be instantiated
-          | once per proc-instance.
+          | Each variable is given a unique suffix id. Variables that do not have 
+          | this property may only be instantiated once per proc-instance - albeit with possibly mulitple channels.
 `out`     | This is a subnet output variable. [See Subnet Implementation](#subnet-implementation)
-`no_chan` | This variable cannot be 'channelized'.
+`no_ch`   | This variable will have only a single value and cannot be 'channelized'.
 
 ## Schema Notation
 
