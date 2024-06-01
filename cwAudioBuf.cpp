@@ -992,7 +992,7 @@ void cw::audio::buf::report(handle_t h)
 
 /// [cwAudioBufExample]
 
-cw::rc_t cw::audio::buf::test()
+cw::rc_t cw::audio::buf::test(const test::test_args_t& args)
 {
   rc_t     rc             = kOkRC;
   unsigned devIdx         = 0;
@@ -1087,8 +1087,8 @@ cw::rc_t cw::audio::buf::test()
   }
 
   for(i=0; i<sigN; ++i)
-    cwLogInfo("%f ",oSig[i]);
-  cwLogInfo("\n");
+    cwLogPrint("%f ",oSig[i]);
+  cwLogPrint("\n");
 
   destroy(h);
   

@@ -89,9 +89,10 @@ namespace cw
 
 
 
-cw::rc_t cw::mtx::test( const object_t* cfg )
+cw::rc_t cw::mtx::test( const test::test_args_t& args )
 {
   rc_t rc = kOkRC;
+  const object_t* cfg = args.test_args;
 
   d_t* mtx0 = nullptr;
   d_t* mtx1 = nullptr;
@@ -135,7 +136,7 @@ cw::rc_t cw::mtx::test( const object_t* cfg )
     mtx_y1 = allocCfg<double>(y1);
   
   unsigned n = offset(*mtx1,1,1);
-  printf("offset: %i\n",n);
+  cwLogPrint("offset: %i\n",n);
   
   
   report(*mtx0,"m0");

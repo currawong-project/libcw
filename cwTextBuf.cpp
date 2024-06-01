@@ -1,6 +1,7 @@
 #include "cwCommon.h"
 #include "cwLog.h"
 #include "cwCommonImpl.h"
+#include "cwTest.h"
 #include "cwMem.h"
 #include "cwTextBuf.h"
 
@@ -164,7 +165,7 @@ cw::rc_t cw::textBuf::setFloatFormat( handle_t h, unsigned width, unsigned decPl
   return kOkRC;
 }
 
-cw::rc_t cw::textBuf::test()
+cw::rc_t cw::textBuf::test( const test::test_args_t& args )
 {
   handle_t h;
   rc_t rc;
@@ -175,7 +176,7 @@ cw::rc_t cw::textBuf::test()
   print(h,"Hello\n");
   print(h,"foo\n");
 
-  printf("%s", text(h) );
+  cwLogPrint("%s", text(h) );
 
   return destroy(h);
 }

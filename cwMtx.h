@@ -732,7 +732,7 @@ namespace cw
         double v = ele( m, idxV );
 
         // print the value
-        printf("%*.*f ",colWidth,decPl,v);
+        cwLogPrint("%*.*f ",colWidth,decPl,v);
       }
       else
       {
@@ -742,11 +742,11 @@ namespace cw
           {
             // print the dimension index for matrices with 3+ dim's
             if( i > 0 && j == 0 )
-              printf("%i\n",idxV[i-1]);
+              cwLogPrint("%i\n",idxV[i-1]);
 
             // print the row index for matrices with 2+ dim's
             if( m.dimN>1 )
-              printf("%i | ",j);
+              cwLogPrint("%i | ",j);
           }
           
           idxV[i] = j;
@@ -755,7 +755,7 @@ namespace cw
         
         // prevent multiple newlines on last printed line
         if( m.dimN==1 || (m.dimN>=2 && i > m.dimN-2) )
-          printf("\n");
+          cwLogPrint("\n");
       }
     }
     
@@ -774,10 +774,10 @@ namespace cw
     template< typename T >
       void report( const struct mtx_str<T>& m, const char* label, unsigned decPl=3, unsigned colWidth=10 )
     {
-      printf("%s :",label);
+      cwLogPrint("%s :",label);
       for(unsigned i=0; i<m.dimN; ++i)
-        printf("%i ", m.dimV[i] );
-      printf("\n");
+        cwLogPrint("%i ", m.dimV[i] );
+      cwLogPrint("\n");
       
       print(m,decPl,colWidth);
     }
@@ -896,7 +896,7 @@ namespace cw
       if( mcn != xrn )
         return cwLogError(kInvalidArgRC, "Mtx mult. failed. Size mismatch: m[%i,%i] x[%i,%i].",mrn,mcn,xrn,xcn);
 
-      //printf("%i %i : %i %i\n",mrn,mcn,xrn,xcn);
+      //cwLogPrint("%i %i : %i %i\n",mrn,mcn,xrn,xcn);
       
       resize(&y,yDimV, 2 );
 
@@ -936,7 +936,7 @@ namespace cw
     typedef struct mtx_str<float>  f_t;
     typedef struct mtx_str<double> d_t;
 
-    rc_t test( const struct object_str* cfg );
+    rc_t test( const test::test_args_t& args );
     
     
   }

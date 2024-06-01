@@ -12,6 +12,13 @@
 #include "cwFile.h"
 #include "cwFileSys.h"
 #include "cwVectOps.h"
+#include "cwTextBuf.h"
+
+#include "cwAudioDevice.h"
+#include "cwAudioBufDecls.h"
+#include "cwAudioBuf.h"
+#include "cwMtx.h"
+
 #include "cwFlowTest.h"
 
 
@@ -32,6 +39,9 @@ namespace cw
       { "/vop",     vop::test },
       { "/time",    time::test },
       { "/flow",    flow::test },
+      { "/textBuf", textBuf::test },
+      { "/audioBuf",audio::buf::test },
+      { "/mtx",     mtx::test },
       { nullptr, nullptr },
     };
     
@@ -425,10 +435,23 @@ namespace cw
     {
       rc_t  rc               = kOkRC;
       char* new_module_label = filesys::makeFn(base_module_label,nullptr,nullptr,module_label,nullptr );
+
+      // form the module output directory
+      char* out_dir = filesys::makeFn(test.base_dir,nullptr,nullptr,test.out_folder,new_module_label,nullptr);
+
+      // verify that the the module output directory exists
+      if( !filesys::isDir(out_dir) )
+      {
+        if((rc = filesys::makeDir(out_dir)) != kOkRC )
+        {
+          rc = cwLogError(rc,"The module output directory '%s' create failed.",cwStringNullGuard(out_dir));
+          goto errLabel;
+        }
+      }
       
       switch( module_cfg->type_id() )
       {
-        case kStringTId:
+        case kStringTId:  // an external module file was given
           {
             const char* s = nullptr;
             if((rc = module_cfg->value(s)) != kOkRC )
@@ -441,7 +464,7 @@ namespace cw
           }
           break;
               
-        case kDictTId:
+        case kDictTId: // a nested module dict or case dict was given 
           rc = _proc_test_cfg(test, new_module_label, module_cfg );
           break;
 
@@ -450,6 +473,7 @@ namespace cw
       }                  
 
     errLabel:
+      mem::release(out_dir);
       mem::release(new_module_label);
       return rc;
     }
@@ -485,7 +509,7 @@ namespace cw
         }
       }
 
-      // if 
+      // if no keywords were found then the dictionary must be a list of cases
       if(module_args==nullptr && modules_cfg==nullptr && cases_cfg==nullptr )
       {
         cases_cfg = test_cfg;
