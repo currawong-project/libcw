@@ -169,6 +169,30 @@ namespace cw
       
       return v0;
     }
+
+
+    //==================================================================================================================
+    // find, count
+    //
+    
+    template< typename T0, typename T1 >
+    unsigned find( const T0* v, unsigned n, const T1& m )
+    {
+      for(unsigned i=0; i<n; ++i)
+        if( v[i] == m )
+          return i;
+      return kInvalidIdx;
+    }
+
+    template< typename T0, typename T1 >
+    unsigned count( const T0* v, unsigned n, const T1& m )
+    {
+      unsigned cnt = 0;
+      for(unsigned i=0; i<n; ++i)
+        if( v[i] == m )
+          cnt += 1;
+      return cnt;
+    }
     
 
     //==================================================================================================================
