@@ -57,6 +57,7 @@ namespace cw
       { "xfade_ctl",       &xfade_ctl::members },
       { "sample_hold",     &sample_hold::members },
       { "number",          &number::members },
+      { "reg",             &reg::members },
       { "timer",           &timer::members },
       { "counter",         &counter::members },
       { "list",            &list::members },

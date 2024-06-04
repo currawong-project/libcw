@@ -1588,12 +1588,335 @@ namespace cw
       };
       
     }    
-    
+
+
     //------------------------------------------------------------------------------------------------------------------
     //
     // audio_mix
     //
     namespace audio_mix
+    {
+      enum {
+        kOutPId,
+        kInBasePId,
+      };
+
+      typedef struct audio_gain_str
+      {
+        unsigned sfx_id;   // sfx_id of both the audio and gain var's 
+        unsigned audioChN; // count of audio channels
+        unsigned aVId;     // (there can only be one audio var.)
+        unsigned gBaseVId; // (there is one gain var. per audio channel)
+        coeff_t* gainV;    // gainV[ audioChN ]
+      } audio_gain_t;
+      
+      typedef struct
+      {
+        unsigned baseInGainPId;
+        unsigned baseOutGainPId;
+        
+        unsigned inAudioVarCnt;
+
+        audio_gain_t  oag;
+        audio_gain_t* iagV; // iagV[ inAudioVarCnt ]
+        
+      } inst_t;
+
+
+      rc_t _mix_0( proc_t* proc, unsigned inPId, unsigned igainPId, abuf_t* obuf, coeff_t* ogainV )
+      {
+        rc_t          rc   = kOkRC;
+        const abuf_t* ibuf = nullptr;
+
+        // get the input audio buffer
+        if((rc = var_get(proc, inPId, kAnyChIdx, ibuf )) != kOkRC )
+          goto errLabel;
+        else
+        {
+          // get the min count of channels between in and out buffers
+          unsigned chN = std::min(ibuf->chN, obuf->chN );
+          
+          for(unsigned i=0; i<chN; ++i)
+          {
+            coeff_t         gain = 1;
+            const sample_t* isig = ibuf->buf + i*ibuf->frameN;
+            sample_t*       osig = obuf->buf + i*obuf->frameN;
+
+            // get the input gain for this channel
+            if((rc = var_get(proc, igainPId, kAnyChIdx, gain)) != kOkRC )
+              goto errLabel;
+
+            gain *= ogainV[i];
+                
+            for(unsigned j=0; j<obuf->frameN; ++j)
+              osig[j] += gain * isig[j];
+          }
+        }
+
+      errLabel:
+        return rc;
+        
+      }
+
+      rc_t _mix( proc_t* proc, audio_gain_t* iag, audio_gain_t* oag, abuf_t* obuf )
+      {
+        rc_t rc = kOkRC;
+        const abuf_t* ibuf = nullptr;
+        unsigned chN;
+        
+        // get the input audio buffer
+        if((rc = var_get(proc, iag->aVId, kAnyChIdx, ibuf )) != kOkRC )
+          goto errLabel;
+
+        chN = std::min(ibuf->chN,obuf->chN);
+
+        for(unsigned i=0; i<chN; ++i)
+        {
+            const sample_t* isig = ibuf->buf + i*ibuf->frameN;
+            sample_t*       osig = obuf->buf + i*obuf->frameN;
+            coeff_t         gain = iag->gainV[i] * oag->gainV[i];
+          
+            for(unsigned j=0; j<obuf->frameN; ++j)
+              osig[j] += gain * isig[j];          
+        }
+        
+      errLabel:
+        return rc;
+      }
+      
+      // Be sure that there is a gain channel instantiated for every audio channel
+      // and fill ag->gainV[] with the current value of each pre-created gain variable
+      // or set it to 1.
+      rc_t _setup_gain( proc_t* proc, const char* var_label, audio_gain_t* ag )
+      {
+        rc_t rc = kOkRC;
+         
+        // if the base igain var does not exist ..
+        if( !var_exists( proc, var_label, ag->sfx_id, kAnyChIdx ) )
+        {
+          variable_t* var = nullptr;
+
+          // ... then create it
+          if((rc = var_create(proc, var_label, ag->sfx_id, ag->gBaseVId, kAnyChIdx, nullptr, kInvalidTFl, var )) != kOkRC )
+          {
+            rc = cwLogError(rc,"'igain' var create failed.");
+            goto errLabel;
+          }
+          
+          // ... ans set the gain to 1.0
+          var_set(var,1.0f);
+
+          
+        }
+
+        // for each audio channel
+        for(unsigned j=0; j<ag->audioChN; ++j)
+        {
+          // if the gain var exists for this audio var/channel
+          if( var_exists(proc,var_label, ag->sfx_id, j ) )
+          {
+            // then register it and store the gain value 
+            if((rc = var_register_and_get(proc, j, ag->gBaseVId+j, var_label, ag->sfx_id, ag->gainV[j])) != kOkRC )
+            {
+              goto errLabel;
+            }
+          }
+          else
+          {
+            // otherwise create the channel var. via channelization
+            variable_t* var = nullptr;
+            if((rc = var_channelize( proc, var_label, ag->sfx_id, j, nullptr, ag->gBaseVId+j, var )) != kOkRC )
+            {
+              goto errLabel;
+            }
+
+
+          }
+        }
+      errLabel:
+        return rc;
+      }
+      
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;        
+
+        unsigned nextInGainPId   = 0;
+        unsigned audioFrameN     = 0;
+        unsigned maxInAudioChCnt = 0;
+        srate_t  srate           = 0;
+        unsigned aSfxIdAllocN     = var_mult_count(proc,"in");
+        unsigned aSfxIdA[ aSfxIdAllocN ];
+          
+        // get the the sfx_id's of the input audio variables 
+        if((rc = var_mult_sfx_id_array(proc, "in", aSfxIdA, aSfxIdAllocN, p->inAudioVarCnt )) != kOkRC )
+          goto errLabel;
+
+        p->iagV = mem::allocZ<audio_gain_t>(p->inAudioVarCnt);
+
+        // set the baseInGainPId
+        nextInGainPId = p->baseInGainPId = kInBasePId + p->inAudioVarCnt;
+        
+        for(unsigned i=0; i<p->inAudioVarCnt; ++i)
+        {
+          abuf_t* abuf;
+
+          // register the input audio variable
+          if((rc = var_register_and_get(proc,kAnyChIdx,kInBasePId+i,"in",aSfxIdA[i],abuf)) != kOkRC )
+            goto errLabel;
+          
+          // the sample rate of the input audio signals must be the same
+          if( i != 0 && abuf->srate != srate )
+          {
+            rc = cwLogError(kInvalidArgRC,"All signals on a poly merge must have the same sample rate.");
+            goto errLabel;
+          }
+
+          srate = abuf->srate;
+
+          // the count of frames in all audio signals must be the same
+          if( audioFrameN != 0 && abuf->frameN != audioFrameN )
+          {
+            rc = cwLogError(kInvalidArgRC,"All signals on a poly merge must have the same frame count.");
+            goto errLabel;
+          }
+
+          audioFrameN = abuf->frameN;
+
+          if( abuf->chN > maxInAudioChCnt )
+            maxInAudioChCnt = abuf->chN;
+
+          // setup the audio_gain record for this audio channel
+          p->iagV[i].audioChN = abuf->chN;
+          p->iagV[i].gainV    = mem::allocZ<coeff_t>(abuf->chN);
+          p->iagV[i].sfx_id   = aSfxIdA[i];
+          p->iagV[i].aVId     = kInBasePId + i;
+          p->iagV[i].gBaseVId = nextInGainPId;
+
+          vop::fill(p->iagV[i].gainV,abuf->chN,1);
+          
+          // setup the input gain for this input audio variable
+          if((rc= _setup_gain(proc, "igain", p->iagV + i )) != kOkRC )
+            goto errLabel;
+          
+          nextInGainPId += abuf->chN;
+        }
+
+        p->baseOutGainPId = nextInGainPId;
+        
+        if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, srate, maxInAudioChCnt, audioFrameN )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        p->oag.audioChN = maxInAudioChCnt;
+        p->oag.gainV    = mem::allocZ<coeff_t>(maxInAudioChCnt);
+        p->oag.sfx_id   = kBaseSfxId;
+        p->oag.aVId     = kOutPId;
+        p->oag.gBaseVId = p->baseOutGainPId;
+        vop::fill(p->oag.gainV,p->oag.audioChN,1);
+
+        if((rc= _setup_gain(proc, "ogain", &p->oag )) != kOkRC )
+          goto errLabel;
+        
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        mem::release(p->oag.gainV);
+        
+        for(unsigned i=0; i<p->inAudioVarCnt; ++i)
+          mem::release(p->iagV[i].gainV);
+        
+        mem::release(p->iagV);
+
+        return rc;
+      }
+
+      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+
+        // if this is an in-gain value
+        if( p->baseInGainPId  <= var->vid && var->vid < p->oag.gBaseVId  )
+        {
+          // determine which in-gain variable this var is associated with
+          for(unsigned i=0; i<p->inAudioVarCnt; ++i)
+            if( p->iagV[i].gBaseVId <= var->vid && var->vid < p->iagV[i].gBaseVId + p->iagV[i].audioChN )
+            {
+              // ... update the associated gainV[] value
+              unsigned ch_idx = var->vid - p->iagV[i].gBaseVId;
+              var_get(var,p->iagV[i].gainV[ch_idx]);
+              goto errLabel;
+            }
+
+          assert(0);
+        }
+        else
+        {
+          // if this is an out-gain value  ...
+          if( p->oag.gBaseVId <= var->vid && var->vid <= p->oag.gBaseVId + p->oag.audioChN )
+          {
+            unsigned ch_idx = var->vid - p->oag.gBaseVId;
+            var_get(var,p->oag.gainV[ch_idx] ); // ... update the associated gainV[] value
+          }
+          else
+          {
+            assert( var->vid==kOutPId || (kInBasePId <= var->vid && var->vid < kInBasePId + p->inAudioVarCnt));
+          }
+        }
+          
+      errLabel:
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t          rc    = kOkRC;
+        abuf_t*       obuf  = nullptr;
+
+        // get the output audio buffer
+        if((rc = var_get(proc,kOutPId, kAnyChIdx, obuf)) != kOkRC )
+        {
+          goto errLabel;
+        }
+        else
+        {
+          // zero the output buffer
+          vop::zero(obuf->buf, obuf->frameN*obuf->chN );
+
+          // mix each input channel into the output buffer
+          for(unsigned i=0; i<p->inAudioVarCnt; ++i)
+            if((rc =_mix(proc, p->iagV + i, &p->oag, obuf )) != kOkRC )
+              goto errLabel;
+        }
+      errLabel:
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .value   = std_value<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    
+    
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // audio_mix
+    //
+    namespace audio_mix_0
     {
       enum {
         kIn0PId,
@@ -3637,7 +3960,7 @@ namespace cw
             
 
           // the sample rate of off input audio signals must be the same
-          if( srate != 0 && abuf->srate != srate )
+          if( i != 0 && abuf->srate != srate )
           {
             rc = cwLogError(kInvalidArgRC,"All signals on a poly merge must have the same sample rate.");
             goto errLabel;
@@ -3665,7 +3988,7 @@ namespace cw
         // There must be one gain variable for each audio input or exactly one gain variable 
         if( p->gainVarCnt != p->inAudioVarCnt && p->gainVarCnt != 1 )
         {
-          rc = cwLogError(kInvalidArgRC,"The count of gain variables must be the same as the count of audio variables are there must be one gain variable.");
+          rc = cwLogError(kInvalidArgRC,"The count of 'gain' variables must be the same as the count of audio variables or there must be exactly one gain variable.");
           goto errLabel;
         }
 
@@ -4050,6 +4373,141 @@ namespace cw
       
     }    
 
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // Register
+    //
+    namespace reg
+    {
+      enum {
+        kInPId,
+        kStorePId,
+        kOutPId,
+      };
+
+      typedef struct
+      {
+        value_t value;
+        bool    store_fl;
+      } inst_t;
+
+      rc_t _set_stored_value( proc_t* proc, inst_t* p, const variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        
+        if( var->value == nullptr )
+        {
+          rc = cwLogError(kInvalidStateRC,"The incoming register value is NULL.");
+          goto errLabel;
+        }
+
+        value_duplicate(p->value,*var->value);
+        p->store_fl = true;
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t              rc  = kOkRC;
+        const variable_t* in_var = nullptr;
+        variable_t* out_var = nullptr;
+        variable_t* store_var = nullptr;
+        
+        if((rc = var_register(proc, kAnyChIdx,
+                              kInPId,    "in",    kBaseSfxId,
+                              kStorePId, "store", kBaseSfxId)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((rc = var_find(proc,"in",kBaseSfxId,kAnyChIdx,in_var )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((rc = _set_stored_value(proc,p,in_var)) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+        // Create the output var
+        if((rc = var_create( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, in_var->value->tflag, out_var )) != kOkRC )
+        {          
+          rc = cwLogError(rc,"The output variable create failed.");
+          goto errLabel;
+        }
+
+        
+        if((rc = var_find(proc,"store",kBaseSfxId,kAnyChIdx,store_var )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((rc = var_set(store_var,&p->value)) != kOkRC )
+          goto errLabel;
+        
+        if((rc = var_set(out_var,&p->value)) != kOkRC )
+          goto errLabel;
+        
+        //store_var->value = &p->value;
+        //out_var->value = &p->value;
+
+        
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        switch( var->vid )
+        {
+          case kInPId:
+          case kStorePId:
+            if( var->value != nullptr )
+              _set_stored_value(proc,p,var);
+            break;
+
+          case kOutPId:
+            break;
+            
+          default:
+            assert(0);            
+        }
+                
+        return kOkRC;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        if( p->store_fl )
+        {
+          rc = var_set(proc,kOutPId,kAnyChIdx,&p->value);
+          p->store_fl = false;
+        }
+        
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .value   = std_value<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    
     
     //------------------------------------------------------------------------------------------------------------------
     //

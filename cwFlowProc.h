@@ -29,6 +29,7 @@ namespace cw
     namespace xfade_ctl       { extern class_members_t members;  }
     namespace sample_hold     { extern class_members_t members;  }
     namespace number          { extern class_members_t members;  }
+    namespace reg             { extern class_members_t members;  }
     namespace timer           { extern class_members_t members;  }
     namespace counter         { extern class_members_t members;  }
     namespace list            { extern class_members_t members;  }
