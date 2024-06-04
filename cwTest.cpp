@@ -81,7 +81,6 @@ namespace cw
     rc_t _parse_args( test_t& test, const object_t* cfg, int argc, const char** argv )
     {
       rc_t     rc      = kOkRC;
-      unsigned argN    = 1;
       char*    out_dir = nullptr;
       int      argi    = 1;
       
