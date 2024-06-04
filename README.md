@@ -930,8 +930,32 @@ resolvable without more information.
 
 ### TODO:
 
+- Move proc_dict.cfg to libcw directory.
+
+- The proc inst 'args' should be able to create mult variables. The only way to instantiate
+new mult variables now is via the 'in' stmt.
+
+- The `audio_merge` implementaiton is wrong. It should mimic `audio_mix` where all igain
+coeff's are instantiated even if they are not referenced.
+
+- Finish audio feedback example - this will probably involve writing an `audio_silence` class.
+
+- Issue a warning if memory is allocated during runtime.
+
+- Add the `caw` examples to the test suite.
+
 - Check for illegal variable names in class descriptions.  (no periods, trailing digits, or trailing underscores)
-- Check for unknown fields where the syntax clearly specifies only certain options.
+
+- Check for unknown fields where the syntax clearly specifies only certain options via the 'readv()' method.
+
+- Verify that all variables have been registered (have valid 'vid's) during post instantiation validation.
+  (this is apparently not currently happening)
+  
+- How is the number of channels for a given variable determined?  Is it the widest (max channel) preset
+  that is encountered during preset compilation?  What if a variable has a wide preset but it is not
+  initially applied - does that mean an uninitialized channel is just sitting there? (... no i think
+  the previous channel is duplicated in var_channelize())
+
 
 - Class presets cannot address 'mult' variables (maybe this is ok since 'mult' variables are generally connected to a source.).
 
@@ -951,6 +975,8 @@ value should not be updated and distinguish it from an error code - which should
   Should we check for 'src' or 'mult' attribute on var's?
   (In other words: Enforce var attributes.)
 
+- How much of the proc initialization implementation can use the preset compile/apply code?
+
 - Reduce runtime overhead for var get/set operations.
   
 - Implement matrix types.
@@ -964,7 +990,40 @@ value should not be updated and distinguish it from an error code - which should
 	printing the values for kAnyChIdx
 	+ log should print values for abuf (mean,max), fbuf (mean,max) mag, mbuf
 
+- Audio inputs should be able to be initialized with a channel count and srate without actually connecting an input.
+  This will allow feedback connections to be attached to them at a later stage of the network 
+  instantiation.
+  
+- Implement subnet preset application.	
 
+- Implement the var attributes and attribute checking.
+
+- Port 'cm' and 'hum' processors.
+
+- Implement Linux audio plugins loading
+
+- Implement dynamic loading of procs.
+
+- Implement a debug mode to aid in building networks and subnets (or is logging good enough)
+
+- Implement multi-field messages.
+
+- Implement user defined data types.
+
+- Look more closely at the way of identify an in-stmt src-net or a out-stmt in-net.
+It's not clear there is a difference between specifying  `_` and the default behaviour.
+Is there a way to tell it to search the entire network from the root? Isn't that 
+what '_' is supposed to do.
+
+Host Environments:
+------------------
+- CLI, no GUI, no I/O, non-real-time only.
+- CLI, no GUI, w/ I/O and real-time
+- GUI, with configurable control panels
+
+Done
+----
+- DONE: Remove the multiple 'args' thing and and 'argsLabel'.  'args' should be a simple set of arg's.  
 
 - DONE: Compile presets: at load time the presets should be resolved
   to the proc and vars to which they will be assigned.
@@ -978,7 +1037,6 @@ var to connect to it as a source ... which doesn't provoke an error
 but would almost certainly not do what the user expects.
 Note that the kAnyChIdx provides an easy way to set all of the channels
 of a variable to the same value.
-
 
 - DONE: verifiy that all proc variables values have a valid type - (i.e. (type & typeMask) != 0)
   when the proc instance create is complete. This checks that both the type is assigned and
@@ -1003,8 +1061,6 @@ ports of the internal elements.
 This might be a better approach to logging than having a 'printer' object.
 Add proc instance field: `log:{ var_label_0:0, var_label_1:0 } `
 
-Next:
-
 - Complete subnets:
 	+ Subnets should have presets written in terms of the subnet vars rather than the network vars
 	or the value application needs to follow the internal variable src_var back to the proxy var.
@@ -1021,19 +1077,6 @@ Next:
 
 	+ DONE: improve code comments on subnet creation
 
-- Audio inputs should be able to be initialized with a channel count and srate without actually connecting an input.
-  This will allow feedback connections to be attached to them at a later stage of the network 
-  instantiation.
-- Remove the multiple 'args' thing and and 'argsLabel'.  'args' should be a simple set of arg's.  
-- Implement subnet preset application.	
-- Implement the var attributes and attribute checking.
-- Implement dynamic loading of procs.
-- Implement a debug mode to aid in building networks and subnets (or is logging good enough)
-- Implement multi-field messages.
-- Look more closely at the way of identify an in-stmt src-net or a out-stmt in-net.
-It's not clear there is a difference between specifying  `_` and the default behaviour.
-Is there a way to tell it to search the entire network from the root? Isn't that 
-what '_' is supposed to do.
   
 - DONE: Implement feedback	
 
@@ -1046,15 +1089,8 @@ what '_' is supposed to do.
   allow those inputs to be replaced by a later connection.
 
 BUGS:
-- The counter modulo mode is not working as expected.
+- DONE: The counter modulo mode is not working as expected.
 
-
-
-Host Environments:
-------------------
-- CLI, no GUI, no I/O, non-real-time only.
-- CLI, no GUI, w/ I/O and real-time
-- GUI, with configurable control panels
 
 
 - DONE: Implement 'preset' proc. This will involve implementing the 'cfg' datatype.
@@ -1076,6 +1112,27 @@ Consider:
 
 
 
+DONE: After the network is fully instantiated the network and class presets
+are compiled.  At this point all preset values must be resolvable to
+an actual proc variable.  A warning is issued for presets with values
+that cannot be resolved and they are disabled.  The primary reason
+that a preset might not be resolvable is by targetting a variable
+channel that does not exist.
+
+- DONE: All cfg to value conversion should go through `cfg_to_value()`.
+
+
+Names
+------
+ixon - 
+hoot
+caw, screech, warble, coo, peep, hoot, gobble, quack, honk, whistle, tweet, cheep, chirrup, trill, squawk, seet, 
+cluck,cackle,clack
+cock-a-dooodle-doo
+song,tune,aria
+
+Proc instantiation
+------------------
 Prior to executing the custom constructor the values are assigned to the 
 variables as follows:
 1. Default value as defined by the class are applied when the variable is created.
@@ -1094,29 +1151,8 @@ allowing the network programmer to influence the configuration of the
 proc. instance.
 
 
-DONE: After the network is fully instantiated the network and class presets
-are compiled.  At this point all preset values must be resolvable to
-an actual proc variable.  A warning is issued for presets with values
-that cannot be resolved and they are disabled.  The primary reason
-that a preset might not be resolvable is by targetting a variable
-channel that does not exist.
-
-
-
-- How much of the proc initialization implementation can use the preset compile/apply code?
-- DONE: All cfg to value conversion should go through `cfg_to_value()`.
-
-
-Names:
-ixon - 
-hoot
-caw, screech, warble, coo, peep, hoot, gobble, quack, honk, whistle, tweet, cheep, chirrup, trill, squawk, seet, 
-cluck,cackle,clack
-cock-a-dooodle-doo
-song,tune,aria
-
-
 caw by example:
+---------------
 0. DONE: Add log object.
    DONE: Add initial network preset selection system parameter.
 
