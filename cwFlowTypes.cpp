@@ -148,12 +148,12 @@ namespace cw
           
         case kABufTFl:
           
-          dst.u.abuf = src.u.abuf == nullptr ? nullptr : abuf_duplicate(src.u.abuf);
+          dst.u.abuf = src.u.abuf == nullptr ? nullptr : abuf_duplicate(dst.u.abuf,src.u.abuf);
           dst.tflag = src.tflag;
           break;
           
         case kFBufTFl:
-          dst.u.fbuf = src.u.fbuf == nullptr ? nullptr : fbuf_duplicate(src.u.fbuf);
+          dst.u.fbuf = src.u.fbuf == nullptr ? nullptr : fbuf_duplicate(dst.u.fbuf,src.u.fbuf);
           dst.tflag = src.tflag;
           break;
 
@@ -1062,7 +1062,7 @@ namespace cw
 
       if( cwIsNotFlag(var->classVarDesc->type,kRuntimeTFl) )
       {
-        rc = cwLogError(kOpFailRC,"It is invalid to change the type of a statically (non-runtime) type variable.");
+        rc = cwLogError(kOpFailRC,"It is invalid to change the type of a static (non-runtime) type variable.");
         goto errLabel;
       }
 
@@ -1182,6 +1182,11 @@ namespace cw
   }
 }
 
+void  cw::flow::value_duplicate( value_t& dst, const value_t& src )
+{
+  _value_duplicate(dst,src);
+}
+
 void  cw::flow::value_print( const value_t* value, bool info_fl)
 {
    _value_print(value,info_fl);
@@ -1190,11 +1195,12 @@ void  cw::flow::value_print( const value_t* value, bool info_fl)
 
 cw::flow::abuf_t* cw::flow::abuf_create( srate_t srate, unsigned chN, unsigned frameN )
 {
-  abuf_t* a  = mem::allocZ<abuf_t>();
-  a->srate   = srate;
-  a->chN     = chN;
-  a->frameN  = frameN;
-  a->buf     = mem::allocZ<sample_t>( chN*frameN );
+  abuf_t* a       = mem::allocZ<abuf_t>();
+  a->srate        = srate;
+  a->chN          = chN;
+  a->frameN       = frameN;
+  a->bufAllocSmpN = chN*frameN;
+  a->buf          = mem::allocZ<sample_t>(a->bufAllocSmpN);
   
   return a;
 }
@@ -1208,9 +1214,21 @@ void  cw::flow::abuf_destroy( abuf_t*& abuf )
   mem::release(abuf);
 }
 
-cw::flow::abuf_t*  cw::flow::abuf_duplicate( const abuf_t* src )
+cw::flow::abuf_t*  cw::flow::abuf_duplicate( abuf_t* dst, const abuf_t* src )
 {
-  return abuf_create( src->srate, src->chN, src->frameN );
+  abuf_t* abuf = nullptr;
+
+  if( dst != nullptr && dst->bufAllocSmpN < src->bufAllocSmpN )
+    mem::release(dst->buf);
+  
+  if( dst == nullptr || dst->buf == nullptr )    
+    abuf = abuf_create( src->srate, src->chN, src->frameN );
+  else
+    abuf = dst;
+
+  vop::copy(abuf->buf,src->buf,src->chN*src->frameN);
+
+  return abuf;
 }
 
 
@@ -1235,6 +1253,79 @@ const cw::flow::sample_t*   cw::flow::abuf_get_channel( abuf_t* abuf, unsigned c
   return abuf->buf + (chIdx*abuf->frameN);
 }
 
+
+cw::flow::fbuf_t* cw::flow::fbuf_create( srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_sample_t** magV, const fd_sample_t** phsV, const fd_sample_t** hzV )
+{
+  for(unsigned i=0; i<chN; ++i)
+    if( binN_V[i] > maxBinN_V[i] )
+    {
+      cwLogError(kInvalidArgRC,"A channel bin count (%i) execeeds the max bin count (%i).",binN_V[i],maxBinN_V[i]);
+      return nullptr;;
+    }
+  
+  fbuf_t* f = mem::allocZ<fbuf_t>();
+
+  bool proxy_fl = magV != nullptr || phsV != nullptr || hzV != nullptr;
+  
+  // Calculate the total count of bins for each data vector.
+  unsigned maxTotalBinN = proxy_fl ? 0 : vop::sum(maxBinN_V, chN);
+  
+  // calc the total size of memory required for all internal data structures
+  f->memByteN
+    = sizeof(unsigned)     * chN*kFbufVectN           // maxBinN_V[],binN_V[],hopSmpN_V[]
+    + sizeof(fd_sample_t*) * chN*kFbufVectN           // magV[],phsV[],hzV[] (pointer to bin buffers)
+    + sizeof(bool)         * chN*1                    // readyFlV[]
+    + sizeof(fd_sample_t)  * maxTotalBinN*kFbufVectN; // bin buffer memory
+
+  // allocate mory
+  f->mem       = mem::allocZ<uint8_t>(f->memByteN);
+
+  unsigned*     base_maxBinV = (unsigned*)f->mem;
+  fd_sample_t** base_bufV    = (fd_sample_t**)(base_maxBinV + kFbufVectN * chN);
+  bool*         base_boolV   = (bool*)(base_bufV + kFbufVectN * chN);
+  fd_sample_t*  base_buf     = (fd_sample_t*)(base_boolV + chN);
+  
+  
+  f->srate     = srate;
+  f->chN       = chN;
+  f->maxBinN_V = base_maxBinV;
+  f->binN_V    = f->maxBinN_V + chN;
+  f->hopSmpN_V = f->binN_V + chN;
+  f->magV      = base_bufV;
+  f->phsV      = f->magV + chN;
+  f->hzV       = f->phsV + chN;
+  f->readyFlV  = base_boolV;
+
+  vop::copy( f->binN_V, binN_V, chN );
+  vop::copy( f->maxBinN_V, maxBinN_V, chN );
+  vop::copy( f->hopSmpN_V, hopSmpN_V, chN );  
+  
+  if( proxy_fl )
+  {
+    for(unsigned chIdx=0; chIdx<chN; ++chIdx)
+    {      
+      f->magV[ chIdx ] = (fd_sample_t*)magV[chIdx];
+      f->phsV[ chIdx ] = (fd_sample_t*)phsV[chIdx];
+      f->hzV[  chIdx ] = (fd_sample_t*)hzV[chIdx];
+    }
+  }
+  else
+  {
+    fd_sample_t* m         = base_buf;
+    for(unsigned chIdx=0; chIdx<chN; ++chIdx)
+    {   
+      f->magV[chIdx] = m + 0 * f->binN_V[chIdx];
+      f->phsV[chIdx] = m + 1 * f->binN_V[chIdx];
+      f->hzV[ chIdx] = m + 2 * f->binN_V[chIdx];
+      m += f->maxBinN_V[chIdx];
+      assert( m <= base_buf + kFbufVectN * maxTotalBinN );
+    }
+  }
+
+  return f;  
+}
+
+/*
 cw::flow::fbuf_t* cw::flow::fbuf_create( srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_sample_t** magV, const fd_sample_t** phsV, const fd_sample_t** hzV )
 {
   for(unsigned i=0; i<chN; ++i)
@@ -1290,6 +1381,7 @@ cw::flow::fbuf_t* cw::flow::fbuf_create( srate_t srate, unsigned chN, const unsi
 
   return f;  
 }
+*/
 
 cw::flow::fbuf_t*  cw::flow::fbuf_create( srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_sample_t** magV, const fd_sample_t** phsV, const fd_sample_t** hzV )
 {
@@ -1308,20 +1400,21 @@ void cw::flow::fbuf_destroy( fbuf_t*& fbuf )
   if( fbuf == nullptr )
     return;
 
-  mem::release( fbuf->maxBinN_V );
-  mem::release( fbuf->binN_V );
-  mem::release( fbuf->hopSmpN_V);
-  mem::release( fbuf->magV);
-  mem::release( fbuf->phsV);
-  mem::release( fbuf->hzV);
-  mem::release( fbuf->buf);
-  mem::release( fbuf->readyFlV);
+  mem::release( fbuf->mem);
   mem::release( fbuf);
 }
 
-cw::flow::fbuf_t*  cw::flow::fbuf_duplicate( const fbuf_t* src )
+cw::flow::fbuf_t*  cw::flow::fbuf_duplicate( fbuf_t* dst, const fbuf_t* src )
 {
-  fbuf_t* fbuf = fbuf_create( src->srate, src->chN, src->maxBinN_V, src->binN_V, src->hopSmpN_V );
+  fbuf_t* fbuf = nullptr;
+  
+  if( dst != nullptr && dst->memByteN < src->memByteN )
+    fbuf_destroy(dst);
+
+  if( dst == nullptr )
+    fbuf = fbuf_create( src->srate, src->chN, src->maxBinN_V, src->binN_V, src->hopSmpN_V );
+  else
+    fbuf = dst;
   
   for(unsigned i=0; i<fbuf->chN; ++i)
   {

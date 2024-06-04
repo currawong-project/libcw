@@ -25,26 +25,29 @@ namespace cw
         
     typedef struct abuf_str
     {
-      srate_t            srate;   // signal sample rate
-      unsigned           chN;     // count of channels
-      unsigned           frameN;  // count of sample frames per channel
-      sample_t*          buf;     // buf[ chN ][ frameN ]
+      srate_t            srate;        // Signal sample rate
+      unsigned           chN;          // Count of channels
+      unsigned           frameN;       // Count of sample frames per channel
+      unsigned           bufAllocSmpN; // Size of allocated buf[] in samples.
+      sample_t*          buf;          // buf[ chN ][ frameN ]
     } abuf_t;
 
 
     typedef struct fbuf_str
-    {      
+    {
+      unsigned          memByteN;  // Count of bytes in mem[].
+      void*             mem;       // mem[ memByteN ] All dynamically allocated memory used by this fbuf.
+      
       srate_t           srate;     // signal sample rate
       unsigned          flags;     // See kXXXFbufFl
       unsigned          chN;       // count of channels
-      unsigned*         maxBinN_V; // max value that binN_V[i] is allowed to take
+      unsigned*         maxBinN_V; // maxBinN_V[chN] max value that binN_V[i] is allowed to take
       unsigned*         binN_V;    // binN_V[ chN ] count of sample frames per channel
       unsigned*         hopSmpN_V; // hopSmpN_V[ chN ] hop sample count 
       fd_sample_t**     magV;      // magV[ chN ][ binN ]
       fd_sample_t**     phsV;      // phsV[ chN ][ binN ]
       fd_sample_t**     hzV;       // hzV[ chN ][ binN ]
       bool*             readyFlV;  // readyFlV[chN] true if this channel is ready to be processed (used to sync. fbuf rate to abuf rate)
-      fd_sample_t*      buf;       // memory used by this buffer (or NULL if magV,phsV,hzV point are proxied to another buffer)      
     } fbuf_t;
 
     typedef struct mbuf_str
@@ -192,7 +195,7 @@ namespace cw
     // on a given 'instance'.
     typedef struct variable_str
     {
-      struct proc_str* proc;         // pointer to this variables instance
+      struct proc_str*     proc;         // pointer to this variables instance
       
       char*                label;        // this variables label
       unsigned             label_sfx_id; // the label suffix id of this variable or kBaseSfxId if this has no suffix
@@ -373,14 +376,20 @@ namespace cw
     
     abuf_t*         abuf_create( srate_t srate, unsigned chN, unsigned frameN );
     void            abuf_destroy( abuf_t*& buf );
-    abuf_t*         abuf_duplicate( const abuf_t* src );
+    
+    // If 'dst' is null then a new abuf is allocated, filled with the contents of 'src'.
+    // If 'dst' is non-null and there is enough space for the contents of 'src' then only a copy is executed.
+    // If there is not enough space then dst is reallocated.
+    abuf_t*         abuf_duplicate( abuf_t* dst, const abuf_t* src );
     rc_t            abuf_set_channel( abuf_t* buf, unsigned chIdx, const sample_t* v, unsigned vN );
     const sample_t* abuf_get_channel( abuf_t* buf, unsigned chIdx );
 
     fbuf_t*        fbuf_create( srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_sample_t** magV=nullptr, const fd_sample_t** phsV=nullptr, const fd_sample_t** hzV=nullptr );
     fbuf_t*        fbuf_create( srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_sample_t** magV=nullptr, const fd_sample_t** phsV=nullptr, const fd_sample_t** hzV=nullptr );
     void           fbuf_destroy( fbuf_t*& buf );
-    fbuf_t*        fbuf_duplicate( const fbuf_t* src );
+
+    // Memory allocation will only occur if dst is null, or the size of dst's internal buffer are too small.
+    fbuf_t*        fbuf_duplicate( fbuf_t* dst, const fbuf_t* src );
 
     mbuf_t*        mbuf_create( const midi::ch_msg_t* msgA=nullptr, unsigned msgN=0 );
     void           mbuf_destroy( mbuf_t*& buf );
@@ -391,6 +400,8 @@ namespace cw
 
     unsigned       value_type_label_to_flag( const char* type_desc );
     const char*    value_type_flag_to_label( unsigned flag );
+
+    void           value_duplicate( value_t& dst, const value_t& src );
 
     void           value_print( const value_t* value, bool info_fl=false);
     
