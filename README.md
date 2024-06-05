@@ -930,6 +930,15 @@ resolvable without more information.
 
 ### TODO:
 
+- When a var value is given to var_create() it does not appear to channelize the
+var if value is a list.  Is a value ever given directly to `var_create()`?
+Look at all the places `var_create()` is called can the value arg. be removed?
+
+- Remove `preset_label` and `type_src_label` from `_var_channelize()` and report error
+locations from the point of call.
+
+- Re-write the currawong circuit with caw.
+
 - Move proc_dict.cfg to libcw directory.
 
 - The proc inst 'args' should be able to create mult variables. The only way to instantiate
