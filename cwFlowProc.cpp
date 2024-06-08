@@ -83,6 +83,11 @@ namespace cw
 
         // Custom create code goes here
 
+        // Notes:
+        // 1. var_register_*() will automatically create any variables that don't already exist.
+        //    therefore var_create() should never have to be called directly.
+        // 2. The variable 'vid' value must be unique across all ('label','sfx-id') pairs but not across channels.
+
         return rc;
       }
 
@@ -1243,22 +1248,30 @@ namespace cw
         kInPId,
         kSelectPId,
         kInGainPId,
+        kOutGainPId
         
       };
+
+      typedef struct out_var_str
+      {
+        unsigned audioChN;
+        coeff_t* ogainV;     // ogainV[ audioChN ]
+        unsigned* iChIdxV;   // inChIdx[ audioChN ]        
+      } out_var_t;
         
       typedef struct
       {
-        unsigned  oVarSelMapN;  // count of input audio channels
-        unsigned* oVarSelMap;   // [ oVarSelMapN ] selected channel map
-        
-        unsigned  outVarN;
-        unsigned  ogainVarN;
 
-        unsigned  baseOutGainPId;
-        unsigned  baseOutPId;
+        unsigned   oVarN;       // count of output variables
+        out_var_t* oVarA;       // oVarA[ oVarN ]
 
+        unsigned   baseOutPId;
+
+        unsigned  iChN;        // count of input audio channels
+        coeff_t*  igainV;      // igainV[ inChN ] input ch. gain coeff's
           
       } inst_t;
+
 
       rc_t _create( proc_t* proc, inst_t* p )
       {
@@ -1266,9 +1279,7 @@ namespace cw
         const abuf_t*   abuf    = nullptr; //        
         const object_t* selList = nullptr;
         unsigned        selListN = 0;
-        unsigned*       outVarChCntA = nullptr;
-        unsigned        oGainVarN   = var_mult_count(proc,"ogain");
-        unsigned        oGainSfxIdA[ oGainVarN ];
+        unsigned*       oVarSelMap = nullptr;
         
         
         // get the source audio buffer
@@ -1279,160 +1290,184 @@ namespace cw
           goto errLabel;
         }
 
+        // the input must not have 0 channels
         if( abuf->chN == 0 )
           goto errLabel;
 
+        // validate the channel input->output map
         if( selList == nullptr || !selList->is_list() )
         {
           rc = cwLogError(kSyntaxErrorRC,"The 'audio_split' 'select' list has invalid syntax.");
           goto errLabel;
         }
 
+        // there must be one in->out map for each input channel
         if(( selListN = selList->child_count()) != abuf->chN )
         {
           rc = cwLogError(kInvalidArgRC,"The 'audio_split' selection list must be the same length as the count of input channels.");
           goto errLabel;
         }
 
-        p->oVarSelMapN = abuf->chN;
-        p->oVarSelMap = mem::allocZ<unsigned>(p->oVarSelMapN);
+        // convert in->out map to an array
+        oVarSelMap = mem::allocZ<unsigned>(selListN);
         
-        // determine the count of output channels
+        // determine the count of output variables
         for(unsigned i = 0; i<selListN; ++i)
         {
           unsigned oVarIdx;
           const object_t* listEle = selList->child_ele(i);
+          
           if( listEle == nullptr || (rc = listEle->value(oVarIdx)) != kOkRC )
           {
             rc = cwLogError(kInvalidArgRC,"The 'audio_split' selection list element at index %i is not a valid integer.",i);
             goto errLabel;
           }
-          
-          if( oVarIdx+1 > p->outVarN )
-            p->outVarN = oVarIdx+1;
 
-          p->oVarSelMap[i] = oVarIdx;
+          // count the number of outputs
+          if( oVarIdx+1 > p->oVarN )
+            p->oVarN = oVarIdx+1;
+
+           oVarSelMap[i] = oVarIdx;
         }
 
-        outVarChCntA = mem::allocZ<unsigned>(p->outVarN);
-
-        // get the count of channels for each 
+        p->oVarA      = mem::allocZ<out_var_t>(p->oVarN);
+        p->baseOutPId = kOutGainPId + p->oVarN;
+        
+        // fill p->oVar[].audioChN with the count of channels for each output variable
         for(unsigned i=0; i<selListN; ++i)
         {
           unsigned oVarIdx;
           selList->child_ele(i)->value(oVarIdx);
-          outVarChCntA[oVarIdx] += 1;          
+          p->oVarA[oVarIdx].audioChN += 1;          
         }
-
-        // Get the sfx-id's of the input gain variables
-        if((rc = var_mult_sfx_id_array(proc, "ogain", oGainSfxIdA, oGainVarN, p->ogainVarN )) != kOkRC )
-          goto errLabel;
-        
-
-        // There must be one ogain variable for each audio output or exactly one ogain variable 
-        if( p->ogainVarN != p->outVarN && p->ogainVarN != 1 )
-        {
-          rc = cwLogError(kInvalidArgRC,"The count of 'ogain' variables must be the same as the count of out audio variables are there must be one 'ogain' variable.");
-          goto errLabel;
-        }
-
-        // set the baseOutGainPId
-        p->baseOutGainPId = kInGainPId + abuf->chN;
-        p->baseOutPId     = p->baseOutGainPId + p->ogainVarN;
-
-        // register each of the output  gain variables
-        for(unsigned i=0; i<p->ogainVarN; ++i)
-          if((rc = var_register(proc,kAnyChIdx,p->baseOutGainPId + i,"ogain",oGainSfxIdA[i])) != kOkRC )
-            goto errLabel;          
-        
-        // register the input gain variables
-        for(unsigned i=0; i<abuf->chN; ++i)
-          if((rc = var_register_and_set( proc, i, kInGainPId + i, "igain", kBaseSfxId, 1.0f )) != kOkRC )
-            goto errLabel;
 
         // for each output variable
-        for(unsigned i=0; i<p->outVarN; ++i)
+        for(unsigned i=0; i<p->oVarN; ++i)
         {
-          variable_t* dummy = nullptr;
+          out_var_t* ov = p->oVarA + i;
+
+          if( ov->audioChN == 0 )
+          {
+            cwLogWarning("No channels have been assigned to 'audio_split' output index %i on '%s:%i'.",i,cwStringNullGuard(proc->label),proc->label_sfx_id);
+            continue;
+          }
           
-          if( outVarChCntA[i] == 0 )
-            cwLogWarning("No channels have been assigned to 'audio_split' output index %i.",i);            
+          ov->ogainV  = mem::allocZ<coeff_t>( ov->audioChN );
+          ov->iChIdxV = mem::allocZ<unsigned>(ov->audioChN );
 
-          // create an output variable
-          if( i > 0 )
-            if((rc = var_create( proc, "out", i, p->baseOutPId+i, kAnyChIdx, nullptr, kInvalidTFl, dummy )) != kOkRC )
-              goto errLabel;
-
-          if((rc = var_register_and_set( proc, "out", kBaseSfxId + i, p->baseOutPId+i, kAnyChIdx, abuf->srate, outVarChCntA[i], abuf->frameN )) != kOkRC )
+          // create the output signal variable
+          if((rc = var_register_and_set( proc, "out", kBaseSfxId + i, p->baseOutPId+i, kAnyChIdx, abuf->srate, ov->audioChN, abuf->frameN )) != kOkRC )
             goto errLabel;
 
+          // register the ogain variables for this output and store the current gain values
+          for(unsigned j=0; j<ov->audioChN; ++j)
+            if((rc = var_register_and_get(proc, j, kOutGainPId + i,"ogain", kBaseSfxId + i, ov->ogainV[j])) != kOkRC )
+              goto errLabel;
+
+          // fill ov->iChIdV[] with the input channels that are mapped to this output var
+          for(unsigned iChIdx=0,k=0; iChIdx<selListN; ++iChIdx)
+            if( oVarSelMap[iChIdx] == i )
+            {
+              assert(k<ov->audioChN);
+              ov->iChIdxV[k++] = iChIdx;
+            }
+          
         }
+        
+
+        p->iChN   = abuf->chN;
+        p->igainV = mem::allocZ<coeff_t>(abuf->chN);
+        
+        // register the input gain variables and store the current gain values
+        for(unsigned i=0; i<abuf->chN; ++i)
+          if((rc = var_register_and_get( proc, i, kInGainPId, "igain", kBaseSfxId, p->igainV[i] )) != kOkRC )
+            goto errLabel;
 
 
       errLabel:
-        mem::release(outVarChCntA);
+        mem::release(oVarSelMap);
         return rc;
       }
 
       rc_t _destroy( proc_t* proc, inst_t* p )
       {
         rc_t rc = kOkRC;
-        mem::release(p->oVarSelMap);
+        for(unsigned i=0; i<p->oVarN; ++i)
+        {
+          mem::release(p->oVarA[i].ogainV);
+          mem::release(p->oVarA[i].iChIdxV);
+        }
+        mem::release(p->oVarA);
+        mem::release(p->igainV);
+        
         return rc;
       }
 
       rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
+        
+        switch( var->vid )
+        {
+          case kInPId:
+            break;
+          case kSelectPId:
+            break;
+            
+          case kInGainPId:
+            assert( var->chIdx < p->iChN );
+            rc = var_get(var,p->igainV[ var->chIdx ]);
+            break;
+
+            
+            
+          default:
+
+            if( kOutGainPId <= var->vid && var->vid < kOutGainPId + p->oVarN )
+            {
+              unsigned oVarIdx = var->label_sfx_id - kBaseSfxId;
+              assert( oVarIdx < p->oVarN && var->chIdx < p->oVarA[oVarIdx].audioChN );
+              rc = var_get(var,p->oVarA[ oVarIdx ].ogainV[var->chIdx]);
+            }
+            break;
+            
+            break;
+        }
+
         return rc;
       }
 
       rc_t _exec( proc_t* proc, inst_t* p )
       {
         rc_t          rc       = kOkRC;
-        
-        if( p->outVarN )
-        {
-          const abuf_t* ibuf = nullptr;
-          unsigned outVarChIdxA[ p->outVarN ]; // map output var to next audio ch idx          
-          vop::zero(outVarChIdxA,p->outVarN);
+
+        const abuf_t* ibuf = nullptr;
           
-          // get the src buffer
-          if((rc = var_get(proc,kInPId, kAnyChIdx, ibuf )) != kOkRC )
+        // get the input audio buffer
+        if((rc = var_get(proc,kInPId, kAnyChIdx, ibuf )) != kOkRC )
+          goto errLabel;
+
+        for(unsigned i=0; i<p->oVarN; ++i)
+        {
+          abuf_t*    obuf = nullptr;
+          
+          // get the ith output buffer
+          if((rc = var_get(proc, p->baseOutPId +i, kAnyChIdx, obuf)) != kOkRC )
             goto errLabel;
 
-          // for each input channel          
-          for(unsigned iChIdx=0; iChIdx<ibuf->chN; ++iChIdx)
-          {            
-            abuf_t*  obuf     = nullptr;
-            unsigned oVarIdx  = p->oVarSelMap[iChIdx];
-            unsigned oGainVId = p->baseOutGainPId + (p->ogainVarN==1 ? 0 : oVarIdx);
-            unsigned oVId     = p->baseOutPId + oVarIdx;
-            unsigned oChIdx   = outVarChIdxA[ oVarIdx ];
-            
-            outVarChIdxA[oVarIdx] += 1; // set the next audio ch for this output var
+          for( unsigned oChIdx=0; oChIdx<obuf->chN; ++oChIdx)
+          {
+            unsigned  iChIdx = p->oVarA[i].iChIdxV[oChIdx];
+            coeff_t   ogain  = p->oVarA[i].ogainV[oChIdx];
+            coeff_t   igain  = p->igainV[iChIdx];
+            coeff_t   gain   = igain * ogain;
+            sample_t* isig   = ibuf->buf + iChIdx * ibuf->frameN;
+            sample_t* osig   = obuf->buf + oChIdx * obuf->frameN;            
 
-            // get the dst buffer
-            if((rc = var_get(proc,oVId, kAnyChIdx, obuf)) != kOkRC )
-              goto errLabel;
-            else
-            {
-              sample_t* isig  = ibuf->buf + iChIdx * ibuf->frameN;
-              sample_t* osig  = obuf->buf + oChIdx * obuf->frameN;
-              coeff_t   igain = 1;
-              coeff_t   ogain = 1;            
-              
-              if((rc = var_get(proc, kInGainPId + iChIdx, iChIdx, igain)) != kOkRC )
-                goto errLabel;
-              
-              if((rc = var_get(proc, oGainVId, kAnyChIdx, ogain)) != kOkRC )
-                goto errLabel;
-            
-              // apply the gain
-              for(unsigned j=0; j<ibuf->frameN; ++j)
-                osig[j] = igain * ogain * isig[j];
-            }                        
+            for(unsigned j=0; j<ibuf->frameN; ++j)
+              osig[j] = gain * isig[j];
           }
+          
         }
         
       errLabel:
@@ -1598,6 +1633,7 @@ namespace cw
     {
       enum {
         kOutPId,
+        kOutGainPId,
         kInBasePId,
       };
 
@@ -1606,7 +1642,7 @@ namespace cw
         unsigned sfx_id;   // sfx_id of both the audio and gain var's 
         unsigned audioChN; // count of audio channels
         unsigned aVId;     // (there can only be one audio var.)
-        unsigned gBaseVId; // (there is one gain var. per audio channel)
+        unsigned gVId; // (there is one gain var. per audio channel)
         coeff_t* gainV;    // gainV[ audioChN ]
       } audio_gain_t;
       
@@ -1623,41 +1659,8 @@ namespace cw
       } inst_t;
 
 
-      rc_t _mix_0( proc_t* proc, unsigned inPId, unsigned igainPId, abuf_t* obuf, coeff_t* ogainV )
-      {
-        rc_t          rc   = kOkRC;
-        const abuf_t* ibuf = nullptr;
-
-        // get the input audio buffer
-        if((rc = var_get(proc, inPId, kAnyChIdx, ibuf )) != kOkRC )
-          goto errLabel;
-        else
-        {
-          // get the min count of channels between in and out buffers
-          unsigned chN = std::min(ibuf->chN, obuf->chN );
-          
-          for(unsigned i=0; i<chN; ++i)
-          {
-            coeff_t         gain = 1;
-            const sample_t* isig = ibuf->buf + i*ibuf->frameN;
-            sample_t*       osig = obuf->buf + i*obuf->frameN;
-
-            // get the input gain for this channel
-            if((rc = var_get(proc, igainPId, kAnyChIdx, gain)) != kOkRC )
-              goto errLabel;
-
-            gain *= ogainV[i];
-                
-            for(unsigned j=0; j<obuf->frameN; ++j)
-              osig[j] += gain * isig[j];
-          }
-        }
-
-      errLabel:
-        return rc;
-        
-      }
-
+      // Mix the the first N channels of the input audio signal from iag->aVId
+      // into the first N channels of the output signal.
       rc_t _mix( proc_t* proc, audio_gain_t* iag, audio_gain_t* oag, abuf_t* obuf )
       {
         rc_t rc = kOkRC;
@@ -1685,54 +1688,27 @@ namespace cw
       }
       
       // Be sure that there is a gain channel instantiated for every audio channel
-      // and fill ag->gainV[] with the current value of each pre-created gain variable
-      // or set it to 1.
-      rc_t _setup_gain( proc_t* proc, const char* var_label, audio_gain_t* ag )
+      // and fill ag->gainV[] with the current value of each pre-created gain variable.
+      // or the class default gain value if no pre-created gain variable exists.
+      rc_t _setup_gain( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned a_vid, unsigned g_vid, unsigned audioChN, audio_gain_t* ag )
       {
         rc_t rc = kOkRC;
-         
-        // if the base igain var does not exist ..
-        if( !var_exists( proc, var_label, ag->sfx_id, kAnyChIdx ) )
-        {
-          variable_t* var = nullptr;
 
-          // ... then create it
-          if((rc = var_create(proc, var_label, ag->sfx_id, ag->gBaseVId, kAnyChIdx, nullptr, kInvalidTFl, var )) != kOkRC )
-          {
-            rc = cwLogError(rc,"'igain' var create failed.");
+        // setup the gain control record
+        ag->audioChN = audioChN;
+        ag->gainV    = mem::allocZ<coeff_t>(audioChN);
+        ag->sfx_id   = sfx_id;
+        ag->aVId     = a_vid;
+        ag->gVId     = g_vid;
+        
+        vop::fill(ag->gainV,audioChN,1);
+
+        // register audio gain variables for each channel of the audio signal represented by ag
+        for(unsigned i=0; i<ag->audioChN; ++i)
+          if((rc = var_register_and_get(proc, i, g_vid, var_label, sfx_id, ag->gainV[i])) != kOkRC )
             goto errLabel;
-          }
-          
-          // ... ans set the gain to 1.0
-          var_set(var,1.0f);
-
-          
-        }
-
-        // for each audio channel
-        for(unsigned j=0; j<ag->audioChN; ++j)
-        {
-          // if the gain var exists for this audio var/channel
-          if( var_exists(proc,var_label, ag->sfx_id, j ) )
-          {
-            // then register it and store the gain value 
-            if((rc = var_register_and_get(proc, j, ag->gBaseVId+j, var_label, ag->sfx_id, ag->gainV[j])) != kOkRC )
-            {
-              goto errLabel;
-            }
-          }
-          else
-          {
-            // otherwise create the channel var. via channelization
-            variable_t* var = nullptr;
-            if((rc = var_channelize( proc, var_label, ag->sfx_id, j, nullptr, ag->gBaseVId+j, var )) != kOkRC )
-            {
-              goto errLabel;
-            }
-
-
-          }
-        }
+        
+        
       errLabel:
         return rc;
       }
@@ -1741,7 +1717,6 @@ namespace cw
       {
         rc_t rc = kOkRC;        
 
-        unsigned nextInGainPId   = 0;
         unsigned audioFrameN     = 0;
         unsigned maxInAudioChCnt = 0;
         srate_t  srate           = 0;
@@ -1755,8 +1730,9 @@ namespace cw
         p->iagV = mem::allocZ<audio_gain_t>(p->inAudioVarCnt);
 
         // set the baseInGainPId
-        nextInGainPId = p->baseInGainPId = kInBasePId + p->inAudioVarCnt;
-        
+        p->baseInGainPId = kInBasePId + p->inAudioVarCnt;
+
+        // for each audio input var
         for(unsigned i=0; i<p->inAudioVarCnt; ++i)
         {
           abuf_t* abuf;
@@ -1783,40 +1759,22 @@ namespace cw
 
           audioFrameN = abuf->frameN;
 
+          // track the max channel count among all audio input variables
           if( abuf->chN > maxInAudioChCnt )
             maxInAudioChCnt = abuf->chN;
 
-          // setup the audio_gain record for this audio channel
-          p->iagV[i].audioChN = abuf->chN;
-          p->iagV[i].gainV    = mem::allocZ<coeff_t>(abuf->chN);
-          p->iagV[i].sfx_id   = aSfxIdA[i];
-          p->iagV[i].aVId     = kInBasePId + i;
-          p->iagV[i].gBaseVId = nextInGainPId;
-
-          vop::fill(p->iagV[i].gainV,abuf->chN,1);
-          
-          // setup the input gain for this input audio variable
-          if((rc= _setup_gain(proc, "igain", p->iagV + i )) != kOkRC )
+          // setup the audio_gain record for this input audio variable
+          if((rc= _setup_gain(proc, "igain", aSfxIdA[i], kInBasePId+i, p->baseInGainPId+i, abuf->chN, p->iagV + i )) != kOkRC )
             goto errLabel;
-          
-          nextInGainPId += abuf->chN;
         }
 
-        p->baseOutGainPId = nextInGainPId;
-        
         if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, srate, maxInAudioChCnt, audioFrameN )) != kOkRC )
         {
           goto errLabel;
         }
 
-        p->oag.audioChN = maxInAudioChCnt;
-        p->oag.gainV    = mem::allocZ<coeff_t>(maxInAudioChCnt);
-        p->oag.sfx_id   = kBaseSfxId;
-        p->oag.aVId     = kOutPId;
-        p->oag.gBaseVId = p->baseOutGainPId;
-        vop::fill(p->oag.gainV,p->oag.audioChN,1);
-
-        if((rc= _setup_gain(proc, "ogain", &p->oag )) != kOkRC )
+        // setup the audio_gain record for the output gains
+        if((rc= _setup_gain(proc, "ogain", kBaseSfxId, kOutPId, kOutGainPId, maxInAudioChCnt, &p->oag )) != kOkRC )
           goto errLabel;
         
 
@@ -1842,35 +1800,41 @@ namespace cw
       {
         rc_t rc = kOkRC;
 
-        // if this is an in-gain value
-        if( p->baseInGainPId  <= var->vid && var->vid < p->oag.gBaseVId  )
+        switch( var->vid )
         {
-          // determine which in-gain variable this var is associated with
-          for(unsigned i=0; i<p->inAudioVarCnt; ++i)
-            if( p->iagV[i].gBaseVId <= var->vid && var->vid < p->iagV[i].gBaseVId + p->iagV[i].audioChN )
-            {
-              // ... update the associated gainV[] value
-              unsigned ch_idx = var->vid - p->iagV[i].gBaseVId;
-              var_get(var,p->iagV[i].gainV[ch_idx]);
-              goto errLabel;
-            }
 
-          assert(0);
-        }
-        else
-        {
-          // if this is an out-gain value  ...
-          if( p->oag.gBaseVId <= var->vid && var->vid <= p->oag.gBaseVId + p->oag.audioChN )
-          {
-            unsigned ch_idx = var->vid - p->oag.gBaseVId;
-            var_get(var,p->oag.gainV[ch_idx] ); // ... update the associated gainV[] value
-          }
-          else
-          {
-            assert( var->vid==kOutPId || (kInBasePId <= var->vid && var->vid < kInBasePId + p->inAudioVarCnt));
-          }
-        }
+          case kOutPId:
+            break;
+            
+          case kOutGainPId:
+            assert( var->chIdx < p->oag.audioChN);
+            var_get(var,p->oag.gainV[var->chIdx] ); // ... update the associated gainV[] value            
+            break;
+            
+          default:
+            
+            // if this is an in-gain value
+            if( p->baseInGainPId  <= var->vid && var->vid < p->baseInGainPId + p->inAudioVarCnt  )
+            {
+              // determine which in-gain variable this var is associated with
+              for(unsigned i=0; i<p->inAudioVarCnt; ++i)
+                if( p->iagV[i].gVId == var->vid )
+                {
+                  // ... update the associated gainV[] value
+                  assert( var->chIdx < p->iagV[i].audioChN);
+                  var_get(var,p->iagV[i].gainV[var->chIdx]);
+                  goto errLabel;
+                }
+              
+            }
+            else
+            {
+              assert(kInBasePId <= var->vid && var->vid < kInBasePId + p->inAudioVarCnt);
+            }
           
+        }
+
+             
       errLabel:
         return rc;
       }
@@ -1882,19 +1846,16 @@ namespace cw
 
         // get the output audio buffer
         if((rc = var_get(proc,kOutPId, kAnyChIdx, obuf)) != kOkRC )
-        {
           goto errLabel;
-        }
-        else
-        {
-          // zero the output buffer
-          vop::zero(obuf->buf, obuf->frameN*obuf->chN );
+        
+        // zero the output buffer
+        vop::zero(obuf->buf, obuf->frameN*obuf->chN );
 
-          // mix each input channel into the output buffer
-          for(unsigned i=0; i<p->inAudioVarCnt; ++i)
-            if((rc =_mix(proc, p->iagV + i, &p->oag, obuf )) != kOkRC )
-              goto errLabel;
-        }
+        // mix each input channel into the output buffer
+        for(unsigned i=0; i<p->inAudioVarCnt; ++i)
+          if((rc =_mix(proc, p->iagV + i, &p->oag, obuf )) != kOkRC )
+            goto errLabel;
+        
       errLabel:
         return rc;
       }
