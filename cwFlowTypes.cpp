@@ -782,7 +782,7 @@ namespace cw
     {
       const char* conn_label  = is_connected_to_source(var) ? "extern" : "      ";
     
-      cwLogPrint("  %20s:%5i id:%4i ch:%3i : %s  : ", var->label, var->label_sfx_id, var->vid, var->chIdx, conn_label );
+      cwLogPrint("  %12s:%3i vid:%3i ch:%3i : %s  : ", var->label, var->label_sfx_id, var->vid, var->chIdx, conn_label );
     
       if( var->value == nullptr )
         _value_print( &var->local_value[0] );
@@ -1141,8 +1141,6 @@ namespace cw
         v->var_link = var;
         
       }
-      //var->var_link  = proc->varL;
-      //proc->varL = var;
 
       // link the new var into the ch_link list
       if((rc = _var_add_to_ch_list(proc, var )) != kOkRC )
@@ -1935,7 +1933,7 @@ cw::rc_t  cw::flow::var_channelize( proc_t* proc, const char* var_label, unsigne
     }
     else
     {
-      cwLogWarning("An existing var (%s:i.%s:i ch:%i) was specified for channelizing but no value was provided.", proc->label, proc->label_sfx_id, var_label, sfx_id, chIdx );
+      cwLogWarning("An existing var (%s:%i.%s:%i ch:%i) was specified for channelizing but no value was provided.", cwStringNullGuard(proc->label), proc->label_sfx_id, cwStringNullGuard(var_label), sfx_id, chIdx );
     }
   }
 
@@ -2174,17 +2172,41 @@ cw::rc_t cw::flow::var_register( proc_t* proc, const char* var_label, unsigned s
   }
   else // an exact match was not found - channelize the variable
   {
-    if((rc = var_channelize(proc,var_label,sfx_id,chIdx,value_cfg,vid,var)) != kOkRC )
-      goto errLabel;
+
+    // if the kAnyChIdx has not been created for this variable  ...
+    if((var = _var_find_on_label_and_ch(proc,var_label,sfx_id,kAnyChIdx)) == nullptr )
+    {
+      variable_t* dum = nullptr;
+
+      // ... then create it here
+      if((rc = var_create( proc, var_label, sfx_id, kInvalidId, kAnyChIdx, nullptr, kInvalidTFl, dum )) != kOkRC )
+      {
+        rc = cwLogError(rc,"An attempt to create the 'any-channel' for '%s:%i' failed.",cwStringNullGuard(var_label),sfx_id);
+        goto errLabel;
+      }
+
+      if( chIdx == kAnyChIdx )
+        var = dum;
+
+    }
+
+    // don't channelize kAnyChIdx because it must already exist
+    if( chIdx != kAnyChIdx )
+      if((rc = var_channelize(proc,var_label,sfx_id,chIdx,value_cfg,vid,var)) != kOkRC )
+        goto errLabel;
   }
 
+  assert( var != nullptr );
+  
   var->vid = vid;
   varRef   = var;
 
+  /*
   if((var = _var_find_on_label_and_ch(proc,var_label,sfx_id,kAnyChIdx)) != nullptr )
     var->vid = vid;
   else
     rc = cwLogError(kInvalidStateRC,"The variable '%s:%i' proc '%s:%i' has no base channel.", var_label, sfx_id, proc->label, proc->label_sfx_id, chIdx);
+  */
   
  errLabel:
   if( rc != kOkRC )
