@@ -479,7 +479,24 @@ DONE:  Add a version of var_register() that both registers and returns the value
 already instantiated during 'in' list processing, and set their
 initial value to the default value given in the class.  chIdx=kAnyChIdx.
 
-Note that all vars must be included in the class description.
+Notes:
+- All vars must be included in the class description.
+- All vars have a 'kAnyChIdx' instantiation. The kAnyChIdx variable serves two purposes:
+  + Setting the value of  kAnyChIdx automatically broadcasts the value to all other channels.
+  + kAnyChIdx acts as a template when variables are created by 'channelization'.
+    This allows the network designer to set the value of the kAnyIdx variable
+	and have that become the default value for all subsequent variables
+	which are created without an explicit value.  (Note that his currently
+	works for variables created from within `proc_create()` (i.e.
+	where `sfx_id` == kBaseSfxId, but it doesn't work for mult 
+	variables that are automatically created via `var_register()`
+	because `var_register()` does not have a value to assign to the 
+	kAnyChIdx instance. In this case the variable get assigned
+	the class default value.  The way around this is to explicitely
+	set the mult variable value in the 'in' stmt or the 'args' stmt.)
+	
+	
+	
 
 
 2. Apply the preset records from the class description according to the
@@ -500,11 +517,6 @@ is kept, in channel order, using the 'ch_link' links with the base of the list
 on the 'any' record.
 
 3. Apply the variable values defined in a instance 'args' record.
-The 'args' record may have multiple sets of args. 
-If the preset instance includes an 'argsLabel' value then this record
-is selected to be applied.  If No 'argsLabel' is given then
-the record named 'default' is selected.  If there is no record
-named 'default' then no record is applied.
 
 The application of the args record proceeds exactly the same as
 applying a 'class' preset. If the variable value is presented in a
@@ -529,7 +541,6 @@ before registering the variable.
 6. The internal variable id map is created to implement  fast
 access to registered variables.
 
-7. The 
 
 # Notes on 'poly' and 'mult':
 
