@@ -2185,6 +2185,7 @@ cw::rc_t cw::flow::var_register( proc_t* proc, const char* var_label, unsigned s
         goto errLabel;
       }
 
+      // if the var being registered is on channel kAnyChIdx 
       if( chIdx == kAnyChIdx )
         var = dum;
 
@@ -2201,12 +2202,13 @@ cw::rc_t cw::flow::var_register( proc_t* proc, const char* var_label, unsigned s
   var->vid = vid;
   varRef   = var;
 
-  /*
-  if((var = _var_find_on_label_and_ch(proc,var_label,sfx_id,kAnyChIdx)) != nullptr )
-    var->vid = vid;
-  else
+  // The kAnyChIdx shares the 'vid' with channelized variables - this is by design (vids are unique across variables, but shared across channels)
+  if((var = _var_find_on_label_and_ch(proc,var_label,sfx_id,kAnyChIdx)) == nullptr )
     rc = cwLogError(kInvalidStateRC,"The variable '%s:%i' proc '%s:%i' has no base channel.", var_label, sfx_id, proc->label, proc->label_sfx_id, chIdx);
-  */
+  else
+  {
+    var->vid = vid;  // ... this guarantee's that the kAnyChIdx variable has a valid vid
+  }
   
  errLabel:
   if( rc != kOkRC )
