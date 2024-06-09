@@ -490,7 +490,20 @@ namespace cw
         goto errLabel;        
       }
 
-      cnt_ref = n;
+      if( proc_ele.sfx_id_count == kInvalidCnt )
+        cnt_ref = n;
+      else
+      {
+        if( proc_ele.sfx_id_count > n )
+        {
+          rc = cwLogError(kSyntaxErrorRC,"The given literal sfx-id count %i execeeds the maximimum possible value of %i on  %s-proc '%s:%i' .",proc_ele.sfx_id_count,n,in_or_src_label,cwStringNullGuard(proc_ele.label),sfx_id);
+          goto errLabel;
+        }
+
+        cnt_ref = proc_ele.sfx_id_count;
+      }
+      
+      
     errLabel:
       return rc;
     }
@@ -498,11 +511,12 @@ namespace cw
     rc_t _io_stmt_calc_var_ele_count(network_t& net, const io_ele_t& proc_ele, const io_ele_t& var_ele, const char* in_or_src_label, unsigned& cnt_ref)
     {
       rc_t     rc          = kOkRC;
-      proc_t*  proc        = nullptr;
-      unsigned proc_sfx_id = proc_ele.base_sfx_id==kInvalidCnt ? kBaseSfxId : proc_ele.base_sfx_id;
 
       cnt_ref = 0;
 
+      proc_t*  proc        = nullptr;
+      unsigned proc_sfx_id = proc_ele.base_sfx_id==kInvalidCnt ? kBaseSfxId : proc_ele.base_sfx_id;
+        
       // locate the proc which owns this var
       if((proc = proc_find(net,proc_ele.label,proc_sfx_id)) == nullptr )
       {
@@ -524,10 +538,22 @@ namespace cw
           goto errLabel;
         }
 
-        cnt_ref = n;
+
+        if( var_ele.sfx_id_count == kInvalidCnt )
+          cnt_ref = n;
+        else
+        {
+          if( var_ele.sfx_id_count > n )
+          {
+            rc = cwLogError(kSyntaxErrorRC,"The given literal sfx-id count %i execeeds the maximimum possible value of %i on  %s-var '%s:%i-%s:%i' .",var_ele.sfx_id_count,n,in_or_src_label,cwStringNullGuard(proc_ele.label),proc_ele.sfx_id,cwStringNullGuard(var_ele.label),sfx_id);
+            goto errLabel;
+          }
+
+          cnt_ref = var_ele.sfx_id_count;
+        }
 
       }
-
+      
     errLabel:
       return rc;
     }
@@ -736,7 +762,7 @@ namespace cw
       {
         rc = cwLogError(rc,"Unable to parse the %s-proc from '%s'.",remote_label,cwStringNullGuard(str));
         goto errLabel;
-        }
+      }
       
       // parse the remote-var
       if((rc = _io_stmt_parse_ele( remote_var_label, *io_stmt.remote_var_ele )) != kOkRC )
@@ -746,100 +772,100 @@ namespace cw
       }
 
 
-        //
-        // Parse the local proc/var
-        //
+      //
+      // Parse the local proc/var
+      //
         
-        textCopy(str, local_char_cnt+1, local_proc_var_str );
+      textCopy(str, local_char_cnt+1, local_proc_var_str );
 
-        // parse the 'local' part into it's 2 parts
-        if((rc = _io_stmt_parse_proc_var_string(str, local_proc_label, local_var_label )) != kOkRC )          
-        {
-          cwLogError(rc,"Unable to parse the '%s' part of an 'io-stmt'.",local_label);
-          goto errLabel;
-        }
+      // parse the 'local' part into it's 2 parts
+      if((rc = _io_stmt_parse_proc_var_string(str, local_proc_label, local_var_label )) != kOkRC )          
+      {
+        cwLogError(rc,"Unable to parse the '%s' part of an 'io-stmt'.",local_label);
+        goto errLabel;
+      }
 
-        // parse the local-proc
-        if((rc = _io_stmt_parse_ele( local_proc_label, *io_stmt.local_proc_ele, true  )) != kOkRC )
-        {
-          rc = cwLogError(rc,"Unable to parse the %s-proc from '%s'.",local_label,cwStringNullGuard(str));
-          goto errLabel;
-        }
+      // parse the local-proc
+      if((rc = _io_stmt_parse_ele( local_proc_label, *io_stmt.local_proc_ele, true  )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Unable to parse the %s-proc from '%s'.",local_label,cwStringNullGuard(str));
+        goto errLabel;
+      }
         
-        // parse the local-var
-        if((rc = _io_stmt_parse_ele( local_var_label, *io_stmt.local_var_ele  )) != kOkRC )
-        {
-          rc = cwLogError(rc,"Unable to parse the %s-var from '%s'.",local_label,cwStringNullGuard(str));
-          goto errLabel;
-        }
+      // parse the local-var
+      if((rc = _io_stmt_parse_ele( local_var_label, *io_stmt.local_var_ele  )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Unable to parse the %s-var from '%s'.",local_label,cwStringNullGuard(str));
+        goto errLabel;
+      }
 
 
-        // get the var class desc. for the local-var (only used by in-stmt)
-        if(( io_stmt.local_var_desc = var_desc_find(proc->class_desc,io_stmt.local_var_ele->label)) == nullptr )
-        {
-          rc = cwLogError(kEleNotFoundRC,"Unable to locate the var class desc for the %s-var from '%s'.",local_label,cwStringNullGuard(io_stmt.local_var_ele->label));
-          goto errLabel;
-        }
+      // get the var class desc. for the local-var (only used by in-stmt)
+      if(( io_stmt.local_var_desc = var_desc_find(proc->class_desc,io_stmt.local_var_ele->label)) == nullptr )
+      {
+        rc = cwLogError(kEleNotFoundRC,"Unable to locate the var class desc for the %s-var from '%s'.",local_label,cwStringNullGuard(io_stmt.local_var_ele->label));
+        goto errLabel;
+      }
         
-        // get the remote net
-        if((rc = _io_stmt_locate_remote_net(net,proc,io_stmt)) != kOkRC )
-        {
-          rc = cwLogError(rc,"Unable to locate the %s-net '%s'.",remote_label, cwStringNullGuard(io_stmt.remote_net_label));
-          goto errLabel;
-        }
+      // get the remote net
+      if((rc = _io_stmt_locate_remote_net(net,proc,io_stmt)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Unable to locate the %s-net '%s'.",remote_label, cwStringNullGuard(io_stmt.remote_net_label));
+        goto errLabel;
+      }
 
         
-        // verify that both the local-proc and local-var are not iterating
-        if( io_stmt.local_proc_ele->is_iter_fl && io_stmt.local_var_ele->is_iter_fl )
+      // verify that both the local-proc and local-var are not iterating
+      if( io_stmt.local_proc_ele->is_iter_fl && io_stmt.local_var_ele->is_iter_fl )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"Both the '%s' proc and '%s' var cannot be iterating. See:'%s'",local_label,local_label,cwStringNullGuard(local_proc_var_str));
+        goto errLabel;
+      }
+
+      // if the in-var has an sfx_id, or is iterating, then the var needs to be created (the dflt creation process assumes an sfx-id of 0)
+      if( io_stmt.local_var_ele->base_sfx_id != kInvalidId || io_stmt.local_var_ele->is_iter_fl )
+      {
+        io_stmt.in_create_fl = true;
+        if( io_stmt.local_var_ele->base_sfx_id == kInvalidId )
+          io_stmt.local_var_ele->base_sfx_id = kBaseSfxId;
+      }
+
+      // if the remote-proc is not iterating and the remote-proc was not given a literal sfx-id and the remote is on the same net as the proc ...
+      if( io_stmt.remote_proc_ele->is_iter_fl==false && io_stmt.remote_proc_ele->base_sfx_id==kInvalidId && io_stmt.remote_net==&net)
+        io_stmt.remote_proc_ele->base_sfx_id = proc->label_sfx_id; // ... then the remote proc takes this proc's sfx id
+      // (This results in poly proc's connecting to other poly procs with the same sfx-id by default).
+
+      // if this is not an iterating in-stmt ... 
+      if( !io_stmt.local_var_ele->is_iter_fl )
+      {
+        io_stmt.iter_cnt = 1;  // ... then it must be a simple 1:1 connection (Note if in-proc is iterating then it this must also be true)
+      }
+      else
+      {
+        // if the in-stmt is iterating then determine the in-stmt element which controls the iteration count
+        if((rc = _io_stmt_determine_iter_count_ctl_ele(net,proc,
+                                                       *io_stmt.local_var_ele,
+                                                       *io_stmt.remote_proc_ele,
+                                                       *io_stmt.remote_var_ele,
+                                                       local_label,remote_label,
+                                                       io_stmt.iter_cnt_ctl_ele)) != kOkRC )
         {
-          rc = cwLogError(kSyntaxErrorRC,"Both the '%s' proc and '%s' var cannot be iterating. See:'%s'",local_label,local_label,cwStringNullGuard(local_proc_var_str));
+          rc = cwLogError(rc,"Unable to determine the iter count control ele.");
           goto errLabel;
         }
 
-        // if the in-var has an sfx_id, or is iterating, then the var needs to be created (the dflt creation process assumes an sfx-id of 0)
-        if( io_stmt.local_var_ele->base_sfx_id != kInvalidId || io_stmt.local_var_ele->is_iter_fl )
+        // if the local-stmt is iterating then determine the iteration count
+        if((rc = _io_stmt_determine_iter_count(net,proc,local_label,remote_label,io_stmt)) != kOkRC )
         {
-          io_stmt.in_create_fl = true;
-          if( io_stmt.local_var_ele->base_sfx_id == kInvalidId )
-            io_stmt.local_var_ele->base_sfx_id = kBaseSfxId;
+          cwLogError(rc,"Unable to determine the %s-stmt iteration count.",local_label);
+          goto errLabel;
         }
-
-        // if the remote-proc is not iterating and the remote-proc was not given a literal sfx-id and the remote is on the same net as the proc ...
-        if( io_stmt.remote_proc_ele->is_iter_fl==false && io_stmt.remote_proc_ele->base_sfx_id==kInvalidId && io_stmt.remote_net==&net)
-          io_stmt.remote_proc_ele->base_sfx_id = proc->label_sfx_id; // ... then the remote proc takes this proc's sfx id
-        // (This results in poly proc's connecting to other poly procs with the same sfx-id by default).
-
-        // if this is not an iterating in-stmt ... 
-        if( !io_stmt.local_var_ele->is_iter_fl )
-        {
-          io_stmt.iter_cnt = 1;  // ... then it must be a simple 1:1 connection (Note if in-proc is iterating then it this must also be true)
-        }
-        else
-        {
-          // if the in-stmt is iterating then determine the in-stmt element which controls the iteration count
-          if((rc = _io_stmt_determine_iter_count_ctl_ele(net,proc,
-                                                         *io_stmt.local_var_ele,
-                                                         *io_stmt.remote_proc_ele,
-                                                         *io_stmt.remote_var_ele,
-                                                         local_label,remote_label,
-                                                         io_stmt.iter_cnt_ctl_ele)) != kOkRC )
-          {
-            rc = cwLogError(rc,"Unable to determine the iter count control ele.");
-            goto errLabel;
-          }
-
-          // if the local-stmt is iterating then determine the iteration count
-          if((rc = _io_stmt_determine_iter_count(net,proc,local_label,remote_label,io_stmt)) != kOkRC )
-          {
-            cwLogError(rc,"Unable to determine the %s-stmt iteration count.",local_label);
-            goto errLabel;
-          }
-        }
+      }
       
       
     errLabel:
-        if( rc != kOkRC )
-          _io_stmt_destroy(io_stmt);
+      if( rc != kOkRC )
+        _io_stmt_destroy(io_stmt);
       
       return rc;
       
@@ -1218,12 +1244,12 @@ namespace cw
       rc_t        rc        = kOkRC;
       unsigned    max_vid   = kInvalidId;
       unsigned    max_chIdx = 0;
-      variable_t* var       = proc->varL;
-      //variable_t* v0        = nullptr;
-      
+      variable_t* var       = nullptr;
+
       // determine the max variable vid and max channel index value among all variables
-      for(; var!=nullptr; var = var->var_link )
+      for(var=proc->varL; var!=nullptr; var = var->var_link )
       {
+
         if( var->vid != kInvalidId )
         {
           if( max_vid == kInvalidId || var->vid > max_vid )
