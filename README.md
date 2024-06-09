@@ -950,19 +950,19 @@ locations from the point of call.
 
 - Re-write the currawong circuit with caw.
 
-- Move proc_dict.cfg to libcw directory.
+- DONE: Move proc_dict.cfg to libcw directory.
 
-- The proc inst 'args' should be able to create mult variables. The only way to instantiate
+- DONE: The proc inst 'args' should be able to create mult variables. The only way to instantiate
 new mult variables now is via the 'in' stmt.
 
-- The `audio_merge` implementaiton is wrong. It should mimic `audio_mix` where all igain
+- DONE: The `audio_merge` implementaiton is wrong. It should mimic `audio_mix` where all igain
 coeff's are instantiated even if they are not referenced.
 
 - Finish audio feedback example - this will probably involve writing an `audio_silence` class.
 
 - Issue a warning if memory is allocated during runtime.
 
-- Add the `caw` examples to the test suite.
+- DONE: Add the `caw` examples to the test suite.
 
 - Check for illegal variable names in class descriptions.  (no periods, trailing digits, or trailing underscores)
 
