@@ -1415,15 +1415,17 @@ namespace cw
             break;
             
           case kInGainPId:
-            assert( var->chIdx < p->iChN );
-            rc = var_get(var,p->igainV[ var->chIdx ]);
+            // skip kAnyChIdx because individual channels exist will be sent
+            if(var->chIdx != kAnyChIdx )
+              rc = var_get(var,p->igainV[ var->chIdx ]);
             break;
 
             
             
           default:
 
-            if( kOutGainPId <= var->vid && var->vid < kOutGainPId + p->oVarN )
+            // skip kAnyChIdx because individual channels exist and will be sent
+            if( kOutGainPId <= var->vid && var->vid < kOutGainPId + p->oVarN && var->chIdx != kAnyChIdx )
             {
               unsigned oVarIdx = var->label_sfx_id - kBaseSfxId;
               assert( oVarIdx < p->oVarN && var->chIdx < p->oVarA[oVarIdx].audioChN );
@@ -1642,7 +1644,7 @@ namespace cw
         unsigned sfx_id;   // sfx_id of both the audio and gain var's 
         unsigned audioChN; // count of audio channels
         unsigned aVId;     // (there can only be one audio var.)
-        unsigned gVId; // (there is one gain var. per audio channel)
+        unsigned gVId;     // (there is one gain var. per audio channel)
         coeff_t* gainV;    // gainV[ audioChN ]
       } audio_gain_t;
       
@@ -1653,7 +1655,7 @@ namespace cw
         
         unsigned inAudioVarCnt;
 
-        audio_gain_t  oag;
+        audio_gain_t  oag;  
         audio_gain_t* iagV; // iagV[ inAudioVarCnt ]
         
       } inst_t;
@@ -1807,8 +1809,11 @@ namespace cw
             break;
             
           case kOutGainPId:
-            assert( var->chIdx < p->oag.audioChN);
-            var_get(var,p->oag.gainV[var->chIdx] ); // ... update the associated gainV[] value            
+            assert( var->chIdx == kAnyChIdx || var->chIdx < p->oag.audioChN);
+
+            // (we skip kAnyChIdx because individual channels will follow)
+            if( var->chIdx != kAnyChIdx )
+              var_get(var,p->oag.gainV[var->chIdx] ); // ... update the associated gainV[] value            
             break;
             
           default:
@@ -1816,14 +1821,17 @@ namespace cw
             // if this is an in-gain value
             if( p->baseInGainPId  <= var->vid && var->vid < p->baseInGainPId + p->inAudioVarCnt  )
             {
-              // determine which in-gain variable this var is associated with
+              // determine which in-gain variable this var is associated with var->vid
               for(unsigned i=0; i<p->inAudioVarCnt; ++i)
                 if( p->iagV[i].gVId == var->vid )
                 {
-                  // ... update the associated gainV[] value
-                  assert( var->chIdx < p->iagV[i].audioChN);
-                  var_get(var,p->iagV[i].gainV[var->chIdx]);
-                  goto errLabel;
+                  assert( var->chIdx == kAnyChIdx || var->chIdx < p->iagV[i].audioChN);
+                  
+                  // ... and update the associated gainV[] value
+                  // (we skip kAnyChIdx because individual channels will follow)
+                  if( var->chIdx != kAnyChIdx )
+                    var_get(var,p->iagV[i].gainV[var->chIdx]);
+                  break;
                 }
               
             }
