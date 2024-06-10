@@ -1726,6 +1726,8 @@ namespace cw
             goto errLabel;
           }
         }
+
+        mem::release(r.label);
       }
 
         
