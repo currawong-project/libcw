@@ -24,6 +24,8 @@ namespace cw
 
     rc_t destroy( handle_t& hRef );
 
+    bool is_non_real_time( handle_t h );
+
     unsigned preset_cfg_flags( handle_t h );
 
     // Run one cycle of the network.

@@ -654,10 +654,10 @@ void cw::flow::print_abuf( const abuf_t* abuf )
 
 void cw::flow::print_external_device( const external_device_t* dev )
 {
-  printf("Dev: %10s type:%3i fl:0x%x : ", cwStringNullGuard(dev->devLabel),dev->typeId,dev->flags);
+  cwLogPrint("Dev: %10s type:%3i fl:0x%x : ", cwStringNullGuard(dev->devLabel),dev->typeId,dev->flags);
   if( dev->typeId == kAudioDevTypeId )
     print_abuf(dev->u.a.abuf);
-  printf("\n");
+  cwLogPrint("\n");
 }
 
 
@@ -709,6 +709,7 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   
   // parse the optional args
   if((rc = flowCfg->readv("network",              0,      networkCfg,
+                          "non_real_time_fl",     kOptFl, p->non_real_time_fl,
                           "framesPerCycle",       kOptFl, p->framesPerCycle,
                           "sample_rate",          kOptFl, p->sample_rate,
                           "maxCycleCount",        kOptFl, maxCycleCount,
@@ -794,6 +795,12 @@ cw::rc_t cw::flow::destroy( handle_t& hRef )
   hRef.clear();
   
   return rc;
+}
+
+bool cw::flow::is_non_real_time( handle_t h )
+{
+  flow_t* p = _handleToPtr(h);
+  return p->non_real_time_fl;
 }
 
 unsigned cw::flow::preset_cfg_flags( handle_t h )
