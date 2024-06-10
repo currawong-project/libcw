@@ -1843,7 +1843,6 @@ namespace cw
         }
 
              
-      errLabel:
         return rc;
       }
 
