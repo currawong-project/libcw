@@ -211,6 +211,7 @@ namespace cw
     // Serial
     //
 
+    bool        serialIsEnabled(   handle_t h );
     unsigned    serialDeviceCount( handle_t h );
     unsigned    serialDeviceIndex( handle_t h, const char* label );
     const char* serialDeviceLabel( handle_t h, unsigned devIdx );
@@ -223,7 +224,8 @@ namespace cw
     //
     // MIDI
     //
-    
+
+    bool        midiIsEnabled(       handle_t h );
     unsigned    midiDeviceCount(     handle_t h );
     const char* midiDeviceName(      handle_t h, unsigned devIdx );
     unsigned    midiDeviceIndex(     handle_t h, const char* devName );
@@ -294,7 +296,8 @@ namespace cw
     //
     // Socket
     //
-
+    
+    bool               socketIsEnabled(    handle_t h );                            
     unsigned           socketCount(        handle_t h );
     unsigned           socketLabelToIndex( handle_t h, const char* label );
     unsigned           socketUserId(       handle_t h, unsigned sockIdx );
@@ -328,7 +331,8 @@ namespace cw
     // UI
     //
 
-
+    bool        uiIsEnabled( handle_t h );
+    
     // Find id's associated with elements.
     unsigned    parentAndNameToAppId( handle_t h, unsigned parentAppId, const char* eleName );  
     unsigned    parentAndNameToUuId(  handle_t h, unsigned parentAppId, const char* eleName );    

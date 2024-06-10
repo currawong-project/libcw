@@ -976,7 +976,6 @@ namespace cw
         goto errLabel;
       }
 
-
       if((rc = audio::device::alsa::destroy(p->alsaH)) != kOkRC )
       {
         rc = cwLogError(rc,"ALSA sub-system shutdown failed.");
@@ -988,7 +987,6 @@ namespace cw
         rc = cwLogError(rc,"Audio device file sub-system shutdown failed.");
         goto errLabel;
       }
-
             
       if((rc = audio::device::destroy(p->audioH)) != kOkRC )
       {
@@ -2669,6 +2667,11 @@ cw::rc_t    cw::io::timerStop( handle_t h, unsigned timerIdx )
 //
 // Serial
 //
+bool cw::io::serialIsEnabled( handle_t h )
+{
+  io_t* p = _handleToPtr(h);
+  return p->serialN != 0;
+}
 
 unsigned cw::io::serialDeviceCount( handle_t h )
 {
@@ -2719,9 +2722,18 @@ cw::rc_t cw::io::serialDeviceSend(  handle_t h, unsigned devIdx, const void* byt
 // MIDI
 //
 
+bool        cw::io::midiIsEnabled(       handle_t h )
+{
+  io_t* p = _handleToPtr(h);
+  return p->midiH.isValid();
+}
+
 unsigned    cw::io::midiDeviceCount( handle_t h )
 {
   io_t* p = _handleToPtr(h);
+  if( !p->midiH.isValid() )
+    return 0;
+  
   return midi::device::count(p->midiH);
 }
 
@@ -3222,6 +3234,11 @@ unsigned cw::io::audioGroupDeviceIndex( handle_t h, unsigned groupIdx, unsigned 
 // Socket
 //
 
+bool     cw::io::socketIsEnabled(    handle_t h )
+{
+  io_t* p = _handleToPtr(h);
+  return p->sockN != 0;
+}
 
 unsigned cw::io::socketCount(        handle_t h )
 {
@@ -3369,6 +3386,13 @@ cw::rc_t cw::io::socketSend(    handle_t h, unsigned sockIdx, const void* data, 
 //
 // UI
 //
+
+bool cw::io::uiIsEnabled( handle_t h )
+{
+  io_t* p = _handleToPtr(h);
+  return p->wsUiH.isValid();
+}
+
 unsigned    cw::io::parentAndNameToAppId( handle_t h, unsigned parentAppId, const char* eleName )
 {
   rc_t         rc;
