@@ -329,8 +329,9 @@ namespace cw
     
     typedef struct flow_str
     {
-      const object_t*      flowCfg;     // complete cfg used to create this flow 
-
+      const object_t*      flowCfg;     // complete cfg used to create this flow
+      
+      bool                 non_real_time_fl;     // set if this is a non-real-time program
       unsigned             framesPerCycle;       // sample frames per cycle (64)
       srate_t              sample_rate;          // default sample rate (48000.0)
       unsigned             maxCycleCount;        // count of cycles to run on flow::exec() or 0 if there is no limit.
