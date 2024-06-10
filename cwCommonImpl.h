@@ -138,7 +138,7 @@ namespace cw
 {
 
   
-#define cwAssert(C)       while(1){ if(!(C)) { cwLogFatal(kAssertFailRC,"Assert failed on condition:%s",#C ); } break; }
+#define cwAssert(C)       while(1){ if(!(C)) { cwLogFatal(kAssertFailRC,"Assert failed on condition:%s",#C ); assert(0); } break; }
 #define cwRuntimeCheck(C) while(1){ if(!(C)) { rc=cwLogError(kAssertFailRC,"Runtime error check failed on condition:%s",#C); goto errLabel; } break; }
 
   
