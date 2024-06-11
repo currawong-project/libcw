@@ -285,6 +285,7 @@ namespace cw
     rc_t            audioGroupSetUserId(     handle_t h, unsigned groupIdx, unsigned userId );
     double          audioGroupSampleRate(    handle_t h, unsigned groupIdx );
     unsigned        audioGroupDspFrameCount( handle_t h, unsigned groupIdx );
+    rc_t            audioGroupReconfigure(   handle_t h, unsigned groupIdx, double srate, unsigned dspFrameN );
 
     // Get the count of in or out devices assigned to this group.
     unsigned        audioGroupDeviceCount(   handle_t h, unsigned groupIdx, unsigned inOrOutFl );

@@ -96,6 +96,8 @@ namespace cw
       audioGroup_t*      oGroup;   //
       audio_group_dev_t* iagd;     // Audio group device record assoc'd with this device
       audio_group_dev_t* oagd;     //
+      unsigned           cycleCnt;
+      unsigned           framesPerCycle;
       
       struct audioDev_str* clockInList;  // List of devices sync'd to this devices input clock
       struct audioDev_str* clockOutList; // List of devices sync'd to this devices output clock
@@ -1636,6 +1638,85 @@ namespace cw
     errLabel:
       return rc;      
     }
+
+    rc_t _audioDeviceConfigure( io_t* p, audioDev_t*   ad, audioGroup_t* iag, audioGroup_t* oag, unsigned cycleCnt, unsigned framesPerCycle )
+    {
+      rc_t          rc             = kOkRC;
+
+      double        israte         = 0;
+      double        osrate         = 0;
+      double        srate          = 0;
+        
+      unsigned      iDspFrameCnt   = 0;
+      unsigned      oDspFrameCnt   = 0;
+      unsigned      dspFrameCnt    = 0;
+
+      unsigned      iChCnt         = 0;      
+      unsigned      oChCnt         = 0;
+
+      const char* inGroupLabel  = iag==nullptr || iag->msg.label==nullptr ? "<no in-group>" : iag->msg.label;
+      const char* outGroupLabel = oag==nullptr || oag->msg.label==nullptr ? "<no out-group>" : oag->msg.label;
+      
+      
+      // get the ingroup
+      if( iag != nullptr )
+      {            
+        israte       = iag->msg.srate;
+        iDspFrameCnt = iag->msg.dspFrameCnt;
+      }
+
+      // get the outgroup
+      if( oag != nullptr )
+      {
+        osrate       = oag->msg.srate;
+        oDspFrameCnt = oag->msg.dspFrameCnt;
+      }
+          
+      // in-srate and out-srate must be equal or one must be 0
+      if( osrate==0 || israte==0 || osrate==israte )
+      {
+        // the true sample rate is the non-zero sample rate
+        srate = std::max(israte,osrate);
+      }
+      else
+      {
+        rc = cwLogError(kInvalidArgRC,"The device '%s' belongs to two groups (%s and %s) at different sample rates (%f != %f).", cwStringNullGuard(ad->devName), cwStringNullGuard(inGroupLabel), cwStringNullGuard(outGroupLabel), israte, osrate );
+        goto errLabel;
+      }
+
+      // in-dspFrameCnt an out-dspFrameCnt must be equal or one must be 0
+      if( oDspFrameCnt==0 || iDspFrameCnt==0 || oDspFrameCnt==iDspFrameCnt)
+      {
+        // the true sample rate is the non-zero sample rate
+        dspFrameCnt = std::max(iDspFrameCnt,oDspFrameCnt);
+      }
+      else
+      {
+        rc = cwLogError(kInvalidArgRC,"The device '%s' belongs to two groups (%s and %s) width different dspFrameCnt values (%i != %i).", cwStringNullGuard(ad->devName), cwStringNullGuard(inGroupLabel), cwStringNullGuard(outGroupLabel), iDspFrameCnt, oDspFrameCnt );
+        goto errLabel;
+      }
+          
+      // setup the device based on the configuration
+      if((rc = audio::device::setup(p->audioH, ad->devIdx, srate, framesPerCycle, _audioDeviceCallback, p)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Unable to setup the audio hardware device:'%s'.", ad->devName);
+        goto errLabel;
+      }
+
+      // get the device channel counts
+      iChCnt  = audio::device::channelCount(p->audioH,ad->devIdx,true);
+      oChCnt  = audio::device::channelCount(p->audioH,ad->devIdx,false);
+          
+      // initialize the audio bufer for this device
+      if((rc = audio::buf::setup( p->audioBufH, ad->devIdx, srate, dspFrameCnt, cycleCnt, iChCnt, framesPerCycle, oChCnt, framesPerCycle )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Audio device buffer channel setup failed.");
+        goto errLabel;
+      }
+
+    errLabel:
+      return rc;
+    }
       
     // Create the audio device records by parsing the cfg audio.deviceL[] list.
     rc_t _audioDeviceParseAudioDeviceList( io_t* p, const object_t* cfg )
@@ -1665,7 +1746,7 @@ namespace cw
       // fill in the audio device cfg list
       for(unsigned i=0; i<deviceL_Node->child_count(); ++i)
       {
-        audioDev_t*   ad             = nullptr; //p->audioDevA + i;
+        audioDev_t*   ad             = nullptr;
         bool          activeFl       = false;
         bool          meterFl        = false;
         char*         userLabel      = nullptr;
@@ -1676,7 +1757,7 @@ namespace cw
         
         audioGroup_t* iag            = nullptr;
         audioGroup_t* oag            = nullptr;
-        
+/*        
         double        israte         = 0;
         double        osrate         = 0;
         double        srate          = 0;
@@ -1684,7 +1765,7 @@ namespace cw
         unsigned      iDspFrameCnt   = 0;
         unsigned      oDspFrameCnt   = 0;
         unsigned      dspFrameCnt    = 0;
-        
+*/      
         char*         inGroupLabel   = nullptr;
         char*         outGroupLabel  = nullptr;
 
@@ -1737,12 +1818,18 @@ namespace cw
             rc = cwLogError(rc,"Unable to locate the audio hardware device:'%s'.", cwStringNullGuard(ad->devName));
             goto errLabel;
           }
-
-          // get the device channel counts
-          unsigned iChCnt  = 0; //audio::device::channelCount(p->audioH,ad->devIdx,true);
-          unsigned oChCnt  = 0; //audio::device::channelCount(p->audioH,ad->devIdx,false);
           
+          if( inGroupLabel != nullptr )
+            iag = _audioGroupFromLabel(p, inGroupLabel );
 
+          // get the outgroup
+          if( outGroupLabel != nullptr )
+            oag = _audioGroupFromLabel(p, outGroupLabel);
+
+          if((rc = _audioDeviceConfigure(p, ad, iag, oag, cycleCnt, framesPerCycle )) != kOkRC )
+            goto errLabel;
+
+          /*
           // get the ingroup
           if( inGroupLabel != nullptr )
             if((iag = _audioGroupFromLabel(p, inGroupLabel )) != nullptr )
@@ -1759,7 +1846,7 @@ namespace cw
               oDspFrameCnt = oag->msg.dspFrameCnt;
             }
           
-          // in-srate an out-srate must be equal or one must be 0
+          // in-srate and out-srate must be equal or one must be 0
           if( osrate==0 || israte==0 || osrate==israte )
           {
             // the true sample rate is the non-zero sample rate
@@ -1791,8 +1878,8 @@ namespace cw
           }
 
           // get the device channel counts
-          iChCnt  = audio::device::channelCount(p->audioH,ad->devIdx,true);
-          oChCnt  = audio::device::channelCount(p->audioH,ad->devIdx,false);
+          unsigned iChCnt  = audio::device::channelCount(p->audioH,ad->devIdx,true);
+          unsigned oChCnt  = audio::device::channelCount(p->audioH,ad->devIdx,false);
 
           
           // initialize the audio bufer for this device
@@ -1801,7 +1888,12 @@ namespace cw
             rc = cwLogError(rc,"Audio device buffer channel setup failed.");
             goto errLabel;
           }
+          */
 
+          unsigned iChCnt  = audio::device::channelCount(p->audioH,ad->devIdx,true);
+          unsigned oChCnt  = audio::device::channelCount(p->audioH,ad->devIdx,false);
+
+          
           // if an input group was assigned to this device then create a assoc'd audio_group_dev_t
           if( iag != nullptr )
           {            
@@ -1831,6 +1923,8 @@ namespace cw
           ad->userId   = userId;
           ad->iGroup   = iag;
           ad->oGroup   = oag;
+          ad->cycleCnt = cycleCnt;
+          ad->framesPerCycle = framesPerCycle;
 
         }
       }
@@ -3187,6 +3281,64 @@ unsigned cw::io::audioGroupDspFrameCount( handle_t h, unsigned groupIdx )
     return ag->msg.dspFrameCnt;
   return 0;
 }
+
+cw::rc_t  cw::io::audioGroupReconfigure( handle_t h, unsigned groupIdx, double srate, unsigned dspFrameN )
+{
+  rc_t rc = kOkRC;
+  audioGroup_t* ag = nullptr;
+  
+  io_t*  p = _handleToPtr(h);
+
+  // locate the group record
+  if((ag = _audioGroupFromIndex( p, groupIdx )) == nullptr )
+    goto errLabel;
+
+  // if the parameters are not changing then there is nothing to do
+  if( ag->msg.dspFrameCnt == dspFrameN && ag->msg.srate == srate )
+    goto errLabel;
+  
+  // change the parameters in the group record
+  ag->msg.dspFrameCnt = dspFrameN;
+  ag->msg.srate       = srate;
+
+  // stop the audio sub-system
+  if((rc = _audioDeviceStartStop(p,false)) != kOkRC )
+    goto errLabel;
+   
+  // TODO: be sure the audio subsystem is really stopped
+    
+  // for each audio device
+  for(unsigned i=0; i<p->audioDevN; ++i)
+  {
+    audioDev_t* ad       = p->audioDevA + i;
+
+    // if this devices in-group/out-group was reconfigured
+    bool        iGroupFl = ad->iGroup != nullptr && ad->iGroup->msg.groupIndex == groupIdx;
+    bool        oGroupFl = ad->oGroup != nullptr && ad->oGroup->msg.groupIndex == groupIdx;
+    
+    if( iGroupFl || oGroupFl )
+    {
+      // reconfigure the device with the updated srate and framesPerCycle
+      if((rc = _audioDeviceConfigure(p, ad, ad->oGroup, ad->oGroup, ad->cycleCnt, ad->framesPerCycle )) != kOkRC )
+        goto errLabel;
+
+      cwLogInfo("The audio device: '%s' was reconfigured srate=%f dspFrameCnt:%i.",cwStringNullGuard(ad->label), srate,dspFrameN);
+
+      
+    }
+  }
+
+  // restart the audio sub-system
+  if((rc = _audioDeviceStartStop(p,true)) != kOkRC )
+    goto errLabel;
+  
+errLabel:
+  if( rc != kOkRC )
+    rc = cwLogError(rc,"Audio group reconfiguration failed.");
+    
+  return rc;  
+}
+
 
 unsigned cw::io::audioGroupDeviceCount( handle_t h, unsigned groupIdx, unsigned inOrOutFl )
 {
