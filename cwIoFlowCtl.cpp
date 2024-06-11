@@ -76,36 +76,16 @@ namespace cw
       pgm_t*          pgmA; // pgmA[ pgmN ]
       unsigned        pgmN;
 
-      unsigned        pgm_idx;
-      flow::handle_t  flowH;
-      char*           proj_dir;
+      unsigned        pgm_idx;   // current program index
+      flow::handle_t  flowH;     //
+      char*           proj_dir;  // current project directory
     } io_flow_ctl_t;
 
     io_flow_ctl_t* _handleToPtr( handle_t h )
     { return handleToPtr<handle_t,io_flow_ctl_t>(h); }    
 
-    rc_t _program_unload( io_flow_ctl_t* p )
+    void _destroy_device_setup( io_flow_ctl_t* p )
     {
-      rc_t rc;
-      if((rc = destroy(p->flowH)) != kOkRC )
-      {
-        rc = cwLogError(rc,"Program unload failed.");
-        goto errLabel;
-      }
-
-      mem::release(p->proj_dir);
-      p->pgm_idx = kInvalidIdx;
-      
-    errLabel:
-      return rc;
-    }
-    
-    rc_t _destroy( io_flow_ctl_t* p )
-    {
-      rc_t rc = kOkRC;
-
-      destroy( p->flowH );
-
       mem::release(p->deviceA);
       p->deviceN = 0;
 
@@ -123,6 +103,33 @@ namespace cw
       }
 
       mem::release(p->audioGroupA);
+      p->audioGroupN = 0;
+    }
+    
+    rc_t _program_unload( io_flow_ctl_t* p )
+    {
+      rc_t rc;
+      if((rc = destroy(p->flowH)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Program unload failed.");
+        goto errLabel;
+      }
+
+      _destroy_device_setup(p);
+      
+      mem::release(p->proj_dir);
+      p->pgm_idx = kInvalidIdx;
+      
+    errLabel:
+      return rc;
+    }
+
+    
+    rc_t _destroy( io_flow_ctl_t* p )
+    {
+      rc_t rc = kOkRC;
+
+      destroy( p->flowH );
 
       
       if( p->proc_class_dict_cfg != nullptr )
@@ -237,14 +244,23 @@ namespace cw
 
     }
 
-    void _setup_audio_groups( io_flow_ctl_t* p )
+    rc_t _setup_audio_groups( io_flow_ctl_t* p, double srate, unsigned dspFrameN )
     {
+      rc_t rc = kOkRC;
       p->audioGroupN = audioGroupCount( p->ioH );
       p->audioGroupA = mem::allocZ<audio_group_t>( p->audioGroupN );
       
       for(unsigned gi=0; gi<audioGroupCount(p->ioH); ++gi)
       {
         audio_group_t* ag = p->audioGroupA + gi;
+
+        if((rc = audioGroupReconfigure(p->ioH, gi, srate, dspFrameN )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Audio group reconfiguration to srate=%f dspFrameN:%i failed.",srate,dspFrameN);
+          goto errLabel;
+        }
+
+        
         ag->srate       = audioGroupSampleRate(    p->ioH, gi );
         ag->dspFrameCnt = audioGroupDspFrameCount( p->ioH, gi );
         ag->ioGroupIdx  = gi;
@@ -262,6 +278,9 @@ namespace cw
           _setup_audio_device( p, ag->oDeviceA + gdi, io::kOutFl, audioGroupDeviceIndex( p->ioH, gi, io::kOutFl, gdi), ag->dspFrameCnt  );
         
       }
+
+    errLabel:
+      return rc;
     }
 
     rc_t _send_midi_triple( flow::external_device_t* dev, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
@@ -499,13 +518,6 @@ cw::rc_t cw::io_flow_ctl::create(  handle_t& hRef, io::handle_t ioH, const objec
 
   if((rc = _parse_cfg(p,flow_cfg)) != kOkRC )
     goto errLabel;
-
-  // allocate p->audioGroupA[] and create the audio input/output buffers associated with each audio device
-  _setup_audio_groups(p);
-
-  // setup the control record for each external device known to the IO interface
-  _setup_generic_device_array(p);
-
   
   hRef.set(p);
   
@@ -588,21 +600,34 @@ cw::rc_t    cw::io_flow_ctl::program_load(  handle_t h, unsigned pgm_idx )
     goto errLabel;
   }
 
+  // create the project directory if it doesn't already exist
   if( !filesys::isDir(p->proj_dir) )
     if((rc = filesys::makeDir(p->proj_dir)) != kOkRC )
       goto errLabel;
-    
-  
-  // create the flow object
+
+  // configure the flow network
   if((rc = create( p->flowH,
                    p->proc_class_dict_cfg,
                    p->pgmA[ pgm_idx ].cfg,
                    p->subnet_dict_cfg,
-                   p->proj_dir,
-                   p->deviceA,
-                   p->deviceN)) != kOkRC )
+                   p->proj_dir )) != kOkRC )
   {
-    rc = cwLogError(rc,"Flow object create failed.");
+    rc = cwLogError(rc,"Network configuration failed.");
+    goto errLabel;
+  }
+                               
+  // allocate p->audioGroupA[] and create the audio input/output buffers associated with each audio device
+  _setup_audio_groups(p, sample_rate(p->flowH), frames_per_cycle(p->flowH) );
+
+  // setup the control record for each external device known to the IO interface
+  _setup_generic_device_array(p);
+  
+  // create the flow network
+  if((rc = initialize( p->flowH,
+                       p->deviceA,
+                       p->deviceN)) != kOkRC )
+  {
+    rc = cwLogError(rc,"Network create failed.");
     goto errLabel;
   }
 
