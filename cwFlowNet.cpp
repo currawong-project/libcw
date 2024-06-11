@@ -1527,7 +1527,7 @@ namespace cw
     // Class Preset and Arg Value application
     //
     
-    rc_t _var_channelize( proc_t* proc, const char* preset_label,  const char* type_src_label, const char* var_label, unsigned label_sfx_id, const object_t* value )
+    rc_t _var_channelize( proc_t* proc, const char* preset_label, const char* var_label, unsigned label_sfx_id, const object_t* value )
     {
       rc_t rc = kOkRC;
       
@@ -1537,7 +1537,7 @@ namespace cw
       // verify that a valid value exists
       if( value == nullptr )
       {
-        rc = cwLogError(kSyntaxErrorRC,"Unexpected missig value on %s preset '%s' proc instance '%s' variable '%s'.", type_src_label, preset_label, proc->label, cwStringNullGuard(var_label) );
+        rc = cwLogError(kSyntaxErrorRC,"Unexpected missig value on preset '%s' proc instance '%s:%i-%s:%i'.", preset_label, proc->label, proc->label_sfx_id, cwStringNullGuard(var_label), label_sfx_id );
         goto errLabel;
       }
       else
@@ -1566,7 +1566,7 @@ namespace cw
       return rc;
     }
     
-    rc_t _preset_channelize_vars( proc_t* proc, const char* type_src_label, const char* preset_label, const object_t* preset_cfg )
+    rc_t _preset_channelize_vars( proc_t* proc, const char* preset_label, const object_t* preset_cfg )
     {
       rc_t rc = kOkRC;
 
@@ -1575,7 +1575,7 @@ namespace cw
       // validate the syntax of the preset record
       if( !preset_cfg->is_dict() )
       {
-        rc = cwLogError(kSyntaxErrorRC,"The preset record '%s' on %s '%s' is not a dictionary.", preset_label, type_src_label, proc->class_desc->label );
+        rc = cwLogError(kSyntaxErrorRC,"The preset record '%s' on'%s' is not a dictionary.", preset_label, proc->class_desc->label );
         goto errLabel;
       }
 
@@ -1588,7 +1588,7 @@ namespace cw
 
         //cwLogInfo("variable:%s",var_label);
         
-        if((rc = _var_channelize( proc, preset_label, type_src_label, var_label, kBaseSfxId, value )) != kOkRC )
+        if((rc = _var_channelize( proc, preset_label, var_label, kBaseSfxId, value )) != kOkRC )
           goto errLabel;
         
         
@@ -1596,7 +1596,7 @@ namespace cw
 
     errLabel:
       if( rc != kOkRC )
-        rc = cwLogError(rc,"Apply %s preset failed on proc instance:%s class:%s preset:%s.", type_src_label, proc->label, proc->class_desc->label, preset_label );
+        rc = cwLogError(rc,"Apply preset failed on proc instance:%s:%i class:%s preset:%s.", proc->label, proc->label_sfx_id, proc->class_desc->label, preset_label );
 
       return rc;
     }
@@ -1613,11 +1613,11 @@ namespace cw
       // locate the requestd preset record
       if((pr = class_preset_find(proc->class_desc, preset_label)) == nullptr )
       {
-        rc = cwLogError(kInvalidIdRC,"The preset '%s' could not be found for the proc instance '%s'.", preset_label, proc->label);
+        rc = cwLogError(kInvalidIdRC,"The preset '%s' could not be found for the proc instance '%s:%i'.", preset_label, proc->label, proc->label_sfx_id);
         goto errLabel;
       }
       
-      rc = _preset_channelize_vars( proc, "class", preset_label, pr->cfg);
+      rc = _preset_channelize_vars( proc, preset_label, pr->cfg);
       
     errLabel:                  
       return rc;
@@ -1720,7 +1720,7 @@ namespace cw
             }
           }
 
-          if((rc= _var_channelize( proc, "args",  "proc inst", r.label, sfx_id, arg_pair->pair_value() )) != kOkRC )
+          if((rc= _var_channelize( proc, "args",  r.label, sfx_id, arg_pair->pair_value() )) != kOkRC )
           {
             rc = cwLogError(rc,"Channeliize failed on '%s %s:%i'.",cwStringNullGuard(proc->label),cwStringNullGuard(r.label),sfx_id);
             goto errLabel;
