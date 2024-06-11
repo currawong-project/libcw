@@ -54,10 +54,17 @@ cw::rc_t cw::flow::test( const test::test_args_t& args )
   // create the flow object
   if((rc = create( flowH, class_cfg, args.test_args, subnet_cfg, args.out_dir)) != kOkRC )
   {
-    rc = cwLogError(rc,"Flow object create failed.");
+    rc = cwLogError(rc,"Flow object configure failed.");
     goto errLabel;
   }
 
+  // create the flow object
+  if((rc = initialize( flowH )) != kOkRC )
+  {
+    rc = cwLogError(rc,"Flow object create failed.");
+    goto errLabel;
+  }
+  
   // run the network
   if((rc = exec( flowH )) != kOkRC )
     rc = cwLogError(rc,"Execution failed.");

@@ -146,12 +146,17 @@ namespace cw
       net->deviceN = 0;
       net->stateId = net_idx == 0 ? kActiveStateId : kInactiveStateId;
       net->net_idx = net_idx;
+
+      if((rc = flow::create( net->flowH, &classCfg, &networkCfg, nullptr, nullptr )) == kOkRC )
+      {
+        rc = cwLogError(rc,"Flow cross index %i network create failed.",net_idx);
+      }
       
-      if((rc = flow::create( net->flowH, &classCfg, &networkCfg, nullptr, nullptr, net->deviceA, deviceN )) == kOkRC )
+      if((rc = flow::initialize( net->flowH, net->deviceA, deviceN )) == kOkRC )
         net->deviceN = deviceN;
       else
       {
-        cwLogError(rc,"Flow cross index %i network created failed.",net_idx);
+        cwLogError(rc,"Flow cross index %i network initialize failed.",net_idx);
         goto errLabel;
       }
 
