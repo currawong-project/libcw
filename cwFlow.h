@@ -8,23 +8,30 @@ namespace cw
 
     typedef handle<struct flow_str> handle_t;
 
-
-
     void print_abuf( const struct abuf_str* abuf );
     void print_external_device( const external_device_t* dev );
     
+    // Parse the cfg's but don't yet instantiate the network.
+    // Upon completion of this function the caller can 
+    // query the network for configuration information which can
+    // be used to setup the extern_device_t array.
+    rc_t create(handle_t&          hRef,
+                   const object_t*    classCfg,
+                   const object_t*    networkCfg,
+                   const object_t*    subnetCfg = nullptr,
+                   const char*        projDir   = nullptr);
 
-    rc_t create( handle_t&          hRef,
-                 const object_t*    classCfg,
-                 const object_t*    networkCfg,
-                 const object_t*    subnetCfg = nullptr,
-                 const char*        projDir   = nullptr,
-                 external_device_t* deviceA   = nullptr,
-                 unsigned           deviceN   = 0);
-
+    // Instantiate the network and prepare for runtime.
+    rc_t initialize( handle_t           handle,
+                     external_device_t* deviceA   = nullptr,
+                     unsigned           deviceN   = 0);
+    
     rc_t destroy( handle_t& hRef );
 
-    bool is_non_real_time( handle_t h );
+    // Network cfg. information which is available following configure().
+    bool     is_non_real_time( handle_t h );
+    double   sample_rate(      handle_t h );
+    unsigned frames_per_cycle( handle_t h );
 
     unsigned preset_cfg_flags( handle_t h );
 

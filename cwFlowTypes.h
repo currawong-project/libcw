@@ -323,14 +323,17 @@ namespace cw
       // Preset pair table used by network_apply_dual_preset()
       network_preset_pair_t* preset_pairA;
       unsigned               preset_pairN;
-      
+
     } network_t;
     
     
     typedef struct flow_str
     {
       const object_t*      flowCfg;     // complete cfg used to create this flow
-      
+      const object_t*      networkCfg;  // 'network' cfg from flowCfg
+
+      bool                 printNetworkFl;
+
       bool                 non_real_time_fl;     // set if this is a non-real-time program
       unsigned             framesPerCycle;       // sample frames per cycle (64)
       srate_t              sample_rate;          // default sample rate (48000.0)
@@ -339,9 +342,7 @@ namespace cw
       
       bool                 isInRuntimeFl;        // Set when compile-time is complete
       
-      
       unsigned             cycleIndex;           // Incremented with each processing cycle      
-
       
       bool                 multiPriPresetProbFl; // If set then probability is used to choose presets on multi-preset application
       bool                 multiSecPresetProbFl; // 

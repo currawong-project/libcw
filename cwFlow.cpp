@@ -666,15 +666,10 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
                            const object_t*    classCfg,
                            const object_t*    flowCfg,
                            const object_t*    subnetCfg,
-                           const char*        proj_dir,
-                           external_device_t* deviceA,
-                           unsigned           deviceN )
+                           const char*        proj_dir )
 {
   rc_t            rc               = kOkRC;
-  const object_t* networkCfg       = nullptr; 
   bool            printClassDictFl = false;
-  bool            printNetworkFl   = false;
-  variable_t*     proxyVarL        = nullptr;
   unsigned        maxCycleCount    = kInvalidCnt;
   double          durLimitSecs     = 0;
   
@@ -682,9 +677,6 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
     return rc;
 
   flow_t* p   = mem::allocZ<flow_t>();
-  p->flowCfg    = flowCfg;   // TODO: duplicate cfg?
-  p->deviceA    = deviceA;
-  p->deviceN    = deviceN;
 
   // parse the class description array
   if((rc = _parse_class_cfg(p,classCfg)) != kOkRC )
@@ -702,13 +694,14 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
     }
 
 
+  p->flowCfg        = flowCfg;
   p->framesPerCycle = kDefaultFramesPerCycle;
   p->sample_rate    = kDefaultSampleRate;
   p->maxCycleCount  = kInvalidCnt;
   p->proj_dir       = proj_dir;
   
   // parse the optional args
-  if((rc = flowCfg->readv("network",              0,      networkCfg,
+  if((rc = flowCfg->readv("network",              0,      p->networkCfg,
                           "non_real_time_fl",     kOptFl, p->non_real_time_fl,
                           "framesPerCycle",       kOptFl, p->framesPerCycle,
                           "sample_rate",          kOptFl, p->sample_rate,
@@ -716,7 +709,7 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
                           "durLimitSecs",         kOptFl, durLimitSecs,
                           "preset",               kOptFl, p->init_net_preset_label,
                           "printClassDictFl",     kOptFl, printClassDictFl,
-                          "printNetworkFl",       kOptFl, printNetworkFl,
+                          "printNetworkFl",       kOptFl, p->printNetworkFl,
                           "multiPriPresetProbFl", kOptFl, p->multiPriPresetProbFl,
                           "multiSecPresetProbFl", kOptFl, p->multiSecPresetProbFl,
                           "multiPresetInterpFl",  kOptFl, p->multiPresetInterpFl)) != kOkRC )
@@ -736,6 +729,31 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
       p->maxCycleCount = (unsigned)((durLimitSecs * p->sample_rate) / p->framesPerCycle);    
   }
 
+  // print the class dict
+  if( printClassDictFl )
+      class_dict_print( p );
+  
+  hRef.set(p);
+  
+ errLabel:
+  
+  if( rc != kOkRC )
+    _destroy(p);
+  
+  return rc;  
+}
+
+cw::rc_t cw::flow::initialize( handle_t h,
+                               external_device_t* deviceA,
+                               unsigned           deviceN )
+{
+  rc_t        rc        = kOkRC;
+  variable_t* proxyVarL = nullptr;
+  flow_t*     p         = _handleToPtr(h);
+  
+  p->deviceA    = deviceA;
+  p->deviceN    = deviceN;
+  
   for(unsigned i=0; i<deviceN; ++i)
     if( deviceA[i].typeId == kAudioDevTypeId )
     {
@@ -749,18 +767,14 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
           cwLogWarning("The audio frame count (%i) for audio device '%s' does not match the Flow framesPerCycle (%i).",deviceA[i].u.a.abuf->frameN,p->framesPerCycle);
     }
   
-  // print the class dict
-  if( printClassDictFl )
-      class_dict_print( p );
-
   // instantiate the network
-  if((rc = network_create(p,networkCfg,p->net,proxyVarL)) != kOkRC )
+  if((rc = network_create(p,p->networkCfg,p->net,proxyVarL)) != kOkRC )
   {
     rc = cwLogError(rc,"Network creation failed.");
     goto errLabel;
   }
 
-  if( printNetworkFl )
+  if( p->printNetworkFl )
     network_print(p->net);
 
   if( p->init_net_preset_label != nullptr )
@@ -769,16 +783,14 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   p->isInRuntimeFl = true;
   cwLogInfo("Entering runtime.");
 
-  hRef.set(p);
-  
  errLabel:
-
   
   if( rc != kOkRC )
     _destroy(p);
   
-  return rc;  
+  return rc;   
 }
+
 
 cw::rc_t cw::flow::destroy( handle_t& hRef )
 {
@@ -802,6 +814,19 @@ bool cw::flow::is_non_real_time( handle_t h )
   flow_t* p = _handleToPtr(h);
   return p->non_real_time_fl;
 }
+
+double   cw::flow::sample_rate(      handle_t h )
+{
+  flow_t* p = _handleToPtr(h);
+  return p->sample_rate;
+}
+
+unsigned cw::flow::frames_per_cycle( handle_t h )
+{
+  flow_t* p = _handleToPtr(h);
+  return p->framesPerCycle;  
+}
+
 
 unsigned cw::flow::preset_cfg_flags( handle_t h )
 {
