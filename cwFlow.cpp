@@ -64,6 +64,8 @@ namespace cw
       { "add",             &add::members },
       { "preset",          &preset::members },
       { "print",           &print::members },
+      { "halt",            &halt::members },
+      { "midi_msg",        &midi_msg::members },
       { nullptr, nullptr }
     };
 
@@ -627,7 +629,7 @@ namespace cw
       mem::release(classDescA);      
     }
     
-    rc_t _destroy( flow_t* p)
+    rc_t _destroy( flow_t*& p)
     {
       rc_t rc = kOkRC;
 
@@ -638,6 +640,8 @@ namespace cw
       
       _release_class_desc_array(p->classDescA,p->classDescN);
       _release_class_desc_array(p->subnetDescA,p->subnetDescN);
+      p->classDescN = 0;
+      p->subnetDescN = 0;
       
       mem::release(p);
       
@@ -785,9 +789,6 @@ cw::rc_t cw::flow::initialize( handle_t h,
 
  errLabel:
   
-  if( rc != kOkRC )
-    _destroy(p);
-  
   return rc;   
 }
 
@@ -862,10 +863,7 @@ cw::rc_t cw::flow::exec(    handle_t h )
 
     // kEofRC indicates that the network asked to terminate
     if( rc == kEofRC )
-    {
-      rc = kOkRC;
       break;
-    }    
     
   }
 

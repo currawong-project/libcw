@@ -13,6 +13,7 @@
 
 #include "cwTime.h"
 #include "cwMidiDecls.h"
+#include "cwMidi.h"
 
 
 #include "cwFlowDecl.h"
@@ -26,6 +27,7 @@
 #include "cwDsp.h"
 #include "cwAudioTransforms.h"
 #include "cwDspTransforms.h"
+#include "cwMidiDecls.h"
 
 namespace cw
 {
@@ -470,7 +472,7 @@ namespace cw
         inst->bufN = inst->ext_dev->u.m.maxMsgCnt;
         inst->buf = mem::allocZ<midi::ch_msg_t>( inst->bufN );
 
-        // create one output audio buffer
+        // create one output MIDI buffer
         rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, 0  );
 
 
@@ -4271,6 +4273,183 @@ namespace cw
     namespace number
     {
       enum {
+        kTriggerPId,
+        kOutTypePId,
+        kOutPId,
+        kInPId,
+      };
+
+      typedef struct
+      {
+        unsigned inVarN;
+        unsigned storeVarN;
+        unsigned baseStorePId;
+        unsigned store_vid;
+      } inst_t;
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t        rc             = kOkRC;
+        const char* out_type_label = nullptr;
+        unsigned    out_type_fl    = false;
+        variable_t* dum            = nullptr;
+        unsigned    inVarN         = var_mult_count(proc,"in");
+        unsigned    storeVarN      = var_mult_count(proc,"store");
+        unsigned    inSfxIdA[ inVarN ];
+        unsigned    storeSfxIdA[ storeVarN ];
+
+        if((rc = var_register(proc,kAnyChIdx,kTriggerPId,"trigger",kBaseSfxId)) != kOkRC )
+          goto errLabel;
+
+        // Get the output type label as a string
+        if((rc = var_register_and_get(proc,kAnyChIdx,kOutTypePId,"out_type",kBaseSfxId,out_type_label)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Variable registration failed for the variable 'otype:0'.");;
+          goto errLabel;          
+        }
+              
+        // Get the type of the output as a flag
+        if(out_type_label==nullptr || (out_type_fl = value_type_label_to_flag( out_type_label )) == kInvalidTFl )
+        {
+          rc = cwLogError(kInvalidArgRC,"The output type '%s' is not a valid type.",cwStringNullGuard(out_type_label));
+          goto errLabel;
+        }
+
+        // Create the output variable
+        if((rc = var_create( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, out_type_fl, dum )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // if there are no inputs
+        if( inVarN == 0 )
+        {
+          rc = cwLogError(rc,"The 'number' unit '%s' does not have any inputs.",cwStringNullGuard(proc->label));
+          goto errLabel;
+        }
+        
+        // get the the sfx_id's of the 'in' variables 
+        if((rc = var_mult_sfx_id_array(proc, "in", inSfxIdA, inVarN, p->inVarN )) != kOkRC )
+          goto errLabel;
+        
+        // sort the input id's in ascending order
+        std::sort(inSfxIdA, inSfxIdA + p->inVarN, [](unsigned& a,unsigned& b){ return a<b; } );
+
+        // register each of the input vars
+        for(unsigned i=0; i<p->inVarN; ++i)
+        {
+          variable_t* dum;
+          if((rc = var_register(proc, "in", inSfxIdA[i], kInPId+i, kAnyChIdx, nullptr, dum )) != kOkRC )
+          {
+            rc = cwLogError(rc,"Variable registration failed for the variable 'in:%i'.",inSfxIdA[i]);;
+            goto errLabel;
+          }
+        }
+
+        p->baseStorePId = kInPId + p->inVarN;
+
+        // get the the sfx_id's of the 'store' variables 
+        if((rc = var_mult_sfx_id_array(proc, "store", storeSfxIdA, storeVarN, p->storeVarN )) != kOkRC )
+          goto errLabel;
+        
+        // sort the 'store' id's in ascending order
+        std::sort(storeSfxIdA, storeSfxIdA + p->storeVarN, [](unsigned& a,unsigned& b){ return a<b; } );
+
+        // register each of the 'store' vars
+        for(unsigned i=0; i<p->storeVarN; ++i)
+        {
+          variable_t* dum;
+          if((rc = var_register(proc, "store", storeSfxIdA[i], p->baseStorePId+i, kAnyChIdx, nullptr, dum )) != kOkRC )
+          {
+            rc = cwLogError(rc,"Variable registration failed for the variable 'store:%i'.",storeSfxIdA[i]);;
+            goto errLabel;
+          }
+        }
+
+        p->store_vid = kInvalidId;
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        if( var->vid == kTriggerPId )
+        {
+          variable_t* outVar = nullptr;
+          if((rc = var_find( proc, kOutPId, kAnyChIdx,  outVar )) != kOkRC )
+            goto errLabel;
+
+          if( outVar->value != nullptr )
+            var_set(outVar,outVar->value);
+        }
+        else
+        {
+          if( kInPId <= var->vid && var->vid < kInPId + p->inVarN )
+          {
+            var_set( proc, kOutPId, kAnyChIdx, var->value );
+          }
+          else
+          {
+            if( p->baseStorePId <= var->vid && var->vid < p->baseStorePId + p->storeVarN )
+            {
+              p->store_vid = var->vid;
+            }
+          }
+        }
+        
+      errLabel:
+        return kOkRC;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        if( p->store_vid != kInvalidIdx )
+        {
+          variable_t* var = nullptr;
+          
+          // Set 'value' from 'store'.
+          // Note that we set the 'value' directly from var->value so that
+          // no extra type converersion is applied. In this case the value
+          // 'store'  will be coerced to the type of 'value'
+          if((rc = var_find(proc, p->store_vid, kAnyChIdx, var )) == kOkRC && var->value != nullptr && is_connected_to_source(var) )
+          {
+            rc = var_set(proc,kOutPId,kAnyChIdx,var->value);
+          }
+
+          p->store_vid = kInvalidIdx;
+        }
+        
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .value   = std_value<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    
+
+#ifdef NOT_DEF    
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // Number
+    //
+    namespace number
+    {
+      enum {
         kValuePId,
         kStorePId,
       };
@@ -4340,7 +4519,8 @@ namespace cw
       };
       
     }    
-
+#endif
+    
     //------------------------------------------------------------------------------------------------------------------
     //
     // Register
@@ -4486,11 +4666,14 @@ namespace cw
       enum {
         kSratePId,
         kPeriodMsPId,
+        kDelayMsPId,
         kOutPId,
       };
       
       typedef struct
       {
+        bool     delayFl;
+        unsigned delayFrmN;
         unsigned periodFrmN;
         unsigned periodPhase;
       } inst_t;
@@ -4504,6 +4687,7 @@ namespace cw
       {
         rc_t    rc       = kOkRC;
         ftime_t  periodMs = 0;
+        ftime_t  delayMs  = 0;
         srate_t srate    = 0;
         inst_t* p        = mem::allocZ<inst_t>();
         proc->userPtr    = p;
@@ -4511,6 +4695,7 @@ namespace cw
 
         if((rc = var_register_and_get(proc,kAnyChIdx,
                                       kSratePId,    "srate",    kBaseSfxId,srate,
+                                      kDelayMsPId,  "delay_ms", kBaseSfxId,delayMs,
                                       kPeriodMsPId, "period_ms",kBaseSfxId,periodMs)) != kOkRC )
         {
           goto errLabel;
@@ -4526,6 +4711,8 @@ namespace cw
         }
         
         p->periodFrmN = _period_ms_to_frame_count(proc,p,srate,periodMs);
+        p->delayFrmN  = _period_ms_to_frame_count(proc,p,srate,delayMs);
+        p->delayFl    = true;
         
       errLabel:
         return rc;
@@ -4556,6 +4743,20 @@ namespace cw
                 p->periodFrmN = _period_ms_to_frame_count( proc, p, srate, periodMs );
             }
             break;
+
+
+          case kDelayMsPId:
+            {
+              double delayMs;
+              srate_t srate;
+              inst_t*  p = (inst_t*)(proc->userPtr);
+                      
+              var_get(proc,kSratePId,kAnyChIdx,srate);
+              
+              if((rc = var_get(var,delayMs)) == kOkRC )
+                p->delayFrmN = _period_ms_to_frame_count( proc, p, srate, delayMs );
+            }
+            break;
             
           default:
             break;
@@ -4570,9 +4771,18 @@ namespace cw
 
         p->periodPhase += proc->ctx->framesPerCycle;
 
+        if( p->delayFl )
+        {
+          if( p->periodPhase >= p->delayFrmN )
+          {
+            p->periodPhase -= p->delayFrmN;
+            p->delayFl = false;
+          }            
+        }
+
         //printf("%i %i\n",p->periodPhase,p->periodFrmN);
         
-        if( p->periodPhase >= p->periodFrmN )
+        if( p->delayFl==false && p->periodPhase >= p->periodFrmN )
         {
           p->periodPhase -= p->periodFrmN;
           
@@ -4614,6 +4824,9 @@ namespace cw
         kRepeatPId,
         kModePId,
         kOutTypePId,
+        kUprLimPId,
+        kLwrLimPId,
+        kLimitPId,
         kOutPId
       };
 
@@ -4631,10 +4844,8 @@ namespace cw
         bool trig_val;
         bool delta_fl;
 
-        bool reset_val;
-        bool reset_fl;
-
         bool done_fl;
+        unsigned iter_cnt;
 
         double dir;
         
@@ -4675,7 +4886,6 @@ namespace cw
 
         if((rc = var_register_and_get(proc, kAnyChIdx,
                                       kTriggerPId, "trigger", kBaseSfxId, p->trig_val,
-                                      kResetPId,   "reset",   kBaseSfxId, p->reset_val,
                                       kInitPId,    "init",    kBaseSfxId, init_val,
                                       kModePId,    "mode",    kBaseSfxId, mode_label,
                                       kOutTypePId, "out_type",kBaseSfxId, out_type_label)) != kOkRC )
@@ -4685,10 +4895,14 @@ namespace cw
                                       
         
         if((rc = var_register(proc, kAnyChIdx,
-                              kMinPId,     "min",     kBaseSfxId,
-                              kMaxPId,     "max",     kBaseSfxId,
-                              kIncPId,     "inc",     kBaseSfxId,
-                              kRepeatPId,  "repeat_fl",  kBaseSfxId)) != kOkRC )
+                              kMinPId,     "min",       kBaseSfxId,
+                              kMaxPId,     "max",       kBaseSfxId,
+                              kIncPId,     "inc",       kBaseSfxId,
+                              kRepeatPId,  "repeat_fl", kBaseSfxId,
+                              kResetPId,   "reset",     kBaseSfxId,
+                              kUprLimPId,  "upr_lim",   kBaseSfxId,
+                              kLwrLimPId,  "lwr_lim",   kBaseSfxId,
+                              kLimitPId,   "limit",     kBaseSfxId)) != kOkRC )
         {
           goto errLabel;
         }
@@ -4706,7 +4920,7 @@ namespace cw
           goto errLabel;
         }
 
-        if((rc = var_set( proc, kOutPId, kAnyChIdx, 0u )) != kOkRC )
+        if((rc = var_set( proc, kOutPId, kAnyChIdx, init_val )) != kOkRC )
         {
           rc = cwLogError(rc,"Unable to set the initial counter value to %f.",init_val);
           goto errLabel;
@@ -4717,6 +4931,7 @@ namespace cw
           goto errLabel;
         
         p->dir = 1.0;
+        p->iter_cnt = 0;
         
       errLabel:
         return rc;
@@ -4741,6 +4956,7 @@ namespace cw
         {
           case kTriggerPId:
             {
+              /*
               bool v;
               if((rc = var_get(var,v)) == kOkRC )
               {
@@ -4749,6 +4965,9 @@ namespace cw
                 
                 p->trig_val = v;            
               }
+              */
+              p->delta_fl = true;
+              
             }
             break;
 
@@ -4758,6 +4977,13 @@ namespace cw
               if((rc = var_get(var,s)) == kOkRC )
                 rc = _string_to_mode_id(s,p->mode_id);
             }
+            break;
+
+          case kResetPId:
+            p->iter_cnt = 0;
+            p->dir      = 1.0;
+            p->delta_fl = false;
+            p->done_fl  = false;            
             break;
               
         }
@@ -4769,6 +4995,8 @@ namespace cw
       {
         rc_t rc      = kOkRC;
         inst_t* p = (inst_t*)proc->userPtr;
+        bool trig_upr_fl = false;
+        bool trig_lwr_fl = false;
         double cnt,inc,minv,maxv;        
         bool v;
 
@@ -4784,79 +5012,102 @@ namespace cw
          
         p->trig_val = v;
 
-        var_get(proc,kOutPId,kAnyChIdx,cnt);
-        var_get(proc,kIncPId,kAnyChIdx,inc);
-        var_get(proc,kMinPId,kAnyChIdx,minv);
-        var_get(proc,kMaxPId,kAnyChIdx,maxv);
+        p->iter_cnt += 1;
 
-        cnt += p->dir * inc;
-
-        //printf("%f %f %f\n",minv,cnt,maxv);
-
-        if( minv > cnt || cnt >= maxv )
+        if( p->iter_cnt == 1 )
         {
-          bool repeat_fl;
-          var_get(proc,kRepeatPId,kAnyChIdx,repeat_fl);
+          var_get(proc,kInitPId,kAnyChIdx,cnt);          
+        }
+        else
+        {        
+          var_get(proc,kOutPId,kAnyChIdx,cnt);
+          var_get(proc,kIncPId,kAnyChIdx,inc);
+          var_get(proc,kMinPId,kAnyChIdx,minv);
+          var_get(proc,kMaxPId,kAnyChIdx,maxv);
 
-          if( !repeat_fl )
-            p->done_fl = true;
-          else
+          cnt += p->dir * inc;
+
+          //printf("%f %f %f\n",minv,cnt,maxv);
+
+          if( minv > cnt || cnt >= maxv )
           {
-            if( cnt >= maxv)
-            {
-              switch( p->mode_id )
+            bool repeat_fl;
+            var_get(proc,kRepeatPId,kAnyChIdx,repeat_fl);
+
+            trig_upr_fl = cnt >= maxv;
+            trig_lwr_fl = cnt < minv;
+
+            if( !repeat_fl )
+              p->done_fl = true;
+            else
+            {              
+              if( cnt >= maxv)
               {
-                case kModuloModeId:
-                  while(cnt >= maxv )
-                    cnt = minv + (cnt-maxv);
-                  break;
+                switch( p->mode_id )
+                {
+                  case kModuloModeId:
+                    while(cnt >= maxv )
+                      cnt = minv + (cnt-maxv);
+                    break;
 
-                case kReverseModeId:
-                  p->dir = -1 * p->dir;
-                  while( cnt > maxv )
-                    cnt = maxv - (cnt-maxv);
-                  break;
+                  case kReverseModeId:
+                    p->dir = -1 * p->dir;
+                    while( cnt > maxv )
+                      cnt = maxv - (cnt-maxv);
+                    break;
 
-                case kClipModeId:
-                  cnt = maxv;
-                  break;
+                  case kClipModeId:
+                    cnt = maxv;
+                    break;
 
-                default:
-                  assert(0);
+                  default:
+                    assert(0);
                     
+                }
               }
-            }
 
-            if( cnt < minv)
-            {
-              switch( p->mode_id )
+              if( cnt < minv)
               {
-                case kModuloModeId:
-                  while( cnt < minv )
-                    cnt = maxv - (minv-cnt);
-                  break;
+                switch( p->mode_id )
+                {
+                  case kModuloModeId:
+                    while( cnt < minv )
+                      cnt = maxv - (minv-cnt);
+                    break;
                     
-                case kReverseModeId:
-                  p->dir = -1 * p->dir;
-                  while(cnt < minv )
-                    cnt = minv + (minv-cnt);
-                  break;
+                  case kReverseModeId:
+                    p->dir = -1 * p->dir;
+                    while(cnt < minv )
+                      cnt = minv + (minv-cnt);
+                    break;
                     
-                case kClipModeId:
-                  cnt = minv;
-                  break;
+                  case kClipModeId:
+                    cnt = minv;
+                    break;
                     
-                default:
-                  assert(0);
+                  default:
+                    assert(0);
+                }                
               }                
             }
           }
         }
-
+        
         // if the counter has not reached it's terminal state
         if( !p->done_fl )
           var_set(proc,kOutPId,kAnyChIdx,cnt);
         
+        if( trig_upr_fl )
+          if((rc = var_set(proc, kUprLimPId, kAnyChIdx, true )) != kOkRC )
+            goto errLabel;
+
+        if( trig_lwr_fl )
+          if((rc = var_set(proc, kLwrLimPId, kAnyChIdx, true )) != kOkRC )
+            goto errLabel;
+
+        if( trig_upr_fl || trig_lwr_fl )
+          if((rc = var_set(proc, kLimitPId, kAnyChIdx, true )) != kOkRC )
+            goto errLabel;
 
       errLabel:
         return rc;
@@ -5685,6 +5936,7 @@ namespace cw
           default:
             //printf("[%i %i] ",proc->ctx->cycleIndex,var->vid);
 
+            /*
             if( var->vid == p->eolPId )
               _print_field(proc,p,p->inVarN,nullptr);
             else
@@ -5694,6 +5946,24 @@ namespace cw
                 _print_field(proc,p,var->vid - kBaseInPId,var->value);
               }
             }
+            */
+
+            if( var->vid == p->eolPId )
+            {              
+              for(unsigned vid = kBaseInPId; vid<p->inVarN; vid+=1 )
+              {
+                variable_t* v = nullptr;
+                
+                if(var_find(proc, vid, kAnyChIdx, v) != kOkRC )
+                  continue;
+                
+                _print_field(proc, p, vid - kBaseInPId, v->value);
+              }
+
+              _print_field(proc,p,p->inVarN,nullptr);
+
+            }
+            
         }
 
         // always report success - don't let print() interrupt the network
@@ -5715,6 +5985,238 @@ namespace cw
       };
       
     }    
+
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // Halt
+    //
+    namespace halt
+    {
+      enum {
+        kInPId
+      };
+      
+      typedef struct
+      {
+        bool halt_fl;
+      } inst_t;
+
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        return var_register(proc,kAnyChIdx,kInPId,"in",kBaseSfxId);
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        return kOkRC;
+      }
+
+      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+
+        if( proc->ctx->isInRuntimeFl && var->vid == kInPId )
+        {
+          p->halt_fl = true;
+        }
+        
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        return p->halt_fl ? kEofRC : kOkRC;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .value   = std_value<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }
+
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // midi_msg
+    //
+    namespace midi_msg
+    {
+      enum {
+        kChPId,
+        kStatusPId,
+        kD0_PId,
+        kD1_PId,
+        kTriggerPId,
+        kBufCntPId,
+        kOutPId
+      };
+      
+      typedef struct
+      {
+        midi::ch_msg_t* msgA;
+        unsigned        msgN;
+        unsigned        msg_idx;
+
+        uint8_t ch;
+        uint8_t status;
+        uint8_t d0;
+        uint8_t d1;
+        
+      } inst_t;
+
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;        
+
+        if((rc                                                    = var_register(proc,kAnyChIdx,
+                              kChPId,"ch",kBaseSfxId,
+                              kStatusPId,"status",kBaseSfxId,
+                              kD0_PId,"d0",kBaseSfxId,
+                              kD1_PId,"d1",kBaseSfxId,
+                              kTriggerPId,"trigger",kBaseSfxId)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((rc = var_register_and_get(proc,kAnyChIdx,kBufCntPId,"buf_cnt",kBaseSfxId,p->msgN)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        p->msgA = mem::allocZ<midi::ch_msg_t>(p->msgN);
+
+        // create one output MIDI buffer
+        rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, 0  );
+
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        mem::release(p->msgA);
+        return kOkRC;
+      }
+
+      rc_t _set_midi_byte_value( proc_t* proc, inst_t* p, unsigned vid, const char* label, uint8_t max_val, uint8_t& midi_byte_ref )
+      {
+        rc_t rc;
+        unsigned v;
+
+        if((rc = var_get(proc,vid,kAnyChIdx,v)) != kOkRC )
+          goto errLabel;
+
+        if( 0 <= v && v <= max_val )
+          midi_byte_ref = (uint8_t)v;
+        else
+        {
+          rc = cwLogError(kInvalidArgRC,"MIDI %s value (%i) is out of range 0-%i.",label,v,max_val);
+          goto errLabel;
+        }
+        
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _store_msg( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+        
+        if( p->msg_idx >= p->msgN )
+          rc = cwLogError(kBufTooSmallRC,"MIDI buffer overflow.");
+        else
+        {
+          midi::ch_msg_t* m = p->msgA + p->msg_idx;
+          time::setZero(m->timeStamp);
+          m->devIdx  = kInvalidIdx;
+          m->portIdx = 0;
+          m->uid     = 0;
+          m->ch      = p->ch;
+          m->status  = p->status;
+          m->d0      = p->d0;
+          m->d1      = p->d1;
+        
+          p->msg_idx += 1;
+        }
+        
+        return rc;
+      }
+      
+      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+
+        switch( var->vid )
+        {
+          case kChPId:
+            rc = _set_midi_byte_value(proc,p,kChPId,"channel",midi::kMidiChCnt,p->ch);
+            break;
+            
+          case kStatusPId:
+            rc = _set_midi_byte_value(proc,p,kStatusPId,"status",255,p->status);
+            break;
+            
+          case kD0_PId:
+            rc = _set_midi_byte_value(proc,p,kD0_PId,"d0",127,p->d0);                        
+            break;
+            
+          case kD1_PId:
+            rc = _set_midi_byte_value(proc,p,kD0_PId,"d1",127,p->d1);                        
+            break;
+            
+          case kTriggerPId:
+            rc = _store_msg(proc,p);
+            break;            
+        }
+        
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t     rc           = kOkRC;
+
+        mbuf_t*  mbuf         = nullptr;
+
+        // get the output variable
+        if((rc = var_get(proc,kOutPId,kAnyChIdx,mbuf)) != kOkRC )
+          rc = cwLogError(kInvalidStateRC,"The MIDI file instance '%s' does not have a valid MIDI output buffer.",proc->label);
+        else
+        {
+          mbuf->msgN = p->msg_idx;
+          mbuf->msgA = p->msg_idx > 0 ? p->msgA : nullptr;
+        }
+
+        p->msg_idx = 0;
+        
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .value   = std_value<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    
+    
     
   } // flow
 } // cw
