@@ -941,11 +941,15 @@ resolvable without more information.
 
 ### TODO:
 
+- Add a 'doc' string-list to the class desc.
+
 - When a var value is given to var_create() it does not appear to channelize the
 var if value is a list.  Is a value ever given directly to `var_create()`?
 Look at all the places `var_create()` is called can the value arg. be removed?
 
-- Remove `preset_label` and `type_src_label` from `_var_channelize()` and report error
+- var_channelize() should never be called at runtime.
+
+- DONE: Remove `preset_label` and `type_src_label` from `_var_channelize()` and report error
 locations from the point of call.
 
 - Re-write the currawong circuit with caw.
@@ -962,6 +966,10 @@ coeff's are instantiated even if they are not referenced.
 
 - Issue a warning if memory is allocated during runtime.
 
+- String assignment is allocating  memory:
+   See: `rc_t _val_set( value_t* val, const char* v ) cwFlowTypes.cpp line:464.`
+
+
 - DONE: Add the `caw` examples to the test suite.
 
 - Check for illegal variable names in class descriptions.  (no periods, trailing digits, or trailing underscores)
@@ -977,7 +985,9 @@ coeff's are instantiated even if they are not referenced.
   the previous channel is duplicated in var_channelize())
 
 
-- Class presets cannot address 'mult' variables (maybe this is ok since 'mult' variables are generally connected to a source.).
+- Class presets cannot address 'mult' variables. Maybe this is ok since 'mult' variables are generally connected to a source?
+... although 'gain' mult variables are not necessarily connected to a source see: `audio_split` or `audio_mix`.
+Has this problem been addressed by allowing mult variables to be instantiated in the 'args' statement?
 
 - Documentation w/ examples.
   + Write the rules for each implementing member function.
@@ -986,9 +996,6 @@ coeff's are instantiated even if they are not referenced.
 value should not be updated and distinguish it from an error code - which should stop the system.
 
 - flow classes and variable should have a consistent naming style: camelCase or snake_case.
-
--  String assignment is allocating  memory:
-   See: `rc_t _val_set( value_t* val, const char* v ) cwFlowTypes.cpp line:464.`
 
 
 - Variable attributes should be meaningful. e.g. src,src_opt,mult,init, ....
@@ -1033,7 +1040,7 @@ value should not be updated and distinguish it from an error code - which should
 - Look more closely at the way of identify an in-stmt src-net or a out-stmt in-net.
 It's not clear there is a difference between specifying  `_` and the default behaviour.
 Is there a way to tell it to search the entire network from the root? Isn't that 
-what '_' is supposed to do.
+what '_' is supposed to do?
 
 Host Environments:
 ------------------
