@@ -963,7 +963,7 @@ namespace cw
           // verify that the remote_value type is included in the local_value type flags
           if( cwIsNotFlag(local_var->varDesc->type, remote_var->varDesc->type) )
           {
-            rc = cwLogError(kSyntaxErrorRC,"The type flags don't match on %s:%s:%i %s:%s:%i.%s:%i .", local_label,local_var_label, local_var_sfx_id, remote_label, remote_proc_label, remote_proc_sfx_id, remote_var_label, remote_var_sfx_id);        
+            rc = cwLogError(kSyntaxErrorRC,"The type flags don't match on %s:%s:%i (type:0x%x) %s:%s:%i.%s:%i (type:0x%x).", local_label,local_var_label, local_var_sfx_id, local_var->varDesc->type, remote_label, remote_proc_label, remote_proc_sfx_id, remote_var_label, remote_var_sfx_id, remote_var->varDesc->type);        
             goto errLabel;                
           }
 
@@ -2956,17 +2956,23 @@ const cw::object_t* cw::flow::find_network_preset( const network_t& net, const c
 cw::rc_t cw::flow::exec_cycle( network_t& net )
 {
   rc_t rc = kOkRC;
+  bool halt_fl = false;
 
   for(unsigned i=0; i<net.proc_arrayN; ++i)
   {
     if((rc = net.proc_array[i]->class_desc->members->exec(net.proc_array[i])) != kOkRC )
     {
-      rc = cwLogError(rc,"Execution failed on the proc:%s:%i.",cwStringNullGuard(net.proc_array[i]->label),net.proc_array[i]->label_sfx_id);
-      break;
+      if( rc == kEofRC )
+        halt_fl = true;
+      else
+      {
+        rc = cwLogError(rc,"Execution failed on the proc:%s:%i.",cwStringNullGuard(net.proc_array[i]->label),net.proc_array[i]->label_sfx_id);
+        break;
+      }
     }
   }
       
-  return rc;
+  return halt_fl ? kEofRC : rc;
 }
 
 cw::rc_t cw::flow::get_variable( network_t& net, const char* proc_label, const char* var_label, unsigned chIdx, proc_t*& procPtrRef, variable_t*& varPtrRef )
