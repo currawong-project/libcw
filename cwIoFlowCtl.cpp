@@ -79,6 +79,8 @@ namespace cw
       unsigned        pgm_idx;   // current program index
       flow::handle_t  flowH;     //
       char*           proj_dir;  // current project directory
+
+      bool            done_fl;
     } io_flow_ctl_t;
 
     io_flow_ctl_t* _handleToPtr( handle_t h )
@@ -422,6 +424,13 @@ namespace cw
       // Get an array of incoming MIDI events which have occurred since the last call to 'io::midiDeviceBuffer()'
       unsigned midiBufMsgCnt        = 0;
       const midi::ch_msg_t* midiBuf = midiDeviceBuffer(p->ioH,midiBufMsgCnt);
+      
+      if( p->done_fl )
+      {
+        rc = cwLogError(kInvalidStateRC,"Cannot execute an already completed program.");
+        goto errLabel;
+      }
+
 
       // Give each MIDI input device a pointer to the incoming MIDI msgs
       for(unsigned i=0; i<p->deviceN; ++i)
@@ -469,7 +478,14 @@ namespace cw
 
 
       // update the flow network - this will generate audio into the output audio buffers
-      flow::exec_cycle(p->flowH);
+      if((rc = flow::exec_cycle(p->flowH)) != kOkRC )
+      {
+        if( rc == kEofRC )
+        {
+          p->done_fl = true;
+          rc = kOkRC;
+        }
+      }
       
 
       // if there are empty output (playback) buffers
@@ -632,6 +648,7 @@ cw::rc_t    cw::io_flow_ctl::program_load(  handle_t h, unsigned pgm_idx )
   }
 
   p->pgm_idx = pgm_idx;
+  p->done_fl = false;
 
 errLabel:
   return rc;
@@ -678,11 +695,25 @@ cw::rc_t    cw::io_flow_ctl::exec_nrt( handle_t h )
     rc = cwLogWarning("No program is loaded.");
     goto errLabel;
   }
+
+  if( p->done_fl )
+  {
+    rc = cwLogError(kInvalidStateRC,"Cannot execute an already completed program.");
+    goto errLabel;
+  }
   
   if((rc = exec( p->flowH )) != kOkRC )
   {
-    rc = cwLogError(rc,"%s execution failed.", cwStringNullGuard(p->pgmA[p->pgm_idx].label));
-    goto errLabel;
+    if(rc == kEofRC )
+    {
+      p->done_fl = true;
+      rc = kOkRC;
+    }
+    else
+    {
+      rc = cwLogError(rc,"%s execution failed.", cwStringNullGuard(p->pgmA[p->pgm_idx].label));
+      goto errLabel;
+    }
   }
   
 errLabel:
@@ -713,7 +744,7 @@ cw::rc_t cw::io_flow_ctl::exec( handle_t h, const io::msg_t& msg )
   {
   case io::kAudioTId:
     if( msg.u.audio != nullptr )
-      _audio_callback(p,*msg.u.audio);
+      rc = _audio_callback(p,*msg.u.audio);
     break;
 
   default:
@@ -723,6 +754,22 @@ cw::rc_t cw::io_flow_ctl::exec( handle_t h, const io::msg_t& msg )
 
   return rc;
 }
+
+bool cw::io_flow_ctl::is_executable( handle_t h )
+{
+  io_flow_ctl_t* p  = _handleToPtr(h);
+
+  // A program must be loaded and execution cannot be complete
+  return p->pgm_idx != kInvalidIdx && p->done_fl==false;
+}
+
+bool cw::io_flow_ctl::is_exec_complete( handle_t h )
+{
+  io_flow_ctl_t* p  = _handleToPtr(h);
+
+  return p->done_fl;
+}
+
 
 void cw::io_flow_ctl::report( handle_t h )
 {  

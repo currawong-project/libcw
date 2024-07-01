@@ -39,6 +39,9 @@ namespace cw
     // Handle an incoming IO msg.
     rc_t exec( handle_t h, const io::msg_t& msg );
 
+    bool is_executable( handle_t h );
+    bool is_exec_complete( handle_t h );
+
     void report( handle_t h );
     void print_network( handle_t h );
  
