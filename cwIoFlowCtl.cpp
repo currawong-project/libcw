@@ -166,12 +166,14 @@ namespace cw
       rc_t rc = kOkRC;
       const char*     proc_cfg_fname   = nullptr;
       const char*     subnet_cfg_fname = nullptr;
+      const char*     io_cfg_fname     = nullptr;
       const object_t* pgmL             = nullptr;
       
       // parse the cfg parameters
       if((rc = cfg->readv("base_dir",    kReqFl,   p->base_dir,
                           "proc_dict",   kReqFl,   proc_cfg_fname,
-                          "subnet_dict", kReqFl,   subnet_cfg_fname,                            
+                          "subnet_dict", kReqFl,   subnet_cfg_fname,
+                          "io_dict",     kOptFl,   io_cfg_fname,
                           "programs",    kDictTId, pgmL)) != kOkRC )
       {
         rc = cwLogError(rc,"'caw' system parameter processing failed.");
