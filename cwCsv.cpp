@@ -8,6 +8,7 @@
 #include "cwObject.h"
 #include "cwCsv.h"
 #include "cwNumericConvert.h"
+#include <type_traits>
 
 namespace cw
 {
@@ -263,6 +264,8 @@ namespace cw
         goto errLabel;
       }
 
+      
+
       fieldStr_Ref = p->lineBuf + p->colA[colIdx].char_idx;
 
     errLabel:
@@ -275,16 +278,28 @@ namespace cw
     {
       rc_t rc = kOkRC;
       const char* fieldStr = nullptr;
-  
+      
       if((rc = _get_field_str(p,colIdx,fieldStr)) != kOkRC )
         goto errLabel;
 
-      if((rc = string_to_number(fieldStr,valueRef)) != kOkRC )
+      if( fieldStr != nullptr )
       {
-        rc = cwLogError(rc,"Numeric parse failed on column '%s' on line index:%i",cwStringNullGuard(p->colA[colIdx].title),p->curLineIdx);
-        goto errLabel;
-      }
+        // advance past white space
+        while( *fieldStr && isspace(*fieldStr) )
+          ++fieldStr;
 
+        // the first char must be a number or decimal point
+        if( isdigit(*fieldStr) || (*fieldStr=='.' && std::is_floating_point<T>()) )
+        {    
+        
+          if((rc = string_to_number(fieldStr,valueRef)) != kOkRC )
+          {
+            rc = cwLogError(rc,"Numeric parse failed on column '%s' on line index:%i",cwStringNullGuard(p->colA[colIdx].title),p->curLineIdx);
+            goto errLabel;
+          }
+        }
+      }
+          
     errLabel:
       return rc;      
     }
