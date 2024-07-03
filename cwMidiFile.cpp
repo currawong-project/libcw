@@ -9,6 +9,7 @@
 #include "cwMidi.h"
 #include "cwMidiFile.h"
 #include "cwText.h"
+#include "cwCsv.h"
 
 #ifdef cwBIG_ENDIAN
 #define mfSwap16(v)  (v)
@@ -684,6 +685,14 @@ namespace cw
   
       }
 
+      void _init( file_t* p, unsigned trkN, unsigned ticksPerQN )
+      {
+        p->ticksPerQN = ticksPerQN;
+        p->fmtId      = 1;
+        p->trkN       = trkN;
+        p->trkV       = mem::allocZ<track_t>(p->trkN);
+      }
+      
       rc_t _write8( file_t* mfp, unsigned char v )
       {
         rc_t rc = kOkRC;
@@ -1309,19 +1318,116 @@ cw::rc_t cw::midi::file::open( handle_t& hRef, const char* fn ){
   return rc;
 }
 
+cw::rc_t cw::midi::file::open_csv( handle_t& hRef, const char* csv_fname )
+{
+  rc_t rc = kOkRC;
+  csv::handle_t csvH;
+  
+  const char* titleA[] = { "uid","tpQN","bpm","dticks","ch","status","d0","d1" };
+  unsigned    titleN   = sizeof(titleA)/sizeof(titleA[0]);
+  
+  unsigned    TpQN     = 1260;
+  unsigned    BpM      = 60;
+  unsigned    lineN    = 0;
+  unsigned    line_idx = 0;
+  
+  double      asecs    = 0;
+  
+  unsigned    uid      = kInvalidId;
+  unsigned    dtick    = 0;
+  unsigned    ch       = 0;
+  unsigned    status   = 0;
+  unsigned    d0       = 0;
+  unsigned    d1       = 0;
+  file_t*     p        = nullptr;
+
+  unsigned aticks = 0;
+  
+  if((rc = _create(hRef)) != kOkRC )
+    goto errLabel;
+
+  if((p = _handleToPtr(hRef)) == nullptr )
+    goto errLabel;
+    
+  if((rc = csv::create(csvH,csv_fname,titleA,titleN)) != kOkRC )
+  {
+    rc = cwLogError(rc,"MIDI CSV file open failed.");
+    goto errLabel;
+  }
+
+  if((rc = line_count(csvH,lineN)) != kOkRC )
+  {
+    rc = cwLogError(rc,"MIDI CSV line count access failed.");
+    goto errLabel;
+  }
+
+  
+  for(; (rc = next_line(csvH)) == kOkRC; ++line_idx )
+  {
+    if((rc = getv(csvH,"uid",uid,"tpQN",TpQN,"bpm",BpM,"dticks",dtick,"ch",ch,"status",status,"d0",d0,"d1",d1)) != kOkRC )
+    {
+      cwLogError(rc,"Error reading CSV line %i.",line_idx+1);
+      goto errLabel;
+    }
+
+    //printf("%i %i tpqn:%i bpm:%i dtick:%i ch:%i st:%i d0:%i d1:%i\n",line_idx,uid,TpQN,BpM,dtick,ch,status,d0,d1);
+    
+    double ticks_per_sec = TpQN * BpM / 60;
+    double dsecs         = dtick * ticks_per_sec;
+
+    asecs += dsecs;
+    
+    if( line_idx == 0 )
+      _init(p,1,TpQN);
+
+    aticks += dtick;
+        
+    if( BpM != 0 )
+    {
+      if((rc = insertTrackTempoMsg(hRef, 0, aticks, BpM )) != kOkRC )
+      {
+        rc = cwLogError(rc,"BPM insert failed.");
+        goto errLabel;
+      }
+    }
+
+    if( status != 0 )
+    {
+      if((rc = insertTrackChMsg(hRef, 0, aticks, ch+status, d0, d1 )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Channel msg insert failed.");
+        goto errLabel;
+      }
+    }
+    
+    TpQN = 0;
+    BpM  = 0;
+    
+  }
+  
+  if( rc == kEofRC )
+    rc = kOkRC;
+  
+errLabel:
+    
+  if( rc != kOkRC )
+    close(hRef);
+    
+  destroy(csvH);
+  return rc;
+}
+
+
 cw::rc_t cw::midi::file::create( handle_t& hRef, unsigned trkN, unsigned ticksPerQN )
 {
   rc_t       rc     = kOkRC;  
 
   if((rc = _create(hRef)) != kOkRC )
     return rc;
-  
+
   file_t* p    = _handleToPtr(hRef);
 
-  p->ticksPerQN = ticksPerQN;
-  p->fmtId      = 1;
-  p->trkN       = trkN;
-  p->trkV       = mem::allocZ<track_t>(p->trkN);
+  _init(p,trkN,ticksPerQN);
   
   return rc;
 }
@@ -2548,6 +2654,7 @@ cw::rc_t cw::midi::file::test( const object_t* cfg )
 
       if( textIsEqual(o->pair_label(),"rpt_beg_end") )
         rc = _testRptBeginEnd(o->pair_value());
+
     }
   }
   
