@@ -198,6 +198,7 @@ namespace cw
       switch( v->tflag & kTypeMask )
       {
         case kInvalidTFl:
+          cwLogPrint("<invalid>");
           break;
           
         case kBoolTFl:
@@ -2620,6 +2621,40 @@ cw::rc_t cw::flow::var_set( proc_t* proc, unsigned vid, unsigned chIdx, const ch
   
   return rc;    
 }
+
+cw::rc_t cw::flow::var_set( proc_t* proc, unsigned vid, unsigned chIdx, abuf_t* val )
+{
+  rc_t        rc  = kOkRC;
+  variable_t* var = nullptr;
+  
+  if((rc = var_find(proc, vid, chIdx, var )) == kOkRC )
+    rc = _var_set_driver(var,kABufTFl,val);
+  
+  return rc;    
+}
+
+cw::rc_t cw::flow::var_set( proc_t* proc, unsigned vid, unsigned chIdx, fbuf_t* val )
+{
+  rc_t        rc  = kOkRC;
+  variable_t* var = nullptr;
+  
+  if((rc = var_find(proc, vid, chIdx, var )) == kOkRC )
+    rc = _var_set_driver(var,kFBufTFl,val);
+  
+  return rc;    
+}
+
+cw::rc_t cw::flow::var_set( proc_t* proc, unsigned vid, unsigned chIdx, mbuf_t* val )
+{
+  rc_t        rc  = kOkRC;
+  variable_t* var = nullptr;
+  
+  if((rc = var_find(proc, vid, chIdx, var )) == kOkRC )
+    rc = _var_set_driver(var,kMBufTFl,val);
+  
+  return rc;    
+}
+
 
 cw::rc_t cw::flow::var_set( proc_t* proc, unsigned vid, unsigned chIdx, const object_t* val )
 {

@@ -704,6 +704,7 @@ namespace cw
     rc_t var_set( proc_t* proc, unsigned vid, unsigned chIdx, const char* val );
     rc_t var_set( proc_t* proc, unsigned vid, unsigned chIdx, abuf_t* val );
     rc_t var_set( proc_t* proc, unsigned vid, unsigned chIdx, fbuf_t* val );
+    rc_t var_set( proc_t* proc, unsigned vid, unsigned chIdx, mbuf_t* val );
     rc_t var_set( proc_t* proc, unsigned vid, unsigned chIdx, const object_t* val );
 
     
