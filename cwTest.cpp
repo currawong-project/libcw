@@ -390,7 +390,7 @@ namespace cw
       rc_t rc = kOkRC;
       char* cfg_fname;
       object_t* test_cases_cfg = nullptr;
-      const char* orig_base_dir = test.base_dir;
+      //const char* orig_base_dir = test.base_dir;
       char* new_base_dir = nullptr;
       
       if((cfg_fname = filesys::makeFn(test.base_dir, fname, nullptr, nullptr )) == nullptr )
@@ -531,7 +531,7 @@ namespace cw
 
 cw::rc_t cw::test::test( const struct object_str* cfg, int argc, const char** argv )
 {
-  test_t test = {};
+  test_t test{};
   rc_t rc = kOkRC;
   
   if((rc = _parse_args(test, cfg, argc, argv )) != kOkRC )
@@ -560,4 +560,36 @@ errLabel:
 
 }
 
+cw::rc_t cw::test::test( const char* fname, int argc, const char** argv )
+{
+  rc_t           rc             = kOkRC;
+  object_t*      cfg            = nullptr;
+  const object_t* test_dict      = nullptr;
+  const object_t* test_test_dict = nullptr;
+  
+  if((rc = objectFromFile(fname,cfg)) != kOkRC )
+  {
+    rc = cwLogError(rc,"Parsing failed on the test cfg file '%s'.",cwStringNullGuard(fname));
+    goto errLabel;
+  }
+
+  if((rc = cfg->get("test",test_dict)) != kOkRC )
+  {
+    goto errLabel;
+  }
+
+  if((rc = test_dict->get("test",test_test_dict)) != kOkRC )
+  {
+    goto errLabel;
+  }
+
+  rc = test(test_test_dict,argc,argv);
+
+errLabel:
+
+  if( cfg != nullptr )
+    cfg->free();
+  
+  return rc;
+}
 

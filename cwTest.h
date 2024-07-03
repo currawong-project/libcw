@@ -24,6 +24,7 @@ namespace cw
     typedef rc_t (*test_func_t)(const test_args_t& args);
     
     rc_t test( const struct object_str* cfg, int argc, const char** argv );
+    rc_t test( const char* cfg_fname,        int argc, const char** argv );
   
   }
 }
