@@ -66,6 +66,8 @@ namespace cw
       { "print",           &print::members },
       { "halt",            &halt::members },
       { "midi_msg",        &midi_msg::members },
+      { "midi_file",       &midi_file::members },
+      { "midi_merge",      &midi_merge::members },
       { nullptr, nullptr }
     };
 

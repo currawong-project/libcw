@@ -14,7 +14,7 @@
 #include "cwTime.h"
 #include "cwMidiDecls.h"
 #include "cwMidi.h"
-
+#include "cwMidiFile.h"
 
 #include "cwFlowDecl.h"
 #include "cwFlow.h"
@@ -554,65 +554,76 @@ namespace cw
     {
       enum
       {
-        kInPId,
         kDevLabelPId,
-        kPortLabelPId
+        kPortLabelPId,
+        kBufMsgCntPId,
+        kInPId,
       };
       
       typedef struct
       {
         external_device_t* ext_dev;
+        
+        unsigned           inVarN;
+        
+        unsigned           msgN;
+        midi::ch_msg_t*    msgA;
+        unsigned           msg_idx;        
       } inst_t;
       
-      rc_t create( proc_t* proc )
+      rc_t _create( proc_t* proc, inst_t* p )
       {
         rc_t        rc         = kOkRC; //
-        inst_t*     inst       = mem::allocZ<inst_t>(); //
         const char* dev_label  = nullptr;
         const char* port_label = nullptr;
+        unsigned    inVarN     = var_mult_count(proc,"in");
         mbuf_t*     mbuf       = nullptr;
-        
-        proc->userPtr = inst;
+        unsigned    sfxIdA[ inVarN ];
+          
+        // get the the sfx_id's of the input audio variables 
+        if((rc = var_mult_sfx_id_array(proc, "in", sfxIdA, inVarN, p->inVarN )) != kOkRC )
+          goto errLabel;
+
+        std::sort(sfxIdA, sfxIdA + p->inVarN, [](unsigned& a,unsigned& b){ return a<b; } );
+
         
         // Register variables and get their current value
         if((rc = var_register_and_get( proc, kAnyChIdx,
                                        kDevLabelPId, "dev_label",  kBaseSfxId, dev_label,
                                        kPortLabelPId,"port_label", kBaseSfxId, port_label,
-                                       kInPId,       "in",         kBaseSfxId, mbuf)) != kOkRC )
+                                       kInPId,       "in",         kBaseSfxId, mbuf,
+                                       kBufMsgCntPId,"buf_cnt",    kBaseSfxId, p->msgN )) != kOkRC )
         {
           goto errLabel;
         }
+        
 
-        if((inst->ext_dev = external_device_find( proc->ctx, dev_label, kMidiDevTypeId, kOutFl, port_label )) == nullptr )
+        if((p->ext_dev = external_device_find( proc->ctx, dev_label, kMidiDevTypeId, kOutFl, port_label )) == nullptr )
         {
           rc = cwLogError(kOpFailRC,"The audio output device description '%s' could not be found.", cwStringNullGuard(dev_label));
           goto errLabel;
-        }        
+        }
+
+        p->msgA = mem::allocZ<midi::ch_msg_t>(p->msgN);
 
       errLabel:
         return rc;
       }
 
-      rc_t destroy( proc_t* proc )
+      rc_t _destroy( proc_t* proc, inst_t* p )
       {
-        rc_t    rc   = kOkRC;
-        inst_t* inst = (inst_t*)proc->userPtr;
-
-        mem::release(inst);
-
-        return rc;
+        mem::release(p->msgA);
+        return kOkRC;
       }
 
-      rc_t value( proc_t* proc, variable_t* var )
+      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
       {
-        rc_t rc = kOkRC;
-        return rc;
+        return kOkRC;
       }
       
-      rc_t exec( proc_t* proc )
+      rc_t _exec( proc_t* proc, inst_t* p )
       {
-        rc_t          rc     = kOkRC;
-        inst_t*       inst   = (inst_t*)proc->userPtr;
+        rc_t          rc       = kOkRC;
         const mbuf_t* src_mbuf = nullptr;
 
         if((rc = var_get(proc,kInPId,kAnyChIdx,src_mbuf)) != kOkRC )
@@ -622,26 +633,26 @@ namespace cw
           for(unsigned i=0; i<src_mbuf->msgN; ++i)
           {            
             const midi::ch_msg_t* m = src_mbuf->msgA + i;
-            inst->ext_dev->u.m.sendTripleFunc( inst->ext_dev, m->ch, m->status, m->d0, m->d1 );
+            p->ext_dev->u.m.sendTripleFunc( p->ext_dev, m->ch, m->status, m->d0, m->d1 );
           }
         }
         
         return rc;
       }
 
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
       class_members_t members = {
-        .create = create,
-        .destroy = destroy,
-        .value = value,
-        .exec = exec,
-        .report = nullptr
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .value   = std_value<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
       };
       
     }
 
-
-
-    
     
     //------------------------------------------------------------------------------------------------------------------
     //
@@ -1306,7 +1317,7 @@ namespace cw
         // there must be one in->out map for each input channel
         if(( selListN = selList->child_count()) != abuf->chN )
         {
-          rc = cwLogError(kInvalidArgRC,"The 'audio_split' selection list must be the same length as the count of input channels.");
+          rc = cwLogError(kInvalidArgRC,"The 'audio_split' selection list must be the same length as the count of input channels:%i.",abuf->chN);
           goto errLabel;
         }
 
@@ -2005,6 +2016,103 @@ namespace cw
       
     }    
     
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // audio_marker
+    //
+    namespace audio_marker
+    {
+      enum
+      {
+        kInPId,
+        kTriggerPId,
+        kOutPId
+      };
+
+      typedef struct inst_str
+      {
+        bool trig_fl;
+      } inst_t;
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t          rc     = kOkRC;
+        const abuf_t* abuf    = nullptr; //
+        proc->userPtr = mem::allocZ<inst_t>();
+
+        // get the source audio buffer
+        if((rc = var_register_and_get(proc, kAnyChIdx,kInPId,"in",kBaseSfxId,abuf )) != kOkRC )
+          goto errLabel;
+
+        // register the marker input 
+        if((rc = var_register( proc, kAnyChIdx, kTriggerPId, "trigger", kBaseSfxId )) != kOkRC )
+          goto errLabel;
+          
+        // create the output audio buffer
+        rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, abuf->srate, abuf->chN, abuf->frameN );
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        return kOkRC;
+      }
+
+      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        if( var->vid == kTriggerPId )
+          p->trig_fl = true;
+        
+        return kOkRC;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t          rc   = kOkRC;
+        const abuf_t* ibuf = nullptr;
+        abuf_t*       obuf = nullptr;
+        sample_t      mark = p->trig_fl ? 1 : 0;
+
+        p->trig_fl = false;
+        
+        // get the src buffer
+        if((rc = var_get(proc,kInPId, kAnyChIdx, ibuf )) != kOkRC )
+          goto errLabel;
+
+        // get the dst buffer
+        if((rc = var_get(proc,kOutPId, kAnyChIdx, obuf)) != kOkRC )
+          goto errLabel;          
+        
+        // for each channel
+        for(unsigned i=0; i<ibuf->chN; ++i)
+        {
+          sample_t* isig = ibuf->buf + i*ibuf->frameN;
+          sample_t* osig = obuf->buf + i*obuf->frameN;
+
+          // apply the marker
+          for(unsigned j=0; j<ibuf->frameN; ++j)
+            osig[j] = mark + isig[j];
+        }
+
+      errLabel:
+        return rc;
+      }
+
+      
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .value   = std_value<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }
     
     //------------------------------------------------------------------------------------------------------------------
     //
@@ -3527,104 +3635,6 @@ namespace cw
 
     //------------------------------------------------------------------------------------------------------------------
     //
-    // audio_marker
-    //
-    namespace audio_marker
-    {
-      enum
-      {
-        kInPId,
-        kMarkPId,
-        kOutPId
-      };
-
-      typedef struct inst_str
-      {
-        sample_t mark;
-      } inst_t;
-
-      rc_t create( proc_t* proc )
-      {
-        rc_t          rc     = kOkRC;
-        const abuf_t* abuf    = nullptr; //
-        proc->userPtr = mem::allocZ<inst_t>();
-
-        // get the source audio buffer
-        if((rc = var_register_and_get(proc, kAnyChIdx,kInPId,"in",kBaseSfxId,abuf )) != kOkRC )
-          goto errLabel;
-
-        // register the marker input 
-        if((rc = var_register_and_set( proc, kAnyChIdx, kMarkPId, "mark", kBaseSfxId, 0.0f )) != kOkRC )
-          goto errLabel;
-          
-        // create the output audio buffer
-        rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, abuf->srate, abuf->chN, abuf->frameN );
-
-      errLabel:
-        return rc;
-      }
-
-      rc_t destroy( proc_t* proc )
-      {
-        inst_t* inst = (inst_t*)(proc->userPtr);
-        mem::release(inst);
-        return kOkRC;
-      }
-
-      rc_t value( proc_t* proc, variable_t* var )
-      {
-        return kOkRC;
-      }
-
-      rc_t exec( proc_t* proc )
-      {
-        rc_t          rc   = kOkRC;
-        const abuf_t* ibuf = nullptr;
-        abuf_t*       obuf = nullptr;
-        //inst_t*       inst = (inst_t*)(proc->userPtr);
-        sample_t      mark = 1;
-
-        // get the src buffer
-        if((rc = var_get(proc,kInPId, kAnyChIdx, ibuf )) != kOkRC )
-          goto errLabel;
-
-        // get the dst buffer
-        if((rc = var_get(proc,kOutPId, kAnyChIdx, obuf)) != kOkRC )
-          goto errLabel;
-
-          
-        var_get(proc,kMarkPId,kAnyChIdx,mark);
-        
-        // for each channel
-        for(unsigned i=0; i<ibuf->chN; ++i)
-        {
-          sample_t* isig = ibuf->buf + i*ibuf->frameN;
-          sample_t* osig = obuf->buf + i*obuf->frameN;
-
-          // apply the marker
-          for(unsigned j=0; j<ibuf->frameN; ++j)
-            osig[j] = mark + isig[j];
-        }
-
-        var_set(proc,kMarkPId,kAnyChIdx,0.0f);
-        
-      errLabel:
-        return rc;
-      }
-
-      
-      class_members_t members = {
-        .create = create,
-        .destroy = destroy,
-        .value = value,
-        .exec = exec,
-        .report = nullptr
-      };
-      
-    }
-
-    //------------------------------------------------------------------------------------------------------------------
-    //
     // xfade_ctl
     //
     namespace xfade_ctl
@@ -4282,44 +4292,22 @@ namespace cw
       typedef struct
       {
         unsigned inVarN;
-        unsigned storeVarN;
-        unsigned baseStorePId;
         unsigned store_vid;
+        bool     send_fl;
       } inst_t;
 
       rc_t _create( proc_t* proc, inst_t* p )
       {
         rc_t        rc             = kOkRC;
         const char* out_type_label = nullptr;
-        unsigned    out_type_fl    = false;
+        unsigned    out_type_fl    = kInvalidTFl;
         variable_t* dum            = nullptr;
         unsigned    inVarN         = var_mult_count(proc,"in");
-        unsigned    storeVarN      = var_mult_count(proc,"store");
         unsigned    inSfxIdA[ inVarN ];
-        unsigned    storeSfxIdA[ storeVarN ];
 
         if((rc = var_register(proc,kAnyChIdx,kTriggerPId,"trigger",kBaseSfxId)) != kOkRC )
           goto errLabel;
 
-        // Get the output type label as a string
-        if((rc = var_register_and_get(proc,kAnyChIdx,kOutTypePId,"out_type",kBaseSfxId,out_type_label)) != kOkRC )
-        {
-          rc = cwLogError(rc,"Variable registration failed for the variable 'otype:0'.");;
-          goto errLabel;          
-        }
-              
-        // Get the type of the output as a flag
-        if(out_type_label==nullptr || (out_type_fl = value_type_label_to_flag( out_type_label )) == kInvalidTFl )
-        {
-          rc = cwLogError(kInvalidArgRC,"The output type '%s' is not a valid type.",cwStringNullGuard(out_type_label));
-          goto errLabel;
-        }
-
-        // Create the output variable
-        if((rc = var_create( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, out_type_fl, dum )) != kOkRC )
-        {
-          goto errLabel;
-        }
 
         // if there are no inputs
         if( inVarN == 0 )
@@ -4346,25 +4334,45 @@ namespace cw
           }
         }
 
-        p->baseStorePId = kInPId + p->inVarN;
-
-        // get the the sfx_id's of the 'store' variables 
-        if((rc = var_mult_sfx_id_array(proc, "store", storeSfxIdA, storeVarN, p->storeVarN )) != kOkRC )
-          goto errLabel;
         
-        // sort the 'store' id's in ascending order
-        std::sort(storeSfxIdA, storeSfxIdA + p->storeVarN, [](unsigned& a,unsigned& b){ return a<b; } );
-
-        // register each of the 'store' vars
-        for(unsigned i=0; i<p->storeVarN; ++i)
+        // Get the output type label as a string
+        if((rc = var_register_and_get(proc,kAnyChIdx,kOutTypePId,"out_type",kBaseSfxId,out_type_label)) != kOkRC )
         {
-          variable_t* dum;
-          if((rc = var_register(proc, "store", storeSfxIdA[i], p->baseStorePId+i, kAnyChIdx, nullptr, dum )) != kOkRC )
+          rc = cwLogError(rc,"Variable registration failed for the variable 'otype:0'.");;
+          goto errLabel;          
+        }
+
+
+        // if an explicit output type was not given ...
+        if( textIsEqual(out_type_label,"") )
+        {
+          // ... then get the type of the first input variable
+          if((rc = var_find(proc, kInPId, kAnyChIdx, dum )) != kOkRC )
           {
-            rc = cwLogError(rc,"Variable registration failed for the variable 'store:%i'.",storeSfxIdA[i]);;
             goto errLabel;
           }
+
+          // if the first input variable's type  has a valid type is not included in the 
+          if( dum->value != nullptr )
+            out_type_fl = (dum->value->tflag & kTypeMask) ;
         }
+        else
+        {
+          out_type_fl = value_type_label_to_flag( out_type_label );
+        }
+
+        if(out_type_fl == kInvalidTFl )
+        {
+          rc = cwLogError(kInvalidArgRC,"The output type '%s' is not a valid type.",cwStringNullGuard(out_type_label));
+          goto errLabel;
+        }
+                  
+        // Create the output variable
+        if((rc = var_create( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, out_type_fl, dum )) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
 
         p->store_vid = kInvalidId;
         
@@ -4377,32 +4385,24 @@ namespace cw
 
       rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
       {
-        rc_t rc = kOkRC;
         if( var->vid == kTriggerPId )
         {
-          variable_t* outVar = nullptr;
-          if((rc = var_find( proc, kOutPId, kAnyChIdx,  outVar )) != kOkRC )
-            goto errLabel;
-
-          if( outVar->value != nullptr )
-            var_set(outVar,outVar->value);
+          if( proc->ctx->isInRuntimeFl )
+            p->store_vid = kOutPId;
         }
         else
         {
           if( kInPId <= var->vid && var->vid < kInPId + p->inVarN )
           {
-            var_set( proc, kOutPId, kAnyChIdx, var->value );
-          }
-          else
-          {
-            if( p->baseStorePId <= var->vid && var->vid < p->baseStorePId + p->storeVarN )
+            if( proc->ctx->isInRuntimeFl )
             {
               p->store_vid = var->vid;
             }
-          }
+            else
+              var_set( proc, kOutPId, kAnyChIdx, var->value );
+          }          
         }
         
-      errLabel:
         return kOkRC;
       }
 
@@ -4414,11 +4414,10 @@ namespace cw
         {
           variable_t* var = nullptr;
           
-          // Set 'value' from 'store'.
           // Note that we set the 'value' directly from var->value so that
           // no extra type converersion is applied. In this case the value
           // 'store'  will be coerced to the type of 'value'
-          if((rc = var_find(proc, p->store_vid, kAnyChIdx, var )) == kOkRC && var->value != nullptr && is_connected_to_source(var) )
+          if((rc = var_find(proc, p->store_vid, kAnyChIdx, var )) == kOkRC && var->value != nullptr /*&& is_connected_to_source(var)*/ )
           {
             rc = var_set(proc,kOutPId,kAnyChIdx,var->value);
           }
@@ -4740,7 +4739,9 @@ namespace cw
               var_get(proc,kSratePId,kAnyChIdx,srate);
               
               if((rc = var_get(var,periodMs)) == kOkRC )
+              {
                 p->periodFrmN = _period_ms_to_frame_count( proc, p, srate, periodMs );
+              }
             }
             break;
 
@@ -5013,12 +5014,14 @@ namespace cw
         p->trig_val = v;
 
         p->iter_cnt += 1;
-
+        /*
         if( p->iter_cnt == 1 )
         {
           var_get(proc,kInitPId,kAnyChIdx,cnt);          
         }
         else
+        &*/
+        if(1)
         {        
           var_get(proc,kOutPId,kAnyChIdx,cnt);
           var_get(proc,kIncPId,kAnyChIdx,inc);
@@ -5524,7 +5527,7 @@ namespace cw
       {
         rc_t rc = kOkRC;
         inst_t* p = (inst_t*)(proc->userPtr);
-
+        
         if( !p->delta_fl )
           return rc;
 
@@ -5950,7 +5953,7 @@ namespace cw
 
             if( var->vid == p->eolPId )
             {              
-              for(unsigned vid = kBaseInPId; vid<p->inVarN; vid+=1 )
+              for(unsigned vid = kBaseInPId; vid<kBaseInPId + p->inVarN; vid+=1 )
               {
                 variable_t* v = nullptr;
                 
@@ -6139,7 +6142,7 @@ namespace cw
         else
         {
           midi::ch_msg_t* m = p->msgA + p->msg_idx;
-          time::setZero(m->timeStamp);
+          time::now(m->timeStamp);
           m->devIdx  = kInvalidIdx;
           m->portIdx = 0;
           m->uid     = 0;
@@ -6173,7 +6176,7 @@ namespace cw
             break;
             
           case kD1_PId:
-            rc = _set_midi_byte_value(proc,p,kD0_PId,"d1",127,p->d1);                        
+            rc = _set_midi_byte_value(proc,p,kD1_PId,"d1",127,p->d1);                        
             break;
             
           case kTriggerPId:
@@ -6187,12 +6190,11 @@ namespace cw
       rc_t _exec( proc_t* proc, inst_t* p )
       {
         rc_t     rc           = kOkRC;
-
         mbuf_t*  mbuf         = nullptr;
 
         // get the output variable
         if((rc = var_get(proc,kOutPId,kAnyChIdx,mbuf)) != kOkRC )
-          rc = cwLogError(kInvalidStateRC,"The MIDI file instance '%s' does not have a valid MIDI output buffer.",proc->label);
+          rc = cwLogError(kInvalidStateRC,"The MIDI msg. instance '%s' does not have a valid MIDI output buffer.",proc->label);
         else
         {
           mbuf->msgN = p->msg_idx;
@@ -6216,6 +6218,336 @@ namespace cw
       };
       
     }    
+    
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // midi_file
+    //
+    namespace midi_file
+    {
+      enum {
+        kMidiFileNamePId,
+        kCsvFileNamePId,
+        kDoneFlPId,
+        kOutPId
+      };
+      
+      typedef struct msg_str
+      {
+        unsigned       sample_idx;
+        midi::ch_msg_t* m;
+      } msg_t;
+        
+      typedef struct
+      {
+        midi::file::handle_t mfH;
+        msg_t*               msgA;
+        midi::ch_msg_t*      chMsgA;
+        unsigned             msgN;
+        unsigned             msg_idx;
+        unsigned             sample_idx;
+      } inst_t;
+
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t                           rc         = kOkRC;        
+        const char*                    midi_fname = nullptr;
+        const char*                    csv_fname  = nullptr;
+        const midi::file::trackMsg_t** tmA        = nullptr;
+        unsigned                       msgAllocN  = 0;
+        bool                           done_fl    = false;
+        time::spec_t                   asecs;
+
+        time::setZero(asecs);
+        
+        if((rc = var_register_and_get(proc,kAnyChIdx,
+                                      kMidiFileNamePId, "fname",     kBaseSfxId, midi_fname,
+                                      kCsvFileNamePId,  "csv_fname", kBaseSfxId, csv_fname,
+                                      kDoneFlPId,       "done_fl",   kBaseSfxId, done_fl)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if( midi_fname != nullptr && textLength(midi_fname) > 0 )
+        {
+          if((rc = midi::file::open(p->mfH,midi_fname)) != kOkRC )
+            goto errLabel;
+        }
+        else
+        {
+          if( csv_fname != nullptr && textLength(csv_fname)>0 )
+          {
+            if((rc = midi::file::open_csv(p->mfH,csv_fname)) != kOkRC )
+              goto errLabel;              
+          }
+          else
+          {
+            rc = cwLogError(kOpenFailRC,"No MIDI or CSV filename was given.");
+          }
+        }
+
+        // create one output MIDI buffer
+        rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, 0  );
+
+        tmA = msgArray(p->mfH);
+        
+        msgAllocN  = msgCount(p->mfH);        
+        p->msgA    = mem::allocZ<msg_t>(msgAllocN);
+        p->chMsgA  = mem::allocZ<midi::ch_msg_t>(msgAllocN);
+        p->msg_idx = 0;
+
+
+        for(unsigned i=0; i<msgAllocN; ++i)
+        {
+          const midi::file::trackMsg_t* tm = tmA[i];
+          msg_t*                        m  = p->msgA + p->msg_idx;
+          
+          m->m = p->chMsgA + p->msg_idx;
+
+          time::microsecondsToSpec( m->m->timeStamp, tmA[i]->amicro );
+
+          m->sample_idx = (unsigned)(proc->ctx->sample_rate * time::specToSeconds(m->m->timeStamp));
+          
+          m->m->devIdx  = 0;
+          m->m->portIdx = 0;
+          m->m->uid     = tmA[i]->uid;
+          
+          if( midi::isChStatus(tm->status) )
+          {
+            m->m->status = tmA[i]->status & 0xf0; 
+            m->m->ch     = tmA[i]->u.chMsgPtr->ch; 
+            m->m->d0     = tmA[i]->u.chMsgPtr->d0; 
+            m->m->d1     = tmA[i]->u.chMsgPtr->d1;
+
+            //printf("%lli %f %f %i %i ch:%i st:%i d0:%i d1:%i\n",tmA[i]->amicro/1000,secs,m->sample_idx/proc->ctx->sample_rate, p->msg_idx, m->m->uid, m->m->ch, m->m->status, m->m->d0, m->m->d1);
+                        
+            p->msg_idx += 1;
+          }
+        }
+
+        p->msgN    = p->msg_idx;
+        p->msg_idx = 0;
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        close(p->mfH);
+
+        return rc;
+      }
+
+      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t    rc      = kOkRC;
+        mbuf_t* mbuf    = nullptr;
+        bool    done_fl = false;
+
+        p->sample_idx += proc->ctx->framesPerCycle;
+
+        // get the output variable
+        if((rc = var_get(proc,kOutPId,kAnyChIdx,mbuf)) != kOkRC )
+          rc = cwLogError(kInvalidStateRC,"The MIDI file instance '%s' does not have a valid MIDI output buffer.",proc->label);
+        else
+        {
+          mbuf->msgA = nullptr;
+          mbuf->msgN = 0;
+                    
+          while( p->msg_idx < p->msgN && p->sample_idx >= p->msgA[p->msg_idx].sample_idx  )
+          {
+            if( mbuf->msgA == nullptr )
+              mbuf->msgA = p->msgA[p->msg_idx].m;
+              
+            mbuf->msgN += 1;
+
+            p->msg_idx += 1;
+
+            //printf("si:%i next:%i mi:%i\n",p->sample_idx,p->msgA[p->msg_idx].sample_idx,p->msg_idx);
+            
+            done_fl = p->msg_idx == p->msgN;
+
+          }
+
+          if( done_fl )
+            var_set(proc, kDoneFlPId, kAnyChIdx, true );
+          
+        }
+        
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .value   = std_value<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // midi_merge
+    //    
+    namespace midi_merge
+    {
+      enum
+      {
+        kOutPId,
+        kBufMsgCntPId,
+        kBaseInPId,
+      };
+      
+      typedef struct
+      {
+        external_device_t* ext_dev;
+        
+        unsigned           inVarN;
+        
+        unsigned           msgN;
+        midi::ch_msg_t*    msgA;
+        unsigned           msg_idx;        
+      } inst_t;
+      
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t        rc         = kOkRC; //
+        unsigned    inVarN     = var_mult_count(proc,"in");
+        
+        unsigned    sfxIdA[ inVarN ];
+          
+        // get the the sfx_id's of the input audio variables 
+        if((rc = var_mult_sfx_id_array(proc, "in", sfxIdA, inVarN, p->inVarN )) != kOkRC )
+          goto errLabel;
+
+        std::sort(sfxIdA, sfxIdA + p->inVarN, [](unsigned& a,unsigned& b){ return a<b; } );
+
+        
+        // Register variables and get their current value
+        if((rc = var_register_and_get( proc, kAnyChIdx, kBufMsgCntPId,"buf_cnt", kBaseSfxId, p->msgN )) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+        // Register each input var
+        for(unsigned i=0; i<p->inVarN; ++i)
+          if((rc = var_register( proc, kAnyChIdx, kBaseInPId+i, "in", sfxIdA[i] )) != kOkRC )
+            goto errLabel;
+        
+
+        // create one output MIDI buffer
+        if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, 0  )) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+        p->msgA = mem::allocZ<midi::ch_msg_t>(p->msgN);
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        mem::release(p->msgA);
+        return kOkRC;
+      }
+
+      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t     rc       = kOkRC;
+        mbuf_t*  out_mbuf = nullptr;
+        unsigned mbufN    = 0;
+        mbuf_t*  mbufA[ p->inVarN ];
+
+
+        // get the output buffer
+        if((rc = var_get(proc,kOutPId,kAnyChIdx,out_mbuf)) != kOkRC )
+        {
+          rc = cwLogError(kInvalidStateRC,"The MIDI merge instance '%s' does not have a valid input connection.",proc->label);
+          goto errLabel;
+        }
+        
+        // get the mbuf from each input 
+        for(unsigned i=0; i<p->inVarN; ++i)
+        {
+          mbuf_t*  mbuf = nullptr;
+          if((rc = var_get(proc, kBaseInPId+i, kAnyChIdx, mbuf)) != kOkRC )
+            goto errLabel;
+
+          // ... only store buffers that have events
+          if( mbuf->msgN )
+            mbufA[ mbufN++ ] = mbuf;
+
+          assert( mbufN <= p->inVarN );
+        }
+
+        switch( mbufN )
+        {
+          case 0:
+            // no midi events arrived
+            break;
+            
+          case 1:
+            // exactly one full midi buffer was found
+            out_mbuf->msgA = mbufA[0]->msgA;
+            out_mbuf->msgN = mbufA[0]->msgN;
+            break;
+            
+          default:
+            // multiple full midi buffers were found
+            {
+              unsigned i,j,k;
+              for(i=0,j=0; i<mbufN && j<p->msgN; ++i)
+                for(k=0; j<p->msgN && k<mbufA[i]->msgN; ++k)
+                  p->msgA[j++] = mbufA[i]->msgA[k];
+
+              std::sort(p->msgA, p->msgA + j, [](const midi::ch_msg_t& a, const midi::ch_msg_t& b){ return time::isLTE(a.timeStamp,b.timeStamp); } );
+              
+              out_mbuf->msgA = p->msg_idx > 0 ? p->msgA : nullptr;
+              out_mbuf->msgN = p->msg_idx;          
+            }
+        }
+        
+        p->msg_idx = 0;
+                
+      errLabel:
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .value   = std_value<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }
     
     
   } // flow
