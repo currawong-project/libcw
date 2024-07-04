@@ -55,6 +55,8 @@ namespace cw
       { "audio_meter",     &audio_meter::members },
       { "audio_marker",    &audio_marker::members },
       { "xfade_ctl",       &xfade_ctl::members },
+      { "poly_voice_ctl",  &poly_voice_ctl::members },
+      { "midi_voice",      &midi_voice::members },
       { "sample_hold",     &sample_hold::members },
       { "number",          &number::members },
       { "reg",             &reg::members },
@@ -848,10 +850,23 @@ unsigned cw::flow::preset_cfg_flags( handle_t h )
   return flags;
 }
 
-
 cw::rc_t cw::flow::exec_cycle( handle_t h )
 {
-  return exec_cycle(_handleToPtr(h)->net);
+  rc_t    rc = kOkRC;;
+  flow_t* p  = _handleToPtr(h);
+
+  if( p->maxCycleCount!=kInvalidCnt && p->cycleIndex >= p->maxCycleCount )
+  {
+    rc = kEofRC;
+    cwLogInfo("'maxCycleCnt' reached: %i. Shutting down flow.",p->maxCycleCount);
+  }
+  else
+  {
+    rc = exec_cycle(p->net);
+    p->cycleIndex += 1;
+  }
+    
+  return rc;
 }
 
 cw::rc_t cw::flow::exec(    handle_t h )
@@ -859,19 +874,9 @@ cw::rc_t cw::flow::exec(    handle_t h )
   rc_t    rc = kOkRC;
   flow_t* p  = _handleToPtr(h);
 
-  for(; (p->maxCycleCount==kInvalidCnt || (p->maxCycleCount!=kInvalidCnt && p->cycleIndex < p->maxCycleCount)) && rc == kOkRC; p->cycleIndex++ )
-  {  
+  while( rc == kOkRC )
     rc = exec_cycle(p->net);
-
-    // kEofRC indicates that the network asked to terminate
-    if( rc == kEofRC )
-      break;
-    
-  }
-
-  if( p->maxCycleCount != kInvalidCnt && p->cycleIndex >= p->maxCycleCount )
-    cwLogInfo("'maxCycleCnt' reached: %i. Shutting down flow.",p->maxCycleCount);
-
+  
   return rc;
 }
 
