@@ -456,8 +456,8 @@ namespace cw
 
     
 
-    template< typename T >
-      unsigned phasor( T* y, unsigned n, T srate, T hz, unsigned init_idx=0 )
+    template< typename T0, typename T1, typename T2 >
+      unsigned phasor( T0* y, unsigned n, T1 srate, T2 hz, unsigned init_idx=0 )
     {
       for(unsigned i=init_idx; i<n; ++i)
         y[i] = (M_PI*2*hz*i) / srate;
@@ -465,8 +465,8 @@ namespace cw
       return init_idx + n;
     }
 
-    template< typename T >
-      unsigned sine( T* y, unsigned n, T srate, T hz, unsigned init_idx=0 )
+    template< typename T0, typename T1, typename T2 >
+      unsigned sine( T0* y, unsigned n, T1 srate, T2 hz, unsigned init_idx=0 )
     {
       init_idx = phasor(y,n,srate,hz,init_idx);
 
