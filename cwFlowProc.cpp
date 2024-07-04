@@ -454,14 +454,12 @@ namespace cw
           dev_label = nullptr;
         }
           
-        if( textIsEqual(dev_label,"<all>") )
+        if( textIsEqual(port_label,"<all>") )
         {
           inst->port_filt_fl = false;
           port_label = nullptr;
         }
-        
-        
-        
+                
         if((inst->ext_dev = external_device_find( proc->ctx, dev_label, kMidiDevTypeId, kInFl, port_label )) == nullptr )
         {
           rc = cwLogError(kOpFailRC,"The MIDI input device '%s' port '%s' could not be found.", cwStringNullGuard(dev_label), cwStringNullGuard(port_label));
@@ -510,6 +508,9 @@ namespace cw
         }
         else
         {
+          mbuf->msgA = nullptr;
+          mbuf->msgN = 0;
+          
           // if the device filter is not set
           if( !inst->dev_filt_fl)
           {
@@ -3659,7 +3660,7 @@ namespace cw
       typedef struct
       {
         unsigned    xfadeDurMs;       // crossfade duration in milliseconds
-        proc_t* net_proc;         // source 'poly' network
+        proc_t*     net_proc;         // source 'poly' network
         poly_ch_t*  netA;             // netA[ poly_ch_cnt ] internal proxy network 
         unsigned    poly_ch_cnt;      // count of poly channels in net_proc
         unsigned    net_proc_cnt;     // count of proc's in a single poly-channel (net_proc->proc_arrayN/poly_cnt)
@@ -3883,6 +3884,443 @@ namespace cw
         .value   = value,
         .exec = exec,
         .report = nullptr
+      };
+      
+    }    
+
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // Poly Voice Control
+    //
+    namespace poly_voice_ctl
+    {
+      enum {
+        kInPId,
+        kVoiceCntPId,
+        kBaseOutPId,
+      };
+
+      enum {
+        kVoiceMsgN  = 16,
+        kGlobalMsgN = 256,
+      };
+      
+      typedef struct voice_str
+      {
+        bool            activeFl; // true if this voice is currently active
+        unsigned        pitch;    // pitch associated with this voice
+        unsigned        age;      // age of this voice in exec() cycles.
+        
+        midi::ch_msg_t* msgA;     // msgA[ msgN ] msg buffer for this voice 
+        unsigned        msgN;     //
+        unsigned        msg_idx;  // current count of msg's in msgA[]
+
+        mbuf_t*         mbuf;      // cached mbuf for this output variable
+        
+      } voice_t;
+      
+      typedef struct
+      {
+        unsigned baseDoneFlPId;
+        
+        unsigned voiceN;   // voiceA[ voiceN ]
+        voice_t* voiceA; 
+
+        // sizeof of each voice msgA[] (same as voice_t.msgN)
+        unsigned voiceMsgN;
+
+      } inst_t;
+
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t        rc            = kOkRC;
+        mbuf_t*     mbuf          = nullptr;
+
+        if((rc = var_register_and_get(proc,kAnyChIdx,
+                                      kInPId,       "in",    kBaseSfxId, mbuf,
+                                      kVoiceCntPId, "voice_cnt", kBaseSfxId, p->voiceN)) != kOkRC )
+        {
+          goto errLabel; 
+        }
+
+        if( p->voiceN == 0 )
+        {
+          rc = cwLogError(kInvalidArgRC,"The poly_voice_ctl '%s:%i' has 0 voices.",proc->label,proc->label_sfx_id );
+          goto errLabel;
+        }
+
+        p->baseDoneFlPId = kBaseOutPId + p->voiceN;
+        p->voiceMsgN     = kVoiceMsgN;
+        p->voiceA        = mem::allocZ<voice_t>(p->voiceN);
+        
+        for(unsigned i=0; i<p->voiceN; ++i)
+        {
+          // create one output MIDI variable per voice
+          if((rc = var_register_and_set( proc, "out", i, kBaseOutPId + i, kAnyChIdx, nullptr, 0  )) != kOkRC )
+            goto errLabel;
+
+          // create one 'done_fl' variable per voice
+          if((rc = var_register_and_set( proc, kAnyChIdx, p->baseDoneFlPId + i, "done_fl", i, false  )) != kOkRC )
+            goto errLabel;
+
+          p->voiceA[i].msgA = mem::allocZ<midi::ch_msg_t>(p->voiceMsgN);
+          p->voiceA[i].msgN = p->voiceMsgN;
+
+          // cache a pointer to each output variables mbuf (because we know these won't change)
+          if((rc = var_get(proc,kBaseOutPId+i, kAnyChIdx, p->voiceA[i].mbuf )) != kOkRC )
+            goto errLabel;
+        }
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        mem::release( p->voiceA );
+        p->voiceN = 0;
+        return rc;
+      }
+
+      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+
+        if( p->baseDoneFlPId <= var->vid && var->vid < p->baseDoneFlPId + p->voiceN )
+        {          
+          p->voiceA[ var->vid - p->baseDoneFlPId ].activeFl = false;
+        }
+        
+        return rc;
+      }
+
+      unsigned _get_next_avail_voice( inst_t* p )
+      {
+        unsigned max_age_idx = 0;
+        for(unsigned i=0; i<p->voiceN; ++i)
+        {
+          if( p->voiceA[i].activeFl == false )
+            return i;
+          
+          if( p->voiceA[i].age > p->voiceA[ max_age_idx].age )
+            max_age_idx = i;          
+        }
+        
+        return max_age_idx;
+      }
+
+      unsigned _pitch_to_voice( inst_t* p, unsigned pitch )
+      {
+        for(unsigned i=0; i<p->voiceN; ++i)
+          if( p->voiceA[i].activeFl && p->voiceA[i].pitch == pitch )
+            return i;
+        return kInvalidIdx;
+      }
+
+      rc_t _update_voice_msg( proc_t* proc, inst_t* p, unsigned voice_idx, const midi::ch_msg_t* m )
+      {
+        rc_t     rc   = kOkRC;
+        voice_t* v    = p->voiceA + voice_idx;
+        
+        if( v->msg_idx >= v->msgN )
+        {
+          cwLogError(kBufTooSmallRC,"The voice MIDI buffer on ch:%i is full on '%s:%i'",voice_idx,cwStringNullGuard(proc->label),proc->label_sfx_id);
+          goto errLabel;
+        }
+        else
+        {
+          v->msgA[ v->msg_idx++ ] = *m;
+          v->mbuf->msgA = v->msgA;
+          v->mbuf->msgN = v->msg_idx;
+        }
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _on_note_on( proc_t* proc, inst_t* p, const midi::ch_msg_t* m  )
+      {
+        rc_t     rc         = kOkRC;
+        unsigned voice_idx  = _get_next_avail_voice(p);
+
+        assert( voice_idx <= p->voiceN);
+
+        voice_t* v = p->voiceA + voice_idx;
+
+        v->age      = 0;
+        v->activeFl = true;
+        v->pitch    = m->d0;
+
+        rc = _update_voice_msg(proc,p,voice_idx,m);        
+        
+        return rc;
+      }
+            
+      rc_t _on_note_off( proc_t* proc, inst_t* p, const midi::ch_msg_t* m )
+      {
+        rc_t     rc   = kOkRC;
+        unsigned voice_idx;
+        if((voice_idx = _pitch_to_voice(p,m->d0)) == kInvalidIdx )
+        {
+          cwLogWarning("Voice not found for note:0x%x.",m->d0);
+          goto errLabel;
+        }
+
+        assert( voice_idx <= p->voiceN);
+
+        rc = _update_voice_msg(proc,p,voice_idx,m);
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _send_to_all_voices( proc_t* proc, inst_t*p, const midi::ch_msg_t* m )
+      {
+        rc_t rc = kOkRC;
+
+        if( midi::isChStatus( m->status ) )
+          for(unsigned i=0; i<p->voiceN; ++i)
+            if((rc = _update_voice_msg(proc,p,i,m)) != kOkRC )
+              goto errLabel;
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t    rc   = kOkRC;
+        mbuf_t* mbuf = nullptr;
+
+        // update the voice array
+        for(unsigned i=0; i<p->voiceN; ++i)
+        { 
+          if( p->voiceA[i].activeFl )
+            p->voiceA[i].age    += 1;
+          
+          p->voiceA[i].msg_idx    = 0;
+          p->voiceA[i].mbuf->msgN = 0;
+          p->voiceA[i].mbuf->msgA = nullptr;
+        }
+        
+        // get the input MIDI buffer
+        if((rc = var_get(proc,kInPId,kAnyChIdx,mbuf)) != kOkRC )
+          goto errLabel;
+        
+        // process the incoming MIDI messages
+        for(unsigned i=0; i<mbuf->msgN; ++i)
+        {
+          const midi::ch_msg_t* m = mbuf->msgA + i;
+          
+          switch( m->status )
+          {
+            case midi::kNoteOnMdId:
+              if( m->d1 == 0 )
+                rc = _on_note_off(proc,p,m);
+              else
+                rc = _on_note_on(proc,p,m);                  
+              break;
+
+            case midi::kNoteOffMdId:
+              rc = _on_note_off(proc,p,m);
+              break;
+              
+            default:
+              rc = _send_to_all_voices(proc,p,m);
+              break;
+          }
+        }
+
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .value   = std_value<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // midi_voice
+    //
+    namespace midi_voice
+    {
+      enum {
+        kInPId,
+        kOutPId,
+        kDoneFlPId
+      };
+      
+      typedef struct
+      {
+
+        unsigned  wtAllocN;  // wtAlloc[ wtAllocN ]  
+        sample_t* wtAllocA;  // total allocated WT space with extra leading and trailing samples
+        
+        unsigned  wtN;       // wtA[ wtA ] 
+        sample_t* wtA;       // actual WT space which sits inside of wtAllocA[] 
+
+        double    wtPhase;   // current WT phase
+
+        unsigned cur_vel;    // current MIDI velocity 
+        double   cur_hz;     // current fund. frequency
+        double   cur_pbend;  // current pitch bend factor
+        
+        unsigned hzN;
+        double*  hzA;        // hzA[128] - midi to Hz lookup table. 
+        
+      } inst_t;
+
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t           rc      = kOkRC;
+        mbuf_t*        mbuf    = nullptr;
+        srate_t        srate   = proc->ctx->sample_rate;
+        const unsigned ch_cnt  = 1;
+        bool           done_fl = false;
+        
+        // get the MIDI input variable
+        if((rc = var_register_and_get( proc, kAnyChIdx,
+                                       kInPId,     "in",      kBaseSfxId, mbuf,
+                                       kDoneFlPId, "done_fl", kBaseSfxId, done_fl)) != kOkRC )
+          goto errLabel;
+
+        // create one output audio buffer
+        if((rc = var_register_and_set( proc, "out", kBaseSfxId,kOutPId, kAnyChIdx, srate, ch_cnt, proc->ctx->framesPerCycle )) != kOkRC )
+          goto errLabel;
+        
+        // create the wave table
+        p->wtN      = srate;
+        p->wtAllocN = p->wtN + 2;
+        p->wtAllocA = mem::allocZ<sample_t>(p->wtAllocN);
+        p->wtA      = p->wtAllocA + 1;
+
+        vop::sine( p->wtA, p->wtN, srate, 1);
+        p->wtAllocA[0]             = p->wtA[p->wtN-1];
+        p->wtAllocA[p->wtAllocN-1] = p->wtA[0];
+
+        // create the MIDI pitch to hertz
+        p->hzN = midi::kMidiNoteCnt;
+        p->hzA = mem::allocZ<double>(p->hzN);
+        
+        for(unsigned i=0; i<midi::kMidiNoteCnt; ++i)
+          p->hzA[i] = midi_to_hz(i);
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        mem::release(p->wtAllocA);
+        mem::release(p->hzA);
+
+        return rc;
+      }
+
+      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t    rc   = kOkRC;
+        abuf_t* abuf = nullptr;
+        mbuf_t* mbuf = nullptr;
+
+        // get the input MIDI buffer
+        if((rc = var_get(proc,kInPId,kAnyChIdx,mbuf)) != kOkRC )
+          goto errLabel;
+        
+        // get the output audio buffer
+        if((rc = var_get(proc,kOutPId,kAnyChIdx,abuf)) != kOkRC )
+          goto errLabel;
+
+        // if there are MIDI messages - update cur_hz and cur_vel
+        for(unsigned i=0; i<mbuf->msgN; ++i)
+        {
+          const midi::ch_msg_t* m = mbuf->msgA + i;
+          switch( m->status )
+          {
+            case midi::kNoteOnMdId:
+              p->cur_hz  = p->hzA[ m->d0 ];
+              p->cur_vel = m->d1;
+
+              if( m->d1 == 0 )
+                var_set(proc,kDoneFlPId,kAnyChIdx,true);              
+              break;
+
+            case midi::kNoteOffMdId:
+              var_set(proc,kDoneFlPId,kAnyChIdx,true);              
+              break;
+
+            case midi::kPbendMdId:
+              p->cur_pbend = midi::toPbend(m->d0,m->d1) / 8192.0;
+              break;
+              
+            default:
+              break;
+          }
+        }
+
+        // if the voice is off then zero the audio buffer
+        if( p->cur_vel == 0 )
+        {
+          vop::zero(abuf->buf,abuf->frameN);
+        }
+        else
+        {
+
+          // calculate the gain based on the cur_vel
+          coeff_t gain = (coeff_t)p->cur_vel / 127;
+
+          // fill in the audio buffer
+          for(unsigned i=0; i<abuf->frameN; ++i)
+          {
+            unsigned j    = (unsigned)floor(p->wtPhase);
+            double   frac = p->wtPhase - j;          
+            sample_t smp  = p->wtA[j] + (p->wtA[j+1] - p->wtA[j]) * frac;
+          
+            abuf->buf[i] = gain*smp;
+
+            p->wtPhase += p->cur_hz + (p->cur_hz * p->cur_pbend);
+            if( p->wtPhase >= p->wtN )
+              p->wtPhase -= p->wtN;
+          }
+        }
+        
+      errLabel:
+            return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .value   = std_value<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
       };
       
     }    
@@ -6246,6 +6684,9 @@ namespace cw
         unsigned             msgN;
         unsigned             msg_idx;
         unsigned             sample_idx;
+        
+        char*                midi_fname;
+        char*                csv_fname;
       } inst_t;
 
 
@@ -6269,16 +6710,31 @@ namespace cw
           goto errLabel;
         }
 
-        if( midi_fname != nullptr && textLength(midi_fname) > 0 )
+        if( csv_fname != nullptr && textLength(csv_fname)>0 )
+          if((p->csv_fname = proc_expand_filename(proc,csv_fname)) == nullptr )
+          {
+            rc = cwLogError(kInvalidArgRC,"The MIDI CSV filename could not be formed.");
+            goto errLabel;
+          }
+
+        if( midi_fname != nullptr && textLength(midi_fname)>0 )
+          if((p->midi_fname = proc_expand_filename(proc,midi_fname)) == nullptr )
+          {
+            rc = cwLogError(kInvalidArgRC,"The MIDI filename could not be formed.");
+            goto errLabel;
+          }
+
+        
+        if( p->midi_fname != nullptr && textLength(p->midi_fname) > 0 )
         {
-          if((rc = midi::file::open(p->mfH,midi_fname)) != kOkRC )
+          if((rc = midi::file::open(p->mfH,p->midi_fname)) != kOkRC )
             goto errLabel;
         }
         else
         {
-          if( csv_fname != nullptr && textLength(csv_fname)>0 )
+          if( p->csv_fname != nullptr && textLength(p->csv_fname)>0 )
           {
-            if((rc = midi::file::open_csv(p->mfH,csv_fname)) != kOkRC )
+            if((rc = midi::file::open_csv(p->mfH,p->csv_fname)) != kOkRC )
               goto errLabel;              
           }
           else
@@ -6337,6 +6793,8 @@ namespace cw
       {
         rc_t rc = kOkRC;
 
+        mem::release(p->midi_fname);
+        mem::release(p->csv_fname);
         close(p->mfH);
 
         return rc;
@@ -6507,6 +6965,8 @@ namespace cw
         {
           case 0:
             // no midi events arrived
+            out_mbuf->msgA = nullptr;
+            out_mbuf->msgN = 0;
             break;
             
           case 1:
@@ -6548,6 +7008,7 @@ namespace cw
       };
       
     }
+
     
     
   } // flow
