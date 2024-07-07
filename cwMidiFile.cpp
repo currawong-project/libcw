@@ -502,9 +502,8 @@ namespace cw
         trackMsg_t* nextTrkMsg[ p->trkN ]; // next msg in each track
         unsigned long long atick = 0;
         unsigned          i;
-        bool              fl = true;
   
-        // iniitalize nextTrkTick[] and nextTrkMsg[] to the first msg in each track
+        // iniitalize nextTrkMsg[] to the first msg in each track
         for(i=0; i<p->trkN; ++i)
           if((nextTrkMsg[i] =  p->trkV[i].base) != NULL )
             nextTrkMsg[i]->atick = nextTrkMsg[i]->dtick;
@@ -513,7 +512,7 @@ namespace cw
         {
           unsigned k = kInvalidIdx;
 
-          // find the trk which has the next msg (min atick time)
+          // find the index of the track in nextTrkMsg[] which has the min atick
           for(i=0; i<p->trkN; ++i)
             if( nextTrkMsg[i]!=NULL && (k==kInvalidIdx || nextTrkMsg[i]->atick < nextTrkMsg[k]->atick) )
               k = i;
@@ -521,13 +520,6 @@ namespace cw
           // no next msg was found - we're done
           if( k == kInvalidIdx )
             break;
-
-          if( fl && nextTrkMsg[k]->dtick > 0 )
-          {
-            fl = false;
-            nextTrkMsg[k]->dtick = 1;
-            nextTrkMsg[k]->atick = 1;
-          }
 
           // store the current atick
           atick = nextTrkMsg[k]->atick;
@@ -544,20 +536,20 @@ namespace cw
       void _setAbsoluteTime( file_t* mfp )
       {
         const trackMsg_t** msgV          = _msgArray(mfp);
-        double                   microsPerQN   = 60000000/120; // default tempo;
-        double                   microsPerTick = microsPerQN / mfp->ticksPerQN;
-        unsigned long long       amicro        = 0;
-        unsigned                 i;
+        double             microsPerQN   = 60000000.0/120.0; // default tempo;
+        double             microsPerTick = microsPerQN / mfp->ticksPerQN;
+        unsigned long long amicro        = 0;
+        unsigned           i;
 
 
         for(i=0; i<mfp->msgN; ++i)
         {
           trackMsg_t* mp    = (trackMsg_t*)msgV[i]; // cast away const
-          unsigned          dtick = 0;
+          unsigned    dtick = 0;
     
           if( i > 0 )
           {
-            // atick must have already been set and sorted
+            // atick must have already been set and sortedh
             assert( mp->atick >= msgV[i-1]->atick );
             dtick = mp->atick -  msgV[i-1]->atick;
           }
@@ -568,7 +560,7 @@ namespace cw
     
           // track tempo changes
           if( mp->status == kMetaStId && mp->metaId == kTempoMdId )
-            microsPerTick = mp->u.iVal / mfp->ticksPerQN;
+            microsPerTick = (double)mp->u.iVal / mfp->ticksPerQN;
         }
   
       }
@@ -1331,7 +1323,7 @@ cw::rc_t cw::midi::file::open_csv( handle_t& hRef, const char* csv_fname )
   unsigned    lineN    = 0;
   unsigned    line_idx = 0;
   
-  double      asecs    = 0;
+  //double      asecs    = 0;
   
   unsigned    uid      = kInvalidId;
   unsigned    dtick    = 0;
@@ -1363,7 +1355,7 @@ cw::rc_t cw::midi::file::open_csv( handle_t& hRef, const char* csv_fname )
 
   
   for(; (rc = next_line(csvH)) == kOkRC; ++line_idx )
-  {
+  {    
     if((rc = getv(csvH,"uid",uid,"tpQN",TpQN,"bpm",BpM,"dticks",dtick,"ch",ch,"status",status,"d0",d0,"d1",d1)) != kOkRC )
     {
       cwLogError(rc,"Error reading CSV line %i.",line_idx+1);
@@ -1372,16 +1364,16 @@ cw::rc_t cw::midi::file::open_csv( handle_t& hRef, const char* csv_fname )
 
     //printf("%i %i tpqn:%i bpm:%i dtick:%i ch:%i st:%i d0:%i d1:%i\n",line_idx,uid,TpQN,BpM,dtick,ch,status,d0,d1);
     
-    double ticks_per_sec = TpQN * BpM / 60;
-    double dsecs         = dtick * ticks_per_sec;
+    //double ticks_per_sec = TpQN * BpM / 60;
+    //double dsecs         = dtick * ticks_per_sec;
 
-    asecs += dsecs;
+    //asecs += dsecs;
     
     if( line_idx == 0 )
       _init(p,1,TpQN);
 
     aticks += dtick;
-        
+
     if( BpM != 0 )
     {
       if((rc = insertTrackTempoMsg(hRef, 0, aticks, BpM )) != kOkRC )
@@ -1400,9 +1392,10 @@ cw::rc_t cw::midi::file::open_csv( handle_t& hRef, const char* csv_fname )
       }
     }
     
-    TpQN = 0;
-    BpM  = 0;
-    
+    TpQN   = 0;
+    BpM    = 0;
+    status = 0;
+    dtick  = 0;
   }
   
   if( rc == kEofRC )
