@@ -1,6 +1,6 @@
 import csv,os
 
-def gen_sample_midi_csv(pitch,velA,note_on_sec,note_off_sec):
+def gen_sample_midi_events(pitch,velA,note_on_sec,note_off_sec):
 
     markA = []
     msgA  = []
@@ -81,6 +81,17 @@ def write_marker_file(fname, markA ):
         for beg_sec,end_sec,vel in markA:
             f.write(f"{beg_sec}\t{end_sec}\t{vel}\n")
     
+def gen_midi_csv_and_marker_files( pitch, velA, note_on_sec, note_off_sec, out_dir ):
+    
+    msgA,markA = gen_sample_midi_events(pitch,velA,note_on_sec,note_off_sec)
+
+    midi_csv_fname = os.path.join(out_dir,f"{pitch}_sample.csv")
+    mark_fname     = os.path.join(out_dir,f"{pitch}_marker.txt")
+
+    write_file(midi_csv_fname,msgA)
+    write_marker_file(mark_fname,markA)
+
+    return csv_fname, mark_fname
 
 
 if __name__ == "__main__":
@@ -88,16 +99,14 @@ if __name__ == "__main__":
     out_dir        = "/home/kevin/temp/wt"
     note_on_sec    = 1.0
     note_off_sec   = 0.5
+    min_pitch      = 21
+    max_pitch      = 108
     pitch          = 60
     velA           = [1,8,15,22,29,36,42,49,56,63,70,77,84,91,98,105,112,119,126]
+    velA           = [ 1,5,10,16,21,26,32,37,42,48,53,58,64,69,74,80,85,90,96,101,106,112,117,122,127]
 
-    msgA,markA = gen_sample_midi_csv(60,velA,note_on_sec,note_off_sec)
 
-    midi_csv_fname = os.path.join(out_dir,f"{pitch}_sample.csv")
-    mark_fname     = os.path.join(out_dir,f"{pitch}_marker.txt")
+    csv_fname, mark_fname = gen_midi_csv_and_marker_files( pitch, velA, note_on_sec, note_off_sec, out_dir )
 
-    print(midi_csv_fname)
-    print(mark_fname)
+
     
-    write_file(midi_csv_fname,msgA)
-    write_marker_file(mark_fname,markA)
