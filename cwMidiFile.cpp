@@ -1148,7 +1148,7 @@ namespace cw
         return rc;
       }
 
-      rc_t _testCsv( const object_t* cfg )
+      rc_t _testGenCsv( const object_t* cfg )
       {
         rc_t        rc     = kOkRC;
         const char* midiFn = nullptr;
@@ -1164,6 +1164,30 @@ namespace cw
         mem::release(cfn);
       
         return rc;
+      }
+
+      rc_t _testOpenCsv( const object_t* cfg )
+      {
+        rc_t rc = kOkRC;
+        rc_t rc1 = kOkRC;
+        midi::file::handle_t mfH;
+        const char* csvFn = nullptr;
+        
+        if((rc = cfg->getv("csvFn",csvFn)) != kOkRC )
+          return cwLogError(kSyntaxErrorRC,"Invalid parameter to MIDI to CSV file conversion.");
+        
+        if(( rc = midi::file::open_csv(mfH,csvFn)) != kOkRC )
+          goto errLabel;
+
+        midi::file::printMsgs(mfH,log::globalHandle());
+
+          
+      errLabel:
+
+        if((rc1 = close(mfH)) != kOkRC )
+          rc1 = cwLogError(rc1,"MIDI file close failed on '%s'.",cwStringNullGuard(csvFn));
+        
+        return rcSelect(rc,rc1);
       }
 
 
@@ -2639,8 +2663,11 @@ cw::rc_t cw::midi::file::test( const object_t* cfg )
       if( textIsEqual(o->pair_label(),"rpt") )
         rc = _testReport(o->pair_value());
       
-      if( textIsEqual(o->pair_label(),"csv") )
-        rc = _testCsv(o->pair_value());
+      if( textIsEqual(o->pair_label(),"gen_csv") )
+        rc = _testGenCsv(o->pair_value());
+
+      if( textIsEqual(o->pair_label(),"open_csv") )
+        rc = _testOpenCsv(o->pair_value());
       
       if( textIsEqual(o->pair_label(),"batch_convert") )
         rc = _testBatchConvert(o->pair_value());
