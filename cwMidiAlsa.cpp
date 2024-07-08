@@ -54,7 +54,8 @@ namespace cw
         {
           unsigned         devCnt;           // MIDI devices attached to this computer
           dev_t*           devArray;
-          cbFunc_t         cbFunc;           // MIDI input application callback 
+          cbFunc_t         cbFunc;           // MIDI input application callback
+          bool             filterRtSenseFl;
           void*            cbDataPtr;
           snd_seq_t*       h;                // ALSA system sequencer handle
           snd_seq_addr_t   alsa_addr;        // ALSA client/port address representing the application
@@ -72,6 +73,7 @@ namespace cw
           bool                  latency_meas_enable_in_fl;
           bool                  latency_meas_enable_out_fl;
           latency_meas_result_t latency_meas_result;
+
         
         } alsa_device_t;
 
@@ -254,7 +256,7 @@ namespace cw
               case SND_SEQ_EVENT_START:     status = kSysRtStartMdId; break;
               case SND_SEQ_EVENT_CONTINUE:  status = kSysRtContMdId;  break;          
               case SND_SEQ_EVENT_STOP:      status = kSysRtStopMdId;  break;
-              case SND_SEQ_EVENT_SENSING:   status = kSysRtSenseMdId; break;
+              case SND_SEQ_EVENT_SENSING:   status = p->filterRtSenseFl ? 0 : kSysRtSenseMdId; break;
               case SND_SEQ_EVENT_RESET:     status = kSysRtResetMdId; break;
 
               case SND_SEQ_EVENT_SYSEX: 
@@ -599,7 +601,12 @@ namespace cw
 } // cw
 
 
-cw::rc_t cw::midi::device::alsa::create(  handle_t& h, cbFunc_t cbFunc, void* cbArg, unsigned parserBufByteCnt, const char* appNameStr )
+cw::rc_t cw::midi::device::alsa::create(  handle_t&   h,
+                                          cbFunc_t    cbFunc,
+                                          void*       cbArg,
+                                          unsigned    parserBufByteCnt,
+                                          const char* appNameStr,
+                                          bool        filterRtSenseFl )
 {
   rc_t rc  = kOkRC;
   int  arc = 0;
@@ -631,8 +638,9 @@ cw::rc_t cw::midi::device::alsa::create(  handle_t& h, cbFunc_t cbFunc, void* cb
   p->alsa_fd    = mem::allocZ<struct pollfd>(p->alsa_fdCnt);
   snd_seq_poll_descriptors(p->h, p->alsa_fd, p->alsa_fdCnt, POLLIN);
 
-  p->cbFunc    = cbFunc;
-  p->cbDataPtr = cbArg;
+  p->cbFunc          = cbFunc;
+  p->cbDataPtr       = cbArg;
+  p->filterRtSenseFl = filterRtSenseFl;
 
   // start the sequencer queue
   if((arc = snd_seq_start_queue(p->h, p->alsa_queue, NULL)) < 0 )

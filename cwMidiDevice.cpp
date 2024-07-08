@@ -60,6 +60,8 @@ namespace cw
         unsigned  bufN;
         std::atomic<unsigned>  buf_ii;
         std::atomic<unsigned>  buf_oi;
+
+        bool filterRtSenseFl;
         
       } device_t;
 
@@ -238,7 +240,8 @@ cw::rc_t cw::midi::device::create( handle_t&   hRef,
                                    unsigned    fileDevReadAheadMicros,
                                    unsigned    parserBufByteCnt,
                                    bool        enableBufFl,
-                                   unsigned    bufferMsgCnt )
+                                   unsigned    bufferMsgCnt,
+                                   bool        filterRtSenseFl )
 {
   rc_t rc  = kOkRC;
   rc_t rc1 = kOkRC;  
@@ -252,7 +255,8 @@ cw::rc_t cw::midi::device::create( handle_t&   hRef,
                    enableBufFl ? _callback : cbFunc,
                    enableBufFl ? p         : cbArg,
                    parserBufByteCnt,
-                   appNameStr )) != kOkRC )
+                   appNameStr,
+                   filterRtSenseFl)) != kOkRC )
   {
     rc = cwLogError(rc,"ALSA MIDI device create failed.");
     goto errLabel;
@@ -328,6 +332,7 @@ cw::rc_t cw::midi::device::create( handle_t&       h,
   unsigned        bufMsgCnt              = 0;
   const object_t* file_ports             = nullptr;
   const object_t* port                   = nullptr;
+  bool            filterRtSenseFl        = true;;
 
   if((rc = args->getv("appNameStr",appNameStr,
                       "fileDevName",fileDevName,
@@ -335,7 +340,8 @@ cw::rc_t cw::midi::device::create( handle_t&       h,
                       "parseBufByteCnt",parseBufByteCnt,
                       "enableBufFl",enableBufFl,
                       "bufferMsgCnt",bufMsgCnt,
-                      "file_ports",file_ports)) != kOkRC )
+                      "file_ports",file_ports,
+                      "filterRtSenseFl",filterRtSenseFl)) != kOkRC )
   {
     rc = cwLogError(rc,"MIDI port parse args. failed.");
   }
@@ -361,7 +367,18 @@ cw::rc_t cw::midi::device::create( handle_t&       h,
       }
     }
     
-    rc = create(h,cbFunc,cbArg,labelArray,fpi,appNameStr,fileDevName,fileDevReadAheadMicros,parseBufByteCnt,enableBufFl,bufMsgCnt);
+    rc = create(h,
+                cbFunc,
+                cbArg,
+                labelArray,
+                fpi,
+                appNameStr,
+                fileDevName,
+                fileDevReadAheadMicros,
+                parseBufByteCnt,
+                enableBufFl,
+                bufMsgCnt,
+                filterRtSenseFl);
     
   }
   

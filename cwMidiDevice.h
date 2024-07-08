@@ -32,7 +32,8 @@ namespace cw
                    unsigned    fileDevReadAheadMicros = 3000,
                    unsigned    parserBufByteCnt = 1024,
                    bool        enableBufFl = false,   // Enable buffer to hold all incoming msg's until RT thread can pick them up.
-                   unsigned    bufferMsgCnt = 4096);  // Count of messages in input buffer.
+                   unsigned    bufferMsgCnt = 4096,   // Count of messages in input buffer.
+                   bool        filterRtSenseFl = true);  
 
       rc_t create( handle_t&       h,
                    cbFunc_t        cbFunc,
