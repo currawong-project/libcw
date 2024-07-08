@@ -29,6 +29,9 @@
 #include "cwDspTransforms.h"
 #include "cwMidiDecls.h"
 
+#include "cwWaveTableBank.h"
+
+
 namespace cw
 {
 
@@ -495,11 +498,9 @@ namespace cw
       
       rc_t exec( proc_t* proc )
       {
-        rc_t     rc           = kOkRC;
-
-        inst_t*  inst         = (inst_t*)proc->userPtr;
-        mbuf_t*  mbuf         = nullptr;
-
+        rc_t    rc   = kOkRC;
+        inst_t* inst = (inst_t*)proc->userPtr;
+        mbuf_t* mbuf = nullptr;
 
         // get the output variable
         if((rc = var_get(proc,kOutPId,kAnyChIdx,mbuf)) != kOkRC )
@@ -3981,6 +3982,9 @@ namespace cw
       {
         rc_t rc = kOkRC;
 
+        for(unsigned i=0; i<p->voiceN; ++i)
+          mem::release(p->voiceA[i].msgA);
+        
         mem::release( p->voiceA );
         p->voiceN = 0;
         return rc;
@@ -4036,6 +4040,8 @@ namespace cw
           v->msgA[ v->msg_idx++ ] = *m;
           v->mbuf->msgA = v->msgA;
           v->mbuf->msgN = v->msg_idx;
+
+          //printf("vctl:%i : st:%i %i %i\n",voice_idx,m->status,m->d0,m->d1);
         }
         
       errLabel:
@@ -4066,7 +4072,7 @@ namespace cw
         unsigned voice_idx;
         if((voice_idx = _pitch_to_voice(p,m->d0)) == kInvalidIdx )
         {
-          cwLogWarning("Voice not found for note:0x%x.",m->d0);
+          cwLogWarning("Voice not found for note:%i.",m->d0);
           goto errLabel;
         }
 
@@ -4324,6 +4330,340 @@ namespace cw
       };
       
     }    
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // piano_voice
+    //
+    namespace piano_voice
+    {
+      enum {
+        kWtbDirPId,
+        kWtbInstrPId,
+        kInPId,
+        kOutPId,
+        kDoneFlPId,
+        kTestPitchPId,
+      };
+
+      enum {
+        kChCnt=2
+      };
+
+      typedef struct osc_state_str
+      {
+        wt_bank::ch_t* ch;
+        unsigned seg_idx;   // current seg index in ch->segA[]
+        unsigned smp_idx;   // current smp index in ch->segA[ seg_idx ].aV[]
+        unsigned seg_cnt;   // count of segments played so far (increases with each segment loop traversail)
+      } osc_state_t;
+        
+      typedef struct
+      {
+        wt_bank::handle_t*   wtbH_ptr;
+        unsigned             wtb_instr_idx;
+        const wt_bank::wt_t* wt;
+
+        osc_state_t osc[ kChCnt ];
+
+        coeff_t kGainThreshold;
+        coeff_t kSustainGain;
+        coeff_t kReleaseGain;
+        
+        coeff_t       gain;
+        coeff_t       gain_coeff;
+        bool          done_fl;
+        
+        unsigned      test_pitch;      // Base test pitch        
+        unsigned      test_pitchN;     // Count of valid velocities for test_pitch 
+        unsigned*     test_pitch_map;  // test_pitch_map[ test_pitch_N ]
+        
+      } inst_t;
+
+
+      void _create_test_pitch_map( inst_t* p )
+      {
+        p->test_pitchN = 0;
+        for(unsigned i=0; i<midi::kMidiVelCnt; ++i)
+          if( get_wave_table( *p->wtbH_ptr, 0, p->test_pitch, i ) != nullptr )
+            p->test_pitchN += 1;
+
+        p->test_pitch_map = mem::allocZ<unsigned>(p->test_pitchN);
+            
+        for(unsigned i=0,j=0; i<midi::kMidiVelCnt; ++i)
+          if( get_wave_table( *p->wtbH_ptr, p->wtb_instr_idx, p->test_pitch, i ) != nullptr )
+          {
+            assert( j < p->test_pitchN );
+            p->test_pitch_map[j++] = i;
+          }
+          
+      }
+      
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t               rc            = kOkRC;
+        const char*        wtb_dir       = nullptr;
+        char*              exp_wtb_dir   = nullptr;
+        const char*        wtb_instr     = nullptr;
+        mbuf_t*            mbuf          = nullptr;
+        bool               done_fl       = false;
+        srate_t            srate         = proc->ctx->sample_rate;
+        unsigned           padSmpN       = 1;
+        const char*        wtb_var_label = "wtb";
+
+        // get the MIDI input variable
+        if((rc = var_register_and_get( proc, kAnyChIdx,
+                                       kWtbDirPId,    "wtb_dir",   kBaseSfxId, wtb_dir,
+                                       kWtbInstrPId,  "wtb_instr", kBaseSfxId, wtb_instr,
+                                       kInPId,        "in",        kBaseSfxId, mbuf,
+                                       kDoneFlPId,    "done_fl",   kBaseSfxId, done_fl,
+                                       kTestPitchPId, "test_pitch",kBaseSfxId, p->test_pitch)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // if the global wave table bank has not yet been created
+        if((p->wtbH_ptr = (wt_bank::handle_t*)network_global_var(proc, wtb_var_label )) == nullptr )
+        {
+          wt_bank::handle_t wtbH;
+          
+          if((exp_wtb_dir = proc_expand_filename(proc,wtb_dir)) == nullptr )
+          {
+            rc = cwLogError(kOpFailRC,"The wave-table bank directory expansion failed.");
+            goto errLabel;
+          }
+          
+          // create the wave table bank
+          if((rc = create( wtbH, exp_wtb_dir, padSmpN )) != kOkRC )
+          {
+            rc = cwLogError(rc,"The wave table bank global variable creation failed.");
+            goto errLabel;
+          }
+
+          // store the wave table bank global var
+          if((rc = network_global_var_alloc(proc, wtb_var_label, &wtbH, sizeof(wtbH) )) != kOkRC )
+          {
+            rc = cwLogError(rc,"The wave table bank global variable allocation failed.");
+            goto errLabel;
+          }
+
+          if((p->wtbH_ptr = (wt_bank::handle_t*)network_global_var(proc, wtb_var_label )) == nullptr )
+          {
+            rc = cwLogError(rc,"The wave table bank global variable store failed.");
+            goto errLabel;
+          }
+
+        }
+
+        // create one output audio buffer
+        if((rc = var_register_and_set( proc, "out", kBaseSfxId,kOutPId, kAnyChIdx, srate, kChCnt, proc->ctx->framesPerCycle )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((p->wtb_instr_idx = wt_bank::instr_index( *p->wtbH_ptr, wtb_instr )) == kInvalidIdx )
+        {
+          rc = cwLogError(rc,"The wave table bank named '%s' could not be found.",cwStringNullGuard(wtb_instr));
+          goto errLabel;
+        }
+
+        // if we are running in 'test-pitch' mode
+        if( p->test_pitch != 0 )
+        {
+          cwLogInfo("%s is in test-pitch mode",proc->label);
+          _create_test_pitch_map(p);
+          
+        }
+
+        p->done_fl        = true;
+        p->kGainThreshold = 0.01;
+        p->kSustainGain   = 0.9995;
+        p->kReleaseGain   = 0.9;
+        
+
+        assert(p->wtbH_ptr != nullptr );
+
+      errLabel:
+        mem::release(exp_wtb_dir);
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        if( p->wtbH_ptr )
+          destroy(*p->wtbH_ptr);
+
+        mem::release(p->test_pitch_map);
+
+        return rc;
+      }
+
+      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t    rc   = kOkRC;
+        abuf_t* abuf = nullptr;
+        mbuf_t* mbuf = nullptr;
+
+        // get the input MIDI buffer
+        if((rc = var_get(proc,kInPId,kAnyChIdx,mbuf)) != kOkRC )
+          goto errLabel;
+        
+        // get the output audio buffer
+        if((rc = var_get(proc,kOutPId,kAnyChIdx,abuf)) != kOkRC )
+          goto errLabel;
+
+        // if there are MIDI messages - update the wavetable oscillators
+        for(unsigned i=0; i<mbuf->msgN; ++i)
+        {
+          const midi::ch_msg_t* m = mbuf->msgA + i;
+          switch( m->status )
+          {
+            case midi::kNoteOnMdId:
+
+              if( m->d1 > 0 )
+              {
+                unsigned d0 = m->d0;
+                unsigned d1 = m->d1;
+
+                // if in voice test mode
+                if( p->test_pitch_map != nullptr )
+                {
+                  // if the the pitch is in side the test range
+                  if( d0 < p->test_pitch || p->test_pitch + p->test_pitchN <= d1  )
+                    goto errLabel;
+
+                  // then the pitch is set to the test pitch ...
+                  d0 = p->test_pitch;
+
+                  // ... and the velocity is mapped to a vel for which there is a known vel in the wt-bank
+                  // Performed pitches above the test pitch trigger increasing velocities.
+                  d1 = p->test_pitch_map[ m->d0 - p->test_pitch ];
+                }
+
+                // get the wave-table associated with the pitch and velocity
+                if((p->wt  = get_wave_table( *p->wtbH_ptr, p->wtb_instr_idx, d0,d1 )) == nullptr )
+                {
+                  cwLogWarning("No piano voice for pitch:%i vel:%i",m->d0,m->d1);
+                  goto errLabel;
+                }
+                
+                p->done_fl    = false;
+                p->gain       = 1;
+                p->gain_coeff = 1;
+                
+                for(unsigned i=0; i<kChCnt; ++i)
+                {
+                  p->osc[i].ch      = p->wt->chA + i;
+                  p->osc[i].seg_idx = 0;
+                  p->osc[i].smp_idx = 0;
+                  p->osc[i].seg_cnt = 0;
+                }
+
+                //printf("%i non: %i %i (%i,%i)\n",proc->label_sfx_id,m->d0,m->d1,d0,d1);
+                
+              }
+              else
+              {
+                p->gain_coeff = p->kReleaseGain;
+                //printf("%i nof: %i %i\n",proc->label_sfx_id,m->d0,m->d1);
+              }
+              break;
+
+            case midi::kNoteOffMdId:
+              p->gain_coeff = p->kReleaseGain;
+              //printf("%i nof: %i %i\n",proc->label_sfx_id,m->d0,m->d1);
+              break;
+
+            case midi::kPbendMdId:
+              break;
+              
+            default:
+              break;
+          }
+        }
+
+        // if the voice is off then zero the audio buffer
+        if( p->done_fl )
+        {
+          vop::zero(abuf->buf,abuf->frameN);
+        }
+        else
+        {
+
+          for(unsigned i=0; i<kChCnt; ++i)
+          {
+            sample_t*       yV = abuf->buf + i*abuf->frameN;
+            unsigned        yi = 0;
+            osc_state_t*    osc  = p->osc + i;
+
+            while(yi < abuf->frameN)
+            {
+              wt_bank::seg_t* seg  = p->wt->chA[i].segA + osc->seg_idx;
+              unsigned n;
+              
+              if( seg->aN - osc->smp_idx > abuf->frameN-yi )
+                n = abuf->frameN-yi;
+              else
+                n = seg->aN - osc->smp_idx;
+
+              vop::mul( yV + yi, seg->aV + seg->padN + osc->smp_idx, p->gain, n );
+
+              yi           += n;
+              osc->smp_idx += n;
+
+              if( osc->smp_idx >= seg->aN )
+              {
+                osc->smp_idx = 0;
+
+                osc->seg_cnt += 1;
+
+                // if this is the second time through the loop segment
+                // then begin applying the sustain decay
+                if( osc->seg_cnt == 2 )
+                  p->gain_coeff = p->kSustainGain;
+                
+                if( osc->seg_idx < osc->ch->segN-1 )
+                  osc->seg_idx += 1;                  
+              }            
+            }
+
+            p->gain *= p->gain_coeff;
+            
+            if( p->gain < p->kGainThreshold && !p->done_fl )
+            {
+              //printf("done\n");
+              var_set(proc,kDoneFlPId,kAnyChIdx,true);
+              p->done_fl = true;
+            }
+          }
+        }
+        
+      errLabel:
+            return rc;
+        
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .value   = std_value<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    
+
     
     //------------------------------------------------------------------------------------------------------------------
     //
@@ -5573,6 +5913,7 @@ namespace cw
       enum
       {
         kInPId,
+        kCfgFnamePId,
         kListPId,
         kOutPId,
         kValueBasePId
@@ -5585,6 +5926,7 @@ namespace cw
         unsigned        typeFl;  // the output type
         unsigned        index;     // the last index referenced
         bool            deltaFl;
+        object_t*       file_list;
       } inst_t;
 
       rc_t _determine_type( const object_t* list, unsigned& typeFl_ref )
@@ -5799,22 +6141,55 @@ namespace cw
 
       rc_t create( proc_t* proc )
       {
-        rc_t    rc   = kOkRC;        
+        rc_t            rc            = kOkRC;        
+        const char*     cfg_fname     = nullptr;
+        char*           exp_cfg_fname = nullptr;
+        unsigned        index         = kInvalidIdx;
+        const object_t* list_arg      = nullptr;
+        
         inst_t* p = mem::allocZ<inst_t>();
-        unsigned index;
         proc->userPtr = p;
         
         variable_t* dum = nullptr;
 
-        p->index = kInvalidIdx;
-        p->typeFl = kInvalidTFl;
+        p->index   = kInvalidIdx;
+        p->typeFl  = kInvalidTFl;
         p->deltaFl = false;
         
         if((rc = var_register_and_get(proc, kAnyChIdx,
-                                      kInPId, "in",    kBaseSfxId, index,
-                                      kListPId,"list", kBaseSfxId, p->list)) != kOkRC )
+                                      kCfgFnamePId, "cfg_fname", kBaseSfxId, cfg_fname,
+                                      kInPId,       "in",        kBaseSfxId, index,
+                                      kListPId,     "list",      kBaseSfxId, list_arg)) != kOkRC )
         {
           goto errLabel;
+        }
+
+        if( cfg_fname != nullptr && textLength(cfg_fname)!=0 )
+        {
+
+          if((exp_cfg_fname = proc_expand_filename(proc,cfg_fname)) == nullptr )
+          {
+            rc = cwLogError(kInvalidArgRC,"The list cfg filename could not be formed.");
+            goto errLabel;
+ 
+          }
+          
+          if((rc = objectFromFile(exp_cfg_fname,p->file_list)) != kOkRC )
+          {
+            rc = cwLogError(rc,"The list configuration file '%s' could not be parsed.",cwStringNullGuard(exp_cfg_fname));
+            goto errLabel;
+          }
+
+          if((rc = p->file_list->getv("list",p->list)) != kOkRC )
+          {
+            rc = cwLogError(rc,"The list configuration file '%s' does not have a 'list' field.",cwStringNullGuard(exp_cfg_fname));
+            goto errLabel;
+          }
+          
+        }
+        else
+        {
+          p->list = list_arg;
         }
 
         if( !p->list->is_list() )
@@ -5860,6 +6235,7 @@ namespace cw
        
         
       errLabel:
+        mem::release(exp_cfg_fname);
         return rc;
       }
 
@@ -5869,6 +6245,9 @@ namespace cw
 
         inst_t* p = (inst_t*)proc->userPtr;
 
+        if(p->file_list != nullptr )
+          p->file_list->free();
+        
         mem::release(p);
         
         return rc;
@@ -6519,7 +6898,7 @@ namespace cw
       {
         rc_t rc = kOkRC;        
 
-        if((rc                                                    = var_register(proc,kAnyChIdx,
+        if((rc = var_register(proc,kAnyChIdx,
                               kChPId,"ch",kBaseSfxId,
                               kStatusPId,"status",kBaseSfxId,
                               kD0_PId,"d0",kBaseSfxId,
@@ -6641,6 +7020,103 @@ namespace cw
 
         p->msg_idx = 0;
         
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .value   = std_value<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // midi_split
+    //
+    namespace midi_split
+    {
+      enum {
+        kInPId,
+        kChPId,
+        kStatusPId,
+        kD0PId,
+        kD1PId,
+        kBufCntPId
+      };
+      
+      typedef struct
+      {
+        midi::ch_msg_t* msgA;
+        unsigned        msgN;
+        unsigned        msg_idx;
+      } inst_t;
+
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t     rc      = kOkRC;        
+        
+        if((rc = var_register(proc,kAnyChIdx,
+                              kInPId,"in",kBaseSfxId,
+                              kChPId,"ch",kBaseSfxId,
+                              kStatusPId,"status",kBaseSfxId,
+                              kD0PId,"d0",kBaseSfxId,
+                              kD1PId,"d1",kBaseSfxId)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((rc = var_register_and_get(proc,kAnyChIdx,kBufCntPId,"buf_cnt",kBaseSfxId,p->msgN)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        p->msgA = mem::allocZ<midi::ch_msg_t>(p->msgN);
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        mem::release(p->msgA);
+
+        return rc;
+      }
+
+      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t    rc   = kOkRC;
+        mbuf_t* mbuf = nullptr;
+        
+        if((rc = var_get(proc,kInPId,kAnyChIdx,mbuf)) != kOkRC )
+          goto errLabel;
+
+        
+        for(unsigned i=0; i<mbuf->msgN; ++i)
+        {
+          var_set(proc, kChPId,     kAnyChIdx, mbuf->msgA[i].ch);
+          var_set(proc, kStatusPId, kAnyChIdx, mbuf->msgA[i].status);
+          var_set(proc, kD0PId,     kAnyChIdx, mbuf->msgA[i].d0);
+          var_set(proc, kD1PId,     kAnyChIdx, mbuf->msgA[i].d1);
+        }
+        
+      errLabel:
         return rc;
       }
 

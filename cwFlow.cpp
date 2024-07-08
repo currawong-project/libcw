@@ -57,6 +57,7 @@ namespace cw
       { "xfade_ctl",       &xfade_ctl::members },
       { "poly_voice_ctl",  &poly_voice_ctl::members },
       { "midi_voice",      &midi_voice::members },
+      { "piano_voice",     &piano_voice::members },
       { "sample_hold",     &sample_hold::members },
       { "number",          &number::members },
       { "reg",             &reg::members },
@@ -68,6 +69,7 @@ namespace cw
       { "print",           &print::members },
       { "halt",            &halt::members },
       { "midi_msg",        &midi_msg::members },
+      { "midi_split",      &midi_split::members },
       { "midi_file",       &midi_file::members },
       { "midi_merge",      &midi_merge::members },
       { nullptr, nullptr }

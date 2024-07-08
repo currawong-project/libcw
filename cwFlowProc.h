@@ -29,6 +29,7 @@ namespace cw
     namespace audio_marker    { extern class_members_t members;  }
     namespace xfade_ctl       { extern class_members_t members;  }
     namespace midi_voice      { extern class_members_t members;  }
+    namespace piano_voice     { extern class_members_t members;  }
     namespace poly_voice_ctl  { extern class_members_t members;  }
     namespace sample_hold     { extern class_members_t members;  }
     namespace number          { extern class_members_t members;  }
@@ -41,6 +42,7 @@ namespace cw
     namespace print           { extern class_members_t members;  }
     namespace halt            { extern class_members_t members;  }
     namespace midi_msg        { extern class_members_t members;  }
+    namespace midi_split      { extern class_members_t members;  }
     namespace midi_file       { extern class_members_t members;  }
     namespace midi_merge      { extern class_members_t members;  }
     
