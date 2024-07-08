@@ -306,6 +306,17 @@ namespace cw
       const value_t*    value;  //
     } network_preset_pair_t;
 
+    typedef struct net_global_var_str
+    {
+      const char* class_label;
+      char*       var_label;
+      void*       blob;
+      unsigned    blobByteN;
+      
+      struct net_global_var_str* link;
+      
+    } net_global_var_t;
+
     typedef struct network_str
     {
       const object_t*   procsCfg;   // network proc list
@@ -324,6 +335,7 @@ namespace cw
       network_preset_pair_t* preset_pairA;
       unsigned               preset_pairN;
 
+      net_global_var_t* globalVarL;
     } network_t;
     
     
@@ -435,6 +447,14 @@ namespace cw
     //
     // Network
     //
+
+    // Access a blob stored via network_global_var()
+    void*    network_global_var(       proc_t* proc, const char* var_label );
+    
+    // Copy a named blob into the network global variable space.
+    rc_t     network_global_var_alloc( proc_t* proc, const char* var_label, const void* blob, unsigned blobByteN );
+
+    
     void     network_print(const network_t& net );
 
     const network_preset_t* network_preset_from_label( const network_t& net, const char* preset_label );

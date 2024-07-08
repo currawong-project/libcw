@@ -1620,6 +1620,51 @@ void cw::flow::network_print( const network_t& net )
   }
 }
 
+void*    cw::flow::network_global_var( proc_t* proc, const char* var_label )
+{
+  net_global_var_t* gv;
+  
+  assert( proc->net != nullptr );
+  
+  for(gv=proc->net->globalVarL; gv!=nullptr; gv=gv->link )
+    if( textIsEqual(proc->class_desc->label,gv->class_label) && textIsEqual(gv->var_label,var_label) )
+      return gv->blob;
+  
+  return nullptr;
+}
+
+cw::rc_t  cw::flow::network_global_var_alloc( proc_t* proc, const char* var_label, const void* blob, unsigned blobByteN )
+{
+  rc_t rc = kOkRC;
+  net_global_var_t* gv;
+  void* v;
+
+  unsigned allocWordN = 0;
+
+  if((v = network_global_var(proc,var_label)) != nullptr )
+  {
+    rc = cwLogError(kInvalidArgRC,"The global variable '%s:%s' already exists.",cwStringNullGuard(proc->class_desc->label),cwStringNullGuard(var_label));
+    goto errLabel;
+  }
+
+  gv = mem::allocZ<net_global_var_t>();
+
+  allocWordN = std::max(blobByteN/sizeof(unsigned),1ul);  
+  
+  gv->class_label = proc->class_desc->label;
+  gv->var_label   = mem::duplStr(var_label);
+  gv->blob        = mem::allocZ<unsigned>(allocWordN);
+  gv->blobByteN   = blobByteN;
+  memcpy(gv->blob,blob,blobByteN);
+  
+  gv->link = proc->net->globalVarL;
+  proc->net->globalVarL = gv;
+    
+errLabel:
+  return rc;
+}
+
+
 const cw::flow::network_preset_t* cw::flow::network_preset_from_label( const network_t& net, const char* preset_label )
 {
   for(unsigned i=0; i<net.presetN; ++i)

@@ -139,6 +139,16 @@ namespace cw
 
       mem::release(net.preset_pairA);
       net.preset_pairN = 0;
+
+      net_global_var_t* gv=net.globalVarL;
+      while( gv != nullptr )
+      {
+        net_global_var_t* gv0 = gv->link;
+        mem::release(gv->var_label);
+        mem::release(gv->blob);
+        mem::release(gv);
+        gv = gv0;
+      }
       
       return rc;
     }
