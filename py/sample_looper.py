@@ -244,32 +244,13 @@ def write_wt_file( fname, audio_fname, wtL, srate ):
         "srate":srate,
         "wt":wtL
     }
-
-    
-
-    
-
     with open(fname,"w") as f:
         json.dump(r,f);
         
 
-if __name__ == "__main__":
+def gen_loop_positions( audio_fname, marker_fname, pitch, argsD, loop_marker_fname, wt_fname ):
 
-    audio_fname       = "/home/kevin/temp/wt/wav/60_samples.wav"
-    marker_fname      = "/home/kevin/temp/wt/60_marker.txt"
-    loop_marker_fname = "/home/kevin/temp/wt/60_loop_mark.txt"
-    wt_fname          = "/home/kevin/temp/wt/bank/60_wt.json"
-    midi_pitch        = 60
-                                                          
-    args = {
-        'end_offset_ms':100,
-        'loop_dur_ms':100,
-        'midi_pitch':midi_pitch,
-        'guess_cnt':40
-        
-    }
-    
-    args = types.SimpleNamespace(**args)
+    args = types.SimpleNamespace(**argsD)
     markL = parse_marker_file(marker_fname)
     smpM,srate = parse_audio_file(audio_fname)
     chN = smpM.shape[1]
@@ -278,5 +259,24 @@ if __name__ == "__main__":
     write_loop_label_file(loop_marker_fname, wtL, srate)
 
     write_wt_file(wt_fname,audio_fname, wtL,srate)
-
     
+        
+        
+if __name__ == "__main__":
+
+    audio_fname       = "/home/kevin/temp/wt/wav/60_samples.wav"
+    marker_fname      = "/home/kevin/temp/wt/60_marker.txt"
+    
+    loop_marker_fname = "/home/kevin/temp/wt/60_loop_mark.txt"
+    wt_fname          = "/home/kevin/temp/wt/bank/60_wt.json"
+    midi_pitch        = 60
+                                                          
+    argsD = {
+        'end_offset_ms':100,
+        'loop_dur_ms':100,
+        'midi_pitch':midi_pitch,
+        'guess_cnt':40
+        
+    }
+    
+    gen_loop_positions( audio_fname, marker_fname, midi_pitch, argsD, loop_marker_fname, wt_fname )
