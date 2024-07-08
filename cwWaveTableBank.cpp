@@ -64,6 +64,22 @@ namespace cw
     wt_bank_t* _handleToPtr( handle_t h )
     { return handleToPtr<handle_t,wt_bank_t>(h); }
 
+    void _report_map( const wt_map_t* map )
+    {
+      for(unsigned i=0; i<midi::kMidiNoteCnt; ++i)
+      {
+        cwLogPrint("%3i : ",i);
+        for(unsigned j=0; j<midi::kMidiVelCnt; ++j)
+        {
+          wt_t* wt = map->map[(j*midi::kMidiNoteCnt) + i];
+          
+          cwLogPrint("%i:%1i ",j,wt != nullptr);
+        }
+        cwLogPrint("\n");
+      }
+          
+    }
+
     void _report( wt_bank_t* p )
     {
       for(af_t* af = p->afList; af!=nullptr; af=af->link)
@@ -91,7 +107,10 @@ namespace cw
             }
           }
         }
-      }      
+      }
+
+      if( p->wtMapN > 0 )
+        _report_map( p->wtMapA ); 
     }
 
     rc_t _destroy( wt_bank_t* p )
@@ -540,6 +559,32 @@ unsigned cw::wt_bank::instr_index( handle_t h, const char* instr_label )
 
 const cw::wt_bank::wt_t* cw::wt_bank::get_wave_table( handle_t h, unsigned instr_idx, unsigned pitch, unsigned vel )
 {
+  rc_t rc = kOkRC;
+
+  wt_bank_t* p = _handleToPtr(h);
+  
+  if( instr_idx >= p->wtMapN )
+  {
+    rc = cwLogError(kInvalidArgRC,"Invalid instr_idx %i",instr_idx);
+    goto errLabel;
+  }
+
+  if( pitch >= midi::kMidiNoteCnt )
+  {
+    rc = cwLogError(kInvalidArgRC,"Invalid MIDI pitch %i",pitch);
+    goto errLabel;
+  }
+
+  if( vel >= midi::kMidiVelCnt )
+  {
+    rc = cwLogError(kInvalidArgRC,"Invalid MIDI pitch %i",pitch);
+    goto errLabel;
+  }
+
+  return p->wtMapA[ instr_idx ].map[ vel * midi::kMidiNoteCnt + pitch ];
+
+errLabel:
+  cwLogError(rc,"Wave table lookup failed.");
   return nullptr;
 }
 
