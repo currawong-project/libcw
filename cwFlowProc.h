@@ -16,6 +16,7 @@ namespace cw
     namespace audio_duplicate { extern class_members_t members;  }
     namespace audio_mix       { extern class_members_t members;  }
     namespace audio_marker    { extern class_members_t members;  }
+    namespace audio_silence   { extern class_members_t members;  }
     namespace sine_tone       { extern class_members_t members;  }
     namespace pv_analysis     { extern class_members_t members;  }
     namespace pv_synthesis    { extern class_members_t members;  }

@@ -2115,6 +2115,72 @@ namespace cw
       };
       
     }
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // audio_silence
+    //
+    namespace audio_silence
+    {
+      enum {
+        kSratePId,
+        kChCntPId,
+        kOutPId
+      };
+      
+      typedef struct
+      {
+        
+      } inst_t;
+
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t    rc   = kOkRC;        
+        srate_t srate = 0;
+        unsigned ch_cnt = 1;
+
+        
+        if((rc = var_register_and_get(proc, kAnyChIdx,
+                                      kSratePId,"srate",kBaseSfxId,srate,
+                                      kChCntPId,"ch_cnt",kBaseSfxId,ch_cnt)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if( srate == 0 )
+          srate = proc->ctx->sample_rate;
+
+        
+        // create the output audio buffer
+        rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, srate, ch_cnt, proc->ctx->framesPerCycle );
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      { return kOkRC; }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .value   = std_value<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    
+    
     
     //------------------------------------------------------------------------------------------------------------------
     //
@@ -3493,7 +3559,8 @@ namespace cw
         kPeakDbPId,
         kOutPId,
         kPeakFlPId,
-        kClipFlPId
+        kClipFlPId,
+        kRptPeriodMsPId
       };
 
 
@@ -3503,25 +3570,32 @@ namespace cw
       {
         audio_meter_t** mtrA;
         unsigned    mtrN;
+        unsigned    rptPeriodSmpN;
+        unsigned    rptPhase;
       } inst_t;
     
 
       rc_t create( proc_t* proc )
       {
-        rc_t          rc     = kOkRC;
-        const abuf_t* srcBuf = nullptr; //
-        inst_t*       inst   = mem::allocZ<inst_t>();
+        rc_t          rc          = kOkRC;
+        const abuf_t* srcBuf      = nullptr; //
+        inst_t*       inst        = mem::allocZ<inst_t>();
+        unsigned      rptPeriodMs = 0;
         
         proc->userPtr = inst;
 
         // verify that a source buffer exists
-        if((rc = var_register_and_get(proc, kAnyChIdx,kInPId,"in",kBaseSfxId,srcBuf )) != kOkRC )
+        if((rc = var_register_and_get(proc, kAnyChIdx,
+                                      kInPId,"in",kBaseSfxId,srcBuf,
+                                      kRptPeriodMsPId,"rpt_ms",kBaseSfxId,rptPeriodMs)) != kOkRC )
         {
           rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",proc->label);
           goto errLabel;
         }
         else
         {
+          inst->rptPeriodSmpN = (unsigned)(proc->ctx->sample_rate * rptPeriodMs/1000.0);
+
           // allocate channel array
           inst->mtrN = srcBuf->chN;
           inst->mtrA = mem::allocZ<audio_meter_t*>( inst->mtrN );  
@@ -3531,7 +3605,7 @@ namespace cw
           {
             ftime_t wndMs;
             coeff_t peakThreshDb;
-            bool dbFl;
+            bool dbFl;            
 	    
             // get the audio_meter variable values
             if((rc = var_register_and_get( proc, i,
@@ -3593,6 +3667,8 @@ namespace cw
         inst_t*       inst   = (inst_t*)proc->userPtr;
         const abuf_t* srcBuf = nullptr;
         unsigned      chN    = 0;
+
+        bool rptFl = inst->rptPeriodSmpN != 0 && inst->rptPhase >= inst->rptPeriodSmpN;
         
         // get the src buffer
         if((rc = var_get(proc,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
@@ -3606,8 +3682,20 @@ namespace cw
           var_set(proc, kOutPId,    i, inst->mtrA[i]->outDb  );
           var_set(proc, kPeakFlPId, i, inst->mtrA[i]->peakFl );
           var_set(proc, kClipFlPId, i, inst->mtrA[i]->clipFl );
-        }
 
+          if( rptFl )
+            cwLogPrint("%6.2f ",inst->mtrA[i]->outDb);
+        }
+        
+        if(rptFl)
+        {
+          cwLogPrint("\n");
+          inst->rptPhase -= inst->rptPeriodSmpN;
+        }
+        
+        inst->rptPhase += srcBuf->frameN;
+        
+        
       errLabel:
         return rc;
       }
@@ -4187,7 +4275,12 @@ namespace cw
         double   cur_pbend;  // current pitch bend factor
         
         unsigned hzN;
-        double*  hzA;        // hzA[128] - midi to Hz lookup table. 
+        double*  hzA;        // hzA[128] - midi to Hz lookup table.
+
+        bool    done_fl;
+        coeff_t gain;
+        coeff_t gain_coeff;
+        coeff_t gain_thresh;
         
       } inst_t;
 
@@ -4227,6 +4320,8 @@ namespace cw
         for(unsigned i=0; i<midi::kMidiNoteCnt; ++i)
           p->hzA[i] = midi_to_hz(i);
 
+        p->done_fl = true;
+        
       errLabel:
         return rc;
       }
@@ -4245,6 +4340,11 @@ namespace cw
       {
         rc_t rc = kOkRC;
         return rc;
+      }
+
+      void _on_note_off( inst_t* p )
+      {
+        p->gain_coeff = 0.9;
       }
 
       rc_t _exec( proc_t* proc, inst_t* p )
@@ -4272,11 +4372,18 @@ namespace cw
               p->cur_vel = m->d1;
 
               if( m->d1 == 0 )
-                var_set(proc,kDoneFlPId,kAnyChIdx,true);              
+                _on_note_off(p);
+              else
+              {
+                p->done_fl = false;
+                p->gain = (coeff_t)p->cur_vel / 127;
+                p->gain_coeff = 1.0;
+                p->gain_thresh = 0.001;
+              }
               break;
 
             case midi::kNoteOffMdId:
-              var_set(proc,kDoneFlPId,kAnyChIdx,true);              
+              _on_note_off(p);
               break;
 
             case midi::kPbendMdId:
@@ -4289,15 +4396,12 @@ namespace cw
         }
 
         // if the voice is off then zero the audio buffer
-        if( p->cur_vel == 0 )
+        if( p->done_fl )
         {
           vop::zero(abuf->buf,abuf->frameN);
         }
         else
         {
-
-          // calculate the gain based on the cur_vel
-          coeff_t gain = (coeff_t)p->cur_vel / 127;
 
           // fill in the audio buffer
           for(unsigned i=0; i<abuf->frameN; ++i)
@@ -4306,12 +4410,21 @@ namespace cw
             double   frac = p->wtPhase - j;          
             sample_t smp  = p->wtA[j] + (p->wtA[j+1] - p->wtA[j]) * frac;
           
-            abuf->buf[i] = gain*smp;
+            abuf->buf[i] = p->gain*smp;
 
             p->wtPhase += p->cur_hz + (p->cur_hz * p->cur_pbend);
             if( p->wtPhase >= p->wtN )
               p->wtPhase -= p->wtN;
           }
+
+          p->gain *= p->gain_coeff;
+          
+          if( p->gain < p->gain_thresh )
+          {
+            var_set(proc,kDoneFlPId,kAnyChIdx,true);
+            p->done_fl = true;
+          }
+          
         }
         
       errLabel:
@@ -4344,6 +4457,7 @@ namespace cw
         kOutPId,
         kDoneFlPId,
         kTestPitchPId,
+        kKeyPitchPId,
       };
 
       enum {
@@ -4374,7 +4488,8 @@ namespace cw
         coeff_t       gain_coeff;
         bool          done_fl;
         
-        unsigned      test_pitch;      // Base test pitch        
+        unsigned      test_pitch;      // Pitch under test or 0 if not on test mode
+        unsigned      test_key_pitch;  // Key associated with lowest velocity when in test mode.
         unsigned      test_pitchN;     // Count of valid velocities for test_pitch 
         unsigned*     test_pitch_map;  // test_pitch_map[ test_pitch_N ]
         
@@ -4395,6 +4510,7 @@ namespace cw
           {
             assert( j < p->test_pitchN );
             p->test_pitch_map[j++] = i;
+            //printf("%i %i %i\n",j-1,i,p->test_pitchN);
           }
           
       }
@@ -4417,7 +4533,8 @@ namespace cw
                                        kWtbInstrPId,  "wtb_instr", kBaseSfxId, wtb_instr,
                                        kInPId,        "in",        kBaseSfxId, mbuf,
                                        kDoneFlPId,    "done_fl",   kBaseSfxId, done_fl,
-                                       kTestPitchPId, "test_pitch",kBaseSfxId, p->test_pitch)) != kOkRC )
+                                       kTestPitchPId, "test_pitch",kBaseSfxId, p->test_pitch,
+                                       kKeyPitchPId,  "test_key_pitch", kBaseSfxId, p->test_key_pitch)) != kOkRC )
         {
           goto errLabel;
         }
@@ -4536,8 +4653,8 @@ namespace cw
                 // if in voice test mode
                 if( p->test_pitch_map != nullptr )
                 {
-                  // if the the pitch is in side the test range
-                  if( d0 < p->test_pitch || p->test_pitch + p->test_pitchN <= d1  )
+                  // if the the pitch is inside the test range
+                  if( d0 < p->test_key_pitch || p->test_key_pitch + p->test_pitchN <= d0  )
                     goto errLabel;
 
                   // then the pitch is set to the test pitch ...
@@ -4545,7 +4662,7 @@ namespace cw
 
                   // ... and the velocity is mapped to a vel for which there is a known vel in the wt-bank
                   // Performed pitches above the test pitch trigger increasing velocities.
-                  d1 = p->test_pitch_map[ m->d0 - p->test_pitch ];
+                  d1 = p->test_pitch_map[ m->d0 - p->test_key_pitch ];
                 }
 
                 // get the wave-table associated with the pitch and velocity
@@ -4598,17 +4715,23 @@ namespace cw
         else
         {
 
+          // for each channel
           for(unsigned i=0; i<kChCnt; ++i)
           {
-            sample_t*       yV = abuf->buf + i*abuf->frameN;
+            // for the output buffer
+            sample_t*       yV = abuf->buf + i*abuf->frameN; 
             unsigned        yi = 0;
+
+            // get this channels oscillator
             osc_state_t*    osc  = p->osc + i;
 
+            // for each sample in the output buffer
             while(yi < abuf->frameN)
             {
+              // locate the current wavetable
               wt_bank::seg_t* seg  = p->wt->chA[i].segA + osc->seg_idx;
               unsigned n;
-              
+
               if( seg->aN - osc->smp_idx > abuf->frameN-yi )
                 n = abuf->frameN-yi;
               else
@@ -4639,7 +4762,7 @@ namespace cw
             
             if( p->gain < p->kGainThreshold && !p->done_fl )
             {
-              //printf("done\n");
+              //printf("done:\n");
               var_set(proc,kDoneFlPId,kAnyChIdx,true);
               p->done_fl = true;
             }
