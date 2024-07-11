@@ -1194,11 +1194,19 @@ void  cw::flow::value_print( const value_t* value, bool info_fl)
 
 cw::flow::abuf_t* cw::flow::abuf_create( srate_t srate, unsigned chN, unsigned frameN )
 {
+  if( chN*frameN == 0 )
+  {
+    cwLogError(kInvalidArgRC,"The %s audio signal parameter cannot be zero.", chN==0 ? "channel count" : "frame count");
+    return nullptr;
+  }
+  
   abuf_t* a       = mem::allocZ<abuf_t>();
   a->srate        = srate;
   a->chN          = chN;
   a->frameN       = frameN;
   a->bufAllocSmpN = chN*frameN;
+
+  
   a->buf          = mem::allocZ<sample_t>(a->bufAllocSmpN);
   
   return a;
@@ -1225,7 +1233,8 @@ cw::flow::abuf_t*  cw::flow::abuf_duplicate( abuf_t* dst, const abuf_t* src )
   else
     abuf = dst;
 
-  vop::copy(abuf->buf,src->buf,src->chN*src->frameN);
+  if( abuf != nullptr )
+    vop::copy(abuf->buf,src->buf,src->chN*src->frameN);
 
   return abuf;
 }
