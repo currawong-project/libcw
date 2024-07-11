@@ -937,10 +937,13 @@ cw::rc_t cw::objectFromString( const char* s, object_t*& objRef )
     // then make the parent 'object' the current node
     if( cnp->is_pair() && cnp->child_count()==2 )
       cnp = cnp->parent;
-
-    
   }
 
+  if( lexId == lex::kErrorLexTId )
+  {
+      goto errLabel;    
+  }
+  
   // if the root has only one child then make the child the root
   if( root != nullptr && root->child_count() == 1 )
   {
