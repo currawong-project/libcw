@@ -72,6 +72,9 @@ namespace cw
       void zero( T* v, unsigned n )
     { fill(v,n,0); }
 
+    template< typename T >
+      void ones( T* v, unsigned n )
+    { fill(v,n,1); }
 
     //==================================================================================================================
     // Compare
@@ -324,6 +327,13 @@ namespace cw
         v0[i] -= scalar;
     }
 
+    template< typename T0, typename T1 >
+    void sub( const T0& scalar, T1* v0, unsigned n )
+    {
+      for(unsigned i=0; i<n; ++i)
+        v0[i] = scalar - v0[i];
+    }
+    
     template< typename T0, typename T1 >
       void sub( T0* y0, const T0* v0, const T1& scalar, unsigned n )
     {
