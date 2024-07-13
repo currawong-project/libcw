@@ -8,10 +8,13 @@
 #include "cwObject.h"
 #include "cwFileSys.h"
 #include "cwAudioFile.h"
-#include "cwDspTypes.h"
-#include "cwWaveTableBank.h"
+#include "cwMath.h"
 #include "cwVectOps.h"
+#include "cwDspTypes.h"
+#include "cwDsp.h"
+#include "cwWaveTableBank.h"
 #include "cwMidi.h"
+#include "cwTest.h"
 
 namespace cw
 {
@@ -122,7 +125,8 @@ namespace cw
         af_t* af0 = af->link;
 
         for(unsigned i=0; i<af->segN; ++i)
-          mem::release(af->segA[i].aV);
+          if(af->segA != nullptr )
+            mem::release(af->segA[i].aV);
         
         af->cfg->free();
         mem::release(af->wtA);
@@ -210,7 +214,8 @@ namespace cw
                      const object_t*        wtL,
                      const sample_t* const* audio_ch_buf  = nullptr,
                      unsigned               audio_ch_bufN = 0,
-                     unsigned               padSmpN       = 0 )
+                     unsigned               padSmpN       = 0,
+                     srate_t                srate         = 0)
     {
       rc_t        rc          = kOkRC;
       unsigned    wtN         = wtL->child_count();
@@ -261,10 +266,11 @@ namespace cw
         }
         
         // count or store the wt recd
-        wr.instr_id = count_fl ? kInvalidId : _find_or_add_instr_id(p,instr_label);
-        wr.chN  = chL->child_count();
-        wr.chA  = count_fl ? nullptr : af->chA + ch_idx;
-        ch_idx += wr.chN;
+        wr.instr_id  = count_fl ? kInvalidId : _find_or_add_instr_id(p,instr_label);
+        wr.chN       = chL->child_count();
+        wr.chA       = count_fl ? nullptr : af->chA + ch_idx;
+        wr.srate     = srate;
+        ch_idx      += wr.chN;
 
         // for each channel cfg on this wt cfg
         for(unsigned j=0; j<wr.chN; ++j)
@@ -316,6 +322,7 @@ namespace cw
 
             // parse the kth seg cfg
             if((rc = seg->getv("cost",sr.cost,
+                               "cyc_per_loop",sr.cyc_per_loop,
                                "bsi",bsi,
                                "esi",esi)) != kOkRC )
             {
@@ -381,7 +388,7 @@ namespace cw
         }
 
         // Parse the cfg and fill the associated af.
-        if((rc = _parse_cfg( p, af,wtL, buf, af_info.chCnt, padN)) != kOkRC )
+        if((rc = _parse_cfg( p, af,wtL, buf, af_info.chCnt, padN, af_info.srate)) != kOkRC )
           goto errLabel;
         
       }
@@ -398,7 +405,6 @@ namespace cw
     rc_t _load_cfg_file( wt_bank_t* p, const char* cfg_fname, unsigned padN )
     {
       rc_t            rc           = kOkRC;
-      srate_t         srate        = 0;
       const object_t* wtL          = nullptr;
 
       af_t* af = mem::allocZ<af_t>();
@@ -414,7 +420,6 @@ namespace cw
       }
 
       if((rc = af->cfg->getv("audio_fname",af->audio_fname,
-                             "srate",srate,
                              "wt",wtL)) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"The wave table header parse failed.");
@@ -437,6 +442,9 @@ namespace cw
         goto errLabel;
       
     errLabel:
+      if( rc != kOkRC )
+        rc = cwLogError(rc,"Wave table load failed on '%s'.",cwStringNullGuard(cfg_fname));
+      
       return rc;
     }
 
@@ -474,6 +482,369 @@ namespace cw
       return rc;
     }
 
+
+    const wt_t* _get_wave_table( wt_bank_t* p, unsigned instr_idx, unsigned pitch, unsigned vel )
+    {
+      rc_t rc = kOkRC;
+
+      if( instr_idx >= p->wtMapN )
+      {
+        rc = cwLogError(kInvalidArgRC,"Invalid instr_idx %i",instr_idx);
+        goto errLabel;
+      }
+
+      if( pitch >= midi::kMidiNoteCnt )
+      {
+        rc = cwLogError(kInvalidArgRC,"Invalid MIDI pitch %i",pitch);
+        goto errLabel;
+      }
+
+      if( vel >= midi::kMidiVelCnt )
+      {
+        rc = cwLogError(kInvalidArgRC,"Invalid MIDI pitch %i",pitch);
+        goto errLabel;
+      }
+
+      return p->wtMapA[ instr_idx ].map[ vel * midi::kMidiNoteCnt + pitch ];
+
+    errLabel:
+      cwLogError(rc,"Wave table lookup failed.");
+      return nullptr;
+    }
+    
+    typedef struct seg_osc_str
+    {
+      seg_tid_t    tid;
+      const seg_t* seg;
+      unsigned     id;
+      double       xphase;
+      double       loop_frac_smpN; // length of the loop including fractional part
+      unsigned     cur_loopN;   // count of loops
+      sample_t*    envV;
+      unsigned     envN;
+      unsigned     delay_smp_idx;
+      unsigned     cur_smp_idx;
+      unsigned     ch_idx;
+    } seg_osc_t;
+
+    void _seg_osc_setup( seg_osc_t*   osc,
+                         unsigned     id,
+                         unsigned     ch_idx,
+                         const seg_t* seg,
+                         double       smp_per_cyc,
+                         sample_t*    envV,
+                         unsigned     envN,
+                         unsigned     delay_smp_idx,
+                         seg_tid_t    tid = kInvalidTId )
+    {
+      osc->seg = seg;
+      osc->id  = id;
+      osc->tid = tid==kInvalidTId ? seg->tid : tid;
+      osc->loop_frac_smpN = osc->tid==kAttackTId ? seg->aN : smp_per_cyc * seg->cyc_per_loop;
+      osc->xphase = 0;
+      osc->envV = envV;
+      osc->envN = envN;
+      osc->delay_smp_idx = delay_smp_idx;
+      osc->cur_smp_idx = 0;
+      osc->ch_idx = ch_idx;
+    }
+
+    void _seg_osc_update( seg_osc_t* osc, sample_t* yV, unsigned yN, unsigned& actual_yN_ref )
+    {
+      unsigned     yi   = 0;
+      const float* xV   = osc->seg->aV + osc->seg->padN;
+      
+      actual_yN_ref = 0;
+
+      for(yi=0; yi<yN; ++yi,++osc->cur_smp_idx)
+        if( osc->cur_smp_idx >= osc->delay_smp_idx )
+        {
+
+          double       xfi  = std::floor(osc->xphase);      
+          double       frac = osc->xphase - xfi;
+          int          xi   = (int)xfi;
+                  
+          yV[yi] += xV[xi] + (xV[xi+1] - xV[xi]) * frac * osc->envV[xi];
+
+          /*
+          float f = frac;
+          float f_1 = f - 1.0;
+          float f_2 = f - 2.0;
+          float f1  = f + 1.0;
+          
+          yV[yi] += osc->envV[xi] * ((-f)*f_1*f_2*xV[xi-1]/6.0f + f1*f_1*f_2*xV[xi]/2.0f - f1*f*f_2*xV[xi+1]/2.0f + f1*f*f_1*xV[xi+2]/6.0f);
+          */
+          
+          //if( osc->seg->tid==kLoopTId && osc->ch_idx==0 && osc->cur_loopN < 4 )
+          //  printf("%i,%i,%i,%i,%f,%f,%f,%f\n",osc->id,osc->cur_smp_idx,yi,xi,frac,xV[xi],osc->envV[xi],yV[yi]);
+        
+          osc->xphase += 1.0f; // osc->seg->tid == kLoopTId ? 0.5f : 1.0f;
+
+          // if the end of the wave table is encountered
+          if( osc->xphase >= osc->loop_frac_smpN )
+          {
+            if( osc->tid != kLoopTId)
+              goto errLabel;
+
+            osc->xphase = osc->xphase - osc->loop_frac_smpN;            
+            osc->cur_loopN += 1;
+          }
+        }
+
+        
+    errLabel:
+      actual_yN_ref = yi;
+      
+    }
+
+
+    void _seg_osc_update_0( seg_osc_t* osc, sample_t* yV, unsigned yN, unsigned& actual_yN_ref )
+    {
+      unsigned     yi   = 0;
+      const float* xV   = osc->seg->aV + osc->seg->padN;
+      double       xphs = osc->xphase;
+      double       xfi  = std::floor(osc->xphase);      
+      double       frac = xphs - xfi;
+      int          xi   = (int)xfi;
+      
+      actual_yN_ref = 0;
+
+      for(yi=0; yi<yN; ++yi,++osc->cur_smp_idx)
+        if( osc->cur_smp_idx >= osc->delay_smp_idx )
+        {        
+        
+          //yV[yi] = xV[xi] + (xV[xi+1] - xV[xi]) * frac;
+
+          float f = frac;
+          float f_1 = f - 1.0;
+          float f_2 = f - 2.0;
+          float f1  = f + 1.0;
+
+          yV[yi] += osc->envV[xi] * ((-f)*f_1*f_2*xV[xi-1]/6.0f + f1*f_1*f_2*xV[xi]/2.0f - f1*f*f_2*xV[xi+1]/2.0f + f1*f*f_1*xV[xi+2]/6.0f);
+
+          //if( loop_fl && ch_idx==0 && seg_loopN_ref < 4 )
+          //  printf("%i,%i,%f,%f,%f\n",yi,xi,frac,xV[xi],yV[yi]);
+        
+          xi += 1;
+
+
+          // if the end of the wave table is encountered
+          if( frac+xi >= osc->loop_frac_smpN )
+          {
+            if( osc->tid != kLoopTId)
+              goto errLabel;
+          
+            xphs = (frac+xi) - osc->loop_frac_smpN;
+            xi   = (unsigned)std::floor(xphs);
+            frac = xphs - xi;
+            osc->cur_loopN += 1;
+          }
+        }
+
+        
+    errLabel:
+      actual_yN_ref = yi;
+      osc->xphase = frac + xi;
+      
+    }
+
+    
+    rc_t _gen_note( const wt_t* wt, srate_t srate, sample_t** outChV, unsigned y_frm_cnt )
+    {
+      rc_t rc = kOkRC;
+      const unsigned frmPerUpdate = 64;
+      
+      double hz          = midi_to_hz( wt->pitch );
+      double smp_per_cyc = srate / hz;
+
+      // for each audio output channel
+      for(unsigned ch_idx=0; ch_idx<wt->chN; ++ch_idx)
+      {
+        seg_osc_t a_osc, b_osc, l0_osc, l1_osc;
+        seg_osc_t* cur_osc0 = &a_osc;
+        seg_osc_t* cur_osc1 = nullptr;
+        seg_osc_t* cur_oscb = nullptr;
+
+        unsigned a_envN = wt->chA[ch_idx].segA[0].aN;
+        sample_t a_envV[ a_envN ];
+        vop::ones(a_envV,a_envN);
+        
+        unsigned l_envN = wt->chA[ch_idx].segA[1].aN;
+        sample_t l_envV[ l_envN ];
+        dsp::hann(l_envV,l_envN);
+
+        unsigned b_envN = wt->chA[ch_idx].segA[1].aN;
+        sample_t b_envV[ b_envN ];
+        vop::zero(b_envV,b_envN);
+        vop::copy(b_envV, l_envV+l_envN/2, l_envN/2);
+        
+
+        _seg_osc_setup( &a_osc,  0, ch_idx, wt->chA[ch_idx].segA,     smp_per_cyc, a_envV, a_envN, 0 );
+        _seg_osc_setup( &b_osc,  1, ch_idx, wt->chA[ch_idx].segA + 1, smp_per_cyc, b_envV, b_envN, 0, kAttackTId );
+        _seg_osc_setup( &l0_osc, 2, ch_idx, wt->chA[ch_idx].segA + 1, smp_per_cyc, l_envV, l_envN, 0 );
+        _seg_osc_setup( &l1_osc, 3, ch_idx, wt->chA[ch_idx].segA + 1, smp_per_cyc, l_envV, l_envN, l_envN/2 );
+        
+        sample_t*    yV          = outChV[ch_idx];
+        unsigned     y_frm_idx   = 0;
+
+        // while the output channel is not full
+        while( y_frm_idx < y_frm_cnt )
+        {
+          unsigned y_upd_cnt = 0;
+
+          // while the current frame update has not generated frmPerUpdate samples
+          while( y_upd_cnt < frmPerUpdate && y_frm_idx < y_frm_cnt )
+          {
+            unsigned y_actual_upd_cnt = 0;
+
+            unsigned n = std::min(frmPerUpdate, std::min(frmPerUpdate-y_upd_cnt, y_frm_cnt-y_frm_idx));
+
+            if( cur_oscb != nullptr )
+            {
+              _seg_osc_update( cur_oscb, yV + y_frm_idx, n, y_actual_upd_cnt);
+              if( y_actual_upd_cnt != n )
+                cur_oscb = nullptr;
+            }
+            
+            _seg_osc_update( cur_osc0, yV + y_frm_idx, n, y_actual_upd_cnt);
+            
+            if( cur_osc1 != nullptr )
+              _seg_osc_update( cur_osc1, yV + y_frm_idx, n, y_actual_upd_cnt);
+            
+            y_upd_cnt += y_actual_upd_cnt;
+            y_frm_idx += y_actual_upd_cnt;
+
+            // if the segment ran out of samples ...
+            if( y_actual_upd_cnt < n )
+            {
+              // (only attack segments run out of samples - because they do not loop)
+              assert( cur_osc0->tid == kAttackTId );
+
+              cur_osc0 = &l0_osc;
+              //cur_osc1 = &l1_osc;
+              //cur_oscb = &b_osc;
+            }
+          }
+        }
+
+      }
+      return rc;
+    }
+
+    /*
+    void _gen_osc_update(const sample_t* xV, unsigned xN, double loop_frac_smpN, double& xPhs_ref, sample_t* yV, unsigned yN,  unsigned& actual_yN_ref, bool loop_fl, unsigned& seg_loopN_ref, unsigned ch_idx  )
+    {
+      unsigned yi   = 0;
+      double   xphs = xPhs_ref;
+      double   xfi  = std::floor(xphs);      
+      double   frac = xphs - xfi;
+      int      xi   = (int)xfi;
+      
+      actual_yN_ref = 0;
+
+      for(yi=0; yi<yN; ++yi)
+      {        
+        
+        //yV[yi] = xV[xi] + (xV[xi+1] - xV[xi]) * frac;
+
+        float f = frac;
+        float f_1 = f - 1.0;
+        float f_2 = f - 2.0;
+        float f1  = f + 1.0;
+        
+        yV[yi] = (-f)*f_1*f_2*xV[xi-1]/6.0f + f1*f_1*f_2*xV[xi]/2.0f - f1*f*f_2*xV[xi+1]/2.0f + f1*f*f_1*xV[xi+2]/6.0f;
+
+        //if( loop_fl && ch_idx==0 && seg_loopN_ref < 4 )
+        //  printf("%i,%i,%f,%f,%f\n",yi,xi,frac,xV[xi],yV[yi]);
+        
+        xi += 1;
+
+        // if the end of the wave table is encountered
+        if( frac+xi >= loop_frac_smpN )
+        {
+          if( !loop_fl)
+            goto errLabel;
+          
+          xphs = (frac+xi) - loop_frac_smpN;
+          xi   = (unsigned)std::floor(xphs);
+          frac = xphs - xi;
+          seg_loopN_ref += 1;
+        }
+      }
+
+        
+    errLabel:
+      actual_yN_ref = yi;
+      xPhs_ref = frac + xi;
+    }
+    
+    rc_t _gen_note_0( const wt_t* wt, srate_t srate, sample_t** outChV, unsigned y_frm_cnt )
+    {
+      rc_t rc = kOkRC;
+      const unsigned frmPerUpdate = 64;
+      
+      double hz          = midi_to_hz( wt->pitch );
+      double smp_per_cyc = srate / hz;
+
+      // for each audio output channel
+      for(unsigned ch_idx=0; ch_idx<wt->chN; ++ch_idx)
+      {
+        sample_t*    yV          = outChV[ch_idx];
+        unsigned     y_frm_idx   = 0;
+        const seg_t* seg         = wt->chA[ch_idx].segA;
+        unsigned     seg_idx     = 0;
+        unsigned     seg_smp_cnt = seg->aN;
+        double       seg_phase   = 0;
+        double       seg_frac_smpN = seg_smp_cnt;
+        unsigned     seg_loop_cnt  = 0;
+
+        // while the output channel is not full
+        while( y_frm_idx < y_frm_cnt )
+        {
+          unsigned y_upd_cnt = 0;
+
+          // while the current frame update has not generated frmPerUpdate samples
+          while( y_upd_cnt < frmPerUpdate && y_frm_idx < y_frm_cnt )
+          {
+            unsigned y_actual_upd_cnt = 0;
+
+            // TODO: handle case where y_frm_cnt is not an even multiple of frmPerUpdate
+
+            // attempt to generate frmPerUpdate samples into yV[ y_frm_idx:y_frm_idx + frmPerUpdate ]
+            _gen_osc_update(seg->aV + seg->padN, seg_smp_cnt, seg_frac_smpN, seg_phase, yV + y_frm_idx, frmPerUpdate, y_actual_upd_cnt, seg->tid==kLoopTId, seg_loop_cnt, ch_idx  );
+
+            
+            y_upd_cnt += y_actual_upd_cnt;
+            y_frm_idx += y_actual_upd_cnt;
+
+            // if the segment ran out of samples ...
+            if( y_actual_upd_cnt < frmPerUpdate )
+            {
+              // (only attack segments run out of samples - because they do not loop)
+              assert( seg->tid == kAttackTId );              
+
+              // ...then advance to the next segment
+              seg_idx += 1;
+              if( seg_idx >= wt->chA[ch_idx].segN )
+              {
+                // done
+                goto errLabel;
+              }
+              
+              seg           = wt->chA[ch_idx].segA + seg_idx;
+              seg_phase     = 0;
+              seg_smp_cnt   = seg->aN;
+              seg_frac_smpN = smp_per_cyc * seg->cyc_per_loop;
+              seg_loop_cnt  = 0;
+            }
+          }
+        }
+      }
+    errLabel:
+      return rc;
+    }
+    */
+    
   }
 }
 
@@ -559,47 +930,152 @@ unsigned cw::wt_bank::instr_index( handle_t h, const char* instr_label )
 
 const cw::wt_bank::wt_t* cw::wt_bank::get_wave_table( handle_t h, unsigned instr_idx, unsigned pitch, unsigned vel )
 {
-  rc_t rc = kOkRC;
-
   wt_bank_t* p = _handleToPtr(h);
-  
-  if( instr_idx >= p->wtMapN )
-  {
-    rc = cwLogError(kInvalidArgRC,"Invalid instr_idx %i",instr_idx);
-    goto errLabel;
-  }
 
-  if( pitch >= midi::kMidiNoteCnt )
-  {
-    rc = cwLogError(kInvalidArgRC,"Invalid MIDI pitch %i",pitch);
-    goto errLabel;
-  }
-
-  if( vel >= midi::kMidiVelCnt )
-  {
-    rc = cwLogError(kInvalidArgRC,"Invalid MIDI pitch %i",pitch);
-    goto errLabel;
-  }
-
-  return p->wtMapA[ instr_idx ].map[ vel * midi::kMidiNoteCnt + pitch ];
-
-errLabel:
-  cwLogError(rc,"Wave table lookup failed.");
-  return nullptr;
+  return _get_wave_table(p,instr_idx, pitch, vel);  
 }
 
-cw::rc_t cw::wt_bank::test( const char* cfg_fname )
+cw::rc_t cw::wt_bank::gen_notes( handle_t h, unsigned instr_idx, const unsigned* pitchA, const unsigned* velA, unsigned noteN, double note_dur_sec, const char* out_fname, double inter_note_gap_sec )
+{
+  rc_t        rc       = kOkRC;
+  wt_bank_t*  p        = _handleToPtr(h);
+  const wt_t* wtA[ noteN ];
+  srate_t     srate    = 0;
+  unsigned    outFrmN  = 0;
+  unsigned    noteSmpN = 0;
+  unsigned    gapSmpN  = 0; 
+  unsigned    yFrmIdx  = 0;
+  unsigned    chN      = 0;
+  sample_t*   outV     = nullptr;
+
+  // Examine the wave table and determine the srate,audio ch. count, and output signal size.
+  for(unsigned i=0; i<noteN; ++i)
+  {
+    if((wtA[i] = _get_wave_table(p,instr_idx,pitchA[i],velA[i])) == nullptr )
+    {
+      rc = cwLogError(kInvalidArgRC,"The wave table at instr:%i pitch:%i vel:%i does not exist.",instr_idx,pitchA[i],velA[i]);
+      goto errLabel;
+    }
+
+    if( i==0 )
+    {
+      srate = wtA[i]->srate;
+      chN   = wtA[i]->chN;
+
+      noteSmpN = (unsigned)(srate * note_dur_sec);
+      gapSmpN  = (unsigned)(srate * inter_note_gap_sec);
+      
+    }
+    else
+    {
+      assert( srate == wtA[i]->srate );
+      assert( chN   == wtA[i]->chN );
+    }
+
+    printf("pitch:%i vel:%i s/cyc:%f\n", wtA[i]->pitch, wtA[i]->vel, srate/midi_to_hz(wtA[i]->pitch) );
+    
+    for(unsigned j=0; j<wtA[i]->chN; ++j)
+    {
+      printf("  ch:%i\n",wtA[i]->chA[j].ch_idx);
+      
+      for(unsigned k=0; k<wtA[i]->chA[j].segN; ++k)
+      {
+        printf("    %i aN:%i padN:%i\n",
+               wtA[i]->chA[j].segA[k].tid,
+               wtA[i]->chA[j].segA[k].aN,
+               wtA[i]->chA[j].segA[k].padN );
+      }
+    }
+    
+    outFrmN += noteSmpN + gapSmpN;
+  }
+
+  
+  if( outFrmN==0 || chN == 0 )
+  {
+    rc = cwLogError(kInvalidArgRC,"The sample rate:%f, output audio signal length (%i), or channel count (%i) is 0.",srate,outFrmN,chN);
+    goto errLabel;
+  }
+  else
+  {
+    sample_t* outChV[ chN ];
+    
+    outV = mem::allocZ<sample_t>(outFrmN*chN);
+
+    // for each note
+    for(unsigned i=0; i<noteN; ++i)
+    {
+      // calc. the output sample frames for this note
+      unsigned yNoteFrmN = yFrmIdx+noteSmpN > outFrmN ? outFrmN-yFrmIdx : noteSmpN;
+
+      // load the output audio channel vector
+      for(unsigned ch_idx=0; ch_idx<chN; ++ch_idx)
+      {
+        outChV[ch_idx] = outV + ch_idx*outFrmN + yFrmIdx;
+
+        assert( yFrmIdx+yNoteFrmN  < outFrmN );
+      }
+
+      // generate the note audio 
+      if((rc = _gen_note( wtA[i], srate, outChV, yNoteFrmN )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Note generation failed on instr:%i pitch:%i vel:%i",instr_idx,pitchA[i],velA[i]);
+        goto errLabel;
+      }
+
+      yFrmIdx += yNoteFrmN + gapSmpN;
+
+    }
+
+    for(unsigned i=0; i<chN; ++i)
+      outChV[i] = outV + i*outFrmN;
+    
+    // write the output signal to an audio file
+    if((rc = audiofile::writeFileFloat(out_fname, srate, 32, outFrmN, chN, outChV )) != kOkRC )
+    {
+      rc = cwLogError(rc,"Audio file write failed on '%s'.",cwStringNullGuard(out_fname));
+      goto errLabel;
+    }
+    
+  }
+
+
+errLabel:
+
+  mem::release(outV);
+  return rc;
+ 
+}
+
+cw::rc_t cw::wt_bank::test( const test::test_args_t& args )
 {
   rc_t     rc0  = kOkRC;
   rc_t     rc1  = kOkRC;
   unsigned padN = 8;
-  
+  const char* cfg_fname;
   handle_t h;
+
+  unsigned instr_idx = 0;
+  unsigned pitchA[] = { 21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21, 21, 21, 21, 21, 21, 21 };
+  //unsigned pitchA[] = { 60,60,60,60,60,60,60,60,60,60,60,60,60,60,60,60,60,60,60, 60, 60, 60, 60, 60, 60 };
+  unsigned velA[] =   {  1, 5,10,16,21,26,32,37,42,48,53,58,64,69,74,80,85,90,96,101,106,112,117,122,127 };
+  
+  //unsigned velA[] = { 117, 122 };
+  double note_dur_sec = 2.5;
+    
+
+  if((rc0 = args.test_args->getv("wtb_cfg_fname",cfg_fname)) != kOkRC )
+    goto errLabel;
   
   if((rc0 = create(h,cfg_fname,padN)) != kOkRC )
     goto errLabel;
 
-  report(h);
+
+  assert( sizeof(pitchA)/sizeof(pitchA[0]) == sizeof(velA)/sizeof(velA[0]) );
+  
+  gen_notes(h,instr_idx,pitchA,velA,sizeof(pitchA)/sizeof(pitchA[0]),note_dur_sec,"~/temp/temp.wav");
+  
+  //report(h);
   
 errLabel:
   if((rc1 = destroy(h)) != kOkRC )
