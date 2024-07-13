@@ -19,6 +19,10 @@
 #include "cwAudioBuf.h"
 #include "cwMtx.h"
 
+#include "cwDspTypes.h"
+#include "cwWaveTableBank.h"
+
+
 #include "cwFlowTest.h"
 
 
@@ -42,6 +46,7 @@ namespace cw
       { "/textBuf", textBuf::test },
       { "/audioBuf",audio::buf::test },
       { "/mtx",     mtx::test },
+      { "/wt_bank", wt_bank::test },
       { nullptr, nullptr },
     };
     
