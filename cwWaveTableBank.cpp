@@ -16,6 +16,7 @@
 #include "cwMidi.h"
 #include "cwTest.h"
 
+#ifdef NOT_DEF
 namespace cw
 {
   namespace wt_bank
@@ -1085,5 +1086,469 @@ errLabel:
   
   return rcSelect(rc0,rc1);
 }
+#endif
 
 
+
+namespace cw
+{
+  namespace wt_bank
+  {
+    typedef struct vel_str
+    {
+      unsigned vel;
+      multi_ch_wt_seq_t mc_seq;
+    } vel_t;
+    
+    typedef struct pitch_str
+    {
+      unsigned midi_pitch;
+      vel_t*   velA;
+      unsigned velN;
+    } pitch_t;
+    
+    typedef struct instr_str
+    {
+      char*    label;
+      pitch_t* pitchA;
+      unsigned pitchN;
+      struct instr_str* link;      
+    } instr_t;
+
+    typedef struct wt_bank_str
+    {
+      unsigned allocAudioBytesN;
+      unsigned padSmpN;
+      instr_t* instrList;
+    } wt_bank_t;
+
+    typedef struct audio_buf_str
+    {
+      audiofile::handle_t afH;
+      
+      unsigned   allocFrmN = 0;
+      unsigned   allocChN = 0;
+      unsigned   chN = 0;
+      unsigned   frmN = 0;
+      sample_t** ch_buf = nullptr;  // chBuf[chN][frmN]
+    } audio_buf_t;
+
+    wt_bank_t* _handleToPtr( handle_t h )
+    { return handleToPtr<handle_t,wt_bank_t>(h); }
+
+    void _audio_buf_free( audio_buf_t& ab )
+    {
+      audiofile::close(ab.afH);
+      
+      for(unsigned i=0; i<ab.chN; ++i)
+        mem::release(ab.ch_buf[i]);
+      
+      mem::release(ab.ch_buf);
+      ab.allocChN = 0;
+      ab.allocFrmN = 0;
+      ab.chN = 0;
+      ab.frmN = 0;
+    }
+    
+    rc_t _audio_buf_alloc( audio_buf_t& ab, const char* fname )
+    {
+      rc_t rc = kOkRC;
+      audiofile::info_t info;
+      unsigned actualFrmCnt = 0;
+      
+      // open the audio file
+      if((rc = audiofile::open(ab.afH,fname,&info)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Instrument audio file open failed.");
+        goto errLabel;
+      }
+
+      // if the buffer has too few channels
+      if( info.chCnt > ab.allocChN )
+      {
+        ab.ch_buf = mem::resizeZ<sample_t*>( ab.ch_buf, info.chCnt );
+        ab.allocChN = info.chCnt;
+      }
+      
+      for(unsigned i=0; i<info.chCnt; ++i)
+      {
+        // if this channel has too few frames
+        if( ab.ch_buf[i] == nullptr || info.frameCnt > ab.allocFrmN )
+        {
+          ab.ch_buf[i] = mem::resizeZ<sample_t>( ab.ch_buf[i], info.frameCnt );
+          ab.allocFrmN = info.frameCnt;
+        }
+      }
+      
+      if((rc = audiofile::readFloat(ab.afH, info.frameCnt, 0, info.chCnt, ab.ch_buf, &actualFrmCnt )) != kOkRC )
+      {
+        rc = cwLogError(rc,"The instrument audio file read failed.");
+        goto errLabel;
+      }
+
+      assert( info.frameCnt == actualFrmCnt );
+      
+      ab.chN = info.chCnt;
+      ab.frmN = actualFrmCnt;
+
+    errLabel:
+      return rc;
+    }
+
+
+
+    void _destroy_instr( instr_t* instr )
+    {
+      mem::release(instr->label);
+      for(unsigned i=0; i<instr->pitchN; ++i)
+      {
+        pitch_t* pr = instr->pitchA + i;
+        for(unsigned j=0; j<pr->velN; ++j)
+        {
+          vel_t* vr = pr->velA + j;
+          for(unsigned ch_idx=0; ch_idx<vr->mc_seq.chN; ++ch_idx)
+          {
+            wt_seq_t* wts = vr->mc_seq.chA + ch_idx;
+            for(unsigned wti=0; wti<wts->wtN; ++wti)
+            {
+              wt_t* wt = wts->wtA + wti;
+              mem::release(wt->aV);              
+            }
+            mem::release(wts->wtA);
+          }
+          mem::release(vr->mc_seq.chA);            
+        }
+        mem::release(pr->velA);
+      }
+      mem::release(instr->pitchA);
+      mem::release(instr);
+    }
+    
+    rc_t _destroy( wt_bank_t* p )
+    {
+      rc_t rc = kOkRC;
+
+      instr_t* instr = p->instrList;
+      while( instr != nullptr )
+      {
+        instr_t* instr0 = instr->link;
+        _destroy_instr(instr);
+        instr = instr0;        
+      }
+      
+      mem::release(p);
+      return rc;
+    }
+  }
+}
+
+
+cw::rc_t cw::wt_bank::create( handle_t& hRef, unsigned padSmpN )
+{
+  rc_t rc = kOkRC;
+
+  if(destroy(hRef) != kOkRC )
+    return rc;
+
+  wt_bank_t* p = mem::allocZ<wt_bank_t>();
+  p->padSmpN = padSmpN;
+
+  hRef.set(p);
+
+  if(rc != kOkRC )
+    _destroy(p);
+  
+  return rc;
+}
+
+cw::rc_t cw::wt_bank::destroy( handle_t& hRef )
+{
+  rc_t rc = kOkRC;
+  wt_bank_t* p =nullptr;
+  if( !hRef.isValid() )
+    return rc;
+
+  p = _handleToPtr(hRef);
+
+  if((rc = _destroy(p)) != kOkRC )
+    return rc;
+
+  hRef.clear();
+  
+  return rc;
+}
+
+cw::rc_t cw::wt_bank::load( handle_t h, const char* instr_json_fname )
+{
+  rc_t            rc          = kOkRC;
+  wt_bank_t*      p           = _handleToPtr(h);
+  object_t*       f           = nullptr;
+  const object_t* pitchL      = nullptr;
+  const char*     instr_label = nullptr;
+  instr_t*        instr       = nullptr;
+  audio_buf_t     abuf{};
+  
+  if((rc = objectFromFile(instr_json_fname,f)) != kOkRC )
+    goto errLabel;
+
+  if( f == nullptr || !f->is_dict() )
+  {
+    rc = cwLogError(kSyntaxErrorRC,"The instrument file header is not valid.");
+    goto errLabel;
+  }
+
+  if((rc = f->getv("instr",instr_label,
+                   "pitchL",pitchL)) != kOkRC )
+  {
+    rc = cwLogError(rc,"Instrument file syntax error while reading file header.");
+    goto errLabel;
+  }
+
+  instr         = mem::allocZ<instr_t>();
+  instr->label  = mem::duplStr(instr_label);
+  instr->pitchN = pitchL->child_count();
+  instr->pitchA = mem::allocZ<pitch_t>(instr->pitchN);
+
+  for(unsigned i=0; i<instr->pitchN; ++i)
+  {
+    double            hz          = 0;
+    srate_t           srate       = 0;
+    const char*       audio_fname = nullptr;
+    const object_t*   velL        = nullptr;
+    const object_t*   pitchR      = pitchL->child_ele(i);
+    pitch_t*          pitch       = instr->pitchA + i;
+    
+    if(pitchR == nullptr || !pitchR->is_dict() )
+    {
+      rc = cwLogError(kSyntaxErrorRC,"The pitch record at index %i is not valid.",i);
+      goto errLabel;
+    }
+
+    if((rc = pitchR->getv("midi_pitch",pitch->midi_pitch,
+                          "srate",srate,
+                          "est_hz_mean",hz,
+                          "audio_fname",audio_fname,
+                          "velL",velL)) != kOkRC )
+    {
+      rc = cwLogError(rc,"Instrument file syntax error while reading pitch record at index %i.",i);
+      goto errLabel;
+    }
+
+    cwLogInfo("pitch:%i %i %s",pitch->midi_pitch,p->allocAudioBytesN/(1024*1024),audio_fname);
+    
+    // read the audio file into abuf
+    if((rc = _audio_buf_alloc(abuf, audio_fname )) != kOkRC )
+      goto errLabel;
+    
+    pitch->velN = velL->child_count();
+    pitch->velA = mem::allocZ<vel_t>( pitch->velN );
+    
+    for(unsigned j=0; j<instr->pitchA[i].velN; ++j)
+    {
+      const object_t* chL  = nullptr;
+      const object_t* velR = velL->child_ele(j);
+      vel_t*          vel  = pitch->velA + j;
+
+      if( velR==nullptr || !velR->is_dict() )
+      {
+        rc = cwLogError(rc,"The velocity record at index %i on MIDI pitch %i is invalid.",j,pitch->midi_pitch);
+        goto errLabel;
+      }
+      
+      if((rc = velR->getv("vel",vel->vel,
+                          "chL",chL)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Instrument file syntax error while reading the velocity record at index %i from the pitch record for MIDI pitch:%i.",j,pitch->midi_pitch);
+        goto errLabel;
+      }
+
+      
+      vel->mc_seq.chN = chL->child_count();
+      vel->mc_seq.chA = mem::allocZ<wt_seq_t>( vel->mc_seq.chN );
+      
+      for(unsigned ch_idx=0; ch_idx<instr->pitchA[i].velA[j].mc_seq.chN; ++ch_idx)
+      {
+
+        const object_t* wtL = chL->child_ele(ch_idx);
+        wt_seq_t*       wts = vel->mc_seq.chA + ch_idx;
+        
+        wts->wtN = wtL->child_count();
+        wts->wtA = mem::allocZ<wt_t>( wts->wtN );
+        
+        for(unsigned wti=0; wti<wts->wtN; ++wti)
+        {
+          const object_t* wtR  = wtL->child_ele(wti);
+          wt_t*           wt   = wts->wtA + wti;
+          unsigned        wtbi = kInvalidIdx;
+          unsigned        wtei = kInvalidIdx;
+          unsigned        allocSmpCnt = 0;
+          
+          if((rc = wtR->getv("wtbi",wtbi,
+                             "wtei",wtei,
+                             "rms",wt->rms,
+                             "est_hz",wt->hz)) != kOkRC )
+          {
+            rc = cwLogError(rc,"Instrument file syntax error in wavetable record at index %i, channel index:%i, velocity index:%i midi pitch:%i.",wti,ch_idx,j,pitch->midi_pitch);
+            goto errLabel;
+          }
+
+          
+          wt->cyc_per_loop = 1;
+          wt->hz = hz;
+          wt->aN = wtei-wtbi;
+
+          allocSmpCnt = p->padSmpN+wt->aN+p->padSmpN;
+          p->allocAudioBytesN += allocSmpCnt * sizeof(sample_t);            
+          
+          // allocate the wavetable audio buffer
+          wt->aV = mem::allocZ<sample_t>( allocSmpCnt );
+
+          // fill the wavetable from the audio file
+          vop::copy(wt->aV+p->padSmpN, abuf.ch_buf[ch_idx] + wtbi, wt->aN);
+          
+          // fill the wavetable prefix
+          vop::copy(wt->aV, wt->aV + p->padSmpN + (wt->aN-p->padSmpN), p->padSmpN );
+
+          // fill the wavetable suffix
+          vop::copy(wt->aV + p->padSmpN + wt->aN, wt->aV + p->padSmpN, p->padSmpN );
+          
+        }
+      }
+    }    
+  }
+
+  instr->link = p->instrList;
+  p->instrList = instr;
+  
+errLabel:
+  if(rc != kOkRC )
+  {
+    if( instr != nullptr )
+      _destroy_instr(instr);
+    rc = cwLogError(rc,"Wave table bank load failed on '%s'.",cwStringNullGuard(instr_json_fname));
+  }
+
+  _audio_buf_free(abuf);
+  
+  f->free();
+  
+  return rc;
+}
+
+void cw::wt_bank::report( handle_t h )
+{
+  wt_bank_t* p = _handleToPtr(h);
+  for(instr_t* instr = p->instrList; instr!=nullptr; instr=instr->link)
+  {
+    cwLogPrint("%s \n",instr->label);
+    for(unsigned i=0; i<instr->pitchN; ++i)
+    {
+      const pitch_t* pitch = instr->pitchA + i;
+      cwLogPrint("  pitch:%i\n",pitch->midi_pitch);
+
+      for(unsigned j=0; j<pitch->velN; ++j)
+      {
+        vel_t* vel = pitch->velA + j;
+        bool   fl  = true;
+        
+        cwLogPrint("    vel:%i\n",vel->vel);
+
+        for(unsigned wti=0; fl; ++wti)
+        {
+
+          const char* indent = "      ";
+          for(unsigned ch_idx=0; ch_idx<vel->mc_seq.chN; ++ch_idx)
+            if( wti < vel->mc_seq.chA[ch_idx].wtN )
+            {
+              wt_t* wt=vel->mc_seq.chA[ch_idx].wtA + wti;
+              
+              cwLogPrint("%s(%i %f %f) ",indent,wt->aN,wt->rms,wt->hz);
+              indent="";
+              fl = true;
+            }
+          
+          if( fl )
+            cwLogPrint("\n");
+        }
+        
+      }
+    }
+  }
+  
+  
+}
+
+unsigned cw::wt_bank::instr_count( handle_t h )
+{
+  wt_bank_t* p = _handleToPtr(h);
+  
+  unsigned n = 0;
+  for(instr_t* instr=p->instrList; instr!=nullptr; instr=instr->link)
+    ++n;
+  
+  return n;
+}
+
+unsigned cw::wt_bank::instr_index( handle_t h, const char* instr_label )
+{
+  wt_bank_t* p = _handleToPtr(h);
+  
+  unsigned i = 0;
+  for(instr_t* instr=p->instrList; instr!=nullptr; instr=instr->link,++i)
+    if( textIsEqual(instr->label,instr_label) )
+      return i;
+  
+  return kInvalidIdx;
+}
+
+const cw::wt_bank::wt_t* cw::wt_bank::get_wave_table( handle_t h, unsigned instr_idx, unsigned pitch, unsigned vel )
+{
+  return nullptr;  
+}
+
+cw::rc_t cw::wt_bank::gen_notes( handle_t h, unsigned instr_idx, const unsigned* pitchA, const unsigned* velA, unsigned noteN, double dur_secs, const char* out_fname, double inter_note_gap_secs )
+{
+  rc_t rc = kOkRC;
+  return rc;
+}
+    
+cw::rc_t cw::wt_bank::test( const test::test_args_t& args )
+{
+  rc_t     rc0  = kOkRC;
+  rc_t     rc1  = kOkRC;
+  unsigned padN = 2;
+  const char* cfg_fname;
+  handle_t h;
+
+  //unsigned instr_idx = 0;
+  //unsigned pitchA[] = { 21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21, 21, 21, 21, 21, 21, 21 };
+  //unsigned pitchA[] = { 60,60,60,60,60,60,60,60,60,60,60,60,60,60,60,60,60,60,60, 60, 60, 60, 60, 60, 60 };
+  //unsigned velA[] =   {  1, 5,10,16,21,26,32,37,42,48,53,58,64,69,74,80,85,90,96,101,106,112,117,122,127 };
+  
+  //unsigned velA[] = { 117, 122 };
+  //double note_dur_sec = 2.5;
+    
+
+  if((rc0 = args.test_args->getv("wtb_cfg_fname",cfg_fname)) != kOkRC )
+    goto errLabel;
+  
+  if((rc0 = create(h,padN)) != kOkRC )
+    goto errLabel;
+
+  if((rc0 = load(h,cfg_fname)) != kOkRC )
+    goto errLabel;
+
+  //assert( sizeof(pitchA)/sizeof(pitchA[0]) == sizeof(velA)/sizeof(velA[0]) );
+  
+  //gen_notes(h,instr_idx,pitchA,velA,sizeof(pitchA)/sizeof(pitchA[0]),note_dur_sec,"~/temp/temp.wav");
+  
+  report(h);
+  
+errLabel:
+  if((rc1 = destroy(h)) != kOkRC )
+  {
+    rc1 = cwLogError(rc1,"Wave table bank destroy failed.");
+  }
+  
+  return rcSelect(rc0,rc1);
+}
