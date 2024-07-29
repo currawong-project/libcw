@@ -941,7 +941,8 @@ cw::rc_t cw::objectFromString( const char* s, object_t*& objRef )
 
   if( lexId == lex::kErrorLexTId )
   {
-      goto errLabel;    
+    rc = cwLogError(kSyntaxErrorRC,"A lexical element was not recognized.");
+    goto errLabel;    
   }
   
   // if the root has only one child then make the child the root
