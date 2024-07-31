@@ -19,9 +19,14 @@
 #include "cwAudioBuf.h"
 #include "cwMtx.h"
 
-#include "cwDspTypes.h"
-#include "cwWaveTableBank.h"
+#include "cwAudioFile.h"
 
+#include "cwDspTypes.h"
+#include "cwMath.h"
+#include "cwDsp.h"
+#include "cwAudioTransforms.h"
+#include "cwWaveTableBank.h"
+#include "cwWaveTableNotes.h"
 
 #include "cwFlowTest.h"
 
@@ -47,6 +52,8 @@ namespace cw
       { "/audioBuf",audio::buf::test },
       { "/mtx",     mtx::test },
       { "/wt_bank", wt_bank::test },
+      { "/audio_transform", dsp::test },
+      { "/wt_note", wt_note::test },
       { nullptr, nullptr },
     };
     
