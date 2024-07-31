@@ -34,7 +34,7 @@ namespace cw
 
         newline_fl = false;
         
-        if( (n+1) % colN == 0 )
+        if( (i+1) % colN == 0 )
         {
           cwLogPrint("\n");
           newline_fl = true;
