@@ -779,9 +779,9 @@ namespace cw
   
         ifft::exec_polar( p->ft, magV, phsV );
 
-	// convert double to float
-	T0 v[ p->ft->outN ];
-	vop::copy( v, p->ft->outV, p->ft->outN );
+        // convert double to float
+        T0 v[ p->ft->outN ];
+        vop::copy( v, p->ft->outV, p->ft->outN );
   
         ola::exec( p->ola, v, p->ft->outN ); 
 
@@ -1233,8 +1233,447 @@ namespace cw
       
     }
 
+
+    //---------------------------------------------------------------------------------------------------------------------------------
+    // wt_osc
+    //
     
-    rc_t test( const cw::object_t* args );
+    namespace wt_osc
+    {
+
+      typedef enum {
+        kInvalidWtTId,
+        kOneShotWtTId,
+        kLoopWtTId
+      } wt_tid_t;
+
+      template< typename sample_t, typename srate_t >
+      struct wt_str
+      {
+        wt_tid_t        tid;
+        unsigned        cyc_per_loop; // count of cycles in the loop
+        sample_t*       aV;       // aV[ padN + aN + padN ]
+        unsigned        aN;       // Count of unique samples
+        double          rms;
+        double          hz;
+        srate_t         srate;
+        unsigned        pad_smpN;
+        unsigned        posn_smp_idx; // The location of this sample in the original audio file. 
+      };
+
+
+      template< typename sample_t >
+      sample_t table_read_2( const sample_t* tab, double frac )
+      {
+
+        unsigned i0 = floor(frac);
+        unsigned i1 = i0 + 1;
+        double   f  = frac - int(frac);
+
+        sample_t r = (sample_t)(tab[i0] + (tab[i1] - tab[i0]) * f);
+
+        //intf("r:%f frac:%f i0:%i f:%f\n",r,frac,i0,f);
+        return r;
+      }
+
+      template< typename sample_t >
+      sample_t hann_read( double x, double N )
+      {
+        while( x > N)
+          x -= N;
+
+        x = x - (N/2) ;
+
+        return (sample_t)(0.5 + 0.5 * cos(2*M_PI * x / N));
+      }
+      
+      template< typename sample_t, typename srate_t >
+      struct obj_str
+      {
+        const wt_str<sample_t,srate_t>* wt;
+        
+        double    phs;          // current fractional phase into wt->aV[]
+        double    fsmp_per_wt;  // 
+        
+      };
+
+      template< typename sample_t, typename srate_t >
+      bool is_init(const struct obj_str<sample_t,srate_t>* p)
+      { return p->wt != nullptr;  }
+      
+      template< typename sample_t, typename srate_t >
+      void init(struct obj_str<sample_t,srate_t>* p, struct wt_str<sample_t,srate_t>* wt)
+      {
+        if( wt == nullptr )
+          p->wt = nullptr;
+        else
+        {
+          double fsmp_per_cyc = wt->srate/wt->hz;
+          p->fsmp_per_wt  = fsmp_per_cyc * 2;  // each wavetable contains 2
+          
+          p->wt     = wt;
+          p->phs   = 0;
+        }        
+      }
+
+      template< typename sample_t, typename srate_t >
+      void _process_loop(struct obj_str<sample_t,srate_t>* p, sample_t* aV, unsigned aN, unsigned& actual_Ref)
+      {
+        double   phs0       = p->phs;
+        double   phs1       = phs0 + p->fsmp_per_wt/2;
+        unsigned smp_per_wt = (int)floor(p->fsmp_per_wt); // 
+
+        while(phs1 >= smp_per_wt)
+          phs1 -= smp_per_wt;
+        
+        for(unsigned i=0; i<aN; ++i)
+        {
+          sample_t s0 = table_read_2( p->wt->aV+p->wt->pad_smpN, phs0 );
+          sample_t s1 = table_read_2( p->wt->aV+p->wt->pad_smpN, phs1 );
+
+          sample_t e0 = hann_read<sample_t>(phs0,p->fsmp_per_wt);
+          sample_t e1 = hann_read<sample_t>(phs1,p->fsmp_per_wt);
+
+          aV[ i ] = e0*s0 + e1*s1;
+
+          // advance the phases of the oscillators
+          phs0 += 1;
+          while(phs0 >= smp_per_wt)
+            phs0 -= smp_per_wt;
+
+          phs1 += 1;
+          while(phs1 >= smp_per_wt)
+            phs1 -= smp_per_wt;
+
+        }
+        
+        p->phs     = phs0;
+        actual_Ref = aN;
+      }
+
+      template< typename sample_t, typename srate_t >
+      void _process_one_shot(struct obj_str<sample_t,srate_t>* p, sample_t* aV, unsigned aN, unsigned& actual_Ref)
+      {        
+        unsigned phs = (unsigned)p->phs;
+        unsigned i;
+        for(i=0; i<aN && phs<p->wt->aN; ++i,++phs)
+          aV[i] = p->wt->aV[ p->wt->pad_smpN + phs ];
+
+        p->phs     = phs;
+        actual_Ref = i;
+        
+      }
+      
+      template< typename sample_t, typename srate_t >
+      void process(struct obj_str<sample_t,srate_t>* p, sample_t* aV, unsigned aN, unsigned& actual_Ref)
+      {
+        actual_Ref = 0;
+        switch( p->wt->tid )
+        {
+          case wt_osc::kLoopWtTId:
+            _process_loop(p,aV,aN,actual_Ref);
+            break;
+            
+          case wt_osc::kOneShotWtTId:
+            _process_one_shot(p,aV,aN,actual_Ref);
+            break;
+            
+          default:
+            assert(0);
+        }
+        
+      }
+      
+      rc_t test();
+     
+    } // wt_osc     
+      
+      
+    namespace wt_seq_osc
+    {
+
+      template< typename sample_t, typename srate_t >
+      struct wt_seq_str
+      {
+        struct wt_osc::wt_str<sample_t,srate_t>* wtA;
+        unsigned                                 wtN;
+      };
+      
+      template< typename sample_t, typename srate_t >
+      struct obj_str
+      {
+        struct wt_seq_osc::wt_seq_str<sample_t,srate_t>* wt_seq;
+        struct wt_osc::obj_str<sample_t,srate_t>         osc0;
+        struct wt_osc::obj_str<sample_t,srate_t>         osc1;
+        
+        unsigned wt_idx; // index of wt0 in wt_seq->wtA[]
+
+        
+        unsigned mix_interval_smp; // osc0/osc1 crossfade interval in samples
+        unsigned mix_phs;          // current crossfade phase (0 <= mix_phs <= mix_interval_smp)
+      };
+
+      template< typename sample_t, typename srate_t >
+      rc_t _update_wt( struct obj_str<sample_t,srate_t>* p, unsigned wt_idx )
+      {
+        rc_t rc = kOkRC;        
+        struct wt_osc::wt_str<sample_t,srate_t>* wt0 = nullptr;
+        struct wt_osc::wt_str<sample_t,srate_t>* wt1 = nullptr;
+
+        p->mix_interval_smp = 0;
+        
+        if( wt_idx < p->wt_seq->wtN )
+          wt0 = p->wt_seq->wtA + wt_idx;
+        
+        if( (wt_idx+1) < p->wt_seq->wtN )
+        {
+          wt1 = p->wt_seq->wtA + (wt_idx+1);
+          
+          unsigned posn0_smp_idx = wt0->posn_smp_idx;
+          unsigned posn1_smp_idx = wt1->posn_smp_idx;
+
+          if( posn1_smp_idx < posn0_smp_idx )
+          {
+            rc = cwLogError(kInvalidStateRC,"The position of the wavetable at wt. seq index:%i must be greater than the position of the previous wt.",wt_idx+1);
+            
+            goto errLabel;
+          }
+          
+          p->mix_interval_smp = posn1_smp_idx - posn0_smp_idx;
+        }
+
+        wt_osc::init(&p->osc0,wt0);
+        wt_osc::init(&p->osc1,wt1);
+        
+        p->wt_idx = wt_idx;
+        p->mix_phs = 0;
+
+      errLabel:
+        return rc;
+      }
+
+
+      template< typename sample_t, typename srate_t >
+      bool is_init( const struct obj_str<sample_t,srate_t>* p )
+      {
+        return is_init(&p->osc0);
+      }
+      
+      template< typename sample_t, typename srate_t >
+      rc_t init(struct obj_str<sample_t,srate_t>* p, struct wt_seq_osc::wt_seq_str<sample_t,srate_t>* wt_seq)
+      {
+        rc_t rc = kOkRC;
+        p->wt_seq = wt_seq;
+        p->wt_idx = 0;
+
+        if((rc = _update_wt(p,0)) != kOkRC )
+          goto errLabel;
+
+      errLabel:
+        return rc;
+      }
+
+      
+      template< typename sample_t, typename srate_t >
+      rc_t process(struct obj_str<sample_t,srate_t>* p, sample_t* aV, unsigned aN, unsigned& actual_Ref)
+      {
+        actual_Ref = 0;
+        
+        rc_t rc = kOkRC;
+        unsigned actual;
+        bool atk_fl = p->wt_idx==0 && p->osc0.wt->tid == wt_osc::kOneShotWtTId;
+
+        // if the osc is in the attack phase
+        if( atk_fl )
+        {
+          // update aV[aN] from osc0
+          wt_osc::process(&p->osc0,aV,aN,actual);
+
+          actual_Ref = actual;
+
+          // if all requested samples were generated we are done ...
+          if( actual >= aN )
+            return rc;
+
+          // otherwise all requested samples were not generated
+          // fill the rest of aV[] from the next one or two wave tables.
+          aN -= actual;
+          aV += actual;
+
+          // initialize osc0 and osc1
+          if((rc = _update_wt(p, 1)) != kOkRC )
+            goto errLabel;          
+        }
+
+        wt_osc::process(&p->osc0,aV,aN,actual);
+
+        // if the second oscillator is initialized
+        if( wt_osc::is_init(&p->osc1) )
+        {
+          unsigned actual1 = 0;
+          sample_t tV[ aN ];
+          // generate aN samples into tV[aN]
+          wt_osc::process(&p->osc1,tV,aN,actual1);
+
+          assert( actual1 == actual );
+
+          
+          sample_t g = (sample_t)std::min(1.0,(double)p->mix_phs / p->mix_interval_smp);
+
+          // mix the output of the second oscillator into the output signal
+          vop::scale_add(aV,aV,(1.0f-g),tV,g,actual1);
+
+          p->mix_phs += actual;
+
+          // if the osc0/osc1 xfade is complete ...
+          if( p->mix_phs >= p->mix_interval_smp )
+          {
+            // ... then advance to the next set of wavetables
+            if((rc = _update_wt(p, p->wt_idx+1)) != kOkRC )
+              goto errLabel;
+          }
+          
+        }
+         
+        actual_Ref += actual;          
+       
+      errLabel:
+        return rc;
+      }
+      
+      rc_t test();
+      
+    } // wt_seq_osc
+
+    namespace multi_ch_wt_seq_osc
+    {
+      template< typename sample_t, typename srate_t >
+      struct multi_ch_wt_seq_str
+      {
+        struct wt_seq_osc::wt_seq_str<sample_t,srate_t>* chA;
+        unsigned                                         chN;
+      };
+
+      template< typename sample_t, typename srate_t >
+      struct obj_str
+      {
+        const struct multi_ch_wt_seq_str<sample_t,srate_t>* mcs      = nullptr;
+        struct wt_seq_osc::obj_str<sample_t,srate_t>*       chA      = nullptr;
+        unsigned                                            chAllocN = 0;
+        unsigned                                            chN      = 0;
+        bool                                                done_fl  = true;
+      };
+
+
+      template< typename sample_t, typename srate_t >
+      rc_t create(struct obj_str<sample_t,srate_t>* p, unsigned maxChN, const struct multi_ch_wt_seq_str<sample_t,srate_t>* mcs=nullptr )
+      {
+        rc_t rc = kOkRC;
+
+        destroy(p);
+
+        p->chA = mem::allocZ< struct wt_seq_osc::obj_str<sample_t,srate_t> >(maxChN);
+        p->chAllocN = maxChN;
+        p->chN = 0;
+        p->done_fl = true;
+
+        if( mcs != nullptr )
+          setup(p,mcs);
+        
+        return rc;
+      }
+
+      template< typename sample_t, typename srate_t >
+      rc_t destroy(struct obj_str<sample_t,srate_t>* p )
+      {
+        rc_t rc = kOkRC;
+
+        mem::release(p->chA);
+        p->chAllocN = 0;
+        p->chN = 0;
+        p->done_fl = true;
+        return rc;
+      }
+
+      template< typename sample_t, typename srate_t >
+      rc_t setup( struct obj_str<sample_t,srate_t>* p, const struct multi_ch_wt_seq_str<sample_t,srate_t>* mcs )
+      {
+        rc_t rc = kOkRC;
+        
+        if( mcs->chN > p->chAllocN )
+        {
+          rc = cwLogError(kInvalidArgRC,"Invalid multi-ch-wt-osc channel count. (%i > %i)",mcs->chN,p->chAllocN);
+          goto errLabel;
+        }
+
+        
+        p->mcs = mcs;
+        p->done_fl = false;
+        p->chN = mcs->chN;
+        for(unsigned i=0; i<mcs->chN; ++i)
+          if((rc = wt_seq_osc::init(p->chA+i,mcs->chA + i)) != kOkRC )
+            goto errLabel;
+
+      errLabel:
+        if( rc != kOkRC )
+          rc = cwLogError(rc,"multi-ch-wt-osc setup failed.");
+        
+        return rc;
+      }
+
+      template< typename sample_t, typename srate_t >
+      rc_t is_done( struct obj_str<sample_t,srate_t>* p )
+      { return p->done_fl; }
+      
+      template< typename sample_t, typename srate_t >
+      rc_t process( struct obj_str<sample_t,srate_t>* p, sample_t* aM, unsigned chN, unsigned frmN, unsigned& actual_Ref )
+      {
+        rc_t     rc     = kOkRC;
+        unsigned actual = 0;
+        unsigned doneN  = 0;
+        
+        for(unsigned i=0; i<p->chN; ++i)
+        {
+          unsigned actual0 = 0;
+          sample_t* aV = aM + (i*frmN);
+          
+          if( !wt_seq_osc::is_init(p->chA + i) )
+          {
+            vop::zero(aV,frmN);
+            actual0 = frmN;
+            doneN += 1;
+          }
+          else
+          {
+            if((rc = wt_seq_osc::process(p->chA + i, aV, frmN, actual0 )) != kOkRC )
+              goto errLabel;
+          }
+          
+          if( i!=0 && actual0 != actual )
+          {
+            rc = cwLogError(kInvalidStateRC,"An inconsistent sample count was generated across channels (%i != !i).",actual0,actual);
+            goto errLabel;
+          }
+
+          actual = actual0;
+        }
+
+        actual_Ref = actual;
+        p->done_fl = doneN == p->chN;
+        
+      errLabel:
+        if( rc != kOkRC )
+          rc = cwLogError(rc,"multi-ch-wt-osc process failed.");
+        
+        return rc;
+      }
+
+      rc_t test();
+      
+    } //multi_ch_wt_seq_osc
+
+    
+    rc_t test( const test::test_args_t& args );
     
   } // dsp
 } // cw
