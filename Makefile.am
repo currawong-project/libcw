@@ -28,8 +28,8 @@ libcwSRC +=                           src/libcw/cwSpScBuf.cpp src/libcw/cwSpScQu
 libcwHDR += src/libcw/cwNbMpScQueue.h 
 libcwSRC += src/libcw/cwNbMpScQueue.cpp
 
-libcwHDR += src/libcw/cwAudioFile.h     src/libcw/cwMidiFile.h    src/libcw/cwWaveTableBank.h
-libcwSRC += src/libcw/cwAudioFile.cpp   src/libcw/cwMidiFile.cpp  src/libcw/cwWaveTableBank.cpp
+libcwHDR += src/libcw/cwAudioFile.h     src/libcw/cwMidiFile.h    src/libcw/cwWaveTableBank.h     src/libcw/cwWaveTableNotes.h
+libcwSRC += src/libcw/cwAudioFile.cpp   src/libcw/cwMidiFile.cpp  src/libcw/cwWaveTableBank.cpp   src/libcw/cwWaveTableNotes.cpp
 
 libcwHDR += src/libcw/cwAudioFileOps.h    src/libcw/cwAudioTransforms.h   src/libcw/cwDspTransforms.h   src/libcw/cwAudioFileProc.h    src/libcw/cwPvAudioFileProc.h
 libcwSRC += src/libcw/cwAudioFileOps.cpp  src/libcw/cwAudioTransforms.cpp src/libcw/cwDspTransforms.cpp src/libcw/cwAudioFileProc.cpp  src/libcw/cwPvAudioFileProc.cpp
