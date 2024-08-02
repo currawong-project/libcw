@@ -49,11 +49,8 @@ cw::rc_t cw::wt_note::gen_note( wt_bank::handle_t wtbH,
   if( mcs->chN < chN )
     chN = mcs->chN;
 
-  // TODO: VERIFY srate == SAMPLE RATE OF WAVETABLES
-  // mcs->valid_srate(srate)
-
-  // allocate and setup xthe oscillator
-  if((rc = create(&osc,chN,mcs)) != kOkRC )
+  // allocate,setup and validate the expected srate of the oscillator
+  if((rc = create(&osc,chN,mcs,srate)) != kOkRC )
   {
     rc = cwLogError(rc,"multi-ch-wt-seq-osc create failed.");
     goto errLabel;
@@ -277,8 +274,8 @@ cw::rc_t cw::wt_note::test( const test::test_args_t& args )
   rc_t        rc             = kOkRC;
   const char* wtb_json_fname = "/home/kevin/temp/temp_5.json";
   unsigned    instr_idx      = 0;
-  unsigned    min_pitch      = 60;
-  unsigned    max_pitch      = 60;
+  unsigned    min_pitch      = 21;
+  unsigned    max_pitch      = 21;
   srate_t     srate          = 48000;
   unsigned    audioChN       = 2;
   double      note_dur_sec   = 9;
