@@ -4442,8 +4442,9 @@ namespace cw
         .report  = std_report<inst_t>
       };
       
-    }    
-#ifdef NOT_DEF
+    }
+
+
     //------------------------------------------------------------------------------------------------------------------
     //
     // piano_voice
@@ -4451,7 +4452,7 @@ namespace cw
     namespace piano_voice
     {
       enum {
-        kWtbDirPId,
+        kWtbFnPId,
         kWtbInstrPId,
         kInPId,
         kOutPId,
@@ -4463,95 +4464,48 @@ namespace cw
       enum {
         kChCnt=2
       };
-
-      typedef struct osc_state_str
-      {
-        wt_bank::ch_t* ch;
-        unsigned seg_idx;   // current seg index in ch->segA[]
-        unsigned smp_idx;   // current smp index in ch->segA[ seg_idx ].aV[]
-        unsigned seg_cnt;   // count of segments played so far (increases with each segment loop traversail)
-      } osc_state_t;
-        
+      
       typedef struct
       {
         wt_bank::handle_t*   wtbH_ptr;
         unsigned             wtb_instr_idx;
-        const wt_bank::wt_t* wt;
 
-        osc_state_t osc[ kChCnt ];
-
-        coeff_t kGainThreshold;
-        coeff_t kSustainGain;
-        coeff_t kReleaseGain;
-        
-        coeff_t       gain;
-        coeff_t       gain_coeff;
-        bool          done_fl;
+        // multi-channel wave table oscillator
+        struct dsp::multi_ch_wt_seq_osc::obj_str<sample_t,srate_t> osc;  
         
         unsigned      test_pitch;      // Pitch under test or 0 if not on test mode
         unsigned      test_key_pitch;  // Key associated with lowest velocity when in test mode.
         unsigned      test_pitchN;     // Count of valid velocities for test_pitch 
         unsigned*     test_pitch_map;  // test_pitch_map[ test_pitch_N ]
+
+        bool done_fl;
+        coeff_t gain;
+        coeff_t gain_coeff;
+        coeff_t kReleaseGain;
+        coeff_t kGainThreshold;
         
       } inst_t;
 
-
-      void _create_test_pitch_map( inst_t* p )
+      rc_t _load_wtb(proc_t* proc, inst_t* p, const char* wtb_fname)
       {
-        p->test_pitchN = 0;
-        for(unsigned i=0; i<midi::kMidiVelCnt; ++i)
-          if( get_wave_table( *p->wtbH_ptr, 0, p->test_pitch, i ) != nullptr )
-            p->test_pitchN += 1;
-
-        p->test_pitch_map = mem::allocZ<unsigned>(p->test_pitchN);
-            
-        for(unsigned i=0,j=0; i<midi::kMidiVelCnt; ++i)
-          if( get_wave_table( *p->wtbH_ptr, p->wtb_instr_idx, p->test_pitch, i ) != nullptr )
-          {
-            assert( j < p->test_pitchN );
-            p->test_pitch_map[j++] = i;
-            //printf("%i %i %i\n",j-1,i,p->test_pitchN);
-          }
-          
-      }
-      
-      rc_t _create( proc_t* proc, inst_t* p )
-      {
-        rc_t               rc            = kOkRC;
-        const char*        wtb_dir       = nullptr;
-        char*              exp_wtb_dir   = nullptr;
-        const char*        wtb_instr     = nullptr;
-        mbuf_t*            mbuf          = nullptr;
-        bool               done_fl       = false;
-        srate_t            srate         = proc->ctx->sample_rate;
-        unsigned           padSmpN       = 1;
-        const char*        wtb_var_label = "wtb";
-
-        // get the MIDI input variable
-        if((rc = var_register_and_get( proc, kAnyChIdx,
-                                       kWtbDirPId,    "wtb_dir",   kBaseSfxId, wtb_dir,
-                                       kWtbInstrPId,  "wtb_instr", kBaseSfxId, wtb_instr,
-                                       kInPId,        "in",        kBaseSfxId, mbuf,
-                                       kDoneFlPId,    "done_fl",   kBaseSfxId, done_fl,
-                                       kTestPitchPId, "test_pitch",kBaseSfxId, p->test_pitch,
-                                       kKeyPitchPId,  "test_key_pitch", kBaseSfxId, p->test_key_pitch)) != kOkRC )
-        {
-          goto errLabel;
-        }
-
+        rc_t        rc            = kOkRC;
+        const char* wtb_var_label = "wtb";
+        char*       exp_wtb_fname = nullptr;
+        unsigned    padSmpN       = 1;
+        
         // if the global wave table bank has not yet been created
         if((p->wtbH_ptr = (wt_bank::handle_t*)network_global_var(proc, wtb_var_label )) == nullptr )
         {
           wt_bank::handle_t wtbH;
           
-          if((exp_wtb_dir = proc_expand_filename(proc,wtb_dir)) == nullptr )
+          if((exp_wtb_fname = proc_expand_filename(proc,wtb_fname)) == nullptr )
           {
             rc = cwLogError(kOpFailRC,"The wave-table bank directory expansion failed.");
             goto errLabel;
           }
           
           // create the wave table bank
-          if((rc = create( wtbH, exp_wtb_dir, padSmpN )) != kOkRC )
+          if((rc = create( wtbH, padSmpN, exp_wtb_fname)) != kOkRC )
           {
             rc = cwLogError(rc,"The wave table bank global variable creation failed.");
             goto errLabel;
@@ -4571,7 +4525,65 @@ namespace cw
           }
 
         }
+        
+      errLabel:
+        if( rc != kOkRC )
+          rc = cwLogError(rc,"Wave table bank load failed on '%s'.",cwStringNullGuard(wtb_fname));
 
+        mem::release(exp_wtb_fname);
+        return rc;
+        
+      }
+
+      rc_t _create_test_pitch_map( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+        unsigned velA[ midi::kMidiVelCnt ];
+        
+        if((rc = instr_pitch_velocities(*p->wtbH_ptr, p->wtb_instr_idx, p->test_pitch, velA, midi::kMidiVelCnt, p->test_pitchN )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Sampled velocity access failed on '%s'.",cwStringNullGuard(proc->label));
+          goto errLabel;
+        }
+
+        p->test_pitch_map = mem::allocZ<unsigned>(p->test_pitchN);
+
+        for(unsigned i=0; i<p->test_pitchN; ++i)
+          p->test_pitch_map[i] = velA[i];
+
+      errLabel:
+        return rc;
+      }
+
+      
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t               rc            = kOkRC;
+        const char*        wtb_fname     = nullptr;
+        const char*        wtb_instr     = nullptr;
+        mbuf_t*            mbuf          = nullptr;
+        bool               done_fl       = false;
+        srate_t            srate         = proc->ctx->sample_rate;
+
+        // get the MIDI input variable
+        if((rc = var_register_and_get( proc, kAnyChIdx,
+                                       kWtbFnPId,     "wtb_fname", kBaseSfxId, wtb_fname,
+                                       kWtbInstrPId,  "wtb_instr", kBaseSfxId, wtb_instr,
+                                       kInPId,        "in",        kBaseSfxId, mbuf,
+                                       kDoneFlPId,    "done_fl",   kBaseSfxId, done_fl,
+                                       kTestPitchPId, "test_pitch",kBaseSfxId, p->test_pitch,
+                                       kKeyPitchPId,  "test_key_pitch", kBaseSfxId, p->test_key_pitch)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // get the wave table bank handle (p->wtbH_ptr(
+        if((rc = _load_wtb(proc, p, wtb_fname)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        
         // create one output audio buffer
         if((rc = var_register_and_set( proc, "out", kBaseSfxId,kOutPId, kAnyChIdx, srate, kChCnt, proc->ctx->framesPerCycle )) != kOkRC )
         {
@@ -4580,7 +4592,7 @@ namespace cw
 
         if((p->wtb_instr_idx = wt_bank::instr_index( *p->wtbH_ptr, wtb_instr )) == kInvalidIdx )
         {
-          rc = cwLogError(rc,"The wave table bank named '%s' could not be found.",cwStringNullGuard(wtb_instr));
+          rc = cwLogError(rc,"The wave table bank instrument '%s' could not be found.",cwStringNullGuard(wtb_instr));
           goto errLabel;
         }
 
@@ -4588,22 +4600,78 @@ namespace cw
         if( p->test_pitch != 0 )
         {
           cwLogInfo("%s is in test-pitch mode",proc->label);
-          _create_test_pitch_map(p);
-          
+          if((rc = _create_test_pitch_map(proc,p)) != kOkRC )
+            goto errLabel;          
         }
 
-        p->done_fl        = true;
-        p->kGainThreshold = 0.01;
-        p->kSustainGain   = 0.9995;
-        p->kReleaseGain   = 0.9;
+        // allocate,setup and validate the expected srate of the oscillator
+        if((rc = create(&p->osc,kChCnt)) != kOkRC )
+        {
+          rc = cwLogError(rc,"multi-ch-wt-seq-osc create failed.");
+          goto errLabel;
+        }
+
         
-
-        assert(p->wtbH_ptr != nullptr );
-
+        p->done_fl = true;
+        
       errLabel:
-        mem::release(exp_wtb_dir);
+        
         return rc;
       }
+
+      rc_t _on_note_on( proc_t* proc, inst_t* p, unsigned d0, unsigned d1 )
+      {
+        rc_t                     rc  = kOkRC;
+        const struct dsp::multi_ch_wt_seq_osc::multi_ch_wt_seq_str<sample_t,srate_t>* mcs = nullptr;
+                
+        // if in voice test mode
+        if( p->test_pitch_map != nullptr )
+        {
+          // if the the pitch is inside the test range
+          if( d0 < p->test_key_pitch || p->test_key_pitch + p->test_pitchN <= d0  )
+            goto errLabel;
+
+          // ... then the velocity is mapped to a vel for which there is a known vel in the wt-bank
+          // Performed pitches above the test pitch trigger increasing velocities ...
+          d1 = p->test_pitch_map[ d0 - p->test_key_pitch ];
+
+          // ... and the pitch is set to the test pitch
+          d0 = p->test_pitch;
+        }
+
+        printf("%i %i\n",d0,d1);
+        
+        // get the wave-table associated with the pitch and velocity
+        if((rc = get_wave_table(  *p->wtbH_ptr, p->wtb_instr_idx, d0, d1, mcs)) != kOkRC )
+        {
+          rc = cwLogError(rc,"No piano voice for pitch:%i vel:%i",d0,d1);
+          goto errLabel;
+        }
+
+        // setup the oscillator with a new wave table
+        if((rc = setup(&p->osc,mcs)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Oscilllator setup error on instr:%i pitch:%i vel:%i.",p->wtb_instr_idx,d0,d1);
+          goto errLabel;
+        }
+                
+        p->done_fl        = false;
+        p->kGainThreshold = 0.01;
+        p->kReleaseGain   = 0.9;
+        p->gain           = 1.0;
+        p->gain_coeff     = 1.0;
+        
+      errLabel:
+        return rc;
+      }
+
+      void _on_note_off( inst_t* p )
+      {
+        p->gain_coeff = p->kReleaseGain;
+        //printf("%i nof: %i %i\n",proc->label_sfx_id,m->d0,m->d1);
+        
+      }
+
 
       rc_t _destroy( proc_t* proc, inst_t* p )
       {
@@ -4628,15 +4696,20 @@ namespace cw
         rc_t    rc   = kOkRC;
         abuf_t* abuf = nullptr;
         mbuf_t* mbuf = nullptr;
+        unsigned actualFrmN = 0;
 
         // get the input MIDI buffer
         if((rc = var_get(proc,kInPId,kAnyChIdx,mbuf)) != kOkRC )
+        {
           goto errLabel;
+        }
         
         // get the output audio buffer
         if((rc = var_get(proc,kOutPId,kAnyChIdx,abuf)) != kOkRC )
+        {
           goto errLabel;
-
+        }
+        
         // if there are MIDI messages - update the wavetable oscillators
         for(unsigned i=0; i<mbuf->msgN; ++i)
         {
@@ -4644,59 +4717,14 @@ namespace cw
           switch( m->status )
           {
             case midi::kNoteOnMdId:
-
               if( m->d1 > 0 )
-              {
-                unsigned d0 = m->d0;
-                unsigned d1 = m->d1;
-
-                // if in voice test mode
-                if( p->test_pitch_map != nullptr )
-                {
-                  // if the the pitch is inside the test range
-                  if( d0 < p->test_key_pitch || p->test_key_pitch + p->test_pitchN <= d0  )
-                    goto errLabel;
-
-                  // then the pitch is set to the test pitch ...
-                  d0 = p->test_pitch;
-
-                  // ... and the velocity is mapped to a vel for which there is a known vel in the wt-bank
-                  // Performed pitches above the test pitch trigger increasing velocities.
-                  d1 = p->test_pitch_map[ m->d0 - p->test_key_pitch ];
-                }
-
-                // get the wave-table associated with the pitch and velocity
-                if((p->wt  = get_wave_table( *p->wtbH_ptr, p->wtb_instr_idx, d0,d1 )) == nullptr )
-                {
-                  cwLogWarning("No piano voice for pitch:%i vel:%i",m->d0,m->d1);
-                  goto errLabel;
-                }
-                
-                p->done_fl    = false;
-                p->gain       = 1;
-                p->gain_coeff = 1;
-                
-                for(unsigned i=0; i<kChCnt; ++i)
-                {
-                  p->osc[i].ch      = p->wt->chA + i;
-                  p->osc[i].seg_idx = 0;
-                  p->osc[i].smp_idx = 0;
-                  p->osc[i].seg_cnt = 0;
-                }
-
-                //printf("%i non: %i %i (%i,%i)\n",proc->label_sfx_id,m->d0,m->d1,d0,d1);
-                
-              }
+                rc = _on_note_on(proc,p,m->d0,m->d1);
               else
-              {
-                p->gain_coeff = p->kReleaseGain;
-                //printf("%i nof: %i %i\n",proc->label_sfx_id,m->d0,m->d1);
-              }
+                _on_note_off(p);
               break;
 
             case midi::kNoteOffMdId:
-              p->gain_coeff = p->kReleaseGain;
-              //printf("%i nof: %i %i\n",proc->label_sfx_id,m->d0,m->d1);
+              _on_note_off(p);
               break;
 
             case midi::kPbendMdId:
@@ -4707,71 +4735,23 @@ namespace cw
           }
         }
 
-        // if the voice is off then zero the audio buffer
-        if( p->done_fl )
+        if((rc = process( &p->osc, abuf->buf, abuf->chN, abuf->frameN, actualFrmN )) != kOkRC )
         {
-          vop::zero(abuf->buf,abuf->frameN);
+          goto errLabel;
         }
-        else
-        {
 
-          // for each channel
-          for(unsigned i=0; i<kChCnt; ++i)
-          {
-            // for the output buffer
-            sample_t*       yV = abuf->buf + i*abuf->frameN; 
-            unsigned        yi = 0;
+        vop::mul(abuf->buf, p->gain, abuf->chN * abuf->frameN);
 
-            // get this channels oscillator
-            osc_state_t*    osc  = p->osc + i;
-
-            // for each sample in the output buffer
-            while(yi < abuf->frameN)
-            {
-              // locate the current wavetable
-              wt_bank::seg_t* seg  = p->wt->chA[i].segA + osc->seg_idx;
-              unsigned n;
-
-              if( seg->aN - osc->smp_idx > abuf->frameN-yi )
-                n = abuf->frameN-yi;
-              else
-                n = seg->aN - osc->smp_idx;
-
-              vop::mul( yV + yi, seg->aV + seg->padN + osc->smp_idx, p->gain, n );
-
-              yi           += n;
-              osc->smp_idx += n;
-
-              if( osc->smp_idx >= seg->aN )
-              {
-                osc->smp_idx = 0;
-
-                osc->seg_cnt += 1;
-
-                // if this is the second time through the loop segment
-                // then begin applying the sustain decay
-                if( osc->seg_cnt == 2 )
-                  p->gain_coeff = p->kSustainGain;
-                
-                if( osc->seg_idx < osc->ch->segN-1 )
-                  osc->seg_idx += 1;                  
-              }            
-            }
-
-            p->gain *= p->gain_coeff;
+        p->gain *= p->gain_coeff;
             
-            if( p->gain < p->kGainThreshold && !p->done_fl )
-            {
-              //printf("done:\n");
-              var_set(proc,kDoneFlPId,kAnyChIdx,true);
-              p->done_fl = true;
-            }
-          }
+        if( (p->gain < p->kGainThreshold && !p->done_fl) || (actualFrmN < abuf->frameN) )
+        {
+          var_set(proc,kDoneFlPId,kAnyChIdx,true);
+          p->done_fl = true;
         }
-        
+
       errLabel:
-            return rc;
-        
+        return rc;
       }
 
       rc_t _report( proc_t* proc, inst_t* p )
@@ -4786,7 +4766,6 @@ namespace cw
       };
       
     }    
-#endif
     
     //------------------------------------------------------------------------------------------------------------------
     //

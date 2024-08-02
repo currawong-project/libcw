@@ -58,7 +58,7 @@ namespace cw
       { "xfade_ctl",       &xfade_ctl::members },
       { "poly_voice_ctl",  &poly_voice_ctl::members },
       { "midi_voice",      &midi_voice::members },
-      //{ "piano_voice",     &piano_voice::members },
+      { "piano_voice",     &piano_voice::members },
       { "sample_hold",     &sample_hold::members },
       { "number",          &number::members },
       { "reg",             &reg::members },
