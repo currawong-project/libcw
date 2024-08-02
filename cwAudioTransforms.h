@@ -1261,7 +1261,6 @@ namespace cw
         unsigned        posn_smp_idx; // The location of this sample in the original audio file. 
       };
 
-
       template< typename sample_t >
       sample_t table_read_2( const sample_t* tab, double frac )
       {
@@ -1297,6 +1296,10 @@ namespace cw
         
       };
 
+      template< typename sample_t, typename srate_t >
+      bool validate_srate(const struct obj_str<sample_t,srate_t>* p, srate_t expected_srate)
+      { return p->wt != nullptr && p->wt->srate == expected_srate; }
+      
       template< typename sample_t, typename srate_t >
       bool is_init(const struct obj_str<sample_t,srate_t>* p)
       { return p->wt != nullptr;  }
@@ -1452,6 +1455,17 @@ namespace cw
         return rc;
       }
 
+      template< typename sample_t, typename srate_t >
+      bool validate_srate(const struct obj_str<sample_t,srate_t>* p, srate_t expected_srate)
+      {
+        if( p->wt_seq == nullptr )
+          return false;
+        for(unsigned i=0; i<p->wt_seq->wtN; ++i)
+          if( p->wt_seq->wtA[i].srate != expected_srate )
+            return false;
+        
+        return true;
+      }
 
       template< typename sample_t, typename srate_t >
       bool is_init( const struct obj_str<sample_t,srate_t>* p )
@@ -1565,8 +1579,9 @@ namespace cw
       };
 
 
+      // if mcs != nullptr and expected_srate is non-zero then the expected_srate will be validated
       template< typename sample_t, typename srate_t >
-      rc_t create(struct obj_str<sample_t,srate_t>* p, unsigned maxChN, const struct multi_ch_wt_seq_str<sample_t,srate_t>* mcs=nullptr )
+      rc_t create(struct obj_str<sample_t,srate_t>* p, unsigned maxChN, const struct multi_ch_wt_seq_str<sample_t,srate_t>* mcs=nullptr, srate_t expected_srate=0 )
       {
         rc_t rc = kOkRC;
 
@@ -1595,8 +1610,9 @@ namespace cw
         return rc;
       }
 
+      // if mcs != nullptr and expected_srate is non-zero then the expected_srate will be validated
       template< typename sample_t, typename srate_t >
-      rc_t setup( struct obj_str<sample_t,srate_t>* p, const struct multi_ch_wt_seq_str<sample_t,srate_t>* mcs )
+      rc_t setup( struct obj_str<sample_t,srate_t>* p, const struct multi_ch_wt_seq_str<sample_t,srate_t>* mcs, srate_t expected_srate=0 )
       {
         rc_t rc = kOkRC;
         
@@ -1605,7 +1621,6 @@ namespace cw
           rc = cwLogError(kInvalidArgRC,"Invalid multi-ch-wt-osc channel count. (%i > %i)",mcs->chN,p->chAllocN);
           goto errLabel;
         }
-
         
         p->mcs = mcs;
         p->done_fl = false;
@@ -1614,12 +1629,32 @@ namespace cw
           if((rc = wt_seq_osc::init(p->chA+i,mcs->chA + i)) != kOkRC )
             goto errLabel;
 
+        if( mcs != nullptr && expected_srate != 0 )
+          if( !validate_srate(p,expected_srate) )
+          {
+            rc = cwLogError(kInvalidArgRC,"The srate is not valid. All wave tables do not share the same sample rate.");
+            goto errLabel;                                                                                        
+          }
+        
       errLabel:
         if( rc != kOkRC )
           rc = cwLogError(rc,"multi-ch-wt-osc setup failed.");
         
         return rc;
       }
+
+      template< typename sample_t, typename srate_t >
+      bool validate_srate(const struct obj_str<sample_t,srate_t>* p, srate_t expected_srate)
+      {
+        if( p->chA == nullptr )
+          return false;
+        
+        for(unsigned i=0; i<p->chN; ++i)
+          if( !validate_srate(p->chA+i,expected_srate) )
+            return false;
+        return true;
+      }
+      
 
       template< typename sample_t, typename srate_t >
       rc_t is_done( struct obj_str<sample_t,srate_t>* p )
