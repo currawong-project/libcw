@@ -178,13 +178,13 @@ namespace cw
                     double          hz,
                     double          rms)
     {
-      wt->tid = tid;
-      wt->aN = aN;
-      wt->hz = hz;
-      wt->rms = rms;
+      wt->tid          = tid;
+      wt->aN           = aN;
+      wt->hz           = hz;
+      wt->rms          = rms;
       wt->cyc_per_loop = 1;
-      wt->srate = srate;
-      wt->pad_smpN = p->padSmpN;
+      wt->srate        = srate;
+      wt->pad_smpN     = p->padSmpN;
       wt->posn_smp_idx = posn_smp_idx;
       
       unsigned allocSmpCnt = p->padSmpN + wt->aN + p->padSmpN;
@@ -207,8 +207,14 @@ namespace cw
     rc_t _create_instr_pv_map( instr_t* instr )
     {
       rc_t rc = kOkRC;
-      instr->pvM = mem::allocZ<multi_ch_wt_seq_t*>(midi::kMidiVelCnt * midi::kMidiNoteCnt );
+      
+      // each row contains the velocities for a given pitch
+      instr->pvM = mem::allocZ<multi_ch_wt_seq_t*>(midi::kMidiNoteCnt * midi::kMidiVelCnt );
+      
       for(unsigned i=0; i<instr->pitchN; ++i)
+      {
+        unsigned vel0 = 0;
+        
         for(unsigned j=0; j<instr->pitchA[i].velN; ++j)
         {
           unsigned pitch = instr->pitchA[i].midi_pitch;
@@ -219,10 +225,32 @@ namespace cw
           
           if( vel >= midi::kMidiVelCnt )
             rc = cwLogError(kInvalidArgRC,"An invalid velocity value (%i) was encountered.",vel);
+
+          multi_ch_wt_seq_t* mcs = &instr->pitchA[i].velA[j].mc_seq;
+
+          // if there is a gap between vel0 and vel
+          if( vel0 > 0 )
+          {
+            // find the center of the gap
+            unsigned vel_c = vel0 + (vel-vel0)/2;
+
+            // vel0:vel_c = mcs0
+            for(unsigned v=vel0+1; v<=vel_c; ++v)
+            {
+              instr->pvM[(v*midi::kMidiNoteCnt) + pitch ] = instr->pvM[(vel0*midi::kMidiNoteCnt) + pitch ];
+            }
+
+            // vel_c+1:vel-1 = mcs
+            for(unsigned v=vel_c+1; v<vel; ++v)
+            {
+              instr->pvM[(v*midi::kMidiNoteCnt) + pitch ] = mcs;
+            }
+          }
           
-          instr->pvM[(vel*midi::kMidiNoteCnt) + pitch ] = &instr->pitchA[i].velA[j].mc_seq;
-          
+          instr->pvM[(vel*midi::kMidiNoteCnt) + pitch ] = mcs;
+          vel0 = vel;          
         }
+      }
 
       if( rc != kOkRC )
         rc = cwLogError(rc,"Pitch-velocy map creation failed on instrument:'%s'.",cwStringNullGuard(instr->label));
