@@ -22,7 +22,7 @@ def parse_marker_file( marker_fname ):
 def parse_audio_file( audio_fname ):
     
     with w.open(audio_fname,"rb") as f:
-        print(f"ch:{f.getnchannels()} bits:{f.getsampwidth()} srate:{f.getframerate()} frms:{f.getnframes()}")
+        print(f"ch:{f.getnchannels()} bits:{f.getsampwidth()*8} srate:{f.getframerate()} frms:{f.getnframes()}")
 
         srate      = f.getframerate()
         frmN       = f.getnframes()
