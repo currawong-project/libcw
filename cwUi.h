@@ -195,6 +195,7 @@ namespace cw
         unsigned        idleMsgPeriodMs; // min period without messages before an idle message is generated
         unsigned        queueBlkCnt;
         unsigned        queueBlkByteCnt;
+        bool            extraLogsFl;       // Report the websock LLL_NOTICE logs
       } args_t;
 
       rc_t parseArgs( const object_t& o, args_t& args, const char* object_label="ui" );
@@ -224,7 +225,8 @@ namespace cw
                     unsigned          xmtBufByteN      = 1024,
                     unsigned          fmtBufByteN      = 4096,
                     unsigned          queueBlkCnt      = 4,
-                    unsigned          queueBlkByteCnt  = 4096 );
+                    unsigned          queueBlkByteCnt  = 4096,
+                    bool              extraLogsFl      = false );
 
       rc_t destroy( handle_t& h );
 
@@ -275,7 +277,8 @@ namespace cw
                     unsigned          xmtBufByteN      = 1024,
                     unsigned          fmtBufByteN      = 4096,
                     unsigned          queueBlkCnt      = 4,
-                    unsigned          queueBlkByteCnt  = 4096 );
+                    unsigned          queueBlkByteCnt  = 4096,
+                    bool              extraLogsFl      = false );
 
 
       rc_t destroy( handle_t& h );

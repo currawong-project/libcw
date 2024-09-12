@@ -291,7 +291,7 @@ namespace cw
           break;
           
         case kStringTFl:
-          cwLogPrint("%s ", v->u.s);
+          cwLogPrint("s:%s ", v->u.s);
           break;
            
         case kTimeTFl:
@@ -299,6 +299,7 @@ namespace cw
           break;
 
         case kCfgTFl:
+          cwLogPrint("c:");
           if( v->u.cfg != nullptr )
             v->u.cfg->print();
           break;
@@ -2009,8 +2010,17 @@ cw::rc_t cw::flow::var_call_custom_value_func( variable_t* var )
     goto errLabel;
   
   if( var->flags & kLogVarFl )
-  {    
-    cwLogPrint("cycle: %8i ",var->proc->ctx->cycleIndex);
+  {
+
+    if( var->proc->ctx->printLogHdrFl )
+    {
+      cwLogPrint("%s","exe cycle:    process:   id:       variable: id     vid     ch :         : : type:value  : destination\n");
+      cwLogPrint("%s","---------- ----------- ----- --------------- --     ---    -----             ------------: -------------\n");
+        //:        0 :          a:    0:            out:  0 vid:  2 ch: -1 :         : : <invalid>: 
+        var->proc->ctx->printLogHdrFl = false;
+    }
+    
+    cwLogPrint("%8i ",var->proc->ctx->cycleIndex);
     cwLogPrint("%10s:%5i", var->proc->label,var->proc->label_sfx_id);
     
     if( var->chIdx == kAnyChIdx )

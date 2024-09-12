@@ -345,7 +345,6 @@ namespace cw
       const object_t*      networkCfg;  // 'network' cfg from flowCfg
 
       bool                 printNetworkFl;
-
       bool                 non_real_time_fl;     // set if this is a non-real-time program
       unsigned             framesPerCycle;       // sample frames per cycle (64)
       srate_t              sample_rate;          // default sample rate (48000.0)
@@ -354,7 +353,9 @@ namespace cw
       
       bool                 isInRuntimeFl;        // Set when compile-time is complete
       
-      unsigned             cycleIndex;           // Incremented with each processing cycle      
+      unsigned             cycleIndex;           // Incremented with each processing cycle
+
+      bool                 printLogHdrFl;
       
       bool                 multiPriPresetProbFl; // If set then probability is used to choose presets on multi-preset application
       bool                 multiSecPresetProbFl; // 

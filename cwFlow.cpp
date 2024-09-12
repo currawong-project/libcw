@@ -710,17 +710,18 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   p->sample_rate    = kDefaultSampleRate;
   p->maxCycleCount  = kInvalidCnt;
   p->proj_dir       = proj_dir;
+  p->printLogHdrFl  = true;
   
   // parse the optional args
   if((rc = flowCfg->readv("network",              0,      p->networkCfg,
                           "non_real_time_fl",     kOptFl, p->non_real_time_fl,
-                          "framesPerCycle",       kOptFl, p->framesPerCycle,
+                          "frames_per_cycle",     kOptFl, p->framesPerCycle,
                           "sample_rate",          kOptFl, p->sample_rate,
-                          "maxCycleCount",        kOptFl, maxCycleCount,
-                          "durLimitSecs",         kOptFl, durLimitSecs,
+                          "max_cycle_count",      kOptFl, maxCycleCount,
+                          "dur_limit_secs",       kOptFl, durLimitSecs,
                           "preset",               kOptFl, p->init_net_preset_label,
-                          "printClassDictFl",     kOptFl, printClassDictFl,
-                          "printNetworkFl",       kOptFl, p->printNetworkFl,
+                          "print_class_dict_fl",  kOptFl, printClassDictFl,
+                          "print_network_fl",     kOptFl, p->printNetworkFl,
                           "multiPriPresetProbFl", kOptFl, p->multiPriPresetProbFl,
                           "multiSecPresetProbFl", kOptFl, p->multiSecPresetProbFl,
                           "multiPresetInterpFl",  kOptFl, p->multiPresetInterpFl)) != kOkRC )
@@ -875,10 +876,10 @@ cw::rc_t cw::flow::exec_cycle( handle_t h )
 cw::rc_t cw::flow::exec(    handle_t h )
 {
   rc_t    rc = kOkRC;
-  flow_t* p  = _handleToPtr(h);
+  //flow_t* p  = _handleToPtr(h);
 
   while( rc == kOkRC )
-    rc = exec_cycle(p->net);
+    rc = exec_cycle(h);
   
   return rc;
 }

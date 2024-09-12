@@ -47,7 +47,8 @@ namespace cw
       const protocol_t* protocolA,
       unsigned          protocolN,
       unsigned          queueBlkCnt,
-      unsigned          queueBlkByteCnt );
+      unsigned          queueBlkByteCnt,
+      bool              extraLogsFl);
 
     rc_t destroy( handle_t& h );
 

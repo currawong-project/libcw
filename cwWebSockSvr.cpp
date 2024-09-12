@@ -59,7 +59,8 @@ cw::rc_t cw::websockSrv::create(
     unsigned                   protocolN,
     unsigned                   timeOutMs,
     unsigned                   queueBlkCnt,
-    unsigned                   queueBlkByteCnt )
+    unsigned                   queueBlkByteCnt,
+    bool                       extraLogsFl )
 {
   rc_t rc;
   if((rc = destroy(h)) != kOkRC )
@@ -67,7 +68,7 @@ cw::rc_t cw::websockSrv::create(
 
   websockSrv_t* p = mem::allocZ<websockSrv_t>();
 
-  if((rc = websock::create( p->_websockH, cbFunc, cbArg, physRootDir, dfltHtmlPageFn, port, protocolA, protocolN, queueBlkCnt, queueBlkByteCnt )) != kOkRC )
+  if((rc = websock::create( p->_websockH, cbFunc, cbArg, physRootDir, dfltHtmlPageFn, port, protocolA, protocolN, queueBlkCnt, queueBlkByteCnt, extraLogsFl )) != kOkRC )
     goto errLabel;
   
 
@@ -181,6 +182,7 @@ cw::rc_t cw::websockSrvTest( const object_t* cfg )
   unsigned             xmtBufByteN    = 128;
   unsigned             queueBlkCnt    = 3;
   unsigned             queueBlkByteCnt= 4096;
+  bool                 extraLogsFl    = true;
   appCtx_t             appCtx;
 
   enum
@@ -203,7 +205,7 @@ cw::rc_t cw::websockSrvTest( const object_t* cfg )
   unsigned protocolN = sizeof(protocolA)/sizeof(protocolA[0]);
 
   
-  if((rc = websockSrv::create( h, websockCb, &appCtx, physRootDir, dfltHtmlPageFn, port, protocolA, protocolN, timeOutMs, queueBlkCnt, queueBlkByteCnt )) != kOkRC )
+  if((rc = websockSrv::create( h, websockCb, &appCtx, physRootDir, dfltHtmlPageFn, port, protocolA, protocolN, timeOutMs, queueBlkCnt, queueBlkByteCnt, extraLogsFl )) != kOkRC )
     return rc;
 
   appCtx.wsH        = websockSrv::websockHandle(h);

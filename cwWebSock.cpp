@@ -596,7 +596,8 @@ cw::rc_t cw::websock::create(
   const protocol_t* protocolArgA,
   unsigned          protocolN,
   unsigned          queueBlkCnt,
-  unsigned          queueBlkByteCnt )
+  unsigned          queueBlkByteCnt,
+  bool              extraLogsFl )
 {
   rc_t                             rc;
 	struct lws_context_creation_info info;
@@ -606,8 +607,11 @@ cw::rc_t cw::websock::create(
     return rc;
   
   websock_t* p = mem::allocZ<websock_t>();
-
-  int logs = LLL_USER | LLL_ERR | LLL_WARN | LLL_NOTICE;
+ 
+  int logs = LLL_USER | LLL_ERR | LLL_WARN;
+  if( extraLogsFl )
+    logs |= LLL_NOTICE;
+  
 	lws_set_log_level(logs, nullptr);
 
   p->_event_loop_ops_custom = {};

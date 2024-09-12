@@ -2337,6 +2337,7 @@ cw::rc_t cw::ui::ws::parseArgs(  const object_t& o, args_t& args, const char* ob
         "idleMsgPeriodMs", args.idleMsgPeriodMs,
         "queueBlkCnt",     args.queueBlkCnt,
         "queueBlkByteCnt", args.queueBlkByteCnt,
+        "extraLogsFl", args.extraLogsFl,
         "uiCfgFn", uiCfgFn )) != kOkRC )
   {
     rc = cwLogError(rc,"'ui' cfg. parse failed.");
@@ -2401,7 +2402,8 @@ cw::rc_t cw::ui::ws::create( handle_t& h,
                 args.xmtBufByteN,
                 args.fmtBufByteN,
                 args.queueBlkCnt,
-                args.queueBlkByteCnt);
+                args.queueBlkByteCnt,
+                args.extraLogsFl);
 }
 
   
@@ -2420,7 +2422,8 @@ cw::rc_t cw::ui::ws::create(  handle_t& h,
                               unsigned          xmtBufByteN,
                               unsigned          fmtBufByteN,
                               unsigned          queueBlkCnt,
-                              unsigned          queueBlkByteCnt )
+                              unsigned          queueBlkByteCnt,
+                              bool              extraLogsFl)
 {
   rc_t rc = kOkRC;
 
@@ -2440,7 +2443,7 @@ cw::rc_t cw::ui::ws::create(  handle_t& h,
   void*             wsCbA     = wsCbFunc==nullptr ? p          : cbArg;
   
   // create the websocket
-  if((rc = websock::create(p->wsH, wsCbF, wsCbA, physRootDir, dfltPageFn, port, protocolA, protocolN, queueBlkCnt, queueBlkByteCnt )) != kOkRC )
+  if((rc = websock::create(p->wsH, wsCbF, wsCbA, physRootDir, dfltPageFn, port, protocolA, protocolN, queueBlkCnt, queueBlkByteCnt, extraLogsFl )) != kOkRC )
   {
     cwLogError(rc,"UI Websock create failed.");
     goto errLabel;
@@ -2630,7 +2633,8 @@ cw::rc_t cw::ui::srv::create(  handle_t& h,
                                unsigned          xmtBufByteN,
                                unsigned          fmtBufByteN,
                                unsigned          queueBlkCnt,
-                               unsigned          queueBlkByteCnt )
+                               unsigned          queueBlkByteCnt,
+                               bool              extraLogsFl )
 {
   rc_t rc = kOkRC;
   if((rc = destroy(h)) != kOkRC )

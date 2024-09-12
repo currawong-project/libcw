@@ -2220,7 +2220,7 @@ namespace cw
 
         // Register variables and get their current value
         if((rc = var_register_and_get( proc, kAnyChIdx,
-                                       kChCntPid, "chCnt", kBaseSfxId, chCnt,
+                                       kChCntPid, "ch_cnt", kBaseSfxId, chCnt,
                                        kSratePId, "srate", kBaseSfxId, srate)) != kOkRC )
         {
           goto errLabel;
@@ -5181,7 +5181,7 @@ namespace cw
         rc_t        rc             = kOkRC;
         const char* out_type_label = nullptr;
         unsigned    out_type_fl    = kInvalidTFl;
-        variable_t* dum            = nullptr;
+        variable_t* first_in_var   = nullptr;
         unsigned    inVarN         = var_mult_count(proc,"in");
         unsigned    inSfxIdA[ inVarN ];
 
@@ -5206,12 +5206,15 @@ namespace cw
         // register each of the input vars
         for(unsigned i=0; i<p->inVarN; ++i)
         {
-          variable_t* dum;
-          if((rc = var_register(proc, "in", inSfxIdA[i], kInPId+i, kAnyChIdx, nullptr, dum )) != kOkRC )
+          variable_t* foo;
+          if((rc = var_register(proc, "in", inSfxIdA[i], kInPId+i, kAnyChIdx, nullptr, foo )) != kOkRC )
           {
             rc = cwLogError(rc,"Variable registration failed for the variable 'in:%i'.",inSfxIdA[i]);;
             goto errLabel;
           }
+
+          if( i==0 )
+            first_in_var = foo;
         }
 
         
@@ -5227,14 +5230,14 @@ namespace cw
         if( textIsEqual(out_type_label,"") )
         {
           // ... then get the type of the first input variable
-          if((rc = var_find(proc, kInPId, kAnyChIdx, dum )) != kOkRC )
+          if((rc = var_find(proc, kInPId, kAnyChIdx, first_in_var )) != kOkRC )
           {
             goto errLabel;
           }
 
           // if the first input variable's type  has a valid type is not included in the 
-          if( dum->value != nullptr )
-            out_type_fl = (dum->value->tflag & kTypeMask) ;
+          if( first_in_var->value != nullptr )
+            out_type_fl = (first_in_var->value->tflag & kTypeMask) ;
         }
         else
         {
@@ -5248,7 +5251,7 @@ namespace cw
         }
                   
         // Create the output variable
-        if((rc = var_create( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, out_type_fl, dum )) != kOkRC )
+        if((rc = var_create( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, out_type_fl, first_in_var )) != kOkRC )
         {
           goto errLabel;
         }
@@ -5267,7 +5270,6 @@ namespace cw
       {
         if( var->vid == kTriggerPId )
         {
-          if( proc->ctx->isInRuntimeFl )
             p->store_vid = kOutPId;
         }
         else
@@ -5279,7 +5281,11 @@ namespace cw
               p->store_vid = var->vid;
             }
             else
+            {
+              // This call to set the a variable is safe because
+              // we are in init-time not runtime and therefore single threaded
               var_set( proc, kOutPId, kAnyChIdx, var->value );
+            }
           }          
         }
         

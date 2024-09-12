@@ -1148,6 +1148,7 @@ channel that does not exist.
 
 - DONE: All cfg to value conversion should go through `cfg_to_value()`.
 
+- Try using adding 'time' type and 'cfg' types to a 'log:{...}' stmt.
 
 Names
 ------
