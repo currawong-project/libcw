@@ -15,6 +15,8 @@ namespace cw
     rc_t lock(    handle_t h );
     rc_t unlock(  handle_t h );
 
+    // Set timeOutMs to 0 to wait forever.
+    //
     // Set 'lockThenWaitFl' if the function should lock the mutex prior to waiting.
     // If 'lockThenWaitFl' is false then the function assumes the mutex is already locked
     // and directly waits. If 'lockThenWaitFl' is set and the mutex is not already locked
