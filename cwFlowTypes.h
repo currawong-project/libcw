@@ -321,7 +321,9 @@ namespace cw
     {
       const object_t*   procsCfg;   // network proc list
       const object_t*   presetsCfg; // presets designed for this network
-      unsigned          poly_cnt;   // count of duplicated networks in the list
+
+      unsigned*         poly_proc_idxA;  // poly_proc_idxA[ poly_cnt ]. Index into proc_array[] of first proc in each network
+      unsigned          poly_cnt; // count of duplicated networks in the list
       
       struct proc_str** proc_array;
       

@@ -131,6 +131,7 @@ namespace cw
       for(unsigned i=0; i<net.proc_arrayN; ++i)
         proc_destroy(net.proc_array[i]);
 
+      mem::release(net.poly_proc_idxA);
       mem::release(net.proc_array);
       net.proc_arrayAllocN = 0;
       net.proc_arrayN = 0;
@@ -2899,9 +2900,18 @@ cw::rc_t cw::flow::network_create( flow_t*            p,
   net.proc_arrayAllocN = polyCnt * net.procsCfg->child_count();
   net.proc_array       = mem::allocZ<proc_t*>(net.proc_arrayAllocN);
   net.proc_arrayN      = 0;
+  net.poly_proc_idxA   = orderId == kNetFirstPolyOrderId ? mem::allocZ<unsigned>(polyCnt) : nullptr;
 
   for(unsigned i=0; i<outerN; ++i)
   {
+    // if this network is running in 'network-first' order then track the location of
+    // the first proc in each network
+    if( net.poly_proc_idxA != nullptr )
+    {
+      assert( i<polyCnt && net.proc_arrayN < net.proc_arrayAllocN );
+      net.poly_proc_idxA[i] = net.proc_arrayN;
+    }
+    
     // for each proc in the network
     for(unsigned j=0; j<net.procsCfg->child_count(); ++j)
     {
