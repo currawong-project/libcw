@@ -262,15 +262,12 @@ void cw::time::subtractMicros( spec_t& ts, unsigned micros )
 
 void cw::time::advanceMicros( spec_t& ts, unsigned us )
 {
-  const unsigned us_per_sec =    1000000;
   const unsigned ns_per_sec = 1000000000;
-
-  unsigned sec = us / us_per_sec;
   
-  ts.tv_sec  += sec;
-  ts.tv_nsec += (us - sec*us_per_sec)*1000;
+  ts.tv_nsec += us * 1000;  // convert us to nano's
 
-  sec = ts.tv_nsec / ns_per_sec;
+  // check if nano's now have more than ns_pser_sec
+  time_t sec = ts.tv_nsec / ns_per_sec;
   
   ts.tv_sec  += sec;
   ts.tv_nsec -= sec * ns_per_sec;
@@ -281,18 +278,14 @@ void cw::time::advanceMicros( spec_t& ts, unsigned us )
 void cw::time::advanceMs( spec_t& ts, unsigned ms )
 {
 
-  const unsigned ms_per_sec = 1000;
   const unsigned ns_per_sec = 1000000000;
-
-  unsigned sec = ms / ms_per_sec;
-
-  ts.tv_sec += sec;
-  ts.tv_nsec += (ms - (sec*ms_per_sec)) * 1000000;
-
-  sec = ts.tv_nsec / ns_per_sec;
+  
+  ts.tv_nsec += ms * 1000000;
+  time_t sec = ts.tv_nsec / ns_per_sec;
   
   ts.tv_sec  += sec;
   ts.tv_nsec -= sec * ns_per_sec;
+  
 }
 
 cw::rc_t cw::time::futureMs( spec_t& ts, unsigned ms )
