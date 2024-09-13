@@ -34,10 +34,12 @@ namespace cw
     
     rc_t destroy( handle_t& hRef );
 
-  
+
+    // 'cycleCnt' gives a limit on the count of time the thread function should be called
+    // when the thread exits the pause state. It is ignored if kPauseFl is set in 'cmdFlags'
     enum { kPauseFl=0x01, kWaitFl=0x02 };
-    rc_t pause( handle_t h, unsigned cmdFlags = kWaitFl );
-    rc_t unpause( handle_t h ); // same as threadPause(h,kWaitFl)
+    rc_t pause( handle_t h, unsigned cmdFlags = kWaitFl, unsigned cycleCnt=0 );
+    rc_t unpause( handle_t h, unsigned cycleCnt=0 ); // same as threadPause(h,kWaitFl)    
   
     stateId_t state( handle_t h );
 

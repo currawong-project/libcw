@@ -37,6 +37,8 @@ namespace cw
       char*          label;
 
       mutex::handle_t mutexH;
+      unsigned        cycleIdx;
+      unsigned        cycleCnt;
       
     } thread_t;
 
@@ -122,6 +124,7 @@ namespace cw
             // check if we have been requested to leave the pause state
             if( cwIsFlag(curDoFlags,kDoRunThFl) )
             {
+              p->cycleIdx = 0;
               p->stateId.store(kRunningThId,std::memory_order_release);
             }
           }
@@ -132,10 +135,15 @@ namespace cw
           if( p->func(p->funcArg)==false )
             break;
 
+          p->cycleIdx += 1;
+
+          // if a cycle limit was set then check if the limit was reached
+          bool cycles_done_fl =  p->cycleCnt > 0 && p->cycleIdx >= p->cycleCnt;
+
           curDoFlags = p->doFlags.load(std::memory_order_acquire);
           
           // check if we have been requested to enter the pause state
-          if( cwIsFlag(curDoFlags,kDoPauseThFl) )
+          if( cwIsNotFlag(curDoFlags,kDoExitThFl) && (cwIsFlag(curDoFlags,kDoPauseThFl) || cycles_done_fl)  )
           {
             p->stateId.store(kPausedThId,std::memory_order_release);
           }
@@ -276,7 +284,7 @@ cw::rc_t cw::thread::destroy( handle_t& hRef )
 }
 
 
-cw::rc_t cw::thread::pause( handle_t h, unsigned cmdFlags )
+cw::rc_t cw::thread::pause( handle_t h, unsigned cmdFlags, unsigned cycleCnt )
 {
   rc_t      rc         = kOkRC;
   bool      pauseFl    = cwIsFlag(cmdFlags,kPauseFl);
@@ -296,6 +304,7 @@ cw::rc_t cw::thread::pause( handle_t h, unsigned cmdFlags )
   }
   else
   {
+    p->cycleCnt = cycleCnt;
     p->doFlags.store(kDoRunThFl,std::memory_order_release);
     waitId = kRunningThId;
     if((rc = signalCondVar(p->mutexH)) != kOkRC )
@@ -316,8 +325,8 @@ errLabel:
   
 }
 
-cw::rc_t cw::thread::unpause( handle_t h )
-{  return pause( h, kWaitFl);  }
+cw::rc_t cw::thread::unpause( handle_t h, unsigned cycleCnt )
+{  return pause( h, kWaitFl, cycleCnt);  }
 
 cw::thread::stateId_t cw::thread::state( handle_t h )
 {
