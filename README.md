@@ -1042,6 +1042,22 @@ It's not clear there is a difference between specifying  `_` and the default beh
 Is there a way to tell it to search the entire network from the root? Isn't that 
 what '_' is supposed to do?
 
+TODO: 9/24
+- Try using adding 'time' type and 'cfg' types to a 'log:{...}' stmt.
+
+- print_network_fl and print_proc_dict_fl should be given from the command line.
+  (but it's ok to leave them as cfg flags also)
+  
+- Add 'doc' strings to all proc classes.
+
+- Add 'doc' strings to subnet data structure.
+
+- It is an error to specify a suffix_id on a poly network proc because the suffix_id's are generated automatically.
+  This error should be caught by the compiler.
+  
+- How do user defined procedures handle suffix id's?
+
+
 Host Environments:
 ------------------
 - CLI, no GUI, no I/O, non-real-time only.
@@ -1148,11 +1164,6 @@ channel that does not exist.
 
 - DONE: All cfg to value conversion should go through `cfg_to_value()`.
 
-- Try using adding 'time' type and 'cfg' types to a 'log:{...}' stmt.
-- print_network_fl and print_proc_dict_fl should be given from the command line.
-  (but it's ok to leave them as cfg flags also)
-- Add 'doc' strings to all proc classes.
-- Add 'doc' strings to subnet data structure.
 
 Names
 ------
@@ -1226,6 +1237,7 @@ caw by example:
 18. topic: subnet with presets
 
 19. topic: presets w/ sfx id's
+
 
 
 
