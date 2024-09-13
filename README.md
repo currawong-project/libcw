@@ -1149,6 +1149,10 @@ channel that does not exist.
 - DONE: All cfg to value conversion should go through `cfg_to_value()`.
 
 - Try using adding 'time' type and 'cfg' types to a 'log:{...}' stmt.
+- print_network_fl and print_proc_dict_fl should be given from the command line.
+  (but it's ok to leave them as cfg flags also)
+- Add 'doc' strings to all proc classes.
+- Add 'doc' strings to subnet data structure.
 
 Names
 ------
