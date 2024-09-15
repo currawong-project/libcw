@@ -37,8 +37,9 @@ namespace cw
       char*          label;
 
       mutex::handle_t mutexH;
-      unsigned        cycleIdx;
-      unsigned        cycleCnt;
+      unsigned        cycleIdx;  // current cycle phase
+      unsigned        cycleCnt;  // cycle phase limit
+      unsigned        execCnt;
       
     } thread_t;
 
@@ -135,18 +136,23 @@ namespace cw
           if( p->func(p->funcArg)==false )
             break;
 
-          p->cycleIdx += 1;
-
-          // if a cycle limit was set then check if the limit was reached
-          bool cycles_done_fl =  p->cycleCnt > 0 && p->cycleIdx >= p->cycleCnt;
-
           curDoFlags = p->doFlags.load(std::memory_order_acquire);
-          
-          // check if we have been requested to enter the pause state
-          if( cwIsNotFlag(curDoFlags,kDoExitThFl) && (cwIsFlag(curDoFlags,kDoPauseThFl) || cycles_done_fl)  )
+
+          if( cwIsNotFlag(curDoFlags,kDoExitThFl) )
           {
-            p->stateId.store(kPausedThId,std::memory_order_release);
+            p->cycleIdx += 1;
+
+            // if a cycle limit was set then check if the limit was reached
+            bool cycles_done_fl =  p->cycleCnt > 0 && p->cycleIdx >= p->cycleCnt;
+
+            // check if we have been requested to enter the pause state
+            if(  (cwIsFlag(curDoFlags,kDoPauseThFl) || cycles_done_fl)  )
+            {
+              p->stateId.store(kPausedThId,std::memory_order_release);
+              p->doFlags.store(0,std::memory_order_release);
+            }
           }
+          
         }
         
       }while( cwIsFlag(curDoFlags,kDoExitThFl) == false );
@@ -293,7 +299,9 @@ cw::rc_t cw::thread::pause( handle_t h, unsigned cmdFlags, unsigned cycleCnt )
   stateId_t curStateId = p->stateId.load(std::memory_order_acquire);
   bool      isPausedFl = curStateId == kPausedThId;
   stateId_t waitId;
- 
+
+  p->cycleCnt = cycleCnt;
+  
   if( isPausedFl == pauseFl )
     return kOkRC;
 
@@ -304,7 +312,6 @@ cw::rc_t cw::thread::pause( handle_t h, unsigned cmdFlags, unsigned cycleCnt )
   }
   else
   {
-    p->cycleCnt = cycleCnt;
     p->doFlags.store(kDoRunThFl,std::memory_order_release);
     waitId = kRunningThId;
     if((rc = signalCondVar(p->mutexH)) != kOkRC )
@@ -372,9 +379,10 @@ unsigned cw::thread::pauseMicros( handle_t h )
 
 namespace cw
 {
-  time::spec_t g_t0{};
-  time_t g_micros = 0;
-  unsigned g_n = 0;
+  time::spec_t g_t0 = {0,0};
+  time_t   g_micros = 0;
+  unsigned g_n      = 0;
+  
   bool _threadTestCb( void* p )
   {
     if( g_t0.tv_nsec != 0 )
@@ -398,13 +406,14 @@ cw::rc_t cw::threadTest()
   unsigned val = 0;
   rc_t     rc;
   char     c   = 0;
-
+  unsigned cycleCnt = 0;
+  
   // create the thread
   if((rc = thread::create(h,_threadTestCb,&val,"thread_test")) != kOkRC )
     return rc;
 
   // start the thread
-  if((rc = thread::pause(h,0)) != kOkRC )
+  if((rc = thread::pause(h,0,cycleCnt)) != kOkRC )
     goto errLabel;
 
 
@@ -419,7 +428,7 @@ cw::rc_t cw::threadTest()
     switch(c)
     {
       case 'o':
-        cwLogInfo("val: 0x%x\n",val);
+        cwLogInfo("val: 0x%x %i\n",val,val);
         break;
 
       case 's':
@@ -431,7 +440,11 @@ cw::rc_t cw::threadTest()
           if( thread::state(h) == thread::kPausedThId )
           {
             time::get(g_t0);
-            rc = thread::pause(h,thread::kWaitFl);
+            // We don't set kWaitFl w/ cycleCnt>0 because we are running very
+            // few cycles - the cycles will run and the
+            // state of the thread will return to 'paused'
+            // before _waitForState() can notice the 'running' state.
+            rc = thread::pause(h, cycleCnt==0 ? thread::kWaitFl : 0,cycleCnt);
           }
           else
             rc = thread::pause(h,thread::kPauseFl|thread::kWaitFl);
@@ -448,7 +461,7 @@ cw::rc_t cw::threadTest()
         break;
         
       case 'q':
-        printf("wakeup micros:%li cnt:%i avg:%li\n",g_micros,g_n,g_micros/g_n);
+        printf("wakeup micros:%li cnt:%i avg:%li\n",g_micros,g_n,g_n>0 ? g_micros/g_n : 0);
         break;
 
         //default:
