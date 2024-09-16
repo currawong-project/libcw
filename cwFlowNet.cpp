@@ -2865,14 +2865,13 @@ namespace cw
   }
 }
 
-cw::rc_t cw::flow::network_create( flow_t*            p,
-                                   const object_t*    networkCfg,
-                                   network_t&         net,
-                                   variable_t*        proxyVarL,
-                                   unsigned           polyCnt )
+cw::rc_t cw::flow::network_create( flow_t*                p,
+                                   const object_t*        networkCfg,
+                                   network_t&             net,
+                                   variable_t*            proxyVarL,
+                                   unsigned               polyCnt )
 {
   rc_t     rc     = kOkRC;
-
   if((rc = networkCfg->getv("procs",net.procsCfg)) != kOkRC )
   {
     rc = cwLogError(rc,"Failed on parsing required network cfg. elements.");
@@ -2890,10 +2889,12 @@ cw::rc_t cw::flow::network_create( flow_t*            p,
   net.proc_arrayN      = 0;
   net.poly_voiceA      = mem::allocZ<poly_voice_t>(polyCnt);
 
+  // for each subnet
   for(unsigned i=0; i<polyCnt; ++i)
   {
     assert( i<polyCnt && net.proc_arrayN < net.proc_arrayAllocN );
-    
+
+    // track the first proc in each subnet
     net.poly_voiceA[i].proc_idx = net.proc_arrayN;
     net.poly_voiceA[i].net      = &net;
     
@@ -2962,7 +2963,7 @@ cw::rc_t cw::flow::exec_cycle( network_t& net, unsigned proc_idx, unsigned proc_
     proc_cnt = net.proc_arrayN;
   
 
-  for(unsigned i=proc_idx; i<proc_cnt; ++i)
+  for(unsigned i=proc_idx; i<proc_idx+proc_cnt; ++i)
   {
     if( i >= net.proc_arrayN )
     {
