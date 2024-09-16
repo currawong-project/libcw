@@ -140,7 +140,7 @@ namespace cw
       kNoSrcVarDescFl     = 0x04,
       kInitVarDescFl      = 0x08,
       kMultVarDescFl      = 0x10,
-      kSubnetOutVarDescFl = 0x20
+      kUdpOutVarDescFl = 0x20
     };
     
     typedef struct class_members_str
@@ -374,8 +374,8 @@ namespace cw
       class_desc_t*        classDescA;           // 
       unsigned             classDescN;           //
 
-      class_desc_t*        subnetDescA;          // 
-      unsigned             subnetDescN;          //
+      class_desc_t*        udpDescA;          // 
+      unsigned             udpDescN;          //
       
       external_device_t*   deviceA;              // deviceA[ deviceN ] external device description array
       unsigned             deviceN;              //

@@ -1179,7 +1179,7 @@ namespace cw
 
           var->flags |= kProxiedVarFl;
           
-          if( cwIsFlag(wrap_var->varDesc->flags,kSubnetOutVarDescFl) )
+          if( cwIsFlag(wrap_var->varDesc->flags,kUdpOutVarDescFl) )
             var->flags |= kProxiedOutVarFl;
         }
       }

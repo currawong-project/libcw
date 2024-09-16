@@ -30,7 +30,7 @@ namespace cw
     } library_t;
     
     library_t g_library[] = {
-      { "subnet",          &subnet::members },
+      { "user_def_proc",   &user_def_proc::members },
       { "poly",            &poly::members },
       { "midi_in",         &midi_in::members },
       { "midi_out",        &midi_out::members },
@@ -115,7 +115,7 @@ namespace cw
       return rc;
     }
 
-    rc_t _parse_subnet_var_proxy_string( const char* proxyStr, var_desc_t* var_desc )
+    rc_t _parse_udp_var_proxy_string( const char* proxyStr, var_desc_t* var_desc )
     {
       rc_t rc       = kOkRC;
 
@@ -246,7 +246,7 @@ namespace cw
       // parse the proxy string into it's two parts: <proc>.<var>
       if( proxy_string != nullptr )
       {
-        if((rc = _parse_subnet_var_proxy_string( proxy_string, vd )) != kOkRC )
+        if((rc = _parse_udp_var_proxy_string( proxy_string, vd )) != kOkRC )
           goto errLabel;
       }
 
@@ -366,12 +366,12 @@ namespace cw
 
             if( vd->proxyProcLabel != nullptr || vd->proxyVarLabel != nullptr )
             {
-              cwLogWarning("The 'proxy' field in the variable description '%s' on class description '%s' will be ignored because the variable is not part of a subnet definition.",cwStringNullGuard(vd->label),cwStringNullGuard(cd->label));
+              cwLogWarning("The 'proxy' field in the variable description '%s' on class description '%s' will be ignored because the variable is not part of a UDP definition.",cwStringNullGuard(vd->label),cwStringNullGuard(cd->label));
             }
 
-            if( cwIsFlag(vd->flags,kSubnetOutVarDescFl ) )
+            if( cwIsFlag(vd->flags,kUdpOutVarDescFl ) )
             {
-              cwLogWarning("The 'out' flag in the variable description '%s' on class description '%s' will be ignored because the variable is not part of a subnet definition.",cwStringNullGuard(vd->label),cwStringNullGuard(cd->label));
+              cwLogWarning("The 'out' flag in the variable description '%s' on class description '%s' will be ignored because the variable is not part of a UDP definition.",cwStringNullGuard(vd->label),cwStringNullGuard(cd->label));
             }
             
             vd->link     = cd->varDescL;
@@ -385,7 +385,7 @@ namespace cw
       return rc;
     }
 
-    rc_t _find_subnet_proc_class_desc( flow_t* p, const object_t* subnetProcD, const char* procInstLabel, const class_desc_t*& class_desc_ref )
+    rc_t _find_udp_proc_class_desc( flow_t* p, const object_t* udpProcD, const char* procInstLabel, const class_desc_t*& class_desc_ref )
     {
       rc_t                rc          = kOkRC;
       const object_t*     procInstD   = nullptr;
@@ -394,10 +394,10 @@ namespace cw
 
       class_desc_ref = nullptr;
         
-      // find the proc inst dict in the subnet
-      if((procInstD = subnetProcD->find_child(procInstLabel)) == nullptr )
+      // find the proc inst dict in the UDP
+      if((procInstD = udpProcD->find_child(procInstLabel)) == nullptr )
       {
-        rc = cwLogError(kSyntaxErrorRC,"The proc instance '%s' from the proxy var list could not be foud in the subnet.",cwStringNullGuard(procInstLabel));
+        rc = cwLogError(kSyntaxErrorRC,"The proc instance '%s' from the proxy var list could not be foud in the UDP.",cwStringNullGuard(procInstLabel));
         goto errLabel;
       }
 
@@ -421,7 +421,7 @@ namespace cw
     }
 
 
-    rc_t _create_subnet_var_desc( flow_t* p, class_desc_t* subnetClassDesc, const object_t* subnetProcD, const object_t* varDescPair, var_desc_t*& vd_ref )
+    rc_t _create_udp_var_desc( flow_t* p, class_desc_t* udpClassDesc, const object_t* udpProcD, const object_t* varDescPair, var_desc_t*& vd_ref )
     {
       rc_t                rc               = kOkRC;
       const class_desc_t* proxy_class_desc = nullptr;
@@ -431,25 +431,25 @@ namespace cw
       vd_ref = nullptr;
 
       // parse the variable descripiton and create a var_desc_t record
-      if((rc = _parse_class_var_cfg(p, subnetClassDesc, varDescPair, var_desc )) != kOkRC )
+      if((rc = _parse_class_var_cfg(p, udpClassDesc, varDescPair, var_desc )) != kOkRC )
       {
         goto errLabel;
       }
 
       if( var_desc->type != 0 )
       {
-        cwLogWarning("The 'type' field int the variable description '%s' on the class description '%s' will be ignored because the variable is proxied.",cwStringNullGuard(subnetClassDesc->label),cwStringNullGuard(var_desc->label));
+        cwLogWarning("The 'type' field int the variable description '%s' on the class description '%s' will be ignored because the variable is proxied.",cwStringNullGuard(udpClassDesc->label),cwStringNullGuard(var_desc->label));
       }
 
       // verify that a proxy-proc-label and proxy-var-label were specified in the variable descripiton
       if( var_desc->proxyProcLabel == nullptr || var_desc->proxyVarLabel == nullptr )
       {
-        rc = cwLogError(kSyntaxErrorRC,"The subnet variable description '%s' in the subnet '%s' must have a valid 'proxy' field.",cwStringNullGuard(var_desc->label),cwStringNullGuard(subnetClassDesc->label));
+        rc = cwLogError(kSyntaxErrorRC,"The UDP variable description '%s' in the UDP '%s' must have a valid 'proxy' field.",cwStringNullGuard(var_desc->label),cwStringNullGuard(udpClassDesc->label));
         goto errLabel;
       }
       
       // locate the class desc associated with proxy proc
-      if((rc = _find_subnet_proc_class_desc( p, subnetProcD, var_desc->proxyProcLabel, proxy_class_desc )) != kOkRC )
+      if((rc = _find_udp_proc_class_desc( p, udpProcD, var_desc->proxyProcLabel, proxy_class_desc )) != kOkRC )
       {
         goto errLabel;
       }
@@ -457,17 +457,17 @@ namespace cw
       // locate the var desc associated with the proxy proc var
       if((proxy_var_desc = var_desc_find( proxy_class_desc, var_desc->proxyVarLabel)) == nullptr )
       {
-        rc = cwLogError(kEleNotFoundRC,"The subnet proxied variable desc '%s.%s' could not be found in subnet '%s'.",cwStringNullGuard(var_desc->proxyProcLabel),cwStringNullGuard(var_desc->proxyVarLabel),cwStringNullGuard(subnetClassDesc->label));
+        rc = cwLogError(kEleNotFoundRC,"The UDP proxied variable desc '%s.%s' could not be found in UDP '%s'.",cwStringNullGuard(var_desc->proxyProcLabel),cwStringNullGuard(var_desc->proxyVarLabel),cwStringNullGuard(udpClassDesc->label));
         goto errLabel;                        
       }
 
-      // get the subnet var_desc type from the proxied var_desc
+      // get the UDP var_desc type from the proxied var_desc
       var_desc->type  = proxy_var_desc->type;
 
-      // augment the subnet var_desc flags from the proxied var_desc
+      // augment the udp var_desc flags from the proxied var_desc
       var_desc->flags |= proxy_var_desc->flags;
 
-      // if no default value was given to the subnet var desc then get it from the proxied var desc
+      // if no default value was given to the UDP var desc then get it from the proxied var desc
       if( var_desc->val_cfg == nullptr )
         var_desc->val_cfg = proxy_var_desc->val_cfg;
 
@@ -484,7 +484,7 @@ namespace cw
       return rc;
     }
     
-    rc_t _parse_subnet_vars( flow_t* p, class_desc_t* class_desc, const object_t* subnetProcD, const object_t* varD )
+    rc_t _parse_udp_vars( flow_t* p, class_desc_t* class_desc, const object_t* udpProcD, const object_t* varD )
     {
       rc_t rc = kOkRC;
 
@@ -498,13 +498,13 @@ namespace cw
 
       varN = varD->child_count();
 
-      // Fill the class_Desc.varDescL list from the subnet 'vars' dictioanry
+      // Fill the class_Desc.varDescL list from the UDP 'vars' dictioanry
       for(unsigned i=0; i<varN; ++i)
       {
         const object_t* child_pair = varD->child_ele(i);
         var_desc_t*     var_desc   = nullptr;
 
-        if((rc = _create_subnet_var_desc( p, class_desc, subnetProcD, child_pair, var_desc )) != kOkRC )
+        if((rc = _create_udp_var_desc( p, class_desc, udpProcD, child_pair, var_desc )) != kOkRC )
           goto errLabel;
 
 
@@ -519,104 +519,104 @@ namespace cw
       return rc;
     }
 
-    rc_t _create_subnet_class_desc( flow_t* p, const object_t* class_obj, class_desc_t* class_desc )
+    rc_t _create_udp_class_desc( flow_t* p, const object_t* class_obj, class_desc_t* class_desc )
     {
       rc_t            rc                  = kOkRC;
       const object_t* varD                = nullptr;
-      const object_t* subnetD             = nullptr;
-      const object_t* subnetProcD         = nullptr;
-      const object_t* subnetPresetD       = nullptr;          
-      const char*     subnetProcDescLabel = nullptr;
+      const object_t* udpD             = nullptr;
+      const object_t* udpProcD         = nullptr;
+      const object_t* udpPresetD       = nullptr;          
+      const char*     udpProcDescLabel = nullptr;
 
-      // Validate the subnet proc desc label and value
-      if( class_obj==nullptr || !class_obj->is_pair() || class_obj->pair_value()==nullptr || !class_obj->pair_value()->is_dict() || (subnetProcDescLabel = class_obj->pair_label()) == nullptr )
+      // Validate the UDP proc desc label and value
+      if( class_obj==nullptr || !class_obj->is_pair() || class_obj->pair_value()==nullptr || !class_obj->pair_value()->is_dict() || (udpProcDescLabel = class_obj->pair_label()) == nullptr )
       {
-        rc = cwLogError(kInvalidArgRC,"An invalid subnet description '%s' was encountered.",cwStringNullGuard(subnetProcDescLabel));
+        rc = cwLogError(kInvalidArgRC,"An invalid UDP description '%s' was encountered.",cwStringNullGuard(udpProcDescLabel));
         goto errLabel;
       }
 
-      // verify that another subnet with the same name does not already exist
-      if( class_desc_find(p,subnetProcDescLabel) != nullptr )
+      // verify that another UDP with the same name does not already exist
+      if( class_desc_find(p,udpProcDescLabel) != nullptr )
       {
-        rc = cwLogError(kInvalidStateRC,"A subnet named '%s' already exists.",subnetProcDescLabel);
+        rc = cwLogError(kInvalidStateRC,"A UDP named '%s' already exists.",udpProcDescLabel);
         goto errLabel;
       }
 
       class_desc->cfg    = class_obj->pair_value();
       class_desc->label  = class_obj->pair_label();
 
-      // get the 'subnet' members record
-      if((class_desc->members = _find_library_record("subnet")) == nullptr )
+      // get the 'UDP' members record
+      if((class_desc->members = _find_library_record("user_def_proc")) == nullptr )
       {
-        rc = cwLogError(kSyntaxErrorRC,"The 'subnet' class member function record could not be found." );
+        rc = cwLogError(kSyntaxErrorRC,"The 'UDP' class member function record could not be found." );
         goto errLabel;                    
       }
                 
       // get the variable description 
       if((rc = class_desc->cfg->getv_opt("vars",  varD,
-                                         "network", subnetD)) != kOkRC )
+                                         "network", udpD)) != kOkRC )
       {
-        rc = cwLogError(rc,"Parse failed while parsing subnet desc:'%s'", cwStringNullGuard(class_desc->label) );
+        rc = cwLogError(rc,"Parse failed while parsing UDP desc:'%s'", cwStringNullGuard(class_desc->label) );
         goto errLabel;                      
       }
 
-      // get the subnet proc and preset dictionaries
-      if((rc = subnetD->getv("procs",   subnetProcD,
-                             "presets", subnetPresetD)) != kOkRC )
+      // get the UDP proc and preset dictionaries
+      if((rc = udpD->getv("procs",   udpProcD,
+                             "presets", udpPresetD)) != kOkRC )
       {
         rc = cwLogError(rc,"Parse failed on the 'network' element.");
         goto errLabel;
       }
 
-      // fill class_desc.varDescL from the subnet vars dictionary
-      if((rc = _parse_subnet_vars( p, class_desc, subnetProcD, varD )) != kOkRC )
+      // fill class_desc.varDescL from the UDP vars dictionary
+      if((rc = _parse_udp_vars( p, class_desc, udpProcD, varD )) != kOkRC )
       {
-        rc = cwLogError(rc,"Subnet 'vars' processing failed.");
+        rc = cwLogError(rc,"UDP 'vars' processing failed.");
         goto errLabel;          
       }
 
       
     errLabel:
       if(rc != kOkRC )
-        rc = cwLogError(rc,"'proc' class description creation failed for the subnet '%s'. ",cwStringNullGuard(subnetProcDescLabel));
+        rc = cwLogError(rc,"'proc' class description creation failed for the UDP '%s'. ",cwStringNullGuard(udpProcDescLabel));
         
       return rc;
     }
         
   
-    rc_t  _parse_subnet_cfg(flow_t* p, const object_t* subnetCfg)
+    rc_t  _parse_udp_cfg(flow_t* p, const object_t* udpCfg)
     {
       rc_t rc = kOkRC;
       
-      if( !subnetCfg->is_dict() )
-        return cwLogError(kSyntaxErrorRC,"The subnet class description dictionary does not have dictionary syntax.");
+      if( !udpCfg->is_dict() )
+        return cwLogError(kSyntaxErrorRC,"The UDP class description dictionary does not have dictionary syntax.");
               
-      unsigned subnetDescN = subnetCfg->child_count();
-      p->subnetDescA = mem::allocZ<class_desc_t>( subnetDescN );      
+      unsigned udpDescN = udpCfg->child_count();
+      p->udpDescA = mem::allocZ<class_desc_t>( udpDescN );      
 
-      // for each subnet description
-      for(unsigned i=0; i<subnetDescN; ++i)
+      // for each UDP description
+      for(unsigned i=0; i<udpDescN; ++i)
       {
-        const object_t* subnet_obj = subnetCfg->child_ele(i);
+        const object_t* udp_obj = udpCfg->child_ele(i);
 
-        if((rc = _create_subnet_class_desc(p, subnet_obj, p->subnetDescA + i )) != kOkRC )
+        if((rc = _create_udp_class_desc(p, udp_obj, p->udpDescA + i )) != kOkRC )
         {
-          rc = cwLogError(rc,"Subnet class description create failed on the subnet at index:%i.",i);
+          rc = cwLogError(rc,"UDP class description create failed on the UDP at index:%i.",i);
           goto errLabel;
         }
 
-        // We have to update the size of the subnet class array
-        // as we go because we may want be able to search p->subnetDescA[]
+        // We have to update the size of the UDP class array
+        // as we go because we may want be able to search p->udpDescA[]
         // aand to do that we must now the current length.
-        p->subnetDescN += 1;
+        p->udpDescN += 1;
       }
 
-      assert( subnetDescN == p->subnetDescN );
+      assert( udpDescN == p->udpDescN );
     errLabel:
 
       if( rc != kOkRC )
       {
-        rc = cwLogError(rc,"Subnet processing failed.");
+        rc = cwLogError(rc,"UDP processing failed.");
         
       }
       
@@ -646,9 +646,9 @@ namespace cw
       network_destroy(p->net);
       
       _release_class_desc_array(p->classDescA,p->classDescN);
-      _release_class_desc_array(p->subnetDescA,p->subnetDescN);
+      _release_class_desc_array(p->udpDescA,p->udpDescN);
       p->classDescN = 0;
-      p->subnetDescN = 0;
+      p->udpDescN = 0;
       
       mem::release(p);
       
@@ -676,7 +676,7 @@ void cw::flow::print_external_device( const external_device_t* dev )
 cw::rc_t cw::flow::create( handle_t&          hRef,
                            const object_t*    classCfg,
                            const object_t*    flowCfg,
-                           const object_t*    subnetCfg,
+                           const object_t*    udpCfg,
                            const char*        proj_dir )
 {
   rc_t            rc               = kOkRC;
@@ -696,11 +696,11 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
     goto errLabel;    
   }
 
-  // parse the subnet descriptions
-  if( subnetCfg != nullptr )
-    if((rc = _parse_subnet_cfg(p,subnetCfg)) != kOkRC )
+  // parse the UDP descriptions
+  if( udpCfg != nullptr )
+    if((rc = _parse_udp_cfg(p,udpCfg)) != kOkRC )
     {
-      rc = cwLogError(kSyntaxErrorRC,"Error parsing the subnet list.");
+      rc = cwLogError(kSyntaxErrorRC,"Error parsing the UDP list.");
       goto errLabel;          
     }
 

@@ -16,10 +16,10 @@ namespace cw
     // query the network for configuration information which can
     // be used to setup the extern_device_t array.
     rc_t create(handle_t&          hRef,
-                   const object_t*    classCfg,
-                   const object_t*    networkCfg,
-                   const object_t*    subnetCfg = nullptr,
-                   const char*        projDir   = nullptr);
+                const object_t*    classCfg,
+                const object_t*    networkCfg,
+                const object_t*    udpCfg = nullptr,
+                const char*        projDir   = nullptr);
 
     // Instantiate the network and prepare for runtime.
     rc_t initialize( handle_t           handle,

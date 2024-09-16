@@ -29,7 +29,7 @@ namespace cw
       { kNoSrcVarDescFl,     "no_src" },
       { kInitVarDescFl,      "init" },
       { kMultVarDescFl,      "mult" },
-      { kSubnetOutVarDescFl, "out" },
+      { kUdpOutVarDescFl,    "out" },
       { kInvalidVarDescFl, "<invalid>" }
     };
 
@@ -1533,9 +1533,9 @@ cw::flow::class_desc_t* cw::flow::class_desc_find( flow_t* p, const char* label 
     if( textIsEqual(p->classDescA[i].label,label))
       return p->classDescA + i;
 
-  for(unsigned i=0; i<p->subnetDescN; ++i)
-    if( textIsEqual(p->subnetDescA[i].label,label))
-      return p->subnetDescA + i;
+  for(unsigned i=0; i<p->udpDescN; ++i)
+    if( textIsEqual(p->udpDescA[i].label,label))
+      return p->udpDescA + i;
   
   return nullptr;
 }
@@ -1577,8 +1577,8 @@ void cw::flow::class_dict_print( flow_t* p )
   for(unsigned i=0; i<p->classDescN; ++i)
     _class_desc_print(p->classDescA+i);
   
-  for(unsigned i=0; i<p->subnetDescN; ++i)
-    _class_desc_print(p->subnetDescA+i);
+  for(unsigned i=0; i<p->udpDescN; ++i)
+    _class_desc_print(p->udpDescA+i);
 }
 
 

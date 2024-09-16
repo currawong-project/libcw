@@ -63,7 +63,7 @@ namespace cw
     {
       const char*     base_dir;
       object_t*       proc_class_dict_cfg;
-      object_t*       subnet_dict_cfg;
+      object_t*       udp_dict_cfg;
       
       io::handle_t    ioH;
 
@@ -137,8 +137,8 @@ namespace cw
       if( p->proc_class_dict_cfg != nullptr )
         p->proc_class_dict_cfg->free();
 
-      if( p->subnet_dict_cfg != nullptr )
-        p->subnet_dict_cfg->free();
+      if( p->udp_dict_cfg != nullptr )
+        p->udp_dict_cfg->free();
       
       _program_unload(p);
       p->pgmN = 0;
@@ -165,14 +165,14 @@ namespace cw
     {
       rc_t rc = kOkRC;
       const char*     proc_cfg_fname   = nullptr;
-      const char*     subnet_cfg_fname = nullptr;
+      const char*     udp_cfg_fname = nullptr;
       const char*     io_cfg_fname     = nullptr;
       const object_t* pgmL             = nullptr;
       
       // parse the cfg parameters
       if((rc = cfg->readv("base_dir",    kReqFl,   p->base_dir,
                           "proc_dict",   kReqFl,   proc_cfg_fname,
-                          "subnet_dict", kReqFl,   subnet_cfg_fname,
+                          "udp_dict",    kReqFl,   udp_cfg_fname,
                           "io_dict",     kOptFl,   io_cfg_fname,
                           "programs",    kDictTId, pgmL)) != kOkRC )
       {
@@ -187,10 +187,10 @@ namespace cw
         goto errLabel;
       }
 
-      // parse the subnet dict file
-      if((rc = objectFromFile(subnet_cfg_fname,p->subnet_dict_cfg)) != kOkRC )
+      // parse the udp dict file
+      if((rc = objectFromFile(udp_cfg_fname,p->udp_dict_cfg)) != kOkRC )
       {
-        rc = cwLogError(rc,"The flow subnet dictionary could not be read from '%s'.",cwStringNullGuard(subnet_cfg_fname));
+        rc = cwLogError(rc,"The flow user-defined-proc dictionary could not be read from '%s'.",cwStringNullGuard(udp_cfg_fname));
         goto errLabel;
       }
 
@@ -627,7 +627,7 @@ cw::rc_t    cw::io_flow_ctl::program_load(  handle_t h, unsigned pgm_idx )
   if((rc = create( p->flowH,
                    p->proc_class_dict_cfg,
                    p->pgmA[ pgm_idx ].cfg,
-                   p->subnet_dict_cfg,
+                   p->udp_dict_cfg,
                    p->proj_dir )) != kOkRC )
   {
     rc = cwLogError(rc,"Network configuration failed.");

@@ -6,10 +6,10 @@ namespace cw
   namespace flow
   {
     rc_t network_create( flow_t* p,
-                         const object_t*    networkCfg,
-                         network_t&         net,                              // Network object to be filled with new proc instances
-                         variable_t*        proxyVarL,                        // 
-                         unsigned           polyCnt   = 1                     // Count of networks to create
+                         const object_t* subnetCfgA, // subnetCfgA[subNetCfgN] per subnet cfg record
+                         network_t&         net,                // Network object to be filled with new proc instances
+                         variable_t*        proxyVarL,          // 
+                         unsigned           polyCnt   = 1       // Count of networks to create
       );
     
     rc_t network_destroy( network_t& net );

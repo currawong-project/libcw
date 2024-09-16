@@ -135,9 +135,9 @@ namespace cw
 
     //------------------------------------------------------------------------------------------------------------------
     //
-    // subnet
+    // user_def_proc
     //
-    namespace subnet
+    namespace user_def_proc
     {
       typedef struct
       {
@@ -152,7 +152,7 @@ namespace cw
         
         if((rc = proc->class_desc->cfg->getv("network",networkCfg)) != kOkRC )
         {
-          rc = cwLogError(rc,"The subnet 'network' cfg. was not found.");
+          rc = cwLogError(rc,"The UDP 'network' cfg. was not found.");
           goto errLabel;
         }
 
