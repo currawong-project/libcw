@@ -317,12 +317,20 @@ namespace cw
       
     } net_global_var_t;
 
+    typedef struct poly_voice_str
+    {
+      struct network_str* net;  // Network containing the proc's referened by proc_idx, proc_cnt
+      unsigned            proc_idx; // Index into network_t.proc_array[] of first proc in voice
+      unsigned            proc_cnt; // Count of proc's in the voice
+      rc_t                rc;   // Result code from last call to exec_cycle() 
+    } poly_voice_t;
+
     typedef struct network_str
     {
       const object_t*   procsCfg;   // network proc list
       const object_t*   presetsCfg; // presets designed for this network
 
-      unsigned*         poly_proc_idxA;  // poly_proc_idxA[ poly_cnt ]. Index into proc_array[] of first proc in each network
+      poly_voice_t*     poly_voiceA;  // poly_voiceA[ poly_cnt ]. 
       unsigned          poly_cnt; // count of duplicated networks in the list
       
       struct proc_str** proc_array;

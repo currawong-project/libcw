@@ -31,6 +31,8 @@
 
 #include "cwWaveTableBank.h"
 
+#include "cwThread.h"
+#include "cwThreadMach.h"
 
 namespace cw
 {
@@ -214,16 +216,23 @@ namespace cw
     {
       enum
       {
+        kParallelFlPId,
         kCountPId,
-        kOrderPId,
       };
-      
+
       typedef struct
       {
         unsigned   count;
         network_t  net;
-        network_order_id_t orderId;
+        bool       parallel_fl;
+        thread_mach::handle_t threadMachH;
       } inst_t;
+
+      bool _thread_func( void* arg )
+      {
+        
+        return true;
+      }
 
 
       rc_t create( proc_t* proc )
@@ -231,14 +240,13 @@ namespace cw
         rc_t            rc          = kOkRC;        
         inst_t*         inst        = mem::allocZ<inst_t>();
         const object_t* networkCfg  = nullptr;
-        const char*     order_label = nullptr;
         variable_t*     proxyVarL   = nullptr;
         
         proc->userPtr = inst;
         
         if((rc  = var_register_and_get( proc, kAnyChIdx,
-                                        kCountPId, "count", kBaseSfxId, inst->count,
-                                        kOrderPId, "order", kBaseSfxId, order_label )) != kOkRC )
+                                        kParallelFlPId, "parallel_fl", kBaseSfxId, inst->parallel_fl,
+                                        kCountPId,      "count",       kBaseSfxId, inst->count )) != kOkRC )
           goto errLabel;
 
         if( inst->count == 0 )
@@ -253,19 +261,6 @@ namespace cw
           goto errLabel;
         }
 
-        // get the network exec. order type
-        if( textIsEqual(order_label,"net") )
-          inst->orderId = kNetFirstPolyOrderId;
-        else
-        {
-          if( textIsEqual(order_label,"proc") )
-            inst->orderId = kProcFirstPolyOrderId;
-          else
-          {
-            rc = cwLogError(kInvalidArgRC,"'%s' is not one of the valid order types (i.e. 'net','proc').",order_label);
-            goto errLabel;
-          }
-        }
         
         if((rc = network_create(proc->ctx,networkCfg,inst->net,proxyVarL,inst->count)) != kOkRC )
         {
@@ -273,6 +268,16 @@ namespace cw
           goto errLabel;
         }
 
+        if( inst->parallel_fl )
+        {
+          if((rc = thread_mach::create(  inst->threadMachH, _thread_func, proc->net->poly_voiceA, sizeof(poly_voice_t), inst->count )) != kOkRC )
+          {
+            rc = cwLogError(rc,"Thread machine create failed.");
+            goto errLabel;
+          }
+
+        }
+          
 
         // Set the internal net pointer in the base proc instance
         // so that network based utilities can scan it
@@ -287,8 +292,9 @@ namespace cw
         inst_t* p = (inst_t*)proc->userPtr;
         network_destroy(p->net);
 
-        
+        thread_mach::destroy(p->threadMachH);
         mem::release( proc->userPtr );
+        
         return kOkRC;
       }
 
@@ -302,9 +308,16 @@ namespace cw
         inst_t* p = (inst_t*)proc->userPtr;
         rc_t   rc = kOkRC;
 
-        if((rc = exec_cycle(p->net)) != kOkRC )
+        if( p->parallel_fl )
         {
-          rc = cwLogError(rc,"poly internal network exec failed.");
+          
+        }
+        else
+        {
+          if((rc = exec_cycle(p->net)) != kOkRC )
+          {
+            rc = cwLogError(rc,"poly internal network exec failed.");
+          }
         }
         
         return rc;
