@@ -131,7 +131,7 @@ namespace cw
       for(unsigned i=0; i<net.proc_arrayN; ++i)
         proc_destroy(net.proc_array[i]);
 
-      mem::release(net.poly_proc_idxA);
+      mem::release(net.poly_voiceA);
       mem::release(net.proc_array);
       net.proc_arrayAllocN = 0;
       net.proc_arrayN = 0;
@@ -2869,14 +2869,9 @@ cw::rc_t cw::flow::network_create( flow_t*            p,
                                    const object_t*    networkCfg,
                                    network_t&         net,
                                    variable_t*        proxyVarL,
-                                   unsigned           polyCnt,
-                                   network_order_id_t orderId )
+                                   unsigned           polyCnt )
 {
   rc_t     rc     = kOkRC;
-
-  // default to kNetFirstPolyOrderId
-  unsigned outerN        = polyCnt;
-  unsigned innerN        = 1;
 
   if((rc = networkCfg->getv("procs",net.procsCfg)) != kOkRC )
   {
@@ -2890,53 +2885,38 @@ cw::rc_t cw::flow::network_create( flow_t*            p,
     goto errLabel;
   }
 
-
-  if( orderId == kProcFirstPolyOrderId )
-  {
-    outerN = 1;
-    innerN = polyCnt;
-  }
-
   net.proc_arrayAllocN = polyCnt * net.procsCfg->child_count();
   net.proc_array       = mem::allocZ<proc_t*>(net.proc_arrayAllocN);
   net.proc_arrayN      = 0;
-  net.poly_proc_idxA   = orderId == kNetFirstPolyOrderId ? mem::allocZ<unsigned>(polyCnt) : nullptr;
+  net.poly_voiceA      = mem::allocZ<poly_voice_t>(polyCnt);
 
-  for(unsigned i=0; i<outerN; ++i)
+  for(unsigned i=0; i<polyCnt; ++i)
   {
-    // if this network is running in 'network-first' order then track the location of
-    // the first proc in each network
-    if( net.poly_proc_idxA != nullptr )
-    {
-      assert( i<polyCnt && net.proc_arrayN < net.proc_arrayAllocN );
-      net.poly_proc_idxA[i] = net.proc_arrayN;
-    }
+    assert( i<polyCnt && net.proc_arrayN < net.proc_arrayAllocN );
+    
+    net.poly_voiceA[i].proc_idx = net.proc_arrayN;
+    net.poly_voiceA[i].net      = &net;
     
     // for each proc in the network
     for(unsigned j=0; j<net.procsCfg->child_count(); ++j)
     {
       const object_t* proc_cfg = net.procsCfg->child_ele(j);
+      unsigned        sfx_id   = polyCnt>1 ? i : kInvalidId;
 
-      for(unsigned k=0; k<innerN; ++k)
-      {
-        unsigned sfx_id = kInvalidId;
-
-        if( polyCnt > 1 )
-          sfx_id = orderId == kNetFirstPolyOrderId ? i : k;
-
-        assert(net.proc_arrayN < net.proc_arrayAllocN );
+      assert(net.proc_arrayN < net.proc_arrayAllocN );
         
-        // create the proc inst instance
-        if( (rc= _proc_create( p, proc_cfg, sfx_id, net, proxyVarL, net.proc_array[net.proc_arrayN] ) ) != kOkRC )
-        {
-          //rc = cwLogError(rc,"The instantiation at proc index %i is invalid.",net.proc_arrayN);
-          goto errLabel;
-        }
-
-        net.proc_arrayN += 1;
+      // create the proc inst instance
+      if( (rc= _proc_create( p, proc_cfg, sfx_id, net, proxyVarL, net.proc_array[net.proc_arrayN] ) ) != kOkRC )
+      {
+        //rc = cwLogError(rc,"The instantiation at proc index %i is invalid.",net.proc_arrayN);
+        goto errLabel;
       }
+
+      net.proc_arrayN             += 1;
+      net.poly_voiceA[i].proc_cnt += 1;
     }
   }
+
 
   net.poly_cnt = polyCnt;
 
@@ -2973,13 +2953,23 @@ const cw::object_t* cw::flow::find_network_preset( const network_t& net, const c
   return preset_value;     
 }
 
-cw::rc_t cw::flow::exec_cycle( network_t& net )
+cw::rc_t cw::flow::exec_cycle( network_t& net, unsigned proc_idx, unsigned proc_cnt )
 {
   rc_t rc = kOkRC;
   bool halt_fl = false;
 
-  for(unsigned i=0; i<net.proc_arrayN; ++i)
+  if( proc_cnt == kInvalidCnt )
+    proc_cnt = net.proc_arrayN;
+  
+
+  for(unsigned i=proc_idx; i<proc_cnt; ++i)
   {
+    if( i >= net.proc_arrayN )
+    {
+      rc = cwLogError(kEleNotFoundRC,"Network exec cycle failed on an invalid proc index. %i >= %i.",i,net.proc_arrayN );
+      goto errLabel;
+    }
+    
     if((rc = net.proc_array[i]->class_desc->members->exec(net.proc_array[i])) != kOkRC )
     {
       if( rc == kEofRC )
@@ -2991,7 +2981,8 @@ cw::rc_t cw::flow::exec_cycle( network_t& net )
       }
     }
   }
-      
+
+errLabel:
   return halt_fl ? kEofRC : rc;
 }
 
