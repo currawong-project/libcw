@@ -30,6 +30,8 @@
 
 #include "cwFlowTest.h"
 
+#include "cwThread.h"
+#include "cwThreadMach.h"
 
 namespace cw
 {
@@ -54,6 +56,7 @@ namespace cw
       { "/wt_bank", wt_bank::test },
       { "/audio_transform", dsp::test },
       { "/wt_note", wt_note::test },
+      { "/thread_tasks", thread_tasks::test },
       { nullptr, nullptr },
     };
     
