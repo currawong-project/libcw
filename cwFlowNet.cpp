@@ -123,25 +123,23 @@ namespace cw
         _network_preset_destroy( net.presetA[i] );
       mem::release(net.presetA);
     }
-    
-    rc_t _network_destroy( network_t& net )
+
+    rc_t _network_destroy_one( network_t*& net )
     {
       rc_t rc = kOkRC;
+      
+      for(unsigned i=0; i<net->proc_arrayN; ++i)
+        proc_destroy(net->proc_array[i]);
 
-      for(unsigned i=0; i<net.proc_arrayN; ++i)
-        proc_destroy(net.proc_array[i]);
+      mem::release(net->proc_array);
+      net->proc_arrayN = 0;
 
-      mem::release(net.poly_voiceA);
-      mem::release(net.proc_array);
-      net.proc_arrayAllocN = 0;
-      net.proc_arrayN = 0;
+      _network_preset_array_destroy(*net);
 
-      _network_preset_array_destroy(net);
+      mem::release(net->preset_pairA);
+      net->preset_pairN = 0;
 
-      mem::release(net.preset_pairA);
-      net.preset_pairN = 0;
-
-      net_global_var_t* gv=net.globalVarL;
+      net_global_var_t* gv=net->globalVarL;
       while( gv != nullptr )
       {
         net_global_var_t* gv0 = gv->link;
@@ -149,6 +147,24 @@ namespace cw
         mem::release(gv->blob);
         mem::release(gv);
         gv = gv0;
+      }
+
+      mem::release(net);
+
+      return rc;      
+    }
+    
+    rc_t _network_destroy( network_t*& net )
+    {
+      rc_t rc = kOkRC;
+
+      while( net != nullptr )
+      {
+        network_t* n0 = net->poly_link;
+        rc_t rc0;
+        if((rc0 = _network_destroy_one(net)) != kOkRC )
+          rc = cwLogError(rc0,"A network destroy failed.");
+        net = n0;
       }
       
       return rc;
@@ -380,6 +396,11 @@ namespace cw
         }
         
       }
+
+      if( labeled_net == nullptr && net.poly_link != nullptr )
+        labeled_net = _io_stmt_find_labeled_network(*net.poly_link,net_proc_label );
+
+      
       return labeled_net;
     }
 
@@ -707,10 +728,10 @@ namespace cw
       else
       {        
         if( textIsEqual(io_stmt.remote_net_label,"_") )
-          remote_net = &proc->ctx->net;
+          remote_net = proc->ctx->net;
         else
         {
-          if((remote_net = _io_stmt_find_labeled_network(proc->ctx->net,io_stmt.remote_net_label)) == nullptr )
+          if((remote_net = _io_stmt_find_labeled_network(*proc->ctx->net,io_stmt.remote_net_label)) == nullptr )
           {
             rc = cwLogError(kSyntaxErrorRC,"The source net '%s' was not found.",cwStringNullGuard(io_stmt.remote_net_label));
             goto errLabel;
@@ -2860,81 +2881,143 @@ namespace cw
       return result;
     }
 
+
+    //==================================================================================================================
+    //
+    // Network - Create
+    //
+    
+    rc_t _network_create( flow_t*                p,
+                          const object_t*        networkCfg,
+                          unsigned               sfx_id,
+                          variable_t*            proxyVarL,
+                          network_t*&            net_ref )
+    {
+      rc_t       rc    = kOkRC;
+      unsigned   procN = 0;
+      network_t* net   = mem::allocZ<network_t>();
+
+      // if the top level network has not been set then set it here.
+      // (this is necessary so that proc's later in the exec order
+      //  can locate proc's earlier in the exec order)
+      if(p->net == nullptr )
+        p->net = net;
+              
+      if((rc = networkCfg->getv("procs",net->procsCfg)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Failed on parsing required network cfg. elements.");
+        goto errLabel;
+      }
+
+      if((rc = networkCfg->getv_opt("presets",net->presetsCfg)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Failed on parsing optional network cfg. elements.");
+        goto errLabel;
+      }
+
+      procN = net->procsCfg->child_count();
+      net->proc_array  = mem::allocZ<proc_t*>(procN);
+
+      // for each proc in the network
+      for(unsigned j=0; j<procN; ++j)
+      {
+        const object_t* proc_cfg = net->procsCfg->child_ele(j);
+
+        // create the proc inst instance
+        if( (rc= _proc_create( p, proc_cfg, sfx_id, *net, proxyVarL, net->proc_array[j] ) ) != kOkRC )
+        {
+          rc = cwLogError(rc,"The processor instantiation at proc index %i failed.",j);
+          goto errLabel;
+        }
+
+        net->proc_arrayN += 1;
+      }
+
+
+      if((rc = _network_preset_pair_create_table(*net)) != kOkRC )
+        goto errLabel;
+  
+      _network_preset_parse_top_level_dict(p, *net, net->presetsCfg );
+
+      net_ref = net;
+    errLabel:
+
+      if( rc != kOkRC )
+      {
+        if( p->net == net )
+          p->net = nullptr;
+
+        net_ref = nullptr;
+
+        _network_destroy(net);
+        
+        
+      }
+
+      return rc;
+    }
     
     
   }
 }
 
-cw::rc_t cw::flow::network_create( flow_t*                p,
-                                   const object_t*        networkCfg,
-                                   network_t&             net,
-                                   variable_t*            proxyVarL,
-                                   unsigned               polyCnt )
+
+
+cw::rc_t cw::flow::network_create( flow_t*                 p,
+                                   const object_t* const * netCfgA,
+                                   unsigned                netCfgN,
+                                   variable_t*             proxyVarL,
+                                   unsigned                polyCnt,
+                                   network_t*&             net_ref )
 {
-  rc_t     rc     = kOkRC;
-  if((rc = networkCfg->getv("procs",net.procsCfg)) != kOkRC )
+  rc_t       rc  = kOkRC;
+  network_t* n0  = nullptr;
+  
+  net_ref = nullptr;
+
+  if( !(netCfgN==1 || netCfgN==polyCnt ))
   {
-    rc = cwLogError(rc,"Failed on parsing required network cfg. elements.");
+    cwLogError(kInvalidArgRC,"The count of network cfg's must be one, or must match the 'poly count'.");
     goto errLabel;
   }
-
-  if((rc = networkCfg->getv_opt("presets",net.presetsCfg)) != kOkRC )
-  {
-    rc = cwLogError(rc,"Failed on parsing optional network cfg. elements.");
-    goto errLabel;
-  }
-
-  net.proc_arrayAllocN = polyCnt * net.procsCfg->child_count();
-  net.proc_array       = mem::allocZ<proc_t*>(net.proc_arrayAllocN);
-  net.proc_arrayN      = 0;
-  net.poly_voiceA      = mem::allocZ<poly_voice_t>(polyCnt);
-
-  // for each subnet
+  
   for(unsigned i=0; i<polyCnt; ++i)
   {
-    assert( i<polyCnt && net.proc_arrayN < net.proc_arrayAllocN );
+    network_t* net = nullptr;
 
-    // track the first proc in each subnet
-    net.poly_voiceA[i].proc_idx = net.proc_arrayN;
-    net.poly_voiceA[i].net      = &net;
+    // All procs in a poly should share the same sfx_id
+    // otherwise the sfx_id can be automatically generated.
+    unsigned  sfx_id   = polyCnt>1 ? i : kInvalidId;
+
+    const object_t* cfg = i < netCfgN ? netCfgA[i] : netCfgA[0];
     
-    // for each proc in the network
-    for(unsigned j=0; j<net.procsCfg->child_count(); ++j)
+    if((rc = _network_create(p, cfg, sfx_id, proxyVarL, net)) != kOkRC )
     {
-      const object_t* proc_cfg = net.procsCfg->child_ele(j);
-      unsigned        sfx_id   = polyCnt>1 ? i : kInvalidId;
-
-      assert(net.proc_arrayN < net.proc_arrayAllocN );
-        
-      // create the proc inst instance
-      if( (rc= _proc_create( p, proc_cfg, sfx_id, net, proxyVarL, net.proc_array[net.proc_arrayN] ) ) != kOkRC )
-      {
-        //rc = cwLogError(rc,"The instantiation at proc index %i is invalid.",net.proc_arrayN);
-        goto errLabel;
-      }
-
-      net.proc_arrayN             += 1;
-      net.poly_voiceA[i].proc_cnt += 1;
+      rc = cwLogError(rc,"Network create failed on poly index %i.",i);
+      goto errLabel;
     }
+
+    // The returned net is always the first in a poly chain
+    if( net_ref == nullptr )
+      net_ref = net;
+
+    net->poly_idx = i;
+    
+    if( n0 != nullptr )
+      n0->poly_link = net;
+    
+    n0 = net;
+    
   }
-
-
-  net.poly_cnt = polyCnt;
-
-
-  if((rc = _network_preset_pair_create_table(net)) != kOkRC )
-    goto errLabel;
-  
-  _network_preset_parse_top_level_dict(p, net, net.presetsCfg );
   
 errLabel:
-  if( rc != kOkRC )
-    _network_destroy(net);
+  if( rc != kOkRC && net_ref != nullptr )
+    _network_destroy(net_ref);
   
   return rc;
 }
 
-cw::rc_t cw::flow::network_destroy( network_t& net )
+cw::rc_t cw::flow::network_destroy( network_t*& net )
 {
   return _network_destroy(net);
 }
@@ -2954,23 +3037,13 @@ const cw::object_t* cw::flow::find_network_preset( const network_t& net, const c
   return preset_value;     
 }
 
-cw::rc_t cw::flow::exec_cycle( network_t& net, unsigned proc_idx, unsigned proc_cnt )
+cw::rc_t cw::flow::exec_cycle( network_t& net )
 {
   rc_t rc = kOkRC;
   bool halt_fl = false;
 
-  if( proc_cnt == kInvalidCnt )
-    proc_cnt = net.proc_arrayN;
-  
-
-  for(unsigned i=proc_idx; i<proc_idx+proc_cnt; ++i)
+  for(unsigned i=0; i<net.proc_arrayN; ++i)
   {
-    if( i >= net.proc_arrayN )
-    {
-      rc = cwLogError(kEleNotFoundRC,"Network exec cycle failed on an invalid proc index. %i >= %i.",i,net.proc_arrayN );
-      goto errLabel;
-    }
-    
     if((rc = net.proc_array[i]->class_desc->members->exec(net.proc_array[i])) != kOkRC )
     {
       if( rc == kEofRC )
@@ -2983,7 +3056,6 @@ cw::rc_t cw::flow::exec_cycle( network_t& net, unsigned proc_idx, unsigned proc_
     }
   }
 
-errLabel:
   return halt_fl ? kEofRC : rc;
 }
 

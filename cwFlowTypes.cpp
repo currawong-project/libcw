@@ -1721,6 +1721,15 @@ errLabel:
   return rc;  
 }
 
+unsigned cw::flow::network_poly_count( const network_t& net )
+{
+  unsigned n =1;
+  for(const network_t* n0 = net.poly_link; n0!=nullptr; n0=n0->poly_link)
+    ++n;
+
+  return n;
+}
+
 void cw::flow::proc_destroy( proc_t* proc )
 {
   if( proc == nullptr )
@@ -1793,9 +1802,17 @@ cw::rc_t cw::flow::proc_validate( proc_t* proc )
 
 cw::flow::proc_t* cw::flow::proc_find( network_t& net, const char* proc_label, unsigned sfx_id )
 {
+  
   for(unsigned i=0; i<net.proc_arrayN; ++i)
+  {
+    assert( net.proc_array[i] != nullptr );
+    
     if( net.proc_array[i]->label_sfx_id==sfx_id && textIsEqual(proc_label,net.proc_array[i]->label) )
       return net.proc_array[i];
+  }
+
+  if( net.poly_link != nullptr )
+    return proc_find(*net.poly_link, proc_label, sfx_id );
 
   return nullptr;
 }

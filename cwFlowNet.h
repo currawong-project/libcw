@@ -5,18 +5,19 @@ namespace cw
 {
   namespace flow
   {
-    rc_t network_create( flow_t* p,
-                         const object_t* subnetCfgA, // subnetCfgA[subNetCfgN] per subnet cfg record
-                         network_t&         net,                // Network object to be filled with new proc instances
-                         variable_t*        proxyVarL,          // 
-                         unsigned           polyCnt   = 1       // Count of networks to create
+    rc_t network_create( flow_t*         p,
+                         const object_t* const * netCfgA, // subnetCfgA[subNetCfgN] per subnet cfg record
+                         unsigned        netCfgN,
+                         variable_t*     proxyVarL,          // 
+                         unsigned        polyCnt,        // Count of poly networks to create or 1 if the network is not poly
+                         network_t*&     net_ref
       );
     
-    rc_t network_destroy( network_t& net );
+    rc_t network_destroy( network_t*& net );
 
     const object_t* find_network_preset( const network_t& net, const char* presetLabel );
     
-    rc_t exec_cycle( network_t& net, unsigned proc_idx=0, unsigned proc_cnt=kInvalidCnt );
+    rc_t exec_cycle( network_t& net );
 
 
     rc_t get_variable( network_t& net, const char* inst_label, const char* var_label, unsigned chIdx, proc_t*& instPtrRef, variable_t*& varPtrRef );

@@ -141,7 +141,7 @@ namespace cw
     {
       typedef struct
       {
-        network_t net;
+        network_t* net;
       } inst_t;
 
 
@@ -156,7 +156,7 @@ namespace cw
           goto errLabel;
         }
 
-        if((rc = network_create(proc->ctx,networkCfg,p->net,proc->varL)) != kOkRC )
+        if((rc = network_create(proc->ctx,&networkCfg,1,proc->varL,1,p->net)) != kOkRC )
         {
           rc = cwLogError(rc,"Creation failed on the subnet internal network.");
           goto errLabel;
@@ -164,7 +164,7 @@ namespace cw
 
         // Set the internal net pointer in the base proc instance
         // so that network based utilities can scan it
-        proc->internal_net = &p->net;
+        proc->internal_net = p->net;
 
       errLabel:
         return rc;
@@ -189,8 +189,9 @@ namespace cw
       {
         rc_t rc      = kOkRC;
 
-        if((rc = exec_cycle(p->net)) != kOkRC )
-          rc = cwLogError(rc,"poly internal network exec failed.");
+        if(p->net != nullptr )
+          if((rc = exec_cycle(*p->net)) != kOkRC )
+            rc = cwLogError(rc,"poly internal network exec failed.");
         
         return rc;
       }
@@ -228,8 +229,8 @@ namespace cw
 
       typedef struct
       {
-        unsigned               count;        // count of duplicate subnets in 'net'
-        network_t              net;          // internal network containing 'count' duplicate sub-nets
+        unsigned               count;        // count of subnets in 'net'
+        //network_t*             net;          // internal network containing 'count' duplicate sub-nets
         bool                   parallel_fl;  // true if the subnets should be executed in parallel
         thread_tasks::handle_t threadTasksH; //  
         thread_tasks::task_t*  taskA;        // taskA[ count ]
@@ -242,9 +243,7 @@ namespace cw
         rc_t rc = kOkRC;
         voice_t* v = (voice_t*)arg;
 
-        poly_voice_t* pv = v->net->poly_voiceA + v->voice_idx;
-        
-        if((rc = exec_cycle(*v->net, pv->proc_idx, pv->proc_cnt)) != kOkRC )
+        if((rc = exec_cycle(*v->net)) != kOkRC )
         {
           rc = cwLogError(rc,"Parallel subnet exec failed on voice %i.",v->voice_idx);
           goto errLabel;
@@ -257,35 +256,77 @@ namespace cw
 
       rc_t create( proc_t* proc )
       {
-        rc_t            rc          = kOkRC;        
-        inst_t*         inst        = mem::allocZ<inst_t>();
-        const object_t* networkCfg  = nullptr;
-        variable_t*     proxyVarL   = nullptr;
+        rc_t             rc          = kOkRC;        
+        inst_t*          inst        = mem::allocZ<inst_t>();
+        const object_t*  networkCfg  = nullptr;
+        variable_t*      proxyVarL   = nullptr;
+        const object_t** networkCfgA = nullptr;
+        unsigned         networkCfgN = 1;
+        network_t*       internal_net = nullptr;
         
         proc->userPtr = inst;
-        
-        if((rc  = var_register_and_get( proc, kAnyChIdx,
-                                        kParallelFlPId, "parallel_fl", kBaseSfxId, inst->parallel_fl,
-                                        kCountPId,      "count",       kBaseSfxId, inst->count )) != kOkRC )
-        {
-          goto errLabel;
-        }
-        
-        if( inst->count == 0 )
-        {
-          cwLogWarning("The 'poly' %s:%i was given a count of 0.",proc->label,proc->label_sfx_id);
-          goto errLabel;
-        }
 
+        // get the network cfg
         if((rc = proc->proc_cfg->getv("network",networkCfg)) != kOkRC )
         {
           rc = cwLogError(rc,"The 'network' cfg. was not found.");
           goto errLabel;
         }
 
+        // get the 'parallel flag'
+        if((rc  = var_register_and_get( proc, kAnyChIdx,kParallelFlPId, "parallel_fl", kBaseSfxId, inst->parallel_fl )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // if the network is a list of cfgs
+        if( networkCfg->is_list() )
+        {
+          inst->count = networkCfg->child_count();
+          networkCfgN = inst->count;
+        }
+        else
+        {
+          // otherwise multiple networks use the same cfg
+          if((rc  = var_register_and_get( proc, kAnyChIdx,kCountPId,"count", kBaseSfxId, inst->count )) != kOkRC )
+          {
+            goto errLabel;
+          }          
+        }
+
+        // the network cannot be empty
+        if( inst->count == 0 )
+        {
+          cwLogWarning("The 'poly' %s:%i was given a count of 0.",proc->label,proc->label_sfx_id);
+          goto errLabel;
+        }
+
+        // allocate the network cfg array
+        networkCfgA = mem::allocZ<const object_t*>(inst->count);
+
+        // by default there is only one cfg.
+        networkCfgA[0] = networkCfg;
+
+        // ... but if there are more than one cfg ...
+        if( networkCfg->is_list() )
+        {
+          // ... fill the network cfg array
+          for(unsigned i=0; i<inst->count; ++i)
+          {
+            networkCfgA[i] = networkCfg->child_ele(i);
+            
+            if( !networkCfgA[i]->is_dict() )
+            {
+              cwLogError(kSyntaxErrorRC,"The network cfg. for the network index %i is not a dictionary.",i);
+              goto errLabel;
+            }
+          }
+        }
+        
+        
         // create the network object - which will hold 'count' subnets - each a duplicate of the
         // network described by 'networkCfg'.
-        if((rc = network_create(proc->ctx,networkCfg,inst->net,proxyVarL,inst->count)) != kOkRC )
+        if((rc = network_create(proc->ctx,networkCfgA,networkCfgN,proxyVarL,inst->count,internal_net)) != kOkRC )
         {
           rc = cwLogError(rc,"Creation failed on the internal network.");
           goto errLabel;
@@ -293,6 +334,8 @@ namespace cw
 
         if( inst->parallel_fl )
         {
+          network_t* net = internal_net;
+          
           // create a thread_tasks object
           if((rc = thread_tasks::create(  inst->threadTasksH, inst->count )) != kOkRC )
           {
@@ -304,29 +347,37 @@ namespace cw
           inst->taskA  = mem::allocZ<thread_tasks::task_t>(inst->count);
           inst->voiceA = mem::allocZ<voice_t>(inst->count);
           
-          for(unsigned i=0; i<inst->count; ++i)
+          for(unsigned i=0; net !=nullptr; ++i)
           {
+            assert(i<inst->count);
+            
             inst->voiceA[i].voice_idx = i;
-            inst->voiceA[i].net       = &inst->net;
+            inst->voiceA[i].net       = net;
             
             inst->taskA[i].func = _voice_thread_func;
             inst->taskA[i].arg  = inst->voiceA + i;
+
+            net = net->poly_link;
           }
         }
           
 
         // Set the internal net pointer in the base proc instance
         // so that network based utilities can scan it
-        proc->internal_net = &inst->net;
+        proc->internal_net = internal_net;
         
       errLabel:
+        mem::release(networkCfgA);
+        
         return rc;
       }
 
       rc_t destroy( proc_t* proc )
       {
         inst_t* p = (inst_t*)proc->userPtr;
-        network_destroy(p->net);
+
+        if( proc->internal_net != nullptr )
+          network_destroy(proc->internal_net);
 
         thread_tasks::destroy(p->threadTasksH);
         mem::release( p->taskA);
@@ -355,7 +406,7 @@ namespace cw
         }
         else
         {
-          if((rc = exec_cycle(p->net)) != kOkRC )
+          if((rc = exec_cycle(*proc->internal_net)) != kOkRC )
           {
             rc = cwLogError(rc,"poly internal network exec failed.");
           }
@@ -3842,6 +3893,8 @@ namespace cw
         const char* presetLabel   = nullptr;
         unsigned    netLabelSfxId = kBaseSfxId;
         abuf_t*     srateSrc      = nullptr;
+        unsigned    poly_cnt      = 0;
+        network_t*  net           = nullptr;
         coeff_t     dum_dbl;
 
         inst_t* p = mem::allocZ<inst_t>();
@@ -3869,13 +3922,17 @@ namespace cw
           goto errLabel;
         }
 
-        if( p->net_proc->internal_net->poly_cnt < 3 )
+        poly_cnt = p->net_proc->internal_net==nullptr ? 0 : network_poly_count(*p->net_proc->internal_net);
+        
+        if( poly_cnt < 3 )
         {
-          cwLogError(rc,"The xfade_ctl source network must have at least 3 poly channels. %i < 3",p->net_proc->internal_net->poly_cnt);
+          cwLogError(rc,"The xfade_ctl source network must have at least 3 poly channels. %i < 3",poly_cnt);
           goto errLabel;
         }
 
-        p->poly_ch_cnt = p->net_proc->internal_net->poly_cnt;
+        p->poly_ch_cnt = poly_cnt;
+
+        net = p->net_proc->internal_net;
 
         // create the gain output variables - one output for each poly-channel
         for(unsigned i=1; i<p->poly_ch_cnt; ++i)
@@ -3889,29 +3946,30 @@ namespace cw
         }
 
         // count of proc's in one poly-ch of the poly network
-        p->net_proc_cnt = p->net_proc->internal_net->proc_arrayN / p->net_proc->internal_net->poly_cnt;
+        //p->net_proc_cnt = p->net_proc->internal_net->proc_arrayN / p->net_proc->internal_net->poly_cnt;
 
         p->netA = mem::allocZ<poly_ch_t>(p->poly_ch_cnt);
         
         // create the proxy network networks
-        for(unsigned i=0; i<p->poly_ch_cnt; ++i)
+        for(unsigned i=0; i<p->poly_ch_cnt; ++i,net=net->poly_link)
         {
-          p->netA[i].net.proc_arrayAllocN = p->net_proc_cnt;
-          p->netA[i].net.proc_arrayN      = p->netA[i].net.proc_arrayAllocN;
-          p->netA[i].net.proc_array       = mem::allocZ<proc_t*>(p->netA[i].net.proc_arrayAllocN);
-          p->netA[i].net.presetsCfg       = p->net_proc->internal_net->presetsCfg;
-
-          p->netA[i].net.presetA          = p->net_proc->internal_net->presetA;
-          p->netA[i].net.presetN          = p->net_proc->internal_net->presetN;
+          assert(net != nullptr );
           
-          p->netA[i].net.preset_pairA     = p->net_proc->internal_net->preset_pairA;
-          p->netA[i].net.preset_pairN     = p->net_proc->internal_net->preset_pairN;
+          p->netA[i].net.proc_arrayN      = net->proc_arrayN;
+          p->netA[i].net.proc_array       = mem::allocZ<proc_t*>(p->netA[i].net.proc_arrayN);
+          p->netA[i].net.presetsCfg       = net->presetsCfg;
 
-          for(unsigned j=0,k=0; j<p->net_proc->internal_net->proc_arrayN; ++j)
-            if( p->net_proc->internal_net->proc_array[j]->label_sfx_id == i )
+          p->netA[i].net.presetA          = net->presetA;
+          p->netA[i].net.presetN          = net->presetN;
+          
+          p->netA[i].net.preset_pairA     = net->preset_pairA;
+          p->netA[i].net.preset_pairN     = net->preset_pairN;
+
+          for(unsigned j=0,k=0; j<net->proc_arrayN; ++j)
+            if( net->proc_array[j]->label_sfx_id == i )
             {
               assert( k < p->net_proc_cnt );
-              p->netA[i].net.proc_array[k++] = p->net_proc->internal_net->proc_array[j];
+              p->netA[i].net.proc_array[k++] = net->proc_array[j];
             }          
         }
 
@@ -4005,7 +4063,7 @@ namespace cw
         }
 
         // update the cross-fade gain outputs
-        for(unsigned i=0; i<p->net_proc->internal_net->poly_cnt; ++i)
+        for(unsigned i=0; i<p->poly_ch_cnt; ++i)
         {
           p->netA[i].cur_gain += _signum(p->netA[i].target_gain - p->netA[i].cur_gain) * delta_gain_per_cycle;
           

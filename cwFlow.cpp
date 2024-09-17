@@ -780,17 +780,17 @@ cw::rc_t cw::flow::initialize( handle_t h,
     }
   
   // instantiate the network
-  if((rc = network_create(p,p->networkCfg,p->net,proxyVarL)) != kOkRC )
+  if((rc = network_create(p,&p->networkCfg,1,proxyVarL,1,p->net)) != kOkRC )
   {
     rc = cwLogError(rc,"Network creation failed.");
     goto errLabel;
   }
 
-  if( p->printNetworkFl )
-    network_print(p->net);
+  if( p->printNetworkFl && p->net != nullptr )
+    network_print(*p->net);
 
-  if( p->init_net_preset_label != nullptr )
-    network_apply_preset( p->net, p->init_net_preset_label );
+  if( p->init_net_preset_label != nullptr && p->net != nullptr )
+    network_apply_preset( *p->net, p->init_net_preset_label );
   
   p->isInRuntimeFl = true;
   cwLogInfo("Entering runtime.");
@@ -866,7 +866,7 @@ cw::rc_t cw::flow::exec_cycle( handle_t h )
   }
   else
   {
-    rc = exec_cycle(p->net);
+    rc = exec_cycle(*p->net);
     p->cycleIndex += 1;
   }
     
@@ -888,52 +888,52 @@ cw::rc_t cw::flow::exec(    handle_t h )
 cw::rc_t cw::flow::apply_preset( handle_t h, const char* presetLabel )
 {
   flow_t* p  = _handleToPtr(h);
-  return network_apply_preset(p->net,presetLabel);
+  return network_apply_preset(*p->net,presetLabel);
 }
 
 cw::rc_t cw::flow::apply_dual_preset( handle_t h, const char* presetLabel_0, const char* presetLabel_1, double coeff )
 {
   flow_t* p  = _handleToPtr(h);
-  return network_apply_dual_preset(p->net,presetLabel_0, presetLabel_1, coeff );
+  return network_apply_dual_preset(*p->net,presetLabel_0, presetLabel_1, coeff );
 }
 
 cw::rc_t cw::flow::apply_preset( handle_t h, const multi_preset_selector_t& mps )
 {
   flow_t* p  = _handleToPtr(h);
-  return network_apply_preset(p->net,mps);
+  return network_apply_preset(*p->net,mps);
 }
 
 
 
 cw::rc_t cw::flow::set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, bool value )
-{ return set_variable_value( _handleToPtr(h)->net, inst_label, var_label, chIdx, value ); }
+{ return set_variable_value( *_handleToPtr(h)->net, inst_label, var_label, chIdx, value ); }
 
 cw::rc_t cw::flow::set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, int value )
-{ return set_variable_value( _handleToPtr(h)->net, inst_label, var_label, chIdx, value ); }
+{ return set_variable_value( *_handleToPtr(h)->net, inst_label, var_label, chIdx, value ); }
 
 cw::rc_t cw::flow::set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, unsigned value )
-{ return set_variable_value( _handleToPtr(h)->net, inst_label, var_label, chIdx, value ); }
+{ return set_variable_value( *_handleToPtr(h)->net, inst_label, var_label, chIdx, value ); }
 
 cw::rc_t cw::flow::set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, float value )
-{ return set_variable_value( _handleToPtr(h)->net, inst_label, var_label, chIdx, value ); }
+{ return set_variable_value( *_handleToPtr(h)->net, inst_label, var_label, chIdx, value ); }
 
 cw::rc_t cw::flow::set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, double value )
-{ return set_variable_value( _handleToPtr(h)->net, inst_label, var_label, chIdx, value ); }
+{ return set_variable_value( *_handleToPtr(h)->net, inst_label, var_label, chIdx, value ); }
 
 cw::rc_t cw::flow::get_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, bool& valueRef )
-{ return get_variable_value( _handleToPtr(h)->net, inst_label, var_label, chIdx, valueRef ); }
+{ return get_variable_value( *_handleToPtr(h)->net, inst_label, var_label, chIdx, valueRef ); }
 
 cw::rc_t cw::flow::get_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, int& valueRef )
-{ return get_variable_value( _handleToPtr(h)->net, inst_label, var_label, chIdx, valueRef ); }
+{ return get_variable_value( *_handleToPtr(h)->net, inst_label, var_label, chIdx, valueRef ); }
 
 cw::rc_t cw::flow::get_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, unsigned& valueRef )
-{ return get_variable_value( _handleToPtr(h)->net, inst_label, var_label, chIdx, valueRef ); }
+{ return get_variable_value( *_handleToPtr(h)->net, inst_label, var_label, chIdx, valueRef ); }
 
 cw::rc_t cw::flow::get_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, float& valueRef )
-{ return get_variable_value( _handleToPtr(h)->net, inst_label, var_label, chIdx, valueRef ); }
+{ return get_variable_value( *_handleToPtr(h)->net, inst_label, var_label, chIdx, valueRef ); }
 
 cw::rc_t cw::flow::get_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, double& valueRef )
-{ return get_variable_value( _handleToPtr(h)->net, inst_label, var_label, chIdx, valueRef ); }
+{ return get_variable_value( *_handleToPtr(h)->net, inst_label, var_label, chIdx, valueRef ); }
 
 
 
@@ -950,7 +950,7 @@ void cw::flow::print_network( handle_t h )
   for(unsigned i=0; i<p->deviceN; ++i)
     print_external_device( p->deviceA + i );
   
-  network_print(p->net);
+  network_print(*p->net);
 }
 
 

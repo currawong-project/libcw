@@ -321,7 +321,7 @@ cw::rc_t cw::thread_tasks::create(  handle_t& hRef, unsigned threadN )
     p->threadA[i].owner = p;
     p->threadA[i].threadId = i;
 
-    // Threads are create in 'paused' mode
+    // Threads are created in 'paused' mode
     if((rc = thread::create( p->threadA[i].threadH, _threadFunc, p->threadA + i, label )) != kOkRC )
     {
       rc = cwLogError(rc,"Task thread create %i failed.",i);
