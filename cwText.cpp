@@ -185,6 +185,30 @@ const char* cw::lastMatchChar( const char* s, char c )
   return lastMatchChar((char*)s,c);
 }
 
+char* cw::removeTrailingWhitespace( char* s )
+{
+  char* s0;
+  unsigned sn;
+  
+  if( s == nullptr )
+    return nullptr;
+
+  if((sn = textLength(s)) == 0 )
+    return s;
+
+  s0 = s + (sn-1);
+
+  for(; s0>=s; --s0)
+  {
+    if( !isspace(*s0) )
+      break;
+    *s0 = 0;
+  }
+
+  return s;
+}
+
+
 bool cw::isInteger( const char* s )
 {
   for(; *s; ++s)

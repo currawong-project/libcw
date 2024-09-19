@@ -70,7 +70,9 @@ namespace cw
   
   // Find the last occurrent of 'c' in s[]. 
   char*       lastMatchChar( char* s, char c ); 
-  const char* lastMatchChar( const char* s, char c ); 
+  const char* lastMatchChar( const char* s, char c );
+
+  char*       removeTrailingWhitespace( char* s );
   
   bool isInteger( const char* );        // text contains only [0-9]
   bool isReal( const char* );           // text contains only [0-9] with one decimal place
