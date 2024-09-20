@@ -640,15 +640,6 @@ cw::rc_t    cw::io_flow_ctl::program_load(  handle_t h, unsigned pgm_idx )
   // setup the control record for each external device known to the IO interface
   _setup_generic_device_array(p);
   
-  // create the flow network
-  if((rc = initialize( p->flowH,
-                       p->deviceA,
-                       p->deviceN)) != kOkRC )
-  {
-    rc = cwLogError(rc,"Network create failed.");
-    goto errLabel;
-  }
-
   p->pgm_idx = pgm_idx;
   p->done_fl = false;
 
@@ -660,11 +651,6 @@ unsigned    cw::io_flow_ctl::program_current_index( handle_t h )
 {
   io_flow_ctl_t* p = _handleToPtr(h);
   return p->pgm_idx;
-}
-
-cw::rc_t   cw::io_flow_ctl::program_reset( handle_t h )
-{
-  return kOkRC;
 }
 
 bool        cw::io_flow_ctl::is_program_nrt( handle_t h )
@@ -685,6 +671,50 @@ bool        cw::io_flow_ctl::is_program_nrt( handle_t h )
   
 errLabel:
   return nrt_fl;
+}
+
+unsigned    cw::io_flow_ctl::program_preset_count( handle_t h )
+{
+  io_flow_ctl_t* p      = _handleToPtr(h);
+  
+  if(!p->flowH.isValid() || _validate_pgm_idx(p,p->pgm_idx) != kOkRC )
+    return 0;
+  
+  return preset_count(p->flowH);
+}
+
+const char* cw::io_flow_ctl::program_preset_title( handle_t h, unsigned preset_idx )
+{
+  io_flow_ctl_t* p      = _handleToPtr(h);
+  
+  if(!p->flowH.isValid() || _validate_pgm_idx(p,p->pgm_idx) != kOkRC )
+    return nullptr;
+  return preset_label(p->flowH,preset_idx);
+}
+
+cw::rc_t cw::io_flow_ctl::program_initialize( handle_t h, unsigned preset_idx )
+{
+  rc_t rc = kOkRC;
+  io_flow_ctl_t* p = _handleToPtr(h);
+
+  if( p->pgm_idx == kInvalidIdx || p->done_fl || !p->flowH.isValid() )
+  {
+    cwLogError(kInvalidStateRC,"A valid pre-initialized program is not loaded.");
+    goto errLabel;
+  }
+  
+  // create the flow network
+  if((rc = initialize( p->flowH,
+                       p->deviceA,
+                       p->deviceN,
+                       preset_idx )) != kOkRC )
+  {
+    rc = cwLogError(rc,"Network create failed.");
+    goto errLabel;
+  }
+
+errLabel:
+  return rc;
 }
 
 cw::rc_t    cw::io_flow_ctl::exec_nrt( handle_t h )
@@ -722,21 +752,6 @@ errLabel:
   return rc;
 }
 
-unsigned    cw::io_flow_ctl::preset_count( handle_t h )
-{
-  return 0;
-}
-
-const char* cw::io_flow_ctl::preset_title( handle_t h, unsigned preset_idx )
-{
-  return nullptr;
-}
-
-cw::rc_t    cw::io_flow_ctl::preset_apply( handle_t h, unsigned preset_idx )
-{
-  return kOkRC;
-}
-
 cw::rc_t cw::io_flow_ctl::exec( handle_t h, const io::msg_t& msg )
 {
   rc_t           rc = kOkRC;
@@ -761,7 +776,7 @@ bool cw::io_flow_ctl::is_executable( handle_t h )
 {
   io_flow_ctl_t* p  = _handleToPtr(h);
 
-  // A program must be loaded and execution cannot be complete
+  // A program must be loaded, initialized and execution cannot be complete
   return p->pgm_idx != kInvalidIdx && p->done_fl==false;
 }
 
