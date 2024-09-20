@@ -238,9 +238,6 @@ namespace cw
       
       const object_t* proc_cfg;      // instance configuration
             
-      const char*     arg_label;     // optional args label
-      const object_t* arg_cfg;       // optional args configuration
-
       void*           userPtr;       // instance state
 
       variable_t*     varL;          // linked list of all variables on this instance
@@ -343,8 +340,8 @@ namespace cw
     
     typedef struct flow_str
     {
-      const object_t*      flowCfg;     // complete cfg used to create this flow
-      const object_t*      networkCfg;  // 'network' cfg from flowCfg
+      const object_t*      pgmCfg;      // complete program cfg
+      const object_t*      networkCfg;  // 'network' cfg from pgmCfg
 
       bool                 printNetworkFl;
       bool                 non_real_time_fl;     // set if this is a non-real-time program
@@ -373,6 +370,10 @@ namespace cw
       unsigned             deviceN;              //
 
       const char*          proj_dir;             // default input/output directory
+
+      // Top-level preset list.
+      network_preset_t* presetA;  // presetA[presetN] partial (label and tid only) parsing of the network presets 
+      unsigned          presetN;  // 
       
       network_t* net;
 

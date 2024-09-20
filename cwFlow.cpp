@@ -624,6 +624,78 @@ namespace cw
 
     }
 
+    rc_t _parse_preset_array(flow_t* p, const object_t* netCfg )
+    {
+      rc_t            rc           = kOkRC;
+      unsigned        presetAllocN = 0;
+      const object_t* presetD      = nullptr;
+
+      if((rc = netCfg->getv_opt("presets",presetD)) != kOkRC )
+      {
+        rc = cwLogError(rc,"An error ocurred while locating the network 'presets' configuration.");
+        goto errLabel;
+      }
+
+      // if this network does not have any presets
+      if( presetD == nullptr )
+        return rc;
+
+      // the 'preset' cfg must be a dictionary
+      if( !presetD->is_dict() )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The network preset list is not a dictionary.");
+        goto errLabel;
+      }
+
+      presetAllocN = presetD->child_count();
+      p->presetA  = mem::allocZ<network_preset_t>(presetAllocN);
+      p->presetN  = 0;
+
+      // parse each preset_label pair
+      for(unsigned i=0; i<presetAllocN; ++i)
+      {
+        const object_t* preset_pair_cfg   = presetD->child_ele(i);
+        network_preset_t&  network_preset = p->presetA[ p->presetN ];
+          
+        // validate the network preset pair
+        if( preset_pair_cfg==nullptr || !preset_pair_cfg->is_pair() || preset_pair_cfg->pair_label()==nullptr || preset_pair_cfg->pair_value()==nullptr )
+        {
+          rc = cwLogError(kSyntaxErrorRC,"Invalid syntax encountered on a network preset.");
+          goto errLabel;
+        }
+
+        // get the preset type id
+        switch( preset_pair_cfg->pair_value()->type_id() )
+        {
+          case kDictTId: // 'value-list' preset
+            network_preset.tid = kPresetVListTId;
+            break;
+
+          case kListTId: // dual preset
+            network_preset.tid = kPresetDualTId;
+            break;
+
+          default:
+            rc = cwLogError(kAssertFailRC,"Unknown preset type on network preset: '%s'.",cwStringNullGuard(network_preset.label));
+            goto errLabel;
+        }
+
+        network_preset.label    = preset_pair_cfg->pair_label();
+        
+        p->presetN += 1;
+      }
+      
+    errLabel:
+      if(rc != kOkRC )
+      {
+        mem::release(p->presetA);
+        p->presetN = 0;
+      }
+
+      return rc;
+      
+    }
+
     void _release_class_desc_array( class_desc_t*& classDescA, unsigned classDescN )
     {
       // release the class records
@@ -647,6 +719,8 @@ namespace cw
       
       _release_class_desc_array(p->classDescA,p->classDescN);
       _release_class_desc_array(p->udpDescA,p->udpDescN);
+      mem::release(p->presetA);
+      p->presetN = 0;
       p->classDescN = 0;
       p->udpDescN = 0;
       
@@ -675,7 +749,7 @@ void cw::flow::print_external_device( const external_device_t* dev )
 
 cw::rc_t cw::flow::create( handle_t&          hRef,
                            const object_t*    classCfg,
-                           const object_t*    flowCfg,
+                           const object_t*    pgmCfg,
                            const object_t*    udpCfg,
                            const char*        proj_dir )
 {
@@ -705,7 +779,7 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
     }
 
 
-  p->flowCfg        = flowCfg;
+  p->pgmCfg         = pgmCfg;
   p->framesPerCycle = kDefaultFramesPerCycle;
   p->sample_rate    = kDefaultSampleRate;
   p->maxCycleCount  = kInvalidCnt;
@@ -713,7 +787,7 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   p->printLogHdrFl  = true;
   
   // parse the optional args
-  if((rc = flowCfg->readv("network",              0,      p->networkCfg,
+  if((rc = pgmCfg->readv("network",               0,      p->networkCfg,
                           "non_real_time_fl",     kOptFl, p->non_real_time_fl,
                           "frames_per_cycle",     kOptFl, p->framesPerCycle,
                           "sample_rate",          kOptFl, p->sample_rate,
@@ -730,7 +804,12 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
     goto errLabel;
   }
 
-
+  if((rc = _parse_preset_array(p, p->networkCfg )) != kOkRC )
+  {
+    rc = cwLogError(rc,"Preset dictionary parsing failed.");
+    goto errLabel;
+  }
+  
   // if a maxCycle count was given
   if( maxCycleCount != kInvalidCnt )
     p->maxCycleCount = maxCycleCount;
@@ -755,9 +834,64 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   return rc;  
 }
 
+bool cw::flow::is_non_real_time( handle_t h )
+{
+  flow_t* p = _handleToPtr(h);
+  return p->non_real_time_fl;
+}
+
+double   cw::flow::sample_rate(      handle_t h )
+{
+  flow_t* p = _handleToPtr(h);
+  return p->sample_rate;
+}
+
+unsigned cw::flow::frames_per_cycle( handle_t h )
+{
+  flow_t* p = _handleToPtr(h);
+  return p->framesPerCycle;  
+}
+
+unsigned cw::flow::preset_count( handle_t h )
+{
+  flow_t* p = _handleToPtr(h);
+  return p->presetN;
+}
+
+const char* cw::flow::preset_label( handle_t h, unsigned preset_idx )
+{
+  flow_t* p = _handleToPtr(h);
+  
+  if( preset_idx >= p->presetN )
+  {
+    
+  }
+  
+  return p->presetA[ preset_idx ].label;
+}
+
+
+unsigned cw::flow::preset_cfg_flags( handle_t h )
+{
+  flow_t*  p     = _handleToPtr(h);
+  unsigned flags = 0;
+  
+  if( p->multiPriPresetProbFl )
+    flags |= kPriPresetProbFl;
+  
+  if( p->multiSecPresetProbFl )
+    flags |= kSecPresetProbFl;
+  
+  if( p->multiPresetInterpFl )
+    flags |= kInterpPresetFl;
+
+  return flags;
+}
+
 cw::rc_t cw::flow::initialize( handle_t h,
                                external_device_t* deviceA,
-                               unsigned           deviceN )
+                               unsigned           deviceN,
+                               unsigned           preset_idx )
 {
   rc_t        rc        = kOkRC;
   variable_t* proxyVarL = nullptr;
@@ -778,9 +912,23 @@ cw::rc_t cw::flow::initialize( handle_t h,
         if( deviceA[i].u.a.abuf->frameN != p->framesPerCycle )
           cwLogWarning("The audio frame count (%i) for audio device '%s' does not match the Flow framesPerCycle (%i).",deviceA[i].u.a.abuf->frameN,p->framesPerCycle);
     }
+
+  // if an initialization preset was given
+  if( preset_idx != kInvalidIdx )
+  {
+    const char* preset_label_str;
+    if((preset_label_str = preset_label(h,preset_idx)) == nullptr )
+    {
+      cwLogError(kInvalidArgRC,"The preset index '%i' could not be resolved to an existing preset.");
+      goto errLabel;
+    }
+
+    // override the program assigned 'preset' 
+    p->init_net_preset_label = preset_label_str;
+  }
   
   // instantiate the network
-  if((rc = network_create(p,&p->networkCfg,1,proxyVarL,1,p->net)) != kOkRC )
+  if((rc = network_create(p,&p->networkCfg,1,proxyVarL,1,p->init_net_preset_label,p->net)) != kOkRC )
   {
     rc = cwLogError(rc,"Network creation failed.");
     goto errLabel;
@@ -789,6 +937,11 @@ cw::rc_t cw::flow::initialize( handle_t h,
   if( p->printNetworkFl && p->net != nullptr )
     network_print(*p->net);
 
+  // The network preset may have been applied as each proc. was instantiated.
+  // This way any 'init' only preset values will have been applied and the
+  // proc's custom create is more likely to see the values from the preset.
+  // Now that the network is fully instantiated however we will apply it again
+  // to be sure that the final state of the network is determined by selected preset.
   if( p->init_net_preset_label != nullptr && p->net != nullptr )
     network_apply_preset( *p->net, p->init_net_preset_label );
   
@@ -818,41 +971,6 @@ cw::rc_t cw::flow::destroy( handle_t& hRef )
   return rc;
 }
 
-bool cw::flow::is_non_real_time( handle_t h )
-{
-  flow_t* p = _handleToPtr(h);
-  return p->non_real_time_fl;
-}
-
-double   cw::flow::sample_rate(      handle_t h )
-{
-  flow_t* p = _handleToPtr(h);
-  return p->sample_rate;
-}
-
-unsigned cw::flow::frames_per_cycle( handle_t h )
-{
-  flow_t* p = _handleToPtr(h);
-  return p->framesPerCycle;  
-}
-
-
-unsigned cw::flow::preset_cfg_flags( handle_t h )
-{
-  flow_t*  p     = _handleToPtr(h);
-  unsigned flags = 0;
-  
-  if( p->multiPriPresetProbFl )
-    flags |= kPriPresetProbFl;
-  
-  if( p->multiSecPresetProbFl )
-    flags |= kSecPresetProbFl;
-  
-  if( p->multiPresetInterpFl )
-    flags |= kInterpPresetFl;
-
-  return flags;
-}
 
 cw::rc_t cw::flow::exec_cycle( handle_t h )
 {
