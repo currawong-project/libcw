@@ -156,7 +156,7 @@ namespace cw
           goto errLabel;
         }
 
-        if((rc = network_create(proc->ctx,&networkCfg,1,proc->varL,1,p->net)) != kOkRC )
+        if((rc = network_create(proc->ctx,&networkCfg,1,proc->varL,1,nullptr,p->net)) != kOkRC )
         {
           rc = cwLogError(rc,"Creation failed on the subnet internal network.");
           goto errLabel;
@@ -326,7 +326,7 @@ namespace cw
         
         // create the network object - which will hold 'count' subnets - each a duplicate of the
         // network described by 'networkCfg'.
-        if((rc = network_create(proc->ctx,networkCfgA,networkCfgN,proxyVarL,inst->count,internal_net)) != kOkRC )
+        if((rc = network_create(proc->ctx,networkCfgA,networkCfgN,proxyVarL,inst->count,nullptr,internal_net)) != kOkRC )
         {
           rc = cwLogError(rc,"Creation failed on the internal network.");
           goto errLabel;
