@@ -1057,6 +1057,12 @@ TODO: 9/24
   
 - How do user defined procedures handle suffix id's?
 
+- Add a 'preset' arg to 'poly' so that a preset can be selected via the owning network.
+  Currently it is not possible to select a preset for a poly.
+
+- Automatic assignment of sfx_id's should only occur when the network is a 'poly'.
+  This should be easy to detect. 
+
 
 Host Environments:
 ------------------
@@ -1239,6 +1245,22 @@ caw by example:
 19. topic: presets w/ sfx id's
 
 
+caw w/ UI
+---------
+
+1. If no program is given, but a cfg file is given, then load a menu with the pgm's in the file.
+   Selecting a prg name then loads the pgm
+   Otherwise, if a pgm is given then the pgm is automatically loaded.
+      If the pgm does not set 'use_ui_fl' then it is automatically initialized and executed.
+      Otherwise goto step 2
+
+   
+
+2. Once a pgm is loaded then it can be queried for UI information.
+  - get basic information from proc dict
+  - get override information from the network
+  
+3.  
 
 
 
