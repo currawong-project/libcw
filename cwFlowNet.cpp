@@ -1769,7 +1769,43 @@ namespace cw
       
       return rc;
     }
-                               
+
+
+    rc_t  _process_net_preset(proc_t* proc, const object_t* net_preset_cfgD)
+    {
+      rc_t rc = kOkRC;
+      const object_t* proc_preset_cfg;
+
+      // if no network preset dict exists or if this proc. is not mentioned in it then there is nothing to do
+      if( net_preset_cfgD==nullptr || (proc_preset_cfg=net_preset_cfgD->find_child(proc->label)) == nullptr )
+        return rc;
+      
+      switch( proc_preset_cfg->type_id() )
+      {
+        case kDictTId:
+          if((rc = _process_args_stmt(proc,proc_preset_cfg)) != kOkRC )
+            goto errLabel;
+          break;
+          
+        case kListTId:
+        case kStringTId:
+          if((rc = _class_apply_presets(proc,proc_preset_cfg)) != kOkRC )
+            goto errLabel;
+          break;
+          
+        default:
+          rc = cwLogError(kInvalidStateRC,"A network preset must be either a dictionary, list or string.");
+          goto errLabel;
+          break;
+      }
+      
+    errLabel:
+      if(rc != kOkRC )
+        rc = cwLogError(rc,"Network preset application failed for proc instance:%s.",cwStringNullGuard(proc->label));
+      
+      return rc;
+    }
+
     
     void _pstate_destroy( proc_inst_parse_state_t pstate )
     {
@@ -1795,12 +1831,14 @@ namespace cw
                        unsigned        sfx_id,
                        network_t&      net,
                        variable_t*     proxyVarL,
+                       const object_t* net_preset_cfgD,
                        proc_t*&        proc_ref )
     {
-      rc_t                    rc         = kOkRC;
-      proc_inst_parse_state_t pstate     = {};
-      proc_t*                 proc       = nullptr;
-      class_desc_t*           class_desc = nullptr;
+      rc_t                    rc              = kOkRC;
+      proc_inst_parse_state_t pstate          = {};
+      proc_t*                 proc            = nullptr;
+      class_desc_t*           class_desc      = nullptr;
+      const object_t*         proc_preset_cfg = nullptr;
 
       proc_ref = nullptr;
 
@@ -1830,7 +1868,6 @@ namespace cw
       proc->label         = mem::duplStr(pstate.proc_label);
       proc->label_sfx_id  = pstate.proc_label_sfx_id;
       proc->proc_cfg      = proc_inst_cfg->pair_value();
-      proc->arg_cfg       = pstate.arg_cfg;
       proc->class_desc    = class_desc;
       proc->net           = &net;
 
@@ -1875,9 +1912,13 @@ namespace cw
       {
         if((rc = _process_args_stmt(proc,pstate.arg_cfg)) != kOkRC )
           goto errLabel;
-        
-        //if((rc = _preset_channelize_vars( proc, "proc instance", "args", pstate.arg_cfg )) != kOkRC )
-        //goto errLabel;
+      }
+
+      // If the the network preset holds a preset for this proc
+      if( net_preset_cfgD!=nullptr && (proc_preset_cfg=net_preset_cfgD->find_child(proc->label)) != nullptr )
+      {
+        if((rc = _process_net_preset(proc,net_preset_cfgD)) != kOkRC )
+          goto errLabel;
       }
       
       // All the proc instance arg values have now been set and those variables
@@ -2505,9 +2546,9 @@ namespace cw
     errLabel:
       return rc;
     }
+
     
-    
-    rc_t _network_preset_parse_top_level_dict( flow_t* p, network_t& net, const object_t* preset_cfg )
+    rc_t _network_preset_parse_dict( flow_t* p, network_t& net, const object_t* preset_cfg )
     {
       rc_t rc = kOkRC;
       unsigned presetAllocN = 0;
@@ -2572,6 +2613,46 @@ namespace cw
       }
 
       return rc;
+    }
+
+    // Given a network preset label return the dictionary of proc presets that is associated with it.
+    rc_t _get_network_preset_cfg( const object_t* presetsCfg, const char* preset_label, const object_t*& preset_ref )
+    {
+      rc_t rc = kOkRC;
+      preset_ref = nullptr;
+      
+      if( preset_label == nullptr )
+        return rc;
+
+      if( presetsCfg == nullptr )
+      {
+        rc = cwLogError(kInvalidArgRC,"The network preset '%s' could not be found because there is no network 'presets' dictionary.",cwStringNullGuard(preset_label));
+        goto errLabel;
+      }
+
+      if((preset_ref = presetsCfg->find_child( preset_label)) == nullptr )
+      {
+        rc = cwLogError(kEleNotFoundRC,"The network preset '%s' was not found in the 'presets' dictionary.");
+        goto errLabel;
+      }
+
+      switch( preset_ref->type_id() )
+      {
+        case kDictTId: // this is a dictionary of proc presets
+          break;
+          
+        case kListTId: // this is a 'dual' preset - skip it
+          preset_ref = nullptr;
+          break;
+          
+        default:
+          rc = cwLogError(kSyntaxErrorRC,"Network presets must be either dictionaries or lists. Preset '%s' is neither.",cwStringNullGuard(preset_label));
+          preset_ref = nullptr;
+      }
+      
+    errLabel:
+      return rc;
+        
     }
 
 
@@ -2891,11 +2972,13 @@ namespace cw
                           const object_t*        networkCfg,
                           unsigned               sfx_id,
                           variable_t*            proxyVarL,
+                          const char*            preset_label,
                           network_t*&            net_ref )
     {
-      rc_t       rc    = kOkRC;
-      unsigned   procN = 0;
-      network_t* net   = mem::allocZ<network_t>();
+      rc_t            rc           = kOkRC;
+      unsigned        procN        = 0;
+      const object_t* netPresetCfg = nullptr;
+      network_t*      net          = mem::allocZ<network_t>();
 
       // if the top level network has not been set then set it here.
       // (this is necessary so that proc's later in the exec order
@@ -2915,7 +2998,14 @@ namespace cw
         goto errLabel;
       }
 
-      procN = net->procsCfg->child_count();
+      // locate the requested network preset cfg
+      if((rc = _get_network_preset_cfg(net->presetsCfg,preset_label,netPresetCfg)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Network create failed because the network preset resolution failed.");
+        goto errLabel;
+      }
+      
+      procN            = net->procsCfg->child_count();
       net->proc_array  = mem::allocZ<proc_t*>(procN);
 
       // for each proc in the network
@@ -2924,7 +3014,7 @@ namespace cw
         const object_t* proc_cfg = net->procsCfg->child_ele(j);
 
         // create the proc inst instance
-        if( (rc= _proc_create( p, proc_cfg, sfx_id, *net, proxyVarL, net->proc_array[j] ) ) != kOkRC )
+        if( (rc= _proc_create( p, proc_cfg, sfx_id, *net, proxyVarL, netPresetCfg, net->proc_array[j] ) ) != kOkRC )
         {
           rc = cwLogError(rc,"The processor instantiation at proc index %i failed.",j);
           goto errLabel;
@@ -2936,8 +3026,9 @@ namespace cw
 
       if((rc = _network_preset_pair_create_table(*net)) != kOkRC )
         goto errLabel;
-  
-      _network_preset_parse_top_level_dict(p, *net, net->presetsCfg );
+
+      // parse the network presets but do not apply thme
+      _network_preset_parse_dict(p, *net, net->presetsCfg );
 
       net_ref = net;
     errLabel:
@@ -2968,6 +3059,7 @@ cw::rc_t cw::flow::network_create( flow_t*                 p,
                                    unsigned                netCfgN,
                                    variable_t*             proxyVarL,
                                    unsigned                polyCnt,
+                                   const char*             preset_label,
                                    network_t*&             net_ref )
 {
   rc_t       rc  = kOkRC;
@@ -2989,9 +3081,10 @@ cw::rc_t cw::flow::network_create( flow_t*                 p,
     // otherwise the sfx_id can be automatically generated.
     unsigned  sfx_id   = polyCnt>1 ? i : kInvalidId;
 
-    const object_t* cfg = i < netCfgN ? netCfgA[i] : netCfgA[0];
-    
-    if((rc = _network_create(p, cfg, sfx_id, proxyVarL, net)) != kOkRC )
+    const object_t* netCfg = i < netCfgN ? netCfgA[i] : netCfgA[0];
+
+    // create the network
+    if((rc = _network_create(p, netCfg, sfx_id, proxyVarL, preset_label, net)) != kOkRC )
     {
       rc = cwLogError(rc,"Network create failed on poly index %i.",i);
       goto errLabel;

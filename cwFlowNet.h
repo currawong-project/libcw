@@ -5,12 +5,17 @@ namespace cw
 {
   namespace flow
   {
+    // Instantiate a network.
+    // The root network always is intantiated with a single cfg. record - because it is never a poly network.
+    // The only time netCfgN will be greater than 1 is when a heterogenous poly network is beging
+    // instantiated.
     rc_t network_create( flow_t*         p,
-                         const object_t* const * netCfgA, // subnetCfgA[subNetCfgN] per subnet cfg record
-                         unsigned        netCfgN,
-                         variable_t*     proxyVarL,          // 
-                         unsigned        polyCnt,        // Count of poly networks to create or 1 if the network is not poly
-                         network_t*&     net_ref
+                         const object_t* const * netCfgA, // netCfgA[netCfgN] 
+                         unsigned        netCfgN,         // count of cfg. records in netCfgN
+                         variable_t*     proxyVarL,       // 
+                         unsigned        polyCnt,         // Count of poly subnets to create or 1 if the network is not poly
+                         const char*     preset_label,    // Optional top-level preset label
+                         network_t*&     net_ref          // Returned network handle.
       );
     
     rc_t network_destroy( network_t*& net );
