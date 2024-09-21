@@ -32,6 +32,7 @@ namespace cw
 
     // Create the network and prepare to enter runtime.
     rc_t        program_initialize( handle_t h, unsigned preset_idx=kInvalidIdx );
+    bool        program_is_initialized( handle_t h );
     
     // Execute the currently loaded non-real-time program to completion.
     rc_t        exec_nrt( handle_t h );

@@ -80,6 +80,7 @@ namespace cw
       flow::handle_t  flowH;     //
       char*           proj_dir;  // current project directory
 
+      bool            init_fl; 
       bool            done_fl;
     } io_flow_ctl_t;
 
@@ -121,6 +122,8 @@ namespace cw
       
       mem::release(p->proj_dir);
       p->pgm_idx = kInvalidIdx;
+      p->done_fl = true;
+      p->init_fl = false;
       
     errLabel:
       return rc;
@@ -485,6 +488,7 @@ namespace cw
         if( rc == kEofRC )
         {
           p->done_fl = true;
+          p->init_fl = false;
           rc = kOkRC;
         }
       }
@@ -642,6 +646,7 @@ cw::rc_t    cw::io_flow_ctl::program_load(  handle_t h, unsigned pgm_idx )
   
   p->pgm_idx = pgm_idx;
   p->done_fl = false;
+  p->init_fl = false;
 
 errLabel:
   return rc;
@@ -697,7 +702,7 @@ cw::rc_t cw::io_flow_ctl::program_initialize( handle_t h, unsigned preset_idx )
   rc_t rc = kOkRC;
   io_flow_ctl_t* p = _handleToPtr(h);
 
-  if( p->pgm_idx == kInvalidIdx || p->done_fl || !p->flowH.isValid() )
+  if( p->pgm_idx == kInvalidIdx || p->init_fl || p->done_fl || !p->flowH.isValid()  )
   {
     cwLogError(kInvalidStateRC,"A valid pre-initialized program is not loaded.");
     goto errLabel;
@@ -713,9 +718,17 @@ cw::rc_t cw::io_flow_ctl::program_initialize( handle_t h, unsigned preset_idx )
     goto errLabel;
   }
 
+  p->init_fl = true;
 errLabel:
   return rc;
 }
+
+bool cw::io_flow_ctl::program_is_initialized( handle_t h )
+{
+  io_flow_ctl_t* p  = _handleToPtr(h);
+  return p->init_fl;
+}
+
 
 cw::rc_t    cw::io_flow_ctl::exec_nrt( handle_t h )
 {
@@ -777,7 +790,7 @@ bool cw::io_flow_ctl::is_executable( handle_t h )
   io_flow_ctl_t* p  = _handleToPtr(h);
 
   // A program must be loaded, initialized and execution cannot be complete
-  return p->pgm_idx != kInvalidIdx && p->done_fl==false;
+  return p->pgm_idx != kInvalidIdx && p->init_fl && p->done_fl==false;
 }
 
 bool cw::io_flow_ctl::is_exec_complete( handle_t h )
