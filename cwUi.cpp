@@ -1951,6 +1951,33 @@ cw::rc_t cw::ui::setLogLine(   handle_t h, unsigned uuId, const char* text )
   return rc;
 }
 
+cw::rc_t cw::ui::emptyParent(    handle_t h, unsigned uuId )
+{
+
+  ui_t* p = _handleToPtr(h);
+  rc_t rc = kOkRC;
+  
+  const char* mFmt = "{ \"op\":\"empty\", \"uuId\":%i }";
+  const int   mbufN = 256;
+  char        mbuf[mbufN];
+      
+  if( snprintf(mbuf,mbufN,mFmt,uuId) >= mbufN-1 )
+  {
+    rc = cwLogError(kBufTooSmallRC,"The msg buffer is too small for 'empty' msg.");
+    goto errLabel;
+  }
+  
+  if((rc = _websockSend(p,kInvalidId,mbuf)) != kOkRC )
+  {
+    cwLogError(rc,"'empty' msg transmit failed.");
+    goto errLabel;
+  }
+
+errLabel:
+  return rc;
+}
+
+
 cw::rc_t cw::ui::setClickable( handle_t h, unsigned uuId, bool clickableFl )
 { return _setPropertyFlag( h, UI_CLICKABLE_LABEL, uuId, clickableFl ); }
 

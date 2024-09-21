@@ -3843,6 +3843,16 @@ cw::rc_t cw::io::uiSetLogLine(     handle_t h, unsigned uuId, const char* text )
     rc = ui::setLogLine(uiH,uuId,text);
   return rc;
 }
+
+cw::rc_t cw::io::uiEmptyParent(  handle_t h, unsigned uuId)
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::emptyParent(uiH,uuId);
+  return rc;
+}
+
     
 cw::rc_t cw::io::uiSetClickable(   handle_t h, unsigned uuId, bool clickableFl )
 {

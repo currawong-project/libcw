@@ -386,7 +386,8 @@ namespace cw
 
     rc_t uiSetNumbRange( handle_t h, unsigned uuId, double minValue, double maxValue, double stepValue, unsigned decPl, double value );
     rc_t uiSetProgRange( handle_t h, unsigned uuId, double minValue, double maxValue, double value );
-    rc_t uiSetLogLine(     handle_t h, unsigned uuId, const char* text );
+    rc_t uiSetLogLine(   handle_t h, unsigned uuId, const char* text );
+    rc_t uiEmptyParent(  handle_t h, unsigned uuId); // empty a list or select of all children
     
     rc_t uiSetClickable(   handle_t h, unsigned uuId, bool clickableFl=true );
     rc_t uiClearClickable( handle_t h, unsigned uuId );
