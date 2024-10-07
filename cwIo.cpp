@@ -2695,7 +2695,21 @@ void        cw::io::serialDeviceSetId( handle_t h, unsigned devIdx, unsigned id 
 cw::rc_t cw::io::serialDeviceSend(  handle_t h, unsigned devIdx, const void* byteA, unsigned byteN )
 {
   rc_t  rc = kOkRC;
-  //io_t* p  = _handleToPtr(h);
+  io_t* p  = _handleToPtr(h);
+
+  if( devIdx >= p->serialN )
+  {
+    rc = cwLogError(kInvalidArgRC,"%i is an invalid serial device index.",devIdx);
+    goto errLabel;
+  }
+
+  if((rc = send( p->serialPortSrvH, p->serialA[devIdx].userId, byteA, byteN )) != kOkRC )
+  {
+    rc = cwLogError(rc,"Send on serial device index %i failed.",devIdx);
+    goto errLabel;
+  }
+
+errLabel:
   return rc;
 }
 
