@@ -2411,8 +2411,8 @@ namespace cw
             coeff_t    hz    = val_get<coeff_t>( proc, kFreqHzPId, i );
             coeff_t    phase = val_get<coeff_t>( proc, kPhasePId, i );
             coeff_t    dc    = val_get<coeff_t>( proc, kDcPId, i );
-            srate_t   srate = val_get<srate_t>(proc, kSratePId, i );                        
-            sample_t* v     = abuf->buf + (i*abuf->frameN);
+            srate_t    srate = val_get<srate_t>(proc, kSratePId, i );                        
+            sample_t*  v     = abuf->buf + (i*abuf->frameN);
             
             for(unsigned j=0; j<abuf->frameN; ++j)
               v[j] = (sample_t)((gain * sin( inst->phaseA[i] + phase + (2.0 * M_PI * j * hz/srate)))+dc);
@@ -3857,7 +3857,7 @@ namespace cw
         proc_t*     net_proc;         // source 'poly' network
         poly_ch_t*  netA;             // netA[ poly_ch_cnt ] internal proxy network 
         unsigned    poly_ch_cnt;      // count of poly channels in net_proc
-        unsigned    net_proc_cnt;     // count of proc's in a single poly-channel (net_proc->proc_arrayN/poly_cnt)
+        unsigned    net_proc_cnt;     // count of proc's in a single poly-channel (net_proc->procN/poly_cnt)
         unsigned    cur_poly_ch_idx;  // This is the active channel.
         unsigned    next_poly_ch_idx; // This is the next channel that will be active.
         srate_t     srate;            // Sample rate used for time base
@@ -3946,7 +3946,7 @@ namespace cw
         }
 
         // count of proc's in one poly-ch of the poly network
-        //p->net_proc_cnt = p->net_proc->internal_net->proc_arrayN / p->net_proc->internal_net->poly_cnt;
+        //p->net_proc_cnt = p->net_proc->internal_net->procN / p->net_proc->internal_net->poly_cnt;
 
         p->netA = mem::allocZ<poly_ch_t>(p->poly_ch_cnt);
         
@@ -3955,8 +3955,8 @@ namespace cw
         {
           assert(net != nullptr );
           
-          p->netA[i].net.proc_arrayN      = net->proc_arrayN;
-          p->netA[i].net.proc_array       = mem::allocZ<proc_t*>(p->netA[i].net.proc_arrayN);
+          p->netA[i].net.procN      = net->procN;
+          p->netA[i].net.procA       = mem::allocZ<proc_t*>(p->netA[i].net.procN);
           p->netA[i].net.presetsCfg       = net->presetsCfg;
 
           p->netA[i].net.presetA          = net->presetA;
@@ -3965,11 +3965,11 @@ namespace cw
           p->netA[i].net.preset_pairA     = net->preset_pairA;
           p->netA[i].net.preset_pairN     = net->preset_pairN;
 
-          for(unsigned j=0,k=0; j<net->proc_arrayN; ++j)
-            if( net->proc_array[j]->label_sfx_id == i )
+          for(unsigned j=0,k=0; j<net->procN; ++j)
+            if( net->procA[j]->label_sfx_id == i )
             {
               assert( k < p->net_proc_cnt );
-              p->netA[i].net.proc_array[k++] = net->proc_array[j];
+              p->netA[i].net.procA[k++] = net->procA[j];
             }          
         }
 
@@ -3994,7 +3994,7 @@ namespace cw
       {
         inst_t* p = (inst_t*)proc->userPtr;
         for(unsigned i=0; i<p->poly_ch_cnt; ++i)
-          mem::release(p->netA[i].net.proc_array);
+          mem::release(p->netA[i].net.procA);
         
         mem::release(p->netA);
         mem::release(proc->userPtr);
