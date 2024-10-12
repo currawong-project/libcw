@@ -179,9 +179,10 @@ namespace cw
       const object_t*   cfg;        // class cfg 
       const char*       label;      // class label;      
       var_desc_t*       varDescL;   // varDescL variable description linked on var_desc_t.link
-      class_preset_t*   presetL;    // presetA[ presetN ]
+      class_preset_t*   presetL;    // preset linked list
       class_members_t*  members;    // member functions for this class
       unsigned          polyLimitN; // max. poly copies of this class per network_t or 0 if no limit
+      ui_proc_desc_t*   ui;
     } class_desc_t;
 
     enum {
@@ -202,7 +203,7 @@ namespace cw
       
       unsigned             vid;          // this variables numeric id ( cat(vid,chIdx) forms a unique variable identifier on this 'proc'      
       unsigned             chIdx;        // channel index
-      unsigned             flags;        // kLogVarFl
+      unsigned             flags;        // See kLogVarFl, kProxiedVarFl, etc
       unsigned             type;         // This is the value type as established when the var is initialized - it never changes for the life of the var.
             
       var_desc_t*          classVarDesc; // pointer to this variables class var desc
@@ -319,9 +320,8 @@ namespace cw
       const object_t*   procsCfg;   // network proc list
       const object_t*   presetsCfg; // presets designed for this network
 
-      struct proc_str** proc_array;
-      
-      unsigned          proc_arrayN;
+      struct proc_str** procA;      
+      unsigned          procN;
 
       network_preset_t* presetA;
       unsigned          presetN;
@@ -334,6 +334,8 @@ namespace cw
 
       struct network_str* poly_link;
       unsigned            poly_idx;
+
+      ui_net_t* ui_net;
             
     } network_t;
     
@@ -509,6 +511,12 @@ namespace cw
     // Channelizing creates a new var record with an explicit channel index to replace the
     // automatically generated variable whose channel index is set to  'kAnyChIdx'.
     rc_t           var_channelize( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx, const object_t* value_cfg, unsigned vid, variable_t*& varRef );
+
+    // Get the count of channels attached to var_label:sfx_id:kAnyChIdx.
+    // Returns 0 if only kAnyChIdx exists,
+    // Returns kInvalidCnt if var_label:sfx_id does not exist.
+    // Otherwise returns count of channels no including kAnyChIdx. (e.g. mono=1, stereo=2, quad=4 ...)
+    unsigned       var_channel_count( proc_t* proc, const char* var_label, unsigned sfx_id );
 
     // Wrapper around call to var->proc->members->value()
     rc_t           var_call_custom_value_func( variable_t* var );

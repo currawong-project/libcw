@@ -1524,6 +1524,12 @@ void cw::flow::class_desc_destroy( class_desc_t* class_desc)
     mem::release(pr0);
     pr0 = pr1;
   }
+
+  if( class_desc->ui != nullptr )
+  {
+    mem::release(class_desc->ui->presetA);
+    mem::release(class_desc->ui);
+  }
   
 }
 
@@ -1585,9 +1591,9 @@ void cw::flow::class_dict_print( flow_t* p )
 void cw::flow::network_print( const network_t& net )
 {
   // for each proc in the network
-  for(unsigned i=0; i<net.proc_arrayN; ++i)
+  for(unsigned i=0; i<net.procN; ++i)
   {
-    proc_t* proc = net.proc_array[i];
+    proc_t* proc = net.procA[i];
     proc_print(proc);
 
     // if this proc has an  internal network
@@ -1687,8 +1693,8 @@ const cw::flow::network_preset_t* cw::flow::network_preset_from_label( const net
 unsigned cw::flow::proc_mult_count( const network_t& net, const char* proc_label )
 {
   unsigned multN = 0;
-  for(unsigned i=0; i<net.proc_arrayN; ++i)
-    if( textIsEqual(net.proc_array[i]->label,proc_label) )
+  for(unsigned i=0; i<net.procN; ++i)
+    if( textIsEqual(net.procA[i]->label,proc_label) )
       multN += 1;
 
   return multN;
@@ -1701,8 +1707,8 @@ cw::rc_t cw::flow::proc_mult_sfx_id_array( const network_t& net, const char* pro
 
   idN_ref = 0;
   
-  for(unsigned i=0; i<net.proc_arrayN; ++i)
-    if( textIsEqual(net.proc_array[i]->label,proc_label) )
+  for(unsigned i=0; i<net.procN; ++i)
+    if( textIsEqual(net.procA[i]->label,proc_label) )
     {
       if( multN >= idAllocN )
       {
@@ -1710,7 +1716,7 @@ cw::rc_t cw::flow::proc_mult_sfx_id_array( const network_t& net, const char* pro
         goto errLabel;
       }
       
-      idA[multN] = net.proc_array[i]->label_sfx_id;
+      idA[multN] = net.procA[i]->label_sfx_id;
       multN += 1;
     }
   
@@ -1803,12 +1809,12 @@ cw::rc_t cw::flow::proc_validate( proc_t* proc )
 cw::flow::proc_t* cw::flow::proc_find( network_t& net, const char* proc_label, unsigned sfx_id )
 {
   
-  for(unsigned i=0; i<net.proc_arrayN; ++i)
+  for(unsigned i=0; i<net.procN; ++i)
   {
-    assert( net.proc_array[i] != nullptr );
+    assert( net.procA[i] != nullptr );
     
-    if( net.proc_array[i]->label_sfx_id==sfx_id && textIsEqual(proc_label,net.proc_array[i]->label) )
-      return net.proc_array[i];
+    if( net.procA[i]->label_sfx_id==sfx_id && textIsEqual(proc_label,net.procA[i]->label) )
+      return net.procA[i];
   }
 
   if( net.poly_link != nullptr )
@@ -2019,6 +2025,29 @@ cw::rc_t  cw::flow::var_channelize( proc_t* proc, const char* var_label, unsigne
   
   return rc;
 }
+
+unsigned cw::flow::var_channel_count( proc_t* proc, const char* var_label, unsigned sfx_id )
+{
+  rc_t rc = kOkRC;
+  unsigned chN = kInvalidCnt;
+  variable_t* base_var = nullptr;
+
+  if((rc = _var_find_on_label_and_ch( proc, var_label, sfx_id, kAnyChIdx, base_var)) != kOkRC || base_var==nullptr)
+  {
+    cwLogError(rc,"Var. channel count calc failed.");
+    goto errLabel;
+  }
+
+  chN = 0;
+  for(base_var=base_var->ch_link; base_var!=nullptr; base_var=base_var->ch_link)
+    if( base_var->chIdx+1 > chN )
+      chN = base_var->chIdx + 1;
+     
+
+errLabel:
+  return chN;
+}
+
 
 cw::rc_t cw::flow::var_call_custom_value_func( variable_t* var )
 {
