@@ -1,5 +1,5 @@
-#ifndef cwFlowSys_h
-#define cwFlowSys_h
+#ifndef cwFlow_h
+#define cwFlow_h
 
 namespace cw
 {
@@ -32,12 +32,15 @@ namespace cw
     const char* preset_label( handle_t h, unsigned preset_idx );
     
     // Instantiate the network and prepare for runtime.
-    rc_t initialize( handle_t           handle,
+    rc_t initialize( handle_t           handle, 
                      external_device_t* deviceA    = nullptr,
                      unsigned           deviceN    = 0,
-                     unsigned           preset_idx = kInvalidIdx );
+                     unsigned           preset_idx = kInvalidIdx);
     
     rc_t destroy( handle_t& hRef );
+
+    // The ui_net() is not available until the network has been initialized.
+    const ui_net_t* ui_net( handle_t h );
 
     // Run one cycle of the network.
     rc_t exec_cycle( handle_t h );
@@ -61,6 +64,22 @@ namespace cw
     rc_t get_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, unsigned& valueRef );
     rc_t get_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, float& valueRef    );
     rc_t get_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, double& valueRef   );
+
+
+    rc_t set_variable_value( handle_t h, const ui_var_t* ui_var, bool value     );
+    rc_t set_variable_value( handle_t h, const ui_var_t* ui_var, int value      );
+    rc_t set_variable_value( handle_t h, const ui_var_t* ui_var, unsigned value );
+    rc_t set_variable_value( handle_t h, const ui_var_t* ui_var, float value    );
+    rc_t set_variable_value( handle_t h, const ui_var_t* ui_var, double value   );
+    rc_t set_variable_value( handle_t h, const ui_var_t* ui_var, const char* value );
+
+    rc_t get_variable_value( handle_t h, const ui_var_t* ui_var, bool& value_ref     );
+    rc_t get_variable_value( handle_t h, const ui_var_t* ui_var, int& value_ref      );
+    rc_t get_variable_value( handle_t h, const ui_var_t* ui_var, unsigned& value_ref );
+    rc_t get_variable_value( handle_t h, const ui_var_t* ui_var, float& value_ref    );
+    rc_t get_variable_value( handle_t h, const ui_var_t* ui_var, double& value_ref   );
+    rc_t get_variable_value( handle_t h, const ui_var_t* ui_var, const char*& value_ref );
+
     
     void print_class_list( handle_t h );
     void print_network( handle_t h );

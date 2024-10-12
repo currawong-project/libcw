@@ -269,6 +269,25 @@ namespace cw
 
       return rc;
     }
+
+    rc_t _create_class_ui_desc( class_desc_t* desc )
+    {
+      desc->ui = mem::allocZ<ui_proc_desc_t>();
+      desc->ui->label = desc->label;
+      for(class_preset_t* p0 = desc->presetL; p0!=nullptr; p0=p0->link)
+        desc->ui->presetN += 1;
+
+      desc->ui->presetA = mem::allocZ<ui_preset_t>(desc->ui->presetN);
+
+      unsigned i=0;
+      for(class_preset_t* p0 = desc->presetL; i<desc->ui->presetN; ++i,p0=p0->link)
+      {
+        desc->ui->presetA[i].label = p0->label;
+        desc->ui->presetA[i].preset_idx = i;
+      }
+
+      return kOkRC;
+    }
     
     rc_t  _parse_class_cfg(flow_t* p, const object_t* classCfg)
     {
@@ -329,6 +348,14 @@ namespace cw
             cd->presetL   = preset;
           }
         }
+
+        // create the class descripiton
+        if((rc = _create_class_ui_desc(cd)) != kOkRC )
+        {          
+          cwLogError(rc,"Class desc UI record create failed on '%s'.",cwStringNullGuard(cd->label));
+          goto errLabel;
+        }
+
         
         // parse the variable dictionary
         if( varD != nullptr )
@@ -378,7 +405,6 @@ namespace cw
             cd->varDescL = vd;
           }
         }
-
       }
 
     errLabel:
@@ -692,8 +718,7 @@ namespace cw
         p->presetN = 0;
       }
 
-      return rc;
-      
+      return rc;      
     }
 
     void _release_class_desc_array( class_desc_t*& classDescA, unsigned classDescN )
@@ -891,7 +916,7 @@ unsigned cw::flow::preset_cfg_flags( handle_t h )
 cw::rc_t cw::flow::initialize( handle_t h,
                                external_device_t* deviceA,
                                unsigned           deviceN,
-                               unsigned           preset_idx )
+                               unsigned           preset_idx  )
 {
   rc_t        rc        = kOkRC;
   variable_t* proxyVarL = nullptr;
@@ -944,6 +969,13 @@ cw::rc_t cw::flow::initialize( handle_t h,
   // to be sure that the final state of the network is determined by selected preset.
   if( p->init_net_preset_label != nullptr && p->net != nullptr )
     network_apply_preset( *p->net, p->init_net_preset_label );
+
+  // form the UI description
+  if((rc = create_net_ui_desc(p)) != kOkRC )
+  {
+    rc = cwLogError(rc,"UI description formation failed.");
+    goto errLabel;
+  }
   
   p->isInRuntimeFl = true;
   cwLogInfo("Entering runtime.");
@@ -971,6 +1003,22 @@ cw::rc_t cw::flow::destroy( handle_t& hRef )
   return rc;
 }
 
+
+const cw::flow::ui_net_t* cw::flow::ui_net( handle_t h )
+{
+  flow_t* p  = _handleToPtr(h);
+
+  if( p->net == nullptr )
+  {
+    cwLogError(kInvalidStateRC,"No UI net exists because the no net exists.");
+    return nullptr;
+  }
+  
+  if( p->net->ui_net == nullptr )
+    return nullptr;
+
+  return p->net->ui_net;  
+}
 
 cw::rc_t cw::flow::exec_cycle( handle_t h )
 {
@@ -1053,6 +1101,31 @@ cw::rc_t cw::flow::get_variable_value( handle_t h, const char* inst_label, const
 cw::rc_t cw::flow::get_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, double& valueRef )
 { return get_variable_value( *_handleToPtr(h)->net, inst_label, var_label, chIdx, valueRef ); }
 
+cw::rc_t cw::flow::set_variable_value( handle_t h, const ui_var_t* ui_var, bool value     )
+{ return set_variable_value( *_handleToPtr(h)->net, ui_var, value );  }
+cw::rc_t cw::flow::set_variable_value( handle_t h, const ui_var_t* ui_var, int value      )
+{ return set_variable_value( *_handleToPtr(h)->net, ui_var, value );  }
+cw::rc_t cw::flow::set_variable_value( handle_t h, const ui_var_t* ui_var, unsigned value )
+{ return set_variable_value( *_handleToPtr(h)->net, ui_var, value );  }
+cw::rc_t cw::flow::set_variable_value( handle_t h, const ui_var_t* ui_var, float value    )
+{ return set_variable_value( *_handleToPtr(h)->net, ui_var, value );  }
+cw::rc_t cw::flow::set_variable_value( handle_t h, const ui_var_t* ui_var, double value   )
+{ return set_variable_value( *_handleToPtr(h)->net, ui_var, value );  }
+cw::rc_t cw::flow::set_variable_value( handle_t h, const ui_var_t* ui_var, const char* value   )
+{ return set_variable_value( *_handleToPtr(h)->net, ui_var, value );  }
+
+cw::rc_t cw::flow::get_variable_value( handle_t h, const ui_var_t* ui_var, bool& value_ref     )
+{ return get_variable_value( *_handleToPtr(h)->net, ui_var, value_ref );  }
+cw::rc_t cw::flow::get_variable_value( handle_t h, const ui_var_t* ui_var, int& value_ref      )
+{ return get_variable_value( *_handleToPtr(h)->net, ui_var, value_ref );  }
+cw::rc_t cw::flow::get_variable_value( handle_t h, const ui_var_t* ui_var, unsigned& value_ref )
+{ return get_variable_value( *_handleToPtr(h)->net, ui_var, value_ref );  }
+cw::rc_t cw::flow::get_variable_value( handle_t h, const ui_var_t* ui_var, float& value_ref    )
+{ return get_variable_value( *_handleToPtr(h)->net, ui_var, value_ref );  }
+cw::rc_t cw::flow::get_variable_value( handle_t h, const ui_var_t* ui_var, double& value_ref   )
+{ return get_variable_value( *_handleToPtr(h)->net, ui_var, value_ref );  }
+cw::rc_t cw::flow::get_variable_value( handle_t h, const ui_var_t* ui_var, const char*& value_ref   )
+{ return get_variable_value( *_handleToPtr(h)->net, ui_var, value_ref );  }
 
 
 void cw::flow::print_class_list( handle_t h )
