@@ -47,7 +47,8 @@ namespace cw
       { "number",    false },
       { "progress",  false },
       { "log",       false },
-      { "list",      false },
+      { "vlist",      false },
+      { "hlist",     false },
       {  nullptr,    false },
     };
     
@@ -710,7 +711,7 @@ namespace cw
 
 
       // if the given appId was not valid ...
-      if( appId == kInvalidId && parent != nullptr )
+      if( appId == kInvalidId && parent != nullptr && eleName != nullptr )
       {
         appIdMapRecd_t* m;
         
@@ -848,7 +849,7 @@ namespace cw
     
           
     
-    // 'od' is an object dictionary where each pair in the dictionary has
+    // 'po' is an object dictionary where each pair in the dictionary has
     // the form: 'eleType':{ <object> }    
     rc_t _createElementsFromChildList( ui_t* p, const object_t* po, unsigned wsSessId, ele_t* parentEle, unsigned chanId )
     {
@@ -877,7 +878,7 @@ namespace cw
       return rc;
     }
 
-    // This functions assumes that the cfg object 'o' contains a field named: 'parent'
+    // This functions assumes that parentUuId is valid or the cfg object 'o' contains a field named: 'parent'
     // which contains the element name of the parent node.
     rc_t _createFromObj( ui_t* p, const object_t* o, unsigned wsSessId, unsigned parentUuId, unsigned chanId )
     {
@@ -1856,8 +1857,29 @@ cw::rc_t cw::ui::createProg(  handle_t h, unsigned& uuIdRef, unsigned parentUuId
 cw::rc_t cw::ui::createLog(   handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
 { return _createOneEle( _handleToPtr(h), uuIdRef, "log", kInvalidId, parentUuId, eleName, appId, chanId, clas, title);  }
 
-cw::rc_t cw::ui::createList( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
+cw::rc_t cw::ui::createVList( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
 { return _createOneEle( _handleToPtr(h), uuIdRef, "list", kInvalidId, parentUuId, eleName, appId, chanId, clas, title);  }
+
+cw::rc_t cw::ui::createHList( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "hlist", kInvalidId, parentUuId, eleName, appId, chanId, clas, title);  }
+
+cw::rc_t cw::ui::setTitle( handle_t h, unsigned uuId, const char* title )
+{
+  rc_t rc = kOkRC;
+  ui_t* p = _handleToPtr(h);
+  
+  const char* mFmt = "{ \"op\":\"set\",  \"type\":\"title\", \"uuId\":%i, \"value\":\"%s\" }";
+  const int   mbufN = 256;
+  char        mbuf[mbufN];
+  
+  if( snprintf(mbuf,mbufN,mFmt,uuId,title) >= mbufN-1 )
+    return cwLogError(kBufTooSmallRC,"The msg buffer is too small.");
+  
+  rc = _websockSend(p,kInvalidId,mbuf);
+
+  return rc;
+}
+
 
 cw::rc_t cw::ui::setNumbRange( handle_t h, unsigned uuId, double minValue, double maxValue, double stepValue, unsigned decPl, double value )
 {

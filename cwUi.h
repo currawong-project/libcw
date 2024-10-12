@@ -125,8 +125,11 @@ namespace cw
     rc_t createProg(       handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, double minValue, double maxValue );
     rc_t createProg(       handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, double minValue, double maxValue, double value );
     rc_t createLog(        handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
-    rc_t createList(       handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
+    rc_t createVList(      handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
+    rc_t createHList(      handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
 
+    rc_t setTitle(       handle_t h, unsigned uuId, const char* title );
+    
     rc_t setNumbRange(   handle_t h, unsigned uuId, double minValue, double maxValue, double stepValue, unsigned decPl, double value );
     rc_t setProgRange(   handle_t h, unsigned uuId, double minValue, double maxValue, double value );
     rc_t setLogLine(     handle_t h, unsigned uuId, const char* text );
@@ -155,6 +158,7 @@ namespace cw
     // (uuId must identify a list element whose parent is a 'uiList')
     rc_t setScrollTop(   handle_t h, unsigned uuId );
 
+    // setBlob() allocates internal memeory and copies the contents of blob[blobByeN]
     rc_t        setBlob(   handle_t h, unsigned uuId, const void* blob, unsigned blobByteN );
     const void* getBlob(   handle_t h, unsigned uuId, unsigned& blobByteN_Ref );
     rc_t        clearBlob( handle_t h, unsigned uuId );
