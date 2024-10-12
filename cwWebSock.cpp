@@ -162,7 +162,7 @@ namespace cw
           break;
 
         case LWS_CALLBACK_ESTABLISHED:
-          cwLogInfo("Websocket session:%i opened: \n",ws->_nextSessionId);
+          cwLogInfo("Websocket session:%i opened",ws->_nextSessionId);
 
           sess->id                = ws->_nextSessionId++;
           sess->protocolId        = proto->id;
@@ -177,7 +177,7 @@ namespace cw
           break;
 
         case LWS_CALLBACK_CLOSED:
-          cwLogInfo("Websocket connection closed.\n");
+          cwLogInfo("Websocket connection closed.");
       
           ws->_connSessionN -= 1;
           
