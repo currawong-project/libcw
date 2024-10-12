@@ -729,6 +729,12 @@ bool cw::io_flow_ctl::program_is_initialized( handle_t h )
   return p->init_fl;
 }
 
+const cw::flow::ui_net_t* cw::io_flow_ctl::program_ui_net( handle_t h )
+{
+  io_flow_ctl_t* p  = _handleToPtr(h);  
+  return ui_net(p->flowH);
+}
+
 
 cw::rc_t    cw::io_flow_ctl::exec_nrt( handle_t h )
 {
@@ -801,6 +807,33 @@ bool cw::io_flow_ctl::is_exec_complete( handle_t h )
 }
 
 
+cw::rc_t cw::io_flow_ctl::get_variable_value(   handle_t h, const flow::ui_var_t* ui_var, bool& value_ref )
+{ return get_variable_value( _handleToPtr(h)->flowH, ui_var, value_ref ); }
+cw::rc_t cw::io_flow_ctl::get_variable_value(    handle_t h, const flow::ui_var_t* ui_var, int& value_ref )
+{ return get_variable_value( _handleToPtr(h)->flowH, ui_var, value_ref ); }
+cw::rc_t cw::io_flow_ctl::get_variable_value(   handle_t h, const flow::ui_var_t* ui_var, unsigned& value_ref )
+{ return get_variable_value( _handleToPtr(h)->flowH, ui_var, value_ref ); }
+cw::rc_t cw::io_flow_ctl::get_variable_value(  handle_t h, const flow::ui_var_t* ui_var, float& value_ref )
+{ return get_variable_value( _handleToPtr(h)->flowH, ui_var, value_ref ); }
+cw::rc_t cw::io_flow_ctl::get_variable_value( handle_t h, const flow::ui_var_t* ui_var, double& value_ref )
+{ return get_variable_value( _handleToPtr(h)->flowH, ui_var, value_ref ); }
+cw::rc_t cw::io_flow_ctl::get_variable_value( handle_t h, const flow::ui_var_t* ui_var, const char*& value_ref )
+{ return get_variable_value( _handleToPtr(h)->flowH, ui_var, value_ref ); }
+
+cw::rc_t cw::io_flow_ctl::set_variable_value( handle_t h, const flow::ui_var_t* ui_var, bool value )
+{ return set_variable_value( _handleToPtr(h)->flowH, ui_var, value ); }
+cw::rc_t cw::io_flow_ctl::set_variable_value( handle_t h, const flow::ui_var_t* ui_var, int value )
+{ return set_variable_value( _handleToPtr(h)->flowH, ui_var, value ); }
+cw::rc_t cw::io_flow_ctl::set_variable_value( handle_t h, const flow::ui_var_t* ui_var, unsigned value )
+{ return set_variable_value( _handleToPtr(h)->flowH, ui_var, value ); }
+cw::rc_t cw::io_flow_ctl::set_variable_value( handle_t h, const flow::ui_var_t* ui_var, float value )
+{ return set_variable_value( _handleToPtr(h)->flowH, ui_var, value ); }
+cw::rc_t cw::io_flow_ctl::set_variable_value( handle_t h, const flow::ui_var_t* ui_var, double value )
+{ return set_variable_value( _handleToPtr(h)->flowH, ui_var, value ); }
+cw::rc_t cw::io_flow_ctl::set_variable_value( handle_t h, const flow::ui_var_t* ui_var, const char* value )
+{ return set_variable_value( _handleToPtr(h)->flowH, ui_var, value ); }
+
+
 void cw::io_flow_ctl::report( handle_t h )
 {  
   io_flow_ctl_t* p = _handleToPtr(h);
@@ -814,3 +847,7 @@ void cw::io_flow_ctl::print_network( handle_t h )
   if( p->flowH.isValid() )
     print_network(p->flowH);  
 }
+
+
+
+

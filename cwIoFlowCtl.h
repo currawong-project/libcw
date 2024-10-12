@@ -33,6 +33,9 @@ namespace cw
     // Create the network and prepare to enter runtime.
     rc_t        program_initialize( handle_t h, unsigned preset_idx=kInvalidIdx );
     bool        program_is_initialized( handle_t h );
+
+    // Get the UI description data structures for the current program.
+    const flow::ui_net_t* program_ui_net( handle_t h );
     
     // Execute the currently loaded non-real-time program to completion.
     rc_t        exec_nrt( handle_t h );
@@ -47,10 +50,32 @@ namespace cw
     // The current program has completed.
     bool is_exec_complete( handle_t h );
 
+    rc_t get_variable_value( handle_t h, const flow::ui_var_t* ui_var, bool& value_ref );
+    rc_t get_variable_value( handle_t h, const flow::ui_var_t* ui_var, int& value_ref );
+    rc_t get_variable_value( handle_t h, const flow::ui_var_t* ui_var, unsigned& value_ref );
+    rc_t get_variable_value( handle_t h, const flow::ui_var_t* ui_var, float& value_ref );
+    rc_t get_variable_value( handle_t h, const flow::ui_var_t* ui_var, double& value_ref );
+    rc_t get_variable_value( handle_t h, const flow::ui_var_t* ui_var, const char*& value_ref );
+
+    template< typename T >
+    rc_t get_variable( handle_t h, const flow::ui_var_t* ui_var, T& value_ref )
+    { return get_variable_value(h,ui_var,value_ref); }
+
+    rc_t set_variable_value( handle_t h, const flow::ui_var_t* ui_var, bool value );
+    rc_t set_variable_value( handle_t h, const flow::ui_var_t* ui_var, int value );
+    rc_t set_variable_value( handle_t h, const flow::ui_var_t* ui_var, unsigned value );
+    rc_t set_variable_value( handle_t h, const flow::ui_var_t* ui_var, float value );
+    rc_t set_variable_value( handle_t h, const flow::ui_var_t* ui_var, double value );
+    rc_t set_variable_value( handle_t h, const flow::ui_var_t* ui_var, const char* value );
+
+    template< typename T >
+    rc_t set_variable( handle_t h, const flow::ui_var_t* ui_var, T value )
+    { return set_variable_value(h,ui_var,value); }
+    
     void report( handle_t h );
     void print_network( handle_t h );
- 
-    
+
+
   }
   
 }
