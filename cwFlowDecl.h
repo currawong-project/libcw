@@ -92,6 +92,78 @@ namespace cw
       const preset_order_t* presetA;
       unsigned              presetN;
     } multi_preset_selector_t;
+
+    
+    typedef struct ui_preset_str
+    {
+      const char* label;
+      unsigned    preset_idx;
+    } ui_preset_t;
+
+    typedef struct ui_proc_desc_str
+    {
+      const char*  label;
+      ui_preset_t* presetA;   // presetA[ presetN ]
+      unsigned     presetN;      
+    } ui_proc_desc_t;
+
+    struct ui_proc_str;
+    
+    typedef struct ui_var_str
+    {
+      struct ui_proc_str* ui_proc;
+      
+      const char* label;         // flow::variable_t::label
+      unsigned    label_sfx_id;  // flow::variable_t::label_sfx_id
+
+      const       object_t* desc_cfg;     // var desc cfg from flow::var_desc_t
+      unsigned              desc_flags;   // flow::var_desc_t::flags
+      
+      unsigned    value_tid;      // flow::variable_t::type
+      unsigned    vid;            // flow::variable_t::vid
+      unsigned    ch_idx;         // flow::variable_t::chIdx
+      unsigned    ch_cnt;         // 0=kAnyChIdx only, kInvalidCnt=no channels, 1=mono, 2=stereo, ...
+    } ui_var_t;
+
+    struct proc_str;
+    
+    typedef struct ui_proc_str
+    {
+      const struct ui_net_str* ui_net;
+
+      struct proc_str* proc;
+      
+      const ui_proc_desc_t* desc; 
+      const object_t*       cfg;  // proc inst. cfg
+      
+      const char* label;        // flow::proc_t::label
+      unsigned    label_sfx_id; // 
+      
+      ui_var_t*   varA;       // varA[varN] 
+      unsigned    varN;       //
+
+      struct ui_net_str* internal_net;
+      
+    } ui_proc_t;
+
+    struct network_str;
+    
+    typedef struct ui_net_str
+    {
+      struct network_str* net;
+      
+      ui_proc_t* procA;  // procA[procN]
+      unsigned   procN;
+
+      ui_preset_t* presetA;  // presetA[presetN] network presets
+      unsigned     presetN;
+
+      struct ui_net_str* poly_link;  
+      unsigned           poly_idx;
+      
+    } ui_net_t;
+
+
     
   }
 }
