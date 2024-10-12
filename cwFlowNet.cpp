@@ -124,15 +124,37 @@ namespace cw
       mem::release(net.presetA);
     }
 
+    rc_t _destroy_ui_net( ui_net_t*& ui_net)
+    {
+      rc_t rc = kOkRC;
+      if( ui_net == nullptr )
+        return rc;
+
+      for(unsigned i=0; i<ui_net->procN; ++i)
+      {
+        mem::release(ui_net->procA[i].varA);
+      }
+      mem::release(ui_net->procA);
+      mem::release(ui_net->presetA);
+      
+
+      mem::release(ui_net);
+      return rc;
+    }
+
+    
     rc_t _network_destroy_one( network_t*& net )
     {
       rc_t rc = kOkRC;
-      
-      for(unsigned i=0; i<net->proc_arrayN; ++i)
-        proc_destroy(net->proc_array[i]);
 
-      mem::release(net->proc_array);
-      net->proc_arrayN = 0;
+      if( net == nullptr )
+        return rc;
+      
+      for(unsigned i=0; i<net->procN; ++i)
+        proc_destroy(net->procA[i]);
+
+      mem::release(net->procA);
+      net->procN = 0;
 
       _network_preset_array_destroy(*net);
 
@@ -149,6 +171,8 @@ namespace cw
         gv = gv0;
       }
 
+      _destroy_ui_net(net->ui_net);
+      
       mem::release(net);
 
       return rc;      
@@ -378,9 +402,9 @@ namespace cw
       network_t* labeled_net = nullptr;
 
       // for each proc instance in the network
-      for(unsigned i=0; i<net.proc_arrayN && labeled_net==nullptr; ++i)
+      for(unsigned i=0; i<net.procN && labeled_net==nullptr; ++i)
       {
-        proc_t* proc =  net.proc_array[i];
+        proc_t* proc =  net.procA[i];
           
         // if this proc instance has an  internal network
         if( proc->internal_net != nullptr )
@@ -1820,8 +1844,8 @@ namespace cw
     {
       unsigned n = 0;
       
-      for(unsigned i=0; i<net.proc_arrayN; ++i)
-        if( textIsEqual(net.proc_array[i]->class_desc->label,proc_clas_label) )
+      for(unsigned i=0; i<net.procN; ++i)
+        if( textIsEqual(net.procA[i]->class_desc->label,proc_clas_label) )
           ++n;
       return n;
     }
@@ -2000,9 +2024,9 @@ namespace cw
       
       count_ref = 0;
       unsigned n = 0;
-      for(unsigned i=0; i<net.proc_arrayN; ++i)
+      for(unsigned i=0; i<net.procN; ++i)
       {
-        const proc_t* proc = net.proc_array[i];
+        const proc_t* proc = net.procA[i];
         for(const variable_t* var=proc->varL; var!=nullptr; var=var->var_link)
           if( var->chIdx == kAnyChIdx )
           {
@@ -2027,9 +2051,9 @@ namespace cw
     {
       rc_t     rc = kOkRC;
       unsigned j  = 0;
-      for(unsigned i=0; i<net.proc_arrayN; ++i)
+      for(unsigned i=0; i<net.procN; ++i)
       {
-        const proc_t* proc = net.proc_array[i];
+        const proc_t* proc = net.procA[i];
         for(const variable_t* var=proc->varL; var!=nullptr; var=var->var_link)
           if( var->chIdx == kAnyChIdx )
           {
@@ -3006,7 +3030,7 @@ namespace cw
       }
       
       procN            = net->procsCfg->child_count();
-      net->proc_array  = mem::allocZ<proc_t*>(procN);
+      net->procA  = mem::allocZ<proc_t*>(procN);
 
       // for each proc in the network
       for(unsigned j=0; j<procN; ++j)
@@ -3014,13 +3038,13 @@ namespace cw
         const object_t* proc_cfg = net->procsCfg->child_ele(j);
 
         // create the proc inst instance
-        if( (rc= _proc_create( p, proc_cfg, sfx_id, *net, proxyVarL, netPresetCfg, net->proc_array[j] ) ) != kOkRC )
+        if( (rc= _proc_create( p, proc_cfg, sfx_id, *net, proxyVarL, netPresetCfg, net->procA[j] ) ) != kOkRC )
         {
           rc = cwLogError(rc,"The processor instantiation at proc index %i failed.",j);
           goto errLabel;
         }
 
-        net->proc_arrayN += 1;
+        net->procN += 1;
       }
 
 
@@ -3047,6 +3071,92 @@ namespace cw
 
       return rc;
     }
+
+    rc_t _form_net_ui_desc( const flow_t* p, network_t& net, ui_net_t*& ui_net_ref );
+
+    
+    rc_t  _fill_net_ui_proc_and_preset_arrays( const flow_t* p, network_t& net, ui_net_t*& ui_net_ref )
+    {
+      rc_t rc = kOkRC;
+      
+      ui_net_ref->procA = mem::allocZ<ui_proc_t>(net.procN);
+      ui_net_ref->procN = net.procN;
+      
+      for(unsigned i=0; i<ui_net_ref->procN; ++i)
+      {
+        ui_proc_t* ui_proc = ui_net_ref->procA + i;
+        ui_proc->ui_net       = ui_net_ref;
+        ui_proc->label        = net.procA[i]->label;
+        ui_proc->label_sfx_id = net.procA[i]->label_sfx_id;
+        ui_proc->desc         = net.procA[i]->class_desc->ui;
+        ui_proc->cfg          = net.procA[i]->proc_cfg;
+        ui_proc->varN         = 0;
+        ui_proc->varA         = mem::allocZ<ui_var_t>(net.procA[i]->varMapN);
+
+        proc_t* proc_ptr = proc_find(net,ui_proc->label,ui_proc->label_sfx_id );
+        assert(proc_ptr != nullptr );
+        ui_proc->proc = proc_ptr;
+        
+        
+        for(unsigned j=0; j<net.procA[i]->varMapN; ++j)
+        {
+          variable_t* var = net.procA[i]->varMapA[j];
+          
+          // all slots in the varMapA[] are not used
+          if( var != nullptr )
+          {
+            ui_var_t* ui_var = ui_proc->varA + ui_proc->varN++;
+
+            ui_var->ui_proc      = ui_proc;
+            ui_var->label        = var->label;
+            ui_var->label_sfx_id = var->label_sfx_id;
+            ui_var->vid          = var->vid;
+            ui_var->ch_cnt       = var_channel_count( net.procA[i], var->label, var->label_sfx_id );
+            ui_var->ch_idx       = var->chIdx;
+            ui_var->value_tid    = var->type;
+            ui_var->desc_flags   = var->varDesc->flags;
+            ui_var->desc_cfg     = var->varDesc->cfg;
+          }
+        }
+
+        if( net.procA[i]->internal_net != nullptr )
+        {
+          if((rc = _form_net_ui_desc(p, *net.procA[i]->internal_net, ui_proc->internal_net )) != kOkRC )
+            goto errLabel;
+        }
+        
+      }
+
+      ui_net_ref->presetA = mem::allocZ<ui_preset_t>(net.presetN);
+      ui_net_ref->presetN = net.presetN;
+      
+      for(unsigned i=0; i<ui_net_ref->presetN; ++i)
+      {
+        ui_net_ref->presetA[i].label = net.presetA[i].label;
+        ui_net_ref->presetA[i].preset_idx = i;
+      }
+
+    errLabel:
+      return rc;
+    }
+
+    rc_t _form_net_ui_desc( const flow_t* p, network_t& net, ui_net_t*& ui_net_ref )
+    {
+      rc_t rc = kOkRC;
+      ui_net_ref = mem::allocZ<ui_net_t>();
+      
+      if((rc = _fill_net_ui_proc_and_preset_arrays(p,net,ui_net_ref)) != kOkRC )
+        goto errLabel;
+
+      ui_net_ref->poly_idx = net.poly_idx;
+
+      if( net.poly_link != nullptr )
+        _form_net_ui_desc(p,*net.poly_link,ui_net_ref->poly_link);
+
+    errLabel:
+      return rc;
+    }
+    
     
     
   }
@@ -3130,20 +3240,42 @@ const cw::object_t* cw::flow::find_network_preset( const network_t& net, const c
   return preset_value;     
 }
 
+
+cw::rc_t cw::flow::create_net_ui_desc( flow_t* p )
+{
+  rc_t rc = kOkRC;
+
+  if( p->net == nullptr )
+  {
+    rc = cwLogError(kInvalidStateRC,"The UI description could not be formed because the network is not valid.");
+    goto errLabel;
+  }
+  
+  if((rc = _form_net_ui_desc(p, *p->net, p->net->ui_net )) != kOkRC )
+  {
+    rc = cwLogError(rc,"The UI description creation failed.");
+    goto errLabel;
+  }
+
+errLabel:
+  
+  return rc;  
+}
+
 cw::rc_t cw::flow::exec_cycle( network_t& net )
 {
   rc_t rc = kOkRC;
   bool halt_fl = false;
 
-  for(unsigned i=0; i<net.proc_arrayN; ++i)
+  for(unsigned i=0; i<net.procN; ++i)
   {
-    if((rc = net.proc_array[i]->class_desc->members->exec(net.proc_array[i])) != kOkRC )
+    if((rc = net.procA[i]->class_desc->members->exec(net.procA[i])) != kOkRC )
     {
       if( rc == kEofRC )
         halt_fl = true;
       else
       {
-        rc = cwLogError(rc,"Execution failed on the proc:%s:%i.",cwStringNullGuard(net.proc_array[i]->label),net.proc_array[i]->label_sfx_id);
+        rc = cwLogError(rc,"Execution failed on the proc:%s:%i.",cwStringNullGuard(net.procA[i]->label),net.procA[i]->label_sfx_id);
         break;
       }
     }

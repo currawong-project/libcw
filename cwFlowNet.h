@@ -6,8 +6,8 @@ namespace cw
   namespace flow
   {
     // Instantiate a network.
-    // The root network always is intantiated with a single cfg. record - because it is never a poly network.
-    // The only time netCfgN will be greater than 1 is when a heterogenous poly network is beging
+    // The root network always is instantiated with a single cfg. record - because it is never a poly network.
+    // The only time netCfgN will be greater than 1 is when a heterogenous poly network is being
     // instantiated.
     rc_t network_create( flow_t*         p,
                          const object_t* const * netCfgA, // netCfgA[netCfgN] 
@@ -21,6 +21,9 @@ namespace cw
     rc_t network_destroy( network_t*& net );
 
     const object_t* find_network_preset( const network_t& net, const char* presetLabel );
+
+    // Instantiates net_t.ui_net.
+    rc_t create_net_ui_desc( flow_t* p );
     
     rc_t exec_cycle( network_t& net );
 
@@ -64,6 +67,38 @@ namespace cw
       if((rc = var_get( inst, var->vid, chIdx, valueRef )) != kOkRC )
       {
         rc = cwLogError(kOpFailRC,"The variable get failed on instance:'%s' variable:'%s'.",cwStringNullGuard(inst_label),cwStringNullGuard(var_label));
+        goto errLabel;
+      }
+
+    errLabel:
+      return rc;
+    }
+
+    template< typename T >
+    rc_t set_variable_value( network_t& net, const ui_var_t* ui_var, T value )
+    {
+      rc_t rc = kOkRC;
+      
+      // set the variable value
+      if((rc = var_set( ui_var->ui_proc->proc, ui_var->vid, ui_var->ch_idx, value )) != kOkRC )
+      {
+        rc = cwLogError(kOpFailRC,"The variable set failed on instance:'%s:%i' variable:'%s:%i'.",cwStringNullGuard(ui_var->ui_proc->proc->label),ui_var->ui_proc->proc->label_sfx_id,cwStringNullGuard(ui_var->label),ui_var->label_sfx_id);
+        goto errLabel;
+      }
+
+    errLabel:
+      return rc;
+    }
+
+    template< typename T >
+    rc_t get_variable_value( network_t& net, const ui_var_t* ui_var, T& valueRef )
+    {
+      rc_t rc = kOkRC;
+      
+      // get the variable value
+      if((rc = var_get( ui_var->ui_proc->proc, ui_var->vid, ui_var->ch_idx, valueRef )) != kOkRC )
+      {
+        rc = cwLogError(kOpFailRC,"The variable get failed on instance:'%s:%i' variable:'%s:%i'.",cwStringNullGuard(ui_var->ui_proc->proc->label),ui_var->ui_proc->proc->label_sfx_id,cwStringNullGuard(ui_var->label),ui_var->label_sfx_id);
         goto errLabel;
       }
 
