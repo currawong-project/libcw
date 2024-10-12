@@ -2806,7 +2806,21 @@ void        cw::io::serialDeviceSetId( handle_t h, unsigned devIdx, unsigned id 
 cw::rc_t cw::io::serialDeviceSend(  handle_t h, unsigned devIdx, const void* byteA, unsigned byteN )
 {
   rc_t  rc = kOkRC;
-  //io_t* p  = _handleToPtr(h);
+  io_t* p  = _handleToPtr(h);
+
+  if( devIdx >= p->serialN )
+  {
+    rc = cwLogError(kInvalidArgRC,"%i is an invalid serial device index.",devIdx);
+    goto errLabel;
+  }
+
+  if((rc = send( p->serialPortSrvH, p->serialA[devIdx].userId, byteA, byteN )) != kOkRC )
+  {
+    rc = cwLogError(rc,"Send on serial device index %i failed.",devIdx);
+    goto errLabel;
+  }
+
+errLabel:
   return rc;
 }
 
@@ -3817,6 +3831,24 @@ cw::rc_t cw::io::uiCreateLog(       handle_t h, unsigned& uuIdRef, unsigned pare
   return rc;  
 }
 
+cw::rc_t cw::io::uiCreateVList(       handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc  = ui::createVList(uiH,uuIdRef,parentUuId,eleName,appId,chanId,clas,title);
+  return rc;  
+}
+
+cw::rc_t cw::io::uiCreateHList(       handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc  = ui::createHList(uiH,uuIdRef,parentUuId,eleName,appId,chanId,clas,title);
+  return rc;  
+}
+
 cw::rc_t cw::io::uiSetNumbRange( handle_t h, unsigned uuId, double minValue, double maxValue, double stepValue, unsigned decPl, double value )
 {
   rc_t         rc;
@@ -3992,6 +4024,14 @@ cw::rc_t cw::io::uiSetScrollTop(   handle_t h, unsigned uuId )
   return rc;
 }
 
+cw::rc_t cw::io::uiSetTitle( handle_t h, unsigned uuId, const char* title )
+{
+  rc_t rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::setTitle(uiH,uuId,title);
+  return rc;
+}
 
 cw::rc_t    cw::io::uiSetBlob(   handle_t h, unsigned uuId, const void* blob, unsigned blobByteN )
 {
@@ -4011,6 +4051,21 @@ const void* cw::io::uiGetBlob(   handle_t h, unsigned uuId, unsigned& blobByteN_
   blobByteN_Ref = 0;
   return nullptr;
 }
+
+cw::rc_t   cw::io::uiGetBlob(   handle_t h, unsigned uuId, void* buf, unsigned& bufByteN_Ref )
+{
+  unsigned bN = 0;
+  const void* b = uiGetBlob(h,uuId,bN);
+  if( bN > bufByteN_Ref )
+  {
+    bufByteN_Ref = 0;
+    return cwLogError(kBufTooSmallRC,"UI blob buffer is too small.");
+  }
+  memcpy(buf,b,bN);
+  bufByteN_Ref = bN;
+  return kOkRC;
+}
+
 
 cw::rc_t cw::io::uiClearBlob( handle_t h, unsigned uuId )
 {

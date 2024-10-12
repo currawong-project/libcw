@@ -383,6 +383,11 @@ namespace cw
     
     rc_t uiCreateLog(       handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
 
+    rc_t uiCreateVList(      handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
+    rc_t uiCreateHList(      handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
+
+
+    rc_t uiSetTitle( handle_t h, unsigned uuId, const char* title );
 
     rc_t uiSetNumbRange( handle_t h, unsigned uuId, double minValue, double maxValue, double stepValue, unsigned decPl, double value );
     rc_t uiSetProgRange( handle_t h, unsigned uuId, double minValue, double maxValue, double value );
@@ -409,9 +414,14 @@ namespace cw
     int  uiGetOrderKey(    handle_t h, unsigned uuId );
 
     rc_t uiSetScrollTop(   handle_t h, unsigned uuId );
-    
+
+    // uiSetBlob() allocates internal memory and copies the contents of blob[blobByeN]
     rc_t        uiSetBlob(   handle_t h, unsigned uuId, const void* blob, unsigned blobByteN );
     const void* uiGetBlob(   handle_t h, unsigned uuId, unsigned& blobByteN_Ref );
+    
+    // On call bufByteN_Ref holds the size of buf in bytes, on return it is set to the count of bytes in buf[].
+    // If buf[] is not large enough to hold all bytes kBufTooSmallRC is returned.
+    rc_t        uiGetBlob(   handle_t h, unsigned uuId, void* buf, unsigned& bufByteN_Ref );
     rc_t        uiClearBlob( handle_t h, unsigned uuId );
     
     // Register parent/child/name app id's 
