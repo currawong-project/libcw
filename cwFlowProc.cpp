@@ -3660,6 +3660,7 @@ namespace cw
       {       
         kInPId,
         kDbFlPId,
+        kConsoleFlPId,
         kWndMsPId,
         kPeakDbPId,
         kOutPId,
@@ -3711,12 +3712,14 @@ namespace cw
             ftime_t wndMs;
             coeff_t peakThreshDb;
             bool dbFl;            
-	    
+            bool consoleFl;
+            
             // get the audio_meter variable values
             if((rc = var_register_and_get( proc, i,
-                                           kDbFlPId,   "dbFl",    kBaseSfxId, dbFl,
-                                           kWndMsPId, "wndMs",    kBaseSfxId, wndMs,
-                                           kPeakDbPId, "peakDb",  kBaseSfxId, peakThreshDb )) != kOkRC )
+                                           kDbFlPId,     "dbFl",      kBaseSfxId, dbFl,
+                                           kConsoleFlPId,"consoleFl", kBaseSfxId, consoleFl,
+                                           kWndMsPId,    "wndMs",      kBaseSfxId, wndMs,
+                                           kPeakDbPId,   "peakDb",    kBaseSfxId, peakThreshDb )) != kOkRC )
             {
               goto errLabel;
             }
@@ -3774,6 +3777,9 @@ namespace cw
         unsigned      chN    = 0;
 
         bool rptFl = inst->rptPeriodSmpN != 0 && inst->rptPhase >= inst->rptPeriodSmpN;
+        bool consoleFl = false;
+
+        var_get(proc,kConsoleFlPId, kAnyChIdx, consoleFl);
         
         // get the src buffer
         if((rc = var_get(proc,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
@@ -3789,12 +3795,17 @@ namespace cw
           var_set(proc, kClipFlPId, i, inst->mtrA[i]->clipFl );
 
           if( rptFl )
-            cwLogPrint("%6.2f ",inst->mtrA[i]->outDb);
+          {
+            var_send_to_ui( proc, kOutPId,  i );
+            if( consoleFl )
+              cwLogPrint("%6.2f ",inst->mtrA[i]->outDb);
+          }
         }
         
         if(rptFl)
         {
-          cwLogPrint("\n");
+          if( consoleFl )
+            cwLogPrint("\n");
           inst->rptPhase -= inst->rptPeriodSmpN;
         }
         
