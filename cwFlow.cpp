@@ -754,6 +754,37 @@ namespace cw
       return rc;
     }
 
+    void _make_flow_to_ui_callback( flow_t* p )
+    {
+      
+      // There is no concurrent contention for the linked list when
+      // this function is called and so all accesses use relaxed memory order.
+
+      // Get the first variable to send to the UI
+      variable_t* var = p->ui_var_tail->ui_var_link.load(std::memory_order_relaxed);
+      
+      while( var!=nullptr)
+      {
+        // Send the var to the UI
+        if( p->ui_callback != nullptr )
+          p->ui_callback( p->ui_callback_arg, var->ui_var );
+
+        // Get the next var to send to the UI
+        variable_t* var0 = var->ui_var_link.load(std::memory_order_relaxed);
+
+        // Nullify the list links as they are used
+        var->ui_var_link.store(nullptr,std::memory_order_relaxed);
+        
+        var = var0;
+      }
+
+      // Empty the UI message list.
+      p->ui_var_head.store(&p->ui_var_stub,std::memory_order_relaxed);
+      p->ui_var_tail    = &p->ui_var_stub;
+      p->ui_var_stub.ui_var_link.store(nullptr,std::memory_order_relaxed);
+      
+    }
+    
   }
 }
 
@@ -776,7 +807,9 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
                            const object_t*    classCfg,
                            const object_t*    pgmCfg,
                            const object_t*    udpCfg,
-                           const char*        proj_dir )
+                           const char*        proj_dir,
+                           ui_callback_t      ui_callback,
+                           void*              ui_callback_arg)
 {
   rc_t            rc               = kOkRC;
   bool            printClassDictFl = false;
@@ -810,6 +843,10 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   p->maxCycleCount  = kInvalidCnt;
   p->proj_dir       = proj_dir;
   p->printLogHdrFl  = true;
+  p->ui_callback    = ui_callback;
+  p->ui_callback_arg= ui_callback_arg;
+  p->ui_var_head.store(&p->ui_var_stub);
+  p->ui_var_tail    = &p->ui_var_stub;
   
   // parse the optional args
   if((rc = pgmCfg->readv("network",               0,      p->networkCfg,
@@ -889,7 +926,8 @@ const char* cw::flow::preset_label( handle_t h, unsigned preset_idx )
   
   if( preset_idx >= p->presetN )
   {
-    
+    cwLogError(kInvalidArgRC,"The preset index %i is invalid.",preset_idx);
+    return nullptr;
   }
   
   return p->presetA[ preset_idx ].label;
@@ -1032,9 +1070,19 @@ cw::rc_t cw::flow::exec_cycle( handle_t h )
   }
   else
   {
-    rc = exec_cycle(*p->net);
+    // Execute one cycle of the network
+    if((rc = exec_cycle(*p->net)) == kOkRC )
+    {
+      // During network execution variables which need to update the UI
+      // are collected in a linked list based on p->ui_var_tail.
+      // Callback to the UI with those variables here.
+      _make_flow_to_ui_callback(p);
+
+    }
+
     p->cycleIndex += 1;
   }
+
     
   return rc;
 }
@@ -1069,6 +1117,8 @@ cw::rc_t cw::flow::apply_preset( handle_t h, const multi_preset_selector_t& mps 
   return network_apply_preset(*p->net,mps);
 }
 
+cw::rc_t cw::flow::set_variable_user_id( handle_t h, const ui_var_t* ui_var, unsigned user_id )
+{ return set_variable_user_id( *_handleToPtr(h)->net, ui_var, user_id );  }
 
 
 cw::rc_t cw::flow::set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, bool value )

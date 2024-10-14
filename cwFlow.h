@@ -10,7 +10,7 @@ namespace cw
 
     void print_abuf( const struct abuf_str* abuf );
     void print_external_device( const external_device_t* dev );
-    
+
     // Parse the cfg's but don't yet instantiate the network.
     // Upon completion of this function the caller can 
     // query the network for configuration information which can
@@ -18,8 +18,10 @@ namespace cw
     rc_t create(handle_t&          hRef,
                 const object_t*    classCfg,              // processor class dictionary
                 const object_t*    pgmCfg,                // top level program cfg 
-                const object_t*    udpCfg = nullptr,
-                const char*        projDir   = nullptr);
+                const object_t*    udpCfg  = nullptr,
+                const char*        projDir = nullptr,
+                ui_callback_t      ui_callback = nullptr,
+                void*              ui_callback_arg = nullptr);
 
     // Network cfg. information which is available following create().
     bool     is_non_real_time( handle_t h );
@@ -32,6 +34,7 @@ namespace cw
     const char* preset_label( handle_t h, unsigned preset_idx );
     
     // Instantiate the network and prepare for runtime.
+    // The UI is not available until after initialization.
     rc_t initialize( handle_t           handle, 
                      external_device_t* deviceA    = nullptr,
                      unsigned           deviceN    = 0,
@@ -66,6 +69,9 @@ namespace cw
     rc_t get_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, double& valueRef   );
 
 
+    // The 'user_id' shows up as the 'user_id' in the ui_var field.
+    rc_t set_variable_user_id( handle_t h, const ui_var_t* ui_var, unsigned user_id );
+    
     rc_t set_variable_value( handle_t h, const ui_var_t* ui_var, bool value     );
     rc_t set_variable_value( handle_t h, const ui_var_t* ui_var, int value      );
     rc_t set_variable_value( handle_t h, const ui_var_t* ui_var, unsigned value );
