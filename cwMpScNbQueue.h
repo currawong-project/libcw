@@ -32,6 +32,7 @@ namespace cw
 
     void    push( T* payload )
     {
+      // BUG: malloc() isn't non-blocking
       node_t* new_node = mem::allocZ<node_t>(1);
       
       new_node->payload = payload;
@@ -47,7 +48,11 @@ namespace cw
       
       // 2. Set the old-head next pointer to the new node (thereby adding the new node to the list)
       prev->next.store(new_node,std::memory_order_release); // RELEASE 'next' to consumer            
-      
+
+      // After the first insertion:
+      // tail -> stub
+      // stub.next -> new_node
+      // head -> new_node
       
     }
     
@@ -60,7 +65,7 @@ namespace cw
       {
         _tail   = next;    
         payload = next->payload;
-        mem::free(t);
+        mem::free(t);  // BUG: free() isn't non-blocking
       }
   
       return payload;
