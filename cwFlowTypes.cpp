@@ -2438,6 +2438,34 @@ errLabel:
   return rc;
 }
 
+cw::rc_t  cw::flow::var_send_to_ui( variable_t* var )
+{
+
+  // var->ui_var_link is set to null when the var is removed from the list
+  
+  // 1. Atomically set _head to the new node and return 'old-head'
+  variable_t* prev   = var->proc->ctx->ui_var_head.exchange(var,std::memory_order_acq_rel);  
+
+  // Note that at this point only the new node may have the 'old-head' as it's predecssor.
+  // Other threads may therefore safely interrupt at this point.
+      
+  // 2. Set the old-head next pointer to the new node (thereby adding the new node to the list)
+  prev->ui_var_link.store(var,std::memory_order_release); // RELEASE 'next' to consumer            
+
+  return kOkRC;
+}
+
+cw::rc_t  cw::flow::var_send_to_ui( proc_t* proc, unsigned vid,  unsigned chIdx )
+{
+  rc_t rc = kOkRC;
+  variable_t* var = nullptr;
+
+  if((rc = var_find(proc, vid, chIdx, var )) == kOkRC )
+    rc = var_send_to_ui(var);
+  
+  return rc;
+}
+
 cw::rc_t cw::flow::var_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, variable_t*& varRef )
 {
   return var_register( proc, var_label, sfx_id, vid, chIdx, nullptr, varRef );

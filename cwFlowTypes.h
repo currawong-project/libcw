@@ -222,6 +222,8 @@ namespace cw
       struct variable_str* dst_tail;     // 
       struct variable_str* dst_link;     // Link used by dst_head list.
 
+      ui_var_t*            ui_var;       // this variables UI description
+      std::atomic<struct variable_str*> ui_var_link; // UI update var link based on flow_t ui_var_head;
     } variable_t;
 
 
@@ -377,7 +379,14 @@ namespace cw
       network_preset_t* presetA;  // presetA[presetN] partial (label and tid only) parsing of the network presets 
       unsigned          presetN;  // 
       
-      network_t* net;
+      network_t*        net;      // The root of the network instance
+
+      ui_callback_t  ui_callback;
+      void*          ui_callback_arg;
+      
+      std::atomic<variable_t*> ui_var_head; // Linked lists of var's to send to the UI
+      variable_t               ui_var_stub;
+      variable_t*              ui_var_tail;
 
     } flow_t;
 
@@ -547,7 +556,11 @@ namespace cw
     
     // Get all the label-sfx-id's associated with a give var label
     rc_t           var_mult_sfx_id_array( proc_t* proc, const char* var_label, unsigned* idA, unsigned idAllocN, unsigned& idN_ref );
-    
+
+    // Send a variable value to the UI
+    rc_t           var_send_to_ui( variable_t* var );
+    rc_t           var_send_to_ui( proc_t* proc, unsigned vid,  unsigned chIdx );
+
     //-----------------
     //
     // var_register
