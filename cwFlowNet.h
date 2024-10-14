@@ -30,6 +30,9 @@ namespace cw
 
     rc_t get_variable( network_t& net, const char* inst_label, const char* var_label, unsigned chIdx, proc_t*& instPtrRef, variable_t*& varPtrRef );
 
+    rc_t set_variable_user_id( network_t&net, const ui_var_t* ui_var, unsigned user_id );
+
+
     template< typename T >
     rc_t set_variable_value( network_t& net, const char* inst_label, const char* var_label, unsigned chIdx, T value )
     {

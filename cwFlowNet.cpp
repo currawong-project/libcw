@@ -3116,6 +3116,9 @@ namespace cw
             ui_var->value_tid    = var->type;
             ui_var->desc_flags   = var->varDesc->flags;
             ui_var->desc_cfg     = var->varDesc->cfg;
+            ui_var->user_id      = kInvalidId;
+            
+            var->ui_var = ui_var;
           }
         }
 
@@ -3310,6 +3313,23 @@ cw::rc_t cw::flow::get_variable( network_t& net, const char* proc_label, const c
   procPtrRef = proc;
   varPtrRef = var;
       
+errLabel:
+  return rc;
+}
+
+cw::rc_t cw::flow::set_variable_user_id( network_t&net, const ui_var_t* ui_var, unsigned user_id )
+{
+  rc_t rc = kOkRC;
+  variable_t* var = nullptr;
+
+  if((rc = var_find( ui_var->ui_proc->proc, ui_var->vid,  ui_var->ch_idx, var )) != kOkRC )
+  {
+    rc = cwLogError(rc,"User-Id assigned failed on '%s:%i' because the variable was not found.",cwStringNullGuard(ui_var->label),ui_var->label_sfx_id);
+    goto errLabel;
+  }
+
+  var->ui_var->user_id = user_id;
+
 errLabel:
   return rc;
 }
