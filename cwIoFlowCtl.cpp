@@ -522,6 +522,77 @@ namespace cw
         
       return rc;
     }
+
+    template< typename T >
+    rc_t _ui_callback_tpl( io_flow_ctl_t* p, const flow::ui_var_t* ui_var )
+    {
+      rc_t rc;
+      
+      T value;
+      if((rc = get_variable_value(p->flowH,ui_var,value)) != kOkRC )
+      {
+        rc = cwLogError(rc,"The variable value could not be read.");
+        goto errLabel;
+      }
+
+      if((rc = uiSendValue(p->ioH,ui_var->user_id,value)) != kOkRC )
+      {
+        rc = cwLogError(rc,"UI element data transmission failed.");
+        goto errLabel;
+      }
+
+    errLabel:
+      return rc;
+    }
+
+    // This function is called with messages for the UI from the flow proc instances 
+    rc_t _ui_callback( void* arg, const flow::ui_var_t* ui_var )
+    {
+      rc_t rc = kOkRC;
+      
+      io_flow_ctl_t* p = (io_flow_ctl_t*)arg;
+
+      if( ui_var->user_id == kInvalidId )
+      {
+        rc = cwLogError(kInvalidArgRC,"The user_id (uuid) of the variable was not set.");
+        goto errLabel;
+      }
+      
+      switch( ui_var->value_tid & flow::kTypeMask )
+      {
+        case flow::kBoolTFl:
+          rc = _ui_callback_tpl<bool>(p,ui_var);
+          break;
+
+        case flow::kIntTFl:
+          rc = _ui_callback_tpl<int>(p,ui_var);
+          break;
+
+        case flow::kUIntTFl:
+          rc = _ui_callback_tpl<unsigned>(p,ui_var);
+          break;
+
+        case flow::kFloatTFl:
+          rc = _ui_callback_tpl<float>(p,ui_var);
+          break;
+
+        case flow::kDoubleTFl:
+          rc = _ui_callback_tpl<double>(p,ui_var);
+          break;
+
+        case flow::kStringTFl:
+          rc = _ui_callback_tpl<const char*>(p,ui_var);
+          break;
+          
+      }
+
+    errLabel:
+      if( rc != kOkRC )  
+        rc = cwLogError(rc,"Update of UI element  of '%s:%i-%s:%i' failed.",cwStringNullGuard(ui_var->ui_proc->label),ui_var->ui_proc->label_sfx_id,cwStringNullGuard(ui_var->label),ui_var->label_sfx_id);
+      
+      return rc;
+      
+    }
     
   }
 }
@@ -632,7 +703,9 @@ cw::rc_t    cw::io_flow_ctl::program_load(  handle_t h, unsigned pgm_idx )
                    p->proc_class_dict_cfg,
                    p->pgmA[ pgm_idx ].cfg,
                    p->udp_dict_cfg,
-                   p->proj_dir )) != kOkRC )
+                   p->proj_dir,
+                   _ui_callback,
+                   p)) != kOkRC )
   {
     rc = cwLogError(rc,"Network configuration failed.");
     goto errLabel;
@@ -819,6 +892,9 @@ cw::rc_t cw::io_flow_ctl::get_variable_value( handle_t h, const flow::ui_var_t* 
 { return get_variable_value( _handleToPtr(h)->flowH, ui_var, value_ref ); }
 cw::rc_t cw::io_flow_ctl::get_variable_value( handle_t h, const flow::ui_var_t* ui_var, const char*& value_ref )
 { return get_variable_value( _handleToPtr(h)->flowH, ui_var, value_ref ); }
+
+cw::rc_t cw::io_flow_ctl::set_variable_user_id( handle_t h, const flow::ui_var_t* ui_var, unsigned user_id )
+{ return set_variable_user_id( _handleToPtr(h)->flowH, ui_var, user_id ); }
 
 cw::rc_t cw::io_flow_ctl::set_variable_value( handle_t h, const flow::ui_var_t* ui_var, bool value )
 { return set_variable_value( _handleToPtr(h)->flowH, ui_var, value ); }
