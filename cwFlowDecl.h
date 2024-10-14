@@ -123,6 +123,8 @@ namespace cw
       unsigned    vid;            // flow::variable_t::vid
       unsigned    ch_idx;         // flow::variable_t::chIdx
       unsigned    ch_cnt;         // 0=kAnyChIdx only, kInvalidCnt=no channels, 1=mono, 2=stereo, ...
+
+      unsigned user_id; // uuId of the UI element that represents this var
     } ui_var_t;
 
     struct proc_str;
@@ -134,7 +136,7 @@ namespace cw
       struct proc_str* proc;
       
       const ui_proc_desc_t* desc; 
-      const object_t*       cfg;  // proc inst. cfg
+      const object_t*       cfg;  // complete proc inst. cfg
       
       const char* label;        // flow::proc_t::label
       unsigned    label_sfx_id; // 
@@ -163,6 +165,7 @@ namespace cw
       
     } ui_net_t;
 
+    typedef rc_t (*ui_callback_t)( void* arg, const ui_var_t* ui_var );
 
     
   }
