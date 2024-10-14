@@ -941,7 +941,37 @@ resolvable without more information.
 
 ### TODO:
 
+- Eliminate the value() custom proc_t function and replace it by setting a 'delta flag' on the
+variables that change.   Optionally a linked list of changed variables could be implemented to
+avoid having to search for changed variable values - although this list might have to be implemented as a thread safe linked list.
+
+- Allow proc's to send messages to the UI. Implementation: During exec() the proc builds a global list of variables whose values
+should be passed to the UI. Adding to the list must be done atomically, but removing can be non-atomic because it will happen
+at the end of the network 'exec' cycle when no proc's are being executed.  See cwMpScNbQueue push() for an example of how to do this.
+
+- Allow min/max limits on numeric variables.
+
 - Add a 'doc' string-list to the class desc.
+
+- Try using adding 'time' type and 'cfg' types to a 'log:{...}' stmt.
+
+- print_network_fl and print_proc_dict_fl should be given from the command line.
+  (but it's ok to leave them as cfg flags also)
+  
+- Add 'doc' strings to all proc classes.
+
+- Add 'doc' strings to user-defined proc data structure.
+
+- It is an error to specify a suffix_id on a poly network proc because the suffix_id's are generated automatically.
+  This error should be caught by the compiler.
+  
+- How do user defined procedures handle suffix id's?
+
+- Add a 'preset' arg to 'poly' so that a preset can be selected via the owning network.
+  Currently it is not possible to select a preset for a poly.
+
+- Automatic assignment of sfx_id's should only occur when the network is a 'poly'.
+  This should be easy to detect. 
 
 - When a var value is given to var_create() it does not appear to channelize the
 var if value is a list.  Is a value ever given directly to `var_create()`?
@@ -949,18 +979,7 @@ Look at all the places `var_create()` is called can the value arg. be removed?
 
 - var_channelize() should never be called at runtime.
 
-- DONE: Remove `preset_label` and `type_src_label` from `_var_channelize()` and report error
-locations from the point of call.
-
 - Re-write the currawong circuit with caw.
-
-- DONE: Move proc_dict.cfg to libcw directory.
-
-- DONE: The proc inst 'args' should be able to create mult variables. The only way to instantiate
-new mult variables now is via the 'in' stmt.
-
-- DONE: The `audio_merge` implementaiton is wrong. It should mimic `audio_mix` where all igain
-coeff's are instantiated even if they are not referenced.
 
 - Finish audio feedback example - this will probably involve writing an `audio_silence` class.
 
@@ -969,8 +988,7 @@ coeff's are instantiated even if they are not referenced.
 - String assignment is allocating  memory:
    See: `rc_t _val_set( value_t* val, const char* v ) cwFlowTypes.cpp line:464.`
 
-
-- DONE: Add the `caw` examples to the test suite.
+- cwMpScNbQueue is allocating memory.  This makes it blocking.
 
 - Check for illegal variable names in class descriptions.  (no periods, trailing digits, or trailing underscores)
 
@@ -984,13 +1002,22 @@ coeff's are instantiated even if they are not referenced.
   initially applied - does that mean an uninitialized channel is just sitting there? (... no i think
   the previous channel is duplicated in var_channelize())
 
+- UI Issues:
+    + When UI appIdMap[] labels do not match ui.cfg labels no error is generated. All appIdMap[] labels should be
+      validated to avoid this problem.
+
+    + The reliance on using UUId to build UI's should be eliminated. It is very clunky.
+
+    + UI elements should form proper tree's where elements know their children. As it is the links only go up the tree
+      from child to parent - searching down the tree is not possible.
+
 
 - Class presets cannot address 'mult' variables. Maybe this is ok since 'mult' variables are generally connected to a source?
 ... although 'gain' mult variables are not necessarily connected to a source see: `audio_split` or `audio_mix`.
 Has this problem been addressed by allowing mult variables to be instantiated in the 'args' statement?
 
 - Documentation w/ examples.
-  + Write the rules for each implementing member function.
+  + Write the rules for each implementing member functions.
     
 - value() should return a special return-code value to indicate that the
 value should not be updated and distinguish it from an error code - which should stop the system.
@@ -1010,7 +1037,6 @@ value should not be updated and distinguish it from an error code - which should
 
 - Should the `object_t` be used in place of `value_t`?
 
-- Allow min/max limits on numeric variables.
 
 - log: 
     + should print the values for all channels - right now it is only
@@ -1021,7 +1047,7 @@ value should not be updated and distinguish it from an error code - which should
   This will allow feedback connections to be attached to them at a later stage of the network 
   instantiation.
   
-- Implement subnet preset application.	
+- Implement user-defined-proc preset application.	
 
 - Implement the var attributes and attribute checking.
 
@@ -1031,7 +1057,7 @@ value should not be updated and distinguish it from an error code - which should
 
 - Implement dynamic loading of procs.
 
-- Implement a debug mode to aid in building networks and subnets (or is logging good enough)
+- Implement a debug mode to aid in building networks and user-defined-procs (or is logging good enough)
 
 - Implement multi-field messages.
 
@@ -1042,26 +1068,6 @@ It's not clear there is a difference between specifying  `_` and the default beh
 Is there a way to tell it to search the entire network from the root? Isn't that 
 what '_' is supposed to do?
 
-TODO: 9/24
-- Try using adding 'time' type and 'cfg' types to a 'log:{...}' stmt.
-
-- print_network_fl and print_proc_dict_fl should be given from the command line.
-  (but it's ok to leave them as cfg flags also)
-  
-- Add 'doc' strings to all proc classes.
-
-- Add 'doc' strings to subnet data structure.
-
-- It is an error to specify a suffix_id on a poly network proc because the suffix_id's are generated automatically.
-  This error should be caught by the compiler.
-  
-- How do user defined procedures handle suffix id's?
-
-- Add a 'preset' arg to 'poly' so that a preset can be selected via the owning network.
-  Currently it is not possible to select a preset for a poly.
-
-- Automatic assignment of sfx_id's should only occur when the network is a 'poly'.
-  This should be easy to detect. 
 
 
 Host Environments:
@@ -1072,6 +1078,20 @@ Host Environments:
 
 Done
 ----
+- DONE: Remove `preset_label` and `type_src_label` from `_var_channelize()` and report error
+locations from the point of call.
+
+- DONE: Move proc_dict.cfg to libcw directory.
+
+- DONE: The proc inst 'args' should be able to create mult variables. The only way to instantiate
+new mult variables now is via the 'in' stmt.
+
+- DONE: The `audio_merge` implementaiton is wrong. It should mimic `audio_mix` where all igain
+coeff's are instantiated even if they are not referenced.
+
+- DONE: Add the `caw` examples to the test suite.
+
+
 - DONE: Remove the multiple 'args' thing and and 'argsLabel'.  'args' should be a simple set of arg's.  
 
 - DONE: Compile presets: at load time the presets should be resolved
@@ -1110,21 +1130,21 @@ ports of the internal elements.
 This might be a better approach to logging than having a 'printer' object.
 Add proc instance field: `log:{ var_label_0:0, var_label_1:0 } `
 
-- Complete subnets:
-	+ Subnets should have presets written in terms of the subnet vars rather than the network vars
+- Complete user-def-procs:
+	+ User-Def-Procs should have presets written in terms of the user-def-proc vars rather than the network vars
 	or the value application needs to follow the internal variable src_var back to the proxy var.
 
-	+ DONE: write a paragraph in the flow_doc.md about overall approach taken to subnet implementation.
+	+ DONE: write a paragraph in the flow_doc.md about overall approach taken to user-def-proc implementation.
 
-	+ DONE: subnet var desc's should be the same as non+subnet vars but also include the 'proxy' field.
+	+ DONE: user-def-proc var desc's should be the same as non+user-def-proc vars but also include the 'proxy' field.
 	In particular they should get default values.
-	If a var desc is part of a subnet then it must have a proxy.
+	If a var desc is part of a user-def-proc then it must have a proxy.
 	The output variables of var desc's must have the 'out' attribute
 
 
-	+ DONE: improve the subnet creating code by using consistent naming + use proxy or wrap but not both
+	+ DONE: improve the user-def-proc creating code by using consistent naming + use proxy or wrap but not both
 
-	+ DONE: improve code comments on subnet creation
+	+ DONE: improve code comments on user-def-proc creation
 
   
 - DONE: Implement feedback	
