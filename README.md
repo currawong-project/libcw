@@ -1011,6 +1011,8 @@ Look at all the places `var_create()` is called can the value arg. be removed?
     + UI elements should form proper tree's where elements know their children. As it is the links only go up the tree
       from child to parent - searching down the tree is not possible.
 
+    + Disabled "disp_str" should turn grey.
+
 
 - Class presets cannot address 'mult' variables. Maybe this is ok since 'mult' variables are generally connected to a source?
 ... although 'gain' mult variables are not necessarily connected to a source see: `audio_split` or `audio_mix`.
