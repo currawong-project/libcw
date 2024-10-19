@@ -102,7 +102,7 @@ namespace cw
 
     typedef struct ui_proc_desc_str
     {
-      const char*  label;
+      const char*  label;     // class label
       ui_preset_t* presetA;   // presetA[ presetN ]
       unsigned     presetN;      
     } ui_proc_desc_t;
@@ -111,14 +111,15 @@ namespace cw
     
     typedef struct ui_var_str
     {
-      struct ui_proc_str* ui_proc;
+      struct ui_proc_str* ui_proc; // owning proc
       
       const char* label;         // flow::variable_t::label
       unsigned    label_sfx_id;  // flow::variable_t::label_sfx_id
 
       const       object_t* desc_cfg;     // var desc cfg from flow::var_desc_t
       unsigned              desc_flags;   // flow::var_desc_t::flags
-      
+
+      bool        has_source_fl;  // true if this var is connected to a source var
       unsigned    value_tid;      // flow::variable_t::type
       unsigned    vid;            // flow::variable_t::vid
       unsigned    ch_idx;         // flow::variable_t::chIdx

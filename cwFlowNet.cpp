@@ -132,12 +132,20 @@ namespace cw
 
       for(unsigned i=0; i<ui_net->procN; ++i)
       {
+        ui_net_t* iun = ui_net->procA[i].internal_net;
+        while( iun!=nullptr )
+        {
+          ui_net_t* iun0 = iun->poly_link;
+          _destroy_ui_net(iun);
+          iun = iun0;
+        }
+          
         mem::release(ui_net->procA[i].varA);
+
       }
+
       mem::release(ui_net->procA);
       mem::release(ui_net->presetA);
-      
-
       mem::release(ui_net);
       return rc;
     }
@@ -3110,6 +3118,7 @@ namespace cw
             ui_var->ui_proc      = ui_proc;
             ui_var->label        = var->label;
             ui_var->label_sfx_id = var->label_sfx_id;
+            ui_var->has_source_fl= is_connected_to_source( var );
             ui_var->vid          = var->vid;
             ui_var->ch_cnt       = var_channel_count( net.procA[i], var->label, var->label_sfx_id );
             ui_var->ch_idx       = var->chIdx;
@@ -3132,7 +3141,7 @@ namespace cw
 
       ui_net_ref->presetA = mem::allocZ<ui_preset_t>(net.presetN);
       ui_net_ref->presetN = net.presetN;
-      
+
       for(unsigned i=0; i<ui_net_ref->presetN; ++i)
       {
         ui_net_ref->presetA[i].label = net.presetA[i].label;
