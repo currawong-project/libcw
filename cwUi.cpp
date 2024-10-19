@@ -141,18 +141,32 @@ namespace cw
 
     void _store_ele_in_hash_table( ui_t* p, ele_t* e )
     {
-      unsigned parentUuId  = e->logical_parent == nullptr ? kInvalidIdx : e->logical_parent->uuId;
+      unsigned parentUuId  = e->logical_parent == nullptr ? kInvalidId : e->logical_parent->uuId;
       
       if( parentUuId == kInvalidId || e->appId == kInvalidId )
         return;
       
       unsigned short hash_idx = _gen_hash_index( parentUuId, e->appId );
-      
+
+      // if the first bucket is empty ...
       if( p->hashA[ hash_idx ].ele == nullptr )
-        p->hashA[ hash_idx ].ele = e;
+        p->hashA[ hash_idx ].ele = e; // ... then fill it
       else
       {
-        bucket_t* b = mem::allocZ<bucket_t>();
+        // otherwise look for an empty bucket
+        bucket_t* b = p->hashA[ hash_idx ].link;
+
+        for(; b!=nullptr; b=b->link)
+          if( b->ele == nullptr )
+          {
+            b->ele = e; // an empty bucket was found - fill it
+            return;
+          }
+
+        // create a new bucket
+        b = mem::allocZ<bucket_t>();
+
+        // and insert it as the second bucket
         b->link = p->hashA[ hash_idx ].link;
         b->ele  = e;
         p->hashA[hash_idx].link = b;
@@ -172,9 +186,54 @@ namespace cw
             return b->ele->uuId;
       }
       
-      return kInvalidId;
-      
+      return kInvalidId;      
     }
+
+    void _remove_ele_from_hash_table_0( ui_t* p, const ele_t* e )
+    {
+      // Note: hashA[] has hashN+1 elements
+      for(unsigned i=0; i<=hashN; ++i)
+      {
+        bucket_t* b = p->hashA + i;
+        for(; b!= nullptr; b=b->link)
+          if( b->ele == e )
+          {
+            b->ele = nullptr;
+            break;
+          }
+      }
+    }
+
+    void _remove_ele_from_hash_table( ui_t* p, const ele_t* e  )
+    {
+      if( e == nullptr )
+        return;
+      
+      unsigned parentUuId = e->logical_parent == nullptr ? kInvalidId : e->logical_parent->uuId;
+      unsigned appId      = e->appId;
+      
+      if( parentUuId == kInvalidId || appId == kInvalidId )
+      {
+        //_remove_ele_from_hash_table_0(p,e);
+        return;
+      }
+
+      unsigned hash_idx = _gen_hash_index(parentUuId,appId);
+      bucket_t* b       = p->hashA + hash_idx;
+
+      // locate the bucket to delete
+      for(; b!=nullptr; b=b->link)
+      {
+        if( b->ele == e )
+        {
+          b->ele = nullptr;
+          return;
+        }
+      }
+      
+      _remove_ele_from_hash_table_0(p,e);      
+    }
+    
 
     void _print_eles( ui_t* p )
     {
@@ -199,14 +258,14 @@ namespace cw
       return _is_child_of( parent, ele->phys_parent ) || _is_child_of( parent, ele->logical_parent );
     }
 
-    void _destroy_element( ele_t* e )
+    void _destroy_element( ui_t* p, ele_t* e )
     {
       if( e == nullptr )
         return;
-      
+
       if( e->attr != nullptr )
         e->attr->free();
-        
+
       mem::release(e->eleName);
       mem::release(e->blob);
       mem::release(e);      
@@ -219,9 +278,11 @@ namespace cw
       // free each element
       if( p->eleA != nullptr )
         for(unsigned i=0; i<p->eleN; ++i)
-          _destroy_element( p->eleA[i] );
+        {
+          _destroy_element( p, p->eleA[i] );
+          p->eleA[i] = nullptr;
+        }
       
-
       appIdMapRecd_t* m = p->appIdMap;
       while( m!=nullptr )
       {
@@ -1975,10 +2036,28 @@ cw::rc_t cw::ui::setLogLine(   handle_t h, unsigned uuId, const char* text )
 
 cw::rc_t cw::ui::emptyParent(    handle_t h, unsigned uuId )
 {
+  rc_t     rc     = kOkRC;
+  unsigned childN = elementPhysChildCount(h,uuId);
+  unsigned* childUuIdA = nullptr;
 
-  ui_t* p = _handleToPtr(h);
-  rc_t rc = kOkRC;
+  if( childN > 0 )
+  {
+    childUuIdA = mem::alloc<unsigned>(childN);
+    unsigned actualChildN = 0;
+    if((rc = elementPhysChildUuId(h,uuId,childUuIdA,childN,actualChildN)) != kOkRC )
+      goto errLabel;
+
+    assert( actualChildN == childN );
+    
+    for(unsigned i=0; i<childN; ++i)
+      if((rc = destroyElement(h,childUuIdA[i])) != kOkRC )
+      {
+        rc = cwLogError(rc,"Child element destroy failed.");
+        goto errLabel;
+      }
+  }
   
+    /*
   const char* mFmt = "{ \"op\":\"empty\", \"uuId\":%i }";
   const int   mbufN = 256;
   char        mbuf[mbufN];
@@ -1994,8 +2073,10 @@ cw::rc_t cw::ui::emptyParent(    handle_t h, unsigned uuId )
     cwLogError(rc,"'empty' msg transmit failed.");
     goto errLabel;
   }
-
+    */
+    
 errLabel:
+  mem::release(childUuIdA);
   return rc;
 }
 
@@ -2134,6 +2215,87 @@ cw::rc_t    cw::ui::clearBlob( handle_t h, unsigned uuId )
   return kOkRC;
 }
 
+unsigned cw::ui::elementChildCount( handle_t h, unsigned uuId )
+{
+  ui_t*    p = _handleToPtr(h);
+  unsigned n = 0;
+  ele_t*   ele;
+  
+  if((ele = _uuIdToEle( p, uuId)) != nullptr )
+    for(unsigned i=0; i<p->eleN; ++i)
+      if( p->eleA[i] != nullptr && _is_child_of(ele, p->eleA[i] ))
+        ++n;
+
+  return n;        
+}
+
+cw::rc_t cw::ui::elementChildUuId( handle_t h, unsigned uuId, unsigned* bufA, unsigned bufN, unsigned& actualN )
+{
+  rc_t rc = kOkRC;
+  ui_t*    p = _handleToPtr(h);
+  unsigned n = 0;
+  ele_t*   ele;
+  
+  if((ele = _uuIdToEle( p, uuId)) != nullptr )
+    for(unsigned i=0; i<p->eleN; ++i)
+      if( p->eleA[i] != nullptr && _is_child_of(ele, p->eleA[i] ))
+      {
+        if( n >= bufN )
+        {
+          rc = cwLogError(kBufTooSmallRC,"The child ele. id buffer is too small.");
+          goto errLabel;
+        }
+
+        bufA[n++] = p->eleA[i]->uuId;
+        
+      }
+
+  actualN = n;
+errLabel:
+  return rc;        
+}
+
+unsigned cw::ui::elementPhysChildCount( handle_t h, unsigned uuId )
+{
+  ui_t*    p = _handleToPtr(h);
+  unsigned n = 0;
+  ele_t*   ele;
+  
+  if((ele = _uuIdToEle( p, uuId)) != nullptr )
+    for(unsigned i=0; i<p->eleN; ++i)
+      if( p->eleA[i] != nullptr && p->eleA[i]->phys_parent == ele )
+        ++n;
+
+  return n;        
+}
+
+cw::rc_t cw::ui::elementPhysChildUuId( handle_t h, unsigned uuId, unsigned* bufA, unsigned bufN, unsigned& actualN )
+{
+  rc_t rc = kOkRC;
+  ui_t*    p = _handleToPtr(h);
+  unsigned n = 0;
+  ele_t*   ele;
+
+  actualN = 0;
+  
+  if((ele = _uuIdToEle( p, uuId)) != nullptr )
+    for(unsigned i=0; i<p->eleN; ++i)
+      if( p->eleA[i] != nullptr && p->eleA[i]->phys_parent == ele )
+      {
+        if( n >= bufN )
+        {
+          rc = cwLogError(kBufTooSmallRC,"The child ele. id buffer is too small.");
+          goto errLabel;
+        }
+
+        bufA[n++] = p->eleA[i]->uuId;
+        
+      }
+
+  actualN = n;
+errLabel:
+  return rc;        
+}
 
 cw::rc_t cw::ui::destroyElement( handle_t h, unsigned uuId )
 {
@@ -2152,27 +2314,36 @@ cw::rc_t cw::ui::destroyElement( handle_t h, unsigned uuId )
 
   // mark the element for deletion
   del_ele->destroyFl = true;
+  _remove_ele_from_hash_table(p, del_ele);      
 
-  // mark all child elements of 'del_ele' for deletion
+  
+  // mark all child elements of 'del_ele' for deletion and remove them from the hash table
   for(unsigned i=0; i<p->eleN; ++i)
-    if( p->eleA[i] != nullptr )
-      p->eleA[i]->destroyFl = _is_child_of(del_ele, p->eleA[i] );
+    if( p->eleA[i] != nullptr && p->eleA[i] != del_ele )
+      if((p->eleA[i]->destroyFl = _is_child_of(del_ele, p->eleA[i] )) == true )
+        _remove_ele_from_hash_table(p, p->eleA[i]);      
+
+  // Note that all ele's that are going to be deleted
+  // must be first removed from the hash table.
+  // The ele's can't be removed from the hash table
+  // as they are deleted because the removal fromo the hash table
+  // requires accessing the logical parent - which may have already been deleted.  
 
   // release all elements that are marked for deletion
   for(unsigned i=0; i<p->eleN; ++i)
     if( p->eleA[i] != nullptr && p->eleA[i]->destroyFl )
     {
-      _destroy_element( p->eleA[i] );
-      
+      _destroy_element( p, p->eleA[i] );
       p->eleA[i] = nullptr;        
     }
 
-  snprintf(mbuf,mbufN, "{ \"op\":\"destroy\", \"uuId\":%i }", del_ele->uuId );
+  
+  snprintf(mbuf,mbufN, "{ \"op\":\"destroy\", \"uuId\":%i }", uuId );
   _websockSend(p,kInvalidId,mbuf);
   
  errLabel:
   if(rc != kOkRC )
-    rc = cwLogError(rc,"Element delete failed.");
+    rc = cwLogError(rc,"Element delete failed: uuid:%i.",uuId);
 
   return rc;  
 }

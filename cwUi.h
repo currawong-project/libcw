@@ -166,6 +166,13 @@ namespace cw
     // Register parent/child/name app id's 
     rc_t registerAppIdMap(  handle_t h, const appIdMap_t* map, unsigned mapN );
 
+    unsigned elementChildCount( handle_t h, unsigned uuId );
+    rc_t     elementChildUuId( handle_t h, unsigned uuId, unsigned* bufA, unsigned bufN, unsigned& actualN );
+
+    unsigned elementPhysChildCount( handle_t h, unsigned uuId );
+    rc_t     elementPhysChildUuId( handle_t h, unsigned uuId, unsigned* bufA, unsigned bufN, unsigned& actualN );
+    
+    
     // Release an element an all of it's children.
     rc_t destroyElement( handle_t h, unsigned uuId );
 
