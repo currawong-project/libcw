@@ -438,6 +438,13 @@ cw::rc_t cw::time::test(const test::test_args_t& test )
   cwLogPrint("sleep %i ms\n",elapsedMs(t0));
 
 
+  
+  cw::time::fracSecondsToSpec( t0, 12.34567 );
+  double sec = specToSeconds( t0 );
+  cwLogPrint("fsecs: %f\n",sec);
+
+
+
   return kOkRC;
   
 }
