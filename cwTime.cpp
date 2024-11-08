@@ -297,6 +297,13 @@ cw::rc_t cw::time::futureMs( spec_t& ts, unsigned ms )
   return rc;   
 }
 
+void cw::time::fracSecondsToSpec( spec_t& ts, double sec )
+{
+  const unsigned long long ns_per_sec = 1000000000;
+  ts.tv_sec  = (unsigned long long)sec;
+  ts.tv_nsec = (sec - ts.tv_sec) * ns_per_sec;
+}
+
 void cw::time::secondsToSpec(      spec_t& ts, unsigned sec )
 {
   ts.tv_sec  = sec;
@@ -305,12 +312,13 @@ void cw::time::secondsToSpec(      spec_t& ts, unsigned sec )
 
 double cw::time::specToSeconds(  const spec_t& t )
 {
+  const long long ns_per_sec = 1000000000;
   spec_t ts  = t;
   double sec = ts.tv_sec;
-  while( ts.tv_nsec >= 1000000000 )
+  while( ts.tv_nsec >= ns_per_sec )
   {
     sec += 1.0;
-    ts.tv_nsec -= 1000000000;
+    ts.tv_nsec -= ns_per_sec;
   }
   
   return sec + ((double)ts.tv_nsec)/1e9;
