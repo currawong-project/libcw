@@ -11,7 +11,7 @@ libcwHDR += src/libcw/cwB23Tree.h
 libcwSRC += src/libcw/cwB23Tree.cpp
 
 libcwHDR += src/libcw/cwFileSys.h   src/libcw/cwText.h   src/libcw/cwFile.h    src/libcw/cwTime.h   src/libcw/cwLex.h   src/libcw/cwNumericConvert.h 
-libcwSRC += src/libcw/cwFileSys.cpp src/libcw/cwText.cpp src/libcw/cwFile.cpp  src/libcw/cwTime.cpp src/libcw/cwLex.cpp
+libcwSRC += src/libcw/cwFileSys.cpp src/libcw/cwText.cpp src/libcw/cwFile.cpp  src/libcw/cwTime.cpp src/libcw/cwLex.cpp src/libcw/cwNumericConvert.cpp
 
 libcwHDR += src/libcw/cwLib.h      src/libcw/cwCsv.h
 libcwSRC += src/libcw/cwLib.cpp    src/libcw/cwCsv.cpp
