@@ -95,7 +95,6 @@ namespace cw
         
         void report( handle_t h, textBuf::handle_t tbH );
         
-        rc_t test( const object_t* cfg );
       }
     }
   }

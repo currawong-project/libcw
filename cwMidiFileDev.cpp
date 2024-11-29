@@ -924,11 +924,3 @@ void cw::midi::device::file_dev::report( handle_t h, textBuf::handle_t tbH)
 }
 
 
-cw::rc_t cw::midi::device::file_dev::test( const object_t* cfg )
-{
-  rc_t        rc       = kOkRC;
-    
-  
-  return rc;
-  
-}
