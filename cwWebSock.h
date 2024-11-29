@@ -39,16 +39,16 @@ namespace cw
 
     rc_t create(
       handle_t&         h,
-      cbFunc_t          cbFunc,
-      void*             cbArg,
-      const char*       physRootDir,
-      const char*       dfltHtmlPageFn,
-      int               port,
-      const protocol_t* protocolA,
-      unsigned          protocolN,
-      unsigned          queueBlkCnt,
-      unsigned          queueBlkByteCnt,
-      bool              extraLogsFl);
+      cbFunc_t          cbFunc,           // websocket callback function 
+      void*             cbArg,            // first arg. to websocket callback function
+      const char*       physRootDir,      // path to 'dfltHtmlPageFn'
+      const char*       dfltHtmlPageFn,   // websockets enabled HTML/JS app
+      int               port,             // websocket port
+      const protocol_t* protocolA,        // incoming msg's larger than this will be broken into multiple parts
+      unsigned          protocolN,        // outgoing msg's larger than this will be broken into multiple parts
+      unsigned          queueBlkCnt,      // count of memory blocks in the outgoing non-blocking queue (See: cwNbMpScQueue)
+      unsigned          queueBlkByteCnt,  // size of each non-blocking memory block      
+      bool              extraLogsFl);     // true if extra internal websocket logs should be generated
 
     rc_t destroy( handle_t& h );
 
