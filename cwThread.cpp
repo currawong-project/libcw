@@ -3,6 +3,9 @@
 #include "cwCommonImpl.h"
 #include "cwMem.h"
 #include "cwThread.h"
+#include "cwMutex.h"
+#include "cwTest.h"
+#include "cwTime.h"
 
 #include <pthread.h>
 
@@ -25,13 +28,18 @@ namespace cw
       std::atomic<stateId_t> stateId;
       std::atomic<unsigned>  doFlags;
       
-      cbFunc_t  func;
-      void*     funcArg;
-      unsigned  stateMicros;
-      unsigned  pauseMicros;
-      unsigned  sleepMicros;
+      cbFunc_t       func;
+      void*          funcArg;
+      unsigned       stateMicros;
+      unsigned       pauseMicros;
+      unsigned       waitMicros;
       pthread_attr_t attr;
-      char* label;
+      char*          label;
+
+      mutex::handle_t mutexH;
+      unsigned        cycleIdx;  // current cycle phase
+      unsigned        cycleCnt;  // cycle phase limit
+      unsigned        execCnt;
       
     } thread_t;
 
@@ -50,9 +58,9 @@ namespace cw
         if(curStateId == stateId )
           break;
         
-        sleepUs( p->sleepMicros );
+        sleepUs( p->waitMicros );
         
-        waitTimeMicroSecs += p->sleepMicros;
+        waitTimeMicroSecs += p->waitMicros;
 
       }while( waitTimeMicroSecs < p->stateMicros );
 
@@ -83,15 +91,43 @@ namespace cw
         // if we are in the pause state
         if( curStateId == kPausedThId )
         {
-        
-          sleepUs( p->pauseMicros );
+          // unlock mutex and block on cond. var. for pauseMicros or until signaled
+          rc_t rc = waitOnCondVar(p->mutexH, false, p->pauseMicros/1000 ); 
+
+          switch(rc)
+          {
+            case kTimeOutRC:
+              // the mutex is not locked
+              break;
+              
+            case kOkRC:
+              // the cond. var. was signaled and the mutex is locked
+              break;
+              
+            default:
+              // mutex is not locked
+              rc = cwLogError(rc,"Condition variable wait failed.");
+          }
+
 
           curDoFlags = p->doFlags.load(std::memory_order_acquire);
 
-          // check if we have been requested to leave the pause state
-          if( cwIsFlag(curDoFlags,kDoRunThFl) )
+          // if exit was requested - and the mutex is unlocked
+          if( cwIsFlag(curDoFlags,kDoExitThFl) && rc != kOkRC )
           {
-            p->stateId.store(kRunningThId,std::memory_order_release);
+            // this will cause the waitOnCondVar() to
+            // immediately return at the top of the loop
+            signalCondVar(p->mutexH);
+            //mutex::lock(p->mutexH);
+          }
+          else
+          {
+            // check if we have been requested to leave the pause state
+            if( cwIsFlag(curDoFlags,kDoRunThFl) )
+            {
+              p->cycleIdx = 0;
+              p->stateId.store(kRunningThId,std::memory_order_release);
+            }
           }
         }
         else // ... we are in running state
@@ -101,12 +137,22 @@ namespace cw
             break;
 
           curDoFlags = p->doFlags.load(std::memory_order_acquire);
-          
-          // check if we have been requested to enter the pause state
-          if( cwIsFlag(curDoFlags,kDoPauseThFl) )
+
+          if( cwIsNotFlag(curDoFlags,kDoExitThFl) )
           {
-            p->stateId.store(kPausedThId,std::memory_order_release);
+            p->cycleIdx += 1;
+
+            // if a cycle limit was set then check if the limit was reached
+            bool cycles_done_fl =  p->cycleCnt > 0 && p->cycleIdx >= p->cycleCnt;
+
+            // check if we have been requested to enter the pause state
+            if(  (cwIsFlag(curDoFlags,kDoPauseThFl) || cycles_done_fl)  )
+            {
+              p->stateId.store(kPausedThId,std::memory_order_release);
+              p->doFlags.store(0,std::memory_order_release);
+            }
           }
+          
         }
         
       }while( cwIsFlag(curDoFlags,kDoExitThFl) == false );
@@ -125,6 +171,7 @@ cw::rc_t cw::thread::create( handle_t& hRef, cbFunc_t func, void* funcArg, const
 {
   rc_t rc;
   int  sysRC;
+  bool mutex_is_locked_fl = false;
 
   if((rc = destroy(hRef)) != kOkRC )
     return rc;
@@ -136,7 +183,7 @@ cw::rc_t cw::thread::create( handle_t& hRef, cbFunc_t func, void* funcArg, const
   p->stateMicros = stateMicros;
   p->pauseMicros = pauseMicros;
   p->stateId     = kPausedThId;
-  p->sleepMicros = 15000;
+  p->waitMicros = 15000;
   p->label       = mem::duplStr(label);
 
   if((sysRC = pthread_attr_init(&p->attr)) != 0)
@@ -146,6 +193,7 @@ cw::rc_t cw::thread::create( handle_t& hRef, cbFunc_t func, void* funcArg, const
   }
   else
   {
+    
     /* 
 
     // Creating the thread in a detached state should prevent it from leaking memory when 
@@ -158,11 +206,29 @@ cw::rc_t cw::thread::create( handle_t& hRef, cbFunc_t func, void* funcArg, const
     }  
     else      
     */
-      if((sysRC = pthread_create(&p->pThreadH, &p->attr, _threadCallback, (void*)p )) != 0 )
-      {
-        p->stateId = kNotInitThId;
-        rc = cwLogSysError(kOpFailRC,sysRC,"Thread create failed.");
-      }
+
+    // Create the cond. var mutex
+    if((rc = mutex::create(p->mutexH )) != kOkRC )
+    {
+      rc = cwLogError(rc,"Thread signal condition mutex create failed.");
+      goto errLabel;
+    }
+
+    // Lock the mutex so that it is already locked prior to the first call to waitOnCondVar()
+    if((rc = mutex::lock(p->mutexH)) != kOkRC )
+    {
+      rc = cwLogError(rc,"Thread signal condition mutex lock failed.");
+      goto errLabel;      
+    }
+
+    mutex_is_locked_fl = true;
+    
+    // create the thread - in paused state
+    if((sysRC = pthread_create(&p->pThreadH, &p->attr, _threadCallback, (void*)p )) != 0 )
+    {
+      p->stateId = kNotInitThId;
+      rc = cwLogSysError(kOpFailRC,sysRC,"Thread create failed.");
+    }
   }
 
   if( label != nullptr )
@@ -173,6 +239,16 @@ cw::rc_t cw::thread::create( handle_t& hRef, cbFunc_t func, void* funcArg, const
 
   
   cwLogInfo("Thread %s id:%p created.",cwStringNullGuard(label), p->pThreadH);
+  
+errLabel:
+
+  if( rc != kOkRC && p->mutexH.isValid() )
+  {
+    if( mutex_is_locked_fl )
+      mutex::unlock(p->mutexH);
+    
+    mutex::destroy(p->mutexH);
+  }
   
   return rc;
 }
@@ -200,7 +276,12 @@ cw::rc_t cw::thread::destroy( handle_t& hRef )
       
   //if( pthread_attr_destroy(&p->attr) != 0 )
   //  rc = cwLogError(kOpFailRC,"Thread attribute destroy failed.");
-    
+
+  if( p->mutexH.isValid() )
+  {
+    mutex::unlock(p->mutexH);
+    mutex::destroy(p->mutexH);
+  }
   mem::release(p->label);
   mem::release(p);
   hRef.clear();
@@ -209,7 +290,7 @@ cw::rc_t cw::thread::destroy( handle_t& hRef )
 }
 
 
-cw::rc_t cw::thread::pause( handle_t h, unsigned cmdFlags )
+cw::rc_t cw::thread::pause( handle_t h, unsigned cmdFlags, unsigned cycleCnt )
 {
   rc_t      rc         = kOkRC;
   bool      pauseFl    = cwIsFlag(cmdFlags,kPauseFl);
@@ -218,7 +299,9 @@ cw::rc_t cw::thread::pause( handle_t h, unsigned cmdFlags )
   stateId_t curStateId = p->stateId.load(std::memory_order_acquire);
   bool      isPausedFl = curStateId == kPausedThId;
   stateId_t waitId;
- 
+
+  p->cycleCnt = cycleCnt;
+  
   if( isPausedFl == pauseFl )
     return kOkRC;
 
@@ -231,20 +314,26 @@ cw::rc_t cw::thread::pause( handle_t h, unsigned cmdFlags )
   {
     p->doFlags.store(kDoRunThFl,std::memory_order_release);
     waitId = kRunningThId;
+    if((rc = signalCondVar(p->mutexH)) != kOkRC )
+    {
+      cwLogError(rc,"Cond. var. signalling failed.");
+      goto errLabel;
+    }
   }
 
   if( waitFl )
     rc = _waitForState(p,waitId);
 
+errLabel:
   if( rc != kOkRC )
-    cwLogError(rc,"Thread '%s' timed out waiting for '%s'. pauseMicros:%i stateMicros:%i sleepMicros:%i", p->label, pauseFl ? "pause" : "un-pause",p->pauseMicros,p->stateMicros,p->sleepMicros);
+    cwLogError(rc,"Thread '%s' timed out waiting for '%s'. pauseMicros:%i stateMicros:%i waitMicros:%i", p->label, pauseFl ? "pause" : "un-pause",p->pauseMicros,p->stateMicros,p->waitMicros);
   
   return rc;
   
 }
 
-cw::rc_t cw::thread::unpause( handle_t h )
-{  return pause( h, kWaitFl);  }
+cw::rc_t cw::thread::unpause( handle_t h, unsigned cycleCnt )
+{  return pause( h, kWaitFl, cycleCnt);  }
 
 cw::thread::stateId_t cw::thread::state( handle_t h )
 {
@@ -290,9 +379,22 @@ unsigned cw::thread::pauseMicros( handle_t h )
 
 namespace cw
 {
+  time::spec_t g_t0 = {0,0};
+  time_t   g_micros = 0;
+  unsigned g_n      = 0;
+  
   bool _threadTestCb( void* p )
   {
-    unsigned* ip = (unsigned*)p;
+    if( g_t0.tv_nsec != 0 )
+    {
+      time::spec_t t1;
+      time::get(t1);
+      g_micros += time::elapsedMicros(g_t0,t1);
+      g_n += 1;
+      g_t0.tv_nsec = 0;
+    }
+    
+    unsigned* ip = (unsigned*)p;    
     ip[0]++;
     return true;
   }
@@ -304,11 +406,14 @@ cw::rc_t cw::threadTest()
   unsigned val = 0;
   rc_t     rc;
   char     c   = 0;
+  unsigned cycleCnt = 0;
   
+  // create the thread
   if((rc = thread::create(h,_threadTestCb,&val,"thread_test")) != kOkRC )
     return rc;
-  
-  if((rc = thread::pause(h,0)) != kOkRC )
+
+  // start the thread
+  if((rc = thread::pause(h,0,cycleCnt)) != kOkRC )
     goto errLabel;
 
 
@@ -323,7 +428,7 @@ cw::rc_t cw::threadTest()
     switch(c)
     {
       case 'o':
-        cwLogInfo("val: 0x%x\n",val);
+        cwLogInfo("val: 0x%x %i\n",val,val);
         break;
 
       case 's':
@@ -333,7 +438,14 @@ cw::rc_t cw::threadTest()
       case 'p':
         {
           if( thread::state(h) == thread::kPausedThId )
-            rc = thread::pause(h,thread::kWaitFl);
+          {
+            time::get(g_t0);
+            // We don't set kWaitFl w/ cycleCnt>0 because we are running very
+            // few cycles - the cycles will run and the
+            // state of the thread will return to 'paused'
+            // before _waitForState() can notice the 'running' state.
+            rc = thread::pause(h, cycleCnt==0 ? thread::kWaitFl : 0,cycleCnt);
+          }
           else
             rc = thread::pause(h,thread::kPauseFl|thread::kWaitFl);
 
@@ -349,6 +461,7 @@ cw::rc_t cw::threadTest()
         break;
         
       case 'q':
+        printf("wakeup micros:%li cnt:%i avg:%li\n",g_micros,g_n,g_n>0 ? g_micros/g_n : 0);
         break;
 
         //default:

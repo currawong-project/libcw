@@ -1,6 +1,7 @@
 #include "cwCommon.h"
 #include "cwLog.h"
 #include "cwCommonImpl.h"
+#include "cwTest.h"
 #include "cwMem.h"
 #include "cwFile.h"
 #include "cwText.h"
@@ -58,7 +59,7 @@ namespace cw
         return rc;
       }
       
-      rc_t test( const cw::object_t* args )
+      rc_t test()
       {
         double hann_15[] = { 0.0, 0.04951557, 0.1882551 , 0.38873953, 0.61126047, 0.8117449,  0.95048443, 1.0,        0.95048443, 0.8117449, 0.61126047, 0.38873953, 0.1882551, 0.04951557, 0.0 };
         double hann_16[] = { 0.0, 0.04322727, 0.1654347 , 0.3454915 , 0.55226423, 0.75,       0.9045085 , 0.9890738,  0.9890738,  0.9045085, 0.75,       0.55226423, 0.3454915, 0.1654347 , 0.04322727,  0.0 };
@@ -86,7 +87,7 @@ namespace cw
 
     namespace ola
     {
-      rc_t test( const cw::object_t* args )
+      rc_t test()
       {
         typedef float sample_t;
         
@@ -149,7 +150,7 @@ namespace cw
 
     namespace shift_buf
     {
-      rc_t  test( const object_t* args )
+      rc_t  test()
       {
         rc_t rc = kOkRC;
         typedef float sample_t;
@@ -222,7 +223,7 @@ namespace cw
 
     namespace pv_anl
     {
-      rc_t  test( const object_t* args )
+      rc_t  test()
       {
         rc_t            rc         = kOkRC;
         pv_anl::fobj_t* pva        = nullptr;
@@ -252,12 +253,256 @@ namespace cw
       
     }
 
-    rc_t test( const cw::object_t* args )
+    namespace wt_osc
     {
-      wnd_func::test(args);
-      ola::test(args);
-      shift_buf::test(args);
-      return kOkRC;
+      typedef float sample_t;
+      typedef float srate_t;
+
+      rc_t test()
+      {
+        rc_t     rc    = kOkRC;
+        srate_t  srate = 8;
+        sample_t aV[]  = { 7,0,1,2,3,4,5,6,7,0,1,2,3,4,5,6,7,0 };
+        
+        struct wt_str<sample_t,srate_t> wt{
+          .tid = kLoopWtTId,
+          .cyc_per_loop = 0,
+          .aV = aV,
+          .aN = 16,
+          .rms = 0,
+          .hz  = 1,
+          .srate = srate,
+          .pad_smpN = 1,
+          .posn_smp_idx = 0
+        };
+
+        struct obj_str<sample_t,srate_t> obj;
+        init(&obj,&wt);
+
+        unsigned yN = (int)(srate*2);
+        sample_t yV[yN];
+        unsigned actual = 0;
+        process(&obj, yV, yN,actual);
+        
+        vop::print( yV, yN, "%f");
+          
+        return rc;
+      }
+      
+    }
+
+    namespace wt_seq_osc
+    {
+      typedef float sample_t;
+      typedef float srate_t;
+
+      rc_t test()
+      {
+        rc_t     rc    = kOkRC;
+        srate_t  srate = 8;
+        sample_t aV[]  = { 7,0,1,2,3,4,5,6,7,0,1,2,3,4,5,6,7,0 };
+        
+        struct wt_osc::wt_str<sample_t,srate_t> wt{
+          .tid = wt_osc::kOneShotWtTId,
+          .cyc_per_loop = 0,
+          .aV = aV,
+          .aN = 16,
+          .rms = 0,
+          .hz  = 1,
+          .srate = srate,
+          .pad_smpN = 1,
+          .posn_smp_idx = 0
+        };
+
+        struct wt_osc::wt_str<sample_t,srate_t> wt0 = wt;
+        struct wt_osc::wt_str<sample_t,srate_t> wt1 = wt;
+        struct wt_osc::wt_str<sample_t,srate_t> wt2 = wt;
+
+
+        wt1.tid = wt_osc::kLoopWtTId;
+        wt1.posn_smp_idx = 16;
+        wt2.tid = wt_osc::kLoopWtTId;
+        wt2.posn_smp_idx = 32;
+        
+        struct wt_osc::wt_str<sample_t,srate_t> wtA[] = {
+          wt0,
+          wt1,
+          wt2
+        };
+
+        struct wt_seq_osc::wt_seq_str<sample_t,srate_t> wt_seq{
+          .wtA = wtA,
+          .wtN = 3
+        };
+
+        struct wt_seq_osc::obj_str<sample_t,srate_t> obj;
+        init(&obj,&wt_seq);
+
+        unsigned yN = (int)(srate*10);
+        sample_t yV[yN];
+        unsigned actual = 0;
+        unsigned yi = 0;
+        unsigned yDspSmpCnt = 8;
+        while( yi < yN && is_init(&obj) )
+        {
+          unsigned frmSmpN = std::min(yN-yi,yDspSmpCnt);          
+          process(&obj, yV+yi, frmSmpN, actual);
+          assert( actual == frmSmpN );
+          yi += actual;
+        }
+        
+        vop::print( yV, yi, "%5.3f",nullptr,8);
+          
+        return rc;
+      }
+      
+    }
+
+    namespace multi_ch_wt_seq_osc
+    {
+      typedef float sample_t;
+      typedef float srate_t;
+
+      rc_t test()
+      {
+        rc_t     rc    = kOkRC;
+        unsigned chN   = 2;
+        srate_t  srate = 8;
+        sample_t a0V[]  = { 7,0,1,2,3,4,5,6,7,0,1,2,3,4,5,6,7,0 };
+        sample_t a1V[]  = { 17,10,11,12,13,14,15,16,17,10,11,12,13,14,15,16,17,10 };
+        sample_t a2V[]  = { 27,20,21,22,23,24,25,26,27,20,21,22,23,24,25,26,27,20 };
+        
+        struct wt_osc::wt_str<sample_t,srate_t> wt{
+          .tid = wt_osc::kOneShotWtTId,
+          .cyc_per_loop = 0,
+          .aV = a0V,
+          .aN = 16,
+          .rms = 0,
+          .hz  = 1,
+          .srate = srate,
+          .pad_smpN = 1,
+          .posn_smp_idx = 0
+        };
+
+        struct wt_osc::wt_str<sample_t,srate_t> wt0 = wt;
+        struct wt_osc::wt_str<sample_t,srate_t> wt1 = wt;
+        struct wt_osc::wt_str<sample_t,srate_t> wt2 = wt;
+
+
+        wt1.tid = wt_osc::kLoopWtTId;
+        wt1.posn_smp_idx = 16;
+        wt1.aV = a1V;
+        
+        wt2.tid = wt_osc::kLoopWtTId;
+        wt2.posn_smp_idx = 32;
+        wt2.aV = a2V;
+        
+        struct wt_osc::wt_str<sample_t,srate_t> wtA[] = {
+          wt0,
+          wt1,
+          wt2
+        };
+
+        struct wt_seq_osc::wt_seq_str<sample_t,srate_t> wt_seq{
+          .wtA = wtA,
+          .wtN = 3
+        };
+
+        
+        struct wt_seq_osc::wt_seq_str<sample_t,srate_t> chA[] = {
+          wt_seq,
+          wt_seq
+        };
+
+        struct multi_ch_wt_seq_str<sample_t,srate_t> mcs = {
+          .chA = chA,
+          .chN = chN
+        };
+        
+        
+        struct obj_str<sample_t,srate_t> obj;
+        
+        if((rc = create(&obj,chN)) != kOkRC )
+          goto errLabel;
+
+        if((rc = setup(&obj,&mcs)) != kOkRC )
+          goto errLabel;
+        else
+        {
+          unsigned yN = (int)(srate*10);
+          unsigned actual = 0;
+          unsigned yi = 0;
+          unsigned yDspSmpCnt = 8;
+
+        
+          while( yi < yN && !is_done(&obj) )
+          {
+            unsigned frmSmpN = std::min(yN-yi,yDspSmpCnt);
+            sample_t yV[frmSmpN*chN];
+          
+            if((rc = process(&obj, yV, chN, frmSmpN, actual)) != kOkRC )
+              goto errLabel;
+
+            assert( actual == frmSmpN );
+                    
+            vop::print( yV, frmSmpN*chN, "%5.3f",nullptr,8);
+                    
+            yi += actual;
+          }
+        }
+        
+      errLabel:
+        destroy(&obj);
+        
+        return rc;
+      }
+      
+    } 
+    
+    
+    rc_t test( const test::test_args_t& args )
+    {
+      rc_t rc = kOkRC;
+      
+      if( textIsEqual(args.test_label,"wnd_func") )
+      {
+        rc = wnd_func::test();
+        goto errLabel;
+      }
+
+      if( textIsEqual(args.test_label,"ola") )
+      {
+        rc = ola::test();
+        goto errLabel;
+      }
+      
+      if( textIsEqual(args.test_label,"shift_buf") )
+      {
+        rc = shift_buf::test();
+        goto errLabel;
+      }
+
+      if( textIsEqual(args.test_label,"wt_osc") )
+      {
+        rc = wt_osc::test();
+        goto errLabel;
+      }
+
+      if( textIsEqual(args.test_label,"wt_seq_osc") )
+      {
+        rc = wt_seq_osc::test();
+        goto errLabel;
+      }
+
+      if( textIsEqual(args.test_label,"multi_ch_wt_seq_osc") )
+      {
+        rc = multi_ch_wt_seq_osc::test();
+        goto errLabel;
+      }
+      
+      rc = cwLogError(kInvalidArgRC,"Unknown test case module:%s test:%s.",args.module_label,args.test_label);
+    errLabel:
+      return rc;
     }
   }
 

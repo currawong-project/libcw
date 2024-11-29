@@ -1,6 +1,7 @@
 #include "cwCommon.h"
 #include "cwLog.h"
 #include "cwCommonImpl.h"
+#include "cwTest.h"
 #include "cwMem.h"
 #include "cwTime.h"
 #include "cwObject.h"
@@ -29,7 +30,7 @@ namespace cw
         kPausedStateId,
         kPlayingStateId
       } transportStateId_t;
-      
+
       typedef struct device_str
       {
         cbFunc_t cbFunc;
@@ -54,6 +55,13 @@ namespace cw
         unsigned long long offset_micros;
         unsigned long long last_posn_micros;
         time::spec_t       start_time;
+
+        ch_msg_t* buf;
+        unsigned  bufN;
+        std::atomic<unsigned>  buf_ii;
+        std::atomic<unsigned>  buf_oi;
+
+        bool filterRtSenseFl;
         
       } device_t;
 
@@ -101,9 +109,12 @@ namespace cw
           rc = cwLogError(rc,"MIDI port thread destroy failed.");
           goto errLabel;
         }
+
         
         destroy(p->alsaDevH);
         destroy(p->fileDevH);
+
+        mem::release(p->buf);
         mem::release(p);
 
       errLabel:
@@ -173,6 +184,45 @@ namespace cw
         return true;
       }
 
+      void _callback( void* cbArg, const packet_t* pktArray, unsigned pktCnt )
+      {
+        device_t* p = (device_t*)cbArg;
+        
+        for(unsigned i=0; i<pktCnt; ++i)
+        {
+          const packet_t* pkt = pktArray + i;
+          if( pkt->msgArray != nullptr )
+          {
+            unsigned ii = p->buf_ii.load();
+            unsigned oi = p->buf_oi.load();
+            for(unsigned j=0;  j<pkt->msgCnt; ++j)
+            {
+              ch_msg_t* m = p->buf + ii;
+              m->devIdx    = pkt->devIdx;
+              m->portIdx   = pkt->portIdx;
+              m->timeStamp = pkt->msgArray[j].timeStamp;
+              m->uid       = pkt->msgArray[j].uid;
+              m->ch        = pkt->msgArray[j].ch;
+              m->status    = pkt->msgArray[j].status;
+              m->d0        = pkt->msgArray[j].d0;
+              m->d1        = pkt->msgArray[j].d1;
+
+              ii = (ii+1 == p->bufN ? 0 : ii+1);
+              if( ii == oi )
+              {
+                cwLogError(kBufTooSmallRC,"The MIDI device buffer is full %i.",p->bufN);
+              }
+            }
+
+            p->buf_ii.store(ii);
+            
+          }
+        }
+
+        if( p->cbFunc != nullptr )
+          p->cbFunc(p->cbArg,pktArray,pktCnt);
+      }
+
       
     } // device
   } // midi
@@ -188,7 +238,10 @@ cw::rc_t cw::midi::device::create( handle_t&   hRef,
                                    const char* appNameStr,
                                    const char* fileDevName,
                                    unsigned    fileDevReadAheadMicros,
-                                   unsigned    parserBufByteCnt )
+                                   unsigned    parserBufByteCnt,
+                                   bool        enableBufFl,
+                                   unsigned    bufferMsgCnt,
+                                   bool        filterRtSenseFl )
 {
   rc_t rc  = kOkRC;
   rc_t rc1 = kOkRC;  
@@ -198,7 +251,12 @@ cw::rc_t cw::midi::device::create( handle_t&   hRef,
 
   device_t* p = mem::allocZ<device_t>();
   
-  if((rc = create( p->alsaDevH, cbFunc, cbArg, parserBufByteCnt, appNameStr )) != kOkRC )
+  if((rc = create( p->alsaDevH,
+                   enableBufFl ? _callback : cbFunc,
+                   enableBufFl ? p         : cbArg,
+                   parserBufByteCnt,
+                   appNameStr,
+                   filterRtSenseFl)) != kOkRC )
   {
     rc = cwLogError(rc,"ALSA MIDI device create failed.");
     goto errLabel;
@@ -206,16 +264,29 @@ cw::rc_t cw::midi::device::create( handle_t&   hRef,
 
   p->alsa_dev_cnt = count(p->alsaDevH);
 
-  if((rc = create( p->fileDevH, cbFunc, cbArg, p->alsa_dev_cnt, filePortLabelA, max_file_cnt, fileDevName, fileDevReadAheadMicros )) != kOkRC )
+  if((rc = create( p->fileDevH,
+                   enableBufFl ? _callback : cbFunc,
+                   enableBufFl ? p         : cbArg,
+                   p->alsa_dev_cnt,
+                   filePortLabelA,
+                   max_file_cnt,
+                   fileDevName,
+                   fileDevReadAheadMicros )) != kOkRC )
   {
     rc = cwLogError(rc,"MIDI file device create failed.");
     goto errLabel;
   }
 
+  p->cbFunc        = cbFunc;
+  p->cbArg         = cbArg;
   p->file_dev_cnt  = count(p->fileDevH);    
   p->total_dev_cnt = p->alsa_dev_cnt + p->file_dev_cnt;
   p->alsaPollfdA   = pollFdArray(p->alsaDevH,p->alsaPollfdN);
   p->fileDevStateId = kStoppedStateId;
+  p->buf            = mem::allocZ<ch_msg_t>( bufferMsgCnt );
+  p->bufN           = bufferMsgCnt;
+  p->buf_ii.store(0);
+  p->buf_oi.store(0);
   
   if((rc = thread::create(p->threadH,
                           _thread_func,
@@ -257,14 +328,20 @@ cw::rc_t cw::midi::device::create( handle_t&       h,
   const char*     fileDevName            = "file_dev";
   unsigned        fileDevReadAheadMicros = 3000;
   unsigned        parseBufByteCnt        = 1024;
+  bool            enableBufFl            = false;
+  unsigned        bufMsgCnt              = 0;
   const object_t* file_ports             = nullptr;
   const object_t* port                   = nullptr;
+  bool            filterRtSenseFl        = true;;
 
   if((rc = args->getv("appNameStr",appNameStr,
                       "fileDevName",fileDevName,
                       "fileDevReadAheadMicros",fileDevReadAheadMicros,
                       "parseBufByteCnt",parseBufByteCnt,
-                      "file_ports",file_ports)) != kOkRC )
+                      "enableBufFl",enableBufFl,
+                      "bufferMsgCnt",bufMsgCnt,
+                      "file_ports",file_ports,
+                      "filterRtSenseFl",filterRtSenseFl)) != kOkRC )
   {
     rc = cwLogError(rc,"MIDI port parse args. failed.");
   }
@@ -290,7 +367,18 @@ cw::rc_t cw::midi::device::create( handle_t&       h,
       }
     }
     
-    rc = create(h,cbFunc,cbArg,labelArray,fpi,appNameStr,fileDevName,fileDevReadAheadMicros,parseBufByteCnt);
+    rc = create(h,
+                cbFunc,
+                cbArg,
+                labelArray,
+                fpi,
+                appNameStr,
+                fileDevName,
+                fileDevReadAheadMicros,
+                parseBufByteCnt,
+                enableBufFl,
+                bufMsgCnt,
+                filterRtSenseFl);
     
   }
   
@@ -437,15 +525,15 @@ const char* cw::midi::device::portName(   handle_t h, unsigned devIdx, unsigned 
   const char* name       = nullptr;
 
   if((alsaDevIdx   = _devIdxToAlsaDevIdx(p,devIdx)) != kInvalidIdx )
-    name           = portName(p->alsaDevH,alsaDevIdx,flags,portIdx);
+    name = portName(p->alsaDevH,alsaDevIdx,flags,portIdx);
   else
     if((fileDevIdx = _devIdxToFileDevIdx(p,devIdx)) != kInvalidIdx )
-      name         = portName(p->fileDevH,fileDevIdx,flags,portIdx);
+      name = portName(p->fileDevH,fileDevIdx,flags,portIdx);
     else
       cwLogError(kInvalidArgRC,"The device index %i is not valid.");
 
   if( name == nullptr )
-    cwLogError(kOpFailRC,"The access to port name on device index %i port index %i failed.",devIdx,portIdx);
+    cwLogError(kOpFailRC,"The access to %s port name on device index %i port index %i failed.",flags & kInMpFl ? "input" : "output", devIdx,portIdx);
 
   return name;  
 }
@@ -573,7 +661,7 @@ errLabel:
 cw::rc_t cw::midi::device::setEndMsg( handle_t h, unsigned devIdx, unsigned portIdx, unsigned msgIdx )
 {
   rc_t      rc = kOkRC;
-  device_t* p          = _handleToPtr(h);
+  device_t* p  = _handleToPtr(h);
   
   if(_devIdxToFileDevIdx(p,devIdx) == kInvalidIdx )
   {
@@ -588,6 +676,43 @@ cw::rc_t cw::midi::device::setEndMsg( handle_t h, unsigned devIdx, unsigned port
 errLabel:
   return rc;
 
+}
+
+
+unsigned cw::midi::device::maxBufferMsgCount( handle_t h )
+{
+  device_t* p  = _handleToPtr(h);
+  return p->bufN;
+}
+
+const cw::midi::ch_msg_t* cw::midi::device::getBuffer(   handle_t h, unsigned& msgCntRef )
+{
+  device_t* p  = _handleToPtr(h);
+  unsigned  ii = p->buf_ii.load();
+  unsigned  oi = p->buf_oi.load();
+  ch_msg_t* m  = nullptr;
+  
+  msgCntRef  = ii >= oi ? ii-oi : p->bufN - oi;
+  
+  if( msgCntRef > 0 )
+    m = p->buf + oi;
+  
+  return m;
+}
+
+cw::rc_t            cw::midi::device::clearBuffer( handle_t h, unsigned msgCnt )
+{
+  if( msgCnt > 0 )
+  {
+    device_t* p  = _handleToPtr(h);
+    unsigned oi = p->buf_oi.load();
+    
+    oi = (oi + msgCnt) % p->bufN;
+  
+    p->buf_oi.store(oi);
+  }
+  
+  return kOkRC;
 }
 
 
@@ -668,6 +793,8 @@ cw::rc_t cw::midi::device::report( handle_t h )
     goto errLabel;
 
   report(h,tbH);
+
+  printf("%s\n",text(tbH));
   
 errLabel:
   destroy(tbH);

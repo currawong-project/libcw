@@ -1,6 +1,7 @@
 #include "cwCommon.h"
 #include "cwLog.h"
 #include "cwCommonImpl.h"
+#include "cwTest.h"
 #include "cwMem.h"
 #include "cwWebSock.h"
 #include "cwThread.h"
@@ -56,7 +57,10 @@ cw::rc_t cw::websockSrv::create(
     int                        port,
     const websock::protocol_t* protocolA,
     unsigned                   protocolN,
-    unsigned                   timeOutMs )
+    unsigned                   timeOutMs,
+    unsigned                   queueBlkCnt,
+    unsigned                   queueBlkByteCnt,
+    bool                       extraLogsFl )
 {
   rc_t rc;
   if((rc = destroy(h)) != kOkRC )
@@ -64,7 +68,7 @@ cw::rc_t cw::websockSrv::create(
 
   websockSrv_t* p = mem::allocZ<websockSrv_t>();
 
-  if((rc = websock::create( p->_websockH, cbFunc, cbArg, physRootDir, dfltHtmlPageFn, port, protocolA, protocolN )) != kOkRC )
+  if((rc = websock::create( p->_websockH, cbFunc, cbArg, physRootDir, dfltHtmlPageFn, port, protocolA, protocolN, queueBlkCnt, queueBlkByteCnt, extraLogsFl )) != kOkRC )
     goto errLabel;
   
 
@@ -176,6 +180,9 @@ cw::rc_t cw::websockSrvTest( const object_t* cfg )
   int                  port           = 5687;
   unsigned             rcvBufByteN    = 128;
   unsigned             xmtBufByteN    = 128;
+  unsigned             queueBlkCnt    = 3;
+  unsigned             queueBlkByteCnt= 4096;
+  bool                 extraLogsFl    = true;
   appCtx_t             appCtx;
 
   enum
@@ -198,7 +205,7 @@ cw::rc_t cw::websockSrvTest( const object_t* cfg )
   unsigned protocolN = sizeof(protocolA)/sizeof(protocolA[0]);
 
   
-  if((rc = websockSrv::create( h, websockCb, &appCtx, physRootDir, dfltHtmlPageFn, port, protocolA, protocolN, timeOutMs )) != kOkRC )
+  if((rc = websockSrv::create( h, websockCb, &appCtx, physRootDir, dfltHtmlPageFn, port, protocolA, protocolN, timeOutMs, queueBlkCnt, queueBlkByteCnt, extraLogsFl )) != kOkRC )
     return rc;
 
   appCtx.wsH        = websockSrv::websockHandle(h);

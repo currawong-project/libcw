@@ -114,6 +114,12 @@ namespace cw
       // Read a MIDI file.
       rc_t open( handle_t& hRef, const char* fn );
 
+      // Read from a CSV.
+      // Columns: "uid","tpQN","bpm","dticks","ch","status","d0","d1"
+      // tpQN = ticks per quarter note should be given on the first line. (Defaults to 1260).
+      // bpm = beats per minute should be given on the first line. (Defaults to 60).
+      rc_t open_csv( handle_t& hRef, const char* csv_fname );
+      
       // Create an empty MIDI file object.
       rc_t create( handle_t& hRef, unsigned trkN, unsigned ticksPerQN );
 

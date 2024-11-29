@@ -9,7 +9,13 @@ namespace cw
         
         typedef handle< struct alsa_device_str> handle_t;
         
-        rc_t create( handle_t& h, cbFunc_t cbFunc, void* cbDataPtr, unsigned parserBufByteCnt, const char* appNameStr );
+        rc_t create( handle_t&   h,
+                     cbFunc_t    cbFunc,
+                     void*       cbDataPtr,
+                     unsigned    parserBufByteCnt,
+                     const char* appNameStr,
+                     bool        filterRtSenseFl );
+        
         rc_t destroy( handle_t& h);
         bool isInitialized( handle_t h );
 

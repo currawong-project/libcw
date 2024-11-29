@@ -17,10 +17,10 @@ namespace cw
       
       if( label != nullptr )
       {
-        printf("%s : ",label);
+        cwLogPrint("%s : ",label);
         if( colN && n > colN )
         {
-          printf("\n");
+          cwLogPrint("\n");
           newline_fl = true;
         }
       }
@@ -30,19 +30,19 @@ namespace cw
       
       for(unsigned i=0; i<n; ++i)
       {
-        printf(fmt,v0[i]);
+        cwLogPrint(fmt,v0[i]);
 
         newline_fl = false;
         
-        if( (n+1) % colN == 0 )
+        if( (i+1) % colN == 0 )
         {
-          printf("\n");
+          cwLogPrint("\n");
           newline_fl = true;
         }
       }
 
       if( !newline_fl )
-        printf("\n");
+        cwLogPrint("\n");
     }
 
 
@@ -72,6 +72,9 @@ namespace cw
       void zero( T* v, unsigned n )
     { fill(v,n,0); }
 
+    template< typename T >
+      void ones( T* v, unsigned n )
+    { fill(v,n,1); }
 
     //==================================================================================================================
     // Compare
@@ -168,6 +171,30 @@ namespace cw
         v0[i] = (v1[i] * scale_1) +  (v2[i] * scale_2);
       
       return v0;
+    }
+
+
+    //==================================================================================================================
+    // find, count
+    //
+    
+    template< typename T0, typename T1 >
+    unsigned find( const T0* v, unsigned n, const T1& m )
+    {
+      for(unsigned i=0; i<n; ++i)
+        if( v[i] == m )
+          return i;
+      return kInvalidIdx;
+    }
+
+    template< typename T0, typename T1 >
+    unsigned count( const T0* v, unsigned n, const T1& m )
+    {
+      unsigned cnt = 0;
+      for(unsigned i=0; i<n; ++i)
+        if( v[i] == m )
+          cnt += 1;
+      return cnt;
     }
     
 
@@ -301,6 +328,13 @@ namespace cw
     }
 
     template< typename T0, typename T1 >
+    void sub( const T0& scalar, T1* v0, unsigned n )
+    {
+      for(unsigned i=0; i<n; ++i)
+        v0[i] = scalar - v0[i];
+    }
+    
+    template< typename T0, typename T1 >
       void sub( T0* y0, const T0* v0, const T1& scalar, unsigned n )
     {
       for(unsigned i=0; i<n; ++i)
@@ -432,8 +466,8 @@ namespace cw
 
     
 
-    template< typename T >
-      unsigned phasor( T* y, unsigned n, T srate, T hz, unsigned init_idx=0 )
+    template< typename T0, typename T1, typename T2 >
+      unsigned phasor( T0* y, unsigned n, T1 srate, T2 hz, unsigned init_idx=0 )
     {
       for(unsigned i=init_idx; i<n; ++i)
         y[i] = (M_PI*2*hz*i) / srate;
@@ -441,8 +475,8 @@ namespace cw
       return init_idx + n;
     }
 
-    template< typename T >
-      unsigned sine( T* y, unsigned n, T srate, T hz, unsigned init_idx=0 )
+    template< typename T0, typename T1, typename T2 >
+      unsigned sine( T0* y, unsigned n, T1 srate, T2 hz, unsigned init_idx=0 )
     {
       init_idx = phasor(y,n,srate,hz,init_idx);
 
@@ -545,8 +579,7 @@ namespace cw
   
     }
     
-    
-
+    rc_t test( const test::test_args_t& args );
     
   }
 }

@@ -1,6 +1,7 @@
 #include "cwCommon.h"
 #include "cwLog.h"
 #include "cwCommonImpl.h"
+#include "cwTest.h"
 #include "cwMem.h"
 #include "cwTime.h"
 #include "cwText.h"
@@ -53,7 +54,8 @@ namespace cw
         {
           unsigned         devCnt;           // MIDI devices attached to this computer
           dev_t*           devArray;
-          cbFunc_t         cbFunc;           // MIDI input application callback 
+          cbFunc_t         cbFunc;           // MIDI input application callback
+          bool             filterRtSenseFl;
           void*            cbDataPtr;
           snd_seq_t*       h;                // ALSA system sequencer handle
           snd_seq_addr_t   alsa_addr;        // ALSA client/port address representing the application
@@ -71,6 +73,7 @@ namespace cw
           bool                  latency_meas_enable_in_fl;
           bool                  latency_meas_enable_out_fl;
           latency_meas_result_t latency_meas_result;
+
         
         } alsa_device_t;
 
@@ -253,7 +256,7 @@ namespace cw
               case SND_SEQ_EVENT_START:     status = kSysRtStartMdId; break;
               case SND_SEQ_EVENT_CONTINUE:  status = kSysRtContMdId;  break;          
               case SND_SEQ_EVENT_STOP:      status = kSysRtStopMdId;  break;
-              case SND_SEQ_EVENT_SENSING:   status = kSysRtSenseMdId; break;
+              case SND_SEQ_EVENT_SENSING:   status = p->filterRtSenseFl ? 0 : kSysRtSenseMdId; break;
               case SND_SEQ_EVENT_RESET:     status = kSysRtResetMdId; break;
 
               case SND_SEQ_EVENT_SYSEX: 
@@ -283,6 +286,7 @@ namespace cw
               time::spec_t ts;
               ts.tv_sec = ev->time.time.tv_sec;
               ts.tv_nsec = ev->time.time.tv_nsec;
+
               parser::midiTriple(p->prvRcvPort->parserH, &ts, status | ch, d0, d1 );
 
               p->prvTimeMicroSecs  = microSecs1;
@@ -439,7 +443,7 @@ namespace cw
               {
                 assert(j<p->devArray[i].iPortCnt);
                 p->devArray[i].iPortArray[j].inputFl   = true;
-                p->devArray[i].iPortArray[j].nameStr   = mem::duplStr(cwStringNullGuard(port));
+                p->devArray[i].iPortArray[j].nameStr   = mem::duplStr(port==nullptr ? "<None>" : port);
                 p->devArray[i].iPortArray[j].alsa_type = type;
                 p->devArray[i].iPortArray[j].alsa_cap  = caps;
                 p->devArray[i].iPortArray[j].alsa_addr = addr;
@@ -461,7 +465,7 @@ namespace cw
               {
                 assert(k<p->devArray[i].oPortCnt);
                 p->devArray[i].oPortArray[k].inputFl   = false;
-                p->devArray[i].oPortArray[k].nameStr   = mem::duplStr(cwStringNullGuard(port));
+                p->devArray[i].oPortArray[k].nameStr   = mem::duplStr(port==nullptr ? "<None>" : port);
                 p->devArray[i].oPortArray[k].alsa_type = type;
                 p->devArray[i].oPortArray[k].alsa_cap  = caps;
                 p->devArray[i].oPortArray[k].alsa_addr = addr;
@@ -475,6 +479,11 @@ namespace cw
                 ++k;
               }
             }
+
+            // The capabilities of some ports may not have been as expected
+            // decrease the in/out port count to account for these ports
+            p->devArray[i].iPortCnt = j;
+            p->devArray[i].oPortCnt = k;
           }
 
         errLabel:
@@ -592,7 +601,12 @@ namespace cw
 } // cw
 
 
-cw::rc_t cw::midi::device::alsa::create(  handle_t& h, cbFunc_t cbFunc, void* cbArg, unsigned parserBufByteCnt, const char* appNameStr )
+cw::rc_t cw::midi::device::alsa::create(  handle_t&   h,
+                                          cbFunc_t    cbFunc,
+                                          void*       cbArg,
+                                          unsigned    parserBufByteCnt,
+                                          const char* appNameStr,
+                                          bool        filterRtSenseFl )
 {
   rc_t rc  = kOkRC;
   int  arc = 0;
@@ -624,8 +638,9 @@ cw::rc_t cw::midi::device::alsa::create(  handle_t& h, cbFunc_t cbFunc, void* cb
   p->alsa_fd    = mem::allocZ<struct pollfd>(p->alsa_fdCnt);
   snd_seq_poll_descriptors(p->h, p->alsa_fd, p->alsa_fdCnt, POLLIN);
 
-  p->cbFunc    = cbFunc;
-  p->cbDataPtr = cbArg;
+  p->cbFunc          = cbFunc;
+  p->cbDataPtr       = cbArg;
+  p->filterRtSenseFl = filterRtSenseFl;
 
   // start the sequencer queue
   if((arc = snd_seq_start_queue(p->h, p->alsa_queue, NULL)) < 0 )
@@ -736,7 +751,7 @@ const char*    cw::midi::device::alsa::portName(   handle_t h, unsigned devIdx, 
   if( cwIsFlag(flags,kInMpFl) )
   {
     if( portIdx >= p->devArray[devIdx].iPortCnt )
-      return 0;
+      return nullptr;
 
     return p->devArray[devIdx].iPortArray[portIdx].nameStr;
   }
@@ -782,7 +797,7 @@ cw::rc_t  cw::midi::device::alsa::send( handle_t h, unsigned devIdx, unsigned po
   rc_t            rc = kOkRC;
   snd_seq_event_t ev;
   int             arc;
-  alsa_device_t*       p  = _handleToPtr(h);
+  alsa_device_t*  p  = _handleToPtr(h);
 
   assert( p!=NULL && devIdx < p->devCnt && portIdx < p->devArray[devIdx].oPortCnt );
 
@@ -796,8 +811,11 @@ cw::rc_t  cw::midi::device::alsa::send( handle_t h, unsigned devIdx, unsigned po
   snd_seq_ev_set_direct(&ev);
   snd_seq_ev_set_fixed(&ev);
 
+  uint8_t status_wo_ch = status;
+  if( midi::isChStatus(status) )
+    status_wo_ch = status & 0xf0;
   
-  switch( status & 0xf0 )
+  switch( status_wo_ch )
   {
     case kNoteOffMdId:  
       ev.type = SND_SEQ_EVENT_NOTEOFF;    
@@ -854,8 +872,32 @@ cw::rc_t  cw::midi::device::alsa::send( handle_t h, unsigned devIdx, unsigned po
       }
       break;
 
+    case kSysRtClockMdId:
+      ev.type = SND_SEQ_EVENT_CLOCK;
+      break;
+
+    case kSysRtStartMdId:
+      ev.type =SND_SEQ_EVENT_START;
+      break;
+
+    case kSysRtContMdId:
+      ev.type = SND_SEQ_EVENT_CONTINUE;
+      break;
+
+    case kSysRtStopMdId:
+      ev.type = SND_SEQ_EVENT_STOP;
+      break;
+
+    case kSysRtSenseMdId:
+      ev.type = SND_SEQ_EVENT_SENSING;
+      break;
+
+    case kSysRtResetMdId:
+      ev.type = SND_SEQ_EVENT_RESET;
+      break;      
+
     default:
-      rc = _cmMpErrMsg1(kInvalidArgRC,0,"Cannot send an invalid MIDI status byte:0x%x.",status & 0xf0);
+      rc = _cmMpErrMsg1(kInvalidArgRC,0,"Cannot send an invalid MIDI status byte:0x%x.",status);
       goto errLabel;
   }
 

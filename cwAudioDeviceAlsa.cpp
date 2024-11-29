@@ -1,8 +1,10 @@
 #include "cwCommon.h"
 #include "cwLog.h"
 #include "cwCommonImpl.h"
+#include "cwTest.h"
 #include "cwMem.h"
 #include "cwTime.h"
+#include "cwText.h"
 #include "cwTextBuf.h"
 #include "cwThread.h"
 #include "cwAudioDevice.h"
@@ -1301,7 +1303,10 @@ cw::rc_t cw::audio::device::alsa::create( handle_t& hRef, struct driver_str*& dr
           // form the device name and desc. string
           dr.nameStr = mem::printf(dr.nameStr,"hw:%i,%i,%i",cardNum,devNum,i);
           dr.descStr = mem::printf(dr.descStr,"%s %s",cardNamePtr,snd_pcm_info_get_name(info));
-         
+
+          // it's possible that trailing whitespace is left in the desc
+          removeTrailingWhitespace( dr.descStr );
+
           // attempt to open the sub-device
           if((err = _devOpen(&pcmH,dr.nameStr,inputFl)) < 0 )
             _alsaSetupError(err,inputFl,&dr,"Unable to open the PCM handle");

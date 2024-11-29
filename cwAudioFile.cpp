@@ -1,6 +1,7 @@
 #include "cwCommon.h"
 #include "cwLog.h"
 #include "cwCommonImpl.h"
+#include "cwTest.h"
 #include "cwMem.h"
 #include "cwFile.h"
 #include "cwObject.h"
@@ -1281,7 +1282,7 @@ namespace cw
     {
       rc_t rc = kOkRC;
       
-      // Determine the size of the temporary buffer used for deinterleaving, type conversion and file writing
+      // Determine the size of the temporary buffer used for interleaving, type conversion and file writing
       unsigned bufFrmCnt = std::min(srcBufFrmCnt,4096u);
       unsigned bufSmpCnt = bufFrmCnt*chCnt;
 
@@ -1295,10 +1296,10 @@ namespace cw
         // copy as many samples as are available into the temp. buffer
         unsigned copyFrmN = std::min( bufFrmCnt, srcBufFrmCnt - sfi );
 
-        // deinterleave the source channel signal arrays into the temp buffer
+        // interleave the source channel signal arrays into the temp buffer
         for(unsigned fi=0,si=0; fi<copyFrmN; ++fi)
-          for(unsigned sci=0; sci<chCnt; ++sci,++si)
-            sbuf[si] = srcPtrPtr[sci][sfi+fi];
+          for(unsigned sci=0; sci<chCnt; ++sci)
+            sbuf[si++] = srcPtrPtr[sci][sfi+fi];
           
         // convert the sample data types and write the result to the output file
         if((rc = _write_samples(p,copyFrmN*chCnt,sbuf,dbuf)) != kOkRC )

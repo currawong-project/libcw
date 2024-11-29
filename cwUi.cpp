@@ -1,6 +1,7 @@
 #include "cwCommon.h"
 #include "cwLog.h"
 #include "cwCommonImpl.h"
+#include "cwTest.h"
 #include "cwMem.h"
 #include "cwTime.h"
 #include "cwFileSys.h"
@@ -46,7 +47,8 @@ namespace cw
       { "number",    false },
       { "progress",  false },
       { "log",       false },
-      { "list",      false },
+      { "vlist",      false },
+      { "hlist",     false },
       {  nullptr,    false },
     };
     
@@ -117,7 +119,7 @@ namespace cw
       unsigned sentMsgN;
       unsigned recvMsgN;
 
-      bucket_t hashA[ hashN ];
+      bucket_t hashA[ hashN+1 ]; 
 
     } ui_t;
 
@@ -129,24 +131,42 @@ namespace cw
       assert( parentUuId != kInvalidId && appId != kInvalidId );
       unsigned hc = parentUuId + cwSwap32(appId);
       
-      return (unsigned short)(((hc & 0xffff0000)>>16) + (hc & 0x0000ffff));
+      unsigned short hash_idx = (unsigned short)(((hc & 0xffff0000)>>16) + (hc & 0x0000ffff));
+
+      assert( hash_idx <= hashN );
+      
+      return hash_idx;
     }
     
 
     void _store_ele_in_hash_table( ui_t* p, ele_t* e )
     {
-      unsigned parentUuId  = e->logical_parent == nullptr ? kInvalidIdx : e->logical_parent->uuId;
+      unsigned parentUuId  = e->logical_parent == nullptr ? kInvalidId : e->logical_parent->uuId;
       
       if( parentUuId == kInvalidId || e->appId == kInvalidId )
         return;
       
       unsigned short hash_idx = _gen_hash_index( parentUuId, e->appId );
-      
+
+      // if the first bucket is empty ...
       if( p->hashA[ hash_idx ].ele == nullptr )
-        p->hashA[ hash_idx ].ele = e;
+        p->hashA[ hash_idx ].ele = e; // ... then fill it
       else
       {
-        bucket_t* b = mem::allocZ<bucket_t>();
+        // otherwise look for an empty bucket
+        bucket_t* b = p->hashA[ hash_idx ].link;
+
+        for(; b!=nullptr; b=b->link)
+          if( b->ele == nullptr )
+          {
+            b->ele = e; // an empty bucket was found - fill it
+            return;
+          }
+
+        // create a new bucket
+        b = mem::allocZ<bucket_t>();
+
+        // and insert it as the second bucket
         b->link = p->hashA[ hash_idx ].link;
         b->ele  = e;
         p->hashA[hash_idx].link = b;
@@ -162,13 +182,58 @@ namespace cw
         bucket_t* b = p->hashA + hash_idx;
 
         for(; b!=nullptr; b=b->link)
-          if( b->ele->appId==appId && b->ele->logical_parent->uuId==parentUuId && (chanId==kInvalidId || b->ele->chanId==chanId) )
+          if( b->ele != nullptr && b->ele->logical_parent!=nullptr && b->ele->appId==appId && b->ele->logical_parent->uuId==parentUuId && (chanId==kInvalidId || b->ele->chanId==chanId) )
             return b->ele->uuId;
       }
       
-      return kInvalidId;
-      
+      return kInvalidId;      
     }
+
+    void _remove_ele_from_hash_table_0( ui_t* p, const ele_t* e )
+    {
+      // Note: hashA[] has hashN+1 elements
+      for(unsigned i=0; i<=hashN; ++i)
+      {
+        bucket_t* b = p->hashA + i;
+        for(; b!= nullptr; b=b->link)
+          if( b->ele == e )
+          {
+            b->ele = nullptr;
+            break;
+          }
+      }
+    }
+
+    void _remove_ele_from_hash_table( ui_t* p, const ele_t* e  )
+    {
+      if( e == nullptr )
+        return;
+      
+      unsigned parentUuId = e->logical_parent == nullptr ? kInvalidId : e->logical_parent->uuId;
+      unsigned appId      = e->appId;
+      
+      if( parentUuId == kInvalidId || appId == kInvalidId )
+      {
+        //_remove_ele_from_hash_table_0(p,e);
+        return;
+      }
+
+      unsigned hash_idx = _gen_hash_index(parentUuId,appId);
+      bucket_t* b       = p->hashA + hash_idx;
+
+      // locate the bucket to delete
+      for(; b!=nullptr; b=b->link)
+      {
+        if( b->ele == e )
+        {
+          b->ele = nullptr;
+          return;
+        }
+      }
+      
+      _remove_ele_from_hash_table_0(p,e);      
+    }
+    
 
     void _print_eles( ui_t* p )
     {
@@ -193,14 +258,14 @@ namespace cw
       return _is_child_of( parent, ele->phys_parent ) || _is_child_of( parent, ele->logical_parent );
     }
 
-    void _destroy_element( ele_t* e )
+    void _destroy_element( ui_t* p, ele_t* e )
     {
       if( e == nullptr )
         return;
-      
+
       if( e->attr != nullptr )
         e->attr->free();
-        
+
       mem::release(e->eleName);
       mem::release(e->blob);
       mem::release(e);      
@@ -213,9 +278,11 @@ namespace cw
       // free each element
       if( p->eleA != nullptr )
         for(unsigned i=0; i<p->eleN; ++i)
-          _destroy_element( p->eleA[i] );
+        {
+          _destroy_element( p, p->eleA[i] );
+          p->eleA[i] = nullptr;
+        }
       
-
       appIdMapRecd_t* m = p->appIdMap;
       while( m!=nullptr )
       {
@@ -223,6 +290,18 @@ namespace cw
         mem::release(m->eleName);
         mem::release(m);
         m = m0;
+      }
+
+      // Note: hashA[] has hashN+1 elements
+      for(unsigned i=0; i<=hashN; ++i)
+      {
+        bucket_t* b = p->hashA[i].link;
+        while( b!=nullptr )
+        {
+          bucket_t* b0 = b->link;
+          mem::release(b);
+          b = b0;
+        }
       }
 
       mem::release(p->sessA);
@@ -693,7 +772,7 @@ namespace cw
 
 
       // if the given appId was not valid ...
-      if( appId == kInvalidId && parent != nullptr )
+      if( appId == kInvalidId && parent != nullptr && eleName != nullptr )
       {
         appIdMapRecd_t* m;
         
@@ -831,7 +910,7 @@ namespace cw
     
           
     
-    // 'od' is an object dictionary where each pair in the dictionary has
+    // 'po' is an object dictionary where each pair in the dictionary has
     // the form: 'eleType':{ <object> }    
     rc_t _createElementsFromChildList( ui_t* p, const object_t* po, unsigned wsSessId, ele_t* parentEle, unsigned chanId )
     {
@@ -860,7 +939,7 @@ namespace cw
       return rc;
     }
 
-    // This functions assumes that the cfg object 'o' contains a field named: 'parent'
+    // This functions assumes that parentUuId is valid or the cfg object 'o' contains a field named: 'parent'
     // which contains the element name of the parent node.
     rc_t _createFromObj( ui_t* p, const object_t* o, unsigned wsSessId, unsigned parentUuId, unsigned chanId )
     {
@@ -1839,8 +1918,29 @@ cw::rc_t cw::ui::createProg(  handle_t h, unsigned& uuIdRef, unsigned parentUuId
 cw::rc_t cw::ui::createLog(   handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
 { return _createOneEle( _handleToPtr(h), uuIdRef, "log", kInvalidId, parentUuId, eleName, appId, chanId, clas, title);  }
 
-cw::rc_t cw::ui::createList( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
+cw::rc_t cw::ui::createVList( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
 { return _createOneEle( _handleToPtr(h), uuIdRef, "list", kInvalidId, parentUuId, eleName, appId, chanId, clas, title);  }
+
+cw::rc_t cw::ui::createHList( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "hlist", kInvalidId, parentUuId, eleName, appId, chanId, clas, title);  }
+
+cw::rc_t cw::ui::setTitle( handle_t h, unsigned uuId, const char* title )
+{
+  rc_t rc = kOkRC;
+  ui_t* p = _handleToPtr(h);
+  
+  const char* mFmt = "{ \"op\":\"set\",  \"type\":\"title\", \"uuId\":%i, \"value\":\"%s\" }";
+  const int   mbufN = 256;
+  char        mbuf[mbufN];
+  
+  if( snprintf(mbuf,mbufN,mFmt,uuId,title) >= mbufN-1 )
+    return cwLogError(kBufTooSmallRC,"The msg buffer is too small.");
+  
+  rc = _websockSend(p,kInvalidId,mbuf);
+
+  return rc;
+}
+
 
 cw::rc_t cw::ui::setNumbRange( handle_t h, unsigned uuId, double minValue, double maxValue, double stepValue, unsigned decPl, double value )
 {
@@ -1933,6 +2033,53 @@ cw::rc_t cw::ui::setLogLine(   handle_t h, unsigned uuId, const char* text )
   
   return rc;
 }
+
+cw::rc_t cw::ui::emptyParent(    handle_t h, unsigned uuId )
+{
+  rc_t     rc     = kOkRC;
+  unsigned childN = elementPhysChildCount(h,uuId);
+  unsigned* childUuIdA = nullptr;
+
+  if( childN > 0 )
+  {
+    childUuIdA = mem::alloc<unsigned>(childN);
+    unsigned actualChildN = 0;
+    if((rc = elementPhysChildUuId(h,uuId,childUuIdA,childN,actualChildN)) != kOkRC )
+      goto errLabel;
+
+    assert( actualChildN == childN );
+    
+    for(unsigned i=0; i<childN; ++i)
+      if((rc = destroyElement(h,childUuIdA[i])) != kOkRC )
+      {
+        rc = cwLogError(rc,"Child element destroy failed.");
+        goto errLabel;
+      }
+  }
+  
+    /*
+  const char* mFmt = "{ \"op\":\"empty\", \"uuId\":%i }";
+  const int   mbufN = 256;
+  char        mbuf[mbufN];
+      
+  if( snprintf(mbuf,mbufN,mFmt,uuId) >= mbufN-1 )
+  {
+    rc = cwLogError(kBufTooSmallRC,"The msg buffer is too small for 'empty' msg.");
+    goto errLabel;
+  }
+  
+  if((rc = _websockSend(p,kInvalidId,mbuf)) != kOkRC )
+  {
+    cwLogError(rc,"'empty' msg transmit failed.");
+    goto errLabel;
+  }
+    */
+    
+errLabel:
+  mem::release(childUuIdA);
+  return rc;
+}
+
 
 cw::rc_t cw::ui::setClickable( handle_t h, unsigned uuId, bool clickableFl )
 { return _setPropertyFlag( h, UI_CLICKABLE_LABEL, uuId, clickableFl ); }
@@ -2068,6 +2215,87 @@ cw::rc_t    cw::ui::clearBlob( handle_t h, unsigned uuId )
   return kOkRC;
 }
 
+unsigned cw::ui::elementChildCount( handle_t h, unsigned uuId )
+{
+  ui_t*    p = _handleToPtr(h);
+  unsigned n = 0;
+  ele_t*   ele;
+  
+  if((ele = _uuIdToEle( p, uuId)) != nullptr )
+    for(unsigned i=0; i<p->eleN; ++i)
+      if( p->eleA[i] != nullptr && _is_child_of(ele, p->eleA[i] ))
+        ++n;
+
+  return n;        
+}
+
+cw::rc_t cw::ui::elementChildUuId( handle_t h, unsigned uuId, unsigned* bufA, unsigned bufN, unsigned& actualN )
+{
+  rc_t rc = kOkRC;
+  ui_t*    p = _handleToPtr(h);
+  unsigned n = 0;
+  ele_t*   ele;
+  
+  if((ele = _uuIdToEle( p, uuId)) != nullptr )
+    for(unsigned i=0; i<p->eleN; ++i)
+      if( p->eleA[i] != nullptr && _is_child_of(ele, p->eleA[i] ))
+      {
+        if( n >= bufN )
+        {
+          rc = cwLogError(kBufTooSmallRC,"The child ele. id buffer is too small.");
+          goto errLabel;
+        }
+
+        bufA[n++] = p->eleA[i]->uuId;
+        
+      }
+
+  actualN = n;
+errLabel:
+  return rc;        
+}
+
+unsigned cw::ui::elementPhysChildCount( handle_t h, unsigned uuId )
+{
+  ui_t*    p = _handleToPtr(h);
+  unsigned n = 0;
+  ele_t*   ele;
+  
+  if((ele = _uuIdToEle( p, uuId)) != nullptr )
+    for(unsigned i=0; i<p->eleN; ++i)
+      if( p->eleA[i] != nullptr && p->eleA[i]->phys_parent == ele )
+        ++n;
+
+  return n;        
+}
+
+cw::rc_t cw::ui::elementPhysChildUuId( handle_t h, unsigned uuId, unsigned* bufA, unsigned bufN, unsigned& actualN )
+{
+  rc_t rc = kOkRC;
+  ui_t*    p = _handleToPtr(h);
+  unsigned n = 0;
+  ele_t*   ele;
+
+  actualN = 0;
+  
+  if((ele = _uuIdToEle( p, uuId)) != nullptr )
+    for(unsigned i=0; i<p->eleN; ++i)
+      if( p->eleA[i] != nullptr && p->eleA[i]->phys_parent == ele )
+      {
+        if( n >= bufN )
+        {
+          rc = cwLogError(kBufTooSmallRC,"The child ele. id buffer is too small.");
+          goto errLabel;
+        }
+
+        bufA[n++] = p->eleA[i]->uuId;
+        
+      }
+
+  actualN = n;
+errLabel:
+  return rc;        
+}
 
 cw::rc_t cw::ui::destroyElement( handle_t h, unsigned uuId )
 {
@@ -2086,27 +2314,36 @@ cw::rc_t cw::ui::destroyElement( handle_t h, unsigned uuId )
 
   // mark the element for deletion
   del_ele->destroyFl = true;
+  _remove_ele_from_hash_table(p, del_ele);      
 
-  // mark all child elements of 'del_ele' for deletion
+  
+  // mark all child elements of 'del_ele' for deletion and remove them from the hash table
   for(unsigned i=0; i<p->eleN; ++i)
-    if( p->eleA[i] != nullptr )
-      p->eleA[i]->destroyFl = _is_child_of(del_ele, p->eleA[i] );
+    if( p->eleA[i] != nullptr && p->eleA[i] != del_ele )
+      if((p->eleA[i]->destroyFl = _is_child_of(del_ele, p->eleA[i] )) == true )
+        _remove_ele_from_hash_table(p, p->eleA[i]);      
+
+  // Note that all ele's that are going to be deleted
+  // must be first removed from the hash table.
+  // The ele's can't be removed from the hash table
+  // as they are deleted because the removal fromo the hash table
+  // requires accessing the logical parent - which may have already been deleted.  
 
   // release all elements that are marked for deletion
   for(unsigned i=0; i<p->eleN; ++i)
     if( p->eleA[i] != nullptr && p->eleA[i]->destroyFl )
     {
-      _destroy_element( p->eleA[i] );
-      
+      _destroy_element( p, p->eleA[i] );
       p->eleA[i] = nullptr;        
     }
 
-  snprintf(mbuf,mbufN, "{ \"op\":\"destroy\", \"uuId\":%i }", del_ele->uuId );
+  
+  snprintf(mbuf,mbufN, "{ \"op\":\"destroy\", \"uuId\":%i }", uuId );
   _websockSend(p,kInvalidId,mbuf);
   
  errLabel:
   if(rc != kOkRC )
-    rc = cwLogError(rc,"Element delete failed.");
+    rc = cwLogError(rc,"Element delete failed: uuid:%i.",uuId);
 
   return rc;  
 }
@@ -2219,6 +2456,7 @@ void cw::ui::realTimeReport( handle_t h )
 {
   ui_t* p  = _handleToPtr(h);
   printf("UI msg count: recv:%i send:%i\n",p->recvMsgN,p->sentMsgN);
+  
 }
 
 
@@ -2235,7 +2473,6 @@ namespace cw
         void*             cbArg;
         uiCallback_t      uiCbFunc;
         websock::cbFunc_t wsCbFunc;
-        unsigned          wsTimeOutMs;
         unsigned          idleMsgPeriodMs;
         time::spec_t      lastRecvMsgTimeStamp;
       } ui_ws_t;
@@ -2289,7 +2526,7 @@ namespace cw
         ui_ws_t* p = static_cast<ui_ws_t*>(cbArg);
         return websock::send( p->wsH, kUiProtocolId, wsSessId, msg, msgByteN );
       }
-      
+
     }
   }
 }
@@ -2317,12 +2554,18 @@ cw::rc_t cw::ui::ws::parseArgs(  const object_t& o, args_t& args, const char* ob
         "rcvBufByteN", args.rcvBufByteN,
         "xmtBufByteN", args.xmtBufByteN,
         "fmtBufByteN", args.fmtBufByteN,
-        "websockTimeOutMs", args.wsTimeOutMs,
         "idleMsgPeriodMs", args.idleMsgPeriodMs,
+        "queueBlkCnt",     args.queueBlkCnt,
+        "queueBlkByteCnt", args.queueBlkByteCnt,
+        "extraLogsFl", args.extraLogsFl,
         "uiCfgFn", uiCfgFn )) != kOkRC )
   {
     rc = cwLogError(rc,"'ui' cfg. parse failed.");
   }
+
+  if( op->find_child("websockTimeOutMs") != nullptr )
+    cwLogWarning("The UI parameter 'websockTimeOutMs' is obsolete and ignored.");
+
 
   // expand the physical root directory
   if((physRootDir = filesys::expandPath( args.physRootDir)) == nullptr )
@@ -2374,11 +2617,13 @@ cw::rc_t cw::ui::ws::create( handle_t& h,
                 appIdMapN,
                 wsCbFunc,
                 args.dfltPageFn,
-                args.wsTimeOutMs,
                 args.idleMsgPeriodMs,
                 args.rcvBufByteN,
                 args.xmtBufByteN,
-                args.fmtBufByteN );
+                args.fmtBufByteN,
+                args.queueBlkCnt,
+                args.queueBlkByteCnt,
+                args.extraLogsFl);
 }
 
   
@@ -2392,11 +2637,13 @@ cw::rc_t cw::ui::ws::create(  handle_t& h,
                               unsigned          appIdMapN,
                               websock::cbFunc_t wsCbFunc,
                               const char*       dfltPageFn,
-                              unsigned          websockTimeOutMs,
                               unsigned          idleMsgPeriodMs,
                               unsigned          rcvBufByteN,
                               unsigned          xmtBufByteN,
-                              unsigned          fmtBufByteN )
+                              unsigned          fmtBufByteN,
+                              unsigned          queueBlkCnt,
+                              unsigned          queueBlkByteCnt,
+                              bool              extraLogsFl)
 {
   rc_t rc = kOkRC;
 
@@ -2416,7 +2663,7 @@ cw::rc_t cw::ui::ws::create(  handle_t& h,
   void*             wsCbA     = wsCbFunc==nullptr ? p          : cbArg;
   
   // create the websocket
-  if((rc = websock::create(p->wsH, wsCbF, wsCbA, physRootDir, dfltPageFn, port, protocolA, protocolN )) != kOkRC )
+  if((rc = websock::create(p->wsH, wsCbF, wsCbA, physRootDir, dfltPageFn, port, protocolA, protocolN, queueBlkCnt, queueBlkByteCnt, extraLogsFl )) != kOkRC )
   {
     cwLogError(rc,"UI Websock create failed.");
     goto errLabel;
@@ -2432,7 +2679,6 @@ cw::rc_t cw::ui::ws::create(  handle_t& h,
   p->cbArg       = cbArg;
   p->uiCbFunc    = uiCbFunc;
   p->wsCbFunc    = wsCbFunc;
-  p->wsTimeOutMs = websockTimeOutMs;
   p->idleMsgPeriodMs = idleMsgPeriodMs;
   // initialize the last received msg
   time::get(p->lastRecvMsgTimeStamp);
@@ -2465,13 +2711,13 @@ cw::rc_t cw::ui::ws::destroy( handle_t& h )
   return rc;
 }
       
-cw::rc_t cw::ui::ws::exec( handle_t h )
+cw::rc_t cw::ui::ws::exec( handle_t h, unsigned wsTimeOutMs )
 {
-  rc_t     rc = kOkRC;
   ui_ws_t* p  = _handleToPtr(h);
+  rc_t     rc = kOkRC;
   time::spec_t t;
   
-  if((rc = websock::exec( p->wsH, p->wsTimeOutMs )) != kOkRC)
+  if((rc = websock::exec( p->wsH, wsTimeOutMs )) != kOkRC)
     cwLogError(rc,"The UI websock execution failed.");
 
   // make the idle callback
@@ -2485,6 +2731,7 @@ cw::rc_t cw::ui::ws::exec( handle_t h )
   
   return rc;
 }
+
 
 cw::rc_t cw::ui::ws::onReceive( handle_t h, unsigned protocolId, unsigned sessionId, websock::msgTypeId_t msg_type, const void* msg, unsigned byteN )
 {
@@ -2508,6 +2755,13 @@ cw::ui::handle_t cw::ui::ws::uiHandle( handle_t h )
 }
 
 
+void cw::ui::ws::realTimeReport( handle_t h )
+{
+  ui_ws_t* p  = _handleToPtr(h);
+  report(p->wsH);
+  realTimeReport(p->uiH);  
+}
+
  
 namespace cw
 {
@@ -2519,6 +2773,7 @@ namespace cw
       {
         ws::handle_t     wsUiH;
         thread::handle_t thH;
+        unsigned         wsTimeOutMs;
       } ui_ws_srv_t;
 
       ui_ws_srv_t* _handleToPtr(handle_t h )
@@ -2543,7 +2798,7 @@ namespace cw
         ui_ws_srv_t* p = static_cast<ui_ws_srv_t*>(arg);
         rc_t rc;
         
-        if((rc = ws::exec(p->wsUiH)) != kOkRC )
+        if((rc = ws::exec(p->wsUiH,p->wsTimeOutMs)) != kOkRC )
         {
           cwLogError(rc,"Websocket UI exec failed.");
         }
@@ -2554,20 +2809,52 @@ namespace cw
   }
 }
 
+cw::rc_t cw::ui::srv::create( handle_t& h,
+                              const ws::args_t&     args,
+                              void*             cbArg,
+                              uiCallback_t      uiCbFunc,
+                              const appIdMap_t* appIdMapA,
+                              unsigned          appIdMapN,
+                              unsigned          wsTimeOutMs,
+                              websock::cbFunc_t wsCbFunc )
+{
+  return create(h,
+                args.port,
+                args.physRootDir,
+                cbArg,
+                uiCbFunc,
+                args.uiRsrc,
+                appIdMapA,
+                appIdMapN,
+                wsTimeOutMs,
+                wsCbFunc,
+                args.dfltPageFn,
+                args.idleMsgPeriodMs,
+                args.rcvBufByteN,
+                args.xmtBufByteN,
+                args.fmtBufByteN,
+                args.queueBlkCnt,
+                args.queueBlkByteCnt );
+}
+      
 cw::rc_t cw::ui::srv::create(  handle_t& h,
-  unsigned          port,
-  const char*       physRootDir,
-  void*             cbArg,
-  uiCallback_t      uiCbFunc,
-  const object_t*   uiRsrc,
-  const appIdMap_t* appIdMapA,
-  unsigned          appIdMapN,
-  websock::cbFunc_t wsCbFunc,
-  const char*       dfltPageFn,
-  unsigned          websockTimeOutMs,
-  unsigned          rcvBufByteN,
-  unsigned          xmtBufByteN,
-  unsigned          fmtBufByteN )
+                               unsigned          port,
+                               const char*       physRootDir,
+                               void*             cbArg,
+                               uiCallback_t      uiCbFunc,
+                               const object_t*   uiRsrc,
+                               const appIdMap_t* appIdMapA,
+                               unsigned          appIdMapN,
+                               unsigned          wsTimeOutMs,
+                               websock::cbFunc_t wsCbFunc,
+                               const char*       dfltPageFn,
+                               unsigned          idleMsgPeriodMs,
+                               unsigned          rcvBufByteN,
+                               unsigned          xmtBufByteN,
+                               unsigned          fmtBufByteN,
+                               unsigned          queueBlkCnt,
+                               unsigned          queueBlkByteCnt,
+                               bool              extraLogsFl )
 {
   rc_t rc = kOkRC;
   if((rc = destroy(h)) != kOkRC )
@@ -2575,7 +2862,7 @@ cw::rc_t cw::ui::srv::create(  handle_t& h,
 
   ui_ws_srv_t* p = mem::allocZ<ui_ws_srv_t>();
   
-  if((rc = ws::create(p->wsUiH, port, physRootDir, cbArg, uiCbFunc, uiRsrc,appIdMapA, appIdMapN, wsCbFunc, dfltPageFn, websockTimeOutMs, rcvBufByteN, xmtBufByteN, fmtBufByteN )) != kOkRC )
+  if((rc = ws::create(p->wsUiH, port, physRootDir, cbArg, uiCbFunc, uiRsrc,appIdMapA, appIdMapN, wsCbFunc, dfltPageFn, idleMsgPeriodMs, rcvBufByteN, xmtBufByteN, fmtBufByteN, queueBlkCnt, queueBlkByteCnt )) != kOkRC )
   {
     cwLogError(rc,"The websock UI creationg failed.");
     goto errLabel;
@@ -2587,6 +2874,8 @@ cw::rc_t cw::ui::srv::create(  handle_t& h,
     goto errLabel;
   }
 
+  p->wsTimeOutMs = wsTimeOutMs;
+  
   h.set(p);
   
  errLabel:
@@ -2595,32 +2884,6 @@ cw::rc_t cw::ui::srv::create(  handle_t& h,
 
   return rc;
 }
-
-cw::rc_t cw::ui::srv::create( handle_t& h,
-  const ws::args_t&     args,
-  void*             cbArg,
-  uiCallback_t      uiCbFunc,
-  const appIdMap_t* appIdMapA,
-  unsigned          appIdMapN,        
-  websock::cbFunc_t wsCbFunc )
-{
-  return create(h,
-    args.port,
-    args.physRootDir,
-    cbArg,
-    uiCbFunc,
-    args.uiRsrc,
-    appIdMapA,
-    appIdMapN,
-    wsCbFunc,
-    args.dfltPageFn,
-    args.wsTimeOutMs,
-    args.rcvBufByteN,
-    args.xmtBufByteN,
-    args.fmtBufByteN );
-}
-      
-
 
 cw::rc_t cw::ui::srv::destroy( handle_t& h )
 {
@@ -2677,3 +2940,4 @@ cw::ui::handle_t      cw::ui::srv::uiHandle( handle_t h )
   ui_ws_srv_t* p = _handleToPtr(h);
   return ws::uiHandle(p->wsUiH);
 }
+

@@ -1,6 +1,7 @@
 #include "cwCommon.h"
 #include "cwLog.h"
 #include "cwCommonImpl.h"
+#include "cwTest.h"
 #include "cwTime.h"
 
 #ifdef OS_OSX
@@ -261,15 +262,12 @@ void cw::time::subtractMicros( spec_t& ts, unsigned micros )
 
 void cw::time::advanceMicros( spec_t& ts, unsigned us )
 {
-  const unsigned us_per_sec =    1000000;
   const unsigned ns_per_sec = 1000000000;
-
-  unsigned sec = us / us_per_sec;
   
-  ts.tv_sec  += sec;
-  ts.tv_nsec += (us - sec*us_per_sec)*1000;
+  ts.tv_nsec += us * 1000;  // convert us to nano's
 
-  sec = ts.tv_nsec / ns_per_sec;
+  // check if nano's now have more than ns_pser_sec
+  time_t sec = ts.tv_nsec / ns_per_sec;
   
   ts.tv_sec  += sec;
   ts.tv_nsec -= sec * ns_per_sec;
@@ -280,18 +278,14 @@ void cw::time::advanceMicros( spec_t& ts, unsigned us )
 void cw::time::advanceMs( spec_t& ts, unsigned ms )
 {
 
-  const unsigned ms_per_sec = 1000;
   const unsigned ns_per_sec = 1000000000;
-
-  unsigned sec = ms / ms_per_sec;
-
-  ts.tv_sec += sec;
-  ts.tv_nsec += (ms - (sec*ms_per_sec)) * 1000000;
-
-  sec = ts.tv_nsec / ns_per_sec;
+  
+  ts.tv_nsec += ms * 1000000;
+  time_t sec = ts.tv_nsec / ns_per_sec;
   
   ts.tv_sec  += sec;
   ts.tv_nsec -= sec * ns_per_sec;
+  
 }
 
 cw::rc_t cw::time::futureMs( spec_t& ts, unsigned ms )
@@ -303,6 +297,13 @@ cw::rc_t cw::time::futureMs( spec_t& ts, unsigned ms )
   return rc;   
 }
 
+void cw::time::fracSecondsToSpec( spec_t& ts, double sec )
+{
+  const unsigned long long ns_per_sec = 1000000000;
+  ts.tv_sec  = (unsigned long long)sec;
+  ts.tv_nsec = (sec - ts.tv_sec) * ns_per_sec;
+}
+
 void cw::time::secondsToSpec(      spec_t& ts, unsigned sec )
 {
   ts.tv_sec  = sec;
@@ -311,12 +312,13 @@ void cw::time::secondsToSpec(      spec_t& ts, unsigned sec )
 
 double cw::time::specToSeconds(  const spec_t& t )
 {
+  const long long ns_per_sec = 1000000000;
   spec_t ts  = t;
   double sec = ts.tv_sec;
-  while( ts.tv_nsec >= 1000000000 )
+  while( ts.tv_nsec >= ns_per_sec )
   {
     sec += 1.0;
-    ts.tv_nsec -= 1000000000;
+    ts.tv_nsec -= ns_per_sec;
   }
   
   return sec + ((double)ts.tv_nsec)/1e9;
@@ -399,7 +401,7 @@ unsigned cw::time::formatDateTime( char* buffer, unsigned bufN, bool includeDate
   return (unsigned)n;
 }
 
-cw::rc_t cw::time::test()
+cw::rc_t cw::time::test(const test::test_args_t& test )
 {
 
   spec_t t0,t1;
@@ -410,15 +412,15 @@ cw::rc_t cw::time::test()
 
   unsigned dMs = elapsedMs(t0,t1);
 
-  printf("dMs:%i : GTE:%i LTE:%i\n",dMs, isGTE(t0,t1), isLTE(t0,t1) );
+  cwLogPrint("dMs:%i : GTE:%i LTE:%i\n",dMs, isGTE(t0,t1), isLTE(t0,t1) );
 
   
   microsecondsToSpec( t0, 2500000 );        // 2.5 seconds
-  printf("%li %li\n",t0.tv_sec,t0.tv_nsec);
+  cwLogPrint("%li %li\n",t0.tv_sec,t0.tv_nsec);
   subtractMicros( t0, 750000 );             // subtract .75 seconds
-  printf("%li %li\n",t0.tv_sec,t0.tv_nsec);
+  cwLogPrint("%li %li\n",t0.tv_sec,t0.tv_nsec);
   subtractMicros( t0, 500000 );             // subtract .5 seconds
-  printf("%li %li\n",t0.tv_sec,t0.tv_nsec);
+  cwLogPrint("%li %li\n",t0.tv_sec,t0.tv_nsec);
 
 
   time::get(t0);
@@ -429,11 +431,18 @@ cw::rc_t cw::time::test()
   
   int usec = time::elapsedMicros(t0,t1);
 
-  printf("usec:%i\n",usec);
+  cwLogPrint("usec:%i\n",usec);
 
   t0 = current_time();
   sleepMs(1000);
-  printf("sleep %i ms\n",elapsedMs(t0));
+  cwLogPrint("sleep %i ms\n",elapsedMs(t0));
+
+
+  
+  cw::time::fracSecondsToSpec( t0, 12.34567 );
+  double sec = specToSeconds( t0 );
+  cwLogPrint("fsecs: %f\n",sec);
+
 
 
   return kOkRC;

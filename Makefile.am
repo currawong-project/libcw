@@ -4,8 +4,8 @@ libcwSRC =
 libcwHDR += src/libcw/cwCommon.h src/libcw/cwCommonImpl.h   src/libcw/cwMem.h   src/libcw/cwLog.h    src/libcw/cwUtility.h
 libcwSRC +=                      src/libcw/cwCommonImpl.cpp src/libcw/cwMem.cpp src/libcw/cwLog.cpp  src/libcw/cwUtility.cpp
 
-libcwHDR += src/libcw/cwString.h   src/libcw/cwMath.h   src/libcw/cwVectOps.h src/libcw/cwMtx.h    src/libcw/cwVariant.h
-libcwSRC += src/libcw/cwString.cpp src/libcw/cwMath.cpp                       src/libcw/cwMtx.cpp  src/libcw/cwVariant.cpp
+libcwHDR += src/libcw/cwString.h   src/libcw/cwMath.h   src/libcw/cwVectOps.h   src/libcw/cwMtx.h    src/libcw/cwVariant.h
+libcwSRC += src/libcw/cwString.cpp src/libcw/cwMath.cpp src/libcw/cwVectOps.cpp src/libcw/cwMtx.cpp  src/libcw/cwVariant.cpp
 
 libcwHDR += src/libcw/cwB23Tree.h
 libcwSRC += src/libcw/cwB23Tree.cpp
@@ -28,14 +28,14 @@ libcwSRC +=                           src/libcw/cwSpScBuf.cpp src/libcw/cwSpScQu
 libcwHDR += src/libcw/cwNbMpScQueue.h 
 libcwSRC += src/libcw/cwNbMpScQueue.cpp
 
-libcwHDR += src/libcw/cwAudioFile.h     src/libcw/cwMidiFile.h
-libcwSRC += src/libcw/cwAudioFile.cpp   src/libcw/cwMidiFile.cpp
+libcwHDR += src/libcw/cwAudioFile.h     src/libcw/cwMidiFile.h    src/libcw/cwWaveTableBank.h     src/libcw/cwWaveTableNotes.h
+libcwSRC += src/libcw/cwAudioFile.cpp   src/libcw/cwMidiFile.cpp  src/libcw/cwWaveTableBank.cpp   src/libcw/cwWaveTableNotes.cpp
 
 libcwHDR += src/libcw/cwAudioFileOps.h    src/libcw/cwAudioTransforms.h   src/libcw/cwDspTransforms.h   src/libcw/cwAudioFileProc.h    src/libcw/cwPvAudioFileProc.h
 libcwSRC += src/libcw/cwAudioFileOps.cpp  src/libcw/cwAudioTransforms.cpp src/libcw/cwDspTransforms.cpp src/libcw/cwAudioFileProc.cpp  src/libcw/cwPvAudioFileProc.cpp
 
-libcwHDR += src/libcw/cwFlow.h    src/libcw/cwFlowDecl.h src/libcw/cwFlowTypes.h     src/libcw/cwFlowProc.h     src/libcw/cwFlowCross.h
-libcwSRC += src/libcw/cwFlow.cpp                         src/libcw/cwFlowTypes.cpp   src/libcw/cwFlowProc.cpp   src/libcw/cwFlowCross.cpp
+libcwHDR += src/libcw/cwFlow.h    src/libcw/cwFlowDecl.h src/libcw/cwFlowTypes.h     src/libcw/cwFlowNet.h   src/libcw/cwFlowProc.h     src/libcw/cwFlowCross.h     src/libcw/cwFlowTest.h
+libcwSRC += src/libcw/cwFlow.cpp                         src/libcw/cwFlowTypes.cpp   src/libcw/cwFlowNet.cpp src/libcw/cwFlowProc.cpp   src/libcw/cwFlowCross.cpp   src/libcw/cwFlowTest.cpp
 
 if cwWEBSOCK
 libcwHDR += src/libcw/cwWebSock.h   src/libcw/cwWebSockSvr.h
@@ -46,8 +46,8 @@ libcwSRC +=                       src/libcw/cwUi.cpp src/libcw/cwUiTest.cpp
 
 endif
 
-libcwHDR += src/libcw/cwKeyboard.h
-libcwSRC += src/libcw/cwKeyboard.cpp
+libcwHDR += src/libcw/cwKeyboard.h    src/libcw/cwTest.h
+libcwSRC += src/libcw/cwKeyboard.cpp  src/libcw/cwTest.cpp
 
 libcwHDR += src/libcw/cwSerialPortDecls.h src/libcw/cwSerialPort.h    src/libcw/cwSerialPortSrv.h
 libcwSRC +=                               src/libcw/cwSerialPort.cpp  src/libcw/cwSerialPortSrv.cpp
@@ -71,8 +71,8 @@ if cwWEBSOCK
 libcwHDR += src/libcw/cwIo.h   src/libcw/cwIoTest.h     src/libcw/cwIoMinTest.h   src/libcw/cwIoSocketChat.h   src/libcw/cwIoAudioPanel.h    src/libcw/cwIoAudioMidi.h
 libcwSRC += src/libcw/cwIo.cpp src/libcw/cwIoTest.cpp   src/libcw/cwIoMinTest.cpp src/libcw/cwIoSocketChat.cpp src/libcw/cwIoAudioPanel.cpp  src/libcw/cwIoAudioMidi.cpp
 
-libcwHDR += src/libcw/cwIoMidiRecordPlay.h    src/libcw/cwIoAudioRecordPlay.h   src/libcw/cwIoAudioMidiApp.h    src/libcw/cwIoFlow.h
-libcwSRC += src/libcw/cwIoMidiRecordPlay.cpp  src/libcw/cwIoAudioRecordPlay.cpp src/libcw/cwIoAudioMidiApp.cpp  src/libcw/cwIoFlow.cpp
+libcwHDR += src/libcw/cwIoMidiRecordPlay.h    src/libcw/cwIoAudioRecordPlay.h   src/libcw/cwIoAudioMidiApp.h    src/libcw/cwIoFlow.h   src/libcw/cwIoFlowCtl.h
+libcwSRC += src/libcw/cwIoMidiRecordPlay.cpp  src/libcw/cwIoAudioRecordPlay.cpp src/libcw/cwIoAudioMidiApp.cpp  src/libcw/cwIoFlow.cpp src/libcw/cwIoFlowCtl.cpp 
 
 libcwHDR += src/libcw/cwIoPresetSelApp.h     src/libcw/cwPianoScore.h    src/libcw/cwPresetSel.h   src/libcw/cwVelTableTuner.h    src/libcw/cwGutimReg.h
 libcwSRC += src/libcw/cwIoPresetSelApp.cpp   src/libcw/cwPianoScore.cpp  src/libcw/cwPresetSel.cpp src/libcw/cwVelTableTuner.cpp  src/libcw/cwGutimReg.cpp

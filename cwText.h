@@ -8,7 +8,7 @@ namespace cw
   unsigned textLength( const char* s );
 
   // If dst is non-null then dst is always 0-terminated.
-  // If src will be truncated if srcN > dstN-1.
+  // src will be truncated if srcN > dstN-1.
   // If dst is null then null is returned
   // if src is null then dst[0] = 0.
   // if srcN is 0 then textLength(src) is used for srcN
@@ -65,9 +65,14 @@ namespace cw
 
   // Return a pointer to the first occurrence of 'c' in s[] or nullptr
   // if 'c' does not occur in s[]
+  char*       firstMatchChar( char* s, char c );
   const char* firstMatchChar( const char* s, char c );
+  
   // Find the last occurrent of 'c' in s[]. 
-  const char* lastMatchChar( const char* s, char c ); 
+  char*       lastMatchChar( char* s, char c ); 
+  const char* lastMatchChar( const char* s, char c );
+
+  char*       removeTrailingWhitespace( char* s );
   
   bool isInteger( const char* );        // text contains only [0-9]
   bool isReal( const char* );           // text contains only [0-9] with one decimal place

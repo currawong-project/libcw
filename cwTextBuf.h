@@ -28,7 +28,7 @@ namespace cw
     rc_t setIntFormat( handle_t h, unsigned width, unsigned flags );
     rc_t setFloatFormat( handle_t h, unsigned width, unsigned decPlN );
 
-    rc_t test();
+    rc_t test( const test::test_args_t& args);
   }  
 }
 

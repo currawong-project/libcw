@@ -1,6 +1,7 @@
 #include "cwCommon.h"
 #include "cwLog.h"
 #include "cwCommonImpl.h"
+#include "cwTest.h"
 #include "cwMem.h"
 #include "cwObject.h"
 #include "cwText.h"
@@ -95,6 +96,8 @@ namespace cw
       audioGroup_t*      oGroup;   //
       audio_group_dev_t* iagd;     // Audio group device record assoc'd with this device
       audio_group_dev_t* oagd;     //
+      unsigned           cycleCnt;
+      unsigned           framesPerCycle;
       
       struct audioDev_str* clockInList;  // List of devices sync'd to this devices input clock
       struct audioDev_str* clockOutList; // List of devices sync'd to this devices output clock
@@ -611,7 +614,7 @@ namespace cw
     //
     // MIDI
     //
-    void _midiCallback( const midi::packet_t* pktArray, unsigned pktCnt )
+    void _midiCallback( void* cbArg, const midi::packet_t* pktArray, unsigned pktCnt )
     {
       unsigned i;
       for(i=0; i<pktCnt; ++i)
@@ -619,7 +622,7 @@ namespace cw
         msg_t                 m;
         midi_msg_t            mm;
         const midi::packet_t* pkt = pktArray + i;        
-        io_t*                 p   = reinterpret_cast<io_t*>(pkt->cbArg);
+        io_t*                 p   = reinterpret_cast<io_t*>(cbArg);
         rc_t                  rc  = kOkRC;
 
         
@@ -975,7 +978,6 @@ namespace cw
         goto errLabel;
       }
 
-
       if((rc = audio::device::alsa::destroy(p->alsaH)) != kOkRC )
       {
         rc = cwLogError(rc,"ALSA sub-system shutdown failed.");
@@ -987,7 +989,6 @@ namespace cw
         rc = cwLogError(rc,"Audio device file sub-system shutdown failed.");
         goto errLabel;
       }
-
             
       if((rc = audio::device::destroy(p->audioH)) != kOkRC )
       {
@@ -1637,6 +1638,85 @@ namespace cw
     errLabel:
       return rc;      
     }
+
+    rc_t _audioDeviceConfigure( io_t* p, audioDev_t*   ad, audioGroup_t* iag, audioGroup_t* oag, unsigned cycleCnt, unsigned framesPerCycle )
+    {
+      rc_t          rc             = kOkRC;
+
+      double        israte         = 0;
+      double        osrate         = 0;
+      double        srate          = 0;
+        
+      unsigned      iDspFrameCnt   = 0;
+      unsigned      oDspFrameCnt   = 0;
+      unsigned      dspFrameCnt    = 0;
+
+      unsigned      iChCnt         = 0;      
+      unsigned      oChCnt         = 0;
+
+      const char* inGroupLabel  = iag==nullptr || iag->msg.label==nullptr ? "<no in-group>" : iag->msg.label;
+      const char* outGroupLabel = oag==nullptr || oag->msg.label==nullptr ? "<no out-group>" : oag->msg.label;
+      
+      
+      // get the ingroup
+      if( iag != nullptr )
+      {            
+        israte       = iag->msg.srate;
+        iDspFrameCnt = iag->msg.dspFrameCnt;
+      }
+
+      // get the outgroup
+      if( oag != nullptr )
+      {
+        osrate       = oag->msg.srate;
+        oDspFrameCnt = oag->msg.dspFrameCnt;
+      }
+          
+      // in-srate and out-srate must be equal or one must be 0
+      if( osrate==0 || israte==0 || osrate==israte )
+      {
+        // the true sample rate is the non-zero sample rate
+        srate = std::max(israte,osrate);
+      }
+      else
+      {
+        rc = cwLogError(kInvalidArgRC,"The device '%s' belongs to two groups (%s and %s) at different sample rates (%f != %f).", cwStringNullGuard(ad->devName), cwStringNullGuard(inGroupLabel), cwStringNullGuard(outGroupLabel), israte, osrate );
+        goto errLabel;
+      }
+
+      // in-dspFrameCnt an out-dspFrameCnt must be equal or one must be 0
+      if( oDspFrameCnt==0 || iDspFrameCnt==0 || oDspFrameCnt==iDspFrameCnt)
+      {
+        // the true sample rate is the non-zero sample rate
+        dspFrameCnt = std::max(iDspFrameCnt,oDspFrameCnt);
+      }
+      else
+      {
+        rc = cwLogError(kInvalidArgRC,"The device '%s' belongs to two groups (%s and %s) width different dspFrameCnt values (%i != %i).", cwStringNullGuard(ad->devName), cwStringNullGuard(inGroupLabel), cwStringNullGuard(outGroupLabel), iDspFrameCnt, oDspFrameCnt );
+        goto errLabel;
+      }
+          
+      // setup the device based on the configuration
+      if((rc = audio::device::setup(p->audioH, ad->devIdx, srate, framesPerCycle, _audioDeviceCallback, p)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Unable to setup the audio hardware device:'%s'.", ad->devName);
+        goto errLabel;
+      }
+
+      // get the device channel counts
+      iChCnt  = audio::device::channelCount(p->audioH,ad->devIdx,true);
+      oChCnt  = audio::device::channelCount(p->audioH,ad->devIdx,false);
+          
+      // initialize the audio bufer for this device
+      if((rc = audio::buf::setup( p->audioBufH, ad->devIdx, srate, dspFrameCnt, cycleCnt, iChCnt, framesPerCycle, oChCnt, framesPerCycle )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Audio device buffer channel setup failed.");
+        goto errLabel;
+      }
+
+    errLabel:
+      return rc;
+    }
       
     // Create the audio device records by parsing the cfg audio.deviceL[] list.
     rc_t _audioDeviceParseAudioDeviceList( io_t* p, const object_t* cfg )
@@ -1666,7 +1746,7 @@ namespace cw
       // fill in the audio device cfg list
       for(unsigned i=0; i<deviceL_Node->child_count(); ++i)
       {
-        audioDev_t*   ad             = nullptr; //p->audioDevA + i;
+        audioDev_t*   ad             = nullptr;
         bool          activeFl       = false;
         bool          meterFl        = false;
         char*         userLabel      = nullptr;
@@ -1677,7 +1757,7 @@ namespace cw
         
         audioGroup_t* iag            = nullptr;
         audioGroup_t* oag            = nullptr;
-        
+/*        
         double        israte         = 0;
         double        osrate         = 0;
         double        srate          = 0;
@@ -1685,7 +1765,7 @@ namespace cw
         unsigned      iDspFrameCnt   = 0;
         unsigned      oDspFrameCnt   = 0;
         unsigned      dspFrameCnt    = 0;
-        
+*/      
         char*         inGroupLabel   = nullptr;
         char*         outGroupLabel  = nullptr;
 
@@ -1738,12 +1818,18 @@ namespace cw
             rc = cwLogError(rc,"Unable to locate the audio hardware device:'%s'.", cwStringNullGuard(ad->devName));
             goto errLabel;
           }
-
-          // get the device channel counts
-          unsigned iChCnt  = 0; //audio::device::channelCount(p->audioH,ad->devIdx,true);
-          unsigned oChCnt  = 0; //audio::device::channelCount(p->audioH,ad->devIdx,false);
           
+          if( inGroupLabel != nullptr )
+            iag = _audioGroupFromLabel(p, inGroupLabel );
 
+          // get the outgroup
+          if( outGroupLabel != nullptr )
+            oag = _audioGroupFromLabel(p, outGroupLabel);
+
+          if((rc = _audioDeviceConfigure(p, ad, iag, oag, cycleCnt, framesPerCycle )) != kOkRC )
+            goto errLabel;
+
+          /*
           // get the ingroup
           if( inGroupLabel != nullptr )
             if((iag = _audioGroupFromLabel(p, inGroupLabel )) != nullptr )
@@ -1760,7 +1846,7 @@ namespace cw
               oDspFrameCnt = oag->msg.dspFrameCnt;
             }
           
-          // in-srate an out-srate must be equal or one must be 0
+          // in-srate and out-srate must be equal or one must be 0
           if( osrate==0 || israte==0 || osrate==israte )
           {
             // the true sample rate is the non-zero sample rate
@@ -1792,8 +1878,8 @@ namespace cw
           }
 
           // get the device channel counts
-          iChCnt  = audio::device::channelCount(p->audioH,ad->devIdx,true);
-          oChCnt  = audio::device::channelCount(p->audioH,ad->devIdx,false);
+          unsigned iChCnt  = audio::device::channelCount(p->audioH,ad->devIdx,true);
+          unsigned oChCnt  = audio::device::channelCount(p->audioH,ad->devIdx,false);
 
           
           // initialize the audio bufer for this device
@@ -1802,7 +1888,12 @@ namespace cw
             rc = cwLogError(rc,"Audio device buffer channel setup failed.");
             goto errLabel;
           }
+          */
 
+          unsigned iChCnt  = audio::device::channelCount(p->audioH,ad->devIdx,true);
+          unsigned oChCnt  = audio::device::channelCount(p->audioH,ad->devIdx,false);
+
+          
           // if an input group was assigned to this device then create a assoc'd audio_group_dev_t
           if( iag != nullptr )
           {            
@@ -1832,6 +1923,8 @@ namespace cw
           ad->userId   = userId;
           ad->iGroup   = iag;
           ad->oGroup   = oag;
+          ad->cycleCnt = cycleCnt;
+          ad->framesPerCycle = framesPerCycle;
 
         }
       }
@@ -2114,10 +2207,12 @@ namespace cw
         rc = cwLogError(rc,"Audio device configuration failed.");
         goto errLabel;
       }
-
-      audio::device::report( p->audioH );
       
     errLabel:
+
+      if( rc != kOkRC && p->audioH.isValid()  )
+        audio::device::report( p->audioH );
+      
       return rc;
     }
 
@@ -2439,7 +2534,8 @@ cw::rc_t cw::io::stop( handle_t h )
   return rc;
 }
 
-cw::rc_t cw::io::exec( handle_t h, void* execCbArg )
+
+cw::rc_t cw::io::exec( handle_t h, unsigned timeOutMs, void* execCbArg )
 {
   rc_t rc = kOkRC;
   io_t* p = _handleToPtr(h);
@@ -2447,8 +2543,9 @@ cw::rc_t cw::io::exec( handle_t h, void* execCbArg )
   if( p->wsUiH.isValid() )
   {
     ui::flushCache( ui::ws::uiHandle( p->wsUiH ));
+    
     // Note this call blocks on the websocket handle: See cwUi.h:ws:exec()
-    rc = ui::ws::exec( p->wsUiH );
+    rc = ui::ws::exec( p->wsUiH, timeOutMs );
   }
   
   time::get(p->t0);
@@ -2490,14 +2587,23 @@ void cw::io::report( handle_t h )
     }
 
   for(unsigned i=0; i<audioDeviceCount(h); ++i)
-    printf("audio: %s\n", audioDeviceName(h,i));  
+    printf("audio: %s\n", cwStringNullGuard(audioDeviceName(h,i)));  
 }
+
+
+void cw::io::hardwareReport( handle_t h )
+{
+  io_t* p = _handleToPtr(h);
+  audio::device::report( p->audioH );
+  midi::device::report(p->midiH);  
+}
+
 
 void cw::io::realTimeReport( handle_t h )
 {
   io_t* p = _handleToPtr(h);
   audio::device::realTimeReport(p->audioH);
-
+  uiRealTimeReport(h);
 }
 
 
@@ -2655,6 +2761,11 @@ cw::rc_t    cw::io::timerStop( handle_t h, unsigned timerIdx )
 //
 // Serial
 //
+bool cw::io::serialIsEnabled( handle_t h )
+{
+  io_t* p = _handleToPtr(h);
+  return p->serialN != 0;
+}
 
 unsigned cw::io::serialDeviceCount( handle_t h )
 {
@@ -2719,9 +2830,18 @@ errLabel:
 // MIDI
 //
 
+bool        cw::io::midiIsEnabled(       handle_t h )
+{
+  io_t* p = _handleToPtr(h);
+  return p->midiH.isValid();
+}
+
 unsigned    cw::io::midiDeviceCount( handle_t h )
 {
   io_t* p = _handleToPtr(h);
+  if( !p->midiH.isValid() )
+    return 0;
+  
   return midi::device::count(p->midiH);
 }
 
@@ -2759,6 +2879,24 @@ cw::rc_t cw::io::midiDeviceSend( handle_t h, unsigned devIdx, unsigned portIdx, 
 {
   io_t* p = _handleToPtr(h);
   return midi::device::send( p->midiH, devIdx, portIdx, status, d0, d1 );
+}
+
+unsigned cw::io::midiDeviceMaxBufferMsgCount( handle_t h )
+{
+  io_t* p = _handleToPtr(h);
+  return midi::device::maxBufferMsgCount(p->midiH );
+}
+
+const cw::midi::ch_msg_t* cw::io::midiDeviceBuffer(      handle_t h, unsigned& msgCntRef )
+{
+  io_t* p = _handleToPtr(h);
+  return midi::device::getBuffer(p->midiH, msgCntRef );
+}
+
+cw::rc_t                  cw::io::midiDeviceClearBuffer( handle_t h, unsigned msgCnt )
+{
+  io_t* p = _handleToPtr(h);
+  return midi::device::clearBuffer(p->midiH, msgCnt );
 }
 
 cw::rc_t  cw::io::midiOpenMidiFile( handle_t h, unsigned devIdx, unsigned portIdx, const char* fname )
@@ -3158,6 +3296,64 @@ unsigned cw::io::audioGroupDspFrameCount( handle_t h, unsigned groupIdx )
   return 0;
 }
 
+cw::rc_t  cw::io::audioGroupReconfigure( handle_t h, unsigned groupIdx, double srate, unsigned dspFrameN )
+{
+  rc_t rc = kOkRC;
+  audioGroup_t* ag = nullptr;
+  
+  io_t*  p = _handleToPtr(h);
+
+  // locate the group record
+  if((ag = _audioGroupFromIndex( p, groupIdx )) == nullptr )
+    goto errLabel;
+
+  // if the parameters are not changing then there is nothing to do
+  if( ag->msg.dspFrameCnt == dspFrameN && ag->msg.srate == srate )
+    goto errLabel;
+  
+  // change the parameters in the group record
+  ag->msg.dspFrameCnt = dspFrameN;
+  ag->msg.srate       = srate;
+
+  // stop the audio sub-system
+  if((rc = _audioDeviceStartStop(p,false)) != kOkRC )
+    goto errLabel;
+   
+  // TODO: be sure the audio subsystem is really stopped
+    
+  // for each audio device
+  for(unsigned i=0; i<p->audioDevN; ++i)
+  {
+    audioDev_t* ad       = p->audioDevA + i;
+
+    // if this devices in-group/out-group was reconfigured
+    bool        iGroupFl = ad->iGroup != nullptr && ad->iGroup->msg.groupIndex == groupIdx;
+    bool        oGroupFl = ad->oGroup != nullptr && ad->oGroup->msg.groupIndex == groupIdx;
+    
+    if( iGroupFl || oGroupFl )
+    {
+      // reconfigure the device with the updated srate and framesPerCycle
+      if((rc = _audioDeviceConfigure(p, ad, ad->oGroup, ad->oGroup, ad->cycleCnt, ad->framesPerCycle )) != kOkRC )
+        goto errLabel;
+
+      cwLogInfo("The audio device: '%s' was reconfigured srate=%f dspFrameCnt:%i.",cwStringNullGuard(ad->label), srate,dspFrameN);
+
+      
+    }
+  }
+
+  // restart the audio sub-system
+  if((rc = _audioDeviceStartStop(p,true)) != kOkRC )
+    goto errLabel;
+  
+errLabel:
+  if( rc != kOkRC )
+    rc = cwLogError(rc,"Audio group reconfiguration failed.");
+    
+  return rc;  
+}
+
+
 unsigned cw::io::audioGroupDeviceCount( handle_t h, unsigned groupIdx, unsigned inOrOutFl )
 {
   audioGroup_t* ag;
@@ -3204,6 +3400,11 @@ unsigned cw::io::audioGroupDeviceIndex( handle_t h, unsigned groupIdx, unsigned 
 // Socket
 //
 
+bool     cw::io::socketIsEnabled(    handle_t h )
+{
+  io_t* p = _handleToPtr(h);
+  return p->sockN != 0;
+}
 
 unsigned cw::io::socketCount(        handle_t h )
 {
@@ -3351,6 +3552,13 @@ cw::rc_t cw::io::socketSend(    handle_t h, unsigned sockIdx, const void* data, 
 //
 // UI
 //
+
+bool cw::io::uiIsEnabled( handle_t h )
+{
+  io_t* p = _handleToPtr(h);
+  return p->wsUiH.isValid();
+}
+
 unsigned    cw::io::parentAndNameToAppId( handle_t h, unsigned parentAppId, const char* eleName )
 {
   rc_t         rc;
@@ -3623,6 +3831,24 @@ cw::rc_t cw::io::uiCreateLog(       handle_t h, unsigned& uuIdRef, unsigned pare
   return rc;  
 }
 
+cw::rc_t cw::io::uiCreateVList(       handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc  = ui::createVList(uiH,uuIdRef,parentUuId,eleName,appId,chanId,clas,title);
+  return rc;  
+}
+
+cw::rc_t cw::io::uiCreateHList(       handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc  = ui::createHList(uiH,uuIdRef,parentUuId,eleName,appId,chanId,clas,title);
+  return rc;  
+}
+
 cw::rc_t cw::io::uiSetNumbRange( handle_t h, unsigned uuId, double minValue, double maxValue, double stepValue, unsigned decPl, double value )
 {
   rc_t         rc;
@@ -3649,6 +3875,16 @@ cw::rc_t cw::io::uiSetLogLine(     handle_t h, unsigned uuId, const char* text )
     rc = ui::setLogLine(uiH,uuId,text);
   return rc;
 }
+
+cw::rc_t cw::io::uiEmptyParent(  handle_t h, unsigned uuId)
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::emptyParent(uiH,uuId);
+  return rc;
+}
+
     
 cw::rc_t cw::io::uiSetClickable(   handle_t h, unsigned uuId, bool clickableFl )
 {
@@ -3788,6 +4024,14 @@ cw::rc_t cw::io::uiSetScrollTop(   handle_t h, unsigned uuId )
   return rc;
 }
 
+cw::rc_t cw::io::uiSetTitle( handle_t h, unsigned uuId, const char* title )
+{
+  rc_t rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::setTitle(uiH,uuId,title);
+  return rc;
+}
 
 cw::rc_t    cw::io::uiSetBlob(   handle_t h, unsigned uuId, const void* blob, unsigned blobByteN )
 {
@@ -3807,6 +4051,21 @@ const void* cw::io::uiGetBlob(   handle_t h, unsigned uuId, unsigned& blobByteN_
   blobByteN_Ref = 0;
   return nullptr;
 }
+
+cw::rc_t   cw::io::uiGetBlob(   handle_t h, unsigned uuId, void* buf, unsigned& bufByteN_Ref )
+{
+  unsigned bN = 0;
+  const void* b = uiGetBlob(h,uuId,bN);
+  if( bN > bufByteN_Ref )
+  {
+    bufByteN_Ref = 0;
+    return cwLogError(kBufTooSmallRC,"UI blob buffer is too small.");
+  }
+  memcpy(buf,b,bN);
+  bufByteN_Ref = bN;
+  return kOkRC;
+}
+
 
 cw::rc_t cw::io::uiClearBlob( handle_t h, unsigned uuId )
 {
@@ -3981,8 +4240,8 @@ void cw::io::uiReport( handle_t h )
 
 void cw::io::uiRealTimeReport( handle_t h )
 {
-  ui::handle_t uiH;
-  if(_handleToUiHandle(h,uiH) == kOkRC )
-    ui::realTimeReport(uiH);
+  ui::ws::handle_t uiH;
+  if(_handleToWsUiHandle(h,uiH) == kOkRC )
+    ui::ws::realTimeReport(uiH);
 }
 

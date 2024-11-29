@@ -1,6 +1,7 @@
 #include "cwCommon.h"
 #include "cwLog.h"
 #include "cwCommonImpl.h"
+#include "cwTest.h"
 #include "cwMem.h"
 #include "cwText.h"
 #include "cwObject.h"
@@ -9,6 +10,8 @@
 #include "cwMtx.h"
 #include "cwDspTypes.h" // real_t, sample_t
 #include "cwDspTransforms.h"
+#include "cwTime.h"
+#include "cwMidiDecls.h"
 #include "cwFlowDecl.h"
 #include "cwFlow.h"
 #include "cwFlowTypes.h"
@@ -28,14 +31,15 @@ namespace cw
       kFadeOutStateId,
     };
 
+    // Each duplicated network is represented by a flow_netword_t record in flow_cross_t.netA[].
     typedef struct flow_network_str
     {
       dsp::recorder::obj_t*     recorder;
       
-      flow::external_device_t* deviceA;
+      flow::external_device_t* deviceA;  // deviceA[ deviceN ] - cloned exteranl device array
       unsigned                 deviceN;
-      flow::handle_t           flowH;
-      
+      flow::handle_t           flowH; 
+
       unsigned                 stateId;   // inactive, fade-in, fade-out
       double                   fadeGain;  //    0        0->1     1->0
       unsigned                 fadeSmpN;  //
@@ -47,7 +51,7 @@ namespace cw
     
     typedef struct flow_cross_str
     {
-      unsigned cur_idx;
+      unsigned cur_idx;  // index of the network currently receiving parameter updates 
       double   srate;
       
       unsigned        netN;
@@ -106,8 +110,21 @@ namespace cw
       memcpy(devA,srcDevA,devN * sizeof(flow::external_device_t));
       
       for(unsigned i=0; i<devN; ++i)
-        if( devA[i].typeId == flow::kAudioDevTypeId )
-          devA[i].u.a.abuf = _clone_abuf( srcDevA[i].u.a.abuf );
+      {
+        switch( devA[i].typeId )
+        {
+          case flow::kAudioDevTypeId:
+            devA[i].u.a.abuf = _clone_abuf( srcDevA[i].u.a.abuf );
+            break;
+
+          case flow::kMidiDevTypeId:
+            devA[i].u.m = srcDevA[i].u.m;
+            break;
+
+          default:
+            break;
+        }
+      }
       
       return devA;
     }
@@ -129,12 +146,17 @@ namespace cw
       net->deviceN = 0;
       net->stateId = net_idx == 0 ? kActiveStateId : kInactiveStateId;
       net->net_idx = net_idx;
+
+      if((rc = flow::create( net->flowH, &classCfg, &networkCfg, nullptr, nullptr )) == kOkRC )
+      {
+        rc = cwLogError(rc,"Flow cross index %i network create failed.",net_idx);
+      }
       
-      if((rc = flow::create( net->flowH, classCfg, networkCfg, net->deviceA, deviceN )) == kOkRC )
+      if((rc = flow::initialize( net->flowH, net->deviceA, deviceN )) == kOkRC )
         net->deviceN = deviceN;
       else
       {
-        cwLogError(rc,"Flow cross index %i network created failed.",net_idx);
+        cwLogError(rc,"Flow cross index %i network initialize failed.",net_idx);
         goto errLabel;
       }
 
@@ -203,9 +225,20 @@ namespace cw
       
       if( net->stateId == kFadeOutStateId && ef == 0.0 )
         net->stateId = kInactiveStateId;
-      
     }
 
+    // Copy audio from the actual external audio device to a cloned audio device
+    void _update_midi_input( flow_cross_t* p, flow_network_t* net, unsigned devIdx )
+    {
+      flow::midi_dev_cfg_t& src = p->deviceA[devIdx].u.m;    // src MIDI device
+      flow::midi_dev_cfg_t& dst = net->deviceA[devIdx].u.m;  // dst MIDI device clone
+
+      // redirect the MIDI msg list array to the clones
+      dst.msgArray = src.msgArray; 
+      dst.msgCnt   = src.msgCnt;
+    }
+    
+    // Copy audio from the actual external audio device to a cloned audio device
     void _update_audio_input( flow_cross_t* p, flow_network_t* net, unsigned devIdx )
     {
       flow::abuf_t* src = p->deviceA[devIdx].u.a.abuf;
@@ -216,6 +249,7 @@ namespace cw
       //_fade_audio( src, dst, net );
     }
 
+    
     void _zero_audio_output( flow_cross_t* p, flow_network_t* net, unsigned devIdx )
     {
       flow::abuf_t* dst = net->deviceA[devIdx].u.a.abuf;
@@ -378,13 +412,27 @@ cw::rc_t cw::flow_cross::exec_cycle( handle_t h )
   {
     flow_network_t* net = p->netA + i;
 
-    // We generally don't want to fade the input because the state
-    // of the network delay lines would then be invalid when the
-    // network is eventually made active again 
     for(unsigned j=0; j<p->deviceN; ++j)
-      if( p->deviceA[j].typeId == flow::kAudioDevTypeId && cwIsFlag(p->deviceA[j].flags, flow::kInFl ) )
-        _update_audio_input( p, p->netA + i, j );
+      if( cwIsFlag(p->deviceA[j].flags, flow::kInFl ) )        
+      {
+        switch( p->deviceA[j].typeId)
+        {
+          case flow::kAudioDevTypeId:
+            // We generally don't want to fade the input because the state
+            // of the network delay lines would then be invalid when the
+            // network is eventually made active again 
+                        
+            // copy audio from the actual audio device to the cloned audio devices
+            _update_audio_input( p, p->netA + i, j );
+            break;
 
+          case flow::kMidiDevTypeId:
+            // update the cloned MIDI devices from the master device
+            _update_midi_input( p, p->netA + i, j );          
+
+      }
+    }
+    
     // zero the audio device output buffers because we are about to sum into them
     for(unsigned j=0; j<p->deviceN; ++j)
       if( p->deviceA[j].typeId == flow::kAudioDevTypeId && cwIsFlag(p->deviceA[j].flags, flow::kOutFl ) )

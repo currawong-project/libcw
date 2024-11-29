@@ -3,48 +3,58 @@ namespace cw
   namespace flow
   {
 
-    #define kRealTFl kFloatTFl
-    typedef dsp::real_t   real_t;
-    typedef dsp::sample_t sample_t;
-    typedef dsp::fd_real_t fd_real_t;
-    typedef dsp::srate_t  srate_t;
-    typedef unsigned      uint_t;
-    typedef int           int_t;
+    typedef dsp::coeff_t     coeff_t;
+    typedef dsp::sample_t    sample_t;
+    typedef dsp::fd_sample_t fd_sample_t;
+    typedef dsp::srate_t     srate_t;
+    typedef dsp::ftime_t     ftime_t;
+    typedef unsigned         uint_t;
+    typedef int              int_t;
     
     
     typedef unsigned vid_t;
 
+    enum {
+      kBaseSfxId = 0,
+      kFbufVectN = 3,  // count of signal vectors in fbuf (mag,phs,hz)
+      kAnyChIdx = kInvalidIdx,
+      kLocalValueN = 2,
+      kDefaultFramesPerCycle=64,
+      kDefaultSampleRate=48000
+    };
+        
     typedef struct abuf_str
     {
-      struct value_str*  base;
-      srate_t            srate;   // signal sample rate
-      unsigned           chN;     // count of channels
-      unsigned           frameN;  // count of sample frames per channel
-      sample_t*          buf;     // buf[ chN ][ frameN ]
+      srate_t            srate;        // Signal sample rate
+      unsigned           chN;          // Count of channels
+      unsigned           frameN;       // Count of sample frames per channel
+      unsigned           bufAllocSmpN; // Size of allocated buf[] in samples.
+      sample_t*          buf;          // buf[ chN ][ frameN ]
     } abuf_t;
 
 
-    enum {
-      kFbufVectN = 3,  // count of signal vectors in fbuf (mag,phs,hz)
-      kAnyChIdx = kInvalidIdx,
-      kLocalValueN = 2
-    };
-    
     typedef struct fbuf_str
-    {      
-      struct value_str* base;
+    {
+      unsigned          memByteN;  // Count of bytes in mem[].
+      void*             mem;       // mem[ memByteN ] All dynamically allocated memory used by this fbuf.
+      
       srate_t           srate;     // signal sample rate
       unsigned          flags;     // See kXXXFbufFl
       unsigned          chN;       // count of channels
-      unsigned*         maxBinN_V; // max value that binN_V[i] is allowed to take
+      unsigned*         maxBinN_V; // maxBinN_V[chN] max value that binN_V[i] is allowed to take
       unsigned*         binN_V;    // binN_V[ chN ] count of sample frames per channel
       unsigned*         hopSmpN_V; // hopSmpN_V[ chN ] hop sample count 
-      fd_real_t**        magV;      // magV[ chN ][ binN ]
-      fd_real_t**        phsV;      // phsV[ chN ][ binN ]
-      fd_real_t**        hzV;       // hzV[ chN ][ binN ]
+      fd_sample_t**     magV;      // magV[ chN ][ binN ]
+      fd_sample_t**     phsV;      // phsV[ chN ][ binN ]
+      fd_sample_t**     hzV;       // hzV[ chN ][ binN ]
       bool*             readyFlV;  // readyFlV[chN] true if this channel is ready to be processed (used to sync. fbuf rate to abuf rate)
-      fd_real_t*         buf;       // memory used by this buffer (or NULL if magV,phsV,hzV point are proxied to another buffer)      
     } fbuf_t;
+
+    typedef struct mbuf_str
+    {
+      const midi::ch_msg_t* msgA;
+      unsigned              msgN;
+    } mbuf_t;
 
     enum
     {
@@ -58,17 +68,23 @@ namespace cw
       kBoolMtxTFl  = 0x00000020,
       kUIntMtxTFl  = 0x00000040,
       kIntMtxTFl   = 0x00000080,
-      kRealMtxTFl  = 0x00000100,
-      kFloatMtxTFl = 0x00000200,
-      kDoubleMtxTFl= 0x00000400,
+      kFloatMtxTFl = 0x00000100,
+      kDoubleMtxTFl= 0x00000200,
       
-      kABufTFl     = 0x00000800,
-      kFBufTFl     = 0x00001000,
+      kABufTFl     = 0x00000400,
+      kFBufTFl     = 0x00000800,
+      kMBufTFl     = 0x00001000,
       kStringTFl   = 0x00002000,
       kTimeTFl     = 0x00004000,
+      kCfgTFl      = 0x00008000,
 
-      kTypeMask    = 0x00007fff,
+      kTypeMask    = 0x0000ffff,
 
+      kRuntimeTFl  = 0x80000000,
+
+      kNumericTFl = kBoolTFl | kUIntTFl | kIntTFl | kFloatTFl | kDoubleTFl,
+      kMtxTFl     = kBoolMtxTFl | kUIntMtxTFl | kIntMtxTFl | kFloatMtxTFl | kDoubleMtxTFl,
+      kAllTFl     = kTypeMask
     };
 
     typedef struct mtx_str
@@ -76,7 +92,6 @@ namespace cw
       union {
         struct mtx::mtx_str< unsigned >* u;
         struct mtx::mtx_str< int >*      i;
-        struct mtx::mtx_str< real_t >*   r;
         struct mtx::mtx_str< float >*    f;
         struct mtx::mtx_str< double >*   d;
       } u;
@@ -84,21 +99,24 @@ namespace cw
     
     typedef struct value_str
     {
-      unsigned flags;
+      unsigned tflag;
+      
       union {
-        bool      b;
-        uint_t    u;
-        int_t     i;
-        float     f;
-        double    d;
-
-        mtx_t*    mtx;
+        bool            b;
+        uint_t          u;
+        int_t           i;
+        float           f;
+        double          d;
         
-        abuf_t*   abuf;
-        fbuf_t*   fbuf;
+        mtx_t*          mtx;        
+        abuf_t*         abuf;
+        fbuf_t*         fbuf;
+        mbuf_t*         mbuf;
         
-        char*     s;
-        char*     fname;
+        char*           s;
+        
+        const object_t* cfg;
+        void*           p;
 
       } u;
       
@@ -106,20 +124,23 @@ namespace cw
       
     } value_t;
 
-
-    inline bool is_numeric( const value_t* v ) { return cwIsFlag(v->flags,kBoolTFl|kUIntTFl|kIntTFl|kFloatTFl|kDoubleTFl); }
-    inline bool is_matrix(  const value_t* v ) { return cwIsFlag(v->flags,kBoolMtxTFl|kUIntMtxTFl|kIntMtxTFl|kFloatMtxTFl|kDoubleMtxTFl); }
         
-    struct instance_str;
+    struct proc_str;
     struct variable_str;
         
-    typedef rc_t (*member_func_t)( struct instance_str* ctx );
-    typedef rc_t (*member_value_func_t)( struct instance_str* ctx, struct variable_str* var );
+    typedef rc_t (*member_func_t)( struct proc_str* ctx );
+    typedef rc_t (*member_value_func_t)( struct proc_str* ctx, struct variable_str* var );
+
+    // var_desc_t attribute flags
     enum
     {
-      kSrcVarFl = 0x01,
-      kSrcOptVarFl = 0x02
-      
+      kInvalidVarDescFl   = 0x00,
+      kSrcVarDescFl       = 0x01,
+      kSrcOptVarDescFl    = 0x02,
+      kNoSrcVarDescFl     = 0x04,
+      kInitVarDescFl      = 0x08,
+      kMultVarDescFl      = 0x10,
+      kUdpOutVarDescFl = 0x20
     };
     
     typedef struct class_members_str
@@ -139,57 +160,87 @@ namespace cw
       unsigned             type;    // Value type id (e.g. kBoolTFl, kIntTFl, ...)
       unsigned             flags;   // Attributes for this var. (e.g. kSrcVarFl )
       const char*          docText; // User help string for this var.
+      
+      char*                proxyProcLabel;
+      char*                proxyVarLabel;
+      
       struct var_desc_str* link;    // class_desc->varDescL list link
     } var_desc_t;
 
-    typedef struct preset_str
+    typedef struct class_preset_str
     {
-      const char*        label;
-      const object_t*    cfg;
-      struct preset_str* link;
-    } preset_t;
+      const char*              label;
+      const object_t*          cfg;
+      struct class_preset_str* link;
+    } class_preset_t;
     
     typedef struct class_desc_str
     {
-      const object_t*   cfg;       // 
-      const char*       label;     // class label;      
-      var_desc_t*       varDescL;  // varDescA[varDescN] value description list
-      preset_t*         presetL;   // presetA[ presetN ]
-      class_members_t*  members;   // member functions for this class
+      const object_t*   cfg;        // class cfg 
+      const char*       label;      // class label;      
+      var_desc_t*       varDescL;   // varDescL variable description linked on var_desc_t.link
+      class_preset_t*   presetL;    // preset linked list
+      class_members_t*  members;    // member functions for this class
+      unsigned          polyLimitN; // max. poly copies of this class per network_t or 0 if no limit
+      ui_proc_desc_t*   ui;
     } class_desc_t;
 
+    enum {
+      kInvalidVarFl    = 0x00,
+      kLogVarFl        = 0x01,
+      kProxiedVarFl    = 0x02,
+      kProxiedOutVarFl = 0x04
+    };
 
     // Note: The concatenation of 'vid' and 'chIdx' should form a unique identifier among all variables
     // on a given 'instance'.
     typedef struct variable_str
     {
-      struct instance_str* inst;         // pointer to this variables instance
+      struct proc_str*     proc;         // pointer to this variables instance
+      
       char*                label;        // this variables label
-      unsigned             vid;          // this variables numeric id ( cat(vid,chIdx) forms a unique variable identifier on this 'inst'
-      var_desc_t*          varDesc;      // the variable description for this variable
-      value_t              local_value[ kLocalValueN ];  // the local value instance (actual value if this is not a 'src' variable)
-      unsigned             local_value_idx; // local_value[] is double buffered to allow the cur value of the buf[] to be held while the next value is validated (see _var_set_template())
-      value_t*             value;        // pointer to the value associated with this variable   
+      unsigned             label_sfx_id; // the label suffix id of this variable or kBaseSfxId if this has no suffix
+      
+      unsigned             vid;          // this variables numeric id ( cat(vid,chIdx) forms a unique variable identifier on this 'proc'      
       unsigned             chIdx;        // channel index
-      struct variable_str* src_var;      // pointer to this input variables source link (or null if it uses the local_value)
-      struct variable_str* var_link;     // instance.varL link list
-      struct variable_str* connect_link; // list of outgoing connections
+      unsigned             flags;        // See kLogVarFl, kProxiedVarFl, etc
+      unsigned             type;         // This is the value type as established when the var is initialized - it never changes for the life of the var.
+            
+      var_desc_t*          classVarDesc; // pointer to this variables class var desc
+      var_desc_t*          localVarDesc; // pointer to this variables local var desc - if it doesn't match classVarDesc.
+      var_desc_t*          varDesc;      // the effective variable description for this variable (set to classVarDesc or localVarDesc)
+      
+      value_t              local_value[ kLocalValueN ]; // the local value instance (actual value if this is not a 'src' variable)
+      unsigned             local_value_idx;             // local_value[] is double buffered to allow the cur value of the buf[] to be held while the next value is validated (see _var_set_template())
+      struct variable_str* src_var;                     // pointer to this input variables source link (or null if it uses the local_value)
+      value_t*             value;                       // pointer to the value associated with this variable
+      
+      struct variable_str* var_link;     // instance.varL list link
       struct variable_str* ch_link;      // list of channels that share this variable (rooted on 'any' channel - in order by channel number)
+
+      struct variable_str* dst_head;     // Pointer to list of out-going connections (null on var's that do not have out-going connections)
+      struct variable_str* dst_tail;     // 
+      struct variable_str* dst_link;     // Link used by dst_head list.
+
+      ui_var_t*            ui_var;       // this variables UI description
+      std::atomic<struct variable_str*> ui_var_link; // UI update var link based on flow_t ui_var_head;
     } variable_t;
 
+
+    struct network_str;
     
-    typedef struct instance_str
+    typedef struct proc_str
     {
-      struct flow_str* ctx;          // global system context
+      struct flow_str*    ctx;  // global system context
+      struct network_str* net;  // network which owns this proc
 
       class_desc_t*   class_desc;    //
       
-      const char*     label;         // instance label
-      const object_t* inst_cfg;      // instance configuration
+      char*           label;         // instance label
+      unsigned        label_sfx_id;  // label suffix id (set to kBaseSfxId (0) unless poly is non-null)
       
-      const char*     arg_label;     // optional args label
-      const object_t* arg_cfg;       // optional args configuration
-
+      const object_t* proc_cfg;      // instance configuration
+            
       void*           userPtr;       // instance state
 
       variable_t*     varL;          // linked list of all variables on this instance
@@ -198,86 +249,260 @@ namespace cw
       unsigned        varMapIdN;     // max 'vid' among all variables on this instance 
       unsigned        varMapN;       // varMapN = varMapIdN * varMapChN 
       variable_t**    varMapA;       // varMapA[ varMapN ] = allows fast lookup from ('vid','chIdx) to variable
+
+      struct network_str*  internal_net;
       
-      struct instance_str* link;
-    } instance_t;
+    } proc_t;
 
+
+    // preset_value_t holds a preset value and the proc/var to which it will be applied.
+    typedef struct preset_value_str
+    {
+      proc_t*                  proc;       // proc target for this preset value
+      variable_t*              var;        // var target for this preset value
+      value_t                  value;      // Preset value.
+      unsigned                 pairTblIdx; // Index into the preset pair table for this preset value
+      struct preset_value_str* link;
+    } preset_value_t;
+
+    typedef struct preset_value_list_str
+    {
+      preset_value_t* value_head;  // List of preset_value_t for this preset. 
+      preset_value_t* value_tail;  // Last preset value in the list.
+    } preset_value_list_t;
+
+    struct network_preset_str;
+
+    typedef struct dual_preset_str
+    {
+      const struct network_preset_str* pri;
+      const struct network_preset_str* sec;
+      double      coeff;
+    } dual_preset_t;
+
+    typedef enum {
+      kPresetVListTId,
+      kPresetDualTId
+    } preset_type_id_t;
     
+    typedef struct network_preset_str
+    {
+      const char*     label;       // Preset label
+      preset_type_id_t tid;
+      
+      union {
+        preset_value_list_t vlist;
+        dual_preset_t       dual;
+      } u;
+    } network_preset_t;
 
+    // Preset-pair record used to apply dual presets.
+    typedef struct network_preset_pair_str
+    {
+      const proc_t*     proc;   //
+      const variable_t* var;    //
+      unsigned          chIdx;  // 
+      unsigned          chN;    //
+      const value_t*    value;  //
+    } network_preset_pair_t;
+
+    typedef struct net_global_var_str
+    {
+      const char* class_label;
+      char*       var_label;
+      void*       blob;
+      unsigned    blobByteN;
+      
+      struct net_global_var_str* link;
+      
+    } net_global_var_t;
+
+    typedef struct network_str
+    {
+      const object_t*   procsCfg;   // network proc list
+      const object_t*   presetsCfg; // presets designed for this network
+
+      struct proc_str** procA;      
+      unsigned          procN;
+
+      network_preset_t* presetA;
+      unsigned          presetN;
+
+      // Preset pair table used by network_apply_dual_preset()
+      network_preset_pair_t* preset_pairA;
+      unsigned               preset_pairN;
+
+      net_global_var_t* globalVarL;
+
+      struct network_str* poly_link;
+      unsigned            poly_idx;
+
+      ui_net_t* ui_net;
+            
+    } network_t;
+    
+    
     typedef struct flow_str
     {
-      const object_t*      networkCfg;     // complete cfg used to create this network
+      const object_t*      pgmCfg;      // complete program cfg
+      const object_t*      networkCfg;  // 'network' cfg from pgmCfg
 
-      const object_t*      presetCfg;      // presets designed for this network
+      bool                 printNetworkFl;
+      bool                 non_real_time_fl;     // set if this is a non-real-time program
+      unsigned             framesPerCycle;       // sample frames per cycle (64)
+      srate_t              sample_rate;          // default sample rate (48000.0)
+      unsigned             maxCycleCount;        // count of cycles to run on flow::exec() or 0 if there is no limit.
+      const char*          init_net_preset_label;// network initialization preset label or nullptr if there is no net. init. preset
       
-      unsigned             framesPerCycle;  // sample frames per cycle (64)
+      bool                 isInRuntimeFl;        // Set when compile-time is complete
+      
+      unsigned             cycleIndex;           // Incremented with each processing cycle
+
+      bool                 printLogHdrFl;
+      
       bool                 multiPriPresetProbFl; // If set then probability is used to choose presets on multi-preset application
       bool                 multiSecPresetProbFl; // 
-      bool                 multiPresetInterpFl; // If set then interpolation is applied between two selectedd presets on multi-preset application
-      unsigned             cycleIndex;     // Incremented with each processing cycle      
-      unsigned             maxCycleCount;  // count of cycles to run on flow::exec() or 0 if there is no limit.
+      bool                 multiPresetInterpFl;  // If set then interpolation is applied between two selectedd presets on multi-preset application
       
-      class_desc_t*        classDescA;     // 
-      unsigned             classDescN;     //
+      class_desc_t*        classDescA;           // 
+      unsigned             classDescN;           //
 
-      external_device_t*   deviceA;        // deviceA[ deviceN ] external device description array
-      unsigned             deviceN;        //
+      class_desc_t*        udpDescA;          // 
+      unsigned             udpDescN;          //
       
-      struct instance_str* network_head; // first instance
-      struct instance_str* network_tail; // last insance      
+      external_device_t*   deviceA;              // deviceA[ deviceN ] external device description array
+      unsigned             deviceN;              //
+
+      const char*          proj_dir;             // default input/output directory
+
+      // Top-level preset list.
+      network_preset_t* presetA;  // presetA[presetN] partial (label and tid only) parsing of the network presets 
+      unsigned          presetN;  // 
+      
+      network_t*        net;      // The root of the network instance
+
+      ui_callback_t  ui_callback;
+      void*          ui_callback_arg;
+      
+      std::atomic<variable_t*> ui_var_head; // Linked lists of var's to send to the UI
+      variable_t               ui_var_stub;
+      variable_t*              ui_var_tail;
+
     } flow_t;
 
     //------------------------------------------------------------------------------------------------------------------------
     //
     // Value Only
     //
+
+    inline void set_null( value_t& v, unsigned tflag ) { v.tflag=tflag; v.u.p=nullptr; }
+    inline bool is_numeric( const value_t* v ) { return cwIsFlag(v->tflag,kNumericTFl); }
+    inline bool is_matrix(  const value_t* v ) { return cwIsFlag(v->tflag,kMtxTFl); }
+
+    // if all of the src flags are set in the dst flags then the two types are convertable.
+    inline bool can_convert( unsigned src_tflag, unsigned dst_tflag ) { return (src_tflag&dst_tflag)==src_tflag; }
+
     
     abuf_t*         abuf_create( srate_t srate, unsigned chN, unsigned frameN );
     void            abuf_destroy( abuf_t*& buf );
-    abuf_t*         abuf_duplicate( const abuf_t* src );
+    
+    // If 'dst' is null then a new abuf is allocated, filled with the contents of 'src'.
+    // If 'dst' is non-null and there is enough space for the contents of 'src' then only a copy is executed.
+    // If there is not enough space then dst is reallocated.
+    abuf_t*         abuf_duplicate( abuf_t* dst, const abuf_t* src );
     rc_t            abuf_set_channel( abuf_t* buf, unsigned chIdx, const sample_t* v, unsigned vN );
     const sample_t* abuf_get_channel( abuf_t* buf, unsigned chIdx );
 
-    fbuf_t*        fbuf_create( srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_real_t** magV=nullptr, const fd_real_t** phsV=nullptr, const fd_real_t** hzV=nullptr );
-    fbuf_t*        fbuf_create( srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_real_t** magV=nullptr, const fd_real_t** phsV=nullptr, const fd_real_t** hzV=nullptr );
+    fbuf_t*        fbuf_create( srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_sample_t** magV=nullptr, const fd_sample_t** phsV=nullptr, const fd_sample_t** hzV=nullptr );
+    fbuf_t*        fbuf_create( srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_sample_t** magV=nullptr, const fd_sample_t** phsV=nullptr, const fd_sample_t** hzV=nullptr );
     void           fbuf_destroy( fbuf_t*& buf );
-    fbuf_t*        fbuf_duplicate( const fbuf_t* src );
+
+    // Memory allocation will only occur if dst is null, or the size of dst's internal buffer are too small.
+    fbuf_t*        fbuf_duplicate( fbuf_t* dst, const fbuf_t* src );
+
+    mbuf_t*        mbuf_create( const midi::ch_msg_t* msgA=nullptr, unsigned msgN=0 );
+    void           mbuf_destroy( mbuf_t*& buf );
+    mbuf_t*        mbuf_duplicate( const mbuf_t* src );
     
-    inline bool    value_is_abuf( const value_t* v ) { return v->flags & kABufTFl; }
-    inline bool    value_is_fbuf( const value_t* v ) { return v->flags & kFBufTFl; }
+    inline bool    value_is_abuf( const value_t* v ) { return v->tflag & kABufTFl; }
+    inline bool    value_is_fbuf( const value_t* v ) { return v->tflag & kFBufTFl; }
 
     unsigned       value_type_label_to_flag( const char* type_desc );
+    const char*    value_type_flag_to_label( unsigned flag );
 
+    void           value_duplicate( value_t& dst, const value_t& src );
+
+    void           value_print( const value_t* value, bool info_fl=false);
+    
     //------------------------------------------------------------------------------------------------------------------------
     //
     // Class and Variable Description
     //
-    
-    var_desc_t*    var_desc_find( class_desc_t* cd, const char* var_label );
-    rc_t           var_desc_find( class_desc_t* cd, const char* label, var_desc_t*& vdRef );
 
-    class_desc_t*  class_desc_find(  flow_t* p, const char* class_desc_label );
+    var_desc_t*       var_desc_create( const char* label, const object_t* value_cfg );
+    void              var_desc_destroy( var_desc_t* var_desc );
     
-    void           class_dict_print( flow_t* p );
+    unsigned             var_desc_attr_label_to_flag( const char* attr_label );
+    const char*          var_desc_flag_to_attribute( unsigned flag );
+    const idLabelPair_t* var_desc_flag_array( unsigned& array_cnt_ref );
+
+    void              class_desc_destroy( class_desc_t* class_desc);
+    class_desc_t*     class_desc_find(  flow_t* p, const char* class_desc_label );
+    
+    var_desc_t*       var_desc_find(       class_desc_t* cd, const char* var_label );
+    const var_desc_t* var_desc_find( const class_desc_t* cd, const char* var_label );
+    rc_t              var_desc_find(       class_desc_t* cd, const char* var_label, var_desc_t*& vdRef );
+
+    const class_preset_t*   class_preset_find( const class_desc_t* cd, const char* preset_label );
+    
+    void              class_dict_print( flow_t* p );
 
     
     //------------------------------------------------------------------------------------------------------------------------
     //
     // Network
     //
-    void           network_print(    flow_t* p );
 
+    // Access a blob stored via network_global_var()
+    void*    network_global_var(       proc_t* proc, const char* var_label );
+    
+    // Copy a named blob into the network global variable space.
+    rc_t     network_global_var_alloc( proc_t* proc, const char* var_label, const void* blob, unsigned blobByteN );
+
+    
+    void     network_print(const network_t& net );
+
+    const network_preset_t* network_preset_from_label( const network_t& net, const char* preset_label );
+    
+    unsigned proc_mult_count( const network_t& net, const char* proc_label );
+    
+    rc_t     proc_mult_sfx_id_array( const network_t& net, const char* proc_label, unsigned* idA, unsigned idAllocN, unsigned& idN_ref );
+
+    unsigned network_poly_count( const network_t& net );
+        
+    
     //------------------------------------------------------------------------------------------------------------------------
     //
-    // Instance
+    // Proc
     //
+
+    void               proc_destroy( proc_t* proc );
+    rc_t               proc_validate( proc_t* proc );
     
-    instance_t*        instance_find( flow_t* p, const char* inst_label );
-    rc_t               instance_find( flow_t* p, const char* inst_label, instance_t*& instPtrRef );
-    external_device_t* external_device_find( flow_t* p, const char* device_label, unsigned typeId, unsigned inOrOutFl );
+    proc_t*            proc_find( network_t& net, const char* proc_label, unsigned sfx_id );
+    rc_t               proc_find( network_t& net, const char* proc_label, unsigned sfx_id, proc_t*& procPtrRef );
 
-    void               instance_print( instance_t* inst );
+    external_device_t* external_device_find( flow_t* p, const char* device_label, unsigned typeId, unsigned inOrOutFl, const char* midiPortLabel=nullptr );
 
+    void               proc_print( proc_t* proc );
+
+    // Count of all var instances on this proc.  This is a count of the length of proc->varL.
+    unsigned           proc_var_count( proc_t* proc );
+
+    // If fname has a '$' prefix then the system project directory is prepended to it.
+    // If fname has a '~' then the users home directory is prepended to it.
+    // The returned string must be release with a call to mem::free().
+    char*              proc_expand_filename( const proc_t* proc, const char* fname );
 
     
     //------------------------------------------------------------------------------------------------------------------------
@@ -286,41 +511,78 @@ namespace cw
     //
 
     // Create a variable but do not assign it a value.  Return a pointer to the new variable.
-    // Note: `value_cfg` is optional. Set it to NULL to ignore
-    rc_t           var_create( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, const object_t* value_cfg, variable_t*& varRef );
+    // Notes:
+    // 1) `value_cfg` is optional. Set it to NULL to ignore
+    // 2) If `altTypeFl` is not set to kInvalidTFl then the var is assigned this type.
+    rc_t           var_create( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, const object_t* value_cfg, unsigned altTypeFlag, variable_t*& varRef );
+    void           var_destroy( variable_t* var );
 
     // Channelizing creates a new var record with an explicit channel index to replace the
-    // automatically generated variable whose channel index is set to  'all'.
-    rc_t           var_channelize( instance_t* inst, const char* var_label, unsigned chIdx, const object_t* value_cfg, unsigned vid, variable_t*& varRef );
+    // automatically generated variable whose channel index is set to  'kAnyChIdx'.
+    rc_t           var_channelize( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx, const object_t* value_cfg, unsigned vid, variable_t*& varRef );
+
+    // Get the count of channels attached to var_label:sfx_id:kAnyChIdx.
+    // Returns 0 if only kAnyChIdx exists,
+    // Returns kInvalidCnt if var_label:sfx_id does not exist.
+    // Otherwise returns count of channels no including kAnyChIdx. (e.g. mono=1, stereo=2, quad=4 ...)
+    unsigned       var_channel_count( proc_t* proc, const char* var_label, unsigned sfx_id );
+
+    // Wrapper around call to var->proc->members->value()
+    rc_t           var_call_custom_value_func( variable_t* var );
+
+    // Sets and get the var->flags field
+    unsigned       var_flags(     proc_t* proc, unsigned chIdx, const char* var_label, unsigned sfx_id, unsigned& flags_ref );
+    rc_t           var_set_flags( proc_t* proc, unsigned chIdx, const char* var_label, unsigned sfx_id, unsigned flags );
+    rc_t           var_clr_flags( proc_t* proc, unsigned chIdx, const char* var_label, unsigned sfx_id, unsigned flags );
 
     // `value_cfg` is optional. Set it to NULL to ignore
-    rc_t           var_register( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, const object_t* value_cfg, variable_t*& varRef );
+    rc_t           var_register( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, const object_t* value_cfg, variable_t*& varRef );
 
-    // Returns true if this var is connected to an external proc variable
-    bool           is_connected_to_external_proc( const variable_t* var );
+    // Returns true if this var is connected to a source proc variable
+    bool           is_connected_to_source( const variable_t* var );
+
+    // Return true if this var is acting as a source for another var.
+    bool           is_a_source_var( const variable_t* var );
+
+    // Connect in_var to src_var. 
+    void           var_connect( variable_t* src_var, variable_t* in_var );
+
+    // Disconnect an in_var from it's source
+    void           var_disconnect( variable_t* in_var );
+
+
+    // Get the count of 'mult' vars associated with this var label.
+    unsigned       var_mult_count( proc_t* proc, const char* var_label );
+    
+    // Get all the label-sfx-id's associated with a give var label
+    rc_t           var_mult_sfx_id_array( proc_t* proc, const char* var_label, unsigned* idA, unsigned idAllocN, unsigned& idN_ref );
+
+    // Send a variable value to the UI
+    rc_t           var_send_to_ui( variable_t* var );
+    rc_t           var_send_to_ui( proc_t* proc, unsigned vid,  unsigned chIdx );
 
     //-----------------
     //
     // var_register
     //
     
-    inline rc_t _var_reg(cw::flow::instance_t*, unsigned int ) { return kOkRC; }
+    inline rc_t _var_reg(cw::flow::proc_t*, unsigned int ) { return kOkRC; }
     
     template< typename T0, typename T1,  typename... ARGS >
-    rc_t _var_reg( instance_t* inst, unsigned chIdx, T0 vid, T1 var_label, ARGS&&... args )
+    rc_t _var_reg( proc_t* proc, unsigned chIdx, T0 vid, T1 var_label, unsigned sfx_id, ARGS&&... args )
     {
       rc_t rc;
       variable_t* dummy = nullptr;
-      if((rc = var_register( inst, var_label, vid, chIdx, nullptr, dummy )) == kOkRC )        
-        if((rc = _var_reg( inst, chIdx, std::forward<ARGS>(args)...)) != kOkRC )
+      if((rc = var_register( proc, var_label, sfx_id, vid, chIdx, nullptr, dummy )) == kOkRC )        
+        if((rc = _var_reg( proc, chIdx, std::forward<ARGS>(args)...)) != kOkRC )
           return rc;
       return rc;
     }
 
     // Call var_register() on a list of variables.
     template< typename... ARGS >
-    rc_t           var_register( instance_t* inst, unsigned chIdx, unsigned vid, const char* var_label, ARGS&&... args )
-    {  return _var_reg( inst, chIdx, vid, var_label, std::forward<ARGS>(args)...); }
+    rc_t           var_register( proc_t* proc, unsigned chIdx, unsigned vid, const char* var_label, unsigned sfx_id, ARGS&&... args )
+    {  return _var_reg( proc, chIdx, vid, var_label, sfx_id, std::forward<ARGS>(args)...); }
 
 
 
@@ -329,28 +591,28 @@ namespace cw
     // var_register_and_get
     //
 
-    inline rc_t _var_register_and_get(cw::flow::instance_t*, unsigned int ) { return kOkRC; }
+    inline rc_t _var_register_and_get(cw::flow::proc_t*, unsigned int ) { return kOkRC; }
 
     template< typename T>
-    rc_t var_register_and_get( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, T& valRef )
+    rc_t var_register_and_get( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, T& valRef )
     {
       rc_t rc;
       variable_t* var;
-      if((rc = var_register(inst,var_label,vid,chIdx,nullptr,var)) == kOkRC )
+      if((rc = var_register(proc,var_label,sfx_id,vid,chIdx,nullptr,var)) == kOkRC )
         rc = var_get(var,valRef);
       return rc;
     }
       
     
-    inline rc_t _var_reg_and_get(cw::flow::instance_t*, unsigned int ) { return kOkRC; }
+    inline rc_t _var_reg_and_get(cw::flow::proc_t*, unsigned int ) { return kOkRC; }
 
     template< typename T0, typename T1, typename T2, typename... ARGS >
-    rc_t _var_reg_and_get( instance_t* inst, unsigned chIdx, T0 vid, T1 var_label, T2& valRef, ARGS&&... args )
+    rc_t _var_reg_and_get( proc_t* proc, unsigned chIdx, T0 vid, T1 var_label, unsigned sfx_id, T2& valRef, ARGS&&... args )
     {
       rc_t rc;
 
-      if((rc = var_register_and_get( inst, var_label, vid, chIdx, valRef )) == kOkRC )        
-        if((rc = _var_reg_and_get( inst, chIdx, std::forward<ARGS>(args)...)) != kOkRC )
+      if((rc = var_register_and_get( proc, var_label, sfx_id, vid, chIdx, valRef )) == kOkRC )        
+        if((rc = _var_reg_and_get( proc, chIdx, std::forward<ARGS>(args)...)) != kOkRC )
           return rc;
       
       return rc;
@@ -358,8 +620,8 @@ namespace cw
 
     // Call var_register_and_get() on a list of variables.
     template< typename... ARGS >
-    rc_t           var_register_and_get( instance_t* inst, unsigned chIdx, unsigned vid, const char* var_label, ARGS&&... args )
-    {  return _var_reg_and_get( inst, chIdx, vid, var_label, std::forward<ARGS>(args)...); }
+    rc_t           var_register_and_get( proc_t* proc, unsigned chIdx, unsigned vid, const char* var_label, unsigned sfx_id,  ARGS&&... args )
+    {  return _var_reg_and_get( proc, chIdx, vid, var_label, sfx_id, std::forward<ARGS>(args)...); }
 
 
     
@@ -371,25 +633,27 @@ namespace cw
     // var_register_and_set().  If the variable has not yet been created then it is created and assigned a value.
     // If the variable has already been created then 'vid' and the value are updated.
     // (Note that abuf and fbuf values are not changed by this function only the 'vid' is updated.)
-    rc_t           var_register_and_set( instance_t* inst, const char* label,     unsigned vid, unsigned chIdx, variable_t*& varRef );
+    rc_t           var_register_and_set( proc_t* proc, const char* label,  unsigned sfx_id,   unsigned vid, unsigned chIdx, variable_t*& varRef );
     
-    rc_t           var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, unsigned frameN );
-    rc_t           var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_real_t** magV=nullptr, const fd_real_t** phsV=nullptr, const fd_real_t** hzV=nullptr );
-    rc_t           var_register_and_set( instance_t* inst, const char* var_label, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_real_t** magV=nullptr, const fd_real_t** phsV=nullptr, const fd_real_t** hzV=nullptr );
+    rc_t           var_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, unsigned frameN );
+    rc_t           var_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, midi::ch_msg_t* midiA, unsigned midiN );
+    rc_t           var_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_sample_t** magV=nullptr, const fd_sample_t** phsV=nullptr, const fd_sample_t** hzV=nullptr );
+    rc_t           var_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_sample_t** magV=nullptr, const fd_sample_t** phsV=nullptr, const fd_sample_t** hzV=nullptr );
 
-    inline rc_t _var_register_and_set(cw::flow::instance_t*, unsigned int ) { return kOkRC; }
+    inline rc_t _var_register_and_set(cw::flow::proc_t*, unsigned int ) { return kOkRC; }
 
     template< typename T0, typename T1, typename T2, typename... ARGS >
-    rc_t _var_register_and_set( instance_t* inst, unsigned chIdx, T0 vid, T1 var_label, T2 val, ARGS&&... args )
+    rc_t _var_register_and_set( proc_t* proc, unsigned chIdx, T0 vid, T1 var_label, unsigned sfx_id, T2 val, ARGS&&... args )
     {
       rc_t rc;
 
       variable_t* var = nullptr;
-      if((rc = var_register_and_set( inst, var_label, vid, chIdx, var)) == kOkRC )
+      if((rc = var_register_and_set( proc, var_label, sfx_id, vid, chIdx, var)) == kOkRC )
       {
-        var_set( inst, vid, chIdx, val );
+        if((rc = var_set( proc, vid, chIdx, val )) != kOkRC )
+          return rc;
         
-        if((rc = _var_register_and_set( inst, chIdx, std::forward<ARGS>(args)...)) != kOkRC )
+        if((rc = _var_register_and_set( proc, chIdx, std::forward<ARGS>(args)...)) != kOkRC )
           return rc;
       }
       
@@ -398,66 +662,98 @@ namespace cw
 
     // Call var_register_and_set() on a list of variables.
     template< typename... ARGS >
-    rc_t           var_register_and_set( instance_t* inst, unsigned chIdx, unsigned vid, const char* var_label, ARGS&&... args )
-    {  return _var_register_and_set( inst, chIdx, vid, var_label, std::forward<ARGS>(args)...); }
+    rc_t           var_register_and_set( proc_t* proc, unsigned chIdx, unsigned vid, const char* var_label, unsigned sfx_id, ARGS&&... args )
+    {  return _var_register_and_set( proc, chIdx, vid, var_label, sfx_id, std::forward<ARGS>(args)...); }
 
 
 
     void           _var_destroy( variable_t* var );
 
-    bool           var_exists( instance_t* inst, const char* label, unsigned chIdx );
-    bool           var_has_value( instance_t* inst, const char* label, unsigned chIdx );
+    bool           var_exists(      proc_t* proc, const char* label, unsigned sfx_id, unsigned chIdx );
+    bool           var_has_value(   proc_t* proc, const char* label, unsigned sfx_id, unsigned chIdx );
+    bool           var_is_a_source( proc_t* proc, const char* label, unsigned sfx_id, unsigned chIdx );
+    bool           var_is_a_source( proc_t* proc, unsigned vid, unsigned chIdx );
 
-    rc_t           var_find( instance_t* inst, const char* var_label, unsigned chIdx, const variable_t*& varRef );
-    rc_t           var_find( instance_t* inst, const char* var_label, unsigned chIdx,       variable_t*& varRef );
-    rc_t           var_find( instance_t* inst, unsigned vid,          unsigned chIdx,       variable_t*& varRef );
+    rc_t           var_find(   proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx, const variable_t*& varRef );
+    rc_t           var_find(   proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx,       variable_t*& varRef );
+    rc_t           var_find(   proc_t* proc, unsigned vid,                           unsigned chIdx,       variable_t*& varRef );
 
+    
     // Count of numbered channels - does not count the kAnyChIdx variable instance.
-    rc_t           var_channel_count( instance_t* inst, const char* label, unsigned& chCntRef );
+    rc_t           var_channel_count( proc_t* proc, const char* label, unsigned sfx_idx, unsigned& chCntRef );
     rc_t           var_channel_count( const variable_t* var, unsigned& chCntRef );
+
+    rc_t           cfg_to_value( const object_t* cfg, value_t& value_ref );
+
+
+    //
+    // var_get() coerces the value of the variable to the type of the returned value.
+    //
     
-    
-    rc_t           var_get( const variable_t* var, bool&          valRef );
-    rc_t           var_get( const variable_t* var, uint_t&        valRef );
-    rc_t           var_get( const variable_t* var, int_t&         valRef );
-    rc_t           var_get( const variable_t* var, float&         valRef );
-    rc_t           var_get( const variable_t* var, double&        valRef );
-    rc_t           var_get( const variable_t* var, const char*&   valRef );    
-    rc_t           var_get( const variable_t* var, const abuf_t*& valRef );    
-    rc_t           var_get(       variable_t* var, abuf_t*&       valRef );    
-    rc_t           var_get( const variable_t* var, const fbuf_t*& valRef );
-    rc_t           var_get(       variable_t* var, fbuf_t*&       valRef );
+    rc_t var_get( const variable_t* var, bool&            valRef );
+    rc_t var_get( const variable_t* var, uint_t&          valRef );
+    rc_t var_get( const variable_t* var, int_t&           valRef );
+    rc_t var_get( const variable_t* var, float&           valRef );
+    rc_t var_get( const variable_t* var, double&          valRef );
+    rc_t var_get( const variable_t* var, const char*&     valRef );    
+    rc_t var_get( const variable_t* var, const abuf_t*&   valRef );    
+    rc_t var_get(       variable_t* var, abuf_t*&         valRef );    
+    rc_t var_get( const variable_t* var, const fbuf_t*&   valRef );
+    rc_t var_get(       variable_t* var, fbuf_t*&         valRef );
+    rc_t var_get( const variable_t* var, const mbuf_t*&   valRef );
+    rc_t var_get(       variable_t* var, mbuf_t*&         valRef );
+    rc_t var_get( const variable_t* var, const object_t*& valRef );
 
     template< typename T>
-    rc_t var_get( instance_t* inst, unsigned vid, unsigned chIdx, T& valRef)
+    rc_t var_get( proc_t* proc, unsigned vid, unsigned chIdx, T& valRef)
     {
       rc_t        rc  = kOkRC;
       variable_t* var = nullptr;
       
-      if((rc = var_find(inst, vid, chIdx, var )) == kOkRC )
+      if((rc = var_find(proc, vid, chIdx, var )) == kOkRC )
         rc = var_get(var,valRef);
       
       return rc;  
     }
 
     template< typename T >
-    T val_get( instance_t* inst, unsigned vid, unsigned chIdx )
+    T val_get( proc_t* proc, unsigned vid, unsigned chIdx )
     {
       T value;
-      var_get(inst,vid,chIdx,value);
+      var_get(proc,vid,chIdx,value);
       return value;
     }
 
-    rc_t           var_set( instance_t* inst, unsigned vid, unsigned chIdx, bool val );
-    rc_t           var_set( instance_t* inst, unsigned vid, unsigned chIdx, uint_t val );
-    rc_t           var_set( instance_t* inst, unsigned vid, unsigned chIdx, int_t val );
-    rc_t           var_set( instance_t* inst, unsigned vid, unsigned chIdx, float val );
-    rc_t           var_set( instance_t* inst, unsigned vid, unsigned chIdx, double val );
-    rc_t           var_set( instance_t* inst, unsigned vid, unsigned chIdx, const char* val );
-    rc_t           var_set( instance_t* inst, unsigned vid, unsigned chIdx, abuf_t* val );
-    rc_t           var_set( instance_t* inst, unsigned vid, unsigned chIdx, fbuf_t* val );
+    //
+    //  var_set() coerces the incoming value to the type of the variable (var->type)
+    //
 
-    const preset_t* class_preset_find( class_desc_t* cd, const char* preset_label );
+    rc_t var_set_from_cfg( variable_t* var, const object_t* cfg_value );
+
+    rc_t var_set( variable_t* var, const value_t* val );
+    rc_t var_set( variable_t* var, bool val );
+    rc_t var_set( variable_t* var, uint_t val );
+    rc_t var_set( variable_t* var, int_t val );
+    rc_t var_set( variable_t* var, float val );
+    rc_t var_set( variable_t* var, double val );
+    rc_t var_set( variable_t* var, const char* val );
+    rc_t var_set( variable_t* var, abuf_t* val );
+    rc_t var_set( variable_t* var, fbuf_t* val );
+    rc_t var_set( variable_t* var, mbuf_t* val );
+    rc_t var_set( variable_t* var, const object_t* val );
+    
+    rc_t var_set( proc_t* proc, unsigned vid, unsigned chIdx, const value_t* val );
+    rc_t var_set( proc_t* proc, unsigned vid, unsigned chIdx, bool val );
+    rc_t var_set( proc_t* proc, unsigned vid, unsigned chIdx, uint_t val );
+    rc_t var_set( proc_t* proc, unsigned vid, unsigned chIdx, int_t val );
+    rc_t var_set( proc_t* proc, unsigned vid, unsigned chIdx, float val );
+    rc_t var_set( proc_t* proc, unsigned vid, unsigned chIdx, double val );
+    rc_t var_set( proc_t* proc, unsigned vid, unsigned chIdx, const char* val );
+    rc_t var_set( proc_t* proc, unsigned vid, unsigned chIdx, abuf_t* val );
+    rc_t var_set( proc_t* proc, unsigned vid, unsigned chIdx, fbuf_t* val );
+    rc_t var_set( proc_t* proc, unsigned vid, unsigned chIdx, mbuf_t* val );
+    rc_t var_set( proc_t* proc, unsigned vid, unsigned chIdx, const object_t* val );
+
     
   }
 }

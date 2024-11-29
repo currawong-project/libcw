@@ -164,14 +164,17 @@ namespace cw
     rc_t start( handle_t h );
     rc_t pause( handle_t h );
     rc_t stop(  handle_t h );
-    
-    // Note that this call blocks on the the UI websocket handle.
+
+
+    // Note that this call blocks on the the UI websocket handle for up to 'timeOutMs'.
     // See ui:ws:exec().
-    rc_t exec(  handle_t h, void* execCbArg=nullptr );
+    rc_t exec(  handle_t h, unsigned timeOutMs, void* execCbArg=nullptr );
     
     bool isShuttingDown( handle_t h );
     void report( handle_t h );
+    void hardwareReport( handle_t h );
     void realTimeReport( handle_t h );
+    
 
     //----------------------------------------------------------------------------------------------------------
     //
@@ -208,6 +211,7 @@ namespace cw
     // Serial
     //
 
+    bool        serialIsEnabled(   handle_t h );
     unsigned    serialDeviceCount( handle_t h );
     unsigned    serialDeviceIndex( handle_t h, const char* label );
     const char* serialDeviceLabel( handle_t h, unsigned devIdx );
@@ -220,7 +224,8 @@ namespace cw
     //
     // MIDI
     //
-    
+
+    bool        midiIsEnabled(       handle_t h );
     unsigned    midiDeviceCount(     handle_t h );
     const char* midiDeviceName(      handle_t h, unsigned devIdx );
     unsigned    midiDeviceIndex(     handle_t h, const char* devName );
@@ -228,6 +233,11 @@ namespace cw
     const char* midiDevicePortName(  handle_t h, unsigned devIdx, bool inputFl, unsigned portIdx );
     unsigned    midiDevicePortIndex( handle_t h, unsigned devIdx, bool inputFl, const char* portName );    
     rc_t        midiDeviceSend(      handle_t h, unsigned devIdx, unsigned portIdx, uint8_t status, uint8_t d0, uint8_t d1 );
+
+    unsigned              midiDeviceMaxBufferMsgCount( handle_t h );
+    const midi::ch_msg_t* midiDeviceBuffer(      handle_t h, unsigned& msgCntRef );
+    rc_t                  midiDeviceClearBuffer( handle_t h, unsigned msgCnt ); 
+
     
     rc_t        midiOpenMidiFile(    handle_t h, unsigned devIdx, unsigned portIdx, const char* fname );
     rc_t        midiLoadMsgPacket(   handle_t h, const midi::packet_t& pkt ); // Note: Set devIdx/portIdx via pkt.devIdx/pkt.portIdx
@@ -275,6 +285,7 @@ namespace cw
     rc_t            audioGroupSetUserId(     handle_t h, unsigned groupIdx, unsigned userId );
     double          audioGroupSampleRate(    handle_t h, unsigned groupIdx );
     unsigned        audioGroupDspFrameCount( handle_t h, unsigned groupIdx );
+    rc_t            audioGroupReconfigure(   handle_t h, unsigned groupIdx, double srate, unsigned dspFrameN );
 
     // Get the count of in or out devices assigned to this group.
     unsigned        audioGroupDeviceCount(   handle_t h, unsigned groupIdx, unsigned inOrOutFl );
@@ -286,7 +297,8 @@ namespace cw
     //
     // Socket
     //
-
+    
+    bool               socketIsEnabled(    handle_t h );                            
     unsigned           socketCount(        handle_t h );
     unsigned           socketLabelToIndex( handle_t h, const char* label );
     unsigned           socketUserId(       handle_t h, unsigned sockIdx );
@@ -320,7 +332,8 @@ namespace cw
     // UI
     //
 
-
+    bool        uiIsEnabled( handle_t h );
+    
     // Find id's associated with elements.
     unsigned    parentAndNameToAppId( handle_t h, unsigned parentAppId, const char* eleName );  
     unsigned    parentAndNameToUuId(  handle_t h, unsigned parentAppId, const char* eleName );    
@@ -370,10 +383,16 @@ namespace cw
     
     rc_t uiCreateLog(       handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
 
+    rc_t uiCreateVList(      handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
+    rc_t uiCreateHList(      handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
+
+
+    rc_t uiSetTitle( handle_t h, unsigned uuId, const char* title );
 
     rc_t uiSetNumbRange( handle_t h, unsigned uuId, double minValue, double maxValue, double stepValue, unsigned decPl, double value );
     rc_t uiSetProgRange( handle_t h, unsigned uuId, double minValue, double maxValue, double value );
-    rc_t uiSetLogLine(     handle_t h, unsigned uuId, const char* text );
+    rc_t uiSetLogLine(   handle_t h, unsigned uuId, const char* text );
+    rc_t uiEmptyParent(  handle_t h, unsigned uuId); // empty a list or selection menu of all children
     
     rc_t uiSetClickable(   handle_t h, unsigned uuId, bool clickableFl=true );
     rc_t uiClearClickable( handle_t h, unsigned uuId );
@@ -395,9 +414,14 @@ namespace cw
     int  uiGetOrderKey(    handle_t h, unsigned uuId );
 
     rc_t uiSetScrollTop(   handle_t h, unsigned uuId );
-    
+
+    // uiSetBlob() allocates internal memory and copies the contents of blob[blobByeN]
     rc_t        uiSetBlob(   handle_t h, unsigned uuId, const void* blob, unsigned blobByteN );
     const void* uiGetBlob(   handle_t h, unsigned uuId, unsigned& blobByteN_Ref );
+    
+    // On call bufByteN_Ref holds the size of buf in bytes, on return it is set to the count of bytes in buf[].
+    // If buf[] is not large enough to hold all bytes kBufTooSmallRC is returned.
+    rc_t        uiGetBlob(   handle_t h, unsigned uuId, void* buf, unsigned& bufByteN_Ref );
     rc_t        uiClearBlob( handle_t h, unsigned uuId );
     
     // Register parent/child/name app id's 

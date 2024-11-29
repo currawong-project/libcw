@@ -73,6 +73,7 @@ namespace cw
     // Advance the current time by 'ms' milliseconds;
     rc_t futureMs( spec_t& ts, unsigned ms );
 
+    void fracSecondsToSpec(      spec_t& ts, double sec );
     void secondsToSpec(      spec_t& ts, unsigned sec );
     double specToSeconds(  const spec_t& ts );
 
@@ -85,7 +86,7 @@ namespace cw
     // Return count of bytes in in buf[]
     unsigned formatDateTime( char* buf, unsigned bufN, bool includeDateFl=false );
 
-    rc_t test();
+    rc_t test( const test::test_args_t& test );
 
     //)
 

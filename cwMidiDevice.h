@@ -30,7 +30,10 @@ namespace cw
                    const char* appNameStr,
                    const char* fileDevName = "file_dev",
                    unsigned    fileDevReadAheadMicros = 3000,
-                   unsigned    parserBufByteCnt = 1024  );
+                   unsigned    parserBufByteCnt = 1024,
+                   bool        enableBufFl = false,   // Enable buffer to hold all incoming msg's until RT thread can pick them up.
+                   unsigned    bufferMsgCnt = 4096,   // Count of messages in input buffer.
+                   bool        filterRtSenseFl = true);  
 
       rc_t create( handle_t&       h,
                    cbFunc_t        cbFunc,
@@ -47,7 +50,7 @@ namespace cw
       const char* portName(   handle_t h, unsigned devIdx, unsigned flags, unsigned portIdx );
       unsigned    portNameToIndex( handle_t h, unsigned devIdx, unsigned flags, const char* portName );
       rc_t        portEnable(      handle_t h, unsigned devIdx, unsigned flags, unsigned portIdx, bool enableFl );
-      
+
       rc_t        send(       handle_t h, unsigned devIdx, unsigned portIdx, uint8_t st, uint8_t d0, uint8_t d1 );
       rc_t        sendData(   handle_t h, unsigned devIdx, unsigned portIdx, const uint8_t* dataPtr, unsigned byteCnt );
 
@@ -56,6 +59,10 @@ namespace cw
       unsigned    msgCount(     handle_t h, unsigned devIdx, unsigned portIdx );
       rc_t        seekToMsg(    handle_t h, unsigned devIdx, unsigned portIdx, unsigned msgIdx );
       rc_t        setEndMsg(    handle_t h, unsigned devIdx, unsigned portidx, unsigned msgIdx );
+
+      unsigned        maxBufferMsgCount( handle_t h ); // max number of msg's which will ever be returned in a buffer
+      const ch_msg_t* getBuffer(   handle_t h, unsigned& msgCntRef );
+      rc_t            clearBuffer( handle_t h, unsigned msgCnt );
 
       rc_t start( handle_t h );
       rc_t stop( handle_t h );

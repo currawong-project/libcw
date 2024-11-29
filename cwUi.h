@@ -125,11 +125,15 @@ namespace cw
     rc_t createProg(       handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, double minValue, double maxValue );
     rc_t createProg(       handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, double minValue, double maxValue, double value );
     rc_t createLog(        handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
-    rc_t createList(       handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
+    rc_t createVList(      handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
+    rc_t createHList(      handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
 
+    rc_t setTitle(       handle_t h, unsigned uuId, const char* title );
+    
     rc_t setNumbRange(   handle_t h, unsigned uuId, double minValue, double maxValue, double stepValue, unsigned decPl, double value );
     rc_t setProgRange(   handle_t h, unsigned uuId, double minValue, double maxValue, double value );
     rc_t setLogLine(     handle_t h, unsigned uuId, const char* text );
+    rc_t emptyParent(    handle_t h, unsigned uuId );
     
     rc_t setClickable(   handle_t h, unsigned uuId, bool clickableFl=true );
     rc_t clearClickable( handle_t h, unsigned uuId );
@@ -154,6 +158,7 @@ namespace cw
     // (uuId must identify a list element whose parent is a 'uiList')
     rc_t setScrollTop(   handle_t h, unsigned uuId );
 
+    // setBlob() allocates internal memeory and copies the contents of blob[blobByeN]
     rc_t        setBlob(   handle_t h, unsigned uuId, const void* blob, unsigned blobByteN );
     const void* getBlob(   handle_t h, unsigned uuId, unsigned& blobByteN_Ref );
     rc_t        clearBlob( handle_t h, unsigned uuId );
@@ -161,6 +166,13 @@ namespace cw
     // Register parent/child/name app id's 
     rc_t registerAppIdMap(  handle_t h, const appIdMap_t* map, unsigned mapN );
 
+    unsigned elementChildCount( handle_t h, unsigned uuId );
+    rc_t     elementChildUuId( handle_t h, unsigned uuId, unsigned* bufA, unsigned bufN, unsigned& actualN );
+
+    unsigned elementPhysChildCount( handle_t h, unsigned uuId );
+    rc_t     elementPhysChildUuId( handle_t h, unsigned uuId, unsigned* bufA, unsigned bufN, unsigned& actualN );
+    
+    
     // Release an element an all of it's children.
     rc_t destroyElement( handle_t h, unsigned uuId );
 
@@ -192,8 +204,10 @@ namespace cw
         unsigned        rcvBufByteN;
         unsigned        xmtBufByteN;
         unsigned        fmtBufByteN;
-        unsigned        wsTimeOutMs;
         unsigned        idleMsgPeriodMs; // min period without messages before an idle message is generated
+        unsigned        queueBlkCnt;
+        unsigned        queueBlkByteCnt;
+        bool            extraLogsFl;       // Report the websock LLL_NOTICE logs
       } args_t;
 
       rc_t parseArgs( const object_t& o, args_t& args, const char* object_label="ui" );
@@ -218,20 +232,21 @@ namespace cw
                     unsigned          appIdMapN        = 0,
                     websock::cbFunc_t wsCbFunc         = nullptr,        
                     const char*       dfltPageFn       = "index.html",        
-                    unsigned          websockTimeOutMs = 50,
                     unsigned          idleMsgPeriodMs  = 50,
                     unsigned          rcvBufByteN      = 1024,
                     unsigned          xmtBufByteN      = 1024,
-                    unsigned          fmtBufByteN      = 4096                    
-                    );
+                    unsigned          fmtBufByteN      = 4096,
+                    unsigned          queueBlkCnt      = 4,
+                    unsigned          queueBlkByteCnt  = 4096,
+                    bool              extraLogsFl      = false );
 
       rc_t destroy( handle_t& h );
 
       // This function should be called periodically to send and receive
       // queued messages to and from the websocket.
       // Note that this call may block for up to 'wsTimeOutMs' milliseconds
-      // on the websocket handle.
-      rc_t exec( handle_t h );
+      // while waiting for incoming websocket messages.
+      rc_t exec( handle_t h, unsigned wsTimeOutMs );
 
       // This function executes the internal default websock callback function.
       // It is useful if the user provides a custom websock callback function
@@ -240,6 +255,8 @@ namespace cw
       
       websock::handle_t websockHandle( handle_t h );
       ui::handle_t      uiHandle( handle_t h );
+      void              realTimeReport( handle_t h );
+      
     }
 
     namespace srv
@@ -248,27 +265,32 @@ namespace cw
       typedef handle<struct ui_ws_srv_str> handle_t;
 
       rc_t create( handle_t& h,
-        const ws::args_t&     args,
-        void*             cbArg,
-        uiCallback_t      uiCbFunc,        
-        const appIdMap_t* appIdMapA = nullptr,
-        unsigned          appIdMapN = 0,        
-        websock::cbFunc_t wsCbFunc  = nullptr );
+                   const ws::args_t& args,
+                   void*             cbArg,
+                   uiCallback_t      uiCbFunc,        
+                   const appIdMap_t* appIdMapA = nullptr,
+                   unsigned          appIdMapN = 0,
+                   unsigned          wsTimeOutMs = 50,                   
+                   websock::cbFunc_t wsCbFunc  = nullptr );
       
       rc_t create(  handle_t& h,
-        unsigned          port,
-        const char*       physRootDir,
-        void*             cbArg,
-        uiCallback_t      uiCbFunc,
-        const object_t*   uiRsrc           = nullptr,
-        const appIdMap_t* appIdMapA        = nullptr,
-        unsigned          appIdMapN        = 0,        
-        websock::cbFunc_t wsCbFunc         = nullptr,
-        const char*       dfltPageFn       = "index.html",
-        unsigned          websockTimeOutMs = 50,
-        unsigned          rcvBufByteN      = 1024,
-        unsigned          xmtBufByteN      = 1024,
-        unsigned          fmtBufByteN      = 4096 );
+                    unsigned          port,
+                    const char*       physRootDir,
+                    void*             cbArg,
+                    uiCallback_t      uiCbFunc,
+                    const object_t*   uiRsrc           = nullptr,
+                    const appIdMap_t* appIdMapA        = nullptr,
+                    unsigned          appIdMapN        = 0,        
+                    unsigned          wsTimeOutMs      = 50,
+                    websock::cbFunc_t wsCbFunc         = nullptr,
+                    const char*       dfltPageFn       = "index.html",
+                    unsigned          idleMsgPeriodMs  = 50,                    
+                    unsigned          rcvBufByteN      = 1024,
+                    unsigned          xmtBufByteN      = 1024,
+                    unsigned          fmtBufByteN      = 4096,
+                    unsigned          queueBlkCnt      = 4,
+                    unsigned          queueBlkByteCnt  = 4096,
+                    bool              extraLogsFl      = false );
 
 
       rc_t destroy( handle_t& h );
