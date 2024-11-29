@@ -57,6 +57,7 @@ namespace cw
       { "/audio_transform", dsp::test },
       { "/wt_note", wt_note::test },
       { "/thread_tasks", thread_tasks::test },
+      { "/numeric_convert", numericConvertTest },
       { nullptr, nullptr },
     };
     

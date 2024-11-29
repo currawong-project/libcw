@@ -5,6 +5,7 @@
 #include "cwFile.h"
 #include "cwSvg.h"
 #include "cwText.h"
+#include "cwTest.h"
 #include "cwNumericConvert.h"
 
 namespace cw

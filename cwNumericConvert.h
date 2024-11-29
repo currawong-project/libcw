@@ -155,7 +155,8 @@ namespace cw
   template < > inline
   int number_to_string( const double&   v, char* buf, int bufN, const char* fmt ) { return snprintf(buf,bufN,fmt==nullptr ? "%f" : fmt, v);  }
 
-  
+  rc_t numericConvertTest( const test::test_args_t& args );
+
   
 }
 #endif
