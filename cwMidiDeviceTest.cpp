@@ -109,11 +109,11 @@ namespace cw
               }
                   
               if( isNoteOn(p->msgArray[j].status,p->msgArray[j].d1) )
-                printf("%ld %ld %i 0x%x %i %i\n", p->msgArray[j].timeStamp.tv_sec, p->msgArray[j].timeStamp.tv_nsec, p->msgArray[j].ch, p->msgArray[j].status,p->msgArray[j].d0, p->msgArray[j].d1);
+                cwLogPrint("%ld %ld %i 0x%x %i %i\n", p->msgArray[j].timeStamp.tv_sec, p->msgArray[j].timeStamp.tv_nsec, p->msgArray[j].ch, p->msgArray[j].status,p->msgArray[j].d0, p->msgArray[j].d1);
             }
             else
             {
-              printf("0x%x ",p->sysExMsg[j]);
+              cwLogPrint("0x%x ",p->sysExMsg[j]);
             }
         }
       }
@@ -127,13 +127,13 @@ namespace cw
       void _test_print( const file::trackMsg_t* tmsg, const test_msg_t& m )
       {
         const char* eql_mark = _test_is_equal(tmsg,m) ? "" : "*";
-        printf("%2i 0x%2x %3i %3i : %2i 0x%2x %3i %3i : %s\n",tmsg->u.chMsgPtr->ch, tmsg->status, tmsg->u.chMsgPtr->d0, tmsg->u.chMsgPtr->d1, m.msg.ch, m.msg.status, m.msg.d0, m.msg.d1, eql_mark);
+        cwLogPrint("%2i 0x%2x %3i %3i : %2i 0x%2x %3i %3i : %s\n",tmsg->u.chMsgPtr->ch, tmsg->status, tmsg->u.chMsgPtr->d0, tmsg->u.chMsgPtr->d1, m.msg.ch, m.msg.status, m.msg.d0, m.msg.d1, eql_mark);
       }
 
       void _test_print( unsigned long long t0, const file::trackMsg_t* tmsg, unsigned long long t1, const test_msg_t& m, unsigned dt )
       {
         const char* eql_mark = _test_is_equal(tmsg,m) ? "" : "*";
-        printf("%6llu %2i 0x%2x %3i %3i : %6llu %2i 0x%2x %3i %3i : %6i : %s\n",t0, tmsg->u.chMsgPtr->ch, tmsg->status, tmsg->u.chMsgPtr->d0, tmsg->u.chMsgPtr->d1, t1, m.msg.ch, m.msg.status, m.msg.d0, m.msg.d1, dt, eql_mark);
+        cwLogPrint("%6llu %2i 0x%2x %3i %3i : %6llu %2i 0x%2x %3i %3i : %6i : %s\n",t0, tmsg->u.chMsgPtr->ch, tmsg->status, tmsg->u.chMsgPtr->d0, tmsg->u.chMsgPtr->d1, t1, m.msg.ch, m.msg.status, m.msg.d0, m.msg.d1, dt, eql_mark);
       }
       
 
@@ -158,7 +158,7 @@ namespace cw
         tmsgA = msgArray(mfH);
         tmsgN = msgCount(mfH);
 
-        printf("file:%i test:%i\n",tmsgN,p->msg_idx);
+        cwLogPrint("file:%i test:%i\n",tmsgN,p->msg_idx);
 
         // for file trk msg and recorded msg
         for(unsigned i=0,j=0; i<tmsgN && j<p->msg_idx; ++i)
@@ -202,7 +202,7 @@ namespace cw
           }
         }
         
-        printf("max diff:%i avg diff:%i micros\n",max_diff_micros,sum_cnt==0 ? 0 : sum_micros/sum_cnt);
+        cwLogPrint("max diff:%i avg diff:%i micros\n",max_diff_micros,sum_cnt==0 ? 0 : sum_micros/sum_cnt);
         
       errLabel:
         close(mfH);
@@ -326,27 +326,27 @@ cw::rc_t cw::midi::device::test( const object_t* cfg )
         break;
         
       case 'b':
-        printf("starting ...\n");
+        cwLogPrint("starting ...\n");
         start(h);
         break;
         
       case 's':
-        printf("stopping ...\n");
+        cwLogPrint("stopping ...\n");
         stop(h);
         break;
         
       case 'p':
-        printf("pausing ...\n");        
+        cwLogPrint("pausing ...\n");        
         pause(h,true);
         break;
         
       case 'u':
-        printf("unpausing ...\n");        
+        cwLogPrint("unpausing ...\n");        
         pause(h,false);
         break;
         
       case 'n':
-        printf("sending ...\n");
+        cwLogPrint("sending ...\n");
         send(h,2,0,0x90,60,60);
         break;
     }
