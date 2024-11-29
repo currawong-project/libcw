@@ -198,9 +198,19 @@ cw::rc_t cw::websockSrvTest( const object_t* cfg )
   };
 
 
-  if((rc = cfg->getv("physRootDir",physRootDirArg,"dfltHtmlPageFn",dfltHtmlPageFn)) != kOkRC )
+  if((rc = cfg->getv("physRootDir",physRootDirArg,
+                     "dfltHtmlPageFn",dfltHtmlPageFn,
+                     "port",port,
+                     "rcvBufByteN",rcvBufByteN,
+                     "xmtBufByteN",xmtBufByteN,
+                     "queueBlkCnt",queueBlkCnt,
+                     "queueBlkByteCnt",queueBlkByteCnt,
+                     "timeOutMs",timeOutMs
+        )) != kOkRC )
+  {
     return cwLogError(rc,"Args parse failed.");
-    
+  }
+  
   char* physRootDir = cw::filesys::expandPath(physRootDirArg);
   unsigned protocolN = sizeof(protocolA)/sizeof(protocolA[0]);
 
