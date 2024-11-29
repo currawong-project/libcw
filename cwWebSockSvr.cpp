@@ -191,13 +191,6 @@ cw::rc_t cw::websockSrvTest( const object_t* cfg )
    kWebsockSrvProtocolId = 2
   };
   
-  websock::protocol_t protocolA[] =
-  {
-   { "http",                    kHttpProtocolId,      0,          0},
-   { "websocksrv_test_protocol",kWebsockSrvProtocolId,rcvBufByteN,xmtBufByteN}
-  };
-
-
   if((rc = cfg->getv("physRootDir",physRootDirArg,
                      "dfltHtmlPageFn",dfltHtmlPageFn,
                      "port",port,
@@ -210,6 +203,13 @@ cw::rc_t cw::websockSrvTest( const object_t* cfg )
   {
     return cwLogError(rc,"Args parse failed.");
   }
+
+  websock::protocol_t protocolA[] =
+  {
+   { "http",                    kHttpProtocolId,      0,          0},
+   { "websocksrv_test_protocol",kWebsockSrvProtocolId,rcvBufByteN,xmtBufByteN}
+  };
+
   
   char* physRootDir = cw::filesys::expandPath(physRootDirArg);
   unsigned protocolN = sizeof(protocolA)/sizeof(protocolA[0]);
