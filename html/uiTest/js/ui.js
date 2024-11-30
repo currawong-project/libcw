@@ -3,169 +3,22 @@ var _rootId    = "0";
 var _nextEleId = 0;
 var _focusId   = null;
 var _focusVal  = null;
+var _rootDivEle = null;
+var _rootEle = null;
 
 function set_app_title( suffix, className )
 {
     var ele = document.getElementById('connectTitleId');
-    ele.innerHTML = suffix
-    ele.className = className
-}
-
-
-function uiOnError( msg, r)
-{
-    console.log("Error:" + msg);
-}
-
-function uiGetParent( r )
-{
-    parent_ele = document.getElementById(r.parent_id);
-    
-    if( parent_ele == null )
+    if(ele != null)
     {
-	uiOnError("Parent not found. parent_id:" + r.parent_id,r);
+	ele.innerHTML = suffix
+	ele.className = className
     }
-
-    return parent_ele;
-}
-
-function uiCreateEle( r )
-{
-    var parent_ele;
-    
-    if((parent_ele = uiGetParent(r)) != null )
-    {    
-	ele            = document.createElement(r.ele_type)
-	ele.id         = r.ele_id;
-	ele.className  = r.value;
-	
-	parent_ele.appendChild(ele)
+    else
+    {
+	console.log("Ele. not found. Set title failed.")
     }
 }
-
-function uiRemoveChildren( r )
-{
-    ele = document.getElementById(r.ele_id)
-    
-    while (ele.firstChild)
-    {
-	ele.removeChild(ele.firstChild);
-    }  
-}
-
-function uiDivCreate( r )
-{ uiCreateEle(r) }
-
-function uiLabelCreate( r )
-{
-    var parent_ele;
-    
-    if((parent_ele = uiGetParent(r)) != null )
-    {
-	ele            = document.createElement("label")
-	ele.htmlFor    = r.ele_id
-	ele.innerHTML  = r.value;
-	parent_ele.appendChild(ele)
-    }
-    
-}
-
-function uiSelectCreate( r )
-{
-    uiCreateEle(r)
-}
-
-function uiSelectClear( r )
-{ uiRemoveChildren(r) }
-
-function uiSelectInsert( r )
-{
-    var select_ele;
-    
-    if((select_ele = uiGetParent(r)) != null )    
-    {
-	var option    = document.createElement('option');
-
-	option.id        = r.ele_id;
-	option.innerHTML = r.value;
-	option.value     = r.ele_id;
-	option.onclick   = function() { uiOnSelectClick(this) }
-	
-	select_ele.appendChild(option)
-    }
-}
-
-function uiSelectChoose( r )
-{
-    var select_ele;
-    
-    if((select_ele = uiGetParent(r)) != null )    
-    {
-	if( select_ele.hasChildNodes())
-	{
-	    var children = select_ele.childNodes
-	    for(var i=0; i<children.length; i++)
-	    {
-		if( children[i].id == r.ele_id )
-		{
-		    select_ele.selectedIndex = i
-		    break;
-		}	
-	    }
-	}
-    }
-}
-
-function uiOnSelectClick( ele )
-{
-    cmdstr = "mode ui ele_type select op choose parent_id "+ele.parentElement.id+" option_id " + ele.id
-    websocket.send(cmdstr);
-
-}
-
-function uiNumberOnKeyUp( e )
-{
-    if( e.keyCode == 13 )
-    {
-	//console.log(e)
-	cmdstr = "mode ui ele_type number op change parent_id "+e.srcElement.parentElement.id+" ele_id " + e.srcElement.id + " value " + e.srcElement.value    
-	websocket.send(cmdstr);
-    }
-}
-
-
-function uiNumberCreate( r )
-{
-    var parent_ele;
-    
-    if((parent_ele = uiGetParent(r)) != null )        
-    {
-	ele    = document.createElement("input")
-	ele.id = r.ele_id
-	ele.setAttribute('type','number')
-	ele.addEventListener('keyup',uiNumberOnKeyUp)
-	parent_ele.appendChild(ele)
-    }
-}
-
-function uiNumberSet( r )
-{
-    var ele;
-
-    //console.log("ele_id:" + r.ele_id + " parent_id:" + r.parent_id + " value:" + r.value)
-    
-    if((ele = document.getElementById(r.parent_id)) != null)
-    {
-	switch( r.ele_id )
-	{
-	    case "0":  ele.min   = r.value; break;
-	    case "1":  ele.max   = r.value; break;
-	    case "2":  ele.step  = r.value; break;
-	    case "3":  ele.value = r.value; break;
-	}
-    }
-}
-
 
 
 function dom_child_by_id( parentEle, child_id )
@@ -204,9 +57,31 @@ function dom_set_number( ele_id, val )
 
 
 //==============================================================================
-
 function dom_id_to_ele( id )
-{ return document.getElementById(id); }
+{
+    var ele = null;
+    
+    if( _rootEle == null )
+    {
+	console.log("fail dtoe: root null");
+    }
+    else
+    {
+	if( id == _rootId )
+	    return _rootEle
+	
+	//ele =  _rootEle.getElementById(id);
+	
+	ele = document.getElementById(id)
+	if( ele == null )
+	{
+	    console.log("fail dtoe:" + id + " " + typeof(id) );
+	}
+    }
+    return ele
+}
+
+// { return document.getElementById(id); }
 
 function dom_set_checkbox( ele_id, fl )
 { dom_id_to_ele(ele_id).checked = fl }
@@ -239,12 +114,12 @@ function ui_send_corrupt_state( ele )
 
 function ui_send_bool_value(   ele, value ) { ui_send_value(ele,'b',value); }
 function ui_send_int_value(    ele, value ) { ui_send_value(ele,'i',value); }
-function ui_send_float_value(   ele, value ) { ui_send_value(ele,'f',value); }
+function ui_send_float_value(   ele, value ) { ui_send_value(ele,'d',value); }
 function ui_send_string_value( ele, value ) { ui_send_value(ele,'s',value); }
 
 function ui_send_click( ele )
 {
-    console.log("click " + ele.id )
+    //console.log("click " + ele.id )
         
     ws_send("click " + ele.id )  
 }
@@ -321,16 +196,16 @@ function ui_create_ele( parent_ele, ele_type, d, dfltClassName )
 
 	if( d.hasOwnProperty('clickable') )
 	    ui_set_clickable( ele, d.clickable );
-	
+
 	if( d.hasOwnProperty('enable') )
 	    ui_set_enable( ele, d.enable )
 
 	//console.log("Created: " + ele_type  + " parent:" + d.parentUuId + " id:" + ele.id + " appId:" + ele.appId)
 	
 	parent_ele.appendChild(ele);
-
 	
-	
+	if( d.hasOwnProperty('order') )
+	    ui_set_order_key(ele,d.order)
 	
     }
     return ele
@@ -393,10 +268,13 @@ function ui_create_div( parent_ele, d )
 function ui_create_panel_div( parent_ele, d )
 {
     d.type = "div"
-    var div_ele =  ui_create_div( parent_ele, d );
 
     if( !d.hasOwnProperty('className') )
-	div_ele.className = "uiPanel"
+	d.className = "uiPanel"
+    
+    var div_ele =  ui_create_div( parent_ele, d );
+
+    
 
     return div_ele
 }
@@ -404,10 +282,12 @@ function ui_create_panel_div( parent_ele, d )
 function ui_create_row_div( parent_ele, d )
 {
     d.type = "div"
-    var div_ele =  ui_create_div( parent_ele, d );
 
     if( !d.hasOwnProperty('className') )
-	div_ele.className = "uiRow"
+	d.className = "uiRow"
+    
+    var div_ele =  ui_create_div( parent_ele, d );
+
 
     return div_ele
 }
@@ -415,10 +295,12 @@ function ui_create_row_div( parent_ele, d )
 function ui_create_col_div( parent_ele, d )
 {
     d.type = "div"
-    var div_ele =  ui_create_div( parent_ele, d );
 
     if( !d.hasOwnProperty('className') )
-	div_ele.className = "uiCol"
+	d.className = "uiCol"
+    
+    var div_ele =  ui_create_div( parent_ele, d );
+
 
     return div_ele
 }
@@ -460,7 +342,9 @@ function ui_create_check( parent_ele, d )
 	ele.onclick = function() {  ui_send_bool_value(this,dom_get_checkbox(this.id)); }
 
 	if( !d.hasOwnProperty('value') )
+	{
 	    ui_send_echo(ele)
+	}
 	else
 	{
 	    dom_set_checkbox(ele.id, d.value );
@@ -498,7 +382,8 @@ function ui_create_select( parent_ele, d )
 {
     var ele = ui_create_ctl( parent_ele, "select", d.title, d, "uiSelect" );
     ele.onchange = function() { ui_on_select(this) }
-
+    ele.onclick  = function() { ui_on_select(this) }
+    
     if( !d.hasOwnProperty('value') )
     {
 	ui_send_echo(ele)
@@ -674,7 +559,10 @@ function _ui_set_number_range( ele, d )
 
 function ui_set_number_value( ele, value )
 {
-    if( ele.minValue <= value && value <= ele.maxValue    )
+    var min_ok_fl = (!ele.hasOwnProperty('minValue')) || (value >= ele.minValue)
+    var max_ok_fl = (!ele.hasOwnProperty('maxValue')) || (value <= ele.maxValue)
+    
+    if( min_ok_fl && max_ok_fl    )
     {
 	ele.value     = value;
 	if( ele.decpl == 0 )
@@ -687,6 +575,26 @@ function ui_set_number_value( ele, value )
 	ui_error("Number value " + value + " out of range. min:" + ele.minValue + " max:" +ele.maxValue )
     }
 
+}
+
+function ui_set_title( ele, d )
+{
+    if( ele.tagName.toLowerCase() == "button" )
+	ele.innerHTML = d.value;
+    else
+    {
+	// most controls will have a sibling element of type 'label'
+	var label_eles = ele.parentNode.getElementsByTagName("label");
+	
+	if( label_eles != null && label_eles.length > 0 )
+	{
+	    label_eles[0].innerHTML = d.value
+	}
+	else
+	{
+	    ui_error("set_title() target element not found.");
+	}
+    }    
 }
 
 function ui_set_number_range( ele, d )
@@ -722,6 +630,8 @@ function ui_create_number( parent_ele, d )
 
 function ui_set_number_display( ele_id, value )
 {
+    //console.log("Numb disp: " + ele_id + " " + value)
+    
     var ele = dom_id_to_ele(ele_id);
 
     if( typeof(value)=="number")
@@ -831,8 +741,13 @@ function ui_set_log_text( ele, value )
 function ui_create_log( parent_ele, d )
 {
     // create a containing div with the label
-    d.className = "uiLog"
+    
+    if( !d.hasOwnProperty('className') )
+	d.className = "uiLog"
+    
     var log_ele  = ui_create_ctl( parent_ele, "div", d.title, d, "uiLog" )
+
+    
 
     // add a <pre> to the containing div
     var ele = dom_create_ele("pre")
@@ -846,19 +761,15 @@ function ui_create_log( parent_ele, d )
     return log_ele
 }
 
-function ui_create_list( parent_ele, d )
+function ui_create_list( parent_ele, d, class_label )
 {
-    d.className = "uiList"
-    console.log(d)
-    var list_ele  = ui_create_ctl( parent_ele, "div", d.title, d, "uiList" )
+    var list_ele  = ui_create_ctl( parent_ele, "div", d.title, d, class_label )
     
     return list_ele
 }
 
 function ui_set_value( d )
 {
-    //console.log(d)
-    
     var eleId = d.uuId.toString()
     var ele = dom_id_to_ele(eleId)
 
@@ -933,8 +844,15 @@ function ui_set_value( d )
 function _ui_modify_class( ele, classLabelArg, enableFl )
 {
     let classLabel  = " " + classLabelArg; // prefix the class label with a space
+
+    //console.log(ele.id + " " + classLabelArg + " " + enableFl )
+
+    let isEnabledFl = false;
     
-    let isEnabledFl = ele.className.includes(classLabel)
+    if( ele.hasOwnProperty("className") )
+	isEnabledFl = ele.className.includes(classLabel)
+    else
+	ele.className = ""
 
     // if the class is not already enabled/disabled
     if( enableFl != isEnabledFl )
@@ -944,6 +862,8 @@ function _ui_modify_class( ele, classLabelArg, enableFl )
 	else
 	    ele.className = ele.className.replace(classLabel, "");
     }
+
+    //console.log(ele.id + " " + ele.className + " " + enableFl )
 }
 
 function ui_set_select( ele, enableFl )
@@ -1013,7 +933,7 @@ function ui_set_order_key(ele, orderKey)
 
 function ui_set( d )
 {
-    console.log(d)
+    //console.log(d)
     var ele = dom_id_to_ele(d.uuId.toString())
 
     if( ele == null )
@@ -1023,6 +943,10 @@ function ui_set( d )
     {
 	switch( d.type )
 	{
+	    case "title":
+	    ui_set_title(ele,d);
+	    break;
+	    
 	    case "number_range":
 	    ui_set_number_range(ele, d)
 	    break;
@@ -1055,6 +979,14 @@ function ui_set( d )
     }
 }
 
+function ui_cache( d )
+{
+    for(i=0; i<d.array.length; ++i)
+    {
+	_ws_on_msg( d.array[i] )
+    }
+}
+
 function ui_create( d )
 {
     if( typeof(d.parentUuId) == "number")
@@ -1067,7 +999,9 @@ function ui_create( d )
     var parent_ele  = ui_get_parent(d.parentUuId);
     var ele = null;
     
-    if( parent_ele != null )
+    if( parent_ele == null )
+	console.log("Parent ele not found.",d)
+    else
     {    
 	switch( d.type )
 	{
@@ -1110,7 +1044,7 @@ function ui_create( d )
 	    case "str_disp":
 	    ele = ui_create_str_display( parent_ele, d );
 	    break;
-
+	    
 	    case "string":
 	    ele = ui_create_string( parent_ele, d );
 	    break;
@@ -1135,8 +1069,12 @@ function ui_create( d )
 	    ele = ui_create_log( parent_ele, d );
 	    break;
 
-	    case "list":
-	    ele = ui_create_list( parent_ele, d );
+	    case "vlist":
+	    ele = ui_create_list( parent_ele, d, "uiList" );
+	    break;
+
+	    case "hlist":
+	    ele = ui_create_list( parent_ele, d, "uiHList" );
 	    break;
 	    
 	    default:
@@ -1162,6 +1100,30 @@ function ui_destroy( d )
 	ele.parentElement.removeChild( ele )
 }
 
+// Remove all children from the selected element
+function ui_empty( d )
+{
+    var ele = dom_id_to_ele(d.uuId.toString())
+
+    if( ele == null )
+	console.log("ele to empty not found");
+    
+    if( ele != null)
+    {
+	let i = 0;
+	let n = ele.children.length;
+	for(i=0; i<n; ++i)
+	{
+	    ele.removeChild(ele.children[0])
+	}
+    }
+}
+
+function ui_attach( d )
+{
+    console.log("ATTACH");
+    //_rootDivEle.appendChild(_rootEle)
+}
 
 
 function ws_send( s )
@@ -1171,14 +1133,14 @@ function ws_send( s )
     _ws.send(s+"\0")
 }
 
-function ws_on_msg( jsonMsg )
+function _ws_on_msg( d )
 {
-    //console.log(jsonMsg)
-    
-    d = JSON.parse(jsonMsg.data);
-
     switch( d.op )
     {
+	case 'cache':
+	ui_cache( d )
+	break;
+
 	case 'create':
 	ui_create( d )
 	break;
@@ -1187,6 +1149,10 @@ function ws_on_msg( jsonMsg )
 	ui_destroy( d )
 	break
 
+	case 'empty':
+	ui_empty(d)
+	break
+		
 	case 'value':
 	ui_set_value( d )
 	break;
@@ -1194,22 +1160,40 @@ function ws_on_msg( jsonMsg )
 	case 'set':
 	ui_set( d )
 	break;
-	
+
+	case 'attach':
+	ui_attach(d)
+	break;
+
 	default:
 	ui_error("Unknown UI operation. " + d.op )
     }
 
 }
 
+function ws_on_msg( jsonMsg )
+{
+    //console.log(jsonMsg)
+    
+    d = JSON.parse(jsonMsg.data);
+
+    _ws_on_msg(d)
+}
+
 function ws_on_open()
 {
     set_app_title( "Connected", "title_connected" );
-    _ws.send("init")
+    ws_send("init")
 }
 
 function ws_on_close()
 {
     set_app_title( "Disconnected", "title_disconnected" );
+
+    // remove the body of UI
+    var rootEle = dom_id_to_ele(_rootId)
+    if( rootEle != null )
+      document.body.removeChild(  rootEle )
 }
 
 function ws_form_url(urlSuffix)
@@ -1226,9 +1210,10 @@ function ws_form_url(urlSuffix)
     return pcol + u[0] + "/" + urlSuffix;
 }
 
-function main()
+function main_0()
 {
-    rootEle = dom_id_to_ele(_rootId);
+    d = { "className":"uiAppDiv", "uuId":_rootId }
+    rootEle = ui_create_div( document.body, d )
     rootEle.uuId = 0;
     rootEle.id = _nextEleId;
     _nextEleId += 1;
@@ -1240,7 +1225,28 @@ function main()
     _ws.onmessage    = ws_on_msg
     _ws.onopen       = ws_on_open 
     _ws.onclose      = ws_on_close;
+}
 
+function main()
+{
+    d = { "className":"uiAppDiv", "uuId":"rootDivEleId" }
+    _rootDivEle = ui_create_div( document.body, d )
+
+    //_rootEle = document.createDocumentFragment();
+    _rootEle = _rootDivEle
     
+    _rootEle.uuId = 0;
+    _rootEle.id = _nextEleId;
+    _nextEleId += 1;
+
+    //console.log(ws_form_url(""))
+    
+    _ws = new WebSocket(ws_form_url(""),"ui_protocol")
+    
+    _ws.onmessage    = ws_on_msg
+    _ws.onopen       = ws_on_open 
+    _ws.onclose      = ws_on_close;
+
+    console.log("main() done.")
 }
 
