@@ -107,7 +107,7 @@ namespace cw
     rc_t stop(  handle_t h );
 
     rc_t test(      const char* localNicDevice, sock::portNumber_t localPort, const char* remoteAddrIp, sock::portNumber_t remotePort, unsigned flags=0 );
-    rc_t testMain(  bool tcpFl, const char* localNicDevice, sock::portNumber_t localPort, const char* remoteAddrIp=nullptr, sock::portNumber_t remotePort=sock::kInvalidPortNumber );
+    rc_t testMain( const object_t* cfg );
   }    
   
 }

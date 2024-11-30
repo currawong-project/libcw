@@ -2,7 +2,10 @@
 #include "cwLog.h"
 #include "cwCommonImpl.h"
 #include "cwMem.h"
+#include "cwTest.h"
+#include "cwObject.h"
 #include "cwThread.h"
+#include "cwText.h"
 
 #include <sys/socket.h>
 #include <sys/ioctl.h>
@@ -1255,7 +1258,11 @@ cw::rc_t cw::socksrv::stop(  handle_t h )
   return thread::pause( p->thH );
 }
 
-cw::rc_t cw::socksrv::test(  const char* localNicDevice, sock::portNumber_t localPort, const char* remoteAddrIp, sock::portNumber_t remotePort, unsigned flags )
+cw::rc_t cw::socksrv::test(  const char*        localNicDevice,
+                             sock::portNumber_t localPort,
+                             const char*        remoteAddrIp,
+                             sock::portNumber_t remotePort,
+                             unsigned           flags )
 {
   handle_t            h;
   rc_t                rc           = kOkRC;
@@ -1344,17 +1351,43 @@ cw::rc_t cw::socksrv::test(  const char* localNicDevice, sock::portNumber_t loca
   return rcSelect(rc,rc1,rc2);
 }
 
-cw::rc_t cw::socksrv::testMain(  bool tcpFl, const char* localNicDevice, sock::portNumber_t localPort, const char* remoteAddrIp, sock::portNumber_t remotePort )
+cw::rc_t cw::socksrv::testMain( const object_t* cfg )
 {
-  unsigned flags = 0;
+  rc_t               rc             = kOkRC;
+  const char*        protocol_str   = nullptr;
+  sock::portNumber_t localPort      = 5688;
+  const char*        remoteAddrIp   = nullptr;
+  sock::portNumber_t remotePort     = 5687;
+  const char*        localNicDevice = nullptr;
+  unsigned           flags          = 0;
 
-  if( tcpFl )
+  if((rc = cfg->getv("protocol",protocol_str,
+                     "localPort",localPort )) != kOkRC )
+  {
+    rc = cwLogError(rc,"Required arg. parse failed.");
+    goto errLabel;
+  }
+
+  if((rc = cfg->getv_opt("remoteAddr",remoteAddrIp,
+                         "remotePort",remotePort,
+                         "nicDev",localNicDevice )) != kOkRC )
+  {
+    rc = cwLogError(rc,"Optional arg. parse failed.");
+    goto errLabel;
+  }
+
+  if( textIsEqual(protocol_str,"tcp") )
   {
     flags |= sock::kTcpFl | sock::kStreamFl | sock::kReuseAddrFl | sock::kReusePortFl;
 
     if( remoteAddrIp == nullptr )
       flags |= sock::kListenFl;
+    
   }
+    
+  rc = test(localNicDevice,localPort,remoteAddrIp,remotePort,flags);
+
+errLabel:
   
-  return test(localNicDevice,localPort,remoteAddrIp,remotePort,flags);
+  return rc;
 }
