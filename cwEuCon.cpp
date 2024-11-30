@@ -5,6 +5,8 @@
 #include "cwTest.h"
 
 #include "cwMem.h"
+#include "cwObject.h"
+
 #include "cwTime.h"
 
 #include "cwThread.h"

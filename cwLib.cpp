@@ -2,6 +2,7 @@
 #include "cwLog.h"
 #include "cwCommonImpl.h"
 #include "cwTest.h"
+#include "cwObject.h"
 #include "cwMem.h"
 #include "cwFileSys.h"
 #include "cwLib.h"

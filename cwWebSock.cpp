@@ -3,6 +3,7 @@
 #include "cwCommonImpl.h"
 #include "cwTest.h"
 #include "cwMem.h"
+#include "cwObject.h"
 #include "cwFileSys.h"
 #include "cwObject.h"
 #include "cwWebSock.h"
