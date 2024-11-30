@@ -2,6 +2,8 @@
 #include "cwLog.h"
 #include "cwCommonImpl.h"
 #include "cwMem.h"
+#include "cwTest.h"
+#include "cwObject.h"
 
 #include "cwThread.h"
 
@@ -41,13 +43,13 @@ namespace cw
         if((rc = receive( app->sockH, buf, app->recvBufByteN, &recvBufByteN, &fromAddr )) == kOkRC )
         {
           addrToString( &fromAddr, addrBuf );
-          printf("%i %s from %s\n", recvBufByteN, buf, addrBuf );
+          cwLogPrint("%i %s from %s\n", recvBufByteN, buf, addrBuf );
         }
 
         app->cbN += 1;
         if( app->cbN % 10 == 0)
         {
-          printf(".");
+          cwLogPrint(".");
           fflush(stdout);
         }
           
@@ -67,7 +69,7 @@ namespace cw
           {
             if((rc = accept( app->sockH )) == kOkRC )
             {
-              printf("Server connected.\n");
+              cwLogPrint("Server connected.\n");
             }
           }
           else
@@ -82,11 +84,11 @@ namespace cw
             // if the server disconnects then recvBufByteN 
             if( !isConnected( app->sockH) )
             {
-              printf("Disconnected.");
+              cwLogPrint("Disconnected.");
             }
             else
             {
-              printf("%i %s\n", recvBufByteN, buf );
+              cwLogPrint("%i %s\n", recvBufByteN, buf );
             }
           }
         }
@@ -96,7 +98,7 @@ namespace cw
         if( app->cbN % 10 == 0)
         {
           // print '+' when the server is not connected.
-          printf("%s", isConnected(app->sockH) == false ? "+" : ".");
+          cwLogPrint("%s", isConnected(app->sockH) == false ? "+" : ".");
           fflush(stdout);
         }
           
@@ -106,16 +108,27 @@ namespace cw
   }
 }
 
-cw::rc_t cw::net::socket::test( portNumber_t localPort, const char* remoteAddr, portNumber_t remotePort )
+cw::rc_t cw::net::socket::test_udp( const object_t* cfg  )
 {
-  rc_t           rc;
-  unsigned       timeOutMs = 100;
-  const unsigned sbufN     = 31;
+  rc_t           rc         = kOkRC;
+  unsigned       timeOutMs  = 100;
+  const char*    remoteAddr = "12.0.0.1";
+  portNumber_t   remotePort = 5687;
+  portNumber_t   localPort  = 5688;
+  const unsigned sbufN      = 31;
   char           sbuf[ sbufN+1 ];
   app_t          app;
 
   app.cbN          = 0;
   app.recvBufByteN = sbufN+1;
+
+  if((rc = cfg->getv("localPort",localPort,
+                     "remoteAddr",remoteAddr,
+                     "remotePort",remotePort)) != kOkRC )
+  {
+    cwLogError(rc,"Arg. parse failed.");
+    goto errLabel;
+  }
   
   if((rc = create(app.sockH,localPort, kBlockingFl,timeOutMs, NULL, kInvalidPortNumber )) != kOkRC )
     return rc;
@@ -126,12 +139,14 @@ cw::rc_t cw::net::socket::test( portNumber_t localPort, const char* remoteAddr, 
   if((rc = thread::unpause( app.threadH )) != kOkRC )
     goto errLabel;
 
+  cwLogPrint("Type a message to send or 'quit' to exit.\n");
+             
   while( true )
   {
-    printf("? ");
+    cwLogPrint("? ");
     if( std::fgets(sbuf,sbufN,stdin) == sbuf )
     {
-      printf("Sending:%s",sbuf);
+      cwLogPrint("Sending:%s",sbuf);
       send(app.sockH, sbuf, strlen(sbuf)+1, remoteAddr, remotePort );
       
       if( strcmp(sbuf,"quit\n") == 0)
@@ -148,22 +163,43 @@ cw::rc_t cw::net::socket::test( portNumber_t localPort, const char* remoteAddr, 
 }
 
 
-cw::rc_t cw::net::socket::test_tcp( portNumber_t localPort, const char* remoteAddr, portNumber_t remotePort, bool dgramFl, bool serverFl )
+cw::rc_t cw::net::socket::test_tcp( const object_t* cfg )
 {
-  rc_t           rc;
+  rc_t           rc = kOkRC;
   unsigned       timeOutMs = 100;
   const unsigned sbufN     = 31;
   char           sbuf[ sbufN+1 ];
   app_t          app;
+  bool           serverFl = false;
+  bool            dgramFl = true;
   bool           streamFl = !dgramFl;
   bool           clientFl = !serverFl;
   unsigned       flags = kTcpFl | kBlockingFl;
+  portNumber_t localPort = 5687;
+  const char*  remoteAddr = "127.0.0.1";
+  portNumber_t remotePort = 5688; 
 
   app.remoteAddr   = remoteAddr;
   app.remotePort   = remotePort;
   app.cbN          = 0;
   app.recvBufByteN = sbufN+1;
   app.serverFl     = serverFl;
+
+
+  if((rc = cfg->getv("localPort",localPort,
+                     "remoteAddr",remoteAddr,
+                     "remotePort",remotePort,
+                     "serverFl",serverFl,
+                     "dgramFl",dgramFl,
+                     "timeOutMs",timeOutMs )) != kOkRC )
+  {
+    rc = cwLogError(rc,"Arg. parse failed.");
+    goto errLabel;
+  }
+
+  streamFl = !dgramFl;
+  clientFl = !serverFl;
+  
 
   if( serverFl && streamFl )
     flags |= kListenFl;
@@ -187,8 +223,9 @@ cw::rc_t cw::net::socket::test_tcp( portNumber_t localPort, const char* remoteAd
       goto errLabel;    
   }
 
-  printf("Starting node ....\n");
-
+  cwLogPrint("Starting %s %s node ....\n",streamFl ? "TCP" : "UDP", serverFl ? "server" : "client");
+  cwLogPrint("'quit'=quit\n");
+  
   // start the thread
   if((rc = thread::unpause( app.threadH )) != kOkRC )
     goto errLabel;
@@ -196,7 +233,7 @@ cw::rc_t cw::net::socket::test_tcp( portNumber_t localPort, const char* remoteAd
   
   while( true )
   {
-    printf("? ");
+    cwLogPrint("? ");
     if( std::fgets(sbuf,sbufN,stdin) == sbuf )
     {
       if( strcmp(sbuf,"quit\n") == 0)
@@ -205,13 +242,13 @@ cw::rc_t cw::net::socket::test_tcp( portNumber_t localPort, const char* remoteAd
       if( streamFl )
       {  
         // when using streams no remote address is necessary
-        printf("Sending:%s",sbuf);      
+        cwLogPrint("Sending:%s",sbuf);      
         send(app.sockH, sbuf, strlen(sbuf)+1 );
       }
       else
       {
         // when using dgrams the dest. address is required
-        printf("Sending:%s",sbuf);      
+        cwLogPrint("Sending:%s",sbuf);      
         send(app.sockH, sbuf, strlen(sbuf)+1, remoteAddr, remotePort);
       }
     }
@@ -249,7 +286,7 @@ namespace cw
         char addrBuf[ INET_ADDRSTRLEN ];
         socket::addrToString( fromAddr, addrBuf, INET_ADDRSTRLEN );
         p->cbN += 1;
-        printf("%i %s %s\n", p->cbN, addrBuf, (const char*)data );
+        cwLogPrint("%i %s %s\n", p->cbN, addrBuf, (const char*)data );
 
 
       }
@@ -257,15 +294,27 @@ namespace cw
   }
 }
 
-cw::rc_t cw::net::srv::test_udp_srv( socket::portNumber_t localPort, const char* remoteAddr, socket::portNumber_t remotePort )
+cw::rc_t cw::net::srv::test_udp_srv( const object_t* cfg )
 {
-  rc_t           rc;
-  unsigned       recvBufByteCnt = 1024;
-  unsigned       timeOutMs      = 100;
-  const unsigned sbufN          = 31;
-  char           sbuf[ sbufN+1 ];
-  app_t          app;
+  rc_t                 rc             = kOkRC;
+  unsigned             recvBufByteCnt = 1024;
+  unsigned             timeOutMs      = 100;
+  socket::portNumber_t localPort      = 5687;
+  const char*          remoteAddr     = nullptr;
+  socket::portNumber_t remotePort     = 5688;
+  const unsigned       sbufN          = 31;
+  char                 sbuf[ sbufN+1 ];  
+  app_t                app;
+  
   app.cbN = 0;
+
+  if((rc = cfg->getv("localPort",localPort,
+                     "remoteAddr",remoteAddr,
+                     "remotePort",remotePort)) != kOkRC )
+  {
+    rc = cwLogError(rc,"Arg. parse failed.");
+    goto errLabel;
+  }
   
   if((rc = srv::create(app.srvH,
         localPort,
@@ -292,10 +341,10 @@ cw::rc_t cw::net::srv::test_udp_srv( socket::portNumber_t localPort, const char*
 
   while( true )
   {
-    printf("? ");
+    cwLogPrint("? ");
     if( std::fgets(sbuf,sbufN,stdin) == sbuf )
     {
-      printf("Sending:%s",sbuf);
+      cwLogPrint("Sending:%s",sbuf);
       send(app.srvH, sbuf, strlen(sbuf)+1, remoteAddr, remotePort );
       
       if( strcmp(sbuf,"quit\n") == 0)
@@ -309,15 +358,28 @@ cw::rc_t cw::net::srv::test_udp_srv( socket::portNumber_t localPort, const char*
   return rcSelect(rc,rc0);  
 }
 
-cw::rc_t cw::net::srv::test_tcp_srv( socket::portNumber_t localPort, const char* remoteAddr, socket::portNumber_t remotePort )
+cw::rc_t cw::net::srv::test_tcp_srv( const object_t* cfg )
 {
-  rc_t           rc;
-  unsigned       recvBufByteCnt = 1024;
-  unsigned       timeOutMs      = 100;
-  const unsigned sbufN          = 31;
-  char           sbuf[ sbufN+1 ];
-  app_t          app;
+  rc_t                 rc             = kOkRC;
+  unsigned             recvBufByteCnt = 1024;
+  unsigned             timeOutMs      = 100;
+  socket::portNumber_t localPort      = 5687;
+  const char*          remoteAddr     = nullptr;
+  socket::portNumber_t remotePort     = 5688;  
+  const unsigned       sbufN          = 31;
+  char                 sbuf[ sbufN+1 ];
+  app_t                app;
+
+  
   app.cbN = 0;
+
+  if((rc = cfg->getv("localPort",localPort,
+                     "remoteAddr",remoteAddr,
+                     "remotePort",remotePort)) != kOkRC )
+  {
+    rc = cwLogError(rc,"Arg. parse failed.");
+    goto errLabel;
+  }
   
   if((rc = srv::create(app.srvH,
         localPort,
@@ -329,18 +391,19 @@ cw::rc_t cw::net::srv::test_tcp_srv( socket::portNumber_t localPort, const char*
         timeOutMs,
         remoteAddr,
         remotePort )) != kOkRC )
-    
+  {
     return rc;
-
+  }
+  
   if((rc = srv::start( app.srvH )) != kOkRC )
     goto errLabel;
 
   while( true )
   {
-    printf("? ");
+    cwLogPrint("? ");
     if( std::fgets(sbuf,sbufN,stdin) == sbuf )
     {
-      printf("Sending:%s",sbuf);
+      cwLogPrint("Sending:%s",sbuf);
       send(app.srvH, sbuf, strlen(sbuf)+1 );
       
       if( strcmp(sbuf,"quit\n") == 0)

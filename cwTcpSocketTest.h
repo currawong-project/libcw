@@ -7,14 +7,14 @@ namespace cw
   {
     namespace socket
     {
-      rc_t test( portNumber_t localPort, const char* remoteAddr, portNumber_t remotePort );      
-      rc_t test_tcp( portNumber_t localPort, const char* remoteAddr, portNumber_t remotePort, bool dgramFl, bool serverFl );      
+      rc_t test_udp( const object_t* cfg );      
+      rc_t test_tcp( const object_t* cfg );      
     }
 
     namespace srv
     {
-      rc_t test_udp_srv( socket::portNumber_t localPort, const char* remoteAddr, socket::portNumber_t remotePort );
-      rc_t test_tcp_srv( socket::portNumber_t localPort, const char* remoteAddr, socket::portNumber_t remotePort );
+      rc_t test_udp_srv( const object_t* cfg );
+      rc_t test_tcp_srv( const object_t* cfg );
       rc_t mdns_test();
     }
   }
