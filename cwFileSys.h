@@ -91,6 +91,7 @@ namespace cw
     
     rc_t makeDir( const char* dirStr );
 
+    rc_t dirEntryTest( const object_t* cfg );
     rc_t test( const test::test_args_t& args );
   }
   

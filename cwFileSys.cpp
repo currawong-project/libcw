@@ -603,7 +603,7 @@ namespace cw
       unsigned    passIdx;
     } deRecd_t;
     
-    cw::rc_t _dirGetEntries(  deRecd_t* drp, const char* dirStr )
+    cw::rc_t _dirGetEntries(  deRecd_t* drp, const char* dirStr, bool isInRecurseFl=false )
     {
       rc_t           rc          = kOkRC;
       DIR*           dirp        = NULL;
@@ -660,7 +660,7 @@ namespace cw
           {
             if( strcmp(dp->d_name,".") == 0 )
             {
-              if( cwIsFlag(drp->filterFlags,kCurDirFsFl) == false )
+              if( isInRecurseFl || cwIsFlag(drp->filterFlags,kCurDirFsFl) == false )
                 continue;
 
               flags |= kCurDirFsFl;
@@ -668,7 +668,7 @@ namespace cw
 
             if( strcmp(dp->d_name,"..") == 0 )
             {
-              if( cwIsFlag(drp->filterFlags,kParentDirFsFl) == false )
+              if( isInRecurseFl || cwIsFlag(drp->filterFlags,kParentDirFsFl) == false )
                 continue;
 
               flags |= kParentDirFsFl;
@@ -703,7 +703,7 @@ namespace cw
             flags |= kLinkFsFl;
 
             if( cwIsFlag(drp->filterFlags,kRecurseLinksFsFl) )
-              if((rc = _dirGetEntries(drp,fn)) != kOkRC )
+              if((rc = _dirGetEntries(drp,fn,true)) != kOkRC )
                 goto errLabel;
           }
           else
@@ -727,8 +727,8 @@ namespace cw
 
                 flags |= kDirFsFl;
 
-                if( cwIsFlag(drp->filterFlags,kRecurseFsFl) )
-                  if((rc = _dirGetEntries(drp,fn)) != kOkRC )
+                if( cwIsFlag(drp->filterFlags,kRecurseFsFl) && cwIsNotFlag(flags,kCurDirFsFl) && cwIsNotFlag(flags,kParentDirFsFl) )
+                  if((rc = _dirGetEntries(drp,fn,true)) != kOkRC )
                     goto errLabel;
               }
               else
@@ -898,6 +898,65 @@ cw::rc_t cw::filesys::makeDir( const char* dirStr )
   return kOkRC;
 }
 
+cw::rc_t cw::filesys::dirEntryTest( const object_t* cfg )
+{
+  rc_t            rc    = kOkRC;
+  unsigned        flags = 0;
+  const char*     path  = nullptr;
+  const object_t* attrL = nullptr;
+  dirEntry_t*     de    = nullptr;
+  unsigned        deN   = 0;
+  
+  idLabelPair_t map[] = {
+    {kFileFsFl,         "file"},
+    {kDirFsFl,          "dir"},
+    {kLinkFsFl,         "link"},
+    {kInvisibleFsFl,    "hidden"},
+    {kCurDirFsFl,       "cur_dir"},
+    {kParentDirFsFl,    "parent_dir"},
+    {kFullPathFsFl,     "full_path"},
+    {kRecurseFsFl,      "recurse"},
+    {kRecurseLinksFsFl, "recurse_links" },
+    {0,nullptr} };
+
+  if((rc = cfg->getv("path",path,
+                     "attrL",attrL)) != kOkRC )
+  {
+    cwLogError(rc,"Top level parse failed.");
+    goto errLabel;
+  }
+
+  for(unsigned i=0; i<attrL->child_count(); ++i)
+  {
+    const object_t* label = attrL->child_ele(i);
+    const char*     s     = nullptr;
+    unsigned        fl    = 0;
+    
+    if( !label->is_string() || label->value(s) != kOkRC || (fl=labelToId(map,s,0))==0 )
+    {
+      rc = cwLogError(kSyntaxErrorRC,"The filesys dir entries flag '%s' is not valid.",s==nullptr ? "<empty>" : s);
+      goto errLabel;
+    }
+    
+    flags |= fl;
+  }
+
+  if( flags == 0 )
+    cwLogWarning("The directory entry inclusion flag is zero (i.e. include nothing).");
+  
+  if((de = dirEntries( path, flags, &deN )) == nullptr )
+  {
+    rc = cwLogError(kOpFailRC,"The directory entry access function failed on '%s' flags:0x%x.",cwStringNullGuard(path),flags);
+    goto errLabel;
+  }
+  
+  for(unsigned i=0; i<deN; ++i)
+    cwLogInfo("%s",de[i].name);
+
+errLabel:
+  mem::release(de);
+  return rc;
+}
 
 cw::rc_t cw::filesys::test( const test::test_args_t& args )
 {
