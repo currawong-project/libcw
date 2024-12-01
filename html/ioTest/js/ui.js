@@ -1,171 +1,24 @@
-var _ws = null;
-var _rootId = "0";
-var _nextEleId   = 0;
-var _focusId = null;
-var _focusVal = null;
+var _ws        = null;
+var _rootId    = "0";
+var _nextEleId = 0;
+var _focusId   = null;
+var _focusVal  = null;
+var _rootDivEle = null;
+var _rootEle = null;
 
 function set_app_title( suffix, className )
 {
     var ele = document.getElementById('connectTitleId');
-    ele.innerHTML = suffix
-    ele.className = className
-}
-
-
-function uiOnError( msg, r)
-{
-    console.log("Error:" + msg);
-}
-
-function uiGetParent( r )
-{
-    parent_ele = document.getElementById(r.parent_id);
-    
-    if( parent_ele == null )
+    if(ele != null)
     {
-	uiOnError("Parent not found. parent_id:" + r.parent_id,r);
+	ele.innerHTML = suffix
+	ele.className = className
     }
-
-    return parent_ele;
-}
-
-function uiCreateEle( r )
-{
-    var parent_ele;
-    
-    if((parent_ele = uiGetParent(r)) != null )
-    {    
-	ele            = document.createElement(r.ele_type)
-	ele.id         = r.ele_id;
-	ele.className  = r.value;
-	
-	parent_ele.appendChild(ele)
+    else
+    {
+	console.log("Ele. not found. Set title failed.")
     }
 }
-
-function uiRemoveChildren( r )
-{
-    ele = document.getElementById(r.ele_id)
-    
-    while (ele.firstChild)
-    {
-	ele.removeChild(ele.firstChild);
-    }  
-}
-
-function uiDivCreate( r )
-{ uiCreateEle(r) }
-
-function uiLabelCreate( r )
-{
-    var parent_ele;
-    
-    if((parent_ele = uiGetParent(r)) != null )
-    {
-	ele            = document.createElement("label")
-	ele.htmlFor    = r.ele_id
-	ele.innerHTML  = r.value;
-	parent_ele.appendChild(ele)
-    }
-    
-}
-
-function uiSelectCreate( r )
-{
-    uiCreateEle(r)
-}
-
-function uiSelectClear( r )
-{ uiRemoveChildren(r) }
-
-function uiSelectInsert( r )
-{
-    var select_ele;
-    
-    if((select_ele = uiGetParent(r)) != null )    
-    {
-	var option    = document.createElement('option');
-
-	option.id        = r.ele_id;
-	option.innerHTML = r.value;
-	option.value     = r.ele_id;
-	option.onclick   = function() { uiOnSelectClick(this) }
-	
-	select_ele.appendChild(option)
-    }
-}
-
-function uiSelectChoose( r )
-{
-    var select_ele;
-    
-    if((select_ele = uiGetParent(r)) != null )    
-    {
-	if( select_ele.hasChildNodes())
-	{
-	    var children = select_ele.childNodes
-	    for(var i=0; i<children.length; i++)
-	    {
-		if( children[i].id == r.ele_id )
-		{
-		    select_ele.selectedIndex = i
-		    break;
-		}	
-	    }
-	}
-    }
-}
-
-function uiOnSelectClick( ele )
-{
-    cmdstr = "mode ui ele_type select op choose parent_id "+ele.parentElement.id+" option_id " + ele.id
-    websocket.send(cmdstr);
-
-}
-
-function uiNumberOnKeyUp( e )
-{
-    if( e.keyCode == 13 )
-    {
-	//console.log(e)
-	cmdstr = "mode ui ele_type number op change parent_id "+e.srcElement.parentElement.id+" ele_id " + e.srcElement.id + " value " + e.srcElement.value    
-	websocket.send(cmdstr);
-    }
-}
-
-
-function uiNumberCreate( r )
-{
-    var parent_ele;
-    
-    if((parent_ele = uiGetParent(r)) != null )        
-    {
-	ele    = document.createElement("input")
-	ele.id = r.ele_id
-	ele.setAttribute('type','number')
-	ele.addEventListener('keyup',uiNumberOnKeyUp)
-	parent_ele.appendChild(ele)
-    }
-}
-
-function uiNumberSet( r )
-{
-    var ele;
-
-    //console.log("ele_id:" + r.ele_id + " parent_id:" + r.parent_id + " value:" + r.value)
-    
-    if((ele = document.getElementById(r.parent_id)) != null)
-    {
-	switch( r.ele_id )
-	{
-	    case "0":  ele.min   = r.value; break;
-	    case "1":  ele.max   = r.value; break;
-	    case "2":  ele.step  = r.value; break;
-	    case "3":  ele.value = r.value; break;
-	}
-    }
-}
-
 
 
 function dom_child_by_id( parentEle, child_id )
@@ -204,9 +57,31 @@ function dom_set_number( ele_id, val )
 
 
 //==============================================================================
-
 function dom_id_to_ele( id )
-{ return document.getElementById(id); }
+{
+    var ele = null;
+    
+    if( _rootEle == null )
+    {
+	console.log("fail dtoe: root null");
+    }
+    else
+    {
+	if( id == _rootId )
+	    return _rootEle
+	
+	//ele =  _rootEle.getElementById(id);
+	
+	ele = document.getElementById(id)
+	if( ele == null )
+	{
+	    console.log("fail dtoe:" + id + " " + typeof(id) );
+	}
+    }
+    return ele
+}
+
+// { return document.getElementById(id); }
 
 function dom_set_checkbox( ele_id, fl )
 { dom_id_to_ele(ele_id).checked = fl }
@@ -232,10 +107,30 @@ function ui_send_value( ele, typeId, value )
     ws_send("value " + ele.id + " " + typeId + " : " + value)  
 }
 
+function ui_send_corrupt_state( ele )
+{
+    ws_send("corrupt " + ele.id)
+}
+
 function ui_send_bool_value(   ele, value ) { ui_send_value(ele,'b',value); }
 function ui_send_int_value(    ele, value ) { ui_send_value(ele,'i',value); }
-function ui_send_float_value(   ele, value ) { ui_send_value(ele,'f',value); }
+function ui_send_float_value(   ele, value ) { ui_send_value(ele,'d',value); }
 function ui_send_string_value( ele, value ) { ui_send_value(ele,'s',value); }
+
+function ui_send_click( ele )
+{
+    //console.log("click " + ele.id )
+        
+    ws_send("click " + ele.id )  
+}
+
+function ui_send_select( ele, selectedFl )
+{
+    let selected_value = selectedFl ? 1 : 0;
+    ws_send("select " + ele.id  + " " + selected_value )
+}
+
+
 
 function ui_send_echo( ele )
 {
@@ -267,6 +162,11 @@ function ui_get_parent( parentId )
     return parent_ele;  
 }
 
+function ui_on_click( ele, evt )
+{
+    ui_send_click(ele);
+    evt.stopPropagation();
+}
 
 function ui_create_ele( parent_ele, ele_type, d, dfltClassName )
 {
@@ -284,15 +184,28 @@ function ui_create_ele( parent_ele, ele_type, d, dfltClassName )
 	else
 	    ele.className = dfltClassName;
 
+	if(d.hasOwnProperty('addClassName') )
+	{
+	    ele.className += " " + d.addClassName
+	}
+
 	if(d.hasOwnProperty('appId'))
 	    ele.appId = d.appId;
 	else
 	    ele.appId = null;
 
+	if( d.hasOwnProperty('clickable') )
+	    ui_set_clickable( ele, d.clickable );
+
+	if( d.hasOwnProperty('enable') )
+	    ui_set_enable( ele, d.enable )
+
 	//console.log("Created: " + ele_type  + " parent:" + d.parentUuId + " id:" + ele.id + " appId:" + ele.appId)
 	
 	parent_ele.appendChild(ele);
-
+	
+	if( d.hasOwnProperty('order') )
+	    ui_set_order_key(ele,d.order)
 	
     }
     return ele
@@ -336,7 +249,7 @@ function ui_create_div( parent_ele, d )
 	
 	if( d.title !=  null )
 	{
-	    var title = d.title //.trim()
+	    var title = d.title.trim()
 
 	    if( title.length > 0 )
 	    {
@@ -355,10 +268,13 @@ function ui_create_div( parent_ele, d )
 function ui_create_panel_div( parent_ele, d )
 {
     d.type = "div"
-    var div_ele =  ui_create_div( parent_ele, d );
 
     if( !d.hasOwnProperty('className') )
-	div_ele.className = "uiPanel"
+	d.className = "uiPanel"
+    
+    var div_ele =  ui_create_div( parent_ele, d );
+
+    
 
     return div_ele
 }
@@ -366,10 +282,12 @@ function ui_create_panel_div( parent_ele, d )
 function ui_create_row_div( parent_ele, d )
 {
     d.type = "div"
-    var div_ele =  ui_create_div( parent_ele, d );
 
     if( !d.hasOwnProperty('className') )
-	div_ele.className = "uiRow"
+	d.className = "uiRow"
+    
+    var div_ele =  ui_create_div( parent_ele, d );
+
 
     return div_ele
 }
@@ -377,19 +295,21 @@ function ui_create_row_div( parent_ele, d )
 function ui_create_col_div( parent_ele, d )
 {
     d.type = "div"
-    var div_ele =  ui_create_div( parent_ele, d );
 
     if( !d.hasOwnProperty('className') )
-	div_ele.className = "uiCol"
+	d.className = "uiCol"
+    
+    var div_ele =  ui_create_div( parent_ele, d );
+
 
     return div_ele
 }
 
 
-function ui_create_title( parent_ele, d )
+function ui_create_label( parent_ele, d )
 {
-    var ele = ui_create_ele( parent_ele, "label", d, "uiTitle" );
-    
+    var ele = ui_create_ele( parent_ele, "label", d, "uiLabel" );
+
     if( ele != null )
     {
 	ele.innerHTML = d.title;
@@ -422,7 +342,9 @@ function ui_create_check( parent_ele, d )
 	ele.onclick = function() {  ui_send_bool_value(this,dom_get_checkbox(this.id)); }
 
 	if( !d.hasOwnProperty('value') )
+	{
 	    ui_send_echo(ele)
+	}
 	else
 	{
 	    dom_set_checkbox(ele.id, d.value );
@@ -460,7 +382,8 @@ function ui_create_select( parent_ele, d )
 {
     var ele = ui_create_ctl( parent_ele, "select", d.title, d, "uiSelect" );
     ele.onchange = function() { ui_on_select(this) }
-
+    ele.onclick  = function() { ui_on_select(this) }
+    
     if( !d.hasOwnProperty('value') )
     {
 	ui_send_echo(ele)
@@ -504,8 +427,39 @@ function ui_create_option( parent_ele, d )
 
 function _ui_on_focus( ele )
 {
-    _focusId=ele.id;
-    _focusVal=ele.value;
+    _focusId  = ele.id;
+    _focusVal = ele.value;
+}
+
+
+function ui_set_str_display( ele_id, value )
+{
+    
+    var ele = dom_id_to_ele(ele_id);
+
+    if( typeof(value)=="string")
+    {
+	ele.innerHTML = value;
+    }
+}
+
+function ui_create_str_display( parent_ele, d )
+{
+    var ele = ui_create_ctl( parent_ele, "label", d.title, d, "uiStringDisp" );
+    
+    if( ele != null )
+    {
+	if( d.hasOwnProperty('value') )
+	{
+	    ui_set_str_display(ele.id, d.value);
+	}
+	else
+	{
+	    ui_send_echo(ele);
+	}
+    }
+    
+    return ele;
 }
 
 function _ui_on_string_blur( ele )
@@ -540,6 +494,7 @@ function ui_create_string( parent_ele, d )
     return ele;
 }
 
+
 function _ui_send_number( ele )
 {
     var val = 0;
@@ -549,7 +504,10 @@ function _ui_send_number( ele )
 	val = Number.parseFloat(ele.value)
 
     if( !(ele.minValue<=val && val<=ele.maxValue))
+    {
 	ele.style.borderColor = "red"
+	ui_send_corrupt_state(ele)
+    }
     else	
     {
 	ele.style.borderColor = ""
@@ -558,20 +516,7 @@ function _ui_send_number( ele )
 	    ui_send_int_value(ele,ele.value);
 	else
 	    ui_send_float_value(ele,ele.value);
-    }
-    
-}
-
-function _ui_on_number_blur( ele )
-{
-    if( ele.id == _focusId )
-    {
-	if( ele.value != _focusVal )
-	{
-	    _ui_send_number(ele)
-	}
-	
-    }
+    }   
 }
 
 function ui_number_keyup( e )
@@ -588,28 +533,92 @@ function ui_number_keyup( e )
     }
 }
 
+function _ui_on_number_blur( ele )
+{
+    if( ele.id == _focusId )
+    {
+	if( ele.value != _focusVal )
+	    _ui_send_number(ele)
+    }
+}
+
+function _ui_set_number_range( ele, d )
+{
+    if(d.max < d.min)
+    {
+	ui_error("Numeric range max: " + d.maxValue + " is not greater than " + d.minValue + ".")
+    }
+    else
+    {
+	ele.maxValue  = d.max;
+	ele.minValue  = d.min;
+	ele.stepValue = d.step;
+	ele.decpl     = d.decpl;
+    }
+}
+
+function ui_set_number_value( ele, value )
+{
+    var min_ok_fl = (!ele.hasOwnProperty('minValue')) || (value >= ele.minValue)
+    var max_ok_fl = (!ele.hasOwnProperty('maxValue')) || (value <= ele.maxValue)
+    
+    if( min_ok_fl && max_ok_fl    )
+    {
+	ele.value     = value;
+	if( ele.decpl == 0 )
+	    ui_send_int_value( ele, ele.value )
+	else
+	    ui_send_float_value( ele, ele.value )
+    }
+    else
+    {
+	ui_error("Number value " + value + " out of range. min:" + ele.minValue + " max:" +ele.maxValue )
+    }
+
+}
+
+function ui_set_title( ele, d )
+{
+    if( ele.tagName.toLowerCase() == "button" )
+	ele.innerHTML = d.value;
+    else
+    {
+	// most controls will have a sibling element of type 'label'
+	var label_eles = ele.parentNode.getElementsByTagName("label");
+	
+	if( label_eles != null && label_eles.length > 0 )
+	{
+	    label_eles[0].innerHTML = d.value
+	}
+	else
+	{
+	    ui_error("set_title() target element not found.");
+	}
+    }    
+}
+
+function ui_set_number_range( ele, d )
+{
+    _ui_set_number_range(ele,d)
+    if( d.hasOwnProperty('value') )
+	ui_set_number_value(ele,d.value)
+}
+
 function ui_create_number( parent_ele, d )
 {
     var ele = ui_create_ctl( parent_ele, "input", d.title, d, "uiNumber" );
     
     if( ele != null )
     {
-	ele.maxValue  = d.max;
-	ele.minValue  = d.min;
-	ele.stepValue = d.step;
-	ele.decpl     = d.decpl;
 	ele.addEventListener('keyup', ui_number_keyup );
 	ele.addEventListener('focus', function(e) { _ui_on_focus(this); } );
 	ele.addEventListener('blur',  function(e) { _ui_on_number_blur(this); }  );
+	_ui_set_number_range(ele,d)
+	
 
-	if( d.hasOwnProperty('value') && d.min <= d.value && d.value <= d.max )
+	if( d.hasOwnProperty('value') )
 	{
-	    
-	    ele.value     = d.value;
-	    if( d.decpl == 0 )
-		ui_send_int_value( ele, ele.value )
-	    else
-		ui_send_float_value( ele, ele.value )
+	    ui_set_number_value(ele,d.value)
 	}
 	else
 	{
@@ -619,11 +628,60 @@ function ui_create_number( parent_ele, d )
     return ele;
 }
 
-function ui_set_progress( ele_id, value )
+function ui_set_number_display( ele_id, value )
 {
+    //console.log("Numb disp: " + ele_id + " " + value)
+    
     var ele = dom_id_to_ele(ele_id);
 
+    if( typeof(value)=="number")
+    {
+	var val = value.toString();
+    
+	if( ele.decpl == 0 )
+	    ele.innerHTML = parseInt(val,10);
+	else
+	    ele.innerHTML = parseFloat(val);
+    }
+}
+
+function ui_create_number_display( parent_ele, d )
+{
+    var ele = ui_create_ctl( parent_ele, "label", d.title, d, "uiNumbDisp" );
+    
+    if( ele != null )
+    {
+	ele.decpl = d.decpl;
+
+	if( d.hasOwnProperty('value') )
+	{
+	    ui_set_number_display(ele.id, d.value);
+	}
+	else
+	{
+	    ui_send_echo(ele);
+	}
+    }
+    
+    return ele;
+
+}
+
+function ui_create_text_display( parent_ele, d )
+{
+    return ui_create_ctl( parent_ele, "label", d.title, d, "uiTextDisp" );
+}
+
+
+function ui_set_progress( ele, value )
+{
     ele.value = Math.round( ele.max * (value - ele.minValue) / (ele.maxValue - ele.minValue));
+}
+
+function _ui_set_prog_range( ele, d )
+{
+    ele.maxValue = d.max;
+    ele.minValue = d.min;    
 }
 
 function ui_create_progress( parent_ele, d )
@@ -633,13 +691,13 @@ function ui_create_progress( parent_ele, d )
     if( ele != null )
     {
 	ele.max      = 100;
-	ele.maxValue = d.max;
-	ele.minValue = d.min;
+	_ui_set_prog_range(ele,d)
+	
 	if( !d.hasOwnProperty('value') )
 	    ui_send_echo(ele);
 	else
 	{
-	    ui_set_progress( ele.id, d.value );
+	    ui_set_progress( ele, d.value );
 	    ui_send_int_value( ele, ele.value );
 	}
  
@@ -647,16 +705,83 @@ function ui_create_progress( parent_ele, d )
     return ele
 }
 
+function ui_set_prog_range( ele, d )
+{
+    _ui_set_prog_range(ele,d)
+    if( d.hasOwnProperty('value'))
+	ui_set_progress(ele,d.value)	
+}
+
+function _on_log_click( evt )
+{
+    var pre_ele = dom_id_to_ele(evt.target.id)
+
+    pre_ele.auto_scroll_flag = !pre_ele.auto_scroll_flag;
+}
+
+function ui_set_log_text( ele, value )
+{
+    var child_id = ele.id + "_pre"
+
+    for(var i=0; i<ele.children.length; ++i)
+    {
+	var pre_ele = ele.children[i]
+	if( pre_ele.id == child_id )
+	{
+	    pre_ele.innerHTML += value
+
+	    if(pre_ele.auto_scroll_flag)		
+		ele.scrollTop = pre_ele.clientHeight
+	    
+	    break;
+	}
+    }    
+}
+
+function ui_create_log( parent_ele, d )
+{
+    // create a containing div with the label
+    
+    if( !d.hasOwnProperty('className') )
+	d.className = "uiLog"
+    
+    var log_ele  = ui_create_ctl( parent_ele, "div", d.title, d, "uiLog" )
+
+    
+
+    // add a <pre> to the containing div
+    var ele = dom_create_ele("pre")
+    
+    ele.id      = log_ele.id + "_pre"  
+    ele.onclick = _on_log_click;
+    ele.auto_scroll_flag = true;
+    
+    log_ele.appendChild(ele)
+
+    return log_ele
+}
+
+function ui_create_list( parent_ele, d, class_label )
+{
+    var list_ele  = ui_create_ctl( parent_ele, "div", d.title, d, class_label )
+    
+    return list_ele
+}
+
 function ui_set_value( d )
 {
-    //console.log(d)
-    var ele = dom_id_to_ele(d.uuId.toString())
+    var eleId = d.uuId.toString()
+    var ele = dom_id_to_ele(eleId)
 
     if( ele == null )
-	console.log("ele not found: uuid: "+d.uuId);
+	console.log("ele '"+eleId+"' not found");
     else
+    {
 	if( !ele.hasOwnProperty("uiEleType") )
+        {
 	    console.log("No type");
+        }
+    }
     
     if( ele != null && ele.hasOwnProperty("uiEleType"))
     {
@@ -667,7 +792,7 @@ function ui_set_value( d )
 	    case "div":
 	    break;
 
-	    case "title":
+	    case "label":
 	    ele.innerHTML = d.value
 	    break;
 
@@ -685,6 +810,10 @@ function ui_set_value( d )
 	    case "option":
 	    break;
 
+	    case "str_disp":
+	    ui_set_str_display(ele.id,d.value);
+	    break
+
 	    case "string":
 	    ele.value = d.value
 	    break;
@@ -693,13 +822,168 @@ function ui_set_value( d )
 	    ele.value = d.value
 	    break;
 
-	    case "progress":
-	    ele.value = d.value
+	    case "numb_disp":
+	    ui_set_number_display(ele.id,d.value);
 	    break;
 	    
+	    case "progress":
+	    ui_set_progress( ele, d.value )
+	    //ele.value = d.value
+	    break;
+
+	    case "log":
+	    ui_set_log_text( ele, d.value )
+	    break
+	    
 	    default:
-	    ui_error("Unknown UI element type: " + d.type )
+	    ui_error("Unknown UI element type on set value: " + d.type )
 	}
+    }
+}
+
+function _ui_modify_class( ele, classLabelArg, enableFl )
+{
+    let classLabel  = " " + classLabelArg; // prefix the class label with a space
+
+    //console.log(ele.id + " " + classLabelArg + " " + enableFl )
+
+    let isEnabledFl = false;
+    
+    if( ele.hasOwnProperty("className") )
+	isEnabledFl = ele.className.includes(classLabel)
+    else
+	ele.className = ""
+
+    // if the class is not already enabled/disabled
+    if( enableFl != isEnabledFl )
+    {
+	if( enableFl )
+	    ele.className += classLabel;
+	else
+	    ele.className = ele.className.replace(classLabel, "");
+    }
+
+    //console.log(ele.id + " " + ele.className + " " + enableFl )
+}
+
+function ui_set_select( ele, enableFl )
+{
+    _ui_modify_class(ele,"uiSelected",enableFl)
+    ui_send_select( ele, enableFl )
+}
+
+
+function ui_set_clickable( ele, enableFl )
+{
+    ele.clickableFl = enableFl
+    
+    if(enableFl)
+	ele.onclick = function( evt ){ ui_on_click( this, evt ); }
+    else
+	ele.onclick = null
+}
+
+function ui_set_visible( ele, enableFl )
+{    
+    if(enableFl)
+    {
+	if(ele.hasOwnProperty("style_display") )
+	{
+	    ele.style.display = ele.style_display;
+	}
+	else
+	{
+	    ele.style.display = "block";
+	}
+    }
+    else
+    {
+	ele.style_display = ele.style.display;
+	ele.style.display = "none";
+    }
+}
+
+function ui_set_enable( ele, enableFl )
+{
+    ele.disabled = !enableFl
+}
+
+function ui_set_order_key(ele, orderKey)
+{
+    let parent  = ele.parentElement // get the parent of the element to reorder    
+    ele = parent.removeChild( ele ) // remove the element to reorder from the parent list
+    
+    ele.order = orderKey
+
+    let i = 0;
+    for(i=0; i<parent.children.length; ++i)
+    {
+	if( parent.children[i].hasOwnProperty("order") && parent.children[i].order >= orderKey)
+	{
+	    parent.insertBefore( ele, parent.children[i] )
+	    break
+	}
+    }
+
+    // no element was found greater than this element  ....
+    if( i == parent.children.length )
+	parent.appendChild(ele) // ... insert the element at the end of the child lsit
+    
+}
+
+function ui_set( d )
+{
+    //console.log(d)
+    var ele = dom_id_to_ele(d.uuId.toString())
+
+    if( ele == null )
+	console.log("ele not found");
+    
+    if( ele != null)
+    {
+	switch( d.type )
+	{
+	    case "title":
+	    ui_set_title(ele,d);
+	    break;
+	    
+	    case "number_range":
+	    ui_set_number_range(ele, d)
+	    break;
+
+	    case "progress_range":
+	    ui_set_prog_range(ele, d)
+	    break;
+
+	    case "select":
+	    ui_set_select(ele,d.value)
+	    break
+
+	    case "clickable":
+	    ui_set_clickable(ele,d.value)
+	    break
+
+	    case "visible":
+	    ui_set_visible(ele,d.value)
+	    break
+
+	    case "enable":
+	    ui_set_enable(ele,d.value)
+	    break
+
+	    case "order":
+	    ui_set_order_key(ele,d.value)
+	    break
+	    
+	}
+    }
+}
+
+function ui_cache( d )
+{
+    for(i=0; i<d.array.length; ++i)
+    {
+	_ws_on_msg( d.array[i] )
     }
 }
 
@@ -715,7 +999,9 @@ function ui_create( d )
     var parent_ele  = ui_get_parent(d.parentUuId);
     var ele = null;
     
-    if( parent_ele != null )
+    if( parent_ele == null )
+	console.log("Parent ele not found.",d)
+    else
     {    
 	switch( d.type )
 	{
@@ -735,8 +1021,8 @@ function ui_create( d )
 	    ele = ui_create_col_div( parent_ele, d )
 	    break;
 
-	    case "title":
-	    ele = ui_create_title( parent_ele, d )
+	    case "label":
+	    ele = ui_create_label( parent_ele, d )
 	    break;
 
 	    case "button":
@@ -755,6 +1041,10 @@ function ui_create( d )
 	    ele = ui_create_option( parent_ele, d );
 	    break;
 
+	    case "str_disp":
+	    ele = ui_create_str_display( parent_ele, d );
+	    break;
+	    
 	    case "string":
 	    ele = ui_create_string( parent_ele, d );
 	    break;
@@ -762,9 +1052,29 @@ function ui_create( d )
 	    case "number":
 	    ele = ui_create_number( parent_ele, d );
 	    break;
+	    
+	    case "numb_disp":
+	    ele = ui_create_number_display( parent_ele, d );
+	    break;
+
+	    case "text_disp":
+	    ele = ui_create_text_display( parent_ele, d );
+	    break;	    
 
 	    case "progress":
 	    ele = ui_create_progress( parent_ele, d );
+	    break;
+
+	    case "log":
+	    ele = ui_create_log( parent_ele, d );
+	    break;
+
+	    case "vlist":
+	    ele = ui_create_list( parent_ele, d, "uiList" );
+	    break;
+
+	    case "hlist":
+	    ele = ui_create_list( parent_ele, d, "uiHList" );
 	    break;
 	    
 	    default:
@@ -779,7 +1089,41 @@ function ui_create( d )
     }
 }
 
+function ui_destroy( d )
+{
+    if( typeof(d.uuId) == "number" )
+	d.uuId = d.uuId.toString()
+    
+    var ele = dom_id_to_ele(d.uuId)
 
+    if( ele != null )
+	ele.parentElement.removeChild( ele )
+}
+
+// Remove all children from the selected element
+function ui_empty( d )
+{
+    var ele = dom_id_to_ele(d.uuId.toString())
+
+    if( ele == null )
+	console.log("ele to empty not found");
+    
+    if( ele != null)
+    {
+	let i = 0;
+	let n = ele.children.length;
+	for(i=0; i<n; ++i)
+	{
+	    ele.removeChild(ele.children[0])
+	}
+    }
+}
+
+function ui_attach( d )
+{
+    console.log("ATTACH");
+    //_rootDivEle.appendChild(_rootEle)
+}
 
 
 function ws_send( s )
@@ -789,37 +1133,67 @@ function ws_send( s )
     _ws.send(s+"\0")
 }
 
-function ws_on_msg( jsonMsg )
+function _ws_on_msg( d )
 {
-    //console.log(jsonMsg)
-    
-    d = JSON.parse(jsonMsg.data);
-
     switch( d.op )
     {
+	case 'cache':
+	ui_cache( d )
+	break;
+
 	case 'create':
 	ui_create( d )
 	break;
 
+	case 'destroy':
+	ui_destroy( d )
+	break
+
+	case 'empty':
+	ui_empty(d)
+	break
+		
 	case 'value':
 	ui_set_value( d )
 	break;
-	
+
+	case 'set':
+	ui_set( d )
+	break;
+
+	case 'attach':
+	ui_attach(d)
+	break;
+
 	default:
 	ui_error("Unknown UI operation. " + d.op )
     }
 
 }
 
+function ws_on_msg( jsonMsg )
+{
+    //console.log(jsonMsg)
+    
+    d = JSON.parse(jsonMsg.data);
+
+    _ws_on_msg(d)
+}
+
 function ws_on_open()
 {
     set_app_title( "Connected", "title_connected" );
-    _ws.send("init")
+    ws_send("init")
 }
 
 function ws_on_close()
 {
     set_app_title( "Disconnected", "title_disconnected" );
+
+    // remove the body of UI
+    var rootEle = dom_id_to_ele(_rootId)
+    if( rootEle != null )
+      document.body.removeChild(  rootEle )
 }
 
 function ws_form_url(urlSuffix)
@@ -836,9 +1210,10 @@ function ws_form_url(urlSuffix)
     return pcol + u[0] + "/" + urlSuffix;
 }
 
-function main()
+function main_0()
 {
-    rootEle = dom_id_to_ele(_rootId);
+    d = { "className":"uiAppDiv", "uuId":_rootId }
+    rootEle = ui_create_div( document.body, d )
     rootEle.uuId = 0;
     rootEle.id = _nextEleId;
     _nextEleId += 1;
@@ -850,7 +1225,28 @@ function main()
     _ws.onmessage    = ws_on_msg
     _ws.onopen       = ws_on_open 
     _ws.onclose      = ws_on_close;
+}
 
+function main()
+{
+    d = { "className":"uiAppDiv", "uuId":"rootDivEleId" }
+    _rootDivEle = ui_create_div( document.body, d )
+
+    //_rootEle = document.createDocumentFragment();
+    _rootEle = _rootDivEle
     
+    _rootEle.uuId = 0;
+    _rootEle.id = _nextEleId;
+    _nextEleId += 1;
+
+    //console.log(ws_form_url(""))
+    
+    _ws = new WebSocket(ws_form_url(""),"ui_protocol")
+    
+    _ws.onmessage    = ws_on_msg
+    _ws.onopen       = ws_on_open 
+    _ws.onclose      = ws_on_close;
+
+    console.log("main() done.")
 }
 

@@ -40,6 +40,7 @@ label {
 }
 
 
+
 .uiCtlDiv {
     display: flex;
     flex-direction: row;
@@ -71,5 +72,107 @@ label {
     flex-direction: column;
     align-items: center;
     background-color: LightBlue;
+}
+
+
+/* outer log div - contains the log label and the log scroller */
+.uiLogDiv {
+    display: flex;
+    flex-direction: column;
+
+    align-items: flex-start;     /* left justify */
+    align-content: flex-stretch; /* fill horizontal space */
+    
+}
+
+.uiLogDiv label {
+    width: 100%;
+    background-color: LightSteelBlue;
+
+}
+
+
+/* log scroller */
+.uiLog {
+    display:flex;
+    flex-direction: column;
+
+    height: 150px;
+    overflow-x: hidden; /* 'hidden' to remove x scroll bar */
+    overflow-y: auto; 
+    width: 100%;
+
+    background-color: PowderBlue;
+    
+}
+
+/* The log text */
+.uiLog pre {	
+}
+
+
+/* outer list div - contains the list label and the list scroller */
+.uiListDiv {
+    display: flex;
+    flex-direction: column;
+
+    align-items: flex-start;     /* left justify */
+    align-content: flex-stretch; /* fill horizontal space */
+    
+}
+
+.uiListDiv label {
+    width: 100%;
+    background-color: LightSteelBlue;
+
+}
+
+.uiList {
+    display:flex;
+    flex-direction: column;
+    
+    height: 100px;
+    width: 100%;
+    overflow-x: hidden; /* 'hidden' to remove scroll bar */
+    overflow-y: auto; 
+
+    background-color: PowderBlue;    
+}
+
+
+/* outer list div - contains the list label and the list scroller */
+.uiHListDiv {
+    display: flex;
+    flex-direction: row;
+
+    align-items: flex-start;     /* left justify */
+    align-content: flex-stretch; /* fill horizontal space */
+    
+}
+
+.uiHListDiv label {
+    width: 100%;
+    background-color: LightSteelBlue;
+
+}
+
+.uiHList {
+    display:flex;
+    flex-direction: row;
+    
+    height: 100%;
+    overflow-x: auto; 
+    overflow-y: hidden;  /* 'hidden' to remove scroll bar */
+
+    background-color: PowderBlue;    
+}
+
+
+.uiStringDisp {
+    width: 100%;
+}
+
+.uiSelected {
+    border: 1px solid blue;
 }
 

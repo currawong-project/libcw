@@ -70,8 +70,9 @@ namespace cw {
         const int sn = 63;
         char s[sn+1];
         snprintf(s,sn,"Chat: %i", io::socketPort(p->ioH, p->sockIdx ));
+
         
-        uiCreateDiv(   p->ioH, divUuId,          parentUuId, nullptr, p->baseAppId + kUiDivAppId,        chanId, "uiCol",  s );
+        uiCreateDiv(   p->ioH, divUuId,          parentUuId, nullptr, p->baseAppId + kUiDivAppId,        chanId, "uiPanel",  s );
         uiCreateStr(   p->ioH, uuid,             divUuId,    nullptr, p->baseAppId + kUiSendTextAppId,   chanId, "uiText", "Send" );
         uiCreateStr(   p->ioH, uuid,             divUuId,    nullptr, p->baseAppId + kUiRemoteAddrAppId, chanId, "uiText", "Addr", "127.0.0.1" );
         uiCreateNumb(  p->ioH, uuid,             divUuId,    nullptr, p->baseAppId + kUiRemotePortAppId, chanId, "uiNumb", "Port", 0, 0xffff, 1, 0, 0 );
@@ -303,6 +304,9 @@ cw::rc_t cw::io::sock_chat::exec( handle_t h, const msg_t& m )
           
     case kUiTId:
       rc = _uiCb(p,m.u.ui);
+      break;
+
+    case kExecTId:
       break;
 
     default:

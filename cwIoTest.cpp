@@ -210,6 +210,9 @@ namespace cw
           rc = uiCb(app,m->u.ui);
           break;
 
+        case kExecTId:
+          break;
+          
         default:
           assert(0);
         

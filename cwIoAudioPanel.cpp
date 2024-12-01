@@ -350,6 +350,9 @@ cw::rc_t cw::io::audio_panel::exec(  handle_t h, const msg_t& m )
       rc = _uiCb(p,m.u.ui);
       break;
 
+    case kExecTId:
+      break;
+      
     default:
       assert(0);
         
