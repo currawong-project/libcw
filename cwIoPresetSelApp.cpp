@@ -1,3 +1,5 @@
+//| Copyright: (C) 2020-2024 Kevin Larke <contact AT larke DOT org> 
+//| License: GNU GPL version 3.0 or above. See the accompanying LICENSE file.
 #include "cwCommon.h"
 #include "cwLog.h"
 #include "cwCommonImpl.h"

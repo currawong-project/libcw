@@ -1,4 +1,8 @@
-# libcw is a application framework for developming real-time interactive applications on Linux.
+# libcw
+
+libcw is an application framework for developming real-time interactive applications on Linux.
+
+Some of libcw's features are:
 
 - Synchronous and asynchronous interfaces to many common IO devices including:
   + Audio
@@ -14,6 +18,9 @@
 - All elements of the framework are easily configurable based on extended JSON files.
 
 - Minimal dependencies.  The only external dependencies are `libasound`, `libwebsockets` and `libfftw`.
+
+- A large collection of pre-built audio signal processing algorithms
+
 
 
 
