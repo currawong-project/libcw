@@ -105,19 +105,19 @@ namespace cw
     {
       typedef struct
       {
-	unsigned  maxWndMs;
-	unsigned  maxWndSmpN;
-	unsigned  wndSmpN;
-	sample_t* wndV;
-	srate_t   srate;
-	coeff_t    peakThreshDb;
-	coeff_t    outLin;
-	coeff_t    outDb;
-	bool      peakFl;
-	bool      clipFl;
-	unsigned  peakCnt;
-	unsigned  clipCnt;
-	unsigned  wi;
+        unsigned  maxWndMs;
+        unsigned  maxWndSmpN;
+        unsigned  wndSmpN;
+        sample_t* wndV;
+        srate_t   srate;
+        coeff_t    peakThreshDb;
+        coeff_t    outLin;
+        coeff_t    outDb;
+        bool      peakFl;
+        bool      clipFl;
+        unsigned  peakCnt;
+        unsigned  clipCnt;
+        unsigned  wi;
       } obj_t;
       
       rc_t create( obj_t*& p, srate_t srate, ftime_t maxWndMs, ftime_t wndMs, coeff_t peakThreshDb );
