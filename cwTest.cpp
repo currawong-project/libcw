@@ -50,6 +50,7 @@ namespace cw
       { "/filesys", filesys::test },
       { "/object",  object_test },
       { "/vop",     vop::test },
+      { "/dsp",     dsp::test_dsp },
       { "/time",    time::test },
       { "/flow",    flow::test },
       { "/textBuf", textBuf::test },

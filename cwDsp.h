@@ -530,7 +530,7 @@ namespace cw
         for(unsigned i=0; i<binN; ++i)
           p->hV[i] = hScale * p->ft->cplxV[i] / ((T)cN);
 
-        printf("procN:%i cN:%i hN:%i binN:%i outN:%i\n", procSmpN, cN, hN, binN, p->outN );
+        //printf("procN:%i cN:%i hN:%i binN:%i outN:%i\n", procSmpN, cN, hN, binN, p->outN );
         
         return kOkRC;
       }
@@ -625,7 +625,9 @@ namespace cw
       rc_t test();
         
       
-    }    
+    }
+    
+    rc_t test_dsp( const test::test_args_t& args );
     
   }
 }

@@ -9,6 +9,7 @@
 #include "cwMath.h"
 #include "cwVectOps.h"
 #include "cwDsp.h"
+#include "cwText.h"
 
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -35,7 +36,7 @@ cw::rc_t cw::dsp::fft::test()
 
   create<real_t>(p,xN,flags);
   
-  if(p != nullptr )
+  if(p == nullptr )
   {
     rc = cwLogError(kOpFailRC,"FFT procedure allocation failed.");
     goto errLabel;
@@ -157,3 +158,31 @@ cw::rc_t cw::dsp::convolve::test()
 // 1.   0.5  0.25 0.1  1.05 0.5  0.25 0.1  1.05 0.5  0.25 0.1  0.05 0.0.   0.  ]
 // 1.0  0.5  0.25 0.1  1.05 0.5  0.25 0.1  1.05 0.5  0.25 0.1  1.05 1.0    0.75 0.
 
+
+cw::rc_t cw::dsp::test_dsp( const test::test_args_t& args )
+{
+  rc_t rc = kOkRC;
+
+  if( textIsEqual(args.test_label,"fft") )
+  {
+    rc = fft::test();
+    goto errLabel;
+  }
+  
+  if( textIsEqual(args.test_label,"ifft") )
+  {
+    rc = ifft::test();
+    goto errLabel;
+  }
+
+  if( textIsEqual(args.test_label,"convolve") )
+  {
+    rc = convolve::test();
+    goto errLabel;
+  }
+  
+  rc = cwLogError(kInvalidArgRC,"Unknown dsp test case module:%s test:%s.",args.module_label,args.test_label);
+  
+errLabel:
+  return rc;
+}
