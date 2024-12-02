@@ -129,6 +129,8 @@ namespace cw
       }
       else
       {
+        assert( frmN >= fadeFrmN );
+        
         // count backward
         i0 = (int)fadeFrmN;
         d    = -1;
@@ -384,7 +386,12 @@ cw::rc_t       cw::afop::mix( const object_t* cfg )
   return rc;
 }
 
-cw::rc_t  cw::afop::selectToFile( const char* srcFn, double beg0Sec, double beg1Sec, double end0Sec, double end1Sec, unsigned outBits, const char* outDir, const char* outFn )
+cw::rc_t  cw::afop::selectToFile( const char* srcFn,                 // source audio file
+                                  double beg0Sec, double beg1Sec,    // begin cross-fade
+                                  double end0Sec, double end1Sec,    // end cross-fade
+                                  unsigned outBits,                  // output sample word bits 
+                                  const char* outDir,                // output directory
+                                  const char* outFn )                // output filename
 {
   rc_t                rc     = kOkRC;
   char*               iFn    = filesys::expandPath(srcFn);
@@ -465,11 +472,13 @@ cw::rc_t  cw::afop::selectToFile( const char* srcFn, double beg0Sec, double beg1
     // if there is a fade-out then generate it
     if( end1FrmIdx > end0FrmIdx )
     {
+      assert( actualBufFrmN >= (end1FrmIdx - end0FrmIdx) );
+      
       float*  fadeChBuf[ info.chCnt ];
       for(unsigned i = 0; i<info.chCnt; ++i)
         fadeChBuf[i] = chBuf[i] + actualBufFrmN - (end1FrmIdx - end0FrmIdx);
       
-      _fadeAllChannels( fadeChBuf, info.chCnt, ttlFrmN, end1FrmIdx-end0FrmIdx, kLinearFadeFl | kFadeOutFl );
+      _fadeAllChannels( fadeChBuf, info.chCnt, end1FrmIdx-end0FrmIdx, end1FrmIdx-end0FrmIdx, kLinearFadeFl | kFadeOutFl );
     }
     
     // write the buffer to the output file
@@ -674,7 +683,11 @@ cw::rc_t cw::afop::cutAndMix( const object_t* cfg )
   unsigned        i;
   
   // read the top level cfg record
-  if((rc = cfg->getv("dstFn",dstFn,"dstBits",dstBits,"srcDir",srcDir,"crossFadeSec",crossFadeSec,"argL",argNodeL)) != kOkRC )
+  if((rc = cfg->getv("dstFn",dstFn,
+                     "dstBits",dstBits,
+                     "srcDir",srcDir,
+                     "crossFadeSec",crossFadeSec,
+                     "argL",argNodeL)) != kOkRC )
     goto errLabel;
 
   if( argNodeL == nullptr )
@@ -692,20 +705,24 @@ cw::rc_t cw::afop::cutAndMix( const object_t* cfg )
       const object_t* o = argNodeL->child_ele(i);
 
       // parse the non-optional parameters
-      if((rc = o->getv("srcBegSec", argL[i].srcBegSec, "srcEndSec", argL[i].srcEndSec, "srcFn", argL[i].srcFn  )) != kOkRC )
+      if((rc = o->getv("srcBegSec", argL[i].srcBegSec,
+                       "srcEndSec", argL[i].srcEndSec,
+                       "srcFn", argL[i].srcFn  )) != kOkRC )
       {
         rc = cwLogError(kInvalidArgRC,"Invalid crossfade argument at argument index %i.",i);
       }
       else
-      {
-        
+      {        
         argL[i].dstBegSec     = argL[i].srcBegSec; // By default the src is moved to the same location 
         argL[i].srcBegFadeSec = crossFadeSec;      // By default the beg/end fade is the global fade time. 
         argL[i].srcEndFadeSec = crossFadeSec;
         argL[i].gain          = 1;
 
         // parse the optional parameters
-        if((rc = o->getv_opt("dstBegSec", argL[i].dstBegSec, "srcBegFadeSec", argL[i].srcBegFadeSec, "srcEndFadeSec", argL[i].srcEndFadeSec, "gain", argL[i].gain  )) != kOkRC )
+        if((rc = o->getv_opt("dstBegSec", argL[i].dstBegSec,
+                             "srcBegFadeSec", argL[i].srcBegFadeSec,
+                             "srcEndFadeSec", argL[i].srcEndFadeSec,
+                             "gain", argL[i].gain  )) != kOkRC )
         {
           rc = cwLogError(kInvalidArgRC,"Invalid crossfade optional argument at argument index %i.",i);
         }
@@ -773,7 +790,10 @@ cw::rc_t cw::afop::parallelMix( const object_t* cfg )
   unsigned        i;
 
   // read the top level cfg record
-  if((rc = cfg->getv("dstFn",dstFn,"dstBits",dstBits,"srcDir",srcDir,"argL",argNodeL)) != kOkRC )
+  if((rc = cfg->getv("dstFn",dstFn,
+                     "dstBits",dstBits,
+                     "srcDir",srcDir,
+                     "argL",argNodeL)) != kOkRC )
     goto errLabel;
 
   if( argNodeL == nullptr )
@@ -849,7 +869,15 @@ cw::rc_t cw::afop::transformApp( const object_t* cfg )
   unsigned        i;
 
   // read the top level cfg record
-  if((rc = cfg->getv("dstPreFn",dstPreFn,"dstRevFn",dstRevFn,"dstBits",dstBits,"srcDir",srcDir,"argL",argNodeL,"dryFn",dryFn,"irEnableFl",irEnableFl,"irFn",irFn,"irScale",irScale)) != kOkRC )
+  if((rc = cfg->getv("dstPreFn",dstPreFn,
+                     "dstRevFn",dstRevFn,
+                     "dstBits",dstBits,
+                     "srcDir",srcDir,
+                     "argL",argNodeL,
+                     "dryFn",dryFn,
+                     "irEnableFl",irEnableFl,
+                     "irFn",irFn,
+                     "irScale",irScale)) != kOkRC )
     goto errLabel;
 
 
@@ -1021,7 +1049,11 @@ cw::rc_t cw::afop::convolve( const object_t* cfg )
   
 
   // read the top level cfg record
-  if((rc = cfg->getv("dstFn",dstFn,"dstBits",dstBits,"srcFn",srcFn,"irFn",irFn,"irScale",irScale)) != kOkRC )
+  if((rc = cfg->getv("dstFn",dstFn,
+                     "dstBits",dstBits,
+                     "srcFn",srcFn,
+                     "irFn",irFn,
+                     "irScale",irScale)) != kOkRC )
   {
     cwLogError(rc,"convolve() arg. parse failed.");
   }
@@ -1056,7 +1088,13 @@ cw::rc_t cw::afop::generate( const object_t* cfg )
   const object_t* clickNode= nullptr;
   
   // read the top level cfg record
-  if((rc = cfg->getv("dstFn",dstFn,"dstBits",dstBits,"dstSrate",dstSrate,"dstSecs",dstSecs,"op",opLabel,"sine",sineNode,"click",clickNode)) != kOkRC )
+  if((rc = cfg->getv("dstFn",dstFn,
+                     "dstBits",dstBits,
+                     "dstSrate",dstSrate,
+                     "dstSecs",dstSecs,
+                     "op",opLabel,
+                     "sine",sineNode,
+                     "click",clickNode)) != kOkRC )
   {
     cwLogError(rc,"generate() arg. parse failed.");
   }
@@ -1128,10 +1166,53 @@ cw::rc_t cw::afop::generate( const object_t* cfg )
 cw::rc_t cw::afop::test( const object_t* cfg )
 {
   rc_t rc = kOkRC;
-  const object_t* o;
-  
-  if((o = cfg->find("sine")) != nullptr )
-    rc = sine(o);
 
+  typedef rc_t (*func_t)( const object_t* cfg );
+  typedef struct map_str {
+    const char* label;
+    func_t func;
+  } map_t;
+  
+  map_t mapA[] = {
+    { "sine", sine },
+    { "mix", mix },
+    { "select_to_file",selectToFile },
+    { "cut_and_mix",cutAndMix },
+    { "parallel_mix",parallelMix },
+    { "convolve", convolve },
+    { "xfade_convolve", transformApp },
+    { "generate", generate }
+  };
+
+  unsigned mapN = sizeof(mapA)/sizeof(mapA[0]);
+  
+  for(unsigned i=0; i<cfg->child_count(); ++i)
+  {
+    const object_t* pair      = cfg->child_ele(i);
+    const map_t*    m         = std::find_if( mapA, mapA+mapN, [pair](const map_t& m){ return textIsEqual(m.label,pair->pair_label()); });
+    bool            enable_fl = false;
+
+    if( m == mapA+mapN )
+    {
+      rc = cwLogError(kInvalidArgRC,"The audio file operation '%s' is not valid.",pair->pair_label());
+      goto errLabel;
+    }
+
+    if((rc = pair->pair_value()->getv_opt("enable_fl",enable_fl)) != kOkRC )
+    {
+      goto errLabel;
+    }
+
+    if( enable_fl )
+    {
+      if((rc = m->func( pair->pair_value() )) != kOkRC )
+      {
+        goto errLabel;
+      }
+    }
+    
+  }
+  
+errLabel:
   return rc;
 }
