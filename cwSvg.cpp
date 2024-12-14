@@ -5,10 +5,11 @@
 #include "cwCommonImpl.h"
 #include "cwMem.h"
 #include "cwFile.h"
-#include "cwSvg.h"
 #include "cwText.h"
 #include "cwTest.h"
+#include "cwObject.h"
 #include "cwNumericConvert.h"
+#include "cwSvg.h"
 
 namespace cw
 {
@@ -868,42 +869,60 @@ cw::rc_t cw::svg::write( handle_t h, const char* outFn, const char* cssFn, unsig
     return rc;  
 }
 
-cw::rc_t cw::svg::test( const char* outFn, const char* cssFn )
+cw::rc_t cw::svg::test( const cw::object_t* cfg )
 {
   rc_t     rc = kOkRC;
   handle_t h;
+
+  const char* outFn = nullptr;
+  const char* cssFn = nullptr;
+
+  if((rc = cfg->getv("outHtmlFn",outFn,
+                     "outCssFn",cssFn)) != kOkRC )
+  {
+    rc = cwLogError(rc,"SVG test parameter parsing failed.");
+    goto errLabel;
+  }
+  
   
   if((rc = create(h)) != kOkRC )
+  {
     cwLogError(rc,"SVG Test failed on create.");
+    goto errLabel;
+  }
+  else
+  {
 
+    double yV[] = { 0, 10, 30, 60, 90 };
+    double xV[] = { 0, 40, 60, 40, 10 };
+    unsigned yN = cwCountOf(yV);
 
-  double yV[] = { 0, 10, 30, 60, 90 };
-  double xV[] = { 0, 40, 60, 40, 10 };
-  unsigned yN = cwCountOf(yV);
+    install_css(h,"#my_rect","fill-opacity",0.25,nullptr);
 
-  install_css(h,"#my_rect","fill-opacity",0.25,nullptr);
-
-  rect(h,  0,  0, 100, 100, "fill",   0x7f7f7f, "rgb", "id", "my_rect", nullptr );
-  line(h,  0,  0, 100, 100, "stroke", 0xff0000, "rgb" );
-  line(h,  0,100, 100,   0, "stroke", 0x00ff00, "rgb", "stroke-width", 3, "px", "stroke-opacity", 0.5, nullptr );
-  pline(h, yV, yN,  xV,  "stroke", 0x0, "rgb", "fill-opacity", 0.25, nullptr );
-  text(h, 10, 10, "foo" );
+    rect(h,  0,  0, 100, 100, "fill",   0x7f7f7f, "rgb", "id", "my_rect", nullptr );
+    line(h,  0,  0, 100, 100, "stroke", 0xff0000, "rgb" );
+    line(h,  0,100, 100,   0, "stroke", 0x00ff00, "rgb", "stroke-width", 3, "px", "stroke-opacity", 0.5, nullptr );
+    pline(h, yV, yN,  xV,  "stroke", 0x0, "rgb", "fill-opacity", 0.25, nullptr );
+    text(h, 10, 10, "foo" );
   
-  float imgM[] = {
-    0.0f, 0.5f, 1.0f,
-    0.5f, 0.0f, 0.5f,
-    1.0f, 1.0f, 0.0f,
-    0.5f, 0.0f, 1.0f };
+    float imgM[] = {
+      0.0f, 0.5f, 1.0f,
+      0.5f, 0.0f, 0.5f,
+      1.0f, 1.0f, 0.0f,
+      0.5f, 0.0f, 1.0f };
 
-  offset( h, 10, 200 );
-  image(h, imgM, 4, 3, 20, kInvGrayScaleColorMapId );
+    offset( h, 10, 200 );
+    image(h, imgM, 4, 3, 20, kInvGrayScaleColorMapId );
   
 
-  write(h,outFn, cssFn, kStandAloneFl, 10,10,10,10);
+    write(h,outFn, cssFn, kStandAloneFl, 10,10,10,10);
+  }
   
+errLabel:
+
   if((rc = destroy(h)) != kOkRC )
-    cwLogError(rc,"SVG destroy failed.");
-  
+    rc = cwLogError(rc,"SVG destroy failed.");
+
   return rc;
   
 }

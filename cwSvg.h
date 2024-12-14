@@ -102,7 +102,7 @@ namespace cw
     enum { kStandAloneFl=0x01, kPanZoomFl=0x02, kGenCssFileFl=0x04 };
     rc_t write( handle_t h, const char* outFn, const char* cssFn, unsigned flags, double bordL=5, double bordT=5, double bordR=5, double bordB=5 );
 
-    rc_t test( const char* outFn, const char* cssFn );
+    rc_t test( const object_t* cfg );
 
   }
 }
