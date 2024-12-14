@@ -56,7 +56,16 @@ namespace cw
     
     
     typedef rc_t (*proc_func_t)( proc_ctx_t* ctx );
-    rc_t file_processor( const char* srcFn, const char* dstFn, proc_func_t func, unsigned wndSmpN, unsigned hopSmpN, void* userArg, const object_t* args, const object_t* recorder_cfg, unsigned recordChN=0 );
+    rc_t file_processor( const char* srcFn,
+                         const char* dstFn,
+                         proc_func_t func,
+                         unsigned wndSmpN,
+                         unsigned hopSmpN,
+                         void* userArg,
+                         const object_t* args,
+                         const object_t* recorder_cfg,
+                         unsigned recordChN=0 );
+    
     rc_t file_processor( const object_t* cfg );
 
 
