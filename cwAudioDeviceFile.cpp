@@ -1105,6 +1105,7 @@ cw::rc_t cw::audio::device::file::test( const object_t* cfg)
   rc_t               rc2            = kOkRC;
   const char*        ifname         = nullptr;
   const char*        ofname         = nullptr;
+  unsigned           cycleCnt       = 0;
   struct driver_str  driver         = {};
   struct driver_str* driver_ptr     = &driver;
   unsigned           bitsPerSample  = 0; // zero indicates floating point sample format for output audio file
@@ -1120,7 +1121,8 @@ cw::rc_t cw::audio::device::file::test( const object_t* cfg)
   // parse the test args
   if((rc = cfg->getv("inAudioFname",ifname,
                      "outAudioFname",ofname,
-                     "framesPerCycle",framesPerCycle)) != kOkRC || ifname==nullptr || ofname==nullptr )
+                     "framesPerCycle",framesPerCycle,
+                     "cycleCnt",cycleCnt)) != kOkRC || ifname==nullptr || ofname==nullptr )
   {
     rc = cwLogError(rc,"Parsing audiio device file test cfg. failed.");
     goto errLabel;
@@ -1176,7 +1178,7 @@ cw::rc_t cw::audio::device::file::test( const object_t* cfg)
   }
 
   // run the audio device file
-  for(unsigned i=0; i<10; ++i)
+  for(unsigned i=0; i<cycleCnt; ++i)
   {
     deviceExecute( driver_ptr, devIdx );
     deviceRealTimeReport( driver_ptr, devIdx );
