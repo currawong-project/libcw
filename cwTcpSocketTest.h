@@ -17,7 +17,6 @@ namespace cw
     {
       rc_t test_udp_srv( const object_t* cfg );
       rc_t test_tcp_srv( const object_t* cfg );
-      rc_t mdns_test();
     }
   }
 }
