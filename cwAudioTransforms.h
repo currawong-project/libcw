@@ -1023,7 +1023,9 @@ namespace cw
     //---------------------------------------------------------------------------------------------------------------------------------
     // Data Recorder
     //
-    
+    // Record frames of data and write them to a CSV file.
+    // A frame consists of 'sigN' values of type T.
+    //
     namespace data_recorder
     {
       
@@ -1042,11 +1044,11 @@ namespace cw
         struct block_str<T>* head;     // first block  
         struct block_str<T>* tail;     // last block and the one being currrently filled
         
-        unsigned             frameIdx; // index into tail of frame to fill
-        char*                fn;
-        char**               colLabelA;
-        unsigned             colLabelN;
-        bool                 enableFl;
+        unsigned             frameIdx;  // index into tail of frame to fill
+        char*                fn;        // output CSV filename
+        char**               colLabelA; // output CSV column labels
+        unsigned             colLabelN; // count of CSV column labels
+        bool                 enableFl;  
       };
 
       typedef struct obj_str<float>  fobj_t;
@@ -1071,7 +1073,13 @@ namespace cw
       }
 
       template< typename T >
-      rc_t create( struct obj_str<T>*& p, unsigned sigN, unsigned frameCacheN, const char* fn, const char** colLabelA, unsigned colLabelN, bool enableFl )
+      rc_t create( struct obj_str<T>*& p,
+                   unsigned     sigN,
+                   unsigned     frameCacheN,
+                   const char*  fn,
+                   const char** colLabelA,
+                   unsigned     colLabelN,
+                   bool         enableFl )
       {
         rc_t rc = kOkRC;
         
@@ -1152,6 +1160,11 @@ namespace cw
         return kOkRC;
       }
 
+      // Pass a partial (or full) frame of data to the object.
+      // xV[xN] is the data to record.
+      // chIdx is the first channel to write to.
+      // (xN + chIdx must be less than p->sigN)
+      // Set advance_fl to true to advance to the next frame.
       template< typename T>
       rc_t exec( struct obj_str<T>* p, const T* xV, unsigned xN, unsigned chIdx=0, bool advance_fl = true  )
       {
