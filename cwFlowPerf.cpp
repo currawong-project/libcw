@@ -552,14 +552,17 @@ namespace cw
         // search through the preset value list ...
         for(psv=ps_val_list; psv!=nullptr; psv=psv->link)
         {
-          //printf("%s %s : %s %s\n",proc_inst_label,f->label,psv->proc->label,psv->var->label);
+          if( psv->tid != kDirectPresetValueTId )
+          {
+            assert(0);
+          }
           
           // looking for the preset value whose proc instance label matches proc_inst_label and
           // whose var->label matches the recd field label
-          if( textIsEqual(psv->proc->label,proc_inst_label) && textIsEqual(psv->var->label,f->label) )
+          if( textIsEqual(psv->u.pvv.proc->label,proc_inst_label) && textIsEqual(psv->u.pvv.var->label, f->label) )
           {
             // set the record field value to the preset value
-            if((rc = value_from_value( psv->value, recd->valA[f->u.index] )) != kOkRC )
+            if((rc = value_from_value( psv->u.pvv.value, recd->valA[f->u.index] )) != kOkRC )
             {
               rc = cwLogError(kOpFailRC,"The preset value field '%s.%s value assignment failed.",cwStringNullGuard(proc_inst_label),cwStringNullGuard(f->label));
               goto errLabel;
