@@ -390,6 +390,16 @@ namespace cw
     }
 
     template< typename T >
+      T abs_sum( const T* v, unsigned n )
+    {
+      T y = 0;
+      for(unsigned i=0; i<n; ++i)
+        y += std::abs(v[i]);
+
+      return y;
+    }
+    
+    template< typename T >
       T prod( const T* v, unsigned n )
     {
       T y = 1;
