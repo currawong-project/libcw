@@ -51,7 +51,13 @@ namespace cw
     rc_t exec_cycle( handle_t h );
 
     // Run a non-real-time program to completion.
-    rc_t exec(    handle_t h ); 
+    rc_t exec(    handle_t h );
+
+    // Send any pending updates to the UI.
+    // This happens automatically if exec() exec_cycle() is called.
+    // Calling this function is only necessary when the state of the
+    // network is changed outside of runtime.
+    rc_t send_ui_updates( handle_t h );
 
     rc_t apply_preset( handle_t h, const char* presetLabel );
     rc_t apply_dual_preset( handle_t h, const char* presetLabel_0, const char* presetLabel_1, double coeff );

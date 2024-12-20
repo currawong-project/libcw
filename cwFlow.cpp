@@ -17,10 +17,11 @@
 #include "cwMidiDecls.h"
 #include "cwFlowDecl.h"
 #include "cwFlow.h"
+#include "cwFlowValue.h"
 #include "cwFlowTypes.h"
 #include "cwFlowNet.h"
 #include "cwFlowProc.h"
-
+#include "cwFlowPerf.h"
 namespace cw
 {
   namespace flow
@@ -75,6 +76,10 @@ namespace cw
       { "midi_split",      &midi_split::members },
       { "midi_file",       &midi_file::members },
       { "midi_merge",      &midi_merge::members },
+      { "poly_xform_ctl",  &poly_xform_ctl::members },
+      { "score_player",    &score_player::members },
+      { "preset_select",   &preset_select::members },
+      { "score_follower",  &score_follower::members },
       { nullptr, nullptr }
     };
 
@@ -231,6 +236,7 @@ namespace cw
       if((rc = vd->cfg->getv_opt("flags", var_flags_obj,
                                  "type", var_value_type_str,
                                  "value", vd->val_cfg,
+                                 "fmt",   vd->fmt_cfg,
                                  "proxy", proxy_string )) != kOkRC )
       {
         rc = cwLogError(rc,"Parsing optional fields failed.");
@@ -239,11 +245,23 @@ namespace cw
       
       // convert the type string to a numeric type flag
       if( var_value_type_str  != nullptr )
+      {
         if( (vd->type = value_type_label_to_flag( var_value_type_str )) == kInvalidTId )
         {
           rc = cwLogError(kSyntaxErrorRC,"Invalid variable description type flag: '%s' was encountered.", var_value_type_str );
           goto errLabel;            
         }
+      }
+
+      // if this is a 'record' type with a 'fmt' specifier
+      if( vd->type & kRBufTFl && vd->fmt_cfg != nullptr )
+      {
+        if((rc = recd_format_create( vd->fmt.recd_fmt, vd->fmt_cfg )) != kOkRC )
+        {
+          rc = cwLogError(rc,"The record type associated with the 'fmt' field could not be created.");
+          goto errLabel;
+        }
+      }
 
       // parse the proxy string into it's two parts: <proc>.<var>
       if( proxy_string != nullptr )
@@ -290,6 +308,43 @@ namespace cw
 
       return kOkRC;
     }
+
+    rc_t _create_preset_list( class_preset_t*& presetL, const object_t* presetD )
+    {
+      rc_t rc = kOkRC;
+      
+      // parse the preset dictionary
+      if( presetD != nullptr )
+      {
+        if( !presetD->is_dict() )
+        {
+          rc = cwLogError(rc,"The preset dictionary is not a dictionary." );
+          goto errLabel;                      
+        }
+
+        // for each preset in the class desc.
+        for(unsigned j=0; j<presetD->child_count(); ++j)
+        {
+          const object_t* pair = presetD->child_ele(j);
+
+          if( !pair->pair_value()->is_dict() )
+          {
+            rc = cwLogError(kSyntaxErrorRC,"The preset '%s' is not a dictionary.", cwStringNullGuard(pair->pair_label()));
+            goto errLabel;
+          }
+
+          class_preset_t* preset =  mem::allocZ< class_preset_t >();
+              
+          preset->label = pair->pair_label();
+          preset->cfg   = pair->pair_value();
+          preset->link  = presetL;
+          presetL   = preset;
+        }
+      }
+
+    errLabel:
+      return rc;
+    }
     
     rc_t  _parse_class_cfg(flow_t* p, const object_t* classCfg)
     {
@@ -321,6 +376,7 @@ namespace cw
           goto errLabel;                      
         }
 
+        /*
         // parse the preset dictionary
         if( presetD != nullptr )
         {
@@ -350,6 +406,13 @@ namespace cw
             cd->presetL   = preset;
           }
         }
+        */
+        if((rc = _create_preset_list( cd->presetL, presetD )) != kOkRC )
+        {
+          rc = cwLogError(rc,"The presets for the class desc: '%s' could not be parsed.",cwStringNullGuard(cd->label));
+          goto errLabel;
+        }
+        
 
         // create the class descripiton
         if((rc = _create_class_ui_desc(cd)) != kOkRC )
@@ -743,6 +806,18 @@ namespace cw
         return rc;
 
       network_destroy(p->net);
+
+      global_var_t* gv=p->globalVarL;
+      while( gv != nullptr )
+      {
+        global_var_t* gv0 = gv->link;
+        mem::release(gv->var_label);
+        mem::release(gv->blob);
+        mem::release(gv);
+        gv = gv0;
+      }
+
+      
       
       _release_class_desc_array(p->classDescA,p->classDescN);
       _release_class_desc_array(p->udpDescA,p->udpDescN);
@@ -1097,6 +1172,16 @@ cw::rc_t cw::flow::exec(    handle_t h )
   while( rc == kOkRC )
     rc = exec_cycle(h);
   
+  return rc;
+}
+
+cw::rc_t cw::flow::send_ui_updates( handle_t h )
+{
+  rc_t    rc = kOkRC;
+  flow_t* p  = _handleToPtr(h);
+  
+  _make_flow_to_ui_callback(p);
+
   return rc;
 }
 
