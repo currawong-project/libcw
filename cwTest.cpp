@@ -30,7 +30,10 @@
 #include "cwWaveTableBank.h"
 #include "cwWaveTableNotes.h"
 
+#include "cwMidiDecls.h"
+
 #include "cwFlowTest.h"
+#include "cwFlowValue.h"
 
 #include "cwThread.h"
 #include "cwThreadMach.h"
@@ -60,6 +63,7 @@ namespace cw
       { "/audio_transform", dsp::test },
       { "/wt_note", wt_note::test },
       { "/thread_tasks", thread_tasks::test },
+      { "/flow_value", flow::value_test },
       { "/numeric_convert", numericConvertTest },
       { nullptr, nullptr },
     };
