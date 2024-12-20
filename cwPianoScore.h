@@ -66,13 +66,15 @@ namespace cw
     bool           has_loc_info_flag( handle_t h );
     
     unsigned       event_count( handle_t h );
+
+    // Get first event in linked list.
     const event_t* base_event( handle_t h );
 
     const event_t* loc_to_event( handle_t h, unsigned loc );
 
     // Format the event as a string for printing.
     rc_t  event_to_string( handle_t h, unsigned uid, char* buf, unsigned buf_byte_cnt );
-    
+
     rc_t test( const object_t* cfg );
     
   }
