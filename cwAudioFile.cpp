@@ -1857,6 +1857,7 @@ cw::rc_t    cw::audiofile::writeDouble( handle_t h, unsigned frmCnt, unsigned ch
         break;
           
       case 24:
+        assert(0);
         break;
         
       case 32:
