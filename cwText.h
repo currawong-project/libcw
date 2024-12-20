@@ -69,6 +69,8 @@ namespace cw
   // if 'c' does not occur in s[]
   char*       firstMatchChar( char* s, char c );
   const char* firstMatchChar( const char* s, char c );
+  char*       firstMatchChar( char* s, unsigned sn, char c );
+  const char* firstMatchChar( const char* s, unsigned sn, char c );
   
   // Find the last occurrent of 'c' in s[]. 
   char*       lastMatchChar( char* s, char c ); 

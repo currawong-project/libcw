@@ -160,6 +160,21 @@ char* cw::firstMatchChar( char* s, char c )
 }
 
 const char* cw::firstMatchChar( const char* s, char c )
+{ return firstMatchChar((char*)s,c); }
+
+char* cw::firstMatchChar( char* s, unsigned n, char c )
+{
+  if( s == nullptr )
+    return nullptr;
+  
+  for(unsigned i=0; *s && i<n; ++s,++i)
+    if(*s == c)
+      return s;
+  return nullptr;
+}
+
+
+const char* cw::firstMatchChar( const char* s, unsigned n, char c )
 {
   return firstMatchChar((char*)s,c);
 }
