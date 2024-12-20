@@ -17,6 +17,7 @@
 #include "cwDspTypes.h"
 #include "cwFlowDecl.h"
 #include "cwFlow.h"
+#include "cwFlowValue.h"
 #include "cwFlowTypes.h"
 #include "cwFlowCross.h"
 
