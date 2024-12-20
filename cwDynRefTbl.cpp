@@ -121,6 +121,27 @@ cw::rc_t cw::dyn_ref_tbl::create( handle_t& hRef, const object_t* cfg )
   return rc;
 }
 
+cw::rc_t cw::dyn_ref_tbl::create( handle_t& hRef, const char* cfg_fname )
+{
+  rc_t rc;
+  object_t* cfg = nullptr;
+  
+  if((rc = objectFromFile( cfg_fname, cfg )) != kOkRC )
+  {
+    cwLogError(rc,"Dynamics reference table parse cfg. parse failed on '%s'.",cwStringNullGuard(cfg_fname));
+    goto errLabel;
+  }
+
+  rc = create(hRef,cfg);
+  
+errLabel:
+  cfg->free();
+
+  return rc;
+
+}
+
+
 cw::rc_t cw::dyn_ref_tbl::destroy( handle_t& hRef )
 {
   rc_t rc = kOkRC;

@@ -19,6 +19,8 @@ namespace cw
     
     // Parse object like: [ { mark:<> level:<>, vel:<> } ]
     rc_t create( handle_t& hRef, const object_t* cfg );
+    rc_t create( handle_t& hRef, const char* cfg_fname );
+    
     rc_t destroy( handle_t& hRef );
 
     const char* level_to_marker( handle_t h, unsigned level );
