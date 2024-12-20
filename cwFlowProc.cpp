@@ -20,6 +20,7 @@
 
 #include "cwFlowDecl.h"
 #include "cwFlow.h"
+#include "cwFlowValue.h"
 #include "cwFlowTypes.h"
 #include "cwFlowNet.h"
 #include "cwFlowProc.h"
@@ -42,36 +43,6 @@ namespace cw
   namespace flow
   {
     
-    template< typename inst_t >
-    rc_t std_destroy( proc_t* proc )
-    {
-      inst_t* p = (inst_t*)proc->userPtr;
-      rc_t rc = _destroy(proc,p);
-      mem::release(proc->userPtr);
-      return rc;
-    }
-    
-    template< typename inst_t >
-    rc_t std_create( proc_t* proc )
-    {
-      rc_t rc = kOkRC;
-      proc->userPtr = mem::allocZ<inst_t>();
-      if((rc = _create(proc,(inst_t*)proc->userPtr)) != kOkRC )
-        std_destroy<inst_t>(proc);
-      return rc;        
-    }
-
-    template< typename inst_t >
-    rc_t std_value( proc_t* proc, variable_t* var )
-    { return _value(proc,(inst_t*)proc->userPtr, var); }
-        
-    template< typename inst_t >
-    rc_t std_exec( proc_t* proc )
-    { return _exec(proc,(inst_t*)proc->userPtr); }
-
-    template< typename inst_t >
-    rc_t std_report( proc_t* proc )
-    { return _report(proc,(inst_t*)proc->userPtr); }
 
     
     //------------------------------------------------------------------------------------------------------------------
@@ -240,7 +211,7 @@ namespace cw
 
       } inst_t;
 
-      rc_t _voice_thread_func( void* arg )
+      rc_t _poly_thread_func( void* arg )
       {
         rc_t rc = kOkRC;
         voice_t* v = (voice_t*)arg;
@@ -356,7 +327,7 @@ namespace cw
             inst->voiceA[i].voice_idx = i;
             inst->voiceA[i].net       = net;
             
-            inst->taskA[i].func = _voice_thread_func;
+            inst->taskA[i].func = _poly_thread_func;
             inst->taskA[i].arg  = inst->voiceA + i;
 
             net = net->poly_link;
@@ -408,9 +379,13 @@ namespace cw
         }
         else
         {
-          if((rc = exec_cycle(*proc->internal_net)) != kOkRC )
+          for(network_t* net=proc->internal_net; net!=nullptr; net=net->poly_link)
           {
-            rc = cwLogError(rc,"poly internal network exec failed.");
+            if((rc = exec_cycle(*net)) != kOkRC )
+            {
+              rc = cwLogError(rc,"poly internal network exec failed.");
+              break;
+            }
           }
         }
         
@@ -549,6 +524,7 @@ namespace cw
           goto errLabel;
         }
 
+        // BUG BUG BUG: why register "out" here when it is apparently registered again below?
         if((rc = var_register( proc, kAnyChIdx, kOutPId, "out", kBaseSfxId)) != kOkRC )
         {
           goto errLabel;
@@ -1258,9 +1234,6 @@ namespace cw
 
       typedef struct inst_str
       {
-        unsigned n;
-        coeff_t vgain;
-        coeff_t gain;
       } inst_t;
 
       rc_t create( proc_t* proc )
@@ -1295,15 +1268,6 @@ namespace cw
 
       rc_t value( proc_t* proc, variable_t* var )
       {
-        coeff_t value = 0;
-        inst_t* inst = (inst_t*)proc->userPtr;
-        var_get(proc,kGainPId,0,value);
-        
-        if( inst->vgain != value )
-        {
-          inst->vgain = value;
-          //printf("VALUE GAIN: %s %s : %f\n", proc->label, var->label, value );
-        }
         return kOkRC;
       }
 
@@ -1335,12 +1299,6 @@ namespace cw
           for(unsigned j=0; j<ibuf->frameN; ++j)
             osig[j] = gain * isig[j];
 
-          if( i==0 && gain != inst->gain )
-          {
-            inst->gain = gain;
-            //printf("EXEC GAIN: %s %f\n",proc->label,gain);
-            //proc_print(proc);
-          }
         }  
         
       errLabel:
@@ -4131,7 +4089,6 @@ namespace cw
         unsigned        msg_idx;  // current count of msg's in msgA[]
 
         mbuf_t*         mbuf;      // cached mbuf for this output variable
-        
       } voice_t;
       
       typedef struct
@@ -4144,16 +4101,17 @@ namespace cw
         // sizeof of each voice msgA[] (same as voice_t.msgN)
         unsigned voiceMsgN;
 
+        unsigned        midi_fld_idx;
       } inst_t;
 
 
       rc_t _create( proc_t* proc, inst_t* p )
       {
         rc_t        rc            = kOkRC;
-        mbuf_t*     mbuf          = nullptr;
+        rbuf_t*     rbuf          = nullptr;
 
         if((rc = var_register_and_get(proc,kAnyChIdx,
-                                      kInPId,       "in",    kBaseSfxId, mbuf,
+                                      kInPId,       "in",    kBaseSfxId, rbuf,
                                       kVoiceCntPId, "voice_cnt", kBaseSfxId, p->voiceN)) != kOkRC )
         {
           goto errLabel; 
@@ -4169,6 +4127,12 @@ namespace cw
         p->voiceMsgN     = kVoiceMsgN;
         p->voiceA        = mem::allocZ<voice_t>(p->voiceN);
         
+        if((p->midi_fld_idx  = recd_type_field_index( rbuf->type, "midi")) == kInvalidIdx )
+        {
+          rc = cwLogError(kInvalidArgRC,"The 'in' record does not have a 'midi' field.");
+          goto errLabel;
+        }
+
         for(unsigned i=0; i<p->voiceN; ++i)
         {
           // create one output MIDI variable per voice
@@ -4206,12 +4170,12 @@ namespace cw
       rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
-
+        /*
         if( p->baseDoneFlPId <= var->vid && var->vid < p->baseDoneFlPId + p->voiceN )
         {          
           p->voiceA[ var->vid - p->baseDoneFlPId ].activeFl = false;
         }
-        
+        */
         return rc;
       }
 
@@ -4274,6 +4238,8 @@ namespace cw
         v->activeFl = true;
         v->pitch    = m->d0;
 
+        //printf("v_idx:%i non\n",voice_idx);
+
         rc = _update_voice_msg(proc,p,voice_idx,m);        
         
         return rc;
@@ -4310,7 +4276,7 @@ namespace cw
         return rc;
       }
 
-      rc_t _exec( proc_t* proc, inst_t* p )
+      rc_t _exec0( proc_t* proc, inst_t* p )
       {
         rc_t    rc   = kOkRC;
         mbuf_t* mbuf = nullptr;
@@ -4359,6 +4325,71 @@ namespace cw
         return rc;
       }
 
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t    rc   = kOkRC;
+        rbuf_t* rbuf = nullptr;
+
+        // update the voice array
+        for(unsigned i=0; i<p->voiceN; ++i)
+        {
+          bool done_fl;
+          
+          var_get(proc,p->baseDoneFlPId+i,kAnyChIdx,done_fl);
+          
+          if( p->voiceA[i].activeFl && done_fl )
+            p->voiceA[i].activeFl = false;
+          
+          if( p->voiceA[i].activeFl )
+            p->voiceA[i].age    += 1;
+          
+          p->voiceA[i].msg_idx    = 0;
+          p->voiceA[i].mbuf->msgN = 0;
+          p->voiceA[i].mbuf->msgA = nullptr;
+        }
+        
+        // get the input MIDI buffer
+        if((rc = var_get(proc,kInPId,kAnyChIdx,rbuf)) != kOkRC )
+          goto errLabel;
+        
+        // process the incoming MIDI messages
+        for(unsigned i=0; i<rbuf->recdN; ++i)
+        {
+          //const midi::ch_msg_t* m = mbuf->msgA + i;
+          const recd_t* r = rbuf->recdA + i;
+          const midi::ch_msg_t* m = nullptr;
+
+          if((rc = recd_get(rbuf->type,r,p->midi_fld_idx,m)) != kOkRC )
+          {
+            rc = cwLogError(rc,"Record 'midi' field read failed.");
+            goto errLabel;
+          }
+          
+          switch( m->status )
+          {
+            case midi::kNoteOnMdId:
+              if( m->d1 == 0 )
+                rc = _on_note_off(proc,p,m);
+              else
+                rc = _on_note_on(proc,p,m);                  
+              break;
+
+            case midi::kNoteOffMdId:
+              rc = _on_note_off(proc,p,m);
+              break;
+              
+            default:
+              rc = _send_to_all_voices(proc,p,m);
+              break;
+          }
+        }
+
+        
+      errLabel:
+        return rc;
+      }
+      
       rc_t _report( proc_t* proc, inst_t* p )
       { return kOkRC; }
 
@@ -4380,6 +4411,8 @@ namespace cw
     {
       enum {
         kInPId,
+        kGainPId,
+        kChCntPId,
         kOutPId,
         kDoneFlPId
       };
@@ -4387,6 +4420,8 @@ namespace cw
       typedef struct
       {
 
+        unsigned  chN;
+        
         unsigned  wtAllocN;  // wtAlloc[ wtAllocN ]  
         sample_t* wtAllocA;  // total allocated WT space with extra leading and trailing samples
         
@@ -4406,6 +4441,10 @@ namespace cw
         coeff_t gain;
         coeff_t gain_coeff;
         coeff_t gain_thresh;
+        coeff_t fixed_gain;
+
+        bool isSustainDownFl;
+        bool heldByPedalFl;
         
       } inst_t;
 
@@ -4415,17 +4454,18 @@ namespace cw
         rc_t           rc      = kOkRC;
         mbuf_t*        mbuf    = nullptr;
         srate_t        srate   = proc->ctx->sample_rate;
-        const unsigned ch_cnt  = 1;
         bool           done_fl = false;
         
         // get the MIDI input variable
         if((rc = var_register_and_get( proc, kAnyChIdx,
                                        kInPId,     "in",      kBaseSfxId, mbuf,
+                                       kGainPId,   "gain",    kBaseSfxId, p->fixed_gain,
+                                       kChCntPId,  "chCnt",   kBaseSfxId, p->chN,
                                        kDoneFlPId, "done_fl", kBaseSfxId, done_fl)) != kOkRC )
           goto errLabel;
 
         // create one output audio buffer
-        if((rc = var_register_and_set( proc, "out", kBaseSfxId,kOutPId, kAnyChIdx, srate, ch_cnt, proc->ctx->framesPerCycle )) != kOkRC )
+        if((rc = var_register_and_set( proc, "out", kBaseSfxId,kOutPId, kAnyChIdx, srate, p->chN, proc->ctx->framesPerCycle )) != kOkRC )
           goto errLabel;
         
         // create the wave table
@@ -4470,8 +4510,19 @@ namespace cw
       void _on_note_off( inst_t* p )
       {
         p->gain_coeff = 0.9;
+
+        if( p->isSustainDownFl )
+          p->heldByPedalFl = true;        
       }
 
+      void _on_sustain_pedal(proc_t* proc, inst_t* p, bool pedal_down_fl )
+      {
+        p->isSustainDownFl = pedal_down_fl;
+
+        if( !p->isSustainDownFl && !p->heldByPedalFl )
+          _on_note_off(p);
+      }
+      
       rc_t _exec( proc_t* proc, inst_t* p )
       {
         rc_t    rc   = kOkRC;
@@ -4504,6 +4555,9 @@ namespace cw
                 p->gain = (coeff_t)p->cur_vel / 127;
                 p->gain_coeff = 1.0;
                 p->gain_thresh = 0.001;
+                var_set(proc,kDoneFlPId,kAnyChIdx,false);
+                
+                //printf("NO: %i\n",proc->label_sfx_id);
               }
               break;
 
@@ -4511,6 +4565,11 @@ namespace cw
               _on_note_off(p);
               break;
 
+            case midi::kCtlMdId:
+              if( midi::isSustainPedal( m->status, m->d0 ) )
+                _on_sustain_pedal(proc,p, midi::isPedalDown(m->d1) );
+              break;
+              
             case midi::kPbendMdId:
               p->cur_pbend = midi::toPbend(m->d0,m->d1) / 8192.0;
               break;
@@ -4529,19 +4588,25 @@ namespace cw
         {
 
           // fill in the audio buffer
-          for(unsigned i=0; i<abuf->frameN; ++i)
+          for(unsigned ch_idx=0; ch_idx<abuf->chN; ++ch_idx)
           {
-            unsigned j    = (unsigned)floor(p->wtPhase);
-            double   frac = p->wtPhase - j;          
-            sample_t smp  = p->wtA[j] + (p->wtA[j+1] - p->wtA[j]) * frac;
-          
-            abuf->buf[i] = p->gain*smp;
+            sample_t* obuf = abuf->buf + (ch_idx * abuf->frameN);
+            coeff_t  gain  = p->gain*p->fixed_gain;
+              
+            for(unsigned i=0; i<abuf->frameN; ++i)
+            {
+              unsigned j    = (unsigned)floor(p->wtPhase);
+              double   frac = p->wtPhase - j;          
+              sample_t smp  = p->wtA[j] + (p->wtA[j+1] - p->wtA[j]) * frac;
 
-            p->wtPhase += p->cur_hz + (p->cur_hz * p->cur_pbend);
-            if( p->wtPhase >= p->wtN )
-              p->wtPhase -= p->wtN;
+              obuf[i] = gain*smp;
+
+              p->wtPhase += p->cur_hz + (p->cur_hz * p->cur_pbend);
+              if( p->wtPhase >= p->wtN )
+                p->wtPhase -= p->wtN;
+            }
+
           }
-
           p->gain *= p->gain_coeff;
           
           if( p->gain < p->gain_thresh )
@@ -4603,11 +4668,13 @@ namespace cw
         unsigned      test_pitchN;     // Count of valid velocities for test_pitch 
         unsigned*     test_pitch_map;  // test_pitch_map[ test_pitch_N ]
 
-        bool done_fl;
+        bool    done_fl;
         coeff_t gain;
         coeff_t gain_coeff;
         coeff_t kReleaseGain;
         coeff_t kGainThreshold;
+        bool    isSustainDownFl;
+        bool    heldByPedalFl;
         
       } inst_t;
 
@@ -4619,7 +4686,7 @@ namespace cw
         unsigned    padSmpN       = 1;
         
         // if the global wave table bank has not yet been created
-        if((p->wtbH_ptr = (wt_bank::handle_t*)network_global_var(proc, wtb_var_label )) == nullptr )
+        if((p->wtbH_ptr = (wt_bank::handle_t*)global_var(proc, wtb_var_label )) == nullptr )
         {
           wt_bank::handle_t wtbH;
           
@@ -4637,13 +4704,13 @@ namespace cw
           }
 
           // store the wave table bank global var
-          if((rc = network_global_var_alloc(proc, wtb_var_label, &wtbH, sizeof(wtbH) )) != kOkRC )
+          if((rc = global_var_alloc(proc, wtb_var_label, &wtbH, sizeof(wtbH) )) != kOkRC )
           {
             rc = cwLogError(rc,"The wave table bank global variable allocation failed.");
             goto errLabel;
           }
 
-          if((p->wtbH_ptr = (wt_bank::handle_t*)network_global_var(proc, wtb_var_label )) == nullptr )
+          if((p->wtbH_ptr = (wt_bank::handle_t*)global_var(proc, wtb_var_label )) == nullptr )
           {
             rc = cwLogError(rc,"The wave table bank global variable store failed.");
             goto errLabel;
@@ -4764,7 +4831,7 @@ namespace cw
           d0 = p->test_pitch;
         }
 
-        printf("%i %i\n",d0,d1);
+        //printf("%s:%i %i %i\n",proc->label,proc->label_sfx_id,d0,d1);
         
         // get the wave-table associated with the pitch and velocity
         if((rc = get_wave_table(  *p->wtbH_ptr, p->wtb_instr_idx, d0, d1, mcs)) != kOkRC )
@@ -4782,21 +4849,43 @@ namespace cw
                 
         p->done_fl        = false;
         p->kGainThreshold = 0.01;
-        p->kReleaseGain   = 0.9;
+        p->kReleaseGain   = 0.98;
         p->gain           = 1.0;
         p->gain_coeff     = 1.0;
+        p->heldByPedalFl  = false;
+
+        var_set(proc,kDoneFlPId,kAnyChIdx,false);
+        
         
       errLabel:
         return rc;
       }
 
-      void _on_note_off( inst_t* p )
+      void _begin_note_release( inst_t* p )
       {
-        p->gain_coeff = p->kReleaseGain;
-        //printf("%i nof: %i %i\n",proc->label_sfx_id,m->d0,m->d1);
-        
+        p->gain_coeff = p->kReleaseGain;        
       }
 
+      void _on_note_off( inst_t* p )
+      {
+        if( p->isSustainDownFl )
+          p->heldByPedalFl = true;
+        else
+          _begin_note_release(p);
+        
+        //printf("%i nof: %i %i\n",proc->label_sfx_id,m->d0,m->d1);
+      }
+
+      void _on_sustain_pedal(proc_t* proc, inst_t* p, bool pedal_down_fl )
+      {
+        p->isSustainDownFl = pedal_down_fl;
+        
+        if( !p->isSustainDownFl && !p->heldByPedalFl )
+          _begin_note_release(p);
+
+        //printf("%s:%i %s\n",proc->label,proc->label_sfx_id,pedal_down_fl ? "V" : "^");
+
+      }
 
       rc_t _destroy( proc_t* proc, inst_t* p )
       {
@@ -4854,6 +4943,11 @@ namespace cw
 
             case midi::kPbendMdId:
               break;
+
+            case midi::kCtlMdId:
+              if( midi::isSustainPedal( m->status, m->d0 ) )
+                _on_sustain_pedal(proc,p, midi::isPedalDown(m->d1) );
+              break;
               
             default:
               break;
@@ -4871,8 +4965,8 @@ namespace cw
             
         if( (p->gain < p->kGainThreshold && !p->done_fl) || (actualFrmN < abuf->frameN) )
         {
-          var_set(proc,kDoneFlPId,kAnyChIdx,true);
           p->done_fl = true;
+          var_set(proc,kDoneFlPId,kAnyChIdx,true);
         }
 
       errLabel:
@@ -7170,7 +7264,7 @@ namespace cw
         if((rc = var_get(proc,vid,kAnyChIdx,v)) != kOkRC )
           goto errLabel;
 
-        if( 0 <= v && v <= max_val )
+        if( v <= max_val )
           midi_byte_ref = (uint8_t)v;
         else
         {
@@ -7717,6 +7811,236 @@ namespace cw
       };
       
     }
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // poly_xform_ctl
+    //
+    namespace poly_xform_ctl
+    {
+      enum {
+        kOutChCntPId,
+        kOutChIdxPId,
+        kInBasePId,
+      };
+
+      typedef struct in_var_str
+      {
+        unsigned out_idx;
+      } in_var_t;
+        
+      typedef struct
+      {
+        unsigned  inVarN;
+        in_var_t* inVarA;
+        
+        unsigned outVarN;
+        
+        unsigned midiBasePId;
+        unsigned doneFlBasePId;
+        unsigned outBasePId;
+        
+      } inst_t;
+
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t     rc                  = kOkRC;        
+        srate_t  srate               = 0;
+        unsigned audioFrameN         = 0;
+        unsigned chCntPerInputSignal = 0;
+        unsigned aSfxIdAllocN        = var_mult_count(proc,"in");        
+        unsigned aSfxIdA[ aSfxIdAllocN ];
+
+        // get the the sfx_id's of the input audio variables 
+        if((rc = var_mult_sfx_id_array(proc, "in", aSfxIdA, aSfxIdAllocN, p->inVarN )) != kOkRC )
+          goto errLabel;
+
+        p->midiBasePId   = kInBasePId       + p->inVarN;
+        p->doneFlBasePId = p->midiBasePId   + p->inVarN;
+        p->outBasePId    = p->doneFlBasePId + p->inVarN;
+        p->inVarA         = mem::allocZ<in_var_t>( p->inVarN );
+
+        // for each audio input var
+        for(unsigned i=0; i<p->inVarN; ++i)
+        {
+          abuf_t* abuf = nullptr;
+          
+          // register the input audio variable
+          if((rc = var_register_and_get(proc,kAnyChIdx,kInBasePId+i,"in",aSfxIdA[i],abuf)) != kOkRC )
+            goto errLabel;
+
+          assert(abuf != nullptr );
+          
+          // the sample rate of the input audio signals must be the same
+          if( i != 0 && abuf->srate != srate )
+          {
+            rc = cwLogError(kInvalidArgRC,"All signals on a poly merge must have the same sample rate.");
+            goto errLabel;
+          }
+
+          srate = abuf->srate;
+
+          // the count of frames in all audio signals must be the same
+          if( audioFrameN != 0 && abuf->frameN != audioFrameN )
+          {
+            rc = cwLogError(kInvalidArgRC,"All signals on a poly merge must have the same frame count.");
+            goto errLabel;
+          }
+
+          audioFrameN = abuf->frameN;
+
+          // track the max channel count among all audio input variables
+          if( abuf->chN > chCntPerInputSignal )
+            chCntPerInputSignal = abuf->chN;
+
+          if((rc = var_register(proc,kAnyChIdx,p->midiBasePId   + i, "midi",    aSfxIdA[i])) != kOkRC )
+            goto errLabel;
+          
+          if((rc = var_register(proc,kAnyChIdx,p->doneFlBasePId + i, "donefl", aSfxIdA[i])) != kOkRC )
+            goto errLabel;
+          
+          // initialize the ith input channels
+          p->inVarA[i].out_idx = kInvalidIdx;
+        }
+
+        // get the count of output vars
+        if((rc = var_register_and_get( proc, kAnyChIdx, kOutChCntPId, "out_ch_cnt", kBaseSfxId, p->outVarN )) != kOkRC )
+          goto errLabel;
+
+        // register the output selector var
+        if((rc = var_register( proc, kAnyChIdx, kOutChIdxPId,"out_ch_idx", kBaseSfxId )) != kOkRC )
+          goto errLabel;
+
+        // create the output audio var's
+        for(unsigned i=0; i<p->outVarN; ++i)
+          if((rc = var_register_and_set( proc, "out", kBaseSfxId + i, p->outBasePId+i, kAnyChIdx, srate, chCntPerInputSignal, audioFrameN )) != kOkRC )
+            goto errLabel;
+        
+      errLabel:
+        
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        mem::release(p->inVarA);
+
+        return rc;
+      }
+
+      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+
+      void _mix( unsigned out_var_idx, abuf_t* obuf, const abuf_t* ibuf )
+      {
+
+        unsigned chN = std::min(ibuf->chN, obuf->chN );
+        sample_t sum = 0;
+        
+        for(unsigned i=0; i<chN; ++i)
+        {
+          const sample_t* isig = ibuf->buf + i*ibuf->frameN;
+          sample_t*       osig = obuf->buf + i*obuf->frameN;
+
+          for(unsigned j=0; j<obuf->frameN; ++j)
+          {
+            osig[j] += isig[j];
+            if( isig[j] != 0.0f )
+            {
+              sum += std::fabs(isig[j]);              
+            }
+          }
+        }
+
+        //if( sum > 0 )
+        //  printf("MTR:%i %i %f\n",out_var_idx,obuf->frameN,sum);
+        
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t rc      = kOkRC;
+        abuf_t* outAudioBufA[ p->outVarN ];
+        unsigned out_var_idx;
+
+        if((var_get(proc,kOutChIdxPId,kAnyChIdx,out_var_idx)) != kOkRC )
+          goto errLabel;
+
+        // get the audio output buffers
+        for(unsigned i=0; i<p->outVarN; ++i)
+        {
+          if((rc = var_get(proc,p->outBasePId + i, kAnyChIdx, outAudioBufA[i] )) != kOkRC )
+            goto errLabel;
+          vop::zero(outAudioBufA[i]->buf,outAudioBufA[i]->chN * outAudioBufA[i]->frameN );
+        }
+
+        // for each input signal var
+        for(unsigned i=0; i<p->inVarN; ++i)
+        {
+          mbuf_t* mbuf    = nullptr;
+          bool    done_fl = false;
+
+          // get the incoming midi msg's
+          if((rc = var_get(proc,p->midiBasePId + i,kAnyChIdx,mbuf)) != kOkRC )
+            goto errLabel;
+
+          // for each received note-on msg set the output var of the associated output channel
+          for(unsigned j=0; j<mbuf->msgN; ++j)
+            if( midi::isNoteOn(mbuf->msgA[j].status,mbuf->msgA[j].d1) )
+            {
+              p->inVarA[i].out_idx = out_var_idx;
+              //printf("VA: %i->%i\n",i,out_var_idx);
+            }
+
+          // get the state of the 'done_fl'
+          if((rc = var_get(proc,p->doneFlBasePId + i,kAnyChIdx,done_fl)) != kOkRC )
+            goto errLabel;
+
+          
+          // if this input channel is no longer active
+          if( p->inVarA[i].out_idx != kInvalidIdx && done_fl )
+          {
+            p->inVarA[i].out_idx = kInvalidIdx;
+            //printf("D:%i\n",i);
+          }
+          
+          // if this channel has a valid out var index
+          if( p->inVarA[i].out_idx != kInvalidIdx )
+          {
+            abuf_t* abuf = nullptr;
+
+            // get the input audio buffer
+            if((rc = var_get(proc,kInBasePId + i, kAnyChIdx, abuf)) != kOkRC )
+              goto errLabel;
+
+            // mix the input into the output
+            _mix(p->inVarA[i].out_idx, outAudioBufA[ p->inVarA[i].out_idx ], abuf );
+          }
+          
+        }
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .value   = std_value<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    
 
     
     

@@ -4,6 +4,39 @@ namespace cw
 {
   namespace flow
   {
+
+    template< typename inst_t >
+    rc_t std_destroy( proc_t* proc )
+    {
+      inst_t* p = (inst_t*)proc->userPtr;
+      rc_t rc = _destroy(proc,p);
+      mem::release(proc->userPtr);
+      return rc;
+    }
+    
+    template< typename inst_t >
+    rc_t std_create( proc_t* proc )
+    {
+      rc_t rc = kOkRC;
+      proc->userPtr = mem::allocZ<inst_t>();
+      if((rc = _create(proc,(inst_t*)proc->userPtr)) != kOkRC )
+        std_destroy<inst_t>(proc);
+      return rc;        
+    }
+
+    template< typename inst_t >
+    rc_t std_value( proc_t* proc, variable_t* var )
+    { return _value(proc,(inst_t*)proc->userPtr, var); }
+        
+    template< typename inst_t >
+    rc_t std_exec( proc_t* proc )
+    { return _exec(proc,(inst_t*)proc->userPtr); }
+
+    template< typename inst_t >
+    rc_t std_report( proc_t* proc )
+    { return _report(proc,(inst_t*)proc->userPtr); }
+
+    
     namespace user_def_proc   { extern class_members_t members;  }
     namespace poly            { extern class_members_t members;  }
     namespace midi_in         { extern class_members_t members;  }
@@ -48,6 +81,7 @@ namespace cw
     namespace midi_split      { extern class_members_t members;  }
     namespace midi_file       { extern class_members_t members;  }
     namespace midi_merge      { extern class_members_t members;  }
+    namespace poly_xform_ctl  { extern class_members_t members;  }
     
   }
 }
