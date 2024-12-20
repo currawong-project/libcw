@@ -21,6 +21,7 @@
 #include "cwDspTypes.h"
 #include "cwFlowDecl.h"
 #include "cwFlow.h"
+#include "cwFlowValue.h"
 #include "cwFlowTypes.h"
 
 #include "cwIo.h"
@@ -804,6 +805,35 @@ bool cw::io_flow_ctl::program_is_initialized( handle_t h )
   return p->init_fl;
 }
 
+cw::rc_t cw::io_flow_ctl::program_apply_preset( handle_t h, unsigned preset_idx )
+{
+  rc_t rc = kOkRC;
+  const char* preset_label = nullptr;
+  io_flow_ctl_t* p  = _handleToPtr(h);
+  if( !p->init_fl )
+  {
+    rc = cwLogError(kInvalidStateRC,"The preset cannot be applied because the program is not initialized.");
+    goto errLabel;
+  }
+
+  if((preset_label = flow::preset_label(p->flowH,preset_idx)) == nullptr )
+  {
+    rc = cwLogError(kInvalidArgRC,"The preset index '%i' is invalid.",preset_idx);
+    goto errLabel;
+  }
+
+  if((rc = apply_preset(p->flowH,preset_label)) != kOkRC )
+  {
+    rc = cwLogError(rc,"Application of the preset '%s' failed.",preset_label);
+    goto errLabel;
+    
+  }
+  
+errLabel:
+  return rc;
+  
+}
+
 const cw::flow::ui_net_t* cw::io_flow_ctl::program_ui_net( handle_t h )
 {
   io_flow_ctl_t* p  = _handleToPtr(h);  
@@ -880,6 +910,17 @@ bool cw::io_flow_ctl::is_exec_complete( handle_t h )
 
   return p->done_fl;
 }
+
+cw::rc_t cw::io_flow_ctl::send_ui_updates( handle_t h )
+{
+  rc_t rc = kOkRC;
+  io_flow_ctl_t* p  = _handleToPtr(h);
+  if( program_is_initialized(h) )
+    rc = send_ui_updates(p->flowH);
+
+  return rc;
+}
+
 
 
 cw::rc_t cw::io_flow_ctl::get_variable_value(   handle_t h, const flow::ui_var_t* ui_var, bool& value_ref )

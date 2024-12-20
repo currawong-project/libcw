@@ -36,6 +36,8 @@ namespace cw
     rc_t        program_initialize( handle_t h, unsigned preset_idx=kInvalidIdx );
     bool        program_is_initialized( handle_t h );
 
+    rc_t        program_apply_preset( handle_t h, unsigned preset_idx );
+
     // Get the UI description data structures for the current program.
     const flow::ui_net_t* program_ui_net( handle_t h );
     
@@ -51,6 +53,8 @@ namespace cw
 
     // The current program has completed.
     bool is_exec_complete( handle_t h );
+
+    rc_t send_ui_updates( handle_t h );
 
     rc_t get_variable_value( handle_t h, const flow::ui_var_t* ui_var, bool& value_ref );
     rc_t get_variable_value( handle_t h, const flow::ui_var_t* ui_var, int& value_ref );
