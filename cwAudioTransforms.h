@@ -617,9 +617,9 @@ namespace cw
         {
           wnd_func::exec(p->wf, p->sb->outV, p->sb->wndSmpCnt );
 
-	  // convert float to double
-	  T1 cvtV[ p->wf->wndN ];
-	  vop::copy(cvtV, p->wf->outV, p->wf->wndN );
+          // convert float to double
+          T1 cvtV[ p->wf->wndN ];
+          vop::copy(cvtV, p->wf->outV, p->wf->wndN );
 
           fft::exec(p->ft, cvtV, p->wf->wndN);
 
