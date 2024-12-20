@@ -1070,7 +1070,11 @@ It's not clear there is a difference between specifying  `_` and the default beh
 Is there a way to tell it to search the entire network from the root? Isn't that 
 what '_' is supposed to do?
 
+- cwAudioFile cannot convert float or double input samples to 24 bit output samples
+See audiofile::writeFloat() and audiofile::writeDouble().
 
+- If a proc, inside a poly,  is given a numeric suffix then that suffix will
+overwrite the label_sfx_id assigned by the system.  This case should be detected.
 
 Host Environments:
 ------------------
@@ -1078,129 +1082,6 @@ Host Environments:
 - CLI, no GUI, w/ I/O and real-time
 - GUI, with configurable control panels
 
-Done
-----
-- DONE: Remove `preset_label` and `type_src_label` from `_var_channelize()` and report error
-locations from the point of call.
-
-- DONE: Move proc_dict.cfg to libcw directory.
-
-- DONE: The proc inst 'args' should be able to create mult variables. The only way to instantiate
-new mult variables now is via the 'in' stmt.
-
-- DONE: The `audio_merge` implementaiton is wrong. It should mimic `audio_mix` where all igain
-coeff's are instantiated even if they are not referenced.
-
-- DONE: Add the `caw` examples to the test suite.
-
-
-- DONE: Remove the multiple 'args' thing and and 'argsLabel'.  'args' should be a simple set of arg's.  
-
-- DONE: Compile presets: at load time the presets should be resolved
-  to the proc and vars to which they will be assigned.
-
-
-- DONE: (We are not removing the kAnyChIdx) 
-Should the var's with multiple channels remove the 'kAnyChIdx'?
-This may be a good idea because 'kAnyChIdx' will in general not be used
-if a var has been channelized - and yet it is possible for another 
-var to connect to it as a source ... which doesn't provoke an error
-but would almost certainly not do what the user expects.
-Note that the kAnyChIdx provides an easy way to set all of the channels
-of a variable to the same value.
-
-- DONE: verifiy that all proc variables values have a valid type - (i.e. (type & typeMask) != 0)
-  when the proc instance create is complete. This checks that both the type is assigned and
-  a valid value has been assigned - since the type is assigned the first time a value is set.
-  
-- DONE: 'poly' should be implemented as a proc-inst with an internal network - but the 
-elements of the network should be visible outside of it.
-
-- DONE: 'sub' should be implemented as proc-inst with an internal network, but the
-elements of the network should not be visible outside of it. Instead it should
-include the idea of input and output ports which act as proxies to the physical
-ports of the internal elements.
-
-- DONE: 'poly' and 'sub' should be arbitrarily nestable. 
-
-- DONE: Allow multiple types on an input.
-   For example 'adder' should have a single input 
-   which can by any numeric type.
-   
-
-- DONE: Make a standard way to turn on output printing from any port on any instance
-This might be a better approach to logging than having a 'printer' object.
-Add proc instance field: `log:{ var_label_0:0, var_label_1:0 } `
-
-- Complete user-def-procs:
-	+ User-Def-Procs should have presets written in terms of the user-def-proc vars rather than the network vars
-	or the value application needs to follow the internal variable src_var back to the proxy var.
-
-	+ DONE: write a paragraph in the flow_doc.md about overall approach taken to user-def-proc implementation.
-
-	+ DONE: user-def-proc var desc's should be the same as non+user-def-proc vars but also include the 'proxy' field.
-	In particular they should get default values.
-	If a var desc is part of a user-def-proc then it must have a proxy.
-	The output variables of var desc's must have the 'out' attribute
-
-
-	+ DONE: improve the user-def-proc creating code by using consistent naming + use proxy or wrap but not both
-
-	+ DONE: improve code comments on user-def-proc creation
-
-  
-- DONE: Implement feedback	
-
-- DONE: Implement the ability to set backward connections - from late to early proc's.
-  This can be done by implementing the same process as 'in_stmt' but in a separate 
-  'out_stmt'. The difficulty is that it prevents doing some checks until the network
-  is completely specified.  For example if audio inputs can accept connections from 
-  later proc's then they will not have all of their inputs when they are instantiated.
-  One way around this is to instantiate them with an initial set of inputs but then
-  allow those inputs to be replaced by a later connection.
-
-BUGS:
-- DONE: The counter modulo mode is not working as expected.
-
-
-
-- DONE: Implement 'preset' proc. This will involve implementing the 'cfg' datatype.
-
-- DONE: Finish the 'poly' frawework. We are making 'mult' var's, but do any of the procs explicitly deal with them?
-
-- DONE: Turn on variable 'broadcast'.  Why was it turned off? ... maybe multiple updates?
-
-- DONE: There is no way for a proc in a poly context to use it's poly channel number to 
-select a mult variable.  For example in an osc in a poly has no way to select
-the frequency of the osc by conneting to a non-poly proc - like a list.
-Consider: 
-1. Use a difference 'in' statememt (e.g. 'poly-in' but the 
-   same syntax used for connecting 'mult' variables.)
-2. Include the proc name in the 'in' var to indicate a poly index is being iterated
-   e.g. `lfo: { class:sine_tone, in:{ osc_.dc:list.value_ } }` 
-
-- DONE: Fix up the coding language - change the use of `instance_t` to `proc_t` and `inst` to `proc`, change use of `ctx` in cwFlowProc
-
-
-
-DONE: After the network is fully instantiated the network and class presets
-are compiled.  At this point all preset values must be resolvable to
-an actual proc variable.  A warning is issued for presets with values
-that cannot be resolved and they are disabled.  The primary reason
-that a preset might not be resolvable is by targetting a variable
-channel that does not exist.
-
-- DONE: All cfg to value conversion should go through `cfg_to_value()`.
-
-
-Names
-------
-ixon - 
-hoot
-caw, screech, warble, coo, peep, hoot, gobble, quack, honk, whistle, tweet, cheep, chirrup, trill, squawk, seet, 
-cluck,cackle,clack
-cock-a-dooodle-doo
-song,tune,aria
 
 Proc instantiation
 ------------------
@@ -1282,17 +1163,252 @@ caw w/ UI
   - get basic information from proc dict
   - get override information from the network
   
-3.  
+
+Network Execution:
+------------------
+
+1. During real-time execution the network is executed on callbacks from the audio subsytem.
+These callbacks occur asynchronously on the IO system audio processing thread.
+
+2. During real-time processing the MIDI callbacks are also asynchronous.
 
 
 
 
+Uniform Presets:
+----------------
+
+Preset description and application without the presence of 'poly' proc's is very straight forward:
+
+For example:
+
+```
+example_1:
+{
+
+  network: {
+
+    procs: {
+      lfo:   { class: sine_tone, args:{ hz:3, dc:440, gain:110 }
+        presets:
+	{
+	  ps_a:{ hz:2, dc:220, gain:55 },
+	  ps_b:{ hz:4, dc:110, gain:220 },
+	}
+      }
+      
+      sh:    { class: sample_hold, in:{ in:lfo.out } }
+      osc:   { class: sine_tone,   in:{ hz:sh.out },   args:{ ch_cnt:2 } },
+      gain:  { class: audio_gain,  in:{ in:osc.out },  args:{ gain:0.3 } },
+      aout:  { class: audio_out,   in:{ in:gain.out }, args:{ dev_label:"main"} }
+    }
+	
+    presets:
+    {
+       a: { gain:{ gain:0.2 } },        //  One value sets both channels.
+       b: { gain:{ gain:[0.1,0.3] } },  //  Multi-channel preset.
+       c: { osc:a880 } },               //  Apply a class preset
+       d: { osc:mono } },               //  Apply a class preset with an ignored 'init' variable.
+       f: { osc:a220, lfo:ps_a } },     //  Apply a local preset and class preset
+    }
+  }
+}
+```
+
+Calling `network_apply_preset(preset_label)` with one of the network preset labels 'a'-'f' will
+work as expected in all of these cases.
+
+Notes:
+
+1. All preset values and proc/var's can be resolved at compile time.
+
+2. Applying the network can be accomplished by resolving the network preset_label to a network_preset_t
+in network_t.presetA and calling flow::var_set() on each attached preset_value_t.
+
+3. Proc preset labels, as used in presets 'c','d','e' in the example, are resolved by first looking
+for the label in the processor instance configation and then in the processor class description.
 
 
+---
+
+The following example shows how the preset processor labels can use underscore notation to address a range of processors.
+
+```
+example_2:
+ {
+  network: {
+    procs: {
+      osc:    { class: sine_tone, args: { ch_cnt:6, hz:[110,220,440,880,1760, 3520] }},
+      split:  { class: audio_split, in:{ in:osc.out }, args: { select:[ 0,0, 1,1, 2,2 ] } },
+
+      // Create three gain controls: g:0,g:1,g:2 using the processor label numeric suffix syntax.
+      g0: { class:audio_gain, in:{ in:split0.out0 }, args:{ gain:0.9} },
+      g1: { class:audio_gain, in:{ in:split0.out1 }, args:{ gain:0.5} },
+      g2: { class:audio_gain, in:{ in:split0.out2 }, args:{ gain:0.2} },
+                  
+      merge: { class: audio_merge, in:{ in_:g_.out } },
+      out:   { class: audio_out, in:{ in:merge.out },  args:{ dev_label:"main" }}
+    }
+
+    presets: {
+      a: { g_:   { gain:0.1 } }, // Use underscore notation to apply a preset value to g0,g1,g2.
+      b: { g0_2: { gain:0.2 } }, // Use underscore notation to apply a preset value to g0 and g1.
+      c: { g2:   { gain:0.3 } }, // Apply a preset value to g2 only.
+    }
+  } 
+}
+```
+
+Todo: This should work now.
+
+---
 
 
-
-
+example_3: {
    
-   
-   
+  network: {
+
+    procs: {
+
+      // LFO gain parameters - one per poly voice
+      g_list:  { class: list, args: { in:0, list:[ 110f,220f,440f ]}},
+
+      // LFO DC offset parameters - one per poly voice
+      dc_list: { class: list, args: { in:0, list:[ 220f,440f,880f ]}},
+          
+      osc_poly: {
+        class: poly,
+        args: { count:3 },  // Create 3 instances of 'network'.
+           
+        network: {
+          procs: {
+            lfo:  { class: sine_tone,   in:{ _.dc:_.dc_list.value_, _.gain:_.g_list.value_ }  args: { ch_cnt:1, hz:3 }},
+            sh:   { class: sample_hold, in:{ in:lfo.out }},
+            osc:  { class: sine_tone,   in:{ hz: sh.out }},
+         },
+	 
+	 presets:
+	 {
+	   a:{ lfo:{ hz:1 } },
+	   b:{ lfo:{ hz:2 } },
+	   c:{ lfo0_1: { hz:3 }, lfo2:{ hz:4 } },
+	  
+	 }
+       }               
+     }
+
+     // Iterate over the instances of `osc_poly.osc_.out` to create one `audio_merge`
+     // input for every output from the polyphonic network.
+     merge: { class: audio_merge,    in:{ in_:osc_poly.osc_.out}, args:{ gain:1, out_gain:0.5 }},
+     aout:  { class: audio_out,      in:{ in:merge.out }          args:{ dev_label:"main"} }
+    }
+
+    presets: {
+      a:{ osc_poly:a, merge:{ out_gain:0.3 } },
+      b:{ osc_poly:b, merge:{ out_gain:0.2 } },
+      c:{ osc_poly:c, merge:{ out_gain:0.1 } },
+    }
+
+  }
+}
+
+
+1. If a poly preset processor label does not have a numeric suffix then it is applied to all instances.
+The alternative to this rule is to use an '_' suffix to imply 'all' processors of the given name.
+
+2. A preset in an outer network may not directly address a processor in an inner network, however
+it may select a named preset in an inner network.
+
+3. Rule 2 can be generalized to: Network presets may only address processors which it contains directly - not nested processors.
+In the example the outer most presets may therefore address the 'osc_poly' presets by label, but not
+the processors contained by 'osc_poly'.
+
+---
+
+Use 'interface' objects to intercept preset values so that the
+can be processed before being passed on to a the object that
+they represent.
+
+'interface' object have the same interface as the object to which their 'class' argument
+refers but do nothing other than pass the values to their output ports.
+
+```
+example_4:
+{
+
+  network: {
+
+    procs: {
+
+      lfoIF: { class: interface, args:{ class:sine_tone } },
+
+      // put a modifier here
+
+      lfo:   { class: sine_tone, in:{ hz:lfoIF.hz, dc:lfoIF.dc, gain:lfoIF.gain } }
+      sh:    { class: sample_hold, in:{ in:lfo.out } }
+      osc:   { class: sine_tone,   in:{ hz:sh.out },   args:{ ch_cnt:2 } },
+      gain:  { class: audio_gain,  in:{ in:osc.out },  args:{ gain:0.3 } },
+      aout:  { class: audio_out,   in:{ in:gain.out }, args:{ dev_label:"main"} }
+    }
+	
+    presets:
+    {
+       a: { lfoIF: { hz:1, dc:110, gain:55 } },
+       b: { lfoIF: { hz:2, dc:220, gain:110 } },
+    }
+  }
+}
+```
+
+---
+
+
+How are presets implemented:
+
+1. At compile time:
+
+- Each named preset is stored as a list of value-records and label-records
+called preset-value-lists.
+
+- value-records have the form { var, chIdx, value } and are created from each
+preset value that directly references a variable.
+
+- label-records are formed from labeled preset references and have the form
+{ preset-value-list-ptr }. Where the list refers to the list associated with the given label.
+
+
+- The collection of multiple named presets are then stored as a list of
+preset-value-lists as part of the network instance in which they were defined.
+
+2. At runtime the preset is applied by:
+- Resolving the preset label to a preset-value-list.
+- Calling var_set(var,chIdx,value) for all value-records
+- Iterating over all records in the list refered to preset-value-list-ptr of the label-records.
+
+The notable characteristic of this approach is that it is very fast.
+With the exception of resolving the initial preset label to the top level preset-value-list
+no search or address resolution is required to apply the preset.
+
+
+Final Notes:
+
+1. External network preset application requests that come from the control application
+(e.g. caw::main()), or requests that occur from any processor that is not in the top level,
+must be deferred until the end of the execution cycle when no processors are running.
+
+Network preset application requests that occur from top level processors (processors running
+in the outmost network can be applied directly because by definition the top level processors
+run synchronously.
+
+One way to handle this is to have a 'apply_preset' at the top level that takes
+a preset label as input and applies it directly.
+
+2. Maybe network presets should only be 'label' based and and processor instance
+presets should only be 'value' based? Does this actually help anything?
+Given that the system isn't currently limited in this way maybe it doesn't matter.
+
+3. To Do:
+
+- Processor instance presets have not been implemented.
+- Preset application request deferrment has not been implemented.
+
