@@ -53,8 +53,6 @@ namespace cw
     {
       enum {
         kScoreFNamePId,
-        kVelTblFnamePId,
-        kVelTblLabelPId,
         kDoneFlPId,
         kOutPId,
         kLocPId
@@ -69,14 +67,6 @@ namespace cw
         midi::ch_msg_t*  midi; // index of associated msg in chMsgA
       } msg_t;
 
-      typedef struct vel_tbl_str
-      {
-        unsigned* tblA;
-        unsigned  tblN;
-        char*     label;
-        struct vel_tbl_str* link;
-      } vel_tbl_t;
-
       typedef struct
       {
 
@@ -90,10 +80,6 @@ namespace cw
         unsigned      loc_fld_idx;
         unsigned      meas_fld_idx;
 
-        vel_tbl_t* velTblL;      // List of vel. tables.
-        vel_tbl_t* activeVelTbl; // Currently active vel. table or null if no vel. tbl is active.
-        
-        
         unsigned sample_idx;
         unsigned msg_idx;
       } inst_t;
@@ -179,144 +165,6 @@ namespace cw
         return rc;
       }
 
-      rc_t _load_vel_table_file( proc_t* proc, inst_t* p, const char* vel_tbl_fname )
-      {
-        rc_t            rc    = kOkRC;
-        object_t*       cfg   = nullptr;
-        const object_t* tblL  = nullptr;
-        unsigned        tblN  = 0;
-        char*           fname = nullptr;
-
-        if( vel_tbl_fname == nullptr || textLength(vel_tbl_fname)==0  )
-        {
-          rc = cwLogError(kInvalidArgRC,"The velocity table filename is blank.");
-          goto errLabel;
-        }
-
-        if((fname = proc_expand_filename( proc, vel_tbl_fname )) == nullptr )
-        {
-          rc = cwLogError(kOpFailRC,"The velocity table filename (%s) is invalid.",vel_tbl_fname);
-          goto errLabel;
-        }
-        
-        if((rc = objectFromFile(fname,cfg)) != kOkRC )
-        {
-          rc = cwLogError(rc,"Velocity table file parse failed.");
-          goto errLabel;
-        }
-
-        if((rc = cfg->getv("tables",tblL)) != kOkRC )
-        {
-          rc = cwLogError(rc,"Velocity table file has no 'tables' field.");
-          goto errLabel;
-        }
-
-        tblN = tblL->child_count();
-
-        for(unsigned i=0; i<tblN; ++i)
-        {
-          const object_t* tbl        = tblL->child_ele(i);
-          const object_t* velListCfg = nullptr;
-          vel_tbl_t*      vt         = nullptr;
-          
-          const char* label = nullptr;
-
-          if((rc = tbl->getv("table",velListCfg,
-                             "name",label)) != kOkRC )
-          {
-            rc = cwLogError(rc,"Velocity table at index %i failed.",i);
-            goto errLabel;
-          }
-
-          vt         = mem::allocZ<vel_tbl_t>();
-          vt->link   = p->velTblL;
-          p->velTblL = vt;          
-          vt->tblN   = velListCfg->child_count();
-          vt->label  = mem::duplStr(label);
-
-          // if the table is empty
-          if( vt->tblN == 0 )
-          {
-            rc = cwLogError(rc,"The velocity table named '%s' appears to be blank.",cwStringNullGuard(label));
-            continue;
-          }
-
-          vt->tblA = mem::allocZ<unsigned>(vt->tblN);
-
-          for(unsigned j=0; j<vt->tblN; ++j)
-          {
-            const object_t* intCfg;
-            if((intCfg = velListCfg->child_ele(j)) == nullptr )
-            {
-              rc = cwLogError(rc,"Access to the integer value at index %i failed on vel. table '%s'.",j,cwStringNullGuard(label));
-              goto errLabel;
-            }
-            
-            if((rc = intCfg->value(vt->tblA[j])) != kOkRC )
-            {              
-              rc = cwLogError(rc,"Parse failed on integer value at index %i in vel. table '%s'.",j,cwStringNullGuard(label));
-              goto errLabel;
-            }            
-          }
-          
-        }
-        
-
-      errLabel:
-        if( rc != kOkRC )
-          rc = cwLogError(rc,"Score velocity table file load failed on '%s'.",cwStringNullGuard(vel_tbl_fname));          
-
-        if( cfg != nullptr )
-          cfg->free();
-        
-        mem::release(fname);
-
-        return rc;
-      }
-
-      rc_t _activate_vel_table( proc_t* proc, inst_t* p, const char* vel_tbl_label )
-      {
-        for(vel_tbl_t* vt = p->velTblL; vt!=nullptr; vt=vt->link)
-          if( textIsEqual(vt->label,vel_tbl_label))
-          {
-            p->activeVelTbl = vt;
-            return kOkRC;
-          }
-
-        cwLogWarning("The requested velocity table '%s' was not found on the score instance '%s:%i'.",vel_tbl_label,proc->label, proc->label_sfx_id);
-        
-        return kOkRC;
-      }
-
-      rc_t _apply_vel_table( inst_t* p )
-      {
-        rc_t rc = kOkRC;
-
-        if( p->activeVelTbl == nullptr )
-        {
-          cwLogWarning("A velocity table has not been selected.");
-          goto errLabel;
-        }
-        
-        for(unsigned i=0; i<p->msgN; ++i)
-        {
-          midi::ch_msg_t* m = p->msgA[i].midi;
-          
-          if( midi::isNoteOn(m->status,m->d1) )
-          {
-            if( p->msgA[i].d1 >= p->activeVelTbl->tblN )
-            {
-              rc = cwLogError(kInvalidArgRC,"The pre-mapped velocity value %i is outside of the range (%i) of the velocity table '%s'.",p->msgA[i].d1,p->activeVelTbl->tblN,cwStringNullGuard(p->activeVelTbl->label));
-              goto errLabel;
-            }
-            
-            m->d1 = p->activeVelTbl->tblA[ p->msgA[i].d1 ];
-          }
-        }
-        
-      errLabel:
-        return rc;
-      }
 
       rc_t _alloc_recd_array( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx, const recd_type_t* base, recd_array_t*& recd_array_ref  )
       {
@@ -359,13 +207,8 @@ namespace cw
       {
         rc_t    rc   = kOkRC;        
         const char* score_fname = nullptr;
-        const char* vel_tbl_fname = nullptr;
-        const char* vel_tbl_label = nullptr;
         
-        if((rc = var_register_and_get(proc,kAnyChIdx,
-                                      kScoreFNamePId,    "fname",         kBaseSfxId, score_fname,
-                                      kVelTblFnamePId,   "vel_tbl_fname", kBaseSfxId, vel_tbl_fname,
-                                      kVelTblLabelPId,   "vel_tbl_label", kBaseSfxId, vel_tbl_label)) != kOkRC )
+        if((rc = var_register_and_get(proc,kAnyChIdx, kScoreFNamePId,    "fname",         kBaseSfxId, score_fname)) != kOkRC )
         {
           goto errLabel;
         }
@@ -383,34 +226,13 @@ namespace cw
           goto errLabel;
         }
 
-        // load p->velTblL from the vel table file
-        if((rc = _load_vel_table_file( proc, p, vel_tbl_fname )) != kOkRC )
-        {
-          goto errLabel;
-        }
-
-        // activate the selected velocity table
-        if((rc = _activate_vel_table( proc, p, vel_tbl_label )) != kOkRC )
-        {
-          goto errLabel;
-        }
-
-        // apply the selected velocity table
-        if( p->activeVelTbl != nullptr )
-        {
-          if((rc = _apply_vel_table( p )) != kOkRC  )
-          {
-            goto errLabel;
-          }
-        }
-
         // allocate the output recd array
         if((rc = _alloc_recd_array( proc, "out", kBaseSfxId, kAnyChIdx, nullptr, p->recd_array  )) != kOkRC )
         {
           goto errLabel;
         }
         
-        // create one output MIDI buffer
+        // create one output record buffer
         rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, p->recd_array->type, nullptr, 0  );
 
         p->midi_fld_idx = recd_type_field_index( p->recd_array->type, "midi");
@@ -425,16 +247,6 @@ namespace cw
       rc_t _destroy( proc_t* proc, inst_t* p )
       {
         rc_t rc = kOkRC;
-        vel_tbl_t* vt=p->velTblL;
-        
-        while( vt!=nullptr )
-        {
-          vel_tbl_t* vt0 = vt->link;
-          mem::release(vt->label);
-          mem::release(vt->tblA);
-          mem::release(vt);
-          vt = vt0;
-        }
 
         recd_array_destroy(p->recd_array);
         mem::release(p->msgA);
@@ -512,6 +324,360 @@ namespace cw
       
     } // score_player
 
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // vel_table
+    //
+    namespace vel_table
+    {
+      enum {
+        kVelTblFnamePId,
+        kVelTblLabelPId,
+        kInPId,
+        kOutPId,
+        kRecdBufNPId
+      };
+      
+      typedef struct vel_tbl_str
+      {
+        unsigned* tblA;
+        unsigned  tblN;
+        char*     label;
+        struct vel_tbl_str* link;
+      } vel_tbl_t;
+      
+      typedef struct
+      {
+        vel_tbl_t*    velTblL;
+        vel_tbl_t*    activeVelTbl;
+        unsigned      i_midi_fld_idx;
+        unsigned      o_midi_fld_idx;
+        
+        recd_array_t*   recd_array;  // output record array        
+        midi::ch_msg_t* midiA;       // midiA[midiN] output MIDI msg array
+        unsigned        midiN; 
+      } inst_t;
+
+      rc_t _load_vel_table_file( proc_t* proc, inst_t* p, const char* vel_tbl_fname )
+      {
+        rc_t            rc    = kOkRC;
+        object_t*       cfg   = nullptr;
+        const object_t* tblL  = nullptr;
+        unsigned        tblN  = 0;
+        char*           fname = nullptr;
+
+        if( vel_tbl_fname == nullptr || textLength(vel_tbl_fname)==0  )
+        {
+          rc = cwLogError(kInvalidArgRC,"The velocity table filename is blank.");
+          goto errLabel;
+        }
+
+        if((fname = proc_expand_filename( proc, vel_tbl_fname )) == nullptr )
+        {
+          rc = cwLogError(kOpFailRC,"The velocity table filename (%s) is invalid.",vel_tbl_fname);
+          goto errLabel;
+        }
+        
+        if((rc = objectFromFile(fname,cfg)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Velocity table file parse failed.");
+          goto errLabel;
+        }
+
+        if((rc = cfg->getv("tables",tblL)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Velocity table file has no 'tables' field.");
+          goto errLabel;
+        }
+
+        tblN = tblL->child_count();
+
+        for(unsigned i=0; i<tblN; ++i)
+        {
+          const object_t* tbl        = tblL->child_ele(i);
+          const object_t* velListCfg = nullptr;
+          vel_tbl_t*      vt         = nullptr;          
+          const char*     label      = nullptr;
+
+          if((rc = tbl->getv("table",velListCfg,
+                             "name",label)) != kOkRC )
+          {
+            rc = cwLogError(rc,"Velocity table at index %i failed.",i);
+            goto errLabel;
+          }
+
+          vt         = mem::allocZ<vel_tbl_t>();
+          vt->link   = p->velTblL;
+          p->velTblL = vt;          
+          vt->tblN   = velListCfg->child_count();
+          vt->label  = mem::duplStr(label);
+
+          // if the table is empty
+          if( vt->tblN == 0 )
+          {
+            rc = cwLogError(rc,"The velocity table named '%s' appears to be blank.",cwStringNullGuard(label));
+            continue;
+          }
+
+          vt->tblA = mem::allocZ<unsigned>(vt->tblN);
+
+          for(unsigned j=0; j<vt->tblN; ++j)
+          {
+            const object_t* intCfg;
+            
+            if((intCfg = velListCfg->child_ele(j)) == nullptr )
+            {
+              rc = cwLogError(rc,"Access to the integer value at index %i failed on vel. table '%s'.",j,cwStringNullGuard(label));
+              goto errLabel;
+            }
+            
+            if((rc = intCfg->value(vt->tblA[j])) != kOkRC )
+            {              
+              rc = cwLogError(rc,"Parse failed on integer value at index %i in vel. table '%s'.",j,cwStringNullGuard(label));
+              goto errLabel;
+            }            
+          }
+          
+        }
+        
+
+      errLabel:
+        if( rc != kOkRC )
+          rc = cwLogError(rc,"Score velocity table file load failed on '%s'.",cwStringNullGuard(vel_tbl_fname));          
+
+        if( cfg != nullptr )
+          cfg->free();
+        
+        mem::release(fname);
+
+        return rc;
+      }
+      
+      rc_t _activate_vel_table( proc_t* proc, inst_t* p, const char* vel_tbl_label )
+      {
+        for(vel_tbl_t* vt = p->velTblL; vt!=nullptr; vt=vt->link)
+          if( textIsEqual(vt->label,vel_tbl_label))
+          {
+            p->activeVelTbl = vt;
+            return kOkRC;
+          }
+
+        cwLogWarning("The requested velocity table '%s' was not found on the score instance '%s:%i'.",vel_tbl_label,proc->label, proc->label_sfx_id);
+        
+        return kOkRC;
+      }
+
+      rc_t _alloc_recd_array( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx, const recd_type_t* base, recd_array_t*& recd_array_ref  )
+      {
+        rc_t        rc  = kOkRC;
+        variable_t* var = nullptr;
+        
+        // find the record variable
+        if((rc = var_find( proc, var_label, sfx_id, chIdx, var )) != kOkRC )
+        {
+          rc = cwLogError(rc,"The record variable '%s:%i' could was not found.",cwStringNullGuard(var_label),sfx_id);
+          goto errLabel;
+        }
+
+        // verify that the variable has a record format
+        if( !var_has_recd_format(var) )
+        {
+          rc = cwLogError(kInvalidArgRC,"The variable does not have a valid record format.");
+          goto errLabel;
+        }
+        else
+        {
+          recd_fmt_t* recd_fmt = var->varDesc->fmt.recd_fmt;
+
+          // create the recd_array
+          if((rc = recd_array_create( recd_array_ref, recd_fmt->recd_type, base, recd_fmt->alloc_cnt )) != kOkRC )
+          {
+            goto errLabel;
+          }
+        }
+        
+      errLabel:
+        if( rc != kOkRC )
+          rc = cwLogError(rc,"Record array create failed on the variable '%s:%i ch:%i.",cwStringNullGuard(var_label),sfx_id,chIdx);
+        
+        return rc;
+        
+      }
+              
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t    rc   = kOkRC;        
+
+        const char* vel_tbl_fname = nullptr;
+        const char* vel_tbl_label = nullptr;
+        const rbuf_t* rbuf = nullptr;
+        unsigned recdBufN = 128;
+        
+        if((rc = var_register_and_get(proc,kAnyChIdx,
+                                      kVelTblFnamePId,   "vel_tbl_fname", kBaseSfxId, vel_tbl_fname,
+                                      kVelTblLabelPId,   "vel_tbl_label", kBaseSfxId, vel_tbl_label,
+                                      kRecdBufNPId,      "recdbufN",      kBaseSfxId, recdBufN,
+                                      kInPId,            "in",            kBaseSfxId, rbuf)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // load p->velTblL from the vel table file
+        if((rc = _load_vel_table_file( proc, p, vel_tbl_fname )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // activate the selected velocity table
+        if((rc = _activate_vel_table( proc, p, vel_tbl_label )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // create the output recd_array using the 'in' record type as the base type
+        if((rc = _alloc_recd_array( proc, "out", kBaseSfxId, kAnyChIdx, rbuf->type, p->recd_array  )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // get the record field index for the incoming record
+        if((p->i_midi_fld_idx = recd_type_field_index( rbuf->type, "midi")) == kInvalidIdx )
+        {
+          rc = cwLogError(kInvalidArgRC,"The incoming record does not have a 'midi' field.");
+          goto errLabel;                          
+        }
+
+        // get the record field index for the outgoing record
+        if((p->o_midi_fld_idx = recd_type_field_index( p->recd_array->type, "midi")) == kInvalidIdx )
+        {
+          rc = cwLogError(kInvalidArgRC,"The outgoing record does not have a 'midi' field.");
+          goto errLabel;                          
+        }
+        
+        // create one output record buffer
+        rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, p->recd_array->type, nullptr, 0  );
+
+        p->midiN = p->recd_array->allocRecdN;
+        p->midiA = mem::allocZ<midi::ch_msg_t>(p->midiN);
+         
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        vel_tbl_t* vt=p->velTblL;
+        
+        while( vt!=nullptr )
+        {
+          vel_tbl_t* vt0 = vt->link;
+          mem::release(vt->label);
+          mem::release(vt->tblA);
+          mem::release(vt);
+          vt = vt0;
+        }
+
+        mem::release(p->midiA);
+        recd_array_destroy(p->recd_array);
+        return rc;
+      }
+
+      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t rc      = kOkRC;
+
+        const rbuf_t* i_rbuf = nullptr;
+        rbuf_t*       o_rbuf = nullptr;
+
+        if((rc = var_get(proc,kInPId,kAnyChIdx,i_rbuf)) != kOkRC )
+          goto errLabel;
+
+        if((rc = var_get(proc,kOutPId,kAnyChIdx,o_rbuf)) != kOkRC )
+          goto errLabel;
+
+
+        // for each incoming record
+        for(unsigned i=0; i<i_rbuf->recdN; ++i)
+        {
+          const recd_t*         i_r = i_rbuf->recdA + i;          
+          const midi::ch_msg_t* i_m = nullptr;
+
+          // verify that there is space in the output array
+          if( i >= p->midiN || i >= p->recd_array->allocRecdN )
+          {
+            rc = cwLogError(kBufTooSmallRC,"The velocity table MIDI processing buffers overflow (%i).",i);
+            goto errLabel;
+          }
+
+          // Get pointers to the output records
+          recd_t*         o_r = p->recd_array->recdA + i;
+          midi::ch_msg_t* o_m = p->midiA + i;
+
+          // get a pointer to the incoming MIDI record
+          if((rc = recd_get(i_rbuf->type,i_r,p->i_midi_fld_idx,i_m)) != kOkRC )
+          {
+            rc = cwLogError(rc,"Record 'midi' field read failed.");
+            goto errLabel;
+          }
+
+          // copy the incoming MIDI record to the output array
+          *o_m = *i_m;
+
+          // if this is a note on
+          if( midi::isNoteOn(i_m->status,i_m->d1) )
+          {
+            // and the velocity is valid
+            if( i_m->d1 >= p->activeVelTbl->tblN )
+            {
+              rc = cwLogError(kInvalidArgRC,"The pre-mapped velocity value %i is outside of the range (%i) of the velocity table '%s'.",i_m->d1,p->activeVelTbl->tblN,cwStringNullGuard(p->activeVelTbl->label));
+              goto errLabel;
+            }
+
+            // map the velocity through the active table
+            o_m->d1 = p->activeVelTbl->tblA[ i_m->d1 ];
+
+            //printf("%i %i %s\n",i_m->d1,o_m->d1,p->activeVelTbl->label);
+          }
+
+          // update the MIDI pointer in the output record 
+          recd_set(o_rbuf->type,i_r,o_r,p->o_midi_fld_idx, o_m );
+        }
+
+        //printf("RECDN:%i\n",i_rbuf->recdN);
+        
+        o_rbuf->recdA = p->recd_array->recdA;
+        o_rbuf->recdN = i_rbuf->recdN;
+        
+        
+        
+      errLabel:
+        if( rc != kOkRC )
+          rc = cwLogError(rc,"Vel table exec failed.");
+                          
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .value   = std_value<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    
 
     //------------------------------------------------------------------------------------------------------------------
     //
@@ -527,7 +693,8 @@ namespace cw
         kFNamePId,
         kLocPId,
         kOutIdxPId,
-        kXfArgsPId, // kXfArgs:xfArgs+xf_cnnt
+        kPresetLabelPId,
+        //kXfArgsPId, // kXfArgs:xfArgs+xf_cnnt
       };
       
       typedef struct
@@ -538,11 +705,13 @@ namespace cw
         unsigned             loc_fld_idx;   // 
         unsigned             loc;           // last received location
         unsigned             out_idx;       // current transform processor index (0:xf_cnt)
-        recd_array_t*        xf_recd_array; // xf_recd_array[ xf_cnt ] one record per 'out' var
-        unsigned             presetN; 
-        recd_array_t*        preset_recd_array; // preset_recd_array[ presetN ] one record per network preset
+        //recd_array_t*        xf_recd_array; // xf_recd_array[ xf_cnt ] one record per 'out' var
+        unsigned             presetN;
+        unsigned             preset_idx;
+        //recd_array_t*        preset_recd_array; // preset_recd_array[ presetN ] one record per network preset
       } inst_t;
 
+      /*
       
       rc_t _network_preset_value_to_recd_field(const char* proc_inst_label, const preset_value_t* ps_val_list, const recd_field_t* f, const recd_type_t* recd_type, recd_t* recd  )
       {
@@ -583,7 +752,7 @@ namespace cw
       errLabel:
         return rc;
       }
-      
+
       rc_t _network_preset_to_record( network_t* net, const char* preset_label, const recd_type_t* recd_type, recd_t* recd )
       {
         rc_t rc = kOkRC;
@@ -673,7 +842,7 @@ namespace cw
       errLabel:
         return rc;
       }
-
+      */
       unsigned _next_avail_xf_channel( inst_t* p )
       {
         p->out_idx += 1;
@@ -697,11 +866,18 @@ namespace cw
                                       kXfCntPId,    "xf_cnt",  kBaseSfxId, p->xf_cnt,
                                       kInPId,       "in",      kBaseSfxId, rbuf,
                                       kFNamePId,    "fname",   kBaseSfxId, fname,
-                                      kLocPId,      "loc",     kBaseSfxId, p->loc,
-                                      kOutIdxPId,   "out_idx", kBaseSfxId, p->out_idx)) != kOkRC )
+                                      kLocPId,      "loc",     kBaseSfxId, p->loc)) != kOkRC )
         {
           goto errLabel;
         }
+
+        if((rc = var_register_and_set(proc,kAnyChIdx,
+                                      kOutIdxPId,   "out_idx", kBaseSfxId, -1,
+                                      kPresetLabelPId,"preset_label", kBaseSfxId, "")) != kOkRC )
+        {
+          goto errLabel;
+        }
+                                      
 
         if((exp_fname = proc_expand_filename(proc,fname)) == nullptr )
         {
@@ -730,6 +906,7 @@ namespace cw
           goto errLabel;
         }
 
+        /*
         // Alloc an array of 'xf_cnt' records of type 'xf_args'.
         if((rc = var_alloc_record_array( proc, "xf_args", kBaseSfxId, kAnyChIdx, nullptr, p->xf_recd_array, p->xf_cnt )) != kOkRC )
           goto errLabel;
@@ -737,6 +914,9 @@ namespace cw
         // Create the 'xf_arg' outputs
         for(unsigned i=0; i<p->xf_cnt; ++i)
           rc = var_register_and_set( proc, "xf_args", kBaseSfxId+i, kXfArgsPId+i, kAnyChIdx, p->xf_recd_array->type, nullptr, 0 );
+        */
+
+        p->presetN = preset_count(p->psH);
         
       errLabel:
         mem::release(exp_fname);
@@ -748,8 +928,8 @@ namespace cw
         rc_t rc = kOkRC;
 
         preset_sel::destroy(p->psH);
-        recd_array_destroy(p->xf_recd_array);
-        recd_array_destroy(p->preset_recd_array);
+        //recd_array_destroy(p->xf_recd_array);
+        //recd_array_destroy(p->preset_recd_array);
 
         return rc;
       }
@@ -766,13 +946,15 @@ namespace cw
         rbuf_t* in_rbuf = nullptr;
         unsigned loc = kInvalidIdx;
 
+        /*
         if( p->preset_recd_array == nullptr )
         {
           // Fill p->preset_recd_array with values from the network presets
           if((rc = _alloc_preset_recd_array(proc,p)) != kOkRC )
             goto errLabel;
         }
-                
+        */
+        
         if((rc = var_get(proc,kInPId,kAnyChIdx,in_rbuf)) != kOkRC)
           goto errLabel;
         
@@ -790,41 +972,50 @@ namespace cw
 
         if( loc != kInvalidIdx )
         {        
-          rbuf_t*                   xf_rbuf    = nullptr;
+          //rbuf_t*                   xf_rbuf    = nullptr;
           const preset_sel::frag_t* frag       = nullptr;
           unsigned                  preset_idx = kInvalidIdx;
           
           // lookup the fragment associated with the location
           if( preset_sel::track_loc( p->psH, loc, frag ) && frag != nullptr )
           {
-            // get the next available xf output channel
-            p->out_idx = _next_avail_xf_channel(p);
-
             // select the preset(s) from the current frag
-            if((rc = var_get(proc, kXfArgsPId + p->out_idx, kAnyChIdx, xf_rbuf)) != kOkRC )
-              goto errLabel;
+            //if((rc = var_get(proc, kXfArgsPId + p->out_idx, kAnyChIdx, xf_rbuf)) != kOkRC )
+            //  goto errLabel;
 
             // get the preset index associated with the current frag
             if((preset_idx = fragment_play_preset_index(p->psH, frag )) == kInvalidIdx )
             {
-              rc = cwLogError(kInvalidArgRC,"The current frag does not a valid preset associated with it.");
+              rc = cwLogError(kInvalidArgRC,"The current frag does not have valid preset associated with it.");
               goto errLabel;
             }
-            
+
             // validate the preset index
             if( preset_idx >= p->presetN )
             {
-              rc = cwLogError(kAssertFailRC,"The selected preset index is out of range.");
+              rc = cwLogError(kAssertFailRC,"The selected preset index %i is out of range.",preset_idx);
               goto errLabel;
             }
             
             // set the value of the selected preset
-            xf_rbuf->recdA = p->preset_recd_array->recdA + preset_idx;
-            xf_rbuf->recdN = 1;
+            //xf_rbuf->recdA = p->preset_recd_array->recdA + preset_idx;
+            //xf_rbuf->recdN = 1;
 
-            if((rc = var_set(proc, kOutIdxPId, kAnyChIdx, p->out_idx)) != kOkRC )
-              goto errLabel;
 
+            if( preset_idx != p->preset_idx )
+            {
+            
+              // get the next available xf output channel
+              p->out_idx = _next_avail_xf_channel(p);
+
+
+              if((rc = var_set(proc, kOutIdxPId, kAnyChIdx, p->out_idx)) != kOkRC )
+                goto errLabel;
+
+              if( preset_idx != kInvalidIdx )
+                if((rc = var_set(proc, kPresetLabelPId, kAnyChIdx, preset_sel::preset_label(p->psH,preset_idx))) != kOkRC )
+                  goto errLabel;
+            }
             //printf("PS OUT_IDX:%i\n",p->out_idx);
           }
         
