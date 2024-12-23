@@ -530,12 +530,12 @@ namespace cw
             {
               switch( net_val->tid )
               {
-                case kPolyPresetValueTId:
+                case kNetRefPresetValueTId:
                   _network_preset_print( net_val->u.npv.net_preset );
                   break;
                   
                 case kDirectPresetValueTId:
-                  cwLogPrint("    %s:%i %s:%i ch:%i ",cwStringNullGuard(net_val->u.pvv.proc->label),net_val->u.pvv.proc->label_sfx_id,cwStringNullGuard(net_val->u.pvv.var->label),net_val->u.pvv.var->label_sfx_id,net_val->u.pvv.var->chIdx);
+                  cwLogPrint("    %s:%i %s:%i ch:%i pidx:%i",cwStringNullGuard(net_val->u.pvv.proc->label),net_val->u.pvv.proc->label_sfx_id,cwStringNullGuard(net_val->u.pvv.var->label),net_val->u.pvv.var->label_sfx_id,net_val->u.pvv.var->chIdx,net_val->u.pvv.pairTblIdx);
                   value_print( &net_val->u.pvv.value );
                   cwLogPrint("\n");
                   break;

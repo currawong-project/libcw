@@ -151,16 +151,15 @@ namespace cw
       unsigned                 pairTblIdx; // Index into the preset pair table for this preset value
     } proc_var_value_t;
 
-    typedef struct net_preset_value_str
+    typedef struct net_preset_ref_str
     {
-      struct proc_str*          net_preset_proc; // net_preset_proc->internal_net has the preset list which net_preset is part of.
       struct network_str*       net_preset_net;  // poly net this preset will be applied to
       const network_preset_str* net_preset;      // network_preset_t of presets 
-    } poly_preset_value_t;
+    } net_preset_ref_t;
     
     typedef enum {
       kDirectPresetValueTId,
-      kPolyPresetValueTId,
+      kNetRefPresetValueTId,
     } preset_val_tid_t;
 
     
@@ -172,8 +171,8 @@ namespace cw
       
       union
       {
-        proc_var_value_t    pvv;  // Direct proc/var/value tuples.
-        poly_preset_value_t npv;  // Refers to a network_preset_t and a list of preset_values.
+        proc_var_value_t  pvv;  // Direct proc/var/value tuples.
+        net_preset_ref_t  npv;  // Refers to a network_preset_t and a list of preset_values.
       } u;
       
       struct preset_value_str* link;
@@ -243,8 +242,10 @@ namespace cw
       network_preset_pair_t* preset_pairA;
       unsigned               preset_pairN;
 
-      struct network_str* poly_link;
-      unsigned            poly_idx;
+      const proc_t*       owner_proc;  // The proc which owns this network (null for top level network)
+      unsigned            polyN;       // Count of networks in poly net or 1 if not part of a poly net
+      unsigned            poly_idx;    // Index in poly net or 0 if polyN == 1
+      struct network_str* poly_link;   // Link to next net in poly.
 
       ui_net_t* ui_net;
             
