@@ -156,7 +156,7 @@ namespace cw
       
           if( textIsEqual(type_label,"group") )
           {
-            const object_t* field_dict;
+            const object_t* field_dict = nullptr;
 
             field->group_fl = true;
 
@@ -1412,12 +1412,14 @@ cw::rc_t cw::flow::value_set( value_t* val, const char* v )
   switch( val->tflag & kTypeMask )
   {
     case kStringTFl:
-      val->u.s=mem::duplStr(v); break;
+      val->u.s=mem::duplStr(v);
+      break;
           
     case kInvalidTFl:
       val->u.s   = mem::duplStr(v);
       val->tflag = kStringTFl;
       break;
+      
     default:
       rc = cwLogError(kTypeMismatchRC,"A string could not be converted to a %s (0x%x).",_typeFlagToLabel(val->tflag),val->tflag);          
   }
@@ -1710,14 +1712,22 @@ cw::rc_t cw::flow::recd_format_create( recd_fmt_t*& recd_fmt_ref, const object_t
 
   recd_fmt = mem::allocZ<recd_fmt_t>();
 
-  if((rc = recd_type_create(recd_fmt->recd_type,nullptr,cfg)) != kOkRC )
-    goto errLabel;
+  if( cfg->find( "fields" ) != nullptr )
+    if((rc = recd_type_create(recd_fmt->recd_type,nullptr,cfg)) != kOkRC )
+      goto errLabel;
 
   recd_fmt->alloc_cnt = dflt_alloc_cnt;
   
-  if((rc =cfg->getv_opt("alloc_cnt",recd_fmt->alloc_cnt)) != kOkRC )
+  if((rc =cfg->getv_opt("alloc_cnt",recd_fmt->alloc_cnt,
+                        "required",recd_fmt->req_fieldL)) != kOkRC )
   {
     rc = cwLogError(rc,"Error parsing record format 'alloc_cnt'.");
+    goto errLabel;
+  }
+
+  if(recd_fmt->req_fieldL != nullptr && !recd_fmt->req_fieldL->is_list() )
+  {
+    rc = cwLogError(rc,"The 'required' field list is not a list.");
     goto errLabel;
   }
 
@@ -1873,6 +1883,38 @@ cw::rc_t cw::flow::recd_array_create( recd_array_t*& recd_array_ref, recd_type_t
 
   return rc;
 }
+
+cw::rc_t cw::flow::recd_copy( const recd_type_t* recd_type, const recd_t* recdA, unsigned recdN, recd_array_t* recd_array )
+{
+  rc_t rc = kOkRC;
+  
+  if( recd_array->allocRecdN < recdN )
+  {
+    rc = cwLogError(kBufTooSmallRC,"Not enough space in the destination record array.");
+    goto errLabel;
+  }
+
+  if( recd_type->fieldN != recd_array->type->fieldN )
+  {
+    rc = cwLogError(kInvalidArgRC,"Field count mismatch between source and destination records..");
+    goto errLabel;
+  }
+  
+
+  for(unsigned i=0; i<recdN; ++i)
+    for(unsigned j=0; j<recd_type->fieldN; ++j)
+    {
+      recd_array->recdA[i].valA[j] = recdA[i].valA[j];
+      recd_array->recdA[i].base    = recdA[i].base;
+    }
+
+errLabel:
+  if( rc!=kOkRC )
+    rc = cwLogError(rc,"Record copy failed.");
+  
+  return rc;
+}
+
 
 cw::rc_t cw::flow::recd_array_destroy( recd_array_t*& recd_array_ref )
 {

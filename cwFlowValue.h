@@ -272,8 +272,9 @@ namespace cw
 
     typedef struct recd_fmt_str
     {
-      unsigned     alloc_cnt; // count of records to pre-allocate
-      recd_type_t* recd_type; // record type for this variable
+      unsigned        alloc_cnt; // count of records to pre-allocate
+      const object_t* req_fieldL; // label of required fields
+      recd_type_t*    recd_type; // record type for this variable
     } recd_fmt_t;
 
     typedef struct recd_array_str
@@ -414,6 +415,12 @@ namespace cw
     // Create/destroy a buffer of records.
     rc_t recd_array_create( recd_array_t*& recd_array_ref, recd_type_t* recd_type, const recd_type_t* base,  unsigned allocRecdN );
     rc_t recd_array_destroy( recd_array_t*& recd_array_ref );
+
+    // Copy records into a recd_array.  This function fails if there are less than
+    // 'src_recdN' records already allocated in 'dest_recd_array'.
+    // The source and destination record types should be the same, but this
+    // function does very little to verify that the actually are.
+    rc_t recd_copy( const recd_type_t* src_recd_type, const recd_t* src_recdA, unsigned src_recdN, recd_array_t* dest_recd_array );
     
     rc_t value_test( const test::test_args_t& args );
  
