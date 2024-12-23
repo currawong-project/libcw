@@ -14,9 +14,9 @@ namespace cw
     rc_t network_create( flow_t*         p,
                          const object_t* const * netCfgA, // netCfgA[netCfgN] 
                          unsigned        netCfgN,         // count of cfg. records in netCfgN
-                         variable_t*     proxyVarL,       // 
+                         variable_t*     proxyVarL,       //
+                         const proc_t*   owner_proc,      // Pointer to the proc that owns this network (or null if creating the top level network)
                          unsigned        polyCnt,         // Count of poly subnets to create or 1 if the network is not poly
-                         const char*     preset_label,    // Optional top-level preset label
                          network_t*&     net_ref          // Returned network handle.
       );
     

@@ -78,6 +78,7 @@ namespace cw
       { "midi_merge",      &midi_merge::members },
       { "poly_xform_ctl",  &poly_xform_ctl::members },
       { "score_player",    &score_player::members },
+      { "vel_table",       &vel_table::members },
       { "preset_select",   &preset_select::members },
       { "score_follower",  &score_follower::members },
       { nullptr, nullptr }
@@ -1068,11 +1069,16 @@ cw::rc_t cw::flow::initialize( handle_t h,
   }
   
   // instantiate the network
-  if((rc = network_create(p,&p->networkCfg,1,proxyVarL,1,p->init_net_preset_label,p->net)) != kOkRC )
+  if((rc = network_create(p,&p->networkCfg,1,proxyVarL,nullptr,1,p->net)) != kOkRC )
   {
     rc = cwLogError(rc,"Network creation failed.");
     goto errLabel;
   }
+
+  // if a network preset was specified apply it here
+  if( p->init_net_preset_label != nullptr && p->net != nullptr )
+    network_apply_preset(*p->net,p->init_net_preset_label);
+
 
   if( p->printNetworkFl && p->net != nullptr )
     network_print(*p->net);
