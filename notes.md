@@ -941,6 +941,15 @@ resolvable without more information.
 
 ### TODO:
 
+- Memory allocation of all non-integral types should be the responsibility of the the processor instances
+this includes strings.  Change the built-in string type to be a const string and
+make it the responsibility of the proc instances with 'string' var's to handle
+alloc and dealloc of strings.
+
+- Add a proc class flag: 'top-level-only-fl' to indicate that a processor
+cannot run as part of a poly. Any processor that calls a global function,
+like 'network_apply_preset()' must run a the top level only.
+
 - Eliminate the value() custom proc_t function and replace it by setting a 'delta flag' on the
 variables that change.   Optionally a linked list of changed variables could be implemented to
 avoid having to search for changed variable values - although this list might have to be implemented as a thread safe linked list.
@@ -1174,8 +1183,88 @@ These callbacks occur asynchronously on the IO system audio processing thread.
 
 
 
+Network Architecture and Theory of Operation
+---------------------------------------------
 
-Uniform Presets:
+A _caw_ network is an ordered set of processors where a given
+processor may contain a set of internal networks.
+This leads to a heirarchy of networks and processors
+that can be depicted like this.
+
+[ diagram goes here.]
+
+This diagram shows a two level network, where the internal
+network contains an array of networks.
+
+Networks are executed one processor at a time from top to bottom.
+The  networks that are members of network arrays, sibling networks,
+may execute concurrently.  For this reason sibling networks
+may not contain any inter-connnections.
+
+
+There is no way for the top level of a network to be a sibling
+network, therefore it's processors are guaranteed to run in sequence
+and be the only processor running while they are executing.
+
+Network presets can only be applied between execution cycles (by the
+control application) or by a top-level processor.  This is the case
+because it guarantees that no processors are running when the preset
+values are set.
+
+
+Records
+-------
+
+The primary reason to use a 'record' data type is to allow multiple
+data values to be transmitted during a single cycle.  In effect a
+record allows a table of values to be transmitted, one row at a time,
+during a single execution cycle.  For example let's say that a the
+output of a processor is an irregular pulse whose rate might be faster
+than the audio frequency.  This would require multiple pairs of value
+(delta-time,amplitude) to be generated during a given cycle.  The
+receiving processor would then iterate through the list of pairs and
+processes them each.
+
+Another example, would be MIDI values that contain some additional
+side information.  The MIDI data type already has the feature that it
+can generate multiple messages per execution cycle. It's format,
+however, is fixed. There is no way to add addtional information, like
+score location, to each message. The fields of the record data type,
+however, can hold any of the other data types.
+
+The secondary reasone to use the record data type is to simplify
+the output and input interfaces to a processor and thereby
+decrease the number of connections between processors.
+They also make clear that a set of values is synchronized in time.
+For example a set of (x,y) coordinates placed in a record
+make it clear that the two values belong together in a way
+that two input variables may not.
+
+Records are also very efficient. Given that the field index is
+computed in advance setting and getting the field variable
+is very fast.  Setting a record field avoids the overhead
+of notifying receiving processors of every new value. The
+receiving processor is only notified that the record
+as a whole has changed.
+
+Records are also implented in such a way that appending
+a additition fields to an existing record is very fast.
+The new record effectively inherits the contents of the
+existing record by reference.  No data is copied.
+
+Optional Variables
+-------------------
+
+The current design does not allow for optional variables.
+At processor instantiation all defined variables must exist and have a
+valid value. In generate this is a good thing because it
+means that call to get_var() will always return a value.
+
+midi_out has implemented 'in' and 'rin' as optional
+variables. Look there for an example of how to accomplish this.
+
+
+Presets:
 ----------------
 
 Preset description and application without the presence of 'poly' proc's is very straight forward:
@@ -1231,7 +1320,7 @@ for the label in the processor instance configation and then in the processor cl
 
 ---
 
-The following example shows how the preset processor labels can use underscore notation to address a range of processors.
+The following example shows how the preset processor labels can use suffix notation to address a range of processors.
 
 ```
 example_2:
@@ -1251,15 +1340,13 @@ example_2:
     }
 
     presets: {
-      a: { g_:   { gain:0.1 } }, // Use underscore notation to apply a preset value to g0,g1,g2.
-      b: { g0_2: { gain:0.2 } }, // Use underscore notation to apply a preset value to g0 and g1.
+      a: { g_:   { gain:0.1 } }, // Use suffix notation to apply a preset value to g0,g1,g2.
+      b: { g0_2: { gain:0.2 } }, // Use suffix notation to apply a preset value to g0 and g1.
       c: { g2:   { gain:0.3 } }, // Apply a preset value to g2 only.
     }
   } 
 }
 ```
-
-Todo: This should work now.
 
 ---
 
@@ -1289,9 +1376,9 @@ example_3: {
 	 
 	 presets:
 	 {
-	   a:{ lfo:{ hz:1 } },
-	   b:{ lfo:{ hz:2 } },
-	   c:{ lfo0_1: { hz:3 }, lfo2:{ hz:4 } },
+	   a:{ lfo:{ gain:0.1 } },
+	   b:{ lfo:{ gain:0.2 } },
+	   c:{ lfo0_1: { gain:0.3 }, lfo2:{ gain:0.4 } },
 	  
 	 }
        }               
@@ -1324,7 +1411,28 @@ In the example the outer most presets may therefore address the 'osc_poly' prese
 the processors contained by 'osc_poly'.
 
 ---
+Presets with hetergenous poly networks
 
+---
+Dual Presets
+
+---
+Dual Presets with poly networks.
+
+---
+Dual Presets with heterogenous poly networks
+
+---
+Presets with user defined processors
+
+---
+Presets with user defined processors in poly networks.
+
+---
+Presets with user defined processors containing poly networks.
+
+
+---
 Use 'interface' objects to intercept preset values so that the
 can be processed before being passed on to a the object that
 they represent.
@@ -1362,32 +1470,53 @@ example_4:
 
 ---
 
+Preset Implementation:
 
-How are presets implemented:
-
-1. At compile time:
-
-- Each named preset is stored as a list of value-records and label-records
-called preset-value-lists.
-
-- value-records have the form { var, chIdx, value } and are created from each
-preset value that directly references a variable.
-
-- label-records are formed from labeled preset references and have the form
-{ preset-value-list-ptr }. Where the list refers to the list associated with the given label.
+All presets are resolved to (proc,var,value) tuples when the networks are created.
+A given named network preset is therefore a list these tuples.
+Applying the preset is then just a matter of calling
+var_set(proc,var,value) for each tuple in the list.
+This pre-processing approach mostly avoids having to do value parsing
+or variable resolution at runtime.
 
 
-- The collection of multiple named presets are then stored as a list of
-preset-value-lists as part of the network instance in which they were defined.
+Preset dictionaries have the following grammar:
+```
+<preset-dict> -> <preset-label> : { <proc-label>: (<proc-preset-label> | <value-dict>) }
 
-2. At runtime the preset is applied by:
-- Resolving the preset label to a preset-value-list.
-- Calling var_set(var,chIdx,value) for all value-records
-- Iterating over all records in the list refered to preset-value-list-ptr of the label-records.
+<value-dict> -> { <var_label>:(<literal> | [ <literal>* ])
+``
 
-The notable characteristic of this approach is that it is very fast.
-With the exception of resolving the initial preset label to the top level preset-value-list
-no search or address resolution is required to apply the preset.
+A preset is a named ('<preset-label>') dictionary.
+The pairs contained by the dictionary reference processors (<proc-label>).
+The value of each pair is either a dictionary of variable
+values (<value-dict>) or a label (<proc-preset-label>).
+
+The <value-dict> is a collection of literal values
+which can be directly converted to (proc,var,value) tuples.
+In the case where a value is a list of literals the
+individual values are used to address successive channels.
+As part of variable resolution new variable channels will
+be created if a preset references a channel that does
+not yet exist on the given variable.  This guarantees
+that the variable channel will be valid should the preset
+be applied.
+
+When the value of a preset pair is a <proc-preset-label>
+the label may refer to one of three possible
+source of preset variable values.
+1. Processor class preset. This is a named <value-dict> defined with the processor class description.
+2. Processor instance preset. This is a named <value-dict> defined with the processor instance.
+3. Poly processor network preset. If the <proc-label> associated with
+this <proc-preset-label> is a 'poly' processor then this label refers
+to a network preset defined within the 'poly'  instances. 
+
+Note that both <proc-label> and <var-label> strings may use 'suffix'
+notation.  In the case of variables this allows the preset to target
+specific 'mult' variable instances or ranges of instances.
+When the network is a poly network using suffix notation
+with a <proc-label> allows the target to particular
+instances or ranges of instances.
 
 
 Final Notes:
