@@ -2883,6 +2883,30 @@ cw::rc_t cw::io::midiDeviceSend( handle_t h, unsigned devIdx, unsigned portIdx, 
   return midi::device::send( p->midiH, devIdx, portIdx, status, d0, d1 );
 }
 
+cw::rc_t cw::io::midiDeviceAllNotesOff( handle_t h, unsigned devIdx, unsigned portIdx )
+{
+  rc_t rc = kOkRC;
+  unsigned devN = midiDeviceCount(h);
+  for(unsigned i=0; i<devN; ++i)
+    if( devIdx==kInvalidIdx || devIdx==i )
+    {
+      unsigned portN = midiDevicePortCount(h,i,false);
+      for(unsigned j=0; j<portN; ++j)
+        if( portIdx==kInvalidIdx || portIdx==j )
+        {
+          rc_t rc0;
+          if((rc0 = midiDeviceSend(h,i,j,midi::kCtlMdId,121,0)) != kOkRC) // reset all controllers
+            rc = cwLogError(rc0,"Send reset all controllers failed on %i:%i.",i,j);
+          
+          if((rc0 =  midiDeviceSend(h,i,j,midi::kCtlMdId,123,0)) != kOkRC) // all notes off
+            rc = cwLogError(rc0,"Send all-notes-off failed on %i:%i.",i,j);
+        }
+            
+    }
+  
+  return rc;
+}
+
 unsigned cw::io::midiDeviceMaxBufferMsgCount( handle_t h )
 {
   io_t* p = _handleToPtr(h);

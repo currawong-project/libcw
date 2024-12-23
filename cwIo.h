@@ -235,6 +235,7 @@ namespace cw
     const char* midiDevicePortName(  handle_t h, unsigned devIdx, bool inputFl, unsigned portIdx );
     unsigned    midiDevicePortIndex( handle_t h, unsigned devIdx, bool inputFl, const char* portName );    
     rc_t        midiDeviceSend(      handle_t h, unsigned devIdx, unsigned portIdx, uint8_t status, uint8_t d0, uint8_t d1 );
+    rc_t        midiDeviceAllNotesOff( handle_t h, unsigned devIdx=kInvalidIdx, unsigned portIdx=kInvalidIdx );
 
     unsigned              midiDeviceMaxBufferMsgCount( handle_t h );
     const midi::ch_msg_t* midiDeviceBuffer(      handle_t h, unsigned& msgCntRef );
