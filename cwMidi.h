@@ -7,78 +7,72 @@ namespace cw
 {
   namespace midi
   {
-    enum
-    {
-     kMidiChCnt           = 16,
-     kInvalidMidiByte     = 128,
-     kMidiNoteCnt         = kInvalidMidiByte,
-     kMidiCtlCnt          = kInvalidMidiByte,
-     kMidiVelCnt          = kInvalidMidiByte,
-     kMidiPgmCnt          = kInvalidMidiByte,
-     kInvalidMidiPitch    = kInvalidMidiByte,
-     kInvalidMidiVelocity = kInvalidMidiByte,
-     kInvalidMidiCtl      = kInvalidMidiByte,
-     kInvalidMidiPgm      = kInvalidMidiByte,
-     kMidiSciPitchCharCnt = 5  // A#-1
-    };
+    const uint8_t kMidiChCnt           = 16;
+    const uint8_t kInvalidMidiByte     = 128;
+    const uint8_t kMidiNoteCnt         = kInvalidMidiByte;
+    const uint8_t kMidiCtlCnt          = kInvalidMidiByte;
+    const uint8_t kMidiVelCnt          = kInvalidMidiByte;
+    const uint8_t kMidiPgmCnt          = kInvalidMidiByte;
+    const uint8_t kInvalidMidiPitch    = kInvalidMidiByte;
+    const uint8_t kInvalidMidiVelocity = kInvalidMidiByte;
+    const uint8_t kInvalidMidiCtl      = kInvalidMidiByte;
+    const uint8_t kInvalidMidiPgm      = kInvalidMidiByte;
+    const uint8_t kMidiSciPitchCharCnt = 5;  // A#-1
 
 
-    // MIDI status bytes
-    enum
-    {
-     kInvalidStatusMdId = 0x00,
-     kNoteOffMdId       = 0x80,
-     kNoteOnMdId        = 0x90,
-     kPolyPresMdId      = 0xa0,
-     kCtlMdId           = 0xb0,
-     kPgmMdId           = 0xc0,
-     kChPresMdId        = 0xd0,
-     kPbendMdId         = 0xe0,
-     kSysExMdId         = 0xf0,
+    const unsigned kInvalidStatusMdId = 0x00;
+    
+    const unsigned kNoteOffMdId       = 0x80;
+    const unsigned kNoteOnMdId        = 0x90;
+    const unsigned kPolyPresMdId      = 0xa0;
+    const unsigned kCtlMdId           = 0xb0;
+    const unsigned kPgmMdId           = 0xc0;
+    const unsigned kChPresMdId        = 0xd0;
+    const unsigned kPbendMdId         = 0xe0;
+    const unsigned kSysExMdId         = 0xf0;
 
-     kSysComMtcMdId     = 0xf1,
-     kSysComSppMdId     = 0xf2,
-     kSysComSelMdId     = 0xf3,
-     kSysComUndef0MdId  = 0xf4,
-     kSysComUndef1MdId  = 0xf5,
-     kSysComTuneMdId    = 0xf6,
-     kSysComEoxMdId     = 0xf7,
+    const unsigned kSysComMtcMdId     = 0xf1;
+    const unsigned kSysComSppMdId     = 0xf2;
+    const unsigned kSysComSelMdId     = 0xf3;
+    const unsigned kSysComUndef0MdId  = 0xf4;
+    const unsigned kSysComUndef1MdId  = 0xf5;
+    const unsigned kSysComTuneMdId    = 0xf6;
+    const unsigned kSysComEoxMdId     = 0xf7;
 
-     kSysRtClockMdId  = 0xf8,
-     kSysRtUndef0MdId = 0xf9,
-     kSysRtStartMdId  = 0xfa,
-     kSysRtContMdId   = 0xfb,
-     kSysRtStopMdId   = 0xfc,
-     kSysRtUndef1MdId = 0xfd,
-     kSysRtSenseMdId  = 0xfe,
-     kSysRtResetMdId  = 0xff,
-     kMetaStId        = 0xff,
+    const unsigned kSysRtClockMdId  = 0xf8;
+    const unsigned kSysRtUndef0MdId = 0xf9;
+    const unsigned kSysRtStartMdId  = 0xfa;
+    const unsigned kSysRtContMdId   = 0xfb;
+    const unsigned kSysRtStopMdId   = 0xfc;
+    const unsigned kSysRtUndef1MdId = 0xfd;
+    const unsigned kSysRtSenseMdId  = 0xfe;
+    const unsigned kSysRtResetMdId  = 0xff;
+    const unsigned kMetaStId        = 0xff;
 
-     kSeqNumbMdId     = 0x00,
-     kTextMdId        = 0x01,
-     kCopyMdId        = 0x02,
-     kTrkNameMdId     = 0x03,
-     kInstrNameMdId   = 0x04,
-     kLyricsMdId      = 0x05,
-     kMarkerMdId      = 0x06,
-     kCuePointMdId    = 0x07,
-     kMidiChMdId      = 0x20,
-     kMidiPortMdId    = 0x21,
-     kEndOfTrkMdId    = 0x2f,
-     kTempoMdId       = 0x51,
-     kSmpteMdId       = 0x54,
-     kTimeSigMdId     = 0x58,
-     kKeySigMdId      = 0x59,
-     kSeqSpecMdId     = 0x7f,
-     kInvalidMetaMdId = 0x80,
+    const unsigned kSeqNumbMdId     = 0x00;
+    const unsigned kTextMdId        = 0x01;
+    const unsigned kCopyMdId        = 0x02;
+    const unsigned kTrkNameMdId     = 0x03;
+    const unsigned kInstrNameMdId   = 0x04;
+    const unsigned kLyricsMdId      = 0x05;
+    const unsigned kMarkerMdId      = 0x06;
+    const unsigned kCuePointMdId    = 0x07;
+    const unsigned kMidiChMdId      = 0x20;
+    const unsigned kMidiPortMdId    = 0x21;
+    const unsigned kEndOfTrkMdId    = 0x2f;
+    const unsigned kTempoMdId       = 0x51;
+    const unsigned kSmpteMdId       = 0x54;
+    const unsigned kTimeSigMdId     = 0x58;
+    const unsigned kKeySigMdId      = 0x59;
+    const unsigned kSeqSpecMdId     = 0x7f;
+    const unsigned kInvalidMetaMdId = 0x80;
 
-     kSustainCtlMdId    = 0x40,
-     kPortamentoCtlMdId = 0x41,
-     kSostenutoCtlMdId  = 0x42,
-     kSoftPedalCtlMdId  = 0x43,
-     kLegatoCtlMdId     = 0x44
+    const unsigned kSustainCtlMdId    = 0x40;
+    const unsigned kPortamentoCtlMdId = 0x41;
+    const unsigned kSostenutoCtlMdId  = 0x42;
+    const unsigned kSoftPedalCtlMdId  = 0x43;
+    const unsigned kLegatoCtlMdId     = 0x44;
   
-    };
 
 
     
