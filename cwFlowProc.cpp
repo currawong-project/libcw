@@ -129,7 +129,7 @@ namespace cw
           goto errLabel;
         }
 
-        if((rc = network_create(proc->ctx,&networkCfg,1,proc->varL,1,nullptr,p->net)) != kOkRC )
+        if((rc = network_create(proc->ctx,&networkCfg,1,proc->varL,proc,1,p->net)) != kOkRC )
         {
           rc = cwLogError(rc,"Creation failed on the subnet internal network.");
           goto errLabel;
@@ -192,6 +192,8 @@ namespace cw
       {
         kParallelFlPId,
         kCountPId,
+        kPresetSfxIdPId,
+        kPresetLabelPId
       };
 
       typedef struct voice_str
@@ -201,14 +203,13 @@ namespace cw
       } voice_t;
 
       typedef struct
-      {
+      {        
         unsigned               count;        // count of subnets in 'net'
-        //network_t*             net;          // internal network containing 'count' duplicate sub-nets
         bool                   parallel_fl;  // true if the subnets should be executed in parallel
         thread_tasks::handle_t threadTasksH; //  
         thread_tasks::task_t*  taskA;        // taskA[ count ]
         voice_t*               voiceA;       // voiceA[ count ]
-
+        unsigned preset_sfx_id;
       } inst_t;
 
       rc_t _poly_thread_func( void* arg )
@@ -226,6 +227,31 @@ namespace cw
         return rc;
       }
 
+      rc_t _apply_preset(proc_t* proc,unsigned preset_sfx_id,const char* preset_label)
+      {
+        rc_t rc = kOkRC;
+        
+        network_t* net = proc->internal_net;
+        for(; net!=nullptr; net=net->poly_link)
+          if( net->poly_idx == preset_sfx_id )
+            break;
+
+        if( net == nullptr )
+        {
+          rc = cwLogError(kEleNotFoundRC,"The preset application poly voice '%i' was not found.",preset_sfx_id);
+          goto errLabel;                          
+        }
+
+        if((rc = network_apply_preset(*net,preset_label,preset_sfx_id)) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+      errLabel:
+        return rc;
+            
+      }
+
 
       rc_t create( proc_t* proc )
       {
@@ -236,6 +262,8 @@ namespace cw
         const object_t** networkCfgA = nullptr;
         unsigned         networkCfgN = 1;
         network_t*       internal_net = nullptr;
+        unsigned         preset_sfx_id = kInvalidId;
+        const char*      preset_label = nullptr;
         
         proc->userPtr = inst;
 
@@ -247,7 +275,10 @@ namespace cw
         }
 
         // get the 'parallel flag'
-        if((rc  = var_register_and_get( proc, kAnyChIdx,kParallelFlPId, "parallel_fl", kBaseSfxId, inst->parallel_fl )) != kOkRC )
+        if((rc  = var_register_and_get( proc, kAnyChIdx,
+                                        kPresetSfxIdPId,"preset_sfx_id", kBaseSfxId, preset_sfx_id,
+                                        kPresetLabelPId,"preset_label",  kBaseSfxId, preset_label,
+                                        kParallelFlPId, "parallel_fl", kBaseSfxId, inst->parallel_fl )) != kOkRC )
         {
           goto errLabel;
         }
@@ -299,10 +330,16 @@ namespace cw
         
         // create the network object - which will hold 'count' subnets - each a duplicate of the
         // network described by 'networkCfg'.
-        if((rc = network_create(proc->ctx,networkCfgA,networkCfgN,proxyVarL,inst->count,nullptr,internal_net)) != kOkRC )
+        if((rc = network_create(proc->ctx,networkCfgA,networkCfgN,proxyVarL,proc,inst->count,internal_net)) != kOkRC )
         {
           rc = cwLogError(rc,"Creation failed on the internal network.");
           goto errLabel;
+        }
+
+        if( preset_sfx_id != kInvalidId && textLength(preset_label) > 0 )
+        {
+          if((rc = _apply_preset(proc,preset_sfx_id,preset_label)) != kOkRC )
+             goto errLabel;
         }
 
         if( inst->parallel_fl )
@@ -369,6 +406,28 @@ namespace cw
       {
         inst_t* p = (inst_t*)proc->userPtr;
         rc_t   rc = kOkRC;
+        unsigned preset_sfx_id = kInvalidId;
+        
+        if((rc = var_get(proc,kPresetSfxIdPId,kAnyChIdx,preset_sfx_id)) != kOkRC )
+          goto errLabel;
+
+        // if a new preset value has arrived
+        if( preset_sfx_id != kInvalidId && preset_sfx_id != p->preset_sfx_id  )
+        {
+          const char* preset_label;
+
+          p->preset_sfx_id = preset_sfx_id;
+
+          // get the preset label
+          if((rc = var_get(proc,kPresetLabelPId,kAnyChIdx,preset_label)) != kOkRC )
+            goto errLabel;
+
+          // and apply the preset
+          if( textLength(preset_label) > 0 )
+            if((rc = _apply_preset(proc,preset_sfx_id,preset_label)) != kOkRC )
+              goto errLabel;
+        }
+
 
         if( p->parallel_fl )
         {
@@ -389,6 +448,7 @@ namespace cw
           }
         }
         
+      errLabel:
         return rc;
       }
 
@@ -643,52 +703,88 @@ namespace cw
         kPortLabelPId,
         kBufMsgCntPId,
         kInPId,
+        kRInPId,
+        kPrintFlPId
       };
       
       typedef struct
       {
         external_device_t* ext_dev;
-        
-        unsigned           inVarN;
-        
+        bool rin_exists_fl;
+        bool in_exists_fl;
         unsigned           msgN;
         midi::ch_msg_t*    msgA;
-        unsigned           msg_idx;        
+        unsigned           msg_idx;
+        
+        unsigned midi_fld_idx;
+        recd_type_t null_recd_type{ .fieldL=nullptr, .fieldN=0, .base=nullptr };
       } inst_t;
       
       rc_t _create( proc_t* proc, inst_t* p )
       {
-        rc_t        rc         = kOkRC; //
+        rc_t        rc         = kOkRC; //h
         const char* dev_label  = nullptr;
         const char* port_label = nullptr;
-        unsigned    inVarN     = var_mult_count(proc,"in");
-        mbuf_t*     mbuf       = nullptr;
-        unsigned    sfxIdA[ inVarN ];
-          
-        // get the the sfx_id's of the input audio variables 
-        if((rc = var_mult_sfx_id_array(proc, "in", sfxIdA, inVarN, p->inVarN )) != kOkRC )
-          goto errLabel;
-
-        std::sort(sfxIdA, sfxIdA + p->inVarN, [](unsigned& a,unsigned& b){ return a<b; } );
+        rbuf_t*     rbuf       = nullptr;
+        bool        printFl    = false;
 
         
         // Register variables and get their current value
         if((rc = var_register_and_get( proc, kAnyChIdx,
                                        kDevLabelPId, "dev_label",  kBaseSfxId, dev_label,
                                        kPortLabelPId,"port_label", kBaseSfxId, port_label,
-                                       kInPId,       "in",         kBaseSfxId, mbuf,
+                                       kPrintFlPId,  "print_fl",   kBaseSfxId, printFl,
                                        kBufMsgCntPId,"buf_cnt",    kBaseSfxId, p->msgN )) != kOkRC )
         {
           goto errLabel;
         }
-        
+
+        // if the MIDI 'in' variable has a value then it exists and is connected ...
+        if((p->in_exists_fl = var_has_value(proc, "in", kBaseSfxId, kAnyChIdx )) == true )
+        {
+          // ... register it
+          if((rc = var_register( proc, kAnyChIdx,kInPId, "in", kBaseSfxId )) != kOkRC )
+            goto errLabel;
+        }
+        else
+        {
+          // ... otherwise setup it up with an empty mbuf to get it by the post proc create variable value checker
+          if((rc = var_register_and_set( proc, "in", kBaseSfxId, kInPId, kAnyChIdx, nullptr, 0 )) != kOkRC )
+            goto errLabel;
+
+        }
+
+        // if the 'record' input variable has a value then it exists and is connected ...
+        if((p->rin_exists_fl = var_has_value(proc, "rin", kBaseSfxId, kAnyChIdx )) == true )
+        {
+          // ... register it and get a pointer to the incoming record buffer to use below
+          if((rc = var_register_and_get( proc, kAnyChIdx,kRInPId, "rin", kBaseSfxId, rbuf )) != kOkRC )
+            goto errLabel;
+        }
+        else
+        {
+          // ... otherwise give it an empty record buf to get by the post proc create variable value checker
+          if((rc = var_register_and_set( proc, "rin", kBaseSfxId, kRInPId, kAnyChIdx, &p->null_recd_type, nullptr, 0 )) != kOkRC )
+            goto errLabel;
+        }
 
         if((p->ext_dev = external_device_find( proc->ctx, dev_label, kMidiDevTypeId, kOutFl, port_label )) == nullptr )
         {
           rc = cwLogError(kOpFailRC,"The audio output device description '%s' could not be found.", cwStringNullGuard(dev_label));
           goto errLabel;
         }
-
+        
+        if( rbuf == nullptr )
+          p->midi_fld_idx = kInvalidIdx;
+        else
+        {
+          if((p->midi_fld_idx  = recd_type_field_index( rbuf->type, "midi")) == kInvalidIdx )
+          {
+            rc = cwLogError(kInvalidArgRC,"The 'rin' record does not have a 'midi' field.");
+            goto errLabel;
+          }
+        }
+        
         p->msgA = mem::allocZ<midi::ch_msg_t>(p->msgN);
 
       errLabel:
@@ -705,23 +801,63 @@ namespace cw
       {
         return kOkRC;
       }
+
+      void _send_msg( inst_t* p, bool  print_fl, const midi::ch_msg_t* m )
+      {
+        p->ext_dev->u.m.sendTripleFunc( p->ext_dev, m->ch, m->status, m->d0, m->d1 );
+        if( print_fl )
+        {
+          cwLogPrint("%2i 0x%2x %3i %3i : %s %s\n",m->ch, m->status, m->d0, m->d1, cwStringNullGuard(p->ext_dev->devLabel),cwStringNullGuard(p->ext_dev->portLabel));
+        }
+      }
       
       rc_t _exec( proc_t* proc, inst_t* p )
       {
         rc_t          rc       = kOkRC;
+        const rbuf_t* rbuf = nullptr;
+        bool          print_fl = false;
         const mbuf_t* src_mbuf = nullptr;
 
-        if((rc = var_get(proc,kInPId,kAnyChIdx,src_mbuf)) != kOkRC )
-          rc = cwLogError(kInvalidStateRC,"The MIDI output instance '%s' does not have a valid input connection.",proc->label);
-        else
+        var_get(proc,kPrintFlPId,kAnyChIdx,print_fl);
+
+        if( p->rin_exists_fl )
         {
-          for(unsigned i=0; i<src_mbuf->msgN; ++i)
-          {            
-            const midi::ch_msg_t* m = src_mbuf->msgA + i;
-            p->ext_dev->u.m.sendTripleFunc( p->ext_dev, m->ch, m->status, m->d0, m->d1 );
+          if((rc = var_get(proc,kRInPId,kAnyChIdx,rbuf)) != kOkRC )
+            rc = cwLogError(kInvalidStateRC,"The the record input connection is not valid.");
+          else
+          {
+            for(unsigned i=0; i<rbuf->recdN; ++i)
+            {
+              const recd_t*  r = rbuf->recdA + i;
+              const midi::ch_msg_t* m = nullptr;
+
+              if((rc = recd_get(rbuf->type,r,p->midi_fld_idx,m)) == kOkRC )
+                _send_msg(p,print_fl,m);
+              else
+              {
+                rc = cwLogError(rc,"Record 'midi' field read failed.");
+                goto errLabel;
+              }
+            
+            
+            }
+          }
+        }
+
+        if( p->in_exists_fl )
+        {
+          if((rc = var_get(proc,kInPId,kAnyChIdx,src_mbuf)) != kOkRC )
+            rc = cwLogError(kInvalidStateRC,"The MIDI output instance '%s' does not have a valid input connection.",proc->label);
+          else
+          {
+            for(unsigned i=0; i<src_mbuf->msgN; ++i)
+            {
+              _send_msg(p,print_fl,src_mbuf->msgA + i);
+            }
           }
         }
         
+      errLabel:
         return rc;
       }
 
@@ -4190,7 +4326,8 @@ namespace cw
           if( p->voiceA[i].age > p->voiceA[ max_age_idx].age )
             max_age_idx = i;          
         }
-        
+
+        cwLogWarning("Stealing:%i",p->voiceA[max_age_idx].pitch );
         return max_age_idx;
       }
 
@@ -4414,6 +4551,7 @@ namespace cw
         kGainPId,
         kChCntPId,
         kOutPId,
+        kPrintFlPId,
         kDoneFlPId
       };
       
@@ -4455,12 +4593,14 @@ namespace cw
         mbuf_t*        mbuf    = nullptr;
         srate_t        srate   = proc->ctx->sample_rate;
         bool           done_fl = false;
+        bool           print_fl= false;
         
         // get the MIDI input variable
         if((rc = var_register_and_get( proc, kAnyChIdx,
                                        kInPId,     "in",      kBaseSfxId, mbuf,
                                        kGainPId,   "gain",    kBaseSfxId, p->fixed_gain,
                                        kChCntPId,  "chCnt",   kBaseSfxId, p->chN,
+                                       kPrintFlPId,"print_fl",kBaseSfxId, print_fl,
                                        kDoneFlPId, "done_fl", kBaseSfxId, done_fl)) != kOkRC )
           goto errLabel;
 
@@ -4528,6 +4668,7 @@ namespace cw
         rc_t    rc   = kOkRC;
         abuf_t* abuf = nullptr;
         mbuf_t* mbuf = nullptr;
+        bool    print_fl = false;
 
         // get the input MIDI buffer
         if((rc = var_get(proc,kInPId,kAnyChIdx,mbuf)) != kOkRC )
@@ -4537,10 +4678,16 @@ namespace cw
         if((rc = var_get(proc,kOutPId,kAnyChIdx,abuf)) != kOkRC )
           goto errLabel;
 
+        var_get(proc,kPrintFlPId,kAnyChIdx,print_fl);
+
         // if there are MIDI messages - update cur_hz and cur_vel
         for(unsigned i=0; i<mbuf->msgN; ++i)
         {
           const midi::ch_msg_t* m = mbuf->msgA + i;
+          
+          if( print_fl )
+            cwLogPrint("%2i 0x%2x %3i %3i : %s:%i\n",m->ch, m->status, m->d0, m->d1, cwStringNullGuard(proc->label),proc->label_sfx_id);
+
           switch( m->status )
           {
             case midi::kNoteOnMdId:
