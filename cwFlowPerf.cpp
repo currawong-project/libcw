@@ -688,13 +688,11 @@ namespace cw
       enum {
         kInPId,
         kInitCfgPId,
-        kPresetProcPId,
         kXfCntPId,
         kFNamePId,
         kLocPId,
         kOutIdxPId,
         kPresetLabelPId,
-        //kXfArgsPId, // kXfArgs:xfArgs+xf_cnnt
       };
       
       typedef struct
@@ -703,146 +701,12 @@ namespace cw
         unsigned             xf_cnt;        // count of transform processors 
         preset_sel::handle_t psH;           // location->preset map
         unsigned             loc_fld_idx;   // 
-        unsigned             loc;           // last received location
-        unsigned             out_idx;       // current transform processor index (0:xf_cnt)
-        //recd_array_t*        xf_recd_array; // xf_recd_array[ xf_cnt ] one record per 'out' var
-        unsigned             presetN;
-        unsigned             preset_idx;
-        //recd_array_t*        preset_recd_array; // preset_recd_array[ presetN ] one record per network preset
+        unsigned             loc;           // Last received location
+        unsigned             out_idx;       // Current transform processor index (0:xf_cnt)
+        unsigned             presetN;       // Count of preset labels. Same as preset_count(psH).
+        unsigned             preset_idx;    // Index (0:presetN) of last selected preset.
       } inst_t;
 
-      /*
-      
-      rc_t _network_preset_value_to_recd_field(const char* proc_inst_label, const preset_value_t* ps_val_list, const recd_field_t* f, const recd_type_t* recd_type, recd_t* recd  )
-      {
-        rc_t rc = kOkRC;
-        const preset_value_t* psv = nullptr;
-        
-        // search through the preset value list ...
-        for(psv=ps_val_list; psv!=nullptr; psv=psv->link)
-        {
-          if( psv->tid != kDirectPresetValueTId )
-          {
-            assert(0);
-          }
-          
-          // looking for the preset value whose proc instance label matches proc_inst_label and
-          // whose var->label matches the recd field label
-          if( textIsEqual(psv->u.pvv.proc->label,proc_inst_label) && textIsEqual(psv->u.pvv.var->label, f->label) )
-          {
-            // set the record field value to the preset value
-            if((rc = value_from_value( psv->u.pvv.value, recd->valA[f->u.index] )) != kOkRC )
-            {
-              rc = cwLogError(kOpFailRC,"The preset value field '%s.%s value assignment failed.",cwStringNullGuard(proc_inst_label),cwStringNullGuard(f->label));
-              goto errLabel;
-            }
-            
-            break; // the search is complete
-          }
-        } 
-
-        // It's possible that a record field value is not included in a preset spec - therefore it is not
-        // an error to fail by not finding the preset value for a field.
-        // In this case the record value is set to the default value set in the
-        // record cfg in the 'preset_select' class desc.
-        
-        //if( ps_val_list!=nullptr && psv == nullptr )
-        //  rc = cwLogError(kEleNotFoundRC,"The preset field '%s.%s' was not found.",cwStringNullGuard(proc_inst_label),cwStringNullGuard(f->label));
-        
-      errLabel:
-        return rc;
-      }
-
-      rc_t _network_preset_to_record( network_t* net, const char* preset_label, const recd_type_t* recd_type, recd_t* recd )
-      {
-        rc_t rc = kOkRC;
-        
-        const network_preset_t* net_ps;
-
-        // Locate the named preset label in the list of network presets
-        if((net_ps = network_preset_from_label( *net, preset_label )) == nullptr )
-        {
-          rc = cwLogError(kEleNotFoundRC,"The network preset '%s' was not found.",cwStringNullGuard(preset_label));
-          goto errLabel;
-        }
-
-        // the identified preset cannot be a 'dual' preset specification
-        if( net_ps->tid != kPresetVListTId )
-        {
-          rc = cwLogError(kInvalidArgRC,"The network preset '%s' is not of type 'value_list'.",cwStringNullGuard(preset_label));
-          goto errLabel;
-        }
-
-        // for each group in the recd
-        for(const recd_field_t* f0 = recd_type->fieldL; f0!=nullptr; f0=f0->link)
-          if( f0->group_fl )
-          {
-            // for each non-group field in this group
-            for(const recd_field_t* f1=f0->u.group_fieldL; f1!=nullptr; f1=f1->link)
-              if( !f1->group_fl )
-              {
-                // store the value of the preset field into the recd
-                if((rc = _network_preset_value_to_recd_field(f0->label, net_ps->u.vlist.value_head, f1, recd_type, recd  )) != kOkRC )
-                {                
-                  goto errLabel;
-                }
-              }
-          }
-        
-        
-      errLabel:
-        return rc;
-      }
-
-      rc_t _alloc_preset_recd_array( proc_t* proc, inst_t* p )
-      {
-        rc_t rc = kOkRC;
-        network_t* net = proc->net;
-        
-        if((p->presetN = preset_count(p->psH)) == 0 )
-        {
-          rc = cwLogError(kInvalidStateRC,"There are no presets defined.");
-          goto errLabel;
-        }
-
-        // create p->preset_recd_array
-        if((rc = recd_array_create(p->preset_recd_array, p->xf_recd_array->type, nullptr,  p->presetN )) != kOkRC )
-        {
-          rc = cwLogError(rc,"The preset record array allocation failed.");
-          goto errLabel;
-        }
-
-        if( p->preset_proc_label != nullptr && textLength(p->preset_proc_label)> 0 )
-        {
-          proc_t* net_proc = nullptr;
-          
-          if((rc = proc_find(*proc->net, p->preset_proc_label, kBaseSfxId, net_proc )) != kOkRC || net_proc->internal_net == nullptr )
-          {
-            rc = cwLogError(rc,"The preset network could not be found.");
-            goto errLabel;
-          }
-
-          net = net_proc->internal_net;
-        }
-        
-        // for each preset ...
-        for(unsigned i=0; i<p->presetN; ++i)
-        {
-          // ... fill a record in p->preset_recd_array with the values from the preset.
-          if((rc = _network_preset_to_record( net, preset_label(p->psH,i), p->preset_recd_array->type, p->preset_recd_array->recdA + i )) != kOkRC )
-          {
-            rc = cwLogError(rc,"The preset '%s' could not be converted to a 'record'.",cwStringNullGuard(preset_label(p->psH,i)));
-            goto errLabel;
-          }        
-        }
-
-        // Note that p->preset_recd_array[] is in the same order as cwPresetSel.preset_label() and therefore the
-        // frag_idx in cwPresetSel.frag_t is the index into p->preset_recd_array[] of the associated record.
-
-      errLabel:
-        return rc;
-      }
-      */
       unsigned _next_avail_xf_channel( inst_t* p )
       {
         p->out_idx += 1;
@@ -862,8 +726,7 @@ namespace cw
         
         if((rc = var_register_and_get(proc,kAnyChIdx,
                                       kInitCfgPId,  "cfg",     kBaseSfxId, cfg,
-                                      kPresetProcPId,"preset_proc", kBaseSfxId, p->preset_proc_label,
-                                      kXfCntPId,    "xf_cnt",  kBaseSfxId, p->xf_cnt,
+                                      //kXfCntPId,    "xf_cnt",  kBaseSfxId, p->xf_cnt,
                                       kInPId,       "in",      kBaseSfxId, rbuf,
                                       kFNamePId,    "fname",   kBaseSfxId, fname,
                                       kLocPId,      "loc",     kBaseSfxId, p->loc)) != kOkRC )
@@ -872,7 +735,7 @@ namespace cw
         }
 
         if((rc = var_register_and_set(proc,kAnyChIdx,
-                                      kOutIdxPId,   "out_idx", kBaseSfxId, -1,
+                                      //kOutIdxPId,   "out_idx", kBaseSfxId, -1,
                                       kPresetLabelPId,"preset_label", kBaseSfxId, "")) != kOkRC )
         {
           goto errLabel;
@@ -906,16 +769,6 @@ namespace cw
           goto errLabel;
         }
 
-        /*
-        // Alloc an array of 'xf_cnt' records of type 'xf_args'.
-        if((rc = var_alloc_record_array( proc, "xf_args", kBaseSfxId, kAnyChIdx, nullptr, p->xf_recd_array, p->xf_cnt )) != kOkRC )
-          goto errLabel;
-        
-        // Create the 'xf_arg' outputs
-        for(unsigned i=0; i<p->xf_cnt; ++i)
-          rc = var_register_and_set( proc, "xf_args", kBaseSfxId+i, kXfArgsPId+i, kAnyChIdx, p->xf_recd_array->type, nullptr, 0 );
-        */
-
         p->presetN = preset_count(p->psH);
         
       errLabel:
@@ -928,8 +781,6 @@ namespace cw
         rc_t rc = kOkRC;
 
         preset_sel::destroy(p->psH);
-        //recd_array_destroy(p->xf_recd_array);
-        //recd_array_destroy(p->preset_recd_array);
 
         return rc;
       }
@@ -997,26 +848,21 @@ namespace cw
               goto errLabel;
             }
             
-            // set the value of the selected preset
-            //xf_rbuf->recdA = p->preset_recd_array->recdA + preset_idx;
-            //xf_rbuf->recdN = 1;
-
 
             if( preset_idx != p->preset_idx )
             {
             
               // get the next available xf output channel
-              p->out_idx = _next_avail_xf_channel(p);
+              //p->out_idx = _next_avail_xf_channel(p);
 
 
-              if((rc = var_set(proc, kOutIdxPId, kAnyChIdx, p->out_idx)) != kOkRC )
-                goto errLabel;
+              //if((rc = var_set(proc, kOutIdxPId, kAnyChIdx, p->out_idx)) != kOkRC )
+              //  goto errLabel;
 
               if( preset_idx != kInvalidIdx )
                 if((rc = var_set(proc, kPresetLabelPId, kAnyChIdx, preset_sel::preset_label(p->psH,preset_idx))) != kOkRC )
                   goto errLabel;
             }
-            //printf("PS OUT_IDX:%i\n",p->out_idx);
           }
         
         }
