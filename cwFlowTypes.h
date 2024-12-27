@@ -139,6 +139,7 @@ namespace cw
 
       // For 'poly' proc's 'internal_net' is a list linked by network_t.poly_link.
       struct network_str*  internal_net;
+      unsigned             internal_net_cnt; // count of hetergenous networks contained in the internal_net linked list.
       
     } proc_t;
 
@@ -161,8 +162,6 @@ namespace cw
       kDirectPresetValueTId,
       kNetRefPresetValueTId,
     } preset_val_tid_t;
-
-    
     
     // preset_value_t holds a preset value and the proc/var to which it will be applied.
     typedef struct preset_value_str
@@ -229,6 +228,8 @@ namespace cw
 
     typedef struct network_str
     {
+      const char*       label;
+      
       const object_t*   procsCfg;   // network proc list
       const object_t*   presetsCfg; // presets designed for this network
 
@@ -242,9 +243,9 @@ namespace cw
       network_preset_pair_t* preset_pairA;
       unsigned               preset_pairN;
 
-      const proc_t*       owner_proc;  // The proc which owns this network (null for top level network)
       unsigned            polyN;       // Count of networks in poly net or 1 if not part of a poly net
-      unsigned            poly_idx;    // Index in poly net or 0 if polyN == 1
+                                       // (for het. poly net's this counts the number of net's for each het. array)
+      unsigned            poly_idx;    // Index in poly net.
       struct network_str* poly_link;   // Link to next net in poly.
 
       ui_net_t* ui_net;
@@ -277,8 +278,8 @@ namespace cw
       class_desc_t*        classDescA;           // 
       unsigned             classDescN;           //
 
-      class_desc_t*        udpDescA;          // 
-      unsigned             udpDescN;          //
+      class_desc_t*        udpDescA;             // 
+      unsigned             udpDescN;             //
       
       external_device_t*   deviceA;              // deviceA[ deviceN ] external device description array
       unsigned             deviceN;              //
@@ -353,11 +354,6 @@ namespace cw
     unsigned proc_mult_count( const network_t& net, const char* proc_label );
     
     rc_t     proc_mult_sfx_id_array( const network_t& net, const char* proc_label, unsigned* idA, unsigned idAllocN, unsigned& idN_ref );
-
-    unsigned network_poly_count( const network_t& net );
-
-    inline bool network_is_part_of_poly( const network_t& net ) { return net.poly_idx > 0 || net.poly_link!=nullptr; }
-        
     
     //------------------------------------------------------------------------------------------------------------------------
     //

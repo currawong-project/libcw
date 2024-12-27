@@ -785,15 +785,6 @@ errLabel:
   return rc;  
 }
 
-unsigned cw::flow::network_poly_count( const network_t& net )
-{
-  unsigned n =1;
-  for(const network_t* n0 = net.poly_link; n0!=nullptr; n0=n0->poly_link)
-    ++n;
-
-  return n;
-}
-
 void cw::flow::proc_destroy( proc_t* proc )
 {
   if( proc == nullptr )
@@ -1184,7 +1175,7 @@ cw::rc_t cw::flow::var_call_custom_value_func( variable_t* var )
     }
     else
     {
-      printf("\n");
+      cwLogPrint("\n");
       for(variable_t* ch_var = var; ch_var!=nullptr; ch_var=ch_var->ch_link)
       {
         _var_print(ch_var);
