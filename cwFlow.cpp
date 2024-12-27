@@ -1037,6 +1037,7 @@ cw::rc_t cw::flow::initialize( handle_t h,
   rc_t        rc        = kOkRC;
   variable_t* proxyVarL = nullptr;
   flow_t*     p         = _handleToPtr(h);
+  const char* root_label = "root";
   
   p->deviceA    = deviceA;
   p->deviceN    = deviceN;
@@ -1069,7 +1070,7 @@ cw::rc_t cw::flow::initialize( handle_t h,
   }
   
   // instantiate the network
-  if((rc = network_create(p,&p->networkCfg,1,proxyVarL,nullptr,1,p->net)) != kOkRC )
+  if((rc = network_create(p,&root_label,&p->networkCfg,1,proxyVarL,1,p->net)) != kOkRC )
   {
     rc = cwLogError(rc,"Network creation failed.");
     goto errLabel;

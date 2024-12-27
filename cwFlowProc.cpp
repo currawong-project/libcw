@@ -129,7 +129,7 @@ namespace cw
           goto errLabel;
         }
 
-        if((rc = network_create(proc->ctx,&networkCfg,1,proc->varL,proc,1,p->net)) != kOkRC )
+        if((rc = network_create(proc->ctx,&proc->label,&networkCfg,1,proc->varL,1,p->net)) != kOkRC )
         {
           rc = cwLogError(rc,"Creation failed on the subnet internal network.");
           goto errLabel;
@@ -203,13 +203,13 @@ namespace cw
       } voice_t;
 
       typedef struct
-      {        
-        unsigned               count;        // count of subnets in 'net'
+      {
         bool                   parallel_fl;  // true if the subnets should be executed in parallel
         thread_tasks::handle_t threadTasksH; //  
         thread_tasks::task_t*  taskA;        // taskA[ count ]
         voice_t*               voiceA;       // voiceA[ count ]
-        unsigned preset_sfx_id;
+        unsigned               voiceN;
+        unsigned               preset_sfx_id;
       } inst_t;
 
       rc_t _poly_thread_func( void* arg )
@@ -253,17 +253,21 @@ namespace cw
       }
 
 
+
       rc_t create( proc_t* proc )
       {
-        rc_t             rc          = kOkRC;        
-        inst_t*          inst        = mem::allocZ<inst_t>();
-        const object_t*  networkCfg  = nullptr;
-        variable_t*      proxyVarL   = nullptr;
-        const object_t** networkCfgA = nullptr;
-        unsigned         networkCfgN = 1;
-        network_t*       internal_net = nullptr;
+        rc_t             rc            = kOkRC;        
+        inst_t*          inst          = mem::allocZ<inst_t>();
+        const object_t*  networkCfg    = nullptr;
+        variable_t*      proxyVarL     = nullptr;
+        const char**     netLabelA     = nullptr;
+        const object_t** netCfgA       = nullptr;
+        unsigned         netCfgN       = 1;
+        network_t*       internal_net  = nullptr;
         unsigned         preset_sfx_id = kInvalidId;
-        const char*      preset_label = nullptr;
+        const char*      preset_label  = nullptr;
+        bool             het_poly_fl   = false;
+        unsigned         poly_cnt      = 1;
         
         proc->userPtr = inst;
 
@@ -283,54 +287,60 @@ namespace cw
           goto errLabel;
         }
 
+        het_poly_fl = networkCfg->find("procs") == nullptr;
+        
         // if the network is a list of cfgs
-        if( networkCfg->is_list() )
+        if( het_poly_fl )
         {
-          inst->count = networkCfg->child_count();
-          networkCfgN = inst->count;
-        }
-        else
-        {
-          // otherwise multiple networks use the same cfg
-          if((rc  = var_register_and_get( proc, kAnyChIdx,kCountPId,"count", kBaseSfxId, inst->count )) != kOkRC )
-          {
-            goto errLabel;
-          }          
+          netCfgN = networkCfg->child_count();
         }
 
-        // the network cannot be empty
-        if( inst->count == 0 )
+        
+        // get the default poly count
+        if((rc  = var_register_and_get( proc, kAnyChIdx,kCountPId,"count", kBaseSfxId, poly_cnt )) != kOkRC )
         {
-          cwLogWarning("The 'poly' %s:%i was given a count of 0.",proc->label,proc->label_sfx_id);
+          goto errLabel;
+        }          
+
+        // the network cannot be empty
+        if( netCfgN == 0 )
+        {
+          cwLogWarning("The 'poly' %s:%i does not define any networks.",proc->label,proc->label_sfx_id);
           goto errLabel;
         }
 
         // allocate the network cfg array
-        networkCfgA = mem::allocZ<const object_t*>(inst->count);
+        netCfgA   = mem::allocZ<const object_t*>(netCfgN);
+        netLabelA = mem::allocZ<const char*>(netCfgN);
 
         // by default there is only one cfg.
-        networkCfgA[0] = networkCfg;
+        netCfgA[0] = networkCfg;
 
         // ... but if there are more than one cfg ...
-        if( networkCfg->is_list() )
+        if( het_poly_fl )
         {
           // ... fill the network cfg array
-          for(unsigned i=0; i<inst->count; ++i)
+          for(unsigned i=0; i<netCfgN; ++i)
           {
-            networkCfgA[i] = networkCfg->child_ele(i);
-            
-            if( !networkCfgA[i]->is_dict() )
+            const object_t* pair = networkCfg->child_ele(i);
+
+            if( (pair->pair_label() == nullptr) || (pair->pair_value() == nullptr) || (!pair->pair_value()->is_dict()) )
             {
-              cwLogError(kSyntaxErrorRC,"The network cfg. for the network index %i is not a dictionary.",i);
-              goto errLabel;
+              cwLogError(kSyntaxErrorRC,"The network cfg. for the network index %i is not a label/dictionary pair.",i);
+              goto errLabel;              
+            }
+            else
+            {
+              netCfgA[i] = pair->pair_value();
+              netLabelA[i] = pair->pair_label();
             }
           }
         }
-        
-        
-        // create the network object - which will hold 'count' subnets - each a duplicate of the
-        // network described by 'networkCfg'.
-        if((rc = network_create(proc->ctx,networkCfgA,networkCfgN,proxyVarL,proc,inst->count,internal_net)) != kOkRC )
+
+        proc->internal_net_cnt = netCfgN;
+
+        // create the network object
+        if((rc = network_create(proc->ctx,netLabelA,netCfgA,netCfgN,proxyVarL,poly_cnt,internal_net)) != kOkRC )
         {
           rc = cwLogError(rc,"Creation failed on the internal network.");
           goto errLabel;
@@ -342,25 +352,29 @@ namespace cw
              goto errLabel;
         }
 
+        inst->voiceN = 0;
+        for(network_t* net=internal_net; net!=nullptr; net=net->poly_link)
+          inst->voiceN += 1;
+
+
+
         if( inst->parallel_fl )
         {
           network_t* net = internal_net;
           
           // create a thread_tasks object
-          if((rc = thread_tasks::create(  inst->threadTasksH, inst->count )) != kOkRC )
+          if((rc = thread_tasks::create(  inst->threadTasksH, inst->voiceN )) != kOkRC )
           {
             rc = cwLogError(rc,"Thread machine create failed.");
             goto errLabel;
           }
 
           // the taskA[] array is needed to hold voice specific info. for the call to thread_tasks::run()
-          inst->taskA  = mem::allocZ<thread_tasks::task_t>(inst->count);
-          inst->voiceA = mem::allocZ<voice_t>(inst->count);
+          inst->taskA  = mem::allocZ<thread_tasks::task_t>(inst->voiceN);
+          inst->voiceA = mem::allocZ<voice_t>(inst->voiceN);
           
           for(unsigned i=0; net !=nullptr; ++i)
-          {
-            assert(i<inst->count);
-            
+          {            
             inst->voiceA[i].voice_idx = i;
             inst->voiceA[i].net       = net;
             
@@ -377,7 +391,8 @@ namespace cw
         proc->internal_net = internal_net;
         
       errLabel:
-        mem::release(networkCfgA);
+        mem::release(netCfgA);
+        mem::release(netLabelA);
         
         return rc;
       }
@@ -431,7 +446,7 @@ namespace cw
 
         if( p->parallel_fl )
         {
-          if((rc = thread_tasks::run(p->threadTasksH,p->taskA,p->count)) != kOkRC )
+          if((rc = thread_tasks::run(p->threadTasksH,p->taskA,p->voiceN)) != kOkRC )
           {
             rc = cwLogError(rc,"poly internal network parallel exec failed.");
           }
@@ -4029,7 +4044,7 @@ namespace cw
           goto errLabel;
         }
 
-        poly_cnt = p->net_proc->internal_net==nullptr ? 0 : network_poly_count(*p->net_proc->internal_net);
+        poly_cnt = 0; //p->net_proc->internal_net==nullptr ? 0 : network_poly_count(*p->net_proc->internal_net);
         
         if( poly_cnt < 3 )
         {
@@ -7966,6 +7981,7 @@ namespace cw
     namespace poly_xform_ctl
     {
       enum {
+        kTriggerPId,
         kOutChCntPId,
         kOutChIdxPId,
         kInBasePId,
@@ -7975,6 +7991,11 @@ namespace cw
       {
         unsigned out_idx;
       } in_var_t;
+
+      typedef struct out_var_str
+      {
+        int cnt;
+      } out_var_t;
         
       typedef struct
       {
@@ -7982,10 +8003,14 @@ namespace cw
         in_var_t* inVarA;
         
         unsigned outVarN;
+        out_var_t* outVarA;
         
         unsigned midiBasePId;
         unsigned doneFlBasePId;
         unsigned outBasePId;
+
+        bool trigger_fl;
+        unsigned out_idx;
         
       } inst_t;
 
@@ -8055,14 +8080,19 @@ namespace cw
         if((rc = var_register_and_get( proc, kAnyChIdx, kOutChCntPId, "out_ch_cnt", kBaseSfxId, p->outVarN )) != kOkRC )
           goto errLabel;
 
-        // register the output selector var
-        if((rc = var_register( proc, kAnyChIdx, kOutChIdxPId,"out_ch_idx", kBaseSfxId )) != kOkRC )
+        if((rc = var_register( proc, kAnyChIdx,
+                               kOutChIdxPId,"out_ch_idx", kBaseSfxId,
+                               kTriggerPId, "trig", kBaseSfxId)) != kOkRC )
+        {
           goto errLabel;
-
+        }
+        
         // create the output audio var's
         for(unsigned i=0; i<p->outVarN; ++i)
           if((rc = var_register_and_set( proc, "out", kBaseSfxId + i, p->outBasePId+i, kAnyChIdx, srate, chCntPerInputSignal, audioFrameN )) != kOkRC )
             goto errLabel;
+
+        p->outVarA = mem::allocZ<out_var_t>(p->outVarN);
         
       errLabel:
         
@@ -8081,6 +8111,9 @@ namespace cw
       rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
+        if( proc->ctx->isInRuntimeFl &&  var->vid == kTriggerPId )
+          p->trigger_fl = true;
+        
         return rc;
       }
 
@@ -8110,14 +8143,40 @@ namespace cw
         
       }
 
+      unsigned _get_next_out_index(inst_t* p)
+      {
+        int min_cnt = p->outVarA[0].cnt;
+        unsigned min_idx = 0;
+        
+        for(unsigned i=1; i<p->outVarN; ++i)
+          if( p->outVarA[i].cnt < min_cnt )
+          {
+            min_cnt = p->outVarA[i].cnt;
+            min_idx = i;
+          }
+
+
+        cwLogPrint("%i %i\n",min_idx,min_cnt);
+        
+        return min_idx;
+      }
+
       rc_t _exec( proc_t* proc, inst_t* p )
       {
         rc_t rc      = kOkRC;
         abuf_t* outAudioBufA[ p->outVarN ];
         unsigned out_var_idx;
 
-        if((var_get(proc,kOutChIdxPId,kAnyChIdx,out_var_idx)) != kOkRC )
-          goto errLabel;
+        if( p->trigger_fl )
+        {
+          p->trigger_fl = false;
+          p->out_idx = _get_next_out_index(p);
+          var_set(proc,kOutChIdxPId,kAnyChIdx,p->out_idx);            
+        }
+        
+
+        //if((var_get(proc,kOutChIdxPId,kAnyChIdx,out_var_idx)) != kOkRC )
+        //  goto errLabel;
 
         // get the audio output buffers
         for(unsigned i=0; i<p->outVarN; ++i)
@@ -8141,7 +8200,8 @@ namespace cw
           for(unsigned j=0; j<mbuf->msgN; ++j)
             if( midi::isNoteOn(mbuf->msgA[j].status,mbuf->msgA[j].d1) )
             {
-              p->inVarA[i].out_idx = out_var_idx;
+              p->inVarA[i].out_idx          = p->out_idx;
+              p->outVarA[ p->out_idx ].cnt += 1;
               //printf("VA: %i->%i\n",i,out_var_idx);
             }
 
@@ -8153,8 +8213,8 @@ namespace cw
           // if this input channel is no longer active
           if( p->inVarA[i].out_idx != kInvalidIdx && done_fl )
           {
+            p->outVarA[ p->inVarA[i].out_idx ].cnt -= 1;
             p->inVarA[i].out_idx = kInvalidIdx;
-            //printf("D:%i\n",i);
           }
           
           // if this channel has a valid out var index

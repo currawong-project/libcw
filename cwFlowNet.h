@@ -12,12 +12,12 @@ namespace cw
     // The only time netCfgN will be greater than 1 is when a heterogenous poly network is being
     // instantiated.
     rc_t network_create( flow_t*         p,
-                         const object_t* const * netCfgA, // netCfgA[netCfgN] 
-                         unsigned        netCfgN,         // count of cfg. records in netCfgN
-                         variable_t*     proxyVarL,       //
-                         const proc_t*   owner_proc,      // Pointer to the proc that owns this network (or null if creating the top level network)
-                         unsigned        polyCnt,         // Count of poly subnets to create or 1 if the network is not poly
-                         network_t*&     net_ref          // Returned network handle.
+                         const char*     const * netLabelA, // netLabel[netCfgN] 
+                         const object_t* const * netCfgA,   // netCfgA[netCfgN] 
+                         unsigned        netCfgN,           // count of cfg. records in netCfgN
+                         variable_t*     proxyVarL,         //
+                         unsigned        polyCnt,           // Count of poly subnets to create or 1 if the network is not poly
+                         network_t*&     net_ref            // Returned network handle.
       );
     
     rc_t network_destroy( network_t*& net );

@@ -48,6 +48,7 @@ namespace cw
       unsigned         sfx_id;       // 'sfx_id' is only used by _io_stmt_connect_vars()
       unsigned         sfx_id_count; // Literal sfx_id_count or kInvalidCnt if not given
       unsigned         is_iter_fl;   // This id included an '_' (underscore)
+      unsigned         has_sfx_fl;   // true if a suffix was specified (differentiates label0 from label)
     } io_ele_t;
 
     typedef struct io_stmt_str
@@ -332,6 +333,7 @@ namespace cw
           else
           {
             r.is_iter_fl = true;
+            r.has_sfx_fl = true;
 
             // if there is a number following the underscore then this is the secInt
             if( textLength(underscore + 1) )
@@ -381,6 +383,8 @@ namespace cw
           }
 
           *digit = 0; // zero terminate the label
+
+          r.has_sfx_fl = true;
 
         }
 
@@ -1508,7 +1512,7 @@ namespace cw
     }
     
     // Set pstate.proc_label and pstate.label_sfx_id
-    rc_t  _proc_parse_inst_label( const char* proc_label_str, unsigned system_sfx_id, proc_inst_parse_state_t& pstate )
+    rc_t  _proc_parse_inst_label( const network_t& net, const char* proc_label_str, proc_inst_parse_state_t& pstate )
     {
       rc_t     rc         = kOkRC;
       unsigned digitCharN = 0;
@@ -1544,16 +1548,18 @@ namespace cw
         }
       }
 
-      // if the parsed sfx-id did not exist 
+      // if the parsed sfx-id was not explicitly set then set it to the network index
       if( sfx_id == kInvalidId )
       {
-        sfx_id = system_sfx_id==kInvalidId ? kBaseSfxId : system_sfx_id;
+        sfx_id = net.poly_idx;
       }
       
-      // be sure the parsed sfx-id does not conflict with the system provided sfx-id
-      if( system_sfx_id != kInvalidId && sfx_id != system_sfx_id )
+      // if this net is part of a network array then the proc suffix id is used distinguish this
+      // proc instance from the same proc instance in sibling networks and so it can't
+      // be changed to some other value by providing an explicit suffix id
+      if( net.polyN > 1 && sfx_id != net.poly_idx )
       {
-        rc = cwLogError(kInvalidStateRC,"The proc instance '%s' numeric suffix id (%i) conflicts with the system provided sfx id (%i).",cwStringNullGuard(proc_label_str),pstate.proc_label_sfx_id,system_sfx_id);
+        rc = cwLogError(kInvalidStateRC,"The proc instance '%s' numeric suffix id (%i) conflicts with the network poly index (%i).",cwStringNullGuard(proc_label_str),pstate.proc_label_sfx_id,net.poly_idx);
         goto errLabel;
       }
 
@@ -1565,7 +1571,7 @@ namespace cw
       
     }
     
-    rc_t _proc_parse_cfg( network_t& net, const object_t* proc_inst_cfg, unsigned system_sfx_id, proc_inst_parse_state_t& pstate )
+    rc_t _proc_parse_cfg( network_t& net, const object_t* proc_inst_cfg, proc_inst_parse_state_t& pstate )
     {
       rc_t            rc       = kOkRC;
       const object_t* arg_dict = nullptr;
@@ -1580,7 +1586,7 @@ namespace cw
       pstate.proc_label_sfx_id = kInvalidId;
       
       // extract the proc instance label and (sfx-id suffix)
-      if((rc = _proc_parse_inst_label( proc_inst_cfg->pair_label(), system_sfx_id, pstate )) != kOkRC )
+      if((rc = _proc_parse_inst_label( net, proc_inst_cfg->pair_label(), pstate )) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"Parsing failed on the label and sfx-id for '%s'.",cwStringNullGuard(proc_inst_cfg->pair_label()));
         goto errLabel;
@@ -1914,22 +1920,19 @@ namespace cw
     
     rc_t _proc_create( flow_t*         p,
                        const object_t* proc_inst_cfg,
-                       unsigned        sfx_id,
                        network_t&      net,
                        variable_t*     proxyVarL,
-                       //const object_t* net_preset_cfgD,
                        proc_t*&        proc_ref )
     {
       rc_t                    rc              = kOkRC;
       proc_inst_parse_state_t pstate          = {};
       proc_t*                 proc            = nullptr;
       class_desc_t*           class_desc      = nullptr;
-      //const object_t*         proc_preset_cfg = nullptr;
 
       proc_ref = nullptr;
 
       // parse the proc instance configuration 
-      if((rc = _proc_parse_cfg( net, proc_inst_cfg, sfx_id, pstate )) != kOkRC )
+      if((rc = _proc_parse_cfg( net, proc_inst_cfg, pstate )) != kOkRC )
         goto errLabel;
       
       // locate the proc class desc
@@ -2220,7 +2223,7 @@ namespace cw
     //  Preset processing
     //
     
-    rc_t _parse_network_proc_label( const network_t& net, const network_preset_t& network_preset, const char* proc_label, unsigned proc_label_sfx_id, io_ele_t& proc_id )
+    rc_t _parse_network_proc_label( const network_t& net, const network_preset_t& network_preset, const char* proc_label, io_ele_t& proc_id )
     {
       rc_t rc = kOkRC;
       
@@ -2231,9 +2234,9 @@ namespace cw
         goto errLabel;
       }
 
-      // set the proc_id base sfx id
+      // if the proc label sfx id was not explicitely set then set it to the network poly index
       if( proc_id.base_sfx_id == kInvalidId )
-        proc_id.base_sfx_id = proc_label_sfx_id==kInvalidId ? kBaseSfxId : proc_label_sfx_id;
+        proc_id.base_sfx_id = net.poly_idx;
 
       // if not iterating
       if( !proc_id.is_iter_fl )
@@ -2570,53 +2573,112 @@ namespace cw
       return rc;
     }
 
-    
-    rc_t _network_preset_handle_poly_preset_reference(network_preset_t& network_preset, proc_t* poly_proc, const char* preset_label )      
+    rc_t _network_preset_handle_poly_preset_ref(network_preset_t& network_preset, network_t* poly_net, const char* preset_label )      
     {
-      rc_t              rc              = kOkRC;
+      rc_t            rc           = kOkRC;
       preset_value_t* preset_value = nullptr;
-      network_t* poly_net = poly_proc->internal_net;
 
-      for(; poly_net!=nullptr; poly_net=poly_net->poly_link)
-      {        
-        network_preset_t* poly_net_preset = nullptr;
+      network_preset_t* poly_net_preset = nullptr;
       
-        for(unsigned i=0; i<poly_net->presetN; ++i)
-          if( textIsEqual(poly_net->presetA[i].label,preset_label) )
-          {
-            poly_net_preset = poly_net->presetA + i;
-            break;
-          }      
-
-        if( poly_net_preset == nullptr )
+      for(unsigned i=0; i<poly_net->presetN; ++i)
+        if( textIsEqual(poly_net->presetA[i].label,preset_label) )
         {
-          rc = cwLogError(kEleNotFoundRC,"The preset '%s' could not be found on the poly proc '%s:%i'.",cwStringNullGuard(poly_proc->label),poly_proc->label_sfx_id);
-          goto errLabel;
+          poly_net_preset = poly_net->presetA + i;
+          break;
         }
 
-        preset_value = mem::allocZ<preset_value_t>();
-
-        preset_value->tid                   = kNetRefPresetValueTId;
-        preset_value->u.npv.net_preset      = poly_net_preset;
-        preset_value->u.npv.net_preset_net  = poly_net;
-        //preset_value->u.npv.net_preset_proc = poly_proc;
-        
-        _network_preset_link_in_value( network_preset, preset_value );
+      if( poly_net_preset == nullptr )
+      {
+        rc = cwLogError(kEleNotFoundRC,"The preset '%s' could not be found on the net '%s:%i'.",preset_label,cwStringNullGuard(poly_net->label),poly_net->poly_idx);
+        goto errLabel;
       }
-      
 
+      preset_value = mem::allocZ<preset_value_t>();
+
+      preset_value->tid                   = kNetRefPresetValueTId;
+      preset_value->u.npv.net_preset      = poly_net_preset;
+      preset_value->u.npv.net_preset_net  = poly_net;
+        
+      _network_preset_link_in_value( network_preset, preset_value );
+
+            
     errLabel:
       return rc;
     }
-  
+
+    rc_t _network_preset_handle_poly_preset_reference(network_preset_t& network_preset, proc_t* poly_proc, const io_ele_t& proc_id, const char* preset_label )
+    {
+      rc_t rc = kOkRC;
+      
+      const class_preset_t* class_pre;
+
+      unsigned min_sfx_id = proc_id.base_sfx_id;
+      unsigned sfx_cnt    = proc_id.is_iter_fl ? proc_id.sfx_id_count : (proc_id.has_sfx_fl ? 1 : poly_proc->internal_net->polyN);
+
+      network_t*      poly_net     = poly_proc->internal_net;
+      
+      // for each specified poly net
+      for(; poly_net!=nullptr; poly_net=poly_net->poly_link)
+        if( min_sfx_id <= poly_net->poly_idx && poly_net->poly_idx < min_sfx_id + sfx_cnt )
+        {
+          // if this network is not a het. net then the preset can be directly found in the network preset list
+          if( poly_proc->internal_net_cnt == 1 )
+            rc = _network_preset_handle_poly_preset_ref(network_preset, poly_net, preset_label);
+          else
+          {
+            // the network is het. net and so the preset must be looked up first in the poly proc instance preset list
+            // and then mapped to each of the named networks.
+            if((class_pre = proc_preset_find(poly_proc,preset_label)) != nullptr )
+            {
+              // ... the referenced preset ia a poly preset instance preset ....
+              unsigned childN = class_pre->cfg->child_count();
+        
+              // ... iterate through each of the elements of the preset dictionary
+              for(unsigned i=0; i<childN; ++i)
+              {
+                const object_t* pair             = class_pre->cfg->child_ele(i);
+                const char*     net_preset_label = nullptr;
+                const char*     net_label        = pair->pair_label();
+
+                // pair = (net-label:net-preset-label)
+
+                // the het. net referenced in the in preset must match the current net  (poly_net) label
+                if( textIsEqual(net_label,poly_net->label) )
+                {
+
+                  // get the net specific preset label
+                  if( pair->pair_value()->value(net_preset_label) != kOkRC )
+                  {
+                    rc = cwLogError(kSyntaxErrorRC,"The value associated with '%s' is not a string.",pair->pair_label());
+                    goto errLabel;
+                  }
+
+
+                  if((rc = _network_preset_handle_poly_preset_ref(network_preset, poly_net, net_preset_label )) != kOkRC )
+                  {
+                    goto errLabel;
+                  }
+                }              
+          
+              }
+            }
+          }
+        }      
+    errLabel:
+      if( rc != kOkRC )
+        rc = cwLogError(rc,"The poly processor preset '%s' on '%s:%i' is not valid.",cwStringNullGuard(preset_label),cwStringNullGuard(poly_proc->label),poly_proc->label_sfx_id);
+      
+      return rc;
+    }
+
+    
     rc_t _network_preset_parse_value_list( flow_t* p,
                                            network_t& net,
-                                           unsigned net_sfx_id,
                                            const object_t* network_preset_dict_cfg,
                                            network_preset_t& network_preset )
     {
       rc_t rc = kOkRC;
-      unsigned procN = 0;
+      unsigned pairN = 0;
       
       if( network_preset_dict_cfg==nullptr || !network_preset_dict_cfg->is_dict() )
       {
@@ -2626,10 +2688,10 @@ namespace cw
 
       network_preset.tid = kPresetVListTId;
       
-      procN = network_preset_dict_cfg->child_count();
+      pairN = network_preset_dict_cfg->child_count();
 
-      // for each proc in the network preset
-      for(unsigned i=0; i<procN; ++i)
+      // for each pair in the preset value dictionary
+      for(unsigned i=0; i<pairN; ++i)
       {
         const object_t* var_dict         = nullptr;
         const object_t* proc_preset_pair = network_preset_dict_cfg->child_ele(i);
@@ -2637,6 +2699,7 @@ namespace cw
         io_ele_t        proc_id          = {};
         unsigned        varN             = 0;
 
+        
         // validate the process preset syntax
         if( proc_preset_pair==nullptr || !proc_preset_pair->is_pair() || (proc_label=proc_preset_pair->pair_label())==nullptr || proc_preset_pair->pair_value()==nullptr )
         {
@@ -2644,15 +2707,34 @@ namespace cw
           goto errLabel;
         }
 
-        // parse the proc label
-        if((rc= _parse_network_proc_label(net, network_preset, proc_label, net_sfx_id, proc_id )) != kOkRC )
+        // each pair has the syntax:
+        // <proc-label>:<preset_value>
+        // where:
+        // <proc-label> identifies a proc inside this network where the <preset-value> will be applied.
+        // <preset-value> idenfifies a label or a dictionary of <var>:<value> pairs.
+        //
+        
+
+        // parse the label
+        if((rc= _parse_network_proc_label(net, network_preset, proc_label, proc_id )) != kOkRC )
           goto errLabel;
 
-        // if the preset has a label 
+        // if the preset-value is a label ... 
         if( proc_preset_pair->pair_value()->is_string() )
         {
           const char* proc_preset_label = nullptr;
           proc_t* proc = nullptr;
+
+
+          // ... then the label refers to a proc where the proc may be
+          // one of two types:
+          //
+          // 1) 'poly' proc - in which case we need to a poly_preset_value_t
+          // record for each poly channel -
+          //
+          // 2) a proc instance in this network
+          // in which case the label refers to a class or instance preset
+          // and we store proc_var_value_t for each variable referenced in the preset cfg.
           
           // get the proc preset label
           if((proc_preset_pair->pair_value()->value(proc_preset_label)) != kOkRC )
@@ -2660,19 +2742,10 @@ namespace cw
             rc = cwLogError(rc,"The proc preset label '%s' could not be parsed on the preset:'%s'",cwStringNullGuard(proc_preset_label),cwStringNullGuard(proc_label));
             goto errLabel;
           }
-
-
-          // the label may refer to a
-          // 1) 'poly' proc - in which case we need to a poly_preset_value_t
-          // record for each poly channel -
-          //
-          // 2) a proc instance in this network
-          // in which case the label refers to a class or instance preset
-          // and we store proc_var_value_t for each variable referenced in the preset cfg.
-
-
+          
+          
           // locate the proc this preset will be applied to
-          if((proc = proc_find(net, proc_id.label, net_sfx_id /*proc_id.sfx_id*/ )) == nullptr )
+          if((proc = proc_find(net, proc_id.label, net.poly_idx )) == nullptr )
           {
             rc = cwLogError(rc,"The proc '%s:%i' could not be found for the preset:'%s'",cwStringNullGuard(proc_id.label),proc_id.sfx_id,cwStringNullGuard(network_preset.label));
             goto errLabel;
@@ -2681,7 +2754,8 @@ namespace cw
           // if this is a 'poly' proc
           if( proc->internal_net != nullptr  )
           {
-            if((rc = _network_preset_handle_poly_preset_reference(network_preset,proc,proc_preset_label)) != kOkRC )
+            
+            if((rc = _network_preset_handle_poly_preset_reference(network_preset,proc,proc_id,proc_preset_label)) != kOkRC )
               goto errLabel;
 
             // the referenced preset was added to the network_preset.u.vlist - no further processing is required
@@ -2690,10 +2764,11 @@ namespace cw
           }
           else
           {
-            // get the referenced preset cfg from the class desc
+            // get the referenced preset preset cfg 
             if((rc = _network_preset_get_preset_cfg_dict( net, network_preset.label, proc_id.label,  proc_id.base_sfx_id,  proc_preset_label, var_dict )) != kOkRC )
               goto errLabel;                           
           }
+          
         }
         else // the preset is a dictionary of var/value pairs
         {
@@ -2721,7 +2796,7 @@ namespace cw
         // for each proc/sf_id  (the proc label may refer to multiple proc instances)
 
         // This loop is designed to handle the case where the preset proc. label uses underscore notation
-        // to address specific or all instances of a given named proc's.
+        // to address specific vs all instances of a given named proc's.
         // If no underscore notation is used then it addresses all instances with the
         // specified name.
         
@@ -2735,8 +2810,8 @@ namespace cw
             const object_t* var_pair          = var_dict->child_ele(k);
             unsigned        proc_label_sfx_id = proc_id.base_sfx_id + j;
 
-            // if the net is part of a poly net
-            if( net_sfx_id!=kInvalidId && proc_label_sfx_id != net_sfx_id )
+            // if this net is part of a poly net - but the proc sfx id does not match the poly index
+           if( net.polyN>1 && proc_label_sfx_id != net.poly_idx )
               continue;
               
             // parse the preset var label - the var may use underscore notation to address multiple vars
@@ -2762,7 +2837,7 @@ namespace cw
     }
 
     
-    rc_t _network_preset_parse_dict( flow_t* p, network_t& net, unsigned proc_sfx_id, const object_t* preset_cfg )
+    rc_t _network_preset_parse_dict( flow_t* p, network_t& net, const object_t* preset_cfg )
     {
       rc_t rc = kOkRC;
       unsigned presetAllocN = 0;
@@ -2796,7 +2871,7 @@ namespace cw
         switch( preset_pair_cfg->pair_value()->type_id() )
         {
           case kDictTId: // 'value-list' preset
-            if((rc = _network_preset_parse_value_list(p, net, proc_sfx_id, preset_pair_cfg->pair_value(), network_preset)) != kOkRC )
+            if((rc = _network_preset_parse_value_list(p, net, preset_pair_cfg->pair_value(), network_preset)) != kOkRC )
             {
               rc = cwLogError(kSyntaxErrorRC,"Network value-list preset parse failed on preset:'%s'.",cwStringNullGuard(network_preset.label));
               goto errLabel;            
@@ -3253,7 +3328,6 @@ namespace cw
     
     rc_t _network_init( flow_t*                p,
                         const object_t*        networkCfg,
-                        unsigned               sfx_id,
                         variable_t*            proxyVarL,
                         network_t*             net )
     {
@@ -3295,7 +3369,7 @@ namespace cw
         const object_t* proc_cfg = net->procsCfg->child_ele(j);
 
         // create the proc inst instance
-        if( (rc= _proc_create( p, proc_cfg, sfx_id, *net, proxyVarL, net->procA[j] ) ) != kOkRC )
+        if( (rc= _proc_create( p, proc_cfg, *net, proxyVarL, net->procA[j] ) ) != kOkRC )
         {
           rc = cwLogError(rc,"The processor instantiation at proc index %i failed.",j);
           goto errLabel;
@@ -3309,7 +3383,7 @@ namespace cw
         goto errLabel;
 
       // parse the network presets but do not apply them
-      if((rc = _network_preset_parse_dict(p, *net, sfx_id, net->presetsCfg )) != kOkRC )
+      if((rc = _network_preset_parse_dict(p, *net, net->presetsCfg )) != kOkRC )
         goto errLabel;
 
     errLabel:
@@ -3414,10 +3488,11 @@ namespace cw
 
 
 cw::rc_t cw::flow::network_create( flow_t*                 p,
-                                   const object_t* const * netCfgA,
+                                   const char* const *            netLabelA,  // netLabel[ netCfgN ]
+                                   const object_t* const * netCfgA,    // netCfgA[ netCfgA ]
                                    unsigned                netCfgN,
                                    variable_t*             proxyVarL,
-                                   const proc_t*           owner_proc,
+                                   //const proc_t*           owner_proc,
                                    unsigned                polyCnt,
                                    network_t*&             net_ref )
 {
@@ -3426,45 +3501,57 @@ cw::rc_t cw::flow::network_create( flow_t*                 p,
   
   net_ref = nullptr;
 
+  /*
   if( !(netCfgN==1 || netCfgN==polyCnt ))
   {
     cwLogError(kInvalidArgRC,"The count of network cfg's must be one, or must match the 'poly count'.");
     goto errLabel;
   }
-
+  */
   
-  
-  for(unsigned i=0; i<polyCnt; ++i)
+  // for each network configuration
+  for(unsigned cfg_idx=0; cfg_idx<netCfgN; ++cfg_idx)
   {
-    // All procs in a poly should share the same sfx_id
-    // otherwise the sfx_id can be automatically generated.
-    unsigned  sfx_id   = i; //polyCnt>1 ? i : kInvalidId;
+    unsigned poly_cnt = polyCnt;
 
-    const object_t* netCfg = i < netCfgN ? netCfgA[i] : netCfgA[0];
+    const object_t* netCfg = netCfgA[cfg_idx];
+    const char* netLabel = netLabelA[cfg_idx];
 
-    network_t*      net = mem::allocZ<network_t>();
-
-    net->owner_proc = owner_proc;
-    net->polyN      = polyCnt;
-    net->poly_idx   = i;
-
-    if( net_ref == nullptr )
-      net_ref = net;
-    
-    if( n0 != nullptr )
-      n0->poly_link = net;
-    
-    n0 = net;
-    
-    // create the network
-    if((rc = _network_init(p, netCfg, sfx_id, proxyVarL, net)) != kOkRC )
+    // overrride poly_cnt with the optional 'count' field passed from the caller
+    if((rc = netCfg->getv_opt("count",poly_cnt)) != kOkRC )
     {
-      rc = cwLogError(rc,"Network create failed on poly index %i.",i);
+      rc = cwLogError(rc,"Poly network 'count' parse failed on the network '%s'.",cwStringNullGuard(netLabel));
       goto errLabel;
     }
-    
-  }
 
+    // for each poly network
+    for(unsigned i=0; i<poly_cnt; ++i)
+    {
+      // allocate the network
+      network_t*      net = mem::allocZ<network_t>();
+
+      //net->owner_proc = owner_proc;
+      net->label      = netLabel;
+      net->polyN      = poly_cnt;
+      net->poly_idx   = i;
+
+      if( net_ref == nullptr )
+        net_ref = net;
+    
+      if( n0 != nullptr )
+        n0->poly_link = net;
+    
+      n0 = net;
+    
+      // create the network
+      if((rc = _network_init(p, netCfg, proxyVarL, net)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Network create failed on poly index %i.",i);
+        goto errLabel;
+      }
+    
+    }
+  }
   
 errLabel:
   if( rc != kOkRC && net_ref != nullptr )
