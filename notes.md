@@ -941,28 +941,40 @@ resolvable without more information.
 
 ### TODO:
 
-- Memory allocation of all non-integral types should be the responsibility of the the processor instances
-this includes strings.  Change the built-in string type to be a const string and
-make it the responsibility of the proc instances with 'string' var's to handle
-alloc and dealloc of strings.
+- The following two tasks need more consideration. As it is variables assume that aggregate
+types are destroyed on exit.  This is very convenient. Consider using 'symbols' to represent
+strings, consider adding a 'const-string' type to eliminate memory allocation of string assignment
+  - Memory allocation of all non-integral types should be the responsibility of the the processor instances
+  this includes strings.  Change the built-in string type to be a const string and
+  make it the responsibility of the proc instances with 'string' var's to handle
+  alloc and dealloc of strings.
+
+  - String assignment is allocating  memory:
+     See: `rc_t _val_set( value_t* val, const char* v ) cwFlowTypes.cpp line:464.`
+
+- DONE Presets do not work for hetergenous networks.
 
 - Add a proc class flag: 'top-level-only-fl' to indicate that a processor
 cannot run as part of a poly. Any processor that calls a global function,
 like 'network_apply_preset()' must run a the top level only.
 
-- Eliminate the value() custom proc_t function and replace it by setting a 'delta flag' on the
+- Consider eliminating the value() custom proc_t function and replace it by setting a 'delta flag' on the
 variables that change.   Optionally a linked list of changed variables could be implemented to
 avoid having to search for changed variable values - although this list might have to be implemented as a thread safe linked list.
 
-- Allow proc's to send messages to the UI. Implementation: During exec() the proc builds a global list of variables whose values
+- value() should return a special return-code value to indicate that the
+value should not be updated and distinguish it from an error code - which should stop the system.
+
+
+- DONE: Allow proc's to send messages to the UI. Implementation: During exec() the proc builds a global list of variables whose values
 should be passed to the UI. Adding to the list must be done atomically, but removing can be non-atomic because it will happen
 at the end of the network 'exec' cycle when no proc's are being executed.  See cwMpScNbQueue push() for an example of how to do this.
 
 - Allow min/max limits on numeric variables.
 
-- Add a 'doc' string-list to the class desc.
+- DONE: Add a 'doc' string-list to the class desc.
 
-- Try using adding 'time' type and 'cfg' types to a 'log:{...}' stmt.
+- Add 'time' type and 'cfg' types to a 'log:{...}' stmt.
 
 - print_network_fl and print_proc_dict_fl should be given from the command line.
   (but it's ok to leave them as cfg flags also)
@@ -971,16 +983,19 @@ at the end of the network 'exec' cycle when no proc's are being executed.  See c
 
 - Add 'doc' strings to user-defined proc data structure.
 
-- It is an error to specify a suffix_id on a poly network proc because the suffix_id's are generated automatically.
+- DONE: It is an error to specify a suffix_id on a poly network proc because the suffix_id's are generated automatically.
   This error should be caught by the compiler.
   
 - How do user defined procedures handle suffix id's?
 
-- Add a 'preset' arg to 'poly' so that a preset can be selected via the owning network.
+- DONE: Add a 'preset' arg to 'poly' so that a preset can be selected via the owning network.
   Currently it is not possible to select a preset for a poly.
 
-- Automatic assignment of sfx_id's should only occur when the network is a 'poly'.
-  This should be easy to detect. 
+- DONE: Automatic assignment of sfx_id's should only occur when the network is a 'poly'.
+  This should be easy to detect.
+  
+- DONE: If a proc, inside a poly,  is given a numeric suffix then that suffix will
+overwrite the label_sfx_id assigned by the system.  This case should be detected.
 
 - When a var value is given to var_create() it does not appear to channelize the
 var if value is a list.  Is a value ever given directly to `var_create()`?
@@ -988,14 +1003,11 @@ Look at all the places `var_create()` is called can the value arg. be removed?
 
 - var_channelize() should never be called at runtime.
 
-- Re-write the currawong circuit with caw.
+- DONE: Re-write the currawong circuit with caw.
 
 - Finish audio feedback example - this will probably involve writing an `audio_silence` class.
 
 - Issue a warning if memory is allocated during runtime.
-
-- String assignment is allocating  memory:
-   See: `rc_t _val_set( value_t* val, const char* v ) cwFlowTypes.cpp line:464.`
 
 - cwMpScNbQueue is allocating memory.  This makes it blocking.
 
@@ -1022,16 +1034,19 @@ Look at all the places `var_create()` is called can the value arg. be removed?
 
     + Disabled "disp_str" should turn grey.
 
+    + mult var's with more than 3 values should be put into a list or use a 'disclose' button
+
+    + mult proc's with more than 3 instances should be put into a list or use a 'disclose' button
+
+
 
 - Class presets cannot address 'mult' variables. Maybe this is ok since 'mult' variables are generally connected to a source?
 ... although 'gain' mult variables are not necessarily connected to a source see: `audio_split` or `audio_mix`.
 Has this problem been addressed by allowing mult variables to be instantiated in the 'args' statement?
 
-- Documentation w/ examples.
+- Write processor development documentation w/ examples.
   + Write the rules for each implementing member functions.
     
-- value() should return a special return-code value to indicate that the
-value should not be updated and distinguish it from an error code - which should stop the system.
 
 - flow classes and variable should have a consistent naming style: camelCase or snake_case.
 
@@ -1044,7 +1059,6 @@ value should not be updated and distinguish it from an error code - which should
 
 - Reduce runtime overhead for var get/set operations.
   
-- Implement matrix types.
 
 - Should the `object_t` be used in place of `value_t`?
 
@@ -1057,6 +1071,10 @@ value should not be updated and distinguish it from an error code - which should
 - Audio inputs should be able to be initialized with a channel count and srate without actually connecting an input.
   This will allow feedback connections to be attached to them at a later stage of the network 
   instantiation.
+
+- The signal srate should determine the sample rate used by a given processor.
+The system sample rate should only be used a default/fallback value.
+Processors that have mandatory signal inputs should never need to also have an srate parameter.
   
 - Implement user-defined-proc preset application.	
 
@@ -1070,11 +1088,13 @@ value should not be updated and distinguish it from an error code - which should
 
 - Implement a debug mode to aid in building networks and user-defined-procs (or is logging good enough)
 
-- Implement multi-field messages.
+- DONE: Implement multi-field messages.
 
 - Implement user defined data types.
 
-- Look more closely at the way of identify an in-stmt src-net or a out-stmt in-net.
+- Implement matrix types.
+
+- Look more closely at the way to identify an in-stmt src-net or a out-stmt in-net.
 It's not clear there is a difference between specifying  `_` and the default behaviour.
 Is there a way to tell it to search the entire network from the root? Isn't that 
 what '_' is supposed to do?
@@ -1082,8 +1102,6 @@ what '_' is supposed to do?
 - cwAudioFile cannot convert float or double input samples to 24 bit output samples
 See audiofile::writeFloat() and audiofile::writeDouble().
 
-- If a proc, inside a poly,  is given a numeric suffix then that suffix will
-overwrite the label_sfx_id assigned by the system.  This case should be detected.
 
 Host Environments:
 ------------------
@@ -1186,7 +1204,7 @@ These callbacks occur asynchronously on the IO system audio processing thread.
 Network Architecture and Theory of Operation
 ---------------------------------------------
 
-A _caw_ network is an ordered set of processors where a given
+A _caw_ graph is an ordered set of processors where a given
 processor may contain a set of internal networks.
 This leads to a heirarchy of networks and processors
 that can be depicted like this.
@@ -1196,43 +1214,104 @@ that can be depicted like this.
 This diagram shows a two level network, where the internal
 network contains an array of networks.
 
-Networks are executed one processor at a time from top to bottom.
-The  networks that are members of network arrays, sibling networks,
-may execute concurrently.  For this reason sibling networks
-may not contain any inter-connnections.
+Networks are executed sequentially, one processor at a time, from top
+to bottom.  Networks that are members of the same network array,
+referred to as silbing networks, may however execute concurrently to
+one another.  To avoid concurrency hazards sibling networks may
+therefore not contain any inter-connnections, and the language
+precludes them.
 
+There are two primary thread hazards to this arrangment:
+1. Processors executing outside of the top level
+should not write to global data or interact with
+the global system API.
 
 There is no way for the top level of a network to be a sibling
-network, therefore it's processors are guaranteed to run in sequence
-and be the only processor running while they are executing.
+network, therefore processors that are part of this network are
+guaranteed to run in sequence and be the only processor running while
+they are executing.
 
-Network presets can only be applied between execution cycles (by the
-control application) or by a top-level processor.  This is the case
-because it guarantees that no processors are running when the preset
-values are set.
+For example, network presets can only be applied between execution
+cycles (by the control application) or by a top-level processor.  This
+is the case because it guarantees that no processors are running when
+the preset values are set.
 
+
+2. If a processor receives data from a sibling network it is possible
+that the processors value() function is called from multiple
+concurrent threads.  Processors which receive data from sibling
+networks (e.g. audio_mixer, poly_xform_ctl) should either not
+implement value() functions or be thread aware in their handling of
+calls to value().
+
+Depending on the nature of the processing in the value() function
+this may not be particularly problematic since a given variable may
+only be connected to a single source.  While the value() function
+may be called from multiple overlapping threads the arguments
+to each thread will refer to a unique variable.  The built-in variable update
+process is carefully designed to exploit this invariant and not modify
+any process state with the exception of the targetted variable itself.
+
+The danger in value() function processing is in writing to any process
+state, or any other variable than the one being reported as changing.
+Likewise it should be recognized that even reading the value of other
+variables should be done with caution.  Reading other variables is
+thread safe in the sense that the internal state of the processor will
+be safe to traverse. The actual value of other variables however may be
+inconsistent relative to one another, and not the same as when the
+processors exec() function eventually runs - since they too may be in
+the process of being updated.
+
+The purpose of the value() function is to provide a single
+easy way of picking up changed incoming values without
+having to test for changed values in the exec() function.
+It shouldn't be used as an alternate exec() function.
+
+Note that the create() and destroy() calls for all processors
+in the entire graph occur in a single thread and therefore do
+not need to take multi-thread precautions - at least relative
+to other _caw_ based execution.
 
 Records
 -------
 
 The primary reason to use a 'record' data type is to allow multiple
-data values to be transmitted during a single cycle.  In effect a
-record allows a table of values to be transmitted, one row at a time,
-during a single execution cycle.  For example let's say that a the
-output of a processor is an irregular pulse whose rate might be faster
-than the audio frequency.  This would require multiple pairs of value
-(delta-time,amplitude) to be generated during a given cycle.  The
-receiving processor would then iterate through the list of pairs and
-processes them each.
+data values to be transmitted during a single cycle and be received as
+a single incoming value.  In effect a record allows a structured table
+of values to be transmitted during a single execution cycle.  For
+example let's say that the output of a processor (G) is an irregular pulse
+whose rate might be faster than the audio frequency.  This would
+require multiple pairs of value (delta-time,amplitude) to be generated
+during a given cycle.
+
+Without the use of the record data type this would require that the generating
+processor have two output variables 'dtime' and 'amplitude' which
+would be updated multiple times during a single execution cycle.  The
+receiving processor (R) would then need to respond to each of those
+changes by implementing a value() function and storing the incoming
+values in an internal array.  The stored values could then be acted
+upon during the receiving processors exec() function.
+
+If R didn't take this approach, and simply read
+the incoming variables at the beginning of it's own execution cycle,
+it would only see the value of the two output variables as they were left at the
+end of the G execution cycle.  The previous values
+transmitted during the execution cycle would be lost.
+
+By explicitely transmitting a record G makes clear that multiple
+values may be transmitted during a single execution cycle, while
+providing the convenience R of automatically storing those value.
+Furthermore the tranmission overhead is minimized by only transmitting
+a single aggregate value rather than multiple individual values.
 
 Another example, would be MIDI values that contain some additional
 side information.  The MIDI data type already has the feature that it
-can generate multiple messages per execution cycle. It's format,
-however, is fixed. There is no way to add addtional information, like
-score location, to each message. The fields of the record data type,
-however, can hold any of the other data types.
+can generate multiple messages per execution cycle. It's format
+however is fixed. There is no way to add addtional information, like
+score location, to each message. The fields of the record data type
+however can hold any of the other data types.
 
-The secondary reasone to use the record data type is to simplify
+Another reason to use the record data type is to simplify
 the output and input interfaces to a processor and thereby
 decrease the number of connections between processors.
 They also make clear that a set of values is synchronized in time.
@@ -1240,9 +1319,9 @@ For example a set of (x,y) coordinates placed in a record
 make it clear that the two values belong together in a way
 that two input variables may not.
 
-Records are also very efficient. Given that the field index is
+Finally, records are also very efficient. Given that the field index is
 computed in advance setting and getting the field variable
-is very fast.  Setting a record field avoids the overhead
+is very fast.  As mentioned above transmitting a record avoids the overhead
 of notifying receiving processors of every new value. The
 receiving processor is only notified that the record
 as a whole has changed.
@@ -1251,6 +1330,7 @@ Records are also implented in such a way that appending
 a additition fields to an existing record is very fast.
 The new record effectively inherits the contents of the
 existing record by reference.  No data is copied.
+For an example of this see the `vel_table` implementation.
 
 Optional Variables
 -------------------
@@ -1412,7 +1492,80 @@ the processors contained by 'osc_poly'.
 
 ---
 Presets with hetergenous poly networks
+```
+    example_03:
+    {
+      network: {
 
+        procs: {
+
+          osc_poly: {
+            class: poly,
+	    
+	    // For het-poly networks the 'count' value given
+	    // in the top level proc is the default value for
+	    // the poly-count for following networks.
+	    // This value may be overriden in the network
+	    // definition itself - as it is in this example.
+            args: { count:2, parallel_fl:true }, 
+           
+            network: {
+	      net_a: {
+	        count: 4,  // override higher level 'count'
+		
+                procs: {
+                  osc:  { class: sine_tone,   args:{ hz: 100 }},
+                },
+		
+		presets:
+		{
+		  a: { osc:{ hz:110 } },
+		  b: { osc:{ hz:120 } },
+		}
+	      },
+	      
+	      net_b: {
+	        count 3, // override higher level 'count'
+                procs: {
+                  osc:  { class: sine_tone,   args:{ hz: 200 }},
+                },
+		
+		presets:
+		{
+		  a: { osc:{hz:220} },
+		  b: { osc:{hz:230} }
+		}
+	      }
+            },
+
+            presets: {
+	      aa: { net_a:a, net_b:a },
+	      bb: { net_a:b, net_b:b },
+	    }
+           
+         }
+
+         // Iterate over the instances of `osc_poly.osc_.out` to create one `audio_merge`
+         // input for every output from the polyphonic network.
+         merge: { class: audio_merge,    in:{ in_:osc_poly.osc_.out}, args:{ gain:1, out_gain:0.5 }
+	   presets: {
+	     a:{ gain:0.3 }
+	     b:{ gain:0.2 }
+	   }
+	 },
+         aout:  { class: audio_out,      in:{ in:merge.out }          args:{ dev_label:"main"} }
+
+	}
+	
+	presets: {
+          a:{ osc_poly1:aa,   merge:a },
+          b:{ osc_poly0_2:bb, merge:b },
+          c:{ osc_poly:bb,    merge:{ out_gain:0.1 } },
+	  d:{ osc_poly0:bb,   merge:{ out_gain:0.05} }
+	}
+      }
+    }   
+```
 ---
 Dual Presets
 
@@ -1433,7 +1586,7 @@ Presets with user defined processors containing poly networks.
 
 
 ---
-Use 'interface' objects to intercept preset values so that the
+Use 'interface' objects to intercept preset values so that they
 can be processed before being passed on to a the object that
 they represent.
 
