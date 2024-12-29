@@ -24,7 +24,7 @@ namespace cw
 
     void report( handle_t h );
     
-    rc_t load( handle_t h, const char* instr_json_fname );
+    rc_t load( handle_t h, const char* instr_json_fname, unsigned threadN=16 );
 
     unsigned instr_count( handle_t h );
 

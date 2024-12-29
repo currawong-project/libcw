@@ -18,6 +18,8 @@
 #include "cwWaveTableBank.h"
 #include "cwMidi.h"
 #include "cwTest.h"
+#include "cwThread.h"
+#include "cwThreadMach.h"
 
 namespace cw
 {
@@ -170,7 +172,7 @@ namespace cw
       return rc;
     }
 
-    void _alloc_wt( wt_bank_t*      p,
+    unsigned _alloc_wt( const wt_bank_t*      p,
                     wt_t*           wt,
                     wt_tid_t        tid,
                     srate_t         srate,
@@ -190,7 +192,8 @@ namespace cw
       wt->posn_smp_idx = posn_smp_idx;
       
       unsigned allocSmpCnt = p->padSmpN + wt->aN + p->padSmpN;
-      p->allocAudioBytesN += allocSmpCnt * sizeof(sample_t);            
+      //p->allocAudioBytesN += allocSmpCnt * sizeof(sample_t);
+      unsigned allocByteCnt = allocSmpCnt * sizeof(sample_t);
       
       // allocate the wavetable audio buffer
       wt->aV = mem::allocZ<sample_t>( allocSmpCnt );
@@ -204,6 +207,7 @@ namespace cw
       // fill the wavetable suffix
       vop::copy(wt->aV + p->padSmpN + wt->aN, wt->aV + p->padSmpN, p->padSmpN );
 
+      return allocByteCnt;
     }
 
     rc_t _create_instr_pv_map( instr_t* instr )
@@ -259,6 +263,135 @@ namespace cw
       
       return rc;
     }
+
+    typedef struct load_pitch_str
+    {
+      const wt_bank_t* p;
+      const instr_t*   instr;
+      pitch_t*         pitch;
+      const object_t*  pitchR;
+      unsigned         index;
+      unsigned         allocByteN;
+      rc_t             rc;
+    } load_pitch_t;
+
+    rc_t _load_pitch( load_pitch_t* args )
+    {
+      rc_t              rc          = kOkRC;
+      double            hz          = 0;
+      srate_t           srate       = 0;
+      const char*       audio_fname = nullptr;
+      const object_t*   velL        = nullptr;
+      audio_buf_t       abuf{};
+
+      const wt_bank_t* p      = args->p;
+      const instr_t*   instr  = args->instr;
+      pitch_t*         pitch  = args->pitch;
+      const object_t*  pitchR = args->pitchR;
+      unsigned         index  = args->index;
+      
+      if(pitchR == nullptr || !pitchR->is_dict() )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The pitch record at index %i is not valid.",index);
+        goto errLabel;
+      }
+
+      if((rc = pitchR->getv("midi_pitch",pitch->midi_pitch,
+                            "srate",srate,
+                            "est_hz_mean",hz,
+                            "audio_fname",audio_fname,
+                            "velL",velL)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Instrument file syntax error while reading pitch record at index %i.",index);
+        goto errLabel;
+      }
+
+      cwLogInfo("pitch:%i %i %s",pitch->midi_pitch,p->allocAudioBytesN/(1024*1024),audio_fname);
+    
+      // read the audio file into abuf
+      if((rc = _audio_buf_alloc(abuf, audio_fname )) != kOkRC )
+        goto errLabel;
+    
+      pitch->velN = velL->child_count();
+      pitch->velA = mem::allocZ<vel_t>( pitch->velN );
+    
+      for(unsigned j=0; j<pitch->velN; ++j)
+      {
+        const object_t* chL  = nullptr;
+        const object_t* velR = velL->child_ele(j);
+        vel_t*          vel  = pitch->velA + j;
+
+        if( velR==nullptr || !velR->is_dict() )
+        {
+          rc = cwLogError(rc,"The velocity record at index %i on MIDI pitch %i is invalid.",j,pitch->midi_pitch);
+          goto errLabel;
+        }
+      
+        if((rc = velR->getv("vel",vel->vel,
+                            "bsi",vel->bsi,
+                            "chL",chL)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Instrument file syntax error while reading the velocity record at index %i from the pitch record for MIDI pitch:%i.",j,pitch->midi_pitch);
+          goto errLabel;
+        }
+
+      
+        vel->mc_seq.chN = chL->child_count();
+        vel->mc_seq.chA = mem::allocZ<wt_seq_t>( vel->mc_seq.chN );
+      
+        for(unsigned ch_idx=0; ch_idx<pitch->velA[j].mc_seq.chN; ++ch_idx)
+        {
+
+          const object_t* wtL = chL->child_ele(ch_idx);
+          wt_seq_t*       wts = vel->mc_seq.chA + ch_idx;
+        
+          wts->wtN = wtL->child_count() + 1;
+          wts->wtA = mem::allocZ<wt_t>( wts->wtN );
+        
+          for(unsigned wti=0; wti<wts->wtN-1; ++wti)
+          {
+            const object_t* wtR  = wtL->child_ele(wti);
+            wt_t*           wt   = wts->wtA + wti + 1;
+            unsigned        wtbi = kInvalidIdx;
+            unsigned        wtei = kInvalidIdx;
+            double          rms  = 0;
+          
+            if((rc = wtR->getv("wtbi",wtbi,
+                               "wtei",wtei,
+                               "rms",rms,
+                               "est_hz",wt->hz)) != kOkRC )
+            {
+              rc = cwLogError(rc,"Instrument file syntax error in wavetable record at index %i, channel index:%i, velocity index:%i midi pitch:%i.",wti,ch_idx,j,pitch->midi_pitch);
+              goto errLabel;
+            }
+
+            // if this is the first looping wave table then insert the attack wave table before it
+            if( wti==0 )
+            {
+              args->allocByteN += _alloc_wt(p,wts->wtA,dsp::wt_osc::kOneShotWtTId,srate,abuf.ch_buf[ch_idx], vel->bsi, wtbi-vel->bsi,hz,0);            
+            }
+
+            args->allocByteN += _alloc_wt(p,wt,dsp::wt_osc::kLoopWtTId,srate,abuf.ch_buf[ch_idx],wtbi,wtei-wtbi,hz,rms);
+          }
+        }
+      }    
+
+    errLabel:
+
+      _audio_buf_free(abuf);
+      
+      return rc;
+    }
+
+    rc_t _load_pitch_thread_func( void* arg )
+    {
+      load_pitch_t* a = (load_pitch_t*)arg;
+      a->rc = _load_pitch( a );
+      return a->rc;
+    }
+    
+    
+    
   }
 }
 
@@ -308,7 +441,7 @@ cw::rc_t cw::wt_bank::destroy( handle_t& hRef )
   return rc;
 }
 
-cw::rc_t cw::wt_bank::load( handle_t h, const char* instr_json_fname )
+cw::rc_t cw::wt_bank::load( handle_t h, const char* instr_json_fname, unsigned threadN )
 {
   rc_t            rc          = kOkRC;
   wt_bank_t*      p           = _handleToPtr(h);
@@ -316,7 +449,10 @@ cw::rc_t cw::wt_bank::load( handle_t h, const char* instr_json_fname )
   const object_t* pitchL      = nullptr;
   const char*     instr_label = nullptr;
   instr_t*        instr       = nullptr;
-  audio_buf_t     abuf{};
+  //audio_buf_t     abuf{};
+  load_pitch_t*         argsA = nullptr;
+  thread_tasks::handle_t threadTasksH; //  
+  thread_tasks::task_t* taskA = nullptr;
   
   if((rc = objectFromFile(instr_json_fname,f)) != kOkRC )
     goto errLabel;
@@ -339,101 +475,50 @@ cw::rc_t cw::wt_bank::load( handle_t h, const char* instr_json_fname )
   instr->pitchN = pitchL->child_count();
   instr->pitchA = mem::allocZ<pitch_t>(instr->pitchN);
 
+  argsA = mem::allocZ<load_pitch_t>(instr->pitchN);
+  taskA  = mem::allocZ<thread_tasks::task_t>(instr->pitchN);
+
+
   for(unsigned i=0; i<instr->pitchN; ++i)
   {
-    double            hz          = 0;
-    srate_t           srate       = 0;
-    const char*       audio_fname = nullptr;
-    const object_t*   velL        = nullptr;
-    const object_t*   pitchR      = pitchL->child_ele(i);
-    pitch_t*          pitch       = instr->pitchA + i;
-    
-    if(pitchR == nullptr || !pitchR->is_dict() )
-    {
-      rc = cwLogError(kSyntaxErrorRC,"The pitch record at index %i is not valid.",i);
-      goto errLabel;
-    }
+    load_pitch_t* r = argsA + i;
+    r->p = p;
+    r->instr = instr;
+    r->pitch = instr->pitchA + i;
+    r->pitchR = pitchL->child_ele(i);
+    r->index  = i;
 
-    if((rc = pitchR->getv("midi_pitch",pitch->midi_pitch,
-                          "srate",srate,
-                          "est_hz_mean",hz,
-                          "audio_fname",audio_fname,
-                          "velL",velL)) != kOkRC )
-    {
-      rc = cwLogError(rc,"Instrument file syntax error while reading pitch record at index %i.",i);
-      goto errLabel;
-    }
-
-    cwLogInfo("pitch:%i %i %s",pitch->midi_pitch,p->allocAudioBytesN/(1024*1024),audio_fname);
-    
-    // read the audio file into abuf
-    if((rc = _audio_buf_alloc(abuf, audio_fname )) != kOkRC )
-      goto errLabel;
-    
-    pitch->velN = velL->child_count();
-    pitch->velA = mem::allocZ<vel_t>( pitch->velN );
-    
-    for(unsigned j=0; j<instr->pitchA[i].velN; ++j)
-    {
-      const object_t* chL  = nullptr;
-      const object_t* velR = velL->child_ele(j);
-      vel_t*          vel  = pitch->velA + j;
-
-      if( velR==nullptr || !velR->is_dict() )
-      {
-        rc = cwLogError(rc,"The velocity record at index %i on MIDI pitch %i is invalid.",j,pitch->midi_pitch);
-        goto errLabel;
-      }
-      
-      if((rc = velR->getv("vel",vel->vel,
-                          "bsi",vel->bsi,
-                          "chL",chL)) != kOkRC )
-      {
-        rc = cwLogError(rc,"Instrument file syntax error while reading the velocity record at index %i from the pitch record for MIDI pitch:%i.",j,pitch->midi_pitch);
-        goto errLabel;
-      }
-
-      
-      vel->mc_seq.chN = chL->child_count();
-      vel->mc_seq.chA = mem::allocZ<wt_seq_t>( vel->mc_seq.chN );
-      
-      for(unsigned ch_idx=0; ch_idx<instr->pitchA[i].velA[j].mc_seq.chN; ++ch_idx)
-      {
-
-        const object_t* wtL = chL->child_ele(ch_idx);
-        wt_seq_t*       wts = vel->mc_seq.chA + ch_idx;
-        
-        wts->wtN = wtL->child_count() + 1;
-        wts->wtA = mem::allocZ<wt_t>( wts->wtN );
-        
-        for(unsigned wti=0; wti<wts->wtN-1; ++wti)
-        {
-          const object_t* wtR  = wtL->child_ele(wti);
-          wt_t*           wt   = wts->wtA + wti + 1;
-          unsigned        wtbi = kInvalidIdx;
-          unsigned        wtei = kInvalidIdx;
-          double          rms  = 0;
-          
-          if((rc = wtR->getv("wtbi",wtbi,
-                             "wtei",wtei,
-                             "rms",rms,
-                             "est_hz",wt->hz)) != kOkRC )
-          {
-            rc = cwLogError(rc,"Instrument file syntax error in wavetable record at index %i, channel index:%i, velocity index:%i midi pitch:%i.",wti,ch_idx,j,pitch->midi_pitch);
-            goto errLabel;
-          }
-
-          // if this is the first looping wave table then insert the attack wave table before it
-          if( wti==0 )
-          {
-            _alloc_wt(p,wts->wtA,dsp::wt_osc::kOneShotWtTId,srate,abuf.ch_buf[ch_idx], vel->bsi, wtbi-vel->bsi,hz,0);            
-          }
-
-          _alloc_wt(p,wt,dsp::wt_osc::kLoopWtTId,srate,abuf.ch_buf[ch_idx],wtbi,wtei-wtbi,hz,rms);
-        }
-      }
-    }    
+    taskA[i].func = _load_pitch_thread_func;
+    taskA[i].arg  = r;
+    taskA[i].rc   = kOkRC;
   }
+
+  if( threadN>1 )
+  {
+    // create a thread_tasks object
+    if((rc = thread_tasks::create(  threadTasksH, threadN )) != kOkRC )
+    {
+      rc = cwLogError(rc,"Thread machine create failed.");
+      goto errLabel;
+    }
+  
+    if((rc = run(threadTasksH, taskA, instr->pitchN, 120*1000 )) != kOkRC )
+    {
+      rc = cwLogError(rc,"Thread machine run failed.");
+      goto errLabel;
+    }
+    
+    for(unsigned i=0; i<instr->pitchN; ++i)
+    {
+      p->allocAudioBytesN += argsA[i].allocByteN;
+    }
+  }
+  else
+  {
+    for(unsigned i=0; i<instr->pitchN; ++i)
+      if((rc = _load_pitch( argsA + i )) != kOkRC )
+        goto errLabel;
+  } 
 
   if((rc = _create_instr_pv_map( instr )) != kOkRC )
     goto errLabel;
@@ -449,7 +534,10 @@ errLabel:
     rc = cwLogError(rc,"Wave table bank load failed on '%s'.",cwStringNullGuard(instr_json_fname));
   }
 
-  _audio_buf_free(abuf);
+  //_audio_buf_free(abuf);
+
+  mem::release(taskA);
+  destroy(threadTasksH);
 
   if( f != nullptr )
     f->free();
