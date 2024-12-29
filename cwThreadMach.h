@@ -34,7 +34,6 @@ namespace cw
   {
 
     typedef handle<struct thread_tasks_str> handle_t;
-    typedef thread::cbFunc_t                threadFunc_t;
 
     // Create a thread tasks machine with threadN records
     rc_t create(  handle_t& hRef, unsigned threadN );
