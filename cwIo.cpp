@@ -2895,10 +2895,10 @@ cw::rc_t cw::io::midiDeviceAllNotesOff( handle_t h, unsigned devIdx, unsigned po
         if( portIdx==kInvalidIdx || portIdx==j )
         {
           rc_t rc0;
-          if((rc0 = midiDeviceSend(h,i,j,midi::kCtlMdId,121,0)) != kOkRC) // reset all controllers
+          if((rc0 = midiDeviceSend(h,i,j,midi::kCtlMdId,midi::kResetAllCtlsMdId,0)) != kOkRC) // reset all controllers
             rc = cwLogError(rc0,"Send reset all controllers failed on %i:%i.",i,j);
           
-          if((rc0 =  midiDeviceSend(h,i,j,midi::kCtlMdId,123,0)) != kOkRC) // all notes off
+          if((rc0 =  midiDeviceSend(h,i,j,midi::kCtlMdId,midi::kAllNotesOffMdId,0)) != kOkRC) // all notes off
             rc = cwLogError(rc0,"Send all-notes-off failed on %i:%i.",i,j);
         }
             
