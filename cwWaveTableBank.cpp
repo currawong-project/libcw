@@ -167,20 +167,21 @@ namespace cw
 
       for(unsigned i=0; i<p->instrN; ++i )
         _destroy_instr(p->instrA[i]);
-      
+
+      mem::release(p->instrA);
       mem::release(p);
       return rc;
     }
 
     unsigned _alloc_wt( const wt_bank_t*      p,
-                    wt_t*           wt,
-                    wt_tid_t        tid,
-                    srate_t         srate,
-                    const sample_t* aV,
-                    unsigned        posn_smp_idx,
-                    unsigned        aN,
-                    double          hz,
-                    double          rms)
+                        wt_t*           wt,
+                        wt_tid_t        tid,
+                        srate_t         srate,
+                        const sample_t* aV,
+                        unsigned        posn_smp_idx,
+                        unsigned        aN,
+                        double          hz,
+                        double          rms)
     {
       wt->tid          = tid;
       wt->aN           = aN;
@@ -396,7 +397,7 @@ namespace cw
 }
 
 
-cw::rc_t cw::wt_bank::create( handle_t& hRef, unsigned padSmpN, const char* instr_json_fname )
+cw::rc_t cw::wt_bank::create( handle_t& hRef, unsigned padSmpN, const char* instr_json_fname, unsigned loadThreadCnt )
 {
   rc_t rc = kOkRC;
 
@@ -409,7 +410,7 @@ cw::rc_t cw::wt_bank::create( handle_t& hRef, unsigned padSmpN, const char* inst
   hRef.set(p);
 
   if( instr_json_fname != nullptr )
-    if((rc = load(hRef,instr_json_fname)) != kOkRC )
+    if((rc = load(hRef,instr_json_fname,loadThreadCnt)) != kOkRC )
     {      
       hRef.clear();
     }
@@ -536,6 +537,7 @@ errLabel:
 
   //_audio_buf_free(abuf);
 
+  mem::release(argsA);
   mem::release(taskA);
   destroy(threadTasksH);
 

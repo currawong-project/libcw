@@ -19,7 +19,7 @@ namespace cw
     typedef struct dsp::multi_ch_wt_seq_osc::multi_ch_wt_seq_str<sample_t,srate_t> multi_ch_wt_seq_t;
 
     
-    rc_t create( handle_t& hRef, unsigned padSmpN, const char* instr_json_fname=nullptr );
+    rc_t create( handle_t& hRef, unsigned padSmpN, const char* instr_json_fname=nullptr, unsigned loadThreadCnt=16 );
     rc_t destroy( handle_t& hRef );
 
     void report( handle_t h );
