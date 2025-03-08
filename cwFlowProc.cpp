@@ -1605,7 +1605,6 @@ namespace cw
           
         }
         
-
         p->iChN   = abuf->chN;
         p->igainV = mem::allocZ<coeff_t>(abuf->chN);
         
@@ -2995,8 +2994,15 @@ namespace cw
               cwLogWarning("Unhandled variable id '%i' on instance: %s.", var->vid, proc->label );
           }
 
-          //printf("%i sd: ceil:%f expo:%f thresh:%f upr:%f lwr:%f mix:%f : rc:%i val:%f var:%s \n",
-          //       var->chIdx,sd->ceiling, sd->expo, sd->thresh, sd->uprSlope, sd->lwrSlope, sd->mix, rc, val, var->label );
+          /*
+          if( var->vid==kCeilingPId)
+          {
+            double secs = (double)(proc->ctx->cycleIndex * proc->ctx->framesPerCycle)/proc->ctx->sample_rate;
+            
+            printf("%f sfx_id:%i ch:%i sd: ceil:%f expo:%f thresh:%f upr:%f lwr:%f mix:%f : rc:%i val:%f var:%s \n",
+                   secs,proc->label_sfx_id,var->chIdx,sd->ceiling, sd->expo, sd->thresh, sd->uprSlope, sd->lwrSlope, sd->mix, rc, val, var->label );
+          }
+          */
         }
         
         return rc;
@@ -4303,14 +4309,30 @@ namespace cw
         // sizeof of each voice msgA[] (same as voice_t.msgN)
         unsigned voiceMsgN;
 
-        unsigned        midi_fld_idx;
+        unsigned  midi_fld_idx;
 
+        bool          ns_fl;
         note_state_t* nsV;
         unsigned      nsN;
         unsigned      ns_idx;
       } inst_t;
 
 
+      void _reset_voice( proc_t* proc, inst_t* p, unsigned voice_idx )
+      {
+        p->voiceA[voice_idx].activeFl = false;
+        p->voiceA[voice_idx].pitch = midi::kInvalidMidiPitch;
+        
+        if( p->ns_fl )
+          _store_note_state( proc, p, 0, 0, 0, 0, voice_idx );        
+      }
+
+      void _reset_all_voices( proc_t* proc, inst_t* p )
+      {
+        for(unsigned i=0; i<p->voiceN; ++i)
+          _reset_voice(proc,p,i);
+      }
+      
       rc_t _create( proc_t* proc, inst_t* p )
       {
         rc_t        rc            = kOkRC;
@@ -4361,6 +4383,7 @@ namespace cw
         p->nsN = 500;
         p->nsV = mem::allocZ<note_state_t>(p->nsN);
 
+        _reset_all_voices(proc,p);
         
       errLabel:
         return rc;
@@ -4370,14 +4393,15 @@ namespace cw
       {
         rc_t rc = kOkRC;
 
-        char fname[255];
-        snprintf(fname,255,"/home/kevin/temp/note_state/vctl.csv");
-        _write_note_state( proc, p, fname );
+        //char fname[255];
+        //snprintf(fname,255,"/home/kevin/temp/note_state/vctl.csv");
+        //_write_note_state( proc, p, fname );
         
         for(unsigned i=0; i<p->voiceN; ++i)
           mem::release(p->voiceA[i].msgA);
         
         mem::release( p->voiceA );
+        mem::release( p->nsV );
         p->voiceN = 0;
         return rc;
       }
@@ -4471,7 +4495,8 @@ namespace cw
 
         rc = _update_voice_msg(proc,p,voice_idx,m);
 
-        _store_note_state( proc, p, m->uid, midi::kNoteOnMdId, m->d0, m->d1, voice_idx );
+        if( p->ns_fl )
+          _store_note_state( proc, p, m->uid, midi::kNoteOnMdId, m->d0, m->d1, voice_idx );
         
         return rc;
       }
@@ -4486,7 +4511,8 @@ namespace cw
             
             rc = _update_voice_msg(proc,p,i,m);
 
-            _store_note_state( proc, p, m->uid, midi::kNoteOffMdId, m->d0, 0, i );
+            if( p->ns_fl )
+              _store_note_state( proc, p, m->uid, midi::kNoteOffMdId, m->d0, 0, i );
 
             goto errLabel;
 
@@ -4505,8 +4531,8 @@ namespace cw
         if( midi::isChStatus( m->status ) )
           for(unsigned i=0; i<p->voiceN; ++i)
             if((rc = _update_voice_msg(proc,p,i,m)) != kOkRC )
-              goto errLabel;
-
+              goto errLabel;        
+        
       errLabel:
         return rc;
       }
@@ -4517,21 +4543,20 @@ namespace cw
         rc_t    rc   = kOkRC;
         rbuf_t* rbuf = nullptr;
 
-        // update the voice array
+        // update the state of each voice
         for(unsigned i=0; i<p->voiceN; ++i)
         {
           bool done_fl;
           
           var_get(proc,p->baseDoneFlPId+i,kAnyChIdx,done_fl);
-          
+
+          // notice notes that have transitioned from 'active' to 'inactive'
           if( p->voiceA[i].activeFl && done_fl )
           {
-            p->voiceA[i].activeFl = false;
-            p->voiceA[i].pitch = midi::kInvalidMidiPitch;
-            
-            _store_note_state( proc, p, 0, 0, 0, 0, i );
+            _reset_voice(proc,p,i);
           }
-          
+
+          // track the age of the voice
           if( p->voiceA[i].activeFl )
             p->voiceA[i].age += 1;
           
@@ -4848,6 +4873,7 @@ namespace cw
         kInPId,
         kOutPId,
         kDoneFlPId,
+        kLoadThreadCntPId,
         kTestPitchPId,
         kKeyPitchPId,
       };
@@ -4887,12 +4913,12 @@ namespace cw
       } inst_t;
 
 
-      rc_t _load_wtb(proc_t* proc, inst_t* p, const char* wtb_fname)
+      rc_t _load_wtb(proc_t* proc, inst_t* p, const char* wtb_fname, unsigned load_thread_cnt)
       {
         rc_t        rc            = kOkRC;
         const char* wtb_var_label = "wtb";
         char*       exp_wtb_fname = nullptr;
-        unsigned    padSmpN       = 1;
+        unsigned    padSmpN       = 2;
         
         // if the global wave table bank has not yet been created
         if((p->wtbH_ptr = (wt_bank::handle_t*)global_var(proc, wtb_var_label )) == nullptr )
@@ -4906,7 +4932,7 @@ namespace cw
           }
           
           // create the wave table bank
-          if((rc = create( wtbH, padSmpN, exp_wtb_fname)) != kOkRC )
+          if((rc = create( wtbH, padSmpN, exp_wtb_fname, load_thread_cnt )) != kOkRC )
           {
             rc = cwLogError(rc,"The wave table bank global variable creation failed.");
             goto errLabel;
@@ -4959,19 +4985,21 @@ namespace cw
       
       rc_t _create( proc_t* proc, inst_t* p )
       {
-        rc_t               rc            = kOkRC;
+         rc_t               rc            = kOkRC;
         const char*        wtb_fname     = nullptr;
         const char*        wtb_instr     = nullptr;
         mbuf_t*            mbuf          = nullptr;
         bool               done_fl       = false;        
         srate_t            srate         = proc->ctx->sample_rate;
-
+        unsigned           load_thread_cnt = 16;
+        
         // get the MIDI input variable
         if((rc = var_register_and_get( proc, kAnyChIdx,
                                        kWtbFnPId,     "wtb_fname", kBaseSfxId, wtb_fname,
                                        kWtbInstrPId,  "wtb_instr", kBaseSfxId, wtb_instr,
                                        kInPId,        "in",        kBaseSfxId, mbuf,
                                        kDoneFlPId,    "done_fl",   kBaseSfxId, done_fl,
+                                       kLoadThreadCntPId,"load_thread_cnt", kBaseSfxId, load_thread_cnt,
                                        kTestPitchPId, "test_pitch",kBaseSfxId, p->test_pitch,
                                        kKeyPitchPId,  "test_key_pitch", kBaseSfxId, p->test_key_pitch)) != kOkRC )
         {
@@ -4979,7 +5007,7 @@ namespace cw
         }
 
         // get the wave table bank handle (p->wtbH_ptr(
-        if((rc = _load_wtb(proc, p, wtb_fname)) != kOkRC )
+        if((rc = _load_wtb(proc, p, wtb_fname, load_thread_cnt)) != kOkRC )
         {
           goto errLabel;
         }
@@ -5099,14 +5127,15 @@ namespace cw
       {
         rc_t rc = kOkRC;
 
-        char fname[255];
-        snprintf(fname,255,"/home/kevin/temp/note_state/%i.csv",proc->label_sfx_id);
-        _write_note_state( proc, p, fname );
+        //char fname[255];
+        //snprintf(fname,255,"/home/kevin/temp/note_state/%i.csv",proc->label_sfx_id);
+        //_write_note_state( proc, p, fname );
         mem::release(p->nsV);
         
         if( p->wtbH_ptr )
           destroy(*p->wtbH_ptr);
 
+        destroy(&p->osc);
         mem::release(p->test_pitch_map);
 
         return rc;
@@ -5116,6 +5145,14 @@ namespace cw
       {
         rc_t rc = kOkRC;
         return rc;
+      }
+
+      void _finish_note( proc_t* proc, inst_t* p )
+      {
+        p->done_fl = true;
+        var_set(proc,kDoneFlPId,kAnyChIdx,true);
+        _store_note_state(proc, p, 0, 0, p->pitch, 0);
+        p->gain_coeff = 0.0;  // 
       }
 
       rc_t _exec( proc_t* proc, inst_t* p )
@@ -5167,6 +5204,11 @@ namespace cw
             case midi::kCtlMdId:
               if( midi::isSustainPedal( m->status, m->d0 ) )
                 _on_sustain_pedal(proc,p, midi::isPedalDown(m->d1) );
+              else
+              {
+                if( midi::isAllNotesOff( m->status, m->d0) )
+                  _finish_note(proc,p);
+              }
               break;
               
             default:
@@ -5185,10 +5227,7 @@ namespace cw
             
         if( (p->gain < p->kGainThreshold && !p->done_fl) /*|| (actualFrmN < abuf->frameN)*/ )
         {
-          p->done_fl = true;
-          var_set(proc,kDoneFlPId,kAnyChIdx,true);
-          _store_note_state(proc, p, 0, 0, p->pitch, 0);              
-
+          _finish_note(proc,p);
         }
 
       errLabel:
