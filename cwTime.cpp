@@ -279,7 +279,7 @@ void cw::time::advanceMicros( spec_t& ts, unsigned us )
 
 void cw::time::advanceMs( spec_t& ts, unsigned ms )
 {
-
+  /*
   const unsigned ns_per_sec = 1000000000;
   
   ts.tv_nsec += ms * 1000000;
@@ -287,6 +287,22 @@ void cw::time::advanceMs( spec_t& ts, unsigned ms )
   
   ts.tv_sec  += sec;
   ts.tv_nsec -= sec * ns_per_sec;
+  */
+
+  const unsigned ns_per_sec = 1000000000;
+  const unsigned ns_per_ms  = ns_per_sec/1000;
+
+  unsigned secs = ms / 1000;
+  unsigned ms_rem = ms - (secs*1000);
+  unsigned nano_rem = ms_rem * ns_per_ms;
+  
+  ts.tv_sec  += secs;
+  ts.tv_nsec += nano_rem;
+  while(ts.tv_nsec >= ns_per_sec )
+  {
+    ts.tv_nsec -= ns_per_sec;
+    ts.tv_sec  += 1;
+  }
   
 }
 
