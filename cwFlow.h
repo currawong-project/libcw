@@ -53,7 +53,7 @@ namespace cw
     // Run a non-real-time program to completion.
     rc_t exec(    handle_t h );
 
-    // Send any pending updates to the UI.
+    // Send any pending updates from the flow network to the UI.
     // This happens automatically if exec() exec_cycle() is called.
     // Calling this function is only necessary when the state of the
     // network is changed outside of runtime.

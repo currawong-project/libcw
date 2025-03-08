@@ -80,6 +80,7 @@ namespace cw
       { "score_player",    &score_player::members },
       { "vel_table",       &vel_table::members },
       { "preset_select",   &preset_select::members },
+      { "gutim_ps",        &gutim_ps::members },
       { "score_follower",  &score_follower::members },
       { nullptr, nullptr }
     };
@@ -97,6 +98,7 @@ namespace cw
     { return handleToPtr<handle_t,flow_t>(h); }
 
 
+    /*
     rc_t _is_var_flag_set( const object_t* var_flags_obj, const char* flag_label, const char* classLabel, const char* varLabel, bool&is_set_flag_ref )
     {
       rc_t rc = kOkRC;
@@ -122,7 +124,8 @@ namespace cw
       }
       return rc;
     }
-
+    */
+    
     rc_t _parse_udp_var_proxy_string( const char* proxyStr, var_desc_t* var_desc )
     {
       rc_t rc       = kOkRC;
@@ -921,24 +924,26 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   p->maxCycleCount  = kInvalidCnt;
   p->proj_dir       = proj_dir;
   p->printLogHdrFl  = true;
+  p->ui_create_fl   = false;
   p->ui_callback    = ui_callback;
   p->ui_callback_arg= ui_callback_arg;
   p->ui_var_head.store(&p->ui_var_stub);
   p->ui_var_tail    = &p->ui_var_stub;
   
   // parse the optional args
-  if((rc = pgmCfg->readv("network",               0,      p->networkCfg,
-                          "non_real_time_fl",     kOptFl, p->non_real_time_fl,
-                          "frames_per_cycle",     kOptFl, p->framesPerCycle,
-                          "sample_rate",          kOptFl, p->sample_rate,
-                          "max_cycle_count",      kOptFl, maxCycleCount,
-                          "dur_limit_secs",       kOptFl, durLimitSecs,
-                          "preset",               kOptFl, p->init_net_preset_label,
-                          "print_class_dict_fl",  kOptFl, printClassDictFl,
-                          "print_network_fl",     kOptFl, p->printNetworkFl,
-                          "multiPriPresetProbFl", kOptFl, p->multiPriPresetProbFl,
-                          "multiSecPresetProbFl", kOptFl, p->multiSecPresetProbFl,
-                          "multiPresetInterpFl",  kOptFl, p->multiPresetInterpFl)) != kOkRC )
+  if((rc = pgmCfg->readv("network",              0,      p->networkCfg,
+                         "non_real_time_fl",     kOptFl, p->non_real_time_fl,
+                         "frames_per_cycle",     kOptFl, p->framesPerCycle,
+                         "sample_rate",          kOptFl, p->sample_rate,
+                         "max_cycle_count",      kOptFl, maxCycleCount,
+                         "dur_limit_secs",       kOptFl, durLimitSecs,
+                         "ui_create_fl",         kOptFl, p->ui_create_fl,
+                         "preset",               kOptFl, p->init_net_preset_label,
+                         "print_class_dict_fl",  kOptFl, printClassDictFl,
+                         "print_network_fl",     kOptFl, p->printNetworkFl,
+                         "multiPriPresetProbFl", kOptFl, p->multiPriPresetProbFl,
+                         "multiSecPresetProbFl", kOptFl, p->multiSecPresetProbFl,
+                         "multiPresetInterpFl",  kOptFl, p->multiPresetInterpFl)) != kOkRC )
   {
     rc = cwLogError(kSyntaxErrorRC,"Error parsing the network system parameters.");
     goto errLabel;
