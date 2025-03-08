@@ -1196,7 +1196,7 @@ namespace cw
       
       for(unsigned i=0; i<bufSmpCnt; dbp+=3, ++i)
       {
-        int ismp = sbuf[i]*kMax24Bits;
+        int ismp = (int)(sbuf[i]*(int)kMax24Bits);
         int_to_24(ismp,dbp);
       }
       
@@ -1210,7 +1210,7 @@ namespace cw
       
       for(unsigned i=0; i<bufSmpCnt; dbp+=3, ++i)
       {
-        int ismp = sbuf[i]*kMax24Bits;
+        int ismp = (int)(sbuf[i]*(int)kMax24Bits);
         int_to_24(ismp,dbp);
       }
       return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);      
