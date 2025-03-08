@@ -72,8 +72,10 @@ namespace cw
     const unsigned kSostenutoCtlMdId  = 0x42;
     const unsigned kSoftPedalCtlMdId  = 0x43;
     const unsigned kLegatoCtlMdId     = 0x44;
-  
 
+  
+    const uint8_t kResetAllCtlsMdId = 121;
+    const uint8_t kAllNotesOffMdId  = 123;
 
     
     //===============================================================================================
@@ -109,6 +111,8 @@ namespace cw
     template< typename T> bool isSoftPedalDown( T s, T d0, T d1) { return ( isSoftPedal(s,d0) && isPedalDown(d1)); }
     template< typename T> bool isSoftPedalUp(   T s, T d0, T d1) { return ( isSoftPedal(s,d0) && isPedalUp(d1)); }
 
+    template< typename T> bool isAllNotesOff(   T s, T d0 )      { return isCtlStatus(s) && (d0)==kAllNotesOffMdId; }
+    template< typename T> bool isResetAllCtls(  T s, T d0 )      { return isCtlStatus(s) && (d0)==kResetAllCtlsMdId; }
     
 
     typedef uint8_t byte_t;
