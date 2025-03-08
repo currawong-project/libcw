@@ -69,6 +69,7 @@ namespace cw
 
       unsigned         cur_alt_idx;
 
+      unsigned dryPresetIdx;
       
     } preset_sel_t;
 
@@ -142,7 +143,7 @@ namespace cw
           mem::release(f->note);
           mem::release(f->presetA);
           mem::release(f->altPresetIdxA);
-          //mem::release(f->multiPresetA);
+          mem::release(f->probDomA);
           mem::release(f);
           goto errLabel;
         }
@@ -180,6 +181,250 @@ namespace cw
       return kOkRC;
     }
 
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // Probabilistic selection
+    //
+    unsigned _get_preset_order( const preset_t* p, unsigned max_valid_order )
+    {
+      if( (p->order == 0 && p->playFl == false) || p->order > max_valid_order )
+        return 0;
+
+      if( p->order == 0 && p->playFl )
+        return 1;
+
+      assert( 1 <= p->order && p->order <= max_valid_order );
+      return p->order;
+    }
+    
+    rc_t _pre_calc_for_prob_select( preset_sel_t* p, frag_t * f)
+    {
+      rc_t rc = kOkRC;
+      unsigned activeOrderA[ f->presetN ] = {};
+      unsigned activeIdxA[ f->presetN ] = {};
+      unsigned common_mult = 1;
+      f->probDomN  = 0;
+      f->probDomainMax = 0;
+      
+      for(unsigned i=0; i<f->presetN; ++i)
+      {
+        unsigned order = _get_preset_order(f->presetA + i, f->presetN-1);
+
+        if( order > 0 )
+        {
+          if( order> 0 && activeOrderA[order]==0 )
+            common_mult *= order;
+
+          activeIdxA[f->probDomN] = i; 
+          f->probDomN += 1;
+          
+          activeOrderA[ order ] = 1;
+        }
+      }
+
+      // if no preset was selected in this fragment then
+      // select the 'dry' preset.
+      if( f->probDomN == 0 )
+      {
+        assert( p->dryPresetIdx != kInvalidIdx && p->dryPresetIdx < f->presetN );
+        
+        f->probDomN   = 1;
+        activeIdxA[0] = p->dryPresetIdx;
+
+        if(activeIdxA[0] == kInvalidIdx )
+        {
+          cwLogError(kEleNotFoundRC,"No preset was selected at end loc:%i and 'dry' preset exists as a default.",f->endLoc);
+          goto errLabel;
+        }
+        
+      }
+
+      f->probDomA = mem::allocZ<prob_domain_t>(f->probDomN);
+
+      for(unsigned i=0; i<f->probDomN; ++i)
+      {
+        preset_t* preset = f->presetA + activeIdxA[i];
+        unsigned order = _get_preset_order( preset, f->presetN-1);
+
+        preset->prob_dom_idx = i;
+        
+        f->probDomA[i].index = activeIdxA[i];
+        f->probDomA[i].order = preset->playFl ? 0 : order;
+        f->probDomA[i].domain = order==0 ? 1 : common_mult / order;
+
+        f->probDomainMax += f->probDomA[i].domain;
+      }
+
+      std::sort(f->probDomA,
+                f->probDomA + f->probDomN,
+                [](const prob_domain_t& a,const prob_domain_t& b){ return a.order<b.order; } );
+
+      assert( f->probDomN>=1 && f->probDomA != nullptr );
+
+    errLabel:
+
+      if( rc != kOkRC )
+        rc = cwLogError(rc,"Pre-calculations for probabilistic preset selection failed.");
+      
+      return rc;
+    }
+
+    unsigned _prob_select_uniform_preset( const preset_sel_t* p,
+                                          const frag_t* f,
+                                          bool dry_on_play_fl,      // select dry if dry has the 'playFl' selected
+                                          bool dry_on_selected_fl,  // select dry if it has order > 0
+                                          bool allow_all_fl,        // select from among all presets - not just the ones in probDomA[]
+                                          unsigned skip_preset_idx=kInvalidIdx )
+    {
+      assert( p->dryPresetIdx != kInvalidIdx && p->dryPresetIdx < f->presetN );
+      unsigned preset_idx     = kInvalidIdx;
+      unsigned domN           = allow_all_fl ? f->presetN : f->probDomN;
+      unsigned skipProbDomIdx = kInvalidIdx;
+      unsigned pdi            = kInvalidIdx;
+      
+
+      // if dry_on_play_fl is set and the dry preset playFl is set
+      if( dry_on_play_fl && f->drySelectedFl )
+      {
+        //printf("PS:DOP!\n");
+        preset_idx = p->dryPresetIdx;
+        goto errLabel;
+      }
+
+      // if dry_on_selected_fl is set and the dry preset has a non-zero order
+      if( dry_on_selected_fl && (f->presetA[ p->dryPresetIdx ].playFl || f->presetA[ p->dryPresetIdx ].order > 0) )
+      {
+        //printf("PS:DOS!\n");
+        preset_idx = p->dryPresetIdx;
+        goto errLabel;
+      }
+      
+      // if no options exist then return the dry preset
+      if( f->probDomN == 0 )
+      {
+        //printf("PS:NO OPTS!\n");
+        preset_idx = p->dryPresetIdx;
+        goto errLabel;
+      }
+      
+      // if only one option exists
+      if( f->probDomN == 1 && allow_all_fl==false )
+      {
+        //printf("PS:ONE OPT!\n");
+        assert( allow_all_fl == false );
+        preset_idx = f->probDomA[0].index;
+        goto errLabel;
+      }
+      
+
+        // if skip-preset was given and it is included in the candidate set
+      if( skip_preset_idx != kInvalidIdx && (f->presetA[ skip_preset_idx ].playFl || f->presetA[ skip_preset_idx ].order>0) )
+      {
+        domN -= 1;
+        if( !allow_all_fl )
+          skipProbDomIdx = f->presetA[ skip_preset_idx ].prob_dom_idx;
+      }
+
+      // if only one option exists after removing the skip-preset
+      if( domN == 1 )
+      {
+        
+        //printf("PS:ONE non-SKIP!\n");
+        assert( allow_all_fl == false );
+        preset_idx = skipProbDomIdx==0 ? 1 : 0;
+        goto errLabel;
+      }
+      
+      pdi = std::min(domN-1,(unsigned)floor(((double)std::rand() * domN / RAND_MAX)));
+
+      if( allow_all_fl )
+      {
+        if( skip_preset_idx != kInvalidIdx && pdi >= skip_preset_idx && pdi < f->presetN-1 )
+          pdi += 1;
+        
+        preset_idx = pdi;
+      }
+      else
+      {
+        if( skipProbDomIdx!=kInvalidIdx && pdi >= skipProbDomIdx && pdi < f->probDomN-1 )
+          pdi += 1;
+      
+        preset_idx = f->probDomA[ pdi ].index;
+      }
+      
+
+    errLabel:
+      
+      //if( preset_idx == kInvalidIdx || preset_idx >= f->presetN || preset_idx == skip_preset_idx )
+      //  printf("PS: INVALIDATED! %i pdi:%i N:%i domN:%i procDomN:%i skip:%i\n",preset_idx,pdi,f->presetN,domN,f->probDomN, skip_preset_idx);
+      
+      return  preset_idx == kInvalidIdx || preset_idx >= f->presetN || preset_idx == skip_preset_idx ? kInvalidIdx  : preset_idx;
+      
+    }
+    
+    unsigned _prob_select_weighted_preset( const preset_sel_t* p,
+                                                  const frag_t* f,
+                                                  bool dry_on_play_fl,      // select dry if dry has the 'playFl' selected                                                  
+                                                  unsigned skip_preset_idx = kInvalidIdx )
+    {
+      unsigned domMax     = f->probDomainMax;
+      unsigned preset_idx = kInvalidIdx;
+      unsigned x = 0;
+      unsigned x_acc = 0;
+      
+      assert( f->probDomN>=1 && f->probDomA != nullptr );
+
+      // if dry_on_play_fl is set and the dry preset playFl is set
+      if( dry_on_play_fl && f->drySelectedFl )
+      {
+        preset_idx = p->dryPresetIdx;
+        goto errLabel;
+      }
+
+      // if there is only one possible preset to select
+      if( f->probDomN == 1 )
+      {
+        preset_idx = f->probDomA[0].index;
+        goto errLabel;
+      }
+      
+      // if a preset should be left out of consideration
+      if( skip_preset_idx != kInvalidIdx )
+      {
+        assert( skip_preset_idx <= f->presetN );
+        assert( f->presetA[ skip_preset_idx ].prob_dom_idx < f->probDomN );
+        assert( domMax >= f->probDomA[ f->presetA[ skip_preset_idx].prob_dom_idx ].domain );
+          
+        domMax -= f->probDomA[ f->presetA[ skip_preset_idx].prob_dom_idx ].domain;        
+      }
+
+      
+      // generate random integer between 0 and domMax
+      x = (unsigned)floor(((double)std::rand() * domMax / RAND_MAX));
+
+      for(unsigned i=0; i<f->probDomN; ++i)
+        if( f->probDomA[i].index != skip_preset_idx )
+        {        
+          x_acc += f->probDomA[i].domain;
+          
+          if( x < x_acc || (f->probDomN==2 && skip_preset_idx != kInvalidIdx) )
+          {
+            assert( f->presetA[ f->probDomA[i].index ].prob_dom_idx == i );
+            preset_idx = f->probDomA[i].index;
+            break;
+          }
+        }
+      
+    errLabel:
+      return  preset_idx == kInvalidIdx || preset_idx >= f->presetN ? kInvalidIdx : preset_idx;
+        
+    }
+    
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // 'Alt' related
+    //
     void _print_preset_alts( preset_sel_t* p, const frag_t* f, const char* label )
     {
       printf("%s : ",label);
@@ -287,6 +532,10 @@ namespace cw
       }
     }
 
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    //
+    
     frag_t* _find_frag( preset_sel_t* p, unsigned fragId )
     {
       frag_t* f;
@@ -909,6 +1158,7 @@ cw::rc_t cw::preset_sel::create(  handle_t& hRef, const object_t* cfg  )
     return rc;
   
   p = mem::allocZ<preset_sel_t>();
+  p->dryPresetIdx = kInvalidIdx;
 
   // parse the cfg
   if((rc = cfg->getv( "preset_labelL",                preset_labelL,
@@ -982,6 +1232,7 @@ cw::rc_t cw::preset_sel::create(  handle_t& hRef, const object_t* cfg  )
   
 
   p->defaultPresetIdx = kInvalidIdx;
+  
   if( default_preset_label != nullptr )
     if((p->defaultPresetIdx = _preset_label_to_index(p,default_preset_label)) ==kInvalidIdx )
       cwLogError(kInvalidIdRC,"The default preset label '%s' could not be found.",cwStringNullGuard(default_preset_label));
@@ -990,8 +1241,17 @@ cw::rc_t cw::preset_sel::create(  handle_t& hRef, const object_t* cfg  )
     cwLogError(kInvalidStateRC,"No default preset was set.");
 
   if( p->dryPresetOrder == nullptr )
+  {
     rc = cwLogError(kInvalidStateRC,"The 'dry' preset was not found.");
-  
+    goto errLabel;
+  }
+
+  if((p->dryPresetIdx = _preset_label_to_index(p,"dry")) == kInvalidIdx )
+  {
+    rc = cwLogError(kEleNotFoundRC,"The  'dry' preset does not exist.");
+    goto errLabel;
+  }
+
   
   hRef.set(p);
   
@@ -1564,6 +1824,52 @@ const cw::flow::preset_order_t*  cw::preset_sel::fragment_active_presets( handle
   return preset_order;
 }
 
+unsigned cw::preset_sel::prob_select_preset_index( handle_t h,
+                                                   const frag_t* f,
+                                                   unsigned flags,
+                                                   unsigned skip_preset_idx )
+{
+  preset_sel_t* p              = _handleToPtr(h);
+  unsigned      preset_idx     = kInvalidIdx;
+  bool          dry_on_play_fl = cwIsFlag(flags,kDryOnPlayFl);
+
+  // if selecting deterministically ...
+  if( cwIsNotFlag(flags,kUseProbFl) )
+  {
+    //printf("ps: deterministic skip:%i\n",skip_preset_idx);
+    
+    for(unsigned i=0; i<f->probDomN; ++i)
+      if( f->probDomA[i].index != skip_preset_idx )
+      {
+        // ... pick the first available preset 
+        preset_idx = f->probDomA[i].index;
+        break;
+      }
+  }
+  else
+  {
+    // if using a uniform distribution
+    if( cwIsFlag(flags,kUniformFl) )
+    {
+      bool dry_on_selected_fl = cwIsFlag(flags,kDryOnSelFl);
+      bool allow_all_fl       = cwIsFlag(flags,kAllowAllFl);
+
+      //printf("ps: uniform dop:%i all:%i sel-dry:%i skip:%i\n",dry_on_play_fl,allow_all_fl,dry_on_selected_fl,skip_preset_idx);
+      
+      preset_idx = _prob_select_uniform_preset(p,f,dry_on_play_fl, dry_on_selected_fl, allow_all_fl, skip_preset_idx );
+    }
+    else
+    {
+      
+      //printf("ps: weighted dop:%i skip:%i\n",dry_on_play_fl,skip_preset_idx);
+      
+      preset_idx = _prob_select_weighted_preset( p, f, dry_on_play_fl, skip_preset_idx );
+    }
+  }
+
+  return preset_idx;
+}
+
 
 cw::rc_t cw::preset_sel::write( handle_t h, const char* fn )
 {
@@ -1649,7 +1955,7 @@ cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
   preset_sel_t*   p            = _handleToPtr(h);  
   object_t*       root         = nullptr;
   const object_t* fragL_obj    = nullptr;
-  unsigned        dryPresetIdx = _preset_label_to_index(p,"dry");
+  
 
   // parse the preset  file
   if((rc = objectFromFile(fn,root)) != kOkRC )
@@ -1711,7 +2017,6 @@ cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
       rc = cwLogError(rc,"Fragment restore record parse failed.");
       goto errLabel;
     }
-
 
     // create a new fragment
     if((rc = create_fragment( h, endLoc, end_ts, fragId)) != kOkRC )
@@ -1782,15 +2087,19 @@ cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
         f->altPresetIdxA[0] = preset_idx;
 
         // if the dry preset is selected
-        if( preset_idx == dryPresetIdx )
+        if( preset_idx == p->dryPresetIdx )
           f->drySelectedFl = true;
       }
       
     }
 
     // if only one preset is active and the dry preset is active
-    f->dryOnlyFl    = activePresetN==1 && (f->presetA[dryPresetIdx].order>0 || f->presetA[dryPresetIdx].playFl);
+    f->dryOnlyFl    = activePresetN==1 && (f->presetA[p->dryPresetIdx].order>0 || f->presetA[p->dryPresetIdx].playFl);
 
+    // setup for prob. preset selection
+    if((rc = _pre_calc_for_prob_select(p, f)) != kOkRC )
+      goto errLabel;
+    
   }
   
 

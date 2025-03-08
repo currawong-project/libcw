@@ -16,8 +16,16 @@ namespace cw
       bool     seqFl;       // play this preset during sequencing.
       unsigned preset_idx;  // preset index into preset_labelA[].
       unsigned order;       // selection label
-      char*    alt_str;     // 'alt' label   
+      char*    alt_str;     // 'alt' label
+      unsigned prob_dom_idx; // index of this preset in probDomA[]
     } preset_t;
+
+    typedef struct prob_domain_str
+    {
+      unsigned index;   // index of preset into frag.presetA[]
+      unsigned order;   // preset order value or 0 if the playFl is set on presetA[index] and presetA[index].order==0
+      unsigned domain;  // probability domain area (greater for more likely preset values)
+    } prob_domain_t;
 
     typedef struct frag_str
     {
@@ -46,6 +54,10 @@ namespace cw
       bool             uiSelectFl;
       bool             seqAllFl; // Set if all preset.seqFl's should be treated as though they are set to true.
 
+      prob_domain_t* probDomA;  // probDomA[ probDomN ] ascending order on 'order' - preset with playFl set is always first
+      unsigned       probDomN;   
+      unsigned       probDomainMax; // sum(probDomA.domain)
+      
       struct frag_str* link;
       struct frag_str* prev;
     } frag_t;
@@ -150,6 +162,20 @@ namespace cw
     };
     
     const flow::preset_order_t*  fragment_active_presets( handle_t h, const frag_t* f, unsigned flags, unsigned& count_ref );
+
+    enum {
+      kUseProbFl   = 0x01, // True=Select the preset probalistically. False=Select the preset with the lowest non-zero order.  
+      kUniformFl   = 0x02, // Ignored if kUseProbFl is not set. True=Use uniform PDF to select preset. False=Use 'order' weightings to select preset.
+      kDryOnPlayFl = 0x04, // Ignored if kUseProbFl is not set. True=Select 'dry' if marked with 'play-fl'. False=Choose probabilistically.
+      kAllowAllFl  = 0x08, // Ignored if kUseProbFl is not set. True=Select from all presets. False=Select from presets with order>0 or play_fl set.
+      kDryOnSelFl  = 0x10, // Ignored if kUseProbFl and kUniformFl is not set. True=Select 'dry' if dry order>0 or play_fl set. Otherwise choose with uniform prob.
+    };
+    
+    unsigned prob_select_preset_index( handle_t h,
+                                       const frag_t* f,
+                                       unsigned flags,
+                                       unsigned skip_preset_idx = kInvalidIdx );
+                                       
     
     rc_t write( handle_t h, const char* fn );
     rc_t read(  handle_t h, const char* fn );
