@@ -323,12 +323,12 @@ cw::rc_t cw::nbmpscq::push( handle_t h, const void* blob, unsigned blobByteN )
   {
     // TODO: continue to iterate through the blocks waiting for the consumer
     // to make more space available.
-    //_block_report(p);
+    // _block_report(p);
 
     // BEWARE: BUG BUG BUG: Since the cwLog makes calls to cwWebSocket
     // this error message, and subsequent error messages,
     // will result in a recursive loop which will crash the program.
-    rc = cwLogError(kBufTooSmallRC,"NbMpScQueue overflow.");
+    rc = cwLogError(kBufTooSmallRC,"NbMpScQueue overflow. Increase 'queueBlkCnt' and/or 'queueBlkByteCnt'");
     
   }
   
