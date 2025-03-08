@@ -527,7 +527,7 @@ namespace cw
     }
 
     template< typename T >
-    rc_t _ui_callback_tpl( io_flow_ctl_t* p, const flow::ui_var_t* ui_var )
+    rc_t _ui_callback_tpl( io_flow_ctl_t* p, flow::ui_var_t* ui_var )
     {
       rc_t rc;
       
@@ -549,7 +549,7 @@ namespace cw
     }
 
     // This function is called with messages for the UI from the flow proc instances 
-    rc_t _ui_callback( void* arg, const flow::ui_var_t* ui_var )
+    rc_t _ui_callback( void* arg, flow::ui_var_t* ui_var )
     {
       rc_t rc = kOkRC;
       
@@ -559,6 +559,28 @@ namespace cw
       {
         rc = cwLogError(kInvalidArgRC,"The user_id (uuid) of the variable was not set.");
         goto errLabel;
+      }
+
+      if( ui_var->new_disable_fl != ui_var->disable_fl )
+      {
+        if((rc = uiSetEnable( p->ioH, ui_var->user_id, !ui_var->new_disable_fl )) != kOkRC )
+        {
+          rc = cwLogError(rc,"UI enable/disable update failed.");
+          goto errLabel;
+        }
+
+        ui_var->disable_fl = ui_var->new_disable_fl;
+      }
+
+      if( ui_var->new_hide_fl != ui_var->hide_fl )
+      {
+        if((rc = uiSetVisible( p->ioH, ui_var->user_id, !ui_var->new_hide_fl )) != kOkRC )
+        {
+          rc = cwLogError(rc,"UI hide/show update failed.");
+          goto errLabel;
+        }
+
+        ui_var->hide_fl = ui_var->new_hide_fl;
       }
       
       switch( ui_var->value_tid & flow::kTypeMask )

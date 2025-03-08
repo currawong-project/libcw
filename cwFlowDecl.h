@@ -128,6 +128,13 @@ namespace cw
       unsigned    ch_cnt;         // 0=kAnyChIdx only, kInvalidCnt=no channels, 1=mono, 2=stereo, ...
 
       unsigned user_id; // uuId of the UI element that represents this var
+
+      bool disable_fl;  // true if this ui var is disabled
+      bool hide_fl;     // true if this ui var is hidden
+
+      bool new_disable_fl;
+      bool new_hide_fl;
+      
     } ui_var_t;
 
     struct proc_str;
@@ -156,6 +163,8 @@ namespace cw
     typedef struct ui_net_str
     {
       struct network_str* net;
+
+      bool ui_create_fl;  // Set via network flag 'ui_create_fl'. 
       
       ui_proc_t* procA;  // procA[procN]
       unsigned   procN;
@@ -168,7 +177,7 @@ namespace cw
       
     } ui_net_t;
 
-    typedef rc_t (*ui_callback_t)( void* arg, const ui_var_t* ui_var );
+    typedef rc_t (*ui_callback_t)( void* arg, ui_var_t* ui_var );
 
     
   }

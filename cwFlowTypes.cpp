@@ -30,9 +30,12 @@ namespace cw
       { kSrcVarDescFl,       "src" },
       { kSrcOptVarDescFl,    "src_opt" },
       { kNoSrcVarDescFl,     "no_src" },
-      { kInitVarDescFl,      "init" },
-      { kMultVarDescFl,      "mult" },
-      { kUdpOutVarDescFl,    "out" },
+      { kInitVarDescFl,      "init"  },
+      { kMultVarDescFl,      "mult"  },
+      { kUdpOutVarDescFl,    "out"   },
+      { kUiCreateVarDescFl, "no_ui" }, // even if the proc ui is enabled, don't show this var
+      { kUiDisableVarDescFl,"ui_disable" },
+      { kUiHideVarDescFl,   "ui_hide" },
       { kInvalidVarDescFl, "<invalid>" }
     };
 
@@ -644,6 +647,10 @@ cw::flow::class_desc_t* cw::flow::class_desc_find( flow_t* p, const char* label 
   return nullptr;
 }
 
+const cw::flow::class_desc_t* cw::flow::class_desc_find(  const flow_t* p, const char* class_desc_label )
+{  return class_desc_find( const_cast<flow_t*>(p), class_desc_label ); }
+
+
 const cw::flow::var_desc_t* cw::flow::var_desc_find( const class_desc_t* cd, const char* label )
 {
   const var_desc_t* vd = cd->varDescL;
@@ -680,6 +687,131 @@ const cw::flow::class_preset_t* cw::flow::class_preset_find( const class_desc_t*
   
   return nullptr;
 }
+
+cw::rc_t cw::flow::class_preset_value_channel_count( const class_preset_t* class_preset, const char* var_label, unsigned& ch_cnt_ref )
+{
+  rc_t rc = kOkRC;
+  const object_t* var_cfg;
+      
+  ch_cnt_ref = 0;
+
+  if( class_preset->cfg == nullptr )
+  {
+    rc = cwLogError(rc,"The preset '%s' is not valid.", cwStringNullGuard(class_preset->label));
+    goto errLabel;
+  }
+      
+  if((var_cfg = class_preset->cfg->find(var_label)) == nullptr )
+  {
+    rc = cwLogError(rc,"Preset variable '%s' not found on preset '%s'.",cwStringNullGuard(var_label),cwStringNullGuard(class_preset->label));
+    goto errLabel;
+  }
+
+  if( var_cfg->is_list() )
+    ch_cnt_ref = var_cfg->child_count();
+  else
+    ch_cnt_ref = 1;
+      
+errLabel:
+  return rc;
+}
+
+cw::rc_t cw::flow::class_preset_value_channel_count( const class_desc_t* class_desc, const char* class_preset_label, const char* var_label, unsigned& ch_cnt_ref )
+{
+  rc_t rc = kOkRC;
+  const class_preset_t* class_preset = nullptr;
+
+  ch_cnt_ref = 0;
+  
+  if((class_preset = class_preset_find(class_desc, class_preset_label)) == nullptr )
+  {
+    rc = cwLogError(kEleNotFoundRC,"The preset '%s' could not be found on the class description: '%s'.",cwStringNullGuard(class_preset_label),cwStringNullGuard(class_desc->label));
+    goto errLabel;
+  }
+
+  rc = class_preset_value_channel_count( class_preset, var_label, ch_cnt_ref );
+  
+errLabel:
+  return rc;
+}
+
+cw::rc_t cw::flow::class_preset_value_channel_count( const flow_t* p, const char* class_desc_label, const char* class_preset_label, const char* var_label, unsigned& ch_cnt_ref )
+{
+  rc_t rc = kOkRC;
+  const class_desc_t* class_desc;
+
+  ch_cnt_ref = 0;
+  
+  if((class_desc = class_desc_find(p,class_desc_label)) == nullptr )
+  {
+    rc = cwLogError(kEleNotFoundRC,"The class description '%s' could not be found.",cwStringNullGuard(class_desc_label));
+    goto errLabel;
+  }
+
+  rc = class_preset_value_channel_count(class_desc, class_preset_label, var_label, ch_cnt_ref );
+
+errLabel:
+  return rc;
+}
+
+cw::rc_t cw::flow::class_preset_has_var( const class_preset_t* class_preset, const char* var_label, bool& fl_ref )
+{
+  rc_t rc = kOkRC;
+  const object_t* var_cfg;
+      
+  fl_ref = false;
+
+  if( class_preset->cfg == nullptr )
+  {
+    rc = cwLogError(rc,"The preset '%s' is not valid.", cwStringNullGuard(class_preset->label));
+    goto errLabel;
+  }
+      
+  fl_ref = class_preset->cfg->find(var_label) != nullptr;
+      
+errLabel:
+  return rc;
+  
+}
+
+cw::rc_t cw::flow::class_preset_has_var( const class_desc_t* class_desc, const char* class_preset_label, const char* var_label, bool& fl_ref )
+{
+  rc_t rc = kOkRC;
+  const class_preset_t* class_preset = nullptr;
+
+  fl_ref = false;
+  
+  if((class_preset = class_preset_find(class_desc, class_preset_label)) == nullptr )
+  {
+    rc = cwLogError(kEleNotFoundRC,"The preset '%s' could not be found on the class description: '%s'.",cwStringNullGuard(class_preset_label),cwStringNullGuard(class_desc->label));
+    goto errLabel;
+  }
+
+  rc = class_preset_has_var( class_preset, var_label, fl_ref );
+  
+errLabel:
+  return rc;
+}
+
+cw::rc_t cw::flow::class_preset_has_var( const flow_t* p, const char* class_desc_label, const char* class_preset_label, const char* var_label, bool& fl_ref )
+{
+  rc_t rc = kOkRC;
+  const class_desc_t* class_desc;
+
+  fl_ref = false;
+
+  if((class_desc = class_desc_find(p,class_desc_label)) == nullptr )
+  {
+    rc = cwLogError(kEleNotFoundRC,"The class description '%s' could not be found.",cwStringNullGuard(class_desc_label));
+    goto errLabel;
+  }
+
+  rc = class_preset_has_var(class_desc, class_preset_label, var_label, fl_ref );
+
+errLabel:
+  return rc;
+}
+
 
 void cw::flow::class_dict_print( flow_t* p )
 {
@@ -1568,6 +1700,33 @@ cw::rc_t  cw::flow::var_send_to_ui( proc_t* proc, unsigned vid,  unsigned chIdx 
   
   return rc;
 }
+
+cw::rc_t  cw::flow::var_send_to_ui_enable( proc_t* proc, unsigned vid,  unsigned chIdx, bool enable_fl )
+{
+  rc_t rc = kOkRC;
+  variable_t* var = nullptr;
+
+  if((rc = var_find(proc, vid, chIdx, var )) == kOkRC )
+  {
+    var->ui_var->new_disable_fl = !enable_fl;
+    rc = var_send_to_ui(var);
+  }
+  return rc;
+}
+
+cw::rc_t  cw::flow::var_send_to_ui_show(   proc_t* proc, unsigned vid,  unsigned chIdx, bool show_fl )
+{
+  rc_t rc = kOkRC;
+  variable_t* var = nullptr;
+
+  if((rc = var_find(proc, vid, chIdx, var )) == kOkRC )
+  {
+    var->ui_var->new_hide_fl = !show_fl;
+    rc = var_send_to_ui(var);
+  }
+  return rc;
+}
+
 
 cw::rc_t cw::flow::var_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, variable_t*& varRef )
 {

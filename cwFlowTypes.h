@@ -14,13 +14,16 @@ namespace cw
     // var_desc_t attribute flags
     enum
     {
-      kInvalidVarDescFl   = 0x00,
-      kSrcVarDescFl       = 0x01,
-      kSrcOptVarDescFl    = 0x02,
-      kNoSrcVarDescFl     = 0x04,
-      kInitVarDescFl      = 0x08,
-      kMultVarDescFl      = 0x10,
-      kUdpOutVarDescFl = 0x20
+      kInvalidVarDescFl   = 0x000,
+      kSrcVarDescFl       = 0x001,
+      kSrcOptVarDescFl    = 0x002,
+      kNoSrcVarDescFl     = 0x004,
+      kInitVarDescFl      = 0x008,
+      kMultVarDescFl      = 0x010,
+      kUdpOutVarDescFl    = 0x020,
+      kUiCreateVarDescFl  = 0x040,
+      kUiDisableVarDescFl = 0x080,
+      kUiHideVarDescFl    = 0x100 
     };
     
     typedef struct class_members_str
@@ -75,7 +78,7 @@ namespace cw
       kInvalidVarFl    = 0x00,
       kLogVarFl        = 0x01,
       kProxiedVarFl    = 0x02,
-      kProxiedOutVarFl = 0x04
+      kProxiedOutVarFl = 0x04,
     };
 
     // Note: The concatenation of 'vid' and 'chIdx' should form a unique identifier among all variables
@@ -114,11 +117,17 @@ namespace cw
 
 
     struct network_str;
+
+    enum {
+      kUiCreateProcFl = 0x01
+    };
     
     typedef struct proc_str
     {
       struct flow_str*    ctx;  // global system context
       struct network_str* net;  // network which owns this proc
+
+      unsigned        flags;         // See k???ProcFl
 
       class_desc_t*   class_desc;    //
       
@@ -292,8 +301,9 @@ namespace cw
       
       network_t*        net;      // The root of the network instance
 
-      ui_callback_t  ui_callback;
-      void*          ui_callback_arg;
+      bool                     ui_create_fl; // dflt: false Set by network flag: ui_create_fl, override with proc inst ui:{ create_fl }
+      ui_callback_t            ui_callback;
+      void*                    ui_callback_arg;
       
       std::atomic<variable_t*> ui_var_head; // Linked lists of var's to send to the UI
       variable_t               ui_var_stub;
@@ -319,8 +329,9 @@ namespace cw
     const char*          var_desc_flag_to_attribute( unsigned flag );
     const idLabelPair_t* var_desc_flag_array( unsigned& array_cnt_ref );
 
-    void              class_desc_destroy( class_desc_t* class_desc);
-    class_desc_t*     class_desc_find(  flow_t* p, const char* class_desc_label );
+    void                class_desc_destroy( class_desc_t* class_desc);
+    class_desc_t*       class_desc_find(        flow_t* p, const char* class_desc_label );
+    const class_desc_t* class_desc_find(  const flow_t* p, const char* class_desc_label );
     
     var_desc_t*       var_desc_find(       class_desc_t* cd, const char* var_label );
     const var_desc_t* var_desc_find( const class_desc_t* cd, const char* var_label );
@@ -328,7 +339,88 @@ namespace cw
 
     bool              var_desc_has_recd_format( var_desc_t* vd );
     
-    const class_preset_t*   class_preset_find( const class_desc_t* cd, const char* preset_label );
+    const class_preset_t* class_preset_find( const class_desc_t* cd, const char* preset_label );
+
+    template<class T>
+    rc_t class_preset_value( const class_preset_t* class_preset, const char* var_label, unsigned ch_idx, T& val )
+    {
+      rc_t rc = kOkRC;
+      const object_t* preset_val = nullptr;
+
+      if((rc = class_preset->cfg->get(var_label, preset_val )) != kOkRC )
+      {
+        rc = cwLogError(rc,"The preset variable '%s' on the preset '%s' could not be parsed.",cwStringNullGuard(var_label),cwStringNullGuard(class_preset->label));
+        goto errLabel;
+      }
+
+      if( preset_val->is_list() )
+      {
+        if( ch_idx >= preset_val->child_count() || (preset_val = preset_val->child_ele( ch_idx )) == nullptr )
+        {
+          rc = cwLogError(rc,"The channel index '%i' is invalid for the preset '%s:%s'.",ch_idx,cwStringNullGuard(class_preset->label),cwStringNullGuard(var_label));
+          goto errLabel;
+        }
+      }
+
+      // 
+      if((rc = preset_val->value( val )) != kOkRC )
+      {
+        rc = cwLogError(rc,"The preset value '%s:%s ch:%i' could not be parsed.",cwStringNullGuard(class_preset->label),cwStringNullGuard(var_label),ch_idx);
+        goto errLabel;
+      }
+
+    errLabel:
+      return rc;
+    }
+
+    template<class T>
+    rc_t class_preset_value( const class_desc_t* class_desc, const char* class_preset_label, const char* var_label, unsigned ch_idx, T& val )
+    {
+      rc_t rc = kOkRC;
+      const class_preset_t* class_preset = nullptr;
+
+      if((class_preset = class_preset_find(class_desc, class_preset_label)) == nullptr )
+      {
+        rc = cwLogError(kEleNotFoundRC,"The preset '%s' could not be found on the class description: '%s'.",cwStringNullGuard(class_preset_label),cwStringNullGuard(class_desc->label));
+        goto errLabel;
+      }
+
+      rc = class_preset_value(class_preset, var_label, ch_idx, val );
+
+    errLabel:
+      return rc;
+    }
+
+    template<class T>
+    rc_t class_preset_value( const flow_t* p, const char* class_desc_label, const char* class_preset_label, const char* var_label, unsigned ch_idx, T& val )
+    {
+      rc_t rc = kOkRC;
+      const class_desc_t* class_desc;
+      if((class_desc = class_desc_find(p,class_desc_label)) == nullptr )
+      {
+        rc = cwLogError(kEleNotFoundRC,"The class description '%s' could not be found.",cwStringNullGuard(class_desc_label));
+        goto errLabel;
+      }
+
+      rc = class_preset_value( class_desc, class_preset_label, var_label, ch_idx, val );
+
+    errLabel:
+      return rc;      
+    }
+    
+    
+    rc_t class_preset_value_channel_count( const class_preset_t* class_preset, const char* var_label, unsigned& ch_cnt_ref );
+    rc_t class_preset_value_channel_count( const class_desc_t* class_desc, const char* class_preset_label, const char* var_label, unsigned& ch_cnt_ref );
+    rc_t class_preset_value_channel_count( const flow_t* p, const char* class_desc_label, const char* class_preset_label, const char* var_label, unsigned& ch_cnt_ref );
+
+
+    rc_t class_preset_has_var( const class_preset_t* class_preset, const char* var_label, bool& fl_ref );
+    rc_t class_preset_has_var( const class_desc_t* class_desc, const char* class_preset_label, const char* var_label, bool& fl_ref );
+    rc_t class_preset_has_var( const flow_t* p, const char* class_desc_label, const char* class_preset_label, const char* var_label, bool& fl_ref );
+    
+
+
+    
     
     //------------------------------------------------------------------------------------------------------------------------
     //
@@ -443,6 +535,8 @@ namespace cw
     // Send a variable value to the UI
     rc_t           var_send_to_ui( variable_t* var );
     rc_t           var_send_to_ui( proc_t* proc, unsigned vid,  unsigned chIdx );
+    rc_t           var_send_to_ui_enable( proc_t* proc, unsigned vid,  unsigned chIdx, bool enable_fl );
+    rc_t           var_send_to_ui_show(   proc_t* proc, unsigned vid,  unsigned chIdx, bool show_fl );
 
     //-----------------
     //

@@ -95,7 +95,9 @@ namespace cw
 
       const object_t* out_dict_cfg; // cfg. node to the out-list
       io_stmt_t*      oStmtA;
-      unsigned        oStmtN;      
+      unsigned        oStmtN;
+
+      const object_t* ui_cfg; // cfg. node to ui
       
     } proc_inst_parse_state_t;
 
@@ -1462,6 +1464,37 @@ namespace cw
       return rc1;
     }
 
+    rc_t _proc_parse_ui_cfg(proc_t* proc, const proc_inst_parse_state_t& pstate)
+    {
+      rc_t rc = kOkRC;
+      bool ui_create_fl = false;
+
+      if( pstate.ui_cfg == nullptr )
+        goto errLabel;
+
+      if( pstate.ui_cfg->is_dict() == false )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The UI cfg. record is not a dictionary.");
+        goto errLabel;
+      }
+
+      if( pstate.ui_cfg->find("create_fl") == nullptr )
+        ui_create_fl = proc->ctx->ui_create_fl;
+      
+      // parse the optional args
+      if((rc = pstate.ui_cfg->getv_opt("create_fl",  ui_create_fl )) != kOkRC )
+        goto errLabel;        
+
+      if( ui_create_fl )
+        proc->flags |= kUiCreateProcFl;
+      
+    errLabel:
+      if( rc != kOkRC )
+        rc = cwLogError(kSyntaxErrorRC,"The proc instance cfg. '%s:%i' UI configuration parse failed.",pstate.proc_label,pstate.proc_label_sfx_id);
+
+      return rc;
+    }
+    
     rc_t _proc_verify_required_record_fields( const proc_t* proc )
     {
       rc_t rc = kOkRC;
@@ -1610,6 +1643,7 @@ namespace cw
       if((rc = proc_inst_cfg->pair_value()->getv_opt("args",     arg_dict,
                                                      "in",       pstate.in_dict_cfg,
                                                      "out",      pstate.out_dict_cfg,
+                                                     "ui",       pstate.ui_cfg,
                                                      "preset",   pstate.preset_labels,
                                                      "presets",  pstate.presets_dict,
                                                      "log",      pstate.log_labels )) != kOkRC )
@@ -1859,6 +1893,7 @@ namespace cw
     }
 
 
+    /*
     rc_t  _process_net_preset(proc_t* proc, const object_t* net_preset_cfgD)
     {
       rc_t rc = kOkRC;
@@ -1893,7 +1928,7 @@ namespace cw
       
       return rc;
     }
-
+    */
     
     void _pstate_destroy( proc_inst_parse_state_t pstate )
     {
@@ -2069,6 +2104,11 @@ namespace cw
       // call the 'value()' function to inform the proc instance of the current value of all of it's variables.
       if((rc = _proc_call_value_func_on_all_variables( proc )) != kOkRC )
         goto errLabel;
+
+      // parse the proc UI cfg record
+      if(pstate.ui_cfg != nullptr )
+        if((rc = _proc_parse_ui_cfg(proc,pstate)) != kOkRC )
+          goto errLabel;
 
       // validate the proc's state.
       if((rc = proc_validate(proc)) != kOkRC )
@@ -3430,10 +3470,11 @@ namespace cw
             ui_var->label        = var->label;
             ui_var->label_sfx_id = var->label_sfx_id;
             ui_var->has_source_fl= is_connected_to_source( var );
+            ui_var->disable_fl   = ui_var->has_source_fl;
             ui_var->vid          = var->vid;
             ui_var->ch_cnt       = var_channel_count( net.procA[i], var->label, var->label_sfx_id );
             ui_var->ch_idx       = var->chIdx;
-            ui_var->value_tid    = var->type;
+            ui_var->value_tid    = (var->varDesc->type & flow::kTypeMask) == kAllTFl ? kAllTFl : var->type;
             ui_var->desc_flags   = var->varDesc->flags;
             ui_var->desc_cfg     = var->varDesc->cfg;
             ui_var->user_id      = kInvalidId;
@@ -3472,6 +3513,7 @@ namespace cw
         goto errLabel;
 
       ui_net_ref->poly_idx = net.poly_idx;
+      ui_net_ref->ui_create_fl = p->ui_create_fl;
 
       if( net.poly_link != nullptr )
         _form_net_ui_desc(p,*net.poly_link,ui_net_ref->poly_link);
