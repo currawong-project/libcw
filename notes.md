@@ -941,6 +941,10 @@ resolvable without more information.
 
 ### TODO:
 
+- Why doesn't the C7 on the downbeat of meas. 11 sound?
+- DONE: Allow setting the location of the score player.  This should also reset the sampler and voice control.
+- DONE: The voice ctl should respond to all-notes-off message and reset each sampler channel
+
 - The following two tasks need more consideration. As it is variables assume that aggregate
 types are destroyed on exit.  This is very convenient. Consider using 'symbols' to represent
 strings, consider adding a 'const-string' type to eliminate memory allocation of string assignment
@@ -1093,6 +1097,10 @@ Processors that have mandatory signal inputs should never need to also have an s
 - Implement user defined data types.
 
 - Implement matrix types.
+
+- Add a 'trigger' data type. The 'kAllTId' isn't really doing anything.
+
+- There should be special logging macros inside procs that automatically log the instance name.
 
 - Look more closely at the way to identify an in-stmt src-net or a out-stmt in-net.
 It's not clear there is a difference between specifying  `_` and the default behaviour.
