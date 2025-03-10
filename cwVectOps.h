@@ -72,7 +72,7 @@ namespace cw
     
     template< typename T >
       void zero( T* v, unsigned n )
-    { fill(v,n,0); }
+    { fill(v,n,(T)0); }
 
     template< typename T >
       void ones( T* v, unsigned n )
@@ -379,6 +379,17 @@ namespace cw
       return beg + (incr*i);
     }
 
+
+    template< typename T >
+    T* urand( T* y, unsigned yN, const T& min_val, const T& max_val )
+    {
+      unsigned i = 0;
+      for(; i<yN; ++i)
+        y[i] = min_val + (T)((double)(std::rand() * (max_val-min_val)) /  RAND_MAX);
+      return y;
+    }
+    
+
     template< typename T >
       T sum( const T* v, unsigned n )
     {
@@ -419,6 +430,16 @@ namespace cw
       return sum;
     }
 
+    template< typename T0 >
+    T0 sum_sq( const T0* v, unsigned n )
+    {
+      T0 sum = 0;
+      for(unsigned i=0; i<n; ++i)
+        sum += v[i] * v[i];
+
+      return sum;
+    }
+    
 
     //==================================================================================================================
     // Statistics
