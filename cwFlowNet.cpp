@@ -1608,6 +1608,7 @@ namespace cw
     {
       rc_t            rc       = kOkRC;
       const object_t* arg_dict = nullptr;
+      const object_t* network  = nullptr;
       
       // validate the syntax of the proc_inst_cfg pair
       if( !_is_non_null_pair(proc_inst_cfg))
@@ -1631,24 +1632,19 @@ namespace cw
         rc = cwLogError(kSyntaxErrorRC,"The proc instance label '%s:%i' has already been used.",pstate.proc_label,pstate.proc_label_sfx_id);
         goto errLabel;
       }
-      
-      // get the proc instance class label
-      if((rc = proc_inst_cfg->pair_value()->getv("class",pstate.proc_clas_label)) != kOkRC )
-      {
-        rc = cwLogError(kSyntaxErrorRC,"The proc instance cfg. %s:%i is missing: 'type'.",pstate.proc_label,pstate.proc_label_sfx_id);
-        goto errLabel;        
-      }
-      
+            
       // parse the optional args
-      if((rc = proc_inst_cfg->pair_value()->getv_opt("args",     arg_dict,
-                                                     "in",       pstate.in_dict_cfg,
-                                                     "out",      pstate.out_dict_cfg,
-                                                     "ui",       pstate.ui_cfg,
-                                                     "preset",   pstate.preset_labels,
-                                                     "presets",  pstate.presets_dict,
-                                                     "log",      pstate.log_labels )) != kOkRC )
+      if((rc = proc_inst_cfg->pair_value()->readv(   "class",    kReqFl, pstate.proc_clas_label,
+                                                     "args",     kOptFl, arg_dict,
+                                                     "in",       kOptFl, pstate.in_dict_cfg,
+                                                     "out",      kOptFl, pstate.out_dict_cfg,
+                                                     "ui",       kOptFl, pstate.ui_cfg,
+                                                     "preset",   kOptFl, pstate.preset_labels,
+                                                     "presets",  kOptFl, pstate.presets_dict,
+                                                     "network",  kOptFl, network,
+                                                     "log",      kOptFl, pstate.log_labels )) != kOkRC )
       {
-        rc = cwLogError(kSyntaxErrorRC,"The proc instance cfg. '%s:%i' missing: 'type'.",pstate.proc_label,pstate.proc_label_sfx_id);
+        rc = cwLogError(kSyntaxErrorRC,"The proc instance cfg. '%s:%i' parse failed.",pstate.proc_label,pstate.proc_label_sfx_id);
         goto errLabel;        
       }
 
@@ -3373,33 +3369,20 @@ namespace cw
     {
       rc_t            rc           = kOkRC;
       unsigned        procN        = 0;
-      //const object_t* netPresetCfg = nullptr;
 
       // if the top level network has not been set then set it here.
       // (this is necessary so that proc's later in the exec order
       //  can locate proc's earlier in the exec order)
       if(p->net == nullptr )
         p->net = net;
-              
-      if((rc = networkCfg->getv("procs",net->procsCfg)) != kOkRC )
+
+      if((rc = networkCfg->readv("procs",   kReqFl, net->procsCfg,
+                                 "presets", kOptFl, net->presetsCfg )) != kOkRC )
       {
-        rc = cwLogError(rc,"Failed on parsing required network cfg. elements.");
+        rc = cwLogError(rc,"Failed on parsing network cfg.");
         goto errLabel;
       }
 
-      if((rc = networkCfg->getv_opt("presets",net->presetsCfg)) != kOkRC )
-      {
-        rc = cwLogError(rc,"Failed on parsing optional network cfg. elements.");
-        goto errLabel;
-      }
-
-      // locate the requested network preset cfg
-      //if((rc = _get_network_preset_cfg(net->presetsCfg,preset_label,netPresetCfg)) != kOkRC )
-      //{
-      //  rc = cwLogError(rc,"Network create failed because the network preset resolution failed.");
-      //  goto errLabel;
-      //}
-      
       procN            = net->procsCfg->child_count();
       net->procA  = mem::allocZ<proc_t*>(procN);
 
@@ -3476,7 +3459,7 @@ namespace cw
             ui_var->ch_idx       = var->chIdx;
             ui_var->value_tid    = (var->varDesc->type & flow::kTypeMask) == kAllTFl ? kAllTFl : var->type;
             ui_var->desc_flags   = var->varDesc->flags;
-            ui_var->desc_cfg     = var->varDesc->cfg;
+            ui_var->ui_cfg       = var->varDesc->ui_cfg;
             ui_var->user_id      = kInvalidId;
             
             var->ui_var = ui_var;

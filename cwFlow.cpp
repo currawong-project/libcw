@@ -228,20 +228,14 @@ namespace cw
         goto errLabel;
       }
       
-
       // get the variable description 
-      if((rc = vd->cfg->getv("doc",  vd->docText)) != kOkRC )
-      {
-        rc = cwLogError(rc,"Parsing failed on class:%s variable: '%s'.", class_desc->label, vd->label );
-        goto errLabel;
-      }
-
-      // get the variable description 
-      if((rc = vd->cfg->getv_opt("flags", var_flags_obj,
-                                 "type", var_value_type_str,
-                                 "value", vd->val_cfg,
-                                 "fmt",   vd->fmt_cfg,
-                                 "proxy", proxy_string )) != kOkRC )
+      if((rc = vd->cfg->readv("doc",   kReqFl, vd->docText,
+                              "flags", kOptFl, var_flags_obj,
+                              "type",  kOptFl, var_value_type_str,
+                              "value", kOptFl, vd->val_cfg,
+                              "fmt",   kOptFl, vd->fmt_cfg,
+                              "ui",    kOptFl, vd->ui_cfg,
+                              "proxy", kOptFl, proxy_string )) != kOkRC )
       {
         rc = cwLogError(rc,"Parsing optional fields failed.");
         goto errLabel;
