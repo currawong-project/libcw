@@ -98,7 +98,7 @@ cw::rc_t cw::dsp::compressor::destroy( obj_t*& p )
   See compressor.m
 */
     
-cw::rc_t cw::dsp::compressor::exec( obj_t* p, const sample_t* x, sample_t* y, unsigned n )
+cw::rc_t cw::dsp::compressor::exec( obj_t* p, const sample_t* x, sample_t* y, unsigned n, bool enable_fl )
 {
 
   sample_t xx[n];
@@ -113,7 +113,7 @@ cw::rc_t cw::dsp::compressor::exec( obj_t* p, const sample_t* x, sample_t* y, un
   rmsDb += 100.0;
 
   // if the compressor is bypassed
-  if( p->bypassFl )
+  if( p->bypassFl || !enable_fl )
   {
     vop::copy(y,x,n); // copy through - with no input gain
     return kOkRC;

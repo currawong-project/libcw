@@ -40,7 +40,7 @@ namespace cw
       
       rc_t create( obj_t*& p, srate_t srate, unsigned procSmpCnt, coeff_t inGain, ftime_t rmsWndMaxMs, ftime_t rmsWndMs, coeff_t threshDb, coeff_t ratio, ftime_t atkMs, ftime_t rlsMs, coeff_t outGain, bool bypassFl );
       rc_t destroy( obj_t*& pp );
-      rc_t exec( obj_t* p, const sample_t* x, sample_t* y, unsigned n );
+      rc_t exec( obj_t* p, const sample_t* x, sample_t* y, unsigned n, bool enable_fl );
       
       void set_attack_ms(  obj_t* p, ftime_t ms );
       void set_release_ms( obj_t* p, ftime_t ms );
