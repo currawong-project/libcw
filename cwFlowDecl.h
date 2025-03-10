@@ -118,7 +118,7 @@ namespace cw
       const char* label;         // flow::variable_t::label
       unsigned    label_sfx_id;  // flow::variable_t::label_sfx_id
 
-      const       object_t* desc_cfg;     // var desc cfg from flow::var_desc_t
+      const       object_t* ui_cfg;       // ui cfg from flow::var_desc_t
       unsigned              desc_flags;   // flow::var_desc_t::flags
 
       bool        has_source_fl;  // true if this var is connected to a source var
