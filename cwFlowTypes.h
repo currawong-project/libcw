@@ -40,6 +40,7 @@ namespace cw
       const object_t*      cfg;     // The cfg object that describes this variable from 'flow_class'.
       const object_t*      val_cfg; // An object containing the default value for this variable.
       const object_t*      fmt_cfg; // An object containg the format (e.g. record fields) information
+      const object_t*      ui_cfg;  // The UI cfg for this var.
       const char*          label;   // Name of this var. 
       unsigned             type;    // Value type id (e.g. kBoolTFl, kIntTFl, ...)
       unsigned             flags;   // Attributes for this var. (e.g. kSrcVarFl )
