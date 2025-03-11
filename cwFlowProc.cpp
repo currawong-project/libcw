@@ -569,7 +569,8 @@ namespace cw
       {
         kDevLabelPId,
         kPortLabelPId,
-        kOutPId
+        kOutPId,
+        kROutPId
       };
       
       typedef struct
@@ -579,7 +580,49 @@ namespace cw
         bool               dev_filt_fl;
         bool               port_filt_fl;        
         external_device_t* ext_dev;
+
+        recd_array_t* recd_array;    // output record array for 'out'.
+        unsigned      midi_fld_idx;  // pre-computed record field indexes
+        
       } inst_t;
+
+      rc_t _alloc_recd_array( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx, const recd_type_t* base, recd_array_t*& recd_array_ref  )
+      {
+        rc_t        rc  = kOkRC;
+        variable_t* var = nullptr;
+        
+        // find the record variable
+        if((rc = var_find( proc, var_label, sfx_id, chIdx, var )) != kOkRC )
+        {
+          rc = cwLogError(rc,"The record variable '%s:%i' could was not found.",cwStringNullGuard(var_label),sfx_id);
+          goto errLabel;
+        }
+
+        // verify that the variable has a record format
+        if( !var_has_recd_format(var) )
+        {
+          rc = cwLogError(kInvalidArgRC,"The variable does not have a valid record format.");
+          goto errLabel;
+        }
+        else
+        {
+          recd_fmt_t* recd_fmt = var->varDesc->fmt.recd_fmt;
+
+          // create the recd_array
+          if((rc = recd_array_create( recd_array_ref, recd_fmt->recd_type, base, recd_fmt->alloc_cnt )) != kOkRC )
+          {
+            goto errLabel;
+          }
+        }
+        
+      errLabel:
+        if( rc != kOkRC )
+          rc = cwLogError(rc,"Record array create failed on the variable '%s:%i ch:%i.",cwStringNullGuard(var_label),sfx_id,chIdx);
+        
+        return rc;
+        
+      }
+      
       
       rc_t create( proc_t* proc )
       {
@@ -634,6 +677,17 @@ namespace cw
         // create one output MIDI buffer
         rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, 0  );
 
+        
+        // allocate the output recd array
+        if((rc = _alloc_recd_array( proc, "r_out", kBaseSfxId, kAnyChIdx, nullptr, inst->recd_array  )) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+        // create one output record buffer
+        rc = var_register_and_set( proc, "r_out", kBaseSfxId, kROutPId, kAnyChIdx, inst->recd_array->type, nullptr, 0  );
+
+        inst->midi_fld_idx = recd_type_field_index( inst->recd_array->type, "midi");
 
       errLabel: 
         return rc;
@@ -653,12 +707,32 @@ namespace cw
 
       rc_t value( proc_t* proc, variable_t* var )
       { return kOkRC; }
+
+
+      rc_t _set_output_record( inst_t* p, rbuf_t* rbuf, const midi::ch_msg_t* m )
+      {
+        rc_t rc = kOkRC;
+        
+        // if the output record array is full
+        if( rbuf->recdN >= p->recd_array->allocRecdN )
+        {
+          rc = cwLogError(kBufTooSmallRC,"The internal record buffer overflowed. (buf recd count:%i).",p->recd_array->allocRecdN);
+          goto errLabel;
+        }
+
+        recd_set( rbuf->type, nullptr, p->recd_array->recdA + rbuf->recdN, p->midi_fld_idx, (midi::ch_msg_t*)m );
+        rbuf->recdN += 1;
+
+      errLabel:
+        return rc;
+      }
       
       rc_t exec( proc_t* proc )
       {
         rc_t    rc   = kOkRC;
         inst_t* inst = (inst_t*)proc->userPtr;
         mbuf_t* mbuf = nullptr;
+        rbuf_t* rbuf    = nullptr;
 
         // get the output variable
         if((rc = var_get(proc,kOutPId,kAnyChIdx,mbuf)) != kOkRC )
@@ -688,7 +762,23 @@ namespace cw
             mbuf->msgA = inst->buf;
           }
 
-          
+
+          // get the output variable
+          if((rc = var_get(proc,kROutPId,kAnyChIdx,rbuf)) != kOkRC )
+          {
+            rc = cwLogError(kInvalidStateRC,"The midi-in '%s' does not have a valid output record buffer.",proc->label);
+          }
+          else
+          {
+            rbuf->recdA = inst->recd_array->recdA;
+            rbuf->recdN = 0;
+            
+            for(unsigned i=0; i<mbuf->msgN; ++i)
+              _set_output_record(inst,rbuf, mbuf->msgA + i);
+
+            //if( rbuf->recdN )
+            //  printf("r:%i\n",rbuf->recdN);
+          }
         }
         
         return rc;
@@ -2557,6 +2647,7 @@ namespace cw
 
       enum {
         kInPId,
+        kEnablePId,
         kMaxWndSmpNPId,
         kWndSmpNPId,
         kHopSmpNPId,
@@ -2579,11 +2670,14 @@ namespace cw
       {
         rc_t          rc     = kOkRC;
         const abuf_t* srcBuf = nullptr; //
+        bool          enable_fl = true;
         unsigned      flags  = 0;
         inst_t*       inst   = mem::allocZ<inst_t>();
         proc->userPtr = inst;
 
-        if((rc = var_register_and_get( proc, kAnyChIdx,kInPId, "in", kBaseSfxId, srcBuf )) != kOkRC )
+        if((rc = var_register_and_get( proc, kAnyChIdx,
+                                       kInPId,     "in",     kBaseSfxId, srcBuf,
+                                       kEnablePId, "enable", kBaseSfxId, enable_fl)) != kOkRC )
         {
           cwLogError(kInvalidArgRC,"Unable to access the 'src' buffer.");
         }
@@ -2691,6 +2785,7 @@ namespace cw
         inst_t*       inst   = (inst_t*)proc->userPtr;
         const abuf_t* srcBuf = nullptr;
         fbuf_t*       dstBuf = nullptr;
+        bool          enable_fl = true;
 
         // verify that a source buffer exists
         if((rc = var_get(proc,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
@@ -2706,22 +2801,38 @@ namespace cw
           goto errLabel;
         }
 
-        // for each input channel
-        for(unsigned i=0; i<srcBuf->chN; ++i)
+        // is this proc enabled?
+        if((rc = var_get(proc,kEnablePId, kAnyChIdx, enable_fl ) != kOkRC ) )
         {
-          dstBuf->readyFlV[i] = false;
-          
-          // call the PV analysis processor
-          if( dsp::pv_anl::exec( inst->pvA[i], srcBuf->buf + i*srcBuf->frameN, srcBuf->frameN ) )
-          {
-            // rescale the frequency domain magnitude
-            vop::mul(dstBuf->magV[i], dstBuf->binN_V[i]/2, dstBuf->binN_V[i]);
-            
-            dstBuf->readyFlV[i] = true;
-
-          }
+          rc = cwLogError(rc,"The instance '%s' does not have a enable variable.",proc->label);
+          goto errLabel;
         }
 
+        // if the proc is not enabled
+        if( !enable_fl )
+        {
+          // zero the output buffer
+          fbuf_zero(dstBuf);
+          vop::fill(dstBuf->readyFlV,dstBuf->chN,false);
+        }
+        else
+        {
+          // for each input channel
+          for(unsigned i=0; i<srcBuf->chN; ++i)
+          {
+            dstBuf->readyFlV[i] = false;
+            
+            // call the PV analysis processor
+            if( dsp::pv_anl::exec( inst->pvA[i], srcBuf->buf + i*srcBuf->frameN, srcBuf->frameN ) )
+            {
+              // rescale the frequency domain magnitude
+              vop::mul(dstBuf->magV[i], dstBuf->binN_V[i]/2, dstBuf->binN_V[i]);
+              
+              dstBuf->readyFlV[i] = true;
+              
+            }
+          }
+        }
       errLabel:
         return rc;
       }
@@ -2745,6 +2856,7 @@ namespace cw
 
       enum {
         kInPId,
+        kEnablePId,
         kOutPId
       };
       
@@ -2761,12 +2873,16 @@ namespace cw
 
       rc_t create( proc_t* proc )
       {
-        rc_t          rc     = kOkRC;
-        const fbuf_t* srcBuf = nullptr; //
-        inst_t*       inst   = mem::allocZ<inst_t>();
+        rc_t          rc        = kOkRC;
+        const fbuf_t* srcBuf    = nullptr; //
+        inst_t*       inst      = mem::allocZ<inst_t>();
+        bool          enable_fl = true;
+        
         proc->userPtr = inst;
 
-        if((rc = var_register_and_get( proc, kAnyChIdx,kInPId, "in", kBaseSfxId, srcBuf)) != kOkRC )
+        if((rc = var_register_and_get( proc, kAnyChIdx,
+                                       kInPId,     "in",     kBaseSfxId, srcBuf,
+                                       kEnablePId, "enable", kBaseSfxId, enable_fl)) != kOkRC )
         {
           goto errLabel;
         }
@@ -2822,10 +2938,11 @@ namespace cw
       
       rc_t exec( proc_t* proc )
       {
-        rc_t          rc     = kOkRC;
-        inst_t*       inst   = (inst_t*)proc->userPtr;
-        const fbuf_t* srcBuf = nullptr;
-        abuf_t*       dstBuf = nullptr;
+        rc_t          rc        = kOkRC;
+        inst_t*       inst      = (inst_t*)proc->userPtr;
+        const fbuf_t* srcBuf    = nullptr;
+        abuf_t*       dstBuf    = nullptr;
+        bool          enable_fl = true;
         
         // get the src buffer
         if((rc = var_get(proc,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
@@ -2834,19 +2951,30 @@ namespace cw
         // get the dst buffer
         if((rc = var_get(proc,kOutPId, kAnyChIdx, dstBuf)) != kOkRC )
           goto errLabel;
-        
-        for(unsigned i=0; i<srcBuf->chN; ++i)
+
+        // is the processor enabled?
+        if((rc = var_get(proc,kEnablePId, kAnyChIdx, enable_fl)) != kOkRC )
+          goto errLabel;
+
+        if( !enable_fl )
         {
-          if( srcBuf->readyFlV[i] )
-            dsp::pv_syn::exec( inst->pvA[i], srcBuf->magV[i], srcBuf->phsV[i] );
-          
-          const sample_t* ola_out = dsp::ola::execOut(inst->pvA[i]->ola);
-          if( ola_out != nullptr )
-            abuf_set_channel( dstBuf, i, ola_out, inst->pvA[i]->ola->procSmpCnt );
-          
-          //abuf_set_channel( dstBuf, i, inst->pvA[i]->ola->outV, dstBuf->frameN );
+          abuf_zero(dstBuf);
         }
+        else
+        {
         
+          for(unsigned i=0; i<srcBuf->chN; ++i)
+          {
+            if( srcBuf->readyFlV[i] )
+              dsp::pv_syn::exec( inst->pvA[i], srcBuf->magV[i], srcBuf->phsV[i] );
+            
+            const sample_t* ola_out = dsp::ola::execOut(inst->pvA[i]->ola);
+            if( ola_out != nullptr )
+              abuf_set_channel( dstBuf, i, ola_out, inst->pvA[i]->ola->procSmpCnt );
+            
+            //abuf_set_channel( dstBuf, i, inst->pvA[i]->ola->outV, dstBuf->frameN );
+          }
+        }
         
       errLabel:
         return rc;
@@ -2872,6 +3000,7 @@ namespace cw
       enum
       {
         kInPId,
+        kEnablePId,
         kBypassPId,
         kCeilingPId,
         kExpoPId,
@@ -2887,6 +3016,7 @@ namespace cw
       {
         spec_dist_t** sdA;
         unsigned sdN;
+        bool enableFl;
       } inst_t;
     
 
@@ -2895,11 +3025,14 @@ namespace cw
         rc_t          rc     = kOkRC;
         const fbuf_t* srcBuf = nullptr; //
         inst_t*       inst   = mem::allocZ<inst_t>();
+        bool          enable_fl = true;
         
         proc->userPtr = inst;
 
         // verify that a source buffer exists
-        if((rc = var_register_and_get(proc, kAnyChIdx,kInPId,"in",kBaseSfxId,srcBuf )) != kOkRC )
+        if((rc = var_register_and_get(proc, kAnyChIdx,
+                                      kInPId,     "in",     kBaseSfxId, srcBuf,
+                                      kEnablePId, "enable", kBaseSfxId, enable_fl)) != kOkRC )
         {
           rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",proc->label);
           goto errLabel;
@@ -3010,11 +3143,12 @@ namespace cw
 
       rc_t exec( proc_t* proc )
       {
-        rc_t          rc     = kOkRC;
-        inst_t*       inst   = (inst_t*)proc->userPtr;
-        const fbuf_t* srcBuf = nullptr;
-        fbuf_t*       dstBuf = nullptr;
-        unsigned      chN    = 0;
+        rc_t          rc        = kOkRC;
+        inst_t*       inst      = (inst_t*)proc->userPtr;
+        const fbuf_t* srcBuf    = nullptr;
+        fbuf_t*       dstBuf    = nullptr;
+        bool          enable_fl = true;
+        unsigned      chN       = 0;
         
         // get the src buffer
         if((rc = var_get(proc,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
@@ -3024,6 +3158,10 @@ namespace cw
         if((rc = var_get(proc,kOutPId, kAnyChIdx, dstBuf)) != kOkRC )
           goto errLabel;
 
+        // get the enable flag
+        if((rc = var_get(proc,kEnablePId, kAnyChIdx, enable_fl )) != kOkRC )
+          goto errLabel;
+
         chN = std::min(srcBuf->chN,inst->sdN);
                 
         for(unsigned i=0; i<chN; ++i)
@@ -3031,7 +3169,7 @@ namespace cw
           dstBuf->readyFlV[i] = false;
           if( srcBuf->readyFlV[i] )
           {          
-            dsp::spec_dist::exec( inst->sdA[i], srcBuf->magV[i], srcBuf->phsV[i], srcBuf->binN_V[i] );
+            dsp::spec_dist::exec( inst->sdA[i], srcBuf->magV[i], srcBuf->phsV[i], srcBuf->binN_V[i], enable_fl );
 
             dstBuf->readyFlV[i] = true;
             //If == 0 )
@@ -3062,6 +3200,7 @@ namespace cw
       enum
       {       
         kInPId,
+        kEnablePId,
         kBypassPId,
         kInGainPId,
         kThreshPId,
@@ -3111,10 +3250,12 @@ namespace cw
             coeff_t igain, thresh, ratio, ogain;
             ftime_t maxWnd_ms, wnd_ms, atk_ms, rls_ms;
             bool bypassFl;
+            bool enableFl;
 
 
             // get the compressor variable values
             if((rc = var_register_and_get( proc, i,
+                                           kEnablePId,   "enable",    kBaseSfxId, enableFl,
                                            kBypassPId,   "bypass",    kBaseSfxId, bypassFl,
                                            kInGainPId,   "igain",     kBaseSfxId, igain,
                                            kThreshPId,   "thresh",    kBaseSfxId, thresh,
@@ -3172,6 +3313,7 @@ namespace cw
           
           switch( var->vid )
           {
+            case kEnablePId: break;
             case kBypassPId:   rc = var_get( var, tmp ); c->bypassFl=tmp; break;
             case kInGainPId:   rc = var_get( var, tmp ); c->inGain=tmp;   break;
             case kOutGainPId:  rc = var_get( var, tmp ); c->outGain=tmp;  break;
@@ -3194,11 +3336,12 @@ namespace cw
 
       rc_t exec( proc_t* proc )
       {
-        rc_t          rc     = kOkRC;
-        inst_t*       inst   = (inst_t*)proc->userPtr;
-        const abuf_t* srcBuf = nullptr;
-        abuf_t*       dstBuf = nullptr;
-        unsigned      chN    = 0;
+        rc_t          rc       = kOkRC;
+        inst_t*       inst     = (inst_t*)proc->userPtr;
+        const abuf_t* srcBuf   = nullptr;
+        abuf_t*       dstBuf   = nullptr;
+        bool          enableFl = false;
+        unsigned      chN      = 0;
         
         // get the src buffer
         if((rc = var_get(proc,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
@@ -3208,11 +3351,14 @@ namespace cw
         if((rc = var_get(proc,kOutPId, kAnyChIdx, dstBuf)) != kOkRC )
           goto errLabel;
 
+        if((rc = var_get(proc,kEnablePId, kAnyChIdx, enableFl)) != kOkRC )
+          goto errLabel;
+
         chN = std::min(srcBuf->chN,inst->cmpN);
        
         for(unsigned i=0; i<chN; ++i)
         {
-          dsp::compressor::exec( inst->cmpA[i], srcBuf->buf + i*srcBuf->frameN, dstBuf->buf + i*srcBuf->frameN, srcBuf->frameN );
+          dsp::compressor::exec( inst->cmpA[i], srcBuf->buf + i*srcBuf->frameN, dstBuf->buf + i*srcBuf->frameN, srcBuf->frameN, enableFl );
         }
 
         
@@ -4227,7 +4373,7 @@ namespace cw
       unsigned ch_idx;      
     } note_state_t;
 
-    const bool note_state_active_fl = false;
+    const bool note_state_active_fl = true;
     
     template< typename T >
     void _store_note_state( proc_t* proc, T* p, unsigned uid, unsigned status, unsigned pitch, unsigned vel, unsigned ch_idx=kInvalidIdx )
@@ -4380,6 +4526,7 @@ namespace cw
             goto errLabel;
         }
 
+        p->ns_fl = false;
         p->nsN = 500;
         p->nsV = mem::allocZ<note_state_t>(p->nsN);
 
@@ -4568,7 +4715,8 @@ namespace cw
         // get the input MIDI buffer
         if((rc = var_get(proc,kInPId,kAnyChIdx,rbuf)) != kOkRC )
           goto errLabel;
-        
+
+
         // process the incoming MIDI messages
         for(unsigned i=0; i<rbuf->recdN; ++i)
         {
@@ -4581,6 +4729,8 @@ namespace cw
             rc = cwLogError(rc,"Record 'midi' field read failed.");
             goto errLabel;
           }
+
+          //printf("0x%x %i %i\n",m->status,m->d0,m->d1);
           
           switch( m->status )
           {
@@ -4873,13 +5023,17 @@ namespace cw
         kInPId,
         kOutPId,
         kDoneFlPId,
+        kGateFlPId,
+        kRlsCoeffPId,
+        kRlsThreshPId,
         kLoadThreadCntPId,
         kTestPitchPId,
         kKeyPitchPId,
       };
 
       enum {
-        kChCnt=2
+        kChCnt=2,
+        kRmsBufN = 30, 
       };
 
       
@@ -4909,6 +5063,12 @@ namespace cw
         note_state_t* nsV;
         unsigned      nsN;
         unsigned      ns_idx;
+
+        sample_t rms_buf[ kRmsBufN ];
+        unsigned rms_buf_idx;
+        unsigned rms_buf_cnt;
+
+        unsigned age_idx;
         
       } inst_t;
 
@@ -4989,9 +5149,13 @@ namespace cw
         const char*        wtb_fname     = nullptr;
         const char*        wtb_instr     = nullptr;
         mbuf_t*            mbuf          = nullptr;
-        bool               done_fl       = false;        
+        bool               done_fl       = false;
+        bool               gate_fl       = false;
         srate_t            srate         = proc->ctx->sample_rate;
         unsigned           load_thread_cnt = 16;
+        
+        p->kReleaseGain = 0.9;
+        p->kGainThreshold = 0.01;
         
         // get the MIDI input variable
         if((rc = var_register_and_get( proc, kAnyChIdx,
@@ -4999,6 +5163,9 @@ namespace cw
                                        kWtbInstrPId,  "wtb_instr", kBaseSfxId, wtb_instr,
                                        kInPId,        "in",        kBaseSfxId, mbuf,
                                        kDoneFlPId,    "done_fl",   kBaseSfxId, done_fl,
+                                       kGateFlPId,    "gate_fl",   kBaseSfxId, gate_fl,
+                                       kRlsCoeffPId,  "rls_coeff", kBaseSfxId, p->kReleaseGain,
+                                       kRlsThreshPId, "rls_thresh",kBaseSfxId, p->kGainThreshold,
                                        kLoadThreadCntPId,"load_thread_cnt", kBaseSfxId, load_thread_cnt,
                                        kTestPitchPId, "test_pitch",kBaseSfxId, p->test_pitch,
                                        kKeyPitchPId,  "test_key_pitch", kBaseSfxId, p->test_key_pitch)) != kOkRC )
@@ -5072,6 +5239,8 @@ namespace cw
           d0 = p->test_pitch;
         }
 
+        //printf("non:%i %i\n",d0,d1);
+        
         // get the wave-table associated with the pitch and velocity
         if((rc = get_wave_table(  *p->wtbH_ptr, p->wtb_instr_idx, d0, d1, mcs)) != kOkRC )
         {
@@ -5089,12 +5258,14 @@ namespace cw
         p->pitch          = d0;
         p->done_fl        = false;
         p->noff_fl        = false;
-        p->kGainThreshold = 0.01;
-        p->kReleaseGain   = 0.9;
         p->gain           = 1.0;
         p->gain_coeff     = 1.0;
+        p->rms_buf_idx    = 0;
+        p->rms_buf_cnt    = 0;
+        p->age_idx        = 0;
 
         var_set(proc,kDoneFlPId,kAnyChIdx,false);
+        var_set(proc,kGateFlPId,kAnyChIdx,true);
 
       errLabel:
         return rc;
@@ -5108,6 +5279,7 @@ namespace cw
       void _on_note_off( inst_t* p )
       {
         p->noff_fl = true;
+
         if( !p->sustain_fl )
           _begin_note_release(p);
       }
@@ -5115,9 +5287,14 @@ namespace cw
       void _on_sustain_pedal(proc_t* proc, inst_t* p, bool pedal_down_fl )
       {
         p->sustain_fl = pedal_down_fl;
+
+        if( pedal_down_fl )
+          p->gain_coeff = 1.0; // this will cause the note to come out of release-stage 
         
         if( !pedal_down_fl && p->noff_fl )
           _begin_note_release(p);
+
+        
 
         _store_note_state(proc, p, 0, midi::kCtlMdId, pedal_down_fl, 0 );
 
@@ -5151,8 +5328,31 @@ namespace cw
       {
         p->done_fl = true;
         var_set(proc,kDoneFlPId,kAnyChIdx,true);
+        var_set(proc,kGateFlPId,kAnyChIdx,false);        
         _store_note_state(proc, p, 0, 0, p->pitch, 0);
         p->gain_coeff = 0.0;  // 
+      }
+
+      sample_t _calc_rms( inst_t* p, abuf_t* abuf )
+      {
+        p->rms_buf[ p->rms_buf_idx ] = 0;
+
+        // store the max rms among all channels
+        for( unsigned i=0; i<abuf->chN; ++i)
+        {
+          sample_t rms;          
+          if((rms = vop::sum_sq(abuf->buf + (i*abuf->frameN), abuf->frameN )) > p->rms_buf[ p->rms_buf_idx ] )
+            p->rms_buf[ p->rms_buf_idx ] = rms;
+        }
+        
+        if( ++p->rms_buf_idx >= kRmsBufN )
+          p->rms_buf_idx = 0;
+        
+        if( p->rms_buf_cnt++ >= kRmsBufN )
+          p->rms_buf_cnt = kRmsBufN;
+
+        return std::sqrt( vop::mean(p->rms_buf,p->rms_buf_cnt) );
+        
       }
 
       rc_t _exec( proc_t* proc, inst_t* p )
@@ -5161,6 +5361,7 @@ namespace cw
         abuf_t* abuf = nullptr;
         mbuf_t* mbuf = nullptr;
         unsigned actualFrmN = 0;
+        //sample_t rms = 0;
 
         // get the input MIDI buffer
         if((rc = var_get(proc,kInPId,kAnyChIdx,mbuf)) != kOkRC )
@@ -5178,6 +5379,9 @@ namespace cw
         for(unsigned i=0; i<mbuf->msgN; ++i)
         {
           const midi::ch_msg_t* m = mbuf->msgA + i;
+
+          //printf("pv: 0x%x %i %i\n",m->status,m->d0,m->d1);
+          
           switch( m->status )
           {
             case midi::kNoteOnMdId:
@@ -5224,8 +5428,11 @@ namespace cw
         vop::mul(abuf->buf, p->gain, abuf->chN * abuf->frameN);
 
         p->gain *= p->gain_coeff;
-            
+
+        //rms = _calc_rms(p,abuf);
+        
         if( (p->gain < p->kGainThreshold && !p->done_fl) /*|| (actualFrmN < abuf->frameN)*/ )
+        //if( rms < p->kGainThreshold && !p->done_fl )
         {
           _finish_note(proc,p);
         }
@@ -7357,7 +7564,7 @@ namespace cw
             */
 
             if( var->vid == p->eolPId )
-            {              
+            {
               for(unsigned vid = kBaseInPId; vid<kBaseInPId + p->inVarN; vid+=1 )
               {
                 variable_t* v = nullptr;
