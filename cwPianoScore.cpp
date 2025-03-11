@@ -180,6 +180,7 @@ namespace cw
       
       if( score_fl )
       {
+        e->loc = kInvalidId;
         if((rc = getv(csvH,"oloc",e->loc )) != kOkRC )
         {
           rc = cwLogError(rc,"Error parsing CSV.");
