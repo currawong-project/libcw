@@ -452,6 +452,10 @@ cw::flow::abuf_t*  cw::flow::abuf_duplicate( abuf_t* dst, const abuf_t* src )
   return abuf;
 }
 
+void cw::flow::abuf_zero( abuf_t* abuf )
+{
+  vop::zero(abuf->buf,abuf->bufAllocSmpN);
+}
 
 cw::rc_t  cw::flow::abuf_set_channel( abuf_t* abuf, unsigned chIdx, const sample_t* v, unsigned vN )
 {
@@ -533,135 +537,6 @@ cw::flow::fbuf_t* cw::flow::fbuf_create( srate_t srate, unsigned chN, const unsi
   return f;  
 }
 
-/*
-cw::flow::fbuf_t* cw::flow::fbuf_create( srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_sample_t** magV, const fd_sample_t** phsV, const fd_sample_t** hzV )
-{
-  for(unsigned i=0; i<chN; ++i)
-    if( binN_V[i] > maxBinN_V[i] )
-    {
-      cwLogError(kInvalidArgRC,"A channel bin count (%i) execeeds the max bin count (%i).",binN_V[i],maxBinN_V[i]);
-      return nullptr;;
-    }
-  
-  fbuf_t* f = mem::allocZ<fbuf_t>();
-
-  bool proxy_fl = magV != nullptr || phsV != nullptr || hzV != nullptr;
-  
-  // Calculate the total count of bins for each data vector.
-  unsigned maxTotalBinN = proxy_fl ? 0 : vop::sum(maxBinN_V, chN);
-  
-  // calc the total size of memory required for all internal data structures
-  f->memByteN = sizeof(unsigned)     * chN*kFbufVectN           // maxBinN_V[],binN_V[],hopSmpN_V[]
-              + sizeof(fd_sample_t*) * chN*kFbufVectN           // magV[],phsV[],hzV[] (pointer to bin buffers)
-              + sizeof(bool)         * chN*1                    // readyFlV[]
-              + sizeof(fd_sample_t)  * maxTotalBinN*kFbufVectN; // bin buffer memory
-
-  // allocate memory
-  f->mem       = mem::allocZ<uint8_t>(f->memByteN);
-
-  unsigned*     base_maxBinV = (unsigned*)f->mem;
-  fd_sample_t** base_bufV    = (fd_sample_t**)(base_maxBinV + kFbufVectN * chN);
-  bool*         base_boolV   = (bool*)(base_bufV + kFbufVectN * chN);
-  fd_sample_t*  base_buf     = (fd_sample_t*)(base_boolV + chN);
-  
-  
-  f->srate     = srate;
-  f->chN       = chN;
-  f->maxBinN_V = base_maxBinV;
-  f->binN_V    = f->maxBinN_V + chN;
-  f->hopSmpN_V = f->binN_V + chN;
-  f->magV      = base_bufV;
-  f->phsV      = f->magV + chN;
-  f->hzV       = f->phsV + chN;
-  f->readyFlV  = base_boolV;
-
-  vop::copy( f->binN_V, binN_V, chN );
-  vop::copy( f->maxBinN_V, maxBinN_V, chN );
-  vop::copy( f->hopSmpN_V, hopSmpN_V, chN );  
-  
-  if( proxy_fl )
-  {
-    for(unsigned chIdx=0; chIdx<chN; ++chIdx)
-    {      
-      f->magV[ chIdx ] = (fd_sample_t*)magV[chIdx];
-      f->phsV[ chIdx ] = (fd_sample_t*)phsV[chIdx];
-      f->hzV[  chIdx ] = (fd_sample_t*)hzV[chIdx];
-    }
-  }
-  else
-  {
-    fd_sample_t* m         = base_buf;
-    for(unsigned chIdx=0; chIdx<chN; ++chIdx)
-    {   
-      f->magV[chIdx] = m + 0 * f->binN_V[chIdx];
-      f->phsV[chIdx] = m + 1 * f->binN_V[chIdx];
-      f->hzV[ chIdx] = m + 2 * f->binN_V[chIdx];
-      m += f->maxBinN_V[chIdx];
-      assert( m <= base_buf + kFbufVectN * maxTotalBinN );
-    }
-  }
-
-  return f;  
-}
-*/
-
-/*
-cw::flow::fbuf_t* cw::flow::fbuf_create( srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_sample_t** magV, const fd_sample_t** phsV, const fd_sample_t** hzV )
-{
-  for(unsigned i=0; i<chN; ++i)
-    if( binN_V[i] > maxBinN_V[i] )
-    {
-      cwLogError(kInvalidArgRC,"A channel bin count (%i) execeeds the max bin count (%i).",binN_V[i],maxBinN_V[i]);
-      return nullptr;;
-    }
-  
-  fbuf_t* f = mem::allocZ<fbuf_t>();
-  
-  f->srate     = srate;
-  f->chN       = chN;
-  f->maxBinN_V = mem::allocZ<unsigned>(chN);
-  f->binN_V    = mem::allocZ<unsigned>(chN);
-  f->hopSmpN_V = mem::allocZ<unsigned>(chN); 
-  f->magV      = mem::allocZ<fd_sample_t*>(chN);
-  f->phsV      = mem::allocZ<fd_sample_t*>(chN);
-  f->hzV       = mem::allocZ<fd_sample_t*>(chN);
-  f->readyFlV  = mem::allocZ<bool>(chN);
-
-  vop::copy( f->binN_V, binN_V, chN );
-  vop::copy( f->maxBinN_V, maxBinN_V, chN );
-  vop::copy( f->hopSmpN_V, hopSmpN_V, chN );  
-  
-  if( magV != nullptr || phsV != nullptr || hzV != nullptr )
-  {
-    for(unsigned chIdx=0; chIdx<chN; ++chIdx)
-    {      
-      f->magV[ chIdx ] = (fd_sample_t*)magV[chIdx];
-      f->phsV[ chIdx ] = (fd_sample_t*)phsV[chIdx];
-      f->hzV[  chIdx ] = (fd_sample_t*)hzV[chIdx];
-    }
-  }
-  else
-  {
-    unsigned maxTotalBinsN = vop::sum( maxBinN_V, chN );
-        
-    fd_sample_t* buf       = mem::allocZ<fd_sample_t>( kFbufVectN * maxTotalBinsN );
-    fd_sample_t* m         = buf;
-    for(unsigned chIdx=0; chIdx<chN; ++chIdx)
-    {   
-      f->magV[chIdx] = m + 0 * f->binN_V[chIdx];
-      f->phsV[chIdx] = m + 1 * f->binN_V[chIdx];
-      f->hzV[ chIdx] = m + 2 * f->binN_V[chIdx];
-      m += f->maxBinN_V[chIdx];
-      assert( m <= buf + kFbufVectN * maxTotalBinsN );
-    }
-
-    f->buf = buf;
-      
-  }
-
-  return f;  
-}
-*/
 
 cw::flow::fbuf_t*  cw::flow::fbuf_create( srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_sample_t** magV, const fd_sample_t** phsV, const fd_sample_t** hzV )
 {
@@ -673,6 +548,16 @@ cw::flow::fbuf_t*  cw::flow::fbuf_create( srate_t srate, unsigned chN, unsigned 
   vop::fill( binN_V, chN, binN );
   vop::fill( hopSmpN_V, chN, binN );
   return fbuf_create( srate, chN, maxBinN_V, binN_V, hopSmpN_V, magV, phsV, hzV );
+}
+
+void cw::flow::fbuf_zero( fbuf_t* f )
+{
+  for(unsigned i=0; i<f->chN; ++i)
+  {
+    vop::zero(f->magV[i],f->maxBinN_V[i]);
+    vop::zero(f->phsV[i],f->maxBinN_V[i]);
+    vop::zero(f->hzV[i], f->maxBinN_V[i]);
+  }
 }
 
 void cw::flow::fbuf_destroy( fbuf_t*& fbuf )

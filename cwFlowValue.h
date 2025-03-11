@@ -30,7 +30,7 @@ namespace cw
       unsigned           chN;          // Count of channels
       unsigned           frameN;       // Count of sample frames per channel
       unsigned           bufAllocSmpN; // Size of allocated buf[] in samples.
-      sample_t*          buf;          // buf[ chN ][ frameN ]
+      sample_t*          buf;          // buf[ chN * frameN ] ch0: 0:frameN, ch1: frameN:2*frame, ...
     } abuf_t;
 
 
@@ -161,11 +161,13 @@ namespace cw
     // If 'dst' is non-null and there is enough space for the contents of 'src' then only a copy is executed.
     // If there is not enough space then dst is reallocated.
     abuf_t*         abuf_duplicate( abuf_t* dst, const abuf_t* src );
+    void            abuf_zero(        abuf_t* buf );
     rc_t            abuf_set_channel( abuf_t* buf, unsigned chIdx, const sample_t* v, unsigned vN );
     const sample_t* abuf_get_channel( abuf_t* buf, unsigned chIdx );
 
     fbuf_t*        fbuf_create( srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_sample_t** magV=nullptr, const fd_sample_t** phsV=nullptr, const fd_sample_t** hzV=nullptr );
     fbuf_t*        fbuf_create( srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_sample_t** magV=nullptr, const fd_sample_t** phsV=nullptr, const fd_sample_t** hzV=nullptr );
+    void           fbuf_zero( fbuf_t* fbuf );
     void           fbuf_destroy( fbuf_t*& buf );
 
     // Memory allocation will only occur if dst is null, or the size of dst's internal buffer are too small.
