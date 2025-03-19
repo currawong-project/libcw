@@ -1337,10 +1337,12 @@ namespace cw
       if( max_vid != kInvalidId )
       {
         // create the variable map array
-        proc->varMapChN = max_chIdx + 1;
-        proc->varMapIdN = max_vid + 1;
-        proc->varMapN   = proc->varMapIdN * proc->varMapChN;
-        proc->varMapA   = mem::allocZ<variable_t*>( proc->varMapN );
+        proc->varMapChN    = max_chIdx + 1;
+        proc->varMapIdN    = max_vid + 1;
+        proc->varMapN      = proc->varMapIdN * proc->varMapChN;
+        proc->varMapA      = mem::allocZ<variable_t*>( proc->varMapN );
+        proc->modVarMapN   = proc->varMapN;
+        proc->modVarMapA   = mem::allocZ<variable_t*>( proc->modVarMapN );
 
         // assign each variable to a location in the map
         for(variable_t* var=proc->varL; var!=nullptr; var=var->var_link)

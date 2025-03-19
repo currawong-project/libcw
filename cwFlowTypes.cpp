@@ -157,6 +157,67 @@ namespace cw
     }
 
 
+    // Incr the var->modN value and put the var pointer in var->proc->modVarMapA[]
+    // where it will be picked up by a later call to _mod-var_map_dispatch().
+    // This function runs in a multi-thread context.
+    rc_t _mod_var_map_update( variable_t* var )
+    {
+      // if the var is in already modVarMapA[] then there is nothing to do
+      // (use acquire to prevent rd/wr from moving before this op)
+      if( var->modN.load(std::memory_order_acquire) > 0 )
+        return kOkRC;
+      
+      // reserve a slot in proc->modVarMapA[]
+      // (use acquire to prevent rd/wr from moving before this op)
+      if( var->proc->modVarMapFullCnt.fetch_add(1,std::memory_order_acquire) >= var->proc->modVarMapN )
+        return kBufTooSmallRC;
+
+      
+      // Get the next empty slot in proc->modVarMapA[]
+      // (use acquire to prevent rd/wr from moving before this op)
+      unsigned idx = var->proc->modVarMapHeadIdx.fetch_add(1,std::memory_order_acquire) % var->proc->modVarMapN;      
+
+      var->proc->modVarMapA[ idx ] = var;
+
+      // mark the var as in the list
+      var->modN.fetch_add(1,std::memory_order_release);
+
+      return kOkRC;
+    }
+
+    // Call proc->proc_desc->value() on every var in the proc->modVarMapA[].
+    // This function is called inside proc->proc_desc->exec().
+    rc_t _mod_var_map_dispatch( proc_t* proc, bool callback_fl )
+    {
+      // get the count of variables to be updated
+      unsigned n = proc->modVarMapFullCnt.load( std::memory_order_acquire );
+
+      if( n )
+      {
+        if( callback_fl )
+        {
+          for(unsigned i=0; i<n; ++i)
+          {
+            // get a pointer to the var that has been marked as modified
+            variable_t* var = proc->modVarMapA[ proc->modVarMapTailIdx ];
+
+            // callback to inform the proc that the var has changed
+            proc->class_desc->members->value( var->proc, var );
+
+            // mark this var as having been removed from the modVarMapA[]
+            var->modN.store(0,std::memory_order_relaxed );
+
+            // increment modVarMapA[]'s tail index
+            proc->modVarMapTailIdx = (proc->modVarMapTailIdx + 1) % proc->modVarMapN;        
+          }
+        }
+        
+        // decrement the count of elemnts in the modVarMapA[]
+        proc->modVarMapFullCnt.fetch_sub(n, std::memory_order_release );
+      }
+
+      return kOkRC;
+    }
     
     // 'argTypeFlag' is the type (tflag) of 'val'.
     template< typename T >    
@@ -950,6 +1011,7 @@ void cw::flow::proc_destroy( proc_t* proc )
       
   mem::release(proc->label);
   mem::release(proc->varMapA);
+  mem::release(proc->modVarMapA);
   mem::release(proc);
 }
 

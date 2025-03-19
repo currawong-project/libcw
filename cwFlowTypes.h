@@ -114,6 +114,9 @@ namespace cw
 
       ui_var_t*            ui_var;       // this variables UI description
       std::atomic<struct variable_str*> ui_var_link; // UI update var link based on flow_t ui_var_head;
+
+      std::atomic<unsigned> modN; // count of modifactions made to this variable during this cycl
+      
     } variable_t;
 
 
@@ -146,6 +149,12 @@ namespace cw
       unsigned        varMapIdN;     // max 'vid' among all variables on this instance 
       unsigned        varMapN;       // varMapN = varMapIdN * varMapChN 
       variable_t**    varMapA;       // varMapA[ varMapN ] = allows fast lookup from ('vid','chIdx) to variable
+
+      variable_t**          modVarMapA;       // modVarMapA[ modVarMapN ]
+      unsigned              modVarMapN;       // modVarMapN == varMapN
+      unsigned              modVarMapTailIdx; // index of next full slot in varMapA[]
+      std::atomic<unsigned> modVarMapFullCnt; // count of elements in modVarMapA[]
+      std::atomic<unsigned> modVarMapHeadIdx; // index of next empty slot in varMapA[]
 
       // For 'poly' proc's 'internal_net' is a list linked by network_t.poly_link.
       struct network_str*  internal_net;
