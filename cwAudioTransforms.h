@@ -952,67 +952,71 @@ namespace cw
 
       
       template< typename T0, typename T1 >
-      rc_t exec( struct obj_str<T0,T1>* p, const T0* magV, const T0* phsV, unsigned binN )
+      rc_t exec( struct obj_str<T0,T1>* p, const T0* magV, const T0* phsV, unsigned binN, bool enable_fl=true )
       {
         rc_t rc = kOkRC;
 
-        double X0m[binN];
-        double X1m[binN]; 
-
-        // take the mean of the the input magntitude spectrum
-        double u0 = vop::mean(magV,binN);
-
-        // convert magnitude to db (range=-1000.0 to 0.0)
-        vop::ampl_to_db(X0m, magV, binN );
-        vop::copy(X1m,X0m,binN);
-
-        // bump transform X0m
-        _cmSpecDist2Bump(p,X0m, binN, p->ceiling, p->expo);
-
-        // mix bump output with raw input: X1m = (X0m*mix) + (X1m*(1.0-mix))
-        vop::mul(X0m, p->mix,       binN );
-        vop::mul(X1m, 1.0 - p->mix, binN );
-        vop::add(X1m, X0m,          binN );
-
-
-        // basic transform 
-        _cmSpecDist2BasicMode_WithKnee(p,X1m,binN,p->thresh,p->uprSlope,p->lwrSlope);
-
-        // convert db back to magnitude
-        vop::db_to_ampl(X1m, X1m, binN );
-
-        
-        // convert the mean input magnitude to db
-        double idb = 20*log10(u0);
-    
-        // get the mean output magnitude spectra
-        double u1 = vop::mean(X1m,binN);
-        
-        //if( p->mix > 0 )
-        if(1)
+        if( p->bypassFl || !enable_fl )
         {
-          if( idb > -150.0 )
-          {
-            // set the output gain such that the mean output magnitude
-            // will match the mean input magnitude
-            p->ogain = u0/u1;  
-          }
-          else
-          {
-            T0 a0 = 0.9;
-            p->ogain *= a0;
-          }
-        }
-        
-        
-        // apply the output gain
-        if( p->bypassFl )
           vop::copy( p->outMagV, magV, binN );
+        }
         else
+        {
+          double X0m[binN];
+          double X1m[binN]; 
+
+          // take the mean of the the input magntitude spectrum
+          double u0 = vop::mean(magV,binN);
+
+          // convert magnitude to db (range=-1000.0 to 0.0)
+          vop::ampl_to_db(X0m, magV, binN );
+          vop::copy(X1m,X0m,binN);
+
+          // bump transform X0m
+          _cmSpecDist2Bump(p,X0m, binN, p->ceiling, p->expo);
+
+          // mix bump output with raw input: X1m = (X0m*mix) + (X1m*(1.0-mix))
+          vop::mul(X0m, p->mix,       binN );
+          vop::mul(X1m, 1.0 - p->mix, binN );
+          vop::add(X1m, X0m,          binN );
+
+
+          // basic transform 
+          _cmSpecDist2BasicMode_WithKnee(p,X1m,binN,p->thresh,p->uprSlope,p->lwrSlope);
+
+          // convert db back to magnitude
+          vop::db_to_ampl(X1m, X1m, binN );
+
+        
+          // convert the mean input magnitude to db
+          double idb = 20*log10(u0);
+    
+          // get the mean output magnitude spectra
+          double u1 = vop::mean(X1m,binN);
+        
+          //if( p->mix > 0 )
+          if(1)
+          {
+            if( idb > -100.0 )
+            {
+              // set the output gain such that the mean output magnitude
+              // will match the mean input magnitude
+              p->ogain = u0/u1;  
+            }
+            else
+            {
+              T0 a0 = 0.9;
+              p->ogain *= a0;
+            }
+          }
+
+          // apply the output gain
           //vop::mul(  p->outMagV, X1m, std::min((T1)4.0,p->ogain), binN);
           vop::mul(  p->outMagV, X1m, p->ogain, binN);
+          
+        }
         
-        vop::copy( p->outPhsV, phsV,                binN);
+        vop::copy( p->outPhsV, phsV, binN);
 
         return rc;
       }
