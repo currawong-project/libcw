@@ -945,6 +945,10 @@ resolvable without more information.
 - DONE: Allow setting the location of the score player.  This should also reset the sampler and voice control.
 - DONE: The voice ctl should respond to all-notes-off message and reset each sampler channel
 
+- All outputs must be set via var_set() call, otherwise proc's that rely on noticing changed variables
+will not work.  For example the 'print' proc does not work for record,midi,audio because
+in general these types are not set via calls to var_set().
+
 - The following two tasks need more consideration. As it is variables assume that aggregate
 types are destroyed on exit.  This is very convenient. Consider using 'symbols' to represent
 strings, consider adding a 'const-string' type to eliminate memory allocation of string assignment
@@ -1099,6 +1103,7 @@ Processors that have mandatory signal inputs should never need to also have an s
 - Implement matrix types.
 
 - Add a 'trigger' data type. The 'kAllTId' isn't really doing anything.
+Perhaps this  could be a 'symbol' data type?
 
 - There should be special logging macros inside procs that automatically log the instance name.
 
@@ -1701,4 +1706,13 @@ Given that the system isn't currently limited in this way maybe it doesn't matte
 
 - Processor instance presets have not been implemented.
 - Preset application request deferrment has not been implemented.
+
+Variable Modifcation Tracking
+------------------------------
+
+
+
+The only thread that can write a variable value is the thread executing the variables proc.
+
+
 
