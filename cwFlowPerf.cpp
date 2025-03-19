@@ -141,7 +141,8 @@ namespace cw
         const perf_score::event_t* score_evt   = nullptr;
         char*                      fname       = nullptr;
         unsigned                   pedalStateFlags = 0;
-        
+        unsigned                   uuid = 0;
+        unsigned                   last_loc = 0;
         p->score_end_loc  = 0;
         p->score_end_meas = 0;
 
@@ -157,6 +158,8 @@ namespace cw
           goto errLabel;
         }
 
+        cwLogInfo("Opening:%s",fname);
+        
         if((rc= perf_score::create( perfScoreH, fname )) != kOkRC )
         {
           rc = cwLogError(rc,"Score create failed on '%s'.",fname);
@@ -184,13 +187,18 @@ namespace cw
           {
             msg_t*          m  = p->msgA   + p->msgN;
             midi::ch_msg_t* mm = p->chMsgA + p->msgN;
+
+            if( score_evt->loc != kInvalidId )
+              last_loc = score_evt->loc;
             
             m->sample_idx = (unsigned)(proc->ctx->sample_rate * score_evt->sec);
-            m->loc        = score_evt->loc;
+            m->loc        = last_loc;
             m->meas       = score_evt->meas;           
             m->midi       = mm;
 
-            if( m->loc > p->score_end_loc )              
+            //printf("%i %i\n",m->meas,m->loc);
+
+            if( m->loc!=kInvalidId && m->loc > p->score_end_loc )              
               p->score_end_loc  = m->loc;
             
             if( m->meas > p->score_end_meas )
@@ -200,7 +208,7 @@ namespace cw
 
             mm->devIdx = kInvalidIdx;
             mm->portIdx= kInvalidIdx;
-            mm->uid    = score_evt->loc;
+            mm->uid    = uuid++;
             mm->ch     = score_evt->status & 0x0f;
             mm->status = score_evt->status & 0xf0;
             mm->d0     = score_evt->d0;
@@ -282,121 +290,6 @@ namespace cw
         
       }
 
-      rc_t _create( proc_t* proc, inst_t* p )
-      {
-        rc_t    rc   = kOkRC;        
-        const char* score_fname = nullptr;
-        double stopping_secs = 5.0;
-        
-        if((rc = var_register_and_get(proc,kAnyChIdx,
-                                      kScoreFNamePId,    "fname",         kBaseSfxId, score_fname,
-                                      kStoppingMsPId,    "stopping_ms",   kBaseSfxId, p->stopping_ms)) != kOkRC )
-        {
-          goto errLabel;
-        }
-
-        // load the score
-        if((rc = _load_score( proc, p, score_fname )) != kOkRC )
-        {
-          goto errLabel;
-        }
-
-        if((rc = var_register(proc,kAnyChIdx,
-                              kStartPId, "start", kBaseSfxId,
-                              kStopPId,  "stop",  kBaseSfxId )) != kOkRC )
-        {
-          goto errLabel;
-        }
-        
-
-        
-        if((rc = var_register_and_set(proc,kAnyChIdx,
-                                      kDoneFlPId,"done_fl", kBaseSfxId, false,
-                                      kBLocPId,   "b_loc",  kBaseSfxId, 0,
-                                      kBMeasPId,  "b_meas", kBaseSfxId, 0,                                     
-                                      kELocPId,   "e_loc",  kBaseSfxId, p->score_end_loc,
-                                      kEMeasPId,  "e_meas", kBaseSfxId, p->score_end_meas + 1)) != kOkRC )
-        {
-          goto errLabel;
-        }
-
-
-        // allocate the output recd array
-        if((rc = _alloc_recd_array( proc, "out", kBaseSfxId, kAnyChIdx, nullptr, p->recd_array  )) != kOkRC )
-        {
-          goto errLabel;
-        }
-        
-        // create one output record buffer
-        rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, p->recd_array->type, nullptr, 0  );
-
-        p->midi_fld_idx = recd_type_field_index( p->recd_array->type, "midi");
-        p->loc_fld_idx  = recd_type_field_index( p->recd_array->type, "loc");
-        p->meas_fld_idx = recd_type_field_index( p->recd_array->type, "meas");
-
-        p->bVId = kInvalidId;
-        p->eVId = kInvalidId;
-        p->end_msg_idx = kInvalidIdx;
-
-        p->midiChMsgA[kAllNotesOffMsgIdx]   = { .timeStamp={ .tv_sec=0, .tv_nsec=0}, .devIdx=kInvalidIdx, .portIdx=kInvalidIdx, .uid=0, .ch=0, .status=midi::kCtlMdId, .d0=midi::kAllNotesOffMdId,  .d1=0  };
-        p->midiChMsgA[kResetAllCtlsMsgIdx]  = { .timeStamp={ .tv_sec=0, .tv_nsec=0}, .devIdx=kInvalidIdx, .portIdx=kInvalidIdx, .uid=0, .ch=0, .status=midi::kCtlMdId, .d0=midi::kResetAllCtlsMdId, .d1=0  };
-        p->midiChMsgA[kDampPedalDownMsgIdx] = { .timeStamp={ .tv_sec=0, .tv_nsec=0}, .devIdx=kInvalidIdx, .portIdx=kInvalidIdx, .uid=0, .ch=0, .status=midi::kCtlMdId, .d0=midi::kSustainCtlMdId,   .d1=64  };
-        p->midiChMsgA[kSostPedalDownMsgIdx] = { .timeStamp={ .tv_sec=0, .tv_nsec=0}, .devIdx=kInvalidIdx, .portIdx=kInvalidIdx, .uid=0, .ch=0, .status=midi::kCtlMdId, .d0=midi::kSostenutoCtlMdId, .d1=64  };
-
-        p->midiMsgA[kAllNotesOffMsgIdx].midi   = p->midiChMsgA + kAllNotesOffMsgIdx;
-        p->midiMsgA[kResetAllCtlsMsgIdx].midi  = p->midiChMsgA + kResetAllCtlsMsgIdx;
-        p->midiMsgA[kDampPedalDownMsgIdx].midi = p->midiChMsgA + kDampPedalDownMsgIdx;
-        p->midiMsgA[kSostPedalDownMsgIdx].midi = p->midiChMsgA + kSostPedalDownMsgIdx;
-
-        p->state = kIdleStateId;
-        
-      errLabel:
-        return rc;
-      }
-
-      rc_t _destroy( proc_t* proc, inst_t* p )
-      {
-        rc_t rc = kOkRC;
-
-        recd_array_destroy(p->recd_array);
-        mem::release(p->msgA);
-        mem::release(p->chMsgA);
-        return rc;
-      }
-
-      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
-      {
-        rc_t rc = kOkRC;
-
-        if( proc->ctx->isInRuntimeFl )
-        {
-          switch( var->vid )
-          {
-            case kStartPId:
-              p->start_trig_fl = true;
-              printf("Start Clicked\n");
-              break;
-            
-            case kStopPId:
-              p->stop_trig_fl = true;
-              printf("Stop Clicked\n");
-              break;
-            
-            case kBLocPId:
-            case kBMeasPId:
-              p->bVId = var->vid;
-              break;
-            
-            case kELocPId:
-            case kEMeasPId:
-              p->eVId = var->vid;
-              break;
-            
-          }
-        }
-        return rc;
-      }
-      
       rc_t _on_new_begin_loc( proc_t* proc, inst_t* p, unsigned vid )
       {
         rc_t rc = kOkRC;
@@ -416,6 +309,7 @@ namespace cw
         switch( vid )
         {
           case kBLocPId:
+            printf("Setting: bloc:%i %i meas:%i msg_idx:%i\n",bloc,p->msgA[i].loc, p->msgA[i].meas+1,i);
             if( i < p->msgN )
               var_set(proc,kBMeasPId,kAnyChIdx,p->msgA[i].meas+1);
             else
@@ -426,6 +320,8 @@ namespace cw
             break;
             
           case kBMeasPId:
+            
+            printf("Setting: bmeas:%i %i meas:%i msg_idx:%i\n",bmeas,p->msgA[i].loc, p->msgA[i].meas, i);
             if( i < p->msgN )
               var_set(proc,kBLocPId,kAnyChIdx,p->msgA[i].loc);
             else
@@ -483,6 +379,132 @@ namespace cw
         return rc;
       }
 
+      
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t    rc   = kOkRC;        
+        const char* score_fname = nullptr;
+        unsigned bloc=0;
+        unsigned eloc=0;
+        unsigned bmeas=0;
+        unsigned emeas=0;
+        
+        if((rc = var_register_and_get(proc,kAnyChIdx,
+                                      kScoreFNamePId,    "fname",         kBaseSfxId, score_fname,
+                                      kStoppingMsPId,    "stopping_ms",   kBaseSfxId, p->stopping_ms,
+                                      kBLocPId,          "b_loc",         kBaseSfxId, bloc,
+                                      kBMeasPId,         "b_meas",        kBaseSfxId, bmeas,
+                                      kELocPId,          "e_loc",         kBaseSfxId, eloc,
+                                      kEMeasPId,         "e_meas",        kBaseSfxId, emeas,
+                                      kStartPId,         "start",         kBaseSfxId, p->start_trig_fl)) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+
+        // load the score
+        if((rc = _load_score( proc, p, score_fname )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((rc = var_register(proc,kAnyChIdx,
+                              kStopPId,  "stop",  kBaseSfxId )) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+
+        
+        if((rc = var_register_and_set(proc,kAnyChIdx,
+                                      kDoneFlPId,"done_fl", kBaseSfxId, false)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // allocate the output recd array
+        if((rc = _alloc_recd_array( proc, "out", kBaseSfxId, kAnyChIdx, nullptr, p->recd_array  )) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+        // create one output record buffer
+        rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, p->recd_array->type, nullptr, 0  );
+
+        p->midi_fld_idx = recd_type_field_index( p->recd_array->type, "midi");
+        p->loc_fld_idx  = recd_type_field_index( p->recd_array->type, "loc");
+        p->meas_fld_idx = recd_type_field_index( p->recd_array->type, "meas");
+
+        p->bVId = bloc!=0 ? (unsigned)kBLocPId : (bmeas !=0 ? (unsigned)kBMeasPId : kInvalidId);
+        p->eVId = eloc!=0 ? (unsigned)kELocPId : (emeas !=0 ? (unsigned)kEMeasPId : kInvalidId);
+        p->end_msg_idx = kInvalidIdx;
+
+        p->midiChMsgA[kAllNotesOffMsgIdx]   = { .timeStamp={ .tv_sec=0, .tv_nsec=0}, .devIdx=kInvalidIdx, .portIdx=kInvalidIdx, .uid=0, .ch=0, .status=midi::kCtlMdId, .d0=midi::kAllNotesOffMdId,  .d1=0  };
+        p->midiChMsgA[kResetAllCtlsMsgIdx]  = { .timeStamp={ .tv_sec=0, .tv_nsec=0}, .devIdx=kInvalidIdx, .portIdx=kInvalidIdx, .uid=0, .ch=0, .status=midi::kCtlMdId, .d0=midi::kResetAllCtlsMdId, .d1=0  };
+        p->midiChMsgA[kDampPedalDownMsgIdx] = { .timeStamp={ .tv_sec=0, .tv_nsec=0}, .devIdx=kInvalidIdx, .portIdx=kInvalidIdx, .uid=0, .ch=0, .status=midi::kCtlMdId, .d0=midi::kSustainCtlMdId,   .d1=64  };
+        p->midiChMsgA[kSostPedalDownMsgIdx] = { .timeStamp={ .tv_sec=0, .tv_nsec=0}, .devIdx=kInvalidIdx, .portIdx=kInvalidIdx, .uid=0, .ch=0, .status=midi::kCtlMdId, .d0=midi::kSostenutoCtlMdId, .d1=64  };
+
+        p->midiMsgA[kAllNotesOffMsgIdx].midi   = p->midiChMsgA + kAllNotesOffMsgIdx;
+        p->midiMsgA[kResetAllCtlsMsgIdx].midi  = p->midiChMsgA + kResetAllCtlsMsgIdx;
+        p->midiMsgA[kDampPedalDownMsgIdx].midi = p->midiChMsgA + kDampPedalDownMsgIdx;
+        p->midiMsgA[kSostPedalDownMsgIdx].midi = p->midiChMsgA + kSostPedalDownMsgIdx;
+
+        if( eloc==0 && emeas==0 )
+        {
+          var_set(proc,kELocPId,kAnyChIdx,p->score_end_loc);
+          var_set(proc,kEMeasPId,kAnyChIdx,p->score_end_meas+1 );
+        }
+        
+
+        p->state = kIdleStateId;
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        recd_array_destroy(p->recd_array);
+        mem::release(p->msgA);
+        mem::release(p->chMsgA);
+        return rc;
+      }
+
+      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+
+        if( proc->ctx->isInRuntimeFl )
+        {
+          switch( var->vid )
+          {
+            case kStartPId:
+              p->start_trig_fl = true;
+              printf("Start Clicked\n");
+              break;
+            
+            case kStopPId:
+              p->stop_trig_fl = true;
+              printf("Stop Clicked\n");
+              break;
+            
+            case kBLocPId:
+            case kBMeasPId:
+              p->bVId = var->vid;
+              break;
+            
+            case kELocPId:
+            case kEMeasPId:
+              p->eVId = var->vid;
+              break;
+            
+          }
+        }
+        return rc;
+      }
+      
 
       rc_t _do_begin_stopping( proc_t* proc, inst_t* p, unsigned stopping_ms )
       {
@@ -492,9 +514,11 @@ namespace cw
         return kOkRC;
       }
 
-      rc_t _set_output_record( inst_t* p, rbuf_t* rbuf, const msg_t* m, recd_t* r )
+      rc_t _set_output_record( inst_t* p, rbuf_t* rbuf, const msg_t* m )
       {
         rc_t rc = kOkRC;
+        
+        recd_t* r = p->recd_array->recdA + rbuf->recdN;
         
         // if the output record array is full
         if( rbuf->recdN >= p->recd_array->allocRecdN )
@@ -517,8 +541,8 @@ namespace cw
         rc_t rc = kOkRC;
 
         // copy the 'all-note-off','all-ctl-off' msg into output record array
-        _set_output_record(p,rbuf,p->midiMsgA + kAllNotesOffMsgIdx,  p->recd_array->recdA + rbuf->recdN);
-        _set_output_record(p,rbuf,p->midiMsgA + kResetAllCtlsMsgIdx, p->recd_array->recdA + rbuf->recdN);
+        _set_output_record(p,rbuf,p->midiMsgA + kAllNotesOffMsgIdx);
+        _set_output_record(p,rbuf,p->midiMsgA + kResetAllCtlsMsgIdx);
             
         p->state = kIdleStateId;
 
@@ -527,7 +551,7 @@ namespace cw
 
         cwLogInfo("Stopped.");
         
-        return kOkRC;
+        return rc;
       }
       
       
@@ -540,12 +564,17 @@ namespace cw
         if( p->state != kIdleStateId )
           if((rc = _do_stop_now(proc,p,rbuf)) != kOkRC )
             goto errLabel;
+
+        // BUG BUG BUG - using measure instead of loc because when we use loc
+        // we go to the wrong place
         
-        var_get( proc, kBLocPId,  kAnyChIdx, bloc );
+        var_get( proc, kBMeasPId,  kAnyChIdx, bloc );
+
+        printf("Starting at loc:%i\n",bloc);
 
         // Rewind the current position to the begin location
         for(i=0; i<p->msgN; ++i)
-          if( p->msgA[i].loc == bloc )
+          if( p->msgA[i].meas >= bloc )
           {
             p->sample_idx = p->msgA[i].sample_idx;
             p->msg_idx    = i;
@@ -553,13 +582,13 @@ namespace cw
 
             // if the damper pedal is down at the start location
             if( p->msgA[i].flags & kDampPedalDownFl )
-              _set_output_record(p,rbuf,p->midiMsgA + kDampPedalDownMsgIdx,  p->recd_array->recdA + rbuf->recdN);
+              _set_output_record(p,rbuf,p->midiMsgA + kDampPedalDownMsgIdx);
 
             // if the sostenuto pedal was put down at the start location
             if( p->msgA[i].flags & kSostPedalDownFl )            
-              _set_output_record(p,rbuf,p->midiMsgA + kSostPedalDownMsgIdx, p->recd_array->recdA + rbuf->recdN);
+              _set_output_record(p,rbuf,p->midiMsgA + kSostPedalDownMsgIdx);
             
-            cwLogInfo("New current: msg_idx:%i meas:%i loc:%i",p->msg_idx, p->msgA[i].meas, p->msgA[i].loc );
+            cwLogInfo("New current: msg_idx:%i meas:%i loc:%i %i",p->msg_idx, p->msgA[i].meas, p->msgA[i].loc, bloc );
             break;            
           }
 
@@ -631,7 +660,6 @@ namespace cw
         // transmit all msgs, beginning with the msg at p->msg_idx,  whose 'sample_idx' is <= p->sample_idx
         while( p->msg_idx < p->msgN && p->sample_idx >= p->msgA[p->msg_idx].sample_idx )
         {
-          recd_t* r = p->recd_array->recdA + rbuf->recdN;
           msg_t*  m = p->msgA + p->msg_idx;
 
           // if the end-loc was encountered
@@ -640,16 +668,12 @@ namespace cw
             _do_begin_stopping(proc,p,p->stopping_ms);
           }
 
-          // if the base pointer of the output recd array has not yet been set
-          if( rbuf->recdA == nullptr )
-            rbuf->recdA = r;
-
           bool note_on_fl = midi::isNoteOn(m->midi->status, m->midi->d1);
            
           // fill the output record with this msg but filter out note-on's when in stopping-state
           if( p->state == kPlayStateId || (p->state==kStoppingStateId && note_on_fl==false) )
           {
-            _set_output_record(p, rbuf, m, r );
+            _set_output_record(p, rbuf, m );
 
             if( note_on_fl )
               p->note_cnt += 1;
@@ -680,119 +704,6 @@ namespace cw
       errLabel:
         return rc;
       }
-      /*
-      rc_t _exec( proc_t* proc, inst_t* p )
-      {
-        rc_t    rc      = kOkRC;
-        rbuf_t* rbuf    = nullptr;
-
-        // if the begin loc/meas was changed
-        if( p->bVId != kInvalidId )
-        {
-          _on_new_begin_loc(proc,p,p->bVId);
-          p->bVId = kInvalidId;
-        }
-
-        // if the end loc/meas was changed
-        if( p->eVId != kInvalidId )
-        {
-          _on_new_end_loc(proc,p,p->eVId);
-          p->eVId = kInvalidId;
-        }
-
-        // if the start button was clicked
-        if( p->start_trig_fl )
-        {
-          _on_start_clicked(proc,p);
-          p->start_trig_fl = false;
-        }
-
-        // if the stop button was clicked
-        if( p->stop_trig_fl )
-        {
-          _on_stop_clicked(proc,p);
-          p->stop_trig_fl = false;
-        }
-
-        // if in idle state then there is noting to do
-        if( p->state == kIdleStateId )
-          goto errLabel;
-
-        // advance sample_idx to the end sample associated with this cycle
-        p->sample_idx += proc->ctx->framesPerCycle;
-
-        
-
-        // get the output variable
-        if((rc = var_get(proc,kOutPId,kAnyChIdx,rbuf)) != kOkRC )
-          rc = cwLogError(kInvalidStateRC,"The MIDI file instance '%s' does not have a valid MIDI output buffer.",proc->label);
-        else
-        {
-
-          if( p->state == kStoppedStateId )
-          {
-            rc = _do_stop_now(proc,p,rbuf);
-          }
-          else
-          {
-            rbuf->recdA = nullptr;
-            rbuf->recdN = 0;
-
-
-            // transmit all msgs, beginning with the msg at p->msg_idx,  whose 'sample_idx' is <= p->sample_idx
-            while( p->msg_idx < p->msgN && p->sample_idx >= p->msgA[p->msg_idx].sample_idx )
-            {
-              recd_t* r = p->recd_array->recdA + rbuf->recdN;
-              msg_t*  m = p->msgA + p->msg_idx;
-              bool note_on_fl = false;
-
-              // if the end-loc was encountered
-              if( p->state==kPlayStateId && p->end_msg_idx != kInvalidIdx && p->msg_idx > p->end_msg_idx )
-              {
-                _do_begin_stopping(proc,p,p->stopping_ms);
-              }
-
-              // if the base pointer of the output recd array has not yet been set
-              if( rbuf->recdA == nullptr )
-                rbuf->recdA = r;
-
-              // if we are in play-state and this is a note-on
-              if( p->state==kPlayStateId && (note_on_fl = midi::isNoteOn(m->midi->status, m->midi->d1)) )
-                p->note_cnt += 1;
-
-              // if this is a note-off
-              if( midi::isNoteOff(m->midi->status, m->midi->d1 ) && p->note_cnt>0 )
-                p->note_cnt -= 1;
-
-           
-              // fill the output record with this msg but filter out note-on's when in stopping-state
-              if( p->state == kPlayStateId || (p->state==kStoppingStateId && note_on_fl==false) )
-              {
-                _set_output_record(p, rbuf, m, r );
-              }
-              
-
-              p->msg_idx += 1;
-
-              // track the current measure
-              if( m->meas > p->cur_meas )
-              {
-                cwLogInfo("meas:%i",m->meas);
-                p->cur_meas = m->meas;
-              }
-            } // end-while
-
-            if( (p->state==kStoppingStateId && (p->note_cnt == 0 || p->sample_idx> p->stopping_sample_idx)) || p->msg_idx == p->msgN )
-            {            
-              p->state = kStoppedStateId; // this will be noticed in the next execution
-            }
-          
-          }
-        }
-      errLabel:
-        return rc;
-      }
-      */
       
       rc_t _report( proc_t* proc, inst_t* p )
       { return kOkRC; }
@@ -1937,6 +1848,9 @@ namespace cw
           goto errLabel;
         }
 
+        //preset_sel::report(p->psH);
+        //preset_sel::report_presets(p->psH);
+        
         // The location is coming from a 'record', get the location field.
         if((p->loc_fld_idx  = recd_type_field_index( rbuf->type, "loc")) == kInvalidIdx )
         {
