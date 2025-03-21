@@ -27,6 +27,10 @@ Pop
 2. decr. block->ele_count
 3. if the ele-count is 0 and write-offset is invalid
 reset the write-offset to 0.
+
+
+This code is tested in cwMtQueueTester.h/cpp.
+
 */
 
 
@@ -89,8 +93,6 @@ namespace cw
     // Count of elements in the queue.
     unsigned count( handle_t h );
 
-    rc_t test( const object_t* cfg );
-    
   }
 }
 
