@@ -9,7 +9,7 @@ namespace cw
     struct variable_str;
         
     typedef rc_t (*member_func_t)( struct proc_str* ctx );
-    typedef rc_t (*member_value_func_t)( struct proc_str* ctx, struct variable_str* var );
+    typedef rc_t (*member_notify_func_t)( struct proc_str* ctx, struct variable_str* var );
 
     // var_desc_t attribute flags
     enum
@@ -23,16 +23,17 @@ namespace cw
       kUdpOutVarDescFl    = 0x020,
       kUiCreateVarDescFl  = 0x040,
       kUiDisableVarDescFl = 0x080,
-      kUiHideVarDescFl    = 0x100 
+      kUiHideVarDescFl    = 0x100,
+      kNotifyVarDescFl    = 0x200,
     };
     
     typedef struct class_members_str
     {
-      member_func_t       create;
-      member_func_t       destroy;  
-      member_value_func_t value;
-      member_func_t       exec;
-      member_func_t       report;
+      member_func_t        create;
+      member_func_t        destroy;  
+      member_notify_func_t notify;
+      member_func_t        exec;
+      member_func_t        report;
     } class_members_t;
 
     typedef struct var_desc_str
@@ -486,6 +487,15 @@ namespace cw
     // The returned string must be release with a call to mem::free().
     char*              proc_expand_filename( const proc_t* proc, const char* fname );
 
+    // Call this function from inside the proc instance exec() routine, with flags=kCallbackPnFl,
+    // to get callbacks on variables marked for notification on change. Note that variables must have
+    // their var. description 'kNotifyVarDescFl' (var. desc flag: 'notify') set in order
+    // to generate callbacks.
+    // Set kQuietPnFl to avoid warning messages when this function is called on proc's
+    // that do not have any variables marked for notification.
+    enum { kCallbackPnFl=0x01, kQuietPnFl=0x02 };
+    rc_t               proc_notify( proc_t* proc, unsigned flags = kCallbackPnFl );
+
     
     //------------------------------------------------------------------------------------------------------------------------
     //
@@ -509,8 +519,8 @@ namespace cw
     // Otherwise returns count of channels no including kAnyChIdx. (e.g. mono=1, stereo=2, quad=4 ...)
     unsigned       var_channel_count( proc_t* proc, const char* var_label, unsigned sfx_id );
 
-    // Wrapper around call to var->proc->members->value()
-    rc_t           var_call_custom_value_func( variable_t* var );
+    // Calls the _mod_var_map_update() on connected vars and implements the var 'log' functionality
+    rc_t           var_schedule_notification( variable_t* var );
 
     // Sets and get the var->flags field
     unsigned       var_flags(     proc_t* proc, unsigned chIdx, const char* var_label, unsigned sfx_id, unsigned& flags_ref );
