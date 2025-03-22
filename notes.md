@@ -966,12 +966,18 @@ strings, consider adding a 'const-string' type to eliminate memory allocation of
 cannot run as part of a poly. Any processor that calls a global function,
 like 'network_apply_preset()' must run a the top level only.
 
-- Consider eliminating the value() custom proc_t function and replace it by setting a 'delta flag' on the
+- DONE: Consider eliminating the value() custom proc_t function and replace it by setting a 'delta flag' on the
 variables that change.   Optionally a linked list of changed variables could be implemented to
 avoid having to search for changed variable values - although this list might have to be implemented as a thread safe linked list.
 
-- value() should return a special return-code value to indicate that the
+- DONE: value() should return a special return-code value to indicate that the
 value should not be updated and distinguish it from an error code - which should stop the system.
+Note: This idea is meaningless since variables that are set via connection have no way to 'refuse'
+a connected value - since they are implemented as pointers back to the source variabl.e
+
+- The 'two slot' approach to setting variable no longer seems useful.
+The only reason not to eliminate it is to possibly use it as a way to test local values
+before they are set, but it isn't clear if this actually useful.
 
 
 - DONE: Allow proc's to send messages to the UI. Implementation: During exec() the proc builds a global list of variables whose values
@@ -1014,14 +1020,16 @@ Look at all the places `var_create()` is called can the value arg. be removed?
 - DONE: Re-write the currawong circuit with caw.
 
 - Finish audio feedback example - this will probably involve writing an `audio_silence` class.
+  Update: there is now an audio_silence class.
 
 - Issue a warning if memory is allocated during runtime.
 
 - cwMpScNbQueue is allocating memory.  This makes it blocking.
+  Update: 3/25 - this queue is not currently used
 
 - Check for illegal variable names in class descriptions.  (no periods, trailing digits, or trailing underscores)
 
-- Check for unknown fields where the syntax clearly specifies only certain options via the 'readv()' method.
+- DONE: Check for unknown fields where the syntax clearly specifies only certain options via the 'readv()' method.
 
 - Verify that all variables have been registered (have valid 'vid's) during post instantiation validation.
   (this is apparently not currently happening)
@@ -1046,6 +1054,8 @@ Look at all the places `var_create()` is called can the value arg. be removed?
 
     + mult proc's with more than 3 instances should be put into a list or use a 'disclose' button
 
+    + add a UI label to the var description, 
+
 
 
 - Class presets cannot address 'mult' variables. Maybe this is ok since 'mult' variables are generally connected to a source?
@@ -1062,6 +1072,7 @@ Has this problem been addressed by allowing mult variables to be instantiated in
 - Variable attributes should be meaningful. e.g. src,src_opt,mult,init, ....
   Should we check for 'src' or 'mult' attribute on var's?
   (In other words: Enforce var attributes.)
+  + A variable with the 'init' flag should never be changed at runtime.
 
 - How much of the proc initialization implementation can use the preset compile/apply code?
 
@@ -1083,6 +1094,7 @@ Has this problem been addressed by allowing mult variables to be instantiated in
 - The signal srate should determine the sample rate used by a given processor.
 The system sample rate should only be used a default/fallback value.
 Processors that have mandatory signal inputs should never need to also have an srate parameter.
+Consider a network with a variable sample rate.
   
 - Implement user-defined-proc preset application.	
 
@@ -1106,6 +1118,7 @@ Processors that have mandatory signal inputs should never need to also have an s
 Perhaps this  could be a 'symbol' data type?
 
 - There should be special logging macros inside procs that automatically log the instance name.
+  Likewise there should be special cwLogErrorProc(rc,proc), cwLogErrorVar(rc,var) to automatically report the source of the error.
 
 - Look more closely at the way to identify an in-stmt src-net or a out-stmt in-net.
 It's not clear there is a difference between specifying  `_` and the default behaviour.
@@ -1227,6 +1240,19 @@ that can be depicted like this.
 This diagram shows a two level network, where the internal
 network contains an array of networks.
 
+A processor instance is structured as a collection of variables along with a small set of
+functions for maintaining it's state.
+Variables act both as a means of holding the time varying state of the processor
+and as input and output ports.  There is nothing preventing a variable from
+being both an input and output port, although in practice then tend to be one
+or the other.
+
+As is the case in most dataflow implementations processors act as the nodes
+of the graph and edges represent the flow of information between output and
+input variables.  A _caw_ graph allows fan-out, multiple outputs from a variable,
+but not fan-in.  A variable acting as in input may have only a single incoming edge.
+
+
 Networks are executed sequentially, one processor at a time, from top
 to bottom.  Networks that are members of the same network array,
 referred to as silbing networks, may however execute concurrently to
@@ -1250,6 +1276,7 @@ is the case because it guarantees that no processors are running when
 the preset values are set.
 
 
+/*********************************
 2. If a processor receives data from a sibling network it is possible
 that the processors value() function is called from multiple
 concurrent threads.  Processors which receive data from sibling
@@ -1279,6 +1306,8 @@ The purpose of the value() function is to provide a single
 easy way of picking up changed incoming values without
 having to test for changed values in the exec() function.
 It shouldn't be used as an alternate exec() function.
+*******/
+
 
 Note that the create() and destroy() calls for all processors
 in the entire graph occur in a single thread and therefore do
@@ -1345,6 +1374,37 @@ The new record effectively inherits the contents of the
 existing record by reference.  No data is copied.
 For an example of this see the `vel_table` implementation.
 
+Variable Change Notification
+----------------------------
+Processors are not directly notified when one of their connected variables changes.
+This is the case because _caw_ does not implement a 'message' or 'event'
+propagation scheme.  When an 'input' variable changes the processor which owns
+it is not informed of the change.  This limitation exists to prevent the need
+for a processor to implement a thread-safe message handling scheme - since it is
+possible that variable updates would come from concurrent threads executing
+the processors to which precede it in the graph.
+
+By default if a processor needs to notice
+when an input variable changes it needs to cache the value and check
+if the value has changed on the next execution cycle.  For a processor with
+many rarely changing variables this can be both messy and wasteful since it is possible
+that most of the variable will not change on any given execution cycle.
+
+To handle this case a variable change notfication scheme is built into the system.
+When a variable description is marked with the 'notify' tag it is placed on
+an internal list (proc_t.modVarMapA[]).  Just prior to the processors instance
+exec() cycle a call to proc_notify() will result in a callback to the
+instances notify() function for every marked variable that was modified since
+the last execution of the instance.  Note that these callbacks happen
+from a single thread, the same one that will subsequently call the exec() function.
+
+The calls to notify() occur in the same order that the variables changed in time,
+however there will be only one callback per variable.  If a variable changed
+multiple times during the cycle only the last value will be recorded.
+This limitation however exists for all processor input variables whether they
+use the notification scheme or not.
+
+
 Optional Variables
 -------------------
 
@@ -1355,6 +1415,8 @@ means that call to get_var() will always return a value.
 
 midi_out has implemented 'in' and 'rin' as optional
 variables. Look there for an example of how to accomplish this.
+
+
 
 
 Presets:
