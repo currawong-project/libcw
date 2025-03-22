@@ -68,7 +68,7 @@ cw::rc_t cw::flow::test( const test::test_args_t& args )
   }
   
   // run the network
-  if((rc = exec( flowH )) != kOkRC )
+  if((rc = exec( flowH )) != kOkRC && rc != kEofRC )
     rc = cwLogError(rc,"Execution failed.");
     
 errLabel:
