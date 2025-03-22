@@ -25,8 +25,8 @@ namespace cw
     }
 
     template< typename inst_t >
-    rc_t std_value( proc_t* proc, variable_t* var )
-    { return _value(proc,(inst_t*)proc->userPtr, var); }
+    rc_t std_notify( proc_t* proc, variable_t* var )
+    { return _notify(proc,(inst_t*)proc->userPtr, var); }
         
     template< typename inst_t >
     rc_t std_exec( proc_t* proc )
@@ -35,7 +35,6 @@ namespace cw
     template< typename inst_t >
     rc_t std_report( proc_t* proc )
     { return _report(proc,(inst_t*)proc->userPtr); }
-
     
     namespace user_def_proc   { extern class_members_t members;  }
     namespace poly            { extern class_members_t members;  }
