@@ -80,7 +80,7 @@ namespace cw
         return rc;
       }
 
-      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
         return rc;
@@ -99,7 +99,7 @@ namespace cw
       class_members_t members = {
         .create  = std_create<inst_t>,
         .destroy = std_destroy<inst_t>,
-        .value   = std_value<inst_t>,
+        .notify  = std_notify<inst_t>,
         .exec    = std_exec<inst_t>,
         .report  = std_report<inst_t>
       };
@@ -152,7 +152,7 @@ namespace cw
         return rc;
       }
 
-      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
         return rc;
@@ -175,7 +175,7 @@ namespace cw
       class_members_t members = {
         .create  = std_create<inst_t>,
         .destroy = std_destroy<inst_t>,
-        .value   = std_value<inst_t>,
+        .notify  = std_notify<inst_t>,
         .exec    = std_exec<inst_t>,
         .report  = std_report<inst_t>
       };
@@ -412,7 +412,7 @@ namespace cw
         return kOkRC;
       }
 
-      rc_t value( proc_t* proc, variable_t* var )
+      rc_t notify( proc_t* proc, variable_t* var )
       {
         return kOkRC;
       }
@@ -470,7 +470,7 @@ namespace cw
       class_members_t members = {
         .create               = create,
         .destroy              = destroy,
-        .value                = value,
+        .notify               = notify,
         .exec                 = exec,
         .report               = nullptr
       };
@@ -522,7 +522,7 @@ namespace cw
         return kOkRC;
       }
 
-      rc_t value( proc_t* proc, variable_t* var )
+      rc_t notify( proc_t* proc, variable_t* var )
       {
         return kOkRC;
       }
@@ -550,7 +550,7 @@ namespace cw
       class_members_t members = {
         .create  = create,
         .destroy = destroy,
-        .value   = value,
+        .notify   = notify,
         .exec    = exec,
         .report  = nullptr
       };
@@ -705,7 +705,7 @@ namespace cw
         return rc;
       }
 
-      rc_t value( proc_t* proc, variable_t* var )
+      rc_t notify( proc_t* proc, variable_t* var )
       { return kOkRC; }
 
 
@@ -787,7 +787,7 @@ namespace cw
       class_members_t members = {
         .create  = create,
         .destroy = destroy,
-        .value   = value,
+        .notify   = notify,
         .exec    = exec,
         .report  = nullptr
       };
@@ -902,7 +902,7 @@ namespace cw
         return kOkRC;
       }
 
-      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         return kOkRC;
       }
@@ -972,7 +972,7 @@ namespace cw
       class_members_t members = {
         .create  = std_create<inst_t>,
         .destroy = std_destroy<inst_t>,
-        .value   = std_value<inst_t>,
+        .notify  = std_notify<inst_t>,
         .exec    = std_exec<inst_t>,
         .report  = std_report<inst_t>
       };
@@ -1038,7 +1038,7 @@ namespace cw
         return rc;
       }
 
-      rc_t value( proc_t* proc, variable_t* var )
+      rc_t notify( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         return rc;
@@ -1069,7 +1069,7 @@ namespace cw
       class_members_t members = {
         .create = create,
         .destroy = destroy,
-        .value   = value,
+        .notify   = notify,
         .exec = exec,
         .report = nullptr
       };
@@ -1132,7 +1132,7 @@ namespace cw
         return rc;
       }
 
-      rc_t value( proc_t* proc, variable_t* var )
+      rc_t notify( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         return rc;
@@ -1162,7 +1162,7 @@ namespace cw
       class_members_t members = {
         .create = create,
         .destroy = destroy,
-        .value = value,
+        .notify = notify,
         .exec = exec,
         .report = nullptr
       };
@@ -1264,7 +1264,7 @@ namespace cw
         return rc;
       }
 
-      rc_t value( proc_t* proc, variable_t* var )
+      rc_t notify( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         ftime_t seekSecs = 0;
@@ -1329,7 +1329,7 @@ namespace cw
       class_members_t members = {
         .create = create,
         .destroy = destroy,
-        .value   = value,
+        .notify   = notify,
         .exec = exec,
         .report = nullptr
       };
@@ -1414,7 +1414,7 @@ namespace cw
         return rc;
       }
 
-      rc_t value( proc_t* proc, variable_t* var )
+      rc_t notify( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         return rc;
@@ -1453,7 +1453,7 @@ namespace cw
       class_members_t members = {
         .create = create,
         .destroy = destroy,
-        .value = value,
+        .notify = notify,
         .exec = exec,
         .report = nullptr
       };
@@ -1507,7 +1507,7 @@ namespace cw
         return kOkRC;
       }
 
-      rc_t value( proc_t* proc, variable_t* var )
+      rc_t notify( proc_t* proc, variable_t* var )
       {
         return kOkRC;
       }
@@ -1550,7 +1550,7 @@ namespace cw
       class_members_t members = {
         .create = create,
         .destroy = destroy,
-        .value = value,
+        .notify = notify,
         .exec = exec,
         .report = nullptr
       };
@@ -1723,7 +1723,7 @@ namespace cw
         return rc;
       }
 
-      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
         
@@ -1731,6 +1731,7 @@ namespace cw
         {
           case kInPId:
             break;
+            
           case kSelectPId:
             break;
             
@@ -1739,8 +1740,6 @@ namespace cw
             if(var->chIdx != kAnyChIdx )
               rc = var_get(var,p->igainV[ var->chIdx ]);
             break;
-
-            
             
           default:
 
@@ -1762,9 +1761,8 @@ namespace cw
       rc_t _exec( proc_t* proc, inst_t* p )
       {
         rc_t          rc       = kOkRC;
-
         const abuf_t* ibuf = nullptr;
-          
+
         // get the input audio buffer
         if((rc = var_get(proc,kInPId, kAnyChIdx, ibuf )) != kOkRC )
           goto errLabel;
@@ -1802,7 +1800,7 @@ namespace cw
       class_members_t members = {
         .create  = std_create<inst_t>,
         .destroy = std_destroy<inst_t>,
-        .value   = std_value<inst_t>,
+        .notify  = std_notify<inst_t>,
         .exec    = std_exec<inst_t>,
         .report  = std_report<inst_t>
       };
@@ -1887,7 +1885,7 @@ namespace cw
         return rc;
       }
 
-      rc_t value( proc_t* proc, variable_t* var )
+      rc_t notify( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         return rc;
@@ -1939,7 +1937,7 @@ namespace cw
       class_members_t members = {
         .create = create,
         .destroy = destroy,
-        .value   = value,
+        .notify   = notify,
         .exec = exec,
         .report = nullptr
       };
@@ -2118,7 +2116,7 @@ namespace cw
         return rc;
       }
 
-      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
 
@@ -2193,7 +2191,7 @@ namespace cw
       class_members_t members = {
         .create  = std_create<inst_t>,
         .destroy = std_destroy<inst_t>,
-        .value   = std_value<inst_t>,
+        .notify  = std_notify<inst_t>,
         .exec    = std_exec<inst_t>,
         .report  = std_report<inst_t>
       };
@@ -2253,7 +2251,7 @@ namespace cw
       rc_t destroy( proc_t* proc )
       { return kOkRC; }
 
-      rc_t value( proc_t* proc, variable_t* var )
+      rc_t notify( proc_t* proc, variable_t* var )
       { return kOkRC; }
 
       rc_t _mix( proc_t* proc, unsigned inPId, unsigned gainPId, abuf_t* obuf )
@@ -2316,7 +2314,7 @@ namespace cw
       class_members_t members = {
         .create = create,
         .destroy = destroy,
-        .value   = value,
+        .notify   = notify,
         .exec = exec,
         .report = nullptr
       };
@@ -2367,7 +2365,7 @@ namespace cw
         return kOkRC;
       }
 
-      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         if( var->vid == kTriggerPId )
           p->trig_fl = true;
@@ -2380,7 +2378,10 @@ namespace cw
         rc_t          rc   = kOkRC;
         const abuf_t* ibuf = nullptr;
         abuf_t*       obuf = nullptr;
-        sample_t      mark = p->trig_fl ? 1 : 0;
+        sample_t      mark = 0;
+        
+        mark = p->trig_fl ? 1 : 0;
+        
 
         p->trig_fl = false;
         
@@ -2414,7 +2415,7 @@ namespace cw
       class_members_t members = {
         .create  = std_create<inst_t>,
         .destroy = std_destroy<inst_t>,
-        .value   = std_value<inst_t>,
+        .notify  = std_notify<inst_t>,
         .exec    = std_exec<inst_t>,
         .report  = std_report<inst_t>
       };
@@ -2467,7 +2468,7 @@ namespace cw
       rc_t _destroy( proc_t* proc, inst_t* p )
       { return kOkRC; }
 
-      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       { return kOkRC; }
 
       rc_t _exec( proc_t* proc, inst_t* p )
@@ -2479,7 +2480,7 @@ namespace cw
       class_members_t members = {
         .create  = std_create<inst_t>,
         .destroy = std_destroy<inst_t>,
-        .value   = std_value<inst_t>,
+        .notify  = std_notify<inst_t>,
         .exec    = std_exec<inst_t>,
         .report  = std_report<inst_t>
       };
@@ -2586,7 +2587,7 @@ namespace cw
         return rc;
       }
 
-      rc_t value( proc_t* proc, variable_t* var )
+      rc_t notify( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         return rc;
@@ -2630,7 +2631,7 @@ namespace cw
       class_members_t members = {
         .create = create,
         .destroy = destroy,
-        .value   = value,
+        .notify   = notify,
         .exec = exec,
         .report = nullptr
       };
@@ -2755,7 +2756,7 @@ namespace cw
         return rc;
       }
       
-      rc_t value( proc_t* proc, variable_t* var )
+      rc_t notify( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         inst_t* inst = (inst_t*)proc->userPtr;
@@ -2840,7 +2841,7 @@ namespace cw
       class_members_t members = {
         .create  = create,
         .destroy = destroy,
-        .value   = value,
+        .notify   = notify,
         .exec    = exec,
         .report  = nullptr
       };  
@@ -2930,7 +2931,7 @@ namespace cw
         return rc;
       }
 
-      rc_t value( proc_t* proc, variable_t* var )
+      rc_t notify( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         return rc;
@@ -2983,7 +2984,7 @@ namespace cw
       class_members_t members = {
         .create  = create,
         .destroy = destroy,
-        .value   = value,
+        .notify   = notify,
         .exec    = exec,
         .report  = nullptr
       };      
@@ -3103,7 +3104,7 @@ namespace cw
         return rc;
       }
       
-      rc_t value( proc_t* proc, variable_t* var )
+      rc_t notify( proc_t* proc, variable_t* var )
       {
         rc_t    rc   = kOkRC;
         inst_t* inst = (inst_t*)proc->userPtr;
@@ -3149,7 +3150,7 @@ namespace cw
         fbuf_t*       dstBuf    = nullptr;
         bool          enable_fl = true;
         unsigned      chN       = 0;
-        
+
         // get the src buffer
         if((rc = var_get(proc,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
           goto errLabel;
@@ -3184,7 +3185,7 @@ namespace cw
       class_members_t members = {
         .create  = create,
         .destroy = destroy,
-        .value   = value,
+        .notify   = notify,
         .exec    = exec,
         .report  = nullptr
       };      
@@ -3301,7 +3302,7 @@ namespace cw
         return rc;
       }
       
-      rc_t value( proc_t* proc, variable_t* var )
+      rc_t notify( proc_t* proc, variable_t* var )
       {
         rc_t    rc   = kOkRC;
         inst_t* inst = (inst_t*)proc->userPtr;
@@ -3342,7 +3343,7 @@ namespace cw
         abuf_t*       dstBuf   = nullptr;
         bool          enableFl = false;
         unsigned      chN      = 0;
-        
+
         // get the src buffer
         if((rc = var_get(proc,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
           goto errLabel;
@@ -3386,7 +3387,7 @@ namespace cw
       class_members_t members = {
         .create  = create,
         .destroy = destroy,
-        .value   = value,
+        .notify   = notify,
         .exec    = exec,
         .report  = report
       };      
@@ -3489,7 +3490,7 @@ namespace cw
         return rc;
       }
       
-      rc_t value( proc_t* proc, variable_t* var )
+      rc_t notify( proc_t* proc, variable_t* var )
       {
         rc_t    rc   = kOkRC;
         inst_t* inst = (inst_t*)proc->userPtr;
@@ -3524,7 +3525,7 @@ namespace cw
         const abuf_t* srcBuf = nullptr;
         abuf_t*       dstBuf = nullptr;
         unsigned      chN    = 0;
-        
+
         // get the src buffer
         if((rc = var_get(proc,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
           goto errLabel;
@@ -3564,7 +3565,7 @@ namespace cw
       class_members_t members = {
         .create  = create,
         .destroy = destroy,
-        .value   = value,
+        .notify   = notify,
         .exec    = exec,
         .report  = report
       };      
@@ -3688,7 +3689,7 @@ namespace cw
         return rc;
       }
 
-      rc_t value( proc_t* proc, variable_t* var )
+      rc_t notify( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         
@@ -3752,7 +3753,7 @@ namespace cw
       class_members_t members = {
         .create  = create,
         .destroy = destroy,
-        .value   = value,
+        .notify   = notify,
         .exec    = exec,
         .report  = nullptr
       };
@@ -3851,7 +3852,7 @@ namespace cw
         return rc;
       }
       
-      rc_t value( proc_t* proc, variable_t* var )
+      rc_t notify( proc_t* proc, variable_t* var )
       {
         return kOkRC;
       }
@@ -3905,7 +3906,7 @@ namespace cw
       class_members_t members = {
         .create  = create,
         .destroy = destroy,
-        .value   = value,
+        .notify   = notify,
         .exec    = exec,
         .report  = report
       };      
@@ -4027,7 +4028,7 @@ namespace cw
         return rc;
       }
       
-      rc_t value( proc_t* proc, variable_t* var )
+      rc_t notify( proc_t* proc, variable_t* var )
       {
         return kOkRC;
       }
@@ -4096,7 +4097,7 @@ namespace cw
       class_members_t members = {
         .create  = create,
         .destroy = destroy,
-        .value   = value,
+        .notify   = notify,
         .exec    = exec,
         .report  = report
       };      
@@ -4276,7 +4277,7 @@ namespace cw
         return kOkRC;
       }
 
-      rc_t value( proc_t* proc, variable_t* var )
+      rc_t notify( proc_t* proc, variable_t* var )
       {
         rc_t    rc = kOkRC;
         inst_t* p  = (inst_t*)proc->userPtr;
@@ -4356,7 +4357,7 @@ namespace cw
       class_members_t members = {
         .create = create,
         .destroy = destroy,
-        .value   = value,
+        .notify   = notify,
         .exec = exec,
         .report = nullptr
       };
@@ -4553,7 +4554,7 @@ namespace cw
         return rc;
       }
 
-      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
         /*
@@ -4762,7 +4763,7 @@ namespace cw
       class_members_t members = {
         .create  = std_create<inst_t>,
         .destroy = std_destroy<inst_t>,
-        .value   = std_value<inst_t>,
+        .notify  = std_notify<inst_t>,
         .exec    = std_exec<inst_t>,
         .report  = std_report<inst_t>
       };
@@ -4870,7 +4871,7 @@ namespace cw
         return rc;
       }
 
-      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
         return rc;
@@ -5003,7 +5004,7 @@ namespace cw
       class_members_t members = {
         .create  = std_create<inst_t>,
         .destroy = std_destroy<inst_t>,
-        .value   = std_value<inst_t>,
+        .notify  = std_notify<inst_t>,
         .exec    = std_exec<inst_t>,
         .report  = std_report<inst_t>
       };
@@ -5318,7 +5319,7 @@ namespace cw
         return rc;
       }
 
-      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
         return rc;
@@ -5447,7 +5448,7 @@ namespace cw
       class_members_t members = {
         .create  = std_create<inst_t>,
         .destroy = std_destroy<inst_t>,
-        .value   = std_value<inst_t>,
+        .notify  = std_notify<inst_t>,
         .exec    = std_exec<inst_t>,
         .report  = std_report<inst_t>
       };
@@ -5561,7 +5562,7 @@ namespace cw
         return kOkRC;
       }
 
-      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         return kOkRC;
       }
@@ -5627,7 +5628,7 @@ namespace cw
       class_members_t members = {
         .create  = std_create<inst_t>,
         .destroy = std_destroy<inst_t>,
-        .value   = std_value<inst_t>,
+        .notify  = std_notify<inst_t>,
         .exec    = std_exec<inst_t>,
         .report  = std_report<inst_t>
       };
@@ -5739,7 +5740,7 @@ namespace cw
         return kOkRC;
       }
 
-      rc_t value( proc_t* proc, variable_t* var )
+      rc_t notify( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         
@@ -5836,7 +5837,7 @@ namespace cw
       class_members_t members = {
         .create = create,
         .destroy = destroy,
-        .value = value,
+        .notify = notify,
         .exec = exec,
         .report = nullptr
       };
@@ -5953,7 +5954,7 @@ namespace cw
       rc_t _destroy( proc_t* proc, inst_t* p )
       { return kOkRC; }
 
-      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         if( var->vid == kTriggerPId )
         {
@@ -5997,7 +5998,8 @@ namespace cw
 
           p->store_vid = kInvalidIdx;
         }
-        
+
+      errLabel:
         return rc;
       }
 
@@ -6007,7 +6009,7 @@ namespace cw
       class_members_t members = {
         .create  = std_create<inst_t>,
         .destroy = std_destroy<inst_t>,
-        .value   = std_value<inst_t>,
+        .notify  = std_notify<inst_t>,
         .exec    = std_exec<inst_t>,
         .report  = std_report<inst_t>
       };
@@ -6049,7 +6051,7 @@ namespace cw
       rc_t _destroy( proc_t* proc, inst_t* p )
       { return kOkRC; }
 
-      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         // skip the 'stored' value sent through prior to runtime.
         if( var->vid == kStorePId /*&& proc->ctx->isInRuntimeFl*/)
@@ -6085,7 +6087,7 @@ namespace cw
       class_members_t members = {
         .create  = std_create<inst_t>,
         .destroy = std_destroy<inst_t>,
-        .value   = std_value<inst_t>,
+        .notify  = std_notify<inst_t>,
         .exec    = std_exec<inst_t>,
         .report  = std_report<inst_t>
       };
@@ -6183,7 +6185,7 @@ namespace cw
       rc_t _destroy( proc_t* proc, inst_t* p )
       { return kOkRC; }
 
-      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         switch( var->vid )
         {
@@ -6212,7 +6214,8 @@ namespace cw
           rc = var_set(proc,kOutPId,kAnyChIdx,&p->value);
           p->store_fl = false;
         }
-        
+
+      errLabel:
         return rc;
       }
 
@@ -6222,7 +6225,7 @@ namespace cw
       class_members_t members = {
         .create  = std_create<inst_t>,
         .destroy = std_destroy<inst_t>,
-        .value   = std_value<inst_t>,
+        .notify  = std_notify<inst_t>,
         .exec    = std_exec<inst_t>,
         .report  = std_report<inst_t>
       };
@@ -6298,7 +6301,7 @@ namespace cw
         return rc;
       }
 
-      rc_t value( proc_t* proc, variable_t* var )
+      rc_t notify( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         switch( var->vid )
@@ -6367,14 +6370,15 @@ namespace cw
           
           var_set(proc,kOutPId,kAnyChIdx,!val);
         }
-        
+
+      errLabel:
         return rc;
       }
 
       class_members_t members = {
         .create = create,
         .destroy = destroy,
-        .value   = value,
+        .notify   = notify,
         .exec = exec,
         .report = nullptr
       };
@@ -6521,7 +6525,7 @@ namespace cw
         return rc;
       }
 
-      rc_t value( proc_t* proc, variable_t* var )
+      rc_t notify( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         inst_t* p = (inst_t*)proc->userPtr;
@@ -6692,7 +6696,7 @@ namespace cw
       class_members_t members = {
         .create = create,
         .destroy = destroy,
-        .value   = value,
+        .notify   = notify,
         .exec = exec,
         .report = nullptr
       };
@@ -7048,7 +7052,7 @@ namespace cw
         return rc;
       }
 
-      rc_t value( proc_t* proc, variable_t* var )
+      rc_t notify( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         if( var->vid == kInPId )
@@ -7071,13 +7075,15 @@ namespace cw
           rc = _set_output(proc, p );
           p->deltaFl = false;
         }
+
+      errLabel:
         return rc;
       }
 
       class_members_t members = {
         .create = create,
         .destroy = destroy,
-        .value   = value,
+        .notify   = notify,
         .exec = exec,
         .report = nullptr
       };
@@ -7139,7 +7145,7 @@ namespace cw
       {
         rc_t rc = kOkRC;
         inst_t* p = (inst_t*)(proc->userPtr);
-        
+
         if( !p->delta_fl )
           return rc;
 
@@ -7259,7 +7265,7 @@ namespace cw
         return rc;
       }
 
-      rc_t value( proc_t* proc, variable_t* var )
+      rc_t notify( proc_t* proc, variable_t* var )
       {
         rc_t rc = kOkRC;
         inst_t* p = (inst_t*)(proc->userPtr);
@@ -7281,7 +7287,7 @@ namespace cw
       class_members_t members = {
         .create = create,
         .destroy = destroy,
-        .value   = value,
+        .notify   = notify,
         .exec = exec,
         .report = nullptr
       };      
@@ -7376,7 +7382,7 @@ namespace cw
       rc_t _destroy( proc_t* proc, inst_t* p )
       { return kOkRC; }
 
-      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
         if( var->vid == kInPId )
@@ -7388,7 +7394,7 @@ namespace cw
       rc_t _exec( proc_t* proc, inst_t* p )
       {
         rc_t rc      = kOkRC;
-        
+
         if( p->delta_fl )
           rc = _set_preset(proc,p);
         
@@ -7402,7 +7408,7 @@ namespace cw
       class_members_t members = {
         .create  = std_create<inst_t>,
         .destroy = std_destroy<inst_t>,
-        .value   = std_value<inst_t>,
+        .notify  = std_notify<inst_t>,
         .exec    = std_exec<inst_t>,
         .report  = std_report<inst_t>
       };
@@ -7539,7 +7545,7 @@ namespace cw
         return kOkRC;
       }
 
-      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         switch( var->vid )
         {
@@ -7586,7 +7592,9 @@ namespace cw
       }
 
       rc_t _exec( proc_t* proc, inst_t* p )
-      { return kOkRC; }
+      {
+        return kOkRC;
+      }
 
       rc_t _report( proc_t* proc, inst_t* p )
       { return kOkRC; }
@@ -7594,7 +7602,7 @@ namespace cw
       class_members_t members = {
         .create  = std_create<inst_t>,
         .destroy = std_destroy<inst_t>,
-        .value   = std_value<inst_t>,
+        .notify  = std_notify<inst_t>,
         .exec    = std_exec<inst_t>,
         .report  = std_report<inst_t>
       };
@@ -7628,7 +7636,7 @@ namespace cw
         return kOkRC;
       }
 
-      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
 
@@ -7651,7 +7659,7 @@ namespace cw
       class_members_t members = {
         .create  = std_create<inst_t>,
         .destroy = std_destroy<inst_t>,
-        .value   = std_value<inst_t>,
+        .notify  = std_notify<inst_t>,
         .exec    = std_exec<inst_t>,
         .report  = std_report<inst_t>
       };
@@ -7769,7 +7777,7 @@ namespace cw
         return rc;
       }
       
-      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
 
@@ -7814,7 +7822,7 @@ namespace cw
         }
 
         p->msg_idx = 0;
-        
+
         return rc;
       }
 
@@ -7824,7 +7832,7 @@ namespace cw
       class_members_t members = {
         .create  = std_create<inst_t>,
         .destroy = std_destroy<inst_t>,
-        .value   = std_value<inst_t>,
+        .notify  = std_notify<inst_t>,
         .exec    = std_exec<inst_t>,
         .report  = std_report<inst_t>
       };
@@ -7888,7 +7896,7 @@ namespace cw
         return rc;
       }
 
-      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
         return rc;
@@ -7921,7 +7929,7 @@ namespace cw
       class_members_t members = {
         .create  = std_create<inst_t>,
         .destroy = std_destroy<inst_t>,
-        .value   = std_value<inst_t>,
+        .notify  = std_notify<inst_t>,
         .exec    = std_exec<inst_t>,
         .report  = std_report<inst_t>
       };
@@ -8071,7 +8079,7 @@ namespace cw
         return rc;
       }
 
-      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
         return rc;
@@ -8122,7 +8130,7 @@ namespace cw
       class_members_t members = {
         .create  = std_create<inst_t>,
         .destroy = std_destroy<inst_t>,
-        .value   = std_value<inst_t>,
+        .notify  = std_notify<inst_t>,
         .exec    = std_exec<inst_t>,
         .report  = std_report<inst_t>
       };
@@ -8197,7 +8205,7 @@ namespace cw
         return kOkRC;
       }
 
-      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
         return rc;
@@ -8273,7 +8281,7 @@ namespace cw
       class_members_t members = {
         .create  = std_create<inst_t>,
         .destroy = std_destroy<inst_t>,
-        .value   = std_value<inst_t>,
+        .notify  = std_notify<inst_t>,
         .exec    = std_exec<inst_t>,
         .report  = std_report<inst_t>
       };
@@ -8414,7 +8422,7 @@ namespace cw
         return rc;
       }
 
-      rc_t _value( proc_t* proc, inst_t* p, variable_t* var )
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
         if( proc->ctx->isInRuntimeFl &&  var->vid == kTriggerPId )
@@ -8544,7 +8552,7 @@ namespace cw
       class_members_t members = {
         .create  = std_create<inst_t>,
         .destroy = std_destroy<inst_t>,
-        .value   = std_value<inst_t>,
+        .notify  = std_notify<inst_t>,
         .exec    = std_exec<inst_t>,
         .report  = std_report<inst_t>
       };
