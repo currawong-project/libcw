@@ -48,9 +48,11 @@ namespace cw
     const ui_net_t* ui_net( handle_t h );
 
     // Run one cycle of the network.
+    // May return kEofRC if the cycle was programatically halted.
     rc_t exec_cycle( handle_t h );
 
     // Run a non-real-time program to completion.
+    // May return kEofRC if the cycle was programatically halted.
     rc_t exec(    handle_t h );
 
     // Send any pending updates from the flow network to the UI.
