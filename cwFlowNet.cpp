@@ -1341,11 +1341,12 @@ namespace cw
         proc->varMapIdN    = max_vid + 1;
         proc->varMapN      = proc->varMapIdN * proc->varMapChN;
         proc->varMapA      = mem::allocZ<variable_t*>( proc->varMapN );
-        proc->modVarMapN   = proc->varMapN;
-        proc->modVarMapA   = mem::allocZ<variable_t*>( proc->modVarMapN );
+        proc->modVarMapN   = 0;
+        proc->modVarMapA   = nullptr;
 
         // assign each variable to a location in the map
         for(variable_t* var=proc->varL; var!=nullptr; var=var->var_link)
+        {
           if( var->vid != kInvalidId )
           {
             unsigned idx = kInvalidIdx;
@@ -1373,10 +1374,20 @@ namespace cw
               goto errLabel;
             }
 
-          }
-        
-      }
+            if( cwIsFlag(var->varDesc->flags,kNotifyVarDescFl) )
+              proc->modVarMapN += 1;
 
+          }
+        }
+
+        // if there are variables marked for notification ...
+        if( proc->modVarMapN )
+        {
+          // ... then allocate space in modVarMapA[] 
+          proc->modVarMapN *= proc->varMapChN; // (assume that all variables have multiple channels)
+          proc->modVarMapA   = mem::allocZ<variable_t*>( proc->modVarMapN );
+        }
+      }
     errLabel:
       return rc;
       
@@ -1449,7 +1460,7 @@ namespace cw
       return rc;
     }
 
-    rc_t _proc_call_value_func_on_all_variables( proc_t* proc )
+    rc_t _proc_schedule_variables_for_notification( proc_t* proc )
     {
       rc_t rc  = kOkRC;
       rc_t rc1 = kOkRC;
@@ -1459,11 +1470,13 @@ namespace cw
         {
           variable_t* var = proc->varMapA[i];
 
-          if((rc = var_call_custom_value_func( var )) != kOkRC )
+          if((rc = var_schedule_notification( var )) != kOkRC )
             rc1 = cwLogError(rc,"The proc inst instance '%s:%i' reported an invalid valid on variable:%s chIdx:%i.", var->proc->label, var->proc->label_sfx_id, var->label, var->chIdx );
         }
+
+      rc = proc_notify(proc, kCallbackPnFl | kQuietPnFl );
       
-      return rc1;
+      return rcSelect(rc,rc1);
     }
 
     rc_t _proc_parse_ui_cfg(proc_t* proc, const proc_inst_parse_state_t& pstate)
@@ -2099,8 +2112,8 @@ namespace cw
       if((rc = _proc_set_log_flags(proc,pstate.log_labels)) != kOkRC )
         goto errLabel;
       
-      // call the 'value()' function to inform the proc instance of the current value of all of it's variables.
-      if((rc = _proc_call_value_func_on_all_variables( proc )) != kOkRC )
+      // call the 'notify()' function to inform the proc instance of the current value of all of it's variables.
+      if((rc = _proc_schedule_variables_for_notification( proc )) != kOkRC )
         goto errLabel;
 
       // parse the proc UI cfg record
@@ -2111,7 +2124,7 @@ namespace cw
       // validate the proc's state.
       if((rc = proc_validate(proc)) != kOkRC )
       {
-        rc = cwLogError(rc,"proc inst instance validation failed.");
+        rc = cwLogError(rc,"proc inst '%s:%i' validation failed.", cwStringNullGuard(proc->label),proc->label_sfx_id );
         goto errLabel;
       }
       
@@ -3636,6 +3649,10 @@ cw::rc_t cw::flow::exec_cycle( network_t& net )
 
   for(unsigned i=0; i<net.procN; ++i)
   {
+    // Call notify() on all variables marked for notification that have changed since the last exec_cycle()
+    proc_notify(net.procA[i], kCallbackPnFl | kQuietPnFl);
+
+    // execute the proc
     if((rc = net.procA[i]->class_desc->members->exec(net.procA[i])) != kOkRC )
     {
       if( rc == kEofRC )
@@ -3645,7 +3662,7 @@ cw::rc_t cw::flow::exec_cycle( network_t& net )
         rc = cwLogError(rc,"Execution failed on the proc:%s:%i.",cwStringNullGuard(net.procA[i]->label),net.procA[i]->label_sfx_id);
         break;
       }
-    }
+    }    
   }
 
   return halt_fl ? ((unsigned)kEofRC) : rc;
