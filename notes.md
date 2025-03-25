@@ -977,7 +977,8 @@ a connected value - since they are implemented as pointers back to the source va
 
 - The 'two slot' approach to setting variable no longer seems useful.
 The only reason not to eliminate it is to possibly use it as a way to test local values
-before they are set, but it isn't clear if this actually useful.
+before they are set, but it isn't clear if this actually useful.  Consider the case
+of setting min/max for numeric values - could it be used there?
 
 
 - DONE: Allow proc's to send messages to the UI. Implementation: During exec() the proc builds a global list of variables whose values
@@ -1039,6 +1040,8 @@ Look at all the places `var_create()` is called can the value arg. be removed?
   initially applied - does that mean an uninitialized channel is just sitting there? (... no i think
   the previous channel is duplicated in var_channelize())
 
+- The IO system can use audio files as audio devices.  Document this!
+
 - UI Issues:
     + When UI appIdMap[] labels do not match ui.cfg labels no error is generated. All appIdMap[] labels should be
       validated to avoid this problem.
@@ -1054,7 +1057,7 @@ Look at all the places `var_create()` is called can the value arg. be removed?
 
     + mult proc's with more than 3 instances should be put into a list or use a 'disclose' button
 
-    + add a UI label to the var description, 
+    + add a UI label to the flow var description
 
 
 
@@ -1112,7 +1115,7 @@ Consider a network with a variable sample rate.
 
 - Implement user defined data types.
 
-- Implement matrix types.
+- Implement matrix types. ... pick a library.
 
 - Add a 'trigger' data type. The 'kAllTId' isn't really doing anything.
 Perhaps this  could be a 'symbol' data type?
@@ -1404,6 +1407,9 @@ multiple times during the cycle only the last value will be recorded.
 This limitation however exists for all processor input variables whether they
 use the notification scheme or not.
 
+Note that when the value of a variable that is marked for notification is changed
+inside the notify() callback of the proc with owns it a new notification will not be
+triggered.  A processor will never trigger a notification on any of it's own variables.
 
 Optional Variables
 -------------------
