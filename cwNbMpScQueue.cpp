@@ -98,8 +98,7 @@ namespace cw
           if( b->eleN.load(std::memory_order_acquire) <= 0 )
           {
             // decr. the cleanBlkN count
-            unsigned cc = p->cleanBlkN.fetch_add(-1,std::memory_order_relaxed);
-            assert(cc>=1);
+            assert( p->cleanBlkN.fetch_add(-1,std::memory_order_relaxed) >= 1);
 
             // Note: b->full_flag==true and p->eleN==0 so it is safe to reset the block
             // because all elements have been removed (eleN==0) and
@@ -336,10 +335,8 @@ cw::nbmpscq::blob_t cw::nbmpscq::advance( handle_t h )
     // first 'stub' will not have a valid block pointer
     if( t->block != nullptr )
     {
-      int eleN = t->block->eleN.fetch_add(-1,std::memory_order_acq_rel);
-    
       // next was valid and so eleN must be >= 1
-      assert( eleN >= 1 );
+      assert( t->block->eleN.fetch_add(-1,std::memory_order_acq_rel) >= 1 );
     }
     
   }
