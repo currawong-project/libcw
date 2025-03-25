@@ -164,7 +164,7 @@ namespace cw
     rc_t _mod_var_map_update( variable_t* var )
     {
       rc_t rc = kOkRC;
-      if( cwIsFlag(var->varDesc->flags,kNotifyVarDescFl ) )
+      if( cwIsFlag(var->varDesc->flags,kNotifyVarDescFl ) && var->proc->modVarRecurseFl==false )
       {      
         // if the var is already modVarMapA[] then there is nothing to do
         // (use acquire to prevent rd/wr from moving before this op)
@@ -794,8 +794,7 @@ errLabel:
 cw::rc_t cw::flow::class_preset_has_var( const class_preset_t* class_preset, const char* var_label, bool& fl_ref )
 {
   rc_t rc = kOkRC;
-  const object_t* var_cfg;
-      
+  
   fl_ref = false;
 
   if( class_preset->cfg == nullptr )

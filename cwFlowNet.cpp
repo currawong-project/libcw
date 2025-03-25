@@ -3649,6 +3649,9 @@ cw::rc_t cw::flow::exec_cycle( network_t& net )
 
   for(unsigned i=0; i<net.procN; ++i)
   {
+    
+    net.procA[i]->modVarRecurseFl = true;
+    
     // Call notify() on all variables marked for notification that have changed since the last exec_cycle()
     proc_notify(net.procA[i], kCallbackPnFl | kQuietPnFl);
 
@@ -3662,7 +3665,10 @@ cw::rc_t cw::flow::exec_cycle( network_t& net )
         rc = cwLogError(rc,"Execution failed on the proc:%s:%i.",cwStringNullGuard(net.procA[i]->label),net.procA[i]->label_sfx_id);
         break;
       }
-    }    
+    }
+    
+    net.procA[i]->modVarRecurseFl = false;
+    
   }
 
   return halt_fl ? ((unsigned)kEofRC) : rc;

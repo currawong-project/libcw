@@ -151,6 +151,7 @@ namespace cw
       unsigned        varMapN;       // varMapN = varMapIdN * varMapChN 
       variable_t**    varMapA;       // varMapA[ varMapN ] = allows fast lookup from ('vid','chIdx) to variable
 
+      bool                  modVarRecurseFl;  // flag used to prevent call to set_var() from inside _notify() from calling var_schedule_notification()
       variable_t**          modVarMapA;       // modVarMapA[ modVarMapN ]
       unsigned              modVarMapN;       // modVarMapN == varMapN
       unsigned              modVarMapTailIdx; // index of next full slot in varMapA[]
