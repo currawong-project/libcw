@@ -1517,7 +1517,6 @@ namespace cw
         rc_t     rc           = kOkRC;
         const abuf_t* ibuf = nullptr;
         abuf_t*       obuf = nullptr;
-        inst_t*  inst = (inst_t*)(proc->userPtr);
 
         // get the src buffer
         if((rc = var_get(proc,kInPId, kAnyChIdx, ibuf )) != kOkRC )
@@ -5999,7 +5998,6 @@ namespace cw
           p->store_vid = kInvalidIdx;
         }
 
-      errLabel:
         return rc;
       }
 
@@ -6215,7 +6213,6 @@ namespace cw
           p->store_fl = false;
         }
 
-      errLabel:
         return rc;
       }
 
@@ -6371,7 +6368,6 @@ namespace cw
           var_set(proc,kOutPId,kAnyChIdx,!val);
         }
 
-      errLabel:
         return rc;
       }
 
@@ -7076,7 +7072,6 @@ namespace cw
           p->deltaFl = false;
         }
 
-      errLabel:
         return rc;
       }
 
@@ -8479,7 +8474,6 @@ namespace cw
       {
         rc_t rc      = kOkRC;
         abuf_t* outAudioBufA[ p->outVarN ];
-        unsigned out_var_idx;
 
         if( p->trigger_fl )
         {
