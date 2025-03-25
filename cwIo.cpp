@@ -2536,6 +2536,15 @@ cw::rc_t cw::io::stop( handle_t h )
   return rc;
 }
 
+bool cw::io::is_started_flag( handle_t h )
+{
+  if( h.isValid() )
+  {
+    io_t* p = _handleToPtr(h);
+    return p->startedFl.load();
+  }
+  return false;
+}
 
 cw::rc_t cw::io::exec( handle_t h, unsigned timeOutMs, void* execCbArg )
 {

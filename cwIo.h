@@ -163,10 +163,12 @@ namespace cw
     
     rc_t destroy( handle_t& h );
 
+    
     rc_t start( handle_t h );
     rc_t pause( handle_t h );
     rc_t stop(  handle_t h );
 
+    bool is_started_flag( handle_t h );
 
     // Note that this call blocks on the the UI websocket handle for up to 'timeOutMs'.
     // See ui:ws:exec().
