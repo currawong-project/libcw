@@ -9,6 +9,7 @@
 #include "cwText.h"
 #include "cwTextBuf.h"
 
+#include "cwThread.h"
 #include "cwIo.h"
 
 #include "cwMidi.h"
@@ -17,7 +18,6 @@
 
 #include "cwObject.h"
 
-#include "cwThread.h"
 #include "cwThreadMach.h"
 #include "cwMutex.h"
 
@@ -115,6 +115,18 @@ namespace cw
       unsigned sockA_index;
       unsigned userId;      
     } socket_t;
+    
+    typedef struct thread_once_str
+    {
+      struct io_str*          p;
+      thread::handle_t        threadH;
+      void*                   arg;
+      thread_once_func_t      cbFunc;
+      unsigned                id;
+      struct thread_once_str* link;
+      bool                    asyncFl;
+      bool                    doneFl;
+    } thread_once_t;
 
     typedef struct io_str
     {
@@ -175,6 +187,8 @@ namespace cw
       sample_t                      latency_meas_thresh_lin;
       bool                          latency_meas_enable_fl;
       latency_meas_result_t         latency_meas_result;
+
+      thread_once_t*                threadOnceList;
     } io_t;
   
 
@@ -270,7 +284,7 @@ namespace cw
     {
       rc_t        rc  = kOkRC;
       thread_t*    t  = (thread_t*)arg;
-      thread_msg_t tm = { .id=t->id, .arg=t->arg };
+      thread_msg_t tm = { .id=t->id, .arg=t->arg, .rc=kOkRC };
       msg_t        m;
 
       m.tid       = kThreadTId;
@@ -290,6 +304,62 @@ namespace cw
         thread_t* t1 = t0->link;
         mem::release(t0);
         t0 = t1;
+      }
+    }
+
+    bool  _thread_once_func( void* arg )
+    {
+      rc_t           rc = kOkRC;
+      thread_once_t* t  = (thread_once_t*)arg;
+
+      rc = t->cbFunc(t->arg);
+
+      thread_msg_t tm = { .id=t->id, .arg=t->arg, .rc=rc };
+      msg_t        m;
+
+      m.tid      = kThreadTId;
+      m.u.thread = &tm;
+    
+      if((rc = _ioCallback( t->p, t->asyncFl, &m )) != kOkRC )
+        cwLogError(rc,"Thread app callback failed.");
+
+      t->doneFl = true;
+      
+      return false;
+    }
+
+    void _thread_once_cleanup(  io_t* p, bool force_clean_fl=false )
+    {
+      thread_once_t* t0 = nullptr;
+      thread_once_t* t = p->threadOnceList;
+      while( t != nullptr )
+      {
+        thread_once_t* t_next = t->link;
+        
+        if( t->doneFl || force_clean_fl )
+        {
+          thread_once_t* tt = t;
+          
+          // point the previous link around this link
+          if( t0 != nullptr )
+          {
+            t0->link = t_next;
+          }
+          else
+          { // first link is being removed
+            p->threadOnceList = t_next;
+          }
+
+          thread::destroy(tt->threadH);
+          mem::release(tt);
+
+        }
+        else
+        {
+          t0 = t;
+        }
+
+        t = t_next;
       }
     }
 
@@ -2334,6 +2404,9 @@ namespace cw
       if((rc = thread_mach::destroy(p->threadMachH)) != kOkRC )
         return rc;
 
+
+      _thread_once_cleanup(p,true);
+      
       for(unsigned i=0; i<p->timerN; ++i)
         mem::release(p->timerA[i].label);
       
@@ -2364,7 +2437,6 @@ namespace cw
       if( p->cfg != nullptr )
         p->cfg->free();
 
-      
       
       mem::release(p);
 
@@ -2564,6 +2636,9 @@ cw::rc_t cw::io::exec( handle_t h, unsigned timeOutMs, void* execCbArg )
   if( p->audioMeterDevEnabledN ) 
     _audioDeviceProcessMeters(p);
 
+  if( p->threadOnceList != nullptr )
+    _thread_once_cleanup(p);
+  
   msg_t m;
   m.tid = kExecTId;
   m.u.exec.execArg = execCbArg;
@@ -2627,7 +2702,7 @@ cw::rc_t cw::io::threadCreate( handle_t h, unsigned id, bool asyncFl, void* arg,
 {
   rc_t      rc = kOkRC;
   io_t*     p  = _handleToPtr(h);
-  thread_t* t  = mem::allocZ<thread_t>(1);
+  thread_t* t  = mem::allocZ<thread_t>(1);  // BUG BUG BUG: where does this get released()
   
   t->id      = id;
   t->asyncFl = asyncFl;
@@ -2641,6 +2716,46 @@ cw::rc_t cw::io::threadCreate( handle_t h, unsigned id, bool asyncFl, void* arg,
  
   return rc;
 }
+
+cw::rc_t  cw::io::threadRunOnce( handle_t h, unsigned id, bool asyncFl, thread_once_func_t func, void* arg,  const char* thread_label )
+{
+  
+  rc_t      rc = kOkRC;
+  io_t*     p  = _handleToPtr(h);
+  thread_once_t* t = mem::allocZ<thread_once_t>();
+
+  t->p       = p;
+  t->arg     = arg;
+  t->cbFunc  = func;
+  t->asyncFl = asyncFl;
+  t->doneFl  = false;
+  t->id      = id;
+  t->link    = p->threadOnceList;
+  p->threadOnceList = t;
+
+  if((rc = thread::create(t->threadH,_thread_once_func,t,thread_label)) != kOkRC )
+  {
+    rc = cwLogError(rc,"One-time thread '%s' create failed.",cwStringNullGuard(thread_label));
+    goto errLabel;
+  }
+
+  sleepMs(10);
+
+  if((rc = thread::unpause(t->threadH)) != kOkRC )
+  {
+    rc = cwLogError(rc,"One-time '%s' thread start failed.",cwStringNullGuard(thread_label));
+    goto errLabel;
+  }
+  
+errLabel:
+  if( rc != kOkRC )
+  {
+    thread::destroy(t->threadH);
+    mem::release(t);
+  }
+  return rc;  
+}
+
 
 //----------------------------------------------------------------------------------------------------------
 //

@@ -43,8 +43,9 @@ namespace cw
 
     typedef struct thread_msg_str
     {
-      unsigned id;
-      void*    arg;
+      unsigned id;  // user supplied thread id
+      void*    arg; // user supplied arg passed to threadRunOnce() thread func
+      rc_t     rc;  // rc returned from user supplied threadRunOncec() thread func
     } thread_msg_t;
     
     typedef struct timer_msg_str
@@ -185,6 +186,10 @@ namespace cw
     // Thread
     //
     rc_t  threadCreate(    handle_t h, unsigned id, bool asyncFl, void* arg, const char* label );
+
+    // Run 'func(arg)' in a thread and callback the app with a thread_msg_t when the func is complete.
+    typedef rc_t (*thread_once_func_t)(void* arg);
+    rc_t  threadRunOnce( handle_t h, unsigned id, bool asyncFl, thread_once_func_t func, void* arg, const char* thread_label );
 
     //----------------------------------------------------------------------------------------------------------
     //
