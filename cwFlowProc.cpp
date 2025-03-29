@@ -4418,6 +4418,15 @@ namespace cw
     //
     // Poly Voice Control
     //
+    // Don't forget this scenario:
+    // 1. msg i: note-on pitch 64 starts voice-x
+    // 2. voice x is stolen
+    // 3. msg j: note-on pitch 64 starts voice-y
+    // 4. note-off matching msg i turns off voice-y.
+    //
+    // This is a bug.  voice-y should continue to sound until the second note-off message is received.
+    // In practice this probably a rare sequence insofar as MIDI notes on the same channel and pitch tend not to overlap
+    // nonetheless we have to prevent it.
     namespace poly_voice_ctl
     {
       enum {
@@ -4433,21 +4442,31 @@ namespace cw
       
       typedef struct voice_str
       {
-        bool            noffFl;   // true if this voice has received a note-off
-        bool            activeFl; // true if this voice is currently active
-        unsigned        pitch;    // pitch associated with this voice
-        unsigned        age;      // age of this voice in exec() cycles.
+        bool     noffFl;        // true if this voice has received a note-off 
+        bool     activeFl;      // true if this voice is currently active      (between note-on and 'done' msg)
+        bool     earlyStopFl;   // true if this voice is in the process of being stopped early
+        unsigned pitch;         // pitch associated with this voice        
+        unsigned age;           // age of this voice in exec() cycles.
         
-        midi::ch_msg_t* msgA;     // msgA[ msgN ] msg buffer for this voice 
+        midi::ch_msg_t* msgA;     // msgA[ msgN ] msg buffer for this voice  - a voice may receive multiple MIDI msg's per cycle
         unsigned        msgN;     //
         unsigned        msg_idx;  // current count of msg's in msgA[]
 
         mbuf_t*         mbuf;      // cached mbuf for this output variable
       } voice_t;
+
+      typedef struct midi_note_str
+      {
+        unsigned cnt;          // incr'd on note-on, decr'd on note-off (voice only get's note-off msg if cnt==0 and voice!=nullptr)
+        unsigned voice_idx;    // voice assigned to this note or null if no voice is assigned to this note.
+        unsigned cycle_idx;    // BUG BUG BUG: see _reset_voice() below.
+      } midi_t;
       
       typedef struct
       {
         unsigned baseDoneFlPId;
+
+        midi_t midiA[ midi::kMidiNoteCnt ];
         
         unsigned voiceN;   // voiceA[ voiceN ]
         voice_t* voiceA; 
@@ -4457,6 +4476,7 @@ namespace cw
 
         unsigned  midi_fld_idx;
 
+        // note_state debugging related variables
         bool          ns_fl;
         note_state_t* nsV;
         unsigned      nsN;
@@ -4464,8 +4484,14 @@ namespace cw
       } inst_t;
 
 
+      // mark a voice as available
       void _reset_voice( proc_t* proc, inst_t* p, unsigned voice_idx )
       {
+        // BUG BUG BUG: don't clear midiA[].voice_idx if it was turned on earlier in this cycle
+
+        if( p->voiceA[voice_idx].pitch < midi::kMidiNoteCnt )
+          p->midiA[ p->voiceA[voice_idx].pitch ].voice_idx = kInvalidIdx;
+        
         p->voiceA[voice_idx].activeFl = false;
         p->voiceA[voice_idx].pitch = midi::kInvalidMidiPitch;
         
@@ -4526,6 +4552,12 @@ namespace cw
             goto errLabel;
         }
 
+        for(unsigned i=0; i<midi::kMidiNoteCnt; ++i)
+        {
+          p->midiA[i].cnt = 0;
+          p->midiA[i].voice_idx = kInvalidIdx;
+        }
+
         p->ns_fl = false;
         p->nsN = 500;
         p->nsV = mem::allocZ<note_state_t>(p->nsN);
@@ -4556,50 +4588,8 @@ namespace cw
       rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
-        /*
-        if( p->baseDoneFlPId <= var->vid && var->vid < p->baseDoneFlPId + p->voiceN )
-        {          
-          p->voiceA[ var->vid - p->baseDoneFlPId ].activeFl = false;
-        }
-        */
         return rc;
       }
-
-      unsigned _get_next_avail_voice( inst_t* p, unsigned pitch )
-      {
-        unsigned max_age_idx    = 0;
-        unsigned inactive_idx = kInvalidIdx;
-        unsigned same_pitch_idx = kInvalidIdx;
-        
-        for(unsigned i=0; i<p->voiceN; ++i)
-        {
-          // get the inactive channel
-          if( inactive_idx==kInvalidIdx && p->voiceA[i].activeFl == false )
-            inactive_idx = i;
-
-          // check for a re-attacking note
-          if( p->voiceA[i].activeFl && p->voiceA[i].pitch == pitch )
-            same_pitch_idx = i;
-                      
-          if( p->voiceA[i].age > p->voiceA[ max_age_idx].age )
-            max_age_idx = i;          
-          
-        }
-
-        // BUG BUG BUG
-        // Uncommenting this causes output from the transforms to stop after about 30 notes
-        
-        // Return the re-attacking voice index
-        //if( same_pitch_idx != kInvalidIdx )
-        //  return same_pitch_idx;
-        
-        if( inactive_idx != kInvalidIdx )
-          return inactive_idx;
-        
-        cwLogWarning("Stealing:%i",p->voiceA[max_age_idx].pitch );
-        return max_age_idx;
-      }
-      
 
       rc_t _update_voice_msg( proc_t* proc, inst_t* p, unsigned voice_idx, const midi::ch_msg_t* m )
       {
@@ -4624,19 +4614,118 @@ namespace cw
         return rc;
       }
 
+      
+      rc_t _stop_note_early(proc_t* proc, inst_t* p, unsigned voice_idx )
+      {
+        midi::ch_msg_t m{};
+        m.status = midi::kNoteOffMdId;
+        m.d0 = p->voiceA[ voice_idx ].pitch;
+
+        p->voiceA[ voice_idx ].earlyStopFl = true;
+        
+        cwLogInfo("Early stop:%i",m.d0);
+        
+        return  _update_voice_msg(proc,p,voice_idx,&m);        
+      }
+
+      unsigned _get_next_avail_voice( proc_t* proc, inst_t* p, unsigned pitch )
+      {
+        unsigned next_voice_idx = kInvalidIdx;
+        unsigned max_age_idx    = 0;
+        unsigned inactive_idx   = kInvalidIdx;
+        unsigned same_pitch_idx = kInvalidIdx;
+        unsigned early_stop_idx = kInvalidIdx;
+        unsigned early_stop_cnt = 0;
+        unsigned active_voice_cnt = 0;
+
+        // examine all the voices
+        for(unsigned i=0; i<p->voiceN; ++i)
+        {
+          // get the inactive channel
+          if( inactive_idx==kInvalidIdx && p->voiceA[i].activeFl == false )
+            inactive_idx = i;
+
+          // if this voice is active
+          if( p->voiceA[i].activeFl )
+          {
+            active_voice_cnt += 1;
+
+            // check for a re-attacking note
+            if( p->voiceA[i].pitch == pitch )
+              same_pitch_idx = i;
+
+            // if this is the oldest active voice
+            if( p->voiceA[i].age > p->voiceA[ max_age_idx].age )
+            {
+              max_age_idx = i;
+              
+              // if this voice has already been marked for eary stopping 
+              if( p->voiceA[i].earlyStopFl )
+                early_stop_cnt += 1; // count the number of voices that are marked for early stopping
+              else
+                early_stop_idx = i;  // otherwise it is a candidate to stop early
+            }
+            
+          }
+
+        }
+
+        // BUG BUG BUG
+        // Uncommenting this causes output from the transforms to stop after about 30 notes
+        
+        // Return the re-attacking voice index
+        //if( same_pitch_idx != kInvalidIdx )
+        //  return same_pitch_idx;
+
+        
+        // if an inactive note was found
+        if( inactive_idx != kInvalidIdx )
+        {
+          next_voice_idx = inactive_idx;
+        }
+        else
+        {
+          cwLogWarning("All voices active!.");
+          next_voice_idx = max_age_idx;
+        }
+
+        // if more than half the voices are in use then begin turning off old voices
+        if( active_voice_cnt > p->voiceN/2 )
+          _stop_note_early(proc,p,early_stop_idx==kInvalidIdx ? max_age_idx : early_stop_idx );
+        
+        return next_voice_idx;
+      }
+      
+
       rc_t _on_note_on( proc_t* proc, inst_t* p, const midi::ch_msg_t* m  )
       {
         rc_t     rc         = kOkRC;
-        unsigned voice_idx  = _get_next_avail_voice(p,m->d0);
+        
+        assert( m->d0 < midi::kMidiNoteCnt );
+        
+        unsigned voice_idx = p->midiA[ m->d0 ].voice_idx;
+        
+        p->midiA[ m->d0 ].cnt += 1;
 
+        // if this note does not have a voice then get one
+        if( voice_idx == kInvalidIdx )
+        {
+          voice_idx  = _get_next_avail_voice(proc,p,m->d0);
+          
+          p->midiA[ m->d0 ].voice_idx = voice_idx;          
+
+        }
+        
         assert( voice_idx <= p->voiceN);
 
         voice_t* v = p->voiceA + voice_idx;
 
-        v->age      = 0;
-        v->activeFl = true;
-        v->noffFl   = false;
-        v->pitch    = m->d0;
+        v->age         = 0;
+        v->activeFl    = true;
+        v->noffFl      = false;
+        v->earlyStopFl = false;
+        v->pitch       = m->d0;
+
 
         //printf("v_idx:%i non\n",voice_idx);
 
@@ -4651,22 +4740,48 @@ namespace cw
       rc_t _on_note_off( proc_t* proc, inst_t* p, const midi::ch_msg_t* m )
       {
         rc_t     rc   = kOkRC;
-        for(unsigned i=0; i<p->voiceN; ++i)
-          if(p->voiceA[i].activeFl && p->voiceA[i].noffFl==false && p->voiceA[i].pitch==m->d0 )
+
+        // if this pitch does not have any assoc'd note-on's then there is nothing to do
+        if( p->midiA[ m->d0 ].cnt == 0 )
+        {
+          cwLogWarning("Extra note-off:%i.",m->d0);
+          goto errLabel;
+        }
+
+        // if this pitch is active then decr the cnt
+        if( p->midiA[ m->d0 ].cnt >= 1 )
+        {
+          p->midiA[ m->d0 ].cnt -= 1;
+        }
+
+        // if this pitch should be turned-off
+        if( p->midiA[ m->d0 ].cnt == 0 )
+        {
+
+          unsigned voice_idx = p->midiA[ m->d0 ].voice_idx;
+
+          if( voice_idx == kInvalidIdx )
+            cwLogWarning("Voice not found for note-off:%i.",m->d0);
+          else
           {
-            p->voiceA[i].noffFl = true;
+
+            voice_t* v = p->voiceA + voice_idx;
             
-            rc = _update_voice_msg(proc,p,i,m);
+            if(v->activeFl && v->noffFl==false && v->pitch==m->d0 )
+            {
+              v->noffFl = true;
+            
+              rc = _update_voice_msg(proc,p,voice_idx,m);
 
-            if( p->ns_fl )
-              _store_note_state( proc, p, m->uid, midi::kNoteOffMdId, m->d0, 0, i );
+              if( p->ns_fl )
+                _store_note_state( proc, p, m->uid, midi::kNoteOffMdId, m->d0, 0, voice_idx );
 
-            goto errLabel;
+              goto errLabel;
 
+            }
+          
           }
-        
-        cwLogWarning("Voice not found for note-off:%i.",m->d0);
-
+        }
       errLabel:
         return rc;
       }
@@ -4694,13 +4809,13 @@ namespace cw
         for(unsigned i=0; i<p->voiceN; ++i)
         {
           bool done_fl;
-          
+          // get the 'done_fl' for voice i
           var_get(proc,p->baseDoneFlPId+i,kAnyChIdx,done_fl);
 
           // notice notes that have transitioned from 'active' to 'inactive'
           if( p->voiceA[i].activeFl && done_fl )
           {
-            _reset_voice(proc,p,i);
+            _reset_voice(proc,p,i);            
           }
 
           // track the age of the voice
@@ -4720,10 +4835,10 @@ namespace cw
         // process the incoming MIDI messages
         for(unsigned i=0; i<rbuf->recdN; ++i)
         {
-          //const midi::ch_msg_t* m = mbuf->msgA + i;
           const recd_t* r = rbuf->recdA + i;
           const midi::ch_msg_t* m = nullptr;
 
+          // get the midi msg stored in the record
           if((rc = recd_get(rbuf->type,r,p->midi_fld_idx,m)) != kOkRC )
           {
             rc = cwLogError(rc,"Record 'midi' field read failed.");
@@ -4731,7 +4846,8 @@ namespace cw
           }
 
           //printf("0x%x %i %i\n",m->status,m->d0,m->d1);
-          
+
+          // dispatch the midi message
           switch( m->status )
           {
             case midi::kNoteOnMdId:
