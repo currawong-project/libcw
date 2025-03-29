@@ -59,6 +59,11 @@ namespace cw
 
         if(curStateId == stateId )
           break;
+
+        if(curStateId == kExitedThId)
+        {
+          return cwLogError(kInvalidStateRC,"Cannot wait on an thread that has already exited.");          
+        }
         
         sleepUs( p->waitMicros );
         
