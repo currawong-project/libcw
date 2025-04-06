@@ -106,6 +106,8 @@ namespace cw
       struct variable_str* src_var;                     // pointer to this input variables source link (or null if it uses the local_value)
       value_t*             value;                       // pointer to the value associated with this variable
 
+      const list_t*        value_list;   // list of valid values for this variable or nullptr if not applicable
+
       struct variable_str* var_link;     // instance.varL list link
       struct variable_str* ch_link;      // list of channels that share this variable (rooted on 'any' channel - in order by channel number)
 
@@ -545,7 +547,6 @@ namespace cw
 
     // Disconnect an in_var from it's source
     void           var_disconnect( variable_t* in_var );
-
 
     // Get the count of 'mult' vars associated with this var label.
     unsigned       var_mult_count( proc_t* proc, const char* var_label );

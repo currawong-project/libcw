@@ -1814,6 +1814,215 @@ cw::rc_t cw::flow::recd_array_destroy( recd_array_t*& recd_array_ref )
   return kOkRC;
 }
 
+//------------------------------------------------------------------------------------------------------------------------
+//
+// List
+//
+
+namespace cw {
+  namespace flow {
+    rc_t _list_destroy( list_t*& list_ref )
+    {
+      if( list_ref != nullptr )
+      {
+        for(unsigned i=0; i<list_ref->eleN; ++i)
+        {
+          mem::release(list_ref->eleA[i].label);
+          value_release(&list_ref->eleA[i].value );
+        }
+        mem::release(list_ref);
+      }
+      return kOkRC;
+    }
+  }
+}
+
+cw::rc_t cw::flow::list_create( list_t*& list_ref, const object_t* cfg )
+{
+  rc_t rc = kOkRC;
+  
+  bool labelOnlyListFl = false;
+
+  if( !cfg->is_list() && !cfg->is_dict() )
+  {
+    rc = cwLogError(kInvalidDataTypeRC,"The cfg. given to a flow list is not a JSON list or dictionary.");
+    goto errLabel;
+  }
+
+  if( cfg->child_count() == 0 )
+    cwLogWarning("The cfg. list used to form a flow list is empty.");
+  
+  if((rc = list_create(list_ref, cfg->child_count())) != kOkRC )
+    goto errLabel;
+
+  if( list_ref->eleAllocN == 0 )
+    goto errLabel;
+
+  if( cfg->is_list() )
+    labelOnlyListFl = true;
+
+  for(unsigned i=0; i<list_ref->eleAllocN; ++i)
+  {
+    const object_t* ele = cfg->child_ele(i);
+    const char* label = nullptr;
+    value_t value;
+    
+    // if this is a label-only list ... 
+    if( labelOnlyListFl  )
+    {
+      // this is a label-only list and so all elements must be strings
+      if( ele->is_string()==false )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The list element at index '%i' is not a string.",i);
+        goto errLabel;
+      }
+
+      // get the element label
+      if( ele->value(label) != kOkRC )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"Could not parse the list element at index '%i'.",i);
+        goto errLabel;
+      }
+      
+      // ... then the value is the list element index
+      value_set(&value,i);
+      
+    }
+    else // ... otherwise this is (label,value) dictioanry
+    {
+      // verify that the list element is a (label,element) pair.
+      if( !ele->is_pair() )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The list dictionary element at index '%i' is not a (label,value) pair.",i);
+        goto errLabel;
+      }
+
+      // validate the dictionary label
+      if( ele->pair_label() == nullptr )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The list dictionary element is missing it's label at index '%i'.",i);
+        goto errLabel;
+      }
+
+      // convert the dict value to a flow value
+      if((rc = value_from_cfg(ele->pair_value(),value)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Unable to parse the dict. element value field for '%s' at index '%i'.",ele->pair_label(),i);
+        goto errLabel;
+      }
+
+      // if the conversion did not result in a numeric or string data type
+      if( cwIsFlag(value.tflag,kCfgTFl) )
+      {
+        rc = cwLogError(rc,"List element value field at index '%i' is not a numeric or string type.",i);
+        goto errLabel;
+      }
+
+      label = ele->pair_label();
+    }
+
+    // add the element to the list
+    if((rc = list_append( list_ref, label, value )) != kOkRC )
+    {
+      rc = cwLogError(rc,"List append failed at index '%i'.",i);
+      goto errLabel;
+    }
+  }
+    
+
+  errLabel:
+    if( rc != kOkRC )
+      _list_destroy(list_ref);
+    
+    return rc;
+}
+
+cw::rc_t cw::flow::list_create( list_t*& list_ref, unsigned count )
+{
+  rc_t rc = kOkRC;
+  if((rc = list_destroy(list_ref)) != kOkRC )
+    return rc;
+
+  
+  list_ref            = mem::allocZ< list_t >();
+  list_ref->eleA      = mem::allocZ< list_ele_t >( count );
+  list_ref->eleAllocN = count;
+  list_ref->eleN      = 0;
+
+  return rc;
+}
+
+cw::rc_t cw::flow::list_destroy( list_t*& list_ref )
+{
+  return _list_destroy(list_ref);
+}
+
+cw::rc_t cw::flow::list_append( list_t* list, const char* label, const value_t& value )
+{
+  rc_t rc = kOkRC;
+
+  if( textLength(label) == 0 )
+  {
+    rc = cwLogError(kInvalidArgRC,"List elements must have a valid label.");
+    goto errLabel;
+  }
+  
+  if( list->eleN >= list->eleAllocN )
+  {
+    rc = cwLogError(kBufTooSmallRC,"Cannot append '%s' to a full list.",label);
+    goto errLabel;
+  }
+
+  if( list->eleN == 0 )
+    list->eleA[0].value.tflag = value.tflag;
+  else
+    list->eleA[list->eleN].value.tflag = list->eleA[0].value.tflag;
+
+  if((rc = value_from_value( value, list->eleA[list->eleN].value )) != kOkRC )
+  {
+    rc = cwLogError(rc,"Value conversion failed. All value types must be convertiable to type of the first list value.");
+    goto errLabel;
+  }
+
+  list->eleA[list->eleN].label = mem::duplStr(label);
+  
+  list->eleN += 1;
+
+errLabel:
+  if( rc != kOkRC )
+    rc = cwLogError(rc,"List append failed.");
+
+  return rc;
+ 
+}
+
+
+const char* cw::flow::list_ele_label( const list_t* list, unsigned index )
+{
+  assert( list != nullptr );
+    
+  if( index >= list->eleN )
+  {
+    cwLogError(kInvalidArgRC,"The list index '%i' is invalid for a list of length '%i'.",index,list->eleN);
+    return nullptr;
+  }
+
+  return list->eleA[ index ].label;
+}
+
+unsigned    cw::flow::list_ele_index( const list_t* list, const char* label )
+{
+  assert( list != nullptr );
+
+  for(unsigned i=0; i<list->eleN; ++i)
+    if( textIsEqual(list->eleA[i].label,label) )
+      return i;
+
+  return kInvalidIdx;  
+}
+
+
+//------------------------------------------------------------------------------------------------------------------------
 cw::rc_t cw::flow::value_test( const test::test_args_t& args )
 {
   rc_t          rc   = kOkRC;  

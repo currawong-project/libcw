@@ -423,7 +423,82 @@ namespace cw
     // The source and destination record types should be the same, but this
     // function does very little to verify that the actually are.
     rc_t recd_copy( const recd_type_t* src_recd_type, const recd_t* src_recdA, unsigned src_recdN, recd_array_t* dest_recd_array );
+
+
+    //------------------------------------------------------------------------------------------------------------------------
+    //
+    // List
+    //
+
+    typedef struct list_ele_str
+    {
+      char*    label;
+      value_t  value;
+    } list_ele_t;
     
+    typedef struct list_str
+    {
+      unsigned    tflag;  // all elements of the list share the same  value type.
+      list_ele_t* eleA;
+      unsigned    eleAllocN;
+      unsigned    eleN;
+      
+    } list_t;
+
+    
+    // Cfg: [ <label0>, <label1> ... <labelN> ]    (value is the same as the element index)
+    //      or
+    //      [ (<label0>,<value0> ... (<labelN>,<valueN>) ]  
+    rc_t list_create( list_t*& list_ref, const object_t* cfg );
+    rc_t list_create( list_t*& list_ref, unsigned count );
+
+    rc_t list_destroy( list_t*& list_ref );
+
+    rc_t list_append( list_t* list, const char* label, const value_t& value );
+
+    
+    
+    template< typename T >
+    rc_t list_append( list_t* list, const char* label, const T& v )
+    {
+      rc_t rc;      
+      value_t value;
+      value.tflag = kInvalidTFl;
+      if((rc = value_set(&value,v)) != kOkRC )
+        goto errLabel;
+
+      if((rc = list_append(list,label,value)) != kOkRC )
+        goto errLabel;
+
+    errLabel:
+      return rc;
+    }
+
+    const char* list_ele_label( const list_t* list, unsigned index );
+    unsigned    list_ele_index( const list_t* list, const char* label );
+
+    template< typename T >
+    rc_t list_ele_value( const list_t* list, unsigned index, T& v )
+    {
+      rc_t rc = kOkRC;
+      if( index >= list->eleN )
+      {
+        rc = cwLogError(rc,"The list element index '%i' is invalid on a list of length '%i'.",index,list->eleN);
+        goto errLabel;
+      }
+
+      if((rc = value_get(&list->eleA[index].value,v)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Read of list element value at index '%i' failed.",index,list->eleN);
+        goto errLabel;        
+      }
+
+    errLabel:
+      return rc;
+    }
+    
+    
+    //------------------------------------------------------------------------------------------------------------------------
     rc_t value_test( const test::test_args_t& args );
  
     
