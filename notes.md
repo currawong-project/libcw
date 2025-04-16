@@ -941,9 +941,47 @@ resolvable without more information.
 
 ### TODO:
 
-- Why doesn't the C7 on the downbeat of meas. 11 sound?
+- DONE: Why doesn't the C7 on the downbeat of meas. 11 sound? (... it does but is quiet due to velocity table)
 - DONE: Allow setting the location of the score player.  This should also reset the sampler and voice control.
-- DONE: The voice ctl should respond to all-notes-off message and reset each sampler channel
+- DONE: The voice ctl should respond to all-notes-off message and reset each sampler channel.
+
+- Log updates:
+  + Consider the ability to set colors to the log output based on the log level value.
+  + Allow printing to the console from the CAW app during idle time.
+
+- Variable value list updates:
+  - Currently lists are created and destroyed by the proc.
+    (The proc should continue to create the list, but the variable should be responsible for destroying it.
+     This will mean that 'variable_t.value_list' will no longer be able to be const.
+     
+  - Variables with lists can be any type and there is no checking that the list value matches the variable type.
+    (The list value type and the variable value type should be verified as compatible when the list is assigned to the variable.)
+    
+  - The proc receives list changes as uint's and then must manualy lookup the value and then set the value of the variable - see 'gutim_ps'.
+    (This should all be automatic.  The list value should be automatically dereferenced the variable updated without having to do any special handling in the proc.)
+
+    + In cwFlowTypes.h add:
+       - set_var_from_list( var, index ) - this must be implemented in terms of set_var(var,value) so that the value goes through the normal value update pipeline.
+       - get_var_list_index( var )  - return the index of the current value from the list
+
+       - Similar functions will need to be added to cwIoFlowCtl,cwFlow,cwFlowNet to allow the UI to interact in terms of list indexes.
+        
+    
+  - The default value of a list is always the element at index 0.
+    (A default value should be set when the list is created - and it should be any value in the list.)
+
+  - When a list value is set via a connection the value could be optionally validated in the list.
+
+  - The existence of a valid 'variable_t.value_list' could be enough to indicate that a UI element should be list widget
+    without having to also set the `ui:{ type:list }` field.
+
+  - Notes:
+    + There is no way for an external proc to know the contents/length of the list and therefore it would never make sense
+      to expose the list index as a potential input port.  This kind of thing would be better handled via a 'list' proc.
+      where the list is internal to the proc.
+
+    +  
+
 
 - All outputs must be set via var_set() call, otherwise proc's that rely on noticing changed variables
 will not work.  For example the 'print' proc does not work for record,midi,audio because
