@@ -2750,6 +2750,7 @@ cw::rc_t  cw::io::threadRunOnce( handle_t h, unsigned id, bool asyncFl, thread_o
 errLabel:
   if( rc != kOkRC )
   {
+    p->threadOnceList = t->link;
     thread::destroy(t->threadH);
     mem::release(t);
   }
