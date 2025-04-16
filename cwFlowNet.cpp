@@ -3472,6 +3472,7 @@ namespace cw
             ui_var->vid          = var->vid;
             ui_var->ch_cnt       = var_channel_count( net.procA[i], var->label, var->label_sfx_id );
             ui_var->ch_idx       = var->chIdx;
+            ui_var->list         = var->value_list;
             ui_var->value_tid    = (var->varDesc->type & flow::kTypeMask) == kAllTFl ? kAllTFl : var->type;
             ui_var->desc_flags   = var->varDesc->flags;
             ui_var->ui_cfg       = var->varDesc->ui_cfg;

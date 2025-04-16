@@ -110,6 +110,7 @@ namespace cw
     } ui_proc_desc_t;
 
     struct ui_proc_str;
+    struct list_str;
     
     typedef struct ui_var_str
     {
@@ -126,7 +127,8 @@ namespace cw
       unsigned    vid;            // flow::variable_t::vid
       unsigned    ch_idx;         // flow::variable_t::chIdx
       unsigned    ch_cnt;         // 0=kAnyChIdx only, kInvalidCnt=no channels, 1=mono, 2=stereo, ...
-
+      const struct list_str* list;
+      
       unsigned user_id; // uuId of the UI element that represents this var
 
       bool disable_fl;  // true if this ui var is disabled
