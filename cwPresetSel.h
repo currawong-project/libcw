@@ -94,6 +94,8 @@ namespace cw
 
     unsigned    preset_count( handle_t h );
     const char* preset_label( handle_t h, unsigned preset_idx );
+    unsigned    preset_index( handle_t h, const char* label );
+    unsigned    dry_preset_index( handle_t h );
 
     // Return preset_order[ preset_count() ] w/ all order's = 1
     const flow::preset_order_t* preset_order_array( handle_t h );
@@ -155,6 +157,8 @@ namespace cw
     // Return the count of presets whose 'seqFl' is set.
     unsigned fragment_seq_count( handle_t h, unsigned fragId );
 
+    void fragment_report( handle_t h, const frag_t* f );
+    
     enum {
       kAllActiveFl    = 0x01,
       kDryPriorityFl  = 0x02,

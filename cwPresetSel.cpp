@@ -211,6 +211,8 @@ namespace cw
       {
         unsigned order = _get_preset_order(f->presetA + i, f->presetN-1);
 
+        f->presetA[i].prob_dom_idx = kInvalidIdx;
+
         if( order > 0 )
         {
           if( order> 0 && activeOrderA[order]==0 )
@@ -247,8 +249,6 @@ namespace cw
         preset_t* preset = f->presetA + activeIdxA[i];
         unsigned order = _get_preset_order( preset, f->presetN-1);
 
-        preset->prob_dom_idx = i;
-        
         f->probDomA[i].index = activeIdxA[i];
         f->probDomA[i].order = preset->playFl ? 0 : order;
         f->probDomA[i].domain = order==0 ? 1 : common_mult / order;
@@ -262,6 +262,13 @@ namespace cw
 
       assert( f->probDomN>=1 && f->probDomA != nullptr );
 
+      
+      for(unsigned i=0; i<f->probDomN; ++i)
+      {
+        assert( f->probDomA[i].index != kInvalidIdx && f->probDomA[i].index < f->presetN );
+        f->presetA[ f->probDomA[i].index ].prob_dom_idx = i;
+      }
+      
     errLabel:
 
       if( rc != kOkRC )
@@ -1287,6 +1294,19 @@ const char* cw::preset_sel::preset_label( handle_t h, unsigned preset_idx )
   return _preset_label(p,preset_idx);
 }
 
+unsigned    cw::preset_sel::preset_index( handle_t h, const char* preset_label )
+{
+  preset_sel_t* p = _handleToPtr(h);
+  return _preset_label_to_index(p,preset_label);  
+}
+
+unsigned cw::preset_sel::dry_preset_index( handle_t h )
+{
+  preset_sel_t* p = _handleToPtr(h);
+  return p->dryPresetIdx;
+}
+
+
 const cw::flow::preset_order_t* cw::preset_sel::preset_order_array( handle_t h )
 {
   preset_sel_t* p = _handleToPtr(h);
@@ -1787,6 +1807,17 @@ unsigned cw::preset_sel::fragment_seq_count( handle_t h, unsigned fragId )
       ++n;
 
   return n;
+}
+
+void cw::preset_sel::fragment_report( handle_t h, const frag_t* f )
+{
+  preset_sel_t* p  = _handleToPtr(h);
+  for(unsigned i=0; i<f->presetN; ++i)
+  {
+    if( f->presetA[i].order > 0 || f->presetA[i].playFl)
+      cwLogPrint("%s%s%s:%i ", f->presetA[i].playFl ? "(" : "", _preset_label(p,f->presetA[i].preset_idx), f->presetA[i].playFl ? ")" : "",f->presetA[i].order);
+  }
+  cwLogPrint("\n");
 }
 
 
