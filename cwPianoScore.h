@@ -38,6 +38,8 @@ namespace cw
       unsigned bar;           // bar number or 0
       unsigned barPitchIdx;   // bar pitch index or 0 
       unsigned section;       // section number or 0
+      unsigned chord_note_cnt;// count of notes in the chord which this note-on msg is part of
+      unsigned chord_note_idx;// which note in the chord is this note-on msg (or kInvalididx if this is not a note-on msg)
 
       bool    valid_stats_fl; // is statsA valid in this record[]
       stats_t statsA[ perf_meas::kValCnt ];

@@ -40,6 +40,8 @@ namespace cw
       unsigned  min_uid;
 
       bool has_locs_fl;
+      bool uses_oloc_fl;
+
       
     } score_t;
 
@@ -106,7 +108,47 @@ namespace cw
             
           }
         }
+    }
 
+    unsigned _get_loc_count( const score_t* p )
+    {
+      unsigned max_loc = 0;
+      for(const event_t* e=p->base; e!=nullptr; e=e->link)
+        if(midi::isNoteOn(e->status,e->d1))
+          if( e->loc != kInvalidId && e->loc > max_loc )
+            max_loc = e->loc;
+      
+      return max_loc+1;        
+    }
+    
+    void _setup_chord_info( score_t* p )
+    {
+      unsigned locN = _get_loc_count(p);
+      unsigned* locA = mem::allocZ<unsigned>(locN);
+
+      // get the count of notes per loc and set event_t.chord_note_cnt
+      for(event_t* e=p->base; e!=nullptr; e=e->link)
+      {
+        if(midi::isNoteOn(e->status,e->d1))
+        {
+          assert( e->loc < locN );
+          e->chord_note_idx = locA[ e->loc ];
+          locA[ e->loc ] += 1;          
+        }
+        else
+        {
+          e->chord_note_idx = kInvalidIdx;
+          e->chord_note_cnt = 0;
+        }
+      }
+
+      // set the event_t.chord_note_cnt
+      for(event_t* e=p->base; e!=nullptr; e=e->link)
+        if(midi::isNoteOn(e->status,e->d1))
+          e->chord_note_cnt = locA[ e->loc ];
+      
+      mem::free(locA);
+      
     }
 
 
@@ -251,7 +293,8 @@ namespace cw
     {
       csv::handle_t csvH;
       rc_t        rc       = kOkRC;
-      bool        score_fl = false;
+
+      p->uses_oloc_fl = false;
       
       if((rc = csv::create(csvH,csvFname)) != kOkRC )
       {
@@ -263,10 +306,10 @@ namespace cw
       // an 'oloc' field and the recorded performance
       // files which do not.
       if( title_col_index(csvH,"oloc") != kInvalidIdx )
-        score_fl = true;
+        p->uses_oloc_fl = true;
 
       for(unsigned i=0; (rc = next_line(csvH)) == kOkRC; ++i )
-        if((rc = _read_csv_line(p,score_fl,csvH)) != kOkRC )
+        if((rc = _read_csv_line(p,p->uses_oloc_fl,csvH)) != kOkRC )
         {
           rc = cwLogError(rc,"Error reading CSV line number:%i.",i+1);
           goto errLabel;
@@ -485,6 +528,9 @@ cw::rc_t cw::perf_score::create( handle_t& hRef, const char* fn )
     p->has_locs_fl = false;    
   }
 
+  if( p->uses_oloc_fl )
+    _setup_chord_info(p);
+  
   _setup_feat_vectors(p);
     
   hRef.set(p);
