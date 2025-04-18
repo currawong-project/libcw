@@ -74,7 +74,7 @@ namespace cw
     {
       rc_t rc = kOkRC;
       
-      if( col_idx > p->colN )
+      if( col_idx >= p->colN )
       {
         rc = cwLogError(kSyntaxErrorRC,"Too many CSV columns on line index:%i",p->curLineIdx);
         goto errLabel;
@@ -131,7 +131,7 @@ namespace cw
               }
               
               fieldN += 1;
-              bi = i+1;
+              bi    = i+1;
               state = kBeforeField;
             }
             break;
@@ -266,8 +266,10 @@ namespace cw
         goto errLabel;
       }
 
-      
-
+      // skip leading white space
+      while( isspace(p->lineBuf[ p->colA[colIdx].char_idx ]) && p->lineBuf[ p->colA[colIdx].char_idx ] )
+        p->colA[colIdx].char_idx++;
+          
       fieldStr_Ref = p->lineBuf + p->colA[colIdx].char_idx;
 
     errLabel:

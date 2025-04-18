@@ -10,6 +10,7 @@ namespace cw
     typedef handle<struct csv_str> handle_t;
 
     // The first line of the CSV is expected to hold the column titles.
+    // Every column must have a title.
     // If titlesA and titleN are valid then these will be verified to exist when the CSV file is opened.
     rc_t create( handle_t& hRef, const char* fname, const char** titleA=nullptr, unsigned titleN=0 );
     
