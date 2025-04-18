@@ -86,6 +86,9 @@ libcwSRC += src/libcw/cwSfMatch.cpp src/libcw/cwSfTrack.cpp src/libcw/cwSfAnalys
 libcwHDR +=   src/libcw/cwScoreFollowerPerf.h src/libcw/cwScoreFollower.h   src/libcw/cwPerfMeas.h    src/libcw/cwScoreFollowTest.h
 libcwSRC +=                                   src/libcw/cwScoreFollower.cpp src/libcw/cwPerfMeas.cpp  src/libcw/cwScoreFollowTest.cpp
 
+libcwHDR +=   src/libcw/cwScoreFollow2Test.h   src/libcw/cwScoreFollow2.h 
+libcwSRC +=   src/libcw/cwScoreFollow2Test.cpp src/libcw/cwScoreFollow2.cpp
+
 libcwHDR += src/libcw/cwMidiState.h   src/libcw/cwSvgMidi.h   src/libcw/cwSvgScoreFollow.h
 libcwSRC += src/libcw/cwMidiState.cpp src/libcw/cwSvgMidi.cpp src/libcw/cwSvgScoreFollow.cpp
 
