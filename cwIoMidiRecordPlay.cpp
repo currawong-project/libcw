@@ -937,7 +937,7 @@ namespace cw
       file::handle_t fH;
       // NOTE: version must be a small negative number to differentiate from file version that
       // whose first word is the count of records in the file, rather than the version number
-      int version = -1; 
+      int version = -2; 
       
       if( p->iMsgArrayInIdx == 0 )
       {
