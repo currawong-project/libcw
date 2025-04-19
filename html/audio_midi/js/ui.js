@@ -572,6 +572,13 @@ function ui_create_number( parent_ele, d )
     return ele;
 }
 
+
+function precisionRound(number, precision)
+{
+    var factor = Math.pow(10, precision);
+    return Math.round(number * factor) / factor;
+}
+
 function ui_set_number_display( ele_id, value )
 {
     var ele = dom_id_to_ele(ele_id);
@@ -579,11 +586,20 @@ function ui_set_number_display( ele_id, value )
     if( typeof(value)=="number")
     {
 	var val = value.toString();
-    
-	if( ele.decpl == 0 )
-	    ele.innerHTML = parseInt(val,10);
+
+	var defined_fl = (typeof ele.decpl !== 'undefined');
+
+	if( defined_fl )
+	{
+	    if( ele.decpl == 0 )
+		ele.innerHTML = parseInt(val,10);
+	    else
+		ele.innerHTML = precisionRound(parseFloat(val),ele.decpl)
+	}
 	else
-	    ele.innerHTML = parseFloat(val);
+	{
+	    ele.innerHTML = parseFloat(val)
+	}
     }
 }
 
@@ -617,7 +633,7 @@ function ui_create_text_display( parent_ele, d )
 
 function ui_set_progress( ele, value )
 {
-    var ele = dom_id_to_ele(ele_id);
+    //var ele = dom_id_to_ele(ele_id);
 
     ele.value = Math.round( ele.max * (value - ele.minValue) / (ele.maxValue - ele.minValue));
 }
