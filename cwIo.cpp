@@ -1347,7 +1347,7 @@ namespace cw
       unsigned    audioBufFlags = 0;
   
       if((rc = _audioDeviceParams( p, devIdx, inOutEnaFlags, ad, audioBufFlags )) != kOkRC )
-        rc = cwLogError(rc,"Enable tone failed.");
+        rc = cwLogError(rc,"Audio device to buffer parameter translation failed.");
       else    
       {
         bool     enaFl       = inOutEnaFlags & kEnableFl;
@@ -2011,11 +2011,11 @@ namespace cw
       
       for(unsigned i=0; i<p->audioDevN; ++i)
         if( p->audioDevA[i].activeFl && p->audioDevA[i].meterFl )
-	  if((rc = _audioDeviceEnableMeter(p, p->audioDevA[i].devIdx, kEnableFl | kInFl | kOutFl )) != kOkRC )
-	  {
-	    cwLogError(rc,"Audio enable on device '%s' failed.",p->audioDevA[i].label);
-	    goto errLabel;
-	  }
+          if((rc = _audioDeviceEnableMeter(p, p->audioDevA[i].devIdx, kEnableFl | kInFl | kOutFl )) != kOkRC )
+          {
+            cwLogError(rc,"Audio enable on device '%s' failed.",p->audioDevA[i].label);
+            goto errLabel;
+          }
       
     errLabel:
       return rc;
