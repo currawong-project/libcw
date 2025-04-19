@@ -103,6 +103,8 @@ namespace cw
 
         sample_t* zeroBuf;      // buffer of zeros 
         unsigned  zeroBufCnt;   // max of all dspFrameCnt for all devices.
+
+        float meter_damp_coeff;
       } audioBuf_t;
 
       inline audioBuf_t* _handleToPtr( handle_t h ) { return handleToPtr<handle_t,audioBuf_t>(h); }
@@ -263,7 +265,7 @@ namespace cw
   }
 }
 
-cw::rc_t cw::audio::buf::create( handle_t& hRef, unsigned devCnt, unsigned meterMs )
+cw::rc_t cw::audio::buf::create( handle_t& hRef, unsigned devCnt, unsigned meterMs, float meterDampCoeff )
 {
   rc_t rc;
 
@@ -274,7 +276,8 @@ cw::rc_t cw::audio::buf::create( handle_t& hRef, unsigned devCnt, unsigned meter
   
   p->devArray        = mem::allocZ<cmApDev>(devCnt );
   p->devCnt = devCnt;
-
+  p->meter_damp_coeff = meterDampCoeff;
+  
   hRef.set(p);
   
   setMeterMs(hRef,meterMs);
@@ -422,11 +425,10 @@ cw::rc_t cw::audio::buf::update(
         sample_t*       dp    = cp->b + cp->ii;
         const sample_t* ep    = dp    + n0;
 
-
         // update the meter
         if( cwIsFlag(cp->fl,kMeterFl) )
         {
-          cp->m[cp->mi] = _cmApMeter(sp,pp->audioFramesCnt,pp->chCnt);
+          cp->m[cp->mi] = (1.0f - p->meter_damp_coeff) * cp->m[cp->mi] + p->meter_damp_coeff*_cmApMeter(sp,pp->audioFramesCnt,pp->chCnt);
           cp->mi = (cp->mi + 1) % cp->mn;
         }
 
@@ -538,7 +540,9 @@ cw::rc_t cw::audio::buf::update(
         // update the meter
         if( cwIsFlag(cp->fl,kMeterFl) )
         {
-          cp->m[cp->mi] = _cmApMeter(((sample_t*)pp->audioBytesPtr)+j,pp->audioFramesCnt,pp->chCnt);
+          //cp->m[cp->mi] = _cmApMeter(((sample_t*)pp->audioBytesPtr)+j,pp->audioFramesCnt,pp->chCnt);
+          cp->m[cp->mi] = (1.0f - p->meter_damp_coeff) * cp->m[cp->mi] + p->meter_damp_coeff*_cmApMeter(((sample_t*)pp->audioBytesPtr)+j,pp->audioFramesCnt,pp->chCnt);
+
           cp->mi        = (cp->mi + 1) % cp->mn;
         }
 
