@@ -941,6 +941,10 @@ resolvable without more information.
 
 ### TODO:
 
+- Check for duplicate field labels. Particularly when using a base record.
+  It's easy to declare a field named 'midi' and then inherit a record with a field named 'midi' - this is a crash bug.
+  
+
 - DONE: Why doesn't the C7 on the downbeat of meas. 11 sound? (... it does but is quiet due to velocity table)
 - DONE: Allow setting the location of the score player.  This should also reset the sampler and voice control.
 - DONE: The voice ctl should respond to all-notes-off message and reset each sampler channel.
@@ -1414,6 +1418,11 @@ a additition fields to an existing record is very fast.
 The new record effectively inherits the contents of the
 existing record by reference.  No data is copied.
 For an example of this see the `vel_table` implementation.
+
+Note that record field values may not be changed in place because
+this would change the value for all other processors that
+receive the record.  Incoming records must therefore be
+copied if they are changed.
 
 Variable Change Notification
 ----------------------------
