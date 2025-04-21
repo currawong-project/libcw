@@ -64,6 +64,8 @@ label {
     flex-direction: row;
     align-items: center;
     background-color: LightBlue;
+    margin-top: 10px;
+    margin-bottom: 10px;
 }
 
 .uiCol  {    

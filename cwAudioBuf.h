@@ -66,7 +66,7 @@ namespace cw
       // Allocate and initialize an audio buffer.
       // devCnt - count of devices this buffer will handle.
       // meterMs - length of the meter buffers in milliseconds (automatically limit to the range:10 to 1000)
-      rc_t create( handle_t& hRef, unsigned devCnt, unsigned meterMs );
+      rc_t create( handle_t& hRef, unsigned devCnt, unsigned meterMs, float meterDampCoeff=0.4 );
 
       // Deallocate and release any resource held by an audio buffer allocated via initialize().
       rc_t destroy( handle_t& hRef );

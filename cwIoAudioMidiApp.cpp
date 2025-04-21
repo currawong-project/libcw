@@ -47,7 +47,10 @@ namespace cw
                 
       kSaveBtnId,
       kOpenBtnId,
-      kFnStringId
+      kFnStringId,
+
+      kMeterPanelId,
+      kBaseAudioMeterId
     };
 
     enum
@@ -81,10 +84,21 @@ namespace cw
       { kPanelDivId,     kSaveBtnId,      "saveBtnId" },
       { kPanelDivId,     kOpenBtnId,      "openBtnId" },
       { kPanelDivId,     kFnStringId,     "filenameId" },
+
+      { kPanelDivId,     kMeterPanelId,   "meterPanelId" }
         
     };
 
     unsigned mapN = sizeof(mapA)/sizeof(mapA[0]);
+
+    const double kMeterMinVal = 0.0;
+    const double kMeterMaxVal = 100.0;
+    
+    typedef struct audio_meter_str
+    {
+      unsigned uuid;
+      char* title;
+    } audio_meter_t;
     
     typedef struct app_str
     {
@@ -101,6 +115,13 @@ namespace cw
       
       const object_t* midi_play_record_cfg;
 
+      unsigned audioDevIdx;
+      unsigned audioInChCnt;
+
+      bool activate_meters_fl;
+      audio_meter_t* meterA;
+      std::atomic<bool> meterSetupCompleteFl;
+
     } app_t;
 
     rc_t _parseCfg(app_t* app, const object_t* cfg )
@@ -111,6 +132,7 @@ namespace cw
                          "record_dir",                  app->record_dir,
                          "record_folder",               app->record_folder,
                          "record_fn_ext",               app->record_fn_ext,
+                         "activate_meters_fl",          app->activate_meters_fl,
                          "midi_play_record",            app->midi_play_record_cfg)) != kOkRC )
       {
         rc = cwLogError(kSyntaxErrorRC,"Audio MIDI app configuration parse failed.");
@@ -136,6 +158,10 @@ namespace cw
 
     rc_t _free( app_t& app )      
     {
+      for(unsigned i=0; i<app.audioInChCnt; ++i)
+        mem::release(app.meterA[i].title);
+      mem::release(app.meterA);
+        
       mem::release(app.directory);
       return kOkRC;
     }
@@ -360,11 +386,98 @@ namespace cw
       return rc;
       
     }
-    
 
+    rc_t _get_active_audio_dev_and_ch_count( app_t* app )
+    {
+      rc_t rc = kOkRC;
+      unsigned i = 0;
+      unsigned n = audioDeviceCount( app->ioH );
+      for(unsigned i=0; i<n; ++i)
+        if( audioDeviceIsActive(app->ioH,i) )
+        {
+          app->audioDevIdx = i;
+          app->audioInChCnt  = audioDeviceChannelCount(app->ioH,i,io::kInFl);
+
+          
+          if((rc = audioDeviceEnableMeters(app->ioH, app->audioDevIdx, io::kInFl | io::kEnableFl )) != kOkRC )
+          {
+            rc = cwLogError(rc,"Audio meter enable failed on device index:%i.",app->audioDevIdx);
+            goto errLabel;
+          }
+            
+          cwLogInfo("Active audio device index:%i in chs:%i\n",app->audioDevIdx,app->audioInChCnt);
+          
+          break;
+        }
+
+    errLabel:
+      return rc;
+
+    }
+
+    rc_t _create_audio_meters( app_t* app )
+    {
+      rc_t rc = kOkRC;
+
+      unsigned meterPanelUuId =    uiFindElementUuId( app->ioH, "meterPanelId" );
+      
+      if( app->audioDevIdx == kInvalidIdx || app->audioInChCnt==0 )
+      {
+        cwLogWarning("No meters created. No active input audio device was found.");
+        goto errLabel;
+      }
+
+      app->meterA = mem::resizeZ(app->meterA,app->audioInChCnt );
+      
+      for(unsigned i=0; i<app->audioInChCnt; ++i)
+      {
+        app->meterA[i].title = mem::printf(app->meterA[i].title,"%i",i);
+        
+        if((rc = uiCreateProg(app->ioH, app->meterA[i].uuid, meterPanelUuId, nullptr, kBaseAudioMeterId+i, 0, NULL, app->meterA[i].title, kMeterMinVal, kMeterMaxVal )) != kOkRC )
+        {
+          cwLogError(rc,"Audio input meter create failed on channel index:%i.",i);
+          goto errLabel;
+        }
+
+      }
+
+      app->meterSetupCompleteFl.store(true);
+
+    errLabel:
+      if(rc != kOkRC )
+        cwLogError(rc,"Audio meter creation failed.");
+      
+      return rc;
+    }
+
+    rc_t  _on_audio_meters(app_t* app, const io::audio_group_dev_t* agd )
+    {
+      rc_t rc = kOkRC;
+      if(   app->activate_meters_fl && app->meterSetupCompleteFl.load() && cwIsFlag(agd->flags,io::kInFl) )
+      {
+        unsigned n = std::min(app->audioInChCnt,agd->chCnt);
+        for(unsigned i=0; i<n; ++i)
+        {
+          double db = std::max(0.0, 20.0 * log10(agd->meterA[i]) + 100.0 );  
+          if((rc = io::uiSendValue(app->ioH, app->meterA[i].uuid, db)) != kOkRC )
+          {
+            rc = cwLogError(rc,"Audio meter update failed on channel index:%i.",i);
+            goto errLabel;
+          }
+        }
+      }
+    errLabel:
+      return rc;
+    }
+
+    
     rc_t _onUiInit(app_t* app, const io::ui_msg_t& m )
     {
       rc_t rc = kOkRC;
+
+      if( app->activate_meters_fl)
+        if((rc = _get_active_audio_dev_and_ch_count(app)) == kOkRC )
+          _create_audio_meters(app);
       
       return rc;
     }
@@ -511,12 +624,15 @@ namespace cw
         break;
           
       case io::kMidiTId:
+        // Drop the MIDI messages that were processed on this call.
+        midiDeviceClearBuffer(app->ioH,m->u.midi->pkt->msgCnt);
         break;
           
       case io::kAudioTId:        
         break;
 
       case io::kAudioMeterTId:
+        _on_audio_meters(app,m->u.audioGroupDev);
         break;
           
       case io::kSockTId:
@@ -549,6 +665,10 @@ cw::rc_t cw::audio_midi_app::main( const object_t* cfg )
 {
   rc_t rc;
   app_t app = {};
+
+  app.audioDevIdx = kInvalidIdx;
+  app.audioInChCnt = 0;
+  app.meterSetupCompleteFl.store(false);
 
   // Parse the configuration
   if((rc = _parseCfg(&app,cfg)) != kOkRC )
@@ -596,6 +716,8 @@ cw::rc_t cw::audio_midi_app::main( const object_t* cfg )
   }
 
  errLabel:
+  destroy(app.mrpH);
+  destroy(app.arpH);
   _free(app);
   io::destroy(app.ioH);
   printf("Audio-MIDI Done.\n");
