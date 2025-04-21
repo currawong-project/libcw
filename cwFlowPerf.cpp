@@ -33,6 +33,9 @@
 #include "cwScoreFollower.h"
 
 #include "cwPianoScore.h"
+#include "cwScoreFollow2.h"
+
+#include "cwPianoScore.h"
 
 #include "cwPresetSel.h"
 
@@ -55,6 +58,7 @@ namespace cw
         kScoreFNamePId,
         kStoppingMsPId,
         kDoneFlPId,
+        kMaxLocPId,
         kOutPId,
         kStartPId,
         kStopPId,        
@@ -130,6 +134,8 @@ namespace cw
         state_t  state;                // idle,play,stopping
         unsigned stopping_ms;          // max time in milliseconds to wait for all notes to end before sending all-note-off
         unsigned stopping_sample_idx;  // 0 if not 'stopping', otherwise the max sample index after which the player will enter 'idle' state.
+
+        unsigned maxLocId; 
         
       } inst_t;
 
@@ -178,18 +184,27 @@ namespace cw
           goto errLabel;
         }
 
+        p->maxLocId = 0;
         p->msgA   = mem::allocZ<msg_t>(p->msgAllocN);
         p->chMsgA = mem::allocZ<midi::ch_msg_t>(p->msgAllocN);
-
+        
         for(; p->msgN<p->msgAllocN && score_evt !=nullptr; score_evt=score_evt->link)
         {
           if( score_evt->status != 0 )
           {
+            bool            note_on_fl = false;
             msg_t*          m  = p->msgA   + p->msgN;
             midi::ch_msg_t* mm = p->chMsgA + p->msgN;
 
             if( score_evt->loc != kInvalidId )
+            {
+              // verify that the score is in order by location
+              assert( score_evt->loc >= last_loc );
               last_loc = score_evt->loc;
+            }
+            
+            if( last_loc > p->maxLocId )
+              p->maxLocId = last_loc;
             
             m->sample_idx = (unsigned)(proc->ctx->sample_rate * score_evt->sec);
             m->loc        = last_loc;
@@ -206,9 +221,11 @@ namespace cw
                         
             time::fracSecondsToSpec( mm->timeStamp, score_evt->sec );
 
-            mm->devIdx = kInvalidIdx;
-            mm->portIdx= kInvalidIdx;
-            mm->uid    = uuid++;
+            note_on_fl = midi::isNoteOn(score_evt->status,score_evt->d1);
+
+            mm->devIdx = note_on_fl ? m->loc : kInvalidIdx;             //BUG BUG BUG: hack to do per chord/note processing in gutim_ps
+            mm->portIdx= note_on_fl ? score_evt->chord_note_idx : kInvalidIdx;
+            mm->uid    = note_on_fl ? score_evt->chord_note_cnt : kInvalidId;    
             mm->ch     = score_evt->status & 0x0f;
             mm->status = score_evt->status & 0xf0;
             mm->d0     = score_evt->d0;
@@ -216,6 +233,7 @@ namespace cw
             m->d1      = score_evt->d1;  // track the initial d1 before vel. mapping is applied
 
             
+
             if(  midi::isSustainPedal( mm->status, mm->d0 ) )
             {
               bool down_fl = pedalStateFlags & kDampPedalDownFl;
@@ -417,7 +435,8 @@ namespace cw
 
         
         if((rc = var_register_and_set(proc,kAnyChIdx,
-                                      kDoneFlPId,"done_fl", kBaseSfxId, false)) != kOkRC )
+                                      kDoneFlPId,"done_fl", kBaseSfxId, false,
+                                      kMaxLocPId,"loc_cnt", kBaseSfxId, p->maxLocId+1 )) != kOkRC )
         {
           goto errLabel;
         }
@@ -669,6 +688,11 @@ namespace cw
           }
 
           bool note_on_fl = midi::isNoteOn(m->midi->status, m->midi->d1);
+          
+          //if( note_on_fl )
+          //{
+          //  printf("sc:%i %i %i %s\n",m->meas,m->loc,m->midi->d0,midi::midiToSciPitch(m->midi->d0));
+          //}
            
           // fill the output record with this msg but filter out note-on's when in stopping-state
           if( p->state == kPlayStateId || (p->state==kStoppingStateId && note_on_fl==false) )
@@ -745,6 +769,7 @@ namespace cw
         vel_tbl_t*    velTblL;
         vel_tbl_t*    activeVelTbl;
         unsigned      i_midi_fld_idx;
+        unsigned      i_score_vel_fld_idx;
         unsigned      o_midi_fld_idx;
         
         recd_array_t*   recd_array;  // output record array        
@@ -953,8 +978,10 @@ namespace cw
 
         p->midiN = p->recd_array->allocRecdN;
         p->midiA = mem::allocZ<midi::ch_msg_t>(p->midiN);
-         
-        
+
+        // If the velocity table is being fed by the score follower then there may be a 'score_vel' field in the input record.
+        p->i_score_vel_fld_idx = recd_type_field_index( rbuf->type, "score_vel");
+
       errLabel:
         return rc;
       }
@@ -998,13 +1025,13 @@ namespace cw
         if((rc = var_get(proc,kOutPId,kAnyChIdx,o_rbuf)) != kOkRC )
           goto errLabel;
 
-
+        
         // for each incoming record
         for(unsigned i=0; i<i_rbuf->recdN; ++i)
         {
           const recd_t*         i_r = i_rbuf->recdA + i;          
           const midi::ch_msg_t* i_m = nullptr;
-
+          
           // verify that there is space in the output array
           if( i >= p->midiN || i >= p->recd_array->allocRecdN )
           {
@@ -1029,15 +1056,46 @@ namespace cw
           // if this is a note on
           if( midi::isNoteOn(i_m->status,i_m->d1) )
           {
-            // and the velocity is valid
-            if( i_m->d1 >= p->activeVelTbl->tblN )
+
+            // if the 'score_vel' was not given
+            if( p->i_score_vel_fld_idx == kInvalidIdx )
             {
+              // and the velocity is valid
+              if( i_m->d1 >= p->activeVelTbl->tblN )
+              {
               rc = cwLogError(kInvalidArgRC,"The pre-mapped velocity value %i is outside of the range (%i) of the velocity table '%s'.",i_m->d1,p->activeVelTbl->tblN,cwStringNullGuard(p->activeVelTbl->label));
               goto errLabel;
+              }
+              
+              // map the velocity through the active table
+              o_m->d1 = p->activeVelTbl->tblA[ i_m->d1 ];
             }
+            else  // ... a 'score_vel' exists
+            {
+              unsigned score_vel = -1;
 
-            // map the velocity through the active table
-            o_m->d1 = p->activeVelTbl->tblA[ i_m->d1 ];
+              // get the score_vel
+              if((rc = recd_get(i_rbuf->type,i_r,p->i_score_vel_fld_idx,score_vel)) != kOkRC )
+              {
+                rc = cwLogError(kOpFailRC,"'score_velocity access failed in velocity table.");
+                goto errLabel;
+              }
+
+              // if the score_vel is valid (it won't be if this note was not tracked in the score)
+              if( score_vel != (unsigned)-1 )
+              {
+                // verify that the 'score_vel' is inside the range of the table
+                if(score_vel >= p->activeVelTbl->tblN )
+                {
+                  rc = cwLogError(kInvalidArgRC,"The pre-mapped score velocity value %i is outside of the range (%i) of the velocity table '%s'.",score_vel,p->activeVelTbl->tblN,cwStringNullGuard(p->activeVelTbl->label));
+                  goto errLabel;                  
+                }
+
+                // apply the score_vel to the map
+                o_m->d1 = p->activeVelTbl->tblA[ score_vel ];
+              }
+              
+            }
 
             //printf("%i %i %s\n",i_m->d1,o_m->d1,p->activeVelTbl->label);
           }
@@ -1261,10 +1319,15 @@ namespace cw
         kInitCfgPId,
         kPresetMapCfgPId,
         kFNamePId,
+        kLocCntPId,
         kInPId,
         kLocPId,
         kResetPId,
+        kPriManualSelPId,
+        kSecManualSelPId,
         kPerNoteFlPId,
+        kPerLocFlPId,
+        kDryChordFlPId,
         
         kPriProbFlPId,
         kPriUniformFlPId,
@@ -1309,6 +1372,15 @@ namespace cw
         kUIntPresetValTId,
         kCoeffPresetValTId,
       } value_tid_t;
+
+      typedef struct loc_str
+      {
+        unsigned pri_preset_idx;
+        unsigned sec_preset_idx;
+        unsigned note_cnt;
+        unsigned note_idx;
+        unsigned rand;
+      } loc_t;
 
       typedef struct var_cfg_str
       {
@@ -1391,6 +1463,8 @@ namespace cw
         coeff_t                   cur_interp_dist;
 
         bool per_note_fl;
+        bool per_loc_fl;
+        bool dry_chord_fl;
         bool pri_prob_fl;
         bool pri_uniform_fl;
         bool pri_dry_on_play_fl;
@@ -1406,8 +1480,30 @@ namespace cw
         bool    interp_fl;
         bool    interp_rand_fl;
 
+        list_t*  manual_sel_list;
+        unsigned cur_manual_pri_preset_idx;
+        unsigned cur_manual_sec_preset_idx;
+
+        loc_t*   locA;
+        unsigned locN;
+        unsigned dry_preset_idx;
         
       } inst_t;
+
+      void _init_loc_array( inst_t* p )
+      {
+        if( p->locN > 0 && p->locA == nullptr )
+          p->locA = mem::allocZ<loc_t>(p->locN);
+
+        for(unsigned i=0; i<p->locN; ++i)
+        {
+          p->locA[i].pri_preset_idx = kInvalidIdx;
+          p->locA[i].sec_preset_idx = kInvalidIdx;
+          p->locA[i].note_cnt       = 0;
+          p->locA[i].note_idx       = kInvalidIdx;
+          p->locA[i].rand           = rand();
+        }
+      }
 
       const char* _preset_index_to_label( inst_t* p, unsigned preset_idx )
       {
@@ -1417,6 +1513,46 @@ namespace cw
         if( preset_idx != kInvalidIdx && preset_idx < p->presetN )
           label = _presetA[  preset_idx ].ps_label;
         return label;
+      }
+
+      rc_t _create_manual_select_list( proc_t* proc, inst_t* p )
+      {
+        rc_t           rc           = kOkRC;
+        const char*    var_labelA[] = { "pri_manual_sel", "sec_manual_sel" };
+        const unsigned var_labelN   = sizeof(var_labelA)/sizeof(var_labelA[0]);
+
+        p->cur_manual_pri_preset_idx = kInvalidIdx;
+        p->cur_manual_sec_preset_idx = kInvalidIdx;
+        
+        // create the list of values for the 'manual_sel' variable
+        if((rc = list_create(p->manual_sel_list, p->presetN+1 )) != kOkRC )
+          goto errLabel;
+
+        if((rc = list_append(p->manual_sel_list,"auto",kInvalidIdx)) != kOkRC )
+          goto errLabel;
+        
+        for(unsigned i=0; i<p->presetN; ++i)
+          if((rc = list_append( p->manual_sel_list, _preset_index_to_label(p,i), i)) != kOkRC )
+            goto errLabel;
+        
+
+        for(unsigned i=0; i<var_labelN; ++i)
+        {
+          variable_t* var = nullptr;
+
+          if((rc = var_find(proc, var_labelA[i], kBaseSfxId, kAnyChIdx, var )) != kOkRC )
+          {
+            rc = cwLogError(rc,"The '%s' variable could not be found.",var_labelA[i]);
+            goto errLabel;
+          }
+
+          var->value_list = p->manual_sel_list;
+        }
+        
+      errLabel:
+        if( rc != kOkRC )
+          rc = cwLogError(rc,"The 'gutim_ps' manual selection list create failed.");
+        return rc;
       }
       
       template< typename T >
@@ -1547,11 +1683,11 @@ namespace cw
         return rc;        
       }
 
-      rc_t _apply_preset_no_interp(proc_t* proc, inst_t* p, unsigned voice_idx)
+      rc_t _apply_preset_no_interp(proc_t* proc, inst_t* p, unsigned voice_idx, unsigned preset_idx)
       {
         rc_t rc = kOkRC;
 
-        if( p->cur_pri_preset_idx == kInvalidIdx || p->cur_pri_preset_idx >= p->presetN )
+        if( preset_idx == kInvalidIdx || preset_idx >= p->presetN )
         {
           rc = cwLogError(kInvalidArgRC,"The primary preset is invalid.");
           goto errLabel;
@@ -1561,11 +1697,11 @@ namespace cw
         {
           const var_cfg_t* var_cfg = _var_cfgA + var_idx;
           
-          assert( p->cur_pri_preset_idx < p->presetN );
+          assert( preset_idx < p->presetN );
           
           for(unsigned ch_idx=0; ch_idx<kMaxChN; ++ch_idx )
           {            
-            const preset_value_t* v = p->presetA[ p->cur_pri_preset_idx ].varA[ var_idx ].chA + ch_idx;
+            const preset_value_t* v = p->presetA[ preset_idx ].varA[ var_idx ].chA + ch_idx;
             
             variable_t* varb;
             var_find(proc, p->base[var_cfg->var_pid] + voice_idx,ch_idx, varb);
@@ -1600,17 +1736,17 @@ namespace cw
       }
 
 
-      rc_t _apply_preset_with_interp(proc_t* proc, inst_t* p, unsigned voice_idx)
+      rc_t _apply_preset_with_interp(proc_t* proc, inst_t* p, unsigned voice_idx, unsigned pri_preset_idx, unsigned sec_preset_idx)
       {
         rc_t rc = kOkRC;
 
-        if( p->cur_pri_preset_idx == kInvalidIdx || p->cur_pri_preset_idx >= p->presetN )
+        if( pri_preset_idx == kInvalidIdx || pri_preset_idx >= p->presetN )
         {
           rc = cwLogError(kInvalidArgRC,"The primary preset is invalid.");
           goto errLabel;
         }
         
-        if( p->cur_sec_preset_idx == kInvalidIdx || p->cur_sec_preset_idx >= p->presetN )
+        if( sec_preset_idx == kInvalidIdx || sec_preset_idx >= p->presetN )
         {
           rc = cwLogError(kInvalidArgRC,"The secondary preset is invalid.");
           goto errLabel;
@@ -1620,13 +1756,13 @@ namespace cw
         {
           const var_cfg_t* var_cfg = _var_cfgA + var_idx;
           
-          assert( p->cur_pri_preset_idx < p->presetN );
+          assert( pri_preset_idx < p->presetN );
           
           for(unsigned ch_idx=0; ch_idx<kMaxChN; ++ch_idx )
           {
             
-            const preset_value_t* c0 = p->presetA[ p->cur_pri_preset_idx ].varA[ var_idx ].chA + ch_idx;
-            const preset_value_t* c1 = p->presetA[ p->cur_sec_preset_idx ].varA[ var_idx ].chA + ch_idx;
+            const preset_value_t* c0 = p->presetA[ pri_preset_idx ].varA[ var_idx ].chA + ch_idx;
+            const preset_value_t* c1 = p->presetA[ sec_preset_idx ].varA[ var_idx ].chA + ch_idx;
             
             switch( var_cfg->tid )
             {
@@ -1696,24 +1832,27 @@ namespace cw
         if( p->cur_sec_preset_idx != kInvalidIdx )
           _report_preset( proc, p, "Sec", p->cur_sec_preset_idx );
       }
-      
-      rc_t _apply_preset( proc_t* proc, inst_t* p, const midi::ch_msg_t* m, unsigned voice_idx )
+
+      // apply the preset assoc'd with p->cur_pri_preset_idx and p->cur_sec_preset_idx
+      rc_t _apply_preset( proc_t* proc, inst_t* p, const midi::ch_msg_t* m, unsigned voice_idx, unsigned pri_preset_idx, unsigned sec_preset_idx )
       {
         rc_t rc = kOkRC;
+        pri_preset_idx = p->cur_manual_pri_preset_idx == kInvalidIdx ? pri_preset_idx : p->cur_manual_pri_preset_idx;
+        sec_preset_idx = p->cur_manual_sec_preset_idx == kInvalidIdx ? sec_preset_idx : p->cur_manual_sec_preset_idx;
 
-        if( p->cur_frag == nullptr || p->cur_pri_preset_idx == kInvalidIdx )
+        if( pri_preset_idx == kInvalidIdx )
         {
           rc = cwLogError(kInvalidStateRC,"No current preset has been selected.");
           goto errLabel;
         }
 
-        if( p->cur_sec_preset_idx == kInvalidIdx )
+        if( !p->interp_fl || sec_preset_idx == kInvalidIdx )
         {
-          rc = _apply_preset_no_interp(proc, p, voice_idx);
+          rc = _apply_preset_no_interp(proc, p, voice_idx, pri_preset_idx);
         }
         else
         {
-          rc = _apply_preset_with_interp(proc, p, voice_idx);
+          rc = _apply_preset_with_interp(proc, p, voice_idx, pri_preset_idx, sec_preset_idx);
         }
 
       errLabel:
@@ -1795,13 +1934,20 @@ namespace cw
         const object_t* cfg         = nullptr;
         bool            resetFl     = false;
 
+        p->dry_preset_idx = kInvalidIdx;
+          
         if((rc = var_register_and_get(proc,kAnyChIdx,
-                                      kInitCfgPId,   "cfg",        kBaseSfxId, cfg,        // TODO: clean up the contents of this CFG
-                                      kInPId,        "in",         kBaseSfxId, rbuf,
-                                      kFNamePId,     "fname",      kBaseSfxId, fname,
-                                      kLocPId,       "loc",        kBaseSfxId, loc,
-                                      kResetPId,     "reset",      kBaseSfxId, resetFl,
-                                      kPerNoteFlPId, "per_note_fl",kBaseSfxId, p->per_note_fl,
+                                      kInitCfgPId,      "cfg",            kBaseSfxId, cfg,        // TODO: clean up the contents of this CFG
+                                      kInPId,           "in",             kBaseSfxId, rbuf,
+                                      kFNamePId,        "fname",          kBaseSfxId, fname,
+                                      kLocCntPId,       "loc_cnt",        kBaseSfxId, p->locN,
+                                      kLocPId,          "loc",            kBaseSfxId, loc,
+                                      kResetPId,        "reset",          kBaseSfxId, resetFl,
+                                      kPriManualSelPId, "pri_manual_sel", kBaseSfxId, p->cur_manual_pri_preset_idx,
+                                      kSecManualSelPId, "sec_manual_sel", kBaseSfxId, p->cur_manual_sec_preset_idx,
+                                      kPerNoteFlPId,    "per_note_fl",    kBaseSfxId, p->per_note_fl,
+                                      kPerLocFlPId,     "per_loc_fl",     kBaseSfxId, p->per_loc_fl,
+                                      kDryChordFlPId,   "dry_chord_fl",   kBaseSfxId, p->dry_chord_fl,
 
                                       kPriProbFlPId,     "pri_prob_fl",        kBaseSfxId, p->pri_prob_fl,                                      
                                       kPriUniformFlPId,  "pri_uniform_fl",     kBaseSfxId, p->pri_uniform_fl,
@@ -1841,6 +1987,8 @@ namespace cw
           goto errLabel;
         }
 
+        p->dry_preset_idx = preset_sel::dry_preset_index(p->psH);
+
         // read in the loc->preset map file
         if((rc = preset_sel::read(p->psH,exp_fname)) != kOkRC )
         {
@@ -1854,8 +2002,9 @@ namespace cw
         // The location is coming from a 'record', get the location field.
         if((p->loc_fld_idx  = recd_type_field_index( rbuf->type, "loc")) == kInvalidIdx )
         {
-          rc = cwLogError(kInvalidArgRC,"The 'in' record does not have a 'loc' field.");
-          goto errLabel;
+          cwLogWarning("The incoming record to the 'gutim_ps' object does not have a 'loc' field. Score tracking is disabled.");
+          //rc = cwLogError(kInvalidArgRC,"The 'in' record does not have a 'loc' field.");
+          //goto errLabel;
         }
 
 
@@ -1895,9 +2044,17 @@ namespace cw
         p->psPresetCnt = preset_count(p->psH);  // get the count of preset class (~13)
 
         // Get the values for all the presets required by the transform parameter variables
-        rc = _create_and_fill_preset_array( proc, p );
+        if((rc = _create_and_fill_preset_array( proc, p )) != kOkRC )
+          goto errLabel;
+          
 
-        
+        // create the 'manual_sel' list based on the available preset labels
+        if((rc = _create_manual_select_list(proc, p )) != kOkRC )
+          goto errLabel;
+
+        // initialize locA[]
+        _init_loc_array(p);
+
       errLabel:
         mem::release(exp_fname);
         return rc;
@@ -1907,24 +2064,88 @@ namespace cw
       {
         rc_t rc = kOkRC;
 
-        // Custom clean-up code goes here
-
+        list_destroy(p->manual_sel_list);
+        mem::release(p->locA);
+        
         return rc;
       }
 
       rc_t _exec_note_on( proc_t* proc, inst_t* p, const midi::ch_msg_t* m, unsigned voice_idx )
       {
-        rc_t rc = kOkRC;
-        bool per_note_fl = false;
-        
-        if( var_get(proc,kPerNoteFlPId,kAnyChIdx,per_note_fl) != kOkRC )
+        rc_t     rc               = kOkRC;
+        bool     per_note_fl      = false;
+        bool     per_loc_fl       = false;
+        bool     chord_dry_fl     = false;
+        bool     apply_dry_fl     = false;
+        bool     update_preset_fl = false;
+        unsigned loc_idx          = kInvalidIdx;
+        unsigned pri_preset_idx   = p->cur_pri_preset_idx;
+        unsigned sec_preset_idx   = p->cur_sec_preset_idx;
+
+        if((rc = var_get(proc,kPerLocFlPId,kAnyChIdx,per_loc_fl)) != kOkRC)
           goto errLabel;
 
-        if( per_note_fl )
-          if((rc = _update_cur_preset_idx( proc, p, p->cur_frag )) != kOkRC )            
-              goto errLabel;
+        // if we are selecting a new preset per location
+        if( per_loc_fl && p->locN > 0 )
+        {
+          
+          unsigned loc      = m->devIdx;
+          unsigned note_idx = m->portIdx;
+          unsigned note_cnt = m->uid;
+          assert( loc < p->locN );
 
-        rc = _apply_preset( proc, p, m, voice_idx );
+          // if this is the first note received for this location
+          if( p->locA[ loc ].note_cnt == 0 )
+          {
+            p->locA[ loc ].note_cnt = note_cnt;
+            loc_idx                 = loc;
+            update_preset_fl        = true;
+          }
+          else // ... select the preset based on the preset previously picked for this location
+          {
+            pri_preset_idx = p->locA[ loc ].pri_preset_idx;
+            sec_preset_idx = p->locA[ loc ].sec_preset_idx;
+          }
+
+          p->locA[ loc ].note_idx += 1;
+
+          
+          var_get(proc,kDryChordFlPId,kAnyChIdx,chord_dry_fl);
+
+          apply_dry_fl =  chord_dry_fl && (((note_idx % 2)==0) == (p->locA[ loc ].rand > RAND_MAX/2));
+                      
+        }
+        else 
+        {
+          if((rc = var_get(proc,kPerNoteFlPId,kAnyChIdx,per_note_fl)) != kOkRC )
+            goto errLabel;
+
+          // if we are selecting presets per note
+          if( per_note_fl )
+            update_preset_fl = true;
+        }
+
+        // if a new preset should be selected
+        if( update_preset_fl )
+        {
+          if((rc = _update_cur_preset_idx( proc, p, p->cur_frag )) != kOkRC )
+            goto errLabel;
+
+          // if this is the first note for this 'loc' then cache the selected presets
+          if( loc_idx != kInvalidIdx )
+          {
+            p->locA[ loc_idx ].pri_preset_idx = p->cur_pri_preset_idx;
+            p->locA[ loc_idx ].sec_preset_idx = p->cur_sec_preset_idx;
+          }
+        } 
+
+        if( apply_dry_fl )
+        {
+          pri_preset_idx = p->dry_preset_idx;
+          sec_preset_idx = p->dry_preset_idx;
+        }
+        
+        rc = _apply_preset( proc, p, m, voice_idx, pri_preset_idx, sec_preset_idx );
 
       errLabel:
         return rc;
@@ -1956,15 +2177,16 @@ namespace cw
           return rc;
       }
 
-      rc_t _exec_on_new_location( proc_t* proc, inst_t* p )
+      rc_t _exec_on_new_fragment( proc_t* proc, inst_t* p )
       {
         rc_t rc = kOkRC;
         bool per_note_fl = false;
-
-        if( var_get(proc,kPerNoteFlPId,kAnyChIdx,per_note_fl) != kOkRC )
-          goto errLabel;
-
-        if( !per_note_fl )
+        bool per_loc_fl = false;;
+        var_get(proc,kPerNoteFlPId,kAnyChIdx,per_note_fl);
+        var_get(proc,kPerLocFlPId,kAnyChIdx,per_loc_fl);
+        
+        // if we are not assigning presets per note - then select p->cur_pri/sec_preset_idx for all following notes
+        if( per_note_fl == false && per_loc_fl == false )
           if((rc = _update_cur_preset_idx( proc, p, p->cur_frag )) != kOkRC )            
             goto errLabel;
         
@@ -1978,6 +2200,10 @@ namespace cw
         rc_t     rc      = kOkRC;
         rbuf_t*  in_rbuf = nullptr;
         unsigned loc     = kInvalidIdx;
+
+        // if score tracking is disabled
+        if( p->loc_fld_idx == kInvalidIdx )
+          goto errLabel;
 
         if((rc = var_get(proc,kInPId,kAnyChIdx,in_rbuf)) != kOkRC)
           goto errLabel;
@@ -2001,13 +2227,17 @@ namespace cw
         {        
           const preset_sel::frag_t* frag       = nullptr;
           
-          // lookup the fragment associated with the location
+          // if this location is associated with a new set of preset selections ...
           if( preset_sel::track_loc( p->psH, loc, frag ) && frag != nullptr )
           {
+            // p->cur_frag maintains a reference to the preset selections
             p->cur_frag = frag;
+
+            cwLogInfo("LOC:%i ",loc);
+            //cwLogPrint("LOC:%i ",loc);
+            //fragment_report( p->psH, frag );
             
-            cwLogInfo("LOC:%i",loc);
-            rc = _exec_on_new_location(proc,p);
+            rc = _exec_on_new_fragment(proc,p);
           }
         
         }
@@ -2015,90 +2245,27 @@ namespace cw
         return rc;
       }
 
-      /*
-      bool _update( proc_t* proc, unsigned vid, bool& fl_ref, rc_t rc_ref)
-      {
-        rc_t rc               = kOkRC;
-        bool fl_value         = false;
-        bool value_changed_fl = false;
-        
-        if((rc = var_get(proc, vid, kAnyChIdx, fl_value)) != kOkRC )
-        {
-          rc_ref = rc;
-          return false;
-        }
-
-        value_changed_fl = (fl_value != fl_ref);
-
-        //if( vid == kPriProbFlPId )
-        //  printf("%i : %i %i %i\n",vid,fl_value,fl_ref,value_changed_fl);
-        
-        fl_ref = fl_value;
-        
-        return value_changed_fl;
-      }
-
-      rc_t _exec_update_state( proc_t* proc, inst_t* p )
+      rc_t _update_manual_preset_index( inst_t* p, variable_t* var, unsigned& preset_idx_ref )
       {
         rc_t rc = kOkRC;
-
-        if( _update( proc, kPriProbFlPId, p->pri_prob_fl, rc) )
-        {
-          var_send_to_ui_enable(proc, kPriUniformFlPId,   kAnyChIdx, p->pri_prob_fl );
-          var_send_to_ui_enable(proc, kPriDryOnPlayFlPId, kAnyChIdx, p->pri_prob_fl );
-          var_send_to_ui_enable(proc, kPriAllowAllFlPId,  kAnyChIdx, p->pri_prob_fl );
-          var_send_to_ui_enable(proc, kPriDryOnSelFlPId,  kAnyChIdx, p->pri_prob_fl && p->pri_allow_all_fl );
-        }
-
+        unsigned list_idx;
         
-        
-        if( _update( proc, kPriAllowAllFlPId, p->pri_allow_all_fl, rc ) )
-        {
-          var_send_to_ui_enable(proc, kPriDryOnSelFlPId,  kAnyChIdx, p->pri_allow_all_fl );
-        }
+        if((rc = var_get(var,list_idx)) != kOkRC )
+          goto errLabel;
 
-        _update( proc, kSecUniformFlPId,   p->pri_uniform_fl, rc); 
-        _update( proc, kPriDryOnPlayFlPId, p->pri_dry_on_play_fl, rc); 
-        _update( proc, kPriDryOnSelFlPId,  p->pri_dry_on_sel_fl, rc); 
+
+        if((rc = list_ele_value(p->manual_sel_list,list_idx,preset_idx_ref)) != kOkRC )
+          goto errLabel;
         
 
-        if( _update( proc, kInterpFlPId, p->interp_fl, rc ) )
-        {
-          var_send_to_ui_enable(proc, kInterpRandFlPId,   kAnyChIdx, p->interp_fl );
-          var_send_to_ui_enable(proc, kInterpDistPId,     kAnyChIdx, p->interp_fl & (!p->interp_rand_fl) );
-          
-          var_send_to_ui_enable(proc, kSecProbFlPId,      kAnyChIdx, p->interp_fl );
-          var_send_to_ui_enable(proc, kSecUniformFlPId,   kAnyChIdx, p->interp_fl );
-          var_send_to_ui_enable(proc, kSecDryOnPlayFlPId, kAnyChIdx, p->interp_fl );
-          var_send_to_ui_enable(proc, kSecAllowAllFlPId,  kAnyChIdx, p->interp_fl );
-          var_send_to_ui_enable(proc, kSecDryOnSelFlPId,  kAnyChIdx, p->interp_fl && p->sec_allow_all_fl );
-        }
-
-        if( _update( proc, kInterpRandFlPId, p->interp_rand_fl, rc ) )
-        {
-          var_send_to_ui_enable(proc, kInterpDistPId, kAnyChIdx, p->interp_fl & (!p->interp_rand_fl) );
-        }
+      errLabel:
+        if( rc != kOkRC )
+          preset_idx_ref = kInvalidIdx;
         
-        if( _update( proc, kSecProbFlPId, p->sec_prob_fl, rc) )
-        {
-          var_send_to_ui_enable(proc, kSecUniformFlPId,   kAnyChIdx, p->sec_prob_fl );
-          var_send_to_ui_enable(proc, kSecDryOnPlayFlPId, kAnyChIdx, p->sec_prob_fl );
-          var_send_to_ui_enable(proc, kSecAllowAllFlPId,  kAnyChIdx, p->sec_prob_fl );
-          var_send_to_ui_enable(proc, kSecDryOnSelFlPId,  kAnyChIdx, p->sec_prob_fl && p->sec_allow_all_fl );
-        }
-        
-        if( _update( proc, kSecAllowAllFlPId, p->sec_allow_all_fl, rc ) )
-        {
-          var_send_to_ui_enable(proc, kSecDryOnSelFlPId,  kAnyChIdx, p->sec_allow_all_fl );          
-        }
-
-        _update( proc, kSecUniformFlPId,   p->sec_uniform_fl, rc); 
-        _update( proc, kSecDryOnPlayFlPId, p->sec_dry_on_play_fl, rc); 
-        _update( proc, kSecDryOnSelFlPId,  p->sec_dry_on_sel_fl, rc); 
         
         return rc;
       }
-      */
+
       
       rc_t _update_ui_state( proc_t* proc, inst_t* p, variable_t* var )
       {
@@ -2110,6 +2277,16 @@ namespace cw
         
         switch(var->vid)
         {
+          case kPriManualSelPId:
+            if((rc = _update_manual_preset_index(p,var,p->cur_manual_pri_preset_idx)) != kOkRC )
+              rc = cwLogError(rc,"Manual primary selected preset index update failed.");
+            break;
+
+          case kSecManualSelPId:         
+            if((rc = _update_manual_preset_index(p,var,p->cur_manual_sec_preset_idx)) != kOkRC )
+              rc = cwLogError(rc,"Manual secondary selected preset index update failed.");
+            break;
+            
           case kPriProbFlPId:
             var_get(var,p->pri_prob_fl);
             var_send_to_ui_enable(proc, kPriUniformFlPId,   kAnyChIdx, p->pri_prob_fl );
@@ -2188,8 +2365,6 @@ namespace cw
       {
         rc_t rc = kOkRC;
 
-        //if((rc = _exec_update_state(proc, p )) != kOkRC )
-        //  goto errLabel;
         _update_ui_state( proc, p, var );
 
         if( var->vid == kResetPId   )
@@ -2197,6 +2372,7 @@ namespace cw
           if( p->psH.isValid() )
             track_loc_reset( p->psH);
           
+          _init_loc_array(p);
         }
         
         //errLabel:
@@ -2430,7 +2606,266 @@ namespace cw
       
     } // score_follower    
 
-    
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // Score Follower 2
+    //
+    namespace score_follower_2
+    {
+
+      enum
+      {
+        kInPId,
+        kFnamePId,
+        kBegLocPId,
+        kEndLocPId,
+        kResetTrigPId,
+        kPrintFlPId,
+        kOutPId,
+      };
+      
+      typedef struct
+      {
+        cw::perf_score::handle_t       scoreH;
+        cw::score_follow_2::handle_t   sfH;
+        unsigned                       i_midi_field_idx;
+        unsigned                       o_midi_field_idx;
+        unsigned                       loc_field_idx;
+        unsigned                       vel_field_idx;
+        recd_array_t*                  recd_array;  // output record array        
+
+      } inst_t;
+
+
+      rc_t _alloc_recd_array( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx, const recd_type_t* base, recd_array_t*& recd_array_ref  )
+      {
+        rc_t        rc  = kOkRC;
+        variable_t* var = nullptr;
+        
+        // find the record variable
+        if((rc = var_find( proc, var_label, sfx_id, chIdx, var )) != kOkRC )
+        {
+          rc = cwLogError(rc,"The record variable '%s:%i' could was not found.",cwStringNullGuard(var_label),sfx_id);
+          goto errLabel;
+        }
+
+        // verify that the variable has a record format
+        if( !var_has_recd_format(var) )
+        {
+          rc = cwLogError(kInvalidArgRC,"The variable does not have a valid record format.");
+          goto errLabel;
+        }
+        else
+        {
+          recd_fmt_t* recd_fmt = var->varDesc->fmt.recd_fmt;
+
+          // create the recd_array
+          if((rc = recd_array_create( recd_array_ref, recd_fmt->recd_type, base, recd_fmt->alloc_cnt )) != kOkRC )
+          {
+            goto errLabel;
+          }
+        }
+        
+      errLabel:
+        if( rc != kOkRC )
+          rc = cwLogError(rc,"Record array create failed on the variable '%s:%i ch:%i.",cwStringNullGuard(var_label),sfx_id,chIdx);
+        
+        return rc;
+        
+      }
+      
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t                   rc                   = kOkRC;        
+        rbuf_t*                in_rbuf              = nullptr;
+        const char*            c_score_fname        = nullptr;
+        char*                  score_fname          = nullptr;
+        bool                   printParseWarningsFl = true;
+        unsigned               beg_loc_id = kInvalidId;
+        unsigned               end_loc_id = kInvalidId;
+        bool                   reset_trig_fl = false;
+        cw::score_follow_2::args_t sf_args = {
+          .pre_affinity_sec = 1.0,
+          .post_affinity_sec = 3.0,
+          .pre_wnd_sec = 2.0,
+          .post_wnd_sec = 5.0,
+          .decay_coeff = 0.995,
+          .d_sec_err_thresh_lo = 0.4,
+          .d_loc_thresh_lo = 3,
+          .d_sec_err_thresh_hi = 1.5,
+          .d_loc_thresh_hi = 4,
+          .d_loc_stats_thresh = 3,
+          .rpt_fl = true
+        };
+
+        if((rc = var_register_and_get(proc,kAnyChIdx,
+                                      kInPId,         "in",            kBaseSfxId, in_rbuf,
+                                      kFnamePId,      "score_fname",   kBaseSfxId, c_score_fname,
+                                      kBegLocPId,     "b_loc",         kBaseSfxId, beg_loc_id,
+                                      kEndLocPId,     "e_loc",         kBaseSfxId, end_loc_id,
+                                      kResetTrigPId,  "reset_trigger", kBaseSfxId, reset_trig_fl,
+                                      kPrintFlPId,    "print_fl",      kBaseSfxId, sf_args.rpt_fl )) != kOkRC )
+        {
+          goto errLabel;
+        }
+        if((score_fname = proc_expand_filename( proc, c_score_fname )) == nullptr )
+        {
+          rc = cwLogError(kOpFailRC,"Unable to expand the score filename '%s'.",cwStringNullGuard(c_score_fname));
+          goto errLabel;
+        }
+
+        // create the SF score
+        if((rc = create( p->scoreH, score_fname)) != kOkRC )
+        {
+          rc = cwLogError(rc,"SF Score create failed.");
+          goto errLabel;
+        }
+
+        // create the score follower
+        if((rc = create( p->sfH, sf_args, p->scoreH )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Score follower create failed.");
+          goto errLabel;          
+        }
+
+        if((rc = reset( p->sfH, beg_loc_id, end_loc_id )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Score follower reset failed.");
+          goto errLabel;
+        }
+
+        // create the output recd_array using the 'in' record type as the base type
+        if((rc = _alloc_recd_array( proc, "out", kBaseSfxId, kAnyChIdx, in_rbuf->type, p->recd_array  )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // create one output record buffer
+        rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, p->recd_array->type, nullptr, 0  );
+        
+        p->i_midi_field_idx = recd_type_field_index( in_rbuf->type, "midi");
+        p->o_midi_field_idx = recd_type_field_index( p->recd_array->type, "midi");
+        p->loc_field_idx = recd_type_field_index( p->recd_array->type, "loc");
+        p->vel_field_idx = recd_type_field_index( p->recd_array->type, "score_vel");
+
+      errLabel:
+        mem::release(score_fname);
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        recd_array_destroy(p->recd_array);
+        destroy(p->sfH);
+        destroy(p->scoreH);
+
+        return rc;
+      }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+
+
+      rc_t _set_output_record( inst_t* p, rbuf_t* rbuf, const recd_t* base, unsigned loc_id, unsigned vel )
+      {
+        rc_t rc = kOkRC;
+        
+        recd_t* r = p->recd_array->recdA + rbuf->recdN;
+        
+        // if the output record array is full
+        if( rbuf->recdN >= p->recd_array->allocRecdN )
+        {
+          rc = cwLogError(kBufTooSmallRC,"The internal record buffer overflowed. (buf recd count:%i).",p->recd_array->allocRecdN);
+          goto errLabel;
+        }
+        
+        recd_set( rbuf->type, base, r, p->loc_field_idx,  loc_id  );
+        recd_set( rbuf->type, base, r, p->vel_field_idx,  vel );
+        rbuf->recdN += 1;
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t rc      = kOkRC;
+
+        unsigned      sample_idx      = proc->ctx->cycleIndex * proc->ctx->framesPerCycle;
+        double        sec             = ((double)sample_idx) / proc->ctx->sample_rate;
+        const rbuf_t* i_rbuf          = nullptr;
+        rbuf_t*       o_rbuf          = nullptr;
+        unsigned      result_recd_idx = kInvalidIdx;
+
+        if((rc = var_get(proc,kInPId,kAnyChIdx,i_rbuf)) != kOkRC )
+          goto errLabel;
+
+        if((rc = var_get(proc,kOutPId,kAnyChIdx,o_rbuf)) != kOkRC )
+          goto errLabel;
+
+        o_rbuf->recdA = p->recd_array->recdA;
+        o_rbuf->recdN = 0;
+        
+        // for each incoming record
+        for(unsigned i=0; i<i_rbuf->recdN; ++i)
+        {
+          midi::ch_msg_t* m         = nullptr;
+          unsigned        loc_id    = kInvalidId;
+          unsigned        score_vel = -1;
+
+          if((rc = recd_get( i_rbuf->type, i_rbuf->recdA+i, p->i_midi_field_idx, m)) != kOkRC )
+          {
+            rc = cwLogError(rc,"The 'midi' field read failed.");
+            goto errLabel;
+          }
+
+          if( midi::isNoteOn( m->status, m->d1 ) )
+          {
+            
+            if((rc = on_new_note( p->sfH, m->uid, sec, m->d0, m->d1, loc_id, score_vel )) != kOkRC )
+            {
+              rc = cwLogError(rc,"Score follower note processing failed.");
+              goto errLabel;              
+            }
+
+            if( loc_id != kInvalidId )
+            {
+            }
+
+            
+
+
+          }
+
+          _set_output_record( p, o_rbuf, i_rbuf->recdA+i, loc_id, score_vel );
+          
+        }
+
+        do_exec(p->sfH);
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    } // score_follower_2
+
     
   } // flow
 } //cw
