@@ -65,6 +65,7 @@ namespace cw
     namespace xfade_ctl       { extern class_members_t members;  }
     namespace midi_voice      { extern class_members_t members;  }
     namespace piano_voice     { extern class_members_t members;  }
+    namespace voice_detector  { extern class_members_t members;  }
     namespace poly_voice_ctl  { extern class_members_t members;  }
     namespace sample_hold     { extern class_members_t members;  }
     namespace number          { extern class_members_t members;  }

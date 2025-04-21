@@ -809,7 +809,8 @@ namespace cw
         kBufMsgCntPId,
         kInPId,
         kRInPId,
-        kPrintFlPId
+        kPrintFlPId,
+        kEnableFlPId,
       };
       
       typedef struct
@@ -832,13 +833,14 @@ namespace cw
         const char* port_label = nullptr;
         rbuf_t*     rbuf       = nullptr;
         bool        printFl    = false;
-
+        bool        enableFl   = false;
         
         // Register variables and get their current value
         if((rc = var_register_and_get( proc, kAnyChIdx,
                                        kDevLabelPId, "dev_label",  kBaseSfxId, dev_label,
                                        kPortLabelPId,"port_label", kBaseSfxId, port_label,
                                        kPrintFlPId,  "print_fl",   kBaseSfxId, printFl,
+                                       kEnableFlPId, "enable_fl",  kBaseSfxId, enableFl,
                                        kBufMsgCntPId,"buf_cnt",    kBaseSfxId, p->msgN )) != kOkRC )
         {
           goto errLabel;
@@ -907,9 +909,15 @@ namespace cw
         return kOkRC;
       }
 
-      void _send_msg( inst_t* p, bool  print_fl, const midi::ch_msg_t* m )
+      void _send_msg( inst_t* p, bool  print_fl, bool enable_fl, const midi::ch_msg_t* m )
       {
-        p->ext_dev->u.m.sendTripleFunc( p->ext_dev, m->ch, m->status, m->d0, m->d1 );
+        //if( midi::isNoteOn(m->status,m->d1) )
+        //  printf("mo:%i %s\n",m->d0,midi::midiToSciPitch(m->d0));
+
+
+        if( enable_fl )
+          p->ext_dev->u.m.sendTripleFunc( p->ext_dev, m->ch, m->status, m->d0, m->d1 );
+        
         if( print_fl )
         {
           cwLogPrint("%2i 0x%2x %3i %3i : %s %s\n",m->ch, m->status, m->d0, m->d1, cwStringNullGuard(p->ext_dev->devLabel),cwStringNullGuard(p->ext_dev->portLabel));
@@ -921,9 +929,12 @@ namespace cw
         rc_t          rc       = kOkRC;
         const rbuf_t* rbuf = nullptr;
         bool          print_fl = false;
+        bool          enable_fl = true;
         const mbuf_t* src_mbuf = nullptr;
 
         var_get(proc,kPrintFlPId,kAnyChIdx,print_fl);
+        var_get(proc,kEnableFlPId,kAnyChIdx,enable_fl);
+        
 
         if( p->rin_exists_fl )
         {
@@ -937,7 +948,7 @@ namespace cw
               const midi::ch_msg_t* m = nullptr;
 
               if((rc = recd_get(rbuf->type,r,p->midi_fld_idx,m)) == kOkRC )
-                _send_msg(p,print_fl,m);
+                _send_msg(p,print_fl,enable_fl,m);
               else
               {
                 rc = cwLogError(rc,"Record 'midi' field read failed.");
@@ -957,7 +968,7 @@ namespace cw
           {
             for(unsigned i=0; i<src_mbuf->msgN; ++i)
             {
-              _send_msg(p,print_fl,src_mbuf->msgA + i);
+              _send_msg(p,print_fl,enable_fl,src_mbuf->msgA + i);
             }
           }
         }
@@ -4464,6 +4475,7 @@ namespace cw
       
       typedef struct
       {
+        unsigned baseGateFlPId;
         unsigned baseDoneFlPId;
 
         midi_t midiA[ midi::kMidiNoteCnt ];
@@ -4496,7 +4508,12 @@ namespace cw
         p->voiceA[voice_idx].pitch = midi::kInvalidMidiPitch;
         
         if( p->ns_fl )
-          _store_note_state( proc, p, 0, 0, 0, 0, voice_idx );        
+          _store_note_state( proc, p, 0, 0, 0, 0, voice_idx );
+
+        // set the gate signal low
+        //printf("pvc:%i off\n",voice_idx);
+        var_set(proc,p->baseGateFlPId + voice_idx,kAnyChIdx,false);
+
       }
 
       void _reset_all_voices( proc_t* proc, inst_t* p )
@@ -4523,7 +4540,8 @@ namespace cw
           goto errLabel;
         }
 
-        p->baseDoneFlPId = kBaseOutPId + p->voiceN;
+        p->baseGateFlPId = kBaseOutPId      + p->voiceN;
+        p->baseDoneFlPId = p->baseGateFlPId + p->voiceN;
         p->voiceMsgN     = kVoiceMsgN;
         p->voiceA        = mem::allocZ<voice_t>(p->voiceN);
         
@@ -4539,8 +4557,10 @@ namespace cw
           if((rc = var_register_and_set( proc, "out", i, kBaseOutPId + i, kAnyChIdx, nullptr, 0  )) != kOkRC )
             goto errLabel;
 
-          // create one 'done_fl' variable per voice
-          if((rc = var_register_and_set( proc, kAnyChIdx, p->baseDoneFlPId + i, "done_fl", i, false  )) != kOkRC )
+          // create one 'done_fl' and 'gate_fl' variable per voice
+          if((rc = var_register_and_set( proc, kAnyChIdx,
+                                         p->baseDoneFlPId + i, "done_fl", i, false,
+                                         p->baseGateFlPId + i, "gate_fl", i, false )) != kOkRC )
             goto errLabel;
 
           p->voiceA[i].msgA = mem::allocZ<midi::ch_msg_t>(p->voiceMsgN);
@@ -4733,6 +4753,10 @@ namespace cw
 
         if( p->ns_fl )
           _store_note_state( proc, p, m->uid, midi::kNoteOnMdId, m->d0, m->d1, voice_idx );
+
+        // set the gate signal high
+        //printf("pvc:%i on\n",voice_idx);
+        var_set(proc,p->baseGateFlPId + voice_idx,kAnyChIdx,true);
         
         return rc;
       }
@@ -5392,9 +5416,11 @@ namespace cw
         p->gain_coeff = p->kReleaseGain;        
       }
 
-      void _on_note_off( inst_t* p )
+      void _on_note_off( proc_t* proc, inst_t* p )
       {
         p->noff_fl = true;
+
+        //printf("nof:%i %i\n",proc->label_sfx_id,p->pitch);
 
         if( !p->sustain_fl )
           _begin_note_release(p);
@@ -5473,9 +5499,9 @@ namespace cw
 
       rc_t _exec( proc_t* proc, inst_t* p )
       {
-        rc_t    rc   = kOkRC;
-        abuf_t* abuf = nullptr;
-        mbuf_t* mbuf = nullptr;
+        rc_t     rc         = kOkRC;
+        abuf_t*  abuf       = nullptr;
+        mbuf_t*  mbuf       = nullptr;
         unsigned actualFrmN = 0;
         //sample_t rms = 0;
 
@@ -5508,13 +5534,13 @@ namespace cw
               }
               else
               {
-                _on_note_off(p);
+                _on_note_off(proc,p);
                 _store_note_state(proc, p, m->uid, midi::kNoteOffMdId, m->d0, 0 );
               }
               break;
 
             case midi::kNoteOffMdId:
-              _on_note_off(p);
+              _on_note_off(proc,p);
               _store_note_state(proc, p, m->uid, midi::kNoteOnMdId, m->d0, 0 );              
               break;
 
@@ -5569,6 +5595,155 @@ namespace cw
       };
       
     }    
+
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // voice_detector
+    //
+    namespace voice_detector
+    {
+      enum {
+        kInPId,
+        kEnableFlPId,
+        kRlsThreshPId,
+        kDoneFlPId
+        
+      };
+
+      enum {
+        kRmsBufN = 30
+      };
+      
+      typedef struct
+      {
+        bool enable_fl;
+        bool above_fl;
+        bool done_fl;
+        bool rls_thresh;
+        unsigned delta_cnt;
+        sample_t rms_buf[ kRmsBufN ];
+        unsigned rms_buf_idx;
+        unsigned rms_buf_cnt;
+        
+      } inst_t;
+
+      sample_t _calc_rms( inst_t* p, abuf_t* abuf )
+      {
+        p->rms_buf[ p->rms_buf_idx ] = 0;
+
+        // store the max rms among all channels
+        for( unsigned i=0; i<abuf->chN; ++i)
+        {
+          sample_t rms;          
+          if((rms = vop::sum_sq(abuf->buf + (i*abuf->frameN), abuf->frameN )) > p->rms_buf[ p->rms_buf_idx ] )
+            p->rms_buf[ p->rms_buf_idx ] = rms;
+        }
+        
+        if( ++p->rms_buf_idx >= kRmsBufN )
+          p->rms_buf_idx = 0;
+        
+        if( p->rms_buf_cnt++ >= kRmsBufN )
+          p->rms_buf_cnt = kRmsBufN;
+
+        return std::sqrt( vop::mean(p->rms_buf,p->rms_buf_cnt) );
+        
+      }
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t    rc        = kOkRC;        
+        abuf_t* abuf      = nullptr;
+        
+        // register the input audio variable
+        if((rc = var_register_and_get(proc,kAnyChIdx,
+                                      kInPId,       "in",        kBaseSfxId, abuf,
+                                      kEnableFlPId, "enable_fl", kBaseSfxId, p->enable_fl,
+                                      kRlsThreshPId,"rls_thresh",kBaseSfxId, p->rls_thresh,
+                                      kDoneFlPId,   "done_fl",   kBaseSfxId, p->done_fl)) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+          
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+
+        switch( var->vid )
+        {
+          case kEnableFlPId:
+            var_get(var,p->enable_fl);
+            if( p->enable_fl )
+            {
+              var_set(proc,kDoneFlPId,kAnyChIdx,false);
+              p->above_fl = false;
+            }
+            
+            printf("vd-ena:%i %i\n",proc->label_sfx_id,p->enable_fl);
+            break;
+            
+          case kRlsThreshPId:
+            var_get(var,p->rls_thresh);
+            break;
+        }
+
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t rc      = kOkRC;
+        abuf_t* abuf = nullptr;
+        sample_t rms;
+
+        if((rc = var_get(proc,kInPId,kAnyChIdx,abuf)) != kOkRC )
+          goto errLabel;
+
+        rms = _calc_rms(p,abuf);
+
+        if( rms > p->rls_thresh )
+          p->above_fl = true;
+        
+        if( p->above_fl && rms < p->rls_thresh)
+          p->delta_cnt += 1;
+        else
+          p->delta_cnt = 0;
+        
+        if( p->enable_fl && p->delta_cnt >= 3 )
+        {
+          printf("vd:%i off\n",proc->label_sfx_id);
+          p->done_fl = true;
+          var_set(proc,kDoneFlPId,kAnyChIdx,true);
+        }
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    
+
     
     //------------------------------------------------------------------------------------------------------------------
     //
@@ -8056,8 +8231,12 @@ namespace cw
       enum {
         kMidiFileNamePId,
         kCsvFileNamePId,
+        kCsvFileName2PId,
+        kStartPId,
+        kStopPId,
         kDoneFlPId,
-        kOutPId
+        kOutPId,
+        kROutPId
       };
       
       typedef struct msg_str
@@ -8077,14 +8256,60 @@ namespace cw
         
         char*                midi_fname;
         char*                csv_fname;
+        char*                csv_fname_2;
+
+        bool     start_trig_fl;        // the start btn was clicked
+        bool     stop_trig_fl;         // the stop btn was clicked
+
+        
+        recd_array_t* recd_array;    // output record array for 'out'.
+        unsigned      midi_fld_idx;  // pre-computed record field indexes
+
       } inst_t;
 
+      rc_t _alloc_recd_array( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx, const recd_type_t* base, recd_array_t*& recd_array_ref  )
+      {
+        rc_t        rc  = kOkRC;
+        variable_t* var = nullptr;
+        
+        // find the record variable
+        if((rc = var_find( proc, var_label, sfx_id, chIdx, var )) != kOkRC )
+        {
+          rc = cwLogError(rc,"The record variable '%s:%i' could was not found.",cwStringNullGuard(var_label),sfx_id);
+          goto errLabel;
+        }
+
+        // verify that the variable has a record format
+        if( !var_has_recd_format(var) )
+        {
+          rc = cwLogError(kInvalidArgRC,"The variable does not have a valid record format.");
+          goto errLabel;
+        }
+        else
+        {
+          recd_fmt_t* recd_fmt = var->varDesc->fmt.recd_fmt;
+
+          // create the recd_array
+          if((rc = recd_array_create( recd_array_ref, recd_fmt->recd_type, base, recd_fmt->alloc_cnt )) != kOkRC )
+          {
+            goto errLabel;
+          }
+        }
+        
+      errLabel:
+        if( rc != kOkRC )
+          rc = cwLogError(rc,"Record array create failed on the variable '%s:%i ch:%i.",cwStringNullGuard(var_label),sfx_id,chIdx);
+        
+        return rc;
+        
+      }
 
       rc_t _create( proc_t* proc, inst_t* p )
       {
         rc_t                           rc         = kOkRC;        
         const char*                    midi_fname = nullptr;
         const char*                    csv_fname  = nullptr;
+        const char*                    csv_fname_2= nullptr;
         const midi::file::trackMsg_t** tmA        = nullptr;
         unsigned                       msgAllocN  = 0;
         bool                           done_fl    = false;
@@ -8093,13 +8318,30 @@ namespace cw
         time::setZero(asecs);
         
         if((rc = var_register_and_get(proc,kAnyChIdx,
-                                      kMidiFileNamePId, "fname",     kBaseSfxId, midi_fname,
-                                      kCsvFileNamePId,  "csv_fname", kBaseSfxId, csv_fname,
-                                      kDoneFlPId,       "done_fl",   kBaseSfxId, done_fl)) != kOkRC )
+                                      kMidiFileNamePId, "fname",       kBaseSfxId, midi_fname,
+                                      kCsvFileNamePId,  "csv_fname",   kBaseSfxId, csv_fname,
+                                      kCsvFileName2PId, "alt_csv_fname", kBaseSfxId, csv_fname_2,
+                                      kDoneFlPId,       "done_fl",     kBaseSfxId, done_fl)) != kOkRC )
         {
           goto errLabel;
         }
 
+        if((rc = var_register(proc,kAnyChIdx,
+                              kStartPId, "start", kBaseSfxId, 
+                              kStopPId,  "stop",  kBaseSfxId )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        
+        if( csv_fname_2 != nullptr && textLength(csv_fname_2)>0 )
+          if((p->csv_fname_2 = proc_expand_filename(proc,csv_fname_2)) == nullptr )
+          {
+            rc = cwLogError(kInvalidArgRC,"The MIDI CSV 2 filename could not be formed.");
+            goto errLabel;
+          }
+
+        
         if( csv_fname != nullptr && textLength(csv_fname)>0 )
           if((p->csv_fname = proc_expand_filename(proc,csv_fname)) == nullptr )
           {
@@ -8128,9 +8370,15 @@ namespace cw
               goto errLabel;              
           }
           else
-          {
-            rc = cwLogError(kOpenFailRC,"No MIDI or CSV filename was given.");
-          }
+            if( p->csv_fname_2 != nullptr && textLength(p->csv_fname_2)>0 )
+            {
+              if((rc = midi::file::open_csv_2(p->mfH,p->csv_fname_2)) != kOkRC )
+                goto errLabel;              
+            }
+            else
+            {
+              rc = cwLogError(kOpenFailRC,"No MIDI or CSV filename was given.");
+            }
         }
 
         // create one output MIDI buffer
@@ -8148,12 +8396,14 @@ namespace cw
         {
           const midi::file::trackMsg_t* tm = tmA[i];
           msg_t*                        m  = p->msgA + p->msg_idx;
+          double secs;
           
           m->m = p->chMsgA + p->msg_idx;
 
           time::microsecondsToSpec( m->m->timeStamp, tmA[i]->amicro );
-
-          m->sample_idx = (unsigned)(proc->ctx->sample_rate * time::specToSeconds(m->m->timeStamp));
+          
+          m->sample_idx = (unsigned)(proc->ctx->sample_rate * (secs = time::specToSeconds(m->m->timeStamp)));
+          
           
           m->m->devIdx  = 0;
           m->m->portIdx = 0;
@@ -8174,6 +8424,18 @@ namespace cw
 
         p->msgN    = p->msg_idx;
         p->msg_idx = 0;
+
+        // allocate the output recd array
+        if((rc = _alloc_recd_array( proc, "r_out", kBaseSfxId, kAnyChIdx, nullptr, p->recd_array  )) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+        // create one output record buffer
+        rc = var_register_and_set( proc, "r_out", kBaseSfxId, kROutPId, kAnyChIdx, p->recd_array->type, nullptr, 0  );
+
+        p->midi_fld_idx = recd_type_field_index( p->recd_array->type, "midi");
+
         
       errLabel:
         return rc;
@@ -8182,9 +8444,10 @@ namespace cw
       rc_t _destroy( proc_t* proc, inst_t* p )
       {
         rc_t rc = kOkRC;
-
+        recd_array_destroy(p->recd_array);
         mem::release(p->midi_fname);
         mem::release(p->csv_fname);
+        mem::release(p->csv_fname_2);
         close(p->mfH);
 
         return rc;
@@ -8193,6 +8456,36 @@ namespace cw
       rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
+
+        switch( var->vid )
+        {
+          case kStartPId:
+            p->start_trig_fl = true;
+            break;
+            
+          case kStopPId:
+            p->stop_trig_fl = true;
+            break;
+        }
+        
+        return rc;
+      }
+
+      rc_t _set_output_record( inst_t* p, rbuf_t* rbuf, const midi::ch_msg_t* m )
+      {
+        rc_t rc = kOkRC;
+        
+        // if the output record array is full
+        if( rbuf->recdN >= p->recd_array->allocRecdN )
+        {
+          rc = cwLogError(kBufTooSmallRC,"The internal record buffer overflowed. (buf recd count:%i).",p->recd_array->allocRecdN);
+          goto errLabel;
+        }
+
+        recd_set( rbuf->type, nullptr, p->recd_array->recdA + rbuf->recdN, p->midi_fld_idx, (midi::ch_msg_t*)m );
+        rbuf->recdN += 1;
+
+      errLabel:
         return rc;
       }
 
@@ -8201,6 +8494,7 @@ namespace cw
         rc_t    rc      = kOkRC;
         mbuf_t* mbuf    = nullptr;
         bool    done_fl = false;
+        rbuf_t* rbuf    = nullptr;
 
         p->sample_idx += proc->ctx->framesPerCycle;
 
@@ -8226,6 +8520,22 @@ namespace cw
             done_fl = p->msg_idx == p->msgN;
 
           }
+
+          // get the output variable
+          if((rc = var_get(proc,kROutPId,kAnyChIdx,rbuf)) != kOkRC )
+          {
+            rc = cwLogError(kInvalidStateRC,"The midi-in '%s' does not have a valid output record buffer.",proc->label);
+          }
+          else
+          {
+            rbuf->recdA = p->recd_array->recdA;
+            rbuf->recdN = 0;
+            
+            for(unsigned i=0; i<mbuf->msgN; ++i)
+              _set_output_record(p,rbuf, mbuf->msgA + i);
+
+          }
+
 
           if( done_fl )
             var_set(proc, kDoneFlPId, kAnyChIdx, true );
