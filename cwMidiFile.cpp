@@ -1436,6 +1436,110 @@ errLabel:
   return rc;
 }
 
+cw::rc_t cw::midi::file::open_csv_2( handle_t& hRef, const char* midi_csv_fname )
+{
+  rc_t          rc       = kOkRC;
+  file_t*     p        = nullptr;
+  csv::handle_t csvH;      
+  const char*   titleA[] = { "UID","trk","dtick","atick","amicro","type","ch","D0","D1" };
+  unsigned      titleN   = sizeof(titleA)/sizeof(titleA[0]);
+  unsigned      line_idx = 0;
+  unsigned      lineN    = 0;
+  unsigned      trkN = 1;
+  unsigned      trkIdx = 0;
+  unsigned    TpQN     = 1260;
+  unsigned    BpM = 120;
+
+  if((rc = _create(hRef)) != kOkRC )
+    goto errLabel;
+
+  if((p = _handleToPtr(hRef)) == nullptr )
+    goto errLabel;
+
+  _init( p, trkN, TpQN );
+
+  
+  if((rc = csv::create(csvH,midi_csv_fname,titleA,titleN)) != kOkRC )
+  {
+    rc = cwLogError(rc,"MIDI CSV file open failed.");
+    goto errLabel;
+  }
+
+  if((rc = line_count(csvH,lineN)) != kOkRC )
+  {
+    rc = cwLogError(rc,"MIDI CSV line count access failed.");
+    goto errLabel;
+  }
+  
+  for(; (rc = next_line(csvH)) == kOkRC; ++line_idx )
+  {
+    unsigned    uid;
+    unsigned    amicro;
+    unsigned    dtick;
+    unsigned    atick;
+    const char* type   = nullptr;
+    unsigned    ch;
+    unsigned    d0;
+    unsigned    d1;
+    uint8_t     status = 0;
+    
+    if((rc = getv(csvH,"UID",uid,"dtick",dtick,"atick",atick,"amicro",amicro,"type",type,"ch",ch,"D0",d0,"D1",d1)) != kOkRC )
+    {
+      cwLogError(rc,"Error reading CSV line %i.",line_idx+1);
+      goto errLabel;
+    }
+
+    if(textIsEqual(type,"non"))
+      status = midi::kNoteOnMdId;
+    else
+      if(textIsEqual(type,"nof"))
+        status = midi::kNoteOffMdId;
+      else
+        if(textIsEqual(type,"ctl"))
+          status = midi::kCtlMdId;
+        else
+          if(textIsEqual(type,"tempo"))
+          {
+            // note the tempo is taken from the 'ch' column
+            if((rc = insertTrackTempoMsg(hRef, trkIdx, atick, ch )) != kOkRC )
+            {
+              rc = cwLogError(rc,"BPM insert failed.");
+              goto errLabel;
+            }
+
+            continue;
+            
+          }
+          else
+          {
+            rc = cwLogError(kSyntaxErrorRC,"Unknown message type:'%s'.",cwStringNullGuard(type));
+            goto errLabel;
+          }
+
+
+    if( status != 0 )
+    {
+      assert( ch<=15 && d0 <= 127 && d1 <= 127 );
+
+      if((rc = insertTrackChMsg(hRef, trkIdx, atick, ch+status, d0, d1 )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Channel msg insert failed.");
+        goto errLabel;
+      }
+      
+    }
+  }
+      
+errLabel:
+  destroy(csvH);
+      
+  if( rc == kEofRC )
+    rc = kOkRC;
+
+  if( rc != kOkRC )
+    rc = cwLogError(rc,"MIDI csv file parse failed on '%s'.",cwStringNullGuard(midi_csv_fname));
+  return rc;      
+}
 
 cw::rc_t cw::midi::file::create( handle_t& hRef, unsigned trkN, unsigned ticksPerQN )
 {
@@ -1730,6 +1834,7 @@ cw::rc_t  cw::midi::file::insertTrackMsg( handle_t h, unsigned trkIdx, const tra
   // fill the track record
   m->uid     = p->nextUid++;
   m->atick   = msg->atick;
+  m->amicro  = msg->amicro;
   m->status  = msg->status;
   m->metaId  = msg->metaId;
   m->trkIdx  = trkIdx;
