@@ -602,26 +602,20 @@ namespace cw
   
       }
 
-
-      void _linearize( file_t* mfp )
+      void _linearize_partial( file_t* mfp )
       {
-        unsigned trkIdx,i,j;
-
-        if( mfp->msgVDirtyFl == false )
-          return;
-
         mfp->msgVDirtyFl = false;
-  
+        
         // get the total trk msg count
         mfp->msgN = 0;
-        for(trkIdx=0; trkIdx<mfp->trkN; ++trkIdx)
+        for(unsigned trkIdx=0; trkIdx<mfp->trkN; ++trkIdx)
           mfp->msgN += mfp->trkV[ trkIdx ].cnt;
 
         // allocate the trk msg index vector: msgV[]
         mfp->msgV = mem::resizeZ<trackMsg_t*>( mfp->msgV, mfp->msgN);
 
         // store a pointer to every trk msg in msgV[]
-        for(i=0,j=0; i<mfp->trkN; ++i)
+        for(unsigned i=0,j=0; i<mfp->trkN; ++i)
         {
           trackMsg_t* m = mfp->trkV[i].base;
     
@@ -632,8 +626,17 @@ namespace cw
             mfp->msgV[j++] = m;
           }
         }
+      }
 
+      void _linearize( file_t* mfp )
+      {
+        if( mfp->msgVDirtyFl == false )
+          return;
 
+        mfp->msgVDirtyFl = false;
+
+        _linearize_partial(mfp);
+        
         // set the atick value in each msg
         _setAccumulateTicks(mfp);
     
@@ -1259,6 +1262,7 @@ namespace cw
       errLabel:
         return rc;
       }
+
       
       
     }
@@ -1447,8 +1451,7 @@ cw::rc_t cw::midi::file::open_csv_2( handle_t& hRef, const char* midi_csv_fname 
   unsigned      lineN    = 0;
   unsigned      trkN = 1;
   unsigned      trkIdx = 0;
-  unsigned    TpQN     = 1260;
-  unsigned    BpM = 120;
+  unsigned      TpQN     = 1260;
 
   if((rc = _create(hRef)) != kOkRC )
     goto errLabel;
@@ -1482,7 +1485,6 @@ cw::rc_t cw::midi::file::open_csv_2( handle_t& hRef, const char* midi_csv_fname 
     unsigned    d0;
     unsigned    d1;
     uint8_t     status = 0;
-    
     if((rc = getv(csvH,"UID",uid,"dtick",dtick,"atick",atick,"amicro",amicro,"type",type,"ch",ch,"D0",d0,"D1",d1)) != kOkRC )
     {
       cwLogError(rc,"Error reading CSV line %i.",line_idx+1);
@@ -1511,25 +1513,37 @@ cw::rc_t cw::midi::file::open_csv_2( handle_t& hRef, const char* midi_csv_fname 
             
           }
           else
-          {
-            rc = cwLogError(kSyntaxErrorRC,"Unknown message type:'%s'.",cwStringNullGuard(type));
-            goto errLabel;
-          }
+            if(textIsEqual(type,"eot"))
+            {
+            }
+            else
+            {
+              rc = cwLogError(kSyntaxErrorRC,"Unknown message type:'%s' on line index:%i.",cwStringNullGuard(type),line_idx);
+              goto errLabel;
+            }
 
 
     if( status != 0 )
     {
       assert( ch<=15 && d0 <= 127 && d1 <= 127 );
 
-      if((rc = insertTrackChMsg(hRef, trkIdx, atick, ch+status, d0, d1 )) != kOkRC )
+      if((rc = insertTrackChMsg(hRef, trkIdx, atick, status+ch, d0, d1 ) ) != kOkRC )
       {
         rc = cwLogError(rc,"Channel msg insert failed.");
         goto errLabel;
       }
+
+      assert( p->trkV[trkIdx].last->atick == atick );
+      
+      // insert the time directly
+      p->trkV[trkIdx].last->amicro = amicro;
       
     }
   }
-      
+
+  _linearize_partial(p);
+  
+
 errLabel:
   destroy(csvH);
       
