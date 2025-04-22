@@ -33,7 +33,7 @@ namespace cw
 
     rc_t reset( handle_t h, unsigned beg_loc_id, unsigned end_loc_id );
 
-    rc_t on_new_note( handle_t h, unsigned uid, double sec, uint8_t pitch, uint8_t vel, unsigned& loc_id_ref, unsigned& score_vel_ref );
+    rc_t on_new_note( handle_t h, unsigned uid, double sec, uint8_t pitch, uint8_t vel, unsigned& loc_id_ref, unsigned& meas_numb_ref, unsigned& score_vel_ref );
 
     // Decay the affinity window and if necessary trigger a cycle of async background processing
     rc_t do_exec( handle_t h );
@@ -47,6 +47,8 @@ namespace cw
     } rpt_t;
     
     void report_summary( handle_t h, rpt_t& rpt_ref );
+
+    unsigned max_loc_id( handle_t h );
 
   }
 }

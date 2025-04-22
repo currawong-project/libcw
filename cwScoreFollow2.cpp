@@ -200,7 +200,6 @@ namespace cw
 
       _trkr_apply_affinity(trk,beg_loc_id);
 
-    errLabel:
       return kOkRC;
     }
     
@@ -239,7 +238,7 @@ namespace cw
       
     }
     
-    rc_t _trkr_on_new_note( trkr_t* trk, double sec, unsigned pitch, unsigned vel, bool rpt_fl, unsigned& matched_loc_id_ref, unsigned& score_vel_ref )
+    rc_t _trkr_on_new_note( trkr_t* trk, double sec, unsigned pitch, unsigned vel, bool rpt_fl, unsigned& matched_loc_id_ref, unsigned& meas_numb_ref, unsigned& score_vel_ref )
     {
       rc_t        rc                         = kOkRC;
       double      d_corr_sec                 = 0.0;
@@ -259,6 +258,7 @@ namespace cw
 
       score_vel_ref = -1;
       matched_loc_id_ref = kInvalidId;
+      meas_numb_ref      = kInvalidId;
       
       assert( trk->exp_loc_idx != kInvalidIdx && trk->exp_loc_idx < trk->sf->locN );
       
@@ -365,6 +365,7 @@ namespace cw
 
           score_vel_ref = trk->sf->noteA[ match_ni ].vel;
           matched_loc_id_ref = match_loc_id;
+          meas_numb_ref = trk->sf->locA[ match_loc_idx ].meas_num;
           
           // notice if we arrived at the end of the score tracking range
           if( match_loc_id >= trk->sf->end_loc_id )
@@ -903,12 +904,12 @@ errLabel:
   return rc;
 }
 
-cw::rc_t cw::score_follow_2::on_new_note( handle_t h, unsigned uid, double sec, uint8_t pitch, uint8_t vel, unsigned& matched_loc_id_ref, unsigned& score_vel_ref )
+cw::rc_t cw::score_follow_2::on_new_note( handle_t h, unsigned uid, double sec, uint8_t pitch, uint8_t vel, unsigned& matched_loc_id_ref, unsigned& meas_numb_ref, unsigned& score_vel_ref )
 {
   rc_t  rc = kOkRC;
   sf_t* p  = _handleToPtr(h);
   
-  _trkr_on_new_note(p->trk,sec,pitch,vel, p->args.rpt_fl, matched_loc_id_ref, score_vel_ref);
+  _trkr_on_new_note(p->trk,sec,pitch,vel, p->args.rpt_fl, matched_loc_id_ref, meas_numb_ref, score_vel_ref);
 
   if( p->resultN < p->resultAllocN )
   {
@@ -962,8 +963,13 @@ void cw::score_follow_2::report_summary( handle_t h, rpt_t& rpt_ref )
   if( p->args.rpt_fl )
     cwLogInfo("Matched:%i Missed:%i Spurious:%i",rpt_ref.matchN,rpt_ref.missN,rpt_ref.spuriousN);
 
+}
+
+unsigned cw::score_follow_2::max_loc_id( handle_t h )
+{
+  sf_t* p = _handleToPtr(h);
   
-  
+  return p->max_loc_id;
 }
 
 

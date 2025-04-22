@@ -159,10 +159,11 @@ namespace cw
           const midi_evt_t* e =  mf.evtA + midi_evt_idx++;
           unsigned loc_id = kInvalidId;
           unsigned score_vel = -1;
+          unsigned meas_numb = -1;
           
           //printf("%f pitch:%i vel:%i\n",e->sec,e->pitch,e->vel);
           
-          if((rc = on_new_note( sfH, e->uid, e->sec, e->pitch, e->vel, loc_id, score_vel )) != kOkRC )
+          if((rc = on_new_note( sfH, e->uid, e->sec, e->pitch, e->vel, loc_id, meas_numb, score_vel )) != kOkRC )
           {
             rc = cwLogError(rc,"SF2 note processing failed on note UID:%i.",e->uid);
             goto errLabel;
