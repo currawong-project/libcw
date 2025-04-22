@@ -390,7 +390,6 @@ namespace cw
     rc_t _get_active_audio_dev_and_ch_count( app_t* app )
     {
       rc_t rc = kOkRC;
-      unsigned i = 0;
       unsigned n = audioDeviceCount( app->ioH );
       for(unsigned i=0; i<n; ++i)
         if( audioDeviceIsActive(app->ioH,i) )
