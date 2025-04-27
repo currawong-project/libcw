@@ -2049,8 +2049,8 @@ cw::rc_t cw::midi_record_play::am_to_midi_dir( const char* player_name, const ch
   {
     unsigned take_numb;
     char* am_fn      = filesys::makeFn(  dirEntryArray[i].name, "midi", "am", NULL);
-    char* midi_fn    = filesys::makeFn(  dirEntryArray[i].name, "midi", "mid", NULL);    
-    char* csv_fn     = filesys::makeFn(  dirEntryArray[i].name, "midi", "csv", NULL);
+    char* midi_fn    = filesys::makeFn(  dirEntryArray[i].name, "midi_am", "mid", NULL);    
+    char* csv_fn     = filesys::makeFn(  dirEntryArray[i].name, "midi_am", "csv", NULL);
     char* meta_fn    = filesys::makeFn(  dirEntryArray[i].name, "meta", "cfg", NULL);
     
     if((rc = _get_take_number( dirEntryArray[i].name, take_numb )) != kOkRC )
