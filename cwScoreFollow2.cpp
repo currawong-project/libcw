@@ -239,7 +239,7 @@ namespace cw
       
     }
     
-    rc_t _trkr_on_new_note( trkr_t* trk, double sec, unsigned pitch, unsigned vel, bool rpt_fl, unsigned& matched_loc_id_ref )
+    rc_t _trkr_on_new_note( trkr_t* trk, double sec, unsigned pitch, unsigned vel, bool rpt_fl, unsigned& matched_loc_id_ref, unsigned& score_vel_ref )
     {
       rc_t        rc                         = kOkRC;
       double      d_corr_sec                 = 0.0;
@@ -257,6 +257,7 @@ namespace cw
       unsigned    match_ni                   = kInvalidIdx;
       double      match_val                  = 0;
 
+      score_vel_ref = -1;
       matched_loc_id_ref = kInvalidId;
       
       assert( trk->exp_loc_idx != kInvalidIdx && trk->exp_loc_idx < trk->sf->locN );
@@ -362,6 +363,7 @@ namespace cw
           trk->loc_match_cntA[ match_loc_idx ] += 1;
           trk->note_match_cntA[ match_ni ]     += 1;
 
+          score_vel_ref = trk->sf->noteA[ match_ni ].vel;
           matched_loc_id_ref = match_loc_id;
           
           // notice if we arrived at the end of the score tracking range
@@ -805,7 +807,7 @@ errLabel:
   return rc;
 }
 
-cw::rc_t cw::score_follow_2::create( handle_t& hRef, const args_t& args )
+cw::rc_t cw::score_follow_2::create( handle_t& hRef, const args_t& args, perf_score::handle_t scoreH )
 {
   rc_t rc;
   if((rc = destroy(hRef)) != kOkRC )
@@ -813,10 +815,10 @@ cw::rc_t cw::score_follow_2::create( handle_t& hRef, const args_t& args )
 
   sf_t* p = mem::allocZ<sf_t>();
 
-  if((rc = _get_loc_and_note_count( p, args.scoreH )) != kOkRC )
+  if((rc = _get_loc_and_note_count( p, scoreH )) != kOkRC )
     goto errLabel;
 
-  if((rc = _alloc_fill_loc_and_note_arrays( p, args.scoreH )) != kOkRC )
+  if((rc = _alloc_fill_loc_and_note_arrays( p, scoreH )) != kOkRC )
     goto errLabel;
 
   if((rc = _alloc_and_fill_loc_note_arrays( p )) != kOkRC )
@@ -894,18 +896,19 @@ cw::rc_t cw::score_follow_2::reset( handle_t h, unsigned beg_loc_id, unsigned en
 
   _trkr_reset(p->trk,beg_loc_id);
 
+  cwLogInfo("SF2 reset: %i %i",beg_loc_id,end_loc_id);
+
 errLabel:
   
   return rc;
 }
 
-cw::rc_t cw::score_follow_2::on_new_note( handle_t h, unsigned uid, double sec, uint8_t pitch, uint8_t vel, unsigned& loc_id )
+cw::rc_t cw::score_follow_2::on_new_note( handle_t h, unsigned uid, double sec, uint8_t pitch, uint8_t vel, unsigned& matched_loc_id_ref, unsigned& score_vel_ref )
 {
   rc_t  rc = kOkRC;
   sf_t* p  = _handleToPtr(h);
-  unsigned matched_loc_id = kInvalidId;
   
-  _trkr_on_new_note(p->trk,sec,pitch,vel, p->args.rpt_fl, matched_loc_id);
+  _trkr_on_new_note(p->trk,sec,pitch,vel, p->args.rpt_fl, matched_loc_id_ref, score_vel_ref);
 
   if( p->resultN < p->resultAllocN )
   {
@@ -913,7 +916,7 @@ cw::rc_t cw::score_follow_2::on_new_note( handle_t h, unsigned uid, double sec, 
     r->perf_uid     = uid;
     r->perf_pitch   = pitch;
     r->perf_vel     = vel;
-    r->match_loc_id = matched_loc_id;
+    r->match_loc_id = matched_loc_id_ref;
     p->resultN += 1;
   }
   

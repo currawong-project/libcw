@@ -62,6 +62,7 @@ namespace cw
       { "poly_voice_ctl",  &poly_voice_ctl::members },
       { "midi_voice",      &midi_voice::members },
       { "piano_voice",     &piano_voice::members },
+      { "voice_detector",  &voice_detector::members },
       { "sample_hold",     &sample_hold::members },
       { "number",          &number::members },
       { "reg",             &reg::members },
@@ -82,6 +83,7 @@ namespace cw
       { "preset_select",   &preset_select::members },
       { "gutim_ps",        &gutim_ps::members },
       { "score_follower",  &score_follower::members },
+      { "score_follower_2",&score_follower_2::members },
       { nullptr, nullptr }
     };
 

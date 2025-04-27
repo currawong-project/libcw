@@ -138,10 +138,8 @@ namespace cw
       
       //cwLogInfo("Following: (%i notes found) sample count:%i %s.",mf.evtN,mf.sampleN,midi_csv_fname);
       
-      sf_args.scoreH = scoreH;
-
       // create the score-follower
-      if((rc = score_follow_2::create(sfH,sf_args)) != kOkRC )
+      if((rc = score_follow_2::create(sfH,sf_args,scoreH)) != kOkRC )
       {
         rc = cwLogError(rc,"Score follower create failed.");
         goto errLabel;
@@ -159,11 +157,12 @@ namespace cw
         while( smp_idx <= mf.evtA[midi_evt_idx].sample_idx && mf.evtA[midi_evt_idx].sample_idx < smp_idx + smp_per_cycle )
         {
           const midi_evt_t* e =  mf.evtA + midi_evt_idx++;
-          unsigned loc_id;
-
+          unsigned loc_id = kInvalidId;
+          unsigned score_vel = -1;
+          
           //printf("%f pitch:%i vel:%i\n",e->sec,e->pitch,e->vel);
           
-          if((rc = on_new_note( sfH, e->uid, e->sec, e->pitch, e->vel, loc_id )) != kOkRC )
+          if((rc = on_new_note( sfH, e->uid, e->sec, e->pitch, e->vel, loc_id, score_vel )) != kOkRC )
           {
             rc = cwLogError(rc,"SF2 note processing failed on note UID:%i.",e->uid);
             goto errLabel;
