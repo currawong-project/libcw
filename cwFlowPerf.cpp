@@ -147,7 +147,6 @@ namespace cw
         const perf_score::event_t* score_evt   = nullptr;
         char*                      fname       = nullptr;
         unsigned                   pedalStateFlags = 0;
-        unsigned                   uuid = 0;
         unsigned                   last_loc = 0;
         p->score_end_loc  = 0;
         p->score_end_meas = 0;
@@ -501,12 +500,10 @@ namespace cw
           {
             case kStartPId:
               p->start_trig_fl = true;
-              printf("Start Clicked\n");
               break;
             
             case kStopPId:
               p->stop_trig_fl = true;
-              printf("Stop Clicked\n");
               break;
             
             case kBLocPId:
@@ -1107,9 +1104,7 @@ namespace cw
         //printf("RECDN:%i\n",i_rbuf->recdN);
         
         o_rbuf->recdA = p->recd_array->recdA;
-        o_rbuf->recdN = i_rbuf->recdN;
-        
-        
+        o_rbuf->recdN = i_rbuf->recdN;        
         
       errLabel:
         if( rc != kOkRC )
@@ -2233,7 +2228,7 @@ namespace cw
             // p->cur_frag maintains a reference to the preset selections
             p->cur_frag = frag;
 
-            cwLogInfo("LOC:%i ",loc);
+            cwLogInfo("ps LOC:%i ",loc);
             //cwLogPrint("LOC:%i ",loc);
             //fragment_report( p->psH, frag );
             
@@ -2620,6 +2615,7 @@ namespace cw
         kFnamePId,
         kBegLocPId,
         kEndLocPId,
+        kMaxLocPId,
         kResetTrigPId,
         kPrintFlPId,
         kOutPId,
@@ -2632,8 +2628,10 @@ namespace cw
         unsigned                       i_midi_field_idx;
         unsigned                       o_midi_field_idx;
         unsigned                       loc_field_idx;
+        unsigned                       meas_field_idx;
         unsigned                       vel_field_idx;
-        recd_array_t*                  recd_array;  // output record array        
+        recd_array_t*                  recd_array;  // output record array
+        unsigned                       cur_loc_id;
 
       } inst_t;
 
@@ -2681,20 +2679,21 @@ namespace cw
         rbuf_t*                in_rbuf              = nullptr;
         const char*            c_score_fname        = nullptr;
         char*                  score_fname          = nullptr;
-        bool                   printParseWarningsFl = true;
         unsigned               beg_loc_id = kInvalidId;
         unsigned               end_loc_id = kInvalidId;
         bool                   reset_trig_fl = false;
         cw::score_follow_2::args_t sf_args = {
           .pre_affinity_sec = 1.0,
           .post_affinity_sec = 3.0,
+          .min_affinity_loc_cnt = 2,
           .pre_wnd_sec = 2.0,
           .post_wnd_sec = 5.0,
+          .min_wnd_loc_cnt = 2,
           .decay_coeff = 0.995,
           .d_sec_err_thresh_lo = 0.4,
           .d_loc_thresh_lo = 3,
           .d_sec_err_thresh_hi = 1.5,
-          .d_loc_thresh_hi = 4,
+          .d_loc_thresh_hi = 7,
           .d_loc_stats_thresh = 3,
           .rpt_fl = true
         };
@@ -2741,12 +2740,22 @@ namespace cw
           goto errLabel;
         }
 
+        if((rc = var_register_and_set(proc,kAnyChIdx,
+                                      kMaxLocPId,"loc_cnt", kBaseSfxId, max_loc_id(p->sfH) )) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
         // create one output record buffer
-        rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, p->recd_array->type, nullptr, 0  );
+        if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, p->recd_array->type, nullptr, 0  )) != kOkRC )
+        {
+          goto errLabel;
+        }
         
         p->i_midi_field_idx = recd_type_field_index( in_rbuf->type, "midi");
         p->o_midi_field_idx = recd_type_field_index( p->recd_array->type, "midi");
         p->loc_field_idx = recd_type_field_index( p->recd_array->type, "loc");
+        p->meas_field_idx = recd_type_field_index(p->recd_array->type, "meas");
         p->vel_field_idx = recd_type_field_index( p->recd_array->type, "score_vel");
 
       errLabel:
@@ -2765,14 +2774,55 @@ namespace cw
         return rc;
       }
 
+      rc_t _reset_sf( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+        unsigned beg_loc_id;
+        unsigned end_loc_id;
+
+        if((rc = var_get(proc,kBegLocPId,kAnyChIdx,beg_loc_id)) != kOkRC )
+        {
+          rc = cwLogError(rc,"beg_loc read failed.");
+          goto errLabel;
+        }
+        
+        if((rc = var_get(proc,kEndLocPId,kAnyChIdx,end_loc_id)) != kOkRC )
+        {
+          rc = cwLogError(rc,"end_loc read failed.");
+          goto errLabel;
+        }
+
+        if((rc = reset(p->sfH,beg_loc_id,end_loc_id)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Score follower reset failed..");
+          goto errLabel;          
+        }
+
+        p->cur_loc_id = kInvalidId;
+
+        cwLogInfo("SF reset:%i %i",beg_loc_id,end_loc_id);
+
+      errLabel:
+
+        if( rc != kOkRC )
+          rc = cwLogError(rc,"SF reset failed on %i %i",beg_loc_id,end_loc_id);
+        return rc;        
+      }
+
       rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
+        switch( var->vid )
+        {
+          case kResetTrigPId:
+            rc = _reset_sf(proc,p);
+            break;
+        }
         return rc;
       }
 
 
-      rc_t _set_output_record( inst_t* p, rbuf_t* rbuf, const recd_t* base, unsigned loc_id, unsigned vel )
+      rc_t _set_output_record( inst_t* p, rbuf_t* rbuf, const recd_t* base, unsigned loc_id, unsigned meas_numb, unsigned vel )
       {
         rc_t rc = kOkRC;
         
@@ -2786,6 +2836,7 @@ namespace cw
         }
         
         recd_set( rbuf->type, base, r, p->loc_field_idx,  loc_id  );
+        recd_set( rbuf->type, base, r, p->meas_field_idx, meas_numb );
         recd_set( rbuf->type, base, r, p->vel_field_idx,  vel );
         rbuf->recdN += 1;
 
@@ -2801,7 +2852,6 @@ namespace cw
         double        sec             = ((double)sample_idx) / proc->ctx->sample_rate;
         const rbuf_t* i_rbuf          = nullptr;
         rbuf_t*       o_rbuf          = nullptr;
-        unsigned      result_recd_idx = kInvalidIdx;
 
         if((rc = var_get(proc,kInPId,kAnyChIdx,i_rbuf)) != kOkRC )
           goto errLabel;
@@ -2818,6 +2868,7 @@ namespace cw
           midi::ch_msg_t* m         = nullptr;
           unsigned        loc_id    = kInvalidId;
           unsigned        score_vel = -1;
+          unsigned        meas_numb = -1;
 
           if((rc = recd_get( i_rbuf->type, i_rbuf->recdA+i, p->i_midi_field_idx, m)) != kOkRC )
           {
@@ -2828,7 +2879,7 @@ namespace cw
           if( midi::isNoteOn( m->status, m->d1 ) )
           {
             
-            if((rc = on_new_note( p->sfH, m->uid, sec, m->d0, m->d1, loc_id, score_vel )) != kOkRC )
+            if((rc = on_new_note( p->sfH, m->uid, sec, m->d0, m->d1, loc_id, meas_numb, score_vel )) != kOkRC )
             {
               rc = cwLogError(rc,"Score follower note processing failed.");
               goto errLabel;              
@@ -2836,14 +2887,16 @@ namespace cw
 
             if( loc_id != kInvalidId )
             {
+              if( loc_id != p->cur_loc_id )
+              {
+                p->cur_loc_id = loc_id;
+              
+                cwLogInfo("sf LOC:%i",loc_id);
+              }
             }
-
-            
-
-
           }
 
-          _set_output_record( p, o_rbuf, i_rbuf->recdA+i, loc_id, score_vel );
+          _set_output_record( p, o_rbuf, i_rbuf->recdA+i, loc_id, meas_numb, score_vel );
           
         }
 
