@@ -6,11 +6,17 @@
 #include "cwTest.h"
 #include "cwTime.h"
 
+#define NS_PER_SEC_ll (1000000000ll)
+#define US_PER_SEC_ll (1000000ll)
+#define NS_PER_US_ll  (1000ll)
+
+
 #ifdef OS_OSX
 
 #include <mach/mach.h>
 #include <mach/mach_time.h>
 #include <unistd.h>
+
 
 void cw::time::get( spec_t& t )
 {
@@ -58,6 +64,72 @@ cw::time::spec_t cw::time::current_time()
 }
 
 #endif
+
+void cw::time::normalize( spec_t& t )
+{
+  
+  while(t.tv_nsec >= NS_PER_SEC_ll )
+  {
+    t.tv_nsec -= NS_PER_SEC_ll;
+    t.tv_sec += 1;
+  }
+}
+
+cw::rc_t cw::time::accumulate_elapsed( spec_t& acc, const spec_t& t0, const spec_t& t1 )
+{
+  // we assume that the time is normalized
+  assert( t0.tv_nsec < NS_PER_SEC_ll );
+  assert( t1.tv_nsec < NS_PER_SEC_ll );
+
+  if( t0.tv_sec > t1.tv_sec )
+    return cwLogError(kInvalidArgRC,"Negative elapsed time detected.");
+  
+
+  // t1 does not cross a 'seconds' boundary with t0
+  if( t0.tv_sec == t1.tv_sec )
+  {
+    // then t0 nsecs must be <= t1 nsecs
+    if( t0.tv_nsec > t1.tv_nsec )
+      return cwLogError(kInvalidArgRC,"Negative elapsed time detected.");
+      
+    acc.tv_nsec += t1.tv_nsec - t0.tv_nsec;
+
+  }
+  else
+  {
+    // t1 occurs in a different second than t0
+    unsigned long long d_sec   = (t1.tv_sec - t0.tv_sec) - 1;     // difference in seconds
+    unsigned long long d_nsec0 = NS_PER_SEC_ll - t0.tv_nsec;     // time from t0 to next seconds boundary
+    unsigned long long d_nsec1 = t1.tv_nsec;                      // time from t1 to prev. seconds boundary
+
+    acc.tv_sec += d_sec;
+    acc.tv_nsec += d_nsec0 + d_nsec1;
+  }
+
+  normalize(acc);
+  
+  return kOkRC;
+}
+
+cw::rc_t cw::time::accumulate_elapsed_current( spec_t& acc, const spec_t& t0 )
+{
+  spec_t t1;
+  get(t1);
+  return accumulate_elapsed(acc,t0,t1);
+}
+
+void cw::time::accumulate( spec_t& acc, const spec_t& dur )
+{
+  acc.tv_sec  += dur.tv_sec;
+  acc.tv_nsec += dur.tv_nsec;
+  normalize(acc);
+}
+
+double cw::time::seconds( const spec_t& t )
+{
+  double sec = (double)t.tv_sec;
+  return sec + ((double)t.tv_nsec)/NS_PER_SEC_ll;
+}
 
 unsigned long long cw::time::elapsedMicros( const spec_t& t0, const spec_t& t1 )
 {  

@@ -24,6 +24,12 @@ namespace cw
     void get( spec_t& tRef );
     spec_t current_time(); // same as get()
 
+    void normalize( spec_t& t );
+    rc_t accumulate_elapsed( spec_t& acc, const spec_t& t0, const spec_t& t1 );
+    rc_t accumulate_elapsed_current( spec_t& acc, const spec_t& t0 );
+    void accumulate( spec_t& acc, const spec_t& dur );
+    double seconds( const spec_t& t );
+    
     // Return the elapsed time (t1 - t0) in microseconds
     // t1 is assumed to be at a later time than t0.
     unsigned long long elapsedMicros( const spec_t&  t0, const spec_t& t1 );
