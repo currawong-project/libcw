@@ -69,6 +69,7 @@ namespace cw
     namespace poly_voice_ctl  { extern class_members_t members;  }
     namespace sample_hold     { extern class_members_t members;  }
     namespace number          { extern class_members_t members;  }
+    namespace string_list     { extern class_members_t members;  }
     namespace reg             { extern class_members_t members;  }
     namespace timer           { extern class_members_t members;  }
     namespace counter         { extern class_members_t members;  }
