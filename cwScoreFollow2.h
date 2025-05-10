@@ -1,3 +1,33 @@
+/*
+- Maintain two windows:
+  + affinity window: defines the time span of a score envelope
+  + search window: defines the space in which a search for a matching note will occur.
+     
+- Upon receiving a new note:
+   The score of each matching note in the search window is computed.
+   If a match is found calculate the following values:
+     - d_loc_id : difference between matched and expected score locations
+     - d_match_score_sec : time between this match and the previous match in score time
+     - d_match_perf_sec  : time between this match and the previous match in perf time
+     - d_corr_sec        : time between cur perf sec and corrected score time
+
+   Reject the match if:
+     -  both the low loc and low time threshold are violated
+        (d_loc_id > lo_loc_thresh && fabs(d_corr_sec) > d_sec_err_thresh_lod
+         
+     - the hi loc threshold is violated
+       (d_loc_id > hi_loc_thresh)
+
+       
+     - the hi time is violated and d_loc_id is not 0
+       (d_corr_sec > d_sec_err_thresh_hi) && d_loc_id > 0
+
+   If the match is not rejected update expV[] by adding in the affinity window centered on the match location.
+
+- On every DSP cycle update decay expV[] inside the current search window so that the strength
+  of the expected match area decreases with time.
+   
+ */
 
 namespace cw
 {
@@ -7,10 +37,12 @@ namespace cw
 
     typedef struct args_str
     {      
-      double pre_affinity_sec;  // 1.0 look back affinity duration
-      double post_affinity_sec; // 3.0 look forward affinity duration
-      double pre_wnd_sec;       // 2.0 look back search window 
-      double post_wnd_sec;      // 5.0 look forward search window
+      double   pre_affinity_sec;     // 1.0 look back affinity duration
+      double   post_affinity_sec;    // 3.0 look forward affinity duration
+      unsigned min_affinity_loc_cnt; // min. loc's in back/forward aff. window
+      double   pre_wnd_sec;          // 2.0 look back search window 
+      double   post_wnd_sec;         // 5.0 look forward search window
+      unsigned min_wnd_loc_cnt;      // min. loc's in back/forward search window
         
       double decay_coeff;          // 0.995 affinity decay coeff
 

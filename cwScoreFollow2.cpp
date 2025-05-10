@@ -634,7 +634,7 @@ namespace cw
       return rc;
     }
 
-    rc_t _alloc_and_fill_search_wnd_array( sf_t* p, double pre_wnd_sec, double post_wnd_sec )
+    rc_t _alloc_and_fill_search_wnd_array( sf_t* p, double pre_wnd_sec, double post_wnd_sec, unsigned min_loc_cnt )
     {
       rc_t rc = kOkRC;
       
@@ -642,17 +642,24 @@ namespace cw
 
       for(unsigned li=0; li<p->locN; ++li)
       {
-        int      bli = li;
-        unsigned eli = li;
-
+        int      bli  = li;
+        unsigned eli  = li;
+        unsigned locN = 0;
+        
         // look backward for window start location
-        while(bli-1 >= 0 &&  p->locA[bli-1].sec >= p->locA[li].sec - pre_wnd_sec )
+        while(bli-1 >= 0 &&  (p->locA[bli-1].sec >= p->locA[li].sec - pre_wnd_sec || locN<min_loc_cnt) )
+        {
           bli -= 1;
+          locN += 1;
+        }
 
         // look forward for the window end location
-        while(eli+1<p->locN && p->locA[eli+1].sec <= p->locA[li].sec + post_wnd_sec )
+        locN = 0;
+        while(eli+1<p->locN && (p->locA[eli+1].sec <= p->locA[li].sec + post_wnd_sec || locN<min_loc_cnt) )
+        {
           eli += 1;
-
+          locN += 1;
+        }
         // verfiy that notes exist for location 'bli' (this is a redundant check - see _alloc_and_fill_note_arrays()
         if( p->locA[bli].note_idxN == 0 )
         {
@@ -686,11 +693,12 @@ namespace cw
       return (wnd_dur_sec-dt)/wnd_dur_sec; 
     }
     
-    rc_t _alloc_and_fill_affinity_wnd_arrays( sf_t*p, double pre_aff_sec, double post_aff_sec )
+    rc_t _alloc_and_fill_affinity_wnd_arrays( sf_t*p, double pre_aff_sec, double post_aff_sec, unsigned min_loc_cnt )
     {
       rc_t     rc      = kOkRC;
       unsigned locEnvN = 0;
       float*   locEnvV = nullptr;
+      unsigned locN    = 0;
 
       p->loc_affA = mem::allocZ<aff_t>(p->locN);
 
@@ -704,13 +712,20 @@ namespace cw
         unsigned epi = kInvalidId;
         
         // look backward for window start location
-        while(bli-1 >= 0 &&  p->locA[bli-1].sec >= t0 - pre_aff_sec )
-          bli                                   -= 1;
-
+        while(bli-1 >= 0 &&  (p->locA[bli-1].sec >= t0 - pre_aff_sec || locN < min_loc_cnt) )
+        {
+          bli  -= 1;
+          locN += 1;
+        }
+        
         // look forward for the window end location
-        while(eli+1<p->locN && p->locA[eli+1].sec <= t0 + post_aff_sec )
-          eli                                     += 1;
-
+        locN = 0;
+        while(eli+1<p->locN && (p->locA[eli+1].sec <= t0 + post_aff_sec || locN < min_loc_cnt) )
+        {
+          eli  += 1;
+          locN += 1;
+        }
+        
         // calc the count of the loc's in the aff. env.
         locEnvN = (eli-bli) + 1;
         locEnvV = mem::resize<float>(locEnvV,locEnvN);
@@ -825,10 +840,10 @@ cw::rc_t cw::score_follow_2::create( handle_t& hRef, const args_t& args, perf_sc
   if((rc = _alloc_and_fill_loc_note_arrays( p )) != kOkRC )
     goto errLabel;
 
-  if((rc = _alloc_and_fill_search_wnd_array( p, args.pre_wnd_sec, args.post_wnd_sec )) != kOkRC )
+  if((rc = _alloc_and_fill_search_wnd_array( p, args.pre_wnd_sec, args.post_wnd_sec, args.min_wnd_loc_cnt )) != kOkRC )
     goto errLabel;
 
-  if((rc = _alloc_and_fill_affinity_wnd_arrays(p, args.pre_affinity_sec, args.post_affinity_sec )) != kOkRC )
+  if((rc = _alloc_and_fill_affinity_wnd_arrays(p, args.pre_affinity_sec, args.post_affinity_sec, args.min_affinity_loc_cnt )) != kOkRC )
     goto errLabel;
 
   p->trk = _trkr_create(p);
