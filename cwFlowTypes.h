@@ -163,6 +163,9 @@ namespace cw
       // For 'poly' proc's 'internal_net' is a list linked by network_t.poly_link.
       struct network_str*  internal_net;
       unsigned             internal_net_cnt; // count of hetergenous networks contained in the internal_net linked list.
+
+      time::spec_t prof_dur; // total time spent in this proc
+      unsigned     prof_cnt; // total count of calls to this proc
       
     } proc_t;
 
@@ -251,6 +254,7 @@ namespace cw
 
     typedef struct network_str
     {
+      struct flow_str*  flow;
       const char*       label;
       
       const object_t*   procsCfg;   // network proc list
@@ -272,6 +276,9 @@ namespace cw
       struct network_str* poly_link;   // Link to next net in poly.
 
       ui_net_t* ui_net;
+
+      time::spec_t prof_dur; // total time spent executing this network
+      unsigned     prof_cnt; // total count of executions of this network
             
     } network_t;
     
@@ -325,6 +332,11 @@ namespace cw
 
       global_var_t* globalVarL;
 
+      bool         prof_fl;     // set to turn profiling on
+      time::spec_t prof_dur;    // total execution time
+      unsigned     prof_cnt;    // total count of execution cycles
+      time::spec_t prof_ui_dur; // total time spent updating UI
+      
     } flow_t;
 
     

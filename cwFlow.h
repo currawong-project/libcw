@@ -99,7 +99,7 @@ namespace cw
     
     void print_class_list( handle_t h );
     void print_network( handle_t h );
-
+    void profile_report( handle_t h );
 
     
     

@@ -3520,8 +3520,33 @@ namespace cw
     errLabel:
       return rc;
     }
+
+    void _network_profile_proc_total( const network_t& net, time::spec_t& acc )
+    {
+      time::setZero(acc);
+      for(unsigned i=0; i<net.procN; ++i)
+        time::accumulate(acc,net.procA[i]->prof_dur);
+    }
     
-    
+    void _network_profile_report(const network_t& net, unsigned level)
+    {
+      time::spec_t acc;
+      double acc_sec;
+      _network_profile_proc_total(net,acc);
+      acc_sec = time::seconds(acc);
+
+      printf("%s : net:%8.5fs accum:%8.5fs\n",net.label==nullptr ? "<none>" : net.label,time::seconds(net.prof_dur),acc_sec);
+
+      for(unsigned i=0; i<net.procN; ++i)
+      {
+        double dur_sec = time::seconds(net.procA[i]->prof_dur);
+        
+        printf("%2i %6.2f  %8.5fs %s::%i\n",level,dur_sec/acc_sec,dur_sec,net.procA[i]->label,net.procA[i]->label_sfx_id);
+
+        for(const network_t* n = net.procA[i]->internal_net; n!=nullptr; n=n->poly_link)
+          _network_profile_report(*n,level+1);        
+      }
+    }
     
   }
 }
@@ -3571,7 +3596,7 @@ cw::rc_t cw::flow::network_create( flow_t*                 p,
       // allocate the network
       network_t*      net = mem::allocZ<network_t>();
 
-      //net->owner_proc = owner_proc;
+      net->flow       = p;
       net->label      = netLabel;
       net->polyN      = poly_cnt;
       net->poly_idx   = i;
@@ -3647,11 +3672,19 @@ cw::rc_t cw::flow::exec_cycle( network_t& net )
 {
   rc_t rc = kOkRC;
   bool halt_fl = false;
+  time::spec_t net_t0;
+  
+  if( net.flow->prof_fl )
+    time::get(net_t0);
 
   for(unsigned i=0; i<net.procN; ++i)
   {
+    time::spec_t t0;
     
     net.procA[i]->modVarRecurseFl = true;
+    
+    if( net.flow->prof_fl)
+      time::get(t0);
     
     // Call notify() on all variables marked for notification that have changed since the last exec_cycle()
     proc_notify(net.procA[i], kCallbackPnFl | kQuietPnFl);
@@ -3667,13 +3700,32 @@ cw::rc_t cw::flow::exec_cycle( network_t& net )
         break;
       }
     }
+
+    if( net.flow->prof_fl )
+    {
+      time::accumulate_elapsed_current(net.procA[i]->prof_dur,t0);
+      net.procA[i]->prof_cnt += 1;
+    }
     
     net.procA[i]->modVarRecurseFl = false;
     
   }
 
+  if( net.flow->prof_fl )
+  {
+    time::accumulate_elapsed_current(net.prof_dur,net_t0);
+    net.prof_cnt += 1;
+  }
+
   return halt_fl ? ((unsigned)kEofRC) : rc;
 }
+
+cw::rc_t cw::flow::network_profile_report( const network_t& net )
+{
+   _network_profile_report(net,0);
+   return kOkRC;
+}
+
 
 cw::rc_t cw::flow::get_variable( network_t& net, const char* proc_label, const char* var_label, unsigned chIdx, proc_t*& procPtrRef, variable_t*& varPtrRef )
 {

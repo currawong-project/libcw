@@ -65,6 +65,7 @@ namespace cw
       { "voice_detector",  &voice_detector::members },
       { "sample_hold",     &sample_hold::members },
       { "number",          &number::members },
+      { "string_list",     &string_list::members },
       { "reg",             &reg::members },
       { "timer",           &timer::members },
       { "counter",         &counter::members },
@@ -921,6 +922,7 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   p->proj_dir       = proj_dir;
   p->printLogHdrFl  = true;
   p->ui_create_fl   = false;
+  p->prof_fl        = false;
   p->ui_callback    = ui_callback;
   p->ui_callback_arg= ui_callback_arg;
   p->ui_var_head.store(&p->ui_var_stub);
@@ -934,6 +936,7 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
                          "max_cycle_count",      kOptFl, maxCycleCount,
                          "dur_limit_secs",       kOptFl, durLimitSecs,
                          "ui_create_fl",         kOptFl, p->ui_create_fl,
+                         "profile_fl",           kOptFl, p->prof_fl,
                          "preset",               kOptFl, p->init_net_preset_label,
                          "print_class_dict_fl",  kOptFl, printClassDictFl,
                          "print_network_fl",     kOptFl, p->printNetworkFl,
@@ -1119,6 +1122,9 @@ cw::rc_t cw::flow::destroy( handle_t& hRef )
 
   p = _handleToPtr(hRef);
 
+  if( p->prof_fl )
+    profile_report(hRef);
+
   _destroy(p);
 
   hRef.clear();
@@ -1155,14 +1161,23 @@ cw::rc_t cw::flow::exec_cycle( handle_t h )
   }
   else
   {
+    rc = exec_cycle(*p->net);
+    
     // Execute one cycle of the network
-    if((rc = exec_cycle(*p->net)) == kOkRC )
+    if(rc == kOkRC )
     {
       // During network execution variables which need to update the UI
       // are collected in a linked list based on p->ui_var_tail.
       // Callback to the UI with those variables here.
+      time::spec_t t0;
+      if( p->prof_fl )
+          time::get(t0);
+      
       _make_flow_to_ui_callback(p);
 
+      if( p->prof_fl )
+        time::accumulate_elapsed_current(p->prof_ui_dur,t0);
+    
     }
 
     p->cycleIndex += 1;
@@ -1293,3 +1308,18 @@ void cw::flow::print_network( handle_t h )
 
 
 
+void cw::flow::profile_report( handle_t h )
+{
+  flow_t* p = _handleToPtr(h);
+  if( p->net != nullptr )
+  {
+    if( p->prof_fl )
+    {
+      double dur = time::seconds(p->prof_dur);
+      double ui_dur = time::seconds(p->prof_ui_dur);
+      printf("%8.5fs UI:%8.5fs\n",dur,ui_dur);
+    
+      network_profile_report(*p->net);
+    }
+  }
+}

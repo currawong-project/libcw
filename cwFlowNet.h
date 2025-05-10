@@ -29,6 +29,8 @@ namespace cw
     
     rc_t exec_cycle( network_t& net );
 
+    rc_t network_profile_report( const network_t& net );
+
 
     rc_t get_variable( network_t& net, const char* inst_label, const char* var_label, unsigned chIdx, proc_t*& instPtrRef, variable_t*& varPtrRef );
 
@@ -118,7 +120,6 @@ namespace cw
     rc_t network_apply_preset( network_t& net, const char* presetLabel, unsigned proc_label_sfx_id=kInvalidId );
     rc_t network_apply_dual_preset( network_t& net, const char* presetLabel_0, const char* presetLabel_1, double coeff, unsigned proc_label_sfx_id=kInvalidId );      
     rc_t network_apply_preset( network_t& net, const multi_preset_selector_t& mps, unsigned proc_label_sfx_id=kInvalidId );
-    
     
   }
 }
