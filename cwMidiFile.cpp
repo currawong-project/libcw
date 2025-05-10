@@ -1203,28 +1203,86 @@ namespace cw
         const char* session_dir = nullptr;
         unsigned take_begin = 0;
         unsigned take_end = 0;
+        const object_t* takeL = nullptr;
+        const char* src_midi_fname = "midi.mid";
+        const char* out_csv_fname = "midi.csv";
+        unsigned take_cnt = 0;
         bool printWarningsFl = true;
+        
         if((rc = cfg->getv("io_dir",io_dir,
                            "session_dir",session_dir,
-                           "take_begin",take_begin,
-                           "take_end",take_end,
                            "print_warnings_flag",printWarningsFl)) != kOkRC )
         {
-          cwLogError(rc,"MIDI file batch convert to CSV failed.");
+          rc = cwLogError(rc,"Non-optional argument parse failed.");
+          goto errLabel;
         }
 
-        for(unsigned i=take_begin; i<=take_end; ++i)
+        
+        if((rc = cfg->getv_opt("src_midi_fname",src_midi_fname,
+                               "out_csv_fname",out_csv_fname,
+                               "take_begin",take_begin,
+                               "take_end",take_end,
+                               "takeL",takeL)) != kOkRC )
         {
+          rc = cwLogError(rc,"Optional argument parse failed.");
+          goto errLabel;
+        }
+
+
+        if( takeL == nullptr && take_begin == 0 && take_end == 0)
+        {
+          cwLogError(kInvalidArgRC,"No 'takeL' or 'take_begin/take_end' fields were provided.");
+          goto errLabel;
+        }
+
+        if( takeL != nullptr )
+        {
+          take_cnt = takeL->child_count();
+        }
+        else
+        {
+          if( take_begin >= take_end )
+          {
+            rc = cwLogError(kInvalidArgRC,"The 'take_begin' value is >= 'take_end' value.");
+            goto errLabel;
+          }
+
+          take_cnt = (take_end - take_begin) + 1;          
+        }
+
+        if( take_cnt == 0 )
+        {
+          rc = cwLogError(kInvalidArgRC,"The take number range is empty.");
+          goto errLabel;
+        }
+
+        for(unsigned i=0; i<take_cnt; ++i)
+        {
+          unsigned take_numb;
+          
+          if( takeL != nullptr )
+          {
+            if((rc = takeL->child_ele(i)->value(take_numb)) != kOkRC )
+            {
+              rc = cwLogError(rc,"Invalid take number encountered.");
+              goto errLabel;
+            }
+          }
+          else
+          {
+            take_numb = take_begin + i;
+          }
+          
           char take_dir[32];
-          snprintf(take_dir,32,"record_%i",i);
-          char* src_midi_fn =  filesys::makeFn(  io_dir, "midi", ".mid", session_dir, take_dir, nullptr );
-          char* dst_csv_fn  =  filesys::makeFn(  io_dir, "midi", ".csv", session_dir, take_dir, nullptr );
+          snprintf(take_dir,32,"record_%i",take_numb);
+          char* src_midi_fn =  filesys::makeFn(  io_dir, src_midi_fname, nullptr, session_dir, take_dir, nullptr );
+          char* dst_csv_fn  =  filesys::makeFn(  io_dir, out_csv_fname, nullptr, session_dir, take_dir, nullptr );
 
           char* sm_fn = filesys::expandPath( src_midi_fn );
           char* dm_fn = filesys::expandPath( dst_csv_fn );
           
           //rc = genCsvFile(mfn,cfn );
-          cwLogInfo("Midi to CSV: src:%s dst:%s\n", sm_fn,dm_fn);
+          cwLogInfo("Midi to CSV: src:%s dst:%s", sm_fn,dm_fn);
           
           if((rc = genCsvFile(sm_fn, dm_fn, printWarningsFl )) != kOkRC )
             cwLogError(rc,"MIDI to CSV Conversion failed on %s to %s.",sm_fn,dm_fn);
@@ -1236,6 +1294,9 @@ namespace cw
           mem::release(dst_csv_fn);
         }
 
+      errLabel:
+        if(rc != kOkRC )
+          rc = cwLogError(rc,"MIDI batch convert to CSV failed.");
         return rc;
       }
 
