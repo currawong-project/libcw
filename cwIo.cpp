@@ -2743,8 +2743,16 @@ cw::rc_t  cw::io::threadRunOnce( handle_t h, unsigned id, bool asyncFl, thread_o
 
   if((rc = thread::unpause(t->threadH)) != kOkRC )
   {
-    rc = cwLogError(rc,"One-time '%s' thread start failed.",cwStringNullGuard(thread_label));
-    goto errLabel;
+    if( rc == kInvalidStateRC )
+    {
+      cwLogInfo("The one-time thread probably finished before the application thread noticed it has started. Thread error ignored.");
+      rc = kOkRC;
+    }
+    else
+    {
+      rc = cwLogError(rc,"One-time '%s' thread start failed.",cwStringNullGuard(thread_label));
+      goto errLabel;
+    }
   }
   
 errLabel:
