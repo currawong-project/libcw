@@ -108,6 +108,434 @@ namespace cw
 
     //------------------------------------------------------------------------------------------------------------------
     //
+    // msg_table
+    //
+    namespace msg_table
+    {
+      typedef struct field_ref_str
+      {
+        unsigned    vid;
+        unsigned    var_label_sfx_id;
+        unsigned    chIdx;
+        const char* label;
+      } field_ref_t;
+
+      typedef struct msg_value_str
+      {
+        unsigned vid;
+        unsigned chIdx;
+        value_t  value;
+      } msg_field_t;
+
+      typedef struct msg_row_str
+      {
+        unsigned     row_id;
+        msg_field_t* fieldA;
+        unsigned     fieldN;
+      } msg_row_t;
+
+      typedef struct msg_cfg_str
+      {
+        unsigned   id;
+        char*      label;
+        msg_row_t* msgRowA;
+        unsigned   msgRowN;                
+      } msg_cfg_t;
+
+      typedef struct msg_table_str
+      {
+        proc_t*      proc;
+        field_ref_t* fieldRefA;
+        unsigned     fieldRefN;
+
+        unsigned   cur_cfg_idx;
+        
+        msg_cfg_t* msgCfgA;
+        unsigned   msgCfgN;
+
+        list_t* list;
+      } inst_t;
+
+      rc_t _release_cfg( inst_t* p )
+      {
+        rc_t rc = kOkRC;
+        if( p != nullptr )
+        {
+          if((rc = list_destroy(p->list)) != kOkRC )
+            rc = cwLogError(rc,"Msg table list destroy failed.");
+          
+          for(unsigned i=0; i<p->msgCfgN; ++i)
+          {
+            msg_cfg_t* cfg = p->msgCfgA + i;
+            for(unsigned j=0; j<cfg->msgRowN; ++j)
+            {
+              msg_row_t* row = cfg->msgRowA + j;
+              for(unsigned k=0; k<row->fieldN; ++k)                
+                value_release(&row->fieldA[k].value);
+              mem::release(row->fieldA);
+            }
+            mem::release(cfg->label);
+            mem::release(cfg->msgRowA);
+          }
+          
+          mem::release(p->msgCfgA);
+        }
+        
+        return rc;
+      }
+
+      rc_t destroy( inst_t*& tbl_ref )
+      {
+        rc_t rc = kOkRC;
+        
+        inst_t* p = tbl_ref;
+        if((rc = _release_cfg(p)) == kOkRC )
+        {
+          if( p != nullptr )
+            mem::release(p->fieldRefA);
+          mem::release(tbl_ref);
+        }
+        return rc;
+      }
+
+      const field_ref_t* _msg_field_to_ref( inst_t* p, const char* field_label )
+      {
+        for(unsigned i=0; i<p->fieldRefN; ++i)
+          if( textIsEqual(p->fieldRefA[i].label,field_label) )
+            return p->fieldRefA + i;
+
+        return nullptr;
+      }
+
+      rc_t _msg_table_parse_row( inst_t* p, msg_row_t* row, const object_t* msg_cfg )
+      {
+        rc_t rc = kOkRC;
+        
+        row->fieldN = msg_cfg->child_count();
+        row->fieldA = mem::allocZ<msg_field_t>(row->fieldN);
+
+        for(unsigned i=0; i<row->fieldN; ++i)
+        {
+          const field_ref_t* field_ref = nullptr;
+          const object_t* pair_cfg = nullptr;
+          
+          if((pair_cfg = msg_cfg->child_ele(i)) == nullptr || !pair_cfg->is_pair() )
+          {
+            rc = cwLogError(kSyntaxErrorRC,"The field pair at index '%i' is not valid.",i);
+            goto errLabel;
+          }
+
+          if((field_ref = _msg_field_to_ref(p,pair_cfg->pair_label())) == nullptr )
+          {
+            rc = cwLogError(kSyntaxErrorRC,"The field label '%s' at index '%i' is not valid.",cwStringNullGuard(pair_cfg->pair_label()),i);
+            goto errLabel;            
+          }
+
+          row->fieldA[i].vid = field_ref->vid;
+          row->fieldA[i].chIdx = field_ref->chIdx;
+
+          if((rc = value_from_cfg(pair_cfg->pair_value(),row->fieldA[i].value)) != kOkRC )
+          {
+            rc = cwLogError(kSyntaxErrorRC,"The field value '%s' at index '%i' could not be parsed.",cwStringNullGuard(pair_cfg->pair_label()),i);
+            goto errLabel;            
+          }
+
+        }
+
+      errLabel:
+        return rc;
+        
+      }
+
+      rc_t load_from_cfg( inst_t* p, const object_t* cfg )
+      {
+        rc_t            rc       = kOkRC;
+        const object_t* cfg_list = nullptr;
+
+        if((rc = _release_cfg(p)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Msg table release cfg. failed.");
+          goto errLabel;
+        }
+        
+        if((rc = cfg->getv("list", cfg_list)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Unable to locate the 'list' field in the msg. table cfg.");
+          goto errLabel;
+        }
+
+        if( !cfg_list->is_list() )
+        {
+          rc = cwLogError(rc,"Expected msg table list to be of type 'list'.");
+          goto errLabel;
+        }
+
+        p->cur_cfg_idx = kInvalidIdx;
+        
+        p->msgCfgN     = cfg_list->child_count();
+
+        p->msgCfgA = mem::allocZ<msg_cfg_t>(p->msgCfgN);
+
+        if((rc = list_create(p->list,p->msgCfgN)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Msg table list create failed.");
+          goto errLabel;
+        }          
+
+        for(unsigned i=0; i<p->msgCfgN; ++i)
+        {
+          const object_t* row_list = nullptr;
+          const char* label = nullptr;
+          
+          const object_t* list_ele;
+          if((list_ele = cfg_list->child_ele(i)) == nullptr || !list_ele->is_dict() )
+          {
+            rc = cwLogError(kSyntaxErrorRC,"The cfg index '%i' is not a valid dictionary.",i);
+            goto errLabel;
+          }
+
+          if((rc = list_ele->getv("id",p->msgCfgA[i].id,
+                                  "label",label,
+                                  "cfg",row_list)) != kOkRC )
+          {
+            rc = cwLogError(rc,"Parsing failed on cfg index '%i'.");
+            goto errLabel;
+          }
+
+          if( row_list == nullptr || !row_list->is_list() )
+          {
+            rc = cwLogError(rc,"The 'cfg' list in cfg index '%i' is not a list.",i);
+            goto errLabel;
+          }
+
+          if( p->cur_cfg_idx == kInvalidIdx )
+            p->cur_cfg_idx = i;
+
+          p->msgCfgA[i].label   = mem::duplStr(label);
+          p->msgCfgA[i].msgRowN = row_list->child_count();
+          p->msgCfgA[i].msgRowA = mem::allocZ<msg_row_t>(p->msgCfgA[i].msgRowN);
+
+          if((rc = list_append(p->list,label,kInvalidIdx)) != kOkRC )
+          {
+            rc = cwLogError(kOpFailRC,"The msg table list append failed on the element at index '%i'.",i);
+            goto errLabel;
+          }
+          
+
+          for(unsigned j=0; j<p->msgCfgA[i].msgRowN; ++j)
+          {
+            const object_t* row = row_list->child_ele(j);
+            const object_t* msg = nullptr;
+
+            if( row == nullptr || !row->is_dict() )
+            {
+              rc = cwLogError(kSyntaxErrorRC,"The row element at index '%i' in cfg index  '%i' is not a valid dictionary.",j,i);
+              goto errLabel;
+            }
+              
+            if((rc = row->getv("id",p->msgCfgA[i].msgRowA[j].row_id,
+                               "msg",msg)) != kOkRC )
+            {
+              rc = cwLogError(rc,"Outer parsing failed on cfg index:%i row index '%i'.",i,j);
+              goto errLabel;
+            }
+
+            if((rc = _msg_table_parse_row(p,p->msgCfgA[i].msgRowA + j,msg)) != kOkRC )
+            {
+              rc = cwLogError(rc,"Field parsing failed on cfg index:%i (id=%i)row index '%i'.",i,p->msgCfgA[i].msgRowA[j].row_id,j);
+              goto errLabel;
+            }
+
+          }
+          
+        }
+
+          
+
+      errLabel:
+        if( rc != kOkRC )
+          rc = cwLogError(rc,"Message table parsing failed.");
+        
+        return rc;        
+      }
+      
+      rc_t load_from_file( inst_t* p, const char* fname )
+      {        
+        rc_t rc;
+        object_t* cfg = nullptr;
+        char* fn = nullptr;
+
+        if((fn = proc_expand_filename(p->proc,fname)) == nullptr )
+        {
+          rc = cwLogError(kOpFailRC,"The file name '%s' could not be expanded.",cwStringNullGuard(fname));
+          goto errLabel;
+        }
+          
+        if((rc = objectFromFile( fn, cfg )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Unable to parse msg table from '%s'.",cwStringNullGuard(fn));
+          goto errLabel;
+        }
+
+        if((rc = msg_table::load_from_cfg( p, cfg)) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+      errLabel:
+        if( rc != kOkRC )
+          rc = cwLogError(rc,"Message table parsing failed on '%s'.",cwStringNullGuard(fname));
+
+        mem::release(fn);
+        
+        return rc;
+      }
+
+
+      rc_t create( proc_t* proc, const field_ref_t* fieldRefA, const object_t* cfg, const char* fname, inst_t*& tbl_ref  )
+      {
+        tbl_ref      = nullptr;
+        
+        rc_t         rc = kOkRC;
+        inst_t* p  = mem::allocZ<inst_t>();
+
+        p->cur_cfg_idx = kInvalidIdx;
+        p->proc        = proc;
+        p->fieldRefN   = 0;
+        
+        for(unsigned i=0; fieldRefA[i].label != nullptr; ++i)
+          p->fieldRefN += 1;
+
+        p->fieldRefA = mem::allocZ<field_ref_t>(p->fieldRefN);
+
+        for(unsigned i=0; i<p->fieldRefN; ++i)
+        {
+          const object_t* value_cfg = nullptr;
+          variable_t* var;
+          
+          p->fieldRefA[i].vid              = fieldRefA[i].vid;
+          p->fieldRefA[i].var_label_sfx_id = fieldRefA[i].var_label_sfx_id;
+          p->fieldRefA[i].chIdx            = fieldRefA[i].chIdx;
+          p->fieldRefA[i].label            = fieldRefA[i].label;
+
+          if((rc = var_register( proc, fieldRefA[i].label, fieldRefA[i].var_label_sfx_id, fieldRefA[i].vid, fieldRefA[i].chIdx, value_cfg, var )) != kOkRC )
+          {
+            rc = cwLogError(rc,"Message table variable registration failed on the field:%s.",cwStringNullGuard(fieldRefA[i].label));
+            goto errLabel;
+          }
+
+        }
+
+        if( cfg != nullptr && cfg->child_count()>0 )
+        {
+          if((rc = msg_table::load_from_cfg(p, cfg )) != kOkRC )
+            goto errLabel;
+        }
+        else
+        {
+          if( textLength(fname)>0 )
+          {
+            if((rc = msg_table::load_from_file(p, fname)) != kOkRC )
+              goto errLabel;
+          }
+          else
+          {
+            cwLogWarning("'%s:%i' was created without an initial configuration.",cwStringNullGuard(proc->label),proc->label_sfx_id);
+          }
+        }
+        
+        tbl_ref = p;
+
+      errLabel:
+        if(rc != kOkRC && p != nullptr )
+          destroy(p);
+
+        return rc;
+        
+      }
+
+      
+      rc_t on_row_id( inst_t* p, unsigned id )
+      {
+        rc_t rc = kOkRC;
+
+        if( p->cur_cfg_idx == kInvalidIdx )
+        {
+          rc = cwLogError(kInvalidStateRC,"Cannot apply a msg. table row if the current cfg. is not set.");
+          goto errLabel;
+        }
+
+        if( id != kInvalidId )
+        {
+          const msg_cfg_t* cfg = p->msgCfgA + p->cur_cfg_idx;
+          
+          for(unsigned i=0; i<cfg->msgRowN; ++i)
+            if( cfg->msgRowA[i].row_id == id )
+            {
+              const msg_row_t* r = cfg->msgRowA + i;
+              
+              for(unsigned j=0; j<r->fieldN; ++j)
+              {
+                printf("loc:%i APPLYING:%i\n",id,r->fieldA[j].vid);
+                if((rc = var_set(p->proc, r->fieldA[j].vid, r->fieldA[j].chIdx, &r->fieldA[j].value)) != kOkRC )
+                {
+                  rc = cwLogError(rc,"Variable set from msg table failed.");
+                  goto errLabel;
+                }
+              }
+            }
+        }
+      errLabel:
+        return rc;
+      }
+
+      rc_t _set_cur_cfg_index( inst_t* p, unsigned index )
+      {
+        rc_t rc = kOkRC;
+        
+        if( index == kInvalidIdx )
+          goto errLabel;
+
+        if( index >= p->msgCfgN )
+        {
+          rc = cwLogError(kInvalidArgRC,"The msg table cfg. index '%i' is out of range.",index);
+          goto errLabel;
+        }
+
+        p->cur_cfg_idx = index;
+        
+        if( p->msgCfgA[index].msgRowN > 0 )
+          if((rc = msg_table::on_row_id(p,p->msgCfgA[index].msgRowA[0].row_id)) != kOkRC )
+            rc = cwLogError(rc,"Msg. table row apply-on-new-cfg-index failed.");
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t on_cfg_index( inst_t* p, unsigned index )
+      {
+        return _set_cur_cfg_index(p,index);
+      }
+
+      
+      rc_t on_cfg_id(inst_t* p, unsigned cfg_id )
+      {
+        rc_t rc = kOkRC;
+
+        printf("ACTIVATE CFG:%i\n",cfg_id);
+        
+        for(unsigned i=0; i<p->msgCfgN; ++i)
+          if( p->msgCfgA[i].id == cfg_id )
+            return _set_cur_cfg_index(p,i);
+
+        return cwLogError(kEleNotFoundRC,"The msg. table cfg with id '%i' was not found.",cfg_id);
+      }
+
+    }
+
+    
+    //------------------------------------------------------------------------------------------------------------------
+    //
     // user_def_proc
     //
     namespace user_def_proc
@@ -9571,9 +9999,270 @@ namespace cw
         .report  = std_report<inst_t>
       };
       
-    }    
+    }
 
-    
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // gutim_ps_msg_table
+    //
+    namespace gutim_ps_msg_table
+    {      
+      enum {
+        kInPId,
+        kSelIdPId,
+        kCfgFNamePId,
+        kCfgPId,
+        kPriProbFlPId,
+        kPerNoteFlPId
+        
+      };
+      
+      typedef struct
+      {
+        unsigned loc_fld_idx;
+        msg_table::inst_t* msg_tbl;
+      } inst_t;
+
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t            rc        = kOkRC;        
+        rbuf_t*         in_rbuf   = nullptr;
+        const char*     cfg_fname = nullptr;
+        const object_t* cfg       = nullptr;
+        unsigned        sel_id    = kInvalidId;
+
+        msg_table::field_ref_t fieldRefA[] = {
+          { kPriProbFlPId, kBaseSfxId, kAnyChIdx, "pri_prob_fl" },
+          { kPerNoteFlPId, kBaseSfxId, kAnyChIdx, "per_note_fl" },
+          { kInvalidId,    kBaseSfxId, kAnyChIdx, nullptr       }
+        };
+
+        // register the input audio variable
+        if((rc = var_register_and_get(proc,kAnyChIdx,
+                                      kInPId,       "in",    kBaseSfxId, in_rbuf,
+                                      kSelIdPId,    "sel_id",kBaseSfxId, sel_id,
+                                      kCfgFNamePId, "fname", kBaseSfxId, cfg_fname,
+                                      kCfgPId,      "cfg",   kBaseSfxId, cfg)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((rc = msg_table::create(proc,fieldRefA,cfg,cfg_fname,p->msg_tbl)) != kOkRC)
+        {
+          goto errLabel;
+        }
+
+        if((p->loc_fld_idx  = recd_type_field_index( in_rbuf->type, "loc")) == kInvalidIdx )
+        {
+          cwLogError(kInvalidArgRC,"The  input record does not have a 'loc' field.");
+          goto errLabel;
+        }
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+        msg_table::destroy(p->msg_tbl);
+        return rc;
+      }
+
+      rc_t _on_input_notify( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+        const rbuf_t* in_rbuf = nullptr;
+
+        if((rc = var_get(proc, kInPId, kAnyChIdx,in_rbuf)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Unable to access input record buf.");
+          goto errLabel;
+        }
+
+        // for each incoming record
+        for(unsigned i=0; i<in_rbuf->recdN; ++i)
+        {
+          unsigned loc;
+          
+          if((rc = recd_get( in_rbuf->type, in_rbuf->recdA + i, p->loc_fld_idx, loc)) != kOkRC )
+          {
+            rc = cwLogError(rc,"'loc' field access failed.");
+            goto errLabel;
+          }
+
+          if((rc = msg_table::on_row_id(p->msg_tbl, loc )) != kOkRC )
+          {
+            rc = cwLogError(rc,"Msg table dispatch failed.");
+            goto errLabel;
+          }
+          
+        }
+
+      errLabel:
+
+        if( rc != kOkRC )
+        {
+          rc = cwLogError(rc,"Input notify failed on '%s':'%i'.",cwStringNullGuard(proc->label),proc->label_sfx_id);
+        }
+        
+        return rc;
+        
+      }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        if( var->vid == kSelIdPId )
+        {
+          unsigned sel_id;
+          
+          if((rc = var_get(var,sel_id)) != kOkRC )
+            goto errLabel;
+          
+          msg_table::on_cfg_id(p->msg_tbl, sel_id );
+        }
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t rc      = kOkRC;
+        variable_t* var = nullptr;
+
+        _on_input_notify(proc,p);
+        
+        
+        
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    // gutim_ps_msg_table
+
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // gutim_take_menu
+    //
+    namespace gutim_take_menu
+    {
+      enum {
+        kIndexPId,
+        kCfgFNamePId,
+        kCfgPId,
+        kTakeIdPId,
+        kBegLocPId,
+        kEndLocPId,
+        kFnamePId,
+      };
+      
+      typedef struct
+      {
+        msg_table::inst_t* msg_tbl;
+      } inst_t;
+
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t            rc        = kOkRC;        
+        const char*     cfg_fname = nullptr;
+        const object_t* cfg       = nullptr;
+        unsigned        row_idx   = kInvalidIdx;
+        variable_t*     var       = nullptr;
+
+        msg_table::field_ref_t fieldRefA[] = {
+          { kTakeIdPId, kBaseSfxId, kAnyChIdx, "take_id" },
+          { kBegLocPId, kBaseSfxId, kAnyChIdx, "beg_loc" },
+          { kEndLocPId, kBaseSfxId, kAnyChIdx, "end_loc" },
+          { kFnamePId,  kBaseSfxId, kAnyChIdx, "fname"   },
+          { kInvalidId, kBaseSfxId, kAnyChIdx, nullptr   }
+        };
+
+        // register the input audio variable
+        if((rc = var_register_and_get(proc,kAnyChIdx,
+                                      kIndexPId,    "index", kBaseSfxId, row_idx,
+                                      kCfgFNamePId, "cfg_fname", kBaseSfxId, cfg_fname,
+                                      kCfgPId,      "cfg",   kBaseSfxId, cfg)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((rc = msg_table::create(proc,fieldRefA,cfg,cfg_fname,p->msg_tbl)) != kOkRC)
+        {
+          goto errLabel;
+        }
+
+        if((rc = var_find(proc, "index", kBaseSfxId, kAnyChIdx, var )) != kOkRC )
+        {
+          rc = cwLogError(rc,"The 'list' variable could not be found.");
+          goto errLabel;
+        }
+
+        var->value_list = p->msg_tbl->list;
+        
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        msg_table::destroy(p->msg_tbl);
+
+        return rc;
+      }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        if( var->vid == kIndexPId )
+        {
+          unsigned index = 0;
+          if((rc = var_get(var,index)) != kOkRC )
+            goto errLabel;
+          
+          msg_table::on_cfg_index(p->msg_tbl,index);
+        }
+      errLabel:
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t rc      = kOkRC;
+        
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+      
+    } // gutim_take_menu
     
   } // flow
 } // cw

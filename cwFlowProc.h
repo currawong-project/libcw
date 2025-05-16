@@ -83,6 +83,7 @@ namespace cw
     namespace midi_file       { extern class_members_t members;  }
     namespace midi_merge      { extern class_members_t members;  }
     namespace poly_xform_ctl  { extern class_members_t members;  }
-    
+    namespace gutim_ps_msg_table { extern class_members_t members; }
+    namespace gutim_take_menu { extern class_members_t members; }
   }
 }

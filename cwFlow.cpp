@@ -79,6 +79,8 @@ namespace cw
       { "midi_file",       &midi_file::members },
       { "midi_merge",      &midi_merge::members },
       { "poly_xform_ctl",  &poly_xform_ctl::members },
+      { "gutim_ps_msg_table", &gutim_ps_msg_table::members },
+      { "gutim_take_menu", &gutim_take_menu::members },
       { "score_player",    &score_player::members },
       { "vel_table",       &vel_table::members },
       { "preset_select",   &preset_select::members },
