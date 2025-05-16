@@ -941,6 +941,12 @@ resolvable without more information.
 
 ### TODO:
 
+- Is it possible to create a processor where the output ports are defined by a cfg contained as part of the
+  processor instance description?  The current solution is the 'msg_table' approach. Can this approach
+  be improved so that it is codeless - as opposed to having to create a processor in proc_dict_cfg.
+  Techniques used by User-defined-procs might offer one path - the idea being to create a class_desc
+  at compile time.
+
 - Check for duplicate field labels. Particularly when using a base record.
   It's easy to declare a field named 'midi' and then inherit a record with a field named 'midi' - this is a crash bug.
   
