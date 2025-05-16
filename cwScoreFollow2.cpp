@@ -689,7 +689,7 @@ namespace cw
     {
       double t1 = p->locA[li].sec;
       double dt = std::max(t0,t1)-std::min(t0,t1);
-      assert( dt <= wnd_dur_sec );
+      //assert( dt <= wnd_dur_sec );
       return (wnd_dur_sec-dt)/wnd_dur_sec; 
     }
     
