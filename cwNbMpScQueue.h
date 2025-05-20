@@ -73,6 +73,7 @@ namespace cw
 
     // advance() disposes of the oldest blob in the
     // queue and makes the next blob current.
+    // If the advance() operation failed then blob.rc will be set with an error code.
     blob_t advance( handle_t h );
 
     // The queue maintains a single internal iterator which the consumer
