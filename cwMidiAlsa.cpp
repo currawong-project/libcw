@@ -66,7 +66,7 @@ namespace cw
           struct pollfd*   alsa_fd;
           dev_t*           prvRcvDev;        // the last device and port to rcv MIDI 
           port_t*          prvRcvPort;
-          unsigned         prvTimeMicroSecs; // time of last recognized event in microseconds
+          //unsigned         prvTimeMicroSecs; // time of last recognized event in microseconds
           unsigned         eventCnt;         // count of recognized events
           time::spec_t     baseTimeStamp;
 
@@ -166,7 +166,7 @@ namespace cw
             //printf("%i %x\n",ev->type,ev->type);
             //printf("dev:%i port:%i ch:%i %i\n",ev->source.client,ev->source.port,ev->data.note.channel,ev->data.note.note);
 
-            unsigned     microSecs1     = (ev->time.time.tv_sec * 1000000) + (ev->time.time.tv_nsec/1000);
+            //unsigned     microSecs1     = (ev->time.time.tv_sec * 1000000) + (ev->time.time.tv_nsec/1000);
             //unsigned     deltaMicroSecs = p->prvTimeMicroSecs==0 ? 0 : microSecs1 - p->prvTimeMicroSecs;
             uint8_t d0             = 0xff;
             uint8_t d1             = 0xff;
@@ -291,7 +291,7 @@ namespace cw
 
               parser::midiTriple(p->prvRcvPort->parserH, &ts, status | ch, d0, d1 );
 
-              p->prvTimeMicroSecs  = microSecs1;
+              //p->prvTimeMicroSecs  = microSecs1;
               p->eventCnt         += 1;
             }
 
