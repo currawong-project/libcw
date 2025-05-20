@@ -109,6 +109,7 @@ namespace cw
       const char*                 record_fn_ext;
       char*                       directory;
       const char*                 velTableFname;
+      double                      audio_record_sec;
       
       midi_record_play::handle_t  mrpH;
       audio_record_play::handle_t arpH;
@@ -602,16 +603,24 @@ namespace cw
 
       if( app->mrpH.isValid() )
       {
+        unsigned n0 = event_index( app->mrpH );
         midi_record_play::exec( app->mrpH, *m );
-        if( midi_record_play::is_started(app->mrpH) )
+        unsigned n1 = event_index( app->mrpH );
+        if( midi_record_play::is_started(app->mrpH) && n0 != n1 )
+        {
           io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurMidiEvtCntId), midi_record_play::event_index(app->mrpH) );
+        }
       }
       
       if( app->arpH.isValid() )
       {
         audio_record_play::exec( app->arpH, *m );
-        if( audio_record_play::is_started(app->arpH) )
-          io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurAudioSecsId), audio_record_play::current_loc_seconds(app->arpH) );
+        double t = current_loc_seconds(app->arpH);
+        if( audio_record_play::is_started(app->arpH) && (t-app->audio_record_sec) > 0.1 )
+        {
+          io::uiSendValue( app->ioH, uiFindElementUuId(app->ioH,kCurAudioSecsId), t );
+          app->audio_record_sec = t;
+        }
       }
 
       switch( m->tid )
