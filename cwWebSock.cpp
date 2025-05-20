@@ -291,6 +291,14 @@ namespace cw
         {
           ps->endMsg = ps->endMsg->link;
           b = advance(p->_qH);  // ... then pop the msg off the send queue
+
+          // if something went wrong in advance() forward the error
+          if( b.rc != kOkRC )
+          {
+            rc = b.rc;          
+            b.rc = kOkRC;
+          }
+          
           oldest_msg = (msg_t*)b.blob;
         }
         else // ... otherwise the no further progress can be made
