@@ -10,6 +10,7 @@
 #include "cwAudioFile.h"
 #include "cwVectOps.h"
 #include "cwMtx.h"
+#include "cwTracer.h"
 
 #include "cwDspTypes.h" // srate_t, sample_t, coeff_t, ...
 
@@ -476,7 +477,7 @@ namespace cw
               
               for(unsigned j=0; j<r->fieldN; ++j)
               {
-                printf("loc:%i APPLYING:%i\n",id,r->fieldA[j].vid);
+                //printf("loc:%i APPLYING:%i\n",id,r->fieldA[j].vid);
                 if((rc = var_set(p->proc, r->fieldA[j].vid, r->fieldA[j].chIdx, &r->fieldA[j].value)) != kOkRC )
                 {
                   rc = cwLogError(rc,"Variable set from msg table failed.");
@@ -520,9 +521,7 @@ namespace cw
       
       rc_t on_cfg_id(inst_t* p, unsigned cfg_id )
       {
-        rc_t rc = kOkRC;
-
-        printf("ACTIVATE CFG:%i\n",cfg_id);
+        //printf("ACTIVATE CFG:%i\n",cfg_id);
         
         for(unsigned i=0; i<p->msgCfgN; ++i)
           if( p->msgCfgA[i].id == cfg_id )
@@ -818,7 +817,7 @@ namespace cw
             }
                     
           // create a thread_ftasks object
-          if((rc = thread_ftasks::create(  inst->threadTasksH, inst->thread_cnt, cpuAffinityA )) != kOkRC )
+          if((rc = thread_ftasks::create(  inst->threadTasksH, inst->thread_cnt, cpuAffinityA, "task_thread" )) != kOkRC )
           {
             rc = cwLogError(rc,"Thread machine create failed.");
             goto errLabel;
@@ -4923,6 +4922,7 @@ namespace cw
       enum {
         kInPId,
         kVoiceCntPId,
+        kPruneThreshPId,
         kResetPId,
         kBaseOutPId,
       };
@@ -4965,7 +4965,9 @@ namespace cw
         midi_t midiA[ midi::kMidiNoteCnt ];
         
         unsigned voiceN;   // voiceA[ voiceN ]
-        voice_t* voiceA; 
+        voice_t* voiceA;
+
+        unsigned prune_thresh;
 
         // sizeof of each voice msgA[] (same as voice_t.msgN)
         unsigned voiceMsgN;
@@ -5072,9 +5074,10 @@ namespace cw
         bool reset_fl = false;
         
         if((rc = var_register_and_get(proc,kAnyChIdx,
-                                      kInPId,       "in",    kBaseSfxId, rbuf,
-                                      kResetPId,    "reset",     kBaseSfxId, reset_fl,
-                                      kVoiceCntPId, "voice_cnt", kBaseSfxId, p->voiceN)) != kOkRC )
+                                      kInPId,          "in",           kBaseSfxId, rbuf,
+                                      kResetPId,       "reset",        kBaseSfxId, reset_fl,
+                                      kPruneThreshPId, "prune_thresh", kBaseSfxId, p->prune_thresh,
+                                      kVoiceCntPId,    "voice_cnt",    kBaseSfxId, p->voiceN)) != kOkRC )
         {
           goto errLabel; 
         }
@@ -5128,6 +5131,8 @@ namespace cw
         p->stateA = mem::allocZ<state_t>(p->stateN);
 
         _reset_all_voices(proc,p);
+
+        TRACE_REG(proc->label,proc->label_sfx_id,proc->trace_id);
         
       errLabel:
         return rc;
@@ -5264,12 +5269,14 @@ namespace cw
         }
 
         // if more than half the voices are in use then begin turning off old voices
-        if( active_voice_cnt > p->voiceN/2 )
+        if( active_voice_cnt > p->prune_thresh )
         {
           if( early_stop_idx == kInvalidIdx && max_age_idx == kInvalidIdx )
             cwLogWarning("No available voices to prune.");
           else
+          {
             _stop_note_early(proc,p,early_stop_idx==kInvalidIdx ? max_age_idx : early_stop_idx, "prune voices" );
+          }
         }
 
         p->active_voice_cnt = active_voice_cnt;
@@ -5493,7 +5500,8 @@ namespace cw
           }
         }
 
-        
+        TRACE_DATA( proc->trace_id, tracer::kDataEvtId, p->active_voice_cnt, 0);
+          
       errLabel:
         return rc;
       }
@@ -5957,6 +5965,8 @@ namespace cw
         p->noff_fl    = true;
         p->sustain_fl = false;
 
+        TRACE_REG(proc->label,proc->label_sfx_id,proc->trace_id);
+
       errLabel:
         
         return rc;
@@ -5992,6 +6002,8 @@ namespace cw
 
         var_set(proc,kDoneFlPId,kAnyChIdx,false);
         var_set(proc,kGateFlPId,kAnyChIdx,true);
+
+        TRACE_TIME(proc->trace_id,tracer::kBegEvtId,0,0);
 
       errLabel:
         return rc;
@@ -6109,6 +6121,7 @@ namespace cw
         var_set(proc,kGateFlPId,kAnyChIdx,false);        
         _store_note_state(proc, p, 0, 0, p->pitch, 0);
         p->gain_coeff = 0.0;  //
+        TRACE_TIME(proc->trace_id,tracer::kEndEvtId,0,0);
       }
 
       sample_t _calc_rms( inst_t* p, abuf_t* abuf )
@@ -8712,6 +8725,56 @@ namespace cw
       
     }    
 
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // on_start
+    //
+    namespace on_start
+    {
+      enum {
+        kOutPId
+      };
+      
+      typedef struct
+      {
+      } inst_t;
+
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        return var_register(proc,kAnyChIdx,kOutPId,"out",kBaseSfxId);
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        return kOkRC;
+      }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        return kOkRC;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        if( proc->ctx->cycleIndex == 0)
+          var_set(proc,kOutPId,kAnyChIdx,true);
+        
+        return kOkRC;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }
 
     //------------------------------------------------------------------------------------------------------------------
     //
@@ -9414,6 +9477,7 @@ namespace cw
           
         }
 
+        TRACE_REG(proc->label,proc->label_sfx_id,proc->trace_id);
         
       errLabel:
         if( rc != kOkRC )
@@ -9467,6 +9531,7 @@ namespace cw
             p->msg_idx = p->first_msg_idx==kInvalidIdx ? 0 : p->first_msg_idx;
             p->sample_idx = p->msgN>0 ? p->msgA[p->msg_idx].sample_idx : 0;
             p->playing_fl = true;
+            TRACE_ACTIVATE(true);
             cwLogInfo("Start Clicked.");
             break;
             
@@ -10013,8 +10078,11 @@ namespace cw
         kCfgFNamePId,
         kCfgPId,
         kPriProbFlPId,
-        kPerNoteFlPId
-        
+        kPriUniformFlPId,
+        kPriDryOnPlayFlPId,
+        kPriAllowAllFlPId,
+        kPerNoteFlPId,
+        kHeatPId,
       };
       
       typedef struct
@@ -10033,9 +10101,13 @@ namespace cw
         unsigned        sel_id    = kInvalidId;
 
         msg_table::field_ref_t fieldRefA[] = {
-          { kPriProbFlPId, kBaseSfxId, kAnyChIdx, "pri_prob_fl" },
-          { kPerNoteFlPId, kBaseSfxId, kAnyChIdx, "per_note_fl" },
-          { kInvalidId,    kBaseSfxId, kAnyChIdx, nullptr       }
+          { kPriProbFlPId,      kBaseSfxId, kAnyChIdx, "pri_prob_fl" },
+          { kPriUniformFlPId,   kBaseSfxId, kAnyChIdx, "pri_uniform_fl" },
+          { kPriDryOnPlayFlPId, kBaseSfxId, kAnyChIdx, "pri_dry_on_play_fl" },
+          { kPriAllowAllFlPId,  kBaseSfxId, kAnyChIdx, "pri_allow_all_fl" },          
+          { kPerNoteFlPId,      kBaseSfxId, kAnyChIdx, "per_note_fl" },
+          { kHeatPId,           kBaseSfxId, kAnyChIdx, "heat" },
+          { kInvalidId,         kBaseSfxId, kAnyChIdx, nullptr       }
         };
 
         // register the input audio variable
@@ -10130,13 +10202,8 @@ namespace cw
 
       rc_t _exec( proc_t* proc, inst_t* p )
       {
-        rc_t rc      = kOkRC;
-        variable_t* var = nullptr;
-
-        _on_input_notify(proc,p);
-        
-        
-        
+        rc_t rc      = kOkRC;        
+        _on_input_notify(proc,p);        
         return rc;
       }
 

@@ -77,6 +77,7 @@ namespace cw
     namespace add             { extern class_members_t members;  }
     namespace preset          { extern class_members_t members;  }
     namespace print           { extern class_members_t members;  }
+    namespace on_start        { extern class_members_t members;  }
     namespace halt            { extern class_members_t members;  }
     namespace midi_msg        { extern class_members_t members;  }
     namespace midi_split      { extern class_members_t members;  }

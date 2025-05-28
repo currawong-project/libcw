@@ -8,6 +8,7 @@
 #include "cwText.h"
 #include "cwNumericConvert.h"
 #include "cwObject.h"
+#include "cwTracer.h"
 
 #include "cwAudioFile.h"
 #include "cwVectOps.h"
@@ -73,6 +74,7 @@ namespace cw
       { "add",             &add::members },
       { "preset",          &preset::members },
       { "print",           &print::members },
+      { "on_start",        &on_start::members },
       { "halt",            &halt::members },
       { "midi_msg",        &midi_msg::members },
       { "midi_split",      &midi_split::members },
@@ -971,6 +973,8 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
       class_dict_print( p );
   
   hRef.set(p);
+
+  TRACE_REG("flow",0,p->trace_id);
   
  errLabel:
   
@@ -1155,6 +1159,8 @@ cw::rc_t cw::flow::exec_cycle( handle_t h )
 {
   rc_t    rc = kOkRC;;
   flow_t* p  = _handleToPtr(h);
+  
+  TRACE_TIME(p->trace_id,tracer::kBegEvtId,p->cycleIndex,0);
 
   if( p->maxCycleCount!=kInvalidCnt && p->cycleIndex >= p->maxCycleCount )
   {
@@ -1163,6 +1169,7 @@ cw::rc_t cw::flow::exec_cycle( handle_t h )
   }
   else
   {
+    
     rc = exec_cycle(*p->net);
     
     // Execute one cycle of the network
@@ -1181,10 +1188,12 @@ cw::rc_t cw::flow::exec_cycle( handle_t h )
         time::accumulate_elapsed_current(p->prof_ui_dur,t0);
     
     }
-
+    
     p->cycleIndex += 1;
+    
   }
 
+  TRACE_TIME(p->trace_id,tracer::kEndEvtId,p->cycleIndex-1,0);
     
   return rc;
 }
