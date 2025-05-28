@@ -171,15 +171,17 @@ namespace cw
     {
       rc_t rc = kOkRC;
       const char*     proc_cfg_fname   = nullptr;
-      const char*     udp_cfg_fname = nullptr;
+      const char*     udp_cfg_fname    = nullptr;
       const char*     io_cfg_fname     = nullptr;
       const object_t* pgmL             = nullptr;
+      const object_t* tracer_cfg       = nullptr;  // tracer_cfg is parsed just to satify readv() it is not used by cwIoFlowCtl
       
       // parse the cfg parameters
       if((rc = cfg->readv("base_dir",    kReqFl,   p->base_dir,
                           "proc_dict",   kReqFl,   proc_cfg_fname,
                           "udp_dict",    kReqFl,   udp_cfg_fname,
                           "io_dict",     kOptFl,   io_cfg_fname,
+                          "tracer",      kOptFl,   tracer_cfg,
                           "programs",    kDictTId, pgmL)) != kOkRC )
       {
         rc = cwLogError(rc,"'caw' system parameter processing failed.");
