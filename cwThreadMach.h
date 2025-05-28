@@ -73,7 +73,7 @@ namespace cw
       rc_t         rc;
     } task_t;
 
-    // timeOutMs is the count of milliseconds run will block while waiting
+    // timeOutMs is the count of milliseconds run() will block while waiting
     // for all the tasks to complete.
     rc_t run( handle_t h, task_t* taskA, unsigned taskN, unsigned timeOutMs=100 );
 
@@ -81,6 +81,33 @@ namespace cw
     
   }
 
+  namespace thread_atasks
+  {
+    // This is a threaded task runner which blocks the on the task count
+    
+    typedef handle<struct thread_tasks_str> handle_t;
+
+    // Create a thread tasks machine with threadN records.
+    // cpu_affinity[threadN] is an optional array of CPU affinities for each thread.
+    // Set cpu_affinity[i] == kInvalidIdx to not set an affinity for thread 'i'.
+    rc_t create(  handle_t& hRef, unsigned threadN, const unsigned* cpu_affinityA=nullptr, const char* thread_label_prefix=nullptr );
+    rc_t destroy( handle_t& hRef );
+
+    typedef struct task_str
+    {
+      rc_t        (*func)(void* arg);
+      void*        arg;
+      rc_t         rc;
+    } task_t;
+
+    // timeOutMs is the count of milliseconds run() will block while waiting
+    // for all the tasks to complete.
+    rc_t run( handle_t h, task_t* taskA, unsigned taskN, unsigned timeOutMs=100 );
+
+    rc_t test( const test::test_args_t& args );
+    
+  }
+  
   
 }
 
