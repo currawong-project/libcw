@@ -521,6 +521,9 @@ cw::rc_t cw::audio_record_play::clear( handle_t h )
   rc_t                 rc = kOkRC;
   audio_record_play_t* p  = _handleToPtr(h);
   _am_audio_free_list(p);
+  p->curFrameIdx = 0;
+  p->curFrameCnt = 0;
+  
   return rc;
 }
 
