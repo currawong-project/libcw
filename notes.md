@@ -1475,7 +1475,54 @@ means that call to get_var() will always return a value.
 midi_out has implemented 'in' and 'rin' as optional
 variables. Look there for an example of how to accomplish this.
 
+Threading:
+--------
 
+### Application Thread
+
+The application thread is the thread provided by the main() function.
+During the life of the program it runs in a loop and continually
+calls the io::exec() function.
+Exec:
+   If a UI exists calls ui::ws::exec() to do websocket IO tasks.
+     - This call may block, up to a programmable time-out duration, waiting for incoming websocket messages.
+     - UI related callbacks to the application occur from this context.
+     - If cfg. does not set the 'ui.asyncFl' then this thread may block on the IO callback mutex.
+
+  If the audio meters are enabled then this these callbacks occur from this context.
+     - If the audio group 'asyncFl' is not set then this call may block on the IO callback mutex.
+
+  An 'exec' callback to the IO callback is made on every call to io::exec().
+     - This call will block if the IO callback mutex is not available.
+
+
+### Audio/DSP Thread
+   Each audio device group uses a thread to coalesce device 'ready' states. When all devices in the group are ready
+   (have empty playback and full record buffers) the thread unblocks.
+   
+### MIDI
+    cwMidiDevice uses a thread to wait for incoming MIDI messages via poll(). (See cwMidiDevice.cpp:_thread_func())
+    - Incoming MIDI messages are fed to the IO callback via cwIo::_midi_callback().
+    
+
+### Internal Server Threads
+    
+#### User threads
+     - Thread machine threads which are created (See cwIo::threadCreate()) and run by the user - and only destroyed when the library is closed.
+
+#### Thread-Once
+    - Thread which is created, executes immediately by calling a user supplied callback function, and is later cleaned up by io::exec().
+      This is useful for long running procedures where feedback (logs and/or progress) from the procuedure is useful to see as the procedure executes.
+    
+#### Timer
+    - Thread machine hosted threads which block with a sleep call.
+    
+#### Sockets
+    - Uses a thread machine based thread to wait for incoming socket events.  (See cwIo.cpp:_socketCallback())
+    
+#### Serial
+    - Based on cwSerialPortSrv which maintains it's own internal thread (See cwSerialPortSrv::threadCallback()) which blocks on the serial port file descriptors
+    (See cwSerialPort.cpp:_poll())
 
 
 Presets:

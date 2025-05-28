@@ -85,8 +85,9 @@ namespace cw
     }
 
     // _clean() is run by the consumer thread to make empty blocks available.
-    void _clean( nbmpscq_t* p )
+    rc_t _clean( nbmpscq_t* p )
     {
+      rc_t rc = kOkRC;
       block_t* b = p->blockL;
       // for each block
       for(; b!=nullptr; b=b->link)
@@ -98,7 +99,13 @@ namespace cw
           if( b->eleN.load(std::memory_order_acquire) <= 0 )
           {
             // decr. the cleanBlkN count
-            assert( p->cleanBlkN.fetch_add(-1,std::memory_order_relaxed) >= 1);
+            if( p->cleanBlkN.fetch_add(-1,std::memory_order_relaxed) < 1)
+            {
+              rc = kInvalidStateRC;
+              
+              // Report errors via stderr to prevent recursive crash due to queue use in the websocket UI output routine.
+              fprintf(stderr,"cleanBlkN went negative. THIS IS AN INVALID STATE.");
+            }
 
             // Note: b->full_flag==true and p->eleN==0 so it is safe to reset the block
             // because all elements have been removed (eleN==0) and
@@ -110,6 +117,7 @@ namespace cw
         }
       }
       p->cleanProcN += 1;
+      return rc;
     }
 
     void _init_blob( blob_t& b, node_t* node )
@@ -233,7 +241,11 @@ cw::rc_t cw::nbmpscq::push( handle_t h, const void* blob, unsigned blobByteN )
   assert( nodeByteN % 8 == 0 );
 
   if( nodeByteN > p->blkByteN )
-    return cwLogError(kInvalidArgRC,"The blob size is too large:%i > %i.",nodeByteN,p->blkByteN);
+  {
+    // Report errors via stderr to prevent recursive crash due to queue use in the websocket UI output routine.
+    fprintf(stderr,"The blob size is too large:%i > %i.",nodeByteN,p->blkByteN);
+    return kInvalidArgRC;
+  }
   
   for(; b!=nullptr; b=b->link)
   {
@@ -292,10 +304,9 @@ cw::rc_t cw::nbmpscq::push( handle_t h, const void* blob, unsigned blobByteN )
     // to make more space available.
     // _block_report(p);
 
-    // BEWARE: BUG BUG BUG: Since the cwLog makes calls to cwWebSocket
-    // this error message, and subsequent error messages,
-    // will result in a recursive loop which will crash the program.
-    rc = cwLogError(kBufTooSmallRC,"NbMpScQueue overflow. Increase 'queueBlkCnt' and/or 'queueBlkByteCnt'");
+    rc = kBufTooSmallRC;    
+    // Report errors via stderr to prevent recursive crash due to queue use in the websocket UI output routine.
+    fprintf(stderr,"NbMpScQueue overflow. Increase 'queueBlkCnt' and/or 'queueBlkByteCnt'");
     
   }
   
@@ -323,6 +334,7 @@ cw::nbmpscq::blob_t cw::nbmpscq::advance( handle_t h )
   blob_t     blob;  
   nbmpscq_t* p    = _handleToPtr(h);
   node_t*    t    = p->tail;
+  rc_t       rc   = kOkRC;
   
   // We always access the tail element through tail->next.
   node_t*    next = t->next.load(std::memory_order_acquire); //  ACQUIRE 'next' from producer
@@ -336,16 +348,22 @@ cw::nbmpscq::blob_t cw::nbmpscq::advance( handle_t h )
     if( t->block != nullptr )
     {
       // next was valid and so eleN must be >= 1
-      assert( t->block->eleN.fetch_add(-1,std::memory_order_acq_rel) >= 1 );
+      if( t->block->eleN.fetch_add(-1,std::memory_order_acq_rel) < 1 )
+      {
+        rc = kInvalidStateRC;
+        // Report errors via stderr to prevent recursive crash due to queue use in the websocket UI output routine.
+        fprintf(stderr,"NbMpScQueue:The block element count went negative.");        
+      }
     }
     
   }
 
   if( p->cleanBlkN.load(std::memory_order_relaxed) > 0 )
-    _clean(p);
-
+    rc = _clean(p);
 
   _init_blob(blob,next);
+
+  blob.rc = rc;
   
   return blob;
 }
