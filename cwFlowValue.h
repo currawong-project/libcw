@@ -1,5 +1,5 @@
 #ifndef cwFlowValue_h
-#define cwFLowValue_h
+#define cwFlowValue_h
 
 namespace cw
 {
