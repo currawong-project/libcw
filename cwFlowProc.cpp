@@ -27,6 +27,7 @@
 #include "cwFlowProc.h"
 
 #include "cwFile.h"
+#include "cwFileSys.h"
 #include "cwMath.h"
 #include "cwDsp.h"
 #include "cwAudioTransforms.h"
@@ -1925,6 +1926,331 @@ namespace cw
       
     }
 
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // audio_buf_file_out
+    //
+    
+    namespace audio_buf_file_out
+    {
+      enum
+      {
+        kInPId,
+        kDirPId,
+        kFnamePId,
+        kBitsPId,
+        kInitSecsPId, // initial size of the cache in seconds
+        kAddSecsPId,  // amount to expand cache by when cache is full
+        kResetPId,    // drop cache
+        kWritePId     // generate filename, write cache, clear cache
+      };
+
+      typedef struct sample_chunk_str
+      {
+        sample_t*                base;      // base of memory 
+        sample_t**               chArray;
+        unsigned                 chN;       // count of audio channels
+        unsigned                 frameN;    // count of frames in this chunk
+        unsigned                 frame_idx; // next frame to write in this chunk
+        struct sample_chunk_str* link;     
+      } sample_chunk_t;
+      
+      typedef struct
+      {
+        char*               dir;
+        const char*         fname_prefix;
+        unsigned            audioFileBits; // 0=set audio file sample format to 'float32'.
+        double              add_sec;
+        unsigned            chN;
+        srate_t             srate;
+        unsigned            durFrameN;
+        
+        sample_chunk_t*    chunkBegL;  // begin of chunk list
+        sample_chunk_t*    chunkEndL;  // end of chunk list
+        sample_chunk_t*    curChunk;   // chunk currently storing incoming audio
+      } inst_t;
+
+      rc_t _alloc_chunk( inst_t* inst, double alloc_secs )
+      {
+        unsigned        allocFrameN = alloc_secs * inst->srate;
+        unsigned        allocSmpN   = allocFrameN * inst->chN;
+
+        // TODO: reduce these three allocations to one allocation
+        sample_chunk_t* chk         = mem::allocZ<sample_chunk_t>();
+        
+        chk->base      = mem::allocZ<sample_t>(allocSmpN);
+        chk->chArray   = mem::allocZ<sample_t*>(inst->chN);
+        chk->chN       = inst->chN;
+        chk->frameN    = allocFrameN;
+        chk->frame_idx = 0;
+        chk->link      = nullptr;
+      
+        for(unsigned i=0; i<inst->chN; ++i)
+          chk->chArray[i]=chk->base + (i*allocFrameN);
+
+        // make the newly allocated chunk the current chunk
+        inst->curChunk        = chk; 
+        
+        if( inst->chunkBegL == nullptr )
+          inst->chunkBegL = chk;
+        else
+          inst->chunkEndL->link = chk;
+        
+        inst->chunkEndL = chk;
+        
+        return kOkRC;
+      }
+
+      void _reset_cache( inst_t* inst )
+      {
+        sample_chunk_t* chk = inst->chunkBegL;
+        for(; chk!=nullptr; chk=chk->link)
+          chk->frame_idx = 0;
+
+        inst->curChunk = inst->chunkBegL;
+        inst->durFrameN = 0;
+      }
+
+      rc_t _update_current_chunk( inst_t* inst, unsigned frameN )
+      {
+        rc_t rc = kOkRC;
+        
+        unsigned availFrameN = inst->curChunk->frameN - inst->curChunk->frame_idx;
+        if( frameN <= availFrameN )
+        {
+          for(; inst->curChunk != nullptr; inst->curChunk=inst->curChunk->link )
+            if( frameN  <= inst->curChunk->frameN - inst->curChunk->frame_idx )
+              break;
+        }
+
+        if( inst->curChunk == nullptr )
+          if((rc = _alloc_chunk( inst, inst->add_sec )) != kOkRC )
+            goto errLabel;
+
+      errLabel:
+        return rc;        
+      }
+      
+      rc_t _store_audio(  inst_t* inst, const abuf_t* src_abuf  )
+      {
+        rc_t rc = kOkRC;
+        unsigned chN = std::min( src_abuf->chN, inst->chN );
+        
+        if((rc = _update_current_chunk(inst,src_abuf->frameN )) != kOkRC )
+          goto errLabel;
+        
+        for(unsigned i=0; i<chN; ++i)
+        {
+          sample_t* dst = inst->curChunk->chArray[i] + inst->curChunk->frame_idx;
+          sample_t* src = src_abuf->buf + (i*src_abuf->frameN);
+          memcpy(dst,src, src_abuf->frameN * sizeof(sample_t));
+        }
+
+        inst->curChunk->frame_idx += src_abuf->frameN;
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _write_audio(inst_t* inst)
+      {
+        rc_t rc = kOkRC;
+        audiofile::handle_t afH;
+        sample_chunk_t* chk = nullptr;
+        char* filename = nullptr;
+
+        // if there is nothing to write
+        if( inst->chunkBegL == nullptr || inst->chunkBegL->frame_idx==0 )
+          goto errLabel;
+
+        // determine the file name
+        if((filename = filesys::makeVersionedFn( inst->dir, inst->fname_prefix, "wav", nullptr )) == nullptr )
+        {
+          rc = cwLogError(rc,"Versioned filename creation failed.");
+          goto errLabel;
+        }
+
+
+        // create the audio file with the same channel count as the incoming signal
+        if((rc = audiofile::create( afH, filename, inst->srate, inst->audioFileBits, inst->chN)) != kOkRC )
+        {
+          rc = cwLogError(kOpFailRC,"The audio file create failed on '%s'.",cwStringNullGuard(filename));
+          goto errLabel;
+        }
+
+        // write each chunk
+        for(chk=inst->chunkBegL; chk!=nullptr; chk=chk->link)
+        {          
+          if((rc = audiofile::writeFloat(afH, chk->frame_idx, chk->chN, chk->chArray )) != kOkRC )
+            rc = cwLogError(rc,"Audio file write failed." );
+        }
+
+      errLabel:
+        // close the audio file
+        if((rc = audiofile::close( afH )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Close failed on the audio output file '%s'.",filename);
+          goto errLabel;
+        }
+
+        mem::release(filename);
+
+        return rc;
+      }
+
+
+      
+      rc_t create( proc_t* proc )
+      {
+        rc_t          rc            = kOkRC;                 //
+        inst_t*       inst          = mem::allocZ<inst_t>(); //
+        const abuf_t* src_abuf      = nullptr;
+        const char*   dir           = nullptr;
+        bool          reset_fl      = false;
+        bool          write_fl      = false;
+        double        init_secs     = 1.0;
+        
+        proc->userPtr = inst;
+
+        // Register variables and get their current value
+        if((rc = var_register_and_get( proc, kAnyChIdx,
+                                       kDirPId,      "dir",      kBaseSfxId, dir,
+                                       kFnamePId,    "fname",    kBaseSfxId, inst->fname_prefix,
+                                       kBitsPId,     "bits",     kBaseSfxId, inst->audioFileBits,
+                                       kInitSecsPId, "init_secs",kBaseSfxId, init_secs,
+                                       kAddSecsPId,  "add_secs", kBaseSfxId, inst->add_sec,
+                                       kResetPId,    "reset",    kBaseSfxId, reset_fl,
+                                       kWritePId,    "write",    kBaseSfxId, write_fl,
+                                       kInPId,       "in",       kBaseSfxId, src_abuf )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        
+        if((inst->dir = proc_expand_filename(proc,dir)) == nullptr )
+        {
+          rc = cwLogError(kInvalidArgRC,"The audio output filename could not be formed.");
+          goto errLabel;
+        }
+
+        inst->chN   = src_abuf->chN;
+        inst->srate = src_abuf->srate;
+
+        if((rc = _alloc_chunk( inst, init_secs )) != kOkRC )
+          goto errLabel;
+        
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( proc_t* proc )
+      {
+        rc_t    rc   = kOkRC;
+        inst_t* inst = (inst_t*)proc->userPtr;
+
+
+        inst->curChunk = inst->chunkBegL;
+        while( inst->curChunk != nullptr)
+        {
+          sample_chunk_t* chk = inst->curChunk->link;
+          mem::release( inst->curChunk->base);
+          mem::release( inst->curChunk->chArray);
+          mem::release( inst->curChunk );
+          inst->curChunk = chk;
+        }
+        
+        mem::release(inst->dir);
+        mem::release(inst);
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t notify( proc_t* proc, variable_t* var )
+      {
+        rc_t    rc   = kOkRC;
+        inst_t* inst = (inst_t*)proc->userPtr;
+        
+        switch( var->vid )
+        {
+          case kResetPId:
+            _reset_cache(inst);
+            break;
+            
+          case kWritePId:
+            _write_audio(inst);
+            break;
+        }
+        return rc;
+      }
+
+      rc_t exec( proc_t* proc )
+      {
+        rc_t          rc     = kOkRC;
+        inst_t*       inst   = (inst_t*)proc->userPtr;
+        const abuf_t* src_abuf = nullptr;
+        
+        if((rc = var_get(proc,kInPId,kAnyChIdx,src_abuf)) != kOkRC )
+          rc = cwLogError(kInvalidStateRC,"The audio file instance '%s' does not have a valid input connection.",proc->label);
+        else
+        {
+          if((rc = _store_audio(inst,src_abuf)) != kOkRC )
+            rc = cwLogError(rc,"Audio store failed.");
+
+          // print a minutes counter
+          inst->durFrameN += src_abuf->frameN;          
+          if( src_abuf->srate!=0 && inst->durFrameN % ((unsigned)src_abuf->srate*60) == 0 )
+            printf("audio file out: %5.1f min\n", inst->durFrameN/(src_abuf->srate*60));
+          
+        }
+
+        return rc;            
+      }
+
+      /*
+      rc_t exec( proc_t* proc )
+      {
+        rc_t          rc     = kOkRC;
+        inst_t*       inst   = (inst_t*)proc->userPtr;
+        const abuf_t* src_abuf = nullptr;
+        
+        if((rc = var_get(proc,kInPId,kAnyChIdx,src_abuf)) != kOkRC )
+          rc = cwLogError(kInvalidStateRC,"The audio file instance '%s' does not have a valid input connection.",proc->label);
+        else
+        {
+          
+          sample_t*     chBuf[ src_abuf->chN ];
+        
+          for(unsigned i=0; i<src_abuf->chN; ++i)
+            chBuf[i] = src_abuf->buf + (i*src_abuf->frameN);
+        
+          if((rc = audiofile::writeFloat(inst->afH, src_abuf->frameN, src_abuf->chN, chBuf )) != kOkRC )
+            rc = cwLogError(rc,"Audio file write failed on instance: '%s'.", proc->label );
+
+          // print a minutes counter
+          inst->durSmpN += src_abuf->frameN;          
+          if( src_abuf->srate!=0 && inst->durSmpN % ((unsigned)src_abuf->srate*60) == 0 )
+            printf("audio file out: %5.1f min\n", inst->durSmpN/(src_abuf->srate*60));
+
+          //if( 48000 <= inst->durSmpN  && inst->durSmpN < 49000 )
+          //  printf("break\n");
+        }
+        
+        return rc;
+      }
+      */
+
+      class_members_t members = {
+        .create = create,
+        .destroy = destroy,
+        .notify = notify,
+        .exec = exec,
+        .report = nullptr
+      };
+      
+    }
+    
     //------------------------------------------------------------------------------------------------------------------
     //
     // audio_gain

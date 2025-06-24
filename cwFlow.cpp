@@ -42,6 +42,7 @@ namespace cw
       { "audio_out",       &audio_out::members },
       { "audio_file_in",   &audio_file_in::members },
       { "audio_file_out",  &audio_file_out::members },
+      { "audio_buf_file_out",  &audio_buf_file_out::members },
       { "audio_gain",      &audio_gain::members },
       { "audio_split",     &audio_split::members },
       { "audio_duplicate", &audio_duplicate::members },
