@@ -31,6 +31,8 @@
 #define cwPathSeparatorChar '/'
 #endif
 
+#undef cwTRACER
+
 #define cwStringNullGuard(s) ((s)==nullptr ? "" : (s))
 
   // Perform byte swapping on 16 bit values.

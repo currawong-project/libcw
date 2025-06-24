@@ -92,7 +92,8 @@ libcwSRC +=   src/libcw/cwScoreFollow2Test.cpp src/libcw/cwScoreFollow2.cpp
 libcwHDR += src/libcw/cwMidiState.h   src/libcw/cwSvgMidi.h   src/libcw/cwSvgScoreFollow.h
 libcwSRC += src/libcw/cwMidiState.cpp src/libcw/cwSvgMidi.cpp src/libcw/cwSvgScoreFollow.cpp
 
-
+libcwHDR += src/libcw/cwTracer.h
+libcwSRC += src/libcw/cwTracer.cpp
 
 endif
 

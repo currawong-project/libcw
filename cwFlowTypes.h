@@ -166,6 +166,7 @@ namespace cw
 
       time::spec_t prof_dur; // total time spent in this proc
       unsigned     prof_cnt; // total count of calls to this proc
+      unsigned     trace_id;
       
     } proc_t;
 
@@ -336,6 +337,7 @@ namespace cw
       time::spec_t prof_dur;    // total execution time
       unsigned     prof_cnt;    // total count of execution cycles
       time::spec_t prof_ui_dur; // total time spent updating UI
+      unsigned     trace_id;
       
     } flow_t;
 

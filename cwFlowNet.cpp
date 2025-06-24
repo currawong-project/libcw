@@ -8,6 +8,8 @@
 #include "cwText.h"
 #include "cwNumericConvert.h"
 #include "cwObject.h"
+#undef cwTRACER
+#include "cwTracer.h"
 
 #include "cwAudioFile.h"
 #include "cwVectOps.h"
@@ -20,6 +22,7 @@
 #include "cwFlowTypes.h"
 #include "cwFlowNet.h"
 #include "cwFlowProc.h"
+
 
 namespace cw
 {
@@ -2006,6 +2009,8 @@ namespace cw
       proc->class_desc    = class_desc;
       proc->net           = &net;
 
+      TRACE_REG(proc->label,proc->label_sfx_id,proc->trace_id);
+
       // create the proc instance preset list
       if((rc = _create_preset_list(proc->presetL, pstate.presets_dict )) != kOkRC )
       {
@@ -2127,7 +2132,7 @@ namespace cw
         rc = cwLogError(rc,"proc inst '%s:%i' validation failed.", cwStringNullGuard(proc->label),proc->label_sfx_id );
         goto errLabel;
       }
-      
+
       proc_ref = proc;
       
     errLabel:
@@ -3685,6 +3690,8 @@ cw::rc_t cw::flow::exec_cycle( network_t& net )
     
     if( net.flow->prof_fl)
       time::get(t0);
+
+    TRACE_TIME( net.procA[i]->trace_id, tracer::kBegEvtId, net.flow->cycleIndex,0 );
     
     // Call notify() on all variables marked for notification that have changed since the last exec_cycle()
     proc_notify(net.procA[i], kCallbackPnFl | kQuietPnFl);
@@ -3701,6 +3708,8 @@ cw::rc_t cw::flow::exec_cycle( network_t& net )
       }
     }
 
+    TRACE_TIME( net.procA[i]->trace_id, tracer::kEndEvtId, net.flow->cycleIndex,0 );
+    
     if( net.flow->prof_fl )
     {
       time::accumulate_elapsed_current(net.procA[i]->prof_dur,t0);

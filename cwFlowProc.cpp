@@ -10,6 +10,7 @@
 #include "cwAudioFile.h"
 #include "cwVectOps.h"
 #include "cwMtx.h"
+#include "cwTracer.h"
 
 #include "cwDspTypes.h" // srate_t, sample_t, coeff_t, ...
 
@@ -26,6 +27,7 @@
 #include "cwFlowProc.h"
 
 #include "cwFile.h"
+#include "cwFileSys.h"
 #include "cwMath.h"
 #include "cwDsp.h"
 #include "cwAudioTransforms.h"
@@ -476,7 +478,7 @@ namespace cw
               
               for(unsigned j=0; j<r->fieldN; ++j)
               {
-                printf("loc:%i APPLYING:%i\n",id,r->fieldA[j].vid);
+                //printf("loc:%i APPLYING:%i\n",id,r->fieldA[j].vid);
                 if((rc = var_set(p->proc, r->fieldA[j].vid, r->fieldA[j].chIdx, &r->fieldA[j].value)) != kOkRC )
                 {
                   rc = cwLogError(rc,"Variable set from msg table failed.");
@@ -520,9 +522,7 @@ namespace cw
       
       rc_t on_cfg_id(inst_t* p, unsigned cfg_id )
       {
-        rc_t rc = kOkRC;
-
-        printf("ACTIVATE CFG:%i\n",cfg_id);
+        //printf("ACTIVATE CFG:%i\n",cfg_id);
         
         for(unsigned i=0; i<p->msgCfgN; ++i)
           if( p->msgCfgA[i].id == cfg_id )
@@ -818,7 +818,7 @@ namespace cw
             }
                     
           // create a thread_ftasks object
-          if((rc = thread_ftasks::create(  inst->threadTasksH, inst->thread_cnt, cpuAffinityA )) != kOkRC )
+          if((rc = thread_ftasks::create(  inst->threadTasksH, inst->thread_cnt, cpuAffinityA, "task_thread" )) != kOkRC )
           {
             rc = cwLogError(rc,"Thread machine create failed.");
             goto errLabel;
@@ -1926,6 +1926,331 @@ namespace cw
       
     }
 
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // audio_buf_file_out
+    //
+    
+    namespace audio_buf_file_out
+    {
+      enum
+      {
+        kInPId,
+        kDirPId,
+        kFnamePId,
+        kBitsPId,
+        kInitSecsPId, // initial size of the cache in seconds
+        kAddSecsPId,  // amount to expand cache by when cache is full
+        kResetPId,    // drop cache
+        kWritePId     // generate filename, write cache, clear cache
+      };
+
+      typedef struct sample_chunk_str
+      {
+        sample_t*                base;      // base of memory 
+        sample_t**               chArray;
+        unsigned                 chN;       // count of audio channels
+        unsigned                 frameN;    // count of frames in this chunk
+        unsigned                 frame_idx; // next frame to write in this chunk
+        struct sample_chunk_str* link;     
+      } sample_chunk_t;
+      
+      typedef struct
+      {
+        char*               dir;
+        const char*         fname_prefix;
+        unsigned            audioFileBits; // 0=set audio file sample format to 'float32'.
+        double              add_sec;
+        unsigned            chN;
+        srate_t             srate;
+        unsigned            durFrameN;
+        
+        sample_chunk_t*    chunkBegL;  // begin of chunk list
+        sample_chunk_t*    chunkEndL;  // end of chunk list
+        sample_chunk_t*    curChunk;   // chunk currently storing incoming audio
+      } inst_t;
+
+      rc_t _alloc_chunk( inst_t* inst, double alloc_secs )
+      {
+        unsigned        allocFrameN = alloc_secs * inst->srate;
+        unsigned        allocSmpN   = allocFrameN * inst->chN;
+
+        // TODO: reduce these three allocations to one allocation
+        sample_chunk_t* chk         = mem::allocZ<sample_chunk_t>();
+        
+        chk->base      = mem::allocZ<sample_t>(allocSmpN);
+        chk->chArray   = mem::allocZ<sample_t*>(inst->chN);
+        chk->chN       = inst->chN;
+        chk->frameN    = allocFrameN;
+        chk->frame_idx = 0;
+        chk->link      = nullptr;
+      
+        for(unsigned i=0; i<inst->chN; ++i)
+          chk->chArray[i]=chk->base + (i*allocFrameN);
+
+        // make the newly allocated chunk the current chunk
+        inst->curChunk        = chk; 
+        
+        if( inst->chunkBegL == nullptr )
+          inst->chunkBegL = chk;
+        else
+          inst->chunkEndL->link = chk;
+        
+        inst->chunkEndL = chk;
+        
+        return kOkRC;
+      }
+
+      void _reset_cache( inst_t* inst )
+      {
+        sample_chunk_t* chk = inst->chunkBegL;
+        for(; chk!=nullptr; chk=chk->link)
+          chk->frame_idx = 0;
+
+        inst->curChunk = inst->chunkBegL;
+        inst->durFrameN = 0;
+      }
+
+      rc_t _update_current_chunk( inst_t* inst, unsigned frameN )
+      {
+        rc_t rc = kOkRC;
+        
+        unsigned availFrameN = inst->curChunk->frameN - inst->curChunk->frame_idx;
+        if( frameN <= availFrameN )
+        {
+          for(; inst->curChunk != nullptr; inst->curChunk=inst->curChunk->link )
+            if( frameN  <= inst->curChunk->frameN - inst->curChunk->frame_idx )
+              break;
+        }
+
+        if( inst->curChunk == nullptr )
+          if((rc = _alloc_chunk( inst, inst->add_sec )) != kOkRC )
+            goto errLabel;
+
+      errLabel:
+        return rc;        
+      }
+      
+      rc_t _store_audio(  inst_t* inst, const abuf_t* src_abuf  )
+      {
+        rc_t rc = kOkRC;
+        unsigned chN = std::min( src_abuf->chN, inst->chN );
+        
+        if((rc = _update_current_chunk(inst,src_abuf->frameN )) != kOkRC )
+          goto errLabel;
+        
+        for(unsigned i=0; i<chN; ++i)
+        {
+          sample_t* dst = inst->curChunk->chArray[i] + inst->curChunk->frame_idx;
+          sample_t* src = src_abuf->buf + (i*src_abuf->frameN);
+          memcpy(dst,src, src_abuf->frameN * sizeof(sample_t));
+        }
+
+        inst->curChunk->frame_idx += src_abuf->frameN;
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _write_audio(inst_t* inst)
+      {
+        rc_t rc = kOkRC;
+        audiofile::handle_t afH;
+        sample_chunk_t* chk = nullptr;
+        char* filename = nullptr;
+
+        // if there is nothing to write
+        if( inst->chunkBegL == nullptr || inst->chunkBegL->frame_idx==0 )
+          goto errLabel;
+
+        // determine the file name
+        if((filename = filesys::makeVersionedFn( inst->dir, inst->fname_prefix, "wav", nullptr )) == nullptr )
+        {
+          rc = cwLogError(rc,"Versioned filename creation failed.");
+          goto errLabel;
+        }
+
+
+        // create the audio file with the same channel count as the incoming signal
+        if((rc = audiofile::create( afH, filename, inst->srate, inst->audioFileBits, inst->chN)) != kOkRC )
+        {
+          rc = cwLogError(kOpFailRC,"The audio file create failed on '%s'.",cwStringNullGuard(filename));
+          goto errLabel;
+        }
+
+        // write each chunk
+        for(chk=inst->chunkBegL; chk!=nullptr; chk=chk->link)
+        {          
+          if((rc = audiofile::writeFloat(afH, chk->frame_idx, chk->chN, chk->chArray )) != kOkRC )
+            rc = cwLogError(rc,"Audio file write failed." );
+        }
+
+      errLabel:
+        // close the audio file
+        if((rc = audiofile::close( afH )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Close failed on the audio output file '%s'.",filename);
+          goto errLabel;
+        }
+
+        mem::release(filename);
+
+        return rc;
+      }
+
+
+      
+      rc_t create( proc_t* proc )
+      {
+        rc_t          rc            = kOkRC;                 //
+        inst_t*       inst          = mem::allocZ<inst_t>(); //
+        const abuf_t* src_abuf      = nullptr;
+        const char*   dir           = nullptr;
+        bool          reset_fl      = false;
+        bool          write_fl      = false;
+        double        init_secs     = 1.0;
+        
+        proc->userPtr = inst;
+
+        // Register variables and get their current value
+        if((rc = var_register_and_get( proc, kAnyChIdx,
+                                       kDirPId,      "dir",      kBaseSfxId, dir,
+                                       kFnamePId,    "fname",    kBaseSfxId, inst->fname_prefix,
+                                       kBitsPId,     "bits",     kBaseSfxId, inst->audioFileBits,
+                                       kInitSecsPId, "init_secs",kBaseSfxId, init_secs,
+                                       kAddSecsPId,  "add_secs", kBaseSfxId, inst->add_sec,
+                                       kResetPId,    "reset",    kBaseSfxId, reset_fl,
+                                       kWritePId,    "write",    kBaseSfxId, write_fl,
+                                       kInPId,       "in",       kBaseSfxId, src_abuf )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        
+        if((inst->dir = proc_expand_filename(proc,dir)) == nullptr )
+        {
+          rc = cwLogError(kInvalidArgRC,"The audio output filename could not be formed.");
+          goto errLabel;
+        }
+
+        inst->chN   = src_abuf->chN;
+        inst->srate = src_abuf->srate;
+
+        if((rc = _alloc_chunk( inst, init_secs )) != kOkRC )
+          goto errLabel;
+        
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( proc_t* proc )
+      {
+        rc_t    rc   = kOkRC;
+        inst_t* inst = (inst_t*)proc->userPtr;
+
+
+        inst->curChunk = inst->chunkBegL;
+        while( inst->curChunk != nullptr)
+        {
+          sample_chunk_t* chk = inst->curChunk->link;
+          mem::release( inst->curChunk->base);
+          mem::release( inst->curChunk->chArray);
+          mem::release( inst->curChunk );
+          inst->curChunk = chk;
+        }
+        
+        mem::release(inst->dir);
+        mem::release(inst);
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t notify( proc_t* proc, variable_t* var )
+      {
+        rc_t    rc   = kOkRC;
+        inst_t* inst = (inst_t*)proc->userPtr;
+        
+        switch( var->vid )
+        {
+          case kResetPId:
+            _reset_cache(inst);
+            break;
+            
+          case kWritePId:
+            _write_audio(inst);
+            break;
+        }
+        return rc;
+      }
+
+      rc_t exec( proc_t* proc )
+      {
+        rc_t          rc     = kOkRC;
+        inst_t*       inst   = (inst_t*)proc->userPtr;
+        const abuf_t* src_abuf = nullptr;
+        
+        if((rc = var_get(proc,kInPId,kAnyChIdx,src_abuf)) != kOkRC )
+          rc = cwLogError(kInvalidStateRC,"The audio file instance '%s' does not have a valid input connection.",proc->label);
+        else
+        {
+          if((rc = _store_audio(inst,src_abuf)) != kOkRC )
+            rc = cwLogError(rc,"Audio store failed.");
+
+          // print a minutes counter
+          inst->durFrameN += src_abuf->frameN;          
+          if( src_abuf->srate!=0 && inst->durFrameN % ((unsigned)src_abuf->srate*60) == 0 )
+            printf("audio file out: %5.1f min\n", inst->durFrameN/(src_abuf->srate*60));
+          
+        }
+
+        return rc;            
+      }
+
+      /*
+      rc_t exec( proc_t* proc )
+      {
+        rc_t          rc     = kOkRC;
+        inst_t*       inst   = (inst_t*)proc->userPtr;
+        const abuf_t* src_abuf = nullptr;
+        
+        if((rc = var_get(proc,kInPId,kAnyChIdx,src_abuf)) != kOkRC )
+          rc = cwLogError(kInvalidStateRC,"The audio file instance '%s' does not have a valid input connection.",proc->label);
+        else
+        {
+          
+          sample_t*     chBuf[ src_abuf->chN ];
+        
+          for(unsigned i=0; i<src_abuf->chN; ++i)
+            chBuf[i] = src_abuf->buf + (i*src_abuf->frameN);
+        
+          if((rc = audiofile::writeFloat(inst->afH, src_abuf->frameN, src_abuf->chN, chBuf )) != kOkRC )
+            rc = cwLogError(rc,"Audio file write failed on instance: '%s'.", proc->label );
+
+          // print a minutes counter
+          inst->durSmpN += src_abuf->frameN;          
+          if( src_abuf->srate!=0 && inst->durSmpN % ((unsigned)src_abuf->srate*60) == 0 )
+            printf("audio file out: %5.1f min\n", inst->durSmpN/(src_abuf->srate*60));
+
+          //if( 48000 <= inst->durSmpN  && inst->durSmpN < 49000 )
+          //  printf("break\n");
+        }
+        
+        return rc;
+      }
+      */
+
+      class_members_t members = {
+        .create = create,
+        .destroy = destroy,
+        .notify = notify,
+        .exec = exec,
+        .report = nullptr
+      };
+      
+    }
+    
     //------------------------------------------------------------------------------------------------------------------
     //
     // audio_gain
@@ -4923,6 +5248,7 @@ namespace cw
       enum {
         kInPId,
         kVoiceCntPId,
+        kPruneThreshPId,
         kResetPId,
         kBaseOutPId,
       };
@@ -4965,7 +5291,9 @@ namespace cw
         midi_t midiA[ midi::kMidiNoteCnt ];
         
         unsigned voiceN;   // voiceA[ voiceN ]
-        voice_t* voiceA; 
+        voice_t* voiceA;
+
+        unsigned prune_thresh;
 
         // sizeof of each voice msgA[] (same as voice_t.msgN)
         unsigned voiceMsgN;
@@ -5072,9 +5400,10 @@ namespace cw
         bool reset_fl = false;
         
         if((rc = var_register_and_get(proc,kAnyChIdx,
-                                      kInPId,       "in",    kBaseSfxId, rbuf,
-                                      kResetPId,    "reset",     kBaseSfxId, reset_fl,
-                                      kVoiceCntPId, "voice_cnt", kBaseSfxId, p->voiceN)) != kOkRC )
+                                      kInPId,          "in",           kBaseSfxId, rbuf,
+                                      kResetPId,       "reset",        kBaseSfxId, reset_fl,
+                                      kPruneThreshPId, "prune_thresh", kBaseSfxId, p->prune_thresh,
+                                      kVoiceCntPId,    "voice_cnt",    kBaseSfxId, p->voiceN)) != kOkRC )
         {
           goto errLabel; 
         }
@@ -5128,6 +5457,8 @@ namespace cw
         p->stateA = mem::allocZ<state_t>(p->stateN);
 
         _reset_all_voices(proc,p);
+
+        TRACE_REG(proc->label,proc->label_sfx_id,proc->trace_id);
         
       errLabel:
         return rc;
@@ -5264,12 +5595,14 @@ namespace cw
         }
 
         // if more than half the voices are in use then begin turning off old voices
-        if( active_voice_cnt > p->voiceN/2 )
+        if( active_voice_cnt > p->prune_thresh )
         {
           if( early_stop_idx == kInvalidIdx && max_age_idx == kInvalidIdx )
             cwLogWarning("No available voices to prune.");
           else
+          {
             _stop_note_early(proc,p,early_stop_idx==kInvalidIdx ? max_age_idx : early_stop_idx, "prune voices" );
+          }
         }
 
         p->active_voice_cnt = active_voice_cnt;
@@ -5493,7 +5826,8 @@ namespace cw
           }
         }
 
-        
+        TRACE_DATA( proc->trace_id, tracer::kDataEvtId, p->active_voice_cnt, 0);
+          
       errLabel:
         return rc;
       }
@@ -5957,6 +6291,8 @@ namespace cw
         p->noff_fl    = true;
         p->sustain_fl = false;
 
+        TRACE_REG(proc->label,proc->label_sfx_id,proc->trace_id);
+
       errLabel:
         
         return rc;
@@ -5992,6 +6328,8 @@ namespace cw
 
         var_set(proc,kDoneFlPId,kAnyChIdx,false);
         var_set(proc,kGateFlPId,kAnyChIdx,true);
+
+        TRACE_TIME(proc->trace_id,tracer::kBegEvtId,0,0);
 
       errLabel:
         return rc;
@@ -6109,6 +6447,7 @@ namespace cw
         var_set(proc,kGateFlPId,kAnyChIdx,false);        
         _store_note_state(proc, p, 0, 0, p->pitch, 0);
         p->gain_coeff = 0.0;  //
+        TRACE_TIME(proc->trace_id,tracer::kEndEvtId,0,0);
       }
 
       sample_t _calc_rms( inst_t* p, abuf_t* abuf )
@@ -8712,6 +9051,56 @@ namespace cw
       
     }    
 
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // on_start
+    //
+    namespace on_start
+    {
+      enum {
+        kOutPId
+      };
+      
+      typedef struct
+      {
+      } inst_t;
+
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        return var_register(proc,kAnyChIdx,kOutPId,"out",kBaseSfxId);
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        return kOkRC;
+      }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        return kOkRC;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        if( proc->ctx->cycleIndex == 0)
+          var_set(proc,kOutPId,kAnyChIdx,true);
+        
+        return kOkRC;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }
 
     //------------------------------------------------------------------------------------------------------------------
     //
@@ -9414,6 +9803,7 @@ namespace cw
           
         }
 
+        TRACE_REG(proc->label,proc->label_sfx_id,proc->trace_id);
         
       errLabel:
         if( rc != kOkRC )
@@ -9467,6 +9857,7 @@ namespace cw
             p->msg_idx = p->first_msg_idx==kInvalidIdx ? 0 : p->first_msg_idx;
             p->sample_idx = p->msgN>0 ? p->msgA[p->msg_idx].sample_idx : 0;
             p->playing_fl = true;
+            TRACE_ACTIVATE(true);
             cwLogInfo("Start Clicked.");
             break;
             
@@ -10013,8 +10404,11 @@ namespace cw
         kCfgFNamePId,
         kCfgPId,
         kPriProbFlPId,
-        kPerNoteFlPId
-        
+        kPriUniformFlPId,
+        kPriDryOnPlayFlPId,
+        kPriAllowAllFlPId,
+        kPerNoteFlPId,
+        kHeatPId,
       };
       
       typedef struct
@@ -10033,9 +10427,13 @@ namespace cw
         unsigned        sel_id    = kInvalidId;
 
         msg_table::field_ref_t fieldRefA[] = {
-          { kPriProbFlPId, kBaseSfxId, kAnyChIdx, "pri_prob_fl" },
-          { kPerNoteFlPId, kBaseSfxId, kAnyChIdx, "per_note_fl" },
-          { kInvalidId,    kBaseSfxId, kAnyChIdx, nullptr       }
+          { kPriProbFlPId,      kBaseSfxId, kAnyChIdx, "pri_prob_fl" },
+          { kPriUniformFlPId,   kBaseSfxId, kAnyChIdx, "pri_uniform_fl" },
+          { kPriDryOnPlayFlPId, kBaseSfxId, kAnyChIdx, "pri_dry_on_play_fl" },
+          { kPriAllowAllFlPId,  kBaseSfxId, kAnyChIdx, "pri_allow_all_fl" },          
+          { kPerNoteFlPId,      kBaseSfxId, kAnyChIdx, "per_note_fl" },
+          { kHeatPId,           kBaseSfxId, kAnyChIdx, "heat" },
+          { kInvalidId,         kBaseSfxId, kAnyChIdx, nullptr       }
         };
 
         // register the input audio variable
@@ -10130,13 +10528,8 @@ namespace cw
 
       rc_t _exec( proc_t* proc, inst_t* p )
       {
-        rc_t rc      = kOkRC;
-        variable_t* var = nullptr;
-
-        _on_input_notify(proc,p);
-        
-        
-        
+        rc_t rc      = kOkRC;        
+        _on_input_notify(proc,p);        
         return rc;
       }
 

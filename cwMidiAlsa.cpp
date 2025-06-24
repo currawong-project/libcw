@@ -141,6 +141,7 @@ namespace cw
             if( alsa_rc == -EAGAIN )
             {
               // TODO: report or at least count error
+              rc = cwLogError(kOpFailRC,"MIDI input error.");
               break;
             }
             
@@ -148,6 +149,7 @@ namespace cw
             if( alsa_rc == -ENOSPC )
             {
               // TODO: report or at least count error
+              rc = cwLogError(kBufTooSmallRC,"The MIDI input buffer is too small.");
               break;
             }
 
