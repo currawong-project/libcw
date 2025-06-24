@@ -9,6 +9,16 @@
 #include "cwFFT.h"
 #endif
 
+#ifdef cwMKL
+#include <mkl.h>
+#define FFT intel_fft
+#define IFFT intel_ifft
+#else
+#define FFT fft
+#define IFFT ifft
+#endif
+
+
 #include <type_traits>
 
 namespace cw
@@ -254,14 +264,14 @@ namespace cw
         {
           p->inV      = (T*)fftwf_malloc( sizeof(T)*xN );
           p->cplxV    = (std::complex<T>*)fftwf_malloc( sizeof(std::complex<T>)*xN);
-          p->u.fplan  = fftwf_plan_dft_r2c_1d((int)xN, (float*)p->inV, reinterpret_cast<fftwf_complex*>(p->cplxV), FFTW_MEASURE );
+          p->u.fplan  = fftwf_plan_dft_r2c_1d((int)xN, (float*)p->inV, reinterpret_cast<fftwf_complex*>(p->cplxV), FFTW_PATIENT );
           
         }
         else
         {
           p->inV     = (T*)fftw_malloc( sizeof(T)*xN );
           p->cplxV   = (std::complex<T>*)fftw_malloc( sizeof(std::complex<T>)*xN);
-          p->u.dplan = fftw_plan_dft_r2c_1d((int)xN, (double*)p->inV, reinterpret_cast<fftw_complex*>(p->cplxV), FFTW_MEASURE );          
+          p->u.dplan = fftw_plan_dft_r2c_1d((int)xN, (double*)p->inV, reinterpret_cast<fftw_complex*>(p->cplxV), FFTW_PATIENT );          
         }
 
         return kOkRC;        
@@ -389,13 +399,13 @@ namespace cw
         {
           p->outV  = (T*)fftwf_malloc( sizeof(T)*p->outN );
           p->cplxV = (std::complex<T>*)fftwf_malloc( sizeof(std::complex<T>)*p->outN);  
-          p->u.fplan  = fftwf_plan_dft_c2r_1d((int)p->outN, reinterpret_cast<fftwf_complex*>(p->cplxV), (float*)p->outV, FFTW_BACKWARD | FFTW_MEASURE );          
+          p->u.fplan  = fftwf_plan_dft_c2r_1d((int)p->outN, reinterpret_cast<fftwf_complex*>(p->cplxV), (float*)p->outV, FFTW_BACKWARD | FFTW_PATIENT );          
         }
         else
         {
           p->outV  = (T*)fftw_malloc( sizeof(T)*p->outN );
           p->cplxV = (std::complex<T>*)fftw_malloc( sizeof(std::complex<T>)*p->outN);  
-          p->u.dplan  = fftw_plan_dft_c2r_1d((int)p->outN, reinterpret_cast<fftw_complex*>(p->cplxV), (double*)p->outV, FFTW_BACKWARD | FFTW_MEASURE );          
+          p->u.dplan  = fftw_plan_dft_c2r_1d((int)p->outN, reinterpret_cast<fftw_complex*>(p->cplxV), (double*)p->outV, FFTW_BACKWARD | FFTW_PATIENT );          
         }
 
         return kOkRC;;
@@ -484,6 +494,316 @@ namespace cw
       rc_t test();         
     }
 
+#ifdef cwMKL
+    
+    //---------------------------------------------------------------------------------------------------------------------------------
+    // Intel FFT
+    //
+    namespace intel_fft
+    {
+      unsigned window_sample_count_to_bin_count( unsigned wndSmpN );
+      unsigned bin_count_to_window_sample_count( unsigned binN );
+      
+      enum
+      {
+        kToPolarFl = 0x01,  // convert to polar (magn./phase)
+        kToRectFl  = 0x02,  // convert to rect (real/imag)
+      };
+      
+      template< typename T >
+        struct obj_str
+      {
+        DFTI_DESCRIPTOR_HANDLE fftHandle;
+        
+        unsigned         flags;
+        
+        T*               inV;
+        std::complex<T>* cplxV;
+        
+        T*               magV;
+        T*               phsV;
+        
+        unsigned         inN;
+        unsigned         binN;
+        
+        union
+        {
+          fftw_plan  dplan;
+          fftwf_plan fplan;
+        } u;
+        
+      };
+
+      template< typename T >
+      rc_t create( struct obj_str<T>*& p, unsigned xN, unsigned flags=kToPolarFl )
+      {
+        MKL_LONG status;
+        
+        p = mem::allocZ< obj_str<T> >(1);
+        
+        p->flags = flags;
+        p->inN   = xN;
+        p->binN  = window_sample_count_to_bin_count(xN); 
+        p->magV  = mem::allocZ<T>(p->binN);
+        p->phsV  = mem::allocZ<T>(p->binN);  
+        p->inV   = mem::allocZ<T>(xN);
+        p->cplxV = mem::allocZ<std::complex<T>>(xN);
+        DFTI_CONFIG_VALUE  mkl_data_type = std::is_same<T,float>::value ? DFTI_SINGLE : DFTI_DOUBLE;
+
+        if((status = DftiCreateDescriptor(&p->fftHandle, mkl_data_type, DFTI_REAL, 1, xN)) != 0 )
+        {
+          cwLogError(kOpFailRC,"Forward FFT handle create failed. MKL error:%i.",status);
+          goto errLabel;
+        }
+                
+        if((status = DftiSetValue(p->fftHandle, DFTI_PLACEMENT, DFTI_NOT_INPLACE)) != 0 )
+        {
+          cwLogError(kOpFailRC,"Forward FFT set value failed. MKL error:%i.",status);
+          goto errLabel;
+        }
+          
+        if((status = DftiCommitDescriptor(p->fftHandle)) != 0 )
+        {
+          cwLogError(kOpFailRC,"Forward FFT commit failed. MKL error:%i.",status);
+          goto errLabel;
+        }
+
+      errLabel:
+        return kOkRC;        
+      }
+
+      template< typename T >
+        rc_t destroy( struct obj_str<T>*& p )
+      {
+        if( p == nullptr )
+          return kOkRC;
+
+        DftiFreeDescriptor(&p->fftHandle);
+
+        mem::release(p->inV);
+        mem::release(p->cplxV);
+        
+        mem::release(p->magV);
+        mem::release(p->phsV);
+        mem::release(p);
+        
+        return kOkRC;
+      }
+      
+      
+      template< typename T >
+        rc_t exec( struct obj_str<T>* p, const T* xV, unsigned xN )
+      {
+        rc_t   rc = kOkRC;
+        unsigned status;
+
+        assert( xN <= p->inN);
+
+        // if the incoming vector size is less than the FT buffer size
+        // then zero the extra values at the end of the buffer
+        if( xN < p->inN )
+          memset(p->inV + xN, 0, sizeof(T) * (p->inN-xN) );
+
+        // copy the incoming samples into the input buffer
+        memcpy(p->inV,xV,sizeof(T)*xN);
+
+        // execute the FT
+        if((status = DftiComputeForward(p->fftHandle, p->inV, p->cplxV)) != 0 )
+        {
+          cwLogError(kOpFailRC,"Forward FFT failed. MKL error:%i.",status);
+          goto errLabel;
+        }
+
+        // convert to polar
+        if( cwIsFlag(p->flags,kToPolarFl) )
+        {
+          for(unsigned i=0; i<p->binN; ++i)
+          {
+            p->magV[i] = std::abs(p->cplxV[i])/(p->inN/2);
+            p->phsV[i] = std::arg(p->cplxV[i]);
+          }
+        }
+        else
+          // convert to rect
+          if( cwIsFlag(p->flags,kToRectFl) )
+          {
+            for(unsigned i=0; i<p->binN; ++i)
+            {
+              p->magV[i] = std::real(p->cplxV[i]);
+              p->phsV[i] = std::imag(p->cplxV[i]);
+            }
+          }
+          else
+          {
+            // do nothing - leave the result in p->cplxV[]
+          }
+
+      errLabel:
+        return rc;        
+      }
+
+      template< typename T >
+        unsigned bin_count( obj_str<T>* p ) { return p->binN; }
+      
+      template< typename T >
+        const T* magn( obj_str<T>* p ) { return p->magV; }
+      
+      template< typename T >
+        const T* phase( obj_str<T>* p ) { return p->phsV; }
+      
+      rc_t test();      
+    }
+
+    //---------------------------------------------------------------------------------------------------------------------------------
+    // Intel IFFT
+    //
+    namespace intel_ifft
+    {
+
+      template< typename T >
+        struct obj_str
+      {
+        DFTI_DESCRIPTOR_HANDLE ifftHandle;
+        
+        T               *outV;        
+        std::complex<T> *cplxV;
+        
+        unsigned         outN;
+        unsigned         binN;
+
+        union
+        {
+          fftw_plan  dplan;
+          fftwf_plan fplan;
+        } u;
+      };
+      
+      template< typename T >
+      rc_t create( struct obj_str<T>*& p, unsigned binN )
+      {
+        unsigned status;
+        DFTI_CONFIG_VALUE mkl_data_type = std::is_same<T,float>::value ? DFTI_SINGLE : DFTI_DOUBLE;
+        p = mem::allocZ< obj_str<T> >(1);
+        
+        p->binN  = binN;
+        p->outN  = fft::bin_count_to_window_sample_count(binN); 
+
+        p->outV  = mem::allocZ<T>( p->outN );
+        p->cplxV = mem::allocZ<std::complex<T> >( p->outN);
+
+        if((status = DftiCreateDescriptor(&p->ifftHandle, mkl_data_type, DFTI_REAL, 1, p->outN)) != 0)
+        {          
+          cwLogError(kOpFailRC,"Inverse FFT handle create failed. MKL error:%i.",status);
+          goto errLabel;
+        }
+        
+        if((status = DftiSetValue(p->ifftHandle, DFTI_PLACEMENT, DFTI_NOT_INPLACE)) != 0)
+        {
+          cwLogError(kOpFailRC,"Inverse FFT handle set placement value failed. MKL error:%i.",status);
+          goto errLabel;
+        }
+        
+        if((status = DftiSetValue(p->ifftHandle, DFTI_CONJUGATE_EVEN_STORAGE, DFTI_COMPLEX_COMPLEX)) != 0)
+        {
+          cwLogError(kOpFailRC,"Inverse FFT handle set input format failed. MKL error:%i.",status);
+          goto errLabel;
+        }
+        /*
+        if((status = DftiSetValue(p->ifftHandle, DFTI_BACKWARD_SCALE, 1.0 / p->outN)) != 0)
+        {
+          cwLogError(kOpFailRC,"Inverse FFT handle output scaling failed. MKL error:%i.",status);
+          goto errLabel;
+        }
+        */
+        if((status = DftiCommitDescriptor(p->ifftHandle)) != 0)
+        {
+          cwLogError(kOpFailRC,"Inverse FFT handle commit failed. MKL error:%i.",status);
+          goto errLabel;
+        }
+
+      errLabel:
+        return kOkRC;;
+      }
+
+      template< typename T >
+        rc_t destroy( struct obj_str<T>*& p )
+      {
+        if( p == nullptr )
+          return kOkRC;
+
+        DftiFreeDescriptor(&p->ifftHandle);
+
+        mem::release(p->outV);
+        mem::release(p->cplxV);
+        mem::release(p);
+        
+        return kOkRC;
+      }
+
+      
+      template< typename T >
+        rc_t exec_polar( struct obj_str<T>* p, const T* magV, const T* phsV )
+      {
+        unsigned status;          
+        rc_t    rc    = kOkRC;
+
+        if( magV != nullptr && phsV != nullptr )
+        {
+          for(unsigned i=0; i<p->binN; ++i)
+            p->cplxV[i] = std::polar( magV[i] / 2, phsV[i] );
+        
+          for(unsigned i=p->outN-1,j=1; j<p->binN-1; --i,++j)
+            p->cplxV[i] = std::polar( magV[j] / 2, phsV[j] ); 
+        }
+
+        if((status = DftiComputeBackward(p->ifftHandle, p->cplxV, p->outV)) != 0)
+        {
+          cwLogError(kOpFailRC,"Inverse polar FFT failed. MKL error:%i.",status);
+          goto errLabel;          
+        }
+
+      errLabel:
+        return rc;
+      }
+
+      template< typename T >
+        rc_t exec_rect( struct obj_str<T>* p, const T* iV, const T* rV )
+      {
+        rc_t rc = kOkRC;
+
+        if( iV != nullptr && rV != nullptr )
+        {
+          unsigned status;
+          unsigned i,j;
+          
+          for(i=0; i<p->binN; ++i)
+            p->cplxV[i] = std::complex(rV[i], iV[i]);
+
+          for(i=p->outN-1,j=1; j<p->binN-1; --i,++j)
+            p->cplxV[i] = std::complex(rV[j], iV[j]);
+
+          if((status = DftiComputeBackward(p->ifftHandle, p->cplxV, p->outV)) == 0)
+          {
+            cwLogError(kOpFailRC,"Inverse rect FFT failed. MKL error:%i.",status);
+            goto errLabel;          
+          }
+        }
+        
+      errLabel:
+        return rc;
+      }
+      
+      template< typename T >
+        unsigned out_count( struct obj_str<T>* p ) { return p->outN; }
+
+      template< typename T >
+        const T* out( struct obj_str<T>* p ) { return p->outV; }
+      
+      
+      rc_t test();         
+    }
+#endif
+    
     //---------------------------------------------------------------------------------------------------------------------------------
     // Convolution
     //
@@ -493,8 +813,8 @@ namespace cw
       template< typename T >
         struct obj_str
       {
-        struct fft::obj_str<T>*  ft;
-        struct ifft::obj_str<T>* ift;
+        struct FFT::obj_str<T>*  ft;
+        struct IFFT::obj_str<T>* ift;
 
         std::complex<T>*   hV;
         unsigned           hN;
@@ -512,11 +832,11 @@ namespace cw
 
         unsigned cN   = math::nextPowerOfTwo( hN + procSmpN - 1 );
         
-        fft::create<T>(p->ft,cN,0);
+        FFT::create<T>(p->ft,cN,0);
 
-        unsigned binN = fft::bin_count( p->ft );
+        unsigned binN = FFT::bin_count( p->ft );
 
-        ifft::create<T>(p->ift, binN);
+        IFFT::create<T>(p->ift, binN);
         
         p->hN   = hN;
         p->hV   = mem::allocZ< std::complex<T> >(binN);
@@ -525,7 +845,7 @@ namespace cw
         p->olaV = p->outV + procSmpN;  // olaV[] overlaps outV[] with an offset of procSmpN
         p->olaN = cN - procSmpN;
        
-        fft::exec( p->ft, hV, hN );
+        FFT::exec( p->ft, hV, hN );
 
         for(unsigned i=0; i<binN; ++i)
           p->hV[i] = hScale * p->ft->cplxV[i] / ((T)cN);
@@ -541,8 +861,8 @@ namespace cw
         if( pRef == nullptr )
           return kOkRC;
 
-        fft::destroy(pRef->ft);
-        ifft::destroy(pRef->ift);
+        FFT::destroy(pRef->ft);
+        IFFT::destroy(pRef->ift);
         mem::release(pRef->hV);
         mem::release(pRef->outV);
         mem::release(pRef);
@@ -553,14 +873,14 @@ namespace cw
         rc_t exec( struct obj_str<T>* p, const T* xV, unsigned xN )
       {
         // take FT of input signal
-        fft::exec(  p->ft, xV, xN );
+        FFT::exec(  p->ft, xV, xN );
 
         // multiply the signal spectra of the input signal and impulse response
         for(unsigned i=0; i<p->ft->binN; ++i)
           p->ift->cplxV[i] = p->hV[i] * p->ft->cplxV[i];
 
         // take the IFFT of the convolved spectrum
-        ifft::exec_polar<T>(p->ift,nullptr,nullptr);
+        IFFT::exec_polar<T>(p->ift,nullptr,nullptr);
 
         // sum with previous impulse response tail
         vop::add( p->outV,  (const T*)p->olaV, (const T*)p->ift->outV, p->outN-1 );

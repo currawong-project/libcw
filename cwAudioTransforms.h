@@ -545,7 +545,7 @@ namespace cw
       {
         struct shift_buf::obj_str<T0>*  sb;
         struct wnd_func::obj_str<T0>*   wf;
-        struct fft::obj_str<T1>*        ft;
+        struct FFT::obj_str<T1>*        ft;
         struct phs_to_frq::obj_str<T1>* pf;
         
         unsigned               flags;
@@ -577,13 +577,13 @@ namespace cw
 
         shift_buf::create( p->sb, procSmpCnt, maxWndSmpCnt, wndSmpCnt, hopSmpCnt );
         wnd_func::create(  p->wf, wnd_func::kHannWndId  | wnd_func::kNormByLengthWndFl, maxWndSmpCnt, wndSmpCnt, 0 );
-        fft::create(       p->ft, maxWndSmpCnt, fft::kToPolarFl);
+        FFT::create(       p->ft, maxWndSmpCnt, FFT::kToPolarFl);
         phs_to_frq::create(p->pf, srate, p->ft->binN, hopSmpCnt );
 
         p->flags      = flags;
         p->procSmpCnt = procSmpCnt;
         p->maxWndSmpCnt = maxWndSmpCnt;
-        p->maxBinCnt    = fft::window_sample_count_to_bin_count(maxWndSmpCnt);
+        p->maxBinCnt    = FFT::window_sample_count_to_bin_count(maxWndSmpCnt);
         p->wndSmpCnt  = wndSmpCnt;
         p->hopSmpCnt  = hopSmpCnt;
         p->binCnt     = p->ft->binN;
@@ -602,7 +602,7 @@ namespace cw
         {
           shift_buf::destroy( p->sb );
           wnd_func::destroy( p->wf );
-          fft::destroy( p->ft );
+          FFT::destroy( p->ft );
           phs_to_frq::destroy( p->pf );
           mem::release( p );
         }
@@ -621,7 +621,7 @@ namespace cw
           T1 cvtV[ p->wf->wndN ];
           vop::copy(cvtV, p->wf->outV, p->wf->wndN );
 
-          fft::exec(p->ft, cvtV, p->wf->wndN);
+          FFT::exec(p->ft, cvtV, p->wf->wndN);
 
           if( cwIsFlag(p->flags,kCalcHzPvaFl) )
             phs_to_frq::exec(p->pf,p->phsV);
@@ -654,7 +654,7 @@ namespace cw
       template< typename T0, typename T1 >
       struct obj_str
       {
-        ifft::obj_str<T1>*     ft;
+        IFFT::obj_str<T1>*     ft;
         wnd_func::obj_str<T0>* wf;
         ola::obj_str<T0>*      ola;
         
@@ -705,7 +705,7 @@ namespace cw
 
 
         wnd_func::create( p->wf, wndTypeId, wndSmpCnt, wndSmpCnt, 0);
-        ifft::create(     p->ft, p->binCnt );
+        IFFT::create(     p->ft, p->binCnt );
         ola::create(      p->ola, wndSmpCnt, hopSmpCnt, procSmpCnt, wndTypeId );
         
         for(k=0; k<(int)p->binCnt; ++k)
@@ -728,7 +728,7 @@ namespace cw
         if( p != nullptr )
         {
           wnd_func::destroy(p->wf);
-          ifft::destroy(p->ft);
+          IFFT::destroy(p->ft);
           ola::destroy(p->ola);
 
           mem::release(p->minRphV);
@@ -779,7 +779,7 @@ namespace cw
           p->mag0V[k] = magV[k];
         }
   
-        ifft::exec_polar( p->ft, magV, phsV );
+        IFFT::exec_polar( p->ft, magV, phsV );
 
         // convert double to float
         T0 v[ p->ft->outN ];
