@@ -307,11 +307,14 @@ cw::rc_t cw::tracer::write( handle_t h )
   rc_t           rc = kOkRC;
   tracer_t*      p  = _handleToPtr(h);
 
-  if((rc = _write_ref(p)) != kOkRC )
-    goto errLabel;
-  
-  if((rc = _write_data(p)) != kOkRC )
-    goto errLabel;
+  if( p->enable_fl)
+  {
+    if((rc = _write_ref(p)) != kOkRC )
+      goto errLabel;
+    
+    if((rc = _write_data(p)) != kOkRC )
+      goto errLabel;
+  }
   
 errLabel:
   return rc;
