@@ -198,7 +198,12 @@ namespace cw
             if( score_evt->loc != kInvalidId )
             {
               // verify that the score is in order by location
-              assert( score_evt->loc >= last_loc );
+              if( score_evt->loc < last_loc )
+              {
+                rc = cwLogError(kInvalidStateRC,"The score cannot be loaded because is not in order by location.");
+                break;
+              }
+              
               last_loc = score_evt->loc;
             }
             
