@@ -1202,10 +1202,15 @@ cw::rc_t cw::flow::exec_cycle( handle_t h )
 cw::rc_t cw::flow::exec(    handle_t h )
 {
   rc_t    rc = kOkRC;
-  //flow_t* p  = _handleToPtr(h);
-
+  flow_t* p  = _handleToPtr(h);
+  time::spec_t t0 = time::current_time();
+    
   while( rc == kOkRC )
     rc = exec_cycle(h);
+
+  unsigned dms = time::elapsedMs(t0);
+
+  cwLogInfo("Exec time: %i ms Cycles:%i",dms,p->cycleIndex);
   
   return rc;
 }
