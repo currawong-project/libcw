@@ -2014,15 +2014,20 @@ namespace cw
       rc_t _update_current_chunk( inst_t* inst, unsigned frameN )
       {
         rc_t rc = kOkRC;
-        
+
+        // get the count of samples available in the current chunk
         unsigned availFrameN = inst->curChunk->frameN - inst->curChunk->frame_idx;
-        if( frameN <= availFrameN )
+
+        // if the count of available frame is less than the count of incoming frames
+        if( availFrameN < frameN )
         {
+          // go to the next chunk and check if it has space to receive the incoming frame
           for(; inst->curChunk != nullptr; inst->curChunk=inst->curChunk->link )
             if( frameN  <= inst->curChunk->frameN - inst->curChunk->frame_idx )
               break;
         }
 
+        // if the no chunk is large enough to hold the incomig sample then allocate a new chunk
         if( inst->curChunk == nullptr )
           if((rc = _alloc_chunk( inst, inst->add_sec )) != kOkRC )
             goto errLabel;
@@ -2035,10 +2040,12 @@ namespace cw
       {
         rc_t rc = kOkRC;
         unsigned chN = std::min( src_abuf->chN, inst->chN );
-        
+
+        // update the state such that inst->curChunk can receive the incoming samples
         if((rc = _update_current_chunk(inst,src_abuf->frameN )) != kOkRC )
           goto errLabel;
-        
+
+        // at this point inst->curChunk must have space to accept the incoming samples
         for(unsigned i=0; i<chN; ++i)
         {
           sample_t* dst = inst->curChunk->chArray[i] + inst->curChunk->frame_idx;
