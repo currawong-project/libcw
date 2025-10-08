@@ -89,6 +89,7 @@ namespace cw
     typedef struct msg_str
     {
       unsigned typeId;
+      unsigned user_value;
       union {
         midi_msg_t   midi;
         marker_msg_t marker;
@@ -142,8 +143,8 @@ namespace cw
 
     rc_t destroy( handle_t& hRef );
 
-    rc_t setMidiMsg( handle_t h, double sec, unsigned uid, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 );
-    rc_t setMarker(  handle_t h, double sec, unsigned uid, uint8_t ch, unsigned typeId, unsigned value );
+    rc_t setMidiMsg( handle_t h, double sec, unsigned uid, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1, unsigned user_value );
+    rc_t setMarker(  handle_t h, double sec, unsigned uid, uint8_t ch, unsigned typeId, unsigned value, unsigned user_value );
 
     void reset( handle_t h );
 

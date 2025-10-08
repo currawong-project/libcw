@@ -414,9 +414,10 @@ namespace cw
       return rc;
     }
 
-    msg_t* _fill_midi_msg( msg_t* m, unsigned uid, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
+    msg_t* _fill_midi_msg( msg_t* m, unsigned uid, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1, unsigned user_value )
     {
       m->typeId = kMidiMsgTId;
+      m->user_value = user_value;
       
       m->u.midi.uid    = uid;
       m->u.midi.ch     = ch;
@@ -426,9 +427,10 @@ namespace cw
       return m;
     }
 
-    msg_t* _fill_marker_msg( msg_t* m, unsigned uid, uint8_t ch, unsigned markerTypeId, unsigned markerValue )
+    msg_t* _fill_marker_msg( msg_t* m, unsigned uid, uint8_t ch, unsigned markerTypeId, unsigned markerValue, unsigned user_value )
     {
       m->typeId = kMarkerMsgTId;
+      m->user_value = user_value;
       
       m->u.marker.uid    = uid;
       m->u.marker.ch     = ch;
@@ -454,22 +456,22 @@ namespace cw
       return p->end_msg_cache->msgA + p->end_msg_cache->next_idx;
     }
     
-    msg_t* _insert_midi_msg( midi_state_t* p, unsigned uid, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
+    msg_t* _insert_midi_msg( midi_state_t* p, unsigned uid, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1, unsigned user_value )
     {
       msg_t* m = _insert_msg(p);
       
-      _fill_midi_msg(m, uid, ch, status, d0, d1 );
+      _fill_midi_msg(m, uid, ch, status, d0, d1, user_value );
       
       p->end_msg_cache->next_idx++;
 
       return m;
     }
 
-    msg_t* _insert_marker_msg( midi_state_t* p, unsigned uid, uint8_t ch, unsigned markerTypeId, unsigned markerValue )
+    msg_t* _insert_marker_msg( midi_state_t* p, unsigned uid, uint8_t ch, unsigned markerTypeId, unsigned markerValue, unsigned user_value )
     {
       msg_t* m = _insert_msg(p);
       
-      _fill_marker_msg(m, uid, ch, markerTypeId, markerValue );
+      _fill_marker_msg(m, uid, ch, markerTypeId, markerValue, user_value );
       
       p->end_msg_cache->next_idx++;
 
@@ -528,7 +530,7 @@ namespace cw
       
     }
 
-    void _onMidiNoteStateChange( midi_state_t* p, unsigned flags, double secs, unsigned uid, unsigned chIdx, uint8_t status, uint8_t pitch, uint8_t vel )
+    void _onMidiNoteStateChange( midi_state_t* p, unsigned flags, double secs, unsigned uid, unsigned chIdx, uint8_t status, uint8_t pitch, uint8_t vel, unsigned user_value )
     {
       msg_t msg;
       const msg_t* m = &msg;
@@ -545,7 +547,7 @@ namespace cw
       {
         // ... if cache is not enabled then we can pass a msg_t record which will
         // only be valid during the callback
-        _fill_midi_msg(&msg, uid, chIdx, status, pitch, vel );
+        _fill_midi_msg(&msg, uid, chIdx, status, pitch, vel, user_value );
       }
       
       _onStateChange( p, flags, secs, m );
@@ -565,7 +567,7 @@ namespace cw
           if( c->noteState[i].sndGateFl && c->noteState[i].sostHoldFl==false && c->noteState[i].noteGateFl==false )
           {
             // turn sounding note off
-            _onMidiNoteStateChange(p,kSoundOffFl | kNoteEvtFl, sec, uid, c->chIdx, midi::kNoteOffMdId, i, 0);
+            _onMidiNoteStateChange(p,kSoundOffFl | kNoteEvtFl, sec, uid, c->chIdx, midi::kNoteOffMdId, i, 0, 0);
             
           }
         }   
@@ -662,7 +664,7 @@ namespace cw
             for(unsigned i=0; i<midi::kMidiNoteCnt; ++i)
               if( c->noteState[i].sndGateFl )
               {
-                _onMidiNoteStateChange( p, flags | kHalfPedalFl | kNoteEvtFl, sec, m->u.midi.uid, m->u.midi.ch, m->u.midi.status, i, 0 );
+                _onMidiNoteStateChange( p, flags | kHalfPedalFl | kNoteEvtFl, sec, m->u.midi.uid, m->u.midi.ch, m->u.midi.status, i, 0, m->user_value );
               }
           }
         }
@@ -856,7 +858,7 @@ cw::rc_t cw::midi_state::destroy( handle_t& hRef )
   return rc;
 }
 
-cw::rc_t cw::midi_state::setMidiMsg( handle_t h, double sec, unsigned uid, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
+cw::rc_t cw::midi_state::setMidiMsg( handle_t h, double sec, unsigned uid, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1, unsigned user_value )
 {
   rc_t                rc = kOkRC;
   midi_state_t*       p  = _handleToPtr(h);
@@ -867,9 +869,9 @@ cw::rc_t cw::midi_state::setMidiMsg( handle_t h, double sec, unsigned uid, uint8
 
   // convert the midi arg's into a midi_msg_t record
   if( p->cfg.cacheEnableFl )
-    m = _insert_midi_msg(p, uid, ch, status, d0, d1 );
+    m = _insert_midi_msg(p, uid, ch, status, d0, d1, user_value );
   else
-    m = _fill_midi_msg(&mr, uid, ch, status, d0, d1 );
+    m = _fill_midi_msg(&mr, uid, ch, status, d0, d1, user_value );
   
   switch( status )
   {
@@ -905,7 +907,7 @@ cw::rc_t cw::midi_state::setMidiMsg( handle_t h, double sec, unsigned uid, uint8
   return rc;
 }
 
-cw::rc_t cw::midi_state::setMarker(  handle_t h, double sec, unsigned uid, uint8_t ch, unsigned typeId, unsigned value )
+cw::rc_t cw::midi_state::setMarker(  handle_t h, double sec, unsigned uid, uint8_t ch, unsigned typeId, unsigned value, unsigned user_value )
 {
  rc_t                rc = kOkRC;
   midi_state_t*       p  = _handleToPtr(h);
@@ -914,9 +916,9 @@ cw::rc_t cw::midi_state::setMarker(  handle_t h, double sec, unsigned uid, uint8
   
   // convert the midi arg's into a midi_msg_t record
   if( p->cfg.cacheEnableFl )
-    m = _insert_marker_msg(p, uid, ch, typeId, value );
+    m = _insert_marker_msg(p, uid, ch, typeId, value, user_value );
   else
-    m = _fill_marker_msg(&mr, uid, ch, typeId, value );
+    m = _fill_marker_msg(&mr, uid, ch, typeId, value, user_value );
 
   _onStateChange( p, kMarkerEvtFl, sec, m );
 
@@ -1045,9 +1047,10 @@ cw::rc_t cw::midi_state::load_from_midi_file( handle_t h, const char* midi_fname
           micros = msg->amicro - usec0;
 
         double sec = (double)micros/1000000.0;
-
+        unsigned user_val = 0;
+        
         // cache the event
-        if((rc = setMidiMsg(h, sec, msg->uid, msg->status & 0x0f, msg->status & 0xf0, msg->u.chMsgPtr->d0, msg->u.chMsgPtr->d1 ) ) != kOkRC )
+        if((rc = setMidiMsg(h, sec, msg->uid, msg->status & 0x0f, msg->status & 0xf0, msg->u.chMsgPtr->d0, msg->u.chMsgPtr->d1, user_val ) ) != kOkRC )
         {
           rc = cwLogError(rc,"Error on MIDI event insertion.");
           goto errLabel;
@@ -1307,6 +1310,7 @@ cw::rc_t cw::midi_state::test( const object_t* cfg )
   for(unsigned i=0; i<mN; ++i)
   {
     const midi::file::trackMsg_t* m = mA[i];
+    unsigned user_val = 0;
     
     switch( m->status )
     {
@@ -1315,7 +1319,7 @@ cw::rc_t cw::midi_state::test( const object_t* cfg )
       case midi::kCtlMdId:
         {
           double sec = m->amicro / 1000000.0;
-          setMidiMsg( msH, sec, m->uid, m->u.chMsgPtr->ch, m->status, m->u.chMsgPtr->d0, m->u.chMsgPtr->d1 );
+          setMidiMsg( msH, sec, m->uid, m->u.chMsgPtr->ch, m->status, m->u.chMsgPtr->d0, m->u.chMsgPtr->d1, user_val );
         }
         break;
     }
