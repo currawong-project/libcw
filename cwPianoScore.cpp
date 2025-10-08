@@ -222,17 +222,45 @@ namespace cw
       
       if( score_fl )
       {
+        const char*     grace_mark = nullptr;
+
         e->loc = kInvalidId;
-        if((rc = getv(csvH,"oloc",e->loc )) != kOkRC )
+        
+        if((rc = getv(csvH,
+                      "oloc",  e->loc,
+                      "index", e->uid,
+                      "grace", grace_mark )) != kOkRC )
         {
-          rc = cwLogError(rc,"Error parsing CSV.");
+          rc = cwLogError(rc,"Error parsing score CSV.");
           goto errLabel;
         }
 
+        if( has_field(csvH,"player") )
+        {
+          const char* player;
+          if((rc = getv(csvH,"player_id",e->player_id)) != kOkRC )
+          {
+            rc = cwLogError(rc,"Error parsing score CSV 'player' field.");
+            goto errLabel;
+          }
+        }
+
+        if( has_field(csvH,"piano_id"))
+        {
+          if((rc = getv(csvH,"piano_id",e->piano_id)) != kOkRC )
+          {
+            rc = cwLogError(rc,"Error parsing score CSV 'piano_id' field.");
+            goto errLabel;
+          }
+        }
+
+        
         if( e->section > 0 && has_stats_fl )
           if((rc = _read_meas_stats(p,csvH,e)) != kOkRC )
             goto errLabel;
-        
+
+        textCopy( e->grace_mark, sizeof(e->grace_mark),grace_mark);
+                 
       }
       else
       {
@@ -395,6 +423,7 @@ namespace cw
           }
 
 
+          
           textCopy( e->sci_pitch,sizeof(e->sci_pitch),sci_pitch);
           textCopy( e->dmark,sizeof(e->dmark),dmark);
           textCopy( e->grace_mark, sizeof(e->grace_mark),grace_mark);
