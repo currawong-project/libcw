@@ -22,10 +22,10 @@
 #include "cwSvgMidi.h"
 
 #define PIX_PER_SEC 100.0
-#define NOTE_HEIGHT 15.0
+#define NOTE_HEIGHT 12.0
 #define TIME_GRID_SECS 5.0
 #define PITCH_LABEL_INTERVAL_SECS 10
-
+#define GRACE_FL 1
 namespace cw
 {
   namespace svg_midi
@@ -36,7 +36,7 @@ namespace cw
       kSectionTypeId
     };
     
-    rc_t _write_svg_rect( svg::handle_t svgH, double secs0, double secs1, double y, const char* label, unsigned color )
+    rc_t _write_svg_rect( svg::handle_t svgH, double secs0, double secs1, double y, const char* label, unsigned color, unsigned font_size=15 )
     {
       rc_t rc;
       double x =  secs0 * PIX_PER_SEC;
@@ -49,7 +49,7 @@ namespace cw
         goto errLabel;
       }
 
-      if((rc = svg::text( svgH, x, y*NOTE_HEIGHT+NOTE_HEIGHT, label )) != kOkRC )
+      if((rc = svg::text( svgH, x, y*NOTE_HEIGHT+NOTE_HEIGHT, label, "font-size", font_size, "px" )) != kOkRC )
       {
         rc = cwLogError(rc,"Error writing SVG rect label.");
         goto errLabel;
@@ -112,20 +112,29 @@ namespace cw
       const char*    sciPitch   = midi::midiToSciPitch( e0->msg->u.midi.d0 );
       const unsigned labelCharN = 127;
       char           label[ labelCharN+1 ];
-
+      bool           grace_fl = e0->msg->user_value & GRACE_FL;
+      unsigned       font_size = 15;
       
       unsigned muid = e0->msg->u.midi.uid;
       if( t0!=nullptr && e0->secs - t0->secs < PITCH_LABEL_INTERVAL_SECS )
           snprintf(label,labelCharN,"%i",muid);
       else
       {
-        snprintf(label,labelCharN,"%s - %i",sciPitch,muid);
+        if( grace_fl )
+        {
+          snprintf(label,labelCharN,"%s",sciPitch);
+          font_size = 10;
+        }
+        else
+        {
+          snprintf(label,labelCharN,"%s - %i",sciPitch,muid);
+        }
         t0 = e1;
       }
       
       double y = -1.0 * (e0->msg->u.midi.d0 - minMidiPitch) + (maxMidiPitch - minMidiPitch);
       
-      _write_svg_rect( svgH, e0->secs, e1->secs, y, label, 0xafafaf );
+      _write_svg_rect( svgH, e0->secs, e1->secs, y, label, 0xafafaf, font_size );
 
       return t0;
     }
@@ -146,9 +155,10 @@ namespace cw
       unsigned labelCharN = 127;
       char label[labelCharN+1];
       snprintf(label,labelCharN,"%i",e->msg->u.marker.value);
-               
-      svg::text( svgH, e->secs*PIX_PER_SEC, -20, label );
 
+      unsigned y = (maxMidiPitch + (e->msg->u.marker.typeId==kSectionTypeId ? 1 : 0)) * NOTE_HEIGHT;
+
+      svg::text( svgH, e->secs*PIX_PER_SEC, y, label );
     }
     
     void _write_svg_ch_note( svg::handle_t svgH, const midi_state::event_t* e0, unsigned minMidiPitch, unsigned maxMidiPitch )
@@ -226,6 +236,9 @@ namespace cw
       unsigned                   color     = 0;
       const char*                label     = nullptr;
       unsigned                   midiCtlId = midi_state::pedal_index_to_midi_ctl_id(pedal_idx);
+      unsigned lineOffsY = ((maxMidiPitch - minMidiPitch) + pedalCnt) * NOTE_HEIGHT;
+      unsigned lineY0 = 0;
+      double   lineX0 = 0;
       
       switch( midiCtlId )
       {
@@ -246,54 +259,66 @@ namespace cw
         default:
           assert(0);
       }
-      
+
       for(; e!=nullptr; e=e->link)
       {
+        if( cwIsFlag(e->flags,midi_state::kNoChangeFl) )
+          continue;
+
         
-        if( !cwIsFlag(e->flags,midi_state::kNoChangeFl) )
-        {        
-          if( cwIsFlag(e->flags,midi_state::kDownPedalFl) )
-          {
-            if( e0 != nullptr )
-            {
-              // two consecutive pedal downd - this shouldn't be possible
-            }
-            else
-            {
-              e0 = e;
-            }
-          }
-
-          if( cwIsFlag(e->flags,midi_state::kUpPedalFl))
-          {
-            if( e0 == nullptr )
-            {
-              // two consecutive pedal up's
-            }
-            else
-            {
-            
-              double y = (maxMidiPitch - minMidiPitch) + 1 + pedal_idx;
-
-              _write_svg_rect( svgH, e0->secs, e->secs, y, label, color );
-
-              if( midiCtlId == midi::kSustainCtlMdId )
-                _write_svg_vert_line( svgH, e->secs, color, minMidiPitch, maxMidiPitch );
-
-              e0 = nullptr;
-            }
-          }
-        }
-
-        if( e1 != nullptr )
+        if( cwIsFlag(e->flags,midi_state::kDownPedalFl) )
         {
-          unsigned yOffs = ((maxMidiPitch - minMidiPitch) + pedalCnt) * NOTE_HEIGHT;
-          _write_svg_line( svgH, e1->secs, yOffs + e1->msg->u.midi.d1, e->secs, yOffs + e->msg->u.midi.d1, color );
+          if( e0 != nullptr && cwIsFlag(e0->flags,midi_state::kDownPedalFl) )
+            cwLogWarning("The %s pedal state cannot go down if it is already down.",label);
+          else
+          {
+            e0 = e;
+          }
         }
-        e1 = e;
+        
+        if( cwIsFlag(e->flags,midi_state::kHalfPedalFl) )
+        {
+          if( e0 != nullptr && cwIsFlag(e0->flags,midi_state::kHalfPedalFl) )
+            cwLogWarning("The %S pedal state cannot go to half down if it is already half down.",label);
+          else
+          {
+            e0 = e;
+          }
+        }
+        
+        if( cwIsFlag(e->flags,midi_state::kUpPedalFl) )
+        {
+          if( e0 == nullptr || cwIsFlag(e0->flags,midi_state::kUpPedalFl) )
+          {
+            cwLogWarning("The %s pedal state cannot come up if it was not down.",label);
+          }
+          else
+          {
+            double y = (maxMidiPitch - minMidiPitch) + 1 + pedal_idx;
+
+            _write_svg_rect( svgH, e0->secs, e->secs, y, label, color );
+
+            //if( midiCtlId == midi::kSustainCtlMdId )
+                
+            _write_svg_vert_line( svgH, e0->secs, color, minMidiPitch, maxMidiPitch );
+            _write_svg_vert_line( svgH, e->secs, color, minMidiPitch, maxMidiPitch );
+
+            e0 = e;
+          }
+        }
+
+        if( midiCtlId==midi::kSustainCtlMdId && e->msg->u.midi.d1 != lineY0 )
+        {
+          _write_svg_line( svgH, lineX0,  lineOffsY + lineY0, e->secs, lineOffsY + lineY0,            color );          
+          _write_svg_line( svgH, e->secs, lineOffsY + lineY0, e->secs, lineOffsY + e->msg->u.midi.d1, color );
+          lineY0 = e->msg->u.midi.d1;
+          lineX0 = e->secs;
           
+        }
         
       }
+
+        
     }
 
     rc_t _load_from_piano_score( midi_state::handle_t msH, const char* piano_score_fname )
@@ -316,14 +341,14 @@ namespace cw
           uint8_t ch = 0;
           
           if( e->bar != 0 )
-            if((rc = setMarker(msH, e->sec, e->uid, ch, kBarTypeId, e->bar )) != kOkRC )
+            if((rc = setMarker(msH, e->sec, e->uid, ch, kBarTypeId, e->bar, 0 )) != kOkRC )
             {
               rc = cwLogError(rc,"Error setting bar marker.");
               goto errLabel;
             }
       
           if( e->section != 0 )
-            if((rc = setMarker(msH, e->sec, e->uid, ch, kSectionTypeId, e->section )) != kOkRC )
+            if((rc = setMarker(msH, e->sec, e->uid, ch, kSectionTypeId, e->section, 0 )) != kOkRC )
             {
               rc = cwLogError(rc,"Error setting section marker.");
               goto errLabel;
@@ -339,8 +364,10 @@ namespace cw
               uint8_t d1 = (uint8_t)e->d1;
 
               //printf("%i : %i %i :  %i %x %i %i\n", n, e->uid, e->loc, ch, status, d0, d1 );
-              
-              if((rc = setMidiMsg(msH, e->sec, e->uid, ch, status, d0, d1 ) ) != kOkRC )
+
+              unsigned grace_fl = e->grace_mark[0] == 0 ? 0 : GRACE_FL;
+
+              if((rc = setMidiMsg(msH, e->sec, e->loc, ch, status, d0, d1, grace_fl ) ) != kOkRC )
               {
                 rc = cwLogError(rc,"Error on MIDI event insertion.");
                 goto errLabel;
@@ -417,7 +444,7 @@ cw::rc_t cw::svg_midi::destroy( handle_t& hRef )
   return rc;
 }
 
-cw::rc_t cw::svg_midi::setMidiMsg( handle_t h, double secs, unsigned uid, unsigned ch, unsigned status, unsigned d0,  unsigned d1 )
+cw::rc_t cw::svg_midi::setMidiMsg( handle_t h, double secs, unsigned uid, unsigned ch, unsigned status, unsigned d0,  unsigned d1, unsigned userValue )
 {
   rc_t rc;
   svg_midi_t* p = _handleToPtr(h);
@@ -446,7 +473,7 @@ cw::rc_t cw::svg_midi::setMidiMsg( handle_t h, double secs, unsigned uid, unsign
     goto errLabel;
   }
   
-  if((rc = midi_state::setMidiMsg( p->msH, secs, uid, (uint8_t)ch, (uint8_t)status, (uint8_t)d0, (uint8_t)d1 )) != kOkRC )
+  if((rc = midi_state::setMidiMsg( p->msH, secs, uid, (uint8_t)ch, (uint8_t)status, (uint8_t)d0, (uint8_t)d1, userValue )) != kOkRC )
   {
     rc = cwLogError(rc,"midi_state MIDI msg update failed.");
     goto errLabel;
@@ -456,7 +483,7 @@ cw::rc_t cw::svg_midi::setMidiMsg( handle_t h, double secs, unsigned uid, unsign
   return rc;  
 }
 
-cw::rc_t cw::svg_midi::setMarker(  handle_t h, double secs, unsigned uid, unsigned ch, unsigned markId, unsigned markValue )
+cw::rc_t cw::svg_midi::setMarker(  handle_t h, double secs, unsigned uid, unsigned ch, unsigned markId, unsigned markValue, unsigned userValue )
 {
   rc_t rc;
   svg_midi_t* p = _handleToPtr(h);
@@ -467,7 +494,7 @@ cw::rc_t cw::svg_midi::setMarker(  handle_t h, double secs, unsigned uid, unsign
     goto errLabel;
   }
   
-  if((rc = midi_state::setMarker(  p->msH, secs, uid, (uint8_t)ch, markId, markValue )) != kOkRC )
+  if((rc = midi_state::setMarker(  p->msH, secs, uid, (uint8_t)ch, markId, markValue, userValue )) != kOkRC )
   {
     rc = cwLogError(rc,"midi_state MIDI set marker failed.");
     goto errLabel;
@@ -517,8 +544,8 @@ cw::rc_t cw::svg_midi::write( const char* fname, midi_state::handle_t msH )
   }
 
   // create the time grid
-  for(double sec = 0.0; sec<=maxSec; sec+=TIME_GRID_SECS)
-    _write_svg_vert_line(svgH, sec, 0xefefef, minMidiPitch, maxMidiPitch );
+  //for(double sec = 0.0; sec<=maxSec; sec+=TIME_GRID_SECS)
+  //  _write_svg_vert_line(svgH, sec, 0xefefef, minMidiPitch, maxMidiPitch );
 
   // create the note graphics
   for(uint8_t i=0; i<midi::kMidiChCnt; ++i)

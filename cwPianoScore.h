@@ -41,6 +41,9 @@ namespace cw
       unsigned chord_note_cnt;// count of notes in the chord which this note-on msg is part of
       unsigned chord_note_idx;// which note in the chord is this note-on msg (or kInvalididx if this is not a note-on msg)
 
+      unsigned player_id;  // identifies which of multiple players will perform this event (0 based)
+      unsigned piano_id;  // identifies with of multiple pianos this event is associated with (0 based )
+
       bool    valid_stats_fl; // is statsA valid in this record[]
       stats_t statsA[ perf_meas::kValCnt ];
       

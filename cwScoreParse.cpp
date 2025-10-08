@@ -260,13 +260,29 @@ namespace cw
       return rc;
     }
 
-    rc_t _parse_var_label( score_parse_t* p, const char* text, unsigned varIdx, unsigned varFlag, event_t* e )
+    rc_t _parse_var_label( score_parse_t* p, const char* t, unsigned varIdx, unsigned varFlag, event_t* e )
     {
       rc_t        rc           = kOkRC;
       section_t*  section      = nullptr;
+      unsigned    textCharN    = textLength(t);
       
-      if( textLength(text) == 0 )
+      if( textCharN == 0 )
         return rc;
+
+      char text_buf[ textCharN+1 ];
+      const char* text = text_buf;
+      
+      if( textCharN >=2 && t[0]=='"' && t[textCharN-1] == '"' )
+      {
+        strncpy(text_buf,t+1,textCharN-1);
+        text_buf[textCharN-1]=0;
+      }
+      else
+      {
+        strncpy(text_buf,t,textCharN);
+        text_buf[textCharN]=0;
+      }
+      
       
       unsigned flags = var_char_to_flags(text);
 

@@ -1746,7 +1746,7 @@ cw::rc_t cw::midi_record_play::write_svg( handle_t h, const char* fn )
 
     double sec = time::specToSeconds( m->timestamp );
 
-    if((rc = svg_midi::setMidiMsg(svgH,sec,m->id,m->ch,m->status,m->d0,m->d1)) != kOkRC )
+    if((rc = svg_midi::setMidiMsg(svgH,sec,m->id,m->ch,m->status,m->d0,m->d1,0)) != kOkRC )
     {
       rc = cwLogError(rc,"svg_midi set midi msg failed.");
       goto errLabel;

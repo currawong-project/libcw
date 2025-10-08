@@ -113,7 +113,7 @@ namespace cw
       rc_t rc;
       for(unsigned i=0; i<p->perf_idx; ++i)
       {
-        if((rc = setMidiMsg( msH, p->perfA[i].sec, i, 0, midi::kNoteOnMdId, p->perfA[i].pitch, p->perfA[i].vel )) != kOkRC )
+        if((rc = setMidiMsg( msH, p->perfA[i].sec, i, 0, midi::kNoteOnMdId, p->perfA[i].pitch, p->perfA[i].vel, 0 )) != kOkRC )
         {
           rc = cwLogError(rc,"midi_state update failed.");
           goto errLabel;
