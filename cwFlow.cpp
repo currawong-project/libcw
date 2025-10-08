@@ -80,6 +80,7 @@ namespace cw
       { "midi_msg",        &midi_msg::members },
       { "midi_split",      &midi_split::members },
       { "midi_file",       &midi_file::members },
+      { "midi_route",      &midi_route::members },
       { "midi_merge",      &midi_merge::members },
       { "poly_xform_ctl",  &poly_xform_ctl::members },
       { "gutim_ps_msg_table", &gutim_ps_msg_table::members },

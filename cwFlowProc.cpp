@@ -9978,6 +9978,301 @@ namespace cw
       
     }    
 
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // midi_route
+    //
+    namespace midi_route
+    {
+      enum {
+        kBufCntPId,
+        kInPId,
+        kRinPId,
+        kSelectPId,
+        kBaseOutPId
+      };
+      
+      typedef struct
+      {
+        // These buffers provide storage for the 'out' MIDI variables.
+        unsigned           midiBufN;  // size of each 'out' MIDI buffer (same as 'bufCnt')
+        midi::ch_msg_t**   msgAA;     // msgAA[ outVarN ][ midiBufN ] buffers used by 'out'
+
+        recd_array_t** recd_arrayA;  // recd_arrayA[ routVarN ];   output record array for 'r_out'.
+
+        
+        unsigned outBasePId;  // base PId of 'out' variables
+        unsigned routBasePId; // base PId of 'r_out' variables
+        unsigned outVarN;     // count of 'out' variables
+        unsigned routVarN;    // count of 'r_out' variables
+        
+        unsigned select;    // 0 based index which selects the output variable
+      } inst_t;
+
+      rc_t _alloc_recd_array( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx, const recd_type_t* base, recd_array_t*& recd_array_ref  )
+      {
+        rc_t        rc  = kOkRC;
+        variable_t* var = nullptr;
+        
+        // find the record variable
+        if((rc = var_find( proc, var_label, sfx_id, chIdx, var )) != kOkRC )
+        {
+          rc = cwLogError(rc,"The record variable '%s:%i' could was not found.",cwStringNullGuard(var_label),sfx_id);
+          goto errLabel;
+        }
+
+        // verify that the variable has a record format
+        if( !var_has_recd_format(var) )
+        {
+          rc = cwLogError(kInvalidArgRC,"The variable does not have a valid record format.");
+          goto errLabel;
+        }
+        else
+        {
+          recd_fmt_t* recd_fmt = var->varDesc->fmt.recd_fmt;
+
+          // create the recd_array
+          if((rc = recd_array_create( recd_array_ref, recd_fmt->recd_type, base, recd_fmt->alloc_cnt )) != kOkRC )
+          {
+            goto errLabel;
+          }
+        }
+        
+      errLabel:
+        if( rc != kOkRC )
+          rc = cwLogError(rc,"Record array create failed on the variable '%s:%i ch:%i.",cwStringNullGuard(var_label),sfx_id,chIdx);
+        
+        return rc;
+        
+      }
+      
+
+      rc_t _register_midi_output_var( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+        unsigned varN = var_mult_count(proc,"out");
+
+        unsigned    sfxIdA[ varN ];
+        
+        // get the the sfx_id's of the output MIDI port 
+        if((rc = var_mult_sfx_id_array(proc, "out", sfxIdA, varN, p->outVarN )) != kOkRC )
+          goto errLabel;
+
+        std::sort(sfxIdA, sfxIdA + p->outVarN, [](unsigned& a,unsigned& b){ return a<b; } );
+
+        // Register each output var
+        for(unsigned i=0; i<p->outVarN; ++i)
+        {
+        
+          // create one output MIDI buffer
+          if((rc = var_register_and_set( proc, "out", kBaseSfxId+i, p->outBasePId + i, kAnyChIdx, nullptr, 0  )) != kOkRC )
+          {
+            goto errLabel;
+          }
+
+          p->msgAA[i] = mem::allocZ<midi::ch_msg_t>(p->midiBufN);
+
+            
+        }
+        
+      errLabel:
+        return rc;
+        
+      }
+        
+      rc_t _register_record_output_var( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+        unsigned varN = var_mult_count(proc,"r_out");
+
+        unsigned    sfxIdA[ varN ];
+        
+        // get the the sfx_id's of the output var 
+        if((rc = var_mult_sfx_id_array(proc, "r_out", sfxIdA, varN, p->routVarN )) != kOkRC )
+          goto errLabel;
+
+        std::sort(sfxIdA, sfxIdA + p->routVarN, [](unsigned& a,unsigned& b){ return a<b; } );
+
+        p->recd_arrayA = mem::allocZ<recd_array_t*>(p->routVarN);
+
+        // Register each output var
+        for(unsigned i=0; i<p->routVarN; ++i)
+        {
+        
+            // allocate the output recd array
+            if((rc = _alloc_recd_array( proc, "r_out", kBaseSfxId+i, kAnyChIdx, nullptr, p->recd_arrayA[i]  )) != kOkRC )
+            {
+              goto errLabel;
+            }
+        
+            // create one output record buffer
+            if((rc = var_register_and_set( proc, "r_out", kBaseSfxId+i, p->routBasePId+i, kAnyChIdx, p->recd_arrayA[i]->type, nullptr, 0  )) != kOkRC )
+            {
+              goto errLabel;
+            }
+        }
+        
+      errLabel:
+        return rc;
+        
+      }
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t    rc   = kOkRC;        
+        mbuf_t* mbuf = nullptr;
+        rbuf_t* rbuf = nullptr;
+
+        
+        p->outBasePId = kBaseOutPId;
+
+        // create the MIDI output ports
+        if((rc = _register_midi_output_var(proc,p)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        p->routBasePId = kBaseOutPId + p->outVarN;
+
+        // create the record output ports
+        if((rc = _register_record_output_var(proc,p)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((rc = var_register_and_get(proc,kAnyChIdx,
+                                      kBufCntPId,"buf_cnt",kBaseSfxId,p->midiBufN,
+                                      kInPId,"in",kBaseSfxId,mbuf,
+                                      kRinPId,"r_in",kBaseSfxId,rbuf,
+                                      kSelectPId,"select",kBaseSfxId,p->select)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        for(unsigned i=0; i<p->outVarN; ++i)          
+          mem::release(p->msgAA[i]);
+        mem::release(p->msgAA);
+
+        for(unsigned i=0; i<p->routVarN; ++i)
+          recd_array_destroy(p->recd_arrayA[i]);
+        mem::release(p->recd_arrayA);
+          
+
+        return rc;
+      }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+
+        switch( var->vid )
+        {
+          case kInPId:
+            break;
+            
+          case kRinPId:
+            break;
+            
+          case kSelectPId:
+            break;
+        }
+        
+        return rc;
+      }
+
+      rc_t _exec_out( proc_t* proc, inst_t* p, unsigned select_idx )
+      {
+        rc_t     rc       = kOkRC;
+        mbuf_t*  o_mbuf = nullptr;
+        mbuf_t*  i_mbuf = nullptr;
+        
+        // get the output buffer
+        if((rc = var_get(proc,p->outBasePId + select_idx, kAnyChIdx, o_mbuf)) != kOkRC )
+        {
+          rc = cwLogError(kInvalidStateRC,"The midi-route instance '%s' does not have a valid MIDI output variable at mult. index %i .",proc->label,select_idx);
+          goto errLabel;
+        }
+
+        if((rc = var_get(proc, kInPId, kAnyChIdx, i_mbuf)) != kOkRC )
+          goto errLabel;
+
+        
+        o_mbuf->msgN = i_mbuf->msgN;
+        o_mbuf->msgA = i_mbuf->msgA;
+                
+      errLabel:
+        return rc;
+      }
+
+      rc_t _exec_rout( proc_t* proc, inst_t* p, unsigned select_idx )
+      {
+        rc_t    rc     = kOkRC;
+        rbuf_t* o_rbuf = nullptr;
+        rbuf_t* i_rbuf = nullptr;
+        
+        // get the output variable
+        if((rc = var_get(proc,p->routBasePId + select_idx,kAnyChIdx,o_rbuf)) != kOkRC )
+        {
+          rc = cwLogError(kInvalidStateRC,"The midi-route '%s' does not have a valid output record buffer at mult. index %i.",proc->label,select_idx);
+          goto errLabel;
+        }
+
+        if((rc = var_get(proc,kRinPId,kAnyChIdx,i_rbuf)) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+        o_rbuf->recdA = i_rbuf->recdA;
+        o_rbuf->recdN = i_rbuf->recdN;
+        
+
+      errLabel:
+        return rc;
+      }
+      
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+        unsigned select_idx = 0;
+        
+        if((rc = var_get(proc,kSelectPId,kAnyChIdx,select_idx)) != kOkRC )
+          goto errLabel;
+
+        if( select_idx < p->outVarN )
+          if((rc = _exec_out(proc,p,select_idx)) != kOkRC )
+            goto errLabel;
+
+        if( select_idx < p->routVarN )
+          if((rc = _exec_rout(proc,p,select_idx)) != kOkRC )
+            goto errLabel;
+
+      errLabel:
+        return rc;
+        
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    
+    
     //------------------------------------------------------------------------------------------------------------------
     //
     // midi_merge
