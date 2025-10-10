@@ -272,7 +272,9 @@ namespace cw
             cwLogWarning("The %s pedal state cannot go down if it is already down.",label);
           else
           {
-            e0 = e;
+            // if the pedal went from up to full-down - then this begins a pedal sequence
+            if( e0 == nullptr )
+              e0 = e;
           }
         }
         
@@ -282,7 +284,9 @@ namespace cw
             cwLogWarning("The %S pedal state cannot go to half down if it is already half down.",label);
           else
           {
-            e0 = e;
+            // if the pedal went from up to half-pedal - then this begins a pedal sequence
+            if( e0 == nullptr )
+              e0 = e;
           }
         }
         
@@ -294,16 +298,15 @@ namespace cw
           }
           else
           {
+            // the pedal is now up - this is the end of a pedal sequence
             double y = (maxMidiPitch - minMidiPitch) + 1 + pedal_idx;
 
             _write_svg_rect( svgH, e0->secs, e->secs, y, label, color );
 
-            //if( midiCtlId == midi::kSustainCtlMdId )
-                
             _write_svg_vert_line( svgH, e0->secs, color, minMidiPitch, maxMidiPitch );
             _write_svg_vert_line( svgH, e->secs, color, minMidiPitch, maxMidiPitch );
 
-            e0 = e;
+            e0 = nullptr;
           }
         }
 
