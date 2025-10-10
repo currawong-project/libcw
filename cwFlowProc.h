@@ -83,7 +83,7 @@ namespace cw
     namespace midi_msg        { extern class_members_t members;  }
     namespace midi_split      { extern class_members_t members;  }
     namespace midi_file       { extern class_members_t members;  }
-    namespace midi_route      { extern class_members_t members;  }
+    namespace recd_route      { extern class_members_t members;  }
     namespace midi_merge      { extern class_members_t members;  }
     namespace poly_xform_ctl  { extern class_members_t members;  }
     namespace gutim_ps_msg_table { extern class_members_t members; }
