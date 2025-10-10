@@ -95,6 +95,7 @@ namespace cw
         unsigned         sample_idx;
         unsigned         loc;
         unsigned         meas;
+        unsigned         piano_id;
         unsigned         d1;   // inital d1 value before velocity mapping was applied
         midi::ch_msg_t*  midi; // index of associated msg in chMsgA
       } msg_t;
@@ -115,6 +116,7 @@ namespace cw
         unsigned      midi_fld_idx;  // pre-computed record field indexes
         unsigned      loc_fld_idx;   //
         unsigned      meas_fld_idx;  //
+        unsigned      piano_fld_idx; //
 
         unsigned  score_end_loc;     // last score location
         unsigned  score_end_meas;    // last measure number
@@ -214,6 +216,7 @@ namespace cw
             m->loc        = last_loc;
             m->meas       = score_evt->meas;           
             m->midi       = mm;
+            m->piano_id   = score_evt->piano_id;
 
             //printf("%i %i\n",m->meas,m->loc);
 
@@ -249,9 +252,9 @@ namespace cw
 
             if(  midi::isSostenutoPedal( mm->status, mm->d0 ) )
             {
-              bool down_fl = pedalStateFlags & kDampPedalDownFl;
+              bool down_fl = pedalStateFlags & kSostPedalDownFl;
               pedalStateFlags = cwEnaFlag(pedalStateFlags, kSostPedalDownFl, midi::isPedalDown( mm->d1 ) );
-              if( (pedalStateFlags & kDampPedalDownFl) == down_fl )
+              if( (pedalStateFlags & kSostPedalDownFl) == down_fl )
                 cwLogError(kInvalidStateRC,"Two sostenuto pedal %s msg's without an intervening %s msg. meas:%i", down_fl ? "down" : "up", down_fl ? "up" : "down", m->meas );
 
             }            
@@ -457,6 +460,7 @@ namespace cw
         p->midi_fld_idx = recd_type_field_index( p->recd_array->type, "midi");
         p->loc_fld_idx  = recd_type_field_index( p->recd_array->type, "loc");
         p->meas_fld_idx = recd_type_field_index( p->recd_array->type, "meas");
+        p->piano_fld_idx= recd_type_field_index( p->recd_array->type, "piano_id");
 
         p->bVId = bloc!=0 ? (unsigned)kBLocPId : (bmeas !=0 ? (unsigned)kBMeasPId : kInvalidId);
         p->eVId = eloc!=0 ? (unsigned)kELocPId : (emeas !=0 ? (unsigned)kEMeasPId : kInvalidId);
@@ -551,6 +555,7 @@ namespace cw
         recd_set( rbuf->type, nullptr, r, p->midi_fld_idx, m->midi );
         recd_set( rbuf->type, nullptr, r, p->loc_fld_idx,  m->loc  );
         recd_set( rbuf->type, nullptr, r, p->meas_fld_idx, m->meas );
+        recd_set( rbuf->type, nullptr, r, p->piano_fld_idx,m->piano_id);
         rbuf->recdN += 1;
 
       errLabel:
