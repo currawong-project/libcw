@@ -941,6 +941,15 @@ resolvable without more information.
 
 ### TODO:
 
+- Notice that when proc's are instantiated output record variables use
+  a copy-and-pasted function called _alloc_recd_array() and then call
+  var_regster_and_set() on the output variable. These two operations could be combined.
+
+- It might be useful to include 'allocRecdN' in 'rbuf_t' this would allow proc instances
+  which process records to know what the max size of the incoming record array is
+  at instantiation time - this would be a way to pass a hint to proc's that receive
+  records as input as to the maximum expected value of rbuf_t.recdN.
+
 - Is it possible to create a processor where the output ports are defined by a cfg contained as part of the
   processor instance description?  The current solution is the 'msg_table' approach. Can this approach
   be improved so that it is codeless - as opposed to having to create a processor in proc_dict_cfg.
@@ -958,6 +967,7 @@ resolvable without more information.
 - Log updates:
   + Consider the ability to set colors to the log output based on the log level value.
   + Allow printing to the console from the CAW app during idle time.
+  + Log doesn't work for types that do not call var_set().  
 
 - Variable value list updates:
   - Currently lists are created and destroyed by the proc.
@@ -994,7 +1004,7 @@ resolvable without more information.
 
 
 - All outputs must be set via var_set() call, otherwise proc's that rely on noticing changed variables
-will not work.  For example the 'print' proc does not work for record,midi,audio because
+will not work.  For example the logging and the 'print' proc does not work for record,midi,audio because
 in general these types are not set via calls to var_set().
 
 - The following two tasks need more consideration. As it is variables assume that aggregate
