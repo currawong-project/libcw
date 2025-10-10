@@ -237,7 +237,6 @@ namespace cw
 
         if( has_field(csvH,"player") )
         {
-          const char* player;
           if((rc = getv(csvH,"player_id",e->player_id)) != kOkRC )
           {
             rc = cwLogError(rc,"Error parsing score CSV 'player' field.");
