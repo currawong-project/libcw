@@ -415,14 +415,14 @@ namespace cw
     rc_t recd_print( const recd_type_t* recd_type, const recd_t* r );
 
     // Create/destroy a buffer of records.
-    rc_t recd_array_create( recd_array_t*& recd_array_ref, recd_type_t* recd_type, const recd_type_t* base,  unsigned allocRecdN );
+    rc_t recd_array_create( recd_array_t*& recd_array_ref, const recd_type_t* recd_type, const recd_type_t* base,  unsigned allocRecdN );
     rc_t recd_array_destroy( recd_array_t*& recd_array_ref );
 
     // Copy records into a recd_array.  This function fails if there are less than
     // 'src_recdN' records already allocated in 'dest_recd_array'.
     // The source and destination record types should be the same, but this
-    // function does very little to verify that the actually are.
-    rc_t recd_copy( const recd_type_t* src_recd_type, const recd_t* src_recdA, unsigned src_recdN, recd_array_t* dest_recd_array );
+    // function does very little to verify that they actually are.
+    rc_t recd_copy( const recd_type_t* src_recd_type, const recd_t* src_recdA, unsigned src_recdN, recd_array_t* dst_recd_array, unsigned dst_recd_idx = 0 );
 
 
     //------------------------------------------------------------------------------------------------------------------------

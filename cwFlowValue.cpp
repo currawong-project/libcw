@@ -1734,7 +1734,7 @@ cw::rc_t cw::flow::recd_print( const recd_type_t* recd_type, const recd_t* r )
 
 
 
-cw::rc_t cw::flow::recd_array_create( recd_array_t*& recd_array_ref, recd_type_t* recd_type, const recd_type_t* base, unsigned allocRecdN )
+cw::rc_t cw::flow::recd_array_create( recd_array_t*& recd_array_ref, const recd_type_t* recd_type, const recd_type_t* base, unsigned allocRecdN )
 {
   rc_t          rc         = kOkRC;
   recd_array_t* recd_array = mem::allocZ<recd_array_t>();
@@ -1769,30 +1769,39 @@ cw::rc_t cw::flow::recd_array_create( recd_array_t*& recd_array_ref, recd_type_t
   return rc;
 }
 
-cw::rc_t cw::flow::recd_copy( const recd_type_t* recd_type, const recd_t* recdA, unsigned recdN, recd_array_t* recd_array )
+
+cw::rc_t cw::flow::recd_copy( const recd_type_t* recd_type, const recd_t* recdA, unsigned recdN, recd_array_t* dst_recd_array, unsigned dst_recd_idx )
 {
   rc_t rc = kOkRC;
-  
-  if( recd_array->allocRecdN < recdN )
+
+  // verify that there is adequate space in the destination
+  if( dst_recd_array->allocRecdN < dst_recd_idx + recdN )
   {
     rc = cwLogError(kBufTooSmallRC,"Not enough space in the destination record array.");
     goto errLabel;
   }
 
-  if( recd_type->fieldN != recd_array->type->fieldN )
+  // The src and dst records should be the same type and so their field counts should also match
+  // (this is a fast way to catch many type mismatches)
+  if( recd_type->fieldN != dst_recd_array->type->fieldN )
   {
     rc = cwLogError(kInvalidArgRC,"Field count mismatch between source and destination records..");
     goto errLabel;
   }
-  
 
+  // TODO: add an optional real type check where each field is checked - rather than just the count of fields
+
+  // for each src record to copy
   for(unsigned i=0; i<recdN; ++i)
+  {
+    // for each field in this recd
     for(unsigned j=0; j<recd_type->fieldN; ++j)
     {
-      recd_array->recdA[i].valA[j] = recdA[i].valA[j];
-      recd_array->recdA[i].base    = recdA[i].base;
+      dst_recd_array->recdA[dst_recd_idx + i].valA[j] = recdA[i].valA[j];
+      dst_recd_array->recdA[dst_recd_idx + i].base    = recdA[i].base;
     }
-
+  }
+  
 errLabel:
   if( rc!=kOkRC )
     rc = cwLogError(rc,"Record copy failed.");
