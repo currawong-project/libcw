@@ -235,7 +235,7 @@ namespace cw
           goto errLabel;
         }
 
-        if( has_field(csvH,"player") )
+        if( has_field(csvH,"player_id") )
         {
           if((rc = getv(csvH,"player_id",e->player_id)) != kOkRC )
           {
