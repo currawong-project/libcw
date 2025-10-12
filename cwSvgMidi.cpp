@@ -26,6 +26,8 @@
 #define TIME_GRID_SECS 5.0
 #define PITCH_LABEL_INTERVAL_SECS 10
 #define GRACE_FL 1
+#define SPAN_COUNT 2
+
 namespace cw
 {
   namespace svg_midi
@@ -33,7 +35,9 @@ namespace cw
 
     enum {
       kBarTypeId,
-      kSectionTypeId
+      kSectionTypeId,
+      kPlayerTypeId,
+      kPianoTypeId
     };
     
     rc_t _write_svg_rect( svg::handle_t svgH, double secs0, double secs1, double y, const char* label, unsigned color, unsigned font_size=15 )
@@ -160,6 +164,21 @@ namespace cw
 
       svg::text( svgH, e->secs*PIX_PER_SEC, y, label );
     }
+
+    void _write_span( svg::handle_t svgH, const midi_state::event_t* e, unsigned minMidiPitch, unsigned maxMidiPitch )
+    {
+      unsigned color = e->msg->u.span.typeId == kPlayerTypeId ? 0x66cdaa : 0xdaa520;
+      
+      unsigned labelCharN = 127;
+      char label[labelCharN+1];
+      snprintf(label,labelCharN,"%i",e->msg->u.span.value);
+
+      double y = (maxMidiPitch - minMidiPitch) + 1 + (e->msg->u.span.typeId==kPlayerTypeId ? 1 : 0);
+
+      _write_svg_rect( svgH, e->secs, e->msg->u.span.end_sec, y, label, color );
+      
+    }
+    
     
     void _write_svg_ch_note( svg::handle_t svgH, const midi_state::event_t* e0, unsigned minMidiPitch, unsigned maxMidiPitch )
     {
@@ -173,6 +192,11 @@ namespace cw
         if( cwIsFlag(e->flags,midi_state::kMarkerEvtFl) )
         {
           _write_marker( svgH, e, minMidiPitch, maxMidiPitch );
+        }
+
+        if( cwIsFlag(e->flags,midi_state::kSpanEvtFl) )
+        {
+          _write_span( svgH, e, minMidiPitch, maxMidiPitch );
         }
         
         if( cwIsFlag(e->flags,midi_state::kNoteOffFl) )
@@ -236,7 +260,7 @@ namespace cw
       unsigned                   color     = 0;
       const char*                label     = nullptr;
       unsigned                   midiCtlId = midi_state::pedal_index_to_midi_ctl_id(pedal_idx);
-      unsigned lineOffsY = ((maxMidiPitch - minMidiPitch) + pedalCnt) * NOTE_HEIGHT;
+      unsigned lineOffsY = SPAN_COUNT + 1 + ((maxMidiPitch - minMidiPitch) + pedalCnt) * NOTE_HEIGHT;
       unsigned lineY0 = 0;
       double   lineX0 = 0;
       
@@ -299,12 +323,12 @@ namespace cw
           else
           {
             // the pedal is now up - this is the end of a pedal sequence
-            double y = (maxMidiPitch - minMidiPitch) + 1 + pedal_idx;
+            double y = SPAN_COUNT + (maxMidiPitch - minMidiPitch) + 1 + pedal_idx;
 
             _write_svg_rect( svgH, e0->secs, e->secs, y, label, color );
 
             _write_svg_vert_line( svgH, e0->secs, color, minMidiPitch, maxMidiPitch );
-            _write_svg_vert_line( svgH, e->secs, color, minMidiPitch, maxMidiPitch );
+            _write_svg_vert_line( svgH, e->secs,  color, minMidiPitch, maxMidiPitch );
 
             e0 = nullptr;
           }
@@ -326,9 +350,14 @@ namespace cw
 
     rc_t _load_from_piano_score( midi_state::handle_t msH, const char* piano_score_fname )
     {
-      rc_t            rc = kOkRC;
+      rc_t                 rc = kOkRC;
       perf_score::handle_t scH;
-      unsigned n = 0;
+      unsigned             n  = 0;
+
+      double   player_beg_sec       = 0;
+      double   piano_beg_sec = 0;
+      unsigned cur_player_id = kInvalidId;
+      unsigned cur_piano_id  = kInvalidId;
       
       if((rc = perf_score::create( scH, piano_score_fname )) != kOkRC )
       {
@@ -378,6 +407,30 @@ namespace cw
               ++n;
             }
           }
+
+          if( cur_player_id != kInvalidId && cur_player_id != e->player_id )
+          {            
+            if((rc = setSpan(msH, player_beg_sec, e->uid, ch, kPlayerTypeId, cur_player_id, e->sec, 0 )) != kOkRC )
+            {
+              rc = cwLogError(rc,"Error setting player span marker.");
+              goto errLabel;
+            }
+            player_beg_sec = e->sec;
+          }
+
+          if( cur_piano_id != kInvalidId && cur_piano_id != e->piano_id )
+          {
+            if((rc = setSpan(msH, piano_beg_sec, e->uid, ch, kPianoTypeId, cur_piano_id, e->sec, 0 )) != kOkRC )
+            {
+              rc = cwLogError(rc,"Error setting piano span marker.");
+              goto errLabel;
+            }
+
+            piano_beg_sec = e->sec;
+          }
+
+          cur_player_id = e->player_id;
+          cur_piano_id  = e->piano_id;
         }
       }
   
@@ -500,6 +553,27 @@ cw::rc_t cw::svg_midi::setMarker(  handle_t h, double secs, unsigned uid, unsign
   if((rc = midi_state::setMarker(  p->msH, secs, uid, (uint8_t)ch, markId, markValue, userValue )) != kOkRC )
   {
     rc = cwLogError(rc,"midi_state MIDI set marker failed.");
+    goto errLabel;
+  }
+
+ errLabel:
+  return rc;
+}
+
+cw::rc_t cw::svg_midi::setSpan(  handle_t h, double beg_sec, double end_sec, unsigned uid, unsigned ch, unsigned spanId, unsigned spanValue, unsigned userValue )
+{
+  rc_t rc;
+  svg_midi_t* p = _handleToPtr(h);
+
+  if( ch >= midi::kMidiChCnt )
+  {
+    rc = cwLogError(kInvalidArgRC,"Invalid MIDI channel value: %i.",ch);
+    goto errLabel;
+  }
+  
+  if((rc = midi_state::setSpan(  p->msH, beg_sec, uid, (uint8_t)ch, spanId, spanValue, end_sec, userValue )) != kOkRC )
+  {
+    rc = cwLogError(rc,"midi_state MIDI set span failed.");
     goto errLabel;
   }
 
