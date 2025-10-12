@@ -10887,6 +10887,131 @@ namespace cw
       
       
     } // gutim_take_menu
+
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // score_player_ctl
+    //
+    namespace score_player_ctl
+    {
+      enum {
+        kInPId,
+        kCfgFNamePId,
+        kCfgPId,
+        kBegLocPId,
+        kEndLocPId,
+      };
+      
+      typedef struct
+      {
+        unsigned loc_fld_idx;
+        msg_table::inst_t* msg_tbl;
+      } inst_t;
+
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t            rc        = kOkRC;        
+        const char*     cfg_fname = nullptr;
+        const object_t* cfg       = nullptr;
+        unsigned        loc       = kInvalidIdx;
+        variable_t*     var       = nullptr;
+        rbuf_t*         rbuf      = nullptr;
+
+        msg_table::field_ref_t fieldRefA[] = {
+          { kBegLocPId, kBaseSfxId, kAnyChIdx, "beg_loc" },
+          { kEndLocPId, kBaseSfxId, kAnyChIdx, "end_loc" },
+          { kInvalidId, kBaseSfxId, kAnyChIdx, nullptr   }
+        };
+
+        // register the input audio variable
+        if((rc = var_register_and_get(proc,kAnyChIdx,
+                                      kInPId,       "in",        kBaseSfxId, rbuf,
+                                      kCfgFNamePId, "cfg_fname", kBaseSfxId, cfg_fname,
+                                      kCfgPId,      "cfg",   kBaseSfxId, cfg)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((rc = msg_table::create(proc,fieldRefA,cfg,cfg_fname,p->msg_tbl)) != kOkRC)
+        {
+          goto errLabel;
+        }
+
+
+        if((p->loc_fld_idx  = recd_type_field_index( rbuf->type, "loc")) == kInvalidIdx )
+        {
+          cwLogError(kInvalidArgRC,"The  input record does not have a 'loc' field.");
+          goto errLabel;
+        }
+        
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        msg_table::destroy(p->msg_tbl);
+
+        return rc;
+      }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t rc      = kOkRC;
+
+        const rbuf_t* rbuf = nullptr;
+        
+        if((rc = var_get(proc,kInPId,kAnyChIdx,rbuf)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        for(unsigned i=0; i<rbuf->recdN; ++i)
+        {
+          unsigned loc;
+          
+          if((rc = recd_get(rbuf->type, rbuf->recdA + i, p->loc_fld_idx, loc)) != kOkRC )
+          {
+            rc = cwLogError(rc,"Loc field read failed.");
+            goto errLabel;
+          }
+
+          if((rc = msg_table::on_row_id(p->msg_tbl, loc )) != kOkRC )
+          {
+            rc = cwLogError(rc,"Msg table dispatch failed.");
+            goto errLabel;
+          }
+          
+        }
+        errLabel:
+        
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+      
+    } // spirio_ctl_msg_table
     
   } // flow
 } // cw

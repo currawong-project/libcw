@@ -88,5 +88,6 @@ namespace cw
     namespace poly_xform_ctl  { extern class_members_t members;  }
     namespace gutim_ps_msg_table { extern class_members_t members; }
     namespace gutim_take_menu { extern class_members_t members; }
+    namespace score_player_ctl { extern class_members_t members; }
   }
 }
