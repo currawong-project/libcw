@@ -60,7 +60,8 @@ namespace cw
       kNoChangeFl      = 0x0200,  // a midi-msg arrived but did not cause a change in note or pedal state
       kPedalEvtFl      = 0x0400,  // This is a pedal event
       kNoteEvtFl       = 0x0800,  // This is a note event
-      kMarkerEvtFl     = 0x1000   // This is a marker event (bar or section)
+      kMarkerEvtFl     = 0x1000,  // This is a marker event (bar or section)
+      kSpanEvtFl       = 0x2000   // This is a span marker event.
     };
 
     typedef struct midi_msg_str
@@ -81,9 +82,20 @@ namespace cw
       uint8_t  pad[3];
     } marker_msg_t;
 
+    typedef struct span_msg_str
+    {
+      unsigned uid;
+      unsigned typeId; // span type id
+      unsigned value;  // marker value
+      double   end_sec; 
+      uint8_t  ch;
+      uint8_t  pad[3];
+    } span_msg_t;
+    
     enum {
       kMidiMsgTId,
-      kMarkerMsgTId
+      kMarkerMsgTId,
+      kSpanMsgTId,
     };
     
     typedef struct msg_str
@@ -93,6 +105,7 @@ namespace cw
       union {
         midi_msg_t   midi;
         marker_msg_t marker;
+        span_msg_t   span;
       } u;
     } msg_t;
 
@@ -143,8 +156,9 @@ namespace cw
 
     rc_t destroy( handle_t& hRef );
 
-    rc_t setMidiMsg( handle_t h, double sec, unsigned uid, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1, unsigned user_value );
+    rc_t setMidiMsg( handle_t h, double sec, unsigned uid, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1, unsigned user_value );    
     rc_t setMarker(  handle_t h, double sec, unsigned uid, uint8_t ch, unsigned typeId, unsigned value, unsigned user_value );
+    rc_t setSpan(    handle_t h, double sec, unsigned uid, uint8_t ch, unsigned typeId, unsigned value, double end_sec, unsigned user_value );
 
     void reset( handle_t h );
 
