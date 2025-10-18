@@ -1775,7 +1775,7 @@ cw::rc_t cw::flow::recd_copy( const recd_type_t* recd_type, const recd_t* recdA,
   rc_t rc = kOkRC;
 
   // verify that there is adequate space in the destination
-  if( dst_recd_array->allocRecdN < dst_recd_idx + recdN )
+  if( dst_recd_idx + recdN > dst_recd_array->allocRecdN  )
   {
     rc = cwLogError(kBufTooSmallRC,"Not enough space in the destination record array.");
     goto errLabel;

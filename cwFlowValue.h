@@ -448,7 +448,7 @@ namespace cw
     
     // Cfg: [ <label0>, <label1> ... <labelN> ]    (value is the same as the element index)
     //      or
-    //      [ (<label0>,<value0> ... (<labelN>,<valueN>) ]  
+    //      { (<label0>:<value0> ... (<labelN>:<valueN>) }
     rc_t list_create( list_t*& list_ref, const object_t* cfg );
     rc_t list_create( list_t*& list_ref, unsigned count );
 
