@@ -86,6 +86,7 @@ namespace cw
 
       event_chain_t   noteChains[  midi::kMidiChCnt * midi::kMidiNoteCnt ];
       event_chain_t   pedalChains[ midi::kMidiChCnt * kPedalCnt ];
+      
 
       event_t* first_event;
     } midi_state_t;
@@ -123,6 +124,7 @@ namespace cw
       { kPedalEvtFl, "EPd"},
       { kNoteEvtFl,  "ENt"},
       { kMarkerEvtFl,"EMk"},
+      { kSpanEvtFl,  "ESp"},
       { 0, nullptr }
     };
 
@@ -438,6 +440,19 @@ namespace cw
       m->u.marker.value  = markerValue;
       return m;
     }
+
+    msg_t* _fill_span_msg( msg_t* m, unsigned uid, uint8_t ch, unsigned spanTypeId, unsigned spanValue, double end_sec, unsigned user_value )
+    {
+      m->typeId = kSpanMsgTId;
+      m->user_value = user_value;
+        
+      m->u.span.uid     = uid;
+      m->u.span.ch      = ch;
+      m->u.span.typeId  = spanTypeId;
+      m->u.span.value   = spanValue;
+      m->u.span.end_sec = end_sec;
+      return m;
+    }
     
     msg_t* _insert_msg( midi_state_t* p)
     {
@@ -472,6 +487,17 @@ namespace cw
       msg_t* m = _insert_msg(p);
       
       _fill_marker_msg(m, uid, ch, markerTypeId, markerValue, user_value );
+      
+      p->end_msg_cache->next_idx++;
+
+      return m;
+    }
+
+    msg_t* _insert_span_msg( midi_state_t* p, unsigned uid, uint8_t ch, unsigned spanTypeId, unsigned spanValue, double end_sec, unsigned user_value )
+    {
+      msg_t* m = _insert_msg(p);
+      
+      _fill_span_msg(m, uid, ch, spanTypeId, spanValue, end_sec, user_value );
       
       p->end_msg_cache->next_idx++;
 
@@ -516,16 +542,22 @@ namespace cw
 
       if( p->cfg.cacheEnableFl )
       {
-        cwAssert( cwIsFlag( flags,kPedalEvtFl | kNoteEvtFl | kMarkerEvtFl ) );
+        cwAssert( cwIsFlag( flags,kPedalEvtFl | kNoteEvtFl | kMarkerEvtFl | kSpanEvtFl ) );
         event_t*       e  = _insert_event( p, flags, secs, m );
-        event_chain_t* ec = cwIsFlag(flags,kPedalEvtFl) ? _pedal_event_chain_from_midi_ctl_id(p,m->u.midi.ch,m->u.midi.d0) : _note_event_chain(p,m->u.midi.ch,m->u.midi.d0);
+
+        event_chain_t* ec = nullptr;
+        if( cwIsFlag(flags,kPedalEvtFl) )
+          ec = _pedal_event_chain_from_midi_ctl_id(p,m->u.midi.ch,m->u.midi.d0);
+        else
+          ec = _note_event_chain(p,m->u.midi.ch,m->u.midi.d0);
+        
 
         if( ec->begEvt == nullptr )
           ec->begEvt = e;
         else
           ec->endEvt->link = e;
         
-        ec->endEvt = e;        
+        ec->endEvt = e;
       }
       
     }
@@ -909,7 +941,7 @@ cw::rc_t cw::midi_state::setMidiMsg( handle_t h, double sec, unsigned uid, uint8
 
 cw::rc_t cw::midi_state::setMarker(  handle_t h, double sec, unsigned uid, uint8_t ch, unsigned typeId, unsigned value, unsigned user_value )
 {
- rc_t                rc = kOkRC;
+  rc_t                rc = kOkRC;
   midi_state_t*       p  = _handleToPtr(h);
   const msg_t*        m  = nullptr;
   msg_t               mr;
@@ -924,6 +956,25 @@ cw::rc_t cw::midi_state::setMarker(  handle_t h, double sec, unsigned uid, uint8
 
   return rc;
 }
+
+cw::rc_t cw::midi_state::setSpan( handle_t h, double sec, unsigned uid, uint8_t ch, unsigned typeId, unsigned value, double end_sec, unsigned user_value )
+{
+  rc_t                rc = kOkRC;
+  midi_state_t*       p  = _handleToPtr(h);
+  const msg_t*        m  = nullptr;
+  msg_t               mr;
+  
+  // convert the midi arg's into a midi_msg_t record
+  if( p->cfg.cacheEnableFl )
+    m = _insert_span_msg(p, uid, ch, typeId, value, end_sec, user_value );
+  else
+    m = _fill_span_msg(&mr, uid, ch, typeId, value, end_sec, user_value );
+
+  _onStateChange( p, kSpanEvtFl, sec, m );
+
+  return rc;
+}
+
 
 
 void cw::midi_state::reset( handle_t h )
@@ -963,6 +1014,7 @@ unsigned cw::midi_state::pedal_count( handle_t h )
 {
   return kPedalCnt;
 }
+
 
 unsigned cw::midi_state::pedal_midi_ctl_id_to_index( unsigned midi_ctl_id )
 {

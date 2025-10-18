@@ -12,8 +12,9 @@ namespace cw
     rc_t create( handle_t& hRef );
     rc_t destroy( handle_t& hRef );
 
-    rc_t setMidiMsg( handle_t h, double secs, unsigned uid, unsigned ch, unsigned status, unsigned d0,  unsigned d1, unsigned userValue );
-    rc_t setMarker(  handle_t h, double secs, unsigned uid, unsigned ch, unsigned markId, unsigned markValue, unsigned userValue );
+    rc_t setMidiMsg( handle_t h, double secs,                    unsigned uid, unsigned ch, unsigned status, unsigned d0,  unsigned d1, unsigned userValue );
+    rc_t setMarker(  handle_t h, double secs,                    unsigned uid, unsigned ch, unsigned markId, unsigned markValue, unsigned userValue );
+    rc_t setSpan(   handle_t h,  double beg_sec, double end_sec, unsigned uid, unsigned ch, unsigned markId, unsigned markValue, unsigned userValue );
     rc_t write( handle_t h, const char* fname );
 
     
