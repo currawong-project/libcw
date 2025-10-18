@@ -119,8 +119,8 @@ namespace cw
         unsigned    vid;
         unsigned    var_label_sfx_id;
         unsigned    chIdx;
-        const char* label;
-      } field_ref_t;
+        const char* label;  // Note that this is a label to match values in the cfg. record to variables, but is not
+      } field_ref_t;        // the variable label.  The variable itself is identified by the 'vid'.  
 
       typedef struct msg_value_str
       {
@@ -470,22 +470,27 @@ namespace cw
         if( id != kInvalidId )
         {
           const msg_cfg_t* cfg = p->msgCfgA + p->cur_cfg_idx;
-          
+
+          // for each row in the current cfg.
           for(unsigned i=0; i<cfg->msgRowN; ++i)
+          {
+            // if the row's id matches the incoming id 
             if( cfg->msgRowA[i].row_id == id )
             {
               const msg_row_t* r = cfg->msgRowA + i;
-              
+
+              // then set output variable listed in the 
               for(unsigned j=0; j<r->fieldN; ++j)
               {
-                //printf("loc:%i APPLYING:%i\n",id,r->fieldA[j].vid);
                 if((rc = var_set(p->proc, r->fieldA[j].vid, r->fieldA[j].chIdx, &r->fieldA[j].value)) != kOkRC )
                 {
                   rc = cwLogError(rc,"Variable set from msg table failed.");
                   goto errLabel;
                 }
               }
+              break;
             }
+          }
         }
       errLabel:
         return rc;
@@ -7298,32 +7303,133 @@ namespace cw
       
     }    
 
-#ifdef NOT_DEF    
     //------------------------------------------------------------------------------------------------------------------
     //
-    // Number
+    // label_value_list
     //
-    namespace number
+    namespace label_value_list
     {
       enum {
-        kValuePId,
-        kStorePId,
+        kCfgPId,
+        kCfgFnamePId,
+        kInPId,
+        kOutPId
       };
-
+      
       typedef struct
       {
-        bool store_fl;
+        list_t* list;
+        
       } inst_t;
+
+      rc_t _create_list_and_output_var( proc_t* proc, inst_t* p, const object_t* cfg )
+      {
+        rc_t rc;
+        variable_t* var = nullptr;
+        unsigned out_type_fl = 0;
+        
+        if((rc = list_create(p->list, cfg)) != kOkRC )
+        {
+          rc = cwLogError(rc,"List creation failed on label-value list '%s'.",cwStringNullGuard(proc->label));
+          goto errLabel;
+        }
+
+        if( p->list == nullptr || p->list->eleN==0 )
+        {
+          rc = cwLogError(rc,"The specified list is empty  on label-value list '%s'.",cwStringNullGuard(proc->label));
+          goto errLabel;
+        }
+        
+        if((out_type_fl = p->list->eleA[0].value.tflag & kTypeMask) == 0)
+        {
+          rc = cwLogError(rc,"The value type could not be inferred from the label-value list '%s'.",cwStringNullGuard(proc->label));
+          goto errLabel;
+        }
+
+        if((rc = var_create( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, out_type_fl, var )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Output variable create failed label-value list '%s'.",cwStringNullGuard(proc->label));
+          goto errLabel;
+        }
+
+        var = nullptr;
+        
+        if((rc = var_find(proc, "in", kBaseSfxId, kAnyChIdx, var )) != kOkRC )
+        {
+          rc = cwLogError(rc,"The 'in' variable could not be found on the label-value list '%s'.",cwStringNullGuard(proc->label));
+          goto errLabel;
+        }
+
+        // give the UI access to the value list
+        var->value_list = p->list;
+        
+      errLabel:
+        return rc;
+      }
+        
+
+      rc_t _load_from_file(proc_t* proc, inst_t* p, const char* fname )
+      {        
+        rc_t rc;
+        object_t* cfg = nullptr;
+        char* fn = nullptr;
+
+        if((fn = proc_expand_filename(proc,fname)) == nullptr )
+        {
+          rc = cwLogError(kOpFailRC,"The file name '%s' could not be expanded.",cwStringNullGuard(fname));
+          goto errLabel;
+        }
+          
+        if((rc = objectFromFile( fn, cfg )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Unable to parse msg table from '%s'.",cwStringNullGuard(fn));
+          goto errLabel;
+        }
+
+        if((rc = _create_list_and_output_var( proc, p, cfg)) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+      errLabel:
+        if( rc != kOkRC )
+          rc = cwLogError(rc,"The label/value cfg. parse failed on '%s'.",cwStringNullGuard(fname));
+
+        mem::release(fn);
+        
+        return rc;
+      }
 
       rc_t _create( proc_t* proc, inst_t* p )
       {
-        rc_t rc = kOkRC;
-        
-        if((rc = var_register(proc,kAnyChIdx,
-                              kValuePId,"value",kBaseSfxId,
-                              kStorePId,"store",kBaseSfxId)) != kOkRC )
+        rc_t            rc        = kOkRC;        
+        const object_t* cfg       = nullptr;
+        const char*     cfg_fname = nullptr;
+        unsigned        in_idx    = kInvalidIdx;
+
+        if((rc = var_register_and_get(proc,kAnyChIdx,
+                                      kCfgPId,      "cfg",       kBaseSfxId, cfg,
+                                      kCfgFnamePId, "cfg_fname", kBaseSfxId, cfg_fname,
+                                      kInPId,       "in",        kBaseSfxId, in_idx)) != kOkRC )
         {
           goto errLabel;
+        }
+
+        if( textLength(cfg_fname) )
+        {
+          if((rc = _load_from_file(proc,p,cfg_fname)) != kOkRC )
+            goto errLabel;
+        }
+        else
+        {
+          if( cfg == nullptr )
+          {
+            rc = cwLogError(kInvalidArgRC,"The label/value list %s has no configuration information.",cwStringNullGuard(proc->label));
+            goto errLabel;
+          }
+          
+          if((rc = _create_list_and_output_var(proc,p,cfg)) != kOkRC )
+            goto errLabel;
         }
         
       errLabel:
@@ -7331,34 +7437,27 @@ namespace cw
       }
 
       rc_t _destroy( proc_t* proc, inst_t* p )
-      { return kOkRC; }
+      {
+        rc_t rc = kOkRC;
+
+        list_destroy(p->list);
+        
+        return rc;
+      }
 
       rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
-        // skip the 'stored' value sent through prior to runtime.
-        if( var->vid == kStorePId /*&& proc->ctx->isInRuntimeFl*/)
-          p->store_fl = true;
-        
-        return kOkRC;
+        rc_t rc = kOkRC;
+        if( var->vid == kInPId )
+        {
+          var_set(proc,kOutPId,kAnyChIdx,var->value);
+        }
+        return rc;
       }
 
       rc_t _exec( proc_t* proc, inst_t* p )
       {
-        rc_t rc = kOkRC;
-
-        if( p->store_fl )
-        {
-          variable_t*  var = nullptr;
-          // Set 'value' from 'store'.
-          // Note that we set the 'value' directly from var->value so that
-          // no extra type converersion is applied. In this case the value
-          // 'store'  will be coerced to the type of 'value'
-          if((rc = var_find(proc, kStorePId, kAnyChIdx, var )) == kOkRC && var->value != nullptr && is_connected_to_source(var) )
-          {
-            rc = var_set(proc,kValuePId,kAnyChIdx,var->value);
-          }
-          p->store_fl = false;
-        }
+        rc_t rc      = kOkRC;
         
         return rc;
       }
@@ -7375,7 +7474,7 @@ namespace cw
       };
       
     }    
-#endif
+
 
     //------------------------------------------------------------------------------------------------------------------
     //
@@ -10004,10 +10103,10 @@ namespace cw
       
       typedef struct
       {
-        out_var_t* outVarA;  // outVarA[ outVarN ]
-        unsigned outVarN;        
-        unsigned sel_fld_idx;
-        recd_array_t** recd_arrayA;  // recd_arrayA[ outVarN ] - one record array per output variable        
+        out_var_t*     outVarA; // outVarA[ outVarN ]
+        unsigned       outVarN;        
+        unsigned       sel_fld_idx;
+        recd_array_t** recd_arrayA; // recd_arrayA[ outVarN ] - one record array per output variable        
       } inst_t;
 
       rc_t _alloc_recd_array( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx, const recd_type_t* base, recd_array_t*& recd_array_ref  )
@@ -10093,7 +10192,7 @@ namespace cw
                     
         }
 
-        if( sel_field_label == nullptr )
+        if( textLength(sel_field_label)==0 )
         {
           cwLogWarning("The 'sel_field' label was not given. The selection field is disabled");
           p->sel_fld_idx = kInvalidIdx;
@@ -10177,9 +10276,8 @@ namespace cw
 
           
           rc = recd_copy( i_rbuf->type, i_rbuf->recdA + i, 1, ovar->recd_array, ovar->rbuf->recdN );
-          ovar->rbuf->recdN += 1;
-                      
           
+          ovar->rbuf->recdN += 1;
         }
 
       errLabel:
@@ -10200,6 +10298,154 @@ namespace cw
       
     }    
     
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // recd_merge
+    //    
+    namespace recd_merge
+    {
+      enum
+      {
+        kOutPId,
+        kBufMsgCntPId,
+        kBaseInPId,
+      };
+      
+      typedef struct
+      {
+        unsigned           inVarN;
+        recd_array_t*  recd_array;
+      } inst_t;
+
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t        rc         = kOkRC; //
+        unsigned recdBufN = 1024;
+        const rbuf_t* rbuf = nullptr;
+        unsigned inVarN     = var_mult_count(proc,"in");
+        
+        unsigned    sfxIdA[ inVarN ];
+          
+        // get the the sfx_id's of the input variables 
+        if((rc = var_mult_sfx_id_array(proc, "in", sfxIdA, inVarN, p->inVarN )) != kOkRC )
+          goto errLabel;
+
+        std::sort(sfxIdA, sfxIdA + p->inVarN, [](unsigned& a,unsigned& b){ return a<b; } );
+                
+        // Register each input var
+        for(unsigned i=0; i<p->inVarN; ++i)
+        {
+          if((rc = var_register_and_get( proc, kAnyChIdx, kBaseInPId+i, "in", sfxIdA[i], rbuf )) != kOkRC )
+            goto errLabel;
+          
+        }
+        
+        // Get the size of the output recd array
+        if((rc = var_register_and_get( proc, kAnyChIdx, kBufMsgCntPId,"recd_buf_cnt", kBaseSfxId, recdBufN )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // create the recd_array
+        if((rc = recd_array_create( p->recd_array, rbuf->type, rbuf->type->base, recdBufN )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // register the output var
+        if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, p->recd_array->type, p->recd_array->recdA, 0  )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        recd_array_destroy(p->recd_array);
+        return kOkRC;
+      }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+
+      rc_t _non_merge_copy_out(inst_t* p, const rbuf_t** i_rbufA, unsigned i_rbufN, rbuf_t* o_rbuf )
+      {
+        rc_t rc = kOkRC;
+        unsigned n = 0;
+        
+        // for each input variable
+        for(unsigned i=0; i<i_rbufN; ++i)
+        {
+          // copy out all the records in this input to the output recd array
+          if((rc = recd_copy( i_rbufA[i]->type, i_rbufA[i]->recdA, i_rbufA[i]->recdN, p->recd_array, n )) != kOkRC )
+          {
+            rc = cwLogError(rc,"Non-merge copy failed.");
+            goto errLabel;
+          }
+
+          n += i_rbufA[i]->recdN;
+          
+        }
+
+        o_rbuf->recdN = n;
+
+      errLabel:
+        return rc;
+      }
+                               
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t     rc       = kOkRC;
+        rbuf_t*  o_rbuf = nullptr;
+        const rbuf_t* i_rbufA[ p->inVarN ];
+        unsigned      i_nA[ p->inVarN ];
+
+        // get the output buffer
+        if((rc = var_get(proc,kOutPId,kAnyChIdx,o_rbuf)) != kOkRC )
+        {
+          rc = cwLogError(kInvalidStateRC,"The recd merge instance '%s' does not have a valid output connection.",proc->label);
+          goto errLabel;
+        }
+        
+        // get the rbuf from each input 
+        for(unsigned i=0; i<p->inVarN; ++i)
+        {
+          if((rc = var_get(proc, kBaseInPId+i, kAnyChIdx, i_rbufA[i])) != kOkRC )
+            goto errLabel;
+
+        }
+
+        // do a non-merge copy of the input buffers to the output
+        if((rc = _non_merge_copy_out(p, i_rbufA, p->inVarN, o_rbuf )) != kOkRC )
+          goto errLabel;
+                
+      errLabel:
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }
 
     
     //------------------------------------------------------------------------------------------------------------------
@@ -10229,7 +10475,8 @@ namespace cw
       rc_t _create( proc_t* proc, inst_t* p )
       {
         rc_t        rc         = kOkRC; //
-        unsigned    inVarN     = var_mult_count(proc,"in");
+        
+        unsigned inVarN     = var_mult_count(proc,"in");
         
         unsigned    sfxIdA[ inVarN ];
           
@@ -10836,6 +11083,7 @@ namespace cw
           goto errLabel;
         }
 
+        // give the UI access to the value list
         var->value_list = p->msg_tbl->list;
         
 
@@ -11011,7 +11259,9 @@ namespace cw
       };
       
       
-    } // spirio_ctl_msg_table
+    } // score_player_ctl
+
+
     
   } // flow
 } // cw

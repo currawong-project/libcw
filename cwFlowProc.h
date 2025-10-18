@@ -70,6 +70,7 @@ namespace cw
     namespace poly_voice_ctl  { extern class_members_t members;  }
     namespace sample_hold     { extern class_members_t members;  }
     namespace number          { extern class_members_t members;  }
+    namespace label_value_list { extern class_members_t members;  }
     namespace string_list     { extern class_members_t members;  }
     namespace reg             { extern class_members_t members;  }
     namespace timer           { extern class_members_t members;  }
@@ -84,6 +85,7 @@ namespace cw
     namespace midi_split      { extern class_members_t members;  }
     namespace midi_file       { extern class_members_t members;  }
     namespace recd_route      { extern class_members_t members;  }
+    namespace recd_merge      { extern class_members_t members;  }
     namespace midi_merge      { extern class_members_t members;  }
     namespace poly_xform_ctl  { extern class_members_t members;  }
     namespace gutim_ps_msg_table { extern class_members_t members; }
