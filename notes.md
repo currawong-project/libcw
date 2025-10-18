@@ -941,6 +941,12 @@ resolvable without more information.
 
 ### TODO:
 
+- When a cfg variable is given a list-of-lists as an 'args' value then special processing occurs see _var_channelize()
+  this produces unexpected results when a list of lists is given to define a 'label-value list'
+  'Flow' object.  Which is better to special case the current use of list-of-list  (whatever that is?)
+  or using the unusual 'list:[]' format required by 'label-value list' object.
+  
+
 - Notice that when proc's are instantiated output record variables use
   a copy-and-pasted function called _alloc_recd_array() and then call
   var_regster_and_set() on the output variable. These two operations could be combined.
