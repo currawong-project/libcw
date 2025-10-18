@@ -67,6 +67,7 @@ namespace cw
       { "voice_detector",  &voice_detector::members },
       { "sample_hold",     &sample_hold::members },
       { "number",          &number::members },
+      { "label_value_list",&label_value_list::members },
       { "string_list",     &string_list::members },
       { "reg",             &reg::members },
       { "timer",           &timer::members },
@@ -81,6 +82,7 @@ namespace cw
       { "midi_split",      &midi_split::members },
       { "midi_file",       &midi_file::members },
       { "recd_route",      &recd_route::members },
+      { "recd_merge",      &recd_merge::members },
       { "midi_merge",      &midi_merge::members },
       { "poly_xform_ctl",  &poly_xform_ctl::members },
       { "gutim_ps_msg_table", &gutim_ps_msg_table::members },
@@ -92,6 +94,7 @@ namespace cw
       { "gutim_ps",        &gutim_ps::members },
       { "score_follower",  &score_follower::members },
       { "score_follower_2",&score_follower_2::members },
+      { "gutim_ctl",       &gutim_ctl::members },
       { nullptr, nullptr }
     };
 
