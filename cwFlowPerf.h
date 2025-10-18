@@ -8,6 +8,7 @@ namespace cw
     namespace gutim_ps         { extern class_members_t members;  }
     namespace score_follower   { extern class_members_t members;  }
     namespace score_follower_2 { extern class_members_t members;  }
+    namespace gutim_ctl        { extern class_members_t members;  }
     
   }
 }

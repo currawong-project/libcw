@@ -594,13 +594,13 @@ namespace cw
         // BUG BUG BUG - using measure instead of loc because when we use loc
         // we go to the wrong place
         
-        var_get( proc, kBMeasPId,  kAnyChIdx, bloc );
+        var_get( proc, kBLocPId,  kAnyChIdx, bloc );
 
         printf("Starting at loc:%i\n",bloc);
 
         // Rewind the current position to the begin location
         for(i=0; i<p->msgN; ++i)
-          if( p->msgA[i].meas >= bloc )
+          if( p->msgA[i].loc >= bloc )
           {
             p->sample_idx = p->msgA[i].sample_idx;
             p->msg_idx    = i;
@@ -1070,8 +1070,8 @@ namespace cw
               // and the velocity is valid
               if( i_m->d1 >= p->activeVelTbl->tblN )
               {
-              rc = cwLogError(kInvalidArgRC,"The pre-mapped velocity value %i is outside of the range (%i) of the velocity table '%s'.",i_m->d1,p->activeVelTbl->tblN,cwStringNullGuard(p->activeVelTbl->label));
-              goto errLabel;
+                rc = cwLogError(kInvalidArgRC,"The pre-mapped velocity value %i is outside of the range (%i) of the velocity table '%s'.",i_m->d1,p->activeVelTbl->tblN,cwStringNullGuard(p->activeVelTbl->label));
+                goto errLabel;
               }
               
               // map the velocity through the active table
@@ -1592,8 +1592,8 @@ namespace cw
         
         if((rc = class_preset_has_var( proc->ctx, var_cfg->cls_label, preset->cls_label, var_cfg->cls_var_label, preset_has_var_fl )) != kOkRC )
         {
-            rc = cwLogError(rc,"The class preset variable list could not be accessed for the preset '%s' from '%s:%s'.",preset->cls_label,var_cfg->cls_label,var_cfg->cls_var_label);
-            goto errLabel;          
+          rc = cwLogError(rc,"The class preset variable list could not be accessed for the preset '%s' from '%s:%s'.",preset->cls_label,var_cfg->cls_label,var_cfg->cls_var_label);
+          goto errLabel;          
         }
 
         if( preset_has_var_fl )
@@ -2178,8 +2178,8 @@ namespace cw
             }         
           }
         }
-        errLabel:
-          return rc;
+      errLabel:
+        return rc;
       }
 
       rc_t _exec_on_new_fragment( proc_t* proc, inst_t* p )
@@ -2810,7 +2810,7 @@ namespace cw
 
         p->cur_loc_id = kInvalidId;
 
-        cwLogInfo("SF reset:%i %i",beg_loc_id,end_loc_id);
+        cwLogInfo("SF (%s) reset:%i %i",proc->label, beg_loc_id,end_loc_id);
 
       errLabel:
 
@@ -2901,7 +2901,7 @@ namespace cw
               {
                 p->cur_loc_id = loc_id;
               
-                cwLogInfo("sf LOC:%i",loc_id);
+                cwLogInfo("sf (%s) LOC:%i",proc->label,loc_id);
               }
             }
           }
@@ -2929,6 +2929,515 @@ namespace cw
       
     } // score_follower_2
 
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // gutim_ctl
+    //
+    namespace gutim_ctl
+    {
+      enum {
+        kInPId,
+        kResetLocPId,
+        kSpirioRcvrPId,
+        kSfRcvrPId,
+        kCfgFnamePId,
+        kSpirioPlyrPId,
+        kSpirioBegLocPId,
+        kSpirioEndLocPId,
+        kSpirioStartFlPId,
+        kMidiEnaAPId,
+        kMidiEnaBPId,
+        kSfABegLocPId,
+        kSfAEndLocPId,
+        kSfBBegLocPId,
+        kSfBEndLocPId
+      };
+
+      typedef struct
+      {
+        unsigned id;                // unique id of this segment
+        unsigned beg_loc;           // starting location of this segment 
+        unsigned end_loc;           // ending location of this segment
+        unsigned player_id;         // id of player who plays this segment
+        char*    player_label;      // label of player who plays this segment
+        unsigned piano_id;          // piano id of piano used to play this segment
+        char*    piano_label;       // label associated with piano_id 
+        bool     defer_midi_ena_fl; // true if the MIDI enable settings should be deferred until the end of the segment
+        unsigned midi_ena_a;        // 1 if MIDI should be enabled on port A during this segment
+        unsigned midi_ena_b;        // 1 if MIDI should be enabled on port B during this segment
+      } seg_t;
+
+      
+      typedef struct
+      {
+        seg_t*   segA;
+        unsigned segN;
+        unsigned loc_fld_idx;
+        unsigned spirio_player_id;
+
+        unsigned cur_seg_idx;
+        unsigned cur_loc_id;
+      } inst_t;
+
+      rc_t _load_from_cfg( inst_t* p, const object_t* cfg, const char* spirio_player_label )
+      {
+        rc_t rc = kOkRC;
+        const object_t* cfg_list = nullptr;
+
+        // get the 'list' element from the root
+        if((rc = cfg->getv("list", cfg_list)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Unable to locate the 'list' field gutim_ctl cfg.");
+          goto errLabel;
+        }
+
+        if( !cfg_list->is_list() )
+        {
+          rc = cwLogError(rc,"Expected gutim_ctl list to be of type 'list'.");
+          goto errLabel;
+        }
+
+        p->segN  = cfg_list->child_count();
+        p->segA = mem::allocZ<seg_t>(p->segN);
+
+        // for each gutim_ctl cfg record in the cfg file
+        for(unsigned i=0; i<p->segN; ++i)
+        {
+          const object_t* list_ele;
+          if((list_ele = cfg_list->child_ele(i)) == nullptr || !list_ele->is_dict() )
+          {
+            rc = cwLogError(kSyntaxErrorRC,"The gutim_ctl cfg record index '%i' is not a valid dictionary.",i);
+            goto errLabel;
+          }
+
+          seg_t* r = p->segA + i;
+          
+          if((rc = list_ele->getv("id",r->id,
+                                  "beg_loc",r->beg_loc,
+                                  "end_loc",r->end_loc,
+                                  "player_id",r->player_id,
+                                  "player_label",r->player_label,
+                                  "piano_id",r->piano_id,
+                                  "piano_label",r->piano_label,
+                                  "defer_midi_ena_fl",r->defer_midi_ena_fl,
+                                  "enable_midi_a",r->midi_ena_a,
+                                  "enable_midi_b",r->midi_ena_b)) != kOkRC )
+          {
+            rc = cwLogError(rc,"Parsing failed on gutim_ctl cfg index '%i'.");
+            goto errLabel;
+          }
+
+          r->player_label = mem::duplStr(r->player_label);
+          r->piano_label  = mem::duplStr(r->piano_label);
+
+          // set p->spirio_player_id from the spirio_player_label argument
+          if( textIsEqual(r->player_label,spirio_player_label) )
+          {
+            if(p->spirio_player_id == kInvalidId )
+              p->spirio_player_id = r->player_id;
+            else
+            {
+              if( p->spirio_player_id != r->player_id )
+              {
+                rc = cwLogError(kInvalidStateRC,"The Spirio player_id is inconsistent in the gutim_ctl cfg. file at beg loc:%i end loc:%i.",r->beg_loc,r->end_loc);
+                goto errLabel;
+              }
+            }
+          }
+          
+        }
+
+      errLabel:
+
+        if( rc == kOkRC && p->spirio_player_id == kInvalidId )
+          rc = cwLogError(kInvalidStateRC,"The Spirio player id was not found in the gutim_ctl cfg. file.");
+        
+        return rc;
+        
+      }
+
+      rc_t _parse_cfg_file( proc_t* proc, inst_t* p, const char* fname, const char* spirio_player_label )
+      {
+        rc_t rc = kOkRC;
+        char* fn = nullptr;;
+        object_t* cfg = nullptr;
+        
+        if((fn = proc_expand_filename(proc,fname)) == nullptr )
+        {
+          rc = cwLogError(kOpFailRC,"The gutim_ctl file name '%s' could not be expanded.",cwStringNullGuard(fname));
+          goto errLabel;
+        }
+          
+        if((rc = objectFromFile( fn, cfg )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Unable to parse gutim_ctl cfg from '%s'.",cwStringNullGuard(fn));
+          goto errLabel;
+        }
+
+        if((rc = _load_from_cfg( p, cfg, spirio_player_label)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+      errLabel:
+        if( rc != kOkRC )
+          rc = cwLogError(rc,"gutim_ctl reference file parsing failed on '%s'.",cwStringNullGuard(fname));
+
+        mem::release(fn);
+
+        if( cfg != nullptr )
+          cfg->free();
+        
+        return rc;
+      }
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t          rc                = kOkRC;
+        const rbuf_t* i_rbuf            = nullptr;
+        unsigned      reset_loc         = kInvalidId;
+        const char*   cfg_fname         = nullptr;
+        const char*   spirio_plyr_label = nullptr;
+        
+        p->cur_seg_idx      = kInvalidIdx;
+        p->cur_loc_id       = kInvalidId;
+        p->spirio_player_id = kInvalidId;
+        
+        if((rc = var_register_and_get(proc, kAnyChIdx,
+                                      kInPId,       "in",                   kBaseSfxId, i_rbuf,
+                                      kCfgFnamePId, "cfg_fname",            kBaseSfxId, cfg_fname,
+                                      kSpirioPlyrPId,"spirio_player_label", kBaseSfxId, spirio_plyr_label)) != kOkRC )
+
+        {
+          goto errLabel;
+        }
+        
+        if((rc = var_register(proc, kAnyChIdx,
+                              kResetLocPId,     "reset_loc",      kBaseSfxId,
+                              kSpirioRcvrPId,   "spirio_recover_id", kBaseSfxId,
+                              kSfRcvrPId,       "sf_recover_id",  kBaseSfxId,
+                              kSpirioBegLocPId, "spirio_beg_loc", kBaseSfxId,
+                              kSpirioEndLocPId, "spirio_end_loc", kBaseSfxId,
+                              kSpirioStartFlPId,"spirio_start_fl",kBaseSfxId,
+                              kMidiEnaAPId,     "midi_ena_a",     kBaseSfxId,
+                              kMidiEnaBPId,     "midi_ena_b",     kBaseSfxId,
+                              kSfABegLocPId,    "sf_a_beg_loc",   kBaseSfxId,
+                              kSfAEndLocPId,    "sf_a_end_loc",   kBaseSfxId,
+                              kSfBBegLocPId,    "sf_b_beg_loc",   kBaseSfxId,
+                              kSfBEndLocPId,    "sf_b_end_loc",   kBaseSfxId )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((p->loc_fld_idx  = recd_type_field_index( i_rbuf->type, "loc")) == kInvalidIdx )
+        {
+          cwLogError(kInvalidArgRC,"The  input record does not have a 'loc' field.");
+          goto errLabel;
+        }
+
+        if( textLength(cfg_fname) == 0 )
+        {
+          rc = cwLogError(kInvalidArgRC,"No configuration file was provided to the gutim_ctl.");
+          goto errLabel;
+        }
+
+        if((rc = _parse_cfg_file(proc, p, cfg_fname, spirio_plyr_label )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        for(unsigned i=0; i<p->segN; ++i)
+        {
+          mem::release(p->segA[i].piano_label);
+          mem::release(p->segA[i].player_label);          
+        }
+
+        mem::release(p->segA);
+
+        return rc;
+      }
+
+      unsigned _seg_id_to_seg_idx( inst_t* p, unsigned seg_id )
+      {
+        for(unsigned i=0; i<p->segN; ++i)
+          if( p->segA[i].id == seg_id )
+            return i;
+        return kInvalidIdx;
+      }
+      
+      unsigned _loc_to_seg_idx( inst_t* p, unsigned loc )
+      {
+        for(unsigned i=0; i<p->segN; ++i)
+          if( p->segA[i].beg_loc <= loc and loc <= p->segA[i].end_loc )
+            return i;
+        return kInvalidIdx;
+      }
+
+      
+      bool _is_loc_in_seg( inst_t* p, unsigned seg_idx, unsigned loc_id )
+      {
+        
+        if( seg_idx == kInvalidIdx || seg_idx > p->segN )
+          return false;
+
+        return p->segA[ seg_idx ].beg_loc <= loc_id && loc_id <= p->segA[ seg_idx ].end_loc;
+      }
+
+
+      rc_t _on_loc( proc_t* proc, inst_t* p, unsigned loc_id, bool reset_fl )
+      {
+        rc_t rc = kOkRC;
+
+        // if the location is changing
+        if( loc_id != kInvalidId && loc_id != p->cur_loc_id )
+        {
+
+          // if the new location is not in the current segment
+          if( !_is_loc_in_seg(p,p->cur_seg_idx,loc_id) )
+          {
+            unsigned seg_idx;
+            
+            if((seg_idx = _loc_to_seg_idx(p,loc_id)) == kInvalidIdx )
+            {
+              cwLogWarning("An invalid location (%i) was received by the gutim_ctl.",loc_id);
+              goto errLabel;
+            }
+
+            // the new segment should not be the same as the previous segment
+            if( seg_idx == p->cur_seg_idx )
+            {
+              cwLogWarning("The gutim_ctl unexpectedly did not change segments.");
+            }
+
+            // if the segment recd is changing
+            if( seg_idx != p->cur_seg_idx )
+            {
+              const seg_t* r = p->segA + seg_idx;
+              
+              // and the loc matches the first loc in the segment and the segment is a spirio segment ....
+              if( r->beg_loc == loc_id && r->player_id == p->spirio_player_id  )
+              {
+                // ... then update the spirio player with the segment that it should play
+                var_set(proc,kSpirioBegLocPId,kAnyChIdx,r->beg_loc);
+                var_set(proc,kSpirioEndLocPId,kAnyChIdx,r->end_loc);
+
+                if( !reset_fl )
+                  var_set(proc,kSpirioStartFlPId,kAnyChIdx,true);
+              }
+
+              // update the score followers
+              unsigned this_sf_beg_locPId;
+              unsigned this_sf_end_locPId;
+              unsigned next_sf_beg_locPId;
+              unsigned next_sf_end_locPId;
+
+              switch( r->piano_id )
+              {
+                case 0: // this=A next=B
+                  this_sf_beg_locPId = kSfABegLocPId;
+                  this_sf_end_locPId = kSfAEndLocPId;
+                  next_sf_beg_locPId = kSfBBegLocPId;
+                  next_sf_end_locPId = kSfBEndLocPId;
+                  break;
+                  
+                case 1: // this=B next=A
+                  this_sf_beg_locPId = kSfBBegLocPId;
+                  this_sf_end_locPId = kSfBEndLocPId;
+                  next_sf_beg_locPId = kSfABegLocPId;
+                  next_sf_end_locPId = kSfAEndLocPId;
+                  break;
+
+                default:
+                  rc = cwLogError(kInvalidArgRC,"An unknown piano_id was encoutered in the gutim_ctl.");
+              }
+
+              // set the current SF to the incoming loc_id
+              var_set(proc,this_sf_beg_locPId,kAnyChIdx,loc_id);
+              var_set(proc,this_sf_end_locPId,kAnyChIdx,r->end_loc);
+              printf("GUTIM_CTL: cur segment : :%i %i \n",loc_id,r->end_loc);
+
+              // if not deferring MIDI enable then apply the MIDI enable values for this segment
+              if( !r->defer_midi_ena_fl )
+              {
+                var_set(proc,kMidiEnaAPId,kAnyChIdx,r->midi_ena_a);
+                var_set(proc,kMidiEnaBPId,kAnyChIdx,r->midi_ena_b);
+              }
+
+              // setup the next segments score follower
+              if( seg_idx + 1 < p->segN )
+              {
+                // set the next SF to beg/end of the next segment
+                var_set(proc,next_sf_beg_locPId,kAnyChIdx,p->segA[seg_idx+1].beg_loc);
+                var_set(proc,next_sf_end_locPId,kAnyChIdx,p->segA[seg_idx+1].end_loc);
+                printf("GUTIM_CTL: next segment : :%i %i \n",p->segA[seg_idx+1].beg_loc,p->segA[seg_idx+1].end_loc);
+              }              
+
+              
+              p->cur_seg_idx = seg_idx;
+            } 
+          } // if segment is changing
+          
+          p->cur_loc_id = loc_id;
+
+          // if MIDI enable was deferred to the end of the segment
+          if( p->cur_seg_idx != kInvalidIdx && p->cur_seg_idx < p->segN && p->segA[ p->cur_seg_idx ].defer_midi_ena_fl && loc_id == p->segA[ p->cur_seg_idx ].end_loc)
+          {
+            var_set(proc,kMidiEnaAPId,kAnyChIdx,p->segA[ p->cur_seg_idx ].midi_ena_a);
+            var_set(proc,kMidiEnaBPId,kAnyChIdx,p->segA[ p->cur_seg_idx ].midi_ena_b);
+            printf("GUTIM_CTL: defered MIDI enable: a:%i b:%i\n",p->segA[ p->cur_seg_idx ].midi_ena_a,p->segA[ p->cur_seg_idx ].midi_ena_b);
+          }
+          
+        } // if loc is changing
+        
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _on_spirio_recover( proc_t* proc, inst_t* p, unsigned seg_id )
+      {
+        rc_t     rc      = kOkRC;
+        unsigned seg_idx = kInvalidIdx;
+        
+        if(seg_id == kInvalidId || (seg_idx = _seg_id_to_seg_idx(p,seg_id)) == kInvalidIdx)
+        {
+          rc = cwLogError(kInvalidArgRC,"The spirio recovery id '%i' is not valid in '%s'.",seg_id,cwStringNullGuard(proc->label));
+          goto errLabel;
+        }
+
+        rc = _on_loc( proc, p, p->segA[ seg_idx ].beg_loc, false );
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _on_sf_recover( proc_t* proc, inst_t* p, unsigned seg_id )
+      {
+        rc_t     rc      = kOkRC;
+        unsigned seg_idx = kInvalidIdx;
+        unsigned cur_midi_pid = kInvalidId;
+
+        if(seg_id == kInvalidId || (seg_idx = _seg_id_to_seg_idx(p,seg_id)) == kInvalidIdx)
+        {
+          rc = cwLogError(kInvalidArgRC,"The spirio recovery id '%i' is not valid in '%s'.",seg_id,cwStringNullGuard(proc->label));
+          goto errLabel;
+        }
+
+
+        if( p->cur_seg_idx < p->segN )
+        {
+          switch( p->segA[ p->cur_seg_idx].piano_id )
+          {
+            case 0: // this=A next=B
+              cur_midi_pid = kMidiEnaAPId;
+              break;
+              
+            case 1: // this=B next=A
+              cur_midi_pid = kMidiEnaBPId;
+              break;
+              
+            default:
+              rc = cwLogError(kInvalidArgRC,"An unknown piano_id was encoutered in the gutim_ctl.");
+          }
+        }
+        
+        // setup as though we are jumping to the recovery segment
+        rc = _on_loc( proc, p, p->segA[ seg_idx ].beg_loc, true );
+
+
+        // disable MIDI on the channel currently receiving it
+        var_set(proc,cur_midi_pid,kAnyChIdx,0);
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+
+        switch( var->vid )
+        {
+          case kResetLocPId:
+            {
+              unsigned loc_id;
+              // invalidate cur_loc_id and cur_seg_idx to force all outputs to be updated
+              p->cur_loc_id = kInvalidId;
+              p->cur_seg_idx = kInvalidIdx;
+              if(var_get(var,loc_id) == kOkRC )
+                _on_loc(proc,p,loc_id,true);
+            }
+            break;
+
+          case kSpirioRcvrPId:
+            {
+              unsigned seg_id = kInvalidId;
+              if(var_get(var,seg_id) == kOkRC )
+                _on_spirio_recover(proc,p,seg_id);              
+            }
+            break;
+            
+          case kSfRcvrPId:
+            {
+              unsigned seg_id = kInvalidId;
+              if( var_get(var,seg_id) == kOkRC)
+                _on_sf_recover(proc,p,seg_id);
+            }
+            break;
+        }
+        
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t rc      = kOkRC;
+        const rbuf_t* rbuf = nullptr;
+
+        if((rc = var_get(proc,kInPId,kAnyChIdx,rbuf)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        for(unsigned i=0; i<rbuf->recdN; ++i)
+        {
+          unsigned loc_id;
+          if((rc = recd_get(rbuf->type, rbuf->recdA + i, p->loc_fld_idx, loc_id)) != kOkRC )
+          {
+            goto errLabel;
+          }
+
+          _on_loc(proc,p,loc_id,false);
+          
+        }
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    } // gutim_ctl
+    
     
   } // flow
 } //cw
