@@ -131,9 +131,12 @@ namespace cw
       {
         if(midi::isNoteOn(e->status,e->d1))
         {
-          assert( e->loc < locN );
-          e->chord_note_idx = locA[ e->loc ];
-          locA[ e->loc ] += 1;          
+          if( e->loc != kInvalidId )
+          {
+            assert( e->loc < locN );
+            e->chord_note_idx = locA[ e->loc ];
+            locA[ e->loc ] += 1;
+          }
         }
         else
         {
@@ -144,8 +147,11 @@ namespace cw
 
       // set the event_t.chord_note_cnt
       for(event_t* e=p->base; e!=nullptr; e=e->link)
-        if(midi::isNoteOn(e->status,e->d1))
+        if(midi::isNoteOn(e->status,e->d1) && e->loc != kInvalidId )
+        {
+          assert( e->loc < locN );
           e->chord_note_cnt = locA[ e->loc ];
+        }
       
       mem::free(locA);
       
