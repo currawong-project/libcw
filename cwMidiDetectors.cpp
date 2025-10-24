@@ -13,13 +13,18 @@
 #include "cwMidi.h"
 #include "cwMidiDetectors.h"
 
+#include "cwDynRefTbl.h"
+#include "cwScoreParse.h"
+#include "cwSfScore.h"
+#include "cwSfTrack.h"
+#include "cwPerfMeas.h"
+#include "cwPianoScore.h"
 
 namespace cw {
 
   namespace midi_detect {
 
     namespace piano {
-
       
       typedef struct detector_str
       {        
@@ -265,11 +270,18 @@ namespace cw {
 
       typedef struct detector_str
       {
-        event_t*  eventA;
-        unsigned  eventN;
+        event_t*  seqEventA;
+        unsigned  seqEventN;
+
+        unsigned        pno_det_id;
+        
         unsigned* order_cntA;
         unsigned  order_cntN;
         unsigned* match_order_cntA;
+
+        bool        seq_trig_fl;        // set if the sequence detector triggered
+        bool        pno_trig_fl;        // set if the pno detector triggered.
+        
       } detector_t;
 
       typedef struct seq_det_str
@@ -280,6 +292,8 @@ namespace cw {
         unsigned    pedal_thresh;
         unsigned    armed_det_idx;      // Index of currently armed (active) detector or kInvalidIdx if no detector is active
         unsigned    last_match_order;   // Last matched order of the currently active detector or kInvalidId if the currently active detector has not had it's first match.
+
+        piano::handle_t pnoDetH;
         
       } seq_det_t;
       
@@ -292,67 +306,79 @@ namespace cw {
         {
           for(unsigned i=0; i<p->detN; ++i)
           {
-            mem::release(p->detA[i].eventA);
+            mem::release(p->detA[i].seqEventA);
+            mem::release(p->detA[i].order_cntA);
+            mem::release(p->detA[i].match_order_cntA);
           }
           mem::release(p->detA);
+
+          destroy(p->pnoDetH);
+          
         }
         
         return kOkRC;
       }
 
 
-      bool _is_detector_triggered( seq_det_t* p )
+      rc_t _is_detector_triggered( seq_det_t* p, bool& trig_fl_ref )
       {
+        rc_t rc = kOkRC;
+        
+        trig_fl_ref = false;
+
+        // if the detector is not armed there is nothing to do
         if( p->armed_det_idx == kInvalidIdx )
-          return false;
+          return kOkRC;
 
         assert( p->armed_det_idx < p->detN );
+
+        // get the armed detector
+        detector_t* d = p->detA + p->armed_det_idx;
+
+        // if the sequence detector has been triggered
+        if( d->seq_trig_fl )
+        {
+          
+          // if the piano detector has already triggered or there is no piano detector 
+          if( d->pno_trig_fl || d->pno_det_id == kInvalidId )
+            d->pno_trig_fl = true;
+          else
+          {
+            // check the piano trigger
+            if((rc = is_any_state_matched( p->pnoDetH, d->pno_det_id, d->pno_trig_fl )) != kOkRC )
+            {
+              rc = cwLogError(rc,"Internal piano match state access failed.");
+              goto errLabel;
+            }
+          }
+        }
+
+        trig_fl_ref = d->pno_trig_fl;
         
-        const detector_t* d = p->detA + p->armed_det_idx;
-        
-        return p->last_match_order != kInvalidId &&
-          p->last_match_order == d->order_cntN-1 &&
-          d->match_order_cntA[ p->last_match_order ] == d->order_cntA[ p->last_match_order ];    
+      errLabel:
+        return rc;
       }
       
       void _detector_match_reset(seq_det_t* p, detector_t* d )
       {
-        for(unsigned i=0; i<d->eventN; ++i)
-          d->eventA[i].match_fl = false;
+        for(unsigned i=0; i<d->seqEventN; ++i)
+          d->seqEventA[i].match_fl = false;
         
         for(unsigned i=0; i<d->order_cntN; ++i)
           d->match_order_cntA[i] = 0;
-
+        
+        d->seq_trig_fl = false;
+        d->pno_trig_fl = false;
+          
         p->last_match_order = kInvalidId;
+        
       }
 
 
       // Return true if the ch,status,d0 and release_fl of the MIDI msg match this state
       bool _does_midi_match_state( const seq_det_t* p, const midi::ch_msg_t* m, const state_t& s )
       {
-        bool match_fl = false;
-        
-        // if the ch, status and d0 match 
-        if( s.ch == m->ch && s.status == m->status && s.d0 == m->d0 )
-        {
-          bool match_fl = false;
-          switch( m->status )
-          {
-            case midi::kNoteOnMdId:
-              match_fl = s.release_fl == (m->d1 == 0);
-              break;
-              
-            case midi::kNoteOffMdId:
-              match_fl = s.release_fl == true;
-              break;
-              
-            case midi::kCtlMdId:
-              match_fl = s.release_fl == (m->d1 < p->pedal_thresh);
-              break;
-          }
-        }
-
-        return match_fl;
+        return s.ch == m->ch && s.d0 == m->d0;
       }
 
       bool _does_order_match( const seq_det_t* p, const detector_t* d, const event_t* e )
@@ -378,23 +404,83 @@ namespace cw {
           match_fl = false;
         }
 
-        // If the last match order is the same as this match order then verify that the count has not already been satisfied for this order
-        if( p->last_match_order == s.order && d->match_order_cntA[ s.order  ] >= d->order_cntA[ s.order ] )
+        if( p->last_match_order != kInvalidId )
         {
-          match_fl = false;
-        }
+          // If the last match order is the same as this match order then verify that the count has not already been satisfied for this order
+          if( p->last_match_order == s.order && d->match_order_cntA[ s.order  ] >= d->order_cntA[ s.order ] )
+          {
+            match_fl = false;
+          }
 
-        // if the match order is advancing then verify that the previous order is complete
-        if( p->last_match_order+1 == s.order && d->match_order_cntA[ p->last_match_order  ] != d->order_cntA[ p->last_match_order ] )
-        {
-          match_fl = false;
+          // if the match order is advancing then verify that the previous order is complete
+          if( p->last_match_order+1 == s.order && d->match_order_cntA[ p->last_match_order  ] != d->order_cntA[ p->last_match_order ] )
+          {
+            match_fl = false;
+          }
         }
-
+        
         
       errLabel:
 
         return match_fl;
       }
+
+      bool _update_note_on_match_state( seq_det_t* p, detector_t* d, const midi::ch_msg_t* m )
+      {
+        bool match_fl = false;
+
+        for(unsigned j=0; j<d->seqEventN; ++j)
+        {
+          event_t*       e = d->seqEventA + j;
+          const state_t& s = e->state;
+
+          // if no seq match has been started then the first match must be order 0 or less.
+          if( p->last_match_order == kInvalidId && s.order != kInvalidId && s.order>0 )
+            break;
+
+          // if a seq match has started then the match must be made to the current order or the current order + 1
+          if( p->last_match_order != kInvalidId && s.order != kInvalidId && s.order > p->last_match_order+1 )
+            break;
+
+          // if this pattern event was not already matched
+          if(!e->match_fl)
+          {
+            // if this midi matches state[i]
+            if( !_does_midi_match_state( p, m, s ) )
+              continue;
+
+            //printf("st:%i : %i %i\n",m->d0,s.order,p->last_match_order);
+            
+            // check that the order matches
+            if( !_does_order_match( p, d, e )  )
+              continue;
+
+            //printf("od:%i : %i %i\n",m->d0,s.order,p->last_match_order);
+            
+            match_fl = true;
+
+            // if order matched and the state specifies a valid order ...
+            if( s.order != kInvalidId )
+            {
+              assert( s.order < d->order_cntN );
+              
+              // ... then advance the match state
+              e->match_fl                     = true;
+              d->match_order_cntA[ s.order ] += 1;
+              p->last_match_order             = s.order;
+
+              d->seq_trig_fl = (p->last_match_order == d->order_cntN-1) && (d->match_order_cntA[ p->last_match_order ] == d->order_cntA[ p->last_match_order ]);    
+              
+            }
+
+            printf("Match: %i : o:%i d0:%i lmo:%i : trig_fl:%i\n",m->uid, s.order, s.d0,p->last_match_order,d->seq_trig_fl);
+            break;
+          }
+        }
+
+        return match_fl;
+      }
+
 
     }
   }
@@ -414,6 +500,16 @@ cw::rc_t cw::midi_detect::seq::create( handle_t& hRef, unsigned allocDetN, unsig
   p->armed_det_idx    = kInvalidIdx;
   p->pedal_thresh     = pedal_thresh;
   p->last_match_order = kInvalidId;
+
+  if((rc = create(p->pnoDetH,1,p->pedal_thresh)) != kOkRC )
+  {
+    rc = cwLogError(rc,"The internal piano detector create failed.");
+    goto errLabel;
+  }
+
+  for(unsigned i=0; i<allocDetN; ++i)
+    p->detA[i].pno_det_id = kInvalidId;
+  
 
   hRef.set(p);
   
@@ -437,13 +533,18 @@ cw::rc_t cw::midi_detect::seq::destroy( handle_t& hRef )
   return rc;  
 }
 
-cw::rc_t cw::midi_detect::seq::setup_detector( handle_t h, const state_t* stateA, unsigned stateN, unsigned& det_id_ref )
+cw::rc_t cw::midi_detect::seq::setup_detector( handle_t       h,
+                                               const state_t* seqStateA,
+                                               unsigned       seqStateN,
+                                               const state_t* pnoStateA,
+                                               unsigned       pnoStateN,
+                                               unsigned&      det_id_ref )
 {
   rc_t        rc        = kOkRC;
   detector_t* d         = nullptr;
   seq_det_t*  p         = _handleToPtr(h);
   unsigned    max_order = 0;
-  unsigned    prv_order = kInvalidIdx;
+  unsigned    prv_order = kInvalidId;
   
   if( p->detN >= p->allocDetN )
   {
@@ -453,74 +554,84 @@ cw::rc_t cw::midi_detect::seq::setup_detector( handle_t h, const state_t* stateA
 
   d = p->detA + p->detN;
 
-  d->eventA = mem::allocZ<event_t>(stateN);
-  d->eventN = stateN;
+  d->seqEventA = mem::allocZ<event_t>(seqStateN);
+  d->seqEventN = seqStateN;
 
-  for(unsigned i=0; i<stateN; ++i)
+  // validate and store each of the seqStateA[] parameter records 
+  for(unsigned i=0; i<seqStateN; ++i)
   {
-    if( stateA[i].ch >= midi::kMidiChCnt )
+    if( seqStateA[i].ch >= midi::kMidiChCnt )
     {
-      rc = cwLogError(kInvalidArgRC,"The MIDI ch %i is not a valid MIDI channel. The MIDI channel value must be less than %i",stateA[i].ch,midi::kMidiChCnt);
+      rc = cwLogError(kInvalidArgRC,"The MIDI ch %i is not a valid MIDI channel. The MIDI channel value must be less than %i",seqStateA[i].ch,midi::kMidiChCnt);
       goto errLabel;
     }
     
-    if( stateA[i].status != midi::kNoteOnMdId && stateA[i].status != midi::kCtlMdId )
+    if( seqStateA[i].status != midi::kNoteOnMdId && seqStateA[i].status != midi::kCtlMdId )
     {
-      rc = cwLogError(kInvalidArgRC,"The MIDI status 0x%x is not a valid value. The status byte must be either 'note-on' (144) or 'ctl-ch' (176).", stateA[i].status );
+      rc = cwLogError(kInvalidArgRC,"The MIDI status 0x%x is not a valid value. The status byte must be either 'note-on' (144) or 'ctl-ch' (176).", seqStateA[i].status );
       goto errLabel;
     }
     
-    if( stateA[i].d0 >= 128 )
+    if( seqStateA[i].d0 >= 128 )
     {
-      rc = cwLogError(kInvalidArgRC,"The MIDI value %i is not a valid MIDI 'd0' value. The value must be less than 128.", stateA[i].d0 );
+      rc = cwLogError(kInvalidArgRC,"The MIDI value %i is not a valid MIDI 'd0' value. The value must be less than 128.", seqStateA[i].d0 );
       goto errLabel;
     }
 
+    // track 'max_order'
+    if( seqStateA[i].order != kInvalidId && seqStateA[i].order > max_order )
+      max_order = seqStateA[i].order;
 
-    //
-    // verify that state[].order is kInvalidId, equal to the previous valid order, or one greater than the previous valid order
-    //
 
-    if( stateA[i].order != kInvalidId )
-    {
-      // if prv_order has not been set and state order is valid then state order must be 0
-      if( prv_order == kInvalidId && stateA[i].order != 0  )
-      {
-        if( stateA[i].order != 0 )
-        {
-          rc = cwLogError(kInvalidArgRC,"The first valid state order must be 0.");
-          goto errLabel;
-        }
-      }
-      else // the prev order has been set ...
-      {
-        // ... so the state order must equal prv_order or advance prv_order by 1
-        if( stateA[i].order != prv_order && stateA[i].order != prv_order+1 )
-        {
-          rc = cwLogError(kInvalidArgRC,"The state order (%i) must be the same or one greater then the previous state order (%i).",stateA[i].order,prv_order);
-          goto errLabel;
-        }
-      }
-
-      prv_order = stateA[i].order;
-
-      if( stateA[i].order > max_order )
-        max_order = stateA[i].order;
-      
-    }
-    
-    d->eventA[i].state = stateA[i];
-    d->eventA[i].match_fl = false;
-    
+    d->seqEventA[i].state = seqStateA[i];
+    d->seqEventA[i].match_fl = false;
   }
 
-  d->order_cntA       = mem::allocZ<unsigned>( max_order );
-  d->match_order_cntA = mem::allocZ<unsigned>( max_order );
-  d->order_cntN       = max_order;
+  // sort seqEventA[] on increasing 'order' - with order==kInvalidId ordered first
+  std::sort( d->seqEventA, d->seqEventA+d->seqEventN, [](auto a, auto b){return a.state.order==kInvalidId?true:(b.state.order==kInvalidId?false:(a.state.order<b.state.order)); });
 
-  for(unsigned i=0; i<stateN; ++i)
-    if( stateA[i].order != kInvalidId )
-      d->order_cntA[ stateA[i].order ] += 1;
+  // verify that the state 'order' values are sequental, beginning with kInvalid, then 0, ...
+  for(unsigned i=0; i<d->seqEventN; ++i)
+  {
+    const auto e = d->seqEventA + i;
+    
+    if( prv_order == kInvalidId )
+    {
+      if( e->state.order != kInvalidId && e->state.order != 0 )
+      {
+        rc = cwLogError(kInvalidArgRC,"The sequence orders must be set to kInvalidId or a set of sequential integers beginning with 0.");
+        goto errLabel;
+      }
+    }
+    else
+    {
+      if( e->state.order != prv_order && e->state.order != prv_order+1 )
+      {
+        rc = cwLogError(kInvalidArgRC,"The sequence orders must be sequential and increment by 0 or 1.");
+        goto errLabel;        
+      }
+    }
+
+    prv_order = e->state.order;
+  }
+
+  // if a piano detector was defined for this detector
+  if( pnoStateA != nullptr and pnoStateN > 0 )
+  {
+    if((rc = setup_detector(p->pnoDetH,pnoStateA,pnoStateN,d->pno_det_id)) != kOkRC )
+    {
+      rc = cwLogError(rc,"The internal piano detecotr setup failed.");
+      goto errLabel;
+    }    
+  }
+    
+  d->order_cntN       = max_order + 1;
+  d->order_cntA       = mem::allocZ<unsigned>( d->order_cntN );
+  d->match_order_cntA = mem::allocZ<unsigned>( d->order_cntN );
+
+  for(unsigned i=0; i<seqStateN; ++i)
+    if( seqStateA[i].order != kInvalidId )
+      d->order_cntA[ seqStateA[i].order ] += 1;
   
   det_id_ref = p->detN;
   p->detN += 1;
@@ -529,13 +640,17 @@ errLabel:
   return rc;
 }
 
-cw::rc_t  cw::midi_detect::seq::reset( handle_t h)
+cw::rc_t  cw::midi_detect::seq::reset( handle_t h )
 {
   seq_det_t* p = _handleToPtr(h);
   p->armed_det_idx = kInvalidIdx;
   p->last_match_order = kInvalidId;
+  
+  reset(p->pnoDetH);
+  
   return kOkRC;
 }
+
 
 cw::rc_t cw::midi_detect::seq::on_midi( handle_t h, const midi::ch_msg_t* msgA, unsigned msgN )
 {
@@ -543,55 +658,37 @@ cw::rc_t cw::midi_detect::seq::on_midi( handle_t h, const midi::ch_msg_t* msgA, 
   detector_t* d  = nullptr;
   seq_det_t*  p  = _handleToPtr(h);
 
+  // pass incoming MIDI to the piano detector
+  on_midi(p->pnoDetH,msgA,msgN);
+
   if( p->armed_det_idx == kInvalidIdx )
     return kOkRC;
-  
+
+  // get the currently armed detector
   d = p->detA + p->armed_det_idx;
+
+  // if the sequence detector has already triggered there is nothing to do
+  if( d->seq_trig_fl )
+    return kOkRC;
 
   // attempt to match each incoming midi msg ..
   for(unsigned i=0; i<msgN; ++i)
   {
     const midi::ch_msg_t* m = msgA + i;
-    bool match_fl = false;
-    
-    // ... to one of the events
-    for(unsigned j=0; j<d->eventN; ++j)
-    {
-      event_t*       e = d->eventA + j;
-      const state_t& s = e->state;
 
-      // if this midi matches state[i]
-      if( _does_midi_match_state( p, m, s ) )
-      {
-        // check that the order matches
-        if( _does_order_match( p, d, e )  )
-        {
-          match_fl = true;
+    // we only handle 
+    if( !midi::isNoteOn(m->status,m->d1) )
+      continue;
 
-          // if order matched and the state specifies a valid order ...
-          if( s.order != kInvalidId )
-          {
-            assert( s.order < d->order_cntN );
-
-            // ... then advance the match state
-            e->match_fl                     = true;
-            d->match_order_cntA[ s.order ] += 1;
-            p->last_match_order             = s.order;
-
-            
-          }
-          
-        }
-      }
-    }
+    bool match_fl = _update_note_on_match_state( p, d, m );
 
     // if a match was underway but this MIDI msg did not match ... 
     if( p->last_match_order != kInvalidId && match_fl==false  )
     {
+      printf("clr\n");
       // ... then the whole match process must begin again
       _detector_match_reset(p,d);
     }
-    
   }
 
   
@@ -610,7 +707,7 @@ cw::rc_t cw::midi_detect::seq::arm_detector( handle_t h, unsigned det_id )
     goto errLabel;
   }
   
-  p->armed_det_idx    = det_id;
+  p->armed_det_idx = det_id;
 
   assert(det_id < p->detN);
   
@@ -624,13 +721,150 @@ errLabel:
 bool cw::midi_detect::seq::is_detector_triggered( handle_t h )
 {
   seq_det_t* p = _handleToPtr(h);
-  return _is_detector_triggered(p);  
+  bool trig_fl = false;
+  _is_detector_triggered(p,trig_fl);
+  return trig_fl;
 }
 
 
-cw::rc_t cw::midi_detect::seq::test( const object_t* cfg )
+cw::rc_t cw::midi_detect::test( const object_t* cfg )
 {
-  rc_t rc = kOkRC;
+  rc_t                       rc           = kOkRC;
+  unsigned                   allocDetN    = 1;
+  unsigned                   pedal_thresh = 30;
+  const char*                score_fname  = nullptr;
+  unsigned                   beg_loc      = 0;
+  unsigned                   end_loc      = 0;
+  const object_t*            seqStateL    = nullptr;
+  const object_t*            pnoStateL    = nullptr;
+  seq::handle_t              detH;
+  unsigned                   det_id       = kInvalidId;
+  perf_score::handle_t       pianoScoreH;
+  const perf_score::event_t* evt          = nullptr;
+  unsigned                   seqStateN       = 0;
+  midi_detect::state_t*      seqStateA       = nullptr;
+  unsigned                   pnoStateN       = 0;
+  midi_detect::state_t*      pnoStateA       = nullptr;
+  unsigned                   detect_cnt   = 0;
+  
+  if((rc = create( detH, allocDetN, pedal_thresh )) != kOkRC )
+  {
+    rc = cwLogError(rc,"MIDI sequence detector test create failed.");
+    goto errLabel;
+  }
+
+  if((rc = cfg->getv("score_fname",score_fname,
+                     "beg_loc",beg_loc,
+                     "end_loc",end_loc,
+                     "seq_det_stateL",seqStateL,
+                     "pno_det_stateL",pnoStateL)) != kOkRC )
+  {
+    rc = cwLogError(rc,"MIDI sequence detector test parameter record parse failed.");
+    goto errLabel;
+  }
+
+  seqStateN = seqStateL->child_count();
+  seqStateA = mem::allocZ<midi_detect::state_t>(seqStateN);
+  
+  for(unsigned i=0; i<seqStateN; ++i)
+  {
+    const object_t* evt_cfg = seqStateL->child_ele(i);
+    auto s = seqStateA + i;
+    if((rc = evt_cfg->getv("order",s->order,
+                           "ch",s->ch,
+                           "status",s->status,
+                           "d0",s->d0 )) != kOkRC )
+    {
+      rc = cwLogError(rc,"MIDI sequence detector event pattern parsing failed on event index %i.",i);
+      goto errLabel;
+    }
+
+    printf("order:%i ch:%i status:%i d0:%i rls:%i\n",s->order,s->ch,s->status,s->d0,s->release_fl);
+  }
+
+  pnoStateN = pnoStateL->child_count();
+  pnoStateA = mem::allocZ<midi_detect::state_t>(pnoStateN);
+  
+  for(unsigned i=0; i<pnoStateN; ++i)
+  {
+    const object_t* evt_cfg = pnoStateL->child_ele(i);
+    auto s = pnoStateA + i;
+    if((rc = evt_cfg->getv("ch",s->ch,
+                           "status",s->status,
+                           "d0",s->d0,
+                           "release_fl",s->release_fl)) != kOkRC )
+    {
+      rc = cwLogError(rc,"MIDI sequence detector event pattern parsing failed on event index %i.",i);
+      goto errLabel;
+    }
+
+    printf("order:%i ch:%i status:%i d0:%i rls:%i\n",s->order,s->ch,s->status,s->d0,s->release_fl);
+  }
+  
+  if((rc = setup_detector(detH,seqStateA,seqStateN,pnoStateA,pnoStateN,det_id)) != kOkRC )
+  {
+    rc = cwLogError(rc,"MIDI seq. detector setup failed failed.");
+    goto errLabel;
+  }
+
+  if((rc = create(pianoScoreH,score_fname)) != kOkRC )
+  {
+    rc = cwLogError(rc,"MIDI seq. test score create failed on '%s'.",cwStringNullGuard(score_fname));
+    goto errLabel;
+  }
+
+  if((evt = loc_to_event(pianoScoreH,beg_loc)) == nullptr )
+  {
+    rc = cwLogError(kInvalidArgRC,"The MIDI seq. test score loc: %i could not be found.",beg_loc);
+    goto errLabel;
+  }
+
+  if((rc = arm_detector(detH,det_id)) != kOkRC )
+  {
+    rc = cwLogError(kInvalidArgRC,"The MIDI seq. arm failed.");
+    goto errLabel;
+  }
+  
+  for(unsigned i=0; evt!=nullptr && evt->loc != end_loc; evt=evt->link,++i)
+  {
+    midi::ch_msg_t m = {};
+
+    m.uid    = evt->uid;
+    m.ch     = evt->status & 0x0f;
+    m.status = evt->status & 0xf0;
+    m.d0     = evt->d0;
+    m.d1     = evt->d1;
+        
+    if((rc = on_midi(detH,&m,1)) != kOkRC )
+    {
+      rc = cwLogError(kInvalidArgRC,"The MIDI seq. detector failed during MIDI event handling on event index %i.",i);
+      goto errLabel;
+    }
+
+    if( is_detector_triggered(detH) )
+    {
+      cwLogInfo("PATTERN MATCHED: %i",i);
+      reset(detH);
+      detect_cnt += 1;
+    }
+        
+  }
+
+errLabel:
+  if((rc = destroy(pianoScoreH)) != kOkRC )
+  {
+    cwLogError(rc,"Score destroy failed MIDI seq detector test.");
+  }
+  
+  if((rc = destroy(detH)) != kOkRC )
+  {
+    cwLogError(rc,"MIDI seq detector test failed.");
+  }
+
+  mem::release(seqStateA);
+  mem::release(pnoStateA);
+
+  cwLogInfo("MIDI seq detector : detect count: %i",detect_cnt);
   
   return rc;
 }
