@@ -3907,7 +3907,7 @@ namespace cw
             break;
 
           case kSequenceDetTypeId:
-            if((rc = setup_detector(p->seqDetA[ r->piano_id ],r->sdetEvtA,r->sdetEvtN,r->det_id)) != kOkRC )
+            if((rc = setup_detector(p->seqDetA[ r->piano_id ],r->sdetEvtA,r->sdetEvtN,r->pdetEvtA,r->pdetEvtN,r->det_id)) != kOkRC )
             {
               rc = cwLogError(rc,"The sequence state detector setup failed on spirio player record: '%s'.",cwStringNullGuard(r->label));
               goto errLabel;
@@ -4125,12 +4125,12 @@ namespace cw
         return rc;
       }
 
-      rc_t _parse_cfg_event_list( const object_t* cfg_evtL, recd_t* r, event_t* evtA_ref, unsigned& evtN_ref )
+      rc_t _parse_cfg_event_list( const object_t* cfg_evtL, recd_t* r, unsigned det_type_id, event_t*& evtA_ref, unsigned& evtN_ref )
       {
         rc_t rc;
 
         evtN_ref = cfg_evtL->child_count();
-        evtA_ref = mem::allocZ<event_t>(r->pdetEvtN);
+        evtA_ref = mem::allocZ<event_t>(evtN_ref);
         
           
         for(unsigned j=0; j<evtN_ref; ++j)
@@ -4140,22 +4140,32 @@ namespace cw
             
           if((rc = cfg_evt->getv("ch",evt->ch,
                                  "status",evt->status,
-                                 "d0",evt->d0,
-                                 "release_fl",evt->release_fl)) != kOkRC )
+                                 "d0",evt->d0)) != kOkRC )
           {
             rc = cwLogError(rc,"Parse failed on spirio player record '%s' on event index %i.",cwStringNullGuard(r->label),j);
               goto errLabel;
           }
           
           evt->order = kInvalidId;
-          
-          if( r->det_type_id == kSequenceDetTypeId )
+
+          switch( det_type_id )
           {
-            if((rc = cfg_evt->getv("order",evt->order)) != kOkRC )
-            {
-              rc = cwLogError(rc,"Parse failed on spirio player record '%s' on 'order' field at event index %i.",cwStringNullGuard(r->label),j);
-              goto errLabel;
-            }
+          
+            case kSequenceDetTypeId:
+              if((rc = cfg_evt->getv("order",evt->order)) != kOkRC )
+              {
+                rc = cwLogError(rc,"Parse failed on spirio player record '%s' on 'order' field at event index %i.",cwStringNullGuard(r->label),j);
+                goto errLabel;
+              };
+              break;
+
+            case kPianoStateDetTypeId:
+              if((rc = cfg_evt->getv("release_fl",evt->release_fl)) != kOkRC )
+              {
+                rc = cwLogError(rc,"Parse failed on spirio player record '%s' on 'release_tl' field at event index %i.",cwStringNullGuard(r->label),j);
+                goto errLabel;
+              };
+              break;
           }
         }
 
@@ -4251,17 +4261,21 @@ namespace cw
 
           r->label = mem::duplStr(label);
 
-          
-          if((rc = _parse_cfg_event_list( cfg_pdetEvtL, r, r->pdetEvtA, r->pdetEvtN )) != kOkRC )
+
+          // both the piano and seq detectors may have piano-state parameters
+          if((rc = _parse_cfg_event_list( cfg_pdetEvtL, r, kPianoStateDetTypeId, r->pdetEvtA, r->pdetEvtN )) != kOkRC )
           {
             goto errLabel;
           }
 
-          if((rc = _parse_cfg_event_list( cfg_sdetEvtL, r, r->sdetEvtA, r->sdetEvtN )) != kOkRC )
+          // only seq-detectors use seq parameters
+          if( r->det_type_id == kSequenceDetTypeId )
           {
-            goto errLabel;
+            if((rc = _parse_cfg_event_list( cfg_sdetEvtL, r, kSequenceDetTypeId, r->sdetEvtA, r->sdetEvtN )) != kOkRC )
+            {
+              goto errLabel;
+            }
           }
-          
         }
 
         if((rc = _create_detectors(p)) != kOkRC )
