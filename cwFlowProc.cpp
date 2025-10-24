@@ -1029,6 +1029,7 @@ namespace cw
       {
         kDevLabelPId,
         kPortLabelPId,
+        kPrintFlPId,
         kOutPId,
         kROutPId
       };
@@ -1103,7 +1104,9 @@ namespace cw
         }
 
         // BUG BUG BUG: why register "out" here when it is apparently registered again below?
-        if((rc = var_register( proc, kAnyChIdx, kOutPId, "out", kBaseSfxId)) != kOkRC )
+        if((rc = var_register( proc, kAnyChIdx,
+                               kPrintFlPId, "print_fl", kBaseSfxId,
+                               kOutPId, "out", kBaseSfxId)) != kOkRC )
         {
           goto errLabel;
         }
@@ -1193,6 +1196,9 @@ namespace cw
         inst_t* inst = (inst_t*)proc->userPtr;
         mbuf_t* mbuf = nullptr;
         rbuf_t* rbuf    = nullptr;
+        bool    print_fl = false;
+
+        var_get(proc,kPrintFlPId,kAnyChIdx,print_fl);
 
         // get the output variable
         if((rc = var_get(proc,kOutPId,kAnyChIdx,mbuf)) != kOkRC )
@@ -1222,6 +1228,15 @@ namespace cw
             mbuf->msgA = inst->buf;
           }
 
+          if( print_fl )
+          {
+            
+            for(unsigned i=0; i<mbuf->msgN; ++i)
+            {
+              const midi::ch_msg_t* m = mbuf->msgA + i;
+              cwLogInfo("%s : 0x%i %x %i %i",cwStringNullGuard(proc->label),m->ch,m->status,m->d0,m->d1);
+            }
+          }
 
           // get the output variable
           if((rc = var_get(proc,kROutPId,kAnyChIdx,rbuf)) != kOkRC )
@@ -5547,8 +5562,7 @@ namespace cw
           
           v->earlyStopFl = true;
         
-          cwLogInfo("Early stop:%i %s",m.d0,reason_msg);
-          //printf("stop:%i\n",m.d0);
+          // cwLogInfo("Early stop:%i %s",m.d0,reason_msg);
 
           _update_voice_msg( proc, p, voice_idx, &m );
 
@@ -7450,8 +7464,25 @@ namespace cw
         rc_t rc = kOkRC;
         if( var->vid == kInPId )
         {
-          var_set(proc,kOutPId,kAnyChIdx,var->value);
+          unsigned idx;
+          
+          if((rc = var_get(proc,kInPId,kAnyChIdx,idx)) != kOkRC )
+            goto errLabel;
+
+          if( idx >= p->list->eleN )
+          {
+            rc = cwLogError(kInvalidArgRC,"The label-value list index %i is out of range on the label-value list '%s'.",idx,p->list->eleN,cwStringNullGuard(proc->label));
+            goto errLabel;
+          }
+
+          if((rc = var_set(proc,kOutPId,kAnyChIdx, &p->list->eleA[ idx ].value )) != kOkRC )
+          {
+            rc = cwLogError(rc,"Variable set failed on the label-value list '%s'.",cwStringNullGuard(proc->label));
+            goto errLabel;
+          }
         }
+
+      errLabel:
         return rc;
       }
 
@@ -10194,7 +10225,7 @@ namespace cw
 
         if( textLength(sel_field_label)==0 )
         {
-          cwLogWarning("The 'sel_field' label was not given. The selection field is disabled");
+          cwLogWarning("The 'sel_field' label was not given. The selection field is disabled on '%s'.",cwStringNullGuard(proc->label));
           p->sel_fld_idx = kInvalidIdx;
         }
         else
@@ -10235,7 +10266,7 @@ namespace cw
       {
         rc_t rc      = kOkRC;
         const rbuf_t* i_rbuf = nullptr;
-        unsigned dflt_ovar_idx = -1;
+        unsigned dflt_ovar_idx = kInvalidIdx;
         
         var_get(proc,kSelectPId,kAnyChIdx,dflt_ovar_idx);
 
@@ -10247,6 +10278,9 @@ namespace cw
         // empty the output record buffers
         for(unsigned i=0; i<p->outVarN; ++i)
           p->outVarA[i].rbuf->recdN = 0;
+
+        //if( i_rbuf->recdN > 0 )
+        //  printf("%s recds:%i %i\n",proc->label,p->outVarN,i_rbuf->recdN);
 
         // for each incoming record
         for(unsigned i=0; i<i_rbuf->recdN; ++i)
@@ -10262,6 +10296,7 @@ namespace cw
           // if the output variable index is not valid then skip this record
           if( ovar_idx == kInvalidIdx )
           {
+            cwLogWarning("%s has no valid output selection value.",cwStringNullGuard(proc->label));
             continue;
           }
           
@@ -10271,6 +10306,8 @@ namespace cw
             cwLogWarning("An invalid out variable selection index (%i) was given for the out var. count %i.",ovar_idx,p->outVarN);
             continue;
           }
+
+          //printf("route: %s %i\n",proc->label,ovar_idx);
 
           ovar = p->outVarA + ovar_idx;
 
