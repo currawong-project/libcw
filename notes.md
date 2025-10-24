@@ -941,6 +941,20 @@ resolvable without more information.
 
 ### TODO:
 
+- All variables must have values after the custom instantiation phase.
+  If a variable is fed from a processor later in the connection chain via an 'out' statement
+  it is necessary to give the variable a dummy value to allow it to pass the
+  post instantiation check which verifies that all variables have a valid value.
+  This is particularly a problem for 'record' type variable which are connected
+  via 'out' statements because there is no easy way to specify a dummy record value.
+  Consider add a 'defer_value_check' attribute which will defer value
+  checking until the net is completely instantiated - or at least not bother
+  with the post proc instantiation value check.
+  See cult_caw.cfg ex_07_rt for an example where the 'reset_ctl' was moved
+  below the score followers to work around this problem.
+
+- It is possible for a caw program cfg. to have multiple programs with the same name.
+
 - When a cfg variable is given a list-of-lists as an 'args' value then special processing occurs see _var_channelize()
   this produces unexpected results when a list of lists is given to define a 'label-value list'
   'Flow' object.  Which is better to special case the current use of list-of-list  (whatever that is?)
