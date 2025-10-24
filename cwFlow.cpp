@@ -95,6 +95,8 @@ namespace cw
       { "score_follower",  &score_follower::members },
       { "score_follower_2",&score_follower_2::members },
       { "gutim_ctl",       &gutim_ctl::members },
+      { "gutim_sf_ctl",    &gutim_sf_ctl::members },
+      { "gutim_spirio_ctl",&gutim_spirio_ctl::members },
       { nullptr, nullptr }
     };
 
