@@ -293,7 +293,7 @@ namespace cw
         if( cwIsFlag(e->flags,midi_state::kDownPedalFl) )
         {
           if( e0 != nullptr && cwIsFlag(e0->flags,midi_state::kDownPedalFl) )
-            cwLogWarning("The %s pedal state cannot go down if it is already down.",label);
+            cwLogWarning("The %s pedal state cannot go down if it is already down. At sec:%f",label,e0->secs);
           else
           {
             // if the pedal went from up to full-down - then this begins a pedal sequence
@@ -305,7 +305,7 @@ namespace cw
         if( cwIsFlag(e->flags,midi_state::kHalfPedalFl) )
         {
           if( e0 != nullptr && cwIsFlag(e0->flags,midi_state::kHalfPedalFl) )
-            cwLogWarning("The %S pedal state cannot go to half down if it is already half down.",label);
+            cwLogWarning("The %S pedal state cannot go to half down if it is already half down. At sec:%f",label, e0->secs);
           else
           {
             // if the pedal went from up to half-pedal - then this begins a pedal sequence
@@ -318,7 +318,7 @@ namespace cw
         {
           if( e0 == nullptr || cwIsFlag(e0->flags,midi_state::kUpPedalFl) )
           {
-            cwLogWarning("The %s pedal state cannot come up if it was not down.",label);
+            cwLogWarning("The %s pedal state cannot come up if it was not down. At sec:%f",label, e0->secs);
           }
           else
           {
