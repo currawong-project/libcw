@@ -3868,8 +3868,10 @@ namespace cw
         unsigned max_ms;             // wait at most this long after the detector is activated to trigger the Spirio
         unsigned min_cycle_cnt;      // derived from min_ms
         unsigned max_cycle_cnt;      // derived from max_ms
-        unsigned eventN;
-        event_t* eventA;
+        unsigned pdetEvtN;
+        event_t* pdetEvtA;
+        unsigned sdetEvtN;
+        event_t* sdetEvtA;
       } recd_t;
       
       typedef struct
@@ -3890,14 +3892,14 @@ namespace cw
         
       } inst_t;
 
-      rc_t _setup_detector( inst_t* p, recd_t* r, const event_t* eventA, unsigned eventN )
+      rc_t _setup_detector( inst_t* p, recd_t* r )
       {
         rc_t rc = kOkRC;
         
         switch( r->det_type_id )
         {
           case kPianoStateDetTypeId:
-            if((rc = setup_detector(p->pnoDetA[ r->piano_id ],eventA,eventN,r->det_id)) != kOkRC )
+            if((rc = setup_detector(p->pnoDetA[ r->piano_id ],r->pdetEvtA,r->pdetEvtN,r->det_id)) != kOkRC )
             {
               rc = cwLogError(rc,"The piano state detector setup failed on spirio player record: '%s'.",cwStringNullGuard(r->label));
               goto errLabel;
@@ -3905,7 +3907,7 @@ namespace cw
             break;
 
           case kSequenceDetTypeId:
-            if((rc = setup_detector(p->seqDetA[ r->piano_id ],eventA,eventN,r->det_id)) != kOkRC )
+            if((rc = setup_detector(p->seqDetA[ r->piano_id ],r->sdetEvtA,r->sdetEvtN,r->det_id)) != kOkRC )
             {
               rc = cwLogError(rc,"The sequence state detector setup failed on spirio player record: '%s'.",cwStringNullGuard(r->label));
               goto errLabel;
@@ -3944,7 +3946,7 @@ namespace cw
         for(unsigned i=0; i<p->recdN; ++i)
         {
           recd_t* r = p->recdA + i;
-          if((rc = _setup_detector(p,r,r->eventA,r->eventN)) != kOkRC )
+          if((rc = _setup_detector(p,r)) != kOkRC )
           {
             goto errLabel;
           }
@@ -4122,7 +4124,44 @@ namespace cw
       errLabel:
         return rc;
       }
-      
+
+      rc_t _parse_cfg_event_list( const object_t* cfg_evtL, recd_t* r, event_t* evtA_ref, unsigned& evtN_ref )
+      {
+        rc_t rc;
+
+        evtN_ref = cfg_evtL->child_count();
+        evtA_ref = mem::allocZ<event_t>(r->pdetEvtN);
+        
+          
+        for(unsigned j=0; j<evtN_ref; ++j)
+        {
+          const object_t* cfg_evt = cfg_evtL->child_ele(j);
+          event_t* evt = evtA_ref + j;
+            
+          if((rc = cfg_evt->getv("ch",evt->ch,
+                                 "status",evt->status,
+                                 "d0",evt->d0,
+                                 "release_fl",evt->release_fl)) != kOkRC )
+          {
+            rc = cwLogError(rc,"Parse failed on spirio player record '%s' on event index %i.",cwStringNullGuard(r->label),j);
+              goto errLabel;
+          }
+          
+          evt->order = kInvalidId;
+          
+          if( r->det_type_id == kSequenceDetTypeId )
+          {
+            if((rc = cfg_evt->getv("order",evt->order)) != kOkRC )
+            {
+              rc = cwLogError(rc,"Parse failed on spirio player record '%s' on 'order' field at event index %i.",cwStringNullGuard(r->label),j);
+              goto errLabel;
+            }
+          }
+        }
+
+      errLabel:
+        return rc;
+      }
       
       rc_t _load_from_cfg( proc_t* proc, inst_t* p, const object_t* cfg )
       {
@@ -4154,7 +4193,8 @@ namespace cw
           const object_t* ele        = cfg_list->child_ele(i);
           recd_t*         r          = p->recdA + i;
           const char*     type_str   = nullptr;
-          const object_t* cfg_eventL = nullptr;
+          const object_t* cfg_pdetEvtL = nullptr;
+          const object_t* cfg_sdetEvtL = nullptr;
           const char*     label;
           
           if((rc = ele->getv("id",r->id,
@@ -4165,9 +4205,17 @@ namespace cw
                              "end_loc",r->end_player_loc_id,
                              "min_ms",r->min_ms,
                              "max_ms",r->max_ms,
-                             "type", type_str,
-                             "eventL", cfg_eventL )) != kOkRC )
+                             "type", type_str )) != kOkRC )
           {
+            rc = cwLogError(rc,"Error parsing detector cfg at index %i.",i);
+            goto errLabel;
+          }
+
+          if((rc = ele->getv_opt("pdetL",cfg_pdetEvtL,
+                                 "sdetL",cfg_sdetEvtL)) != kOkRC )
+          {
+            
+            rc = cwLogError(rc,"Error parsing optional fields from detector cfg at index %i.",i);
             goto errLabel;
           }
 
@@ -4200,38 +4248,19 @@ namespace cw
           r->max_cycle_cnt = (unsigned)((r->max_ms * proc->ctx->sample_rate) / (proc->ctx->framesPerCycle * 1000));
 
           assert( r->min_cycle_cnt <= r->max_cycle_cnt);
-          
-          
-          r->eventN = cfg_eventL->child_count();
-          r->eventA = mem::allocZ<event_t>(r->eventN);
-          
-          for(unsigned j=0; j<r->eventN; ++j)
-          {
-            const object_t* cfg_evt = cfg_eventL->child_ele(j);
-            event_t* evt = r->eventA + j;
-            
-            if((rc = cfg_evt->getv("ch",evt->ch,
-                                   "status",evt->status,
-                                   "d0",evt->d0,
-                                   "release_fl",evt->release_fl)) != kOkRC )
-            {
-              rc = cwLogError(rc,"Parse failed on spirio player record '%s' on event index %i.",cwStringNullGuard(label),j);
-              goto errLabel;
-            }
-
-            evt->order = kInvalidId;
-            
-            if( r->det_type_id == kSequenceDetTypeId )
-            {
-              if((rc = cfg_evt->getv("order",evt->order)) != kOkRC )
-              {
-                rc = cwLogError(rc,"Parse failed on spirio player record '%s' on 'order' field at event index %i.",cwStringNullGuard(label),j);
-                goto errLabel;
-              }
-            }
-          }
 
           r->label = mem::duplStr(label);
+
+          
+          if((rc = _parse_cfg_event_list( cfg_pdetEvtL, r, r->pdetEvtA, r->pdetEvtN )) != kOkRC )
+          {
+            goto errLabel;
+          }
+
+          if((rc = _parse_cfg_event_list( cfg_sdetEvtL, r, r->sdetEvtA, r->sdetEvtN )) != kOkRC )
+          {
+            goto errLabel;
+          }
           
         }
 
@@ -4339,7 +4368,8 @@ namespace cw
         for(unsigned i=0; i<p->recdN; ++i)
         {
           mem::release(p->recdA[i].label);
-          mem::release(p->recdA[i].eventA);
+          mem::release(p->recdA[i].pdetEvtA);
+          mem::release(p->recdA[i].sdetEvtA);
         }
 
         mem::release(p->recdA);
