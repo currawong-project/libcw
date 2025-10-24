@@ -8,7 +8,7 @@ namespace cw {
       unsigned ch;
       unsigned status;
       unsigned d0;
-      bool     release_fl;
+      bool     release_fl; // this field is ignored by sequence detector
     } state_t;
     
     namespace piano {
@@ -40,19 +40,27 @@ namespace cw {
       rc_t create( handle_t& hRef, unsigned allocDetN, unsigned pedal_thresh = 30 );
       rc_t destroy( handle_t& hRef );
 
-      rc_t setup_detector( handle_t h, const state_t* stateA, unsigned stateN, unsigned& det_id_ref );
+      // pdetStateA[] is optional if the detector should trigger on the sequence match along.
+      rc_t setup_detector( handle_t h,
+                           const state_t* stateA,     unsigned stateN,
+                           const state_t* pdetStateA, unsigned pdetStateN,
+                           unsigned& det_id_ref );
 
-      // clear the currently armed detector and enter the disarmed state
+      // Clear the currently armed detector and enter the disarmed state.
       rc_t reset( handle_t h);
 
       rc_t on_midi( handle_t h, const midi::ch_msg_t* msgA, unsigned msgN );
 
       rc_t arm_detector( handle_t h, unsigned det_id );
 
+      // is the armed detector triggered
       bool is_detector_triggered( handle_t h );
 
-      rc_t test( const object_t* cfg );
-
     };
+
+    
+    rc_t test( const object_t* cfg );
+
+
   }
 }
