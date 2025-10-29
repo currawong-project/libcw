@@ -80,6 +80,7 @@ namespace cw
       { "halt",            &halt::members },
       { "midi_msg",        &midi_msg::members },
       { "midi_split",      &midi_split::members },
+      { "make_midi",       &make_midi::members },
       { "midi_file",       &midi_file::members },
       { "recd_route",      &recd_route::members },
       { "recd_merge",      &recd_merge::members },
@@ -89,6 +90,7 @@ namespace cw
       { "gutim_take_menu", &gutim_take_menu::members },
       { "score_player_ctl",&score_player_ctl::members },
       { "score_player",    &score_player::members },
+      { "multi_player",    &multi_player::members },
       { "vel_table",       &vel_table::members },
       { "preset_select",   &preset_select::members },
       { "gutim_ps",        &gutim_ps::members },
@@ -97,6 +99,7 @@ namespace cw
       { "gutim_ctl",       &gutim_ctl::members },
       { "gutim_sf_ctl",    &gutim_sf_ctl::members },
       { "gutim_spirio_ctl",&gutim_spirio_ctl::members },
+      { "gutim_pgm_ctl",   &gutim_pgm_ctl::members },
       { nullptr, nullptr }
     };
 
