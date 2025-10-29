@@ -941,6 +941,12 @@ resolvable without more information.
 
 ### TODO:
 
+- In general any proc which generates a 'record' output should include
+  all outputs in the record, and this should be the only out.
+  If this rule is not followed - in most of these cases all non-record fields run the risk
+  of being overwritten in a single cycle if the output value changes
+  multiple times in a cycle cycle.
+
 - All variables must have values after the custom instantiation phase.
   If a variable is fed from a processor later in the connection chain via an 'out' statement
   it is necessary to give the variable a dummy value to allow it to pass the
