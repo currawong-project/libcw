@@ -83,6 +83,7 @@ namespace cw
     namespace halt            { extern class_members_t members;  }
     namespace midi_msg        { extern class_members_t members;  }
     namespace midi_split      { extern class_members_t members;  }
+    namespace make_midi       { extern class_members_t members;  }
     namespace midi_file       { extern class_members_t members;  }
     namespace recd_route      { extern class_members_t members;  }
     namespace recd_merge      { extern class_members_t members;  }

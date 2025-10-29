@@ -106,7 +106,7 @@ namespace cw
         .report  = std_report<inst_t>
       };
       
-    }    
+    }    // template_proc
 
     //------------------------------------------------------------------------------------------------------------------
     //
@@ -1163,6 +1163,8 @@ namespace cw
         inst_t* inst = (inst_t*)proc->userPtr;
         mem::release(inst->buf);
 
+        recd_array_destroy(inst->recd_array);
+        
         mem::release(inst);
         
         return rc;
@@ -1221,9 +1223,12 @@ namespace cw
             const midi::ch_msg_t* m = inst->ext_dev->u.m.msgArray;
             unsigned j = 0;
             for(unsigned i=0; i<inst->ext_dev->u.m.msgCnt && j<inst->bufN; ++i)
+            {
+              //printf("%s : dev:%i %i : port:%i %i\n",proc->label,m->devIdx,inst->ext_dev->ioDevIdx, m->portIdx,inst->ext_dev->ioPortIdx);
+              
               if( m->devIdx == inst->ext_dev->ioDevIdx && (!inst->port_filt_fl || m->portIdx == inst->ext_dev->ioPortIdx) )
                 inst->buf[j++] = m[i];
-
+            }
             mbuf->msgN = j;
             mbuf->msgA = inst->buf;
           }
@@ -6702,7 +6707,7 @@ namespace cw
               p->above_fl = false;
             }
             
-            printf("vd-ena:%i %i\n",proc->label_sfx_id,p->enable_fl);
+            //printf("vd-ena:%i %i\n",proc->label_sfx_id,p->enable_fl);
             break;
             
           case kRlsThreshPId:
@@ -6734,7 +6739,7 @@ namespace cw
         
         if( p->enable_fl && p->delta_cnt >= 3 )
         {
-          printf("vd:%i off\n",proc->label_sfx_id);
+          //printf("vd:%i off\n",proc->label_sfx_id);
           p->done_fl = true;
           var_set(proc,kDoneFlPId,kAnyChIdx,true);
         }
@@ -7326,6 +7331,7 @@ namespace cw
       enum {
         kCfgPId,
         kCfgFnamePId,
+        kOutTypePId,
         kInPId,
         kOutPId
       };
@@ -7336,7 +7342,7 @@ namespace cw
         
       } inst_t;
 
-      rc_t _create_list_and_output_var( proc_t* proc, inst_t* p, const object_t* cfg )
+      rc_t _create_list_and_output_var( proc_t* proc, inst_t* p, const char* out_type_label, const object_t* cfg )
       {
         rc_t rc;
         variable_t* var = nullptr;
@@ -7353,11 +7359,23 @@ namespace cw
           rc = cwLogError(rc,"The specified list is empty  on label-value list '%s'.",cwStringNullGuard(proc->label));
           goto errLabel;
         }
-        
-        if((out_type_fl = p->list->eleA[0].value.tflag & kTypeMask) == 0)
+
+
+        if( out_type_label == nullptr )
         {
-          rc = cwLogError(rc,"The value type could not be inferred from the label-value list '%s'.",cwStringNullGuard(proc->label));
-          goto errLabel;
+          if((out_type_fl = p->list->eleA[0].value.tflag & kTypeMask) == 0)
+          {
+            rc = cwLogError(rc,"The value type could not be inferred from the label-value list '%s'.",cwStringNullGuard(proc->label));
+            goto errLabel;
+          }
+        }
+        else
+        {
+          if((out_type_fl = value_type_label_to_flag(out_type_label)) == kInvalidTFl )
+          {
+            rc = cwLogError(rc,"The type label '%s' does not identify a valid type.",cwStringNullGuard(out_type_label));;
+            goto errLabel;          
+          }
         }
 
         if((rc = var_create( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, out_type_fl, var )) != kOkRC )
@@ -7382,7 +7400,7 @@ namespace cw
       }
         
 
-      rc_t _load_from_file(proc_t* proc, inst_t* p, const char* fname )
+      rc_t _load_from_file(proc_t* proc, inst_t* p, const char* out_type_label, const char* fname )
       {        
         rc_t rc;
         object_t* cfg = nullptr;
@@ -7400,7 +7418,7 @@ namespace cw
           goto errLabel;
         }
 
-        if((rc = _create_list_and_output_var( proc, p, cfg)) != kOkRC )
+        if((rc = _create_list_and_output_var( proc, p, out_type_label, cfg)) != kOkRC )
         {
           goto errLabel;
         }
@@ -7416,22 +7434,27 @@ namespace cw
 
       rc_t _create( proc_t* proc, inst_t* p )
       {
-        rc_t            rc        = kOkRC;        
-        const object_t* cfg       = nullptr;
-        const char*     cfg_fname = nullptr;
-        unsigned        in_idx    = kInvalidIdx;
+        rc_t            rc             = kOkRC;        
+        const object_t* cfg            = nullptr;
+        const char*     cfg_fname      = nullptr;
+        unsigned        in_idx         = kInvalidIdx;
+        const char*     out_type_label = nullptr;
 
         if((rc = var_register_and_get(proc,kAnyChIdx,
                                       kCfgPId,      "cfg",       kBaseSfxId, cfg,
                                       kCfgFnamePId, "cfg_fname", kBaseSfxId, cfg_fname,
+                                      kOutTypePId,  "out_type",  kBaseSfxId, out_type_label,
                                       kInPId,       "in",        kBaseSfxId, in_idx)) != kOkRC )
         {
           goto errLabel;
         }
-
+        
+        if( textLength(out_type_label) == 0 )
+          out_type_label = nullptr;
+        
         if( textLength(cfg_fname) )
         {
-          if((rc = _load_from_file(proc,p,cfg_fname)) != kOkRC )
+          if((rc = _load_from_file(proc,p,out_type_label,cfg_fname)) != kOkRC )
             goto errLabel;
         }
         else
@@ -7441,8 +7464,9 @@ namespace cw
             rc = cwLogError(kInvalidArgRC,"The label/value list %s has no configuration information.",cwStringNullGuard(proc->label));
             goto errLabel;
           }
+
           
-          if((rc = _create_list_and_output_var(proc,p,cfg)) != kOkRC )
+          if((rc = _create_list_and_output_var(proc,p,out_type_label,cfg)) != kOkRC )
             goto errLabel;
         }
         
@@ -9195,16 +9219,20 @@ namespace cw
     namespace on_start
     {
       enum {
+        kCycleIdxPId,
         kOutPId
       };
       
       typedef struct
       {
+        unsigned cycle_idx;
       } inst_t;
 
 
       rc_t _create( proc_t* proc, inst_t* p )
       {
+        var_register_and_get(proc,kAnyChIdx,kCycleIdxPId,"cycle_idx",kBaseSfxId,p->cycle_idx);
+        
         return var_register(proc,kAnyChIdx,kOutPId,"out",kBaseSfxId);
       }
 
@@ -9220,7 +9248,7 @@ namespace cw
 
       rc_t _exec( proc_t* proc, inst_t* p )
       {
-        if( proc->ctx->cycleIndex == 0)
+        if( proc->ctx->cycleIndex == p->cycle_idx)
           var_set(proc,kOutPId,kAnyChIdx,true);
         
         return kOkRC;
@@ -9468,6 +9496,215 @@ namespace cw
       
     }    
 
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // make_midi
+    //
+    namespace make_midi
+    {
+      enum {
+        kChPId,
+        kStatusPId,
+        kD0PId,
+        kD1PId,
+        kMakeFlPId,
+        kOutPId,
+        kROutPId
+      };
+      typedef struct
+      {
+        
+        recd_array_t*   recd_array;
+        unsigned        midi_fld_idx;
+        midi::ch_msg_t  ch_msg;
+        bool trig_fl;
+      } inst_t;
+
+      rc_t _alloc_recd_array( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx, const recd_type_t* base, recd_array_t*& recd_array_ref  )
+      {
+        rc_t        rc  = kOkRC;
+        variable_t* var = nullptr;
+        
+        // find the record variable
+        if((rc = var_find( proc, var_label, sfx_id, chIdx, var )) != kOkRC )
+        {
+          rc = cwLogError(rc,"The record variable '%s:%i' could was not found.",cwStringNullGuard(var_label),sfx_id);
+          goto errLabel;
+        }
+
+        // verify that the variable has a record format
+        if( !var_has_recd_format(var) )
+        {
+          rc = cwLogError(kInvalidArgRC,"The variable does not have a valid record format.");
+          goto errLabel;
+        }
+        else
+        {
+          recd_fmt_t* recd_fmt = var->varDesc->fmt.recd_fmt;
+
+          // create the recd_array
+          if((rc = recd_array_create( recd_array_ref, recd_fmt->recd_type, base, recd_fmt->alloc_cnt )) != kOkRC )
+          {
+            goto errLabel;
+          }
+
+          
+        }
+        
+      errLabel:
+        if( rc != kOkRC )
+          rc = cwLogError(rc,"Record array create failed on the variable '%s:%i ch:%i.",cwStringNullGuard(var_label),sfx_id,chIdx);
+        
+        return rc;
+        
+      }
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t    rc   = kOkRC;
+
+        unsigned      ch     = 0;
+        unsigned      status = 0;
+        unsigned      d0     = 0;
+        unsigned      d1     = 0;
+        bool          make_fl = false;
+
+        if((rc = var_register_and_get(proc,kAnyChIdx,
+                                      kChPId,     "ch",      kBaseSfxId, ch,
+                                      kStatusPId, "status",  kBaseSfxId, status,
+                                      kD0PId,     "byte_a",  kBaseSfxId, d0,
+                                      kD1PId,     "byte_b",  kBaseSfxId, d1,
+                                      kMakeFlPId, "make_fl", kBaseSfxId, make_fl)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        
+
+        
+        // allocate the output recd array
+        if((rc = _alloc_recd_array( proc, "r_out", kBaseSfxId, kAnyChIdx, nullptr, p->recd_array  )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        
+        // create one output record buffer
+        rc = var_register_and_set( proc, "r_out", kBaseSfxId, kROutPId, kAnyChIdx, p->recd_array->type, nullptr, 0  );
+
+
+        
+        // create one output MIDI buffer
+        rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, 0  );
+
+
+        p->midi_fld_idx = recd_type_field_index( p->recd_array->type, "midi");
+
+        memset(&p->ch_msg,0,sizeof(p->ch_msg));
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        recd_array_destroy(p->recd_array);
+        return rc;
+      }
+
+      rc_t _gen_msg( proc_t* proc, inst_t* p, rbuf_t* rbuf, mbuf_t* mbuf )
+      {
+        rc_t     rc     = kOkRC;
+        unsigned ch     = 0;
+        unsigned status = 0;
+        unsigned d0     = 0;
+        unsigned d1     = 0;
+        
+        var_get(proc, kChPId,    kAnyChIdx, ch);
+        var_get(proc, kStatusPId,kAnyChIdx, status);
+        var_get(proc, kD0PId,    kAnyChIdx, d0);
+        var_get(proc, kD1PId,    kAnyChIdx, d1);
+
+        p->ch_msg.ch =     (uint8_t)(ch < midi::kMidiChCnt ? ch : 0);
+        p->ch_msg.status = (uint8_t)status;
+        p->ch_msg.d0 =     (uint8_t)( d0 < 128 ? d0 : 0);
+        p->ch_msg.d1 =     (uint8_t)( d1 < 128 ? d1 : 0);
+        
+        if( mbuf != nullptr )
+        {
+          mbuf->msgA = &p->ch_msg;
+          mbuf->msgN = 1;
+        }
+
+        if( p->recd_array->allocRecdN > 0 )
+        {
+          recd_set( rbuf->type, nullptr, p->recd_array->recdA, p->midi_fld_idx, &p->ch_msg );
+          rbuf->recdA = p->recd_array->recdA;
+          rbuf->recdN = 1;
+        }
+        
+        return rc;
+      }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+
+        if( proc->ctx->isInRuntimeFl )
+        {
+          switch( var->vid )
+          {
+            case kMakeFlPId:
+              p->trig_fl = true;
+              break;
+          }
+        }
+        
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t rc      = kOkRC;
+        mbuf_t* mbuf = nullptr;
+        rbuf_t* rbuf = nullptr;
+
+        var_get(proc, kOutPId,   kAnyChIdx, mbuf);
+        var_get(proc, kROutPId,  kAnyChIdx, rbuf);
+        
+        mbuf->msgN = 0;
+        mbuf->msgA = nullptr;
+        rbuf->recdN = 0;
+        rbuf->recdA = nullptr;
+
+        
+        if( p->trig_fl )
+        {
+          p->trig_fl = false;
+          
+          
+          _gen_msg( proc, p, rbuf, mbuf );
+
+        }
+        
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    // make_midi
+    
     //------------------------------------------------------------------------------------------------------------------
     //
     // midi_split
@@ -10435,7 +10672,7 @@ namespace cw
         }
 
         o_rbuf->recdN = n;
-
+        
       errLabel:
         return rc;
       }
