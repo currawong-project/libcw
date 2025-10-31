@@ -81,16 +81,18 @@ namespace cw
     namespace print           { extern class_members_t members;  }
     namespace on_start        { extern class_members_t members;  }
     namespace halt            { extern class_members_t members;  }
-    namespace midi_msg        { extern class_members_t members;  }
-    namespace midi_split      { extern class_members_t members;  }
+    namespace midi_msg        { extern class_members_t members;  }    
     namespace make_midi       { extern class_members_t members;  }
+    namespace midi_select     { extern class_members_t members;  }
+    namespace midi_split      { extern class_members_t members;  }
     namespace midi_file       { extern class_members_t members;  }
     namespace recd_route      { extern class_members_t members;  }
     namespace recd_merge      { extern class_members_t members;  }
     namespace midi_merge      { extern class_members_t members;  }
     namespace poly_xform_ctl  { extern class_members_t members;  }
     namespace gutim_ps_msg_table { extern class_members_t members; }
-    namespace gutim_take_menu { extern class_members_t members; }
+    namespace gutim_take_menu  { extern class_members_t members; }
     namespace score_player_ctl { extern class_members_t members; }
+    namespace midi_recorder    { extern class_members_t members; }
   }
 }
