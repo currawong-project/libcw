@@ -912,7 +912,7 @@ cw::rc_t cw::score_follow_2::reset( handle_t h, unsigned beg_loc_id, unsigned en
 
   _trkr_reset(p->trk,beg_loc_id);
 
-  cwLogInfo("SF2 reset: %i %i",beg_loc_id,end_loc_id);
+  //cwLogInfo("SF2 reset: %i %i",beg_loc_id,end_loc_id);
 
 errLabel:
   
