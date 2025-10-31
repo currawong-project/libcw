@@ -764,6 +764,7 @@ namespace cw
         kStartPlyrSegIdPId,
         kStartPId,
         kPlayPlyrIdPId,
+        kClearPId,
         kResetPId,
         kPlayNowPlyrIdPId,
         kDonePlyrIdPId,
@@ -809,8 +810,6 @@ namespace cw
         unsigned      playerN;
         player_t*     playerA;
         
-        unsigned      start_plyr_idx; // This is the player to start when a 'start' cmd arrives or kInvalidIdx if no 'start player' has been selected.
-        unsigned      global_smp_idx; // Global current sample idx - incremented on each call to _exec()
 
         midi::ch_msg_t* noteOffM;  // noteOffMtx[ kMidiChCnt * kMidiNoteCnt ] - all possible note off messages
         midi::ch_msg_t* ctlOffM;   // ctlOffMtx[  kMidiChCnt * kMidiCtlCnt ]  - all possible ctl = 0 messages
@@ -820,9 +819,11 @@ namespace cw
         unsigned meas_fld_idx;
         unsigned port_fld_idx;
 
-        bool start_trig_fl;
-        bool reset_trig_fl;
-        unsigned play_excl_id;
+        unsigned global_smp_idx; // Global current sample idx - incremented on each call to _exec()
+        bool     start_trig_fl;
+        bool     clear_trig_fl;
+        bool     reset_trig_fl;        
+        unsigned play_excl_trig_fl;
         
       } inst_t;
 
@@ -866,13 +867,11 @@ namespace cw
         rc_t rc = kOkRC;
         unsigned meas = 0;
         
-        p->playerN = cfg->child_count();
-        p->playerA = mem::allocZ<player_t>(p->playerN);
-        p->start_plyr_idx = kInvalidIdx;
-        p->play_excl_id = kInvalidIdx;
+        p->playerN        = cfg->child_count();
+        p->playerA        = mem::allocZ<player_t>(p->playerN);
         p->global_smp_idx = 0;
-        p->noteOffM    = mem::allocZ<midi::ch_msg_t>(midi::kMidiChCnt*midi::kMidiNoteCnt);
-        p->ctlOffM     = mem::allocZ<midi::ch_msg_t>(midi::kMidiChCnt*midi::kMidiCtlCnt);
+        p->noteOffM       = mem::allocZ<midi::ch_msg_t>(midi::kMidiChCnt*midi::kMidiNoteCnt);
+        p->ctlOffM        = mem::allocZ<midi::ch_msg_t>(midi::kMidiChCnt*midi::kMidiCtlCnt);
 
         // fill in the note-off and ctl-off message matrices
         for(unsigned ch_idx=0; ch_idx<midi::kMidiChCnt; ++ch_idx)
@@ -974,11 +973,15 @@ namespace cw
                     m->sec         = sec;
                     m->sample_idx  = (unsigned)(proc->ctx->sample_rate * sec);
                     m->meas        = meas;
-                    m->loc         = kInvalidId;
+                    m->loc         = kInvalidId;                    
+                    m->midi.portIdx= plyr->port_id;
                     m->midi.ch     = ch;
                     m->midi.status = status;
                     m->midi.d0     = d0;
                     m->midi.d1     = d1;
+
+                    time::fracSecondsToSpec(m->midi.timeStamp, sec );
+
 
                     plyr->msgN += 1;
                   }
@@ -1073,6 +1076,7 @@ namespace cw
         bool        start_fl          = false;
         unsigned    play_plyr_id      = kInvalidId;
         bool        reset_fl          = false;
+        bool        clear_fl          = false;
         unsigned    play_excl_plyr_id = kInvalidId;
         unsigned    done_plyr_id      = kInvalidId;
 
@@ -1082,6 +1086,7 @@ namespace cw
                                       kStartPlyrSegIdPId,"start_seg_id",kBaseSfxId, start_plyr_seg_id,
                                       kStartPId,         "start",       kBaseSfxId, start_fl,
                                       kPlayPlyrIdPId,    "play_id",     kBaseSfxId, play_plyr_id,
+                                      kClearPId,         "clear",       kBaseSfxId, clear_fl,
                                       kResetPId,         "reset",       kBaseSfxId, reset_fl,
                                       kPlayNowPlyrIdPId, "play_excl_id",kBaseSfxId, play_excl_plyr_id,
                                       kDonePlyrIdPId,    "done_id",     kBaseSfxId, done_plyr_id)) != kOkRC )
@@ -1252,7 +1257,27 @@ namespace cw
         return rc;
       }
 
-      rc_t _send_all_off( inst_t* p, rbuf_t* rbuf )
+      rc_t _do_clear( inst_t* p, rbuf_t* rbuf )
+      {
+        rc_t rc = kOkRC;
+        
+        // clear the key and control matrices of all players
+        for(unsigned i=0; i<p->playerN; ++i)
+        {
+          _send_clear_player(p, p->playerA + i, rbuf );
+          
+          vop::zero(p->playerA[i].keyM,kNoteCnt);
+          vop::zero(p->playerA[i].ctlM,kCtlCnt);
+
+          // mark this player as stopped
+          p->playerA[i].next_msg_idx  = kInvalidIdx;  
+          p->playerA[i].start_smp_idx = kInvalidIdx;
+        }
+
+        return rc;
+      }
+      
+      rc_t _do_reset( inst_t* p, rbuf_t* rbuf )
       {
         rc_t rc = kOkRC;
         unsigned ch = 0;
@@ -1271,18 +1296,13 @@ namespace cw
         // Note: we only send for all-notes-off for the first player - this should be enough.
         _set_output_record(p,p->playerA,rbuf,p->noteOffM + idx,kInvalidId,p->playerA->port_id,kInvalidId);
 
-        // clear the key and control matrices of all players
-        for(unsigned i=0; i<p->playerN; ++i)
-        {
-          _send_clear_player(p, p->playerA + i, rbuf );
-          
-          vop::zero(p->playerA[i].keyM,kNoteCnt);
-          vop::zero(p->playerA[i].ctlM,kCtlCnt);
-
-          // mark this player as stopped
-          p->playerA[i].next_msg_idx  = kInvalidIdx;  
-          p->playerA[i].start_smp_idx = kInvalidIdx;
-        }
+        p->global_smp_idx = 0;
+        p->start_trig_fl = false;
+        p->clear_trig_fl = false;
+        p->reset_trig_fl = false;
+        p->play_excl_trig_fl = false;
+        
+        rc = _do_clear(p,rbuf);
 
         return rc;
       }      
@@ -1349,7 +1369,7 @@ namespace cw
             
             case kStartPId:  // start the start-player id
               p->start_trig_fl = true;
-              cwLogInfo("%s : start:%i\n",cwStringNullGuard(proc->label),p->start_plyr_idx);            
+              cwLogInfo("%s : start",cwStringNullGuard(proc->label));            
               break;
             
             case kPlayPlyrIdPId:  // start the requested player
@@ -1357,18 +1377,23 @@ namespace cw
                 unsigned plyr_id  = kInvalidId;
                 if(var_get(var,plyr_id) == kOkRC )
                   _start_player( p, _player_id_to_index(p,plyr_id) );
-                cwLogInfo("%s : play id:%i\n",cwStringNullGuard(proc->label),p->start_plyr_idx);
+                cwLogInfo("%s : play id:%i",cwStringNullGuard(proc->label),plyr_id);
               }            
               break;
-            
+
+            case kClearPId:
+              p->clear_trig_fl = true;
+              cwLogInfo("%s : clear",cwStringNullGuard(proc->label));              
+              break;
+              
             case kResetPId:
               p->reset_trig_fl = true;
-              cwLogInfo("%s : reset:%i\n",cwStringNullGuard(proc->label),p->start_plyr_idx);
+              cwLogInfo("%s : reset",cwStringNullGuard(proc->label));
               break;
             
             case kPlayNowPlyrIdPId:
-              var_get(var,p->play_excl_id);
-              cwLogInfo("%s : play_excl:%i %i %i\n",cwStringNullGuard(proc->label),p->start_plyr_idx);
+              p->play_excl_trig_fl = true;
+              cwLogInfo("%s : play_excl",cwStringNullGuard(proc->label));
               break;
           }
         }
@@ -1393,19 +1418,41 @@ namespace cw
         
         p->global_smp_idx += proc->ctx->framesPerCycle;
 
+        // do play-excl first because an early call to _do_reset() will set play_excl_trig_fl to false
+        if( p->play_excl_trig_fl  )
+        {
+          unsigned play_excl_id = kInvalidId;
+          
+          if( var_get(proc,kPlayNowPlyrIdPId,kAnyChIdx,play_excl_id) == kOkRC )
+          {
+          
+            _do_reset(p, rbuf );
+
+            if( play_excl_id != kInvalidId )
+              _start_player(p, _player_id_to_index(p,play_excl_id));
+          }
+          
+          p->play_excl_trig_fl = false;
+        }
+        
+        if( p->clear_trig_fl )
+        {
+          _do_clear(p,rbuf);
+          p->clear_trig_fl = false;
+        }
+        
         if( p->reset_trig_fl )
-          _send_all_off(p,rbuf );
+        {
+          _do_reset(p,rbuf );
+          p->reset_trig_fl = false;
+        }
         
         if( p->start_trig_fl)
+        {
           _on_start_trigger(proc,p);
-
-        if( p->play_excl_id != kInvalidId )
-        {          
-          _send_all_off(p, rbuf );
-          _start_player(p, _player_id_to_index(p,p->play_excl_id));
-          p->play_excl_id = kInvalidId;
+          p->start_trig_fl = false;
         }
-
+        
         for(unsigned i=0; i<p->playerN; ++i)
         {
           player_t* plyr           = p->playerA + i;
@@ -1441,9 +1488,6 @@ namespace cw
 
       errLabel:
 
-        p->start_trig_fl = false;
-        p->reset_trig_fl = false;
-        p->play_excl_id = kInvalidId;
         
         return rc;
       }
@@ -3479,9 +3523,9 @@ namespace cw
         
         p->i_midi_field_idx = recd_type_field_index( in_rbuf->type, "midi");
         p->o_midi_field_idx = recd_type_field_index( p->recd_array->type, "midi");
-        p->loc_field_idx = recd_type_field_index( p->recd_array->type, "loc");
-        p->meas_field_idx = recd_type_field_index(p->recd_array->type, "meas");
-        p->vel_field_idx = recd_type_field_index( p->recd_array->type, "score_vel");
+        p->loc_field_idx    = recd_type_field_index( p->recd_array->type, "loc");
+        p->meas_field_idx   = recd_type_field_index(p->recd_array->type, "meas");
+        p->vel_field_idx    = recd_type_field_index( p->recd_array->type, "score_vel");
 
       errLabel:
         mem::release(score_fname);
@@ -3583,10 +3627,6 @@ namespace cw
         const rbuf_t* i_rbuf          = nullptr;
         rbuf_t*       o_rbuf          = nullptr;
 
-        // if the score follower is disabled - there is nothing to do
-        if( !p->enable_fl )
-          goto errLabel;
-
         if((rc = var_get(proc,kInPId,kAnyChIdx,i_rbuf)) != kOkRC )
           goto errLabel;
 
@@ -3595,47 +3635,55 @@ namespace cw
 
         o_rbuf->recdA = p->recd_array->recdA;
         o_rbuf->recdN = 0;
+
+        if( !p->enable_fl )
+          goto errLabel;
+
         
-        // for each incoming record
-        for(unsigned i=0; i<i_rbuf->recdN; ++i)
+        // if the score follower is disabled - there is nothing to do
+        if( p->enable_fl )
         {
-          midi::ch_msg_t* m         = nullptr;
-          unsigned        loc_id    = kInvalidId;
-          unsigned        score_vel = -1;
-          unsigned        meas_numb = -1;
-
-          if((rc = recd_get( i_rbuf->type, i_rbuf->recdA+i, p->i_midi_field_idx, m)) != kOkRC )
+          // for each incoming record
+          for(unsigned i=0; i<i_rbuf->recdN; ++i)
           {
-            rc = cwLogError(rc,"The 'midi' field read failed.");
-            goto errLabel;
-          }
+            midi::ch_msg_t* m         = nullptr;
+            unsigned        loc_id    = kInvalidId;
+            unsigned        score_vel = -1;
+            unsigned        meas_numb = -1;
 
-          if( midi::isNoteOn( m->status, m->d1 ) )
-          {
-
-            //printf("%s : %i %i %i %i\n",proc->label,m->uid,m->status,m->d0,m->d1);
-            
-            if((rc = on_new_note( p->sfH, m->uid, sec, m->d0, m->d1, loc_id, meas_numb, score_vel )) != kOkRC )
+            if((rc = recd_get( i_rbuf->type, i_rbuf->recdA+i, p->i_midi_field_idx, m)) != kOkRC )
             {
-              rc = cwLogError(rc,"Score follower note processing failed.");
-              goto errLabel;              
+              rc = cwLogError(rc,"The 'midi' field read failed.");
+              goto errLabel;
             }
 
-            if( loc_id != kInvalidId )
+            if( midi::isNoteOn( m->status, m->d1 ) )
             {
-              if( loc_id != p->cur_loc_id )
+
+              //printf("%s : %i %i %i %i\n",proc->label,m->uid,m->status,m->d0,m->d1);
+            
+              if((rc = on_new_note( p->sfH, m->uid, sec, m->d0, m->d1, loc_id, meas_numb, score_vel )) != kOkRC )
               {
-                p->cur_loc_id = loc_id;
+                rc = cwLogError(rc,"Score follower note processing failed.");
+                goto errLabel;              
+              }
+
+              if( loc_id != kInvalidId )
+              {
+                if( loc_id != p->cur_loc_id )
+                {
+                  p->cur_loc_id = loc_id;
               
-                cwLogInfo("sf (%s) LOC:%i",proc->label,loc_id);
+                  //cwLogInfo("sf (%s) LOC:%i",proc->label,loc_id);
+                  printf("sf (%s) LOC:%i\n",proc->label,loc_id);
+                }
               }
             }
-          }
 
-          _set_output_record( p, o_rbuf, i_rbuf->recdA+i, loc_id, meas_numb, score_vel );
+            _set_output_record( p, o_rbuf, i_rbuf->recdA+i, loc_id, meas_numb, score_vel );
           
+          }
         }
-
         do_exec(p->sfH);
         
       errLabel:
@@ -4581,12 +4629,10 @@ namespace cw
       enum {
         kCfgFnamePId,
         kResetPId,
-        kSfInPId,
+        kSegIdInPId,
         kMidiInAPId,
         kMidiInBPId,
-        kBegLocPId,
-        kEndLocPId,
-        kStartFlPId,
+        kSegIdOutPId,
         kPedalRlsPId
       };
 
@@ -4606,9 +4652,7 @@ namespace cw
         unsigned id;
         char*    label;
         unsigned piano_id;
-        unsigned trig_loc_id;        // 
-        unsigned beg_player_loc_id;
-        unsigned end_player_loc_id;
+        unsigned trig_seg_id;        // 
         unsigned det_type_id;        // See k???DetTypeId above
         unsigned det_id;             // det_id provided by midi_detector::piano or midi_detector::seq
         unsigned min_ms;             // wait at least this long after the detector is activated to trigger the Spirio
@@ -4626,7 +4670,6 @@ namespace cw
         unsigned recdN;
         recd_t*  recdA;
         unsigned ped_release_thresh;
-        unsigned sf_loc_fld_idx;
         unsigned midi_a_fld_idx;
         unsigned midi_b_fld_idx;
         unsigned armed_recd_idx;
@@ -4919,6 +4962,32 @@ namespace cw
       errLabel:
         return rc;
       }
+/*
+{
+  "list": [
+    {
+      "id": 0,
+      "trig_seg_id": 3,
+      "seg_label": "gutim_4",
+      "spirio_label": "spirio_1",
+      "piano_id": 0,
+      "piano_label": "A",
+      "min_ms": 0,
+      "max_ms": 2000,
+      "type": "p_det",
+      "pdetL": [
+        {
+          "ch": 0,
+          "status": 144,
+          "d0": 43,
+          "release_fl": true
+        }
+      ],
+      "sdetL": []
+    },
+    {
+  
+ */
       
       rc_t _load_from_cfg( proc_t* proc, inst_t* p, const object_t* cfg )
       {
@@ -4955,11 +5024,9 @@ namespace cw
           const char*     label;
           
           if((rc = ele->getv("id",r->id,
-                             "trig_loc",r->trig_loc_id,
+                             "trig_seg_id",r->trig_seg_id,
                              "spirio_label",label,
                              "piano_id",r->piano_id,
-                             "beg_loc",r->beg_player_loc_id,
-                             "end_loc",r->end_player_loc_id,
                              "min_ms",r->min_ms,
                              "max_ms",r->max_ms,
                              "type", type_str )) != kOkRC )
@@ -5072,22 +5139,18 @@ namespace cw
         rc_t          rc          = kOkRC;        
         const char*   cfg_fname   = nullptr;
         bool          reset_fl    = false;
-        const rbuf_t* sf_rbuf     = nullptr;
+        unsigned      seg_id_in   = kInvalidId;
         const rbuf_t* midi_a_rbuf = nullptr;
         const rbuf_t* midi_b_rbuf = nullptr;
-        unsigned      b_loc       = kInvalidId;
-        unsigned      e_loc       = kInvalidId;
-        bool          start_fl    = false;
+        unsigned      seg_id_out  = kInvalidId;
         
         if((rc = var_register_and_get(proc, kAnyChIdx,
                                       kCfgFnamePId, "cfg_fname", kBaseSfxId, cfg_fname,
                                       kResetPId,    "reset",     kBaseSfxId, reset_fl,
-                                      kSfInPId,     "sf_in",     kBaseSfxId, sf_rbuf,
+                                      kSegIdInPId,  "seg_id_in", kBaseSfxId, seg_id_in,
                                       kMidiInAPId,  "midi_in_a", kBaseSfxId, midi_a_rbuf,
                                       kMidiInBPId,  "midi_in_b", kBaseSfxId, midi_b_rbuf,
-                                      kBegLocPId,   "b_loc",     kBaseSfxId, b_loc,
-                                      kEndLocPId,   "e_loc",     kBaseSfxId, e_loc,
-                                      kStartFlPId,  "start_fl",  kBaseSfxId, start_fl,
+                                      kSegIdOutPId, "seg_id_out",kBaseSfxId, seg_id_out,
                                       kPedalRlsPId, "ped_rls",   kBaseSfxId, p->ped_release_thresh)) != kOkRC )
 
         {
@@ -5096,12 +5159,6 @@ namespace cw
 
         if((rc = _parse_cfg_file(proc,p,cfg_fname)) != kOkRC )
         {
-          goto errLabel;
-        }
-
-        if(( p->sf_loc_fld_idx = recd_type_field_index(sf_rbuf->type,"loc")) == kInvalidIdx )
-        {
-          rc = cwLogError(kInvalidArgRC,"The score follower input record does not contain the field 'loc' in '%s'.",cwStringNullGuard(proc->label));
           goto errLabel;
         }
 
@@ -5133,67 +5190,70 @@ namespace cw
           mem::release(p->recdA[i].sdetEvtA);
         }
 
+        for(unsigned i=0; i<kMidiPortCnt; ++i)
+        {
+          destroy(p->pnoDetA[i]);
+          destroy(p->seqDetA[i]);
+            
+        }
+
         mem::release(p->recdA);
 
         return rc;
       }
 
-      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      rc_t _handle_seg_id( proc_t* proc, inst_t* p )
       {
         rc_t rc = kOkRC;
-        switch( var->vid )
-        {
-          case kResetPId:
-            p->armed_recd_idx = kInvalidIdx;
-            break;
-        }
-        return rc;
-      }
-
-      
-      rc_t _handle_sf( proc_t* proc, inst_t* p )
-      {
-        rc_t rc = kOkRC;
-        const rbuf_t* sf_rbuf = nullptr;
+        unsigned seg_id = kInvalidId;
         
-        if((rc = var_get(proc,kSfInPId,kAnyChIdx,sf_rbuf)) != kOkRC )
+        if((rc = var_get(proc,kSegIdInPId,kAnyChIdx,seg_id)) != kOkRC )
           goto errLabel;
         
-        // 
-        for(unsigned i=0; i<sf_rbuf->recdN; ++i)
+        // check each record to see if this seg activates any detectors
+        for(unsigned j=0; j<p->recdN; ++j)
         {
-          unsigned loc_id = kInvalidId;
-          
-          // get the loc field
-          if((rc = recd_get( sf_rbuf->type, sf_rbuf->recdA + i, p->sf_loc_fld_idx, loc_id)) != kOkRC )
+          if( p->recdA[j].trig_seg_id == seg_id )
           {
-            goto errLabel;
-          }
 
-          // check each record to see if this loc activates any detectors
-          for(unsigned j=0; j<p->recdN; ++j)
-          {
-            if( p->recdA[j].trig_loc_id == loc_id )
-            {
-
-              if((rc =_arm_detector(p, j )) != kOkRC )
-                goto errLabel;
+            if((rc =_arm_detector(p, j )) != kOkRC )
+              goto errLabel;
                       
-              p->armed_recd_idx = j;
-              p->armed_cycle_cnt = 0;
-              p->defer_detect_fl = false;
+            p->armed_recd_idx = j;
+            p->armed_cycle_cnt = 0;
+            p->defer_detect_fl = false;
 
-              cwLogInfo("SPIRIO DETECTOR ACTIVATED:%s",cwStringNullGuard(p->recdA[ p->armed_recd_idx].label));
+            cwLogInfo("SPIRIO DETECTOR ACTIVATED:%s",cwStringNullGuard(p->recdA[ p->armed_recd_idx].label));
               
-              break;
-            }
+            break;
           }
         }
         
       errLabel:
         return rc;       
       }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        if( proc->ctx->isInRuntimeFl )
+        {
+          switch( var->vid )
+          {
+            case kSegIdInPId:
+              _handle_seg_id(proc,p);
+              break;
+              
+            case kResetPId:
+              p->armed_recd_idx = kInvalidIdx;
+              break;
+          }
+        }
+        return rc;
+      }
+
       
+
       rc_t _handle_midi( proc_t* proc, inst_t* p, unsigned vid, unsigned midi_fld_idx )
       {
         rc_t            rc   = kOkRC;
@@ -5238,9 +5298,6 @@ namespace cw
         rc_t rc      = kOkRC;
         bool trig_fl = false;
         
-        if((rc = _handle_sf(proc,p)) != kOkRC )
-          goto errLabel;
-        
         if((rc = _handle_midi(proc,p,kMidiInAPId,p->midi_a_fld_idx)) != kOkRC )
           goto errLabel;
 
@@ -5253,9 +5310,7 @@ namespace cw
         if( trig_fl )
         {
           cwLogInfo("SPIRIO DETECTOR TRIGGERED:%s",cwStringNullGuard(p->recdA[ p->armed_recd_idx].label));
-          var_set(proc,kBegLocPId,kAnyChIdx,p->recdA[ p->armed_recd_idx ].beg_player_loc_id);
-          var_set(proc,kEndLocPId,kAnyChIdx,p->recdA[ p->armed_recd_idx ].end_player_loc_id);
-          var_set(proc,kStartFlPId,kAnyChIdx,true);
+          var_set(proc,kSegIdOutPId,kAnyChIdx,p->recdA[ p->armed_recd_idx ].trig_seg_id);
           p->armed_recd_idx = kInvalidIdx;
         }
 
@@ -5306,6 +5361,7 @@ namespace cw
 
         kSimPlayPId,
         kSimResetPId,
+        kSimClearPId,
         
         kSprPlayPId,
         kSprResetPId,
@@ -5341,7 +5397,8 @@ namespace cw
         unsigned plyr_id;      // kSpirioPlyrId | kSimulPlyrId
         unsigned seg_id;       // segment to play
         char*    seg_label;    // segment label
-        char*    person_label; // pianist_id        
+        char*    person_label; // pianist_id
+        unsigned person_seg_num; // seg_num counts the segments for this player (first segment==1, 2nd segment==2, ...)
       } plyr_cmd_t;
       
       typedef struct cmd_str
@@ -5467,6 +5524,7 @@ namespace cw
         if((rc = cfg_cmd->getv("seg_type",seg_type_label,
                                "seg_label",seg_label,
                                "seg_id",plyr_cmd->seg_id,    // segment id of the segment to playback
+                               "player_seg_num",plyr_cmd->person_seg_num, 
                                "player_label",person_label)) != kOkRC )
         {
           goto errLabel;
@@ -5649,6 +5707,7 @@ namespace cw
 
                               kSimPlayPId,   "sim_play_id",    kBaseSfxId,
                               kSimResetPId,  "sim_reset_fl",   kBaseSfxId,
+                              kSimClearPId,  "sim_clear_fl",   kBaseSfxId,
                               
                               kSprPlayPId,   "spr_play_id",    kBaseSfxId,
                               kSprResetPId,  "spr_reset_fl",   kBaseSfxId,
@@ -5736,6 +5795,10 @@ namespace cw
         {
           case kSpirioPlyrId:
             var_set(proc,play_now_fl ? kSprPlayNowPId : kSprPlayPId, kAnyChIdx, cmd.seg_id);
+
+            if( play_now_fl )
+              var_set(proc,kSimClearPId, kAnyChIdx, true);
+            
             break;
             
           case kSimulPlyrId:
@@ -5751,8 +5814,11 @@ namespace cw
       
       rc_t _apply_ctl_record( proc_t* proc, inst_t* p, unsigned ctl_idx, bool exec_play_fl, bool play_now_fl )
       {
-        rc_t rc = kOkRC;
-        const ctl_t* ctl = nullptr;
+        rc_t         rc                = kOkRC;
+        const ctl_t* ctl               = nullptr;
+        unsigned     play_cmd_idx      = kInvalidIdx;
+        unsigned     active_sf_cmd_idx = kInvalidIdx;
+        
         if( ctl_idx >= p->ctlN )
         {
           rc = cwLogError(kInvalidArgRC,"The requested ctl index %i is out of range %i.",ctl_idx,p->ctlN);
@@ -5768,6 +5834,9 @@ namespace cw
             case kSfCmdTId:
               if((rc = _apply_sf_cmd(proc,p,ctl->cmdA[i].u.sf)) != kOkRC )
                 goto errLabel;
+              
+              if( ctl->cmdA[i].u.sf.sf_id == ctl->active_sf_id )
+                active_sf_cmd_idx = i;
               break;
               
             case kPlayCmdTId:
@@ -5776,6 +5845,7 @@ namespace cw
                 if((rc = _apply_plyr_cmd(proc,p,ctl->cmdA[i].u.plyr,play_now_fl)) != kOkRC )
                   goto errLabel;
               }
+              play_cmd_idx = i;
               break;
           }
         }
@@ -5785,6 +5855,16 @@ namespace cw
       errLabel:
         if( rc != kOkRC )
           rc = cwLogError(rc,"Control execution failed in '%s'.",cwStringNullGuard(proc->label));
+        else
+        {
+          if( ctl != nullptr && play_cmd_idx != kInvalidIdx && active_sf_cmd_idx != kInvalidIdx )
+          {
+            const plyr_cmd_t& plyr_cmd    = ctl->cmdA[ play_cmd_idx ].u.plyr;
+            const char*       piano_label = ctl->active_sf_id == 0 ? "(a)" : (ctl->active_sf_id==1? "(b)" : "(?)");
+            const sf_cmd_t&   sf_cmd      = ctl->cmdA[ active_sf_cmd_idx].u.sf;
+            cwLogInfo("%s : ACTIVE: seg_id:%i '%s' %s %s-%i : beg:%i end:%i ena:%i",cwStringNullGuard(proc->label),ctl->seg_id, cwStringNullGuard(plyr_cmd.seg_label), piano_label, cwStringNullGuard(plyr_cmd.person_label), plyr_cmd.person_seg_num, sf_cmd.beg_loc, sf_cmd.end_loc, sf_cmd.enable_fl );
+          }
+        }
         
         return rc;
       }
@@ -5823,8 +5903,6 @@ namespace cw
         for(unsigned i=0; i<p->ctlN; ++i)
           if( p->ctlA[i].seg_id == seg_id )
             return _apply_ctl_record(proc,p,i, exec_play_fl, play_now_fl );
-
-        
         
         return cwLogError(kInvalidArgRC,"The segment id '%i' was not found.",seg_id);
       }
@@ -5877,6 +5955,8 @@ namespace cw
         const bool play_now_fl  = false;
         unsigned cur_active_sf_id = kInvalidId;
 
+        cwLogInfo("RECOVER begin");
+
         if( p->last_ctl_idx == kInvalidIdx || p->last_ctl_idx >= p->ctlN )
         {
           rc = cwLogError(kInvalidStateRC,"The 'last-ctl-idx' is not set and therefore no recovery is possible.");
@@ -5891,6 +5971,7 @@ namespace cw
           {
             if((rc = _exec_seg(proc,p,p->ctlA[i].seg_id,exec_play_fl,play_now_fl)) != kOkRC )
               goto errLabel;
+            break;
           }
 
         // At this point we have advanced to the next segment.
