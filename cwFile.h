@@ -83,7 +83,7 @@ namespace cw
     const char* name( handle_t h );
 
     // Write a buffer to a file.
-    rc_t fnWrite( const char* fn, const void* buf, unsigned bufByteCnt );
+    rc_t fnWrite( const char* fn, const void* buf, unsigned bufByteCnt, unsigned mode_flags = kWriteFl );
 
     // Allocate and fill a buffer from the file.
     // Set *bufByteCntPtr to count of bytes read into the buffer.

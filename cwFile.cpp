@@ -399,12 +399,12 @@ const char* cw::file::name( handle_t h )
   return p->fnStr;
 }
 
-cw::rc_t cw::file::fnWrite( const char* fn, const void* buf, unsigned bufByteCnt )
+cw::rc_t cw::file::fnWrite( const char* fn, const void* buf, unsigned bufByteCnt, unsigned mode_flags )
 {
   handle_t h;
   rc_t rc;
 
-  if((rc = open(h,fn,kWriteFl)) != kOkRC )
+  if((rc = open(h,fn,mode_flags)) != kOkRC )
     goto errLabel;
 
   rc = write(h,buf,bufByteCnt);
