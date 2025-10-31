@@ -2195,7 +2195,6 @@ namespace cw
         mem::release(inst->dir);
         mem::release(inst);
 
-      errLabel:
         return rc;
       }
 
@@ -10864,7 +10863,6 @@ namespace cw
         rc_t     rc       = kOkRC;
         rbuf_t*  o_rbuf = nullptr;
         const rbuf_t* i_rbufA[ p->inVarN ];
-        unsigned      i_nA[ p->inVarN ];
 
         // get the output buffer
         if((rc = var_get(proc,kOutPId,kAnyChIdx,o_rbuf)) != kOkRC )
@@ -11618,8 +11616,6 @@ namespace cw
         rc_t            rc        = kOkRC;        
         const char*     cfg_fname = nullptr;
         const object_t* cfg       = nullptr;
-        unsigned        loc       = kInvalidIdx;
-        variable_t*     var       = nullptr;
         rbuf_t*         rbuf      = nullptr;
 
         msg_table::field_ref_t fieldRefA[] = {

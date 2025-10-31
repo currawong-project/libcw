@@ -259,7 +259,6 @@ namespace cw
     void _write_svg_ch_pedal( svg::handle_t svgH, const midi_state::event_t* e, unsigned pedal_idx, unsigned minMidiPitch, unsigned maxMidiPitch, unsigned pedalCnt )
     {
       const midi_state::event_t* e0        = nullptr;
-      const midi_state::event_t* e1        = nullptr;
       unsigned                   color     = 0;
       const char*                label     = nullptr;
       unsigned                   midiCtlId = midi_state::pedal_index_to_midi_ctl_id(pedal_idx);

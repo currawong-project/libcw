@@ -383,8 +383,6 @@ namespace cw {
 
       bool _does_order_match( const seq_det_t* p, const detector_t* d, const event_t* e )
       {
-        rc_t rc = kOkRC;
-
         bool match_fl = true;
         const state_t& s = e->state;
 

@@ -1147,8 +1147,6 @@ namespace cw
       {
         rc_t rc = kOkRC;
         
-        player_t* plyr = nullptr;
-        
         if( plyr_idx == kInvalidIdx)
         {
           rc = cwLogError(kInvalidArgRC,"An invalid player could not be started.");
@@ -1349,7 +1347,6 @@ namespace cw
            rc = _start_player(p,plyr_idx);
         }
         
-      errLabel:
         return rc;
       }
       
@@ -4519,7 +4516,6 @@ namespace cw
 
       rc_t _check_for_end_loc( proc_t* proc, inst_t* p, unsigned cur_loc_id )
       {
-        rc_t rc = kOkRC;
 
         // if cur_loc_id is the end_loc of a segment ...
         for(unsigned i=0; i<p->segN; ++i)
@@ -4783,7 +4779,7 @@ namespace cw
             }
             break;
 
-          defautl:
+          default:
             rc = cwLogError(kInvalidArgRC,"Unknown detector type.");
         }
 
@@ -4820,7 +4816,7 @@ namespace cw
             }
             break;
 
-          defautl:
+          default:
             rc = cwLogError(kInvalidArgRC,"Unknown detector type.");
         }
 
@@ -4869,7 +4865,7 @@ namespace cw
             is_trig_fl_ref = is_detector_triggered(p->seqDetA[r->piano_id]);
             break;
 
-          defautl:
+          default:
             rc = cwLogError(kInvalidArgRC,"Unknown detector type.");
         }
 
@@ -5892,14 +5888,11 @@ namespace cw
           p->last_loc_id = loc_id;
         }
         
-      errLabel:
         return rc;
       }
 
       rc_t _exec_seg( proc_t* proc, inst_t* p, unsigned seg_id, bool exec_play_fl, bool play_now_fl )
       {
-        rc_t rc = kOkRC;
-        
         for(unsigned i=0; i<p->ctlN; ++i)
           if( p->ctlA[i].seg_id == seg_id )
             return _apply_ctl_record(proc,p,i, exec_play_fl, play_now_fl );

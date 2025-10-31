@@ -353,7 +353,7 @@ namespace cw
     
     double _size( svg_t* p, double& widthRef, double& heightRef )
     {
-      double min_x,min_y,max_x,max_y;
+      double min_x=0,min_y=0,max_x=0,max_y=0;
       widthRef  = 0;
       heightRef = 0;
 
