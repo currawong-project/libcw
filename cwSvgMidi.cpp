@@ -28,6 +28,9 @@
 #define GRACE_FL 1
 #define SPAN_COUNT 2
 
+#define PLAYER_COLOR 0x66cdaa
+#define PIANO_COLOR  0xffff00 // yellow 0xdaa520
+
 namespace cw
 {
   namespace svg_midi
@@ -167,7 +170,7 @@ namespace cw
 
     void _write_span( svg::handle_t svgH, const midi_state::event_t* e, unsigned minMidiPitch, unsigned maxMidiPitch )
     {
-      unsigned color = e->msg->u.span.typeId == kPlayerTypeId ? 0x66cdaa : 0xdaa520;
+      unsigned color = e->msg->u.span.typeId == kPlayerTypeId ? PLAYER_COLOR : PIANO_COLOR;
       
       unsigned labelCharN = 127;
       char label[labelCharN+1];
