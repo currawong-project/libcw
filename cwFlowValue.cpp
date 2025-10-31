@@ -1839,6 +1839,7 @@ namespace cw {
           mem::release(list_ref->eleA[i].label);
           value_release(&list_ref->eleA[i].value );
         }
+        mem::release(list_ref->eleA);
         mem::release(list_ref);
       }
       return kOkRC;

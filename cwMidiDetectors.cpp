@@ -501,7 +501,7 @@ cw::rc_t cw::midi_detect::seq::create( handle_t& hRef, unsigned allocDetN, unsig
   p->pedal_thresh     = pedal_thresh;
   p->last_match_order = kInvalidId;
 
-  if((rc = create(p->pnoDetH,1,p->pedal_thresh)) != kOkRC )
+  if((rc = create(p->pnoDetH,allocDetN,p->pedal_thresh)) != kOkRC )
   {
     rc = cwLogError(rc,"The internal piano detector create failed.");
     goto errLabel;
@@ -685,7 +685,7 @@ cw::rc_t cw::midi_detect::seq::on_midi( handle_t h, const midi::ch_msg_t* msgA, 
     // if a match was underway but this MIDI msg did not match ... 
     if( p->last_match_order != kInvalidId && match_fl==false  )
     {
-      printf("clr\n");
+      //printf("clr\n");
       // ... then the whole match process must begin again
       _detector_match_reset(p,d);
     }
