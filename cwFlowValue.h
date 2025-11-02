@@ -319,6 +319,7 @@ namespace cw
     // Print the recd_type info. to the console.
     void recd_type_print( const recd_type_t* recd_type );
 
+    rc_t recd_get_value( const recd_type_t* type, const recd_t* recd, unsigned field_idx, value_t& val_ref );
 
     // Read the value from a single record field
     template< typename T >
@@ -359,6 +360,8 @@ namespace cw
       recd->base = base;
       return kOkRC;
     }
+
+    rc_t recd_set_value( const recd_type_t* type, const recd_t* base, recd_t* recd, unsigned field_idx, const value_t& val );
 
     template< typename T >
     rc_t recd_set( const recd_type_t* type, const recd_t* base, recd_t* recd, unsigned field_idx, const T& val )

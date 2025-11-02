@@ -1722,6 +1722,27 @@ void cw::flow::recd_type_print( const recd_type_t* recd_type )
   _recd_type_print(recd_type,recd_type);
 }
 
+cw::rc_t cw::flow::recd_get_value( const recd_type_t* type, const recd_t* recd, unsigned field_idx, value_t& val_ref )
+{
+  if( field_idx < type->fieldN )
+    return value_from_value( recd->valA[field_idx], val_ref );
+  
+  return recd_get_value( type->base, recd->base, field_idx - type->fieldN, val_ref );
+}
+
+cw::rc_t cw::flow::recd_set_value( const recd_type_t* type, const recd_t* base, recd_t* recd, unsigned field_idx, const value_t& val )
+{
+  if( field_idx >= type->fieldN )
+    return cwLogError(kInvalidArgRC,"Only 'local' record value may be set.");
+  
+  // set the base of this record
+  recd_set_base(type,recd,base);
+  
+  return value_from_value(val, recd->valA[field_idx]);
+}
+    
+
+
 cw::rc_t cw::flow::recd_init( const recd_type_t* recd_type, const recd_t* base, recd_t* r )
 {
   r->base = base;
