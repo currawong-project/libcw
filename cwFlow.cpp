@@ -85,6 +85,7 @@ namespace cw
       { "midi_file",       &midi_file::members },
       { "recd_route",      &recd_route::members },
       { "recd_merge",      &recd_merge::members },
+      { "recd_extract",    &recd_extract::members },
       { "midi_merge",      &midi_merge::members },
       { "poly_xform_ctl",  &poly_xform_ctl::members },
       { "gutim_ps_msg_table", &gutim_ps_msg_table::members },
