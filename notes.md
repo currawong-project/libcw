@@ -941,6 +941,10 @@ resolvable without more information.
 
 ### TODO:
 
+- flow:recd_merge and recd_copy() is extremely dangerous.  It is easy to end up merging incompatible record types into the
+  same output.  If bitwise copying is used the record types should be verified to be identical. See 'recd_extract'
+  for an example of working with recd_type to do a safe field by field copy.
+
 - Log level should be settable for each proc from the network.
 
 - CRASH BUG: if the destination of an 'out:{}' connection (e.g. a connection to an earlier proc. in the exec. chain)
@@ -1419,8 +1423,8 @@ whose rate might be faster than the audio frequency.  This would
 require multiple pairs of value (delta-time,amplitude) to be generated
 during a given cycle.
 
-Without the use of the record data type this would require that the generating
-processor have two output variables 'dtime' and 'amplitude' which
+Without the use of the record data type this would require the generating
+processor to have two output variables 'dtime' and 'amplitude' which
 would be updated multiple times during a single execution cycle.  The
 receiving processor (R) would then need to respond to each of those
 changes by implementing a value() function and storing the incoming
