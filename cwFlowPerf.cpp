@@ -1275,7 +1275,7 @@ namespace cw
         return rc;
       }
       
-      rc_t _do_reset( inst_t* p, rbuf_t* rbuf )
+      rc_t _do_reset( proc_t* proc, inst_t* p, rbuf_t* rbuf )
       {
         rc_t rc = kOkRC;
         unsigned ch = 0;
@@ -1302,6 +1302,8 @@ namespace cw
         
         rc = _do_clear(p,rbuf);
 
+        cwLogInfo("%s reset",cwStringNullGuard(proc->label));
+        
         return rc;
       }      
 
@@ -1423,7 +1425,7 @@ namespace cw
           if( var_get(proc,kPlayNowPlyrIdPId,kAnyChIdx,play_excl_id) == kOkRC )
           {
           
-            _do_reset(p, rbuf );
+            _do_reset(proc, p, rbuf );
 
             if( play_excl_id != kInvalidId )
               _start_player(p, _player_id_to_index(p,play_excl_id));
@@ -1440,7 +1442,7 @@ namespace cw
         
         if( p->reset_trig_fl )
         {
-          _do_reset(p,rbuf );
+          _do_reset(proc,p,rbuf );
           p->reset_trig_fl = false;
         }
         
@@ -3132,6 +3134,8 @@ namespace cw
             track_loc_reset( p->psH);
           
           _init_loc_array(p);
+
+          cwLogInfo("GUTIM ps reset.");
         }
         
         //errLabel:
