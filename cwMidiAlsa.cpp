@@ -29,7 +29,7 @@ namespace cw
       namespace alsa
       {
         const unsigned kCtoD_MapN = 256;
-        
+
         typedef struct
         {
           bool             inputFl;   // true if this an input port
@@ -41,7 +41,7 @@ namespace cw
         } port_t;
 
         // MIDI devices 
-        typedef struct
+        typedef struct dev_str
         {
           char*         nameStr;    // string label for this device
           unsigned      iPortCnt;   // input ports on this device
@@ -131,7 +131,7 @@ namespace cw
         {
           rc_t rc = kOkRC;
         
-          snd_seq_event_t *ev;
+          snd_seq_event_t *ev = nullptr;
         
           do
           {
@@ -156,14 +156,34 @@ namespace cw
             
             // get the device this event arrived from
             if( p->prvRcvDev==NULL || p->prvRcvDev->clientId != ev->source.client )
+            {
               p->prvRcvDev = _cmMpClientIdToDev(p,ev->source.client);
-      
+
+              // The device is changing and therefore so must the port. Signal this by setting the rcv port to null
+
+              // If a port was in use then transmit anything that the parser may have cached
+              if(p->prvRcvPort != nullptr )
+                parser::transmit(p->prvRcvPort->parserH);
+
+              p->prvRcvPort = nullptr; 
+            }
+            
             // get the port this event arrived from
             if( p->prvRcvDev != NULL && (p->prvRcvPort==NULL || p->prvRcvPort->alsa_addr.port != ev->source.port) )
+            {
+              
+              // If a port was in use then transmit anything that the parser may have cached
+              if(p->prvRcvPort != nullptr )
+                parser::transmit(p->prvRcvPort->parserH);
+              
               p->prvRcvPort = _cmMpInPortIdToPort(p->prvRcvDev,ev->source.port);
-
+            }
+            
             if( p->prvRcvDev == NULL || p->prvRcvPort == NULL )
               continue;
+
+            //printf("client:%i (%i %i) port:%i (%p)\n",ev->source.client,p->prvRcvDev->clientId, p->prvRcvPort->dev->clientId, ev->source.port,p->prvRcvPort);
+
             
             //printf("%i %x\n",ev->type,ev->type);
             //printf("dev:%i port:%i ch:%i %i\n",ev->source.client,ev->source.port,ev->data.note.channel,ev->data.note.note);
@@ -299,6 +319,7 @@ namespace cw
 
           }while( snd_seq_event_input_pending(p->h,0));
 
+          //printf("MIDI ALSA transmit: %p \n",p->prvRcvPort);
           parser::transmit(p->prvRcvPort->parserH);
 
           return rc;
@@ -451,6 +472,8 @@ namespace cw
                 p->devArray[i].iPortArray[j].alsa_type = type;
                 p->devArray[i].iPortArray[j].alsa_cap  = caps;
                 p->devArray[i].iPortArray[j].alsa_addr = addr;
+
+                //printf("MIDI ALSA: create parser: client:%i dev:%i port:%i name:%s %s\n",client,i,j,cwStringNullGuard(name),cwStringNullGuard(port));
                 parser::create(p->devArray[i].iPortArray[j].parserH, i, j, cbFunc, cbDataPtr, parserBufByteCnt);
 
                 // port->app
