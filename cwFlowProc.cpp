@@ -1265,7 +1265,7 @@ namespace cw
             unsigned j = 0;
             for(unsigned i=0; i<inst->ext_dev->u.m.msgCnt && j<inst->bufN; ++i)
             {
-              //printf("%s : dev:%i %i : port:%i %i\n",proc->label,m->devIdx,inst->ext_dev->ioDevIdx, m->portIdx,inst->ext_dev->ioPortIdx);
+              //printf("%s : dev:(msg:%i io:%i) : port:(msg:%i io:%i)\n",proc->label, m->devIdx,inst->ext_dev->ioDevIdx, m->portIdx,inst->ext_dev->ioPortIdx);
               
               if( m->devIdx == inst->ext_dev->ioDevIdx && (!inst->port_filt_fl || m->portIdx == inst->ext_dev->ioPortIdx) )
                 inst->buf[j++] = m[i];
