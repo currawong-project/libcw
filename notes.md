@@ -941,11 +941,21 @@ resolvable without more information.
 
 ### TODO:
 
+- allow labels to be assigned to MIDI devices to avoid having to edit
+  MIDI device names in the program cfg.
+
 - flow:recd_merge and recd_copy() is extremely dangerous.  It is easy to end up merging incompatible record types into the
   same output.  If bitwise copying is used the record types should be verified to be identical. See 'recd_extract'
   for an example of working with recd_type to do a safe field by field copy.
 
 - Log level should be settable for each proc from the network.
+
+- Trigger variables should allow multiple incoming connections.  Review the 'fan-in' design notes.
+  'fan-in' may be a worth implementing in general.
+
+- Proc's need their own log that scrolls inside them.  This would solve the problem of very active logs
+  scrolling slower logs out of the window.
+
 
 - CRASH BUG: if the destination of an 'out:{}' connection (e.g. a connection to an earlier proc. in the exec. chain)
   is already connected the network parser crashes. This is easy to reprodue by
@@ -993,7 +1003,8 @@ resolvable without more information.
   at compile time.
 
 - Check for duplicate field labels. Particularly when using a base record.
-  It's easy to declare a field named 'midi' and then inherit a record with a field named 'midi' - this is a crash bug.
+  It's easy to declare a field named 'midi' and then inherit a record
+  with a field named 'midi' - this is a crash bug.
   
 
 - DONE: Why doesn't the C7 on the downbeat of meas. 11 sound? (... it does but is quiet due to velocity table)
@@ -1041,7 +1052,16 @@ resolvable without more information.
 
 - All outputs must be set via var_set() call, otherwise proc's that rely on noticing changed variables
 will not work.  For example the logging and the 'print' proc does not work for record,midi,audio because
-in general these types are not set via calls to var_set().
+in general these types are not set via calls to var_set().  Implementing this might mean that
+abuf_t,mbuf_t,rbuf_t would need to be instantiated automatically, thereby forcing the
+proc programmmer to use var_set() and var_get() to access their values.  This might also be
+a good thing because it would allow the buffers to be automatically emptied (e.g. setting
+rbuf_t->recdN to 0) by the system thereby relieving the proc programmer from having to remember to do it.
+
+
+- variable change notification can work for midi,audio, and record by simply noticing that the size of the
+  buffer is not zero.
+
 
 - The following two tasks need more consideration. As it is variables assume that aggregate
 types are destroyed on exit.  This is very convenient. Consider using 'symbols' to represent
@@ -1053,6 +1073,7 @@ strings, consider adding a 'const-string' type to eliminate memory allocation of
 
   - String assignment is allocating  memory:
      See: `rc_t _val_set( value_t* val, const char* v ) cwFlowTypes.cpp line:464.`
+     Consider using a memory arena to mitigate this problem.
 
 - DONE Presets do not work for hetergenous networks.
 
@@ -1077,7 +1098,8 @@ of setting min/max for numeric values - could it be used there?
 
 - DONE: Allow proc's to send messages to the UI. Implementation: During exec() the proc builds a global list of variables whose values
 should be passed to the UI. Adding to the list must be done atomically, but removing can be non-atomic because it will happen
-at the end of the network 'exec' cycle when no proc's are being executed.  See cwMpScNbQueue push() for an example of how to do this.
+at the end of the network 'exec' cycle when no proc's are being executed.
+See cwMpScNbQueue push() for an example of how to do this.
 
 - Allow min/max limits on numeric variables.
 
