@@ -195,8 +195,8 @@ namespace cw
           const packet_t* pkt = pktArray + i;
           if( pkt->msgArray != nullptr )
           {
-            unsigned ii = p->buf_ii.load();
-            unsigned oi = p->buf_oi.load();
+            unsigned ii = p->buf_ii.load(std::memory_order_relaxed);
+            unsigned oi = p->buf_oi.load(std::memory_order_acquire);
             for(unsigned j=0;  j<pkt->msgCnt; ++j)
             {
               ch_msg_t* m = p->buf + ii;
@@ -216,7 +216,7 @@ namespace cw
               }
             }
 
-            p->buf_ii.store(ii);
+            p->buf_ii.store(ii,std::memory_order_release);
             
           }
         }
@@ -690,8 +690,8 @@ unsigned cw::midi::device::maxBufferMsgCount( handle_t h )
 const cw::midi::ch_msg_t* cw::midi::device::getBuffer(   handle_t h, unsigned& msgCntRef )
 {
   device_t* p  = _handleToPtr(h);
-  unsigned  ii = p->buf_ii.load();
-  unsigned  oi = p->buf_oi.load();
+  unsigned  ii = p->buf_ii.load(std::memory_order_acquire);
+  unsigned  oi = p->buf_oi.load(std::memory_order_relaxed);
   ch_msg_t* m  = nullptr;
   
   msgCntRef  = ii >= oi ? ii-oi : p->bufN - oi;
@@ -707,11 +707,11 @@ cw::rc_t            cw::midi::device::clearBuffer( handle_t h, unsigned msgCnt )
   if( msgCnt > 0 )
   {
     device_t* p  = _handleToPtr(h);
-    unsigned oi = p->buf_oi.load();
+    unsigned oi = p->buf_oi.load(std::memory_order_relaxed);
     
     oi = (oi + msgCnt) % p->bufN;
   
-    p->buf_oi.store(oi);
+    p->buf_oi.store(oi,std::memory_order_release);
   }
   
   return kOkRC;

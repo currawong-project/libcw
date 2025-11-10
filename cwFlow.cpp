@@ -44,6 +44,7 @@ namespace cw
       { "audio_file_out",  &audio_file_out::members },
       { "audio_buf_file_out",  &audio_buf_file_out::members },
       { "audio_gain",      &audio_gain::members },
+      { "audio_xfade",     &audio_xfade::members },
       { "audio_split",     &audio_split::members },
       { "audio_duplicate", &audio_duplicate::members },
       { "audio_merge",     &audio_merge::members },
