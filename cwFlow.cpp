@@ -92,6 +92,7 @@ namespace cw
       { "gutim_take_menu", &gutim_take_menu::members },
       { "score_player_ctl",&score_player_ctl::members },
       { "midi_recorder",   &midi_recorder::members },
+      { "button_array",    &button_array::members },
       { "score_player",    &score_player::members },
       { "multi_player",    &multi_player::members },
       { "vel_table",       &vel_table::members },

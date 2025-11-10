@@ -95,5 +95,6 @@ namespace cw
     namespace gutim_take_menu  { extern class_members_t members; }
     namespace score_player_ctl { extern class_members_t members; }
     namespace midi_recorder    { extern class_members_t members; }
+    namespace button_array     { extern class_members_t members; }
   }
 }

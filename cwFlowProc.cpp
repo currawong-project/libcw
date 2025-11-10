@@ -12158,6 +12158,142 @@ namespace cw
       
     } // midi_recorder
 
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // button_array
+    //
+    namespace button_array
+    {
+      enum {
+        k3PId,
+        k5PId,
+        k10PId,
+        k13PId,
+        k14PId,
+        k16PId,
+        k19PId,
+        k22PId,
+        k25PId,
+        k29PId,
+        kOutPId
+      };
+      typedef struct
+      {
+        
+      } inst_t;
+
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t    rc   = kOkRC;        
+
+        if((rc = var_register(proc,kAnyChIdx,
+                              k3PId,"_3_",kBaseSfxId,
+                              k5PId,"_5_",kBaseSfxId,
+                              k10PId,"_10_",kBaseSfxId,
+                              k13PId,"_13_",kBaseSfxId,
+                              k14PId,"_14_",kBaseSfxId,
+                              k16PId,"_16_",kBaseSfxId,
+                              k19PId,"_19_",kBaseSfxId,
+                              k22PId,"_22_",kBaseSfxId,
+                              k25PId,"_25_",kBaseSfxId,
+                              k29PId,"_29_",kBaseSfxId,
+                              kOutPId,"out",kBaseSfxId)) != kOkRC )
+        {
+          goto errLabel;
+        }
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        return rc;
+      }
+
+      rc_t _emit_int( proc_t* proc, variable_t* var, unsigned val )
+      {
+        rc_t rc = kOkRC;
+        bool fl=false;
+        if((rc = var_get(proc,var->vid,kAnyChIdx,fl)) != kOkRC )
+          goto errLabel;
+
+        if(fl)
+        {
+          rc = var_set(proc,kOutPId,kAnyChIdx,val);
+        }
+      errLabel:
+        return rc;
+        
+      }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        if( proc->ctx->isInRuntimeFl)
+        {
+          
+          switch( var->vid )
+          {
+            case k3PId:  _emit_int(proc,var,3); break;
+            case k5PId:  _emit_int(proc,var,5); break;
+            case k10PId: _emit_int(proc,var,10); break;
+            case k13PId: _emit_int(proc,var,13); break;
+            case k14PId: _emit_int(proc,var,14); break;
+            case k16PId: _emit_int(proc,var,16); break;
+            case k19PId: _emit_int(proc,var,19); break;
+            case k22PId: _emit_int(proc,var,22); break;
+            case k25PId: _emit_int(proc,var,25); break;
+            case k29PId: _emit_int(proc,var,29); break;
+          }
+        }
+        return rc;
+      }
+      
+      rc_t _notify0( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        if( proc->ctx->isInRuntimeFl)
+        {
+          
+          switch( var->vid )
+          {
+            case k3PId:  var_set(proc,kOutPId,kAnyChIdx,3); break;
+            case k5PId:  var_set(proc,kOutPId,kAnyChIdx,5); break;
+            case k10PId: var_set(proc,kOutPId,kAnyChIdx,10); break;
+            case k13PId: var_set(proc,kOutPId,kAnyChIdx,13); break;
+            case k14PId: var_set(proc,kOutPId,kAnyChIdx,14); break;
+            case k16PId: var_set(proc,kOutPId,kAnyChIdx,16); break;
+            case k19PId: var_set(proc,kOutPId,kAnyChIdx,19); break;
+            case k22PId: var_set(proc,kOutPId,kAnyChIdx,22); break;
+            case k25PId: var_set(proc,kOutPId,kAnyChIdx,25); break;
+            case k29PId: var_set(proc,kOutPId,kAnyChIdx,29); break;
+          }
+        }
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t rc      = kOkRC;
+        
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    // template_proc
     
   } // flow
 } // cw
