@@ -45,7 +45,8 @@ namespace cw
     namespace audio_file_in   { extern class_members_t members;  }
     namespace audio_file_out  { extern class_members_t members;  }
     namespace audio_buf_file_out { extern class_members_t members; }
-    namespace audio_gain      { extern class_members_t members;  }    
+    namespace audio_gain      { extern class_members_t members;  }
+    namespace audio_xfade     { extern class_members_t members;  }
     namespace audio_split     { extern class_members_t members;  }
     namespace audio_merge     { extern class_members_t members;  }
     namespace audio_duplicate { extern class_members_t members;  }

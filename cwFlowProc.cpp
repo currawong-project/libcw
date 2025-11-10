@@ -1031,8 +1031,7 @@ namespace cw
         kPortLabelPId,
         kPrintFlPId,
         kOutPId,
-        kROutPId,
-        kROut2PId,
+        kROutPId
       };
       
       typedef struct
@@ -1043,11 +1042,9 @@ namespace cw
         bool               port_filt_fl;        
         external_device_t* ext_dev;
 
-        recd_array_t* recd_array1;    // output record array for 'out'.
-        unsigned      midi_fld_idx1;  // pre-computed record field indexes
+        recd_array_t* recd_array;    // output record array for 'out'.
+        unsigned      midi_fld_idx;  // pre-computed record field indexes
 
-        recd_array_t* recd_array2;    // output record array for 'out'.
-        unsigned      midi_fld_idx2;  // pre-computed record field indexes
 
         
       } inst_t;
@@ -1145,32 +1142,17 @@ namespace cw
         // create one output MIDI buffer
         rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, 0  );
 
-
         
-        // allocate the output recd array 1
-        if((rc = _alloc_recd_array( proc, "r_out", kBaseSfxId, kAnyChIdx, nullptr, inst->recd_array1  )) != kOkRC )
+        // allocate the output recd array
+        if((rc = _alloc_recd_array( proc, "r_out", kBaseSfxId, kAnyChIdx, nullptr, inst->recd_array )) != kOkRC )
         {
           goto errLabel;
         }
         
         // create one output record buffer
-        rc = var_register_and_set( proc, "r_out", kBaseSfxId, kROutPId, kAnyChIdx, inst->recd_array1->type, nullptr, 0  );
+        rc = var_register_and_set( proc, "r_out", kBaseSfxId, kROutPId, kAnyChIdx, inst->recd_array->type, nullptr, 0  );
 
-        inst->midi_fld_idx1 = recd_type_field_index( inst->recd_array1->type, "midi");
-
-
-
-        // allocate the output recd array 2
-        if((rc = _alloc_recd_array( proc, "r_out_b", kBaseSfxId, kAnyChIdx, nullptr, inst->recd_array2  )) != kOkRC )
-        {
-          goto errLabel;
-        }
-        
-        // create one output record buffer
-        rc = var_register_and_set( proc, "r_out_b", kBaseSfxId, kROut2PId, kAnyChIdx, inst->recd_array2->type, nullptr, 0  );
-
-        inst->midi_fld_idx2 = recd_type_field_index( inst->recd_array2->type, "midi");
-
+        inst->midi_fld_idx = recd_type_field_index( inst->recd_array->type, "midi");
         
       errLabel: 
         return rc;
@@ -1183,8 +1165,7 @@ namespace cw
         inst_t* inst = (inst_t*)proc->userPtr;
         mem::release(inst->buf);
 
-        recd_array_destroy(inst->recd_array1);
-        recd_array_destroy(inst->recd_array2);
+        recd_array_destroy(inst->recd_array);
         
         mem::release(inst);
         
@@ -1195,36 +1176,18 @@ namespace cw
       { return kOkRC; }
 
 
-      rc_t _set_output_record1( inst_t* p, rbuf_t* rbuf, const midi::ch_msg_t* m )
+      rc_t _set_output_record( inst_t* p, rbuf_t* rbuf, const midi::ch_msg_t* m )
       {
         rc_t rc = kOkRC;
         
         // if the output record array is full
-        if( rbuf->recdN >= p->recd_array1->allocRecdN )
+        if( rbuf->recdN >= p->recd_array->allocRecdN )
         {
-          rc = cwLogError(kBufTooSmallRC,"The internal record buffer overflowed. (buf recd count:%i).",p->recd_array1->allocRecdN);
+          rc = cwLogError(kBufTooSmallRC,"The internal record buffer overflowed. (buf recd count:%i).",p->recd_array->allocRecdN);
           goto errLabel;
         }
 
-        recd_set( rbuf->type, nullptr, p->recd_array1->recdA + rbuf->recdN, p->midi_fld_idx1, (midi::ch_msg_t*)m );
-        rbuf->recdN += 1;
-
-      errLabel:
-        return rc;
-      }
-
-      rc_t _set_output_record2( inst_t* p, rbuf_t* rbuf, const midi::ch_msg_t* m )
-      {
-        rc_t rc = kOkRC;
-        
-        // if the output record array is full
-        if( rbuf->recdN >= p->recd_array2->allocRecdN )
-        {
-          rc = cwLogError(kBufTooSmallRC,"The internal record buffer overflowed. (buf recd count:%i).",p->recd_array2->allocRecdN);
-          goto errLabel;
-        }
-
-        recd_set( rbuf->type, nullptr, p->recd_array2->recdA + rbuf->recdN, p->midi_fld_idx2, (midi::ch_msg_t*)m );
+        recd_set( rbuf->type, nullptr, p->recd_array->recdA + rbuf->recdN, p->midi_fld_idx, (midi::ch_msg_t*)m );
         rbuf->recdN += 1;
 
       errLabel:
@@ -1238,7 +1201,6 @@ namespace cw
         inst_t* inst = (inst_t*)proc->userPtr;
         mbuf_t* mbuf = nullptr;
         rbuf_t* rbuf1    = nullptr;
-        rbuf_t* rbuf2  = nullptr;
         bool    print_fl = false;
 
         var_get(proc,kPrintFlPId,kAnyChIdx,print_fl);
@@ -1293,39 +1255,18 @@ namespace cw
           }
           else
           {
-            rbuf1->recdA = inst->recd_array1->recdA;
+            rbuf1->recdA = inst->recd_array->recdA;
             rbuf1->recdN = 0;
             
             for(unsigned i=0; i<mbuf->msgN; ++i)
             {
-              _set_output_record1(inst,rbuf1, mbuf->msgA + i);
+              _set_output_record(inst,rbuf1, mbuf->msgA + i);
             }
 
             //if( rbuf->recdN )
             //  printf("r:%i\n",rbuf->recdN);
           }
 
-
-
-
-          
-          // get the output variable 2
-          if((rc = var_get(proc,kROut2PId,kAnyChIdx,rbuf2)) != kOkRC )
-          {
-            rc = cwLogError(kInvalidStateRC,"The midi-in '%s' does not have a valid output record buffer.",proc->label);
-          }
-          else
-          {
-            rbuf2->recdA = inst->recd_array2->recdA;
-            rbuf2->recdN = 0;
-            
-            for(unsigned i=0; i<mbuf->msgN; ++i)
-              _set_output_record2(inst,rbuf2, mbuf->msgA + i);
-
-            //if( rbuf->recdN )
-            //  printf("r:%i\n",rbuf->recdN);
-          }
-          
         }
         
         return rc;
@@ -2445,6 +2386,247 @@ namespace cw
       
     }
 
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // audio_xfade
+    //
+    namespace audio_xfade
+    {
+      enum {
+        kAbMsPId,
+        kBaMsPId,
+        kInAPId,
+        kInBPId,
+        kResetPId,
+        kAbTrigPId,
+        kAbTrigAltPId,
+        kBaTrigPId,
+        kOutPId,        
+      };
+      
+      typedef struct
+      {
+        unsigned dst_xfade_smp_cnt; // duration of the current cross fade in samples
+        unsigned cur_xfade_smp_idx; // current cross-fade index (0 to dst_xfade_smp_cnt)
+        bool     fade_to_a_fl;      // true if we are fading to A or are at A
+        
+        unsigned ab_smp_cnt;  // duration of A->B cross-fade
+        unsigned ba_smp_cnt;  // duration of B->A cross-fade
+        
+      } inst_t;
+
+      unsigned _ms_to_samples( proc_t* proc, unsigned ms )
+      {
+        return  (unsigned)(proc->ctx->sample_rate * ms / 1000.0f);
+      }
+
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t          rc      = kOkRC;        
+        const abuf_t* a_buf   = nullptr;
+        const abuf_t* b_buf   = nullptr;
+        unsigned      ab_ms   = 100;
+        unsigned      ba_ms   = 100;
+        bool          trig_fl = false;
+        
+        if((rc = var_register_and_get(proc,kAnyChIdx,
+                                      kAbMsPId,      "ab_ms",       kBaseSfxId, ab_ms,
+                                      kBaMsPId,      "ba_ms",       kBaseSfxId, ba_ms,
+                                      kInAPId,       "in_a",        kBaseSfxId, a_buf,
+                                      kInBPId,       "in_b",        kBaseSfxId, b_buf,
+                                      kResetPId,     "reset",       kBaseSfxId, trig_fl,
+                                      kAbTrigPId,    "ab_trig",     kBaseSfxId, trig_fl,
+                                      kAbTrigAltPId, "ab_trig_alt", kBaseSfxId, trig_fl,
+                                      kBaTrigPId,    "ba_trig",     kBaseSfxId, trig_fl)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if( a_buf->chN != b_buf->chN || a_buf->frameN != b_buf->frameN )
+        {
+          rc = cwLogError(kInvalidArgRC,"The input signals in the audio xfade '%s' must have the same count of samples and frames.",cwStringNullGuard(proc->label));
+          goto errLabel;
+        }
+
+        // create the output audio buffer
+        if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, a_buf->srate, a_buf->chN, a_buf->frameN )) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+        p->ab_smp_cnt        = _ms_to_samples(proc,ab_ms);
+        p->ba_smp_cnt        = _ms_to_samples(proc,ba_ms);
+        p->cur_xfade_smp_idx = p->ba_smp_cnt;
+        p->dst_xfade_smp_cnt = p->ba_smp_cnt;
+        p->fade_to_a_fl      = true;  // always start passing A and stopping B
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+
+      
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        if( proc->ctx->isInRuntimeFl )
+        {
+          switch( var->vid )
+          {
+            case kAbMsPId:
+              {
+                unsigned ms;
+                if( var_get(proc,var->vid,kAnyChIdx,ms) == kOkRC )
+                  p->ab_smp_cnt = _ms_to_samples(proc,ms);
+              }
+              break;
+              
+            case kBaMsPId:
+              {
+                unsigned ms;
+                if( var_get(proc,var->vid,kAnyChIdx,ms) == kOkRC )
+                  p->ba_smp_cnt = _ms_to_samples(proc,ms);
+              }
+              break;
+
+            case kResetPId:
+              // we always begin passing A and stopping B
+              p->fade_to_a_fl      = true;
+              p->dst_xfade_smp_cnt = 0;
+              p->cur_xfade_smp_idx = 0;
+              cwLogInfo("SET TO SIMUL");
+              break;
+              
+            case kAbTrigPId:
+            case kAbTrigAltPId:
+              // if we are on A now
+              if( p->fade_to_a_fl == true )
+              {
+                // .. then fade to B
+                p->fade_to_a_fl      = false;
+                p->dst_xfade_smp_cnt = p->ab_smp_cnt;
+                p->cur_xfade_smp_idx = 0;
+                cwLogInfo("FADE TO SPIRIO");
+              }
+              break;
+              
+            case kBaTrigPId:
+              // if we are on B now ...
+              if( p->fade_to_a_fl == false )
+              {
+                // ... then fade to A
+                p->fade_to_a_fl      = true;
+                p->dst_xfade_smp_cnt = p->ba_smp_cnt;
+                p->cur_xfade_smp_idx = 0;
+                cwLogInfo("FADE TO SIMUL");
+              }
+              break;
+              
+          }
+        }
+        return rc;
+      }
+
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t rc      = kOkRC;
+
+        const abuf_t* a_buf  = nullptr;
+        const abuf_t* b_buf = nullptr;
+        abuf_t* o_buf = nullptr;
+        unsigned xfN = 0;
+
+        if( var_get(proc,kInAPId,kAnyChIdx,a_buf) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if( var_get(proc,kInBPId,kAnyChIdx,b_buf) != kOkRC )
+        {
+          goto errLabel;
+        }        
+
+        if( var_get(proc,kOutPId,kAnyChIdx,o_buf) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // xfN is the count of samples which will  be cross-faded during this cycle
+        xfN = std::min(p->dst_xfade_smp_cnt - p->cur_xfade_smp_idx, o_buf->frameN );
+
+        // zero the output buffer
+        vop::zero(o_buf->buf,o_buf->chN * o_buf->frameN);
+
+        // if there is any cross-fade to to
+        if( xfN > 0 )
+        {
+          coeff_t fadeInTbl[ xfN ];
+          coeff_t fadeOutTbl[ xfN ];
+
+          // fill in the cross-fade gain tables
+          for(unsigned i=0; i<xfN; ++i)
+          {
+            fadeInTbl[i]  = std::min(1.0f,std::max(0.0f, (coeff_t)(p->cur_xfade_smp_idx + i) / p->dst_xfade_smp_cnt));
+            fadeOutTbl[i] = 1.0f - fadeInTbl[i];
+          }
+
+          p->cur_xfade_smp_idx += xfN;
+
+          // select the gain table given the fade direction
+          coeff_t* aGainTbl = p->fade_to_a_fl ? fadeInTbl  : fadeOutTbl;
+          coeff_t* bGainTbl = p->fade_to_a_fl ? fadeOutTbl : fadeInTbl;
+
+          // for each channel
+          for(unsigned ch_idx=0; ch_idx<o_buf->chN; ++ch_idx)
+          {
+            sample_t* ax = a_buf->buf + ch_idx*a_buf->frameN;
+            sample_t* bx = b_buf->buf + ch_idx*b_buf->frameN;
+            sample_t* y  = o_buf->buf + ch_idx*o_buf->frameN;
+
+            for(unsigned i=0; i<xfN; ++i)
+              y[i] += (aGainTbl[i]*ax[i]) + (bGainTbl[i]*bx[i]);
+          }
+        }
+
+        if( xfN < o_buf->frameN )
+        {
+          coeff_t again = p->fade_to_a_fl ? 1.0f : 0.0f;
+          coeff_t bgain = p->fade_to_a_fl ? 0.0f : 1.0f;
+          
+          for(unsigned ch_idx=0; ch_idx<o_buf->chN; ++ch_idx)
+          {
+            sample_t* ax = a_buf->buf + ch_idx*a_buf->frameN;
+            sample_t* bx = b_buf->buf + ch_idx*b_buf->frameN;
+            sample_t* y  = o_buf->buf + ch_idx*o_buf->frameN;
+
+            for(unsigned i=xfN; i<o_buf->frameN; ++i)
+              y[i] += (again*ax[i]) + (bgain*bx[i]);
+          }
+        }
+
+      errLabel:
+        
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    // audio_xfade
 
     //------------------------------------------------------------------------------------------------------------------
     //
@@ -5767,7 +5949,7 @@ namespace cw
         // if this pitch does not have any assoc'd note-on's then there is nothing to do
         if( p->midiA[ m->d0 ].cnt == 0 )
         {
-          cwLogWarning("Extra note-off:%i.",m->d0);
+          //cwLogWarning("Extra note-off:%i.",m->d0);
           goto errLabel;
         }
 
