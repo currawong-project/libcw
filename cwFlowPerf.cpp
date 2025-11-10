@@ -809,7 +809,9 @@ namespace cw
         
         unsigned      playerN;
         player_t*     playerA;
-        
+
+        unsigned*     portIdA;    // array of unique port_id's among all players
+        unsigned      portIdN;
 
         midi::ch_msg_t* noteOffM;  // noteOffMtx[ kMidiChCnt * kMidiNoteCnt ] - all possible note off messages
         midi::ch_msg_t* ctlOffM;   // ctlOffMtx[  kMidiChCnt * kMidiCtlCnt ]  - all possible ctl = 0 messages
@@ -862,6 +864,14 @@ namespace cw
         return kInvalidIdx;
       }
 
+      unsigned _port_id_to_index( const inst_t* p,unsigned port_id )
+      {
+        for(unsigned i=0; i<p->portIdN; ++i)
+          if( p->portIdA[i] == port_id )
+            return i;
+        return kInvalidIdx;
+      }
+
       rc_t _parse_cfg( proc_t* proc, inst_t* p, const object_t* cfg )
       {
         rc_t rc = kOkRC;
@@ -869,6 +879,8 @@ namespace cw
         
         p->playerN        = cfg->child_count();
         p->playerA        = mem::allocZ<player_t>(p->playerN);
+        p->portIdA        = mem::allocZ<unsigned>(p->playerN);
+        p->portIdN        = 0;
         p->global_smp_idx = 0;
         p->noteOffM       = mem::allocZ<midi::ch_msg_t>(midi::kMidiChCnt*midi::kMidiNoteCnt);
         p->ctlOffM        = mem::allocZ<midi::ch_msg_t>(midi::kMidiChCnt*midi::kMidiCtlCnt);
@@ -933,6 +945,12 @@ namespace cw
             plyr->ctlM      = mem::allocZ<unsigned>(kCtlCnt);
             plyr->next_msg_idx = kInvalidIdx;
             plyr->start_smp_idx = kInvalidIdx;
+
+            if( _port_id_to_index(p,plyr->port_id ) == kInvalidIdx )
+            {
+              p->portIdA[ p->portIdN++ ] = plyr->port_id;
+            }
+            
           
             for(unsigned j=0; j<plyr->allocMsgN; ++j)
             {
@@ -1138,7 +1156,7 @@ namespace cw
         mem::release(p->noteOffM);
         mem::release(p->ctlOffM);
         mem::release(p->playerA);
-        
+        mem::release(p->portIdA);
 
         return rc;
       }
@@ -1280,20 +1298,26 @@ namespace cw
         rc_t rc = kOkRC;
         unsigned ch = 0;
 
-        // send reset-all-controls
-        unsigned idx = ch * midi::kMidiCtlCnt + midi::kResetAllCtlsMdId;
-        assert( idx < midi::kMidiChCnt * midi::kMidiCtlCnt );
+        // send all-note-off out each port
+        for(unsigned i=0; i<p->portIdN; ++i)
+        {
+          // send reset-all-controls
+          unsigned idx = ch * midi::kMidiCtlCnt + midi::kResetAllCtlsMdId;
+          assert( idx < midi::kMidiChCnt * midi::kMidiCtlCnt );
+          
+          // Note: we only send for reset-all-controls for the first player - this should be enough.
+          //_set_output_record(p,p->playerA,rbuf,p->ctlOffM + idx,kInvalidId,p->playerA->port_id,kInvalidId);
+          _set_output_record(p,p->playerA,rbuf,p->ctlOffM + idx,kInvalidId,p->portIdA[i],kInvalidId);
+          
+          // send all-notes-off
+          idx = ch * midi::kMidiCtlCnt + midi::kAllNotesOffMdId;
+          assert( idx < midi::kMidiChCnt * midi::kMidiCtlCnt );
         
-        // Note: we only send for reset-all-controls for the first player - this should be enough.
-        _set_output_record(p,p->playerA,rbuf,p->ctlOffM + idx,kInvalidId,p->playerA->port_id,kInvalidId);
-
-        // send all-notes-off
-        idx = ch * midi::kMidiCtlCnt + midi::kAllNotesOffMdId;
-        assert( idx < midi::kMidiChCnt * midi::kMidiCtlCnt );
+          // Note: we only send for all-notes-off for the first player - this should be enough.
+          //_set_output_record(p,p->playerA,rbuf,p->noteOffM + idx,kInvalidId,p->playerA->port_id,kInvalidId);
+          _set_output_record(p,p->playerA,rbuf,p->noteOffM + idx,kInvalidId,p->portIdA[i],kInvalidId);
+        }
         
-        // Note: we only send for all-notes-off for the first player - this should be enough.
-        _set_output_record(p,p->playerA,rbuf,p->noteOffM + idx,kInvalidId,p->playerA->port_id,kInvalidId);
-
         p->global_smp_idx = 0;
         p->start_trig_fl = false;
         p->clear_trig_fl = false;
@@ -2994,7 +3018,7 @@ namespace cw
             // p->cur_frag maintains a reference to the preset selections
             p->cur_frag = frag;
 
-            cwLogInfo("ps LOC:%i ",loc);
+            //cwLogInfo("ps LOC:%i ",loc);
             //cwLogPrint("LOC:%i ",loc);
             //fragment_report( p->psH, frag );
             
@@ -3386,6 +3410,7 @@ namespace cw
         kMaxLocPId,
         kResetTrigPId,
         kEnableFlPId,
+        kDVelPId,
         kPrintFlPId,
         kOutPId,
       };
@@ -3451,6 +3476,7 @@ namespace cw
         unsigned               beg_loc_id = kInvalidId;
         unsigned               end_loc_id = kInvalidId;
         bool                   reset_trig_fl = false;
+        float dvel = 1.0;
         cw::score_follow_2::args_t sf_args = {
           .pre_affinity_sec = 1.0,
           .post_affinity_sec = 3.0,
@@ -3474,6 +3500,7 @@ namespace cw
                                       kEndLocPId,     "e_loc",         kBaseSfxId, end_loc_id,
                                       kResetTrigPId,  "reset_trigger", kBaseSfxId, reset_trig_fl,
                                       kEnableFlPId,   "enable_fl",     kBaseSfxId, p->enable_fl,
+                                      kDVelPId,       "dvel",          kBaseSfxId, dvel,
                                       kPrintFlPId,    "print_fl",      kBaseSfxId, sf_args.rpt_fl )) != kOkRC )
         {
           goto errLabel;
@@ -3570,7 +3597,7 @@ namespace cw
 
         p->cur_loc_id = kInvalidId;
 
-        cwLogInfo("SF (%s) reset:%i %i",proc->label, beg_loc_id,end_loc_id);
+        //cwLogInfo("SF (%s) reset:%i %i",proc->label, beg_loc_id,end_loc_id);
 
       errLabel:
 
@@ -3617,6 +3644,20 @@ namespace cw
 
       errLabel:
         return rc;
+      }
+
+      float _dvel( unsigned actual_vel, unsigned score_vel )
+      {
+        float v1 = actual_vel;
+        float v2 = score_vel;
+
+        v1 = (v1/127.0f);
+        v2 = (v2/25.0f);
+
+        //cwLogInfo("%i %i",actual_vel,score_vel);
+
+        return 1.0f + std::max(1.0f, std::min(0.0f, v1<v2 ? v2-v1 : v1-v2));
+          
       }
 
       rc_t _exec( proc_t* proc, inst_t* p )
@@ -3674,9 +3715,13 @@ namespace cw
                 if( loc_id != p->cur_loc_id )
                 {
                   p->cur_loc_id = loc_id;
-              
+
+                  //float dvel = _dvel(m->d1,score_vel);
+                  //var_set(proc,kDVelPId,kAnyChIdx,dvel);
+                  //cwLogInfo("DVEL::%f",dvel);
+                            
                   //cwLogInfo("sf (%s) LOC:%i",proc->label,loc_id);
-                  printf("sf (%s) LOC:%i\n",proc->label,loc_id);
+                  //printf("sf (%s) LOC:%i\n",proc->label,loc_id);
                 }
               }
             }
@@ -4881,12 +4926,15 @@ namespace cw
           is_trig_fl_ref = false;
         }
 
+        // If the detector was activated but it has not triggered in 'max_cycle_cnt' cycles 
+        // then force the trigger.
         if( r->max_cycle_cnt != 0 && p->armed_cycle_cnt > r->max_cycle_cnt )
         {
-          cwLogInfo("'%s' Spirio playback time out.",cwStringNullGuard(r->label));
-          is_trig_fl_ref = false;
+          cwLogInfo("'%s' Spirio playback timed out.  Trigger forced.",cwStringNullGuard(r->label));
+          
+          is_trig_fl_ref = true;
           p->defer_detect_fl = false;              
-          p->armed_recd_idx = kInvalidIdx;
+          
         }
 
         if( p->armed_recd_idx != kInvalidIdx )
@@ -5862,7 +5910,8 @@ namespace cw
             const plyr_cmd_t& plyr_cmd    = ctl->cmdA[ play_cmd_idx ].u.plyr;
             const char*       piano_label = ctl->active_sf_id == 0 ? "(a)" : (ctl->active_sf_id==1? "(b)" : "(?)");
             const sf_cmd_t&   sf_cmd      = ctl->cmdA[ active_sf_cmd_idx].u.sf;
-            cwLogInfo("%s : ACTIVE: seg_id:%i '%s' %s %s-%i : beg:%i end:%i ena:%i",cwStringNullGuard(proc->label),ctl->seg_id, cwStringNullGuard(plyr_cmd.seg_label), piano_label, cwStringNullGuard(plyr_cmd.person_label), plyr_cmd.person_seg_num, sf_cmd.beg_loc, sf_cmd.end_loc, sf_cmd.enable_fl );
+            cwLogInfo("%s : ACTIVE: seg_id:%i '%s' %s %s-%i ",cwStringNullGuard(proc->label),ctl->seg_id, cwStringNullGuard(plyr_cmd.seg_label), piano_label, cwStringNullGuard(plyr_cmd.person_label), plyr_cmd.person_seg_num );
+            cwLogInfo("beg:%i end:%i ena:%i", sf_cmd.beg_loc, sf_cmd.end_loc, sf_cmd.enable_fl);
           }
         }
         
@@ -5918,6 +5967,10 @@ namespace cw
 
         rc = _exec_seg(proc,p,seg_id,exec_play_fl,play_now_fl);
 
+        var_set(proc,kSimResetPId,kAnyChIdx,true);
+        var_set(proc,kSprResetPId,kAnyChIdx,true);
+        var_set(proc,kResetPId,kAnyChIdx,true);
+        
         cwLogInfo("%s GOTO: seg:%i",cwStringNullGuard(proc->label),seg_id);
 
       errLabel:
@@ -6004,9 +6057,6 @@ namespace cw
 
         // reset the SF's
         _on_goto_seg(proc,p);
-
-        var_set(proc,kSimResetPId,kAnyChIdx,true);
-        var_set(proc,kSprResetPId,kAnyChIdx,true);
 
         return rc;
       }
