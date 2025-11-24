@@ -1616,6 +1616,87 @@ errLabel:
   return rc;      
 }
 
+cw::rc_t cw::midi::file::open_csv_3( handle_t& hRef, const char* midi_csv_fname, unsigned bpm, unsigned TpQN )
+{
+  rc_t          rc       = kOkRC;
+  file_t*     p        = nullptr;
+  csv::handle_t csvH;      
+  const char*   titleA[] = { "sec","ch","status","d0","d1" };
+  unsigned      titleN   = sizeof(titleA)/sizeof(titleA[0]);
+  unsigned      line_idx = 0;
+  unsigned      lineN    = 0;
+  unsigned      trkN = 1;
+  unsigned      trkIdx = 0;
+
+  if((rc = _create(hRef)) != kOkRC )
+    goto errLabel;
+
+  if((p = _handleToPtr(hRef)) == nullptr )
+    goto errLabel;
+
+  _init( p, trkN, TpQN );
+
+  
+  if((rc = csv::create(csvH,midi_csv_fname,titleA,titleN)) != kOkRC )
+  {
+    rc = cwLogError(rc,"MIDI CSV file open failed.");
+    goto errLabel;
+  }
+
+  if((rc = line_count(csvH,lineN)) != kOkRC )
+  {
+    rc = cwLogError(rc,"MIDI CSV line count access failed.");
+    goto errLabel;
+  }
+  
+  for(; (rc = next_line(csvH)) == kOkRC; ++line_idx )
+  {
+    double      sec;
+    unsigned    status;
+    unsigned    ch;
+    unsigned    d0;
+    unsigned    d1;
+    if((rc = getv(csvH,"sec",sec,"ch",ch,"status",status,"d0",d0,"d1",d1)) != kOkRC )
+    {
+      cwLogError(rc,"Error reading CSV line %i.",line_idx+1);
+      goto errLabel;
+    }
+
+    if( status != 0 )
+    {
+      assert( ch<=15 && d0 <= 127 && d1 <= 127 );
+
+      unsigned atick = sec * TpQN * bpm / 60.0;
+      unsigned amicro = sec * 1000000;
+      
+      if((rc = insertTrackChMsg(hRef, trkIdx, atick, status+ch, d0, d1 ) ) != kOkRC )
+      {
+        rc = cwLogError(rc,"Channel msg insert failed.");
+        goto errLabel;
+      }
+
+      assert( p->trkV[trkIdx].last->atick == atick );
+      
+      // insert the time directly
+      p->trkV[trkIdx].last->amicro = amicro;
+      
+    }
+  }
+
+  _linearize_partial(p);
+  
+
+errLabel:
+  destroy(csvH);
+      
+  if( rc == kEofRC )
+    rc = kOkRC;
+
+  if( rc != kOkRC )
+    rc = cwLogError(rc,"MIDI csv file parse failed on '%s'.",cwStringNullGuard(midi_csv_fname));
+  return rc;      
+}
+
 cw::rc_t cw::midi::file::create( handle_t& hRef, unsigned trkN, unsigned ticksPerQN )
 {
   rc_t       rc     = kOkRC;  
