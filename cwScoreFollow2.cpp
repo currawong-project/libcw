@@ -96,14 +96,6 @@ namespace cw
       unsigned vel;        // velocity of this note
     } note_t;
 
-    typedef struct result_str
-    {
-      unsigned perf_uid;
-      unsigned perf_pitch;
-      unsigned perf_vel;
-      unsigned match_loc_id;
-    } result_t;
-
     
     typedef struct sf_str
     {
@@ -988,3 +980,9 @@ unsigned cw::score_follow_2::max_loc_id( handle_t h )
 }
 
 
+const cw::score_follow_2::result_t* cw::score_follow_2::result_array( handle_t h, unsigned& resultN_ref)
+{
+  sf_t* p = _handleToPtr(h);
+  resultN_ref = p->resultN;
+  return p->resultA;
+}
