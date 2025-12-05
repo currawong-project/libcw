@@ -339,7 +339,7 @@ def gen_wave_table_bank_mp( processN, src_dir, midi_pitchL, out_fname, argD ):
     if processN > 0:
         pitchL = mp.local_distribute_main( processN,_multi_proc_func,procArgsD,taskArgsL )
     else:
-        pitchL = [ _gen_wave_table_bank( src_dir, r['midi_pitch'], argD ) for r in range(taskArgsL) ]
+        pitchL = [ _gen_wave_table_bank( src_dir, r['midi_pitch'], argD ) for r in taskArgsL ]
                 
 
     pitchL = sorted(pitchL,key=lambda x:x['midi_pitch'])
@@ -414,9 +414,10 @@ def plot_hz( wtb_json_fname ):
 if __name__ == "__main__":
 
     midi_pitchL = [ pitch for pitch in range(21,109) ]
-    #midi_pitchL = [60 ]
+    midi_pitchL = [ 33 ]
     out_fname = "/home/kevin/temp/temp_5.json"
-    src_dir= "/home/kevin/temp/wt6"
+    src_dir= "/home/kevin/media/audio/wt6"
+    processN = 0
     
     argD = {
         'rms_wnd_ms':50,
@@ -439,7 +440,7 @@ if __name__ == "__main__":
         }
     }
 
-    gen_wave_table_bank_mp(20, src_dir, midi_pitchL, out_fname, argD )
+    gen_wave_table_bank_mp(processN, src_dir, midi_pitchL, out_fname, argD )
 
     #plot_rms(out_fname)
     #plot_hz(out_fname)
