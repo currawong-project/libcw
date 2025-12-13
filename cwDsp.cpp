@@ -8,6 +8,7 @@
 #include "cwUtility.h"
 #include "cwMath.h"
 #include "cwVectOps.h"
+#include "cwDspTypes.h"
 #include "cwDsp.h"
 #include "cwText.h"
 

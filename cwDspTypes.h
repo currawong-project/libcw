@@ -12,6 +12,10 @@ namespace cw
     typedef float   srate_t;
     typedef float   coeff_t;   // values that are directly applied to signals of sample_t.
     typedef double   ftime_t;   // any time value expressed as a floating point value - could be seconds, milliseconds, etc
+
+    inline constexpr sample_t max_sample_value = 0.999999f;
+
   }
+
 }
 #endif

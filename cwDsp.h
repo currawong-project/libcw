@@ -35,7 +35,19 @@ namespace cw
     template< typename T >
     T db_to_ampl( T db )
     { return pow(10.0,db/20.0); }
-    
+
+
+    inline dsp::sample_t clip_sample_value( sample_t x )
+    {
+      if( x > dsp::max_sample_value )
+        return max_sample_value;
+      
+      if( x < -dsp::max_sample_value )
+        return -dsp::max_sample_value;
+
+      return x;
+      
+    }
 
     //---------------------------------------------------------------------------------------------------------------------------------
     // Window functions
