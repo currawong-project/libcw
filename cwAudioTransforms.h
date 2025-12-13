@@ -1266,32 +1266,33 @@ namespace cw
         kLoopWtTId
       } wt_tid_t;
 
+      // One channel wave table.
       template< typename sample_t, typename srate_t >
       struct wt_str
       {
-        wt_tid_t        tid;
+        wt_tid_t        tid;          //See enum wt_tid_t.
         unsigned        cyc_per_loop; // count of cycles in the loop
-        sample_t*       aV;       // aV[ padN + aN + padN ]
-        unsigned        aN;       // Count of unique samples
-        double          rms;
-        double          hz;
-        srate_t         srate;
-        unsigned        pad_smpN;
+        sample_t*       aV;           // aV[ padN + aN + padN ] audio vector (wave table)
+        unsigned        aN;           // Count of unique samples
+        double          rms;          // RMS of the audio vector
+        double          hz;           // Frequency of the audio vector
+        srate_t         srate;        // Sample rate of the audio vector
+        unsigned        pad_smpN;     // Count of mirrored sampled added to the begin and end of the audio vector
         unsigned        posn_smp_idx; // The location of this sample in the original audio file. 
       };
 
       template< typename sample_t >
-      sample_t table_read_2( const sample_t* tab, double frac )
+      sample_t table_read_2( const sample_t* tab, double frac, unsigned N )
       {
 
         unsigned i0 = floor(frac);
         unsigned i1 = i0 + 1;
         double   f  = frac - int(frac);
 
-        sample_t r = (sample_t)(tab[i0] + (tab[i1] - tab[i0]) * f);
+        assert( i0<N && i1<N );
 
-        //intf("r:%f frac:%f i0:%i f:%f\n",r,frac,i0,f);
-        return r;
+        return (sample_t)(tab[i0] + (tab[i1] - tab[i0]) * f);
+
       }
 
       template< typename sample_t >
@@ -1302,6 +1303,7 @@ namespace cw
 
         x = x - (N/2) ;
 
+        // TODO: optimize this statement
         return (sample_t)(0.5 + 0.5 * cos(2*M_PI * x / N));
       }
       
@@ -1350,8 +1352,8 @@ namespace cw
         
         for(unsigned i=0; i<aN; ++i)
         {
-          sample_t s0 = table_read_2( p->wt->aV+p->wt->pad_smpN, phs0 );
-          sample_t s1 = table_read_2( p->wt->aV+p->wt->pad_smpN, phs1 );
+          sample_t s0 = table_read_2( p->wt->aV+p->wt->pad_smpN, phs0, p->wt->aN + p->wt->pad_smpN );
+          sample_t s1 = table_read_2( p->wt->aV+p->wt->pad_smpN, phs1, p->wt->aN + p->wt->pad_smpN );
 
           sample_t e0 = hann_read<sample_t>(phs0,p->fsmp_per_wt);
           sample_t e1 = hann_read<sample_t>(phs1,p->fsmp_per_wt);
@@ -1410,7 +1412,9 @@ namespace cw
      
     } // wt_osc     
       
-      
+
+    // Sequence of wave tables formed from a single audio source.
+    // Each wave table represents a different time segment of the source.
     namespace wt_seq_osc
     {
 
@@ -1578,6 +1582,7 @@ namespace cw
       
     } // wt_seq_osc
 
+    // Sequence of multi-channel wave-tables formed from a single source.
     namespace multi_ch_wt_seq_osc
     {
       template< typename sample_t, typename srate_t >
