@@ -1839,7 +1839,7 @@ namespace cw
         return rc;
       
       unsigned argN = arg_cfg->child_count();
-        
+
       for(unsigned i=0; i<argN; ++i)
       {
         const object_t* arg_pair = arg_cfg->child_ele(i);
@@ -1851,17 +1851,56 @@ namespace cw
           rc = cwLogError(kSyntaxErrorRC,"Invalid 'arg' pair.");
           goto errLabel;
         }
-          
+
         // parse the var label string
         if((rc = _io_stmt_parse_ele( arg_pair->pair_label(), r  )) != kOkRC )
         {
           goto errLabel;
         }
 
+        // if the arg expr is iterating but no count was given
+        if(r.is_iter_fl && r.sfx_id_count == kInvalidCnt )
+        {
+          const var_desc_t* vd = nullptr;
+
+          // get the var_desc for this var
+          if( (vd=var_desc_find( proc->class_desc, r.label )) == nullptr )
+          {
+            rc = cwLogError(kSyntaxErrorRC,"The variable '%s', as referenced in the proc '%s' 'args' statement, was not found.",cwStringNullGuard(r.label),cwStringNullGuard(proc->label));
+            goto errLabel;
+          }
+          else
+          {
+            // if this variable does not have a 'mult_ref' variable to get the iteration count then stop
+            if(vd->mult_ref_var_label == nullptr )
+            {
+              rc = cwLogError(kSyntaxErrorRC,"The variable '%s', as referenced in the proc '%s' 'args' statement, is iterating but does not have a 'mult_ref' variable.",cwStringNullGuard(r.label),cwStringNullGuard(proc->label));
+              goto errLabel;
+            }
+            else
+            {
+              unsigned sfx_id_cnt;
+
+              // get the iteration count from the 'mult_ref' variable.
+              if((sfx_id_cnt = var_mult_count(proc,vd->mult_ref_var_label)) != 0)
+              {
+                r.sfx_id_count = sfx_id_cnt;
+              }
+              else
+              {
+                rc = cwLogError(kSyntaxErrorRC,"The 'mult_ref' variable '%s', as referenced by the variable '%s' in the proc '%s' 'args' statement, is iterating but does not have a 'mult_ref' variable.",vd->mult_ref_var_label,cwStringNullGuard(r.label),cwStringNullGuard(proc->label));
+                goto errLabel;
+              }
+            }
+          }
+        }
+        
         // if the arg expr is not iterating then set the iter count to 1
         if( r.sfx_id_count == kInvalidCnt )
+        {
           r.sfx_id_count = 1;
-
+        }
+        
         // if no base sfx id was given then set the base sfx id to kBaseSfxId
         if( r.base_sfx_id == kInvalidId )
           r.base_sfx_id = kBaseSfxId;

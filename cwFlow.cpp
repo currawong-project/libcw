@@ -258,7 +258,8 @@ namespace cw
                               "value", kOptFl, vd->val_cfg,
                               "fmt",   kOptFl, vd->fmt_cfg,
                               "ui",    kOptFl, vd->ui_cfg,
-                              "proxy", kOptFl, proxy_string )) != kOkRC )
+                              "proxy", kOptFl, proxy_string,
+                              "mult_ref", kOptFl, vd->mult_ref_var_label)) != kOkRC )
       {
         rc = cwLogError(rc,"Parsing optional fields failed.");
         goto errLabel;
