@@ -190,6 +190,8 @@ namespace cw
   void sleepUs( unsigned us ); // sleep microseconds
   void sleepNs( unsigned ns ); // sleep nanoseconds
 
+  void report_dependecy_versions();
+  
   template< typename T >
     bool is_even( const T& t )
   {

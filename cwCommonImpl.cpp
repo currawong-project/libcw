@@ -5,6 +5,22 @@
 
 #include "cwCommonImpl.h"
 
+#if cwWEBSOCK
+#include <libwebsockets.h>
+#endif
+
+#if cwFFTW
+#include <fftw3.h>
+#endif
+
+#if cwALSA
+#include <alsa/asoundlib.h>
+#endif
+
+#if cwMKL
+#include <mkl.h>
+#endif
+
 #include <time.h>
 
 namespace cw
@@ -24,9 +40,39 @@ namespace cw
     
     return p;    
   }
+
   
 }
 
+void cw::report_dependecy_versions()
+{
+#if cwWEBSOCK
+  cwLogInfo("libwebsockets version: %i.%i.%i : %i : '%s'",LWS_LIBRARY_VERSION_MAJOR,LWS_LIBRARY_VERSION_MINOR,LWS_LIBRARY_VERSION_PATCH,LWS_LIBRARY_VERSION_NUMBER,cwStringNullGuard(lws_get_library_version()));
+#else
+  cwLogInfo("libwebsock is not available.");
+#endif
+
+#if cwFFTW
+  cwLogInfo("FFTW version:'%s'",fftw_version);
+#else    
+  cwLogInfo("FFTW is not available.");      
+#endif
+
+#if cwALSA
+  cwLogInfo("ALSA version:'%s'",SND_LIB_VERSION_STR);
+#else    
+  cwLogInfo("ALSA is not available.");         
+#endif
+
+#if cwMKL
+  MKLVersion ver;
+  mkl_get_version(&ver);
+  cwLogInfo("Intel Math Kernel library version: %d.%d Update %d\\n", ver.MajorVersion, ver.MinorVersion, ver.UpdateVersion);
+#else
+  cwLogInfo("Intel Math Kernel library is not available.");
+#endif
+ 
+}
 
 
 const char* cw::idToLabelNull( const idLabelPair_t* array, unsigned id, unsigned eolId )
