@@ -27,23 +27,23 @@ namespace cw
   {
     typedef struct vel_str
     {
-      unsigned vel;
-      unsigned bsi;
-      multi_ch_wt_seq_t mc_seq;
-    } vel_t;
+      unsigned vel;              // Velocity associated with this wave table sequence
+      unsigned bsi;              // Index into the audio file of the first wave table in the sequence.
+      multi_ch_wt_seq_t mc_seq;  // Multi-channel wave table sequence for this source
+    } vel_t; 
     
     typedef struct pitch_str
     {
-      unsigned midi_pitch;
-      vel_t*   velA;
+      unsigned midi_pitch;  // Common MIDI pitch for all wave-tables referenced in velA[]
+      vel_t*   velA;        // Array of wave table sequences each representing a different velocity of this  pitch
       unsigned velN;
     } pitch_t;
     
     typedef struct instr_str
     {
-      char*               label;
-      pitch_t*            pitchA;
-      unsigned            pitchN;
+      char*               label;   // Name of this instrument (e.g. piano)
+      pitch_t*            pitchA;  // The set of wave tables for this instrument - one for each pitch
+      unsigned            pitchN;  //
       
       multi_ch_wt_seq_t** pvM;  // pgM[128x128] pgmM[pitch][vel] // each row holds the vel's for a given pitch
       struct instr_str*   link;
@@ -193,7 +193,6 @@ namespace cw
       wt->posn_smp_idx = posn_smp_idx;
       
       unsigned allocSmpCnt = p->padSmpN + wt->aN + p->padSmpN;
-      //p->allocAudioBytesN += allocSmpCnt * sizeof(sample_t);
       unsigned allocByteCnt = allocSmpCnt * sizeof(sample_t);
       
       // allocate the wavetable audio buffer
@@ -315,7 +314,11 @@ namespace cw
     
       pitch->velN = velL->child_count();
       pitch->velA = mem::allocZ<vel_t>( pitch->velN );
-    
+
+      assert( hz>0 && std::isfinite(hz) );
+      
+
+      // For each velocity velocity specific sample associated with this pitch
       for(unsigned j=0; j<pitch->velN; ++j)
       {
         const object_t* chL  = nullptr;
@@ -339,7 +342,8 @@ namespace cw
       
         vel->mc_seq.chN = chL->child_count();
         vel->mc_seq.chA = mem::allocZ<wt_seq_t>( vel->mc_seq.chN );
-      
+
+        // For each audio channel 
         for(unsigned ch_idx=0; ch_idx<pitch->velA[j].mc_seq.chN; ++ch_idx)
         {
 
@@ -366,6 +370,13 @@ namespace cw
               goto errLabel;
             }
 
+            // Force the wtei to be at least as long as one cycle at 'hz'.
+            //
+            // Note that the phase of the oscillator which will play the wavetable
+            // will wrap at floor(srate/hz) and so the wave table must be at least
+            // this long.  (See cwAudioTransforms::wt_str<>._process_loop())
+            wtei = std::max(wtei,wtbi + (unsigned)std::floor((2.0* srate)/hz));
+
             // if this is the first looping wave table then insert the attack wave table before it
             if( wti==0 )
             {
@@ -373,6 +384,7 @@ namespace cw
             }
 
             args->allocByteN += _alloc_wt(p,wt,dsp::wt_osc::kLoopWtTId,srate,abuf.ch_buf[ch_idx],wtbi,wtei-wtbi,hz,rms);
+
           }
         }
       }    
