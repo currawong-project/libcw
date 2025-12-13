@@ -2516,7 +2516,9 @@ cw::rc_t cw::io::create(
   time::get(p->t0);  
   
   h.set(p);
-  
+
+  report_dependecy_versions();
+
  errLabel:
   if(rc != kOkRC )
     _destroy(p);
