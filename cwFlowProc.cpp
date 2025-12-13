@@ -1650,9 +1650,18 @@ namespace cw
           unsigned  chN    = std::min(inst->ext_dev->u.a.abuf->chN,    src_abuf->chN);
           unsigned  frameN = std::min(inst->ext_dev->u.a.abuf->frameN, src_abuf->frameN);
           unsigned  n      = chN * frameN;
+          sample_t* dst    = inst->ext_dev->u.a.abuf->buf;
           for(unsigned i=0; i<n; ++i)
-            inst->ext_dev->u.a.abuf->buf[i] += src_abuf->buf[i];
-          
+          {
+            dst[i] += src_abuf->buf[i];
+
+            // check for clipping
+            //if(  inst->ext_dev->u.a.abuf->buf[i] < -dsp::max_sample_value || inst->ext_dev->u.a.abuf->buf[i] > dsp::max_sample_value )
+            //{
+            //}
+            
+            dst[i]  = dsp::clip_sample_value(dst[i]);            
+          }
         }
         
         return rc;
@@ -1930,10 +1939,23 @@ namespace cw
         else
         {
           sample_t*     chBuf[ src_abuf->chN ];
-        
-          for(unsigned i=0; i<src_abuf->chN; ++i)
-            chBuf[i] = src_abuf->buf + (i*src_abuf->frameN);
-        
+          sample_t  clipBuf[ src_abuf->chN * src_abuf->frameN ];
+
+
+          // for each channel
+          for(unsigned ch_idx=0; ch_idx<src_abuf->chN; ++ch_idx)
+          {
+            // clip the value of each sample in this channel and store it in clipBuf[]
+            for(unsigned smp_idx=0; smp_idx<src_abuf->frameN; ++smp_idx)
+            {
+              unsigned i = ch_idx * src_abuf->frameN + smp_idx;
+              clipBuf[i] = dsp::clip_sample_value( src_abuf->buf[i] );
+            }
+
+            // store a pointer to this channels samples in chBuf[ch_idx]
+            chBuf[ch_idx] = clipBuf + (ch_idx*src_abuf->frameN);
+          }
+          
           if((rc = audiofile::writeFloat(inst->afH, src_abuf->frameN, src_abuf->chN, chBuf )) != kOkRC )
             rc = cwLogError(rc,"Audio file write failed on instance: '%s'.", proc->label );
 
@@ -3048,6 +3070,14 @@ namespace cw
         
       } inst_t;
 
+      void _print( inst_t* p )
+      {
+        for(unsigned i=0; i<p->inAudioVarCnt; ++i)
+          for(unsigned j=0; j<p->iagV[i].audioChN; ++j)
+            printf("(%i %i %f) ",i,j,p->iagV[i].gainV[j]);
+        printf("\n");
+      }
+
 
       // Mix the the first N channels of the input audio signal from iag->aVId
       // into the first N channels of the output signal.
@@ -3070,7 +3100,9 @@ namespace cw
             coeff_t         gain = iag->gainV[i] * oag->gainV[i];
           
             for(unsigned j=0; j<obuf->frameN; ++j)
-              osig[j] += gain * isig[j];          
+            {
+              osig[j] += gain * isig[j];
+            }
         }
         
       errLabel:
@@ -3246,10 +3278,14 @@ namespace cw
         // zero the output buffer
         vop::zero(obuf->buf, obuf->frameN*obuf->chN );
 
-        // mix each input channel into the output buffer
+        // mix each input port into the output buffer
         for(unsigned i=0; i<p->inAudioVarCnt; ++i)
           if((rc =_mix(proc, p->iagV + i, &p->oag, obuf )) != kOkRC )
             goto errLabel;
+
+        //if( proc->ctx->cycleIndex == 10 )
+        //  _print( p );
+
         
       errLabel:
         return rc;
@@ -3268,128 +3304,6 @@ namespace cw
       
     }    
     
-    //------------------------------------------------------------------------------------------------------------------
-    //
-    // audio_mix
-    //
-    namespace audio_mix_0
-    {
-      enum {
-        kIn0PId,
-        kIn1PId,
-        kGain0PId,
-        kGain1PId,
-        kOutPId,
-      };
-      
-      typedef struct
-      {
-      } inst_t;
-
-
-      rc_t create( proc_t* proc )
-      {
-        rc_t          rc     = kOkRC;
-        const abuf_t* abuf0  = nullptr; //
-        const abuf_t* abuf1  = nullptr;
-        unsigned      outChN = 0;
-        double dum;
-        
-        // get the source audio buffer
-        if((rc = var_register_and_get(proc, kAnyChIdx,
-                                      kIn0PId,"in0",kBaseSfxId,abuf0,
-                                      kIn1PId,"in1",kBaseSfxId,abuf1 )) != kOkRC )
-        {
-          goto errLabel;
-        }
-
-        assert( abuf0->frameN == abuf1->frameN );
-
-        outChN = std::max(abuf0->chN, abuf1->chN);
-
-        // register the gain
-        var_register_and_get( proc, kAnyChIdx, kGain0PId, "gain0", kBaseSfxId, dum );
-        var_register_and_get( proc, kAnyChIdx, kGain1PId, "gain1", kBaseSfxId, dum );
-          
-        // create the output audio buffer
-        rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, abuf0->srate, outChN, abuf0->frameN );
-
-      errLabel:
-        return rc;
-      }
-
-      rc_t destroy( proc_t* proc )
-      { return kOkRC; }
-
-      rc_t notify( proc_t* proc, variable_t* var )
-      { return kOkRC; }
-
-      rc_t _mix( proc_t* proc, unsigned inPId, unsigned gainPId, abuf_t* obuf )
-      {
-        rc_t          rc   = kOkRC;
-        const abuf_t* ibuf = nullptr;
-        
-        if((rc = var_get(proc, inPId, kAnyChIdx, ibuf )) != kOkRC )
-          goto errLabel;
-
-
-        if(rc == kOkRC )
-        {          
-          unsigned chN = std::min(ibuf->chN, obuf->chN );
-          
-          for(unsigned i=0; i<chN; ++i)
-          {
-            const sample_t* isig = ibuf->buf + i*ibuf->frameN;
-            sample_t*       osig = obuf->buf + i*obuf->frameN;
-            coeff_t          gain = 1;
-
-            if((rc = var_get(proc, gainPId, kAnyChIdx, gain)) != kOkRC )
-              goto errLabel;
-            
-            for(unsigned j=0; j<obuf->frameN; ++j)
-              osig[j] += gain * isig[j];
-          }
-        }
-
-      errLabel:
-        return rc;
-        
-      }
-
-      rc_t exec( proc_t* proc )
-      {
-        rc_t          rc    = kOkRC;
-        abuf_t*       obuf  = nullptr;
-        //const abuf_t* ibuf0 = nullptr;
-        //const abuf_t* ibuf1 = nullptr;
-
-        if((rc = var_get(proc,kOutPId, kAnyChIdx, obuf)) != kOkRC )
-          goto errLabel;
-
-        //if((rc = var_get(proc,kIn0PId, kAnyChIdx, ibuf0 )) != kOkRC )
-        //  goto errLabel;
-        
-        //if((rc = var_get(proc,kIn1PId, kAnyChIdx, ibuf1 )) != kOkRC )
-        //  goto errLabel;
-
-        vop::zero(obuf->buf, obuf->frameN*obuf->chN );
-        
-        _mix( proc, kIn0PId, kGain0PId, obuf );
-        _mix( proc, kIn1PId, kGain1PId, obuf );
-        
-      errLabel:
-        return rc;
-      }
-
-      class_members_t members = {
-        .create = create,
-        .destroy = destroy,
-        .notify   = notify,
-        .exec = exec,
-        .report = nullptr
-      };
-      
-    }    
     
     //------------------------------------------------------------------------------------------------------------------
     //
@@ -6434,7 +6348,7 @@ namespace cw
         rc_t        rc            = kOkRC;
         const char* wtb_var_label = "wtb";
         char*       exp_wtb_fname = nullptr;
-        unsigned    padSmpN       = 2;
+        unsigned    padSmpN       = 1;
         
         // if the global wave table bank has not yet been created
         if((p->wtbH_ptr = (wt_bank::handle_t*)global_var(proc, wtb_var_label )) == nullptr )
@@ -9528,30 +9442,37 @@ namespace cw
         kInPId,
         kUintSelPId,
         kUintInPId,
+        kDelayMsPId
       };
       
       typedef struct
       {
         unsigned uint_sel;
         bool     halt_fl;
+        unsigned delay_cycle_cnt;
+        unsigned delay_cycle_idx;
       } inst_t;
 
 
       rc_t _create( proc_t* proc, inst_t* p )
       {
         rc_t rc = kOkRC;
+        unsigned delay_ms;
         if((rc = var_register_and_get(proc,kAnyChIdx,
-                                      kUintSelPId,"uint_sel",kBaseSfxId,p->uint_sel)) != kOkRC )
+                                      kUintSelPId,"uint_sel",kBaseSfxId,p->uint_sel,
+                                      kDelayMsPId,"delay_ms",kBaseSfxId,delay_ms)) != kOkRC )
         {
           goto errLabel;
         }
         
         if((rc = var_register(proc,kAnyChIdx,
-                              kInPId,    "in",     kBaseSfxId,
-                              kUintInPId,"uint_in",kBaseSfxId)) != kOkRC )
+                              kInPId,     "in",      kBaseSfxId,
+                              kUintInPId, "uint_in", kBaseSfxId)) != kOkRC )
         {
           goto errLabel;
         }
+
+        p->delay_cycle_cnt = (unsigned)(proc->ctx->sample_rate * delay_ms / (1000.0 * proc->ctx->framesPerCycle));
         
       errLabel:
         return rc;
@@ -9571,7 +9492,11 @@ namespace cw
           switch( var->vid )
           {
             case kInPId:
-              p->halt_fl = true;
+              if( !p->halt_fl )
+              {
+                p->halt_fl = true;
+                p->delay_cycle_idx = 0;
+              }
               break;
               
             case kUintSelPId:
@@ -9593,7 +9518,10 @@ namespace cw
 
       rc_t _exec( proc_t* proc, inst_t* p )
       {
-        return p->halt_fl ? kEofRC : kOkRC;
+        if( p->halt_fl )
+          p->delay_cycle_idx += 1;
+            
+        return p->halt_fl && (p->delay_cycle_idx >= p->delay_cycle_cnt) ? kEofRC : kOkRC;
       }
 
       rc_t _report( proc_t* proc, inst_t* p )
@@ -10241,6 +10169,7 @@ namespace cw
         kMidiFileNamePId,
         kCsvFileNamePId,
         kCsvFileName2PId,
+        kCsvFileName3PId,
         kStartPId,
         kStopPId,
         kDoneFlPId,
@@ -10510,33 +10439,47 @@ namespace cw
         return rc;
       }
 
-      rc_t _load_from_alt_csv_file( proc_t* proc, inst_t* p, const char* csv_fname_2 )
+      rc_t _load_from_alt_csv_file( proc_t* proc, inst_t* p, const char* csv_fname, unsigned sel_id )
       {
         rc_t rc = kOkRC;
-        if( csv_fname_2 != nullptr && textLength(csv_fname_2)>0 )
+        if( csv_fname != nullptr && textLength(csv_fname)>0 )
         {
-          if((p->csv_fname_2 = proc_expand_filename(proc,csv_fname_2)) == nullptr )
+          if((p->csv_fname = proc_expand_filename(proc,csv_fname)) == nullptr )
           {
             rc = cwLogError(kInvalidArgRC,"The MIDI CSV 2 filename could not be formed.");
             goto errLabel;
           }
 
-          if( p->csv_fname_2 != nullptr && textLength(p->csv_fname_2)>0 )
+          if( p->csv_fname != nullptr && textLength(p->csv_fname)>0 )
           {
-            if((rc = midi::file::open_csv_2(p->mfH,p->csv_fname_2)) != kOkRC )
-              goto errLabel;              
+            switch( sel_id )
+            {
+              case 2:
+                if((rc = midi::file::open_csv_2(p->mfH,p->csv_fname)) != kOkRC )
+                  goto errLabel;
+                break;
+                
+              case 3:
+                if((rc = midi::file::open_csv_3(p->mfH,p->csv_fname)) != kOkRC )
+                  goto errLabel;
+                break;
+
+              default:
+                rc = cwLogError(kInvalidArgRC,"An invalid API selector id (%i) was provided.",sel_id);
+                goto errLabel;
+            }
           }
           
           if((rc = _load_midi_file(proc,p,p->mfH)) != kOkRC )
             goto errLabel;
 
-          rc = cwLogInfo("'%s' loaded.",p->csv_fname_2);
+          rc = cwLogInfo("'%s' loaded.",p->csv_fname);
           
         }
         
       errLabel:
         if( rc != kOkRC )
-          rc = cwLogError(rc,"MIDI file load from alt. CSV file '%s' failed",cwStringNullGuard(csv_fname_2));
+          rc = cwLogError(rc,"MIDI file load from alt. CSV file '%s' failed",cwStringNullGuard(csv_fname));
         return rc;
       }
 
@@ -10548,6 +10491,7 @@ namespace cw
         const char*                    midi_fname = nullptr;
         const char*                    csv_fname  = nullptr;
         const char*                    csv_fname_2= nullptr;
+        const char*                    csv_fname_3= nullptr;
         bool                           done_fl    = false;
         bool                           start_fl   = false;
         bool                           stop_fl    = false;
@@ -10560,7 +10504,8 @@ namespace cw
         if((rc = var_register_and_get(proc,kAnyChIdx,
                                       kMidiFileNamePId, "fname",         kBaseSfxId, midi_fname,
                                       kCsvFileNamePId,  "csv_fname",     kBaseSfxId, csv_fname,
-                                      kCsvFileName2PId, "alt_csv_fname", kBaseSfxId, csv_fname_2,
+                                      kCsvFileName2PId, "csv_fname_a",   kBaseSfxId, csv_fname_2,
+                                      kCsvFileName3PId, "csv_fname_b",   kBaseSfxId, csv_fname_3,
                                       kStartPId,        "start",         kBaseSfxId, start_fl,
                                       kStopPId,         "stop",          kBaseSfxId, stop_fl,
                                       kDoneFlPId,       "done_fl",       kBaseSfxId, done_fl)) != kOkRC )
@@ -10599,9 +10544,14 @@ namespace cw
           else
           {
             if( csv_fname_2 != nullptr && textLength(csv_fname_2)>0 )
-              rc = _load_from_alt_csv_file(proc,p,csv_fname_2);
+              rc = _load_from_alt_csv_file(proc,p,csv_fname_2,2);
             else
-              rc = cwLogError(kInvalidArgRC,"No valid input file was provided.");
+            {              
+              if( csv_fname_3 != nullptr && textLength(csv_fname_3)>0 )
+                rc = _load_from_alt_csv_file(proc,p,csv_fname_2,3);
+              else
+                rc = cwLogError(kInvalidArgRC,"A valid MIDI input file was not provided.");
+            }
           }
           
         }
@@ -10686,7 +10636,12 @@ namespace cw
             
           case kCsvFileName2PId:
             if( var_get(var,fname)==kOkRC )
-              rc = _load_from_alt_csv_file(proc,p,fname);
+              rc = _load_from_alt_csv_file(proc,p,fname,2);
+            break;
+            
+          case kCsvFileName3PId:
+            if( var_get(var,fname)==kOkRC )
+              rc = _load_from_alt_csv_file(proc,p,fname,3);
             break;
             
         }
