@@ -14,6 +14,7 @@
 #include "cwAudioFileOps.h"
 #include "cwMath.h"
 #include "cwVectOps.h"
+#include "cwDspTypes.h"
 #include "cwDsp.h"
 #include "cwAudioTransforms.h"
 #include "cwAudioFileProc.h"
