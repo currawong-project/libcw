@@ -614,9 +614,9 @@ namespace cw
 
                   while( sp < ep )
                   {
-                    device::sample_t v = *sp++;
-                    v = ((v > 1 ? 1 : v) < -1 ? -1 : v);
-                    *dp++ = (int)(v * 0x7fffffff);
+                    //device::sample_t v = *sp++;
+                    //v = ((v > 0.99999f ? 0.99999f : v) < -0.99999f ? -0.99999f : v);
+                    *dp++ = (int)(*sp++ * 0x7fffffff);
                   }
                     //*dp++ = (rand() - (RAND_MAX/2)) * 2;
 
