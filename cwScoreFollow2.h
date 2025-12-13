@@ -34,6 +34,14 @@ namespace cw
   namespace score_follow_2
   {
     typedef handle< struct sf_str > handle_t;
+    
+    typedef struct result_str
+    {
+      unsigned perf_uid;         // uid         as passed from on_new_note()
+      unsigned perf_pitch;       // midi pitch  "     "     "      "
+      unsigned perf_vel;         // midi vel.   "     "     "      "
+      unsigned match_loc_id;     // matched score location id or kInvalidId if no match was made
+    } result_t;
 
     typedef struct args_str
     {      
@@ -44,14 +52,14 @@ namespace cw
       double   post_wnd_sec;         // 5.0 look forward search window
       unsigned min_wnd_loc_cnt;      // min. loc's in back/forward search window
         
-      double decay_coeff;          // 0.995 affinity decay coeff
+      double   decay_coeff;          // 0.995 affinity decay coeff
 
-      double d_sec_err_thresh_lo;  // 0.4 reject if d_loc > d_loc_thresh_lod and d_time > d_time_thresh_lo
-      int    d_loc_thresh_lo;      //   3  
+      double   d_sec_err_thresh_lo;  // 0.4 reject if d_loc > d_loc_thresh_lod and d_time > d_time_thresh_lo
+      int      d_loc_thresh_lo;      //   3  
       
-      double d_sec_err_thresh_hi;  // 1.5 reject if d_loc != 0 and d_time > d_time_thresh_hi
-      int      d_loc_thresh_hi;    // 4   reject if d_loc > d_loc_thresh_hi
-      int      d_loc_stats_thresh; // 3   reject for time stats updates if d_loc > d_loc_stats_thresh
+      double   d_sec_err_thresh_hi;  // 1.5 reject if d_loc != 0 and d_time > d_time_thresh_hi
+      int      d_loc_thresh_hi;      // 4   reject if d_loc > d_loc_thresh_hi
+      int      d_loc_stats_thresh;   // 3   reject for time stats updates if d_loc > d_loc_stats_thresh
 
       bool rpt_fl;  // set to turn on debug reporting
       
@@ -81,6 +89,10 @@ namespace cw
     void report_summary( handle_t h, rpt_t& rpt_ref );
 
     unsigned max_loc_id( handle_t h );
+
+    // Return an array of result_t records based on calls to on_new_note()
+    // since last call to create() or reset().
+    const result_t* result_array( handle_t h, unsigned& resultN_ref);
 
   }
 }
