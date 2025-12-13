@@ -39,7 +39,7 @@ namespace cw
       unsigned  uid_mapN;
       unsigned  min_uid;
 
-      bool has_locs_fl;
+      //bool has_locs_fl;
       bool uses_oloc_fl;
 
       
@@ -488,7 +488,7 @@ namespace cw
         }
 
         e->status += ch;
-        e->loc = e->uid;
+        e->loc = e->uid; // use 'uid' for location
         
         // link the event into the event list
         if( p->end != nullptr )
@@ -551,15 +551,11 @@ cw::rc_t cw::perf_score::create( handle_t& hRef, const char* fn )
       goto errLabel;
 
     _set_bar_pitch_index(p);
-    
-    p->has_locs_fl = true;    
   }
   else
   {
     if((rc = _parse_midi_csv(p, fn)) != kOkRC )
       goto errLabel;
-    
-    p->has_locs_fl = false;    
   }
 
   if( p->uses_oloc_fl )
@@ -600,8 +596,6 @@ cw::rc_t cw::perf_score::create( handle_t& hRef, const object_t* cfg )
 
   _set_bar_pitch_index(p);
   
-  p->has_locs_fl = true;
-  
   hRef.set(p);
   
  errLabel:
@@ -627,8 +621,6 @@ cw::rc_t cw::perf_score::create_from_midi_csv( handle_t& hRef, const char* fn )
   }
 
   _set_bar_pitch_index(p);
-  
-  p->has_locs_fl = false;
   
   hRef.set(p);
   
@@ -657,13 +649,6 @@ cw::rc_t cw::perf_score::destroy( handle_t& hRef )
 
   return rc; 
 }
-
-bool cw::perf_score::has_loc_info_flag( handle_t h )
-{
-  score_t* p = _handleToPtr(h);
-  return p->has_locs_fl;
-}
-
 
 unsigned       cw::perf_score::event_count( handle_t h )
 {

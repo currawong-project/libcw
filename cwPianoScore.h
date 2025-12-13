@@ -42,7 +42,7 @@ namespace cw
       unsigned chord_note_idx;// which note in the chord is this note-on msg (or kInvalididx if this is not a note-on msg)
 
       unsigned player_id;  // identifies which of multiple players will perform this event (0 based)
-      unsigned piano_id;  // identifies with of multiple pianos this event is associated with (0 based )
+      unsigned piano_id;   // identifies with of multiple pianos this event is associated with (0 based )
 
       bool    valid_stats_fl; // is statsA valid in this record[]
       stats_t statsA[ perf_meas::kValCnt ];
@@ -58,17 +58,38 @@ namespace cw
       
       struct event_str* link; // list link
     } event_t;
-        
+
+    // CSV formats:
+    //
+    // 1. "dev","port","microsec","id","sec","ch","status","sci_pitch","d0","d1"
+    //    This parse is chosen if the 'loc' is not contained in the CSV column title row.
+    //    id -> loc
+    //    See _parse_midi_csv()
+    //
+    // 2. "meas","loc","sec","sci_pitch","status","d0","d1","bar","section","even","dyn","tempo","cost"
+    //    This CSV parse is chosen if the 'oloc' is not contained in the CSV column title row.
+    //    See _read_csv()
+    //
+    // 3. "meas","loc","sec","sci_pitch","status","d0","d1","bar","section","oloc","index","grace",{"player_id"},{"piano_id"},{has_stats_fl}
+    //    This CSV parse is chosen if the 'oloc' is not contained in the CSV column title row.
+    //    oloc  -> loc
+    //    index -> uid
+    //    If 'hast_stats_fl' exists and is set then a wide set of statistics columns are included see: _read_meas_stats().
     rc_t create(  handle_t& hRef, const char* csv_fname );
+
+
+    // JSON format:
+    // "evtL":{
+    //            "meas","voice","loc","tick","sec",                                                   // mandatory
+    //            "rval","sci_pitch","dmark","dlevel","status","d0","d1","grace","section","bpm","bar" // optional
+    //        }
+    // See _parse_event_list()
     rc_t create(  handle_t& hRef, const object_t* cfg );
 
     // Read a CSV as written by cwIoMidiRecordPlay.save_csv().
     // In this case event.loc == event.muid.
     rc_t create_from_midi_csv( handle_t& hRef, const char* fn );
     rc_t destroy( handle_t& hRef );
-
-
-    bool           has_loc_info_flag( handle_t h );
     
     unsigned       event_count( handle_t h );
 
