@@ -2490,8 +2490,6 @@ namespace cw
             
             variable_t* varb;
             var_find(proc, p->base[var_cfg->var_pid] + voice_idx,ch_idx, varb);
-
-
             
             switch( v->tid )
             {
@@ -2849,6 +2847,8 @@ namespace cw
       {
         rc_t rc = kOkRC;
 
+        preset_sel::destroy(p->psH);
+        
         list_destroy(p->manual_sel_list);
         mem::release(p->locA);
         
