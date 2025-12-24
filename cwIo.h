@@ -358,6 +358,9 @@ namespace cw
     unsigned    uiFindElementUuId( handle_t h, unsigned parentUuId, const char* eleName, unsigned chanId=kInvalidId );
     unsigned    uiFindElementUuId( handle_t h, unsigned parentUuId, unsigned    appId,   unsigned chanId=kInvalidId );
 
+    unsigned uiPhysicalParentUuId(  handle_t h, unsigned eleUuId  ); // Actual parent ele - or kInvalidId if this ele is the root ui ele
+    unsigned uiLogicalParentUuId( handle_t h, unsigned eleUuId );  // Nearest ancestor that has a valid appId - this is useful to skip over unnamed containers like rows and columns
+    
     
     rc_t uiCreateFromObject( handle_t h, const object_t* o, unsigned parentUuId=kInvalidId, unsigned chanId=kInvalidId, const char* eleName=nullptr);
     rc_t uiCreateFromFile(   handle_t h, const char* fn,    unsigned parentUuId=kInvalidId, unsigned chanId=kInvalidId );

@@ -3792,6 +3792,23 @@ unsigned    cw::io::uiFindElementUuId( handle_t h, unsigned parentUuId, unsigned
   return kInvalidId;  
 }
 
+unsigned cw::io::uiPhysicalParentUuId(  handle_t h, unsigned eleUuId  )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    return ui::physicalParentUuId(uiH, eleUuId );
+  return kInvalidId;  
+}
+
+unsigned cw::io::uiLogicalParentUuId( handle_t h, unsigned eleUuId )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    return ui::logicalParentUuId(uiH, eleUuId );
+  return kInvalidId;  
+}
 
 cw::rc_t cw::io::uiCreateFromObject( handle_t h, const object_t* o, unsigned parentUuId, unsigned chanId, const char* eleName)
 {
