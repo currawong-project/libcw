@@ -1781,6 +1781,21 @@ unsigned cw::ui::findElementUuId( handle_t h, unsigned parentUuId, unsigned appI
 }
 
 
+unsigned cw::ui::physicalParentUuId(  handle_t h, unsigned eleUuId  )
+{
+  ui_t* p = _handleToPtr(h);
+  ele_t* e = _uuIdToEle( p, eleUuId );
+
+  return e == nullptr || e->phys_parent==nullptr ? kInvalidId : e->phys_parent->uuId;  
+}
+
+unsigned cw::ui::logicalParentUuId( handle_t h, unsigned eleUuId )
+{
+  ui_t* p = _handleToPtr(h);
+  ele_t* e = _uuIdToEle( p, eleUuId );
+
+  return e == nullptr || e->logical_parent==nullptr ? kInvalidId : e->logical_parent->uuId;  
+}
 
 cw::rc_t cw::ui::createFromObject( handle_t  h, const object_t* o,  unsigned parentUuId,  unsigned chanId, const char* cfgFieldName )
 {

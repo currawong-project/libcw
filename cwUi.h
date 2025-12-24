@@ -67,6 +67,9 @@ namespace cw
     unsigned    findElementUuId( handle_t h,                      unsigned    appId,   unsigned chanId = kInvalidId );
     unsigned    findElementUuId( handle_t h, unsigned parentUuId, const char* eleName, unsigned chanId = kInvalidId );
     unsigned    findElementUuId( handle_t h, unsigned parentUuId, unsigned    appId,   unsigned chanId = kInvalidId );
+
+    unsigned physicalParentUuId(  handle_t h, unsigned eleUuId  ); // Actual parent ele - or kInvalidId if this ele is the root ui ele
+    unsigned logicalParentUuId( handle_t h, unsigned eleUuId );  // Nearest ancestor that has a valid appId - this is useful to skip over unnamed containers like rows and columns
     
 
     // Create multiple UI elements from an object_t representation.
