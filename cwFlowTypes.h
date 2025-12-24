@@ -116,10 +116,14 @@ namespace cw
       struct variable_str* dst_tail;     // 
       struct variable_str* dst_link;     // Link used by dst_head list.
 
+      char*                ui_title;     // class description UI overrides from the proc. inst 'ui' cfg. for this varaible
+      bool                 ui_hide_fl;
+      bool                 ui_disable_fl;
+      
       ui_var_t*            ui_var;       // this variables UI description
       std::atomic<struct variable_str*> ui_var_link; // UI update var link based on flow_t ui_var_head;
 
-      std::atomic<unsigned> modN; // count of modifactions made to this variable during this cycl
+      std::atomic<unsigned> modN; // count of modifications made to this variable during this cycle
       
     } variable_t;
 

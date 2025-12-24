@@ -499,6 +499,9 @@ namespace cw
       var->chIdx        = chIdx;
       var->value        = nullptr;
       var->type         = kInvalidTFl;
+      var->ui_title     = nullptr;
+      var->ui_hide_fl   = cwIsFlag(vd->flags,kUiHideVarDescFl);
+      var->ui_disable_fl= cwIsFlag(vd->flags,kUiDisableVarDescFl);
 
       if( altTypeFl != kInvalidTFl )
         _var_set_type(var,altTypeFl);
@@ -1220,6 +1223,7 @@ void cw::flow::var_destroy( variable_t* var )
       mem::release(var->localVarDesc);
     
     mem::release(var->label);
+    mem::release(var->ui_title);
     mem::release(var);
   }
 }
