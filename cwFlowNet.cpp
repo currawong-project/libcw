@@ -1482,10 +1482,121 @@ namespace cw
       return rcSelect(rc,rc1);
     }
 
+    rc_t _proc_parse_ui_var_list_cfg( proc_t* proc, const object_t* varL_cfg )
+    {
+      rc_t            rc         = kOkRC;
+      const object_t* var_ui_cfg = nullptr;
+      
+      if( !varL_cfg->is_dict() )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The 'ui' cfg must be a list.");
+        goto errLabel;
+      }
+
+      while((var_ui_cfg = varL_cfg->next_child_ele(var_ui_cfg)) != nullptr )
+      {
+        const char* var_label;
+        const object_t* var_recd = nullptr;
+        
+        unsigned        sfx_id = kBaseSfxId;
+        unsigned        ch_idx = kAnyChIdx;
+        const char*     title  = nullptr;
+        const object_t* flagsL = nullptr;
+        variable_t*     var = nullptr;
+        
+        if((var_label = var_ui_cfg->pair_label()) == nullptr )
+        {
+          rc = cwLogError(rc,"An error occurred while accessing a 'ui' variable label.");
+          goto errLabel;                    
+        }
+
+        if((var_recd = var_ui_cfg->pair_value()) == nullptr )
+        {
+          rc = cwLogError(rc,"An error occurred while accessing 'ui' variable record for '%s'",cwStringNullGuard(var_label));
+          goto errLabel;                    
+        }
+
+        if((rc = var_recd->readv( "sfx_id", kOptFl, sfx_id,
+                                  "ch_idx", kOptFl, ch_idx,
+                                  "title",  kOptFl, title,
+                                  "flags",  kOptFl, flagsL )) != kOkRC )
+        {
+          rc = cwLogError(rc,"An error occurred while parsing the 'ui' variable record for '%s'",cwStringNullGuard(var_label));
+          goto errLabel;          
+        }
+
+        if((rc = var_find(proc, var_label, sfx_id, ch_idx, var )) != kOkRC )
+        {
+          rc = cwLogError(rc,"The variable '%s:%i' ch:%i referenced in the 'ui' cfg. could not be found.",cwStringNullGuard(var_label),sfx_id,ch_idx);
+          goto errLabel;
+        }
+
+        if( title != nullptr )
+        {
+          var->ui_title = mem::duplStr(title);
+        }
+
+
+        if( flagsL != nullptr )
+        {
+          unsigned flagsN = flagsL->child_count();
+          const object_t* flag = nullptr;
+          while((flag = flagsL->next_child_ele(flag)) != nullptr)
+          {
+            enum { kHideId, kShowId, kEnableId, kDisableId };
+            idLabelPair_t flagA[] = { {kHideId,"hide"}, {kShowId,"show"}, {kEnableId,"enable"}, {kDisableId,"disable"}, {kInvalidId,nullptr} };
+            
+            const char* flag_str = nullptr;
+            if( flag->value(flag_str ) != kOkRC )
+            {
+              rc = cwLogError(kSyntaxErrorRC,"A 'ui' flag value could not be parsed.");
+              goto errLabel;
+            }
+
+            switch( labelToId(flagA,flag_str, kInvalidId ) )
+            {
+              case kHideId:
+                var->ui_hide_fl = true;
+                break;
+                
+              case kShowId:
+                var->ui_hide_fl = false;
+                break;
+                
+              case kEnableId:
+                var->ui_disable_fl = false;
+                break;
+                
+              case kDisableId:
+                var->ui_disable_fl = true;
+                break;
+                
+              case kInvalidId:
+                rc = cwLogError(kSyntaxErrorRC,"The 'ui' flag attribute '%s' is not valid.",cwStringNullGuard(flag_str));
+                goto errLabel;
+            }
+            
+          }
+        }
+      }
+
+      
+      
+    errLabel:
+      if( rc != kOkRC )
+      {
+        rc = cwLogError(rc,"Parsing the 'ui' cfg. failed for the proc instance '%s:%i'.",cwStringNullGuard(proc->label),proc->label_sfx_id);
+      }
+
+      return rc;
+      
+    }
+
     rc_t _proc_parse_ui_cfg(proc_t* proc, const proc_inst_parse_state_t& pstate)
     {
       rc_t rc = kOkRC;
       bool ui_create_fl = false;
+      const object_t* varsL_cfg = nullptr;
 
       if( pstate.ui_cfg == nullptr )
         goto errLabel;
@@ -1500,11 +1611,17 @@ namespace cw
         ui_create_fl = proc->ctx->ui_create_fl;
       
       // parse the optional args
-      if((rc = pstate.ui_cfg->getv_opt("create_fl",  ui_create_fl )) != kOkRC )
+      if((rc = pstate.ui_cfg->getv_opt("create_fl",  ui_create_fl,
+                                       "vars", varsL_cfg)) != kOkRC )
+      {
         goto errLabel;        
-
+      }
+      
       if( ui_create_fl )
         proc->flags |= kUiCreateProcFl;
+
+      if( varsL_cfg  != nullptr )
+        rc = _proc_parse_ui_var_list_cfg(proc,varsL_cfg);
       
     errLabel:
       if( rc != kOkRC )
@@ -3508,19 +3625,25 @@ namespace cw
           {
             ui_var_t* ui_var = ui_proc->varA + ui_proc->varN++;
 
-            ui_var->ui_proc      = ui_proc;
-            ui_var->label        = var->label;
-            ui_var->label_sfx_id = var->label_sfx_id;
-            ui_var->has_source_fl= is_connected_to_source( var );
-            ui_var->disable_fl   = ui_var->has_source_fl;
-            ui_var->vid          = var->vid;
-            ui_var->ch_cnt       = var_channel_count( net.procA[i], var->label, var->label_sfx_id );
-            ui_var->ch_idx       = var->chIdx;
-            ui_var->list         = var->value_list;
-            ui_var->value_tid    = (var->varDesc->type & flow::kTypeMask) == kAllTFl ? kAllTFl : var->type;
-            ui_var->desc_flags   = var->varDesc->flags;
-            ui_var->ui_cfg       = var->varDesc->ui_cfg;
-            ui_var->user_id      = kInvalidId;
+            ui_var->ui_proc           = ui_proc;
+            ui_var->label             = var->label;
+            ui_var->label_sfx_id      = var->label_sfx_id;
+            ui_var->has_source_fl     = is_connected_to_source( var );
+            ui_var->title             = var->ui_title == nullptr ? var->label : var->ui_title;
+            ui_var->disable_fl        = var->ui_disable_fl || ui_var->has_source_fl || cwIsFlag(var->varDesc->flags,flow::kInitVarDescFl);
+            ui_var->new_disable_fl    = ui_var->disable_fl;
+            ui_var->hide_fl           = var->ui_hide_fl;
+            ui_var->new_hide_fl       = ui_var->hide_fl;
+            ui_var->vid               = var->vid;
+            ui_var->ch_cnt            = var_channel_count( net.procA[i], var->label, var->label_sfx_id );
+            ui_var->ch_idx            = var->chIdx;
+            ui_var->list              = var->value_list;
+            ui_var->value_tid         = (var->varDesc->type & flow::kTypeMask) == kAllTFl ? kAllTFl : var->type;
+            ui_var->desc_flags        = var->varDesc->flags;
+            ui_var->ui_cfg            = var->varDesc->ui_cfg;
+            ui_var->user_arg          = nullptr;
+
+            
             
             var->ui_var = ui_var;
           }
@@ -3805,7 +3928,8 @@ errLabel:
   return rc;
 }
 
-cw::rc_t cw::flow::set_variable_user_id( network_t&net, const ui_var_t* ui_var, unsigned user_id )
+
+cw::rc_t cw::flow::set_variable_user_arg( network_t&net, const ui_var_t* ui_var, void* arg )
 {
   rc_t rc = kOkRC;
   variable_t* var = nullptr;
@@ -3816,7 +3940,7 @@ cw::rc_t cw::flow::set_variable_user_id( network_t&net, const ui_var_t* ui_var, 
     goto errLabel;
   }
 
-  var->ui_var->user_id = user_id;
+  var->ui_var->user_arg = arg;
 
 errLabel:
   return rc;
