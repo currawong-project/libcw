@@ -528,6 +528,21 @@ namespace cw
       return rc;
     }
 
+    unsigned _ui_var_to_widget_uuid( flow::ui_var_t* ui_var )
+    {
+      return ui_var != nullptr && ui_var->user_arg != nullptr ? ((const io_var_arg_t*)ui_var->user_arg)->widget_uuid : kInvalidId;    
+    }
+
+    unsigned _ui_var_to_container_uuid( flow::ui_var_t* ui_var )
+    {
+      return ui_var != nullptr && ui_var->user_arg != nullptr ? ((const io_var_arg_t*)ui_var->user_arg)->container_uuid : kInvalidId;    
+    }
+    
+    unsigned _ui_var_to_label_uuid( flow::ui_var_t* ui_var )
+    {
+      return ui_var != nullptr && ui_var->user_arg != nullptr ? ((const io_var_arg_t*)ui_var->user_arg)->label_uuid : kInvalidId;    
+    }
+
     template< typename T >
     rc_t _ui_callback_tpl( io_flow_ctl_t* p, flow::ui_var_t* ui_var )
     {
@@ -540,7 +555,7 @@ namespace cw
         goto errLabel;
       }
 
-      if((rc = uiSendValue(p->ioH,ui_var->user_id,value)) != kOkRC )
+      if((rc = uiSendValue(p->ioH,_ui_var_to_widget_uuid(ui_var),value)) != kOkRC )
       {
         rc = cwLogError(rc,"UI element data transmission failed.");
         goto errLabel;
@@ -557,7 +572,7 @@ namespace cw
       
       io_flow_ctl_t* p = (io_flow_ctl_t*)arg;
 
-      if( ui_var->user_id == kInvalidId )
+      if( ui_var->user_arg == nullptr )
       {
         rc = cwLogError(kInvalidArgRC,"The user_id (uuid) of the variable was not set.");
         goto errLabel;
@@ -565,7 +580,10 @@ namespace cw
 
       if( ui_var->new_disable_fl != ui_var->disable_fl )
       {
-        if((rc = uiSetEnable( p->ioH, ui_var->user_id, !ui_var->new_disable_fl )) != kOkRC )
+
+        uiSetEnable( p->ioH, _ui_var_to_label_uuid(ui_var), !ui_var->new_disable_fl );
+        
+        if((rc = uiSetEnable( p->ioH, _ui_var_to_widget_uuid(ui_var), !ui_var->new_disable_fl )) != kOkRC )
         {
           rc = cwLogError(rc,"UI enable/disable update failed.");
           goto errLabel;
@@ -576,7 +594,7 @@ namespace cw
 
       if( ui_var->new_hide_fl != ui_var->hide_fl )
       {
-        if((rc = uiSetVisible( p->ioH, ui_var->user_id, !ui_var->new_hide_fl )) != kOkRC )
+        if((rc = uiSetVisible( p->ioH, _ui_var_to_container_uuid(ui_var), !ui_var->new_hide_fl )) != kOkRC )
         {
           rc = cwLogError(rc,"UI hide/show update failed.");
           goto errLabel;
@@ -960,8 +978,8 @@ cw::rc_t cw::io_flow_ctl::get_variable_value( handle_t h, const flow::ui_var_t* 
 cw::rc_t cw::io_flow_ctl::get_variable_value( handle_t h, const flow::ui_var_t* ui_var, const char*& value_ref )
 { return get_variable_value( _handleToPtr(h)->flowH, ui_var, value_ref ); }
 
-cw::rc_t cw::io_flow_ctl::set_variable_user_id( handle_t h, const flow::ui_var_t* ui_var, unsigned user_id )
-{ return set_variable_user_id( _handleToPtr(h)->flowH, ui_var, user_id ); }
+cw::rc_t cw::io_flow_ctl::set_variable_user_arg( handle_t h, const flow::ui_var_t* ui_var, io_var_arg_t* arg )
+{ return set_variable_user_arg( _handleToPtr(h)->flowH, ui_var, arg ); }
 
 cw::rc_t cw::io_flow_ctl::set_variable_value( handle_t h, const flow::ui_var_t* ui_var, bool value )
 { return set_variable_value( _handleToPtr(h)->flowH, ui_var, value ); }

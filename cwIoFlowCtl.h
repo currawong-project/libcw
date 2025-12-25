@@ -67,7 +67,14 @@ namespace cw
     rc_t get_variable( handle_t h, const flow::ui_var_t* ui_var, T& value_ref )
     { return get_variable_value(h,ui_var,value_ref); }
 
-    rc_t set_variable_user_id( handle_t h, const flow::ui_var_t* ui_var, unsigned user_id );
+    typedef struct io_var_arg_str
+    {
+      unsigned container_uuid;
+      unsigned label_uuid;
+      unsigned widget_uuid;
+    } io_var_arg_t;
+    
+    rc_t set_variable_user_arg( handle_t h, const flow::ui_var_t* ui_var, io_var_arg_t* arg );
 
     rc_t set_variable_value( handle_t h, const flow::ui_var_t* ui_var, bool value );
     rc_t set_variable_value( handle_t h, const flow::ui_var_t* ui_var, int value );
