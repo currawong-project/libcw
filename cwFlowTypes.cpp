@@ -271,7 +271,7 @@ namespace cw
 
       if( rc == kOkRC )
       {
-        if( var->ui_var != nullptr && var->ui_var->user_id != kInvalidId )
+        if( var->ui_var != nullptr && var->ui_var->user_arg != nullptr )
           var_send_to_ui(var);
         
         // send the value to connected downstream proc's
@@ -1221,6 +1221,9 @@ void cw::flow::var_destroy( variable_t* var )
 
     if( var->localVarDesc != nullptr )
       mem::release(var->localVarDesc);
+
+    if( var->ui_var != nullptr )
+      mem::release(var->ui_var->user_arg);
     
     mem::release(var->label);
     mem::release(var->ui_title);

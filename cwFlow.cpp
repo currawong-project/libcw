@@ -1260,8 +1260,8 @@ cw::rc_t cw::flow::apply_preset( handle_t h, const multi_preset_selector_t& mps 
   return network_apply_preset(*p->net,mps);
 }
 
-cw::rc_t cw::flow::set_variable_user_id( handle_t h, const ui_var_t* ui_var, unsigned user_id )
-{ return set_variable_user_id( *_handleToPtr(h)->net, ui_var, user_id );  }
+cw::rc_t cw::flow::set_variable_user_arg( handle_t h, const ui_var_t* ui_var, void* arg )
+{ return set_variable_user_arg( *_handleToPtr(h)->net, ui_var, arg );  }
 
 
 cw::rc_t cw::flow::set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, bool value )

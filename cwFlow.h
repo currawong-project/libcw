@@ -80,7 +80,7 @@ namespace cw
 
 
     // The 'user_id' shows up as the 'user_id' in the ui_var field.
-    rc_t set_variable_user_id( handle_t h, const ui_var_t* ui_var, unsigned user_id );
+    rc_t set_variable_user_arg( handle_t h, const ui_var_t* ui_var, void* arg );
     
     rc_t set_variable_value( handle_t h, const ui_var_t* ui_var, bool value     );
     rc_t set_variable_value( handle_t h, const ui_var_t* ui_var, int value      );

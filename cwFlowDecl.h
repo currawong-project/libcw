@@ -127,9 +127,14 @@ namespace cw
       unsigned    vid;            // flow::variable_t::vid
       unsigned    ch_idx;         // flow::variable_t::chIdx
       unsigned    ch_cnt;         // 0=kAnyChIdx only, kInvalidCnt=no channels, 1=mono, 2=stereo, ...
+
+      // List data structure associated with this variable or nullptr if this varaible is not a list.
       const struct list_str* list;
 
-      unsigned user_id; // uuId of the UI element that represents this var's value.
+      // Arbitrary sser settable argument assigned via set_variable_user_arg().
+      // This value must be dynamically allocated because it will be released via mem::release()
+      // in var_destroy().
+      void* user_arg;  
 
       const char* title; // UI override title from proc inst 'ui' cfg
       bool disable_fl;  // true if this ui var is disabled
