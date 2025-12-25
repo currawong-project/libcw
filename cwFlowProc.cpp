@@ -7401,10 +7401,16 @@ namespace cw
           out_type_fl = value_type_label_to_flag( out_type_label );
         }
 
-        if(out_type_fl == kInvalidTFl )
+        out_type_label = value_type_flag_to_label( out_type_fl );
+        
+        if(out_type_fl == kInvalidTFl || out_type_label == nullptr )
         {
-          rc = cwLogError(kInvalidArgRC,"The output type '%s' is not a valid type.",cwStringNullGuard(out_type_label));
+          rc = cwLogError(kInvalidArgRC,"The output type '%s' is not a valid type.", out_type_label==nullptr ? "<unknown>" : out_type_label );
           goto errLabel;
+        }
+        else
+        {
+          var_set( proc, kOutTypePId, kAnyChIdx, out_type_label );
         }
                   
         // Create the output variable
