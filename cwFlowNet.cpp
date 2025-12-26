@@ -1539,7 +1539,6 @@ namespace cw
 
         if( flagsL != nullptr )
         {
-          unsigned flagsN = flagsL->child_count();
           const object_t* flag = nullptr;
           while((flag = flagsL->next_child_ele(flag)) != nullptr)
           {
@@ -3643,8 +3642,6 @@ namespace cw
             ui_var->ui_cfg            = var->varDesc->ui_cfg;
             ui_var->user_arg          = nullptr;
 
-            
-            
             var->ui_var = ui_var;
           }
         }
