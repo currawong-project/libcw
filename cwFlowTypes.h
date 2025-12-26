@@ -299,11 +299,13 @@ namespace cw
       unsigned             framesPerCycle;       // sample frames per cycle (64)
       srate_t              sample_rate;          // default sample rate (48000.0)
       unsigned             maxCycleCount;        // count of cycles to run on flow::exec() or 0 if there is no limit.
+      unsigned             uiUpdateCycleCount;   // count of cycles between UI updates (1)
       const char*          init_net_preset_label;// network initialization preset label or nullptr if there is no net. init. preset
       
       bool                 isInRuntimeFl;        // Set when compile-time is complete
       
       unsigned             cycleIndex;           // Incremented with each processing cycle
+      unsigned             uiUpdateCycleIndex;   // Count cycles between UI updates
 
       bool                 printLogHdrFl;
       
