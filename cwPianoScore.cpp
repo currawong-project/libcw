@@ -502,7 +502,9 @@ namespace cw
 
 
     errLabel:
-      if((rc = csv::destroy(csvH)) != kOkRC )
+      rc = rcSelect(rc,csv::destroy(csvH));
+      
+      if(rc != kOkRC )
         rc = cwLogError(rc,"CSV object destroy failed on '%s'.",cwStringNullGuard(fn));
       
       return rc;
