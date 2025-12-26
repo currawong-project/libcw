@@ -10,16 +10,21 @@ namespace cw
 
     typedef handle< struct io_flow_ctl_str > handle_t;
 
-    rc_t create(  handle_t& hRef, io::handle_t ioH, const char* flow_cfg_fn );
     rc_t create(  handle_t& hRef, io::handle_t ioH, const object_t* flow_cfg );
     rc_t destroy( handle_t& hRef );
+
+    // Load a new flow_cfg.
+    rc_t load( handle_t h, const object_t* flow_cfg );
+    
+    // Return to the pre-load state.
+    rc_t unload( handle_t h );
 
     // Query the available programs from the 'flow_cfg' file.
     unsigned    program_count( handle_t h);
     const char* program_title( handle_t h, unsigned pgm_idx );
     unsigned    program_index( handle_t h, const char* pgm_title);
 
-    // Create the parse the program but do not instantiate the network.
+    // Create the program but do not instantiate the network.
     rc_t        program_load(  handle_t h, unsigned pgm_idx );
 
     // Return the index of the currently loaded program or kInvalidIdx if no program is loaded.

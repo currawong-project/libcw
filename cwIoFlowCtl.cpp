@@ -132,23 +132,46 @@ namespace cw
       return rc;
     }
 
+
+    rc_t _unload( io_flow_ctl_t* p )
+    {
+      rc_t rc = kOkRC;
+
+      if((rc = _program_unload(p)) != kOkRC )
+      {
+        goto errLabel;
+      }
+      
+      if( p->proc_class_dict_cfg != nullptr )
+      {
+        p->proc_class_dict_cfg->free();
+        p->proc_class_dict_cfg = nullptr;
+      }
+      
+      if( p->udp_dict_cfg != nullptr )
+      {
+        p->udp_dict_cfg->free();
+        p->udp_dict_cfg = nullptr;
+      }
+      
+      p->base_dir = nullptr;
+      p->pgmN = 0;
+      mem::release(p->pgmA);
+      
+    errLabel:
+      if(rc != kOkRC )
+        rc = cwLogError(rc,"ioFlowCtl unload failed.");
+      
+      return rc;
+    }
+
     
     rc_t _destroy( io_flow_ctl_t* p )
     {
       rc_t rc = kOkRC;
-
-      destroy( p->flowH );
-
       
-      if( p->proc_class_dict_cfg != nullptr )
-        p->proc_class_dict_cfg->free();
-
-      if( p->udp_dict_cfg != nullptr )
-        p->udp_dict_cfg->free();
+      _unload(p);
       
-      _program_unload(p);
-      p->pgmN = 0;
-      mem::release(p->pgmA);
       mem::release(p);
       return rc;
     }
@@ -167,7 +190,8 @@ namespace cw
       return rc;
     }
 
-    rc_t _parse_cfg( io_flow_ctl_t* p, const object_t* cfg )
+
+    rc_t _load( io_flow_ctl_t* p, const object_t* cfg )
     {
       rc_t rc = kOkRC;
       const char*     proc_cfg_fname   = nullptr;
@@ -654,7 +678,7 @@ cw::rc_t cw::io_flow_ctl::create(  handle_t& hRef, io::handle_t ioH, const objec
   p->pgm_idx = kInvalidIdx;
   p->ioH     = ioH;
 
-  if((rc = _parse_cfg(p,flow_cfg)) != kOkRC )
+  if((rc = _load(p,flow_cfg)) != kOkRC )
     goto errLabel;
   
   hRef.set(p);
@@ -687,6 +711,33 @@ cw::rc_t cw::io_flow_ctl::destroy( handle_t& hRef )
 errLabel:
   return rc;
 }
+
+cw::rc_t cw::io_flow_ctl::load( handle_t h, const object_t* flow_cfg )
+{
+  io_flow_ctl_t* p = _handleToPtr(h);
+  rc_t rc;
+  if((rc = _unload(p)) != kOkRC )
+  {
+    rc = cwLogError(rc,"Unload before load failed on ioFlowCtl.");
+    goto errLabel;
+  }
+  
+  if((rc = _load(p,flow_cfg)) != kOkRC )
+  {
+    rc = cwLogError(rc,"Load failed on ioFlowCtl.");
+    goto errLabel;
+  }
+
+errLabel:
+  return rc;
+}
+
+cw::rc_t cw::io_flow_ctl::unload( handle_t h )
+{
+  io_flow_ctl_t* p = _handleToPtr(h);
+  return _unload(p);  
+}
+
 
 unsigned    cw::io_flow_ctl::program_count(handle_t h)
 {
