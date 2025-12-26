@@ -914,6 +914,7 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   bool            printClassDictFl = false;
   unsigned        maxCycleCount    = kInvalidCnt;
   double          durLimitSecs     = 0;
+  unsigned        uiUpdateMs       = 50;
   
   if(( rc = destroy(hRef)) != kOkRC )
     return rc;
@@ -936,18 +937,19 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
     }
 
 
-  p->pgmCfg         = pgmCfg;
-  p->framesPerCycle = kDefaultFramesPerCycle;
-  p->sample_rate    = kDefaultSampleRate;
-  p->maxCycleCount  = kInvalidCnt;
-  p->proj_dir       = proj_dir;
-  p->printLogHdrFl  = true;
-  p->ui_create_fl   = false;
-  p->prof_fl        = false;
-  p->ui_callback    = ui_callback;
-  p->ui_callback_arg= ui_callback_arg;
+  p->pgmCfg             = pgmCfg;
+  p->framesPerCycle     = kDefaultFramesPerCycle;
+  p->sample_rate        = kDefaultSampleRate;
+  p->maxCycleCount      = kInvalidCnt;
+  p->uiUpdateCycleCount = 1;
+  p->proj_dir           = proj_dir;
+  p->printLogHdrFl      = true;
+  p->ui_create_fl       = false;
+  p->prof_fl            = false;
+  p->ui_callback        = ui_callback;
+  p->ui_callback_arg    = ui_callback_arg;
   p->ui_var_head.store(&p->ui_var_stub);
-  p->ui_var_tail    = &p->ui_var_stub;
+  p->ui_var_tail        = &p->ui_var_stub;
   
   // parse the optional args
   if((rc = pgmCfg->readv("network",              0,      p->networkCfg,
@@ -956,6 +958,7 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
                          "sample_rate",          kOptFl, p->sample_rate,
                          "max_cycle_count",      kOptFl, maxCycleCount,
                          "dur_limit_secs",       kOptFl, durLimitSecs,
+                         "ui_update_ms",         kOptFl, uiUpdateMs,
                          "ui_create_fl",         kOptFl, p->ui_create_fl,
                          "profile_fl",           kOptFl, p->prof_fl,
                          "preset",               kOptFl, p->init_net_preset_label,
@@ -974,6 +977,19 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
     rc = cwLogError(rc,"Preset dictionary parsing failed.");
     goto errLabel;
   }
+
+  // Validate the sample rate.
+  if( p->sample_rate <= 0 )
+  {
+    cwLogInfo("An invalid sample rate:%d was encountered. Setting sample rate to %d.",p->sample_rate,kDefaultSampleRate);
+    p->sample_rate = kDefaultSampleRate;
+  }
+
+  if( p->framesPerCycle <= 0 )
+  {
+    cwLogInfo("An invalid frames/cycle:%i was encountered. Setting frames/cycle to %i.",p->framesPerCycle,kDefaultFramesPerCycle);
+    p->framesPerCycle = kDefaultFramesPerCycle;
+  }
   
   // if a maxCycle count was given
   if( maxCycleCount != kInvalidCnt )
@@ -984,6 +1000,10 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
     if( durLimitSecs != 0.0 )
       p->maxCycleCount = (unsigned)((durLimitSecs * p->sample_rate) / p->framesPerCycle);    
   }
+
+  
+  p->uiUpdateCycleCount = std::max(1U, (unsigned)(((uiUpdateMs * p->sample_rate) / 1000.0) / p->framesPerCycle));
+
 
   // print the class dict
   if( printClassDictFl )
@@ -1192,21 +1212,28 @@ cw::rc_t cw::flow::exec_cycle( handle_t h )
     // Execute one cycle of the network
     if(rc == kOkRC )
     {
-      // During network execution variables which need to update the UI
-      // are collected in a linked list based on p->ui_var_tail.
-      // Callback to the UI with those variables here.
       time::spec_t t0;
       if( p->prof_fl )
           time::get(t0);
-      
-      _make_flow_to_ui_callback(p);
 
+      // is it time to update the UI?
+      if( p->uiUpdateCycleIndex >= p->uiUpdateCycleCount )
+      {
+        // During network execution variables which need to update the UI
+        // are collected in a linked list based on p->ui_var_tail.
+        // Callback to the UI with those variables here.
+        _make_flow_to_ui_callback(p);
+        
+        p->uiUpdateCycleIndex = 0;
+      }
+      
       if( p->prof_fl )
         time::accumulate_elapsed_current(p->prof_ui_dur,t0);
     
     }
     
     p->cycleIndex += 1;
+    p->uiUpdateCycleIndex += 1;
     
   }
 
