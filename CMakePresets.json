@@ -1,0 +1,62 @@
+{
+    "$comment": "version=CMake JSON schema version",
+    "version":10,
+    "cmakeMinimumRequired": { "major": 3, "minor":23, "patch": 0 },
+
+    "configurePresets":[
+	{
+	    "name":"default",
+	    "displayName":"Default configuration",
+	    "description":"Default 'cw' build configuration.",
+	    "cacheVariables": {
+		"CW_FFTW_FL":        { "type":"BOOL",  "value":"ON" },
+		"CW_FFTW_LIB_HINTS": { "type":"STRING","value":"" },
+		
+		"CW_WEBSOCK_FL":     { "type":"BOOL",  "value":"ON" },
+		"CW_WEBSOCK_VERSION":{ "type":"STRING","value":"4.3.5" },
+		
+		"CW_MKL_FL":         { "type":"BOOL",  "value":"OFF" },
+		
+		"CW_ALSA_FL":        { "type":"BOOL",  "value":"ON" }
+	    }
+	},
+	{
+	    "name":"debug",
+	    "displayName":"Debug Build",
+	    "inherits":"default",
+	    "cacheVariables":{
+		"CMAKE_BUILD_TYPE":"Debug",
+		"CW_ADDRESS_SANITIZER_FL": { "type":"BOOL", "value":"ON" }
+	    }
+	},
+	{
+	    "name":"release",
+	    "displayName":"Release Build",
+	    "inherits":"default"
+	}
+	
+    ],
+    
+    "buildPresets":[
+	{
+	    "name":"default",
+	    "configurePreset":"default"
+	},
+	{
+	    "name":"debug",
+	    "inherits":"default"
+	}
+    ],
+    
+    "testPresets":[
+    ],
+    
+    "packagePresets":[
+    ],
+    
+    "workflowPresets":[
+    ],
+    
+    "vendor":{
+    }
+}

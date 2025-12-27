@@ -1,5 +1,6 @@
+*.o
+*.o.d
 hold
-study/serial/serial
-cw_rt
+build
 vg0.txt
 __pycache__

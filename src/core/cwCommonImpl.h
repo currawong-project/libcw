@@ -3,7 +3,6 @@
 #ifndef cwCommonImpl_H
 #define cwCommonImpl_H
 
-#include "config.h"
 #include <cstdlib>
 #include <cstring>
 #include <cassert>
