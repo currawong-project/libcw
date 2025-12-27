@@ -1718,7 +1718,7 @@ unsigned  cw::flow::var_mult_count( proc_t* proc, const char* var_label )
 {
   unsigned n = 0;
   for(variable_t* var=proc->varL; var!=nullptr; var=var->var_link)
-    if( textIsEqual(var->label,var_label) )
+    if( textIsEqual(var->label,var_label) && var->chIdx == kAnyChIdx )
       ++n;
   
   return n;
