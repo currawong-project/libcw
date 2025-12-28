@@ -1433,6 +1433,31 @@ in the entire graph occur in a single thread and therefore do
 not need to take multi-thread precautions - at least relative
 to other _caw_ based execution.
 
+Logging
+-------
+
+Even if the log is not yet instantiated calls to the logg macros (e.g. cwLogError(), cwLogWarning() ...)
+should at least print to the console.  This allows the log to be used by the application
+for parsinging the logs own user configuration parameters.
+
+The log can be configured to use an internal non-blocking mulit-producer, single-consumer queue.
+In this configuration all messages are initially stored in the queue and only
+forwarded to the log output during a later call to `log::exec()`.  This avoids
+the problem of the logging threads from blocking on the system locks which protects `stdout`.
+
+```
+log: { flags:[ `date_time`,      // Include date and time of each log call in the log output
+               `file_out`,       // Write the log to the file named below in 'log_filename'.
+			   `console`,        // Log to the system console.
+			   `overwrite_file`, // If set overwrite the log file if it exists, otherwise the file name will be versioned to prevent over-writing.
+			   `skip_queue`      // Do not use the internal queue. Send all log messages directly to the output.
+			   ], 
+       level:debug,              // Set the minimum log severity level: debug, info,warn,'error','fatal' 
+	   log_filename:"log.txt",   // Log filename (only used if 'overwrite_file' is set.
+	   queue_blk_cnt:16,         // Count of blocks in the internal queue
+	   queue_blk_byte_cnt:4096 } // Size of each block in the internal queuue
+```
+
 Records
 -------
 
