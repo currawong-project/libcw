@@ -32,7 +32,7 @@ namespace cw
       void*             outCbArg;
       logFormatCbFunc_t fmtCbFunc;
       void*             fmtCbArg;
-      unsigned          level;
+      logLevelId_t      level;
       unsigned          flags;
       nbmpscq::handle_t qH;
       file::handle_t    fileH;
@@ -194,24 +194,28 @@ namespace cw
       return rcSelect(rc0,rc1);
     }
 
-    rc_t _create_file( log_t* p, const char* log_fname )
+    rc_t _create_file( log_t* p, const char* log_filename )
     {
-      rc_t                 rc    = kOkRC;
-      char*                fname = nullptr;
-      filesys::pathPart_t* pp    = nullptr;
+      rc_t                 rc        = kOkRC;
+      char*                fname     = nullptr;
+      filesys::pathPart_t* pp        = nullptr;
+      char*                log_fname = nullptr;
       
       // if file backing was not requested
       if( !cwIsFlag(p->flags,kFileOutFl) )
         goto errLabel;
       
       // if the log filename is invalid
-      if( textLength(log_fname) == 0 )
+      if( textLength(log_filename) == 0 )
       {
         // Using cwLogWarning() here is safe because the log handle is not yet set therefore the message will be sent straight to the console.
         cwLogError(kInvalidArgRC,"The log file was enabled but no filename was given.  The log file has been disabled.");
         p->flags = cwClrFlag(p->flags,kFileOutFl);
         goto errLabel;
       }
+
+      // expand the path to process a leading tilde
+      log_fname = filesys::expandPath(log_filename);
 
       // if file versioning was not requested
       if( cwIsFlag(p->flags,kOverwriteFileFl) )
@@ -245,6 +249,7 @@ namespace cw
 
       
     errLabel:
+      mem::release(log_fname);
       mem::release(fname);
       mem::release(pp);
       return rc;
@@ -256,7 +261,7 @@ namespace cw
 void cw::log::init_minimum_args( log_args_t& args )
 {
   args.flags           = kConsoleFl | kSkipQueueFl;
-  args.level           = kPrint_LogLevel;
+  args.level           = kInfo_LogLevel;
   args.log_fname       = nullptr;
   args.queueBlkCnt     = 0;
   args.queueBlkByteCnt = 0;
@@ -347,13 +352,13 @@ cw::rc_t cw::log::destroy( handle_t& hRef )
   return rc;  
 }
 
-cw::rc_t cw::log::msg( handle_t h, unsigned level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t result_code, const char* fmt, va_list vl )
+cw::rc_t cw::log::msg( handle_t h, unsigned flags, unsigned level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t result_code, const char* fmt, va_list vl )
 {
   log_t*  p        = _handleToPtr(h);
   
   // It is possible that this function is called prior to the handle pointer being set.
   // In this case the log message goes directly to the console.
-  bool    level_fl = p ==nullptr ||  level >= p->level || level == kPrint_LogLevel;
+  bool    level_fl = p ==nullptr ||  level >= p->level;
 
   // if we didn't pass the level check then return without logging
   if( level_fl )
@@ -395,6 +400,7 @@ cw::rc_t cw::log::msg( handle_t h, unsigned level, const char* function, const c
 }
 
 cw::rc_t cw::log::msg( handle_t    h,
+                       unsigned    flags,
                        unsigned    level,
                        const char* function,
                        const char* filename,
@@ -405,7 +411,7 @@ cw::rc_t cw::log::msg( handle_t    h,
 {
   va_list vl;
   va_start(vl,fmt);
-  msg( h, level, function, filename, line, systemErrorCode, resultCode, fmt, vl );
+  msg( h, flags, level, function, filename, line, systemErrorCode, resultCode, fmt, vl );
   va_end(vl);
   
   return resultCode;
@@ -420,13 +426,13 @@ cw::rc_t cw::log::exec( handle_t h )
 }
 
 
-void     cw::log::setLevel( handle_t h, unsigned level )
+void     cw::log::setLevel( handle_t h, logLevelId_t level )
 {
   log_t* p = _handleToPtr(h);
   p->level = level;
 }
 
-unsigned cw::log::level( handle_t h )
+cw::log::logLevelId_t cw::log::level( handle_t h )
 {
   log_t* p = _handleToPtr(h);
   return p->level;
@@ -527,7 +533,7 @@ void cw::log::defaultFormatter( void* cbArg, logOutputCbFunc_t outFunc, void* ou
   int tdn = 256;
   char td[tdn];
   td[0] = 0;
-  if( cwIsFlag(flags,kDateTimeFl) )
+  if( cwIsFlag(flags,kDateTimeFl) && level != kPrint_LogLevel )
     time::formatDateTime( td, (unsigned)tdn );
   tdn = strlen(td);
 
@@ -545,11 +551,11 @@ void cw::log::defaultFormatter( void* cbArg, logOutputCbFunc_t outFunc, void* ou
 
   if( level == kPrint_LogLevel )
   {
-    const char* fmt = "%s: %s";
-    int  n = snprintf(nullptr,0,fmt,td,msg);
+    const char* fmt = "%s";
+    int  n = snprintf(nullptr,0,fmt,msg);
     cwAssert(n != -1);
     char s[n+1];
-    int m = snprintf(s,n+1,fmt,td,msg);
+    int m = snprintf(s,n+1,fmt,msg);
     cwAssert(m==n);
     outFunc(outCbArg,level,s);     
   }

@@ -12,12 +12,13 @@ namespace cw
     typedef enum
     {
      kInvalid_LogLevel,
-     kPrint_LogLevel,
      kDebug_LogLevel,
      kInfo_LogLevel,
      kWarning_LogLevel,
      kError_LogLevel,
      kFatal_LogLevel,
+     kPrint_LogLevel,
+     kMax_LogLevel = kPrint_LogLevel
     } logLevelId_t;
 
     enum {
@@ -39,12 +40,12 @@ namespace cw
     typedef void (*logFormatCbFunc_t)( void* cbArg, logOutputCbFunc_t outFunc, void* outCbArg, unsigned flags, unsigned level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t rc, const char* msg );
 
     logLevelId_t levelFromString( const char* label );
-    const char* levelToString( logLevelId_t level );
+    const char*  levelToString( logLevelId_t level );
 
     typedef struct log_args_str
     {
       unsigned          flags;
-      unsigned          level;
+      logLevelId_t      level;
       const char*       log_fname;
       unsigned          queueBlkCnt;
       unsigned          queueBlkByteCnt;
@@ -66,11 +67,13 @@ namespace cw
 
     rc_t exec( handle_t h );
 
-    rc_t msg( handle_t h, unsigned level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t rc, const char* fmt, va_list vl );
-    rc_t msg( handle_t h, unsigned level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t rc, const char* fmt, ... );
+    enum { kNoMsgFlags=0, kNoLevelCheckMsgFl=0x01 };
+    
+    rc_t msg( handle_t h, unsigned flags, unsigned level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t rc, const char* fmt, va_list vl );
+    rc_t msg( handle_t h, unsigned flags, unsigned level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t rc, const char* fmt, ... );
 
-    void     setLevel( handle_t h, unsigned level );
-    unsigned level( handle_t h );
+    void         setLevel( handle_t h, logLevelId_t level );
+    logLevelId_t level( handle_t h );
 
     void*             outputCbArg( handle_t h );
     logOutputCbFunc_t outputCb( handle_t h );
@@ -112,26 +115,26 @@ namespace cw
 
 
 
-#define cwLogVDebugH(h,rc,fmt, vl) cw::log::msg( h, cw::log::kDebug_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, rc, fmt, vl )
-#define cwLogDebugH( h,rc,fmt,...) cw::log::msg( h, cw::log::kDebug_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, rc, fmt, ##__VA_ARGS__ )
+#define cwLogVDebugH(h,rc,fmt, vl) cw::log::msg( h, cw::log::kNoMsgFlags, cw::log::kDebug_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, rc, fmt, vl )
+#define cwLogDebugH( h,rc,fmt,...) cw::log::msg( h, cw::log::kNoMsgFlags, cw::log::kDebug_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, rc, fmt, ##__VA_ARGS__ )
 
-#define cwLogVPrintH(h,fmt, vl) cw::log::msg( h, cw::log::kPrint_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, cw::kOkRC, fmt, vl )
-#define cwLogPrintH( h,fmt,...) cw::log::msg( h, cw::log::kPrint_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, cw::kOkRC, fmt, ##__VA_ARGS__ )
+#define cwLogVPrintH(h,fmt, vl) cw::log::msg( h, cw::log::kNoMsgFlags, cw::log::kPrint_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, cw::kOkRC, fmt, vl )
+#define cwLogPrintH( h,fmt,...) cw::log::msg( h, cw::log::kNoMsgFlags, cw::log::kPrint_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, cw::kOkRC, fmt, ##__VA_ARGS__ )
 
-#define cwLogVInfoH(h,fmt, vl) cw::log::msg( h, cw::log::kInfo_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, cw::kOkRC, fmt, vl )
-#define cwLogInfoH( h,fmt,...) cw::log::msg( h, cw::log::kInfo_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, cw::kOkRC, fmt, ##__VA_ARGS__ )
+#define cwLogVInfoH(h,fmt, vl) cw::log::msg( h, cw::log::kNoMsgFlags, cw::log::kInfo_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, cw::kOkRC, fmt, vl )
+#define cwLogInfoH( h,fmt,...) cw::log::msg( h, cw::log::kNoMsgFlags, cw::log::kInfo_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, cw::kOkRC, fmt, ##__VA_ARGS__ )
 
-#define cwLogVWarningH(h,rc,fmt, vl) cw::log::msg( h, cw::log::kWarning_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, rc, fmt, vl )
-#define cwLogWarningH( h,rc,fmt,...) cw::log::msg( h, cw::log::kWarning_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, rc, fmt, ##__VA_ARGS__ )
+#define cwLogVWarningH(h,rc,fmt, vl) cw::log::msg( h, cw::log::kNoMsgFlags, cw::log::kWarning_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, rc, fmt, vl )
+#define cwLogWarningH( h,rc,fmt,...) cw::log::msg( h, cw::log::kNoMsgFlags, cw::log::kWarning_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, rc, fmt, ##__VA_ARGS__ )
 
-#define cwLogVErrorH(h,rc,fmt, vl) cw::log::msg( h, cw::log::kError_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, rc, fmt, vl )
-#define cwLogErrorH( h,rc,fmt,...) cw::log::msg( h, cw::log::kError_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, rc, fmt, ##__VA_ARGS__ )
+#define cwLogVErrorH(h,rc,fmt, vl) cw::log::msg( h, cw::log::kNoMsgFlags, cw::log::kError_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, rc, fmt, vl )
+#define cwLogErrorH( h,rc,fmt,...) cw::log::msg( h, cw::log::kNoMsgFlags, cw::log::kError_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, rc, fmt, ##__VA_ARGS__ )
 
-#define cwLogVSysErrorH(h,rc,sysRc,fmt, vl) cw::log::msg( h, cw::log::kError_LogLevel, __FUNCTION__, __FILE__, __LINE__, sysRc, rc, fmt, vl )
-#define cwLogSysErrorH( h,rc,sysRc,fmt,...) cw::log::msg( h, cw::log::kError_LogLevel, __FUNCTION__, __FILE__, __LINE__, sysRc, rc, fmt, ##__VA_ARGS__ )
+#define cwLogVSysErrorH(h,rc,sysRc,fmt, vl) cw::log::msg( h, cw::log::kNoMsgFlags, cw::log::kError_LogLevel, __FUNCTION__, __FILE__, __LINE__, sysRc, rc, fmt, vl )
+#define cwLogSysErrorH( h,rc,sysRc,fmt,...) cw::log::msg( h, cw::log::kNoMsgFlags, cw::log::kError_LogLevel, __FUNCTION__, __FILE__, __LINE__, sysRc, rc, fmt, ##__VA_ARGS__ )
 
-#define cwLogVFatalH(h,rc,fmt, vl) cw::log::msg( h, cw::log::kFatal_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, rc, fmt, vl )
-#define cwLogFatalH( h,rc,fmt,...) cw::log::msg( h, cw::log::kFatal_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, rc, fmt, ##__VA_ARGS__ )
+#define cwLogVFatalH(h,rc,fmt, vl) cw::log::msg( h, cw::log::kNoMsgFlags, cw::log::kFatal_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, rc, fmt, vl )
+#define cwLogFatalH( h,rc,fmt,...) cw::log::msg( h, cw::log::kNoMsgFlags, cw::log::kFatal_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, rc, fmt, ##__VA_ARGS__ )
 
 #define cwLogVDebugRC(rc,fmt, vl) cwLogVDebugH( cw::log::globalhandle(), (rc), (fmt), (vl) )
 #define cwLogDebugRC( rc,fmt,...) cwLogDebugH(  cw::log::globalHandle(), (rc), (fmt), ##__VA_ARGS__ )
@@ -165,11 +168,11 @@ namespace cw
 // By defining cwLOG_MODULE prior to cwLog.h in a given module these logging lines will be enabled.
 #ifdef cwLOG_MODULE
 
-#define cwLogVModRC(rc,fmt, vl) cw::log::msg( cw::log::globalHandle(), cw::log::kInfo_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, (rc), (fmt), (vl) )
-#define cwLogModRC( rc,fmt,...) cw::log::msg( cw::log::globalHandle(), cw::log::kInfo_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, (rc), (fmt), ##__VA_ARGS__ )
+#define cwLogVModRC(rc,fmt, vl) cw::log::msg( cw::log::globalHandle(), cw::log::kNoMsgFlags, cw::log::kInfo_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, (rc), (fmt), (vl) )
+#define cwLogModRC( rc,fmt,...) cw::log::msg( cw::log::globalHandle(), cw::log::kNoMsgFlags, cw::log::kInfo_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, (rc), (fmt), ##__VA_ARGS__ )
 
-#define cwLogVMod(fmt, vl)      cw::log::msg( cw::log::globalHandle(), cw::log::kInfo_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, cw::kOkRC, (fmt), (vl) )
-#define cwLogMod( fmt,...)      cw::log::msg( cw::log::globalHandle(), cw::log::kInfo_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, cw::kOkRC, (fmt), ##__VA_ARGS__ )
+#define cwLogVMod(fmt, vl)      cw::log::msg( cw::log::globalHandle(), cw::log::kNoMsgFlags, cw::log::kInfo_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, cw::kOkRC, (fmt), (vl) )
+#define cwLogMod( fmt,...)      cw::log::msg( cw::log::globalHandle(), cw::log::kNoMsgFlags, cw::log::kInfo_LogLevel, __FUNCTION__, __FILE__, __LINE__, 0, cw::kOkRC, (fmt), ##__VA_ARGS__ )
 
 #else
 
