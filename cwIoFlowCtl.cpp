@@ -190,6 +190,13 @@ namespace cw
       return rc;
     }
 
+    unsigned _pgm_label_to_index( const pgm_t* pgmA, unsigned pgmN, const char* label )
+    {
+      for(unsigned i=0; i<pgmN; ++i)
+        if( textIsEqual(pgmA[i].label,label) )
+          return i;
+      return kInvalidIdx;
+    }
 
     rc_t _load( io_flow_ctl_t* p, const object_t* cfg )
     {
@@ -239,6 +246,13 @@ namespace cw
         if( pgm->pair_label()==nullptr || pgm->pair_value()==nullptr || !pgm->pair_value()->is_dict() )
         {
           rc = cwLogError(kSyntaxErrorRC,"The program at index %i has a syntax error.",i);
+          goto errLabel;
+        }
+
+        // verify that this program label is not already used
+        if( _pgm_label_to_index( p->pgmA, i, pgm->pair_label() ) != kInvalidIdx )
+        {
+          rc = cwLogError(kInvalidStateRC,"Multiple programs have the same title: '%s'.",cwStringNullGuard(pgm->pair_label()));
           goto errLabel;
         }
 
@@ -766,11 +780,8 @@ errLabel:
 unsigned cw::io_flow_ctl::program_index( handle_t h, const char* pgm_title )
 {
   io_flow_ctl_t* p = _handleToPtr(h);
-  for(unsigned i=0; i<p->pgmN; ++i)
-    if( textIsEqual(pgm_title,p->pgmA[i].label) )
-      return i;
 
-  return kInvalidIdx;
+  return _pgm_label_to_index( p->pgmA, p->pgmN, pgm_title );
 }
 
 cw::rc_t    cw::io_flow_ctl::program_load(  handle_t h, unsigned pgm_idx )
