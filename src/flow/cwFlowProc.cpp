@@ -39,6 +39,7 @@
 #include "cwThread.h"
 #include "cwThreadMach.h"
 
+
 namespace cw
 {
 
@@ -164,7 +165,7 @@ namespace cw
         if( p != nullptr )
         {
           if((rc = list_destroy(p->list)) != kOkRC )
-            rc = cwLogError(rc,"Msg table list destroy failed.");
+            rc = proc_error(p->proc,rc,"Msg table list destroy failed.");
           
           for(unsigned i=0; i<p->msgCfgN; ++i)
           {
@@ -223,13 +224,13 @@ namespace cw
           
           if((pair_cfg = msg_cfg->child_ele(i)) == nullptr || !pair_cfg->is_pair() )
           {
-            rc = cwLogError(kSyntaxErrorRC,"The field pair at index '%i' is not valid.",i);
+            rc = proc_error(p->proc,kSyntaxErrorRC,"The field pair at index '%i' is not valid.",i);
             goto errLabel;
           }
 
           if((field_ref = _msg_field_to_ref(p,pair_cfg->pair_label())) == nullptr )
           {
-            rc = cwLogError(kSyntaxErrorRC,"The field label '%s' at index '%i' is not valid.",cwStringNullGuard(pair_cfg->pair_label()),i);
+            rc = proc_error(p->proc,kSyntaxErrorRC,"The field label '%s' at index '%i' is not valid.",cwStringNullGuard(pair_cfg->pair_label()),i);
             goto errLabel;            
           }
 
@@ -238,7 +239,7 @@ namespace cw
 
           if((rc = value_from_cfg(pair_cfg->pair_value(),row->fieldA[i].value)) != kOkRC )
           {
-            rc = cwLogError(kSyntaxErrorRC,"The field value '%s' at index '%i' could not be parsed.",cwStringNullGuard(pair_cfg->pair_label()),i);
+            rc = proc_error(p->proc,kSyntaxErrorRC,"The field value '%s' at index '%i' could not be parsed.",cwStringNullGuard(pair_cfg->pair_label()),i);
             goto errLabel;            
           }
 
@@ -256,19 +257,19 @@ namespace cw
 
         if((rc = _release_cfg(p)) != kOkRC )
         {
-          rc = cwLogError(rc,"Msg table release cfg. failed.");
+          rc = proc_error(p->proc,rc,"Msg table release cfg. failed.");
           goto errLabel;
         }
         
         if((rc = cfg->getv("list", cfg_list)) != kOkRC )
         {
-          rc = cwLogError(rc,"Unable to locate the 'list' field in the msg. table cfg.");
+          rc = proc_error(p->proc,rc,"Unable to locate the 'list' field in the msg. table cfg.");
           goto errLabel;
         }
 
         if( !cfg_list->is_list() )
         {
-          rc = cwLogError(rc,"Expected msg table list to be of type 'list'.");
+          rc = proc_error(p->proc,rc,"Expected msg table list to be of type 'list'.");
           goto errLabel;
         }
 
@@ -280,7 +281,7 @@ namespace cw
 
         if((rc = list_create(p->list,p->msgCfgN)) != kOkRC )
         {
-          rc = cwLogError(rc,"Msg table list create failed.");
+          rc = proc_error(p->proc,rc,"Msg table list create failed.");
           goto errLabel;
         }          
 
@@ -292,7 +293,7 @@ namespace cw
           const object_t* list_ele;
           if((list_ele = cfg_list->child_ele(i)) == nullptr || !list_ele->is_dict() )
           {
-            rc = cwLogError(kSyntaxErrorRC,"The cfg index '%i' is not a valid dictionary.",i);
+            rc = proc_error(p->proc,kSyntaxErrorRC,"The cfg index '%i' is not a valid dictionary.",i);
             goto errLabel;
           }
 
@@ -300,13 +301,13 @@ namespace cw
                                   "label",label,
                                   "cfg",row_list)) != kOkRC )
           {
-            rc = cwLogError(rc,"Parsing failed on cfg index '%i'.");
+            rc = proc_error(p->proc,rc,"Parsing failed on cfg index '%i'.");
             goto errLabel;
           }
 
           if( row_list == nullptr || !row_list->is_list() )
           {
-            rc = cwLogError(rc,"The 'cfg' list in cfg index '%i' is not a list.",i);
+            rc = proc_error(p->proc,rc,"The 'cfg' list in cfg index '%i' is not a list.",i);
             goto errLabel;
           }
 
@@ -319,7 +320,7 @@ namespace cw
 
           if((rc = list_append(p->list,label,kInvalidIdx)) != kOkRC )
           {
-            rc = cwLogError(kOpFailRC,"The msg table list append failed on the element at index '%i'.",i);
+            rc = proc_error(p->proc,kOpFailRC,"The msg table list append failed on the element at index '%i'.",i);
             goto errLabel;
           }
           
@@ -331,20 +332,20 @@ namespace cw
 
             if( row == nullptr || !row->is_dict() )
             {
-              rc = cwLogError(kSyntaxErrorRC,"The row element at index '%i' in cfg index  '%i' is not a valid dictionary.",j,i);
+              rc = proc_error(p->proc,kSyntaxErrorRC,"The row element at index '%i' in cfg index  '%i' is not a valid dictionary.",j,i);
               goto errLabel;
             }
               
             if((rc = row->getv("id",p->msgCfgA[i].msgRowA[j].row_id,
                                "msg",msg)) != kOkRC )
             {
-              rc = cwLogError(rc,"Outer parsing failed on cfg index:%i row index '%i'.",i,j);
+              rc = proc_error(p->proc,rc,"Outer parsing failed on cfg index:%i row index '%i'.",i,j);
               goto errLabel;
             }
 
             if((rc = _msg_table_parse_row(p,p->msgCfgA[i].msgRowA + j,msg)) != kOkRC )
             {
-              rc = cwLogError(rc,"Field parsing failed on cfg index:%i (id=%i)row index '%i'.",i,p->msgCfgA[i].msgRowA[j].row_id,j);
+              rc = proc_error(p->proc,rc,"Field parsing failed on cfg index:%i (id=%i)row index '%i'.",i,p->msgCfgA[i].msgRowA[j].row_id,j);
               goto errLabel;
             }
 
@@ -356,7 +357,7 @@ namespace cw
 
       errLabel:
         if( rc != kOkRC )
-          rc = cwLogError(rc,"Message table parsing failed.");
+          rc = proc_error(p->proc,rc,"Message table parsing failed.");
         
         return rc;        
       }
@@ -369,13 +370,13 @@ namespace cw
 
         if((fn = proc_expand_filename(p->proc,fname)) == nullptr )
         {
-          rc = cwLogError(kOpFailRC,"The file name '%s' could not be expanded.",cwStringNullGuard(fname));
+          rc = proc_error(p->proc,kOpFailRC,"The file name '%s' could not be expanded.",cwStringNullGuard(fname));
           goto errLabel;
         }
           
         if((rc = objectFromFile( fn, cfg )) != kOkRC )
         {
-          rc = cwLogError(rc,"Unable to parse msg table from '%s'.",cwStringNullGuard(fn));
+          rc = proc_error(p->proc,rc,"Unable to parse msg table from '%s'.",cwStringNullGuard(fn));
           goto errLabel;
         }
 
@@ -386,7 +387,7 @@ namespace cw
         
       errLabel:
         if( rc != kOkRC )
-          rc = cwLogError(rc,"Message table parsing failed on '%s'.",cwStringNullGuard(fname));
+          rc = proc_error(p->proc,rc,"Message table parsing failed on '%s'.",cwStringNullGuard(fname));
 
         mem::release(fn);
         
@@ -422,7 +423,7 @@ namespace cw
 
           if((rc = var_register( proc, fieldRefA[i].label, fieldRefA[i].var_label_sfx_id, fieldRefA[i].vid, fieldRefA[i].chIdx, value_cfg, var )) != kOkRC )
           {
-            rc = cwLogError(rc,"Message table variable registration failed on the field:%s.",cwStringNullGuard(fieldRefA[i].label));
+            rc = proc_error(proc,rc,"Message table variable registration failed on the field:%s.",cwStringNullGuard(fieldRefA[i].label));
             goto errLabel;
           }
 
@@ -442,7 +443,7 @@ namespace cw
           }
           else
           {
-            cwLogWarning("'%s:%i' was created without an initial configuration.",cwStringNullGuard(proc->label),proc->label_sfx_id);
+            proc_warn(proc,"Created without an initial configuration.",cwStringNullGuard(proc->label),proc->label_sfx_id);
           }
         }
         
@@ -463,7 +464,7 @@ namespace cw
 
         if( p->cur_cfg_idx == kInvalidIdx )
         {
-          rc = cwLogError(kInvalidStateRC,"Cannot apply a msg. table row if the current cfg. is not set.");
+          rc = proc_error(p->proc,kInvalidStateRC,"Cannot apply a msg. table row if the current cfg. is not set.");
           goto errLabel;
         }
 
@@ -484,7 +485,7 @@ namespace cw
               {
                 if((rc = var_set(p->proc, r->fieldA[j].vid, r->fieldA[j].chIdx, &r->fieldA[j].value)) != kOkRC )
                 {
-                  rc = cwLogError(rc,"Variable set from msg table failed.");
+                  rc = proc_error(p->proc,rc,"Variable set from msg table failed.");
                   goto errLabel;
                 }
               }
@@ -505,7 +506,7 @@ namespace cw
 
         if( index >= p->msgCfgN )
         {
-          rc = cwLogError(kInvalidArgRC,"The msg table cfg. index '%i' is out of range.",index);
+          rc = proc_error(p->proc,kInvalidArgRC,"The msg table cfg. index '%i' is out of range.",index);
           goto errLabel;
         }
 
@@ -513,7 +514,7 @@ namespace cw
         
         if( p->msgCfgA[index].msgRowN > 0 )
           if((rc = msg_table::on_row_id(p,p->msgCfgA[index].msgRowA[0].row_id)) != kOkRC )
-            rc = cwLogError(rc,"Msg. table row apply-on-new-cfg-index failed.");
+            rc = proc_error(p->proc,rc,"Msg. table row apply-on-new-cfg-index failed.");
 
       errLabel:
         return rc;
@@ -533,7 +534,7 @@ namespace cw
           if( p->msgCfgA[i].id == cfg_id )
             return _set_cur_cfg_index(p,i);
 
-        return cwLogError(kEleNotFoundRC,"The msg. table cfg with id '%i' was not found.",cfg_id);
+        return proc_error(p->proc,kEleNotFoundRC,"The msg. table cfg with id '%i' was not found.",cfg_id);
       }
 
     }
@@ -558,13 +559,13 @@ namespace cw
         
         if((rc = proc->class_desc->cfg->getv("network",networkCfg)) != kOkRC )
         {
-          rc = cwLogError(rc,"The UDP 'network' cfg. was not found.");
+          rc = proc_error(proc,rc,"The UDP 'network' cfg. was not found.");
           goto errLabel;
         }
 
         if((rc = network_create(proc->ctx,&proc->label,&networkCfg,1,proc->varL,1,p->net)) != kOkRC )
         {
-          rc = cwLogError(rc,"Creation failed on the subnet internal network.");
+          rc = proc_error(proc,rc,"Creation failed on the subnet internal network.");
           goto errLabel;
         }
 
@@ -597,7 +598,7 @@ namespace cw
 
         if(p->net != nullptr )
           if((rc = exec_cycle(*p->net)) != kOkRC )
-            rc = cwLogError(rc,"poly internal network exec failed.");
+            rc = proc_error(proc,rc,"poly internal network exec failed.");
         
         return rc;
       }
@@ -674,7 +675,7 @@ namespace cw
 
         if( net == nullptr )
         {
-          rc = cwLogError(kEleNotFoundRC,"The preset application poly voice '%i' was not found.",preset_sfx_id);
+          rc = proc_error(proc,kEleNotFoundRC,"The preset application poly voice '%i' was not found.",preset_sfx_id);
           goto errLabel;                          
         }
 
@@ -711,7 +712,7 @@ namespace cw
         // get the network cfg
         if((rc = proc->proc_cfg->getv("network",networkCfg)) != kOkRC )
         {
-          rc = cwLogError(rc,"The 'network' cfg. was not found.");
+          rc = proc_error(proc,rc,"The 'network' cfg. was not found.");
           goto errLabel;
         }
 
@@ -743,7 +744,7 @@ namespace cw
         // the network cannot be empty
         if( netCfgN == 0 )
         {
-          cwLogWarning("The 'poly' %s:%i does not define any networks.",proc->label,proc->label_sfx_id);
+          proc_warn(proc,"The 'poly' %s:%i does not define any networks.",proc->label,proc->label_sfx_id);
           goto errLabel;
         }
 
@@ -764,7 +765,7 @@ namespace cw
 
             if( (pair->pair_label() == nullptr) || (pair->pair_value() == nullptr) || (!pair->pair_value()->is_dict()) )
             {
-              cwLogError(kSyntaxErrorRC,"The network cfg. for the network index %i is not a label/dictionary pair.",i);
+              proc_error(proc,kSyntaxErrorRC,"The network cfg. for the network index %i is not a label/dictionary pair.",i);
               goto errLabel;              
             }
             else
@@ -780,7 +781,7 @@ namespace cw
         // create the network object
         if((rc = network_create(proc->ctx,netLabelA,netCfgA,netCfgN,proxyVarL,poly_cnt,internal_net)) != kOkRC )
         {
-          rc = cwLogError(rc,"Creation failed on the internal network.");
+          rc = proc_error(proc,rc,"Creation failed on the internal network.");
           goto errLabel;
         }
 
@@ -810,7 +811,7 @@ namespace cw
           // validate the length of the CPU affinity list
           if( cpuAffinityN>0 && cpuAffinityN != inst->thread_cnt )
           {
-            rc = cwLogError(rc,"Count of CPU affinities (%i) does not match thread count (%i).",inst->thread_cnt,cpuAffinityN);
+            rc = proc_error(proc,rc,"Count of CPU affinities (%i) does not match thread count (%i).",inst->thread_cnt,cpuAffinityN);
             goto errLabel;
           }
 
@@ -818,14 +819,14 @@ namespace cw
           for(unsigned i=0; i<cpuAffinityN; ++i)
             if((rc = cpuAffinityL->child_ele(i)->value(cpuAffinityA[i])) != kOkRC )
             {
-              rc = cwLogError(rc,"Error parsing CPU affinities.");
+              rc = proc_error(proc,rc,"Error parsing CPU affinities.");
               goto errLabel;
             }
                     
           // create a thread_ftasks object
           if((rc = thread_ftasks::create(  inst->threadTasksH, inst->thread_cnt, cpuAffinityA, "task_thread" )) != kOkRC )
           {
-            rc = cwLogError(rc,"Thread machine create failed.");
+            rc = proc_error(proc,rc,"Thread machine create failed.");
             goto errLabel;
           }
 
@@ -908,7 +909,7 @@ namespace cw
         {
           if((rc = thread_ftasks::run(p->threadTasksH,p->taskA,p->voiceN)) != kOkRC )
           {
-            rc = cwLogError(rc,"poly internal network parallel exec failed.");
+            rc = proc_error(proc,rc,"poly internal network parallel exec failed.");
           }
         }
         else
@@ -917,7 +918,7 @@ namespace cw
           {
             if((rc = exec_cycle(*net)) != kOkRC )
             {
-              rc = cwLogError(rc,"poly internal network exec failed.");
+              rc = proc_error(proc,rc,"poly internal network exec failed.");
               break;
             }
           }
@@ -1049,43 +1050,6 @@ namespace cw
         
       } inst_t;
 
-      rc_t _alloc_recd_array( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx, const recd_type_t* base, recd_array_t*& recd_array_ref  )
-      {
-        rc_t        rc  = kOkRC;
-        variable_t* var = nullptr;
-        
-        // find the record variable
-        if((rc = var_find( proc, var_label, sfx_id, chIdx, var )) != kOkRC )
-        {
-          rc = cwLogError(rc,"The record variable '%s:%i' could was not found.",cwStringNullGuard(var_label),sfx_id);
-          goto errLabel;
-        }
-
-        // verify that the variable has a record format
-        if( !var_has_recd_format(var) )
-        {
-          rc = cwLogError(kInvalidArgRC,"The variable does not have a valid record format.");
-          goto errLabel;
-        }
-        else
-        {
-          recd_fmt_t* recd_fmt = var->varDesc->fmt.recd_fmt;
-
-          // create the recd_array
-          if((rc = recd_array_create( recd_array_ref, recd_fmt->recd_type, base, recd_fmt->alloc_cnt )) != kOkRC )
-          {
-            goto errLabel;
-          }
-        }
-        
-      errLabel:
-        if( rc != kOkRC )
-          rc = cwLogError(rc,"Record array create failed on the variable '%s:%i ch:%i.",cwStringNullGuard(var_label),sfx_id,chIdx);
-        
-        return rc;
-        
-      }
-      
       
       rc_t create( proc_t* proc )
       {
@@ -1131,7 +1095,7 @@ namespace cw
                 
         if((inst->ext_dev = external_device_find( proc->ctx, dev_label, kMidiDevTypeId, kInFl, port_label )) == nullptr )
         {
-          rc = cwLogError(kOpFailRC,"The MIDI input device '%s' port '%s' could not be found.", cwStringNullGuard(dev_label), cwStringNullGuard(port_label));
+          rc = proc_error(proc,kOpFailRC,"The MIDI input device '%s' port '%s' could not be found.", cwStringNullGuard(dev_label), cwStringNullGuard(port_label));
           goto errLabel;
         }
 
@@ -1140,17 +1104,17 @@ namespace cw
         inst->buf = mem::allocZ<midi::ch_msg_t>( inst->bufN );
 
         // create one output MIDI buffer
-        rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, 0  );
-
-        
-        // allocate the output recd array
-        if((rc = _alloc_recd_array( proc, "r_out", kBaseSfxId, kAnyChIdx, nullptr, inst->recd_array )) != kOkRC )
+        if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, 0  )) != kOkRC )
         {
+          rc = proc_error(proc,rc,"'out' register failed.");
           goto errLabel;
         }
         
-        // create one output record buffer
-        rc = var_register_and_set( proc, "r_out", kBaseSfxId, kROutPId, kAnyChIdx, inst->recd_array->type, nullptr, 0  );
+        if((rc = var_alloc_register_and_set( proc, "r_out", kBaseSfxId, kROutPId, kAnyChIdx, nullptr, inst->recd_array )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"'r_out' allocate and register failed.");
+          goto errLabel;
+        }
 
         inst->midi_fld_idx = recd_type_field_index( inst->recd_array->type, "midi");
         
@@ -1176,14 +1140,14 @@ namespace cw
       { return kOkRC; }
 
 
-      rc_t _set_output_record( inst_t* p, rbuf_t* rbuf, const midi::ch_msg_t* m )
+      rc_t _set_output_record( proc_t* proc, inst_t* p, rbuf_t* rbuf, const midi::ch_msg_t* m )
       {
         rc_t rc = kOkRC;
         
         // if the output record array is full
         if( rbuf->recdN >= p->recd_array->allocRecdN )
         {
-          rc = cwLogError(kBufTooSmallRC,"The internal record buffer overflowed. (buf recd count:%i).",p->recd_array->allocRecdN);
+          rc = proc_error(proc,kBufTooSmallRC,"The internal record buffer overflowed. (buf recd count:%i).",p->recd_array->allocRecdN);
           goto errLabel;
         }
 
@@ -1208,7 +1172,7 @@ namespace cw
         // get the output variable
         if((rc = var_get(proc,kOutPId,kAnyChIdx,mbuf)) != kOkRC )
         {
-          rc = cwLogError(kInvalidStateRC,"The MIDI file instance '%s' does not have a valid MIDI output buffer.",proc->label);
+          rc = proc_error(proc,kInvalidStateRC,"The MIDI file instance '%s' does not have a valid MIDI output buffer.",proc->label);
         }
         else
         {
@@ -1242,7 +1206,7 @@ namespace cw
             for(unsigned i=0; i<mbuf->msgN; ++i)
             {
               const midi::ch_msg_t* m = mbuf->msgA + i;
-              cwLogInfo("%s : %i 0x%x %i %i : dev:%i port:%i",cwStringNullGuard(proc->label),m->ch,m->status,m->d0,m->d1,m->devIdx,m->portIdx);
+              proc_info(proc,"%s : %i 0x%x %i %i : dev:%i port:%i",cwStringNullGuard(proc->label),m->ch,m->status,m->d0,m->d1,m->devIdx,m->portIdx);
             }
           }
 
@@ -1251,7 +1215,7 @@ namespace cw
           // get the output variable 1
           if((rc = var_get(proc,kROutPId,kAnyChIdx,rbuf1)) != kOkRC )
           {
-            rc = cwLogError(kInvalidStateRC,"The midi-in '%s' does not have a valid output record buffer.",proc->label);
+            rc = proc_error(proc,kInvalidStateRC,"The midi-in '%s' does not have a valid output record buffer.",proc->label);
           }
           else
           {
@@ -1260,7 +1224,7 @@ namespace cw
             
             for(unsigned i=0; i<mbuf->msgN; ++i)
             {
-              _set_output_record(inst,rbuf1, mbuf->msgA + i);
+              _set_output_record(proc,inst,rbuf1, mbuf->msgA + i);
             }
 
             //if( rbuf->recdN )
@@ -1359,13 +1323,13 @@ namespace cw
         else
         {
           // ... otherwise give it an empty record buf to get by the post proc create variable value checker
-          if((rc = var_register_and_set( proc, "rin", kBaseSfxId, kRInPId, kAnyChIdx, &p->null_recd_type, nullptr, 0 )) != kOkRC )
+          if((rc = var_register_and_set( proc, "rin", kBaseSfxId, kRInPId, kAnyChIdx, &p->null_recd_type, nullptr, 0, 0 )) != kOkRC )
             goto errLabel;
         }
 
         if((p->ext_dev = external_device_find( proc->ctx, dev_label, kMidiDevTypeId, kOutFl, port_label )) == nullptr )
         {
-          rc = cwLogError(kOpFailRC,"The audio output device description '%s' could not be found.", cwStringNullGuard(dev_label));
+          rc = proc_error(proc,kOpFailRC,"The audio output device description '%s' could not be found.", cwStringNullGuard(dev_label));
           goto errLabel;
         }
         
@@ -1375,7 +1339,7 @@ namespace cw
         {
           if((p->midi_fld_idx  = recd_type_field_index( rbuf->type, "midi")) == kInvalidIdx )
           {
-            rc = cwLogError(kInvalidArgRC,"The 'rin' record does not have a 'midi' field.");
+            rc = proc_error(proc,kInvalidArgRC,"The 'rin' record does not have a 'midi' field.");
             goto errLabel;
           }
         }
@@ -1427,7 +1391,7 @@ namespace cw
         if( p->rin_exists_fl )
         {
           if((rc = var_get(proc,kRInPId,kAnyChIdx,rbuf)) != kOkRC )
-            rc = cwLogError(kInvalidStateRC,"The the record input connection is not valid.");
+            rc = proc_error(proc,kInvalidStateRC,"The the record input connection is not valid.");
           else
           {
             for(unsigned i=0; i<rbuf->recdN; ++i)
@@ -1439,7 +1403,7 @@ namespace cw
                 _send_msg(p,print_fl,enable_fl,m);
               else
               {
-                rc = cwLogError(rc,"Record 'midi' field read failed.");
+                rc = proc_error(proc,rc,"Record 'midi' field read failed.");
                 goto errLabel;
               }
             
@@ -1451,7 +1415,7 @@ namespace cw
         if( p->in_exists_fl )
         {
           if((rc = var_get(proc,kInPId,kAnyChIdx,src_mbuf)) != kOkRC )
-            rc = cwLogError(kInvalidStateRC,"The MIDI output instance '%s' does not have a valid input connection.",proc->label);
+            rc = proc_error(proc,kInvalidStateRC,"The MIDI output instance '%s' does not have a valid input connection.",proc->label);
           else
           {
             for(unsigned i=0; i<src_mbuf->msgN; ++i)
@@ -1514,7 +1478,7 @@ namespace cw
 
         if((inst->ext_dev = external_device_find( proc->ctx, inst->dev_label, kAudioDevTypeId, kInFl )) == nullptr )
         {
-          rc = cwLogError(kOpFailRC,"The audio input device description '%s' could not be found.", cwStringNullGuard(inst->dev_label));
+          rc = proc_error(proc,kOpFailRC,"The audio input device description '%s' could not be found.", cwStringNullGuard(inst->dev_label));
           goto errLabel;
         }
         
@@ -1553,7 +1517,7 @@ namespace cw
         // verify that a source buffer exists
         if((rc = var_get(proc,kOutPId,kAnyChIdx,abuf)) != kOkRC )
         {
-          rc = cwLogError(kInvalidStateRC,"The audio  input instance '%s' does not have a valid audio output buffer.",proc->label);
+          rc = proc_error(proc,kInvalidStateRC,"The audio  input instance '%s' does not have a valid audio output buffer.",proc->label);
         }
         else
         {
@@ -1613,7 +1577,7 @@ namespace cw
 
         if((inst->ext_dev = external_device_find( proc->ctx, inst->dev_label, kAudioDevTypeId, kOutFl )) == nullptr )
         {
-          rc = cwLogError(kOpFailRC,"The audio output device description '%s' could not be found.", cwStringNullGuard(inst->dev_label));
+          rc = proc_error(proc,kOpFailRC,"The audio output device description '%s' could not be found.", cwStringNullGuard(inst->dev_label));
           goto errLabel;
         }        
 
@@ -1644,7 +1608,7 @@ namespace cw
         const abuf_t* src_abuf = nullptr;
 
         if((rc = var_get(proc,kInPId,kAnyChIdx,src_abuf)) != kOkRC )
-          rc = cwLogError(kInvalidStateRC,"The audio file instance '%s' does not have a valid input connection.",proc->label);
+          rc = proc_error(proc,kInvalidStateRC,"The audio file instance '%s' does not have a valid input connection.",proc->label);
         else
         {
           unsigned  chN    = std::min(inst->ext_dev->u.a.abuf->chN,    src_abuf->chN);
@@ -1727,7 +1691,7 @@ namespace cw
 
         if((inst->filename = proc_expand_filename(proc,fname)) == nullptr )
         {
-          rc = cwLogError(kInvalidArgRC,"The audio output filename could not be formed.");
+          rc = proc_error(proc,kInvalidArgRC,"The audio output filename could not be formed.");
           goto errLabel;
         }
         
@@ -1735,18 +1699,18 @@ namespace cw
         // open the audio file
         if((rc = audiofile::open(inst->afH,inst->filename,&info)) != kOkRC )
         {
-          rc = cwLogError(kInvalidArgRC,"The audio file '%s' could not be opened.",inst->filename);
+          rc = proc_error(proc,kInvalidArgRC,"The audio file '%s' could not be opened.",inst->filename);
           goto errLabel;
         }
 
         if((rc = seek( inst->afH, (unsigned)lround(seekSecs*info.srate) )) != kOkRC )
         {
-          rc = cwLogError(kInvalidArgRC,"The audio file '%s' could not seek to offset %f seconds.",seekSecs);
+          rc = proc_error(proc,kInvalidArgRC,"The audio file '%s' could not seek to offset %f seconds.",seekSecs);
           goto errLabel;
         }
         
 
-        cwLogInfo("Audio '%s' srate:%f chs:%i frames:%i %f seconds.",inst->filename,info.srate,info.chCnt,info.frameCnt, info.frameCnt/info.srate );
+        proc_info(proc,"Audio '%s' srate:%f chs:%i frames:%i %f seconds.",inst->filename,info.srate,info.chCnt,info.frameCnt, info.frameCnt/info.srate );
 
         // create one output audio buffer - with the same configuration as the source audio file
         rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, info.srate, info.chCnt, proc->ctx->framesPerCycle );
@@ -1763,7 +1727,7 @@ namespace cw
 
         if((rc = audiofile::close(inst->afH)) != kOkRC )
         {
-          rc = cwLogError(kOpFailRC,"The close failed on the audio file '%s'.", cwStringNullGuard(inst->filename) );
+          rc = proc_error(proc,kOpFailRC,"The close failed on the audio file '%s'.", cwStringNullGuard(inst->filename) );
         }
 
         mem::release(inst->filename);
@@ -1783,7 +1747,7 @@ namespace cw
 
         if((rc = seek( inst->afH, (unsigned)lround(seekSecs * audiofile::sampleRate(inst->afH) ) )) != kOkRC )
         {
-          rc = cwLogError(kInvalidArgRC,"The audio file '%s' could not seek to offset %f seconds.",seekSecs);
+          rc = proc_error(proc,kInvalidArgRC,"The audio file '%s' could not seek to offset %f seconds.",seekSecs);
           goto errLabel;
         }
 
@@ -1807,7 +1771,7 @@ namespace cw
         // verify that a source buffer exists
         if((rc = var_get(proc,kOutPId,kAnyChIdx,abuf)) != kOkRC )
         {
-          rc = cwLogError(kInvalidStateRC,"The audio file instance '%s' does not have a valid audio output buffer.",proc->label);
+          rc = proc_error(proc,kInvalidStateRC,"The audio file instance '%s' does not have a valid audio output buffer.",proc->label);
         }
         else
         {
@@ -1888,14 +1852,14 @@ namespace cw
         
         if((inst->filename = proc_expand_filename(proc,fname)) == nullptr )
         {
-          rc = cwLogError(kInvalidArgRC,"The audio output filename could not be formed.");
+          rc = proc_error(proc,kInvalidArgRC,"The audio output filename could not be formed.");
           goto errLabel;
         }
           
         // create the audio file with the same channel count as the incoming signal
         if((rc = audiofile::create( inst->afH, inst->filename, src_abuf->srate, audioFileBits, src_abuf->chN)) != kOkRC )
         {
-          rc = cwLogError(kOpFailRC,"The audio file create failed on '%s'.",cwStringNullGuard(inst->filename));
+          rc = proc_error(proc,kOpFailRC,"The audio file create failed on '%s'.",cwStringNullGuard(inst->filename));
           goto errLabel;
         }
 
@@ -1911,7 +1875,7 @@ namespace cw
         // close the audio file
         if((rc = audiofile::close( inst->afH )) != kOkRC )
         {
-          rc = cwLogError(rc,"Close failed on the audio output file '%s'.",inst->filename);
+          rc = proc_error(proc,rc,"Close failed on the audio output file '%s'.",inst->filename);
           goto errLabel;
         }
 
@@ -1935,7 +1899,7 @@ namespace cw
         const abuf_t* src_abuf = nullptr;
         
         if((rc = var_get(proc,kInPId,kAnyChIdx,src_abuf)) != kOkRC )
-          rc = cwLogError(kInvalidStateRC,"The audio file instance '%s' does not have a valid input connection.",proc->label);
+          rc = proc_error(proc,kInvalidStateRC,"The audio file instance '%s' does not have a valid input connection.",proc->label);
         else
         {
           sample_t*     chBuf[ src_abuf->chN ];
@@ -1957,7 +1921,7 @@ namespace cw
           }
           
           if((rc = audiofile::writeFloat(inst->afH, src_abuf->frameN, src_abuf->chN, chBuf )) != kOkRC )
-            rc = cwLogError(rc,"Audio file write failed on instance: '%s'.", proc->label );
+            rc = proc_error(proc,rc,"Audio file write failed on instance: '%s'.", proc->label );
 
           // print a minutes counter
           inst->durSmpN += src_abuf->frameN;          
@@ -2114,7 +2078,7 @@ namespace cw
         return rc;
       }
 
-      rc_t _write_audio(inst_t* inst)
+      rc_t _write_audio(proc_t* proc, inst_t* inst)
       {
         rc_t rc = kOkRC;
         audiofile::handle_t afH;
@@ -2128,7 +2092,7 @@ namespace cw
         // determine the file name
         if((filename = filesys::makeVersionedFn( inst->dir, inst->fname_prefix, "wav", nullptr )) == nullptr )
         {
-          rc = cwLogError(rc,"Versioned filename creation failed.");
+          rc = proc_error(proc,rc,"Versioned filename creation failed.");
           goto errLabel;
         }
 
@@ -2136,7 +2100,7 @@ namespace cw
         // create the audio file with the same channel count as the incoming signal
         if((rc = audiofile::create( afH, filename, inst->srate, inst->audioFileBits, inst->chN)) != kOkRC )
         {
-          rc = cwLogError(kOpFailRC,"The audio file create failed on '%s'.",cwStringNullGuard(filename));
+          rc = proc_error(proc,kOpFailRC,"The audio file create failed on '%s'.",cwStringNullGuard(filename));
           goto errLabel;
         }
 
@@ -2144,14 +2108,14 @@ namespace cw
         for(chk=inst->chunkBegL; chk!=nullptr; chk=chk->link)
         {          
           if((rc = audiofile::writeFloat(afH, chk->frame_idx, chk->chN, chk->chArray )) != kOkRC )
-            rc = cwLogError(rc,"Audio file write failed." );
+            rc = proc_error(proc,rc,"Audio file write failed." );
         }
 
       errLabel:
         // close the audio file
         if((rc = audiofile::close( afH )) != kOkRC )
         {
-          rc = cwLogError(rc,"Close failed on the audio output file '%s'.",filename);
+          rc = proc_error(proc,rc,"Close failed on the audio output file '%s'.",filename);
           goto errLabel;
         }
 
@@ -2191,7 +2155,7 @@ namespace cw
         
         if((inst->dir = proc_expand_filename(proc,dir)) == nullptr )
         {
-          rc = cwLogError(kInvalidArgRC,"The audio output filename could not be formed.");
+          rc = proc_error(proc,kInvalidArgRC,"The audio output filename could not be formed.");
           goto errLabel;
         }
 
@@ -2240,7 +2204,7 @@ namespace cw
             break;
             
           case kWritePId:
-            _write_audio(inst);
+            _write_audio(proc,inst);
             break;
         }
         return rc;
@@ -2253,11 +2217,11 @@ namespace cw
         const abuf_t* src_abuf = nullptr;
         
         if((rc = var_get(proc,kInPId,kAnyChIdx,src_abuf)) != kOkRC )
-          rc = cwLogError(kInvalidStateRC,"The audio file instance '%s' does not have a valid input connection.",proc->label);
+          rc = proc_error(proc,kInvalidStateRC,"The audio file instance '%s' does not have a valid input connection.",proc->label);
         else
         {
           if((rc = _store_audio(inst,src_abuf)) != kOkRC )
-            rc = cwLogError(rc,"Audio store failed.");
+            rc = proc_error(proc,rc,"Audio store failed.");
 
           // print a minutes counter
           inst->durFrameN += src_abuf->frameN;          
@@ -2277,7 +2241,7 @@ namespace cw
         const abuf_t* src_abuf = nullptr;
         
         if((rc = var_get(proc,kInPId,kAnyChIdx,src_abuf)) != kOkRC )
-          rc = cwLogError(kInvalidStateRC,"The audio file instance '%s' does not have a valid input connection.",proc->label);
+          rc = proc_error(proc,kInvalidStateRC,"The audio file instance '%s' does not have a valid input connection.",proc->label);
         else
         {
           
@@ -2287,7 +2251,7 @@ namespace cw
             chBuf[i] = src_abuf->buf + (i*src_abuf->frameN);
         
           if((rc = audiofile::writeFloat(inst->afH, src_abuf->frameN, src_abuf->chN, chBuf )) != kOkRC )
-            rc = cwLogError(rc,"Audio file write failed on instance: '%s'.", proc->label );
+            rc = proc_error(proc,rc,"Audio file write failed on instance: '%s'.", proc->label );
 
           // print a minutes counter
           inst->durSmpN += src_abuf->frameN;          
@@ -2467,7 +2431,7 @@ namespace cw
 
         if( a_buf->chN != b_buf->chN || a_buf->frameN != b_buf->frameN )
         {
-          rc = cwLogError(kInvalidArgRC,"The input signals in the audio xfade '%s' must have the same count of samples and frames.",cwStringNullGuard(proc->label));
+          rc = proc_error(proc,kInvalidArgRC,"The input signals in the audio xfade '%s' must have the same count of samples and frames.",cwStringNullGuard(proc->label));
           goto errLabel;
         }
 
@@ -2521,7 +2485,7 @@ namespace cw
               p->fade_to_a_fl      = true;
               p->dst_xfade_smp_cnt = 0;
               p->cur_xfade_smp_idx = 0;
-              cwLogInfo("SET TO SIMUL");
+              proc_info(proc,"SET TO SIMUL");
               break;
               
             case kAbTrigPId:
@@ -2533,7 +2497,7 @@ namespace cw
                 p->fade_to_a_fl      = false;
                 p->dst_xfade_smp_cnt = p->ab_smp_cnt;
                 p->cur_xfade_smp_idx = 0;
-                cwLogInfo("FADE TO SPIRIO");
+                proc_info(proc,"FADE TO SPIRIO");
               }
               break;
               
@@ -2545,7 +2509,7 @@ namespace cw
                 p->fade_to_a_fl      = true;
                 p->dst_xfade_smp_cnt = p->ba_smp_cnt;
                 p->cur_xfade_smp_idx = 0;
-                cwLogInfo("FADE TO SIMUL");
+                proc_info(proc,"FADE TO SIMUL");
               }
               break;
               
@@ -2710,14 +2674,14 @@ namespace cw
         // validate the channel input->output map
         if( selList == nullptr || !selList->is_list() )
         {
-          rc = cwLogError(kSyntaxErrorRC,"The 'audio_split' 'select' list has invalid syntax.");
+          rc = proc_error(proc,kSyntaxErrorRC,"The 'audio_split' 'select' list has invalid syntax.");
           goto errLabel;
         }
 
         // there must be one in->out map for each input channel
         if(( selListN = selList->child_count()) != abuf->chN )
         {
-          rc = cwLogError(kInvalidArgRC,"The 'audio_split' selection list must be the same length as the count of input channels:%i.",abuf->chN);
+          rc = proc_error(proc,kInvalidArgRC,"The 'audio_split' selection list must be the same length as the count of input channels:%i.",abuf->chN);
           goto errLabel;
         }
 
@@ -2732,7 +2696,7 @@ namespace cw
           
           if( listEle == nullptr || (rc = listEle->value(oVarIdx)) != kOkRC )
           {
-            rc = cwLogError(kInvalidArgRC,"The 'audio_split' selection list element at index %i is not a valid integer.",i);
+            rc = proc_error(proc,kInvalidArgRC,"The 'audio_split' selection list element at index %i is not a valid integer.",i);
             goto errLabel;
           }
 
@@ -2761,7 +2725,7 @@ namespace cw
 
           if( ov->audioChN == 0 )
           {
-            cwLogWarning("No channels have been assigned to 'audio_split' output index %i on '%s:%i'.",i,cwStringNullGuard(proc->label),proc->label_sfx_id);
+            proc_warn(proc,"No channels have been assigned to 'audio_split' output index %i on '%s:%i'.",i,cwStringNullGuard(proc->label),proc->label_sfx_id);
             continue;
           }
           
@@ -2955,7 +2919,7 @@ namespace cw
           
           // create the output audio buffer
           if( inst->outChN == 0 )
-            cwLogWarning("The audio split instance '%s' has no selected channels.",proc->label);
+            proc_warn(proc,"The audio split instance '%s' has no selected channels.",proc->label);
           else
             rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, abuf->srate, inst->outChN, abuf->frameN );
         }
@@ -3166,7 +3130,7 @@ namespace cw
           // the sample rate of the input audio signals must be the same
           if( i != 0 && abuf->srate != srate )
           {
-            rc = cwLogError(kInvalidArgRC,"All signals on a poly merge must have the same sample rate.");
+            rc = proc_error(proc,kInvalidArgRC,"All signals on a poly merge must have the same sample rate.");
             goto errLabel;
           }
 
@@ -3175,7 +3139,7 @@ namespace cw
           // the count of frames in all audio signals must be the same
           if( audioFrameN != 0 && abuf->frameN != audioFrameN )
           {
-            rc = cwLogError(kInvalidArgRC,"All signals on a poly merge must have the same frame count.");
+            rc = proc_error(proc,kInvalidArgRC,"All signals on a poly merge must have the same frame count.");
             goto errLabel;
           }
 
@@ -3586,7 +3550,7 @@ namespace cw
         // get the output signal buffer
         if((rc = var_get(proc,kOutPId,kAnyChIdx,abuf)) != kOkRC )
         {
-          rc = cwLogError(kInvalidStateRC,"The Sine Tone instance '%s' does not have a valid audio output buffer.",proc->label);
+          rc = proc_error(proc,kInvalidStateRC,"The Sine Tone instance '%s' does not have a valid audio output buffer.",proc->label);
         }
         else
         {
@@ -3664,7 +3628,7 @@ namespace cw
                                        kInPId,     "in",     kBaseSfxId, srcBuf,
                                        kEnablePId, "enable", kBaseSfxId, enable_fl)) != kOkRC )
         {
-          cwLogError(kInvalidArgRC,"Unable to access the 'src' buffer.");
+          proc_error(proc,kInvalidArgRC,"Unable to access the 'src' buffer.");
         }
         else
         {
@@ -3699,7 +3663,7 @@ namespace cw
             
             if((rc = create( inst->pvA[i], proc->ctx->framesPerCycle, srcBuf->srate, maxWndSmpN, wndSmpN, hopSmpN, flags )) != kOkRC )
             {
-              rc = cwLogError(kOpFailRC,"The PV analysis object create failed on the instance '%s'.",proc->label);
+              rc = proc_error(proc,kOpFailRC,"The PV analysis object create failed on the instance '%s'.",proc->label);
               goto errLabel;
             }
 
@@ -3716,7 +3680,7 @@ namespace cw
           // create the fbuf 'out'
           if((rc = var_register_and_set(proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, maxBinNV, binNV, hopNV, magV, phsV, hzV )) != kOkRC )
           {
-            cwLogError(kOpFailRC,"The output freq. buffer could not be created.");
+            proc_error(proc,kOpFailRC,"The output freq. buffer could not be created.");
             goto errLabel;
           }
         }
@@ -3775,21 +3739,21 @@ namespace cw
         // verify that a source buffer exists
         if((rc = var_get(proc,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
         {
-          rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",proc->label);
+          rc = proc_error(proc,rc,"The instance '%s' does not have a valid input connection.",proc->label);
           goto errLabel;
         }
 
         // verify that the dst buffer exits
         if((rc = var_get(proc,kOutPId, kAnyChIdx, dstBuf)) != kOkRC )
         {
-          rc = cwLogError(rc,"The instance '%s' does not have a valid output.",proc->label);
+          rc = proc_error(proc,rc,"The instance '%s' does not have a valid output.",proc->label);
           goto errLabel;
         }
 
         // is this proc enabled?
         if((rc = var_get(proc,kEnablePId, kAnyChIdx, enable_fl ) != kOkRC ) )
         {
-          rc = cwLogError(rc,"The instance '%s' does not have a enable variable.",proc->label);
+          rc = proc_error(proc,rc,"The instance '%s' does not have a enable variable.",proc->label);
           goto errLabel;
         }
 
@@ -3885,7 +3849,7 @@ namespace cw
             
             if((rc = create( inst->pvA[i], proc->ctx->framesPerCycle, srcBuf->srate, wndSmpN, srcBuf->hopSmpN_V[i] )) != kOkRC )
             {
-              rc = cwLogError(kOpFailRC,"The PV synthesis object create failed on the instance '%s'.",proc->label);
+              rc = proc_error(proc,kOpFailRC,"The PV synthesis object create failed on the instance '%s'.",proc->label);
               goto errLabel;
             }
           }
@@ -4019,7 +3983,7 @@ namespace cw
                                       kInPId,     "in",     kBaseSfxId, srcBuf,
                                       kEnablePId, "enable", kBaseSfxId, enable_fl)) != kOkRC )
         {
-          rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",proc->label);
+          rc = proc_error(proc,rc,"The instance '%s' does not have a valid input connection.",proc->label);
           goto errLabel;
         }
         else
@@ -4040,7 +4004,7 @@ namespace cw
           {
             if((rc = create( inst->sdA[i], srcBuf->binN_V[i] )) != kOkRC )
             {
-              rc = cwLogError(kOpFailRC,"The 'spec dist' object create failed on the instance '%s'.",proc->label);
+              rc = proc_error(proc,kOpFailRC,"The 'spec dist' object create failed on the instance '%s'.",proc->label);
               goto errLabel;
             }
 
@@ -4109,7 +4073,7 @@ namespace cw
             case kLwrSlopePId: rc = var_get( var, val ); sd->lwrSlope = val; break;
             case kMixPId:      rc = var_get( var, val ); sd->mix = val;     break;
             default:
-              cwLogWarning("Unhandled variable id '%i' on instance: %s.", var->vid, proc->label );
+              proc_warn(proc,"Unhandled variable id '%i' on instance: %s.", var->vid, proc->label );
           }
 
           /*
@@ -4220,7 +4184,7 @@ namespace cw
         // verify that a source buffer exists
         if((rc = var_register_and_get(proc, kAnyChIdx,kInPId,"in",kBaseSfxId,srcBuf )) != kOkRC )
         {
-          rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",proc->label);
+          rc = proc_error(proc,rc,"The instance '%s' does not have a valid input connection.",proc->label);
           goto errLabel;
         }
         else
@@ -4257,7 +4221,7 @@ namespace cw
             // create the compressor instance
             if((rc = dsp::compressor::create( inst->cmpA[i], srcBuf->srate, srcBuf->frameN, igain, maxWnd_ms, wnd_ms, thresh, ratio, atk_ms, rls_ms, ogain, bypassFl)) != kOkRC )
             {
-              rc = cwLogError(kOpFailRC,"The 'compressor' object create failed on the instance '%s'.",proc->label);
+              rc = proc_error(proc,kOpFailRC,"The 'compressor' object create failed on the instance '%s'.",proc->label);
               goto errLabel;
             }
                 
@@ -4309,7 +4273,7 @@ namespace cw
             case kWndMsPId:    rc = var_get( var, tmp ); dsp::compressor::set_rms_wnd_ms(c, tmp ); break;
             case kMaxWndMsPId: break;
             default:
-              cwLogWarning("Unhandled variable id '%i' on instance: %s.", var->vid, proc->label );
+              proc_warn(proc,"Unhandled variable id '%i' on instance: %s.", var->vid, proc->label );
           }
           //printf("cmp byp:%i igain:%f ogain:%f rat:%f thresh:%f atk:%i rls:%i wnd:%i : rc:%i val:%f\n",
           //       c->bypassFl, c->inGain, c->outGain,c->ratio_num,c->threshDb,c->atkSmp,c->rlsSmp,c->rmsWndCnt,rc,tmp);
@@ -4360,7 +4324,7 @@ namespace cw
         for(unsigned i=0; i<inst->cmpN; ++i)
         {
           compressor_t* c = inst->cmpA[i];
-          cwLogInfo("%s ch:%i : sr:%f bypass:%i procSmpN:%i igain:%f threshdb:%f ratio:%f atkSmp:%i rlsSmp:%i ogain:%f rmsWndN:%i maxRmsWndN%i",
+          proc_info(proc,"%s ch:%i : sr:%f bypass:%i procSmpN:%i igain:%f threshdb:%f ratio:%f atkSmp:%i rlsSmp:%i ogain:%f rmsWndN:%i maxRmsWndN%i",
                     proc->label,i,c->srate,c->bypassFl,c->procSmpCnt,c->inGain,c->threshDb,c->ratio_num,c->atkSmp,c->rlsSmp,c->outGain,c->rmsWndCnt,c->rmsWndAllocCnt
                     );
         }
@@ -4416,7 +4380,7 @@ namespace cw
         // verify that a source buffer exists
         if((rc = var_register_and_get(proc, kAnyChIdx,kInPId,"in",kBaseSfxId,srcBuf )) != kOkRC )
         {
-          rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",proc->label);
+          rc = proc_error(proc,rc,"The instance '%s' does not have a valid input connection.",proc->label);
           goto errLabel;
         }
         else
@@ -4445,7 +4409,7 @@ namespace cw
             // create the limiter instance
             if((rc = dsp::limiter::create( inst->limA[i], srcBuf->srate, srcBuf->frameN, igain, thresh, ogain, bypassFl)) != kOkRC )
             {
-              rc = cwLogError(kOpFailRC,"The 'limiter' object create failed on the instance '%s'.",proc->label);
+              rc = proc_error(proc,kOpFailRC,"The 'limiter' object create failed on the instance '%s'.",proc->label);
               goto errLabel;
             }
                 
@@ -4492,7 +4456,7 @@ namespace cw
             case kOutGainPId:  rc = var_get( var, rtmp ); c->ogain=rtmp;  break;
             case kThreshPId:   rc = var_get( var, rtmp ); c->thresh=rtmp; break;
             default:
-              cwLogWarning("Unhandled variable id '%i' on instance: %s.", var->vid, proc->label );
+              proc_warn(proc,"Unhandled variable id '%i' on instance: %s.", var->vid, proc->label );
           }
           //printf("lim byp:%i igain:%f ogain:%f rat:%f thresh:%f atk:%i rls:%i wnd:%i : rc:%i val:%f\n",
           //       c->bypassFl, c->inGain, c->outGain,c->ratio_num,c->threshDb,c->atkSmp,c->rlsSmp,c->rmsWndCnt,rc,tmp);
@@ -4539,7 +4503,7 @@ namespace cw
         for(unsigned i=0; i<inst->limN; ++i)
         {
           limiter_t* c = inst->limA[i];
-          cwLogInfo("%s ch:%i : bypass:%i procSmpN:%i igain:%f threshdb:%f  ogain:%f",
+          proc_info(proc,"%s ch:%i : bypass:%i procSmpN:%i igain:%f threshdb:%f  ogain:%f",
                     proc->label,i,c->bypassFl,c->procSmpCnt,c->igain,c->thresh,c->ogain );
         }
         
@@ -4607,7 +4571,7 @@ namespace cw
 
           if( delayMs > maxDelayMs )
           {
-            cwLogWarning("'delayMs' (%i) is being reduced to 'maxDelayMs' (%i) on the delay instance:%s.",delayMs,maxDelayMs,proc->label);
+            proc_warn(proc,"'delayMs' (%i) is being reduced to 'maxDelayMs' (%i) on the delay instance:%s.",delayMs,maxDelayMs,proc->label);
             delayMs = maxDelayMs;
           }
 
@@ -4658,7 +4622,7 @@ namespace cw
         if( delayFrameN > inst->maxDelayFrameN )
         {
           delayFrameN = inst->maxDelayFrameN;
-          cwLogWarning("The audio delay length is limited to %i milliseconds.", (int)((delayFrameN * 1000) / ibuf->srate));
+          proc_warn(proc,"The audio delay length is limited to %i milliseconds.", (int)((delayFrameN * 1000) / ibuf->srate));
         }
         
         vop::zero(inst->delayBuf->buf,inst->delayBuf->chN*inst->delayBuf->frameN);
@@ -4780,7 +4744,7 @@ namespace cw
         // verify that a source buffer exists
         if((rc = var_register_and_get(proc, kAnyChIdx,kInPId,"in",kBaseSfxId,srcBuf )) != kOkRC )
         {
-          rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",proc->label);
+          rc = proc_error(proc,rc,"The instance '%s' does not have a valid input connection.",proc->label);
           goto errLabel;
         }
         else
@@ -4807,7 +4771,7 @@ namespace cw
             // create the dc_filter instance
             if((rc = dsp::dc_filter::create( inst->dcfA[i], srcBuf->srate, srcBuf->frameN, gain, bypassFl)) != kOkRC )
             {
-              rc = cwLogError(kOpFailRC,"The 'dc_filter' object create failed on the instance '%s'.",proc->label);
+              rc = proc_error(proc,kOpFailRC,"The 'dc_filter' object create failed on the instance '%s'.",proc->label);
               goto errLabel;
             }
                 
@@ -4880,7 +4844,7 @@ namespace cw
         for(unsigned i=0; i<inst->dcfN; ++i)
         {
           dc_filter_t* c = inst->dcfA[i];
-          cwLogInfo("%s ch:%i : bypass:%i gain:%f",
+          proc_info(proc,"%s ch:%i : bypass:%i gain:%f",
                     proc->label,i,c->bypassFl,c->gain );
         }
         
@@ -4943,7 +4907,7 @@ namespace cw
                                       kInPId,"in",kBaseSfxId,srcBuf,
                                       kRptPeriodMsPId,"rpt_ms",kBaseSfxId,rptPeriodMs)) != kOkRC )
         {
-          rc = cwLogError(rc,"The instance '%s' does not have a valid input connection.",proc->label);
+          rc = proc_error(proc,rc,"The instance '%s' does not have a valid input connection.",proc->label);
           goto errLabel;
         }
         else
@@ -4986,7 +4950,7 @@ namespace cw
             // create the audio_meter instance
             if((rc = dsp::audio_meter::create( inst->mtrA[i], srcBuf->srate, maxWndMs, wndMs, peakThreshDb)) != kOkRC )
             {
-              rc = cwLogError(kOpFailRC,"The 'audio_meter' object create failed on the instance '%s'.",proc->label);
+              rc = proc_error(proc,kOpFailRC,"The 'audio_meter' object create failed on the instance '%s'.",proc->label);
               goto errLabel;
             }
                 
@@ -5071,7 +5035,7 @@ namespace cw
         for(unsigned i=0; i<inst->mtrN; ++i)
         {
           audio_meter_t* c = inst->mtrA[i];
-          cwLogInfo("%s ch:%i : %f %f db : pk:%i %i clip:%i %i ",
+          proc_info(proc,"%s ch:%i : %f %f db : pk:%i %i clip:%i %i ",
                     proc->label,i,c->outLin,c->outDb,c->peakFl,c->peakCnt,c->clipFl,c->clipCnt );
         }
         
@@ -5177,7 +5141,7 @@ namespace cw
         // locate the source poly-network for this xfad-ctl
         if((rc = proc_find(*proc->net,netLabel,netLabelSfxId,p->net_proc)) != kOkRC )
         {
-          cwLogError(rc,"The xfade_ctl source network proc instance '%s:%i' was not found.",cwStringNullGuard(netLabel),netLabelSfxId);
+          proc_error(proc,rc,"The xfade_ctl source network proc instance '%s:%i' was not found.",cwStringNullGuard(netLabel),netLabelSfxId);
           goto errLabel;
         }
 
@@ -5185,7 +5149,7 @@ namespace cw
         
         if( poly_cnt < 3 )
         {
-          cwLogError(rc,"The xfade_ctl source network must have at least 3 poly channels. %i < 3",poly_cnt);
+          proc_error(proc,rc,"The xfade_ctl source network must have at least 3 poly channels. %i < 3",poly_cnt);
           goto errLabel;
         }
 
@@ -5199,7 +5163,7 @@ namespace cw
           variable_t* dum;
           if((rc = var_create(proc, "gain", i, kGainPId+i, kAnyChIdx, nullptr, kInvalidTFl, dum )) != kOkRC )
           {
-            cwLogError(rc,"'gain:%i' create failed.",i);
+            proc_error(proc,rc,"'gain:%i' create failed.",i);
             goto errLabel;
           }
         }
@@ -5303,13 +5267,13 @@ namespace cw
 
           if((rc = var_get(proc,kPresetPId,kAnyChIdx,preset_label)) != kOkRC )
           {
-            rc = cwLogError(rc,"Preset label access failed.");
+            rc = proc_error(proc,rc,"Preset label access failed.");
             goto errLabel;
           }
           
           if((rc = network_apply_preset(p->netA[p->next_poly_ch_idx].net, preset_label,p->next_poly_ch_idx)) != kOkRC )
           {
-            rc = cwLogError(rc,"Appy preset '%s' failed.",cwStringNullGuard(preset_label));
+            rc = proc_error(proc,rc,"Appy preset '%s' failed.",cwStringNullGuard(preset_label));
             goto errLabel;
           }
         }
@@ -5604,7 +5568,7 @@ namespace cw
 
         if( p->voiceN == 0 )
         {
-          rc = cwLogError(kInvalidArgRC,"The poly_voice_ctl '%s:%i' has 0 voices.",proc->label,proc->label_sfx_id );
+          rc = proc_error(proc,kInvalidArgRC,"The poly_voice_ctl '%s:%i' has 0 voices.",proc->label,proc->label_sfx_id );
           goto errLabel;
         }
 
@@ -5615,7 +5579,7 @@ namespace cw
         
         if((p->midi_fld_idx  = recd_type_field_index( rbuf->type, "midi")) == kInvalidIdx )
         {
-          rc = cwLogError(kInvalidArgRC,"The 'in' record does not have a 'midi' field.");
+          rc = proc_error(proc,kInvalidArgRC,"The 'in' record does not have a 'midi' field.");
           goto errLabel;
         }
 
@@ -5695,7 +5659,7 @@ namespace cw
         
         if( v->msg_idx >= v->msgN )
         {
-          cwLogError(kBufTooSmallRC,"The voice MIDI buffer on ch:%i is full on '%s:%i'",voice_idx,cwStringNullGuard(proc->label),proc->label_sfx_id);
+          proc_error(proc,kBufTooSmallRC,"The voice MIDI buffer on ch:%i is full on '%s:%i'",voice_idx,cwStringNullGuard(proc->label),proc->label_sfx_id);
           goto errLabel;
         }
         else
@@ -5729,7 +5693,7 @@ namespace cw
           
           v->earlyStopFl = true;
         
-          // cwLogInfo("Early stop:%i %s",m.d0,reason_msg);
+          // proc_info(proc,"Early stop:%i %s",m.d0,reason_msg);
 
           _update_voice_msg( proc, p, voice_idx, &m );
 
@@ -5783,7 +5747,7 @@ namespace cw
         }
         else
         {
-          cwLogWarning("All voices (%i of %i) active!.",active_voice_cnt,p->voiceN);
+          proc_warn(proc,"All voices (%i of %i) active!.",active_voice_cnt,p->voiceN);
           next_voice_idx = max_age_idx;
         }
 
@@ -5791,7 +5755,7 @@ namespace cw
         if( active_voice_cnt > p->prune_thresh )
         {
           if( early_stop_idx == kInvalidIdx && max_age_idx == kInvalidIdx )
-            cwLogWarning("No available voices to prune.");
+            proc_warn(proc,"No available voices to prune.");
           else
           {
             _stop_note_early(proc,p,early_stop_idx==kInvalidIdx ? max_age_idx : early_stop_idx, "prune voices" );
@@ -5824,7 +5788,7 @@ namespace cw
         // get a new voice for this note
         if((voice_idx  = _get_next_avail_voice(proc,p,m->d0)) == kInvalidIdx )
         {
-          cwLogWarning("All voices in use. Note-on %i dropped.",m->d0);
+          proc_warn(proc,"All voices in use. Note-on %i dropped.",m->d0);
           goto errLabel;
         }
         else
@@ -5863,7 +5827,7 @@ namespace cw
         // if this pitch does not have any assoc'd note-on's then there is nothing to do
         if( p->midiA[ m->d0 ].cnt == 0 )
         {
-          //cwLogWarning("Extra note-off:%i.",m->d0);
+          //proc_warn(proc,"Extra note-off:%i.",m->d0);
           goto errLabel;
         }
 
@@ -5882,7 +5846,7 @@ namespace cw
           unsigned voice_idx = p->midiA[ m->d0 ].voice_idx;
 
           if( voice_idx == kInvalidIdx )
-            cwLogWarning("Voice not found for note-off:%i.",m->d0);
+            proc_warn(proc,"Voice not found for note-off:%i.",m->d0);
           else
           {
 
@@ -5993,7 +5957,7 @@ namespace cw
           // get the midi msg stored in the record
           if((rc = recd_get(rbuf->type,r,p->midi_fld_idx,m)) != kOkRC )
           {
-            rc = cwLogError(rc,"Record 'midi' field read failed.");
+            rc = proc_error(proc,rc,"Record 'midi' field read failed.");
             goto errLabel;
           }
 
@@ -6357,27 +6321,27 @@ namespace cw
           
           if((exp_wtb_fname = proc_expand_filename(proc,wtb_fname)) == nullptr )
           {
-            rc = cwLogError(kOpFailRC,"The wave-table bank directory expansion failed.");
+            rc = proc_error(proc,kOpFailRC,"The wave-table bank directory expansion failed.");
             goto errLabel;
           }
           
           // create the wave table bank
           if((rc = create( wtbH, padSmpN, exp_wtb_fname, load_thread_cnt )) != kOkRC )
           {
-            rc = cwLogError(rc,"The wave table bank global variable creation failed.");
+            rc = proc_error(proc,rc,"The wave table bank global variable creation failed.");
             goto errLabel;
           }
 
           // store the wave table bank global var
           if((rc = global_var_alloc(proc, wtb_var_label, &wtbH, sizeof(wtbH) )) != kOkRC )
           {
-            rc = cwLogError(rc,"The wave table bank global variable allocation failed.");
+            rc = proc_error(proc,rc,"The wave table bank global variable allocation failed.");
             goto errLabel;
           }
 
           if((p->wtbH_ptr = (wt_bank::handle_t*)global_var(proc, wtb_var_label )) == nullptr )
           {
-            rc = cwLogError(rc,"The wave table bank global variable store failed.");
+            rc = proc_error(proc,rc,"The wave table bank global variable store failed.");
             goto errLabel;
           }
 
@@ -6385,7 +6349,7 @@ namespace cw
         
       errLabel:
         if( rc != kOkRC )
-          rc = cwLogError(rc,"Wave table bank load failed on '%s'.",cwStringNullGuard(wtb_fname));
+          rc = proc_error(proc,rc,"Wave table bank load failed on '%s'.",cwStringNullGuard(wtb_fname));
 
         mem::release(exp_wtb_fname);
         return rc;
@@ -6399,7 +6363,7 @@ namespace cw
         
         if((rc = instr_pitch_velocities(*p->wtbH_ptr, p->wtb_instr_idx, p->test_pitch, velA, midi::kMidiVelCnt, p->test_pitchN )) != kOkRC )
         {
-          rc = cwLogError(rc,"Sampled velocity access failed on '%s'.",cwStringNullGuard(proc->label));
+          rc = proc_error(proc,rc,"Sampled velocity access failed on '%s'.",cwStringNullGuard(proc->label));
           goto errLabel;
         }
 
@@ -6458,14 +6422,14 @@ namespace cw
 
         if((p->wtb_instr_idx = wt_bank::instr_index( *p->wtbH_ptr, wtb_instr )) == kInvalidIdx )
         {
-          rc = cwLogError(rc,"The wave table bank instrument '%s' could not be found.",cwStringNullGuard(wtb_instr));
+          rc = proc_error(proc,rc,"The wave table bank instrument '%s' could not be found.",cwStringNullGuard(wtb_instr));
           goto errLabel;
         }
 
         // if we are running in 'test-pitch' mode
         if( p->test_pitch != 0 )
         {
-          cwLogInfo("%s is in test-pitch mode",proc->label);
+          proc_info(proc,"%s is in test-pitch mode",proc->label);
           if((rc = _create_test_pitch_map(proc,p)) != kOkRC )
             goto errLabel;          
         }
@@ -6473,7 +6437,7 @@ namespace cw
         // allocate,setup and validate the expected srate of the oscillator
         if((rc = create(&p->osc,kChCnt)) != kOkRC )
         {
-          rc = cwLogError(rc,"multi-ch-wt-seq-osc create failed.");
+          rc = proc_error(proc,rc,"multi-ch-wt-seq-osc create failed.");
           goto errLabel;
         }
 
@@ -6499,14 +6463,14 @@ namespace cw
         // get the wave-table associated with the pitch and velocity
         if((rc = get_wave_table(  *p->wtbH_ptr, p->wtb_instr_idx, d0, d1, mcs)) != kOkRC )
         {
-          rc = cwLogError(rc,"No piano voice for pitch:%i vel:%i",d0,d1);
+          rc = proc_error(proc,rc,"No piano voice for pitch:%i vel:%i",d0,d1);
           goto errLabel;
         }
         
         // setup the oscillator with a new wave table
         if((rc = setup(&p->osc,mcs)) != kOkRC )
         {
-          rc = cwLogError(rc,"Oscilllator setup error on instr:%i pitch:%i vel:%i.",p->wtb_instr_idx,d0,d1);
+          rc = proc_error(proc,rc,"Oscilllator setup error on instr:%i pitch:%i vel:%i.",p->wtb_instr_idx,d0,d1);
           goto errLabel;
         }
 
@@ -6979,7 +6943,7 @@ namespace cw
           // the sample rate of off input audio signals must be the same
           if( i != 0 && abuf->srate != srate )
           {
-            rc = cwLogError(kInvalidArgRC,"All signals on a poly merge must have the same sample rate.");
+            rc = proc_error(proc,kInvalidArgRC,"All signals on a poly merge must have the same sample rate.");
             goto errLabel;
           }
 
@@ -6988,7 +6952,7 @@ namespace cw
           // the count of frames in all audio signals must be the same
           if( audioFrameN != 0 && abuf->frameN != audioFrameN )
           {
-            rc = cwLogError(kInvalidArgRC,"All signals on a poly merge must have the same frame count.");
+            rc = proc_error(proc,kInvalidArgRC,"All signals on a poly merge must have the same frame count.");
             goto errLabel;
           }
           
@@ -7005,7 +6969,7 @@ namespace cw
         // There must be one gain variable for each audio input or exactly one gain variable 
         if( p->gainVarCnt != p->inAudioVarCnt && p->gainVarCnt != 1 )
         {
-          rc = cwLogError(kInvalidArgRC,"The count of 'gain' variables must be the same as the count of audio variables or there must be exactly one gain variable.");
+          rc = proc_error(proc,kInvalidArgRC,"The count of 'gain' variables must be the same as the count of audio variables or there must be exactly one gain variable.");
           goto errLabel;
         }
 
@@ -7349,7 +7313,7 @@ namespace cw
         // if there are no inputs
         if( inVarN == 0 )
         {
-          rc = cwLogError(rc,"The 'number' unit '%s' does not have any inputs.",cwStringNullGuard(proc->label));
+          rc = proc_error(proc,rc,"The 'number' unit '%s' does not have any inputs.",cwStringNullGuard(proc->label));
           goto errLabel;
         }
         
@@ -7366,7 +7330,7 @@ namespace cw
           variable_t* foo;
           if((rc = var_register(proc, "in", inSfxIdA[i], kInPId+i, kAnyChIdx, nullptr, foo )) != kOkRC )
           {
-            rc = cwLogError(rc,"Variable registration failed for the variable 'in:%i'.",inSfxIdA[i]);;
+            rc = proc_error(proc,rc,"Variable registration failed for the variable 'in:%i'.",inSfxIdA[i]);;
             goto errLabel;
           }
 
@@ -7378,7 +7342,7 @@ namespace cw
         // Get the output type label as a string
         if((rc = var_register_and_get(proc,kAnyChIdx,kOutTypePId,"out_type",kBaseSfxId,out_type_label)) != kOkRC )
         {
-          rc = cwLogError(rc,"Variable registration failed for the variable 'otype:0'.");;
+          rc = proc_error(proc,rc,"Variable registration failed for the variable 'otype:0'.");;
           goto errLabel;          
         }
 
@@ -7405,7 +7369,7 @@ namespace cw
         
         if(out_type_fl == kInvalidTFl || out_type_label == nullptr )
         {
-          rc = cwLogError(kInvalidArgRC,"The output type '%s' is not a valid type.", out_type_label==nullptr ? "<unknown>" : out_type_label );
+          rc = proc_error(proc,kInvalidArgRC,"The output type '%s' is not a valid type.", out_type_label==nullptr ? "<unknown>" : out_type_label );
           goto errLabel;
         }
         else
@@ -7447,7 +7411,7 @@ namespace cw
             {
               // This call to set the a variable is safe because
               // we are in init-time not runtime and therefore single threaded
-              var_set( proc, kOutPId, kAnyChIdx, var->value );
+              var_set( proc, kOutPId, var->value );
             }
           }          
         }
@@ -7468,7 +7432,7 @@ namespace cw
           // 'store'  will be coerced to the type of 'value'
           if((rc = var_find(proc, p->store_vid, kAnyChIdx, var )) == kOkRC && var->value != nullptr /*&& is_connected_to_source(var)*/ )
           {
-            rc = var_set(proc,kOutPId,kAnyChIdx,var->value);
+            rc = var_set(proc,kOutPId,var->value);
           }
 
           p->store_vid = kInvalidIdx;
@@ -7518,13 +7482,13 @@ namespace cw
         
         if((rc = list_create(p->list, cfg)) != kOkRC )
         {
-          rc = cwLogError(rc,"List creation failed on label-value list '%s'.",cwStringNullGuard(proc->label));
+          rc = proc_error(proc,rc,"List creation failed on label-value list '%s'.",cwStringNullGuard(proc->label));
           goto errLabel;
         }
 
         if( p->list == nullptr || p->list->eleN==0 )
         {
-          rc = cwLogError(rc,"The specified list is empty  on label-value list '%s'.",cwStringNullGuard(proc->label));
+          rc = proc_error(proc,rc,"The specified list is empty  on label-value list '%s'.",cwStringNullGuard(proc->label));
           goto errLabel;
         }
 
@@ -7533,7 +7497,7 @@ namespace cw
         {
           if((out_type_fl = p->list->eleA[0].value.tflag & kTypeMask) == 0)
           {
-            rc = cwLogError(rc,"The value type could not be inferred from the label-value list '%s'.",cwStringNullGuard(proc->label));
+            rc = proc_error(proc,rc,"The value type could not be inferred from the label-value list '%s'.",cwStringNullGuard(proc->label));
             goto errLabel;
           }
         }
@@ -7541,14 +7505,14 @@ namespace cw
         {
           if((out_type_fl = value_type_label_to_flag(out_type_label)) == kInvalidTFl )
           {
-            rc = cwLogError(rc,"The type label '%s' does not identify a valid type.",cwStringNullGuard(out_type_label));;
+            rc = proc_error(proc,rc,"The type label '%s' does not identify a valid type.",cwStringNullGuard(out_type_label));;
             goto errLabel;          
           }
         }
 
         if((rc = var_create( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, out_type_fl, var )) != kOkRC )
         {
-          rc = cwLogError(rc,"Output variable create failed label-value list '%s'.",cwStringNullGuard(proc->label));
+          rc = proc_error(proc,rc,"Output variable create failed label-value list '%s'.",cwStringNullGuard(proc->label));
           goto errLabel;
         }
 
@@ -7556,7 +7520,7 @@ namespace cw
         
         if((rc = var_find(proc, "in", kBaseSfxId, kAnyChIdx, var )) != kOkRC )
         {
-          rc = cwLogError(rc,"The 'in' variable could not be found on the label-value list '%s'.",cwStringNullGuard(proc->label));
+          rc = proc_error(proc,rc,"The 'in' variable could not be found on the label-value list '%s'.",cwStringNullGuard(proc->label));
           goto errLabel;
         }
 
@@ -7576,13 +7540,13 @@ namespace cw
 
         if((fn = proc_expand_filename(proc,fname)) == nullptr )
         {
-          rc = cwLogError(kOpFailRC,"The file name '%s' could not be expanded.",cwStringNullGuard(fname));
+          rc = proc_error(proc,kOpFailRC,"The file name '%s' could not be expanded.",cwStringNullGuard(fname));
           goto errLabel;
         }
           
         if((rc = objectFromFile( fn, cfg )) != kOkRC )
         {
-          rc = cwLogError(rc,"Unable to parse msg table from '%s'.",cwStringNullGuard(fn));
+          rc = proc_error(proc,rc,"Unable to parse msg table from '%s'.",cwStringNullGuard(fn));
           goto errLabel;
         }
 
@@ -7593,7 +7557,7 @@ namespace cw
         
       errLabel:
         if( rc != kOkRC )
-          rc = cwLogError(rc,"The label/value cfg. parse failed on '%s'.",cwStringNullGuard(fname));
+          rc = proc_error(proc,rc,"The label/value cfg. parse failed on '%s'.",cwStringNullGuard(fname));
 
         if( cfg != nullptr )
           cfg->free();
@@ -7632,7 +7596,7 @@ namespace cw
         {
           if( cfg == nullptr )
           {
-            rc = cwLogError(kInvalidArgRC,"The label/value list %s has no configuration information.",cwStringNullGuard(proc->label));
+            rc = proc_error(proc,kInvalidArgRC,"The label/value list %s has no configuration information.",cwStringNullGuard(proc->label));
             goto errLabel;
           }
 
@@ -7666,13 +7630,13 @@ namespace cw
 
           if( idx >= p->list->eleN )
           {
-            rc = cwLogError(kInvalidArgRC,"The label-value list index %i is out of range on the label-value list '%s'.",idx,p->list->eleN,cwStringNullGuard(proc->label));
+            rc = proc_error(proc,kInvalidArgRC,"The label-value list index %i is out of range on the label-value list '%s'.",idx,p->list->eleN,cwStringNullGuard(proc->label));
             goto errLabel;
           }
 
           if((rc = var_set(proc,kOutPId,kAnyChIdx, &p->list->eleA[ idx ].value )) != kOkRC )
           {
-            rc = cwLogError(rc,"Variable set failed on the label-value list '%s'.",cwStringNullGuard(proc->label));
+            rc = proc_error(proc,rc,"Variable set failed on the label-value list '%s'.",cwStringNullGuard(proc->label));
             goto errLabel;
           }
         }
@@ -7742,19 +7706,19 @@ namespace cw
 
         if( list_cfg == nullptr )
         {
-          rc = cwLogError(kInvalidArgRC,"No string list was supplied.");
+          rc = proc_error(proc,kInvalidArgRC,"No string list was supplied.");
           goto errLabel;
         }
 
         if( !list_cfg->is_list() )
         {
-          rc = cwLogError(kInvalidArgRC,"The input list does not have list syntax.");
+          rc = proc_error(proc,kInvalidArgRC,"The input list does not have list syntax.");
           goto errLabel;          
         }
 
         if((eleN = list_cfg->child_count()) == 0 )
         {
-          rc = cwLogError(kInvalidArgRC,"The input list is empty.");
+          rc = proc_error(proc,kInvalidArgRC,"The input list is empty.");
           goto errLabel;          
         }
 
@@ -7770,25 +7734,25 @@ namespace cw
           const object_t* ele = list_cfg->child_ele(i);
           if( ele == nullptr )
           {
-            rc = cwLogError(kInvalidArgRC,"Unable to access the list element at index '%i'.",i);
+            rc = proc_error(proc,kInvalidArgRC,"Unable to access the list element at index '%i'.",i);
             goto errLabel;
           }
 
           if( !ele->is_string() )
           {
-            rc = cwLogError(kInvalidArgRC,"The list element at index '%i' is not a string.",i);
+            rc = proc_error(proc,kInvalidArgRC,"The list element at index '%i' is not a string.",i);
             goto errLabel;
           }
 
           if((rc = ele->value(ele_str)) != kOkRC )
           {
-            rc = cwLogError(kInvalidArgRC,"The list element at index '%i' is not a string.",i);
+            rc = proc_error(proc,kInvalidArgRC,"The list element at index '%i' is not a string.",i);
             goto errLabel;
           }
           
           if((rc = list_append(p->list,ele_str,kInvalidIdx)) != kOkRC )
           {
-            rc = cwLogError(kOpFailRC,"The list append failed on the element at index '%i'.",i);
+            rc = proc_error(proc,kOpFailRC,"The list append failed on the element at index '%i'.",i);
             goto errLabel;
           }
           
@@ -7796,7 +7760,7 @@ namespace cw
         
         if((rc = var_find(proc, "in", kBaseSfxId, kAnyChIdx, var )) != kOkRC )
         {
-          rc = cwLogError(rc,"The 'list' variable could not be found.");
+          rc = proc_error(proc,rc,"The 'list' variable could not be found.");
           goto errLabel;
         }
 
@@ -7805,7 +7769,7 @@ namespace cw
         
       errLabel:
         if( rc != kOkRC )
-          rc = cwLogError(rc,"string_list create failed.");
+          rc = proc_error(proc,rc,"string_list create failed.");
         
         return rc;
       }
@@ -7830,19 +7794,19 @@ namespace cw
               
           if((rc = var_get(var,list_idx)) != kOkRC )
           {
-            rc = cwLogError(rc,"var_get() failed to get list index.");
+            rc = proc_error(proc,rc,"var_get() failed to get list index.");
             goto errLabel;
           }
           
           if((str = list_ele_label(p->list,list_idx)) == nullptr )
           {
-            rc = cwLogError(rc,"List label access failed on index:%i",list_idx);
+            rc = proc_error(proc,rc,"List label access failed on index:%i",list_idx);
             goto errLabel;
           }
 
           if((rc = var_set(proc,kOutPId,kAnyChIdx,str)) != kOkRC )
           {
-            rc = cwLogError(rc,"List var set failed with the string '%s'.",cwStringNullGuard(str));
+            rc = proc_error(proc,rc,"List var set failed with the string '%s'.",cwStringNullGuard(str));
             goto errLabel;
           }
                       
@@ -7896,7 +7860,7 @@ namespace cw
         
         if( var->value == nullptr )
         {
-          rc = cwLogError(kInvalidStateRC,"The incoming register value is NULL.");
+          rc = proc_error(proc,kInvalidStateRC,"The incoming register value is NULL.");
           goto errLabel;
         }
 
@@ -7934,7 +7898,7 @@ namespace cw
         // Create the output var
         if((rc = var_create( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, in_var->value->tflag, out_var )) != kOkRC )
         {          
-          rc = cwLogError(rc,"The output variable create failed.");
+          rc = proc_error(proc,rc,"The output variable create failed.");
           goto errLabel;
         }
 
@@ -8212,7 +8176,7 @@ namespace cw
       };
 
 
-      unsigned _string_to_mode_id( const char* mode_label, unsigned& mode_id_ref )
+      unsigned _string_to_mode_id( proc_t* proc, const char* mode_label, unsigned& mode_id_ref )
       {
         mode_id_ref = kInvalidId;
         for(unsigned i=0; modeArray[i].id != kInvalidId; ++i)
@@ -8222,7 +8186,7 @@ namespace cw
             return kOkRC;            
           }
         
-        return cwLogError(kInvalidArgRC,"'%s' is not a valid counter 'mode'.",cwStringNullGuard(mode_label));
+        return proc_error(proc,kInvalidArgRC,"'%s' is not a valid counter 'mode'.",cwStringNullGuard(mode_label));
       }
 
       rc_t create( proc_t* proc )
@@ -8263,7 +8227,7 @@ namespace cw
         // get the type of the output
         if(out_type_label==nullptr || (out_type_fl = value_type_label_to_flag( out_type_label )) == kInvalidTFl )
         {
-          rc = cwLogError(kInvalidArgRC,"The output type '%s' is not a valid type.",cwStringNullGuard(out_type_label));
+          rc = proc_error(proc,kInvalidArgRC,"The output type '%s' is not a valid type.",cwStringNullGuard(out_type_label));
           goto errLabel;
         }
 
@@ -8275,12 +8239,12 @@ namespace cw
 
         if((rc = var_set( proc, kOutPId, kAnyChIdx, init_val )) != kOkRC )
         {
-          rc = cwLogError(rc,"Unable to set the initial counter value to %f.",init_val);
+          rc = proc_error(proc,rc,"Unable to set the initial counter value to %f.",init_val);
           goto errLabel;
         }
                                                                     
 
-        if((rc = _string_to_mode_id(mode_label,p->mode_id)) != kOkRC )
+        if((rc = _string_to_mode_id(proc, mode_label,p->mode_id)) != kOkRC )
           goto errLabel;
         
         p->dir = 1.0;
@@ -8328,7 +8292,7 @@ namespace cw
             {
               const char* s;
               if((rc = var_get(var,s)) == kOkRC )
-                rc = _string_to_mode_id(s,p->mode_id);
+                rc = _string_to_mode_id(proc,s,p->mode_id);
             }
             break;
 
@@ -8359,7 +8323,7 @@ namespace cw
         p->delta_fl = false;
         if((rc = var_get(proc,kTriggerPId,kAnyChIdx,v)) != kOkRC )
         {
-          cwLogError(rc,"Fail!");
+          proc_error(proc,rc,"Fail!");
           goto errLabel;
         }
          
@@ -8503,7 +8467,7 @@ namespace cw
         object_t*       file_list;
       } inst_t;
 
-      rc_t _determine_type( const object_t* list, unsigned& typeFl_ref )
+      rc_t _determine_type( proc_t* proc, const object_t* list, unsigned& typeFl_ref )
       {
         rc_t rc = kOkRC;
 
@@ -8560,7 +8524,7 @@ namespace cw
                   break;
                 
                 default:
-                  rc = cwLogError(kSyntaxErrorRC,"The object type '0x%x' is not a valid list entry type. %i",c->type->flags,list->child_count());
+                  rc = proc_error(proc,kSyntaxErrorRC,"The object type '0x%x' is not a valid list entry type. %i",c->type->flags,list->child_count());
                   goto errLabel;
               }
           }
@@ -8581,10 +8545,10 @@ namespace cw
           // cannot be converted to numbers, nor can the be converted between each other.
           if( type_cnt > 1 && (typeA[string_idx].cnt>0 || typeA[cfg_idx].cnt>0) )
           {
-            rc = cwLogError(kInvalidArgRC,"The list types. The list must be all numerics, all strings, or all cfg. types.");
+            rc = proc_error(proc,kInvalidArgRC,"The list types. The list must be all numerics, all strings, or all cfg. types.");
             for(unsigned i=0; i<typeN; ++i)
               if( typeA[i].cnt > 0 )
-                cwLogInfo("%i %s",typeA[i].cnt, value_type_flag_to_label(typeA[i].typeFl));
+                proc_info(proc,"%i %s",typeA[i].cnt, value_type_flag_to_label(typeA[i].typeFl));
             
             goto errLabel;
           }
@@ -8606,21 +8570,21 @@ namespace cw
         // get the list element to output
         if((ele = p->list->child_ele(idx)) == nullptr )
         {
-          rc = cwLogError(kEleNotFoundRC,"The list element at index %i could not be accessed.",idx);
+          rc = proc_error(proc,kEleNotFoundRC,"The list element at index %i could not be accessed.",idx);
           goto errLabel;
         }
 
         // get the value of the list element
         if((rc = ele->value(v)) != kOkRC )
         {
-          rc = cwLogError(rc,"List value access failed on index %i",idx);
+          rc = proc_error(proc,rc,"List value access failed on index %i",idx);
           goto errLabel;
         }
 
         // set the output
         if((rc = var_set(proc,vid,kAnyChIdx,v)) != kOkRC )
         {
-          rc = cwLogError(rc,"List output failed on index %i",idx);
+          rc = proc_error(proc,rc,"List output failed on index %i",idx);
           goto errLabel;          
         }
 
@@ -8677,7 +8641,7 @@ namespace cw
             break;
             
           default:
-            rc = cwLogError(kInvalidArgRC,"The list type flag %s (0x%x) is not valid.",value_type_flag_to_label(p->typeFl),p->typeFl);
+            rc = proc_error(proc,kInvalidArgRC,"The list type flag %s (0x%x) is not valid.",value_type_flag_to_label(p->typeFl),p->typeFl);
             goto errLabel;
             break;
             
@@ -8694,7 +8658,7 @@ namespace cw
         
         if((rc = var_get(proc,kInPId,kAnyChIdx,idx)) != kOkRC )
         {
-          rc = cwLogError(rc,"Unable to get the list index.");
+          rc = proc_error(proc,rc,"Unable to get the list index.");
           goto errLabel;
         }
 
@@ -8743,20 +8707,20 @@ namespace cw
 
           if((exp_cfg_fname = proc_expand_filename(proc,cfg_fname)) == nullptr )
           {
-            rc = cwLogError(kInvalidArgRC,"The list cfg filename could not be formed.");
+            rc = proc_error(proc,kInvalidArgRC,"The list cfg filename could not be formed.");
             goto errLabel;
  
           }
           
           if((rc = objectFromFile(exp_cfg_fname,p->file_list)) != kOkRC )
           {
-            rc = cwLogError(rc,"The list configuration file '%s' could not be parsed.",cwStringNullGuard(exp_cfg_fname));
+            rc = proc_error(proc,rc,"The list configuration file '%s' could not be parsed.",cwStringNullGuard(exp_cfg_fname));
             goto errLabel;
           }
 
           if((rc = p->file_list->getv("list",p->list)) != kOkRC )
           {
-            rc = cwLogError(rc,"The list configuration file '%s' does not have a 'list' field.",cwStringNullGuard(exp_cfg_fname));
+            rc = proc_error(proc,rc,"The list configuration file '%s' does not have a 'list' field.",cwStringNullGuard(exp_cfg_fname));
             goto errLabel;
           }
           
@@ -8768,7 +8732,7 @@ namespace cw
 
         if( !p->list->is_list() )
         {
-          cwLogError(kSyntaxErrorRC,"The list cfg. value is not a list.");
+          proc_error(proc,kSyntaxErrorRC,"The list cfg. value is not a list.");
           goto errLabel;
         }
 
@@ -8776,13 +8740,13 @@ namespace cw
 
         // determine what type of element is in the list
         // (all elements in the this list must be of the same type: numeric,string,cfg)
-        if((rc = _determine_type( p->list, p->typeFl )) != kOkRC )
+        if((rc = _determine_type( proc, p->list, p->typeFl )) != kOkRC )
           goto errLabel;
 
         // create the output variable
         if((rc = var_create( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, p->typeFl, dum )) != kOkRC )
         {
-          rc = cwLogError(rc,"'out' var create failed.");
+          rc = proc_error(proc,rc,"'out' var create failed.");
           goto errLabel;
         }
 
@@ -8795,13 +8759,13 @@ namespace cw
         {
           if((rc = var_create( proc, "value", i, kValueBasePId+i, kAnyChIdx, nullptr, p->typeFl, dum )) != kOkRC )
           {
-            rc = cwLogError(rc,"'value%i' var create failed.",i);
+            rc = proc_error(proc,rc,"'value%i' var create failed.",i);
             goto errLabel;
           }
 
           if((rc = _set_output(proc, p, i, kValueBasePId+i )) != kOkRC )
           {
-            rc = cwLogError(rc,"'value%i' output failed.",i);
+            rc = proc_error(proc,rc,"'value%i' output failed.",i);
             goto errLabel;            
           }
 
@@ -8899,7 +8863,7 @@ namespace cw
             sum += val;
           else
           {
-            rc = cwLogError(rc,"Operand index %i read failed.",i);
+            rc = proc_error(proc,rc,"Operand index %i read failed.",i);
             goto errLabel;
           }
         }
@@ -8907,7 +8871,7 @@ namespace cw
         // set the output
         if((rc = var_set(var,sum)) != kOkRC )
         {
-          rc = cwLogError(rc,"Result set failed.");
+          rc = proc_error(proc,rc,"Result set failed.");
           goto errLabel;
         }
         
@@ -8928,7 +8892,7 @@ namespace cw
         if( out_var == nullptr )
           if((rc = var_find(proc,kOutPId,kAnyChIdx,out_var)) != kOkRC )
           {
-            rc = cwLogError(rc,"The output variable could not be found.");
+            rc = proc_error(proc,rc,"The output variable could not be found.");
             goto errLabel;
           }
         
@@ -8940,12 +8904,12 @@ namespace cw
           case kFloatTFl:  rc = _sum<float>(proc,out_var);    break;
           case kDoubleTFl: rc = _sum<double>(proc,out_var);   break;
           default:
-            rc = cwLogError(kInvalidArgRC,"The output type %s (0x%x) is not valid.",value_type_flag_to_label(out_var->value->tflag),out_var->value->tflag);
+            rc = proc_error(proc,kInvalidArgRC,"The output type %s (0x%x) is not valid.",value_type_flag_to_label(out_var->value->tflag),out_var->value->tflag);
             goto errLabel;
         }
 
         if(rc != kOkRC )
-          rc = cwLogError(kOpFailRC,"Sum failed.");
+          rc = proc_error(proc,kOpFailRC,"Sum failed.");
 
       errLabel:
         return rc;
@@ -8968,14 +8932,14 @@ namespace cw
         // get a count of the number of input variables
         if((rc = var_mult_sfx_id_array(proc, "in", sfxIdA, sfxIdAllocN, p->inN )) != kOkRC )
         {
-          rc = cwLogError(rc,"Unable to obtain the array of mult label-sfx-id's for the variable 'in'.");
+          rc = proc_error(proc,rc,"Unable to obtain the array of mult label-sfx-id's for the variable 'in'.");
           goto errLabel;
         }
 
         // if the adder has no inputs
         if( p->inN == 0 )
         {
-          rc = cwLogError(rc,"The 'add' unit '%s' appears to not have any inputs.",cwStringNullGuard(proc->label));
+          rc = proc_error(proc,rc,"The 'add' unit '%s' appears to not have any inputs.",cwStringNullGuard(proc->label));
           goto errLabel;
         }
 
@@ -8988,7 +8952,7 @@ namespace cw
           variable_t* dum;
           if((rc = var_register(proc, "in", sfxIdA[i], kInPId+i, kAnyChIdx, nullptr, dum )) != kOkRC )
           {
-            rc = cwLogError(rc,"Variable registration failed for the variable 'in:%i'.",sfxIdA[i]);;
+            rc = proc_error(proc,rc,"Variable registration failed for the variable 'in:%i'.",sfxIdA[i]);;
             goto errLabel;
           }
         }
@@ -8996,28 +8960,28 @@ namespace cw
         // Get the output type label as a string
         if((rc = var_register_and_get(proc,kAnyChIdx,kOTypePId,"otype",kBaseSfxId,out_type_label)) != kOkRC )
         {
-          rc = cwLogError(rc,"Variable registration failed for the variable 'otype:0'.");;
+          rc = proc_error(proc,rc,"Variable registration failed for the variable 'otype:0'.");;
           goto errLabel;          
         }
 
         // Convert the output type label into a flag
         if((out_type_flag = value_type_label_to_flag(out_type_label)) == kInvalidTFl )
         {
-          rc = cwLogError(rc,"The type label '%s' does not identify a valid type.",cwStringNullGuard(out_type_label));;
+          rc = proc_error(proc,rc,"The type label '%s' does not identify a valid type.",cwStringNullGuard(out_type_label));;
           goto errLabel;          
         }
 
         // Create the output var
         if((rc = var_create( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, out_type_flag, out_var )) != kOkRC )
         {          
-          rc = cwLogError(rc,"The output variable create failed.");
+          rc = proc_error(proc,rc,"The output variable create failed.");
           goto errLabel;
         }
 
         /*
         if((rc = var_set(proc,kOutPId,kAnyChIdx,0.0)) != kOkRC )
         {
-          rc = cwLogError(rc,"Initial output variable set failed.");
+          rc = proc_error(proc,rc,"Initial output variable set failed.");
           goto errLabel;          
         }
         */
@@ -9095,14 +9059,14 @@ namespace cw
         // get the preset label
         if((rc = var_get(proc, kInPId, kAnyChIdx, preset_label)) != kOkRC )
         {
-          rc = cwLogError(rc,"The variable 'in read failed.");
+          rc = proc_error(proc,rc,"The variable 'in read failed.");
           goto errLabel;
         }
 
         // at this point a valid preset-label must exist
         if( preset_label == nullptr || (presetLabelCharN=textLength(preset_label))==0 )
         {
-          rc = cwLogError(kInvalidArgRC,"Preset application failed due to blank preset label.");
+          rc = proc_error(proc,kInvalidArgRC,"Preset application failed due to blank preset label.");
           goto errLabel;
         }
 
@@ -9114,7 +9078,7 @@ namespace cw
         // verify the preset-label is not too long
         if( presetLabelCharN > kPresetLabelCharN )
         {
-          rc = cwLogError(kBufTooSmallRC,"The preset label '%s' is to long.",cwStringNullGuard(preset_label));
+          rc = proc_error(proc,kBufTooSmallRC,"The preset label '%s' is to long.",cwStringNullGuard(preset_label));
           goto errLabel;
         }
         
@@ -9123,7 +9087,7 @@ namespace cw
         // apply the preset
         if((rc = network_apply_preset(*proc->net, preset_label)) != kOkRC )
         {
-          rc = cwLogError(rc,"Appy preset '%s' failed.",cwStringNullGuard(preset_label));
+          rc = proc_error(proc,rc,"Appy preset '%s' failed.",cwStringNullGuard(preset_label));
           goto errLabel;
         }
 
@@ -9197,15 +9161,19 @@ namespace cw
     {
       enum {
         kTextPId,
+        kVerbPId,
         kBaseInPId
       };
 
       typedef struct
       {
-        unsigned     eolPId;
+        //unsigned     eolPId;
         unsigned     inVarN;
         const char** labelA;
         unsigned     labelN;
+        unsigned     verbosity;
+
+        bool notify_fl;
       } inst_t;
 
       rc_t _parse_label_array( proc_t* proc, inst_t* p )
@@ -9222,7 +9190,7 @@ namespace cw
 
         if(( textListN = textListCfg->child_count()) != p->labelN )
         {
-          cwLogWarning("The count of labels does in print proc '%s' does not match the count of inputs plus one. %i != %i",proc->label,textListN,textListCfg->child_count());          
+          proc_warn(proc,"The count of labels does in print proc '%s' does not match the count of inputs plus one. %i != %i",proc->label,textListN,textListCfg->child_count());          
         }
 
         // for each string in the list
@@ -9231,10 +9199,10 @@ namespace cw
           const object_t* textCfg = textListCfg->child_ele(i);
           
           if( textCfg==nullptr || !textCfg->is_string() )
-            rc = cwLogError(kSyntaxErrorRC,"The print proc '%s' text list must be a list of strings.",proc->label);
+            rc = proc_error(proc,kSyntaxErrorRC,"The print proc '%s' text list must be a list of strings.",proc->label);
 
           if((rc = textCfg->value(p->labelA[i])) != kOkRC )
-            rc = cwLogError(kSyntaxErrorRC,"The print proc '%s' text label at index could not be read.");
+            rc = proc_error(proc,kSyntaxErrorRC,"The print proc '%s' text label at index could not be read.");
         }
 
         // fill in any unspecified labels with blank strings
@@ -9255,9 +9223,10 @@ namespace cw
         }
         else
         {
+          const bool print_type_label_fl = false;
           assert( field_idx<p->labelN && p->labelA[field_idx] != nullptr );
-          cwLogPrint("%s ",p->labelA[field_idx]);
-          value_print(value);
+          cwLogPrint("%s",p->labelA[field_idx]);
+          value_print(value,print_type_label_fl,p->verbosity);
         }
 
         return kOkRC;
@@ -9265,15 +9234,24 @@ namespace cw
 
       rc_t _create( proc_t* proc, inst_t* p )
       {
-        rc_t     rc           = kOkRC;        
-        unsigned inVarN       = var_mult_count(proc, "in" );
-        unsigned inVarSfxIdA[ inVarN ];
+        rc_t        rc        = kOkRC;        
+        const object_t* text_cfg      = nullptr;
+        const char* verbosity = nullptr;
+        unsigned    inVarN    = var_mult_count(proc, "in" );
+        unsigned    inVarSfxIdA[ inVarN ];
 
-        if((rc = var_register(proc,kAnyChIdx,kTextPId,"text",kBaseSfxId)) != kOkRC )
+        if((rc = var_register_and_get(proc, kAnyChIdx,
+                                      kTextPId, "text",      kBaseSfxId, text_cfg,
+                                      kVerbPId, "verbosity", kBaseSfxId, verbosity)) != kOkRC )
         {
           goto errLabel;
         }
 
+        if((p->verbosity = value_print_verbosity_from_string( verbosity )) == kInvalidValPrintVerb )
+        {
+          rc = proc_error(proc,kInvalidArgRC,"The verbosity label '%s' is not valid.",cwStringNullGuard(verbosity));
+          goto errLabel;
+        }
     
         if((rc = var_mult_sfx_id_array(proc, "in", inVarSfxIdA, inVarN, p->inVarN )) != kOkRC )
         {
@@ -9291,6 +9269,7 @@ namespace cw
         // There must be one label for each input plus an end of line label
         p->labelN = p->inVarN+1;
         p->labelA = mem::allocZ<const char*>( p->labelN );
+        /*
         p->eolPId = kBaseInPId + p->inVarN;
 
         // Register the eol_fl with the highest variable id - so that it is called last during the later stage
@@ -9300,12 +9279,14 @@ namespace cw
         {
           goto errLabel;
         }
-
+        */
+        
         for(unsigned i=0; i<p->labelN; ++i)
           p->labelA[i] = "";
 
         rc = _parse_label_array(proc,p);
-        
+
+        p->notify_fl = false;
       errLabel:
 
         return rc;
@@ -9322,27 +9303,17 @@ namespace cw
       rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         switch( var->vid )
-        {
-            
+        {            
           case kTextPId:
             _parse_label_array(proc,p);            
             break;
-            
+
+         
           default:
-            //printf("[%i %i] ",proc->ctx->cycleIndex,var->vid);
-
+            //if( var->vid != p->eolPId )              
+              p->notify_fl = true;
+            
             /*
-            if( var->vid == p->eolPId )
-              _print_field(proc,p,p->inVarN,nullptr);
-            else
-            {
-              if( kBaseInPId <= var->vid && var->vid <= kBaseInPId + p->inVarN )
-              {
-                _print_field(proc,p,var->vid - kBaseInPId,var->value);
-              }
-            }
-            */
-
             if( var->vid == p->eolPId )
             {
               for(unsigned vid = kBaseInPId; vid<kBaseInPId + p->inVarN; vid+=1 )
@@ -9358,7 +9329,7 @@ namespace cw
               _print_field(proc,p,p->inVarN,nullptr);
 
             }
-            
+            */
         }
 
         // always report success - don't let print() interrupt the network
@@ -9367,6 +9338,23 @@ namespace cw
 
       rc_t _exec( proc_t* proc, inst_t* p )
       {
+        if( p->notify_fl )
+        {
+          
+          for(unsigned vid = kBaseInPId; vid<kBaseInPId + p->inVarN; vid+=1 )
+          {
+            variable_t* v = nullptr;
+                
+            if(var_find(proc, vid, kAnyChIdx, v) != kOkRC )
+              continue;
+                
+            _print_field(proc, p, vid - kBaseInPId, v->value);
+          }
+
+          _print_field(proc,p,p->inVarN,nullptr);
+          
+          p->notify_fl = false;
+        }
         return kOkRC;
       }
 
@@ -9581,8 +9569,8 @@ namespace cw
         if((rc = var_register(proc,kAnyChIdx,
                               kChPId,"ch",kBaseSfxId,
                               kStatusPId,"status",kBaseSfxId,
-                              kD0_PId,"d0",kBaseSfxId,
-                              kD1_PId,"d1",kBaseSfxId,
+                              kD0_PId,"d0d",kBaseSfxId,
+                              kD1_PId,"d1d",kBaseSfxId,
                               kTriggerPId,"trigger",kBaseSfxId)) != kOkRC )
         {
           goto errLabel;
@@ -9621,7 +9609,7 @@ namespace cw
           midi_byte_ref = (uint8_t)v;
         else
         {
-          rc = cwLogError(kInvalidArgRC,"MIDI %s value (%i) is out of range 0-%i.",label,v,max_val);
+          rc = proc_error(proc,kInvalidArgRC,"MIDI %s value (%i) is out of range 0-%i.",label,v,max_val);
           goto errLabel;
         }
         
@@ -9635,7 +9623,7 @@ namespace cw
         rc_t rc = kOkRC;
         
         if( p->msg_idx >= p->msgN )
-          rc = cwLogError(kBufTooSmallRC,"MIDI buffer overflow.");
+          rc = proc_error(proc,kBufTooSmallRC,"MIDI buffer overflow.");
         else
         {
           midi::ch_msg_t* m = p->msgA + p->msg_idx;
@@ -9691,7 +9679,7 @@ namespace cw
 
         // get the output variable
         if((rc = var_get(proc,kOutPId,kAnyChIdx,mbuf)) != kOkRC )
-          rc = cwLogError(kInvalidStateRC,"The MIDI msg. instance '%s' does not have a valid MIDI output buffer.",proc->label);
+          rc = proc_error(proc,kInvalidStateRC,"The MIDI msg. instance '%s' does not have a valid MIDI output buffer.",proc->label);
         else
         {
           mbuf->msgN = p->msg_idx;
@@ -9740,45 +9728,7 @@ namespace cw
         bool trig_fl;
       } inst_t;
 
-      rc_t _alloc_recd_array( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx, const recd_type_t* base, recd_array_t*& recd_array_ref  )
-      {
-        rc_t        rc  = kOkRC;
-        variable_t* var = nullptr;
-        
-        // find the record variable
-        if((rc = var_find( proc, var_label, sfx_id, chIdx, var )) != kOkRC )
-        {
-          rc = cwLogError(rc,"The record variable '%s:%i' could was not found.",cwStringNullGuard(var_label),sfx_id);
-          goto errLabel;
-        }
-
-        // verify that the variable has a record format
-        if( !var_has_recd_format(var) )
-        {
-          rc = cwLogError(kInvalidArgRC,"The variable does not have a valid record format.");
-          goto errLabel;
-        }
-        else
-        {
-          recd_fmt_t* recd_fmt = var->varDesc->fmt.recd_fmt;
-
-          // create the recd_array
-          if((rc = recd_array_create( recd_array_ref, recd_fmt->recd_type, base, recd_fmt->alloc_cnt )) != kOkRC )
-          {
-            goto errLabel;
-          }
-
-          
-        }
-        
-      errLabel:
-        if( rc != kOkRC )
-          rc = cwLogError(rc,"Record array create failed on the variable '%s:%i ch:%i.",cwStringNullGuard(var_label),sfx_id,chIdx);
-        
-        return rc;
-        
-      }
-
+      
       rc_t _create( proc_t* proc, inst_t* p )
       {
         rc_t    rc   = kOkRC;
@@ -9798,21 +9748,11 @@ namespace cw
         {
           goto errLabel;
         }
-
         
-
-        
-        // allocate the output recd array
-        if((rc = _alloc_recd_array( proc, "r_out", kBaseSfxId, kAnyChIdx, nullptr, p->recd_array  )) != kOkRC )
+        if((rc = var_alloc_register_and_set(proc, "r_out", kBaseSfxId, kROutPId, kAnyChIdx, nullptr, p->recd_array )) != kOkRC )
         {
           goto errLabel;
         }
-
-        
-        // create one output record buffer
-        rc = var_register_and_set( proc, "r_out", kBaseSfxId, kROutPId, kAnyChIdx, p->recd_array->type, nullptr, 0  );
-
-
         
         // create one output MIDI buffer
         rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, 0  );
@@ -10099,8 +10039,8 @@ namespace cw
                               kInPId,"in",kBaseSfxId,
                               kChPId,"ch",kBaseSfxId,
                               kStatusPId,"status",kBaseSfxId,
-                              kD0PId,"d0",kBaseSfxId,
-                              kD1PId,"d1",kBaseSfxId)) != kOkRC )
+                              kD0PId,"d0d",kBaseSfxId,
+                              kD1PId,"d1d",kBaseSfxId)) != kOkRC )
         {
           goto errLabel;
         }
@@ -10226,44 +10166,7 @@ namespace cw
         unsigned first_msg_idx;
         
       } inst_t;
-
-      rc_t _alloc_recd_array( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx, const recd_type_t* base, recd_array_t*& recd_array_ref  )
-      {
-        rc_t        rc  = kOkRC;
-        variable_t* var = nullptr;
-        
-        // find the record variable
-        if((rc = var_find( proc, var_label, sfx_id, chIdx, var )) != kOkRC )
-        {
-          rc = cwLogError(rc,"The record variable '%s:%i' could was not found.",cwStringNullGuard(var_label),sfx_id);
-          goto errLabel;
-        }
-
-        // verify that the variable has a record format
-        if( !var_has_recd_format(var) )
-        {
-          rc = cwLogError(kInvalidArgRC,"The variable does not have a valid record format.");
-          goto errLabel;
-        }
-        else
-        {
-          recd_fmt_t* recd_fmt = var->varDesc->fmt.recd_fmt;
-
-          // create the recd_array
-          if((rc = recd_array_create( recd_array_ref, recd_fmt->recd_type, base, recd_fmt->alloc_cnt )) != kOkRC )
-          {
-            goto errLabel;
-          }
-        }
-        
-      errLabel:
-        if( rc != kOkRC )
-          rc = cwLogError(rc,"Record array create failed on the variable '%s:%i ch:%i.",cwStringNullGuard(var_label),sfx_id,chIdx);
-        
-        return rc;
-        
-      }
-
+      
       void _get_first_msg_index( inst_t* p )
       {
         // The first msg index is the earlies pedal down msg that is still active when the first note-on msg occurs
@@ -10392,7 +10295,7 @@ namespace cw
         {
           if((p->midi_fname = proc_expand_filename(proc,midi_fname)) == nullptr )
           {
-            rc = cwLogError(kInvalidArgRC,"The MIDI filename could not be formed.");
+            rc = proc_error(proc,kInvalidArgRC,"The MIDI filename could not be formed.");
             goto errLabel;
           }
 
@@ -10405,13 +10308,13 @@ namespace cw
           if((rc = _load_midi_file(proc,p,p->mfH)) != kOkRC )
             goto errLabel;
 
-          rc = cwLogInfo("'%s' loaded.",p->midi_fname);
+          rc = proc_info(proc,"'%s' loaded.",p->midi_fname);
         
         }
         
       errLabel:
         if( rc != kOkRC )
-          rc = cwLogError(rc,"MIDI file load from '%s' failed",cwStringNullGuard(midi_fname));
+          rc = proc_error(proc,rc,"MIDI file load from '%s' failed",cwStringNullGuard(midi_fname));
         return rc;
 
       }
@@ -10423,7 +10326,7 @@ namespace cw
         {
           if((p->csv_fname = proc_expand_filename(proc,csv_fname)) == nullptr )
           {
-            rc = cwLogError(kInvalidArgRC,"The MIDI CSV filename could not be formed.");
+            rc = proc_error(proc,kInvalidArgRC,"The MIDI CSV filename could not be formed.");
             goto errLabel;
           }
           
@@ -10436,12 +10339,12 @@ namespace cw
           if((rc = _load_midi_file(proc,p,p->mfH)) != kOkRC )
             goto errLabel;
 
-          rc = cwLogInfo("'%s' loaded.",p->csv_fname);
+          rc = proc_info(proc,"'%s' loaded.",p->csv_fname);
         }
         
       errLabel:
         if( rc != kOkRC )
-          rc = cwLogError(rc,"MIDI file load from CSV file '%s' failed",cwStringNullGuard(csv_fname));
+          rc = proc_error(proc,rc,"MIDI file load from CSV file '%s' failed",cwStringNullGuard(csv_fname));
         return rc;
       }
 
@@ -10452,7 +10355,7 @@ namespace cw
         {
           if((p->csv_fname = proc_expand_filename(proc,csv_fname)) == nullptr )
           {
-            rc = cwLogError(kInvalidArgRC,"The MIDI CSV 2 filename could not be formed.");
+            rc = proc_error(proc,kInvalidArgRC,"The MIDI CSV 2 filename could not be formed.");
             goto errLabel;
           }
 
@@ -10471,7 +10374,7 @@ namespace cw
                 break;
 
               default:
-                rc = cwLogError(kInvalidArgRC,"An invalid API selector id (%i) was provided.",sel_id);
+                rc = proc_error(proc,kInvalidArgRC,"An invalid API selector id (%i) was provided.",sel_id);
                 goto errLabel;
             }
           }
@@ -10479,13 +10382,13 @@ namespace cw
           if((rc = _load_midi_file(proc,p,p->mfH)) != kOkRC )
             goto errLabel;
 
-          rc = cwLogInfo("'%s' loaded.",p->csv_fname);
+          rc = proc_info(proc,"'%s' loaded.",p->csv_fname);
           
         }
         
       errLabel:
         if( rc != kOkRC )
-          rc = cwLogError(rc,"MIDI file load from alt. CSV file '%s' failed",cwStringNullGuard(csv_fname));
+          rc = proc_error(proc,rc,"MIDI file load from alt. CSV file '%s' failed",cwStringNullGuard(csv_fname));
         return rc;
       }
 
@@ -10524,14 +10427,8 @@ namespace cw
         // create one output MIDI buffer
         rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, 0  );
 
-        // allocate the output recd array
-        if((rc = _alloc_recd_array( proc, "r_out", kBaseSfxId, kAnyChIdx, nullptr, p->recd_array  )) != kOkRC )
-        {
+        if((rc = var_alloc_register_and_set(proc, "r_out", kBaseSfxId, kROutPId, kAnyChIdx, nullptr, p->recd_array)) != kOkRC )
           goto errLabel;
-        }
-        
-        // create one output record buffer
-        rc = var_register_and_set( proc, "r_out", kBaseSfxId, kROutPId, kAnyChIdx, p->recd_array->type, nullptr, 0  );
 
         p->midi_fld_idx = recd_type_field_index( p->recd_array->type, "midi");
 
@@ -10556,7 +10453,7 @@ namespace cw
               if( csv_fname_3 != nullptr && textLength(csv_fname_3)>0 )
                 rc = _load_from_alt_csv_file(proc,p,csv_fname_2,3);
               else
-                rc = cwLogError(kInvalidArgRC,"A valid MIDI input file was not provided.");
+                rc = proc_error(proc,kInvalidArgRC,"A valid MIDI input file was not provided.");
             }
           }
           
@@ -10566,9 +10463,9 @@ namespace cw
         
       errLabel:
         if( rc != kOkRC )
-          cwLogError(rc,"'midi_file' create failed.");
+          proc_error(proc,rc,"'midi_file' create failed.");
         else
-          cwLogInfo("midi file %i events.",p->msgN);
+          proc_info(proc,"midi file %i events.",p->msgN);
         
         return rc;
       }
@@ -10587,14 +10484,14 @@ namespace cw
         return rc;
       }
 
-      rc_t _set_output_record( inst_t* p, rbuf_t* rbuf, const midi::ch_msg_t* m )
+      rc_t _set_output_record( proc_t* proc, inst_t* p, rbuf_t* rbuf, const midi::ch_msg_t* m )
       {
         rc_t rc = kOkRC;
         
         // if the output record array is full
         if( rbuf->recdN >= p->recd_array->allocRecdN )
         {
-          rc = cwLogError(kBufTooSmallRC,"The internal record buffer overflowed. (buf recd count:%i).",p->recd_array->allocRecdN);
+          rc = proc_error(proc,kBufTooSmallRC,"The internal record buffer overflowed. (buf recd count:%i).",p->recd_array->allocRecdN);
           goto errLabel;
         }
 
@@ -10617,7 +10514,7 @@ namespace cw
             p->sample_idx = p->msgN>0 ? p->msgA[p->msg_idx].sample_idx : 0;
             p->playing_fl = true;
             TRACE_ACTIVATE(true);
-            cwLogInfo("Start Clicked.");
+            proc_info(proc,"Start Clicked.");
             break;
             
           case kStopPId:
@@ -10626,7 +10523,7 @@ namespace cw
             else
             {
               p->stop_trig_fl = true;
-              cwLogInfo("Stop Clicked.");
+              proc_info(proc,"Stop Clicked.");
             }
             break;
 
@@ -10668,7 +10565,7 @@ namespace cw
 
         // get the output variable
         if((rc = var_get(proc,kOutPId,kAnyChIdx,mbuf)) != kOkRC )
-          rc = cwLogError(kInvalidStateRC,"The MIDI file instance '%s' does not have a valid MIDI output buffer.",proc->label);
+          rc = proc_error(proc,kInvalidStateRC,"The MIDI file instance '%s' does not have a valid MIDI output buffer.",proc->label);
         else
         {
           mbuf->msgA = nullptr;
@@ -10694,7 +10591,7 @@ namespace cw
         // get the output variable
         if((rc = var_get(proc,kROutPId,kAnyChIdx,rbuf)) != kOkRC )
         {
-          rc = cwLogError(kInvalidStateRC,"The midi_file '%s' does not have a valid output record buffer.",proc->label);
+          rc = proc_error(proc,kInvalidStateRC,"The midi_file '%s' does not have a valid output record buffer.",proc->label);
         }
         else
         {
@@ -10703,13 +10600,13 @@ namespace cw
 
           if( p->playing_fl )
             for(unsigned i=0; i<mbuf->msgN; ++i)
-              _set_output_record(p,rbuf, mbuf->msgA + i);
+              _set_output_record(proc,p,rbuf, mbuf->msgA + i);
 
           if( done_fl || p->stop_trig_fl )
           {
             // copy the 'all-note-off','all-ctl-off' msg into output record array
-            _set_output_record(p,rbuf,p->midiChMsgA + kAllNotesOffMsgIdx);
-            _set_output_record(p,rbuf,p->midiChMsgA + kResetAllCtlsMsgIdx);
+            _set_output_record(proc,p,rbuf,p->midiChMsgA + kAllNotesOffMsgIdx);
+            _set_output_record(proc,p,rbuf,p->midiChMsgA + kResetAllCtlsMsgIdx);
             p->playing_fl = false;
             p->stop_trig_fl = false;
           }
@@ -10735,6 +10632,254 @@ namespace cw
       
     }    
 
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // recd_list
+    //
+    namespace recd_list
+    {
+      enum {
+        kCfgPId,
+        kFnamePId,
+        kBufCntPId,
+        kIndexPId,
+        kCntPId,
+        kOutPId
+      };
+      
+      typedef struct
+      {
+        object_t*     cfg;
+        recd_fmt_t*   recd_fmt;
+        recd_array_t* recd_array;
+        recd_type_t*  out_recd_type;
+        recd_array_t* out_recd_buf;
+        unsigned      out_recd_idx;
+        unsigned      out_recd_cnt;
+      } inst_t;
+
+      
+
+      rc_t _parse_cfg( proc_t* proc, inst_t* p, const object_t* cfg )
+      {
+        rc_t rc = kOkRC;
+
+        const object_t* fmt_cfg       = nullptr;
+        const object_t* data_cfg      = nullptr;
+        unsigned        data_recd_cnt = 0;
+        const object_t* ele_dict      = nullptr;
+        unsigned        ele_idx       = 0;
+        
+        if((rc = cfg->readv( "fmt", kReqFl, fmt_cfg,
+                             "data",kReqFl, data_cfg )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Parsing failed on 'cfg' parameter.");
+          goto errLabel;
+        }
+
+        if( !data_cfg->is_list() )
+        {
+          rc = proc_error(proc,rc,"The 'data' field of the cfg parameter must be a list.");
+          goto errLabel;
+        }
+
+        // the storage record array will  have exactly one record for each recd in the supplied list of records
+        data_recd_cnt = data_cfg->child_count();
+
+
+        // create the recd_fmt for the data records
+        if((rc = proc_recd_format_create( proc, fmt_cfg, data_recd_cnt, p->recd_fmt )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Record 'fmt' create failed.");
+          goto errLabel;
+        }
+
+        // create the storage recd array 
+        if((rc = recd_array_create(p->recd_array, p->recd_fmt->recd_type, nullptr, data_recd_cnt, data_cfg )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Internal recd storage array create failed.");
+          goto errLabel;
+        }
+
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t            rc           = kOkRC;        
+        const object_t* const_cfg    = nullptr;
+        const char*     fname        = nullptr;
+        char*           fn           = nullptr;
+        unsigned        recd_index   = kInvalidIdx;
+        unsigned        recd_cnt     = kInvalidCnt;
+        unsigned        recd_buf_cnt = 0;
+        const rbuf_t*   rbuf         = nullptr;
+        
+        if((rc = var_register_and_get(proc,kAnyChIdx,
+                                      kCfgPId,     "cfg",          kBaseSfxId, const_cfg,
+                                      kFnamePId,   "fname",        kBaseSfxId, fname,
+                                      kIndexPId,   "index",        kBaseSfxId, recd_index,
+                                      kCntPId,     "cnt",          kBaseSfxId, recd_cnt)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Variable registration failed.");
+          goto errLabel;
+        }
+
+        // if a cfg filename was given
+        if( textLength(fname) > 0 )
+        {
+          // expand the filename to handle '$' and '~' prefixes
+          if((fn = proc_expand_filename(proc,fname)) == nullptr )
+          {
+            rc = proc_error(proc,kOpFailRC,"Filename expansion failed on the cfg fille '%s'.",cwStringNullGuard(fname));
+            goto errLabel;
+          }
+
+          // load and parse the cfg. file.
+          if((rc = objectFromFile(fn,p->cfg)) != kOkRC )
+          {
+            rc = proc_error(proc,kOpFailRC,"The cfg. file '%s' could not be parsed.",cwStringNullGuard(fn));
+            goto errLabel;
+          }
+
+          const_cfg = p->cfg;
+          
+        }
+
+        // verify that a valid 'cfg' was provided
+        if( const_cfg == nullptr )
+        {
+          rc = proc_error(proc,kInvalidStateRC,"No valid 'cfg' has been found.");
+          goto errLabel;
+        }
+
+        // parse the cfg
+        if((rc = _parse_cfg(proc,p,const_cfg)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Record format parsing failed.");
+          goto errLabel;
+        }
+
+        // Create a record type which only has a 'base' component that is set to the type of the storage recd array.
+        // We will then be able to load records into this by setting the 'base' pointer of each recd to the a recd in the storage array.
+        if((rc = recd_type_create( p->out_recd_type, p->recd_array->type, nullptr )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Record type create failed.");
+          goto errLabel;
+        }
+        
+        // create the output recd buf with the same size as the storage array
+        if((rc = recd_array_create( p->out_recd_buf, p->out_recd_type, p->recd_array->type, p->recd_array->allocRecdN )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"The output buffer record array create failed.");
+          goto errLabel;
+        }
+
+        // register this output variable
+        if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, p->out_recd_buf->type, nullptr, 0, p->recd_array->allocRecdN  )) != kOkRC )
+          goto errLabel;
+        
+        // initialize the record request range.
+        p->out_recd_idx = kInvalidIdx;
+        p->out_recd_cnt = kInvalidCnt;
+
+      errLabel:
+
+        mem::release(fn);
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        recd_format_destroy(p->recd_fmt);
+        recd_array_destroy(p->out_recd_buf);
+        recd_array_destroy(p->recd_array);
+        recd_type_destroy(p->out_recd_type);
+
+        if( p->cfg != nullptr )
+          p->cfg->free();
+        
+        return rc;
+      }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        switch( var->vid )
+        {
+          case kIndexPId:
+            var_get(var,p->out_recd_idx);
+            break;
+            
+          case kCntPId:
+            var_get(var,p->out_recd_cnt);
+            break;
+        }
+        
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t rc      = kOkRC;
+        
+        rbuf_t* obuf = nullptr;
+          
+        // get the output record buffer
+        if((rc = var_get(proc,kOutPId,kAnyChIdx,obuf)) != kOkRC || obuf == nullptr )
+        {
+          goto errLabel;
+        }
+
+        obuf->recdA = nullptr;
+        obuf->recdN = 0;
+        
+
+        // if output records were requsted.
+        if( p->out_recd_idx != kInvalidIdx && p->out_recd_cnt != kInvalidCnt )
+        {
+          
+          // Note that the alloc'd size of p->out_buf_array is the same as the actual number of record in the array.
+          if( p->out_recd_idx + p->out_recd_cnt > p->recd_array->allocRecdN )
+          {
+            proc_warn(proc,"The requested record range is invalid.");            
+          }
+          else
+          {
+            for(unsigned i=0; i<p->out_recd_cnt; ++i)
+            {
+              const recd_t* src_recd = p->recd_array->recdA + p->out_recd_idx + i;
+              p->out_recd_buf->recdA[i].base = src_recd;
+            }
+
+            obuf->recdA = p->out_recd_buf->recdA;
+            obuf->recdN = p->out_recd_cnt;
+          }
+        }
+
+      errLabel:
+        p->out_recd_idx = kInvalidIdx;
+        p->out_recd_idx = kInvalidCnt;
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    // recd_list
+    
 
     //------------------------------------------------------------------------------------------------------------------
     //
@@ -10761,49 +10906,14 @@ namespace cw
       
       typedef struct
       {
-        out_var_t*     outVarA; // outVarA[ outVarN ]
+        out_var_t*     outVarA; // outVarA[ outVarN ]        
         unsigned       outVarN;        
         unsigned       sel_fld_idx;
-        recd_array_t** recd_arrayA; // recd_arrayA[ outVarN ] - one record array per output variable        
+        recd_array_t** recd_arrayA; // recd_arrayA[ outVarN ] - one record array per output variable
+        recd_type_t*   recd_type;
       } inst_t;
 
-      rc_t _alloc_recd_array( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx, const recd_type_t* base, recd_array_t*& recd_array_ref  )
-      {
-        rc_t        rc  = kOkRC;
-        variable_t* var = nullptr;
-        
-        // find the record variable
-        if((rc = var_find( proc, var_label, sfx_id, chIdx, var )) != kOkRC )
-        {
-          rc = cwLogError(rc,"The record variable '%s:%i' could was not found.",cwStringNullGuard(var_label),sfx_id);
-          goto errLabel;
-        }
-
-        // verify that the variable has a record format
-        if( !var_has_recd_format(var) )
-        {
-          rc = cwLogError(kInvalidArgRC,"The variable does not have a valid record format.");
-          goto errLabel;
-        }
-        else
-        {
-          recd_fmt_t* recd_fmt = var->varDesc->fmt.recd_fmt;
-
-          // create the recd_array
-          if((rc = recd_array_create( recd_array_ref, recd_fmt->recd_type, base, recd_fmt->alloc_cnt )) != kOkRC )
-          {
-            goto errLabel;
-          }
-        }
-        
-      errLabel:
-        if( rc != kOkRC )
-          rc = cwLogError(rc,"Record array create failed on the variable '%s:%i ch:%i.",cwStringNullGuard(var_label),sfx_id,chIdx);
-        
-        return rc;
-        
-      }
-
+      
       rc_t _create( proc_t* proc, inst_t* p )
       {
         rc_t          rc              = kOkRC;        
@@ -10813,33 +10923,44 @@ namespace cw
         unsigned      allocRecdBufN        = 0;
         
         if((rc = var_register_and_get(proc,kAnyChIdx,
-                                      kOutCntPId,"out_cnt",kBaseSfxId,p->outVarN,
-                                      kSelFieldPId,"sel_field",kBaseSfxId,sel_field_label,
-                                      kSelectPId,"select",kBaseSfxId,select,
-                                      kRecdBufCntPId,"recd_buf_cnt",kBaseSfxId,allocRecdBufN,
-                                      kInPId,"in",kBaseSfxId,i_rbuf)) != kOkRC )
+                                      kOutCntPId,     "out_cnt",      kBaseSfxId, p->outVarN,
+                                      kSelFieldPId,   "sel_field",    kBaseSfxId, sel_field_label,
+                                      kSelectPId,     "select",       kBaseSfxId, select,
+                                      kRecdBufCntPId, "recd_buf_cnt", kBaseSfxId, allocRecdBufN,
+                                      kInPId,         "in",           kBaseSfxId, i_rbuf)) != kOkRC )
         {
           goto errLabel;
         }
 
         if( p->outVarN == 0 )
         {
-          cwLogError(kInvalidArgRC,"A non-zero positive value must be given to the 'out_cnt' field at initialization.");
+          proc_error(proc,kInvalidArgRC,"A non-zero positive value must be given to the 'out_cnt' field at initialization.");
           goto errLabel;
         }
         
         p->outVarA = mem::allocZ<out_var_t>(p->outVarN);
+
+        // create  a record type whose base type matches the input record type
+        if((rc = recd_type_create( p->recd_type, i_rbuf->type, nullptr )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Record type create failed.");
+          goto errLabel;
+        }
         
+        // if the input recd buffer may contain more records than the requested buffer size - then use the input buffer size
+        allocRecdBufN = std::max(allocRecdBufN,i_rbuf->maxRecdN);
+
         for(unsigned i=0; i<p->outVarN; ++i)
         {
-          // create the recd_array
-          if((rc = recd_array_create( p->outVarA[i].recd_array, i_rbuf->type, i_rbuf->type->base, allocRecdBufN )) != kOkRC )
+          // create the output recd_array
+          if((rc = recd_array_create( p->outVarA[i].recd_array, p->recd_type, i_rbuf->type, allocRecdBufN )) != kOkRC )
           {
+            rc = proc_error(proc,rc,"The recd_array create failed.");
             goto errLabel;
           }
           
           // register this output variable
-          if((rc = var_register_and_set( proc, "out", i, kBaseOutPId + i, kAnyChIdx, p->outVarA[i].recd_array->type, p->outVarA[i].recd_array->recdA, 0  )) != kOkRC )
+          if((rc = var_register_and_set( proc, "out", i, kBaseOutPId + i, kAnyChIdx, p->outVarA[i].recd_array->type, p->outVarA[i].recd_array->recdA, 0, allocRecdBufN  )) != kOkRC )
             goto errLabel;
 
           // cache pointers to the output rbuf's so we don't have to get them in _exec()
@@ -10852,7 +10973,7 @@ namespace cw
 
         if( textLength(sel_field_label)==0 )
         {
-          cwLogWarning("The 'sel_field' label was not given. The selection field is disabled on '%s'.",cwStringNullGuard(proc->label));
+          proc_warn(proc,"The 'sel_field' label was not given. The selection field is disabled on '%s'.",cwStringNullGuard(proc->label));
           p->sel_fld_idx = kInvalidIdx;
         }
         else
@@ -10860,7 +10981,7 @@ namespace cw
           // get the record field index for the incoming record
           if((p->sel_fld_idx = recd_type_field_index( i_rbuf->type, sel_field_label)) == kInvalidIdx )
           {
-            rc = cwLogWarning("The incoming record does not have a field named '%s'. The selection field has been diabled.",cwStringNullGuard(sel_field_label));
+            rc = proc_warn(proc,"The incoming record does not have a field named '%s'. The selection field has been diabled.",cwStringNullGuard(sel_field_label));
             p->sel_fld_idx = kInvalidIdx;
           }         
         }
@@ -10879,6 +11000,7 @@ namespace cw
           for(unsigned i=0; i<p->outVarN; ++i)
             recd_array_destroy(p->outVarA[i].recd_array);
         mem::release(p->outVarA);
+        recd_type_destroy(p->recd_type);
         
         return rc;
       }
@@ -10891,12 +11013,14 @@ namespace cw
 
       rc_t _exec( proc_t* proc, inst_t* p )
       {
-        rc_t rc      = kOkRC;
-        const rbuf_t* i_rbuf = nullptr;
-        unsigned dflt_ovar_idx = kInvalidIdx;
-        
+        rc_t          rc            = kOkRC;
+        const rbuf_t* i_rbuf        = nullptr;
+        unsigned      dflt_ovar_idx = kInvalidIdx;
+
+        // get the output variable index into p->oVarA[]
         var_get(proc,kSelectPId,kAnyChIdx,dflt_ovar_idx);
 
+        // get the input recd buffer
         if((rc = var_get(proc,kInPId,kAnyChIdx,i_rbuf)) != kOkRC )
         {
           goto errLabel;
@@ -10906,8 +11030,6 @@ namespace cw
         for(unsigned i=0; i<p->outVarN; ++i)
           p->outVarA[i].rbuf->recdN = 0;
 
-        //if( i_rbuf->recdN > 0 )
-        //  printf("%s recds:%i %i\n",proc->label,p->outVarN,i_rbuf->recdN);
 
         // for each incoming record
         for(unsigned i=0; i<i_rbuf->recdN; ++i)
@@ -10918,30 +11040,32 @@ namespace cw
 
           // if a selector field index was given then get the associated value 
           if( p->sel_fld_idx != kInvalidIdx )
-            recd_get(i_rbuf->type,i_r,p->sel_fld_idx,ovar_idx);
+            recd_get(i_rbuf->type,i_r, p->sel_fld_idx, ovar_idx);
 
           // if the output variable index is not valid then skip this record
           if( ovar_idx == kInvalidIdx )
           {
-            cwLogWarning("%s has no valid output selection value.",cwStringNullGuard(proc->label));
+            proc_warn(proc,"%s has no valid output selection value.",cwStringNullGuard(proc->label));
             continue;
           }
           
           // if the output variable is out of range then skip this record
           if( ovar_idx >= p->outVarN )
           {
-            cwLogWarning("An invalid out variable selection index (%i) was given for the out var. count %i.",ovar_idx,p->outVarN);
+            proc_warn(proc,"An invalid out variable selection index (%i) was given for the out var. count %i.",ovar_idx,p->outVarN);
             continue;
           }
 
-          //printf("route: %s %i\n",proc->label,ovar_idx);
-
+          // get the output variable
           ovar = p->outVarA + ovar_idx;
 
+          // copy the input record to the output record
+          ovar->recd_array->recdA[ ovar->rbuf->recdN ].base = i_rbuf->recdA + i;
           
-          rc = recd_copy( i_rbuf->type, i_rbuf->recdA + i, 1, ovar->recd_array, ovar->rbuf->recdN );
-          
+          // advance the output variable record count
           ovar->rbuf->recdN += 1;
+
+          //printf("ovar idx:%i ovar->rbuf->recdN%i\n",ovar_idx,ovar->rbuf->recdN );
         }
 
       errLabel:
@@ -10979,19 +11103,28 @@ namespace cw
       typedef struct
       {
         unsigned           inVarN;
+        recd_type_t*   recd_type;
         recd_array_t*  recd_array;
       } inst_t;
 
 
       rc_t _create( proc_t* proc, inst_t* p )
       {
-        rc_t        rc         = kOkRC; //
-        unsigned recdBufN = 1024;
-        const rbuf_t* rbuf = nullptr;
-        unsigned inVarN     = var_mult_count(proc,"in");
+        rc_t          rc       = kOkRC; //
+        unsigned      recdBufN = 0;
+        const rbuf_t* r0buf    = nullptr;
+        const rbuf_t* rbuf     = nullptr;
+        unsigned      inVarN   = var_mult_count(proc,"in");
         
         unsigned    sfxIdA[ inVarN ];
-          
+
+
+        // Get the size of the output recd array
+        if((rc = var_register_and_get( proc, kAnyChIdx, kBufMsgCntPId,"recd_buf_cnt", kBaseSfxId, recdBufN )) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
         // get the the sfx_id's of the input variables 
         if((rc = var_mult_sfx_id_array(proc, "in", sfxIdA, inVarN, p->inVarN )) != kOkRC )
           goto errLabel;
@@ -11004,22 +11137,43 @@ namespace cw
           if((rc = var_register_and_get( proc, kAnyChIdx, kBaseInPId+i, "in", sfxIdA[i], rbuf )) != kOkRC )
             goto errLabel;
           
+          if( rbuf == nullptr )
+          {
+            rc = proc_error(proc,kInvalidArgRC,"The input in:%i is unconnected.",sfxIdA[i]);
+            goto errLabel;                                                                                                                          
+          }
+          
+          if( i == 0 )
+            r0buf = rbuf;
+          else
+          {
+            
+            if( !recd_types_are_equivalent(r0buf->type,rbuf->type) )
+            {
+              rc = proc_error(proc,kInvalidArgRC,"The incoming record types must be of equivalent types. The type on in:%i does not match the type on in:0.",sfxIdA[i]);
+              goto errLabel;
+            }
+          }
+
+          recdBufN = std::max(recdBufN,rbuf->maxRecdN);
+          
         }
         
-        // Get the size of the output recd array
-        if((rc = var_register_and_get( proc, kAnyChIdx, kBufMsgCntPId,"recd_buf_cnt", kBaseSfxId, recdBufN )) != kOkRC )
+        // create a record type whose base type matches the input type and has no additional fields
+        if((rc = recd_type_create( p->recd_type, rbuf->type, nullptr )) != kOkRC )
         {
+          rc = proc_error(proc,rc,"Record type create failed.");
           goto errLabel;
         }
-
-        // create the recd_array
-        if((rc = recd_array_create( p->recd_array, rbuf->type, rbuf->type->base, recdBufN )) != kOkRC )
+        
+        // create the output recd_array
+        if((rc = recd_array_create( p->recd_array, p->recd_type, rbuf->type, recdBufN )) != kOkRC )
         {
           goto errLabel;
         }
 
         // register the output var
-        if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, p->recd_array->type, p->recd_array->recdA, 0  )) != kOkRC )
+        if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, p->recd_array->type, p->recd_array->recdA, 0, recdBufN  )) != kOkRC )
         {
           goto errLabel;
         }
@@ -11033,6 +11187,7 @@ namespace cw
       rc_t _destroy( proc_t* proc, inst_t* p )
       {
         recd_array_destroy(p->recd_array);
+        recd_type_destroy(p->recd_type);
         return kOkRC;
       }
 
@@ -11042,60 +11197,50 @@ namespace cw
         return rc;
       }
 
-      rc_t _non_merge_copy_out(proc_t* proc, inst_t* p, const rbuf_t** i_rbufA, unsigned i_rbufN, rbuf_t* o_rbuf )
-      {
-        rc_t rc = kOkRC;
-        unsigned n = 0;
-        
-        // for each input variable
-        for(unsigned i=0; i<i_rbufN; ++i)
-        {
-          // copy out all the records in this input to the output recd array
-          if((rc = recd_copy( i_rbufA[i]->type, i_rbufA[i]->recdA, i_rbufA[i]->recdN, p->recd_array, n )) != kOkRC )
-          {
-            rc = cwLogError(rc,"%s : Non-merge copy failed.",proc->label);
-            goto errLabel;
-          }
-
-          n += i_rbufA[i]->recdN;
-          
-        }
-
-        o_rbuf->recdN = n;
-        
-      errLabel:
-        return rc;
-      }
-                               
-
       rc_t _exec( proc_t* proc, inst_t* p )
       {
         rc_t     rc       = kOkRC;
         rbuf_t*  o_rbuf = nullptr;
-        const rbuf_t* i_rbufA[ p->inVarN ];
-
+        
         // get the output buffer
         if((rc = var_get(proc,kOutPId,kAnyChIdx,o_rbuf)) != kOkRC )
         {
-          rc = cwLogError(kInvalidStateRC,"The recd merge instance '%s' does not have a valid output connection.",proc->label);
+          rc = proc_error(proc,kInvalidStateRC,"The recd merge instance '%s' does not have a valid output connection.",proc->label);
           goto errLabel;
         }
+
+        o_rbuf->recdN        = 0;
+        p->recd_array->recdN = 0;
         
         // get the rbuf from each input 
         for(unsigned i=0; i<p->inVarN; ++i)
         {
-          if((rc = var_get(proc, kBaseInPId+i, kAnyChIdx, i_rbufA[i])) != kOkRC )
+          const rbuf_t* i_rbuf = nullptr;
+          
+          if((rc = var_get(proc, kBaseInPId+i, kAnyChIdx, i_rbuf)) != kOkRC )
             goto errLabel;
+
+          for(unsigned j=0; j<i_rbuf->recdN; ++j)
+          {
+            if( p->recd_array->recdN >= p->recd_array->allocRecdN )
+            {
+              rc = proc_error(proc,kBufTooSmallRC,"The internal recd array is too small Current size:%i.",p->recd_array->allocRecdN);
+              goto errLabel;
+            }
+            
+            p->recd_array->recdA[ p->recd_array->recdN++ ].base = i_rbuf->recdA + j;
+          }
 
         }
 
-        // do a non-merge copy of the input buffers to the output
-        if((rc = _non_merge_copy_out(proc,p, i_rbufA, p->inVarN, o_rbuf )) != kOkRC )
-          goto errLabel;
-                
+        assert(o_rbuf->recdA == p->recd_array->recdA);
+        
+        o_rbuf->recdN = p->recd_array->recdN;
+
       errLabel:
         return rc;
       }
+
 
       rc_t _report( proc_t* proc, inst_t* p )
       { return kOkRC; }
@@ -11148,14 +11293,14 @@ namespace cw
           // get the field index in the incoming recd that matches the field index in the outgoing recd
           if((p->i_field_indexA[i] = recd_type_field_index(i_rbuf->type, fld->label)) == kInvalidIdx )
           {
-            rc = cwLogError(kInvalidArgRC,"The output field label '%s' could not be matched in the incoming record in '%s'.",cwStringNullGuard(fld->label),cwStringNullGuard(proc->label));
+            rc = proc_error(proc,kInvalidArgRC,"The output field label '%s' could not be matched in the incoming record in '%s'.",cwStringNullGuard(fld->label),cwStringNullGuard(proc->label));
             goto errLabel;
           }
 
           // get the field index of the 'ith' output field (this should by equal to 'i')
           if((p->o_field_indexA[i] = recd_type_field_index(p->recd_fmt->recd_type, fld->label)) == kInvalidIdx )
           {
-            rc = cwLogError(kInvalidArgRC,"The output field label '%s' could not be matched in the incoming record in '%s'.",cwStringNullGuard(fld->label),cwStringNullGuard(proc->label));
+            rc = proc_error(proc,kInvalidArgRC,"The output field label '%s' could not be matched in the incoming record in '%s'.",cwStringNullGuard(fld->label),cwStringNullGuard(proc->label));
             goto errLabel;
           }
           
@@ -11164,7 +11309,7 @@ namespace cw
         // 
         if( i!=p->field_indexN || fld != nullptr )
         {
-          rc = cwLogError(kInvalidStateRC,"There was an unexpected field count mismatch on the output record of '%s'.",cwStringNullGuard(proc->label));
+          rc = proc_error(proc,kInvalidStateRC,"There was an unexpected field count mismatch on the output record of '%s'.",cwStringNullGuard(proc->label));
           goto errLabel;
         }
         
@@ -11188,7 +11333,7 @@ namespace cw
 
         if((rc = recd_format_create( p->recd_fmt, out_fmt_cfg )) != kOkRC )
         {
-          cwLogError(rc,"The output record format for '%s' is not valid.",cwStringNullGuard(proc->label));
+          proc_error(proc,rc,"The output record format for '%s' is not valid.",cwStringNullGuard(proc->label));
           goto errLabel;
         }
 
@@ -11201,12 +11346,12 @@ namespace cw
 
         if((rc = recd_array_create( p->recd_array, p->recd_fmt->recd_type, nullptr,  p->recd_fmt->alloc_cnt )) != kOkRC )
         {
-          cwLogError(rc,"The output record array format for '%s' failed.",cwStringNullGuard(proc->label));
+          proc_error(proc,rc,"The output record array format for '%s' failed.",cwStringNullGuard(proc->label));
           goto errLabel;
         }
 
         // register the output var
-        if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, p->recd_array->type, p->recd_array->recdA, 0  )) != kOkRC )
+        if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, p->recd_array->type, p->recd_array->recdA, 0, p->recd_array->allocRecdN  )) != kOkRC )
         {
           goto errLabel;
         }
@@ -11254,14 +11399,14 @@ namespace cw
             // get the field value from the incoming record
             if((rc = recd_get_value( i_rbuf->type, i_rbuf->recdA+i, p->i_field_indexA[j], v)) != kOkRC )
             {
-              rc = cwLogError(rc,"Unable to get the input record field '%s' in '%s'.",cwStringNullGuard(recd_type_field_index_to_label(i_rbuf->type,p->i_field_indexA[j])),cwStringNullGuard(proc->label));
+              rc = proc_error(proc,rc,"Unable to get the input record field '%s' in '%s'.",cwStringNullGuard(recd_type_field_index_to_label(i_rbuf->type,p->i_field_indexA[j])),cwStringNullGuard(proc->label));
               goto errLabel;
             }
             
             // set the field in the outgoing recd
             if((rc = recd_set_value( o_rbuf->type, nullptr, p->recd_array->recdA + i, p->o_field_indexA[j], v)) != kOkRC )
             {
-              rc = cwLogError(rc,"Unable to get the input record field '%s' in '%s'.",cwStringNullGuard(recd_type_field_index_to_label(o_rbuf->type,p->o_field_indexA[j])),cwStringNullGuard(proc->label));
+              rc = proc_error(proc,rc,"Unable to get the input record field '%s' in '%s'.",cwStringNullGuard(recd_type_field_index_to_label(o_rbuf->type,p->o_field_indexA[j])),cwStringNullGuard(proc->label));
               goto errLabel;
             }
 
@@ -11285,6 +11430,147 @@ namespace cw
       };
       
     }    // recd_extract
+
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // recd_pass
+    //
+    namespace recd_pass
+    {
+      enum {
+        kFmtPId,
+        kInPId,
+        kOutPId
+      };
+        
+      typedef struct
+      {
+        recd_fmt_t*   recd_fmt;
+        recd_array_t* recd_array;
+        bool          is_input_validated_fl;
+      } inst_t;
+
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t            rc      = kOkRC;
+        const object_t* fmt_cfg = nullptr;
+        rbuf_t*         i_rbuf  = nullptr;
+        unsigned        allocRecdN = 16;
+        
+        if((rc = var_register_and_get(proc, kAnyChIdx, kFmtPId, "fmt", kBaseSfxId, fmt_cfg)) != kOkRC )
+        {
+          goto errLabel;
+        }
+                                    
+        if( fmt_cfg == nullptr )
+        {
+          rc = proc_error(proc,kInvalidArgRC,"The record format could not be accessed.");
+          goto errLabel;
+        }
+
+        // Create a recd_fmt_t for the the record format that this proc. will pass
+        if((rc = proc_recd_format_create( proc, fmt_cfg, allocRecdN, p->recd_fmt )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"The record format could not be created.");
+          goto errLabel;
+        }
+
+        // Create an output record array - this is only used pre-runtime to inform the destination procs of the expected recd type and count
+        if((rc = recd_array_create(p->recd_array, p->recd_fmt->recd_type, nullptr, allocRecdN)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"The internal record array create failed.");
+          goto errLabel;
+        }
+
+        // Register the output variable
+        if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, p->recd_fmt->recd_type, p->recd_array->recdA, 0, p->recd_array->allocRecdN  )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"The 'out' variable create failed.");
+          goto errLabel;          
+        }
+
+        // Register a local input variable  whose value will never be used since it will be overridden by a src connection later in the network creating.
+        if((rc = var_register_and_set(proc, "in", kBaseSfxId, kInPId, kAnyChIdx, p->recd_fmt->recd_type, nullptr, 0, p->recd_array->allocRecdN)) != kOkRC )
+          goto errLabel;
+        
+        p->is_input_validated_fl = false;
+        
+      errLabel:
+        
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        recd_array_destroy(p->recd_array);
+        recd_format_destroy(p->recd_fmt);
+        
+        return rc;
+      }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t          rc     = kOkRC;
+        const rbuf_t* i_rbuf = nullptr;
+        rbuf_t*       o_rbuf = nullptr;
+        
+        if((rc = var_get(proc,kInPId,kAnyChIdx,i_rbuf)) != kOkRC )
+          goto errLabel;
+        
+        if((rc = var_get(proc,kOutPId,kAnyChIdx,o_rbuf)) != kOkRC )
+          goto errLabel;
+
+        o_rbuf->recdN = 0;
+
+        if( i_rbuf->recdN > 0 )
+        {
+          if( !p->is_input_validated_fl )
+          {
+            variable_t* in_var = nullptr;
+            if( var_find(proc,kInPId,kAnyChIdx,in_var) == kOkRC && is_connected_to_source(in_var) )
+            {
+              if((p->is_input_validated_fl = recd_types_are_equivalent( o_rbuf->type, i_rbuf->type )) == false )
+              {
+                proc_warn(proc,"Input record type validation failed.");
+              }
+            }
+          }
+
+          if( p->is_input_validated_fl )
+          {
+            o_rbuf->type  = i_rbuf->type;
+            o_rbuf->recdA = i_rbuf->recdA;
+            o_rbuf->recdN = i_rbuf->recdN;
+          }
+        }
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    // recd_pass
+
     
     //------------------------------------------------------------------------------------------------------------------
     //
@@ -11372,7 +11658,7 @@ namespace cw
         // get the output buffer
         if((rc = var_get(proc,kOutPId,kAnyChIdx,out_mbuf)) != kOkRC )
         {
-          rc = cwLogError(kInvalidStateRC,"The MIDI merge instance '%s' does not have a valid input connection.",proc->label);
+          rc = proc_error(proc,kInvalidStateRC,"The MIDI merge instance '%s' does not have a valid input connection.",proc->label);
           goto errLabel;
         }
         
@@ -11511,7 +11797,7 @@ namespace cw
           // the sample rate of the input audio signals must be the same
           if( i != 0 && abuf->srate != srate )
           {
-            rc = cwLogError(kInvalidArgRC,"All signals on a poly merge must have the same sample rate.");
+            rc = proc_error(proc,kInvalidArgRC,"All signals on a poly merge must have the same sample rate.");
             goto errLabel;
           }
 
@@ -11520,7 +11806,7 @@ namespace cw
           // the count of frames in all audio signals must be the same
           if( audioFrameN != 0 && abuf->frameN != audioFrameN )
           {
-            rc = cwLogError(kInvalidArgRC,"All signals on a poly merge must have the same frame count.");
+            rc = proc_error(proc,kInvalidArgRC,"All signals on a poly merge must have the same frame count.");
             goto errLabel;
           }
 
@@ -11769,7 +12055,7 @@ namespace cw
 
         if((p->loc_fld_idx  = recd_type_field_index( in_rbuf->type, "loc")) == kInvalidIdx )
         {
-          cwLogError(kInvalidArgRC,"The  input record does not have a 'loc' field.");
+          proc_error(proc,kInvalidArgRC,"The  input record does not have a 'loc' field.");
           goto errLabel;
         }
 
@@ -11791,7 +12077,7 @@ namespace cw
 
         if((rc = var_get(proc, kInPId, kAnyChIdx,in_rbuf)) != kOkRC )
         {
-          rc = cwLogError(rc,"Unable to access input record buf.");
+          rc = proc_error(proc,rc,"Unable to access input record buf.");
           goto errLabel;
         }
 
@@ -11802,13 +12088,13 @@ namespace cw
           
           if((rc = recd_get( in_rbuf->type, in_rbuf->recdA + i, p->loc_fld_idx, loc)) != kOkRC )
           {
-            rc = cwLogError(rc,"'loc' field access failed.");
+            rc = proc_error(proc,rc,"'loc' field access failed.");
             goto errLabel;
           }
 
           if((rc = msg_table::on_row_id(p->msg_tbl, loc )) != kOkRC )
           {
-            rc = cwLogError(rc,"Msg table dispatch failed.");
+            rc = proc_error(proc,rc,"Msg table dispatch failed.");
             goto errLabel;
           }
           
@@ -11818,7 +12104,7 @@ namespace cw
 
         if( rc != kOkRC )
         {
-          rc = cwLogError(rc,"Input notify failed on '%s':'%i'.",cwStringNullGuard(proc->label),proc->label_sfx_id);
+          rc = proc_error(proc,rc,"Input notify failed on '%s':'%i'.",cwStringNullGuard(proc->label),proc->label_sfx_id);
         }
         
         return rc;
@@ -11917,7 +12203,7 @@ namespace cw
 
         if((rc = var_find(proc, "index", kBaseSfxId, kAnyChIdx, var )) != kOkRC )
         {
-          rc = cwLogError(rc,"The 'list' variable could not be found.");
+          rc = proc_error(proc,rc,"The 'list' variable could not be found.");
           goto errLabel;
         }
 
@@ -12026,7 +12312,7 @@ namespace cw
 
         if((p->loc_fld_idx  = recd_type_field_index( rbuf->type, "loc")) == kInvalidIdx )
         {
-          cwLogError(kInvalidArgRC,"The  input record does not have a 'loc' field.");
+          proc_error(proc,kInvalidArgRC,"The  input record does not have a 'loc' field.");
           goto errLabel;
         }
         
@@ -12067,13 +12353,13 @@ namespace cw
           
           if((rc = recd_get(rbuf->type, rbuf->recdA + i, p->loc_fld_idx, loc)) != kOkRC )
           {
-            rc = cwLogError(rc,"Loc field read failed.");
+            rc = proc_error(proc,rc,"Loc field read failed.");
             goto errLabel;
           }
 
           if((rc = msg_table::on_row_id(p->msg_tbl, loc )) != kOkRC )
           {
-            rc = cwLogError(rc,"Msg table dispatch failed.");
+            rc = proc_error(proc,rc,"Msg table dispatch failed.");
             goto errLabel;
           }
           
@@ -12149,26 +12435,26 @@ namespace cw
 
         if((p->midi_fld_idx  = recd_type_field_index( rbuf->type, "midi")) == kInvalidIdx )
         {
-          rc = cwLogError(kInvalidArgRC,"The input record does not have a MIDI field in '%s'.",cwStringNullGuard(proc->label));
+          rc = proc_error(proc,kInvalidArgRC,"The input record does not have a MIDI field in '%s'.",cwStringNullGuard(proc->label));
           goto errLabel;
         }
 
         // the location field is optional and so we report an error if it is not found
         if( (p->loc_fld_idx  = recd_type_field_index( rbuf->type, "loc")) == kInvalidIdx )
-          cwLogInfo("%s : The incoming record does not have the optional 'loc' field.",cwStringNullGuard(proc->label));
+          proc_info(proc,"%s : The incoming record does not have the optional 'loc' field.",cwStringNullGuard(proc->label));
         else
-          cwLogInfo("%s : The 'loc' field was found in the the incoming record.",cwStringNullGuard(proc->label));
+          proc_info(proc,"%s : The 'loc' field was found in the the incoming record.",cwStringNullGuard(proc->label));
           
 
         if( textLength(dir)==0 || !filesys::isDir(dir) )
         {
-          rc = cwLogError(kInvalidArgRC,"The 'dir' argument (%s) does not specify an existing directory in '%s'.",cwStringNullGuard(dir),cwStringNullGuard(proc->label));
+          rc = proc_error(proc,kInvalidArgRC,"The 'dir' argument (%s) does not specify an existing directory in '%s'.",cwStringNullGuard(dir),cwStringNullGuard(proc->label));
           goto errLabel;
         }
 
         if( textLength(fname) == 0 )
         {
-          rc = cwLogError(kInvalidArgRC,"The filename prefix in %s is empty.",cwStringNullGuard(proc->label));
+          rc = proc_error(proc,kInvalidArgRC,"The filename prefix in %s is empty.",cwStringNullGuard(proc->label));
           goto errLabel;
         }
 
@@ -12190,17 +12476,17 @@ namespace cw
         
           if((fname = filesys::makeVersionedFn( p->dir, p->fname, "midi_recorder", nullptr )) == nullptr )
           {
-            rc = cwLogError(kOpFailRC,"The versioned filename could not be created with dir:'%s' and fname:'%s' in '%s'.",cwStringNullGuard(p->dir),cwStringNullGuard(p->fname),cwStringNullGuard(proc->label));
+            rc = proc_error(proc,kOpFailRC,"The versioned filename could not be created with dir:'%s' and fname:'%s' in '%s'.",cwStringNullGuard(p->dir),cwStringNullGuard(p->fname),cwStringNullGuard(proc->label));
             goto errLabel;
           }
 
           if((rc = file::fnWrite(fname,p->msgA,p->msgN*sizeof(msg_t),file::kWriteFl|file::kBinaryFl)) != kOkRC )
           {
-            rc = cwLogError(rc,"File write to '%s' failed in '%s'.",cwStringNullGuard(fname),cwStringNullGuard(proc->label));
+            rc = proc_error(proc,rc,"File write to '%s' failed in '%s'.",cwStringNullGuard(fname),cwStringNullGuard(proc->label));
             goto errLabel;
           }
 
-          cwLogInfo("%s : %i records written to '%s'.",cwStringNullGuard(proc->label),p->msgN, cwStringNullGuard(fname));
+          proc_info(proc,"%s : %i records written to '%s'.",cwStringNullGuard(proc->label),p->msgN, cwStringNullGuard(fname));
 
           p->msgN = 0;
         }
@@ -12260,14 +12546,14 @@ namespace cw
           {            
             if((rc = recd_get(rbuf->type,r,p->loc_fld_idx,p->msgA[ p->msgN ].loc)) != kOkRC )
             {
-              cwLogError(rc,"Record 'loc' field read failed.");
+              proc_error(proc,rc,"Record 'loc' field read failed.");
               break;
             }
           }
 
           if((rc = recd_get(rbuf->type,r,p->midi_fld_idx,m)) != kOkRC )
           {
-            cwLogError(rc,"Record 'midi' field read failed.");
+            proc_error(proc,rc,"Record 'midi' field read failed.");
             break;
           }
 
@@ -12275,12 +12561,12 @@ namespace cw
 
           if( p->msgN >= p->allocMsgN )
           {
-            cwLogWarning("The message buffer in '%s' is full. Consider allocating more buffer space via 'alloc_cnt'.");
+            proc_warn(proc,"The message buffer in '%s' is full. Consider allocating more buffer space via 'alloc_cnt'.");
             break;
           }
 
           if( p->msgN % 1000 == 0 )
-            cwLogInfo("'%s': %i records cached.",cwStringNullGuard(proc->label),p->msgN);
+            proc_info(proc,"'%s': %i records cached.",cwStringNullGuard(proc->label),p->msgN);
           
         }
         
@@ -12331,16 +12617,16 @@ namespace cw
         rc_t    rc   = kOkRC;        
 
         if((rc = var_register(proc,kAnyChIdx,
-                              k3PId,"_3_",kBaseSfxId,
-                              k5PId,"_5_",kBaseSfxId,
-                              k10PId,"_10_",kBaseSfxId,
-                              k13PId,"_13_",kBaseSfxId,
-                              k14PId,"_14_",kBaseSfxId,
-                              k16PId,"_16_",kBaseSfxId,
-                              k19PId,"_19_",kBaseSfxId,
-                              k22PId,"_22_",kBaseSfxId,
-                              k25PId,"_25_",kBaseSfxId,
-                              k29PId,"_29_",kBaseSfxId,
+                              k3PId,"b3b",kBaseSfxId,
+                              k5PId,"b5b",kBaseSfxId,
+                              k10PId,"b10b",kBaseSfxId,
+                              k13PId,"b13b",kBaseSfxId,
+                              k14PId,"b14b",kBaseSfxId,
+                              k16PId,"b16b",kBaseSfxId,
+                              k19PId,"b19b",kBaseSfxId,
+                              k22PId,"b22b",kBaseSfxId,
+                              k25PId,"b25b",kBaseSfxId,
+                              k29PId,"b29b",kBaseSfxId,
                               kOutPId,"out",kBaseSfxId)) != kOkRC )
         {
           goto errLabel;

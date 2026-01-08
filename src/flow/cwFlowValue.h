@@ -77,7 +77,6 @@ namespace cw
       kMBufTFl     = 0x00001000,
       kRBufTFl     = 0x00002000,
       kStringTFl   = 0x00004000,
-      kTimeTFl     = 0x00008000,
       kCfgTFl      = 0x00010000,
       kMidiTFl     = 0x00020000,
 
@@ -104,9 +103,10 @@ namespace cw
     struct recd_str;
     typedef struct rbuf_str
     {
-      const struct recd_type_str*  type;  // all msgs are formed from this type      
-      const struct recd_str* recdA; // recdA[ recdN ] 
-      unsigned               recdN; // 
+      const struct recd_type_str* type;     // all msgs are formed from this type      
+      const struct recd_str*      recdA;    // recdA[ recdN ] 
+      unsigned                    recdN;    //
+      unsigned                    maxRecdN; // largest possible value of recdN for the life of the network.
     } rbuf_t;
 
     typedef struct value_str
@@ -146,16 +146,29 @@ namespace cw
     // Value Only
     //
 
+    
     inline void set_null( value_t& v, unsigned tflag ) { v.tflag=tflag; v.u.p=nullptr; }
     inline bool is_numeric( const value_t* v ) { return cwIsFlag(v->tflag,kNumericTFl); }
-    inline bool is_matrix(  const value_t* v ) { return cwIsFlag(v->tflag,kMtxTFl); }
+    inline bool is_matrix(  const value_t* v ) { return cwIsFlag(v->tflag,kMtxTFl); }    
 
     // if all of the src flags are set in the dst flags then the two types are convertable.
     inline bool can_convert( unsigned src_tflag, unsigned dst_tflag ) { return (src_tflag&dst_tflag)==src_tflag; }
 
+    enum { kSilentValPrintVerb,
+           kMinimalValPrintVerb,
+           kSummaryValPrintVerb,
+           kAllValPrintVerb,
+           kMaxValPrintVerb=kAllValPrintVerb,
+           kInvalidValPrintVerb
+    };
+    
+    unsigned       value_print_verbosity_from_string( const char* s );
+    const char*    value_print_verbosity_to_string( unsigned verbosity );
+
     
     abuf_t*         abuf_create( srate_t srate, unsigned chN, unsigned frameN );
     void            abuf_destroy( abuf_t*& buf );
+    void            abuf_print( const abuf_t* abuf, unsigned verbosity );
     
     // If 'dst' is null then a new abuf is allocated, filled with the contents of 'src'.
     // If 'dst' is non-null and there is enough space for the contents of 'src' then only a copy is executed.
@@ -169,6 +182,7 @@ namespace cw
     fbuf_t*        fbuf_create( srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_sample_t** magV=nullptr, const fd_sample_t** phsV=nullptr, const fd_sample_t** hzV=nullptr );
     void           fbuf_zero( fbuf_t* fbuf );
     void           fbuf_destroy( fbuf_t*& buf );
+    void           fbuf_print( const fbuf_t* fbuf, unsigned verbosity );
 
     // Memory allocation will only occur if dst is null, or the size of dst's internal buffer are too small.
     fbuf_t*        fbuf_duplicate( fbuf_t* dst, const fbuf_t* src );
@@ -176,11 +190,13 @@ namespace cw
     mbuf_t*        mbuf_create( const midi::ch_msg_t* msgA=nullptr, unsigned msgN=0 );
     void           mbuf_destroy( mbuf_t*& buf );
     mbuf_t*        mbuf_duplicate( const mbuf_t* src );
+    void           mbuf_print( const mbuf_t* mbuf, unsigned verbosity );
 
-    rbuf_t*        rbuf_create( const struct recd_type_str* type=nullptr, const struct recd_str* recdA=nullptr, unsigned recdN=0 );
+    rbuf_t*        rbuf_create( const struct recd_type_str* type=nullptr, const struct recd_str* recdA=nullptr, unsigned recdN=0, unsigned maxRecdN=0 );
     void           rbuf_destroy( rbuf_t*& buf );
     rbuf_t*        rbuf_duplicate( const rbuf_t* src );
-    void           rbuf_setup( rbuf_t* rbuf, struct recd_type_str* type, struct recd_str* recdA, unsigned recdN );
+    void           rbuf_setup( rbuf_t* rbuf, struct recd_type_str* type, struct recd_str* recdA, unsigned recdN, unsigned maxRecdN );
+    void           rbuf_print( const rbuf_t* rbuf, unsigned verbosity );
 
     
     inline bool    value_is_abuf( const value_t* v ) { return v->tflag & kABufTFl; }
@@ -188,6 +204,7 @@ namespace cw
 
     unsigned       value_type_label_to_flag( const char* type_desc );
     const char*    value_type_flag_to_label( unsigned flag );
+    inline const char*    value_to_type_label( const value_t* v ) { return value_type_flag_to_label(v->tflag); }
 
     void           value_release( value_t* v );
     void           value_duplicate( value_t& dst, const value_t& src );
@@ -199,8 +216,19 @@ namespace cw
     // Assigns src to dst. If dst has a value type then src is converted to this type.
     // If the conversion is not possible then the function fail.s
     rc_t           value_from_value( const value_t& src, value_t& dst );
-    
-    void           value_print( const value_t* value, bool info_fl=false);
+
+    // Print the value to the log.
+    void           value_print( const value_t* value, bool print_type_label_fl=false, unsigned verbosity=kMinimalValPrintVerb );
+
+    // Buffer values (rbuf,mbuf,abuf,rbuf,cfg) support the notion of containing 0 or more elements.
+    // Other types do not support this  (int,uint,float,string).
+    bool           value_supports_an_ele_count( const value_t* value );
+
+    // Returns true if the value supports the concept of containing elements and currently has a non-zero element count.
+    bool           value_has_elements_now(  const value_t* value );
+
+    // Returns true if the this value type is can 'notify()' the owning 'proc' when it changes.
+    bool           value_can_auto_notify( const value_t* value );
 
     rc_t value_get( const value_t* val, bool& valRef );
     rc_t value_set(       value_t* val, bool v );
@@ -272,11 +300,13 @@ namespace cw
       const struct recd_type_str* base;    // base recd type that this field inherits from
     } recd_type_t;
 
+    // Record format  represents the 'cfg' data structure commonly
+    // used to specify record types.  
     typedef struct recd_fmt_str
     {
-      unsigned        alloc_cnt; // count of records to pre-allocate
+      unsigned        alloc_cnt;  // count of records to pre-allocate
       const object_t* req_fieldL; // label of required fields
-      recd_type_t*    recd_type; // record type for this variable
+      recd_type_t*    recd_type;  // record type for this variable
     } recd_fmt_t;
 
     typedef struct recd_array_str
@@ -284,7 +314,8 @@ namespace cw
       recd_type_t*     type;       // recd_type_t of this record array
       value_t*         valA;       // valA[ allocRecdN * type->fieldN ]
       struct recd_str* recdA;      // recdA[ allocRecdN ]
-      unsigned         allocRecdN; // 
+      unsigned         allocRecdN; //
+      unsigned         recdN; 
     } recd_array_t;
 
     typedef struct recd_str
@@ -295,10 +326,16 @@ namespace cw
 
 
     // Create/destroy a recd_format_t object.
+    // Cfg Syntax:
+    // { alloc_cnt:<>, required:[ 'fieldname' ], fields:{ <field_label>:{ "type":<>, "value":<>, "doc":<> } } }
+    // Note: dflt_alloc_cnt  is overridden by the 'alloc_cnt' field in 'cfg' if it exists.
     rc_t recd_format_create( recd_fmt_t*& recd_fmt_ref, const object_t* cfg, unsigned dflt_alloc_cnt=32 );
     void recd_format_destroy( recd_fmt_t*& recd_fmt_ref );
 
     // Create a recd_type_t instance from a cfg. description.
+    // Note that if 'cfg' is null then this type will have only fields specified by 'base_type'
+    // The format of the cfg is the same as that used by recd_format_create() however only the
+    // 'fields' list is used (e.g. { fields:{ ... }} ).
     rc_t recd_type_create( recd_type_t*& recd_type_ref, const recd_type_t* base_type, const object_t* cfg );
     void recd_type_destroy( recd_type_t*& recd_type );
 
@@ -312,12 +349,18 @@ namespace cw
 
     // Given a field index return the field label.
     const char* recd_type_field_index_to_label( const recd_type_t* recd_type, unsigned field_idx );
-    
-    // Set the record base pointer and the value of all fields with default values.
-    rc_t recd_init( const recd_type_t* recd_type, const recd_t* base, recd_t* r );
+
+    // Returns true if these two record types match on field name, default value type, and group.
+    // Record types that are equivalent can safely exchange records without having to
+    // reformat or rearrange the data in recd_t.valA[].
+    bool recd_types_are_equivalent( const recd_type_t* rt0, const recd_type_t* rt1 );
 
     // Print the recd_type info. to the console.
     void recd_type_print( const recd_type_t* recd_type );
+
+    
+    // Set the record base pointer and the value of all fields with default values.
+    rc_t recd_init( const recd_type_t* recd_type, const recd_t* base, recd_t* r );
 
     rc_t recd_get_value( const recd_type_t* type, const recd_t* recd, unsigned field_idx, value_t& val_ref );
 
@@ -418,14 +461,21 @@ namespace cw
     rc_t recd_print( const recd_type_t* recd_type, const recd_t* r );
 
     // Create/destroy a buffer of records.
-    rc_t recd_array_create( recd_array_t*& recd_array_ref, const recd_type_t* recd_type, const recd_type_t* base,  unsigned allocRecdN );
+    rc_t recd_array_create( recd_array_t*& recd_array_ref, const recd_type_t* recd_type, const recd_type_t* base,  unsigned allocRecdN, const object_t* data_cfg=nullptr );
     rc_t recd_array_destroy( recd_array_t*& recd_array_ref );
+
+    // Data must be a list of dictionaries of the form:
+    // [ { <field_name>:<value>, <field_name>:<value> } ]
+    // where each dictionary represents a record and each pair in the dictionary is a field labe/value pair.
+    //
+    // Ex: [ { x:3, c:"blue"},{ x:4, c:"red"}, { x:7, c:"green"} ] 
+    rc_t recd_array_append_from_cfg( recd_array_t* recd_array, const object_t* cfg );
 
     // Copy records into a recd_array.  This function fails if there are less than
     // 'src_recdN' records already allocated in 'dest_recd_array'.
     // The source and destination record types should be the same, but this
     // function does very little to verify that they actually are.
-    rc_t recd_copy( const recd_type_t* src_recd_type, const recd_t* src_recdA, unsigned src_recdN, recd_array_t* dst_recd_array, unsigned dst_recd_idx = 0 );
+    //rc_t recd_copy( const recd_type_t* src_recd_type, const recd_t* src_recdA, unsigned src_recdN, recd_array_t* dst_recd_array, unsigned dst_recd_idx = 0 );
 
 
     //------------------------------------------------------------------------------------------------------------------------

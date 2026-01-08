@@ -21,6 +21,9 @@ namespace cw
     char* allocStr( const char* );
     void  free( void* );
 
+    void set_warn_on_alloc();
+    void clear_warn_on_alloc();
+    
     unsigned byteCount( const void* p );
   
     template<typename T>
@@ -190,7 +193,7 @@ namespace cw
     {
       va_list vl;
       va_start(vl,fmt);
-      C* p1 = printf(p0,fmt,vl);
+      C* p1 = _printf(p0,false,fmt,vl);
       va_end(vl);
       return p1;
     }

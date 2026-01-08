@@ -18,6 +18,13 @@ namespace cw
 {
   namespace flow
   {
+    idLabelPair_t _valVerbLevelA[] = {
+      { kSilentValPrintVerb,  "silent"    },
+      { kMinimalValPrintVerb, "minimal"   },
+      { kSummaryValPrintVerb, "summary"   },
+      { kAllValPrintVerb,     "all"       },
+      { kInvalidValPrintVerb,    "<invalid>" }
+    };
 
     idLabelPair_t _typeLabelFlagsA[] = {
       
@@ -38,7 +45,6 @@ namespace cw
       { kMBufTFl,   "midi" },
       { kRBufTFl,   "record" },
       { kStringTFl, "string" },
-      { kTimeTFl,   "time" },
       { kCfgTFl,    "cfg" },
       { kMidiTFl,   "m3" },
 
@@ -88,23 +94,82 @@ namespace cw
       return index;
     }
 
-
-    const char* _recd_field_index_to_label(const recd_field_t* fld, unsigned field_idx)
+    const recd_field_t* _find_field_from_index( const recd_field_t* f, unsigned field_idx )
     {
-      const char* label = nullptr;
+      const recd_field_t* result = nullptr;
       
-      for(const recd_field_t* f=fld; f!=nullptr; f=f->link)
+      for(; f!=nullptr && result==nullptr; f=f->link)
+      {
         if( f->group_fl )
-          label = _recd_field_index_to_label(f->u.group_fieldL,field_idx);
+          result = _find_field_from_index( f->u.group_fieldL, field_idx );
         else
         {
-          if(f->u.index == field_idx )
-            label = f->label;          
+          if( f->u.index == field_idx )
+            result = f;
         }
-      
-      return label;      
+      }
+      return result;
     }
 
+    const recd_field_t* _find_field_from_index( const recd_type_t* rt, unsigned field_idx )
+    {
+      const recd_field_t* result = nullptr;
+      
+      if( field_idx < rt->fieldN )
+        result = _find_field_from_index( rt->fieldL, field_idx );
+      else
+        if( rt->base != nullptr )
+          result = _find_field_from_index( rt->base, field_idx - rt->fieldN );
+
+      return result;
+    }
+
+
+    const recd_field_t* _recd_field_from_label( const recd_field_t* fieldL, const char* label )
+    {
+      const recd_field_t* f;
+      for(f=fieldL; f!=nullptr; f=f->link)
+        if( textIsEqual(f->label,label) )
+          return f;
+      return nullptr;
+    }
+
+    recd_field_t*  _recd_field_alloc_and_link( recd_field_t*& field_list_ref, const char* label, const char* doc_string )
+    {
+      rc_t          rc    = kOkRC;
+      recd_field_t* field = nullptr;
+
+      // verify that  this is not a duplicate field name
+      if( _recd_field_from_label( field_list_ref, label ) != nullptr )
+      {
+        cwLogError(kInvalidStateRC,"The field label '%s' is duplicated in the record.",cwStringNullGuard(label));
+        goto errLabel;
+      }
+
+
+      // allocate the field record
+      field        = mem::allocZ<recd_field_t>();
+      field->label = mem::duplStr(label);
+      field->doc   = mem::duplStr(doc_string);
+      
+      // add the new field to the end of the field list
+      if( field_list_ref == nullptr )
+        field_list_ref = field;
+      else
+      {
+        recd_field_t* f = field_list_ref;
+        while( f->link != nullptr )
+          f = f->link;
+        
+        assert(f!=nullptr);
+        f->link = field;
+      }
+
+    errLabel:
+
+      return field;
+      
+    }
 
     rc_t _recd_field_list_from_cfg( recd_field_t*& field_list_ref, const object_t* field_dict_cfg )
     {
@@ -131,33 +196,22 @@ namespace cw
           if((rc = pair->pair_value()->getv("type",type_label,
                                             "doc",doc_string)) != kOkRC )
           {
-            rc = cwLogError(rc,"Error parsing the field '%s'.",cwStringNullGuard(pair->pair_label()));
+            rc = cwLogError(rc,"Error parsing the record type field '%s'.",cwStringNullGuard(pair->pair_label()));
             goto errLabel;
           }
 
-          // allocate the field record
-          field = mem::allocZ<recd_field_t>();
-      
-          // add the new field to the end of the field list
-          if( field_list_ref == nullptr )
-            field_list_ref = field;
-          else
+          // allocate a new field record
+          if((field = _recd_field_alloc_and_link(field_list_ref, pair->pair_label(), doc_string )) == nullptr )
           {
-            recd_field_t* f = field_list_ref;
-            while( f->link != nullptr )
-              f = f->link;
-        
-            assert(f!=nullptr);
-            f->link = field;
+            rc = cwLogError(kOpFailRC,"Record field type allocation failed on '%s'.",cwStringNullGuard(pair->pair_label()));
+            goto errLabel;
           }
-
-          field->label = mem::duplStr(pair->pair_label());
-          field->doc = mem::duplStr(doc_string);
-      
+                
           if( textIsEqual(type_label,"group") )
           {
             const object_t* field_dict = nullptr;
-
+            char* new_group_path = nullptr;
+            
             field->group_fl = true;
 
             // get the group 'fields' dictionary
@@ -168,12 +222,13 @@ namespace cw
             }
 
             // recursively read the group field list
-            if((rc = _recd_field_list_from_cfg(field->u.group_fieldL,field_dict)) != kOkRC )
+            rc = _recd_field_list_from_cfg(field->u.group_fieldL,field_dict);
+
+            if(rc != kOkRC )
             {
               rc = cwLogError(rc,"The creation of field group '%s' failed.",pair->pair_label());
               goto errLabel;
             }
-
         
           }
           else
@@ -224,7 +279,7 @@ namespace cw
           r->valA[ f->u.index ].tflag = f->value.tflag; 
     }
 
-    rc_t  _recd_set_default_value( recd_field_t* fieldL, recd_t* r )
+    rc_t _recd_set_default_value( recd_field_t* fieldL, recd_t* r )
     {
       rc_t          rc = kOkRC;      
       recd_field_t* f  = fieldL;
@@ -261,6 +316,29 @@ namespace cw
           return f;
       }   
       return nullptr;      
+    }
+
+    // Return true if any of the field labels in the field list 'f0' are duplicated in the field list 'ref'.
+    const recd_field_t* _get_duplicate_field( const recd_field_t* f0, const recd_field_t* ref )
+    {
+      // for each field in f0
+      for(; f0 != nullptr; f0=f0->link )
+      {
+        const recd_field_t* f = nullptr;
+
+        // if this field label is found in 'ref' ...
+        if((f = _find_field(ref,f0->label,textLength(f0->label),f0->group_fl)) != nullptr )
+        {
+          // ... but the match is on a group label and no labels in the group match ...
+          if( f0->group_fl && (f = _get_duplicate_field(f0->u.group_fieldL,f->u.group_fieldL)) == nullptr )
+            continue; // ... then keep searching through f0
+
+          // ... otherwise a duplicate label was found
+          return f;
+        }
+        
+      }
+      return nullptr;
     }
 
     const recd_field_t* _find_value_field( const recd_field_t* fieldL, const char* field_label)
@@ -315,16 +393,26 @@ namespace cw
       return index;
     }
 
-    void _recd_type_print_fields( const recd_type_t* rt0, const recd_field_t* fieldL, const char* group_label, unsigned indent )
+    bool _fields_are_equivalent( const recd_field_t* f0, const recd_field_t* f1)
+    {
+      if( f0->group_fl != f1->group_fl )
+        return false;
+
+      if( !textIsEqual(f0->label,f1->label) )
+        return false;
+
+      if( f0->group_fl )
+        return true;
+      
+      return f0->u.index==f1->u.index && f0->value.tflag == f1->value.tflag;
+    }
+    
+    
+    void _recd_type_print_fields( const recd_type_t* rt0, const recd_field_t* fieldL, const char* group_label )
     {
       const recd_field_t* f;
 
-      char indent_str[ indent+1 ];
-      for(unsigned i=0; i<indent; ++i)
-        indent_str[i] = ' ';
-      indent_str[indent] = '\0';
-
-      // print non-group field first
+      // print non-group fields first
       for(f=fieldL; f!=nullptr; f=f->link)        
         if( f->group_fl == false )
         {
@@ -339,17 +427,20 @@ namespace cw
             strcat(label,".");
           }
           strcat(label,f->label);
-          
+
+          const bool print_type_label_fl = true;
           unsigned field_idx = recd_type_field_index( rt0, label);
-          cwLogPrint("%s%i %i %s\n",indent_str,field_idx,f->u.index,f->label);
+          cwLogPrint("(%i %i %s:",field_idx,f->u.index,f->label);
+          value_print(&f->value,print_type_label_fl,kMinimalValPrintVerb);
+          cwLogPrint(")");
         }
 
       // print group fields next
       for(f=fieldL; f!=nullptr; f=f->link)        
         if( f->group_fl )
         {
-          cwLogPrint("%s %s:\n",indent_str,f->label);
-          _recd_type_print_fields(rt0,f->u.group_fieldL,f->label,indent+2);
+          cwLogPrint("%s:",f->label);
+          _recd_type_print_fields(rt0,f->u.group_fieldL,f->label);
         }
       
     }
@@ -359,31 +450,43 @@ namespace cw
       if( rt->base != nullptr )
         _recd_type_print( rt0, rt->base );
 
-      _recd_type_print_fields(rt0,rt->fieldL,nullptr,0);
+      _recd_type_print_fields(rt0,rt->fieldL,nullptr);
     }
 
-    void _recd_print_field( const char* group_label, const recd_field_t* fieldL,  const value_t* valA )
+    void _recd_print_field_list( const char* group_label, const recd_field_t* fieldL,  const value_t* valA )
     {
+      const bool print_type_label_fl = false;
       const recd_field_t* f;
+      
+      if( fieldL == nullptr )
+        return;
+      
+      cwLogPrint("(");
       for(f=fieldL; f!=nullptr; f=f->link)
+      {
         if(f->group_fl)
-          _recd_print_field(f->label,f->u.group_fieldL,valA);
+          _recd_print_field_list(f->label,f->u.group_fieldL,valA);
         else
         {
           if( group_label != nullptr )
-            cwLogPrint("%i %s.%s ",f->u.index,group_label,f->label);
+            cwLogPrint("%i:%s.%s=",f->u.index,group_label,f->label);
           else
-            cwLogPrint("%i %s ",f->u.index,f->label);
-          value_print(valA + f->u.index,true);
-          cwLogPrint("\n");
+            cwLogPrint("%i:%s=",f->u.index,f->label);
+          
+          value_print(valA + f->u.index, print_type_label_fl, kMinimalValPrintVerb);
+          
+          if( f->link != nullptr)
+            cwLogPrint(",");
         }
+      }
+      cwLogPrint(")");
     }
       
 
     rc_t _recd_print( const recd_type_t* rt, const recd_t* r )
     {
       rc_t rc = kOkRC;
-      
+
       if(rt->base != nullptr )
       {
         if( r->base == nullptr )
@@ -395,7 +498,7 @@ namespace cw
         _recd_print( rt->base, r->base );
       }
       
-      _recd_print_field( nullptr,rt->fieldL,  r->valA );
+      _recd_print_field_list( nullptr, rt->fieldL,  r->valA );
 
     errLabel:
       return rc;
@@ -404,6 +507,13 @@ namespace cw
 
   } // flow
 } // cw
+
+
+unsigned       cw::flow::value_print_verbosity_from_string( const char* s )
+{ return labelToId(_valVerbLevelA,s,kInvalidValPrintVerb); }
+
+const char*    cw::flow::value_print_verbosity_to_string( unsigned verbosity )
+{ return idToLabel(_valVerbLevelA,verbosity,kInvalidValPrintVerb); }
 
 cw::flow::abuf_t* cw::flow::abuf_create( srate_t srate, unsigned chN, unsigned frameN )
 {
@@ -476,6 +586,42 @@ const cw::flow::sample_t*   cw::flow::abuf_get_channel( abuf_t* abuf, unsigned c
 {
   assert( abuf->buf != nullptr );
   return abuf->buf + (chIdx*abuf->frameN);
+}
+
+void cw::flow::abuf_print( const abuf_t* abuf, unsigned verbosity )
+{
+  if( verbosity == kSilentValPrintVerb )
+    return;
+  
+  if( abuf == nullptr )
+  {
+    cwLogPrint("abuf: <null>");
+    return;
+  }
+
+  if( verbosity >= kMinimalValPrintVerb )
+  {
+    cwLogPrint("abuf: chN:%i frameN:%i srate:%8.1f ", abuf->chN, abuf->frameN, abuf->srate );
+
+    if( abuf->chN > 0 && verbosity >= kSummaryValPrintVerb )
+    {
+      cwLogPrint("(");
+      for(unsigned i=0; i<abuf->chN; ++i)
+      {
+        cwLogPrint("rms:%f ",abuf->buf==nullptr ? 0.0 : vop::rms(abuf->buf + i*abuf->frameN, abuf->frameN));
+
+        if( verbosity >= kAllValPrintVerb && abuf->buf != nullptr )
+        {
+          cwLogPrint("[ ");
+          for(unsigned j=0; j<abuf->frameN; ++j)
+            cwLogPrint("%f ",abuf->buf[ (i*abuf->frameN)+j ] );
+          cwLogPrint("]");
+        }
+      }
+      cwLogPrint(") ");      
+    }
+
+  }  
 }
 
 cw::flow::fbuf_t* cw::flow::fbuf_create( srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_sample_t** magV, const fd_sample_t** phsV, const fd_sample_t** hzV )
@@ -619,18 +765,84 @@ void cw::flow::mbuf_destroy( mbuf_t*& buf )
   mem::release(buf);
 }
 
+void  cw::flow::fbuf_print( const fbuf_t* fbuf, unsigned verbosity )
+{
+  if( verbosity == kSilentValPrintVerb )
+    return;
+  
+  if( fbuf == nullptr )
+  {
+    cwLogPrint("fbuf: <null>");
+    return;
+  }
+
+  if( verbosity >= kMinimalValPrintVerb )
+  {
+    cwLogPrint("fbuf: chN:%i flags:0x%x srate:%8.1f ", fbuf->chN, fbuf->flags, fbuf->srate );
+
+    cwLogPrint("(");
+    for(unsigned i=0; i<fbuf->chN; ++i)
+    {
+      cwLogPrint("binN:%i hopSmpN:%i ", fbuf->binN_V[i], fbuf->hopSmpN_V[i] );
+
+      if( verbosity >= kSummaryValPrintVerb )
+      {
+        float mag_mean = fbuf->magV == nullptr ? 0 : vop::mean(fbuf->magV[i], fbuf->binN_V[i]);
+        cwLogPrint("mean magn:%f ",mag_mean);
+            
+        if( verbosity >= kAllValPrintVerb && fbuf->magV != nullptr )
+        {
+          cwLogPrint("[ ");
+          for(unsigned j=0; j<fbuf->binN_V[i]; ++j)
+            cwLogPrint("%f %f, ",fbuf->magV[i][j], fbuf->phsV[i][j] );
+          cwLogPrint("]");
+        }
+      }
+    }
+    cwLogPrint(") ");
+  }
+  
+}
+
+
 cw::flow::mbuf_t* cw::flow::mbuf_duplicate( const mbuf_t* src )
 {
   return mbuf_create(src->msgA,src->msgN);
 }
 
+void cw::flow::mbuf_print( const mbuf_t* mbuf, unsigned verbosity )
+{
+  if( verbosity == kSilentValPrintVerb )
+    return;
+  
+  if( mbuf == nullptr )
+  {
+    cwLogPrint("mbuf: <null>");
+    return;
+  }
 
-cw::flow::rbuf_t* cw::flow::rbuf_create( const recd_type_t* type, const recd_t* recdA, unsigned recdN )
+  if( verbosity >= kMinimalValPrintVerb )
+  {
+    cwLogPrint("mbuf: cnt: %i", mbuf->msgN );
+
+    if( verbosity >= kSummaryValPrintVerb )
+    {
+      cwLogPrint("[ ");
+      for(unsigned i=0; i<mbuf->msgN; ++i)
+        cwLogPrint("(0x%x 0x%x 0x%x) ",mbuf->msgA[i].status + mbuf->msgA[i].ch,mbuf->msgA[i].d0,mbuf->msgA[i].d1);
+      cwLogPrint("] ");
+    }    
+  }
+}
+
+
+cw::flow::rbuf_t* cw::flow::rbuf_create( const recd_type_t* type, const recd_t* recdA, unsigned recdN, unsigned max_recdN )
 {
   rbuf_t* m = mem::allocZ<rbuf_t>();
   m->type = type;
   m->recdA = recdA;
   m->recdN = recdN;
+  m->maxRecdN = max_recdN;
   return m;
 }
 
@@ -641,17 +853,52 @@ void cw::flow::rbuf_destroy( rbuf_t*& buf )
 
 cw::flow::rbuf_t* cw::flow::rbuf_duplicate( const rbuf_t* src )
 {
-  return rbuf_create(src->type,src->recdA,src->recdN);
+  return rbuf_create(src->type,src->recdA,src->recdN,src->maxRecdN);
 }
 
-void  cw::flow::rbuf_setup( rbuf_t* rbuf, recd_type_t* type, recd_t* recdA, unsigned recdN )
+void  cw::flow::rbuf_setup( rbuf_t* rbuf, recd_type_t* type, recd_t* recdA, unsigned recdN, unsigned maxRecdN )
 {
   rbuf->type = type;
   rbuf->recdA = recdA;
   rbuf->recdN = recdN;
+  rbuf->maxRecdN = maxRecdN;
 }
 
+void cw::flow::rbuf_print( const rbuf_t* rbuf, unsigned verbosity )
+{
+  if( verbosity == kSilentValPrintVerb )
+  {
+    return;
+  }
 
+  if( rbuf == nullptr )
+  {
+    cwLogPrint("rbuf: <null>");
+    return;
+  }
+
+    
+  if( verbosity >= kMinimalValPrintVerb )
+  {
+    if( rbuf->recdN > 5 )
+      cwLogPrint("cnt:%i ",rbuf->recdN);
+    
+    if( verbosity == kSummaryValPrintVerb )
+    {
+      if( rbuf->type != nullptr )
+        recd_type_print(rbuf->type);
+    }
+    
+    if( verbosity == kAllValPrintVerb )
+    {
+      for(unsigned i=0; i<rbuf->recdN; ++i)
+        recd_print(rbuf->type, rbuf->recdA + i);
+    }
+    
+  }
+
+  
+}
 
 unsigned cw::flow::value_type_label_to_flag( const char* s )
 {
@@ -711,10 +958,6 @@ void cw::flow::value_release( value_t* v )
       mem::release( v->u.s );
       break;
           
-    case kTimeTFl:
-      assert(0);
-      break;
-
     case kCfgTFl:
       break;
 
@@ -779,10 +1022,6 @@ void cw::flow::value_duplicate( value_t& dst, const value_t& src )
       dst.tflag = src.tflag;
       break;
                     
-    case kTimeTFl:
-      assert(0);
-      break;
-
     case kCfgTFl:
       dst = src;
       break;
@@ -914,7 +1153,6 @@ cw::rc_t cw::flow::value_from_value( const value_t& src, value_t& dst )
     case kMBufTFl:
     case kRBufTFl:
     case kStringTFl:
-    case kTimeTFl:
     case kCfgTFl:
     case kMidiTFl:
       rc = cwLogError(kOpFailRC,"Value conversion failed during value to value assignement.");
@@ -928,9 +1166,12 @@ cw::rc_t cw::flow::value_from_value( const value_t& src, value_t& dst )
 }
 
 
-void cw::flow::value_print( const value_t* v, bool info_fl )
+void cw::flow::value_print( const value_t* v, bool label_fl, unsigned verbosity )
 {
   if( v == nullptr )
+    return;
+
+  if( verbosity == kSilentValPrintVerb )
     return;
         
   switch( v->tflag & kTypeMask )
@@ -939,107 +1180,41 @@ void cw::flow::value_print( const value_t* v, bool info_fl )
       cwLogPrint("<invalid>");
       break;
           
-    case kBoolTFl:
-          
-      cwLogPrint("%s%s ", info_fl ? "b:" : "", v->u.b ? "true" : "false" );
+    case kBoolTFl:          
+      cwLogPrint("%s%s", label_fl ? "b:" : "", v->u.b ? "true" : "false" );
       break;
           
     case kUIntTFl:
-      cwLogPrint("%s%i ", info_fl ? "u:" : "", v->u.u );
+      cwLogPrint("%s%i", label_fl ? "u:" : "", v->u.u );
       break;
           
     case kIntTFl:
-      cwLogPrint("%s%i ", info_fl ? "i:" : "", v->u.i );
+      cwLogPrint("%s%i", label_fl ? "i:" : "", v->u.i );
       break;
           
     case kFloatTFl:
-      cwLogPrint("%s%f ", info_fl ? "f:" : "", v->u.f );
+      cwLogPrint("%s%f", label_fl ? "f:" : "", v->u.f );
       break;
           
     case kDoubleTFl:
-      cwLogPrint("%s%f ", info_fl ? "d:" : "", v->u.d );
+      cwLogPrint("%s%f", label_fl ? "d:" : "", v->u.d );
       break;
           
     case kABufTFl:
-      if( info_fl )
-      {
-        if( v->u.abuf == nullptr )
-          cwLogPrint("abuf: <null>");
-        else
-          cwLogPrint("abuf: chN:%i frameN:%i srate:%8.1f ", v->u.abuf->chN, v->u.abuf->frameN, v->u.abuf->srate );
-      }
-      else
-      {
-        bool null_fl = v->u.abuf==nullptr || v->u.abuf->buf == nullptr;
-        cwLogPrint("(");
-        for(unsigned i=0; i<v->u.abuf->chN; ++i)
-          cwLogPrint("%f ",null_fl ? 0.0 : vop::rms(v->u.abuf->buf + i*v->u.abuf->frameN, v->u.abuf->frameN));
-        cwLogPrint(") ");
-      }
+      abuf_print(v->u.abuf,verbosity);
       break;
           
     case kFBufTFl:
-      if( info_fl )
-      {
-        if( v->u.fbuf == nullptr )
-          cwLogPrint("fbuf: <null>");
-        else
-        {
-          cwLogPrint("fbuf: chN:%i srate:%8.1f ", v->u.fbuf->chN, v->u.fbuf->srate );
-          for(unsigned i=0; i<v->u.fbuf->chN; ++i)                
-            cwLogPrint("(binN:%i hopSmpN:%i) ", v->u.fbuf->binN_V[i], v->u.fbuf->hopSmpN_V[i] );
-        }
-      }
-      else
-      {
-            
-        bool null_fl = v->u.fbuf==nullptr || v->u.fbuf->magV == nullptr;
-        cwLogPrint("(");
-        for(unsigned i=0; i<v->u.fbuf->chN; ++i)
-          cwLogPrint("%f ",null_fl ? 0.0 : vop::mean(v->u.fbuf->magV[i], v->u.fbuf->binN_V[i]));
-        cwLogPrint(") ");
-            
-      }
+      fbuf_print(v->u.fbuf,verbosity);
       break;
 
     case kMBufTFl:
-      if( info_fl )
-      {
-        if( v->u.mbuf == nullptr )
-          cwLogPrint("mbuf: <null>");
-        else
-        {
-          cwLogPrint("mbuf: cnt: %i", v->u.mbuf->msgN );
-        }
-      }
-      else
-      {
-        //bool null_fl = v->u.mbuf==nullptr || v->u.mbuf->msgA == nullptr;
-        for(unsigned i=0; i<v->u.mbuf->msgN; ++i)
-          cwLogPrint("(0x%x 0x%x 0x%x) ",v->u.mbuf->msgA[i].status + v->u.mbuf->msgA[i].ch,v->u.mbuf->msgA[i].d0,v->u.mbuf->msgA[i].d1);
-      }
+      mbuf_print(v->u.mbuf,verbosity);
       break;
 
 
     case kRBufTFl:
-      if( info_fl )
-      {
-        if( v->u.rbuf == nullptr )
-          cwLogPrint("rbuf: <null>");
-        else
-        {
-          cwLogPrint("rbuf: cnt: %i", v->u.rbuf->recdN );
-        }
-      }
-      else
-      {
-        for(unsigned i=0; i<v->u.rbuf->recdN; ++i)
-        {
-          assert(0);
-          // BUG BUG BUG
-          // implement _print_record()
-        }
-      }
+      rbuf_print(v->u.rbuf,verbosity);
       break;
           
     case kBoolMtxTFl:
@@ -1051,21 +1226,21 @@ void cw::flow::value_print( const value_t* v, bool info_fl )
       break;
           
     case kStringTFl:
-      cwLogPrint("s:%s ", v->u.s);
+      cwLogPrint("%s%s", label_fl?"s:" : "", v->u.s);
       break;
            
-    case kTimeTFl:
-      assert(0);
-      break;
-
     case kCfgTFl:
-      cwLogPrint("c:");
+      
+      if( label_fl )
+        cwLogPrint("c:");
       if( v->u.cfg != nullptr )
         v->u.cfg->print();
       break;
 
     case kMidiTFl:
-      cwLogPrint("m:");
+      if( label_fl )
+        cwLogPrint("m:");
+      
       if( v->u.midi != nullptr )
         cwLogPrint("dev:%i port:%i uid:%i ch:%i st:0x%x d0:0x%x d1:0x%x",v->u.midi->devIdx,v->u.midi->portIdx,v->u.midi->uid,v->u.midi->ch,v->u.midi->status,v->u.midi->d0,v->u.midi->d1);
       break;
@@ -1075,6 +1250,163 @@ void cw::flow::value_print( const value_t* v, bool info_fl )
       break;
   }
 
+}
+
+bool cw::flow::value_supports_an_ele_count( const value_t* v )
+{
+  if( v == nullptr )
+    return 0;
+
+  switch( v->tflag & kTypeMask )
+  {
+    case kInvalidTFl:
+    case kBoolTFl:          
+    case kUIntTFl:
+    case kIntTFl:
+    case kFloatTFl:
+    case kDoubleTFl:
+      return false;
+          
+    case kABufTFl:
+    case kFBufTFl:
+    case kMBufTFl:
+    case kRBufTFl:
+      return true;
+          
+    case kBoolMtxTFl:
+    case kUIntMtxTFl:
+    case kIntMtxTFl:
+    case kFloatMtxTFl:
+    case kDoubleMtxTFl:
+      assert(0); // not implemeneted
+      return true;
+          
+    case kStringTFl:
+      return false;
+           
+    case kCfgTFl:
+      return true;
+
+    case kMidiTFl:
+      return false;
+          
+    default:
+      assert(0);
+      break;
+  }
+
+  return false;
+}
+
+
+bool cw::flow::value_has_elements_now( const value_t* v )
+{
+  if( v == nullptr )
+    return 0;
+
+  switch( v->tflag & kTypeMask )
+  {
+    case kInvalidTFl:
+    case kBoolTFl:          
+    case kUIntTFl:
+    case kIntTFl:
+    case kFloatTFl:
+    case kDoubleTFl:
+      return false;
+          
+    case kABufTFl:
+      return v->u.abuf != nullptr && v->u.abuf->chN * v->u.abuf->frameN > 0;
+          
+    case kFBufTFl:
+      if(  v->u.fbuf == nullptr  )
+        return false;
+        
+      for(unsigned i=0; i<v->u.fbuf->chN; ++i)
+        if( v->u.fbuf->binN_V[i] > 0 )
+          return true;
+        
+      return false;
+      
+
+    case kMBufTFl:
+      return v->u.mbuf != nullptr && v->u.mbuf->msgN != 0;
+
+
+    case kRBufTFl:
+      return v->u.rbuf != nullptr && v->u.rbuf->recdN != 0;
+          
+    case kBoolMtxTFl:
+    case kUIntMtxTFl:
+    case kIntMtxTFl:
+    case kFloatMtxTFl:
+    case kDoubleMtxTFl:
+      assert(0); // not implemeneted
+      return false;
+          
+    case kStringTFl:
+      return false;
+           
+    case kCfgTFl:
+      // Empty containers return false
+      return v->u.cfg != nullptr && ((v->u.cfg->is_container() && v->u.cfg->child_count()>0) || !v->u.cfg->is_container());
+
+    case kMidiTFl:
+      return false;
+          
+    default:
+      assert(0);
+      break;
+  }
+
+  return 0;
+}
+
+bool cw::flow::value_can_auto_notify( const value_t* v )
+{
+  if( v == nullptr )
+    return 0;
+
+  switch( v->tflag & kTypeMask )
+  {
+    case kInvalidTFl:
+    case kBoolTFl:          
+    case kUIntTFl:
+    case kIntTFl:
+    case kFloatTFl:
+    case kDoubleTFl:
+      return true;
+      
+    case kABufTFl:
+    case kFBufTFl:
+      return false;
+      
+    case kMBufTFl:
+    case kRBufTFl:
+      return false;
+          
+    case kBoolMtxTFl:
+    case kUIntMtxTFl:
+    case kIntMtxTFl:
+    case kFloatMtxTFl:
+    case kDoubleMtxTFl:
+      assert(0); // not implemeneted
+      return false;
+          
+    case kStringTFl:
+      return true;
+           
+    case kCfgTFl:
+      return false;
+
+    case kMidiTFl:
+      return false;
+          
+    default:
+      assert(0);
+      break;
+  }
+
+  return false;
 }
 
 
@@ -1620,7 +1952,11 @@ cw::rc_t cw::flow::recd_format_create( recd_fmt_t*& recd_fmt_ref, const object_t
 
 errLabel:
   if(rc != kOkRC )
+  {
+    recd_format_destroy(recd_fmt);
     rc = cwLogError(rc,"Record format creation failed.");
+  }
+  
   return rc;  
 }
 
@@ -1643,27 +1979,41 @@ cw::rc_t  cw::flow::recd_type_create( recd_type_t*& recd_type_ref, const recd_ty
   
   recd_type_ref = nullptr;
 
-  // get the fields list
-  if((rc = cfg->getv("fields",fields_dict)) != kOkRC )
+  if( cfg != nullptr )
   {
-    rc = cwLogError(rc,"The 'fields' dictionary was not found in the record 'fmt' specifier.");
-    goto errLabel;
+    // get the fields list
+    if((rc = cfg->getv("fields",fields_dict)) != kOkRC )
+    {
+      rc = cwLogError(rc,"The 'fields' dictionary was not found in the record 'fmt' specifier.");
+      goto errLabel;
+    }
+
+    // load the fields list
+    if((rc = _recd_field_list_from_cfg(recd_type->fieldL,fields_dict)) != kOkRC )
+    {
+      goto errLabel;
+    }
+
+    // assign the index to the value fields and update recd_type.fieldN
+    recd_type->fieldN =  _recd_field_list_set_index(recd_type->fieldL, 0 );
   }
 
-  // load the fields list
-  if((rc = _recd_field_list_from_cfg(recd_type->fieldL,fields_dict)) != kOkRC )
+  // if a base was given
+  if( base != nullptr )
   {
-    goto errLabel;
+    const recd_field_t* f;
+    if((f = _get_duplicate_field( base->fieldL, recd_type->fieldL )) != nullptr )
+    {
+      rc = cwLogError(kInvalidStateRC,"The field '%s' is duplicated in the record type.",cwStringNullGuard(f->label));
+      goto errLabel;
+    }
   }
-
-  // assign the index to the value fields and update recd_type.fieldN
-  recd_type->fieldN =  _recd_field_list_set_index(recd_type->fieldL, 0 );
   
   recd_type->base = base;
   recd_type_ref = recd_type;
   
 errLabel:
-  if( rc != kOkRC && recd_type != nullptr )
+  if( rc != kOkRC )
   {
     rc = cwLogError(rc,"recd_type create failed.");
     recd_type_destroy(recd_type);
@@ -1706,14 +2056,38 @@ errLabel:
 
 const char* cw::flow::recd_type_field_index_to_label( const recd_type_t* recd_type, unsigned field_idx )
 {
-  const char* label = nullptr;
-  
-  if( field_idx >= recd_type->fieldN )
-    label = recd_type_field_index_to_label(recd_type->base, field_idx - recd_type->fieldN );
-  else  
-    label = _recd_field_index_to_label(recd_type->fieldL,field_idx);
+  const recd_field_t* f = _find_field_from_index( recd_type, field_idx );
 
-  return label;
+  return f==nullptr ? nullptr : f->label;
+}
+
+bool cw::flow::recd_types_are_equivalent( const recd_type_t* rt0, const recd_type_t* rt1 )
+{
+  unsigned n0 = 0;
+  unsigned n1 = 0;
+  
+  if( rt0 == nullptr && rt1 == nullptr )
+    return true;
+  
+  if( rt0 == nullptr || rt1 == nullptr )
+    return false;
+
+  n0 = recd_type_max_field_count(rt0);
+  n1 = recd_type_max_field_count(rt1);
+
+  if( n0 != n1 )
+    return false;
+
+  for(unsigned i=0; i<n0; ++i)
+  {
+    const recd_field_t* f0 = _find_field_from_index( rt0, i );
+    const recd_field_t* f1 = _find_field_from_index( rt1, i );
+    
+    if( !_fields_are_equivalent(f0,f1) )
+      return false;
+  }
+
+  return true;
 }
 
 
@@ -1755,12 +2129,33 @@ cw::rc_t cw::flow::recd_print( const recd_type_t* recd_type, const recd_t* r )
 
 
 
-cw::rc_t cw::flow::recd_array_create( recd_array_t*& recd_array_ref, const recd_type_t* recd_type, const recd_type_t* base, unsigned allocRecdN )
+cw::rc_t cw::flow::recd_array_create( recd_array_t*& recd_array_ref, const recd_type_t* recd_type, const recd_type_t* base, unsigned allocRecdN, const object_t* data_cfg )
 {
   rc_t          rc         = kOkRC;
-  recd_array_t* recd_array = mem::allocZ<recd_array_t>();
+  recd_array_t* recd_array = nullptr;
 
   recd_array_ref = nullptr;
+  
+  if( data_cfg != nullptr  )
+  {
+    if( !data_cfg->is_list() )
+      return cwLogError(kInvalidArgRC,"The record data must be presented as a cfg. list.");
+
+    allocRecdN = std::max(allocRecdN,data_cfg->child_count());
+  }
+
+  // if a base was given - then verify that it does not have any fields that duplicate fields in the underlying type
+  if( base != nullptr )
+  {
+    const recd_field_t* f;
+    if((f = _get_duplicate_field( base->fieldL, recd_type->fieldL )) != nullptr )
+    {
+      rc = cwLogError(kInvalidStateRC,"The field '%s' is duplicated in the record type.",cwStringNullGuard(f->label));
+      goto errLabel;
+    }
+  }
+  
+  recd_array= mem::allocZ<recd_array_t>();
 
   recd_array->type = mem::allocZ<recd_type_t>();
   recd_array->type->fieldL = recd_type->fieldL;
@@ -1770,7 +2165,7 @@ cw::rc_t cw::flow::recd_array_create( recd_array_t*& recd_array_ref, const recd_
   recd_array->valA = mem::allocZ<value_t>(recd_array->type->fieldN * allocRecdN);
   recd_array->recdA = mem::allocZ<recd_t>(allocRecdN);
   recd_array->allocRecdN = allocRecdN;
-
+  recd_array->recdN = 0;
 
   // for each record
   for(unsigned i=0; i<allocRecdN; ++i)
@@ -1782,15 +2177,119 @@ cw::rc_t cw::flow::recd_array_create( recd_array_t*& recd_array_ref, const recd_
     _recd_set_value_type( recd_array->type->fieldL, recd_array->recdA + i );
   }
 
-  recd_array_ref = recd_array;
+  if( data_cfg != nullptr )
+    if((rc = recd_array_append_from_cfg(recd_array,data_cfg)) != kOkRC )
+      goto errLabel;
   
-  //if( rc != kOkRC )
-  //  recd_array_destroy(recd_array);
+  recd_array_ref = recd_array;
 
+errLabel:
+  if( rc != kOkRC )
+  {
+    recd_array_destroy(recd_array);
+  }
   return rc;
 }
 
 
+
+cw::rc_t cw::flow::recd_array_destroy( recd_array_t*& recd_array_ref )
+{
+  if( recd_array_ref != nullptr )
+  {
+    mem::release(recd_array_ref->type);
+    mem::release(recd_array_ref->valA);
+    mem::release(recd_array_ref->recdA);
+    mem::release(recd_array_ref);
+  }
+
+  return kOkRC;
+}
+
+cw::rc_t cw::flow::recd_array_append_from_cfg( recd_array_t* recd_array, const object_t* data_cfg )
+{
+  rc_t rc = kOkRC;
+  
+  unsigned recd_idx       = 0;
+  const object_t* ele_dict = nullptr;
+  
+  if( !data_cfg->is_list() )
+  {
+    rc = cwLogError(kInvalidArgRC,"The recd array data must be a list of dictionaries.");
+    goto errLabel;
+  }
+  
+  if( recd_array->recdN + data_cfg->child_count() > recd_array->allocRecdN )
+  {
+    rc = cwLogError(kBufTooSmallRC,"The data array has %i too few empty slots available.", (recd_array->recdN + data_cfg->child_count()) - recd_array->allocRecdN);
+    goto errLabel;
+  }
+
+  // For each recd in the 'data' list.
+  while( (ele_dict = data_cfg->next_child_ele(ele_dict)) != nullptr )
+  {
+    const object_t* pair = nullptr;
+          
+    if( !ele_dict->is_dict() )
+    {
+      rc = cwLogError(kSyntaxErrorRC,"The data element at index %i is not a dictionary.",recd_idx);
+      goto errLabel;
+    }
+
+    // For each field in this record
+    while( (pair = ele_dict->next_child_ele(pair)) != nullptr )
+    {
+      unsigned field_idx = kInvalidIdx;
+      value_t field_value;
+
+      // verify that the dict. pair is a pair with a valid label
+      if( !pair->is_pair() || pair->pair_label()==nullptr )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The cfg. data element at index %i is not a pair.",recd_idx);
+        goto errLabel;
+      }
+            
+      // get the recd index associated with the field label for this data element
+      if((field_idx = recd_type_field_index( recd_array->type, pair->pair_label())) == kInvalidIdx )
+      {
+        rc = cwLogError(kEleNotFoundRC,"The cfg. data field '%s' at cfg data element index %i is not valid.",cwStringNullGuard(pair->pair_label()),recd_idx);
+        goto errLabel;
+      }
+
+      // parse the data element value into a value_t
+      if((rc = value_from_cfg( pair->pair_value(), field_value )) != kOkRC )
+      {
+        rc = cwLogError(rc,"The value of the cfg. data field '%s' at element index %i could not be parsed.",cwStringNullGuard(pair->pair_label()),recd_idx);
+        goto errLabel;
+      }
+
+      // double check that there is sufficient space
+      if( recd_array->recdN + recd_idx >= recd_array->allocRecdN )
+      {
+        rc = cwLogError(kInvalidStateRC,"The recd_array has insufficient space to hold the provided data list.");
+        goto errLabel;
+      }
+      
+      // copy the value into the record
+      if((rc = recd_set_value( recd_array->type, nullptr, recd_array->recdA + recd_array->recdN + recd_idx, field_idx, field_value )) != kOkRC )
+      {
+        rc = cwLogError(rc,"The value assignment of the cfg. data field '%s' at element index %i failed.",cwStringNullGuard(pair->pair_label()),recd_idx);
+        goto errLabel;              
+      }
+
+    }
+
+    recd_idx += 1;
+  }
+
+errLabel:
+  if( rc != kOkRC )
+    rc = cwLogError(rc,"recd_array fill from a cfg. failed.");
+  
+  return rc;
+  
+}
+/*
 cw::rc_t cw::flow::recd_copy( const recd_type_t* recd_type, const recd_t* recdA, unsigned recdN, recd_array_t* dst_recd_array, unsigned dst_recd_idx )
 {
   rc_t rc = kOkRC;
@@ -1829,20 +2328,8 @@ errLabel:
   
   return rc;
 }
+*/
 
-
-cw::rc_t cw::flow::recd_array_destroy( recd_array_t*& recd_array_ref )
-{
-  if( recd_array_ref != nullptr )
-  {
-    mem::release(recd_array_ref->type);
-    mem::release(recd_array_ref->valA);
-    mem::release(recd_array_ref->recdA);
-    mem::release(recd_array_ref);
-  }
-
-  return kOkRC;
-}
 
 //------------------------------------------------------------------------------------------------------------------------
 //
@@ -2059,10 +2546,15 @@ cw::rc_t cw::flow::value_test( const test::test_args_t& args )
   rc_t          rc   = kOkRC;  
   object_t*     cfg0 = nullptr;
   object_t*     cfg1 = nullptr;
+  object_t*     data0=nullptr;
   recd_fmt_t*   fmt0 = nullptr;
   recd_fmt_t*   fmt1 = nullptr;
+  recd_fmt_t*   fmt2 = nullptr;
+  recd_type_t*  rt0 = nullptr;
   recd_array_t* ra0  = nullptr;
   recd_array_t* ra1  = nullptr;
+  recd_array_t* ra2  = nullptr;
+  
   
   const char* s0 = "{ alloc_cnt:3, fields: {" 
     "a:  { type:bool,          doc:\"A floater.\" },"
@@ -2085,6 +2577,11 @@ cw::rc_t cw::flow::value_test( const test::test_args_t& args )
     "         c:{type:uint, value:1, doc:\"Another field.\" }"
     "}}"    
     "}}";
+
+  const char* d0 = "["
+    "{ a:true,  b:1, c:2, g0.a:3, g0.b:false, g0.c:4.3 }"
+    "{ a:false, b:2, c:3, g0.a:4, g0.b:true,  g0.c:5.4 }"
+    "]";
   
   if((rc = objectFromString(s0,cfg0)) != kOkRC )
   {
@@ -2095,6 +2592,12 @@ cw::rc_t cw::flow::value_test( const test::test_args_t& args )
   if((rc = objectFromString(s1,cfg1)) != kOkRC )
   {
     rc = cwLogError(rc,"cfg1 parse failed.");
+    goto errLabel;
+  }
+
+  if((rc = objectFromString(d0,data0)) != kOkRC )
+  {
+    rc = cwLogError(rc,"d0 parse failed.");
     goto errLabel;
   }
 
@@ -2110,6 +2613,23 @@ cw::rc_t cw::flow::value_test( const test::test_args_t& args )
     goto errLabel;
   }
 
+  if((rc = recd_format_create( fmt2, cfg1 )) != kOkRC )
+  {
+    rc = cwLogError(rc,"fmt2 create failed.");
+    goto errLabel;
+  }
+
+  // create a type whose base matches the fmt0 but and has no additional fields
+  if((rc = recd_type_create( rt0, fmt0->recd_type, nullptr )) != kOkRC )
+  {
+    rc = cwLogError(rc,"rt0 create failed.");
+    goto errLabel;
+  }
+
+  cwLogPrint("fmt0 and fmt1 have %s types.\n", recd_types_are_equivalent(fmt0->recd_type,fmt1->recd_type) ? "equivalent" : "non-equivalent");
+  cwLogPrint("fmt1 and fmt2 have %s types.\n", recd_types_are_equivalent(fmt1->recd_type,fmt2->recd_type) ? "equivalent" : "non-equivalent");
+  cwLogPrint("fmt0 and rt0  have %s types.\n", recd_types_are_equivalent(fmt0->recd_type,rt0)             ? "equivalent" : "non-equivalent");
+  
   if((rc = recd_array_create( ra0, fmt0->recd_type, nullptr,  fmt0->alloc_cnt )) != kOkRC )
   {
     rc = cwLogError(rc,"recd array 0 create failed.");
@@ -2118,9 +2638,19 @@ cw::rc_t cw::flow::value_test( const test::test_args_t& args )
 
   if((rc = recd_array_create( ra1, fmt1->recd_type, fmt0->recd_type, fmt1->alloc_cnt )) != kOkRC )
   {
-    rc = cwLogError(rc,"recd array 0 create failed.");
+    rc = cwLogError(rc,"recd array 1 create failed.");
     goto errLabel;
   }
+
+  if((rc = recd_array_create( ra2, fmt0->recd_type, nullptr,  fmt0->alloc_cnt, data0 )) != kOkRC )
+  {
+    rc = cwLogError(rc,"recd array 2 create failed.");
+    goto errLabel;
+  }
+  
+  cwLogPrint("ra1 type: field cnt:%i\n",recd_type_max_field_count( ra0->type ));
+  for(unsigned i=0; i<recd_type_max_field_count( ra0->type ); ++i)
+    cwLogPrint("%i:%s\n",i,recd_type_field_index_to_label( ra0->type, i ) );
 
 
   for(unsigned i=0; i<ra0->allocRecdN; ++i)
@@ -2138,9 +2668,12 @@ cw::rc_t cw::flow::value_test( const test::test_args_t& args )
     }
   }
 
+  cwLogPrint("ra0\n");
   for(unsigned i=0; i<ra0->allocRecdN; ++i)
+  {
     recd_print(ra0->type,ra0->recdA+i);
-
+    cwLogPrint("\n");
+  }
 
   for(unsigned i=0; i<ra1->allocRecdN; ++i)
   {
@@ -2158,19 +2691,34 @@ cw::rc_t cw::flow::value_test( const test::test_args_t& args )
     }
   }
 
+  cwLogPrint("ra1\n");
   for(unsigned i=0; i<ra1->allocRecdN; ++i)
+  {
     recd_print(ra1->type,ra1->recdA+i);
-  
+    cwLogPrint("\n");
+  }
+
+  cwLogPrint("ra2\n");
+  for(unsigned i=0; i<ra2->allocRecdN; ++i)
+  {
+    recd_print(ra2->type,ra2->recdA+i);
+    cwLogPrint("\n");
+  }
+
   
   recd_array_destroy( ra0 );
   recd_array_destroy( ra1 );
+  recd_array_destroy( ra2 );
   
   recd_format_destroy( fmt0 );
   recd_format_destroy( fmt1 );
+  recd_format_destroy( fmt2 );
+
+  recd_type_destroy( rt0 );
 
   cfg0->free();
   cfg1->free();
-  
+  data0->free();
 
 errLabel:
   return rc;

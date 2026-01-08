@@ -84,9 +84,11 @@ namespace cw
       { "midi_select",     &midi_select::members },
       { "midi_split",      &midi_split::members },
       { "midi_file",       &midi_file::members },
+      { "recd_list",       &recd_list::members },
       { "recd_route",      &recd_route::members },
       { "recd_merge",      &recd_merge::members },
       { "recd_extract",    &recd_extract::members },
+      { "recd_pass",       &recd_pass::members },
       { "midi_merge",      &midi_merge::members },
       { "poly_xform_ctl",  &poly_xform_ctl::members },
       { "gutim_ps_msg_table", &gutim_ps_msg_table::members },
@@ -245,7 +247,7 @@ namespace cw
       }
 
       // Allocate the var. desc record
-      if((vd = var_desc_create( var_label, var_desc_pair->pair_value())) == nullptr )
+      if((rc = var_desc_create( var_label, var_desc_pair->pair_value(), vd)) != kOkRC )
       {
         rc = cwLogError(kObjAllocFailRC,"Variable description allocation failed.");
         goto errLabel;
@@ -398,37 +400,6 @@ namespace cw
           goto errLabel;                      
         }
 
-        /*
-        // parse the preset dictionary
-        if( presetD != nullptr )
-        {
-
-          if( !presetD->is_dict() )
-          {
-            rc = cwLogError(rc,"The preset dictionary is not a dictionary on class desc:'%s'", cwStringNullGuard(cd->label) );
-            goto errLabel;                      
-          }
-
-          // for each preset in the class desc.
-          for(unsigned j=0; j<presetD->child_count(); ++j)
-          {
-            const object_t* pair = presetD->child_ele(j);
-
-            if( !pair->pair_value()->is_dict() )
-            {
-              rc = cwLogError(kSyntaxErrorRC,"The preset '%s' in class desc '%s' is not a dictionary.", cwStringNullGuard(pair->pair_label()), cwStringNullGuard(cd->label));
-              goto errLabel;
-            }
-
-            class_preset_t* preset =  mem::allocZ< class_preset_t >();
-              
-            preset->label = pair->pair_label();
-            preset->cfg   = pair->pair_value();
-            preset->link  = cd->presetL;
-            cd->presetL   = preset;
-          }
-        }
-        */
         if((rc = _create_preset_list( cd->presetL, presetD )) != kOkRC )
         {
           rc = cwLogError(rc,"The presets for the class desc: '%s' could not be parsed.",cwStringNullGuard(cd->label));
@@ -1199,6 +1170,10 @@ cw::rc_t cw::flow::exec_cycle( handle_t h )
   
   TRACE_TIME(p->trace_id,tracer::kBegEvtId,p->cycleIndex,0);
 
+  if( p->cycleIndex == 0 )
+    mem::set_warn_on_alloc();
+
+  
   if( p->maxCycleCount!=kInvalidCnt && p->cycleIndex >= p->maxCycleCount )
   {
     rc = kEofRC;
@@ -1235,9 +1210,12 @@ cw::rc_t cw::flow::exec_cycle( handle_t h )
     p->cycleIndex += 1;
     p->uiUpdateCycleIndex += 1;
     
-  }
+  }  
 
   TRACE_TIME(p->trace_id,tracer::kEndEvtId,p->cycleIndex-1,0);
+
+  if( rc == kEofRC )
+    mem::clear_warn_on_alloc();
     
   return rc;
 }
@@ -1247,7 +1225,7 @@ cw::rc_t cw::flow::exec(    handle_t h )
   rc_t    rc = kOkRC;
   flow_t* p  = _handleToPtr(h);
   time::spec_t t0 = time::current_time();
-    
+
   while( rc == kOkRC )
     rc = exec_cycle(h);
 

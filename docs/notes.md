@@ -1,436 +1,6 @@
-Audio Dev. File
-1. Try different combinations of including input and output channels and groups.
-   Specify an input file, but not an input group. Specify an input group but not an input file ....
 
 
-TODO: fix cwDsp.h: ampl_to_db(),db_to_ampl(), add pow_to_db() and db_to_pow().
-Implement vectorized version in terms of the scalar versions in cwDsp.h.
-Decide on standard dB range.  e.g. -100 to 0,  0 to 100 ....
 
-* Flow Variables Class
-** Attributes 
-  + type: real,int,string,audio,spectrum,enum
-  + flags: attribute flags
-    - src: This variable must be connected.
-    - multi: This variable may be instantiated multiple times
-    - fan_in: This variable allows multiple incoming connections.
-  + value:
-    - real,int { min,max,value,center,step }
-    - enum [ list of (id,label) pairs ]
-    
-  + doc: documentation string  
-
-  + max_multi: max count of instantiations due to multiple connections
-  + min_multi: min count of instantiations due to multiple connections
-
-* Flow Proc Class
-** Attributes
-  + doc: documentation string
-  + sub_proc:
-    - sub_proc_cnt:<int>  set an absolute sub_proc_cnt
-    - sub_proc_cnt_min:   
-    - sub_proc_cnt_max:
-      
-    - sub_proc_var
-      + label
-      + flags: [ audio_chs, multi_chs, fan_in_chs ]
-
-      Calculate the sub_proc_cnt based on the count of mult's,fan_ins, and audio channels.
-
-
-    
-* Var Map:
-
-#+BEGIN_SRC c
-  typedef struct variable_str
-  {
-
-    variable_str* var_link; // instance_t varL links 
-  } variable_t;
-
-  typedef struct proc_desc
-  {
-    var_desc_t* varDescA; // description of each base variable
-    unsigned    varDescN; 
-
-  } proc_desc_t;
-
-  typedef struct varBase_str
-  {
-    char*       label;      // label assigned to this 'mult'
-    unsigned    multIdx;    // mult index 
-    variable_t* baseVar;    // all variables have a base instance (chIdx=kAnyChIdx)
-    unsigned    subProcN;   // count of times this variable is replicated to specialize for a given subprocess
-    variable_t* subProcA[ subProcN ]; // 
-  } varBase_t;
-
-  typedef struct varMap_str
-  {
-    unsigned   multN;  // count of times this variable is replicated based on multiple incoming connections to the same input variable label.
-    varBase_t* multA[ multN ] // pointer to each base variable
-  } varMap_t;
-
-  typedef struct instance_str
-  {
-    variable_t* varL;  // variable linked list: list of all variable instances
-    unsigned maxVId; // maximum application supplied vid. In general maxVId+1 == proc_desc_t.varDescN
-    varMap_t varMap[ maxVId ]; // maps an application vid to a list of variable instances
-  } instance_t;
-
-  
-
-#+END_SRC
-
-
-  
-* 
-* Plan
-
-
-
-** Flow processor 'multi' processor:
-   Add the ability for a processor to expand the number of variables based on
-   incoming connections. 
-   - Variables with this capability must have the 'multi' attribute in the class description.
-   - The new variables will be named by adding a suffix in the connection command.
-     e.g. in:{ in.a:out.foo } connect the output out.foo to a new variable instantiated
-     on the the local variable description 'in'.
-   - The new variable may then be addressed by referring to 'in.a'.
-   - The proc instance may then ask for a count of variable instances for a given base varaible.
-     var_get_multi_count( ...,'in') and address them by var_get( ...,'in',multi_idx).
-   - Note that once a variable is given the 'multi' attribute the only way for the instance
-     to access the variable is by supplying the 'multi' index since the variable
-     label alone will not be adequate to select among multiple instances.
-   
-     
-** Flow processor Fan-in capability:
-    Add the ability for a processor variables to support multiple incoming connections.
-   
-   - Fan-in capability must be enabled in the processor class description with the 'fan-in' attribute.
-   - The array of variables associated with fan-in connections will be
-     addressed via "<label>.<integer>".
-   - The count of inputs to a fan-in varaible instance can be accessed via: var_fan_in_count( ...,var_label)
-   - The variable instance associated with each fan-in connection can be accessed with
-     var_get( ...,'in',fan_in_idx).
-   - Note that once a variable is given the 'fan-in' attribute a fan_in_idx must be used to access it.
-
-    
-
-     
-
-** Add MIDI processors - this may be complicated by cross fading scheme.
-   - maybe cross-faded proc's should be all placed in a 'sub-net' and
-   only those processes would then be cross faded.
-
-   
-** Add subnets. (see outline below)
-** Add auto-UI (this will require a separate app).
-
-
-* Functionality
-** libcw:
-
-- Remove dependency on locally built websockets library.
-
-- Remove applications from the libcw folder and put them in their
-own folders. (breakout libcw from application / reorganize project)
-Allow ui.js to be shared by all apps.
-
-
-** UI:
-- Add support for custom controls
-- Document the UI resource file format.
-- Document the UI client/server protocol.
-1. The message formats to and from the server and the javascript client.
-2. When the messages are sent.
-
-- UI: Add an option to print the UI elment information as they are created.
-This is a useful way to see if id maps are working.
-Print: ele name, uuid, appId and parent name, uuid, appId
-
-
-** Flow:
-
-- Create automatic UI for proc's.
-- Create the ability to script sub-networks.
-- Create true plug-in architecture - requires a C only interface.
-- Add a callback function to inform the app when a variable changes.
-  The same callback could be used to map variable labels to id's at startup.
-  This callback may be a key part of adding an automatic UI.
-- Simplify the coding of processors by having the system
-  call the instance for each variable.  This will make createing most
-  processors a matter of responding to simple requests from the system.
-  More complex processors could still be created using the current technique
-  of calling explicit functions (e.g. `register_and_get(), register_and_set()`)
-  
-
-*** Subnet scheme:
-```
-{
-    balanced_mix: {
-
-	doc: "This is a two channel balancer network.",
-
-    network: {
-		ain:    { class: port, source:merge.in0, doc:"Audio input."},
-		ain_alt:{ class: port, source.merge.in1, doc:"Alternate audio input."},
-		bal_in  { class: port, type: real,       doc:"Mix balance control." },
-				    
-		bal:    { class: balance,     in:{ in:bal_in.out } },	    
-		merge:  { class: audio_merge, in:{ in.0:ain, in.1:ain_alt } }
-		gain:   { class: audio_gain   in:{ in:merge.out, gain:bal.out } },
-	    
-		aout:   { class: port, type: audio, in:{ gain.out } }
-	  }
-    } 
-}
-```
-- Create a class description by parsing the subnet and converting 
-the 'port' instances into a variable definitions.
-
-- Port instances are just proc's that have a single variable but do not implement
-any of the processing functions.  The variables act as 'pass-through' variables
-that connect variables outside the subnet to variables inside the subnet.
-
-- The subnet itself will be held inside an 'instance_t' and will pass
-on 'exec()' calls to the internal instance processor chain.
-
-- The current flow architecture only allows static connections.
-This allows proc variables to be proxied to other proc variables.
-This doesn't scale well for processes with many variables (e.g. matrix mixer).
-For processes with many variables a message passing scheme works better
-because it allows a message to dynamically address a process
-(e.g. (set-in-channel-1-gain-to-42) 'set','in',1,'gain',42), 'set','out',4,'delay',15)
-
-Note that it would be easy to form these messages on the stack and 
-transmit them to connected processes. 
-
-* To do list:
-
-** libcw
-- Fix the time functions to make them more convenient and C++ish.
-- libcw: document basic functionality: flow, UI, Audio
-
-** Flow
-
-- Implement MIDI processors.
-- Implement flow procs for all libcm processsors.
-- Create default system wide sample rate.
-- Allow gain to be set on any audio input or output.
-- flow metering object with resetable clip indicator and audio I/O meters
-- indicate drop-outs that are detected from the audio IO system
-- allow a pre/post network before and after cross fader
-- allow modifiable FFT window and hop length as part of preset 
-- add selectable audio output file object to easily test for out of time problems
-
-- Add attributes to proc variables:
-  1. 'init' this variable is only used to initialize the proc. It cannot be changed during runtime.  (e.g. audio_split.map)
-  2. 'scalar' this variable may only be a scalar.  It can never be placed in a list.  (e.g. sine_tone.chCnt)
-  3. 'multi' this src variable can be repeated and it's label is always suffixed with an integer. 
-  4. 'src' this variable must be connected to a source.
-  5. 'min','max' for numeric variables.
-  6. 'channelize' The proc should instantiate one internal process for each input channel. (e.g. spec_dist )
-  
-- Create a var args version of 'var_get()' in cwFlowTypes.h.
-
-- add attribute list to instances: [ init_only, scalar_only, print="print values", ui ]
-- why are multiple records given in the 'args:{}' attribute?
-
-
-** UI:
-
-- Notes on UI id's:
-1. The appId, when set via an enum, is primarily for identifying a UI element in a callback switch statement.
-There is no requirement that they be unique - although it may be useful that they are guaranteed to be unique
-or warned when they are not. Their primary use is to identify a UI element or class of UI
-elements in a callback switch statement. Note that the callback also contains the uuId of the element
-which can then be used to send information back, or change the state of, the specific element which 
-generated the callback. In this case there is never a need to do a appId->uuId lookup because the
-callback contains both items.  
-
-2. UUid's are the preferred way to interact from the app to the UI because they are unique
-and the fastest way to lookup the object that represents the element.
-
-3. The 'blob' is useful for storing application information that is associated with an UI element.
-Using the 'blob' can avoid having to maintain a data structure which parallels the internal
-UI data structure for application related data.  The 'blob' can be accessed efficiently via the uuId.
-
-4. The most labor intensive GUI related accesses are changing the state of a UI element outside
-of a callback from that GUI element.  In this case it may be advantageous to store UUID's of elements
-which affect one anothers state within each others blobs.  Alternatively use 
-uiElementChildCout() and uiElementChildIndexToUuid() or uiElementChildAppIdToUuid() to 
-iterate child elements given a parent element uuid.
-
-
-- Fix crash when '=' is used as a pair separator rather than ':'.
-cwUi is not noticing when a UI resource file fails to parse correctly.
-This may be a problem in cwObject or in cwUI.
-
-- Fix bug where leaving out the ending bracket for the first 'row' div in ui.cfg
-causes the next row to be included in the first row, and no error to be generated,
-even though the resource object is invalid (i.e. there is a missing brace).
-
-- The UI needs to be better documented. Start by giving clear names
-to the various parts: Browser, UI Manager, UI Server, Application.
-Maybe describe in Model,View,Controller terms?
-
-- Document the meaning and way that id's and names/labels are used,
-and intended to be used, and found by UI. As it is they are confusing.
-
-- The UI app id map should be validated after the UI is created.
-In otherwords the parent/child pairs shoud actually exists.
-
-- Arrange the project layout so that all the UI based apps use the same ui.js.
-Currently changes and improvements to one version of ui.js cannot be automatically
-shared.
-
-- uiSetValue() should be optionally reflected back to the app with kValueOpId messages.
-This way all value change messages could be handled from one place no matter
-if the value changes originate on the GUI or from the app.
-
-- The ui manageer should buffer the current valid value of a given control
-so that the value can be accessed synchronously. This would prevent the application
-from having to explicitely store all UI values and handle all the 'value' and 'echo'
-request.  It would support a model where the UI values get changed and then
-read by the app (e.g. getUiValue( appId, valueRef)) just prior to being used.
-As it is the UI values that are on the interface cannot be accessed synchronously
-instead the app is forced to notice all 'value' changes and store the last legal value.
-(12/22: Given that the cwUi.cpp _transmitTree() function appears to the current
-value of each control to new remote WS Sessions - the value may actually already
-be available.  Examine how this works.  Is 'value' and 'attribute' like 'order'?)
-
-- Using the 'blob' functionality should be the default way for tying UI elements to program model.
-  Rewrite the UI test case to reflect this.
-
-- Add an ui::appIdToUuId() that returns the first matching appId, and then
-optionally looks for duplicates as an error checking scheme. 
-
-
-- The ui eleA[] data structure should be changed to a tree 
-because the current expandable array allows empty slots which need to be checked
-for whenever the list is iterated.  It is also very inefficient to delete from the
-eleA[] because an exhaustive search is required to find all the children of the
-element to be deleted.
-
-- UI needs a special UUID (not kInvalidId) to specify the 'root' UI element. See note in cwUi._createFromObj()
-
-
-** Audio:
-
-
-- Should a warning be issued by audioBuf functions which return a set of values:
-muteFlags(),toneFlags(), gain( ... gainA) but where the size of the dest array
-does not match the actual number of channesl?
-
-- cwAudioBuf.cpp - the ch->fn in update() does not have the correct memory fence.
-
-- Replace 24 bit read/write in cwAudioFile.cpp
-
-- Remove Audio file operations that have been superceded by 'flow' framework.
-
-
-** Socket
-- Any socket function which takes a IP/port address should have a version which also takes a sockaddr_in*.
-
-
-** Websocket
-
-- cwWebsock is allocating memory on send().
-- cwWebsock: if the size of the recv and xmt buffer, as passed form the protocolArray[], is too small send() will fail without an error message.
-This is easy to reproduce by simply decreasing the size of the buffers in the protocol array.
-
-## Object
-- Look at 'BUG' warnings in cwNumericConvert.h.
-- cwObject must be able to parse without dynamic memory allocation into a fixed buffer
-- cwObject must be able to be composed without dynamic memory allocation or from a fixed buffer.
-
-
-- Clean up the cwObject namespace - add an 'object' namespace inside 'cw'
-
-- Add underscore to the member variables of object_t.
-
-- numeric_convert() in cwNumericConvert.h could be made more efficient using type_traits.
-
-- numeric_convert() d_min is NOT zero, it's smallest positive number, this fails when src == 0.
-  min value is now set to zero.
-
-- Change file names to match object names
-
-- Improve performance of load parser. Try parsing a big JSON file and notice how poorly it performs.
-
-
-** Misc
-- logDefaultFormatter() in cwLog.cpp uses stack allocated memory in a way that could easily be exploited.
-
-- lexIntMatcher() in cwLex.cpp doesn't handle 'e' notation correctly. See note in code.
-
-- thread needs setters and getters for internal variables
-
-- change cwMpScNbQueue so that it does not require 'new'.
-
-- (DONE) change all NULL's to nullptr
-- (DONE) implement kTcpFl in cwTcpSocket.cpp
-
-** Documentation
-
-*** UI Control Creation Protocol
-
-The UI elements have four identifiers:
-
-uuId  - An integer which is unique among all identifiers for a given cwUi object.
-appId - A constant (enumerated) id assigned by the application. Unique among siblings.
-jsId  - A string id used by Javascript to identify a control. Unique among siblings.
-jsUuId - An integer which is unique among all identifers for the browser representation of a given cwUi object.
-
-The 'jsId' is selected by the application when the object is created.
-The 'jsUuId' is generated by the JS client when the UI element is created.
-The 'uuId' is generated by the UI server when the JS client registers the control.
-The 'appId' is assigned by the UI server when the JS client regsiters the control.
-
-Client sends 'init' message.
-Server sends 'create' messages.
-Client sends 'register' messages.
-Server send' 'id_assign' messages.
-
-*** sockaddr_in reference
-
-
-    #include <netinet/in.h>
-
-    struct sockaddr_in {
-        short            sin_family;   // e.g. AF_INET
-        unsigned short   sin_port;     // e.g. htons(3490)
-        struct in_addr   sin_addr;     // see struct in_addr, below
-        char             sin_zero[8];  // zero this if you want to
-    };
-
-struct in_addr {
-    unsigned long s_addr;  // load with inet_aton()
-};
-
-
-
-*** Development Setup
-
-0)
-```
-  sudo dnf install g++ fftw-devel alsa-lib-devel libubsan
-```
-1) Install libwebsockets.
-
-```
-    sudo dnf install openssl-devel cmake
-    cd sdk
-    git clone https://libwebsockets.org/repo/libwebsockets
-    cd libwebsockets
-    mkdir build
-    cd build
-    cmake -DCMAKE_INSTALL_PREFIX:PATH=/home/kevin/sdk/libwebsockets/build/out ..
-```
-
-2) Environment setup:
-
-    export LD_LIBRARY_PATH=~/sdk/libwebsockets/build/out/lib
 
 ### Raspberry Pi Build Notes:
 
@@ -441,35 +11,9 @@ struct in_addr {
     sudo make install
 
     apt install libasound2-dev
-
-
     
-### Flow Notes:
 
-
-- When a variable has a variant with a numeric channel should the 'all' channel variant be removed?
-
-- Check for duplicate 'vid'-'chIdx' pairs in var_regster().
-  (The concatenation of 'vid' and 'chIdx' should be unique 
-
-
-- When a proc. goes into exec state there should be a guarantee that all registered variables
-can be successfully read. No error checking should be required.
-
-(How about source variables? these can never be written.)
-
-- Make an example of a repeating input port.  For example a mixer than takes
-audio input from multiple processors.
-
-- Make an example of a proc that has a generic port which allows any type, or a collection of
-specific types, to pass through. For example a 'selector' (n inputs, 1 output) or a router
-(1 signal to n outputs)
-
-- Create a master cross-fader.
-
-DONE:  Add a version of var_register() that both registers and returns the value of the variable.
-
-### Flow Instance Creation:
+### Flow Instance Creation (Original Implementation):
 
 0. Parse the 'in' list and create any 'mult' variables whose 
 'in-var' contains an integer or underscore suffix. See
@@ -941,311 +485,18 @@ resolvable without more information.
 
 ### TODO:
 
-- allow labels to be assigned to MIDI devices to avoid having to edit
-  MIDI device names in the program cfg.
-
-- flow:recd_merge and recd_copy() is extremely dangerous.  It is easy to end up merging incompatible record types into the
-  same output.  If bitwise copying is used the record types should be verified to be identical. See 'recd_extract'
-  for an example of working with recd_type to do a safe field by field copy.
-
-- Log level should be settable for each proc from the network.
-
-- Trigger variables should allow multiple incoming connections.  Review the 'fan-in' design notes.
-  'fan-in' may be a worth implementing in general.
-
-- Proc's need their own log that scrolls inside them.  This would solve the problem of very active logs
-  scrolling slower logs out of the window.
-
-
-- CRASH BUG: if the destination of an 'out:{}' connection (e.g. a connection to an earlier proc. in the exec. chain)
-  is already connected the network parser crashes. This is easy to reprodue by
-  having two procs with out:{} statements route to the same destionation variable.
-
-- In general any proc which generates a 'record' output should include
-  all outputs in the record, and this should be the only out.
-  If this rule is not followed - in most of these cases all non-record fields run the risk
-  of being overwritten in a single cycle if the output value changes
-  multiple times in a cycle cycle.
-
-- All variables must have values after the custom instantiation phase.
-  If a variable is fed from a processor later in the connection chain via an 'out' statement
-  it is necessary to give the variable a dummy value to allow it to pass the
-  post instantiation check which verifies that all variables have a valid value.
-  This is particularly a problem for 'record' type variable which are connected
-  via 'out' statements because there is no easy way to specify a dummy record value.
-  Consider add a 'defer_value_check' attribute which will defer value
-  checking until the net is completely instantiated - or at least not bother
-  with the post proc instantiation value check.
-  See cult_caw.cfg ex_07_rt for an example where the 'reset_ctl' was moved
-  below the score followers to work around this problem.
-
-- It is possible for a caw program cfg. to have multiple programs with the same name.
-
-- When a cfg variable is given a list-of-lists as an 'args' value then special processing occurs see _var_channelize()
-  this produces unexpected results when a list of lists is given to define a 'label-value list'
-  'Flow' object.  Which is better to special case the current use of list-of-list  (whatever that is?)
-  or using the unusual 'list:[]' format required by 'label-value list' object.
   
 
-- Notice that when proc's are instantiated output record variables use
-  a copy-and-pasted function called _alloc_recd_array() and then call
-  var_regster_and_set() on the output variable. These two operations could be combined.
-
-- It might be useful to include 'allocRecdN' in 'rbuf_t' this would allow proc instances
-  which process records to know what the max size of the incoming record array is
-  at instantiation time - this would be a way to pass a hint to proc's that receive
-  records as input as to the maximum expected value of rbuf_t.recdN.
-
-- Is it possible to create a processor where the output ports are defined by a cfg contained as part of the
-  processor instance description?  The current solution is the 'msg_table' approach. Can this approach
-  be improved so that it is codeless - as opposed to having to create a processor in proc_dict_cfg.
-  Techniques used by User-defined-procs might offer one path - the idea being to create a class_desc
-  at compile time.
-
-- Check for duplicate field labels. Particularly when using a base record.
-  It's easy to declare a field named 'midi' and then inherit a record
-  with a field named 'midi' - this is a crash bug.
-  
-
-- DONE: Why doesn't the C7 on the downbeat of meas. 11 sound? (... it does but is quiet due to velocity table)
-- DONE: Allow setting the location of the score player.  This should also reset the sampler and voice control.
-- DONE: The voice ctl should respond to all-notes-off message and reset each sampler channel.
-
-- Log updates:
-  + Consider the ability to set colors to the log output based on the log level value.
-  + Allow printing to the console from the CAW app during idle time.
-  + Log doesn't work for types that do not call var_set().  
-
-- Variable value list updates:
-  - Currently lists are created and destroyed by the proc.
-    (The proc should continue to create the list, but the variable should be responsible for destroying it.
-     This will mean that 'variable_t.value_list' will no longer be able to be const.
-     
-  - Variables with lists can be any type and there is no checking that the list value matches the variable type.
-    (The list value type and the variable value type should be verified as compatible when the list is assigned to the variable.)
-    
-  - The proc receives list changes as uint's and then must manualy lookup the value and then set the value of the variable - see 'gutim_ps'.
-    (This should all be automatic.  The list value should be automatically dereferenced the variable updated without having to do any special handling in the proc.)
-
-    + In cwFlowTypes.h add:
-       - set_var_from_list( var, index ) - this must be implemented in terms of set_var(var,value) so that the value goes through the normal value update pipeline.
-       - get_var_list_index( var )  - return the index of the current value from the list
-
-       - Similar functions will need to be added to cwIoFlowCtl,cwFlow,cwFlowNet to allow the UI to interact in terms of list indexes.
-        
-    
-  - The default value of a list is always the element at index 0.
-    (A default value should be set when the list is created - and it should be any value in the list.)
-
-  - When a list value is set via a connection the value could be optionally validated in the list.
-
-  - The existence of a valid 'variable_t.value_list' could be enough to indicate that a UI element should be list widget
-    without having to also set the `ui:{ type:list }` field.
-
-  - Notes:
-    + There is no way for an external proc to know the contents/length of the list and therefore it would never make sense
-      to expose the list index as a potential input port.  This kind of thing would be better handled via a 'list' proc.
-      where the list is internal to the proc.
-
-    +  
 
 
-- All outputs must be set via var_set() call, otherwise proc's that rely on noticing changed variables
-will not work.  For example the logging and the 'print' proc does not work for record,midi,audio because
-in general these types are not set via calls to var_set().  Implementing this might mean that
-abuf_t,mbuf_t,rbuf_t would need to be instantiated automatically, thereby forcing the
-proc programmmer to use var_set() and var_get() to access their values.  This might also be
-a good thing because it would allow the buffers to be automatically emptied (e.g. setting
-rbuf_t->recdN to 0) by the system thereby relieving the proc programmer from having to remember to do it.
-
-
-- variable change notification can work for midi,audio, and record by simply noticing that the size of the
-  buffer is not zero.
-
-
-- The following two tasks need more consideration. As it is variables assume that aggregate
-types are destroyed on exit.  This is very convenient. Consider using 'symbols' to represent
-strings, consider adding a 'const-string' type to eliminate memory allocation of string assignment
-  - Memory allocation of all non-integral types should be the responsibility of the the processor instances
-  this includes strings.  Change the built-in string type to be a const string and
-  make it the responsibility of the proc instances with 'string' var's to handle
-  alloc and dealloc of strings.
-
-  - String assignment is allocating  memory:
-     See: `rc_t _val_set( value_t* val, const char* v ) cwFlowTypes.cpp line:464.`
-     Consider using a memory arena to mitigate this problem.
-
-- DONE Presets do not work for hetergenous networks.
-
-- Add a proc class flag: 'top-level-only-fl' to indicate that a processor
-cannot run as part of a poly. Any processor that calls a global function,
-like 'network_apply_preset()' must run a the top level only.
-
-- DONE: Consider eliminating the value() custom proc_t function and replace it by setting a 'delta flag' on the
-variables that change.   Optionally a linked list of changed variables could be implemented to
-avoid having to search for changed variable values - although this list might have to be implemented as a thread safe linked list.
-
-- DONE: value() should return a special return-code value to indicate that the
-value should not be updated and distinguish it from an error code - which should stop the system.
-Note: This idea is meaningless since variables that are set via connection have no way to 'refuse'
-a connected value - since they are implemented as pointers back to the source variabl.e
 
 - The 'two slot' approach to setting variable no longer seems useful.
 The only reason not to eliminate it is to possibly use it as a way to test local values
 before they are set, but it isn't clear if this actually useful.  Consider the case
 of setting min/max for numeric values - could it be used there?
 
-
-- DONE: Allow proc's to send messages to the UI. Implementation: During exec() the proc builds a global list of variables whose values
-should be passed to the UI. Adding to the list must be done atomically, but removing can be non-atomic because it will happen
-at the end of the network 'exec' cycle when no proc's are being executed.
-See cwMpScNbQueue push() for an example of how to do this.
-
 - Allow min/max limits on numeric variables.
 
-- DONE: Add a 'doc' string-list to the class desc.
-
-- Add 'time' type and 'cfg' types to a 'log:{...}' stmt.
-
-- print_network_fl and print_proc_dict_fl should be given from the command line.
-  (but it's ok to leave them as cfg flags also)
-  
-- Add 'doc' strings to all proc classes.
-
-- Add 'doc' strings to user-defined proc data structure.
-
-- DONE: It is an error to specify a suffix_id on a poly network proc because the suffix_id's are generated automatically.
-  This error should be caught by the compiler.
-  
-- How do user defined procedures handle suffix id's?
-
-- DONE: Add a 'preset' arg to 'poly' so that a preset can be selected via the owning network.
-  Currently it is not possible to select a preset for a poly.
-
-- DONE: Automatic assignment of sfx_id's should only occur when the network is a 'poly'.
-  This should be easy to detect.
-  
-- DONE: If a proc, inside a poly,  is given a numeric suffix then that suffix will
-overwrite the label_sfx_id assigned by the system.  This case should be detected.
-
-- When a var value is given to var_create() it does not appear to channelize the
-var if value is a list.  Is a value ever given directly to `var_create()`?
-Look at all the places `var_create()` is called can the value arg. be removed?
-
-- var_channelize() should never be called at runtime.
-
-- DONE: Re-write the currawong circuit with caw.
-
-- Finish audio feedback example - this will probably involve writing an `audio_silence` class.
-  Update: there is now an audio_silence class.
-
-- Issue a warning if memory is allocated during runtime.
-
-- cwMpScNbQueue is allocating memory.  This makes it blocking.
-  Update: 3/25 - this queue is not currently used
-
-- Check for illegal variable names in class descriptions.  (no periods, trailing digits, or trailing underscores)
-
-- DONE: Check for unknown fields where the syntax clearly specifies only certain options via the 'readv()' method.
-
-- Verify that all variables have been registered (have valid 'vid's) during post instantiation validation.
-  (this is apparently not currently happening)
-  
-- How is the number of channels for a given variable determined?  Is it the widest (max channel) preset
-  that is encountered during preset compilation?  What if a variable has a wide preset but it is not
-  initially applied - does that mean an uninitialized channel is just sitting there? (... no i think
-  the previous channel is duplicated in var_channelize())
-
-- The IO system can use audio files as audio devices.  Document this!
-
-- UI Issues:
-    + When UI appIdMap[] labels do not match ui.cfg labels no error is generated. All appIdMap[] labels should be
-      validated to avoid this problem.
-
-    + The reliance on using UUId to build UI's should be eliminated. It is very clunky.
-
-    + UI elements should form proper tree's where elements know their children. As it is the links only go up the tree
-      from child to parent - searching down the tree is not possible.
-
-    + Disabled "disp_str" should turn grey.
-
-    + mult var's with more than 3 values should be put into a list or use a 'disclose' button
-
-    + mult proc's with more than 3 instances should be put into a list or use a 'disclose' button
-
-    + add a UI label to the flow var description
-
-
-
-- Class presets cannot address 'mult' variables. Maybe this is ok since 'mult' variables are generally connected to a source?
-... although 'gain' mult variables are not necessarily connected to a source see: `audio_split` or `audio_mix`.
-Has this problem been addressed by allowing mult variables to be instantiated in the 'args' statement?
-
-- Write processor development documentation w/ examples.
-  + Write the rules for each implementing member functions.
-    
-
-- flow classes and variable should have a consistent naming style: camelCase or snake_case.
-
-
-- Variable attributes should be meaningful. e.g. src,src_opt,mult,init, ....
-  Should we check for 'src' or 'mult' attribute on var's?
-  (In other words: Enforce var attributes.)
-  + A variable with the 'init' flag should never be changed at runtime.
-
-- How much of the proc initialization implementation can use the preset compile/apply code?
-
-- Reduce runtime overhead for var get/set operations.
-  
-
-- Should the `object_t` be used in place of `value_t`?
-
-
-- log: 
-    + should print the values for all channels - right now it is only
-	printing the values for kAnyChIdx
-	+ log should print values for abuf (mean,max), fbuf (mean,max) mag, mbuf
-
-- Audio inputs should be able to be initialized with a channel count and srate without actually connecting an input.
-  This will allow feedback connections to be attached to them at a later stage of the network 
-  instantiation.
-
-- The signal srate should determine the sample rate used by a given processor.
-The system sample rate should only be used a default/fallback value.
-Processors that have mandatory signal inputs should never need to also have an srate parameter.
-Consider a network with a variable sample rate.
-  
-- Implement user-defined-proc preset application.	
-
-- Implement the var attributes and attribute checking.
-
-- Port 'cm' and 'hum' processors.
-
-- Implement Linux audio plugins loading
-
-- Implement dynamic loading of procs.
-
-- Implement a debug mode to aid in building networks and user-defined-procs (or is logging good enough)
-
-- DONE: Implement multi-field messages.
-
-- Implement user defined data types.
-
-- Implement matrix types. ... pick a library.
-
-- Add a 'trigger' data type. The 'kAllTId' isn't really doing anything.
-Perhaps this  could be a 'symbol' data type?
-
-- There should be special logging macros inside procs that automatically log the instance name.
-  Likewise there should be special cwLogErrorProc(rc,proc), cwLogErrorVar(rc,var) to automatically report the source of the error.
-
-- Look more closely at the way to identify an in-stmt src-net or a out-stmt in-net.
-It's not clear there is a difference between specifying  `_` and the default behaviour.
-Is there a way to tell it to search the entire network from the root? Isn't that 
-what '_' is supposed to do?
-
-- cwAudioFile cannot convert float or double input samples to 24 bit output samples
-See audiofile::writeFloat() and audiofile::writeDouble().
 
 
 Host Environments:
@@ -1433,8 +684,73 @@ in the entire graph occur in a single thread and therefore do
 not need to take multi-thread precautions - at least relative
 to other _caw_ based execution.
 
-Records
+Logging
 -------
+
+Even if the log is not yet instantiated calls to the logg macros (e.g. cwLogError(), cwLogWarning() ...)
+should at least print to the console.  This allows the log to be used by the application
+for parsinging the logs own user configuration parameters.
+
+The log can be configured to use an internal non-blocking mulit-producer, single-consumer queue.
+In this configuration all messages are initially stored in the queue and only
+forwarded to the log output during a later call to `log::exec()`.  This avoids
+the problem of the logging threads from blocking on the system locks which protects `stdout`.
+
+```
+log: { flags:[ `date_time`,      // Include date and time of each log call in the log output
+               `file_out`,       // Write the log to the file named below in 'log_filename'.
+			   `console`,        // Log to the system console.
+			   `overwrite_file`, // If set overwrite the log file if it exists, otherwise the file name will be versioned to prevent over-writing.
+			   `skip_queue`      // Do not use the internal queue. Send all log messages directly to the output.
+			   ], 
+       level:debug,              // Set the minimum log severity level: debug, info,warn,error,fatal
+	   log_filename:"log.txt",   // Log filename (only used if 'overwrite_file' is set.
+	   queue_blk_cnt:16,         // Count of blocks in the internal queue
+	   queue_blk_byte_cnt:4096 } // Size of each block in the internal queuue
+```
+
+Proc Instance Logging
+---------------------
+
+Here is a complete proc instance log cfg.
+
+```
+log: { 
+    
+	   // level sets the overall verbosity from calls to proc_log_msg() 
+	   // and the associated proc_error(),proc_debug(), ... macros
+       level: debug,info,error,fatal
+	   
+	   // 'verbosity' controls message detail from variable logging
+       verbosity:0=silent,  // turn off logging
+                 1=minimal, 
+				 2=summary, 
+				 3=all, 
+				 
+       flags:[
+		 all,   // log all proc. variables during initialize and runtime
+		 init   // log all proc. variables at initialization 
+	   ]
+	   
+	   // log specific proc. variables at initialization and runtime
+       varL:[ 
+		  'my_var'  // match label, 
+		  'my_var0' // match label and sfxid 
+		  ] 
+		  
+	 }
+```
+
+Specific variables are marked for logging based on the proc inst `log:{}` statement.
+The logging then actually occurs in `proc_exec()` following execution of the proc custom exec function.
+Variables whose changes can be tracked by var_set() are noticed and marked for output.
+Variables that are buffers (abuf,fbuf,mbuf,rbuf) are output if they contain non-zero elements.
+All other variable types are logged on every cycle.
+
+
+
+Records Data Type
+------------------
 
 The primary reason to use a 'record' data type is to allow multiple
 data values to be transmitted during a single cycle and be received as
@@ -1481,7 +797,7 @@ make it clear that the two values belong together in a way
 that two input variables may not.
 
 Finally, records are also very efficient. Given that the field index is
-computed in advance setting and getting the field variable
+computed in advance (See `recd_type_field_index()`)setting and getting the field variable
 is very fast.  As mentioned above transmitting a record avoids the overhead
 of notifying receiving processors of every new value. The
 receiving processor is only notified that the record
@@ -1495,42 +811,112 @@ For an example of this see the `vel_table` implementation.
 
 Note that record field values may not be changed in place because
 this would change the value for all other processors that
-receive the record.  Incoming records must therefore be
+receive the record.  Incoming records fields must therefore be
 copied if they are changed.
+
+Note that it can be necessary to refer to a specific record data type
+as used by another processor.  There two ways to do this:
+1. If the record is explicitely defined in a proc class description
+then it can be referred to by `"<proc_class>.<var_name>"` where
+ever a record format is required.
+2. The record may be defined and labelled in a network `records:{...}` statement
+and then referred to by `"<label>"` where ever a record format is
+required in a proc. instance statement.
+
+See test/test.cfg `test_recd_registry` for examples of both of these uses.
 
 Variable Change Notification
 ----------------------------
-Processors are not directly notified when one of their connected variables changes.
-This is the case because _caw_ does not implement a 'message' or 'event'
-propagation scheme.  When an 'input' variable changes the processor which owns
-it is not informed of the change.  This limitation exists to prevent the need
-for a processor to implement a thread-safe message handling scheme - since it is
-possible that variable updates would come from concurrent threads executing
-the processors to which precede it in the graph.
+Processors are not *directly* notified when one of their connected
+(a.k.a. input or destination) variables changes.  This is the case
+for at least two reasons. First _caw_ does not implement a 'message' or 'event' propagation
+scheme.  This limitation exists to prevent the need for a processor to
+implement a thread-safe message handling scheme - since it is possible
+that variable updates would come from concurrent threads executing the
+processors which precede the destination proc. in the graph. 
 
-By default if a processor needs to notice
-when an input variable changes it needs to cache the value and check
-if the value has changed on the next execution cycle.  For a processor with
-many rarely changing variables this can be both messy and wasteful since it is possible
-that most of the variable will not change on any given execution cycle.
+Second there is no low cost, automatic, method of noticing that a
+variable value changed.  The only practical way to do this would be to
+rely on the programmer to remember to notify the system that a
+variable value changed through some function call.  This seems error
+prone since the processor is likely to work in every way but would
+simply fail to notify downstream processors that the value changed.
 
-To handle this case a variable change notfication scheme is built into the system.
+If a processor really needs to notice when an input variable value
+actualy changed it needs to cache the value and check if the value has
+changed on the next execution cycle.  For a processor with many rarely
+changing variables this can be both messy and wasteful since it is
+possible that most of the variable will not change on any given
+execution cycle.
+
+To help handle this problem a variable change notfication scheme is built into the system
+which notices when a variable *may* have changed. The system doesn't do 
+any check, no matter the type of the variable, to see that it really did 
+change value.  Instead it notices certain function calls and meta values that indicate
+that the value may have changed. This scheme tends toward over reporting so
+it is unlikely to miss a case where the value did change, but may report 
+extra instances where the value didn't in fact change.
+
+All variable notifications happen through a call to the destination proc's `notify()` function.
+The call occurs just prior to, and in the same thread, as the destination proc's
+`exec()` function.  See `proc_notif()`.
+
+The class description of a destination variable must be marked with the `notify` flag
+in order to receive notification calls.
+
+To help handle this problem a variable change notfication scheme is built into the system.
 When a variable description is marked with the 'notify' tag it is placed on
-an internal list (proc_t.modVarMapA[]).  Just prior to the processors instance
+an internal list (`proc_t.modVarMapA[]`).  Just prior to the processors instance
 exec() cycle a call to proc_notify() will result in a callback to the
-instances notify() function for every marked variable that was modified since
+instances notify() function for every marked variable that *may* have been modified since
 the last execution of the instance.  Note that these callbacks happen
 from a single thread, the same one that will subsequently call the exec() function.
 
-The calls to notify() occur in the same order that the variables changed in time,
-however there will be only one callback per variable.  If a variable changed
-multiple times during the cycle only the last value will be recorded.
-This limitation however exists for all processor input variables whether they
-use the notification scheme or not.
 
-Note that when the value of a variable that is marked for notification is changed
-inside the notify() callback of the proc with owns it a new notification will not be
-triggered.  A processor will never trigger a notification on any of it's own variables.
+Source variables  fall into one of three notification classes depending on their
+value type. 
+
+1. Auto-notify: These variable must use the `var_set()` mechanism to
+change the value of the variable.  Variables in this category include
+the numeric types and 'string'. `value_can_auto_notify()` returns true
+for values that support this notification scheme.  Source variables in
+this class use the `proc_t.modVarMapA[]` scheme to notify the
+destination proc that the source valu may have changed.  Destination
+variables fed by source variables in this category are placed in the
+`modVarMapA[]` of their owning proc in `var_schedule_notification()` -
+which is called from within the `var_set()` procedure on the source
+variable. 
+
+2. Buffers : These variables act as containers for their underlying
+values `value_supports_an_element_count()` returns true for buffer
+variable types. Variables in this category are: `abuf,fbuf,mbuf,rbuf`.
+A change is noticed on these variables by looking at the count of
+elements in their container.  If the count is non-zero (See
+`value_has_elements_now()`) then the values are considered changed .
+
+Destination variables, marked for notification, that are connected to 
+this class of source variable are placed in the `manualNotifyVarA[]` 
+of the destination proc during network creation. The destination proc scans this list
+for just prior to each exec. cycle (See `proc_notify()`) and
+signals notification on every variable whose source variable
+has non-zero elements. Note that for `abuf` and `fbuf` variable this almost
+always means  notificaiton triggers on every cycle.
+
+3. Everthing else: These variables use the same mechanism as the 
+'Buffer' variables but will trigger on every cycle.
+
+Notification occurs at two different times: Prior to entering runtime
+after entering runtime.  In many cases there may be little change in
+state between just prior to entering runtime
+(`proc->ctx->isInRuntimeFl==false`) and the first cycle
+(`proc->ctx->isInRuntimeFl==false && proc->ctx->cycleIndex==0`).
+Nonetheless notificaiton may occur for the same variables at both
+times, even though the value of the source variable may not have
+changed.
+
+To avoid doing costly, one time setup, notice the value of `proc->ctx->isInRuntimeFl`
+and perform this setup prior to entering runtime.
+
 
 Optional Variables
 -------------------
@@ -1569,8 +955,8 @@ Exec:
    (have empty playback and full record buffers) the thread unblocks.
    
 ### MIDI
-    cwMidiDevice uses a thread to wait for incoming MIDI messages via poll(). (See cwMidiDevice.cpp:_thread_func())
-    - Incoming MIDI messages are fed to the IO callback via cwIo::_midi_callback().
+    cwMidiDevice uses a thread to wait for incoming MIDI messages via poll(). (See `cwMidiDevice.cpp:_thread_func()`)
+    - Incoming MIDI messages are fed to the IO callback via `cwIo::_midi_callback()`.
     
 
 ### Internal Server Threads
@@ -1586,7 +972,7 @@ Exec:
     - Thread machine hosted threads which block with a sleep call.
     
 #### Sockets
-    - Uses a thread machine based thread to wait for incoming socket events.  (See cwIo.cpp:_socketCallback())
+    - Uses a thread machine based thread to wait for incoming socket events.  (See `cwIo.cpp:_socketCallback()`)
     
 #### Serial
     - Based on cwSerialPortSrv which maintains it's own internal thread (See cwSerialPortSrv::threadCallback()) which blocks on the serial port file descriptors
@@ -1679,7 +1065,7 @@ example_2:
 
 ---
 
-
+```
 example_3: {
    
   network: {
@@ -1727,7 +1113,7 @@ example_3: {
 
   }
 }
-
+```
 
 1. If a poly preset processor label does not have a numeric suffix then it is applied to all instances.
 The alternative to this rule is to use an '_' suffix to imply 'all' processors of the given name.
@@ -1887,7 +1273,7 @@ Preset dictionaries have the following grammar:
 <preset-dict> -> <preset-label> : { <proc-label>: (<proc-preset-label> | <value-dict>) }
 
 <value-dict> -> { <var_label>:(<literal> | [ <literal>* ])
-``
+```
 
 A preset is a named ('<preset-label>') dictionary.
 The pairs contained by the dictionary reference processors (<proc-label>).
@@ -1943,12 +1329,365 @@ Given that the system isn't currently limited in this way maybe it doesn't matte
 - Processor instance presets have not been implemented.
 - Preset application request deferrment has not been implemented.
 
-Variable Modifcation Tracking
-------------------------------
 
 
+Original Design Notes: OBSOLETE:
+================================
+* Flow Variables Class
+** Attributes 
+  + type: real,int,string,audio,spectrum,enum
+  + flags: attribute flags
+    - src: This variable must be connected.
+    - multi: This variable may be instantiated multiple times
+    - fan_in: This variable allows multiple incoming connections.
+  + value:
+    - real,int { min,max,value,center,step }
+    - enum [ list of (id,label) pairs ]
+    
+  + doc: documentation string  
 
-The only thread that can write a variable value is the thread executing the variables proc.
+  + max_multi: max count of instantiations due to multiple connections
+  + min_multi: min count of instantiations due to multiple connections
+
+* Flow Proc Class
+** Attributes
+  + doc: documentation string
+  + sub_proc:
+    - sub_proc_cnt:<int>  set an absolute sub_proc_cnt
+    - sub_proc_cnt_min:   
+    - sub_proc_cnt_max:
+      
+    - sub_proc_var
+      + label
+      + flags: [ audio_chs, multi_chs, fan_in_chs ]
+
+      Calculate the sub_proc_cnt based on the count of mult's,fan_ins, and audio channels.
 
 
+    
+* Var Map:
 
+#+BEGIN_SRC c
+  typedef struct variable_str
+  {
+
+    variable_str* var_link; // instance_t varL links 
+  } variable_t;
+
+  typedef struct proc_desc
+  {
+    var_desc_t* varDescA; // description of each base variable
+    unsigned    varDescN; 
+
+  } proc_desc_t;
+
+  typedef struct varBase_str
+  {
+    char*       label;      // label assigned to this 'mult'
+    unsigned    multIdx;    // mult index 
+    variable_t* baseVar;    // all variables have a base instance (chIdx=kAnyChIdx)
+    unsigned    subProcN;   // count of times this variable is replicated to specialize for a given subprocess
+    variable_t* subProcA[ subProcN ]; // 
+  } varBase_t;
+
+  typedef struct varMap_str
+  {
+    unsigned   multN;  // count of times this variable is replicated based on multiple incoming connections to the same input variable label.
+    varBase_t* multA[ multN ] // pointer to each base variable
+  } varMap_t;
+
+  typedef struct instance_str
+  {
+    variable_t* varL;  // variable linked list: list of all variable instances
+    unsigned maxVId; // maximum application supplied vid. In general maxVId+1 == proc_desc_t.varDescN
+    varMap_t varMap[ maxVId ]; // maps an application vid to a list of variable instances
+  } instance_t;
+
+  
+
+#+END_SRC
+
+OBSOLETE Development Plans
+===========================
+** Flow processor 'multi' processor:
+   Add the ability for a processor to expand the number of variables based on
+   incoming connections. 
+   - Variables with this capability must have the 'multi' attribute in the class description.
+   - The new variables will be named by adding a suffix in the connection command.
+     e.g. in:{ in.a:out.foo } connect the output out.foo to a new variable instantiated
+     on the the local variable description 'in'.
+   - The new variable may then be addressed by referring to 'in.a'.
+   - The proc instance may then ask for a count of variable instances for a given base varaible.
+     var_get_multi_count( ...,'in') and address them by var_get( ...,'in',multi_idx).
+   - Note that once a variable is given the 'multi' attribute the only way for the instance
+     to access the variable is by supplying the 'multi' index since the variable
+     label alone will not be adequate to select among multiple instances.
+   
+     
+** Flow processor Fan-in capability:
+    Add the ability for a processor variables to support multiple incoming connections.
+   
+   - Fan-in capability must be enabled in the processor class description with the 'fan-in' attribute.
+   - The array of variables associated with fan-in connections will be
+     addressed via "<label>.<integer>".
+   - The count of inputs to a fan-in varaible instance can be accessed via: var_fan_in_count( ...,var_label)
+   - The variable instance associated with each fan-in connection can be accessed with
+     var_get( ...,'in',fan_in_idx).
+   - Note that once a variable is given the 'fan-in' attribute a fan_in_idx must be used to access it.
+
+    
+
+     
+
+** Add MIDI processors - this may be complicated by cross fading scheme.
+   - maybe cross-faded proc's should be all placed in a 'sub-net' and
+   only those processes would then be cross faded.
+
+   
+** Add subnets. (see outline below)
+** Add auto-UI (this will require a separate app).
+
+
+* Functionality
+** libcw:
+
+- Remove dependency on locally built websockets library.
+
+- Remove applications from the libcw folder and put them in their
+own folders. (breakout libcw from application / reorganize project)
+Allow ui.js to be shared by all apps.
+
+
+** UI:
+- Add support for custom controls
+- Document the UI resource file format.
+- Document the UI client/server protocol.
+1. The message formats to and from the server and the javascript client.
+2. When the messages are sent.
+
+- UI: Add an option to print the UI elment information as they are created.
+This is a useful way to see if id maps are working.
+Print: ele name, uuid, appId and parent name, uuid, appId
+
+
+** Flow:
+
+- Create automatic UI for proc's.
+- Create the ability to script sub-networks.
+- Create true plug-in architecture - requires a C only interface.
+- Add a callback function to inform the app when a variable changes.
+  The same callback could be used to map variable labels to id's at startup.
+  This callback may be a key part of adding an automatic UI.
+- Simplify the coding of processors by having the system
+  call the instance for each variable.  This will make createing most
+  processors a matter of responding to simple requests from the system.
+  More complex processors could still be created using the current technique
+  of calling explicit functions (e.g. `register_and_get(), register_and_set()`)
+  
+
+*** Subnet scheme:
+```
+{
+    balanced_mix: {
+
+	doc: "This is a two channel balancer network.",
+
+    network: {
+		ain:    { class: port, source:merge.in0, doc:"Audio input."},
+		ain_alt:{ class: port, source.merge.in1, doc:"Alternate audio input."},
+		bal_in  { class: port, type: real,       doc:"Mix balance control." },
+				    
+		bal:    { class: balance,     in:{ in:bal_in.out } },	    
+		merge:  { class: audio_merge, in:{ in.0:ain, in.1:ain_alt } }
+		gain:   { class: audio_gain   in:{ in:merge.out, gain:bal.out } },
+	    
+		aout:   { class: port, type: audio, in:{ gain.out } }
+	  }
+    } 
+}
+```
+- Create a class description by parsing the subnet and converting 
+the 'port' instances into a variable definitions.
+
+- Port instances are just proc's that have a single variable but do not implement
+any of the processing functions.  The variables act as 'pass-through' variables
+that connect variables outside the subnet to variables inside the subnet.
+
+- The subnet itself will be held inside an 'instance_t' and will pass
+on 'exec()' calls to the internal instance processor chain.
+
+- The current flow architecture only allows static connections.
+This allows proc variables to be proxied to other proc variables.
+This doesn't scale well for processes with many variables (e.g. matrix mixer).
+For processes with many variables a message passing scheme works better
+because it allows a message to dynamically address a process
+(e.g. (set-in-channel-1-gain-to-42) 'set','in',1,'gain',42), 'set','out',4,'delay',15)
+
+Note that it would be easy to form these messages on the stack and 
+transmit them to connected processes. 
+
+* To do list:
+
+** libcw
+- Fix the time functions to make them more convenient and C++ish.
+- libcw: document basic functionality: flow, UI, Audio
+
+** Flow
+
+- Implement MIDI processors.
+- Implement flow procs for all libcm processsors.
+- Create default system wide sample rate.
+- Allow gain to be set on any audio input or output.
+- flow metering object with resetable clip indicator and audio I/O meters
+- indicate drop-outs that are detected from the audio IO system
+- allow a pre/post network before and after cross fader
+- allow modifiable FFT window and hop length as part of preset 
+- add selectable audio output file object to easily test for out of time problems
+
+- Add attributes to proc variables:
+  1. 'init' this variable is only used to initialize the proc. It cannot be changed during runtime.  (e.g. audio_split.map)
+  2. 'scalar' this variable may only be a scalar.  It can never be placed in a list.  (e.g. sine_tone.chCnt)
+  3. 'multi' this src variable can be repeated and it's label is always suffixed with an integer. 
+  4. 'src' this variable must be connected to a source.
+  5. 'min','max' for numeric variables.
+  6. 'channelize' The proc should instantiate one internal process for each input channel. (e.g. spec_dist )
+  
+- Create a var args version of 'var_get()' in cwFlowTypes.h.
+
+- add attribute list to instances: [ init_only, scalar_only, print="print values", ui ]
+- why are multiple records given in the 'args:{}' attribute?
+
+
+** UI:
+
+- Notes on UI id's:
+1. The appId, when set via an enum, is primarily for identifying a UI element in a callback switch statement.
+There is no requirement that they be unique - although it may be useful that they are guaranteed to be unique
+or warned when they are not. Their primary use is to identify a UI element or class of UI
+elements in a callback switch statement. Note that the callback also contains the uuId of the element
+which can then be used to send information back, or change the state of, the specific element which 
+generated the callback. In this case there is never a need to do a appId->uuId lookup because the
+callback contains both items.  
+
+2. UUid's are the preferred way to interact from the app to the UI because they are unique
+and the fastest way to lookup the object that represents the element.
+
+3. The 'blob' is useful for storing application information that is associated with an UI element.
+Using the 'blob' can avoid having to maintain a data structure which parallels the internal
+UI data structure for application related data.  The 'blob' can be accessed efficiently via the uuId.
+
+4. The most labor intensive GUI related accesses are changing the state of a UI element outside
+of a callback from that GUI element.  In this case it may be advantageous to store UUID's of elements
+which affect one anothers state within each others blobs.  Alternatively use 
+uiElementChildCout() and uiElementChildIndexToUuid() or uiElementChildAppIdToUuid() to 
+iterate child elements given a parent element uuid.
+
+
+- Fix crash when '=' is used as a pair separator rather than ':'.
+cwUi is not noticing when a UI resource file fails to parse correctly.
+This may be a problem in cwObject or in cwUI.
+
+- Fix bug where leaving out the ending bracket for the first 'row' div in ui.cfg
+causes the next row to be included in the first row, and no error to be generated,
+even though the resource object is invalid (i.e. there is a missing brace).
+
+- The UI needs to be better documented. Start by giving clear names
+to the various parts: Browser, UI Manager, UI Server, Application.
+Maybe describe in Model,View,Controller terms?
+
+- Document the meaning and way that id's and names/labels are used,
+and intended to be used, and found by UI. As it is they are confusing.
+
+- The UI app id map should be validated after the UI is created.
+In otherwords the parent/child pairs shoud actually exists.
+
+- Arrange the project layout so that all the UI based apps use the same ui.js.
+Currently changes and improvements to one version of ui.js cannot be automatically
+shared.
+
+- uiSetValue() should be optionally reflected back to the app with kValueOpId messages.
+This way all value change messages could be handled from one place no matter
+if the value changes originate on the GUI or from the app.
+
+- The ui manageer should buffer the current valid value of a given control
+so that the value can be accessed synchronously. This would prevent the application
+from having to explicitely store all UI values and handle all the 'value' and 'echo'
+request.  It would support a model where the UI values get changed and then
+read by the app (e.g. getUiValue( appId, valueRef)) just prior to being used.
+As it is the UI values that are on the interface cannot be accessed synchronously
+instead the app is forced to notice all 'value' changes and store the last legal value.
+(12/22: Given that the cwUi.cpp _transmitTree() function appears to the current
+value of each control to new remote WS Sessions - the value may actually already
+be available.  Examine how this works.  Is 'value' and 'attribute' like 'order'?)
+
+- Using the 'blob' functionality should be the default way for tying UI elements to program model.
+  Rewrite the UI test case to reflect this.
+
+- Add an ui::appIdToUuId() that returns the first matching appId, and then
+optionally looks for duplicates as an error checking scheme. 
+
+
+- The ui eleA[] data structure should be changed to a tree 
+because the current expandable array allows empty slots which need to be checked
+for whenever the list is iterated.  It is also very inefficient to delete from the
+eleA[] because an exhaustive search is required to find all the children of the
+element to be deleted.
+
+- UI needs a special UUID (not kInvalidId) to specify the 'root' UI element. See note in cwUi._createFromObj()
+
+
+** Audio:
+
+
+- Should a warning be issued by audioBuf functions which return a set of values:
+muteFlags(),toneFlags(), gain( ... gainA) but where the size of the dest array
+does not match the actual number of channesl?
+
+- cwAudioBuf.cpp - the ch->fn in update() does not have the correct memory fence.
+
+- Replace 24 bit read/write in cwAudioFile.cpp
+
+- Remove Audio file operations that have been superceded by 'flow' framework.
+
+
+** Socket
+- Any socket function which takes a IP/port address should have a version which also takes a sockaddr_in*.
+
+
+** Websocket
+
+- cwWebsock is allocating memory on send().
+- cwWebsock: if the size of the recv and xmt buffer, as passed form the protocolArray[], is too small send() will fail without an error message.
+This is easy to reproduce by simply decreasing the size of the buffers in the protocol array.
+
+## Object
+- Look at 'BUG' warnings in cwNumericConvert.h.
+- cwObject must be able to parse without dynamic memory allocation into a fixed buffer
+- cwObject must be able to be composed without dynamic memory allocation or from a fixed buffer.
+
+
+- Clean up the cwObject namespace - add an 'object' namespace inside 'cw'
+
+- Add underscore to the member variables of object_t.
+
+- numeric_convert() in cwNumericConvert.h could be made more efficient using type_traits.
+
+- numeric_convert() d_min is NOT zero, it's smallest positive number, this fails when src == 0.
+  min value is now set to zero.
+
+- Change file names to match object names
+
+- Improve performance of load parser. Try parsing a big JSON file and notice how poorly it performs.
+
+
+** Misc
+- logDefaultFormatter() in cwLog.cpp uses stack allocated memory in a way that could easily be exploited.
+
+- lexIntMatcher() in cwLex.cpp doesn't handle 'e' notation correctly. See note in code.
+
+- thread needs setters and getters for internal variables
+
+- change cwMpScNbQueue so that it does not require 'new'.
+
+- (DONE) change all NULL's to nullptr
+- (DONE) implement kTcpFl in cwTcpSocket.cpp

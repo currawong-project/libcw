@@ -110,27 +110,62 @@ namespace cw
 
     void _var_print( const variable_t* var )
     {
-      const char* conn_label  = is_connected_to_source(var) ? "extern" : "      ";
-    
-      cwLogPrint("  %12s:%3i vid:%3i ch:%3i : %s  : ", var->label, var->label_sfx_id, var->vid, var->chIdx, conn_label );
-    
-      if( var->value == nullptr )
-        value_print( &var->local_value[0] );
-      else
-        value_print( var->value );
+      const bool print_type_fl = true;
+      
+      // print the address of the var
+      cwLogPrint("  %12s:%3i %3i %3i ", var->label, var->label_sfx_id, var->chIdx, var->vid );
 
-      if( var->src_var != nullptr )
-        cwLogPrint(" src:%s:%i.%s:%i",var->src_var->proc->label,var->src_var->proc->label_sfx_id,var->src_var->label,var->src_var->label_sfx_id);
+      assert( var->value != nullptr );
 
-      if( var->dst_head != nullptr )
+      // print the value
+      value_print( var->value, print_type_fl, var->log_verbosity );
+
+      // if we are prior to runtime then print the 'src' and 'dst' of the var
+      if( !var->proc->ctx->isInRuntimeFl )
       {
-        for(variable_t* v = var->dst_head; v!=nullptr; v=v->dst_link)
-          cwLogPrint(" dst:%s:%i.%s:%i",v->proc->label,v->proc->label_sfx_id,v->label,v->label_sfx_id);
+        const char* conn_label  = is_connected_to_source(var) ? "(extern)" : "";
+        
+        if( var->src_var != nullptr )
+          cwLogPrint(" %s src:%s:%i.%s:%i",conn_label,var->src_var->proc->label,var->src_var->proc->label_sfx_id,var->src_var->label,var->src_var->label_sfx_id);
+        
+        if( var->dst_head != nullptr )
+        {
+          for(variable_t* v = var->dst_head; v!=nullptr; v=v->dst_link)
+            cwLogPrint(" dst:%s:%i.%s:%i",v->proc->label,v->proc->label_sfx_id,v->label,v->label_sfx_id);
+        }
       }
-
+      
       cwLogPrint("\n");    
     }
+
+    void _var_log( const variable_t* var )
+    {
+      if( var->log_verbosity == kSilentValPrintVerb )
+        return;
+      
+      if( var->proc->ctx->printLogHdrFl )
+      {
+        cwLogPrint("%s","  cycle:   process:   id:     variable: id  ch  vid type:value  \n");
+        cwLogPrint("%s","-------- ---------- ----- ------------- --- --- --- ------------\n");
+        var->proc->ctx->printLogHdrFl = false;
+      }
+
+      unsigned var_mod_cyc_idx = var->mod_cycle_idx.load(std::memory_order_acquire);  // what was the last cycle this variable was modified on?
+      bool     val_ele_cnt_fl  = value_has_elements_now(var->value);                  // does this buffer variable contain values?
+      bool     log_rt_fl       = cwIsFlag(var->flags,kLogRtVarFl);                    // is this var marked for logging on init and rt
+      bool     init_only_fl    = cwIsFlag(var->flags,kLogInitVarFl);                  // is this var marked for logging on init only      
+      bool     mod_fl          = var->proc->ctx->cycleIndex == var_mod_cyc_idx || val_ele_cnt_fl; // has this var been modified on this cycle
+
+      bool log_fl = (var->proc->ctx->isInRuntimeFl==false && (init_only_fl || log_rt_fl)) || (var->proc->ctx->isInRuntimeFl && log_rt_fl && mod_fl);
+      
+      if( log_fl )
+      {
+        cwLogPrint("%8i ",var->proc->ctx->cycleIndex);
+        cwLogPrint("%10s:%5i", var->proc->label,var->proc->label_sfx_id);
     
+        _var_print(var);
+      }
+    }
     
     rc_t _var_broadcast_new_value( variable_t* var )
     {
@@ -149,7 +184,7 @@ namespace cw
                  con_var->proc->label,con_var->proc->label_sfx_id,
                  con_var->label,con_var->label_sfx_id );
 
-        // Call the value() function on the connected variable
+        // add the connected variable to con_var->proc->modVarMapA[].
         if((rc = var_schedule_notification(con_var)) != kOkRC )
           break;
                
@@ -159,14 +194,14 @@ namespace cw
 
 
     // Incr the var->modN value and put the var pointer in var->proc->modVarMapA[]
-    // where it will be picked up by a later call to _mod-var_map_dispatch().
+    // where it will be picked up by a later call to proc_notify().
     // This function runs in a multi-thread context.
     rc_t _mod_var_map_update( variable_t* var )
     {
       rc_t rc = kOkRC;
-      if( cwIsFlag(var->varDesc->flags,kNotifyVarDescFl ) && var->proc->modVarRecurseFl==false )
+      if( cwIsFlag(var->varDesc->flags,kNotifyVarDescFl ) && value_can_auto_notify(var->value) && var->proc->modVarRecurseFl==false )
       {      
-        // if the var is already modVarMapA[] then there is nothing to do
+        // if the var is already in modVarMapA[] then there is nothing to do
         // (use acquire to prevent rd/wr from moving before this op)
         if( var->modN.load(std::memory_order_acquire) > 0 )
           return kOkRC;
@@ -264,10 +299,24 @@ namespace cw
         // call because calls' to 'proc.value()' will see the proc in a incomplete state)
         // Note 2: If this call returns an error then the value assignment is cancelled
         // and the value does not change.
-        rc = var_schedule_notification( var );
-      }
 
-      //printf("%p set: %s:%s  0x%x\n",var->value, var->proc->label,var->label,var->value->tflag);
+        // WHY IS THIS CALL BEING MADE.  IT INFORMS THE A PROC THAT ONE
+        // OF IT'S OWN VARIABLES CHANGED - ON THE PREVIOUS CYCLE.
+        //
+        // FURTHERMORE DUE TO THE modVarRecurseFl BEING SET IT PROBABLY
+        // DOESN'T EVEN DO THAT.
+        //
+        // MAYBE IT'S INTENDED TO DO SOMETHING PRIOR TO RUNTIME?
+        // ... BUT ISN'T THAT HANDLED BY cwFlowNet._proc_do_pre_runtime_variable_notification() ?
+        //
+        // LET's comment it out and see what breaks!
+        //rc = var_schedule_notification( var );
+
+        // Record the fact that this variable changed on this cycle.
+        if( cwIsFlag(var->flags,kLogRtVarFl) )
+          var->mod_cycle_idx.store(var->proc->ctx->cycleIndex,std::memory_order_release);
+
+      }
 
       if( rc == kOkRC )
       {
@@ -502,6 +551,7 @@ namespace cw
       var->ui_title     = nullptr;
       var->ui_hide_fl   = cwIsFlag(vd->flags,kUiHideVarDescFl);
       var->ui_disable_fl= cwIsFlag(vd->flags,kUiDisableVarDescFl);
+      var->mod_cycle_idx.store(0);
 
       if( altTypeFl != kInvalidTFl )
         _var_set_type(var,altTypeFl);
@@ -600,18 +650,54 @@ namespace cw
       return;
     }
 
+    rc_t _find_record_format_cfg( const network_t& net, const object_t* string_cfg, const object_t*& recd_fmt_cfg_ref )
+    {
+      rc_t rc = kOkRC;
+      const char* s = nullptr;
+  
+      recd_fmt_cfg_ref = nullptr;
+  
+      if((rc = string_cfg->value(s)) != kOkRC )
+      {
+        rc = cwLogError(rc,"The record format specifier string could not be accessed.");
+        goto errLabel;
+      }
+  
+      if((recd_fmt_cfg_ref = network_find_record_format( net, s )) == nullptr )
+      {
+        rc = cwLogError(kEleNotFoundRC,"The record format identifier '%s' could not be found.",cwStringNullGuard(s));
+        goto errLabel;
+      }
+
+    errLabel:
+      return rc;
+  
+    }
+
     
     
   } // flow
 } // cw
 
 
-cw::flow::var_desc_t*  cw::flow::var_desc_create( const char* label, const object_t* cfg )
+cw::rc_t  cw::flow::var_desc_create( const char* label, const object_t* cfg, var_desc_t*& var_desc_ref )
 {
-  var_desc_t* vd = mem::allocZ<var_desc_t>();
-  vd->label = label;
-  vd->cfg   = cfg;
-  return vd;
+  rc_t rc = kOkRC;
+  
+  var_desc_ref = nullptr;
+
+  if( label==nullptr || textLength(label)==0 || isdigit(label[0]) || isdigit( label[textLength(label)-1] ) || label[0]=='_' || label[textLength(label)-1]=='_' || firstMatchChar(label,'.')!=nullptr )
+  {
+    rc = cwLogError(kSyntaxErrorRC,"The variable label '%s' is illegal. Variable labels cannot begin or end with a digit or '_' and cannot contain a period.",cwStringNullGuard(label));
+    goto errLabel;
+  }
+
+  var_desc_ref = mem::allocZ<var_desc_t>();
+  
+  var_desc_ref->label = label;
+  var_desc_ref->cfg   = cfg;
+errLabel:
+  return rc;
 }
 
 void cw::flow::var_desc_destroy( var_desc_t* var_desc )
@@ -956,6 +1042,69 @@ errLabel:
   return rc;  
 }
 
+const cw::object_t* cw::flow::network_find_record_format( const network_t& net, const char* format_name )
+{
+  const object_t* recd_fmt_cfg = nullptr;
+  const char*     period   = firstMatchChar(format_name,'.');
+
+  // if the format_name does not contain a '.' then it must be a name from the local network record fmt registry
+  if( period == nullptr )
+  {
+    // search the local net recd registry for a recd fmt. with a matching label
+    for(unsigned i=0; i<net.recdFmtRegN; ++i)
+      if( textIsEqual(net.recdFmtRegA[i].label,format_name))
+      {
+        recd_fmt_cfg = net.recdFmtRegA[i].fmt_cfg;
+        break;
+      }
+  }
+  else // if the format name does contain a '.' then it must identify a class proc/var desc.
+  {
+    unsigned class_desc_char_cnt = period - format_name;
+
+    if( class_desc_char_cnt == 0 )
+    {
+      cwLogError(kInvalidArgRC,"The record format name '%s' does not contain a proc. description part.",cwStringNullGuard(format_name));
+      goto errLabel;
+    }
+
+    if( textLength(period) < 1 )
+    {
+      cwLogError(kInvalidArgRC,"The record format name '%s' does not contain a variable description part.",cwStringNullGuard(format_name));
+      goto errLabel;
+    }
+
+    // find the class description that matches the format name prefix
+    for(unsigned i=0; i<net.flow->classDescN && recd_fmt_cfg==nullptr; ++i)
+      if( textIsEqual(net.flow->classDescA[i].label,format_name,class_desc_char_cnt) )
+      {
+        var_desc_t* vd = net.flow->classDescA[i].varDescL;
+
+        // find the variable description that matches the format name suffix
+        for(; vd!=nullptr; vd=vd->link)
+          if( textIsEqual(period+1,vd->label) ) 
+          {
+            if( vd->fmt.recd_fmt == nullptr )
+            {
+              cwLogError(kInvalidArgRC,"A class proc/variable named '%s' was found but it does not have a record format specifier.",format_name);
+              goto errLabel;
+            }
+            
+            recd_fmt_cfg = vd->fmt_cfg;
+            break;
+          }
+      }
+  }
+  
+errLabel:
+  if( recd_fmt_cfg == nullptr )
+    cwLogError(kEleNotFoundRC,"A record format named '%s' could not be found.",format_name);
+    
+  
+  return recd_fmt_cfg;
+}
+
+
 void cw::flow::proc_destroy( proc_t* proc )
 {
   if( proc == nullptr )
@@ -990,6 +1139,7 @@ void cw::flow::proc_destroy( proc_t* proc )
   mem::release(proc->label);
   mem::release(proc->varMapA);
   mem::release(proc->modVarMapA);
+  mem::release(proc->manualNotifyVarA);
   mem::release(proc);
 }
 
@@ -1003,6 +1153,12 @@ cw::rc_t cw::flow::proc_validate( proc_t* proc )
     {
       rc = cwLogError(kInvalidStateRC,"A var with no label was encountered.");
       continue;      
+    }
+
+    if( var->vid == kInvalidId )
+    {
+      rc = cwLogError(kInvalidStateRC,"The var '%s:%i' has not been registered.",var->label,var->label_sfx_id);
+      continue;
     }
     
     if( var->value == nullptr )
@@ -1075,6 +1231,83 @@ const cw::flow::class_preset_t* cw::flow::proc_preset_find( const proc_t* proc, 
   return nullptr;
 }
 
+cw::rc_t cw::flow::proc_recd_format_create( proc_t* proc, const object_t* recd_cfg_specifier, unsigned allocRecdN, recd_fmt_t*& recd_fmt_ref )
+{
+  rc_t rc = kOkRC;
+  const object_t* recd_fmt_cfg = nullptr;
+
+  recd_fmt_ref = nullptr;
+  
+  if( recd_cfg_specifier == nullptr )
+  {
+    rc = cwLogError(kInvalidArgRC,"The record format specifier is empty.");
+    goto errLabel;
+  }
+
+  // if the specifier is a list containing a single string
+  if( recd_cfg_specifier->is_list() && recd_cfg_specifier->child_count() == 1 )
+    recd_cfg_specifier = recd_cfg_specifier->child_ele(0);
+
+  // if the specifier is a string
+  if( recd_cfg_specifier->is_string() )
+  {
+    // find the recd cfg in the network registry or in the proc class desc dictionary.
+    if((rc = _find_record_format_cfg( *proc->net, recd_cfg_specifier, recd_fmt_cfg )) != kOkRC )
+    {
+      goto errLabel;
+    }
+  }
+  else
+  {
+    const object_t* fieldL_cfg = nullptr;
+    
+    // if the specifier is a dictionary
+    if( !recd_cfg_specifier->is_dict() )
+    {
+      rc = cwLogError(kInvalidArgRC,"The record format specifier must be either a string or dictionary.");
+      goto errLabel;
+    }
+
+    // if the dictionary has the form: { alloc_cnt:<>, fields:<string> }  ... where 'alloc_cnt' is optional
+    if((fieldL_cfg = recd_cfg_specifier->find_child("fields")) != nullptr && fieldL_cfg->is_string() )
+    {
+      unsigned opt_alloc_recdN = 0;
+      
+      // 'alloc_cnt' is optional - and is ignored if it is less than the parameter 'allocRecdN'.
+      if((rc = recd_cfg_specifier->getv_opt("alloc_cnt",opt_alloc_recdN)) != kOkRC )
+      {
+        rc = cwLogError(rc,"An error occurred while attempting to parse the 'alloc_cnt' field.");
+        goto errLabel;
+      }
+
+      // update allocRecdN based on opt_alloc_recdN
+      allocRecdN = std::max(opt_alloc_recdN,allocRecdN);
+
+      // find the recd format field list cfg in the network record registroy or the proc class desc dictionary
+      if((rc = _find_record_format_cfg( *proc->net, fieldL_cfg, recd_cfg_specifier )) != kOkRC )
+      {
+        goto errLabel;
+      }
+
+    }
+
+    recd_fmt_cfg = recd_cfg_specifier;
+  }
+
+  if((rc = recd_format_create(recd_fmt_ref, recd_fmt_cfg, allocRecdN )) != kOkRC )
+  {
+    goto errLabel;
+  }
+
+  // Set alloc_cnt to which ever is greater the alloc_cnt specified in the recd-fmt-cfg or allocRecdN
+  recd_fmt_ref->alloc_cnt = std::max(recd_fmt_ref->alloc_cnt,allocRecdN);
+  
+errLabel:
+  if(rc != kOkRC )
+    proc_error(proc,rc,"Record format create failed.");
+  
+  return rc;
+}
 
 void*    cw::flow::global_var( proc_t* proc, const char* var_label )
 {
@@ -1133,6 +1366,77 @@ void cw::flow::proc_print( proc_t* proc )
     proc->class_desc->members->report( proc );
 }
 
+cw::rc_t  cw::flow::proc_log_msg( proc_t* proc, variable_t* var, log::handle_t logH, log::logLevelId_t level, const char* function, const char* filename, unsigned line, rc_t rc, const char* fmt, va_list vl )
+{
+  int         n0       = 0;
+  int         n1       = 0;
+  const char* proc_fmt = "%s:%i";
+  
+  if( proc == nullptr && var != nullptr )
+    proc = var->proc;
+
+  if( proc == nullptr )
+    return log::msg( logH, log::kNoMsgFlags, level, function, filename, line, 0, rc, fmt, vl);
+
+  // if the proc log level greater than the mesg level then skip this message
+  if( proc->logLevel != log::kInvalid_LogLevel && proc->logLevel > level )
+    return rc;
+  
+  n0 = snprintf(nullptr,0,proc_fmt,cwStringNullGuard(proc->label),proc->label_sfx_id);
+  char s0[ n0 + 1 ];
+  s0[0] = 0;
+
+  if( proc != nullptr )
+    n1 = snprintf(s0,n0+1,proc_fmt,cwStringNullGuard(proc->label),proc->label_sfx_id);
+  
+  assert(n0==n1);
+
+  int n2 = 0;
+  int n3 = 0;
+  const char* var_fmt =".%s:%i";
+  if( var != nullptr )
+    n2 = snprintf(nullptr,0,var_fmt,cwStringNullGuard(var->label),var->label_sfx_id);
+  
+  char s1[n2+1];
+  s1[0] = 0;
+
+  if( var != nullptr )
+    n3 = snprintf(s1,n2+1,var_fmt,cwStringNullGuard(var->label),var->label_sfx_id);
+    
+  assert(n2==n3);
+
+  va_list vl1;
+  va_copy(vl1,vl);
+  int n4 = 0;
+  int n5 = 0;
+  if( fmt != nullptr )
+    n4   = vsnprintf(nullptr,0,fmt,vl);
+  
+  char s2[n4+1];
+  s2[0] = 0;
+
+  if( fmt != nullptr )
+    n5 = vsnprintf(s2,n4+1,fmt,vl1);
+
+  va_end(vl1);
+  
+  assert(n4==n5);
+  
+  rc = log::msg( logH, log::kNoLevelCheckMsgFl, level, function, filename, line, 0, rc, "%s%s : %s", s0,s1,s2);
+      
+  return rc;
+}
+
+cw::rc_t  cw::flow::proc_log_msg( proc_t* proc, variable_t* var, log::handle_t logH, log::logLevelId_t level, const char* function, const char* filename, unsigned line, rc_t rc, const char* fmt, ... )
+{
+  va_list vl;
+  va_start(vl,fmt);
+  rc = proc_log_msg( proc, var, logH, level, function, filename, line, rc, fmt, vl );
+  va_end(vl);  
+  return rc;  
+}
+
+
 unsigned cw::flow::proc_var_count( proc_t* proc )
 {
   unsigned n = 0;
@@ -1165,41 +1469,81 @@ cw::rc_t cw::flow::proc_notify( proc_t* proc, unsigned flags )
   rc_t rc = kOkRC;
   unsigned modN = 0;
   
-  if( proc->modVarMapN == 0 )
+  
+  if( proc->modVarMapN == 0  )
   {
     if( cwIsNotFlag(flags,kQuietPnFl) )
       rc =cwLogError(kInvalidStateRC,"Calling proc_notify() on the processor '%s:%i' is invalid because it does not have any variables marked for notification.",cwStringNullGuard(proc->label),proc->label_sfx_id);
-    goto errLabel;
+  }
+  else
+  {
+    // get the count of variables to be updated
+    modN = proc->modVarMapFullCnt.load( std::memory_order_acquire );
+    
+    if( modN )
+    {
+      if( cwIsFlag(flags,kCallbackPnFl) )
+      {
+        for(unsigned i=0; i<modN; ++i)
+        {
+          // get a pointer to the var that has been marked as modified
+          variable_t* var = proc->modVarMapA[ proc->modVarMapTailIdx ];
+          
+          // callback to inform the proc that the var has changed
+          proc->class_desc->members->notify( var->proc, var );
+          
+          // mark this var as having been removed from the modVarMapA[]
+          var->modN.store(0,std::memory_order_release );
+          
+          // increment modVarMapA[]'s tail index
+          proc->modVarMapTailIdx = (proc->modVarMapTailIdx + 1) % proc->modVarMapN;        
+        }
+      }
+        
+      // decrement the count of elemnts in the modVarMapA[]
+      proc->modVarMapFullCnt.fetch_sub(modN, std::memory_order_release );
+    }
   }
   
-  // get the count of variables to be updated
-  modN = proc->modVarMapFullCnt.load( std::memory_order_acquire );
-
-  if( modN )
+  for(unsigned i=0; i<proc->manualNotifyVarN; ++i)
   {
-    if( cwIsFlag(flags,kCallbackPnFl) )
+    if( !proc->manualNotifyVarA[i].check_ele_cnt_fl || (proc->manualNotifyVarA[i].check_ele_cnt_fl && value_has_elements_now( proc->manualNotifyVarA[i].var->src_var->value )) )
     {
-      for(unsigned i=0; i<modN; ++i)
-      {
-        // get a pointer to the var that has been marked as modified
-        variable_t* var = proc->modVarMapA[ proc->modVarMapTailIdx ];
-
-        // callback to inform the proc that the var has changed
-        proc->class_desc->members->notify( var->proc, var );
-
-        // mark this var as having been removed from the modVarMapA[]
-        var->modN.store(0,std::memory_order_release );
-
-        // increment modVarMapA[]'s tail index
-        proc->modVarMapTailIdx = (proc->modVarMapTailIdx + 1) % proc->modVarMapN;        
-      }
+      variable_t* var = proc->manualNotifyVarA[i].var;
+      var->proc->class_desc->members->notify( var->proc, var );
     }
-        
-    // decrement the count of elemnts in the modVarMapA[]
-    proc->modVarMapFullCnt.fetch_sub(modN, std::memory_order_release );
   }
 
 errLabel:
+  return rc;
+}
+
+
+cw::rc_t cw::flow::proc_exec( proc_t* proc )
+{
+  rc_t rc = kOkRC;
+  
+  proc->modVarRecurseFl = true;
+        
+  // Call notify() on all variables marked for notification that have changed since the last exec_cycle()
+  proc_notify(proc, kCallbackPnFl | kQuietPnFl);
+
+  // Execute the network.
+  // Note that kEofRC is not an error, but indicates that the network
+  // should shutudown at the end of this cycle. 
+  if((rc = proc->class_desc->members->exec(proc)) != kOkRC && rc != kEofRC )
+  {
+    rc = cwLogError(rc,"Execution failed on the proc:%s:%i.",cwStringNullGuard(proc->label),proc->label_sfx_id);    
+    goto errLabel;
+  }
+
+  // execute logging as setup in the proc 'log:{}' statement.
+  for(const variable_t* var = proc->logVarL; var!=nullptr; var=var->log_link)
+    _var_log(var);
+      
+errLabel:
+  proc->modVarRecurseFl = false;
+  
   return rc;
 }
 
@@ -1370,39 +1714,19 @@ errLabel:
   return chN;
 }
 
+// This function is called to inform 'var' that their value has changed and that
+// proc->notify() should be called the next time var->proc executes.
 cw::rc_t cw::flow::var_schedule_notification( variable_t* var )
 {
   rc_t rc;
+  
+  // Add the var to var->proc->modVarMapA[] so that it's proc->notify() is called the next time it the var->proc executes.
   if((rc = _mod_var_map_update( var )) != kOkRC )
     goto errLabel;
 
-  if( var->flags & kLogVarFl )
-  {
-    if( var->proc->ctx->printLogHdrFl )
-    {
-      cwLogPrint("%s","exe cycle:    process:   id:       variable: id     vid     ch :         : : type:value  : destination\n");
-      cwLogPrint("%s","---------- ----------- ----- --------------- --     ---    -----             ------------: -------------\n");
-        //:        0 :          a:    0:            out:  0 vid:  2 ch: -1 :         : : <invalid>: 
-        var->proc->ctx->printLogHdrFl = false;
-    }
-    
-    cwLogPrint("%8i ",var->proc->ctx->cycleIndex);
-    cwLogPrint("%10s:%5i", var->proc->label,var->proc->label_sfx_id);
-    
-    if( var->chIdx == kAnyChIdx )
-    {
-      _var_print(var);
-    }
-    else
-    {
-      cwLogPrint("\n");
-      for(variable_t* ch_var = var; ch_var!=nullptr; ch_var=ch_var->ch_link)
-      {
-        _var_print(ch_var);
-      }
-      
-    }
-  }
+  // Record the fact that this variable changed on this cycle.
+  if( cwIsFlag(var->flags,kLogRtVarFl) )
+    var->mod_cycle_idx.store(var->proc->ctx->cycleIndex,std::memory_order_release);
   
 errLabel:
   return rc;
@@ -1688,11 +2012,16 @@ void cw::flow::var_connect( variable_t* src_var, variable_t* in_var )
 
 void cw::flow::var_disconnect( variable_t* in_var )
 {
+  // in_var is a destination variable - it has an incoming connection
+  
   if( in_var->src_var != nullptr )
   {
-    // remote the in_var from the src var's output list
+    // remove the in_var from the src var's output list
+
+    // out var is an output var - it is feeding in_var
+    variable_t* out_var = in_var->src_var;
     variable_t* v0 = nullptr;
-    variable_t* v = in_var->src_var->dst_head;
+    variable_t* v = out_var->dst_head;
     for(; v!=nullptr; v=v->dst_link)
     {
       if( v == in_var )
@@ -1701,6 +2030,7 @@ void cw::flow::var_disconnect( variable_t* in_var )
           in_var->src_var->dst_head = v->dst_link;
         else
           v0->dst_link = v->dst_link;
+
         break;
       }
 
@@ -1710,7 +2040,8 @@ void cw::flow::var_disconnect( variable_t* in_var )
     // the in_var is always in the src-var's output list
     assert(v == in_var );
 
-    in_var->src_var = nullptr;
+    in_var->src_var = nullptr;  // in_var no longer has a source
+    in_var->dst_link = nullptr; // and therefore cannot be a destination
   }
 }
 
@@ -1761,6 +2092,7 @@ errLabel:
   
   return rc;
 }
+
 
 cw::rc_t  cw::flow::var_send_to_ui( variable_t* var )
 {
@@ -1875,12 +2207,12 @@ cw::rc_t cw::flow::var_register_and_set( proc_t* proc, const char* var_label, un
   return var_register_and_set(proc,var_label,sfx_id,vid,chIdx,srate, chN, maxBinN_V, binN_V, hopSmpN_V, magV, phsV, hzV);
 }
 
-cw::rc_t   cw::flow::var_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, const recd_type_t* recd_type, recd_t* recdA, unsigned recdN )
+cw::rc_t   cw::flow::var_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, const recd_type_t* recd_type, recd_t* recdA, unsigned recdN, unsigned maxRecdN )
 {
   rc_t rc = kOkRC;
 
   rbuf_t* rbuf;
-  if((rbuf = rbuf_create(recd_type,recdA,recdN)) == nullptr )
+  if((rbuf = rbuf_create(recd_type,recdA,recdN,maxRecdN)) == nullptr )
     return cwLogError(kOpFailRC,"rbuf create failed on proc:'%s:%i' variable:'%s:%i'.", proc->label, proc->label_sfx_id, var_label, sfx_id);
     
   if((rc = _var_register_and_set( proc, var_label, sfx_id, vid, chIdx, rbuf )) != kOkRC )
@@ -1891,16 +2223,16 @@ cw::rc_t   cw::flow::var_register_and_set( proc_t* proc, const char* var_label, 
 
 
 
-cw::rc_t   cw::flow::var_alloc_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, const recd_type_t* base, recd_array_t*& recd_array_ref, unsigned recdN )
+cw::rc_t   cw::flow::var_alloc_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, const recd_type_t* base, recd_array_t*& recd_array_ref, unsigned allocRecdN )
 {
   rc_t rc = kOkRC;
   recd_array_t* recd_array = nullptr;
   recd_array_ref = nullptr;
   
-  if((rc = var_alloc_record_array(proc,var_label,sfx_id,chIdx,base,recd_array,recdN)) != kOkRC )
+  if((rc = var_alloc_record_array(proc,var_label,sfx_id,chIdx,base,recd_array,allocRecdN)) != kOkRC )
     goto errLabel;
   
-  if((rc = var_register_and_set(proc, var_label, sfx_id, vid, chIdx, recd_array->type, recd_array->recdA, recd_array->allocRecdN )) != kOkRC )
+  if((rc = var_register_and_set(proc, var_label, sfx_id, vid, chIdx, recd_array->type, recd_array->recdA, 0, recd_array->allocRecdN )) != kOkRC )
     goto errLabel;
 
   recd_array_ref = recd_array;
@@ -1916,7 +2248,7 @@ errLabel:
   
 }
 
-cw::rc_t   cw::flow::var_alloc_record_array( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx, const recd_type_t* base, recd_array_t*& recd_array_ref, unsigned recdN )
+cw::rc_t   cw::flow::var_alloc_record_array( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx, const recd_type_t* base, recd_array_t*& recd_array_ref, unsigned allocRecdN )
 {
   rc_t        rc  = kOkRC;
   variable_t* var = nullptr;
@@ -1939,7 +2271,7 @@ cw::rc_t   cw::flow::var_alloc_record_array( proc_t* proc, const char* var_label
   else
   {
     recd_fmt_t*   recd_fmt  = var->varDesc->fmt.recd_fmt;
-    unsigned      alloc_cnt = recdN==0 ? recd_fmt->alloc_cnt : recdN;
+    unsigned      alloc_cnt = std::max(recd_fmt->alloc_cnt,allocRecdN);
 
     // verify that a non-zero length was given to the count of records in the array
     if( alloc_cnt == 0 )

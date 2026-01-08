@@ -118,7 +118,7 @@ namespace cw
           
           if( alsaRC == 0 )
           {
-            rc = log::msg( log::globalHandle(), log::kError_LogLevel, func, fn, lineNumb, 0, kOpFailRC, fmt, vl0 );            
+            rc = log::msg( log::globalHandle(), log::kNoMsgFlags, log::kError_LogLevel, func, fn, lineNumb, 0, kOpFailRC, fmt, vl0 );            
           }
           else
           {
@@ -137,7 +137,7 @@ namespace cw
             char msg1[n+1];
             m = snprintf(msg1,n+1,fmt1,msg0,snd_strerror(alsaRC));
             
-            rc = log::msg( log::globalHandle(), log::kError_LogLevel, func, fn, lineNumb, 0, kOpFailRC, "%s", msg1 );
+            rc = log::msg( log::globalHandle(), log::kNoMsgFlags, log::kError_LogLevel, func, fn, lineNumb, 0, kOpFailRC, "%s", msg1 );
           }
           
           va_end(vl0);

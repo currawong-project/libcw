@@ -266,8 +266,14 @@ char* cw::filesys::vMakeVersionedFn(const char* dir, const char* fn_prefix, cons
     va_list vl0;
     va_copy(vl0,vl);
     
-    snprintf(name,PATH_MAX,"%s_%i",fn_prefix,version);
+    int sn = snprintf(name,PATH_MAX,"%s_%i",fn_prefix,version);
 
+    if( sn >= PATH_MAX )
+    {
+      cwLogError(kBufTooSmallRC,"A path buffer is too short.");
+      break;
+    }
+    
     fn = vMakeFn( dir, name, ext, vl0 );
     
     va_end(vl0);
