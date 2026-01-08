@@ -26,7 +26,8 @@
 	    "inherits":"default",
 	    "cacheVariables":{
 		"CMAKE_BUILD_TYPE":"Debug",
-		"CW_ADDRESS_SANITIZER_FL": { "type":"BOOL", "value":"ON" }
+		"CW_THREAD_SANITIZER_FL": { "type":"BOOL", "value":"OFF" },
+		"CW_ADDRESS_SANITIZER_FL": { "type":"BOOL", "value":"OFF" }
 	    }
 	},
 	{
