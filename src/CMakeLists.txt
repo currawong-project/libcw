@@ -8,7 +8,7 @@ option(CW_FFTW_FL    "Use FFTW for FFT functions." ON)
 option(CW_MKL_FL     "Use Intel Math Kernel Library." OFF)
 option(CW_WEBSOCK_FL "Use libwebsockets." ON)
 option(CW_ALSA_FL    "Use ALSA." ON)
-option(CW_ADDRESS_SANTIZER_FL "Enable the address sanitizer." OFF)
+option(CW_ADDRESS_SANITIZER_FL "Enable the address sanitizer." OFF)
 
 target_sources(cw
   PRIVATE
