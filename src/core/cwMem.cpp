@@ -41,10 +41,12 @@ void* cw::mem::_alloc( void* p0, unsigned n, unsigned flags )
     if( cwIsFlag(flags, kZeroAllFl))
       memset(((char*)p),0,n);
     else
+    {
       // zero the exapnded memory but leave existing memory unchanged
       if( cwIsFlag(flags, kZeroNewFl ))
         memset(((char*)p)+p0N,0,n-p0N);
-
+    }
+    
     // get pointer to base of new block
     unsigned* p1 = static_cast<unsigned*>(p);
       
