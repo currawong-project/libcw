@@ -87,9 +87,11 @@ namespace cw
     namespace midi_select     { extern class_members_t members;  }
     namespace midi_split      { extern class_members_t members;  }
     namespace midi_file       { extern class_members_t members;  }
+    namespace recd_list       { extern class_members_t members;  }
     namespace recd_route      { extern class_members_t members;  }
     namespace recd_merge      { extern class_members_t members;  }
     namespace recd_extract    { extern class_members_t members;  }
+    namespace recd_pass       { extern class_members_t members;  }
     namespace midi_merge      { extern class_members_t members;  }
     namespace poly_xform_ctl  { extern class_members_t members;  }
     namespace gutim_ps_msg_table { extern class_members_t members; }
