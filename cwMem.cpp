@@ -5,6 +5,7 @@
 #include "cwCommonImpl.h"
 #include "cwMem.h"
 
+bool g_warn_on_alloc_fl = false;
 
 void* cw::mem::_alloc( void* p0, unsigned n, unsigned flags )
   {
@@ -26,6 +27,9 @@ void* cw::mem::_alloc( void* p0, unsigned n, unsigned flags )
       if( p0N >= n )
         return p0;
     }
+
+    if( g_warn_on_alloc_fl )
+      cwLogWarning("Memory allocation:%i",n);
     
     p = malloc(n);  // allocate new memory
 
@@ -104,6 +108,20 @@ void cw::mem::free( void* p )
 {
   if( p != nullptr)
   {
+    if( g_warn_on_alloc_fl )
+      cwLogWarning("Memory free.");
+
     ::free(static_cast<unsigned*>(p)-2);
   }
+}
+
+
+void cw::mem::set_warn_on_alloc()
+{
+  g_warn_on_alloc_fl = true;
+}
+
+void cw::mem::clear_warn_on_alloc()
+{
+  g_warn_on_alloc_fl = false;
 }
