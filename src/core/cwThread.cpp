@@ -76,19 +76,44 @@ namespace cw
 
     void _threadCleanUpCallback(void* p)
     {
-      ((thread_t*)p)->stateId.store(kExitedThId,std::memory_order_release);
+      thread_t* thread = (thread_t*)p;
+      bool lock_fl = false;
+
+      // Attempt to lock the mutex - this is safe
+      // because the only thread that could have
+      // previously locked the mutex is this thread
+      // and try-lock() will simply return EBUSY if
+      // the mutex is already locked.
+      mutex::tryLock(thread->mutexH,lock_fl);
+
+      // At this point the mutex is locked.
+
+      // Unlock it.
+      mutex::unlock(thread->mutexH);
+        
+        
+      thread->stateId.store(kExitedThId,std::memory_order_release);
     }
   
 
     void* _threadCallback(void* param)
     {
       thread_t* p = (thread_t*)param;
+      unsigned curDoFlags = 0;
 
       // set a clean up handler - this will be called when the 
       // thread terminates unexpectedly or pthread_cleanup_pop() is called.
       pthread_cleanup_push(_threadCleanUpCallback,p);
 
-      unsigned curDoFlags = 0;
+
+      // Lock the mutex so that it is already locked prior to the first call to waitOnCondVar()
+      rc_t rc;
+      if((rc = mutex::lock(p->mutexH)) != kOkRC )
+      {
+        cwLogError(rc,"Thread signal condition mutex lock failed.");
+        goto errLabel;      
+      }
+      
       
       do
       {
@@ -99,7 +124,7 @@ namespace cw
         if( curStateId == kPausedThId )
         {
           // unlock mutex and block on cond. var. for pauseMicros or until signaled
-          rc_t rc = waitOnCondVar(p->mutexH, false, p->pauseMicros/1000 ); 
+          rc = waitOnCondVar(p->mutexH, false, p->pauseMicros/1000 ); 
 
           switch(rc)
           {
@@ -164,6 +189,7 @@ namespace cw
         
       }while( cwIsFlag(curDoFlags,kDoExitThFl) == false );
 
+    errLabel:
       pthread_cleanup_pop(1);
 	
       pthread_exit(NULL);
@@ -178,7 +204,6 @@ cw::rc_t cw::thread::create( handle_t& hRef, cbFunc_t func, void* funcArg, const
 {
   rc_t rc;
   int  sysRC;
-  bool mutex_is_locked_fl = false;
 
   if((rc = destroy(hRef)) != kOkRC )
     return rc;
@@ -220,15 +245,6 @@ cw::rc_t cw::thread::create( handle_t& hRef, cbFunc_t func, void* funcArg, const
       rc = cwLogError(rc,"Thread signal condition mutex create failed.");
       goto errLabel;
     }
-
-    // Lock the mutex so that it is already locked prior to the first call to waitOnCondVar()
-    if((rc = mutex::lock(p->mutexH)) != kOkRC )
-    {
-      rc = cwLogError(rc,"Thread signal condition mutex lock failed.");
-      goto errLabel;      
-    }
-
-    mutex_is_locked_fl = true;
     
     // create the thread - in paused state
     if((sysRC = pthread_create(&p->pThreadH, &p->attr, _threadCallback, (void*)p )) != 0 )
@@ -250,10 +266,7 @@ cw::rc_t cw::thread::create( handle_t& hRef, cbFunc_t func, void* funcArg, const
 errLabel:
 
   if( rc != kOkRC && p->mutexH.isValid() )
-  {
-    if( mutex_is_locked_fl )
-      mutex::unlock(p->mutexH);
-    
+  {    
     mutex::destroy(p->mutexH);
   }
   
@@ -286,7 +299,6 @@ cw::rc_t cw::thread::destroy( handle_t& hRef )
 
   if( p->mutexH.isValid() )
   {
-    mutex::unlock(p->mutexH);
     mutex::destroy(p->mutexH);
   }
   mem::release(p->label);
