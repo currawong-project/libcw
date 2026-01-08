@@ -180,6 +180,9 @@ namespace cw
       mem::release(net->preset_pairA);
       net->preset_pairN = 0;
 
+      mem::release(net->recdFmtRegA);
+      net->recdFmtRegN = 0;
+
       _destroy_ui_net(net->ui_net);
       
       mem::release(net);
@@ -1054,9 +1057,17 @@ namespace cw
             var_connect( remote_var, local_var );
           else
           {
+
+            if( is_connected_to_source(remote_var) )
+            {
+              rc = cwLogError(kSyntaxErrorRC,"The 'out' connection from %s:%i.%s:%i to %s:%i.%s:%i failed because the destination already has a source.", local_var->proc->label, local_var->proc->label_sfx_id, local_var->label, local_var->label_sfx_id, remote_var->proc->label, remote_var->proc->label_sfx_id, remote_var->label, remote_var->label_sfx_id);
+              goto errLabel;
+            }
+
             // Disconnect any source that was previously connected to the 'in' var
             // (we do this for feedback connections (out-stmts), but not for in-stmts)
-            var_disconnect( remote_var ); 
+            // var_disconnect( remote_var );
+            
             var_connect( local_var, remote_var ); // ... otherwise it is an out-stmt
           }
         }                
@@ -1378,7 +1389,25 @@ namespace cw
             }
 
             if( cwIsFlag(var->varDesc->flags,kNotifyVarDescFl) )
-              proc->modVarMapN += 1;
+            {
+              if( var->value == nullptr )
+              {
+                rc = var_error(var,kInvalidStateRC,"The variable value was unexpectedly not set.");
+                goto errLabel;
+              }
+              
+              //assert( var->value != nullptr );
+
+              if( !value_can_auto_notify(var->value) )
+              {
+                //rc = cwLogError(kSyntaxErrorRC,"The variable '%s:%i.%s:%i' is marked for notification but the data type '%s' does not support it.",var->proc->label,var->proc->label_sfx_id,var->label,var->label_sfx_id,value_to_type_label(var->value));
+                //goto errLabel;
+              }
+              else
+              {
+                proc->modVarMapN += 1;
+              }
+            }
 
           }
         }
@@ -1426,49 +1455,491 @@ namespace cw
     }
     */
 
-    
-    
-    rc_t _proc_set_log_flags(proc_t* proc, const object_t* log_labels)
+    // On return label_ref hold a pointer to a string which must be released with a call to mem::release()
+    rc_t _proc_parse_var_log_label( const char* var_label, char*& label_ref, unsigned& sfx_id_ref )
     {
       rc_t rc = kOkRC;
+      unsigned label_char_cnt = 0;
       
-      if( log_labels == nullptr )
-        return rc;
+      label_ref = nullptr;
+      sfx_id_ref = kInvalidId;
 
-      if( !log_labels->is_dict() )
+      const unsigned sn = textLength(var_label);
+      const char* s = nullptr;
+      if( sn == 0 )
       {
-        rc = cwLogError(kSyntaxErrorRC,"The log spec on '%s:%i' is not a dictionary.",cwStringNullGuard(proc->label),proc->label_sfx_id);
+        rc = cwLogError(kSyntaxErrorRC,"A zero-length log var label was encountered.");
         goto errLabel;
       }
 
-      for(unsigned i=0; i<log_labels->child_count(); ++i)
+      // set 's' to point to the last character in the string
+      s = var_label + textLength(var_label)-1;
+
+      // backup until 's' is pointing to the first non-digit in the string
+      for(; s >= var_label; --s )
+        if( !isdigit(*s) )
+          break;
+
+      // if no digits were found
+      if( s == var_label + textLength(var_label)-1 )
       {
-        const object_t* pair;
-        unsigned sfx_id;
+        label_char_cnt = sn;
+        sfx_id_ref = kBaseSfxId;
+      }
+      else // ... suffix digits were round
+      {
         
-        if((pair = log_labels->child_ele(i)) == nullptr || pair->pair_label()==nullptr || pair->pair_value()==nullptr || (rc=pair->pair_value()->value(sfx_id))!=kOkRC )
+        // if only digits were found
+        if( s < var_label )
         {
-          rc = cwLogError(kSyntaxErrorRC,"Syntax error on log var identifier.");
+          rc = cwLogError(kSyntaxErrorRC,"The log var label appears to contain only digits.");
           goto errLabel;
         }
 
-        if((rc = var_set_flags( proc, kAnyChIdx, pair->pair_label(), sfx_id, kLogVarFl )) != kOkRC )
+        // a literal base-sfx-id was given - parse it into an integer
+        if((rc = string_to_number(s+1,sfx_id_ref)) != kOkRC )
         {
-          rc = cwLogError(rc,"Unable to set var flags on '%s:%i' var:'%s:%i'.",cwStringNullGuard(proc->label),proc->label_sfx_id,pair->pair_label(),sfx_id);
-          goto errLabel;          
+          rc = cwLogError(rc,"The suffix id portion of a log variable could not be parsed.");
+          goto errLabel;
+        }
+
+        label_char_cnt = (s+1) - var_label;
+      }
+
+      label_ref = mem::duplStr(var_label,label_char_cnt);
+      
+    errLabel:
+      if( rc != kOkRC )
+      {
+        mem::release(label_ref);
+        sfx_id_ref = kInvalidId;
+      }
+      
+      return rc;
+    }
+
+    
+    void _proc_append_var_to_log_list( proc_t* proc, unsigned log_var_verbosity, bool log_init_fl, bool log_rt_fl, variable_t* var )
+    {
+      // either log_init_fl or log_rt_fl must be set
+      assert( log_init_fl || log_rt_fl );
+      
+      bool already_on_list_fl = cwIsFlag(var->flags,kLogInitVarFl | kLogRtVarFl);
+      
+      // if this variable is logged on init (cycle==0)
+      if( log_init_fl )
+        var->flags |= kLogInitVarFl;
+
+      // if this variable is logged on (cycle>=0)
+      if( log_rt_fl )
+        var->flags |= kLogRtVarFl;
+      
+      // if this variable has already been added to the proc->logVarL
+      if( already_on_list_fl )
+        return;
+   
+      // turn on the 'log' flag for this variable.
+      var->log_verbosity = log_var_verbosity;
+
+      // append the variable to be logged to the end of proc->logVarL.
+      if( proc->logVarL == nullptr )
+        proc->logVarL = var;
+      else
+      {
+        variable_t* v = proc->logVarL;
+        while( v->log_link != nullptr )
+          v = v->log_link;
+
+        v->log_link = var;
+        var->log_link = nullptr;
+      }      
+    }
+
+    void _proc_append_var_channels_to_log_list( proc_t* proc, unsigned log_var_verbosity, bool log_init_fl, bool log_rt_fl, variable_t* var )
+    {
+      assert( var->chIdx == kAnyChIdx );
+      
+      // if this var has no channels then append the base channel ...
+      if( var->ch_link == nullptr )
+        _proc_append_var_to_log_list( proc, log_var_verbosity, log_init_fl, log_rt_fl, var );
+      else
+      {
+        // ... otherwise append each of the channels
+        for(variable_t* ch_var = var->ch_link; ch_var != nullptr; ch_var=ch_var->ch_link)
+          _proc_append_var_to_log_list( proc, log_var_verbosity, log_init_fl, log_rt_fl, ch_var );
+      }
+      
+    }
+    
+    // 
+    rc_t _proc_find_and_append_var_to_log_list( proc_t* proc, unsigned log_var_verbosity, const char* var_label, unsigned label_sfx_id )
+    {
+      rc_t        rc             = kOkRC;
+      variable_t* var            = proc->varL;
+      bool        found_fl       = false;
+      const bool  log_on_init_fl = false;
+      const bool  log_rt_fl      = true;
+
+      // for each var
+      for(; var != nullptr; var=var->var_link )
+      {
+        // if the label matches, the sfx_id matches, and the chidx == kAnyChIdx
+        if( (textIsEqual(var->label,var_label)  && (label_sfx_id == kInvalidId || var->label_sfx_id == label_sfx_id)) && var->chIdx == kAnyChIdx )
+        {
+
+          _proc_append_var_channels_to_log_list( proc, log_var_verbosity, log_on_init_fl, log_rt_fl, var );
+          
+          found_fl = true;
+          
+          break;
         }
       }
+      
+      if( !found_fl )
+        rc = cwLogError(kSyntaxErrorRC,"The requested log variable:%s:%i was not be found.",cwStringNullGuard(var_label),label_sfx_id);      
 
     errLabel:
       return rc;
     }
 
-    rc_t _proc_schedule_variables_for_notification( proc_t* proc )
+    rc_t _proc_process_log_var_label( proc_t* proc, unsigned log_var_verbosity, const object_t* log_var_string )
+    {
+      rc_t        rc             = kOkRC;
+      const char* full_var_label = nullptr;
+      char*       var_label      = nullptr;
+      unsigned    label_sfx_id   = kInvalidId;
+
+      log_var_string->value(full_var_label);
+
+      // break the full var label into it's label and sfx_id parts
+      if((rc = _proc_parse_var_log_label( full_var_label, var_label, label_sfx_id )) != kOkRC )
+      {
+        goto errLabel;
+      }
+
+      // find the variable and append it to the proc log list
+      if((rc= _proc_find_and_append_var_to_log_list( proc, log_var_verbosity, var_label, label_sfx_id )) != kOkRC )
+      {
+        goto errLabel;
+      }
+
+    errLabel:
+      mem::release(var_label);
+      return rc;
+    }
+
+    rc_t _proc_log_stmt_parse_flags( proc_t* proc, const object_t* flags_cfgL, bool& log_all_vars_fl_ref, bool& all_vars_on_init_fl_ref )
+    {
+      rc_t            rc      = kOkRC;
+      log_all_vars_fl_ref     = false;
+      all_vars_on_init_fl_ref = false;
+      const object_t* ele     = nullptr;
+
+      if( flags_cfgL == nullptr )
+        return rc;
+      
+      while( (ele = flags_cfgL->next_child_ele(ele)) != nullptr )
+      {
+        const char* s = nullptr;
+        if( !ele->is_string() )
+        {
+          rc = cwLogError(kSyntaxErrorRC,"Logging flags must be identifiers.");
+          goto errLabel;
+        }
+        else
+        {
+          if((rc = ele->value(s)) != kOkRC )
+          {
+            rc = cwLogError(rc,"A logging flag could not be parsed.");
+            goto errLabel;
+          }
+          else
+          {
+            if( textIsEqual(s,"all") )
+            {
+              log_all_vars_fl_ref = true;
+              continue;
+            }
+            if( textIsEqual(s,"init") )
+            {
+              all_vars_on_init_fl_ref = true;
+              continue;
+            }
+
+            rc = cwLogError(kSyntaxErrorRC,"An unknown logging flag '%s' was encountered.",cwStringNullGuard(s));
+            goto errLabel;
+          }
+        }
+      }
+
+    errLabel:
+      return rc;
+      
+    }
+    
+    rc_t _proc_log_stmt_var_list( proc_t* proc, unsigned verbosity, const object_t* logCfgL )
+    {
+      rc_t            rc      = kOkRC;
+      const object_t* ele_cfg = nullptr;
+      unsigned        ele_idx = 0;
+
+      if( logCfgL == nullptr )
+        return rc;
+
+      // the log stmt must be a list
+      if( !logCfgL->is_list() )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The 'log' var list statement does not have list syntax.");
+        goto errLabel;
+      }
+
+      // for each element in the log list
+      while( (ele_cfg = logCfgL->next_child_ele(ele_cfg)) != nullptr )
+      {
+        // each element in the log statement list must be a string
+        if( ele_cfg->is_string() )
+        {
+          // process this string as a 'var' identifier and update the proc->logVarL
+          if((rc = _proc_process_log_var_label(proc,verbosity,ele_cfg)) != kOkRC )
+          {
+            rc = cwLogError(rc,"'log' statement processing failed on the variable label at index %i.",ele_idx);
+            goto errLabel;
+          }
+        }
+        else
+        {
+          rc = cwLogError(kSyntaxErrorRC,"Invalid 'log' statement element syntax at var label index %i.",ele_idx);
+          goto errLabel;
+        }
+
+        ele_idx += 1;
+      }
+      
+    errLabel:
+      return rc;
+    }
+
+    rc_t _proc_log_stmt_var_all( proc_t* proc, unsigned verbosity, bool all_on_init_fl, bool all_fl )
+    {
+      rc_t        rc  = kOkRC;
+      variable_t* var = proc->varL;
+
+      // for each var
+      for(; var != nullptr; var=var->var_link )
+      {
+        // if the label matches, the sfx_id matches, and the chidx == kAnyChIdx
+        if( var->chIdx == kAnyChIdx )
+        {
+          _proc_append_var_channels_to_log_list( proc, verbosity, all_on_init_fl, all_fl, var );
+        }
+        
+      }
+      
+      errLabel:
+        return rc;
+    }
+
+    rc_t _proc_log_stmt_parse_level( const object_t* level_cfg, log::logLevelId_t& level_ref )
+    {
+      rc_t         rc        = kOkRC;
+      const char*  s         = nullptr;
+      
+      if( level_cfg == nullptr )
+        return rc;
+
+      if( !level_cfg->is_string() )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The log level was not given as a string.");
+        goto errLabel;
+      }
+
+      if((rc = level_cfg->value(s)) != kOkRC )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The log level could not be parsed.");
+        goto errLabel;
+      }
+
+      if((level_ref = log::levelFromString(s)) == log::kInvalid_LogLevel )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The log level '%s' was not recognized.",cwStringNullGuard(s));
+        goto errLabel;
+      }
+
+    errLabel:
+      if( rc != kOkRC )
+      {
+        level_ref = log::kInvalid_LogLevel;
+        rc = cwLogError(rc,"log level assignment failed. The log level must set to one of:'debug','info','warn','error','fatal'.");
+      }
+
+      return rc;
+    }
+    
+    rc_t _proc_log_stmt_parse_verbosity( const object_t* verb_cfg, unsigned& verbosity_ref )
+    {
+      rc_t rc = kOkRC;
+      
+      verbosity_ref = kMinimalValPrintVerb;
+      
+      if( verb_cfg == nullptr )
+        return rc;
+
+      // if verbosity was given as a string: silent,minimal,summary,all
+      if( verb_cfg->is_string() )
+      {
+        const char* s    = nullptr;
+        unsigned    verb = kInvalidValPrintVerb;
+        
+        if((rc = verb_cfg->value(s)) != kOkRC )
+        {
+          rc = cwLogError(rc,"The 'log' verbosity level could not be parsed as a string.");
+          goto errLabel;
+        }
+
+        if((verb = value_print_verbosity_from_string(s)) == kInvalidValPrintVerb )
+        {
+          rc = cwLogError(rc,"The 'log' verbosity '%s' was not recognized. Verbosity set at 'minimal'.",cwStringNullGuard(s));
+          goto errLabel;
+        }
+
+        verbosity_ref = verb;
+        return rc;
+      }
+
+      // if verbosity was given as a number: 0,1,2,3
+      if( verb_cfg->is_numeric() )
+      {
+        unsigned verb;
+        if((rc = verb_cfg->value(verb)) != kOkRC )
+        {
+          rc = cwLogError(rc,"The 'log' verbosity level could not be parsed as a number.");
+          goto errLabel;
+        }
+
+        if( verb > kMaxValPrintVerb )
+        {
+          cwLogWarning("The log verbosity setting has been reduced to the maximum setting:%i.",kMaxValPrintVerb);
+          verb = kMaxValPrintVerb;
+        }
+        
+        verbosity_ref = verb;
+        return rc;
+      }
+
+      rc = cwLogError( kSyntaxErrorRC, "The 'log' verbosity must be a string or number.");
+
+    errLabel:
+      return rc;
+    }
+
+    rc_t _proc_process_log_stmt(proc_t* proc, const object_t* logCfgD )
+    {
+      rc_t            rc                 = kOkRC;
+      const object_t* verb_cfg           = nullptr;
+      const object_t* level_cfg          = nullptr;
+      const object_t* var_cfgL           = nullptr;
+      const object_t* flags_cfgL         = nullptr;
+      bool            log_all_vars_fl    = false;
+      bool            log_all_on_init_fl = false;
+      unsigned        verbosity          = kMinimalValPrintVerb;
+
+      if( logCfgD == nullptr )
+        return rc;
+      
+      if((rc = logCfgD->readv("verbosity", kOptFl, verb_cfg,
+                              "level",     kOptFl, level_cfg,
+                              "flags",     kOptFl, flags_cfgL,
+                              "varL",      kOptFl, var_cfgL)) != kOkRC )
+      {
+        rc = cwLogError(rc,"The 'log' statement parse failed.");
+        goto errLabel;
+      }
+
+      if((rc = _proc_log_stmt_parse_level( level_cfg, proc->logLevel )) != kOkRC )
+      {
+        goto errLabel;
+      }
+      
+      if((rc = _proc_log_stmt_parse_verbosity( verb_cfg, verbosity )) != kOkRC )
+      {
+        goto errLabel;
+      }
+
+      // if verbosity is set to silent then don't bother building proc->varL
+      if( verbosity == kSilentValPrintVerb )
+        goto errLabel;
+
+      if((rc = _proc_log_stmt_parse_flags( proc, flags_cfgL, log_all_vars_fl, log_all_on_init_fl )) != kOkRC )
+      {
+        goto errLabel;
+      }
+
+      if( log_all_vars_fl || log_all_on_init_fl )
+      {
+        if((rc = _proc_log_stmt_var_all( proc, verbosity, log_all_on_init_fl, log_all_vars_fl )) != kOkRC )
+        {
+          goto errLabel;
+        }        
+      }
+
+      if( var_cfgL != nullptr )
+      {
+        if((rc = _proc_log_stmt_var_list( proc, verbosity, var_cfgL )) != kOkRC )
+        {
+          goto errLabel;
+        }
+      }
+
+    errLabel:
+      if( rc != kOkRC )
+        rc = cwLogError(rc,"'log' statement processing failed on '%s:%i.",cwStringNullGuard(proc->label),proc->label_sfx_id);
+      return rc;
+      
+    }
+
+    // Form an array (proc->manualNotifyVarA[]) of destination
+    // variables used by this proc which require notification, but
+    // which are connected to by source variables (on this proc) which
+    // do not support notification.
+
+    void _proc_create_manual_notification_array( proc_t* proc )
+    {
+      unsigned n = 0;
+      variable_t* var = proc->varL;
+      for(; var!=nullptr; var=var->var_link )
+        if( cwIsFlag(var->varDesc->flags,kNotifyVarDescFl) && is_connected_to_source(var) && !value_can_auto_notify(var->src_var->value) )
+        {
+          ++n;
+        }
+      
+      if( n > 0 )
+      {
+        proc->manualNotifyVarA = mem::allocZ<manual_notify_t>(n);
+        proc->manualNotifyVarN = 0;
+
+        var = proc->varL;
+        for(; var!=nullptr && proc->manualNotifyVarN<n; var=var->var_link )
+          if( cwIsFlag(var->varDesc->flags,kNotifyVarDescFl) && is_connected_to_source(var) && !value_can_auto_notify(var->src_var->value) )
+          {
+            proc->manualNotifyVarA[ proc->manualNotifyVarN   ].check_ele_cnt_fl = value_supports_an_ele_count(var->src_var->value);
+            proc->manualNotifyVarA[ proc->manualNotifyVarN++ ].var = var;
+          }
+        
+      }
+
+      assert( n == proc->manualNotifyVarN );
+      
+    }
+
+    
+    rc_t _proc_do_pre_runtime_variable_notification( proc_t* proc )
     {
       rc_t rc  = kOkRC;
       rc_t rc1 = kOkRC;
-      
+
+      // Schedule all variables marked for notification as changed.
       for(unsigned i=0; i<proc->varMapN; ++i)
+      {
         if( proc->varMapA[i] != nullptr && proc->varMapA[i]->vid != kInvalidId )
         {
           variable_t* var = proc->varMapA[i];
@@ -1476,7 +1947,9 @@ namespace cw
           if((rc = var_schedule_notification( var )) != kOkRC )
             rc1 = cwLogError(rc,"The proc inst instance '%s:%i' reported an invalid valid on variable:%s chIdx:%i.", var->proc->label, var->proc->label_sfx_id, var->label, var->chIdx );
         }
+      }
 
+      // Call proc->notify() on all variables marked for notification.
       rc = proc_notify(proc, kCallbackPnFl | kQuietPnFl );
       
       return rcSelect(rc,rc1);
@@ -2163,6 +2636,7 @@ namespace cw
       proc->proc_cfg      = proc_inst_cfg->pair_value();
       proc->class_desc    = class_desc;
       proc->net           = &net;
+      proc->logLevel      = log::kInvalid_LogLevel;
 
       TRACE_REG(proc->label,proc->label_sfx_id,proc->trace_id);
 
@@ -2263,18 +2737,26 @@ namespace cw
       }
 
       // create the feedback connections
-      _out_stmt_processing( net, proc, pstate );
+      if((rc = _out_stmt_processing( net, proc, pstate )) != kOkRC )
+      {
+        rc = cwLogError(rc,"'out' statement processing failed.");
+        goto errLabel;
+      }
       
       // the custom creation function may have added channels to in-list vars fix up those connections here.
       //_complete_input_connections(proc);
 
       // set the log flags again so that vars created by the proc instance can be included in the log output
-      if((rc = _proc_set_log_flags(proc,pstate.log_labels)) != kOkRC )
+      if((rc = _proc_process_log_stmt(proc,pstate.log_labels)) != kOkRC )
         goto errLabel;
+
+      // create a list of variables that require special notification handling
+      _proc_create_manual_notification_array( proc );
       
       // call the 'notify()' function to inform the proc instance of the current value of all of it's variables.
-      if((rc = _proc_schedule_variables_for_notification( proc )) != kOkRC )
+      if((rc = _proc_do_pre_runtime_variable_notification( proc )) != kOkRC )
         goto errLabel;
+
 
       // parse the proc UI cfg record
       if(pstate.ui_cfg != nullptr )
@@ -3531,6 +4013,61 @@ namespace cw
       return result;
     }
 
+    rc_t _network_parse_records_registry( network_t* net, const object_t* records_cfg )
+    {
+      rc_t rc = kOkRC;
+      const object_t* fmt_pair = nullptr;
+      unsigned n = 0;
+      
+      if( records_cfg == nullptr )
+        return rc;
+
+      if( !records_cfg->is_dict() )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The 'records' registry is not a dictionary.");
+        goto errLabel;
+      }
+
+      if((n = records_cfg->child_count()) == 0)
+        return rc;
+
+      net->recdFmtRegA = mem::allocZ<recd_reg_t>(n);
+
+      while( (fmt_pair = records_cfg->next_child_ele(fmt_pair)) != nullptr )
+      {
+        recd_fmt_t* recd_fmt = nullptr;
+        
+        if( !fmt_pair->is_pair() )
+        {
+          rc = cwLogError(kSyntaxErrorRC,"Illegal syntax on the record registry elment at index %i.",net->recdFmtRegN );
+          goto errLabel;
+        }
+
+        if( firstMatchChar( fmt_pair->pair_label(), '.') != nullptr )
+        {
+          rc = cwLogError(kSyntaxErrorRC,"The record format label may not contain a '.' as in '%s'.",cwStringNullGuard(fmt_pair->pair_label()));
+          goto errLabel;
+        }
+
+        if( net->recdFmtRegN >= n )
+        {
+          rc = cwLogError(kBufTooSmallRC,"An unexpected number of record registry elements was encountered.");
+          goto errLabel;
+        }
+
+        net->recdFmtRegA[ net->recdFmtRegN ].label = fmt_pair->pair_label();
+        net->recdFmtRegA[ net->recdFmtRegN ].fmt_cfg   = fmt_pair->pair_value();
+
+        net->recdFmtRegN += 1;
+        
+      }
+
+    errLabel:
+      if( rc != kOkRC )
+        rc = cwLogError(rc,"Record registry creation failed on the network '%s'.",cwStringNullGuard(net->label));
+      
+      return rc;
+    }
 
     //==================================================================================================================
     //
@@ -3544,7 +4081,8 @@ namespace cw
     {
       rc_t            rc           = kOkRC;
       unsigned        procN        = 0;
-
+      const object_t* records_cfg  = nullptr;
+      
       // if the top level network has not been set then set it here.
       // (this is necessary so that proc's later in the exec order
       //  can locate proc's earlier in the exec order)
@@ -3552,9 +4090,15 @@ namespace cw
         p->net = net;
 
       if((rc = networkCfg->readv("procs",   kReqFl, net->procsCfg,
+                                 "records", kOptFl, records_cfg,
                                  "presets", kOptFl, net->presetsCfg )) != kOkRC )
       {
         rc = cwLogError(rc,"Failed on parsing network cfg.");
+        goto errLabel;
+      }
+
+      if((rc = _network_parse_records_registry(net, records_cfg )) != kOkRC )
+      {
         goto errLabel;
       }
 
@@ -3841,42 +4385,34 @@ cw::rc_t cw::flow::exec_cycle( network_t& net )
   if( net.flow->prof_fl )
     time::get(net_t0);
 
-  for(unsigned i=0; i<net.procN; ++i)
+  for(unsigned i=0; i<net.procN && rc==kOkRC; ++i)
   {
     time::spec_t t0;
-    
-    net.procA[i]->modVarRecurseFl = true;
+    proc_t* proc = net.procA[i];
     
     if( net.flow->prof_fl)
       time::get(t0);
 
-    TRACE_TIME( net.procA[i]->trace_id, tracer::kBegEvtId, net.flow->cycleIndex,0 );
-    
-    // Call notify() on all variables marked for notification that have changed since the last exec_cycle()
-    proc_notify(net.procA[i], kCallbackPnFl | kQuietPnFl);
+    TRACE_TIME( proc->trace_id, tracer::kBegEvtId, net.flow->cycleIndex,0 );
 
-    // execute the proc
-    if((rc = net.procA[i]->class_desc->members->exec(net.procA[i])) != kOkRC )
+    // execute the proc instance
+    if((rc = proc_exec(proc)) != kOkRC )
     {
+      // kEofRC indicates that that the network should shutdow at the end of this cycle.
       if( rc == kEofRC )
-        halt_fl = true;
-      else
       {
-        rc = cwLogError(rc,"Execution failed on the proc:%s:%i.",cwStringNullGuard(net.procA[i]->label),net.procA[i]->label_sfx_id);
-        break;
-      }
+        halt_fl = true;
+        rc = kOkRC;
+      }      
     }
-
-    TRACE_TIME( net.procA[i]->trace_id, tracer::kEndEvtId, net.flow->cycleIndex,0 );
     
+    TRACE_TIME( proc->trace_id, tracer::kEndEvtId, net.flow->cycleIndex,0 );
+
     if( net.flow->prof_fl )
     {
-      time::accumulate_elapsed_current(net.procA[i]->prof_dur,t0);
-      net.procA[i]->prof_cnt += 1;
+      time::accumulate_elapsed_current(proc->prof_dur,t0);
+      proc->prof_cnt += 1;
     }
-    
-    net.procA[i]->modVarRecurseFl = false;
-    
   }
 
   if( net.flow->prof_fl )

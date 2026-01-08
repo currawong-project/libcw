@@ -79,9 +79,10 @@ namespace cw
 
     enum {
       kInvalidVarFl    = 0x00,
-      kLogVarFl        = 0x01,
-      kProxiedVarFl    = 0x02,
-      kProxiedOutVarFl = 0x04,
+      kLogRtVarFl      = 0x01,  // Log the value of this variable on cycle 0 or greater.
+      kLogInitVarFl    = 0x02,  // Always log the value of this variable before cycle 0
+      kProxiedVarFl    = 0x04,
+      kProxiedOutVarFl = 0x08,
     };
 
     // Note: The concatenation of 'vid' and 'chIdx' should form a unique identifier among all variables
@@ -116,6 +117,10 @@ namespace cw
       struct variable_str* dst_tail;     // 
       struct variable_str* dst_link;     // Link used by dst_head list.
 
+      std::atomic<unsigned> mod_cycle_idx;  // The last cycle index this variable was modified on.
+      unsigned             log_verbosity;   // Logging verbosity for this variable (See k???ValPrintVerb)
+      struct variable_str* log_link;        // Link used by proc_t.logVarL;
+      
       char*                ui_title;     // class description UI overrides from the proc. inst 'ui' cfg. for this varaible
       bool                 ui_hide_fl;
       bool                 ui_disable_fl;
@@ -133,6 +138,12 @@ namespace cw
     enum {
       kUiCreateProcFl = 0x01
     };
+
+    typedef struct manual_notify_str
+    {
+      variable_t*       var;
+      bool              check_ele_cnt_fl;
+    } manual_notify_t;
     
     typedef struct proc_str
     {
@@ -164,6 +175,13 @@ namespace cw
       unsigned              modVarMapTailIdx; // index of next full slot in varMapA[]
       std::atomic<unsigned> modVarMapFullCnt; // count of elements in modVarMapA[]
       std::atomic<unsigned> modVarMapHeadIdx; // index of next empty slot in varMapA[]
+
+      manual_notify_t*   manualNotifyVarA;  // manualNotifyVarA[ manualNotifyVarN ] Array of variables which do not support automatic notification ...
+      unsigned           manualNotifyVarN;  //                                     ... but which act as a source to variables that require notification.
+
+      
+      log::logLevelId_t logLevel;  // Log level, set by `log:{}` and enforced by proc_log_msg(). Default: kInvalid_LogLevel which tracks global log level.
+      variable_t*       logVarL;  // Link list of variables that are flagged to log after each exec. Linked via variable_t.log_link;
 
       // For 'poly' proc's 'internal_net' is a list linked by network_t.poly_link.
       struct network_str*  internal_net;
@@ -258,6 +276,12 @@ namespace cw
       struct global_var_str* link;      
     } global_var_t;
 
+    typedef struct recd_reg_str
+    {
+      const char*     label;
+      const object_t* fmt_cfg;
+    } recd_reg_t;
+
     typedef struct network_str
     {
       struct flow_str*  flow;
@@ -271,6 +295,9 @@ namespace cw
 
       network_preset_t* presetA;
       unsigned          presetN;
+
+      recd_reg_t*       recdFmtRegA;
+      unsigned          recdFmtRegN;
 
       // Preset pair table used by network_apply_dual_preset()
       network_preset_pair_t* preset_pairA;
@@ -357,7 +384,7 @@ namespace cw
     // Class and Variable Description
     //
 
-    var_desc_t*       var_desc_create( const char* label, const object_t* value_cfg );
+    rc_t              var_desc_create( const char* label, const object_t* cfg, var_desc_t*& var_desc_ref );
     void              var_desc_destroy( var_desc_t* var_desc );
     
     unsigned             var_desc_attr_label_to_flag( const char* attr_label );
@@ -481,6 +508,9 @@ namespace cw
     unsigned proc_mult_count( const network_t& net, const char* proc_label );
     
     rc_t     proc_mult_sfx_id_array( const network_t& net, const char* proc_label, unsigned* idA, unsigned idAllocN, unsigned& idN_ref );
+
+    const object_t* network_find_record_format( const network_t& net, const char* format_name );
+
     
     //------------------------------------------------------------------------------------------------------------------------
     //
@@ -495,6 +525,22 @@ namespace cw
 
     const class_preset_t*   proc_preset_find( const proc_t* cd, const char* preset_label );
 
+    // A) If 'recd_cfg_specifier' is a list then it must contain exactly one string element.
+    //    and that element must conform to rules in B).
+    // B) If 'recd_cfg_specifier' is a string then it must:
+    //    1. Match a label in the the local net record registry.
+    //    2. Match a proc/var desc identifer ("<proc_desc_label>.<var_desc_label>") of a var description containing a record format cfg.
+    // C) If 'recd_cfg_specifier' is a dictionary then it must match one of two syntaxes:
+    //    1. The syntax expected by recd_format_create().
+    //    2. { alloc_cnt:<>, fields:<string> } where 'alloc_cnt' is optional and <string> conforms to the rules in B).
+    //
+    // Notes:
+    // 1. No records are actually allocated by this call. alloc_recdN is simply assigned to recd_fmt_ref.alloc_cnt.
+    // 2. The actual value of of recd_fmt_t.alloc_cnt is the max. of allocRecdN, alloc_cnt from the C) 2. syntax,
+    //    and any 'alloc_cnt' field that happens to be in the located record fmt cfg.
+    // 3. It is the responsiblity of the caller to release the recd_fmt_t create by this call.
+    rc_t               proc_recd_format_create( proc_t* proc, const object_t* recd_cfg_specifier, unsigned alloc_recdN, recd_fmt_t*& recd_fmt_ref );
+
     // Access a blob stored via global_var()
     void*              global_var(       proc_t* proc, const char* var_label );
     
@@ -502,6 +548,10 @@ namespace cw
     rc_t               global_var_alloc( proc_t* proc, const char* var_label, const void* blob, unsigned blobByteN );
     
     void               proc_print( proc_t* proc );
+
+    rc_t               proc_log_msg( proc_t* proc, variable_t* var, log::handle_t logH, log::logLevelId_t log_level, const char* function, const char* file, unsigned line, rc_t rc, const char* fmt, va_list vl );
+    rc_t               proc_log_msg( proc_t* proc, variable_t* var, log::handle_t logH, log::logLevelId_t log_level, const char* function, const char* file, unsigned line, rc_t rc, const char* fmt, ... );
+
 
     // Count of all var instances on this proc.  This is a count of the length of proc->varL.
     unsigned           proc_var_count( proc_t* proc );
@@ -520,6 +570,10 @@ namespace cw
     enum { kCallbackPnFl=0x01, kQuietPnFl=0x02 };
     rc_t               proc_notify( proc_t* proc, unsigned flags = kCallbackPnFl );
 
+    // Execute a proc instance by calling it's custom 'exec' function.
+    // Returns kEofRC to indicate that the network that this proc belongs to
+    // show shutdown at the end of this execution cycle.
+    rc_t               proc_exec( proc_t* proc );
     
     //------------------------------------------------------------------------------------------------------------------------
     //
@@ -580,6 +634,7 @@ namespace cw
     rc_t           var_send_to_ui( proc_t* proc, unsigned vid,  unsigned chIdx );
     rc_t           var_send_to_ui_enable( proc_t* proc, unsigned vid,  unsigned chIdx, bool enable_fl );
     rc_t           var_send_to_ui_show(   proc_t* proc, unsigned vid,  unsigned chIdx, bool show_fl );
+
 
     //-----------------
     //
@@ -659,17 +714,23 @@ namespace cw
     rc_t           var_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, midi::ch_msg_t* midiA, unsigned midiN );
     rc_t           var_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_sample_t** magV=nullptr, const fd_sample_t** phsV=nullptr, const fd_sample_t** hzV=nullptr );
     rc_t           var_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_sample_t** magV=nullptr, const fd_sample_t** phsV=nullptr, const fd_sample_t** hzV=nullptr );
-    rc_t           var_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, const recd_type_t* recd_type, recd_t* recdA, unsigned recdN );
+    rc_t           var_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, const recd_type_t* recd_type, recd_t* recdA, unsigned recdN, unsigned maxRecdN );
 
+    // If the var description has a 'recd_format_t' compatible cfg. in `var_desc_t.fmt.recd_fmt` then
+    // use this function to allocate a backing recd_array_t buffer for it and then register a variable
+    // which will point into the buffer.  Note that it is the callers responsibility to eventually
+    // call recd_array_destroy() on the recd_array_t object returned in recd_array_ref.
+    // Note that the rbuf_t served by the variable in this call will be initialy empty (recdA=nullptr,recdN=0)
     // Alloc a recd_array, using an internal call to var_alloc_recd_array(), and assign all records to the specified variable.
     // The caller is responsible for destroying (recd_array_destroy()) the returned recd_array.    
-    rc_t           var_alloc_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, const recd_type_t* baseh, recd_array_t*& recd_arrray_ref, unsigned recdN=0 );
+    rc_t           var_alloc_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, const recd_type_t* base, recd_array_t*& recd_arrray_ref, unsigned allocRecdN=0 );
 
 
-    // Alloc the recd_array_t based on the recd_type defined by the variable.  Set recdN to a non-zero value to override the 'alloc_cnt' 
-    // which may have been set in the variables user provided cfg.
+    // Alloc the recd_array_t based on the recd_format_t included in the variable description. See var_desc_t.fmt.recd_fmt.
+    // If arg. `allocRecdN` is non-zero then the allocated size of the recd_array_t will be  max(allocRecdN,recd_format_t.allocRecdN)
+    // where recd_format_t.allocRecdN is taken from the variables recd_format_t.
     // The caller is responsible for destroying (recd_array_destroy()) the returned recd_array.
-    rc_t           var_alloc_record_array( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx, const recd_type_t* base, recd_array_t*& recd_array_ref, unsigned recdN=0 );
+    rc_t           var_alloc_record_array( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx, const recd_type_t* base, recd_array_t*& recd_array_ref, unsigned allocRecdN=0 );
     
     
     inline rc_t _var_register_and_set(cw::flow::proc_t*, unsigned int ) { return kOkRC; }
@@ -749,6 +810,10 @@ namespace cw
       return rc;  
     }
 
+    template< typename T>
+    rc_t var_get( proc_t* proc, unsigned vid, T& valRef)
+    { return var_get<T>(proc,vid,kAnyChIdx,valRef); }
+    
     template< typename T >
     T val_get( proc_t* proc, unsigned vid, unsigned chIdx )
     {
@@ -757,6 +822,10 @@ namespace cw
       return value;
     }
 
+    template< typename T >
+    T val_get( proc_t* proc, unsigned vid )
+    { return var_get<T>(proc,vid,kAnyChIdx); }
+    
     //
     //  var_set() coerces the incoming value to the type of the variable (var->type)
     //
@@ -789,6 +858,33 @@ namespace cw
     rc_t var_set( proc_t* proc, unsigned vid, unsigned chIdx, rbuf_t* val );
     rc_t var_set( proc_t* proc, unsigned vid, unsigned chIdx, const object_t* val );
 
+
+    inline rc_t var_set( proc_t* proc, unsigned vid, const value_t* val )  { return var_set(proc,vid,kAnyChIdx,val); }
+    inline rc_t var_set( proc_t* proc, unsigned vid, bool val )            { return var_set(proc,vid,kAnyChIdx,val); }
+    inline rc_t var_set( proc_t* proc, unsigned vid, uint_t val )          { return var_set(proc,vid,kAnyChIdx,val); }
+    inline rc_t var_set( proc_t* proc, unsigned vid, int_t val )           { return var_set(proc,vid,kAnyChIdx,val); }
+    inline rc_t var_set( proc_t* proc, unsigned vid, float val )           { return var_set(proc,vid,kAnyChIdx,val); }
+    inline rc_t var_set( proc_t* proc, unsigned vid, double val )          { return var_set(proc,vid,kAnyChIdx,val); }
+    inline rc_t var_set( proc_t* proc, unsigned vid, const char* val )     { return var_set(proc,vid,kAnyChIdx,val); }
+    inline rc_t var_set( proc_t* proc, unsigned vid, abuf_t* val )         { return var_set(proc,vid,kAnyChIdx,val); }
+    inline rc_t var_set( proc_t* proc, unsigned vid, fbuf_t* val )         { return var_set(proc,vid,kAnyChIdx,val); }
+    inline rc_t var_set( proc_t* proc, unsigned vid, mbuf_t* val )         { return var_set(proc,vid,kAnyChIdx,val); }
+    inline rc_t var_set( proc_t* proc, unsigned vid, rbuf_t* val )         { return var_set(proc,vid,kAnyChIdx,val); }
+    inline rc_t var_set( proc_t* proc, unsigned vid, const object_t* val ) { return var_set(proc,vid,kAnyChIdx,val); }
+
     
   }
 }
+
+#define proc_printf(proc,   fmt,...) cw::flow::proc_log_msg( proc, nullptr, cw::log::globalHandle(), cw::log::kPrint_LogLevel,   __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
+#define proc_debug( proc,   fmt,...) cw::flow::proc_log_msg( proc, nullptr, cw::log::globalHandle(), cw::log::kDebug_LogLevel,   __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
+#define proc_info(  proc,   fmt,...) cw::flow::proc_log_msg( proc, nullptr, cw::log::globalHandle(), cw::log::kInfo_LogLevel,    __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
+#define proc_warn(  proc,   fmt,...) cw::flow::proc_log_msg( proc, nullptr, cw::log::globalHandle(), cw::log::kWarning_LogLevel, __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
+#define proc_error( proc,rc,fmt,...) cw::flow::proc_log_msg( proc, nullptr, cw::log::globalHandle(), cw::log::kError_LogLevel,   __FUNCTION__, __FILE__, __LINE__, rc,    fmt, ##__VA_ARGS__ )
+
+#define var_printf(proc,  fmt,...) cw::flow::proc_log_msg( nullptr, var, cw::log::globalHandle(), cw::log::kPrint_LogLevel,   __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
+#define var_debug( proc,  fmt,...) cw::flow::proc_log_msg( nullptr, var, cw::log::globalHandle(), cw::log::kDebug_LogLevel,   __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
+#define var_info(  proc,  fmt,...) cw::flow::proc_log_msg( nullptr, var, cw::log::globalHandle(), cw::log::kInfo_LogLevel,    __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
+#define var_warn(  var,   fmt,...) cw::flow::proc_log_msg( nullptr, var, cw::log::globalHandle(), cw::log::kWarning_LogLevel, __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
+#define var_error( var,rc,fmt,...) cw::flow::proc_log_msg( nullptr, var, cw::log::globalHandle(), cw::log::kError_LogLevel,   __FUNCTION__, __FILE__, __LINE__, rc, fmt, ##__VA_ARGS__ )
+
