@@ -2631,8 +2631,8 @@ namespace cw
 
       typedef struct out_var_str
       {
-        unsigned audioChN;
-        coeff_t* ogainV;     // ogainV[ audioChN ]
+        unsigned  audioChN;
+        coeff_t*  ogainV;     // ogainV[ audioChN ]
         unsigned* iChIdxV;   // inChIdx[ audioChN ]        
       } out_var_t;
         
@@ -3435,6 +3435,80 @@ namespace cw
       
     }    
     
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // audio_pass
+    //
+    namespace audio_pass
+    {
+      enum {
+        kSratePId,
+        kChCntPId,
+        kInPId,
+        kOutPId
+      };
+      
+      typedef struct
+      {
+        abuf_t* abuf;
+      } inst_t;
+
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t    rc   = kOkRC;        
+        srate_t srate = 0;
+        unsigned ch_cnt = 1;
+        const abuf_t* abuf = nullptr;
+        
+        if((rc = var_register_and_get(proc, kAnyChIdx,
+                                      kSratePId,"srate",kBaseSfxId,srate,
+                                      kChCntPId,"ch_cnt",kBaseSfxId,ch_cnt,
+                                      kInPId,"in",kBaseSfxId,abuf)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if( srate == 0 )
+          srate = proc->ctx->sample_rate;
+
+        if( abuf == nullptr )
+        {
+          p->abuf = abuf_create(srate, ch_cnt, proc->ctx->framesPerCycle);
+          rc = var_set( proc, kInPId, kAnyChIdx, p->abuf );
+        }
+        
+        // create the output audio buffer
+        rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, srate, ch_cnt, proc->ctx->framesPerCycle );
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        abuf_destroy(p->abuf);
+        return kOkRC;
+      }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      { return kOkRC; }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    
     
     //------------------------------------------------------------------------------------------------------------------
     //
