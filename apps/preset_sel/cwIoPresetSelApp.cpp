@@ -576,10 +576,11 @@ namespace cw
     void _log_output_func( void* arg, unsigned level, const char* text )
     {
       //app_t*   app     = (app_t*)arg;
-      //unsigned logUuId = uiFindElementUuId( app->ioH, kLogId);
-      
+      //unsigned logUuId = uiFindElementUuId( app->ioH, kLogId);      
       //uiSetLogLine( app->ioH, logUuId, text );
-      log::defaultOutput(nullptr,level,text);
+
+      
+      // log::defaultOutput(nullptr,level,text);
     }
 
     void _free_perf_recording_recd( perf_recording_t* prp )
@@ -3735,7 +3736,7 @@ cw::rc_t cw::preset_sel_app::main( const object_t* cfg, int argc, const char* ar
   }
 
   log::setOutputCb( log::globalHandle(),_log_output_func,&app);
-  setLevel( log::globalHandle(), log::kPrint_LogLevel );
+  setLevel( log::globalHandle(), log::kDebug_LogLevel );
     
   //io::report(app.ioH);
 
