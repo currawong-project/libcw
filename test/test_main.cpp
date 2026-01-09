@@ -8,7 +8,9 @@ public:
   void SetUp() override
   {
     // This code runs once before all tests in the program.
-    cw::log::createGlobal();
+    cw::log::log_args_t log_args;
+    init_minimum_args( log_args );
+    cw::log::createGlobal(log_args);
   }
   
   void TearDown() override

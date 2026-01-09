@@ -24,8 +24,11 @@ int main( int argc, char** argv )
   rc_t rc = kOkRC;
   object_t* cfg = nullptr;
   const object_t* obj = nullptr;
+  cw::log::log_args_t log_args;
 
-  cw::log::createGlobal();
+  init_minimum_args( log_args );
+
+  cw::log::createGlobal(log_args);
   
   if( argc < 2 )
   {
