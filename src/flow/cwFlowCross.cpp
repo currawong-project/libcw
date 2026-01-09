@@ -150,9 +150,10 @@ namespace cw
       net->stateId = net_idx == 0 ? kActiveStateId : kInactiveStateId;
       net->net_idx = net_idx;
 
-      if((rc = flow::create( net->flowH, &classCfg, &networkCfg, nullptr, nullptr )) == kOkRC )
+      if((rc = flow::create( net->flowH, &classCfg, &networkCfg, nullptr, nullptr )) != kOkRC )
       {
         rc = cwLogError(rc,"Flow cross index %i network create failed.",net_idx);
+        goto errLabel;
       }
       
       if((rc = flow::initialize( net->flowH, net->deviceA, deviceN )) == kOkRC )
