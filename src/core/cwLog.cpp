@@ -182,7 +182,7 @@ namespace cw
       
 
       // Disable file and queue use because we are about to destroy the queue and file.
-      p->flags = cwClrFlag(p->flags,kSkipQueueFl);
+      p->flags = cwSetFlag(p->flags,kSkipQueueFl);
       p->flags = cwClrFlag(p->flags,kFileOutFl);
       
       if((rc0 = nbmpscq::destroy(p->qH)) != kOkRC )
