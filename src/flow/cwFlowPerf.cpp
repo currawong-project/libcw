@@ -1625,15 +1625,21 @@ namespace cw
           goto errLabel;                          
         }
 
+        // create the internal record array
+        if((rc = recd_array_create( p->recd_array, rbuf->type, nullptr,  rbuf->maxRecdN )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"The internal record array create failed.");
+          goto errLabel;                                    
+        }
+        
         // get the record field index for the outgoing record
         if((p->o_midi_fld_idx = recd_type_field_index( p->recd_array->type, "midi")) == kInvalidIdx )
         {
           rc = proc_error(proc,kInvalidArgRC,"The outgoing record does not have a 'midi' field.");
           goto errLabel;                          
         }
-        
+
         // create one output record buffer
-        //rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, p->recd_array->type, nullptr, 0  );
         if((rc = var_alloc_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, p->recd_array )) != kOkRC )
         {
           goto errLabel;
