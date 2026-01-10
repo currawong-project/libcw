@@ -3450,36 +3450,96 @@ namespace cw
       
       typedef struct
       {
-        abuf_t* abuf;
+        bool      msg_fl;
+        sample_t* hold;
       } inst_t;
 
 
       rc_t _create( proc_t* proc, inst_t* p )
       {
-        rc_t    rc   = kOkRC;        
-        srate_t srate = 0;
-        unsigned ch_cnt = 1;
-        const abuf_t* abuf = nullptr;
+        rc_t        rc               = kOkRC;        
+        srate_t     srate            = 0;
+        unsigned    ch_cnt           = 1;
+        unsigned    frameN           = proc->ctx->framesPerCycle;
+        variable_t* in_var           = nullptr;
+        abuf_t*     a                = nullptr;
+        bool        has_source_fl    = false;
         
         if((rc = var_register_and_get(proc, kAnyChIdx,
                                       kSratePId,"srate",kBaseSfxId,srate,
-                                      kChCntPId,"ch_cnt",kBaseSfxId,ch_cnt,
-                                      kInPId,"in",kBaseSfxId,abuf)) != kOkRC )
+                                      kChCntPId,"ch_cnt",kBaseSfxId,ch_cnt)) != kOkRC )
         {
           goto errLabel;
         }
 
         if( srate == 0 )
           srate = proc->ctx->sample_rate;
-
-        if( abuf == nullptr )
-        {
-          p->abuf = abuf_create(srate, ch_cnt, proc->ctx->framesPerCycle);
-          rc = var_set( proc, kInPId, kAnyChIdx, p->abuf );
-        }
         
+        if((rc = var_register(proc,kAnyChIdx,kInPId,"in",kBaseSfxId)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((rc = var_find(proc,kInPId,kAnyChIdx,in_var)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        
+        // if there is no input source
+        if( !is_connected_to_source( in_var ) )
+        {
+          abuf_t* abuf = abuf_create(srate, ch_cnt, frameN);
+          
+          rc = var_set( proc, kInPId, abuf );
+        }
+        else // there is an input source
+        {
+          has_source_fl = true;
+          
+          if((rc = var_get(proc,kInPId,a)) != kOkRC )
+          {
+            goto errLabel;
+          }
+
+          if( a->chN != ch_cnt )
+          {
+            proc_warn(proc,"The audio channel count of the source signal (%i) does not match the arg. channel count (%i). The arg. channel count is being ignored.",a->chN,ch_cnt);
+            ch_cnt = a->chN;
+          }
+          
+          if( a->frameN != frameN )
+          {
+            proc_warn(proc,"The audio sample frame count of the source signal (%i) does not match system frame count (%i). The system frame count is being ignored.",a->frameN,frameN);
+            frameN = a->frameN;
+          }
+
+          if( a->srate != srate )
+          {
+            proc_warn(proc,"The sample rate of the source signal (%f) does not match the arg. channel count (%f). The arg. sample rate is being ignored.",a->srate,srate);
+            srate = a->srate;
+          }
+
+        }
+                
+
         // create the output audio buffer
-        rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, srate, ch_cnt, proc->ctx->framesPerCycle );
+        if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, srate, ch_cnt, frameN )) != kOkRC )
+          goto errLabel;
+
+        // if there is a source signal ...
+        if( true )
+        {
+          // ... then store the audio buffer ptr (since it will be overwritten in exec())
+          if((rc = var_get(proc,kOutPId,a)) != kOkRC )
+            goto errLabel;
+          
+          p->hold = a->buf;
+        }
+        else
+        {
+          p->hold = nullptr;
+        }
         
       errLabel:
         return rc;
@@ -3487,7 +3547,12 @@ namespace cw
 
       rc_t _destroy( proc_t* proc, inst_t* p )
       {
-        abuf_destroy(p->abuf);
+        if( p->hold != nullptr )
+        {
+          abuf_t* a =nullptr;
+          if( var_get(proc,kOutPId,a) == kOkRC )
+            a->buf = p->hold;
+        }
         return kOkRC;
       }
 
@@ -3495,7 +3560,32 @@ namespace cw
       { return kOkRC; }
 
       rc_t _exec( proc_t* proc, inst_t* p )
-      { return kOkRC; }
+      {
+
+        const abuf_t* i_abuf = nullptr;
+        abuf_t* o_abuf = nullptr;
+
+        var_get(proc,kInPId, kAnyChIdx,i_abuf);
+        
+        var_get(proc,kOutPId,kAnyChIdx,o_abuf);
+
+        if( i_abuf->chN == o_abuf->chN && i_abuf->frameN == o_abuf->frameN )
+        {
+          o_abuf->buf = i_abuf->buf;
+        }
+        else
+        {
+          if( !p->msg_fl )
+          {
+            proc_warn(proc,"Audio buffer input/output format mismatch: input=chs:%i frames:%i output=chs:%i frames:%i",i_abuf->chN,i_abuf->frameN, o_abuf->chN, o_abuf->frameN);
+            p->msg_fl = true;
+          }
+               
+        }
+        
+
+        return kOkRC;
+      }
 
       rc_t _report( proc_t* proc, inst_t* p )
       { return kOkRC; }

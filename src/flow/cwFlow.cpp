@@ -50,6 +50,7 @@ namespace cw
       { "audio_merge",     &audio_merge::members },
       { "audio_mix",       &audio_mix::members },
       { "audio_silence",   &audio_silence::members },
+      { "audio_pass",      &audio_pass::members },
       { "sine_tone",       &sine_tone::members },
       { "pv_analysis",     &pv_analysis::members },
       { "pv_synthesis",    &pv_synthesis::members },
