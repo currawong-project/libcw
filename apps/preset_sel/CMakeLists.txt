@@ -1,5 +1,7 @@
 add_executable(preset_sel)
 
+set_target_properties(preset_sel PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
 target_sources(preset_sel
   
   PRIVATE
