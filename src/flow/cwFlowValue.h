@@ -19,7 +19,6 @@ namespace cw
       kBaseSfxId = 0,
       kFbufVectN = 3,  // count of signal vectors in fbuf (mag,phs,hz)
       kAnyChIdx = kInvalidIdx,
-      kLocalValueN = 2,
       kDefaultFramesPerCycle=64,
       kDefaultSampleRate=48000
     };
@@ -130,7 +129,7 @@ namespace cw
         
         const object_t* cfg;
         midi::ch_msg_t* midi;
-        void*           p;
+        //void*           p;
         
 
       } u;
@@ -147,7 +146,7 @@ namespace cw
     //
 
     
-    inline void set_null( value_t& v, unsigned tflag ) { v.tflag=tflag; v.u.p=nullptr; }
+    //inline void set_null( value_t& v, unsigned tflag ) { v.tflag=tflag; v.u.p=nullptr; }
     inline bool is_numeric( const value_t* v ) { return cwIsFlag(v->tflag,kNumericTFl); }
     inline bool is_matrix(  const value_t* v ) { return cwIsFlag(v->tflag,kMtxTFl); }    
 
