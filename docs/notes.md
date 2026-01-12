@@ -687,9 +687,9 @@ to other _caw_ based execution.
 Logging
 -------
 
-Even if the log is not yet instantiated calls to the logg macros (e.g. cwLogError(), cwLogWarning() ...)
+Even if the log is not yet instantiated calls to the log macros (e.g. cwLogError(), cwLogWarning() ...)
 should at least print to the console.  This allows the log to be used by the application
-for parsinging the logs own user configuration parameters.
+for parsing the logs own user configuration parameters.
 
 The log can be configured to use an internal non-blocking mulit-producer, single-consumer queue.
 In this configuration all messages are initially stored in the queue and only

@@ -53,6 +53,8 @@ Done
 	Variables that are buffers (abuf,fbuf,mbuf,rbuf) are output if they contain non-zero elements.
 	All other variable types are logged on every cycle.
 
+- DONE: capture log output to a buffer for use in testing
+
 ### UI
 
 - The UI should not be updated on every DSP cycle.
@@ -114,6 +116,13 @@ Done
   `var_regster_and_set()` on the output variable. These two operations could be combined.
   DONE: All copies of `_alloc_recd_array()` were removed and replaced with calls to `var_alloc_register_and_set()` 
 
+- It might be useful to include `allocRecdN` in `rbuf_t` this would allow proc instances
+  which process records to know what the max size of the incoming record array is
+  at instantiation time - this would be a way to pass a hint to proc's that receive
+  records as input as to the maximum expected value of `rbuf_t.recdN`.
+  DONE: rbuf_t now has `maxRecdN`.
+  
+
 ### Variable Notification
 
 - All outputs must be set via `var_set()` call, otherwise proc's that
@@ -154,6 +163,15 @@ Done
   buffer is not zero.  ... it's 'cfg' and 'mtx' types where there is a bigger problem noticing changes.
   DONE: This behaviour is not implemented via the `proc_t.manualNotifyVarA[]`
 
+### Build System
+
+- DONE: Convert to use CMake
+
+
+- Use address sanitizer and thread sanitizer. There should be a CMake preset that
+  turns on thread sanitizer and turns off address sanitizer since they are incompatible with 
+  one another.
+  DONE: Implemented in cmake update.
 
 ### Misc
 
@@ -172,6 +190,62 @@ Done
 
 - Check for duplicate network names in a program cfg.
   DONE: See `cwIoFlowCtl.cpp create()`
+
+- Finish audio feedback example.
+  This should be easy now that there is an `audio_silence` proc.
+  DONE: See `audio_pass` and `test.cfg test_audio_feedback`
+
+- All variables must have values after the custom instantiation phase.
+  If a variable is fed from a processor later in the connection chain via an 'out' statement
+  it is necessary to give the variable a dummy value to allow it to pass the
+  post instantiation check which verifies that all variables have a valid value.
+  This is particularly a problem for 'record' type variable which are connected
+  via 'out' statements because there is no easy way to specify a dummy record value.
+  See `cult_caw.cfg ex_07_rt` for an example where the `reset_ctl` was moved
+  below the score followers to work around this problem.
+  There is no easy way around this problem because it arises from circular dependencies
+  in the patch.  (i.e. the later executing 'proc' is providing input to the earlier executing 'proc').
+  
+  + Consider adding a `defer_value_check` attribute which will defer value
+  checking until the net is completely instantiated - or at least not bother
+  with the post proc instantiation value check.
+  
+  + Consider adding an explicit configuration pass that allows the proc's to update their
+  configuration after they are created but before cycle 0.  This would mean that every
+  proc would need an additional member function that checked the input dependent configuration
+  and updated it's configuration if it was changed.
+  
+  This approach could under certain circumstance result in
+  'oscillating' configurations or configurations that don't converge.
+  Although this circumstance would be fairly easy to notice.
+  
+    - Break the proc-inst process into two phases:
+	  1. allocation: Runs exactly once: allocates the proc instance object and does any non-variable dependent setup.
+	  2. initialization: Runs multiple times where each pass attempts to assign a valid initial value to each variable.
+		  
+  
+  + Consider using a 'feedback' object which is setup to 
+  output a record of the type required by the receiving proc
+  but whose input is optional - and can therefore be left blank
+  at creation time. ... but the output record array can be 
+  allocated at this point because the output record format 
+  is known. 
+  
+  On cycle-0 the feedback will then validate the incoming input record 
+  structure. 
+  DONE: The use of 'feedback' objects, AKA 'pass' objects is the decided solution.
+  See `recd_pass` and `audio_pass`.  Note that it is necessary for these objects
+  to be initially configured to mimic the format of the value that they will pass.
+  On exe() they then pass the input values directly through to the output
+  via pointer assignment.
+
+- The 'two slot' approach to setting variable no longer seems useful.
+  The only reason not to eliminate it is to possibly use it as a way
+  to test local values before they are set, but it isn't clear if this
+  actually useful.  Consider the case of setting min/max for numeric
+  values - could it be used there?
+  DONE: Aside from not being used this approach had a data race when the source pointer 
+  on the destination variable was moved to point to the new slot.
 
 
 Pre-12/2025

@@ -31,7 +31,13 @@ Some of libcw's features are:
 ```
 cd ~/src/libcw
 rm -rf build  #clean
+
 cmake -S ~/src/libcw -B ~/src/libcw/build/debug -DCMAKE_INSTALL_PREFIX=~/src/libcw/build/debug/install --preset debug
+
+# or the short form
+cmake -B build/debug -DCMAKE_INSTALL_PREFIX=build/debug/install --preset debug
+
+
 cmake --build ~/src/libcw/build/debug --preset debug
 cmake --install ~/src/libcw/build/debug 
 ```
@@ -40,12 +46,17 @@ cmake --install ~/src/libcw/build/debug
 
 See https://cmake.org/cmake/help/latest/manual/ctest.1.html#manual:ctest(1) for more options.
 ```
-ctest --test-dir build/debug/test             # Run all tests.
-ctest --test-dir build/debug/test  --verbose  # Run all tests without surpressing output to stdout
-ctest -R "MyTest" --test-dir build/debug/test # Identify the tests to run with a regex.
+ctest --test-dir build/debug/test                       # Run all tests.
+ctest --test-dir build/debug/test  --verbose            # Run all tests without surpressing output to stdout
+ctest -R "MyTest" --test-dir build/debug/test --verbose # Identify the tests to run with a regex.
 ```
-
-
+## Debug a test:
+```
+file = ~/src/libcw/build/debug/test/test_main  
+set args=--gtest_filter=FlowTest.NumberTest --gtest_death_test_style=threadsafe
+catch signal SIGABRT
+r
+```
 
 
 
