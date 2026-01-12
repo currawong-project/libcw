@@ -855,23 +855,23 @@ namespace cw
       p->ui_var_stub.ui_var_link.store(nullptr,std::memory_order_relaxed);
       
     }
+
+    void _print_abuf( const abuf_t* abuf )
+    {
+      printf("Abuf: sr:%7.1f chs:%3i frameN:%4i %p",abuf->srate,abuf->chN,abuf->frameN,abuf->buf);
+    }
+
+    void _print_external_device( const external_device_t* dev )
+    {
+      cwLogPrint("Dev: %10s type:%3i fl:0x%x : ", cwStringNullGuard(dev->devLabel),dev->typeId,dev->flags);
+      if( dev->typeId == kAudioDevTypeId )
+        _print_abuf(dev->u.a.abuf);
+      cwLogPrint("\n");
+    }
+
     
   }
 }
-
-void cw::flow::print_abuf( const abuf_t* abuf )
-{
-  printf("Abuf: sr:%7.1f chs:%3i frameN:%4i %p",abuf->srate,abuf->chN,abuf->frameN,abuf->buf);
-}
-
-void cw::flow::print_external_device( const external_device_t* dev )
-{
-  cwLogPrint("Dev: %10s type:%3i fl:0x%x : ", cwStringNullGuard(dev->devLabel),dev->typeId,dev->flags);
-  if( dev->typeId == kAudioDevTypeId )
-    print_abuf(dev->u.a.abuf);
-  cwLogPrint("\n");
-}
-
 
 
 cw::rc_t cw::flow::create( handle_t&          hRef,
@@ -1247,7 +1247,6 @@ cw::rc_t cw::flow::send_ui_updates( handle_t h )
   return rc;
 }
 
-
 cw::rc_t cw::flow::apply_preset( handle_t h, const char* presetLabel )
 {
   flow_t* p  = _handleToPtr(h);
@@ -1338,14 +1337,10 @@ void cw::flow::print_network( handle_t h )
   flow_t* p = _handleToPtr(h);
   
   for(unsigned i=0; i<p->deviceN; ++i)
-    print_external_device( p->deviceA + i );
+    _print_external_device( p->deviceA + i );
   
   network_print(*p->net);
 }
-
-
-
-
 
 void cw::flow::profile_report( handle_t h )
 {
@@ -1362,3 +1357,4 @@ void cw::flow::profile_report( handle_t h )
     }
   }
 }
+

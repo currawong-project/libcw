@@ -556,9 +556,9 @@ void cw::flow_cross::print( handle_t h )
   
   printf("flow_cross: sr:%7.1f\n", p->srate );
 
-  printf("master devices:\n");
-  for(unsigned i=0; i<p->deviceN; ++i)
-    flow::print_external_device( p->deviceA + i );
+  //printf("master devices:\n");
+  //for(unsigned i=0; i<p->deviceN; ++i)
+  //  flow::print_external_device( p->deviceA + i );
 
   for(unsigned i=0; i<p->netN; ++i)
   {

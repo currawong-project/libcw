@@ -10,9 +10,6 @@ namespace cw
 
     typedef handle<struct flow_str> handle_t;
 
-    void print_abuf( const struct abuf_str* abuf );
-    void print_external_device( const external_device_t* dev );
-
     // Parse the cfg's but don't yet instantiate the network.
     // Upon completion of this function the caller can 
     // query the network for configuration information which can
@@ -101,8 +98,6 @@ namespace cw
     void print_network( handle_t h );
     void profile_report( handle_t h );
 
-    
-    
   }
 }
 
