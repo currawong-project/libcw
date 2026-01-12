@@ -9,12 +9,19 @@ namespace cw
   // Return 0 if s is null.
   unsigned textLength( const char* s );
 
+  // dstN is the count of bytes in dst[]
   // If dst is non-null then dst is always 0-terminated.
+  // srcN is the count of char's in src (as returned by textLength()).
   // src will be truncated if srcN > dstN-1.
   // If dst is null then null is returned
   // if src is null then dst[0] = 0.
   // if srcN is 0 then textLength(src) is used for srcN
+  // Returns 'dst'.
   const char* textCopy( char* dst, unsigned dstN, const char* src, unsigned srcN=0 );
+  
+  // Same as textCopy( dst + textLength(dst), dstN, src, srcN )
+  const char* textCat(  char* dst, unsigned dstN, const char* src, unsigned srcN=0 );
+  
 
   void textToLower( char* s );
   void textToUpper( char* s );

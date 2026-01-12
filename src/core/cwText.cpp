@@ -31,10 +31,8 @@ namespace cw
         return s;
 
     return eosFl ? s : nullptr;
-  }
-  
+  }  
 }
-
 
 unsigned cw::textLength( const char* s )
 { return s == nullptr ? 0 : strlen(s); }
@@ -60,6 +58,16 @@ const char* cw::textCopy( char* dst, unsigned dstN, const char* src, unsigned sr
     dst[n] = 0;
   }
   return dst;
+}
+
+const char* cw::textCat(  char* dst, unsigned dstN, const char* src, unsigned srcN )
+{
+  unsigned n = textLength(dst);
+  
+  if( n>=dstN)
+    return nullptr;
+  
+  return textCopy(dst + n, dstN-n, src, srcN );
 }
 
 void cw::textToLower( char* s )
