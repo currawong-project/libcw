@@ -170,7 +170,7 @@ namespace cw
       return rc;
     }
 
-    void _exec_test_log_cb( void* cbArg, unsigned level, const char* text )
+    void _exec_test_log_cb( void* cbArg, log::logLevelId_t level, const char* text )
     {
       rc_t rc;
       test_t* r = (test_t*)cbArg;

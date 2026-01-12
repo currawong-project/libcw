@@ -573,7 +573,7 @@ namespace cw
       _set_status(app,"Ok");
     }
 
-    void _log_output_func( void* arg, unsigned level, const char* text )
+    void _log_output_func( void* arg, log::logLevelId_t level, const char* text )
     {
       //app_t*   app     = (app_t*)arg;
       //unsigned logUuId = uiFindElementUuId( app->ioH, kLogId);      
