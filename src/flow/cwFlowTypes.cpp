@@ -167,32 +167,6 @@ namespace cw
       }
     }
     
-    rc_t _var_broadcast_new_value( variable_t* var )
-    {
-      rc_t rc = kOkRC;
-      
-      // notify each connected var that the value has changed
-      for(variable_t* con_var = var->dst_head; con_var!=nullptr; con_var=con_var->dst_link)
-      {
-        // the var->local_value[] slot used by the source variable may have changed - update the destination variable
-        // so that it points to the correct value.
-        con_var->value = var->value;
-        
-        cwLogMod("%s:%i %s:%i -> %s:%i %s:%i",
-                 var->proc->label,var->proc->label_sfx_id,
-                 var->label,var->label_sfx_id,
-                 con_var->proc->label,con_var->proc->label_sfx_id,
-                 con_var->label,con_var->label_sfx_id );
-
-        // add the connected variable to con_var->proc->modVarMapA[].
-        if((rc = var_schedule_notification(con_var)) != kOkRC )
-          break;
-               
-      }
-      return rc;
-    }
-
-
     // Incr the var->modN value and put the var pointer in var->proc->modVarMapA[]
     // where it will be picked up by a later call to proc_notify().
     // This function runs in a multi-thread context.
@@ -244,16 +218,9 @@ namespace cw
       // var->type is the allowable type for this var's value.
       // It may be set to kInvalidTFl if the type has not yet been determined.
       unsigned value_type_flag    = var->type;
-
-      // Pick the slot in local_value[] that we will use to try out this new value.
-      unsigned next_local_value_idx = (var->local_value_idx + 1) % kLocalValueN;
       
-      // store the pointer to the current value of this variable
-      value_t* original_value     = var->value;
-      unsigned original_value_idx = var->local_value_idx;
-      
-      // release the previous value in the next slot
-      value_release(&var->local_value[next_local_value_idx]);
+      // release the previous value 
+      value_release(&var->my_value);
 
       // if the value type of this variable has not been established
       if( value_type_flag == kInvalidTFl  )
@@ -276,64 +243,43 @@ namespace cw
           goto errLabel;
         }
       }
-      
+
       // set the type of the LHS to force the incoming value to be coerced to this type
-      var->local_value[ next_local_value_idx ].tflag = value_type_flag;
+      var->my_value.tflag = value_type_flag;
 
       // set the new local value in var->local_value[next_local_value_idx]
-      if((rc = value_set(var->local_value + next_local_value_idx, val )) != kOkRC )
+      if((rc = value_set(&var->my_value, val)) != kOkRC )
       {
         rc = cwLogError(rc,"Value set failed on '%s:%i %s:%i",var->proc->label,var->proc->label_sfx_id,var->label,var->label_sfx_id);
         goto errLabel;
       }
 
       // make the new local value current
-      var->value           = var->local_value + next_local_value_idx;
-      var->local_value_idx = next_local_value_idx;
-      
-      // If the proc is fully initialized ...
-      if( var->proc->varMapA != nullptr )
-      {
-        // ... then inform the proc. that the value changed
-        // Note 1: We don't want to this call to occur if we are inside or prior to 'proc.create()' 
-        // call because calls' to 'proc.value()' will see the proc in a incomplete state)
-        // Note 2: If this call returns an error then the value assignment is cancelled
-        // and the value does not change.
-
-        // WHY IS THIS CALL BEING MADE.  IT INFORMS THE A PROC THAT ONE
-        // OF IT'S OWN VARIABLES CHANGED - ON THE PREVIOUS CYCLE.
-        //
-        // FURTHERMORE DUE TO THE modVarRecurseFl BEING SET IT PROBABLY
-        // DOESN'T EVEN DO THAT.
-        //
-        // MAYBE IT'S INTENDED TO DO SOMETHING PRIOR TO RUNTIME?
-        // ... BUT ISN'T THAT HANDLED BY cwFlowNet._proc_do_pre_runtime_variable_notification() ?
-        //
-        // LET's comment it out and see what breaks!
-        //rc = var_schedule_notification( var );
-
-        // Record the fact that this variable changed on this cycle.
-        if( cwIsFlag(var->flags,kLogRtVarFl) )
-          var->mod_cycle_idx.store(var->proc->ctx->cycleIndex,std::memory_order_release);
-
-      }
-
-      if( rc == kOkRC )
-      {
-        if( var->ui_var != nullptr && var->ui_var->user_arg != nullptr )
-          var_send_to_ui(var);
+      var->value           = &var->my_value;
+            
+      // Record the fact that this variable changed on this cycle for logging purposes
+      if( cwIsFlag(var->flags,kLogRtVarFl) )
+        var->mod_cycle_idx.store(var->proc->ctx->cycleIndex,std::memory_order_release);
         
-        // send the value to connected downstream proc's
-        rc = _var_broadcast_new_value( var );
-      }
-      else
+      // the value changed so update the UI
+      if( var->ui_var != nullptr && var->ui_var->user_arg != nullptr )
+        var_send_to_ui(var);
+        
+      // inform connected downstream proc's that the value changed
+      for(variable_t* con_var = var->dst_head; con_var!=nullptr; con_var=con_var->dst_link)
       {
-        // cancel the assignment and restore the original value
-        var->value           = original_value;
-        var->local_value_idx = original_value_idx;
+        // The value pointer for this downstream variable should have already be pointing to this value
+        assert( con_var->value == var->value );
+        
+        // add the connected variable to con_var->proc->modVarMapA[].
+        if((rc = var_schedule_notification(con_var)) != kOkRC )
+          break;
+               
       }
-      
+        
+
     errLabel:
+      
       return rc;
     }
     
@@ -1560,8 +1506,7 @@ void cw::flow::var_destroy( variable_t* var )
 {
   if( var != nullptr )
   {
-    for(unsigned i=0; i<kLocalValueN; ++i)
-      value_release(var->local_value+i);
+    value_release(&var->my_value);
 
     if( var->localVarDesc != nullptr )
       mem::release(var->localVarDesc);
@@ -1659,11 +1604,15 @@ cw::rc_t  cw::flow::var_channelize( proc_t* proc, const char* var_label, unsigne
       {
       
         // Set the value of the new variable to the value of the 'any' channel
-        value_duplicate( var->local_value[ var->local_value_idx], base_var->local_value[ base_var->local_value_idx ] );
+        //value_duplicate( var->local_value[ var->local_value_idx], base_var->local_value[ base_var->local_value_idx ] );
+        value_duplicate( var->my_value, base_var->my_value );
 
         // If the 'any' channel value was set to point to it's local value then do same with this value
-        if( base_var->local_value + base_var->local_value_idx == base_var->value )
-          var->value = var->local_value + var->local_value_idx;
+        //if( base_var->local_value + base_var->local_value_idx == base_var->value )
+        //  var->value = var->local_value + var->local_value_idx;
+        if( base_var->value == &base_var->my_value )
+          var->value = &var->my_value;
+        
       }
     }
     
@@ -1714,8 +1663,13 @@ errLabel:
   return chN;
 }
 
-// This function is called to inform 'var' that their value has changed and that
-// proc->notify() should be called the next time var->proc executes.
+// This function is called, by the upstream proc, to inform the
+// downstream (destination) 'var' that the value has changed.  If the
+// 'var' is tagged for notification then it will be added to it's proc
+// _modVarMapA[] and proc->notify() will be called the next time
+// var->proc->proc_exec() is called.
+// 
+// This function may be called from concurrent threads.
 cw::rc_t cw::flow::var_schedule_notification( variable_t* var )
 {
   rc_t rc;
@@ -1980,9 +1934,12 @@ bool cw::flow::is_connected_to_source( const variable_t* var )
     return false;
 
   // if this var is using a local value then it can't be connected to an external proc
-  for(unsigned i=0; i<kLocalValueN; ++i)
-    if( var->value == var->local_value + i )
-      return false;
+  //for(unsigned i=0; i<kLocalValueN; ++i)
+  //  if( var->value == var->local_value + i )
+  //    return false;
+
+  if( var->value == &var->my_value )
+    return false;
 
   return true;
 }

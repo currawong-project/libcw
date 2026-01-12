@@ -103,8 +103,7 @@ namespace cw
       var_desc_t*          localVarDesc; // pointer to this variables local var desc - if it doesn't match classVarDesc.
       var_desc_t*          varDesc;      // the effective variable description for this variable (set to classVarDesc or localVarDesc)
       
-      value_t              local_value[ kLocalValueN ]; // the local value instance (actual value if this is not a 'src' variable)
-      unsigned             local_value_idx;             // local_value[] is double buffered to allow the cur value of the buf[] to be held while the next value is validated (see _var_set_template())
+      value_t              my_value;
       struct variable_str* src_var;                     // pointer to this input variables source link (or null if it uses the local_value)
       value_t*             value;                       // pointer to the value associated with this variable
 
@@ -598,6 +597,7 @@ namespace cw
     unsigned       var_channel_count( proc_t* proc, const char* var_label, unsigned sfx_id );
 
     // Calls the _mod_var_map_update() on connected vars and implements the var 'log' functionality
+    // Note that this function may be called concurrently from multiple threads.
     rc_t           var_schedule_notification( variable_t* var );
 
     // Sets and get the var->flags field
