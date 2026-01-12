@@ -9326,6 +9326,7 @@ namespace cw
       enum {
         kTextPId,
         kVerbPId,
+        kEolStrPId,
         kBaseInPId
       };
 
@@ -9333,9 +9334,10 @@ namespace cw
       {
         //unsigned     eolPId;
         unsigned     inVarN;
-        const char** labelA;
-        unsigned     labelN;
+        const char** labelA;   // labelA[ labelN ]
+        unsigned     labelN;   // labelN == inVarN + 1
         unsigned     verbosity;
+        
 
         bool notify_fl;
       } inst_t;
@@ -9354,7 +9356,7 @@ namespace cw
 
         if(( textListN = textListCfg->child_count()) != p->labelN )
         {
-          proc_warn(proc,"The count of labels does in print proc '%s' does not match the count of inputs plus one. %i != %i",proc->label,textListN,textListCfg->child_count());          
+          //proc_warn(proc,"The count of labels does in print proc '%s' does not match the count of inputs plus one. %i != %i",proc->label,textListN,textListCfg->child_count());          
         }
 
         // for each string in the list
@@ -9380,16 +9382,28 @@ namespace cw
       
       rc_t _print_field( proc_t* proc, inst_t* p, unsigned field_idx, const value_t* value )
       {
-        if( field_idx >= p->inVarN )
+        if( field_idx > p->inVarN )
+          return kOkRC;
+
+        // if we are past the last value to print
+        if( field_idx == p->inVarN )
         {
           assert( p->labelA[p->labelN-1] != nullptr );
-          cwLogPrint("%s\n",p->labelA[p->labelN-1]);          
+          
+          // ... then print the last label and EOL string
+          const char* eol_str = nullptr;
+          if( var_get(proc,kEolStrPId,eol_str) == kOkRC )            
+            cwLogPrint("%s%s",p->labelA[p->labelN-1],eol_str==nullptr?"\n":eol_str);          
         }
         else
         {
           const bool print_type_label_fl = false;
           assert( field_idx<p->labelN && p->labelA[field_idx] != nullptr );
+          
+          // print the prefix label
           cwLogPrint("%s",p->labelA[field_idx]);
+          
+          // print the value
           value_print(value,print_type_label_fl,p->verbosity);
         }
 
@@ -9403,9 +9417,11 @@ namespace cw
         const char* verbosity = nullptr;
         unsigned    inVarN    = var_mult_count(proc, "in" );
         unsigned    inVarSfxIdA[ inVarN ];
+        const char* eol_str = nullptr;
 
         if((rc = var_register_and_get(proc, kAnyChIdx,
                                       kTextPId, "text",      kBaseSfxId, text_cfg,
+                                      kEolStrPId,"eol_str",  kBaseSfxId, eol_str,
                                       kVerbPId, "verbosity", kBaseSfxId, verbosity)) != kOkRC )
         {
           goto errLabel;
@@ -9433,18 +9449,8 @@ namespace cw
         // There must be one label for each input plus an end of line label
         p->labelN = p->inVarN+1;
         p->labelA = mem::allocZ<const char*>( p->labelN );
-        /*
-        p->eolPId = kBaseInPId + p->inVarN;
 
-        // Register the eol_fl with the highest variable id - so that it is called last during the later stage
-        // of proc initialization where the value() function is called for each variable.
-        // This way the EOL message will occur after all the 'in' values have been printed.
-        if((rc = var_register(proc,kAnyChIdx,p->eolPId,"eol_fl",kBaseSfxId)) != kOkRC )
-        {
-          goto errLabel;
-        }
-        */
-        
+        // Be sure there are valid strings in all the label slots.
         for(unsigned i=0; i<p->labelN; ++i)
           p->labelA[i] = "";
 
@@ -9474,26 +9480,7 @@ namespace cw
 
          
           default:
-            //if( var->vid != p->eolPId )              
-              p->notify_fl = true;
-            
-            /*
-            if( var->vid == p->eolPId )
-            {
-              for(unsigned vid = kBaseInPId; vid<kBaseInPId + p->inVarN; vid+=1 )
-              {
-                variable_t* v = nullptr;
-                
-                if(var_find(proc, vid, kAnyChIdx, v) != kOkRC )
-                  continue;
-                
-                _print_field(proc, p, vid - kBaseInPId, v->value);
-              }
-
-              _print_field(proc,p,p->inVarN,nullptr);
-
-            }
-            */
+            p->notify_fl = true;
         }
 
         // always report success - don't let print() interrupt the network
