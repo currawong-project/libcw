@@ -484,6 +484,49 @@ namespace cw
       rc = cwLogError(kOpFailRC,"Object value assignment failed.");
     return rc;
   }
+
+  void _escape_string( char* s )
+  {
+    unsigned ii = 0;
+    unsigned oi = 0;
+    bool esc_fl = false;
+    
+    for(; s[ii] != 0; ++ii)
+    {
+      if( !esc_fl && s[ii] == '\\' )
+      {
+        esc_fl = true;
+        continue;
+      }
+
+      if( esc_fl )
+      {
+        switch(s[ii])
+        {
+          case 'b': s[oi] = '\b'; break;
+          case 'f': s[oi] = '\f'; break;
+          case 'n': s[oi] = '\n'; break;
+          case 'r': s[oi] = '\r'; break;
+          case 't': s[oi] = '\t'; break;
+          default:
+            s[oi++] = '\\';
+            s[oi]   = s[ii];
+        }
+      }
+      else
+      {
+        s[oi] = s[ii];
+      }
+      
+      ++oi;
+      esc_fl = false;
+      
+        
+    }
+
+    assert( oi <= ii );
+    s[oi] = 0;
+  }
   
 }
 
@@ -914,9 +957,12 @@ cw::rc_t cw::objectFromString( const char* s, object_t*& objRef )
           char s[ n + 1 ];
           memcpy(s,lex::tokenText(lexH),n);
           s[n] = 0;
-          
-          //char*    v       = mem::duplStr(lex::tokenText(lexH),lex::tokenCharCount(lexH));
-          unsigned identFl = lexId != lex::kQStrLexTId ? kIdentFl    : 0;          
+
+          unsigned identFl = 0;
+          if( lexId == lex::kQStrLexTId )
+            _escape_string(s);
+          else
+            identFl = kIdentFl;
           
           _objCreateValueNode<char*>( cnp, s, "string", identFl );
         }
