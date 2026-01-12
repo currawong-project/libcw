@@ -28,31 +28,35 @@ namespace cw
       kConsoleFl       = 0x04,  // Print the log to the console.
       kSkipQueueFl     = 0x08,  // Print the log message immediately, don't queue the results for later output from exec().
       kOverwriteFileFl = 0x10,  // Turn off automatic log file versioning, instead use the 'log_fname' parameter literally and overwrite it if it exists.
+      kBufEnableFl     = 0x20,  // Enable text buffer recording
     };
 
     const unsigned     kDefaultQueueBlkCnt     = 16;
     const unsigned     kDefaultQueueBlkByteCnt = 4096;
-    const logLevelId_t kDefault_LogLevel        = kPrint_LogLevel;
+    const logLevelId_t kDefault_LogLevel       = kPrint_LogLevel;
+    const unsigned     kDefaultBufCharCnt      = 8192;  
      
     typedef handle<struct log_str> handle_t;
   
-    typedef void (*logOutputCbFunc_t)( void* cbArg, unsigned level, const char* text );
-    typedef void (*logFormatCbFunc_t)( void* cbArg, logOutputCbFunc_t outFunc, void* outCbArg, unsigned flags, unsigned level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t rc, const char* msg );
+    typedef void (*logOutputCbFunc_t)( void* cbArg, logLevelId_t level, const char* text );
+    typedef void (*logFormatCbFunc_t)( void* cbArg, logOutputCbFunc_t outFunc, void* outCbArg, unsigned flags, logLevelId_t level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t rc, const char* msg );
 
     logLevelId_t levelFromString( const char* label );
     const char*  levelToString( logLevelId_t level );
 
     typedef struct log_args_str
     {
-      unsigned          flags;
-      logLevelId_t      level;
-      const char*       log_fname;
-      unsigned          queueBlkCnt;
-      unsigned          queueBlkByteCnt;
-      logOutputCbFunc_t outCbFunc;
-      void*             outCbArg;
-      logFormatCbFunc_t fmtCbFunc;
-      void*             fmtCbArg;      
+      unsigned          flags;             // See k???Fl above
+      logLevelId_t      level;             // See k???_LogLevel above
+      const char*       log_fname;         // Optional log output file name
+      unsigned          queueBlkCnt;       // Count of blocks in the internal queue
+      unsigned          queueBlkByteCnt;   // Size of a block in the internal queue
+      logOutputCbFunc_t outCbFunc;         // User supplied output function
+      void*             outCbArg;          //
+      logFormatCbFunc_t fmtCbFunc;         // User supplied formatting function
+      void*             fmtCbArg;          //
+      bool              textBufEnableFl;   //
+      unsigned          textBufCharCnt;    // Size of log recording buffer
     } log_args_t;
 
     // Setup the arguments for a minimal, direct to console, log.
@@ -69,32 +73,35 @@ namespace cw
 
     enum { kNoMsgFlags=0, kNoLevelCheckMsgFl=0x01 };
     
-    rc_t msg( handle_t h, unsigned flags, unsigned level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t rc, const char* fmt, va_list vl );
-    rc_t msg( handle_t h, unsigned flags, unsigned level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t rc, const char* fmt, ... );
+    rc_t msg( handle_t h, unsigned flags, logLevelId_t level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t rc, const char* fmt, va_list vl );
+    rc_t msg( handle_t h, unsigned flags, logLevelId_t level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t rc, const char* fmt, ... );
 
     void         setLevel( handle_t h, logLevelId_t level );
     logLevelId_t level( handle_t h );
 
-    void*             outputCbArg( handle_t h );
+    void         set_flags( handle_t h, unsigned flags );
+    unsigned     flags( handle_t h );
+
+    void         clearBuffer(     handle_t h );
+    const char*  buffer(         handle_t h );
+    
+    
+    void              setOutputCb( handle_t h, logOutputCbFunc_t outFunc, void* outCbArg );
     logOutputCbFunc_t outputCb( handle_t h );
+    void*             outputCbArg( handle_t h );
     
-    void*             formatCbArg( handle_t h );
-    logFormatCbFunc_t formatCb( handle_t h );
-    
-    void setOutputCb( handle_t h, logOutputCbFunc_t outFunc, void* outCbArg );
     void setFormatCb( handle_t h, logFormatCbFunc_t fmtFunc, void* fmtCbArg );
+    logFormatCbFunc_t formatCb( handle_t h );
+    void*             formatCbArg( handle_t h );
+    
 
-    const char* levelToLabel( unsigned level );
-
-    unsigned flags( handle_t h );
-    void set_flags( handle_t h, unsigned flags );
   
-    void defaultOutput( void* arg, unsigned level, const char* text );
+    void defaultOutput( void* arg, logLevelId_t level, const char* text );
     void defaultFormatter( void*             cbArg,
                            logOutputCbFunc_t outFunc,
                            void*             outCbArg,
                            unsigned          flags,
-                           unsigned          level,
+                           logLevelId_t      level,
                            const char*       function,
                            const char*       filename,
                            unsigned          line,
@@ -102,12 +109,17 @@ namespace cw
                            rc_t              rc,
                            const char*       msg );
 
-    rc_t createGlobal(  const log_args_t& args  );
-    
-    rc_t destroyGlobal( );
-  
+    rc_t      createGlobal(  const log_args_t& args  );    
+    rc_t      destroyGlobal( );  
     void      setGlobalHandle( handle_t h );
     handle_t  globalHandle();
+
+    inline unsigned     flags()                         { return flags(globalHandle()); }
+    inline void         set_flags( unsigned flags )     { set_flags( globalHandle(), flags ); }
+    inline logLevelId_t level()                         { return level(globalHandle()); }
+    inline void         set_level( logLevelId_t level ) {  setLevel(globalHandle(),level); }
+    inline const char*  buffer()                        { return buffer(globalHandle()); }
+    inline void         clear_buffer()                  { clearBuffer(globalHandle()); }
   }
   
 }

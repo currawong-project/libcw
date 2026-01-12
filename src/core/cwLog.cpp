@@ -20,10 +20,10 @@ namespace cw
   {
     typedef struct blob_hdr_str
     {
-      unsigned level;            // 0-3
-      unsigned line;             // 4-7 
-      int      systemErrorCode;  // 8-11
-      rc_t     rc;               //12-16
+      logLevelId_t level;           // 0-3
+      unsigned     line;            // 4-7 
+      int          systemErrorCode; // 8-11
+      rc_t         rc;              //12-16
     } blob_hdr_t;
     
     typedef struct log_str
@@ -36,6 +36,9 @@ namespace cw
       unsigned          flags;
       nbmpscq::handle_t qH;
       file::handle_t    fileH;
+      char*             textBuf;
+      unsigned          textBufCharCnt;
+      std::atomic<unsigned>  textBufCharIdx;      
     } log_t;
 
 
@@ -43,7 +46,7 @@ namespace cw
 
     idLabelPair_t logLevelLabelArray[] =
     {
-     { kPrint_LogLevel, "" },
+     { kPrint_LogLevel,   "print" },
      { kDebug_LogLevel,   "debug" },
      { kInfo_LogLevel,    "info" },
      { kWarning_LogLevel, "warn" },
@@ -54,7 +57,7 @@ namespace cw
   
     log_t* _handleToPtr( handle_t h ) { return handleToPtr<handle_t,log_t>(h); }
 
-    rc_t _enqueue_msg( log_t* p, unsigned level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t result_code, const char* msg )
+    rc_t _enqueue_msg( log_t* p, logLevelId_t level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t result_code, const char* msg )
     {
       rc_t rc = kOkRC;
 
@@ -97,12 +100,6 @@ namespace cw
       return rc;      
     }
 
-    // Output handler when msg() is called but the log handle is not yet valid.
-    void _do_output_no_handle( void* cbArg, unsigned level, const char* text )
-    {
-      fprintf(stderr,"%s",text);
-    }
-
     void _console_output( unsigned level, const char* text )
     {
       FILE* f = level >= kWarning_LogLevel ? stderr : stdout;
@@ -111,7 +108,7 @@ namespace cw
       
     }
     
-    void _do_output( void* cbArg, unsigned level, const char* text )
+    void _do_output( void* cbArg, logLevelId_t level, const char* text )
     {
       log_t* p = (log_t*)cbArg;
 
@@ -119,6 +116,17 @@ namespace cw
         _console_output(level,text);
       else
       {
+        if( cwIsFlag(p->flags,kBufEnableFl) )
+        {
+          unsigned textN   = textLength(text);
+          unsigned idx     = p->textBufCharIdx.fetch_add(textN);
+
+          if( idx < p->textBufCharCnt )
+          {
+            textCat(p->textBuf, p->textBufCharCnt, text, textN);
+          }
+        }
+        
         if( cwIsFlag(p->flags,kFileOutFl) && p->fileH.isValid() )
           file::print(p->fileH,text);
 
@@ -191,6 +199,9 @@ namespace cw
       if((rc1 = file::close(p->fileH)) != kOkRC )
         rc1 = cwLogError(rc1,"The log file close failed.");
 
+      mem::release(p->textBuf);
+      p->textBufCharCnt = 0;
+      
       return rcSelect(rc0,rc1);
     }
 
@@ -267,7 +278,8 @@ void cw::log::init_minimum_args( log_args_t& args )
   args.queueBlkByteCnt = 0;
   args.outCbFunc       = nullptr;
   args.outCbArg        = nullptr;
-  args.fmtCbFunc       = nullptr;  
+  args.fmtCbFunc       = nullptr;
+  args.textBufCharCnt  = kDefaultBufCharCnt;
 }
 
 void cw::log::init_default_args( log_args_t& args )
@@ -278,6 +290,7 @@ void cw::log::init_default_args( log_args_t& args )
   args.queueBlkCnt     = kDefaultQueueBlkCnt;
   args.queueBlkByteCnt = kDefaultQueueBlkByteCnt;
   args.level           = kDefault_LogLevel;  
+  args.textBufCharCnt  = kDefaultBufCharCnt;
 }
 
 cw::rc_t cw::log::create(  handle_t&         hRef, const log_args_t& args )
@@ -297,12 +310,15 @@ cw::rc_t cw::log::create(  handle_t&         hRef, const log_args_t& args )
   }
 
   
-  p->outCbFunc = args.outCbFunc == nullptr ? defaultOutput    : args.outCbFunc;
-  p->outCbArg  = args.outCbFunc == nullptr ? p                : args.outCbArg;
-  p->fmtCbFunc = args.fmtCbFunc == nullptr ? defaultFormatter : args.fmtCbFunc;
-  p->fmtCbArg  = args.fmtCbFunc == nullptr ? p                : args.fmtCbArg;
-  p->level     = args.level;
-  p->flags     = args.flags;
+  p->outCbFunc      = args.outCbFunc == nullptr ? defaultOutput    : args.outCbFunc;
+  p->outCbArg       = args.outCbFunc == nullptr ? p                : args.outCbArg;
+  p->fmtCbFunc      = args.fmtCbFunc == nullptr ? defaultFormatter : args.fmtCbFunc;
+  p->fmtCbArg       = args.fmtCbFunc == nullptr ? p                : args.fmtCbArg;
+  p->level          = args.level;
+  p->flags          = args.flags;
+  p->textBuf        = args.textBufCharCnt == 0 ? nullptr : mem::allocZ<char>(args.textBufCharCnt);
+  p->textBufCharCnt = args.textBufCharCnt;
+  p->textBufCharIdx.store(0);
 
   // if the log should be backed by a file.
   if((rc = _create_file(p,args.log_fname)) != kOkRC )
@@ -326,12 +342,8 @@ cw::log::logLevelId_t cw::log::levelFromString( const char* label )
 }
 
 const char* cw::log::levelToString( logLevelId_t level )
-{
-  for(unsigned i=0; logLevelLabelArray[i].id != kInvalid_LogLevel; ++i)
-    if( logLevelLabelArray[i].id == level )
-      return logLevelLabelArray[i].label;
-  return nullptr;
-}
+{  return idToLabel(logLevelLabelArray,level,kInvalid_LogLevel); } 
+
 
 
 cw::rc_t cw::log::destroy( handle_t& hRef )
@@ -352,7 +364,7 @@ cw::rc_t cw::log::destroy( handle_t& hRef )
   return rc;  
 }
 
-cw::rc_t cw::log::msg( handle_t h, unsigned flags, unsigned level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t result_code, const char* fmt, va_list vl )
+cw::rc_t cw::log::msg( handle_t h, unsigned flags, logLevelId_t level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t result_code, const char* fmt, va_list vl )
 {
   log_t*  p        = _handleToPtr(h);
   
@@ -377,7 +389,7 @@ cw::rc_t cw::log::msg( handle_t h, unsigned flags, unsigned level, const char* f
 
       // if the log has not yet been created.
       if( p == nullptr )
-        defaultFormatter( nullptr, _do_output_no_handle, nullptr, 0, level, function, filename, line, systemErrorCode, result_code, msg );
+        defaultFormatter( nullptr, _do_output, nullptr, 0, level, function, filename, line, systemErrorCode, result_code, msg );
       else
       {
         // if the queue is not being used
@@ -401,7 +413,7 @@ cw::rc_t cw::log::msg( handle_t h, unsigned flags, unsigned level, const char* f
 
 cw::rc_t cw::log::msg( handle_t    h,
                        unsigned    flags,
-                       unsigned    level,
+                       logLevelId_t    level,
                        const char* function,
                        const char* filename,
                        unsigned    line,
@@ -449,11 +461,26 @@ unsigned cw::log::flags( handle_t h )
   log_t* p = _handleToPtr(h);
   return p->flags;
 }
-  
-void* cw::log::outputCbArg( handle_t h )
+
+
+void  cw::log::clearBuffer( handle_t h )
 {
   log_t* p = _handleToPtr(h);
-  return p->outCbArg;
+  if( p->textBuf != nullptr && p->textBufCharCnt>0 )
+    p->textBuf[0] = 0;
+}
+
+const char*  cw::log::buffer( handle_t h )
+{
+  log_t* p = _handleToPtr(h);
+  return p->textBuf;
+}
+
+void cw::log::setOutputCb( handle_t h, logOutputCbFunc_t outFunc, void* outCbArg )
+{
+  log_t* p = _handleToPtr(h);
+  p->outCbFunc = outFunc;
+  p->outCbArg  = outCbArg;
 }
 
 cw::log::logOutputCbFunc_t cw::log::outputCb( handle_t h )
@@ -462,23 +489,10 @@ cw::log::logOutputCbFunc_t cw::log::outputCb( handle_t h )
   return p->outCbFunc;
 }
 
-void* cw::log::formatCbArg( handle_t h )
+void* cw::log::outputCbArg( handle_t h )
 {
   log_t* p = _handleToPtr(h);
-  return p->fmtCbArg;
-}
-
-cw::log::logFormatCbFunc_t cw::log::formatCb( handle_t h )
-{
-  log_t* p = _handleToPtr(h);
-  return p->fmtCbFunc;  
-}
-
-void cw::log::setOutputCb( handle_t h, logOutputCbFunc_t outFunc, void* outCbArg )
-{
-  log_t* p = _handleToPtr(h);
-  p->outCbFunc = outFunc;
-  p->outCbArg  = outCbArg;
+  return p->outCbArg;
 }
 
 void cw::log::setFormatCb( handle_t h, logFormatCbFunc_t fmtFunc, void* fmtCbArg )
@@ -489,25 +503,28 @@ void cw::log::setFormatCb( handle_t h, logFormatCbFunc_t fmtFunc, void* fmtCbArg
   
 }
 
+cw::log::logFormatCbFunc_t cw::log::formatCb( handle_t h )
+{
+  log_t* p = _handleToPtr(h);
+  return p->fmtCbFunc;  
+}
 
-const char* cw::log::levelToLabel( unsigned level )
-{  return idToLabel(logLevelLabelArray,level,kInvalid_LogLevel); }
+void* cw::log::formatCbArg( handle_t h )
+{
+  log_t* p = _handleToPtr(h);
+  return p->fmtCbArg;
+}
 
-
-
-void  cw::log::defaultOutput( void* arg, unsigned level, const char* text )
+void  cw::log::defaultOutput( void* arg, logLevelId_t level, const char* text )
 {
   _console_output(level,text);
 }
 
-void cw::log::defaultFormatter( void* cbArg, logOutputCbFunc_t outFunc, void* outCbArg, unsigned flags, unsigned level, const char* function, const char* filename, unsigned lineno, int sys_errno, rc_t rc, const char* msg )
+void cw::log::defaultFormatter( void* cbArg, logOutputCbFunc_t outFunc, void* outCbArg, unsigned flags, logLevelId_t level, const char* function, const char* filename, unsigned lineno, int sys_errno, rc_t rc, const char* msg )
 {
-  // TODO: This code is avoids the use of dynamic memory allocation but relies on stack allocation. It's a security vulnerability.
-  //       
-  
   const char* systemLabel = sys_errno==0 ? "" : "System Error: ";
   const char* systemMsg   = sys_errno==0 ? "" : strerror(sys_errno);
-  const char* levelStr    = levelToLabel(level);
+  const char* levelStr    = levelToString(level);
   
   const char* rcFmt = "rc:%i";
   int rcn = snprintf(nullptr,0,rcFmt,rc);
