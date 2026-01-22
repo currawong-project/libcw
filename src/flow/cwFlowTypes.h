@@ -322,6 +322,7 @@ namespace cw
 
       bool                 printNetworkFl;
       bool                 non_real_time_fl;     // set if this is a non-real-time program
+      bool                 warn_on_rt_alloc_fl;  // Log a warning if memory is allocated/freed during runtime.
       unsigned             framesPerCycle;       // sample frames per cycle (64)
       srate_t              sample_rate;          // default sample rate (48000.0)
       unsigned             maxCycleCount;        // count of cycles to run on flow::exec() or 0 if there is no limit.
@@ -333,7 +334,7 @@ namespace cw
       unsigned             cycleIndex;           // Incremented with each processing cycle
       unsigned             uiUpdateCycleIndex;   // Count cycles between UI updates
 
-      bool                 printLogHdrFl;
+      bool                 printLogHdrFl;        // Used to track when the log column headers have already been printed
       
       bool                 multiPriPresetProbFl; // If set then probability is used to choose presets on multi-preset application
       bool                 multiSecPresetProbFl; // 

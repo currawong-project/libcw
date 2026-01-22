@@ -915,6 +915,7 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   p->maxCycleCount      = kInvalidCnt;
   p->uiUpdateCycleCount = 1;
   p->proj_dir           = proj_dir;
+  p->warn_on_rt_alloc_fl= true;
   p->printLogHdrFl      = true;
   p->ui_create_fl       = false;
   p->prof_fl            = false;
@@ -926,6 +927,7 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   // parse the optional args
   if((rc = pgmCfg->readv("network",              0,      p->networkCfg,
                          "non_real_time_fl",     kOptFl, p->non_real_time_fl,
+                         "warn_on_rt_alloc_fl",  kOptFl, p->warn_on_rt_alloc_fl,
                          "frames_per_cycle",     kOptFl, p->framesPerCycle,
                          "sample_rate",          kOptFl, p->sample_rate,
                          "max_cycle_count",      kOptFl, maxCycleCount,
@@ -1171,7 +1173,7 @@ cw::rc_t cw::flow::exec_cycle( handle_t h )
   
   TRACE_TIME(p->trace_id,tracer::kBegEvtId,p->cycleIndex,0);
 
-  if( p->cycleIndex == 0 )
+  if( p->warn_on_rt_alloc_fl && p->cycleIndex == 0 )
     mem::set_warn_on_alloc();
 
   
