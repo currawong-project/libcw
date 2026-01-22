@@ -77,8 +77,8 @@ list( APPEND IO_SRC_FILES io/cwIo.cpp )
 
 #-------------------------------------
 # flow source files
-set(  FLOW_HDR_FILES flow/cwFlowDecl.h flow/cwFlowValue.h   flow/cwFlowTypes.h   flow/cwFlowNet.h   flow/cwFlow.h   flow/cwFlowCross.h   flow/cwFlowPerf.h   flow/cwFlowProc.h   flow/cwFlowTest.h )
-set(  FLOW_SRC_FILES                   flow/cwFlowValue.cpp flow/cwFlowTypes.cpp flow/cwFlowNet.cpp flow/cwFlow.cpp flow/cwFlowCross.cpp flow/cwFlowPerf.cpp flow/cwFlowProc.cpp flow/cwFlowTest.cpp)
+set(  FLOW_HDR_FILES flow/cwFlowDecl.h flow/cwFlowValue.h   flow/cwFlowTypes.h   flow/cwFlowNet.h   flow/cwFlow.h   flow/cwFlowPerf.h   flow/cwFlowProc.h   flow/cwFlowTest.h )
+set(  FLOW_SRC_FILES                   flow/cwFlowValue.cpp flow/cwFlowTypes.cpp flow/cwFlowNet.cpp flow/cwFlow.cpp flow/cwFlowPerf.cpp flow/cwFlowProc.cpp flow/cwFlowTest.cpp)
 
 
 #-------------------------------------
@@ -109,5 +109,5 @@ list( APPEND IO_COMP_SRC_FILES io_components/cwIoTest.cpp )
     
 #-------------------------------------
 # io_flow
-set(  IO_FLOW_HDR_FILES io_flow/cwIoFlow.h   io_flow/cwIoFlowCtl.h )
-set(  IO_FLOW_SRC_FILES io_flow/cwIoFlow.cpp io_flow/cwIoFlowCtl.cpp )
+set(  IO_FLOW_HDR_FILES io_flow/cwIoFlowCtl.h )
+set(  IO_FLOW_SRC_FILES io_flow/cwIoFlowCtl.cpp )

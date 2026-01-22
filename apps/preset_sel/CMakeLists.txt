@@ -8,10 +8,13 @@ target_sources(preset_sel
   main.cpp
   cwIoPresetSelApp.cpp
   cwVelTableTuner.cpp
-
+  cwIoFlow.cpp
+  cwFlowCross.cpp
+  
   cwIoPresetSelApp.h
   cwVelTableTuner.h
-  
+  cwIoFlow.h
+  cwFlowCross.h
 )
 
 
