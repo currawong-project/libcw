@@ -91,6 +91,7 @@ namespace cw
 
       void*                  logCbArg;   // original log callback args
       log::logOutputCbFunc_t logCbFunc;
+      unsigned               logFlags;
       
       const char*    cur_test_label;    // current test label
       file::handle_t cur_log_fileH;     // current log file handle
@@ -314,7 +315,9 @@ namespace cw
       // save the log to a 
       test.logCbArg  = log::outputCbArg( log::globalHandle() );
       test.logCbFunc = log::outputCb(    log::globalHandle() );
-      
+      test.logFlags  = log::flags(       log::globalHandle() );
+
+      log::set_flags(   log::globalHandle(), cwClrFlag(test.logFlags, log::kConsoleFl) );
       log::setOutputCb( log::globalHandle(), _exec_test_log_cb, &test );
       
 
@@ -336,6 +339,7 @@ namespace cw
       
       file::close(test.cur_log_fileH);      
       log::setOutputCb( log::globalHandle(), test.logCbFunc, test.logCbArg );
+      log::set_flags(   log::globalHandle(), test.logFlags );
 
       // if compare is enabled 
       if( rc == kOkRC && test.compare_fl )
