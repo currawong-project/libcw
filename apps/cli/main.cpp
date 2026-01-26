@@ -425,7 +425,7 @@ const cw::object_t* _locateArgsRecd( const cw::object_t* cfg, const char*& cfgLa
 
   if((cfg = cfg->find_child("test")) == nullptr )
   {
-    cwLogError(cw::kSyntaxErrorRC,"The cwtest cfg. file does not have a 'test' record.");
+    cwLogError(cw::kSyntaxErrorRC,"The cli cfg. file does not have a 'test' record.");
     return nullptr;
   }
 
@@ -538,7 +538,7 @@ int main( int argc, const char* argv[] )
 
   if( argc < 3 )
   {
-    cwLogInfo("cwtest <config_filename> <mode>");
+    cwLogInfo("cli <config_filename> <mode>");
     goto errLabel;
   }
 
@@ -557,7 +557,7 @@ int main( int argc, const char* argv[] )
   // if valid command line args were given and the cfg file was successfully read
   if((rc = objectFromFile( cfgFn, cfg )) != cw::kOkRC )
   {
-    rc = cwLogError(rc,"The cwtest main configuraiton file parse failed.");
+    rc = cwLogError(rc,"The main configuraiton file parse failed.");
     goto errLabel;
   }
   else
