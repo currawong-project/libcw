@@ -261,7 +261,7 @@ cw::rc_t cw::thread::create( handle_t& hRef, cbFunc_t func, void* funcArg, const
   hRef.set(p);
 
   
-  cwLogInfo("Thread %s id:%p created.",cwStringNullGuard(label), p->pThreadH);
+  cwLogDebug("Thread %s id:%p created.",cwStringNullGuard(label), p->pThreadH);
   
 errLabel:
 
