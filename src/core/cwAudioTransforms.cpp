@@ -54,7 +54,7 @@ namespace cw
         {
           vop::print(p->wndV, p->wndN, "%f ", windowLabel);
 
-          printf("diff: %f\n", vop::sum_sq_diff( wndV, p->wndV, wndN));
+          //printf("diff: %f\n", vop::sum_sq_diff( wndV, p->wndV, wndN));
           
           destroy(p);                     
         }
@@ -141,7 +141,7 @@ namespace cw
 
         vop::print(cV,oSmpCnt,"%f ","Correct ");
         vop::print(y, oSmpCnt,"%f ","Computed");
-        printf("diff:%f\n", vop::sum_sq_diff(cV,y,oSmpCnt));
+        //printf("diff:%f\n", vop::sum_sq_diff(cV,y,oSmpCnt));
         
         ola::destroy(p);
         mem::release(x);
