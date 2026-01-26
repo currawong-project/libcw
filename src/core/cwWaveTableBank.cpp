@@ -696,11 +696,12 @@ errLabel:
     
 cw::rc_t cw::wt_bank::test( const test::test_args_t& args )
 {
-  rc_t     rc0  = kOkRC;
-  rc_t     rc1  = kOkRC;
-  unsigned padN = 2;
-  const char* cfg_fname;
-  handle_t h;
+  rc_t        rc0       = kOkRC;
+  rc_t        rc1       = kOkRC;
+  unsigned    padN      = 2;
+  const char* cfg_fname = nullptr;
+  unsigned    threadN   = 1;
+  handle_t    h;
 
   //unsigned instr_idx = 0;
   //unsigned pitchA[] = { 21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21, 21, 21, 21, 21, 21, 21 };
@@ -711,13 +712,13 @@ cw::rc_t cw::wt_bank::test( const test::test_args_t& args )
   //double note_dur_sec = 2.5;
     
 
-  if((rc0 = args.test_args->getv("wtb_cfg_fname",cfg_fname)) != kOkRC )
+  if((rc0 = args.test_args->getv("wtb_cfg_fname",cfg_fname,"thread_cnt",threadN)) != kOkRC )
     goto errLabel;
   
   if((rc0 = create(h,padN)) != kOkRC )
     goto errLabel;
 
-  if((rc0 = load(h,cfg_fname)) != kOkRC )
+  if((rc0 = load(h,cfg_fname,threadN)) != kOkRC )
     goto errLabel;
 
   //assert( sizeof(pitchA)/sizeof(pitchA[0]) == sizeof(velA)/sizeof(velA[0]) );

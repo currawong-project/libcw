@@ -51,6 +51,7 @@ namespace cw
 
     // Generate an output file per pitch for each sampled velocity.
     rc_t gen_notes( const char* wtb_json_fname,
+                    unsigned wtb_load_thread_cnt,
                     unsigned instr_idx,
                     unsigned min_pitch,
                     unsigned max_pitch,

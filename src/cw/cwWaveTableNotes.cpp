@@ -137,7 +137,7 @@ cw::rc_t cw::wt_note::gen_notes( wt_bank::handle_t wtbH,
   }
 
 errLabel:
-  cwLogInfo("Generated %6.1f seconds of audio.",secs);
+  cwLogDebug("Generated %6.1f seconds of audio.",secs);
   return rc;
 }
 
@@ -190,6 +190,7 @@ errLabel:
 }
 
 cw::rc_t cw::wt_note::gen_notes( const char*       wtb_json_fname,
+                                 unsigned          wtb_load_thread_cnt,                                 
                                  unsigned          instr_idx,
                                  unsigned          min_pitch,
                                  unsigned          max_pitch,
@@ -210,7 +211,7 @@ cw::rc_t cw::wt_note::gen_notes( const char*       wtb_json_fname,
     goto errLabel;
   }
 
-  if((rc = wt_bank::create(wtbH,2,wtb_json_fname)) != kOkRC )
+  if((rc = wt_bank::create(wtbH,2,wtb_json_fname,wtb_load_thread_cnt)) != kOkRC )
   {
     goto errLabel;
   }
@@ -273,19 +274,24 @@ errLabel:
 
 cw::rc_t cw::wt_note::test( const test::test_args_t& args )
 {
-  rc_t        rc             = kOkRC;
-  const char* wtb_json_fname = "/home/kevin/temp/temp_5.json";
-  unsigned    instr_idx      = 0;
-  unsigned    min_pitch      = 21;
-  unsigned    max_pitch      = 21;
-  srate_t     srate          = 48000;
-  unsigned    audioChN       = 2;
-  double      note_dur_sec   = 9;
-  double      inter_note_sec = 1;
-  const char* out_dir        = "/home/kevin/temp/gen_note";
+  rc_t        rc                  = kOkRC;
+  const char* wtb_json_fname      = nullptr;
+  unsigned    wtb_thread_load_cnt = 1;
+  unsigned    instr_idx           = 0;
+  unsigned    min_pitch           = 21;
+  unsigned    max_pitch           = 21;
+  srate_t     srate               = 48000;
+  unsigned    audioChN            = 2;
+  double      note_dur_sec        = 9;
+  double      inter_note_sec      = 1;
+  const char* out_dir             = args.out_dir;
+
+  if((rc = args.test_args->getv("wtb_cfg_fname",wtb_json_fname,"thread_cnt",wtb_thread_load_cnt)) != kOkRC )
+    goto errLabel;
   
-  rc = gen_notes( wtb_json_fname, instr_idx, min_pitch, max_pitch, srate, audioChN, note_dur_sec, inter_note_sec, out_dir);
-  
+  rc = gen_notes( wtb_json_fname, wtb_thread_load_cnt,instr_idx, min_pitch, max_pitch, srate, audioChN, note_dur_sec, inter_note_sec, out_dir);
+
+errLabel:
   return rc;
 }
   
