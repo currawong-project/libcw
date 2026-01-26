@@ -1,6 +1,8 @@
 *.o
 *.o.d
+*.wav
 hold
 build
 vg0.txt
 __pycache__
+apps/cli/cfg/test/cur
