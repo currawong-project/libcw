@@ -1,0 +1,12 @@
+info: : Entering runtime.   
+cnt:0.000000 add:3.000000 count
+cnt:1.000000 add:4.000000 count
+cnt:2.000000 add:5.000000 count
+cnt:0.000000 add:3.000000 count
+cnt:1.000000 add:4.000000 count
+cnt:2.000000 add:5.000000 count
+cnt:0.000000 add:3.000000 count
+cnt:1.000000 add:4.000000 count
+cnt:2.000000 add:5.000000 count
+cnt:0.000000 add:3.000000 count
+info: : 'maxCycleCnt' reached: 7500. Shutting down flow.   

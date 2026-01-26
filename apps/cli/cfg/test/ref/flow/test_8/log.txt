@@ -1,0 +1,15 @@
+  cycle:   process:   id:     variable: id  ch  vid type:value  
+-------- ---------- ----- ------------- --- --- --- ------------
+       0  xfade_ctl:    0       trigger:  0  -1   1 s:a (extern) src:list:0.out:0
+info: : Activated preset:a   
+info: : Entering runtime.   
+       0  xfade_ctl:    0       trigger:  0  -1   1 s:a
+    1500  xfade_ctl:    0       trigger:  0  -1   1 s:b
+info: : Activated preset:b   
+    3000  xfade_ctl:    0       trigger:  0  -1   1 s:c
+info: : Activated preset:c   
+    4500  xfade_ctl:    0       trigger:  0  -1   1 s:b
+info: : Activated preset:b   
+    6000  xfade_ctl:    0       trigger:  0  -1   1 s:a
+info: : Activated preset:a   
+info: : 'maxCycleCnt' reached: 7500. Shutting down flow.   

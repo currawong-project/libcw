@@ -1,0 +1,22 @@
+fmt0 and fmt1 have non-equivalent types.
+fmt1 and fmt2 have equivalent types.
+fmt0 and rt0  have equivalent types.
+ra1 type: field cnt:6
+0:a
+1:b
+2:c
+3:a
+4:b
+5:c
+ra0
+(0:a=false,1:b=1,2:c=2,(3:g0.a=0,4:g0.b=false,5:g0.c=0.000000))
+(0:a=false,1:b=1,2:c=2,(3:g0.a=4,4:g0.b=true,5:g0.c=6.000000))
+(0:a=false,1:b=1,2:c=2,(3:g0.a=8,4:g0.b=true,5:g0.c=12.000000))
+ra1
+(0:a=false,1:b=1,2:c=2,(3:g0.a=0,4:g0.b=false,5:g0.c=0.000000))(0:d=0.000000,1:e=-1,2:f=-1,(3:g1.a=0,4:g1.b=false,5:g1.c=0))
+(0:a=false,1:b=1,2:c=2,(3:g0.a=4,4:g0.b=true,5:g0.c=6.000000))(0:d=0.000000,1:e=-1,2:f=-1,(3:g1.a=8,4:g1.b=true,5:g1.c=12))
+(0:a=false,1:b=1,2:c=2,(3:g0.a=8,4:g0.b=true,5:g0.c=12.000000))(0:d=0.000000,1:e=-1,2:f=-1,(3:g1.a=16,4:g1.b=true,5:g1.c=24))
+ra2
+(0:a=true,1:b=1,2:c=2,(3:g0.a=3,4:g0.b=false,5:g0.c=4.300000))
+(0:a=false,1:b=2,2:c=3,(3:g0.a=4,4:g0.b=true,5:g0.c=5.400000))
+(0:a=false,1:b=0,2:c=0,(3:g0.a=0,4:g0.b=false,5:g0.c=0.000000))

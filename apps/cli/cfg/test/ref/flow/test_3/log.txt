@@ -1,0 +1,29 @@
+  cycle:   process:   id:     variable: id  ch  vid type:value  
+-------- ---------- ----- ------------- --- --- --- ------------
+       0      srate:    0           out:  0  -1   2 f:48000.000000
+       0        tmr:    0           out:  0  -1   3 b:false
+       0        cnt:    0           out:  0  -1  12 u:0
+       0        x0v:    0           out:  0  -1   2 i:2
+       0        x1v:    0           out:  0  -1   2 i:3
+       0        add:    0           out:  0  -1   0 i:5
+info: : Entering runtime.   
+       0      srate:    0           out:  0  -1   2 f:48000.000000
+       0        tmr:    0           out:  0  -1   3 b:false
+       0        cnt:    0           out:  0  -1  12 u:0
+       0        x0v:    0           out:  0  -1   2 i:2
+       0        x1v:    0           out:  0  -1   2 i:3
+       0        add:    0           out:  0  -1   0 i:5
+     750        tmr:    0           out:  0  -1   3 b:true
+     750        cnt:    0           out:  0  -1  12 u:1
+     750        add:    0           out:  0  -1   0 i:6
+    1500        tmr:    0           out:  0  -1   3 b:false
+    1500        cnt:    0           out:  0  -1  12 u:2
+    1500        add:    0           out:  0  -1   0 i:7
+    2250        tmr:    0           out:  0  -1   3 b:true
+    3000        tmr:    0           out:  0  -1   3 b:false
+    3750        tmr:    0           out:  0  -1   3 b:true
+    4500        tmr:    0           out:  0  -1   3 b:false
+    5250        tmr:    0           out:  0  -1   3 b:true
+    6000        tmr:    0           out:  0  -1   3 b:false
+    6750        tmr:    0           out:  0  -1   3 b:true
+info: : 'maxCycleCnt' reached: 7500. Shutting down flow.   

@@ -1,0 +1,28 @@
+  cycle:   process:   id:     variable: id  ch  vid type:value  
+-------- ---------- ----- ------------- --- --- --- ------------
+       0          a:    0           out:  0  -1   2 i:1
+       0          b:    0           out:  0  -1   2 i:2
+       0        add:    0           out:  0  -1   0 i:3 dst:b:0.in:0
+info: : Entering runtime.   
+       0          a:    0           out:  0  -1   2 i:1
+       0          b:    0           out:  0  -1   2 i:2
+       0        add:    0           out:  0  -1   0 i:3
+       1          b:    0           out:  0  -1   2 i:3
+       1        add:    0           out:  0  -1   0 i:4
+       2          b:    0           out:  0  -1   2 i:4
+       2        add:    0           out:  0  -1   0 i:5
+       3          b:    0           out:  0  -1   2 i:5
+       3        add:    0           out:  0  -1   0 i:6
+       4          b:    0           out:  0  -1   2 i:6
+       4        add:    0           out:  0  -1   0 i:7
+       5          b:    0           out:  0  -1   2 i:7
+       5        add:    0           out:  0  -1   0 i:8
+       6          b:    0           out:  0  -1   2 i:8
+       6        add:    0           out:  0  -1   0 i:9
+       7          b:    0           out:  0  -1   2 i:9
+       7        add:    0           out:  0  -1   0 i:10
+       8          b:    0           out:  0  -1   2 i:10
+       8        add:    0           out:  0  -1   0 i:11
+       9          b:    0           out:  0  -1   2 i:11
+       9        add:    0           out:  0  -1   0 i:12
+info: : 'maxCycleCnt' reached: 10. Shutting down flow.   

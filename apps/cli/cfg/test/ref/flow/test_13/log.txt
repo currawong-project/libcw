@@ -1,0 +1,34 @@
+  cycle:   process:   id:     variable: id  ch  vid type:value  
+-------- ---------- ----- ------------- --- --- --- ------------
+       0      srate:    0           out:  0  -1   2 f:48000.000000
+       0        tmr:    0         srate:  0  -1   0 f:48000.000000 (extern) src:srate:0.out:0
+       0        lfo:    0         srate:  0   0   0 f:48000.000000 (extern) src:srate:0.out:0
+       0        lfo:    0            hz:  0   0   2 f:3.000000
+       0        lfo:    0            dc:  0   0   4 f:440.000000
+       0        lfo:    0         srate:  0   1   0 f:48000.000000 (extern) src:srate:0.out:0
+       0        lfo:    0            hz:  0   1   2 f:3.000000
+       0        lfo:    0            dc:  0   1   4 f:440.000000
+info: : Entering runtime.   
+       0      srate:    0           out:  0  -1   2 f:48000.000000
+       0        tmr:    0         srate:  0  -1   0 f:48000.000000
+info: : Activated preset:a   
+       0        lfo:    0         srate:  0   0   0 f:48000.000000
+       0        lfo:    0         srate:  0   1   0 f:48000.000000
+       0        lfo:    0            hz:  0   0   2 f:1.000000
+       0        lfo:    0            hz:  0   1   2 f:1.000000
+       0        lfo:    0            dc:  0   0   4 f:880.000000
+       0        lfo:    0            dc:  0   1   4 f:880.000000
+info: : Activated preset:b   
+    1500        lfo:    0            hz:  0   0   2 f:2.000000
+    1500        lfo:    0            hz:  0   1   2 f:2.000000
+    1500        lfo:    0            dc:  0   0   4 f:220.000000
+    1500        lfo:    0            dc:  0   1   4 f:220.000000
+info: : Activated preset:c   
+    3000        lfo:    0            hz:  0   0   2 f:220.000000
+    3000        lfo:    0            hz:  0   1   2 f:220.000000
+info: : Activated preset:d   
+    4500        lfo:    0            hz:  0   0   2 f:1.500000
+    4500        lfo:    0            hz:  0   1   2 f:1.500000
+    4500        lfo:    0            dc:  0   0   4 f:550.000000
+    4500        lfo:    0            dc:  0   1   4 f:550.000000
+info: : 'maxCycleCnt' reached: 15000. Shutting down flow.   

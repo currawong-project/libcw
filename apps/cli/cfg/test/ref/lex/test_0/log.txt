@@ -1,0 +1,32 @@
+info: : ln:1 col:1 tok:<int> '123' len:3    
+info: : Number: int:123 dbl:123.000000 unsigned:0 float:0   
+info: : ln:1 col:4 tok:<ident> 'ident0' len:6    
+info: : ln:1 col:10 tok:<space> '
+ ' len:2    
+info: : ln:2 col:3 tok:<real> '123.456' len:7    
+info: : Number: int:123 dbl:123.456000 unsigned:0 float:0   
+info: : ln:2 col:10 tok:<space> '
+' len:1    
+info: : ln:3 col:2 tok:<ident> 'ident0' len:6    
+info: : ln:3 col:8 tok:<space> '
+' len:1    
+info: : ln:4 col:2 tok:<hex> '0xa12' len:5    
+info: : Number: int:2578 dbl:2578.000000 unsigned:0 float:0   
+info: : ln:4 col:7 tok:+ '+' len:1    
+info: : ln:4 col:8 tok:<real> '.2' len:2    
+info: : Number: int:0 dbl:0.200000 unsigned:0 float:0   
+info: : ln:4 col:10 tok:<space> '
+                       ' len:24    
+info: : ln:5 col:25 tok:<lcmt> '// comment 
+' len:12    
+info: : ln:6 col:2 tok:<bcmt> '/* block 
+comment */' len:20    
+info: : ln:7 col:12 tok:<qstr> 'quoted string' len:13    
+info: : ln:7 col:27 tok:<ident> 'ident1' len:6    
+info: : ln:7 col:33 tok:<space> ' ' len:1    
+info: : ln:7 col:34 tok:<real> '1234.56f' len:8    
+info: : Number: int:1234 dbl:1234.560000 unsigned:0 float:1   
+info: : ln:7 col:42 tok:<int> '345u' len:4    
+info: : Number: int:345 dbl:345.000000 unsigned:1 float:0   
+info: : ln:7 col:46 tok:<space> '                       ' len:23    
+info: : ln:7 col:69 tok:<lcmt> '// last line comment' len:20    
