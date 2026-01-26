@@ -647,7 +647,7 @@ namespace cw
 
       // get the UDP proc and preset dictionaries
       if((rc = udpD->getv("procs",   udpProcD,
-                             "presets", udpPresetD)) != kOkRC )
+                          "presets", udpPresetD)) != kOkRC )
       {
         rc = cwLogError(rc,"Parse failed on the 'network' element.");
         goto errLabel;
@@ -1234,7 +1234,8 @@ cw::rc_t cw::flow::exec(    handle_t h )
 
   unsigned dms = time::elapsedMs(t0);
 
-  cwLogInfo("Exec time: %i ms Cycles:%i",dms,p->cycleIndex);
+  if( p->prof_fl)
+    cwLogInfo("Exec time: %i ms Cycles:%i",dms,p->cycleIndex);
   
   return rc;
 }
