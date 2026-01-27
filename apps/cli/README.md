@@ -369,8 +369,8 @@ The configuraton for the unit tests is in `apps/cli/cfg/test/main.cfg`.
     
 5. Example command lines:
 ```
-      cli ~/src/cwtest/src/cwtest/cfg/test/main.cfg test /lex test_0 gen
-      cli ~/src/cwtest/src/cwtest/cfg/test/main.cfg test /flow test_0 compare
+      cli ~/src/libcw/apps/cli/cfg/test/main.cfg test /lex test_0 gen
+      cli ~/src/libcw/apps/cli/cfg/test/main.cfg test /flow test_0 compare
 ```
 
 
