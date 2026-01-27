@@ -64,7 +64,6 @@ namespace cw
 
     rc_t save( handle_t h, const char* fn );
     rc_t save_csv( handle_t h, const char* fn );
-    rc_t save_synced_csv( handle_t h, const char* fn, const score_follower::ssf_note_on_t* syncA, unsigned syncN );
     
     rc_t write_svg( handle_t h, const char* fn );
     

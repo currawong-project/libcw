@@ -20,11 +20,8 @@ list( APPEND CORE_SRC_FILES core/cwTime.cpp core/cwFile.cpp core/cwFileSys.cpp c
 list( APPEND CORE_HDR_FILES core/cwMutex.h   core/cwThread.h   core/cwThreadMach.h )
 list( APPEND CORE_SRC_FILES core/cwMutex.cpp core/cwThread.cpp core/cwThreadMach.cpp )
   
-# core/cwNbMem.cpp
-# core/cwNbMem.h
-
-list( APPEND CORE_HDR_FILES core/cwMpScNbCircQueue.h core/cwMpScNbQueue.h core/cwMtQueueTester.h   core/cwSpScQueueTmpl.h   core/cwSpScBuf.h   core/cwNbMpScQueue.h)
-list( APPEND CORE_SRC_FILES                                               core/cwMtQueueTester.cpp core/cwSpScQueueTmpl.cpp core/cwSpScBuf.cpp core/cwNbMpScQueue.cpp )
+list( APPEND CORE_HDR_FILES core/cwMpScNbCircQueue.h core/cwMtQueueTester.h   core/cwSpScQueueTmpl.h   core/cwSpScBuf.h   core/cwNbMpScQueue.h)
+list( APPEND CORE_SRC_FILES                          core/cwMtQueueTester.cpp core/cwSpScQueueTmpl.cpp core/cwSpScBuf.cpp core/cwNbMpScQueue.cpp )
   
 list( APPEND CORE_HDR_FILES core/cwLex.h core/cwCsv.h core/cwSvg.h )
 list( APPEND CORE_SRC_FILES core/cwLex.cpp core/cwCsv.cpp core/cwSvg.cpp)
@@ -37,9 +34,6 @@ list( APPEND CORE_SRC_FILES core/cwTracer.cpp core/cwTest.cpp  )
 
 list( APPEND CORE_HDR_FILES core/cwDspTypes.h core/cwDsp.h   core/cwFFT.h   core/cwAudioTransforms.h   core/cwDspTransforms.h )
 list( APPEND CORE_SRC_FILES                   core/cwDsp.cpp core/cwFFT.cpp core/cwAudioTransforms.cpp core/cwDspTransforms.cpp )
-
-# core/cwCmInterface.h
-# core/cwCmInterface.cpp
 
 list( APPEND CORE_HDR_FILES core/cwAudioFileOps.h   core/cwAudioFileProc.h   core/cwPvAudioFileProc.h   core/cwDataSets.h )
 list( APPEND CORE_SRC_FILES core/cwAudioFileOps.cpp core/cwAudioFileProc.cpp core/cwPvAudioFileProc.cpp core/cwDataSets.cpp )
@@ -83,17 +77,14 @@ set(  FLOW_SRC_FILES                   flow/cwFlowValue.cpp flow/cwFlowTypes.cpp
 
 #-------------------------------------
 # cw
-set(  CW_HDR_FILES cw/cwDynRefTbl.h cw/cwGutimReg.h     cw/cwMidiDetectors.h   cw/cwPerfMeas.h   cw/cwPianoScore.h   cw/cwPresetSel.h )
-set(  CW_SRC_FILES cw/cwDynRefTbl.cpp cw/cwGutimReg.cpp cw/cwMidiDetectors.cpp cw/cwPerfMeas.cpp cw/cwPianoScore.cpp cw/cwPresetSel.cpp )
+set(  CW_HDR_FILES cw/cwMidiDetectors.h   cw/cwPianoScore.h   cw/cwPresetSel.h )
+set(  CW_SRC_FILES cw/cwMidiDetectors.cpp cw/cwPianoScore.cpp cw/cwPresetSel.cpp )
   
-list( APPEND CW_HDR_FILES cw/cwScoreFollow2.h   cw/cwScoreFollow2Test.h   cw/cwScoreFollower.h   cw/cwScoreFollowerPerf.h cw/cwScoreFollowTest.h )
-list( APPEND CW_SRC_FILES cw/cwScoreFollow2.cpp cw/cwScoreFollow2Test.cpp cw/cwScoreFollower.cpp cw/cwScoreFollowTest.cpp )
+list( APPEND CW_HDR_FILES cw/cwScoreFollow2.h   cw/cwScoreFollow2Test.h   )
+list( APPEND CW_SRC_FILES cw/cwScoreFollow2.cpp cw/cwScoreFollow2Test.cpp )
 
-list( APPEND CW_HDR_FILES cw/cwScoreParse.h   cw/cwScoreTest.h   cw/cwSfAnalysis.h   cw/cwSfMatch.h   cw/cwSfScore.h   cw/cwSfTrack.h )
-list( APPEND CW_SRC_FILES cw/cwScoreParse.cpp cw/cwScoreTest.cpp cw/cwSfAnalysis.cpp cw/cwSfMatch.cpp cw/cwSfScore.cpp cw/cwSfTrack.cpp )
-
-list( APPEND CW_HDR_FILES cw/cwSvgMidi.h   cw/cwSvgScoreFollow.h   cw/cwWaveTableNotes.h )
-list( APPEND CW_SRC_FILES cw/cwSvgMidi.cpp cw/cwSvgScoreFollow.cpp cw/cwWaveTableNotes.cpp )
+list( APPEND CW_HDR_FILES cw/cwSvgMidi.h   cw/cwWaveTableNotes.h )
+list( APPEND CW_SRC_FILES cw/cwSvgMidi.cpp cw/cwWaveTableNotes.cpp )
 
 
 #-------------------------------------

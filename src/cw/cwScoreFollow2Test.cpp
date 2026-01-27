@@ -11,12 +11,6 @@
 
 #include "cwCsv.h"
 #include "cwMidi.h"
-
-#include "cwDynRefTbl.h"
-#include "cwScoreParse.h"
-#include "cwSfScore.h"
-#include "cwPerfMeas.h"
-
 #include "cwPianoScore.h"
 
 #include "cwPianoScore.h"

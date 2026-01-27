@@ -5,10 +5,30 @@
 
 namespace cw
 {
+  namespace score_parse
+  {
+
+    enum {
+      kInvalidLocId = 0
+    };
+  }
+  
+  namespace perf_meas
+  {
+    enum {
+      kDynValIdx,
+      kEvenValIdx,
+      kTempoValIdx,
+      kMatchCostValIdx,
+      kValCnt
+    };
+  }
+  
   namespace perf_score
   {
     typedef handle<struct score_str> handle_t;
 
+    
     typedef struct stats_str
     {
       unsigned id;   // see: perf_meas::k???VarIdx

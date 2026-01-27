@@ -15,7 +15,6 @@
 #include "cwMidiFile.h"
 #include "cwUiDecls.h"
 #include "cwIo.h"
-#include "cwScoreFollowerPerf.h"
 #include "cwIoMidiRecordPlay.h"
 #include "cwMidiState.h"
 #include "cwSvgMidi.h"
@@ -1688,44 +1687,6 @@ cw::rc_t cw::midi_record_play::save_csv( handle_t h, const char* fn )
   midi_record_play_t* p  = _handleToPtr(h);  
   return _write_csv(p,fn);
 }
-
-cw::rc_t cw::midi_record_play::save_synced_csv( handle_t h, const char* fn, const score_follower::ssf_note_on_t* syncA, unsigned syncN )
-{
-  rc_t rc = kOkRC;
-  midi_record_play_t* p  = _handleToPtr(h);  
-
-  for(unsigned i=0; i<p->iMsgArrayInIdx; ++i)
-  {
-    const am_midi_msg_t* m = p->iMsgArray + i;
-
-    if( midi::isNoteOn(m->status,m->d1) )
-    {
-      for(unsigned j=0; j<syncN; ++j)
-        if( syncA[j].muid == p->iMsgArray[i].id )
-        {
-          if( p->iMsgArray[i].d0 != syncA[j].pitch )
-          {
-            rc = cwLogError(kInvalidStateRC,"MIDI sync failed. Pitch mismatch. i:%i j:%i : %i %i",i,j, p->iMsgArray[i].d0 != syncA[j].pitch);
-            //goto errLabel;
-            continue;
-          }
-
-          p->iMsgArray[i].loc = syncA[j].loc;
-        }
-    }
-    
-  }
-
-  if((rc = _write_sync_csv( p, fn )) != kOkRC )
-  {
-    rc = cwLogError(rc,"MIDI sync'd CSV write failed.");
-    goto errLabel;
-  }
-
- errLabel:
-  return rc;
-}
-
 
 cw::rc_t cw::midi_record_play::write_svg( handle_t h, const char* fn )
 {

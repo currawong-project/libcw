@@ -23,24 +23,10 @@
 #include "cwFlowNet.h"
 #include "cwFlowProc.h"
 
-
-#include "cwDynRefTbl.h"    
-#include "cwScoreParse.h"
-#include "cwSfScore.h"
-#include "cwSfTrack.h"
-#include "cwPerfMeas.h"
-#include "cwScoreFollowerPerf.h"
-#include "cwScoreFollower.h"
-
 #include "cwPianoScore.h"
 #include "cwScoreFollow2.h"
-
-#include "cwPianoScore.h"
-
 #include "cwPresetSel.h"
-
 #include "cwMidiDetectors.h"
-
 #include "cwFlowPerf.h"
 
 namespace cw
@@ -3081,6 +3067,7 @@ namespace cw
     //
     // Score Follower
     //
+    /*
     namespace score_follower
     {
 
@@ -3274,8 +3261,8 @@ namespace cw
       };
       
     } // score_follower    
-
-
+    */
+    
     //------------------------------------------------------------------------------------------------------------------
     //
     // Score Follower 2

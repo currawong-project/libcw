@@ -35,32 +35,15 @@
 #include "cwMidi.h"
 #include "cwMidiDecls.h"
 
-#include "cwDynRefTbl.h"
-#include "cwScoreParse.h"
-#include "cwSfScore.h"
-#include "cwPerfMeas.h"
-
 #include "cwFlowDecl.h"
 #include "cwFlow.h"
 
 #include "cwPianoScore.h"
-#include "cwGutimReg.h"
-//#include "cwIoPresetSelApp.h"
-
 
 #include "cwMidiFile.h"
 #include "cwAudioDevice.h"
 
 #include "cwPresetSel.h"
-
-#include "cwSfMatch.h"
-#include "cwScoreTest.h"
-#include "cwSfTrack.h"
-
-
-#include "cwScoreFollowerPerf.h"
-#include "cwScoreFollower.h"
-#include "cwScoreFollowTest.h"
 
 #include "cwScoreFollow2Test.h"
 #include "cwMidiDetectors.h"
@@ -88,10 +71,6 @@
 #include "cwTcpSocketSrv.h"
 #include "cwTcpSocketTest.h"
 
-
-//#include "cwMdns.h"
-//#include "cwDnsSd.h"
-//#include "cwEuCon.h"
 #if defined(cwWEBSOCK)
 #include "cwIo.h"
 #include "cwIoTest.h"
@@ -318,19 +297,13 @@ cw::rc_t midiFileTest(         const cw::object_t* cfg, const cw::object_t* args
 cw::rc_t audioFileTest(        const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::audiofile::test(args); }
 cw::rc_t audioFileOp(          const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::afop::test(args); }
 cw::rc_t pianoScoreTest(       const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::perf_score::test(args); }
-cw::rc_t gutimRegTest(         const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::gutim::reg::test(args); }
 cw::rc_t amToMidiFile(         const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::midi_record_play::am_to_midi_file(args); }
 cw::rc_t audioFileProc(        const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::afop::file_processor(args); }
 cw::rc_t pvocFileProc(         const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::afop::pvoc_file_processor(args); }
-//cw::rc_t socketMdnsTest(       const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::net::mdns::test(); }
-//cw::rc_t dnsSdTest(            const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::net::dnssd::test(); }
-//cw::rc_t euConTest(            const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::eucon::test(); }
 
-cw::rc_t scoreFollowTest(    const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::score_follow_test::test(args); }
 cw::rc_t svgMidiFileTest(    const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::svg_midi::test_midi_file(args); }
 cw::rc_t midiStateTest(      const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::midi_state::test(args); }
 cw::rc_t csvTest(            const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::csv::test(args); }
-cw::rc_t scoreTest(          const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::score_test::test(args); }
 cw::rc_t translateFrags(     const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::preset_sel::translate_frags(args); }
 cw::rc_t scoreFollow2(       const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::score_follow_2::test(args); }
 cw::rc_t midiDetect(         const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::midi_detect::test(args); }
@@ -484,7 +457,6 @@ int main( int argc, const char* argv[] )
    { "audioDevTone", audioDevTestTone },
    { "audioDevAlsa", audioDevAlsaTest },
    { "audioDevRpt", audioDevRpt },
-   //{ "nbmem", nbmemTest },
    { "socketUdp", socketTestUdp },
    { "socketTcpClient", socketTestTcp },
    { "socketTcpServer", socketTestTcp },
@@ -493,9 +465,6 @@ int main( int argc, const char* argv[] )
    { "sockMgrSrvTest", sockMgrSrvTest },
    { "sockMgrClientTest", sockMgrClientTest },
    { "uiTest", uiTest },
-   //{ "socketMdns", socketMdnsTest },
-   //{ "dnssd",  dnsSdTest },
-   //{ "eucon",  euConTest },
    { "dirEntry", dirEntryTest },
    { "io", ioTest },
    { "io_minimal", ioMinTest },
@@ -511,16 +480,13 @@ int main( int argc, const char* argv[] )
    { "audiofile", audioFileTest },
    { "afop",      audioFileOp },
    { "piano_score", pianoScoreTest },
-   { "gutim_reg", gutimRegTest },
    { "am_to_midi_file", amToMidiFile },
    { "audio_file_proc", audioFileProc },
    { "pvoc_file_proc",  pvocFileProc },
    { "preset_sel", ioPresetSelTest },
-   { "score_follow", scoreFollowTest },
    { "svg_midi_file", svgMidiFileTest },
    { "midi_state", midiStateTest },
    { "csv", csvTest },
-   { "score_test", scoreTest },
    { "translate_frags", translateFrags },
    { "sf2", scoreFollow2 },
    { "midi_detect",midiDetect},

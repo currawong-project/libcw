@@ -15,12 +15,6 @@
 #include "cwFile.h"
 #include "cwCsv.h"
 #include "cwVectOps.h"
-
-#include "cwDynRefTbl.h"
-#include "cwScoreParse.h"
-#include "cwSfScore.h"
-#include "cwSfTrack.h"
-#include "cwPerfMeas.h"
 #include "cwPianoScore.h"
 
 #define INVALID_PERF_MEAS (-1)
@@ -38,9 +32,7 @@ namespace cw
       event_t** uid_mapA;
       unsigned  uid_mapN;
       unsigned  min_uid;
-
-      //bool has_locs_fl;
-      bool uses_oloc_fl;
+      bool      uses_oloc_fl;
 
       
     } score_t;

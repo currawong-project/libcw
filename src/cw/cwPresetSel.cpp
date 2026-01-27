@@ -14,12 +14,6 @@
 #include "cwFlowDecl.h"
 #include "cwPresetSel.h"
 #include "cwFile.h"
-
-#include "cwDynRefTbl.h"
-#include "cwScoreParse.h"
-#include "cwSfScore.h"
-#include "cwPerfMeas.h"
-
 #include "cwPianoScore.h"
 
 
@@ -983,81 +977,6 @@ namespace cw
         }
       }
 
-    errLabel:
-      close(fH);
-      
-      return rc;
-    }
-
-    rc_t _report_with_sfscore(  preset_sel_t* p, const char* rpt_fname, sfscore::handle_t scoreH  )
-    {
-      rc_t                    rc       = kOkRC;  
-      unsigned                eventN   = event_count( scoreH );
-      const frag_t*           frag     = p->fragL;
-      unsigned                frag_loc = frag == nullptr ? 0 : frag->endLoc;
-      unsigned                frag_id  = 0;
-      const sfscore::event_t *e        = event( scoreH, 0);
-      file::handle_t fH;
-
-      if((rc = open(fH,rpt_fname,file::kWriteFl)) != kOkRC )
-      {
-        rc = cwLogError(rc,"File open failed on sfscore preset sel report file.");
-        goto errLabel;
-      }
-      
-      if( e == nullptr )
-      {
-        cwLogWarning("The score is empty during preset sel reporting.");
-      }
-      else
-      {
-        unsigned eloc = e->oLocId;
-        unsigned colN = 0;
-        for(unsigned i=0; i<eventN; ++i)
-        {
-
-          e  = event( scoreH, i);
-
-          // are we on a new location?
-          if( eloc != e->oLocId )
-          {
-            eloc = e->oLocId;
-            colN = 0;
-            printf(fH,"\n");            
-          }
-
-          // is this the location of the next fragment
-          if( eloc >= frag_loc )
-          {
-            if( colN != 0 )
-              printf(fH,"\n");
-            
-            
-            printf(fH,"%3i %5i %3i ",frag_id,frag_loc,e->barNumb);
-            colN = 1;
-            if( frag != nullptr )
-            {
-              frag = frag->link;
-              if( frag != nullptr )
-              {
-                frag_loc = frag->endLoc;
-                frag_id += 1;
-              }
-            }
-          }
-
-          if( colN == 0 )
-          {
-            printf(fH,"          %3i ",e->barNumb);
-            colN = 1;
-          }
-
-          //printf(fH,"%s ",e->sciPitch);
-          printf(fH,"%s ",midi::midiToSciPitch(e->pitch));
-          colN += 1;
-      
-        }
-      }
     errLabel:
       close(fH);
       
@@ -2194,6 +2113,83 @@ cw::rc_t cw::preset_sel::translate_frags( const object_t* cfg )
 
 #undef NOT_DEF
 #ifdef NOT_DEF
+
+    rc_t _report_with_sfscore(  preset_sel_t* p, const char* rpt_fname, sfscore::handle_t scoreH  )
+    {
+      rc_t                    rc       = kOkRC;  
+      unsigned                eventN   = event_count( scoreH );
+      const frag_t*           frag     = p->fragL;
+      unsigned                frag_loc = frag == nullptr ? 0 : frag->endLoc;
+      unsigned                frag_id  = 0;
+      const sfscore::event_t *e        = event( scoreH, 0);
+      file::handle_t fH;
+
+      if((rc = open(fH,rpt_fname,file::kWriteFl)) != kOkRC )
+      {
+        rc = cwLogError(rc,"File open failed on sfscore preset sel report file.");
+        goto errLabel;
+      }
+      
+      if( e == nullptr )
+      {
+        cwLogWarning("The score is empty during preset sel reporting.");
+      }
+      else
+      {
+        unsigned eloc = e->oLocId;
+        unsigned colN = 0;
+        for(unsigned i=0; i<eventN; ++i)
+        {
+
+          e  = event( scoreH, i);
+
+          // are we on a new location?
+          if( eloc != e->oLocId )
+          {
+            eloc = e->oLocId;
+            colN = 0;
+            printf(fH,"\n");            
+          }
+
+          // is this the location of the next fragment
+          if( eloc >= frag_loc )
+          {
+            if( colN != 0 )
+              printf(fH,"\n");
+            
+            
+            printf(fH,"%3i %5i %3i ",frag_id,frag_loc,e->barNumb);
+            colN = 1;
+            if( frag != nullptr )
+            {
+              frag = frag->link;
+              if( frag != nullptr )
+              {
+                frag_loc = frag->endLoc;
+                frag_id += 1;
+              }
+            }
+          }
+
+          if( colN == 0 )
+          {
+            printf(fH,"          %3i ",e->barNumb);
+            colN = 1;
+          }
+
+          //printf(fH,"%s ",e->sciPitch);
+          printf(fH,"%s ",midi::midiToSciPitch(e->pitch));
+          colN += 1;
+      
+        }
+      }
+    errLabel:
+      close(fH);
+      
+      return rc;
+    }
+
+
 cw::rc_t cw::preset_sel::translate_frags( const object_t* cfg )
 {
   rc_t                  rc              = kOkRC;

@@ -13,11 +13,6 @@
 #include "cwMidi.h"
 #include "cwMidiDetectors.h"
 
-#include "cwDynRefTbl.h"
-#include "cwScoreParse.h"
-#include "cwSfScore.h"
-#include "cwSfTrack.h"
-#include "cwPerfMeas.h"
 #include "cwPianoScore.h"
 
 namespace cw {
@@ -738,12 +733,12 @@ cw::rc_t cw::midi_detect::test( const object_t* cfg )
   seq::handle_t              detH;
   unsigned                   det_id       = kInvalidId;
   perf_score::handle_t       pianoScoreH;
-  const perf_score::event_t* evt          = nullptr;
+  const perf_score::event_t* evt             = nullptr;
   unsigned                   seqStateN       = 0;
   midi_detect::state_t*      seqStateA       = nullptr;
   unsigned                   pnoStateN       = 0;
   midi_detect::state_t*      pnoStateA       = nullptr;
-  unsigned                   detect_cnt   = 0;
+  unsigned                   detect_cnt      = 0;
   
   if((rc = create( detH, allocDetN, pedal_thresh )) != kOkRC )
   {

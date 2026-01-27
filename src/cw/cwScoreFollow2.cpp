@@ -9,20 +9,11 @@
 #include "cwMem.h"
 #include "cwText.h"
 #include "cwObject.h"
-
-
-
 #include "cwMidi.h"
 #include "cwTime.h"
 #include "cwFile.h"
 #include "cwCsv.h"
 #include "cwVectOps.h"
-
-#include "cwDynRefTbl.h"
-#include "cwScoreParse.h"
-#include "cwSfScore.h"
-#include "cwSfTrack.h"
-#include "cwPerfMeas.h"
 #include "cwPianoScore.h"
 #include "cwScoreFollow2.h"
 

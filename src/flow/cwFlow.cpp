@@ -102,7 +102,6 @@ namespace cw
       { "vel_table",       &vel_table::members },
       { "preset_select",   &preset_select::members },
       { "gutim_ps",        &gutim_ps::members },
-      { "score_follower",  &score_follower::members },
       { "score_follower_2",&score_follower_2::members },
       { "gutim_ctl",       &gutim_ctl::members },
       { "gutim_sf_ctl",    &gutim_sf_ctl::members },
