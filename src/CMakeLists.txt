@@ -10,6 +10,7 @@ option(CW_WEBSOCK_FL "Use libwebsockets." ON)
 option(CW_ALSA_FL    "Use ALSA." ON)
 option(CW_ADDRESS_SANITIZER_FL "Enable the address sanitizer." OFF)
 option(CW_THREAD_SANITIZER_FL "Enable the address sanitizer." OFF)
+option(CW_COVERAGE_FL "Enable testing coverage analysis." OFF)
 
 target_sources(cw
   PRIVATE
@@ -47,6 +48,7 @@ target_compile_options(cw PRIVATE
     $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=undefined -Wall -Wextra -Wno-unused>    
     $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>,$<BOOL:${CW_ADDRESS_SANITIZER_FL}>>:-fsanitize=address>    
     $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>,$<BOOL:${CW_THREAD_SANITIZER_FL}>>:-fsanitize=thread>    
+    $<$<AND:$<CONFIG:Debug>,$<BOOL:${CW_COVERAGE_FL}>>:--coverage>    
 )
 
 # BUILD_INTERFACE are include dir's searched when the library is built
@@ -65,6 +67,7 @@ target_link_libraries(cw
   $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=undefined>    
   $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>,$<BOOL:${CW_ADDRESS_SANITIZER_FL}>>:-lasan>    
   $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>,$<BOOL:${CW_THREAD_SANITIZER_FL}>>:-fsanitize=thread>    
+  $<$<AND:$<CONFIG:Debug>,$<BOOL:${CW_COVERAGE_FL}>>:--coverage>    
 )
   
 if(UNIX)

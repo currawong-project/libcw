@@ -17,7 +17,11 @@
 		
 		"CW_MKL_FL":         { "type":"BOOL",  "value":"OFF" },
 		
-		"CW_ALSA_FL":        { "type":"BOOL",  "value":"ON" }
+		"CW_ALSA_FL":        { "type":"BOOL",  "value":"ON" },
+		
+		"CW_THREAD_SANITIZER_FL": { "type":"BOOL",  "value":"OFF" },
+		"CW_ADDRESS_SANITIZER_FL": { "type":"BOOL", "value":"OFF" },
+		"CW_COVERAGE_FL": { "type":"BOOL", "value":"OFF" }
 	    }
 	},
 	{
@@ -26,9 +30,8 @@
 	    "inherits":"default",
 	    "cacheVariables":{
 		"CMAKE_BUILD_TYPE":"Debug",
-		"CMAKE_BUILD_PARALLEL_LEVEL":{ "type":"INT", "value":"8" },
-		"CW_THREAD_SANITIZER_FL": { "type":"BOOL", "value":"OFF" },
-		"CW_ADDRESS_SANITIZER_FL": { "type":"BOOL", "value":"OFF" }
+		"CW_ADDRESS_SANITIZER_FL": { "type":"BOOL", "value":"ON" },
+		"CW_COVERAGE_FL": { "type":"BOOL", "value":"ON" }
 	    }
 	},
 	{

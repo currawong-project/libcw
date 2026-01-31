@@ -58,7 +58,19 @@ catch signal SIGABRT
 r
 ```
 
+## Generate a test coverage report from a debug build
+```
+ctest --test-dir build/debug/test
 
+# generate coverage data
+lcov --capture --directory build/debug --output-file build/debug/coverage.info --rc lcov_branch_coverage=1 --ignore-errors mismatch
+
+# remove coverage of standard library calls
+lcov --remove build/debug/coverage.info '/usr/include/*' --output-file build/debug/coverage.info --rc lcov_branch_coverage=1
+
+# generate the coverage report
+genhtml build/debug/coverage.info --output-directory build/debug/coverage --rc lcov_branch_coverage=1
+```
 
 
 
