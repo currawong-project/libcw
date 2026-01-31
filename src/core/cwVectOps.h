@@ -207,7 +207,7 @@ namespace cw
     T* abs( T* v, unsigned n )
     {
       for(unsigned i=0; i<n; ++i)
-        v[i] = abs(v[i]);
+        v[i] = std::abs(v[i]);
       return v;
     }
 
@@ -215,7 +215,7 @@ namespace cw
     T0* abs( T0* v0, const T1* v1, unsigned n )
     {
       for(unsigned i=0; i<n; ++i)
-        v0[i] = abs(v1[i]);
+        v0[i] = std::abs(v1[i]);
       return v0;
     }
     
@@ -319,7 +319,7 @@ namespace cw
       void sub( T0* y0, const T0* v0, const T1* v1, unsigned n )
     {
       for(unsigned i=0; i<n; ++i)
-        y0[i] = v0[i] / v1[i];
+        y0[i] = v0[i] - v1[i];
     }
 
     template< typename T0, typename T1 >
@@ -340,7 +340,7 @@ namespace cw
       void sub( T0* y0, const T0* v0, const T1& scalar, unsigned n )
     {
       for(unsigned i=0; i<n; ++i)
-        y0[i] = v0[i] / scalar;
+        y0[i] = v0[i] - scalar;
     }
 
     //==================================================================================================================
