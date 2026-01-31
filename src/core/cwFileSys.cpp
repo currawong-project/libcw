@@ -10,7 +10,6 @@
 #include "cwFileSys.h"
 
 #include "cwMem.h"
-#include "cwString.h"
 #include "cwText.h"
 
 #ifdef OS_LINUX
@@ -419,15 +418,15 @@ char* cw::filesys::expandPath( const char* dir )
   switch( res.we_wordc )
   {
     case 0:
-      newDir = str::dupl(dir);
+      newDir = mem::duplStr(dir);
       break;
       
     case 1:
-      newDir = str::dupl(res.we_wordv[0]);
+      newDir = mem::duplStr(res.we_wordv[0]);
       break;
       
     default:
-      newDir = str::join(" ", (const char**)res.we_wordv, res.we_wordc );
+      newDir = textJoin(" ", (const char**)res.we_wordv, res.we_wordc );
   }
   
  errLabel:
@@ -892,7 +891,7 @@ char* cw::filesys::makeVersionedDirectory(const char* recordDir, const char* rec
 cw::rc_t cw::filesys::makeDir( const char* dirStr )
 {
 
-  if( str::len(dirStr) == 0 )
+  if( textLength(dirStr) == 0 )
     return kOkRC;
   
   char* s  = filesys::expandPath(dirStr);

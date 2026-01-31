@@ -5,8 +5,8 @@ set( CORE_SRC_FILES          core/cwCommonImpl.h  core/cwCommonImpl.cpp core/cwL
 list( APPEND CORE_HDR_FILES  core/cwNumericConvert.h   core/cwObjectTemplate.h core/cwObject.h)
 list( APPEND CORE_SRC_FILES  core/cwNumericConvert.cpp                         core/cwObject.cpp )
 
-list( APPEND CORE_HDR_FILES  core/cwString.h   core/cwText.h   core/cwTextBuf.h )
-list( APPEND CORE_SRC_FILES  core/cwString.cpp core/cwText.cpp core/cwTextBuf.cpp )
+list( APPEND CORE_HDR_FILES  core/cwText.h   core/cwTextBuf.h )
+list( APPEND CORE_SRC_FILES  core/cwText.cpp core/cwTextBuf.cpp )
 
 list( APPEND CORE_HDR_FILES core/cwMath.h   core/cwVectOps.h   core/cwUtility.h )
 list( APPEND CORE_SRC_FILES core/cwMath.cpp core/cwVectOps.cpp core/cwUtility.cpp)

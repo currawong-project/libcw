@@ -89,8 +89,12 @@ namespace cw
   bool isReal( const char* );           // text contains only [0-9] with one decimal place
   bool isIdentifier( const char* );      // text is a legal id [0-9,A-Z,a-z,_] w/o leading number
 
-  // Join s0 and s1 to form one long string.  Release the returned string with mem::free()
+  // Join s0 and s1 to form one long string.  Release the returned string with mem::release()
   char* textJoin( const char* s0, const char* s1 );
+
+  // Join the strings in subStrArray[ ssN ] with the separating character 'sep'.
+  // Release the returned string with mem::release()
+  char*    textJoin( const char* sep, const char** subStrArray, unsigned ssN );
 
   // Realloc s0 and append s1.
   char* textAppend( char* s0, const char* s1 );

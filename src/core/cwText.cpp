@@ -294,6 +294,38 @@ char* cw::textJoin( const char* s0, const char* s1 )
   return s;
 }
 
+char* cw::textJoin( const char* sep, const char** subStrArray, unsigned ssN )
+{
+  unsigned sN = 0;
+  char* s = nullptr;
+  
+  for(unsigned i=0; i<ssN; ++i)
+    sN += textLength(subStrArray[i]);
+
+  if( ssN >= 1 )
+    sN += (ssN-1) * textLength(sep);
+
+  if( sN == 0 )
+    return nullptr;
+  
+  sN += 1;
+  
+  s = mem::alloc<char>(sN);
+
+  s[0] = 0;
+  for(unsigned i=0; i<ssN; ++i)
+  {
+    strcat(s,subStrArray[i]);
+    if( sep != nullptr && ssN>=1 && i<ssN-1 )
+      strcat(s,sep);
+    
+    assert( textLength(s) < sN );
+  }
+
+  return s;
+}
+
+
 char* cw::textAppend( char* s0,  const char* s1 )
 {
   if( s0 == nullptr && s1==nullptr)
