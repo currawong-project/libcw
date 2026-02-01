@@ -8,8 +8,8 @@ list( APPEND CORE_SRC_FILES  core/cwNumericConvert.cpp                         c
 list( APPEND CORE_HDR_FILES  core/cwText.h   core/cwTextBuf.h )
 list( APPEND CORE_SRC_FILES  core/cwText.cpp core/cwTextBuf.cpp )
 
-list( APPEND CORE_HDR_FILES core/cwMath.h   core/cwVectOps.h   core/cwUtility.h )
-list( APPEND CORE_SRC_FILES core/cwMath.cpp core/cwVectOps.cpp core/cwUtility.cpp)
+list( APPEND CORE_HDR_FILES core/cwMath.h   core/cwVectOps.h )
+list( APPEND CORE_SRC_FILES core/cwMath.cpp core/cwVectOps.cpp )
 
 list( APPEND CORE_HDR_FILES core/cwB23Tree.h   core/cwMtx.h   core/cwVariant.h )
 list( APPEND CORE_SRC_FILES core/cwB23Tree.cpp core/cwMtx.cpp core/cwVariant.cpp)

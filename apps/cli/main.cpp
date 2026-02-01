@@ -23,7 +23,6 @@
 #include "cwSerialPort.h"
 #include "cwSerialPortSrv.h"
 #include "cwSocket.h"
-#include "cwUtility.h"
 #include "cwMath.h"
 #include "cwDspTypes.h"
 #include "cwDsp.h"
@@ -384,7 +383,7 @@ cw::rc_t datasetAdapterTest( const cw::object_t* cfg, const cw::object_t* args, 
 cw::rc_t svgTest(   const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::svg::test(args); }
 #endif
 
-cw::rc_t dirEntryTest( const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) {  return cw::filesys::dirEntryTest(args); }
+//cw::rc_t dirEntryTest( const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) {  return cw::filesys::dirEntryTest(args); }
 
 cw::rc_t stubTest( const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] )
 {
@@ -465,7 +464,7 @@ int main( int argc, const char* argv[] )
    { "sockMgrSrvTest", sockMgrSrvTest },
    { "sockMgrClientTest", sockMgrClientTest },
    { "uiTest", uiTest },
-   { "dirEntry", dirEntryTest },
+   //{ "dirEntry", dirEntryTest },
    { "io", ioTest },
    { "io_minimal", ioMinTest },
    { "audio_midi", ioAudioMidiTest },

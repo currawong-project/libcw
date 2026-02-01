@@ -5,7 +5,6 @@
 #include "cwCommonImpl.h"
 #include "cwTest.h"
 #include "cwMem.h"
-#include "cwUtility.h"
 #include "cwMath.h"
 #include "cwVectOps.h"
 #include "cwDspTypes.h"

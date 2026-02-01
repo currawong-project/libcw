@@ -9,7 +9,6 @@
 #include "cwText.h"
 #include "cwObject.h"
 #include "cwAudioFile.h"
-#include "cwUtility.h"
 #include "cwFileSys.h"
 #include "cwAudioFileOps.h"
 #include "cwVectOps.h"
