@@ -64,7 +64,7 @@ const char* cw::textCat(  char* dst, unsigned dstN, const char* src, unsigned sr
 {
   unsigned n = textLength(dst);
   
-  if( n>=dstN)
+  if( n>=dstN-1)
     return nullptr;
   
   return textCopy(dst + n, dstN-n, src, srcN );
@@ -126,6 +126,9 @@ int cw::textCompare( const char* s0, const char* s1, unsigned n)
 
 int cw::textCompareI( const char* s0, const char* s1 )
 {
+  if(s0==nullptr || s1==nullptr)
+    return textCompare(s0,s1);
+  
   char b0N = textLength(s0)+1;
   char b1N = textLength(s1)+1;
   char b0[ b0N ];
@@ -137,6 +140,9 @@ int cw::textCompareI( const char* s0, const char* s1 )
 
 int cw::textCompareI( const char* s0, const char* s1, unsigned n )
 {
+  if(s0==nullptr || s1==nullptr)
+    return textCompare(s0,s1,n);
+  
   char b0[ n+1 ];
   char b1[ n+1 ];
   textToLower(b0,s0,n+1);
@@ -184,7 +190,7 @@ char* cw::firstMatchChar( char* s, unsigned n, char c )
 
 const char* cw::firstMatchChar( const char* s, unsigned n, char c )
 {
-  return firstMatchChar((char*)s,c);
+  return firstMatchChar((char*)s,n,c);
 }
 
 char* cw::lastMatchChar( char* s, char c )
@@ -236,6 +242,9 @@ char* cw::removeTrailingWhitespace( char* s )
 
 bool cw::isInteger( const char* s )
 {
+  if(s == nullptr || *s==0 )
+    return false;
+  
   for(; *s; ++s)
     if(!isdigit(*s))
       return false;
@@ -244,6 +253,9 @@ bool cw::isInteger( const char* s )
 
 bool cw::isReal( const char* s)
 {
+  if(s == nullptr || *s==0 )
+    return false;
+  
   unsigned decN = 0;
   for(; *s; ++s)
     if( *s == '.' )
@@ -262,6 +274,9 @@ bool cw::isReal( const char* s)
 
 bool cw::isIdentifier( const char* s )
 {
+  if(s == nullptr || *s==0 )
+    return false;
+  
   if( !isalpha(*s) && *s != '_' )
     return false;
 
@@ -280,18 +295,26 @@ char* cw::textJoin( const char* s0, const char* s1 )
   
   unsigned s0n = textLength(s0);
   unsigned s1n = textLength(s1);
-  unsigned sn  = s0n + s1n + 1;
+  unsigned dn  = s0n + s1n + 1;
 
-  char* s = mem::alloc<char>(sn+1);
-  s[0] = 0;
+  char* d0 = mem::alloc<char>(dn+1);
+  char* d1 = d0;
+  
+  d0[0] = 0;
+  d0[dn-1] = 0;
   
   if( s0 != nullptr )
-    strcpy(s,mem::duplStr(s0));
-
-  if( s0 != nullptr && s1 != nullptr )
-    strcpy(s + strlen(s0), mem::duplStr(s1) );
-
-  return s;
+  {
+    textCopy(d0,dn,s0,s0n);
+    d1 = d0 + s0n;
+  }
+  
+  if(s1 != nullptr )
+  {
+    textCopy(d1,dn-s0n,s1);
+  }
+  
+  return d0;
 }
 
 char* cw::textJoin( const char* sep, const char** subStrArray, unsigned ssN )
@@ -300,14 +323,16 @@ char* cw::textJoin( const char* sep, const char** subStrArray, unsigned ssN )
   char* s = nullptr;
   
   for(unsigned i=0; i<ssN; ++i)
-    sN += textLength(subStrArray[i]);
-
-  if( ssN >= 1 )
-    sN += (ssN-1) * textLength(sep);
+    if( subStrArray[i] != nullptr )
+    {
+      sN += textLength(subStrArray[i]);
+      sN += textLength(sep);
+    }
 
   if( sN == 0 )
     return nullptr;
-  
+
+  // add one for the terminating zero
   sN += 1;
   
   s = mem::alloc<char>(sN);
@@ -315,12 +340,17 @@ char* cw::textJoin( const char* sep, const char** subStrArray, unsigned ssN )
   s[0] = 0;
   for(unsigned i=0; i<ssN; ++i)
   {
-    strcat(s,subStrArray[i]);
-    if( sep != nullptr && ssN>=1 && i<ssN-1 )
-      strcat(s,sep);
+    if( subStrArray[i] != nullptr )
+    {
+      textCat(s,sN,subStrArray[i]);
     
+      if( sep != nullptr && ssN>=1 && i<ssN-1 )
+        textCat(s,sN,sep);
+    }
+      
     assert( textLength(s) < sN );
   }
+  
 
   return s;
 }
@@ -376,14 +406,8 @@ unsigned cw::toText( char* buf, unsigned bufN, const char* v )
     cwLogError(kInvalidArgRC,"The source string in a call to 'toText()' was null.");
     return 0;
   }
-  
-  unsigned i;
-  for(i=0; i<bufN; ++i)
-  {
-    buf[i] = v[i];
-    if(v[i]==0)
-      return i; // on success return the length of the string in buf[] and v[]
-  }
 
-  return 0; // if buf is too small return 0
+  unsigned ret = snprintf(buf,bufN,"%s",v);
+
+  return ret >= bufN ? 0 : ret;
 }

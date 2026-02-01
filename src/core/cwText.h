@@ -20,6 +20,7 @@ namespace cw
   const char* textCopy( char* dst, unsigned dstN, const char* src, unsigned srcN=0 );
   
   // Same as textCopy( dst + textLength(dst), dstN, src, srcN )
+  // If dst[] is full then returns nullptr;
   const char* textCat(  char* dst, unsigned dstN, const char* src, unsigned srcN=0 );
   
 
@@ -87,7 +88,7 @@ namespace cw
   
   bool isInteger( const char* );        // text contains only [0-9]
   bool isReal( const char* );           // text contains only [0-9] with one decimal place
-  bool isIdentifier( const char* );      // text is a legal id [0-9,A-Z,a-z,_] w/o leading number
+  bool isIdentifier( const char* );     // text is a legal id [0-9,A-Z,a-z,_] w/o leading number
 
   // Join s0 and s1 to form one long string.  Release the returned string with mem::release()
   char* textJoin( const char* s0, const char* s1 );
