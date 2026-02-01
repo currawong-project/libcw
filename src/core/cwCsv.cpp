@@ -175,7 +175,7 @@ namespace cw
       rc_t rc;
 
       // read the next line
-      if((rc = getLineAuto( p->fH, &p->lineBuf, &p->lineCharCnt )) != kOkRC )
+      if((rc = getLineAuto( p->fH, &p->lineBuf, p->lineCharCnt )) != kOkRC )
       {
         if( rc != kEofRC )
           rc = cwLogError(rc,"Line buf alloc failed on line index:%i.",p->curLineIdx);
@@ -432,7 +432,7 @@ cw::rc_t cw::csv::line_count( handle_t h, unsigned& lineCntRef )
     goto errLabel;
   }
   
-  if((rc = file::lineCount(p->fH, &lineCntRef)) != kOkRC )
+  if((rc = file::lineCount(p->fH, lineCntRef)) != kOkRC )
   {
     rc = cwLogError(rc,"CSV line count query failed.");
     goto errLabel;

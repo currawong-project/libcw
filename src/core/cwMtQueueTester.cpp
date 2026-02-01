@@ -138,7 +138,7 @@ namespace cw
       goto errLabel;
     }
 
-    if((rc = file::lineCount(fH,&lineN)) != kOkRC )
+    if((rc = file::lineCount(fH,lineN)) != kOkRC )
     {
       rc = cwLogError(rc,"Line count could not be deteremined on '%s'.",fname);
       goto errLabel;
@@ -158,7 +158,7 @@ namespace cw
     {
       unsigned v0,v1,v2,v3;
       
-      if((rc = getLineAuto(fH,&lineBuf,&lineCharN)) != kOkRC )
+      if((rc = getLineAuto(fH,&lineBuf,lineCharN)) != kOkRC )
       {
         rc = cwLogError(rc,"Line buffer load failed on line index %i of %i in '%s'.",i,lineN,fname);
         goto errLabel;
