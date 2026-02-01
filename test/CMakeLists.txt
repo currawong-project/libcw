@@ -2,7 +2,7 @@ enable_testing()
 
 option(CW_ADDRESS_SANITIZER_FL "Enable the address sanitizer." OFF)
 option(CW_THREAD_SANITIZER_FL "Enable the address sanitizer." OFF)
-option(CW_COVERAGE_FL "Enable testing coverage analysis." OFF)
+
 
 add_executable(test_main)
 
@@ -16,6 +16,8 @@ target_sources(test_main
   test_text.cpp
   test_time.cpp
   test_vops.cpp
+  test_file.cpp
+  test_mem.cpp
 )
 
 target_compile_options(cw PRIVATE
