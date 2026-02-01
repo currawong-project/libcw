@@ -74,7 +74,7 @@ namespace cw
 
     // Return the length of the file in bytes
     unsigned   byteCount(  handle_t h );
-    rc_t byteCountFn( const char* fn, unsigned* fileByteCntPtr );
+    rc_t byteCountFn( const char* fn, unsigned& fileByteCntRef );
 
     // Set *isEqualPtr=true if the two files are identical.
     rc_t compare( const char* fn0, const char* fn1, bool& isEqualFlRef );
@@ -92,7 +92,7 @@ namespace cw
     // call to cmMemFree()
     char*  toBuf( handle_t h, unsigned* bufByteCntPtr ); 
   
-    // Same as fileToBuf() but accepts a file name argument.
+    // Same as toBuf() but accepts a file name argument.
     char*  fnToBuf( const char* fn, unsigned* bufByteCntPtr );
 
 
@@ -125,29 +125,28 @@ namespace cw
     // call to cmMemFree()
     char*  toStr( handle_t h, unsigned* bufByteCntPtr );
 
-    // Same as fileToBuf() but accepts a file name argument.
+    // Same as toBuf() but accepts a file name argument and zero terminates the buffer.
     char*  fnToStr( const char* fn, unsigned* bufByteCntPtr );
 
     // Return the count of lines in a file following the current file position.
     // This function does not change current file position.
-    rc_t lineCount( handle_t h, unsigned* lineCntPtr );
+    // If the last line does not end to a newline then the line count is automatically incremented by 1.
+    rc_t lineCount( handle_t h, unsigned& lineCntRef );
 
-    // Read the next line into buf[bufByteCnt]. 
+    // Read the next line into buf[bufByteCntRef]. 
     // Consider using fileGetLineAuto() as an alternative to this function 
     // to avoid having to use a buffer with an explicit size.
     //
     // If buf is not long enough to hold the entire string then
     //
     // 1. The function returns kFileBufTooSmallRC
-    // 2. *bufByteCntPtr is set to the size of the required buffer.
+    // 2. bufByteCntRef is set to the size of the required buffer.
     // 3. The internal file position is left unchanged.
     //
     // If the buffer is long enough to hold the entire line then 
-    // *bufByteCntPtr is left unchanged.
-    // See  fileGetLineTest() in cmProcTest.c or fileGetLineAuto()
-    // in file.c for examples of how to use this function to a
-    // achieve proper buffer sizing.
-    rc_t getLine( handle_t h, char* buf, unsigned* bufByteCntPtr );
+    // bufByteCntRef is left unchanged.
+    // If the end of the file is encountered then 'kEofRC' is returned.
+    rc_t getLine( handle_t h, char* buf, unsigned& bufByteCntRef );
 
     // A version of fileGetLine() which eliminates the need to handle buffer
     // sizing. 
@@ -156,16 +155,16 @@ namespace cw
     // 
     // char* buf        = nullptr;
     // unsigned  bufByteCnt = 0;
-    // while(fileGetLineAuto(h,&buf,&bufByteCnt)==kOkFileRC)
+    // while(fileGetLineAuto(h,&buf,bufByteRef)==kOkFileRC)
     //   proc(buf);
     // cmMemPtrFree(buf);
     //
     // On the first call to this function *bufPtrPtr must be set to nullptr and
-    // *bufByteCntPtr must be set to 0.
+    // bufByteCntRef must be set to 0.
     // Following the last call to this function call mem::release(bufPtrptr)
     // to be sure the line buffer is fully released. Note this step is not
     // neccessary if the last call does not return kOkFileRC.
-    rc_t getLineAuto( handle_t h, char** bufPtrPtr, unsigned* bufByteCntPtr );
+    rc_t getLineAuto( handle_t h, char** bufPtrPtr, unsigned& bufByteCntRef );
 
     // Binary Array Reading Functions
     // Each of these functions reads a block of binary data from a file and is a wrapper around file::read(h,buf,bufN).

@@ -3,12 +3,13 @@
 #include "cwCommon.h"
 #include "cwLog.h"
 #include "cwCommonImpl.h"
-#include "cwTest.h"
-#include "cwObject.h"
+//#include "cwTest.h"
+//#include "cwObject.h"
 #include "cwMem.h"
 #include "cwFileSys.h"
 #include "cwText.h"
 #include "cwFile.h"
+#include "cwMath.h"
 
 #ifdef OS_LINUX
 #include <sys/stat.h>
@@ -97,7 +98,7 @@ namespace cw
       // fgets() reads up to n-1 bytes into buf[]
       if( fgets(buf,*bufByteCntPtr,p->fp) == nullptr )
       {
-        // an read error or EOF condition occurred
+        // on read error or EOF condition occurred
         *bufByteCntPtr = 0;
 
         if( !feof(p->fp ) )
@@ -133,7 +134,7 @@ cw::rc_t cw::file::open( handle_t& hRef, const char* fn, unsigned flags )
       if( cwIsFlag(flags,kAppendFl) )
         mode[0] = 'a';
       else
-        cwLogError(kInvalidArgRC,"File open flags must contain 'kReadFl','kWriteFl', or 'kAppendFl'.");
+        return cwLogError(kInvalidArgRC,"File open flags must contain 'kReadFl','kWriteFl', or 'kAppendFl'.");
   
   if( cwIsFlag(flags,kUpdateFl) )
     mode[1] = '+';
@@ -159,7 +160,7 @@ cw::rc_t cw::file::open( handle_t& hRef, const char* fn, unsigned flags )
       }
 
   // verify the filename is not empty
-  if( fn == nullptr || strlen(fn)==0 )
+  if( fn == nullptr || textLength(fn)==0 )
     return cwLogError(kInvalidArgRC,"File object allocation failed due to empty file name.");
 
   
@@ -233,6 +234,9 @@ cw::rc_t cw::file::read(    handle_t h, void* buf, unsigned bufByteCnt, unsigned
 
   if( p->lastRC != kOkRC )
     return p->lastRC;
+
+  if( buf == nullptr )
+    return cwLogError(kInvalidArgRC,"The read() buffer was null.");
   
   errno = 0;
   if(( actualByteCnt = fread(buf,1,bufByteCnt,p->fp)) != bufByteCnt )
@@ -256,6 +260,9 @@ cw::rc_t cw::file::write(   handle_t h, const void* buf, unsigned bufByteCnt )
   if( p->lastRC != kOkRC )
     return p->lastRC;
 
+  if( buf == nullptr )
+    return cwLogError(kInvalidArgRC,"The write() buffer was null.");
+
   if( bufByteCnt )
   {
     errno = 0;
@@ -270,6 +277,9 @@ cw::rc_t cw::file::seek(    handle_t h, enum seekFlags_t flags, int offsByteCnt 
 {
   this_t*  p         = _handleToPtr(h);
   unsigned fileflags = 0;
+
+  if( !math::isPowerOfTwo(flags) )
+    return cwLogError(kInvalidArgRC,"Only one bit may be set in the seek flag argument.");
 
   if( cwIsFlag(flags,kBeginFl) )
     fileflags = SEEK_SET;
@@ -333,17 +343,17 @@ unsigned   cw::file::byteCount(  handle_t h )
   return sr.st_size;
 }
 
-cw::rc_t   cw::file::byteCountFn( const char* fn, unsigned* fileByteCntPtr )
+cw::rc_t   cw::file::byteCountFn( const char* fn, unsigned& fileByteCntRef )
 {
-  cwAssert( fileByteCntPtr != nullptr );
   rc_t    rc;
   handle_t h;
+
+  fileByteCntRef = 0;
 
   if((rc = open(h,fn,kReadFl)) != kOkRC )
     return rc;
 
-  if( fileByteCntPtr != nullptr)
-    *fileByteCntPtr   = byteCount(h);
+  fileByteCntRef   = byteCount(h);
 
   close(h);
 
@@ -491,7 +501,7 @@ cw::rc_t cw::file::backup( const char* dir, const char* name, const char* ext, c
     }
     dst_dir = dst_base_dir;
   }
-  
+
   // form the name of the backup file to backup
   if((srcFn = filesys::makeFn(dir,name,ext,nullptr)) == nullptr )
   {
@@ -501,8 +511,10 @@ cw::rc_t cw::file::backup( const char* dir, const char* name, const char* ext, c
 
   // if the src file does not exist then there is nothing to do
   if( filesys::isFile(srcFn) == false )
-    return rc;
-
+  {
+    goto errLabel;
+  }
+  
   // break the source file name up into dir/fn/ext.
   if((pp = filesys::pathParts(srcFn)) == nullptr || pp->fnStr==nullptr)
   {
@@ -584,17 +596,16 @@ char*  cw::file::toStr( handle_t h, unsigned* bufByteCntPtr )
 char*  cw::file::fnToStr( const char* fn, unsigned* bufByteCntPtr )
 { return _fileFnToBuf(fn,1,bufByteCntPtr); }
 
-cw::rc_t cw::file::lineCount( handle_t h, unsigned* lineCntPtr )
+cw::rc_t cw::file::lineCount( handle_t h, unsigned& lineCntRef )
 {
   rc_t     rc      = kOkRC;
   this_t*  p       = _handleToPtr(h);
   unsigned lineCnt = 0;
   long     offs;
   int      c;
-
-
-  cwAssert( lineCntPtr != nullptr );
-  *lineCntPtr = 0;
+  unsigned col_idx = 0;
+  
+  lineCntRef = 0;
 
   if((rc = tell(h,&offs)) != kOkRC )
     return rc;
@@ -610,33 +621,42 @@ cw::rc_t cw::file::lineCount( handle_t h, unsigned* lineCntPtr )
       if( errno )
         rc = cwLogSysError(kReadFailRC,errno,"File read char failed on 's'.", cwStringNullGuard(name(h)));
       else
-        ++lineCnt; // add one in case the last line isn't terminated with a '\n'. 
+      {
+        if( col_idx != 0)
+          ++lineCnt; // add one in case the last line isn't terminated with a '\n'.
+      }
 
       break;
     }
 
     // if an end-of-line was encountered
     if( c == '\n' )
+    {
       ++lineCnt;
+      col_idx = 0;
+    }
+    else
+    {
+      col_idx += 1;
+    }
 
   }
 
   if((rc = seek(h,kBeginFl,offs)) != kOkRC )
     return rc;
 
-  *lineCntPtr = lineCnt;
+  lineCntRef = lineCnt;
 
   return rc;
 }
 
 
-cw::rc_t cw::file::getLine( handle_t h, char* buf, unsigned* bufByteCntPtr )
+cw::rc_t cw::file::getLine( handle_t h, char* buf, unsigned& bufByteCntRef )
 {
-  cwAssert( bufByteCntPtr != nullptr );
   this_t* p  = _handleToPtr(h);
   unsigned  tn = 128;
   char  t[ tn ];
-  unsigned  on = *bufByteCntPtr;
+  unsigned  on = bufByteCntRef;
   long      offs;
   rc_t rc;
 
@@ -645,24 +665,27 @@ cw::rc_t cw::file::getLine( handle_t h, char* buf, unsigned* bufByteCntPtr )
     return rc;
   
   // if no buffer was given then use t[]
-  if( buf == nullptr || *bufByteCntPtr == 0 )
+  if( buf == nullptr || bufByteCntRef == 0 )
   {
-    *bufByteCntPtr = tn;
-    buf            = t;
+    bufByteCntRef = tn;
+    buf           = t;
   }
 
-  // fill the buffer from the current line 
-  if((rc = _fileGetLine(p,buf,bufByteCntPtr)) != kOkRC )
+  // fill the buffer from the current line - may return kEofRC
+  if((rc = _fileGetLine(p,buf,&bufByteCntRef)) != kOkRC )
     return rc;
 
+  
   // get length of the string  in the buffer
   // (this is one less than the count of bytes written to the buffer)
   unsigned n = strlen(buf);
-
-  // if the provided buffer was large enough to read the entire string 
+  
+  // _fileGetLine() will never read more than bufByteCntRef bytes into buf[],
+  // therefore the length of the string + 1 in the buffer must be at least
+  // one less than the length of buf[] in order to detect that the buffer was
+  // large enough
   if( on > n+1 )
   {
-    //*bufByteCntPtr = n+1;
     return kOkRC;
   }
 
@@ -673,12 +696,17 @@ cw::rc_t cw::file::getLine( handle_t h, char* buf, unsigned* bufByteCntPtr )
   // m tracks the length of the string
   unsigned m = n;
 
-  while( n+1 == *bufByteCntPtr )
+  while( n+1 == bufByteCntRef )
   {
     // fill the buffer from the current line
-    if((rc = _fileGetLine(p,buf,bufByteCntPtr)) != kOkRC )
-      return rc;
+    if((rc = _fileGetLine(p,buf,&bufByteCntRef)) != kOkRC )
+    {
+      if( rc != kEofRC )
+        return rc;
 
+      break;
+    }
+    
     n = strlen(buf);
     m += n;
   }
@@ -688,13 +716,13 @@ cw::rc_t cw::file::getLine( handle_t h, char* buf, unsigned* bufByteCntPtr )
     return rc;
 
   // add 1 for /0, 1 for /n and 1 to detect buf-too-short
-  *bufByteCntPtr = m+3;
+  bufByteCntRef = m+3;
   
   return kBufTooSmallRC;
   
 }
 
-cw::rc_t cw::file::getLineAuto( handle_t h, char** bufPtrPtr, unsigned* bufByteCntPtr )
+cw::rc_t cw::file::getLineAuto( handle_t h, char** bufPtrPtr, unsigned& bufByteCntRef )
 {
   rc_t  rc  = kOkRC;
   bool  fl  = true;
@@ -706,7 +734,7 @@ cw::rc_t cw::file::getLineAuto( handle_t h, char** bufPtrPtr, unsigned* bufByteC
   {
     fl         = false;
 
-    switch( rc = getLine(h,buf,bufByteCntPtr) )
+    switch( rc = getLine(h,buf,bufByteCntRef) )
     {
       case kOkRC:
         {
@@ -715,7 +743,7 @@ cw::rc_t cw::file::getLineAuto( handle_t h, char** bufPtrPtr, unsigned* bufByteC
         break;
         
       case kBufTooSmallRC:
-        buf = mem::resizeZ<char>(buf,*bufByteCntPtr);
+        buf = mem::resizeZ<char>(buf,bufByteCntRef);
         fl  = true;
         break;
 
