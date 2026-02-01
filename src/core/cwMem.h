@@ -16,7 +16,7 @@ namespace cw
       
     void* _alloc( void* p, unsigned n, unsigned flags );
     void* _allocDupl( const void* p, unsigned byteN );
-    void* _allocDupl( const void* p );
+    //void* _allocDupl( const void* p );
   
     char* allocStr( const char* );
     void  free( void* );
@@ -108,11 +108,10 @@ namespace cw
         return duplStr(s1);
 
     
-      size_t s0n = _textLength(s0);
       size_t s1n = _textLength(s1);
 
-      // if s1[] can't fit in space of s0[]
-      if( s1n > s0n )
+      // if s1[] can't fit in the allocated space of s0[] (s1n + 1 for null terminator)
+      if( s1n + 1 > (cw::mem::byteCount(s0)) )
       {
         free(s0);
         return duplStr(s1);

@@ -48,7 +48,9 @@ void* cw::mem::_alloc( void* p0, unsigned n, unsigned flags )
     {
       // zero the exapnded memory but leave existing memory unchanged
       if( cwIsFlag(flags, kZeroNewFl ))
+      {
         memset(((char*)p)+p0N,0,n-p0N);
+      }
     }
     
     // get pointer to base of new block
@@ -70,7 +72,7 @@ void* cw::mem::_alloc( void* p0, unsigned n, unsigned flags )
 
 unsigned cw::mem::byteCount( const void* p )
 {
-  return p==nullptr ? 0 : static_cast<const unsigned*>(p)[-1];
+  return p==nullptr ? 0 : (static_cast<const unsigned*>(p)[-2] - 2*sizeof(unsigned));
 }
 
 
@@ -99,10 +101,6 @@ void* cw::mem::_allocDupl( const void* p0, unsigned byteN )
   return p1;
 }
 
-void* cw::mem::_allocDupl( const void* p )
-{
-  return _allocDupl(p,byteCount(p));
-}
 
 
 
