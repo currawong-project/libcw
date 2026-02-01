@@ -141,7 +141,7 @@ namespace cw
 
         for(; i<cn; ++i)
         {
-          if( i==j && cp[i]=='-' ) // allow the char following the e to be '-'
+          if( i==j && (cp[i]=='-' || cp[i]=='+')) // allow the char following the e to be '-'
             continue;
 
           if( isdigit(cp[i]) )
@@ -231,7 +231,9 @@ namespace cw
           case 'u':
           case 'U':
             if( signFl )
-              cwLogError(kSyntaxErrorRC,"A signed integer has a 'u' or 'U' suffix on line %i",p->curLine);
+            {
+              p->lastRC = cwLogError(kSyntaxErrorRC,"A signed integer has a 'u' or 'U' suffix on line %i",p->curLine);
+            }
             else
             {
               p->attrFlags = cwSetFlag(p->attrFlags,kIntUnsignedLexFl);          
@@ -254,7 +256,7 @@ namespace cw
       if( cn < 3 )
         return 0;
 
-      if( cp[0]=='0' && cp[1]=='x')    
+      if( cp[0]=='0' && (cp[1]=='x' || cp[1]=='X'))    
         for(i=2; i<cn; ++i)
           if( !isxdigit(cp[i]) )
             break;
@@ -302,21 +304,67 @@ namespace cw
           return i+1;    
       }
 
-      return cwLogError(kSyntaxErrorRC, "Missing string literal end quote on line: %i.", p->curLine);
+      p->lastRC = cwLogError(kSyntaxErrorRC, "Missing string literal end quote on line: %i.", p->curLine);
+      
+      return 0;
     }
 
     unsigned _lexQCharMatcher( lex_t* p, const char* cp, unsigned cn, const char* keyStr )
     {
+      bool escFl = false;
+      unsigned n = 0;  // count of char's between single quotes
       unsigned i = 0;
+
+      // the first char must be a single quote
       if( i >= cn || cp[i]!='\'' )
         return 0;
 
-      i+=2;
+      // for each next char
+      for(++i; i < cn; ++i )
+      {
+        // if the escape flag is set then skip this char
+        if( escFl )
+        {
+          escFl = false;
+          ++n;
+        }
+        else
+        {
+          // if this is the escape char ...
+          if( cp[i] == '\\')
+          {
+            escFl = true; // ... skip the next char
+            continue;
+          }
+          else
+          {
+            // if this is the end quote
+            if(cp[i] == '\'' )
+            {
+              break;
+            }
+            else // this must be an internal character
+            {
+              ++n;
+            }
+          }        
+        }
+      }
+
 
       if( i >= cn || cp[i]!='\'')
+      {
+        p->lastRC = cwLogError(kSyntaxErrorRC, "Missing char literal end quote on line: %i.", p->curLine);
         return 0;
+      }
 
-      return 3;
+      if( n != 1 )
+      {
+        p->lastRC = cwLogError(kSyntaxErrorRC, "Exactly one character (%i != 1) must exist between single quotes on line: %i.", n,p->curLine);
+        return 0;
+      }
+
+      return i+1;
     }
 
 
@@ -329,7 +377,7 @@ namespace cw
         unsigned i;
         if((i = _lexScanTo(cp + n, cn-n,p->blockEndCmtStr)) == kInvalidIdx )
         {
-          cwLogError(kSyntaxErrorRC, "Missing end of block comment on line:%i.", p->curLine);
+          p->lastRC = cwLogError(kSyntaxErrorRC, "Missing end of block comment on line:%i.", p->curLine);
           return 0;
         }
 
@@ -690,7 +738,7 @@ unsigned           cw::lex::getNextToken( handle_t h )
       }
       else
       {
-        cwLogError( kSyntaxErrorRC, "Unable to recognize token:'%c' on line %i.",*(p->cp+p->ci), p->curLine);
+        p->lastRC = cwLogError( kSyntaxErrorRC, "Unable to recognize token:'%c' on line %i.",*(p->cp+p->ci), p->curLine);
         return kErrorLexTId;     
       }
     }
@@ -757,7 +805,7 @@ const char* cw::lex::tokenText( handle_t h )
   if( p->curTokenCharIdx == kInvalidIdx )
     return nullptr;
 
-  unsigned n = p->curTokenId == kQStrLexTId ? 1 : 0;
+  unsigned n = (p->curTokenId == kQStrLexTId || p->curTokenId == kQCharLexTId) ? 1 : 0;
 
   return p->cp + p->curTokenCharIdx + n;
 }
@@ -770,7 +818,7 @@ unsigned           cw::lex::tokenCharCount(  handle_t h )
   if( p->curTokenCharIdx == kInvalidIdx )
     return 0;
 
-  unsigned n = p->curTokenId == kQStrLexTId ? 2 : 0;
+  unsigned n = (p->curTokenId == kQStrLexTId || p->curTokenId == kQCharLexTId) ? 2 : 0;
 
   return p->curTokenCharCnt - n;
 }
