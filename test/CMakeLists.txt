@@ -18,6 +18,7 @@ target_sources(test_main
   test_vops.cpp
   test_file.cpp
   test_mem.cpp
+  test_numeric_convert.cpp
 )
 
 target_compile_options(cw PRIVATE
