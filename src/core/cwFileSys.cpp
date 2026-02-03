@@ -312,7 +312,7 @@ char* cw::filesys::replaceDirectory( const char* fn0, const char* dir  )
     return nullptr;
   }
 
-  if((fn = makeFn( dir, pp->fnStr, pp->extStr)) == nullptr )
+  if((fn = makeFn( dir, pp->fnStr, pp->extStr, nullptr )) == nullptr )
   {
     cwLogError(kOpFailRC,"Unable to replace directory.");
   }
@@ -333,7 +333,7 @@ char* cw::filesys::replaceFilename(  const char* fn0, const char* name )
     return nullptr;
   }
 
-  if((fn = makeFn( pp->dirStr, name, pp->extStr)) == nullptr )
+  if((fn = makeFn( pp->dirStr, name, pp->extStr, nullptr)) == nullptr )
   {
     cwLogError(kOpFailRC,"Unable to replace file name.");
   }
@@ -353,7 +353,7 @@ char* cw::filesys::replaceExtension( const char* fn0, const char* ext  )
     return nullptr;
   }
 
-  if((fn = makeFn( pp->dirStr, pp->fnStr, ext)) == nullptr )
+  if((fn = makeFn( pp->dirStr, pp->fnStr, ext, nullptr)) == nullptr )
   {
     cwLogError(kOpFailRC,"Unable to replace file extension.");
   }
@@ -905,6 +905,44 @@ cw::rc_t cw::filesys::makeDir( const char* dirStr )
   return kOkRC;
 }
 
+cw::rc_t cw::filesys::rmDir( const char* dirStr )
+{
+  rc_t rc = kOkRC;
+  char* s = nullptr;
+
+  if (dirStr == nullptr || textLength(dirStr) == 0)
+    return cwLogError(kInvalidArgRC, "Directory removal failed: directory name is null or empty.");
+
+  s = filesys::expandPath(dirStr);
+  if (s == nullptr)
+  {
+    rc = cwLogError(kOpFailRC, "Directory removal failed: could not expand path '%s'.", cwStringNullGuard(dirStr));
+    goto errLabel;
+  }
+
+  // Check if it's a directory
+  if (isDir(s) == false)
+  {
+    // If it doesn't exist, it's already "removed" (idempotent)
+    if (errno == ENOENT) // ENOENT is set by isDir if not found.
+      rc = kOkRC;
+    else // It exists but is not a directory
+      rc = cwLogError(kInvalidArgRC, "Directory removal failed: '%s' is not a directory.", cwStringNullGuard(dirStr));
+    goto errLabel;
+  }
+
+  errno = 0;
+  if (rmdir(s) != 0)
+  {
+    rc = cwLogSysError(kOpFailRC, errno, "Directory removal failed on '%s'.", cwStringNullGuard(dirStr));
+    goto errLabel;
+  }
+
+errLabel:
+  mem::release(s);
+  return rc;
+}
+/*
 cw::rc_t cw::filesys::dirEntryTest( const object_t* cfg )
 {
   rc_t            rc    = kOkRC;
@@ -993,3 +1031,4 @@ cw::rc_t cw::filesys::test( const test::test_args_t& args )
   
   return rc;
 }
+*/

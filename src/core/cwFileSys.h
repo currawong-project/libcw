@@ -68,7 +68,7 @@ namespace cw
      kAllFsFl          = 0x02f,   //< all type flags
 
      kFullPathFsFl     = 0x040,   //< return the full path in the 'name' field of dirEntry_t;
-     kRecurseFsFl      = 0x080,   //< recurse into directories
+     kRecurseFsFl      = 0x080,   //< recurse into directories (kDirFsFl must also be set)
      kRecurseLinksFsFl = 0x100    //< recurse into symbol link directories 
     };
 
@@ -92,9 +92,10 @@ namespace cw
     char* makeVersionedDirectory(const char* recordDir, const char* recordFolder );
     
     rc_t makeDir( const char* dirStr );
+    rc_t rmDir( const char* dirStr );
 
-    rc_t dirEntryTest( const object_t* cfg );
-    rc_t test( const test::test_args_t& args );
+    // rc_t dirEntryTest( const object_t* cfg );
+    //rc_t test( const test::test_args_t& args );
   }
   
 }
