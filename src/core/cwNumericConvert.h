@@ -47,6 +47,7 @@ namespace cw
   rc_t string_to_number( const char* s, T& valueRef )
   {
     rc_t rc = kOkRC;
+    char* endptr = nullptr;
     
     valueRef = 0;
     
@@ -62,11 +63,17 @@ namespace cw
       if( strlen(s) >= 2 && s[0]=='0' && s[1]=='x' )
         base = 16;
       
-      long v = strtol(s,nullptr,base);
+      long v = strtol(s, &endptr, base);
       
-      if( v == 0 && errno != 0)
+      // After strtol, endptr should point to the end of the string.
+      // If it doesn't, or if no characters were parsed, it's an error.
+      if (endptr == s || *endptr != '\0')
       {
-        rc =  cwLogError(kOpFailRC,"String to number conversion failed on '%s'.", cwStringNullGuard(s));
+        rc =  cwLogError(kOpFailRC,"String to number conversion failed on '%s': invalid format.", cwStringNullGuard(s));
+      }
+      else if( (v == 0 && errno != 0) || (v == LONG_MAX && errno == ERANGE) || (v == LONG_MIN && errno == ERANGE) )
+      {
+        rc =  cwLogError(kOpFailRC,"String to number conversion failed on '%s': out of range.", cwStringNullGuard(s));
       }
       else
       {
@@ -81,6 +88,7 @@ namespace cw
   rc_t string_to_number<double>( const char* s, double& valueRef )
   {
     rc_t rc = kOkRC;
+    char* endptr = nullptr;
     
     valueRef = 0;
     
@@ -92,11 +100,18 @@ namespace cw
     {
       errno = 0;
       
-      valueRef = strtod(s,nullptr);
+      valueRef = strtod(s, &endptr);
       
-      if( valueRef == 0 && errno != 0)
-        rc = cwLogError(kOpFailRC,"String to number conversion failed on '%s'.", cwStringNullGuard(s));
-            
+      // After strtod, endptr should point to the end of the string.
+      // If it doesn't, or if no characters were parsed, it's an error.
+      if (endptr == s || *endptr != '\0')
+      {
+        rc = cwLogError(kOpFailRC,"String to number conversion failed on '%s': invalid format.", cwStringNullGuard(s));
+      }
+      else if (errno == ERANGE)
+      {
+        rc = cwLogError(kOpFailRC,"String to number conversion failed on '%s': out of range.", cwStringNullGuard(s));
+      }
     }
     return rc;
   }
@@ -149,12 +164,12 @@ namespace cw
   int number_to_string( const int&      v, char* buf, int bufN, const char* fmt ) { return snprintf(buf,bufN,fmt==nullptr ? "%i" : fmt, v);  }
   
   template < > inline
-  int number_to_string( const unsigned& v, char* buf, int bufN, const char* fmt ) { return snprintf(buf,bufN,fmt==nullptr ? "%i" : fmt, v);  }
+  int number_to_string( const unsigned& v, char* buf, int bufN, const char* fmt ) { return snprintf(buf,bufN,fmt==nullptr ? "%u" : fmt, v);  }
   
   template < > inline
   int number_to_string( const double&   v, char* buf, int bufN, const char* fmt ) { return snprintf(buf,bufN,fmt==nullptr ? "%f" : fmt, v);  }
 
-  rc_t numericConvertTest( const test::test_args_t& args );
+  //rc_t numericConvertTest( const test::test_args_t& args );
 
   
 }
