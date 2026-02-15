@@ -71,15 +71,17 @@ namespace cw
       {
         rc =  cwLogError(kOpFailRC,"String to number conversion failed on '%s': invalid format.", cwStringNullGuard(s));
       }
-      else if( (v == 0 && errno != 0) || (v == LONG_MAX && errno == ERANGE) || (v == LONG_MIN && errno == ERANGE) )
-      {
-        rc =  cwLogError(kOpFailRC,"String to number conversion failed on '%s': out of range.", cwStringNullGuard(s));
-      }
       else
       {
-        rc = numeric_convert(v,valueRef);
+        if( (v == 0 && errno != 0) || (v == LONG_MAX && errno == ERANGE) || (v == LONG_MIN && errno == ERANGE) )
+        {
+          rc =  cwLogError(kOpFailRC,"String to number conversion failed on '%s': out of range.", cwStringNullGuard(s));
+        }
+        else
+        {
+          rc = numeric_convert(v,valueRef);
+        }
       }
-      
     }
     return rc;
   }
@@ -108,9 +110,12 @@ namespace cw
       {
         rc = cwLogError(kOpFailRC,"String to number conversion failed on '%s': invalid format.", cwStringNullGuard(s));
       }
-      else if (errno == ERANGE)
+      else
       {
-        rc = cwLogError(kOpFailRC,"String to number conversion failed on '%s': out of range.", cwStringNullGuard(s));
+        if (errno == ERANGE)
+        {
+          rc = cwLogError(kOpFailRC,"String to number conversion failed on '%s': out of range.", cwStringNullGuard(s));
+        }
       }
     }
     return rc;

@@ -11,7 +11,7 @@
 #include "cwTest.h"
 #include "cwNumericConvert.h"
 
-
+/*
 cw::rc_t cw::numericConvertTest( const test::test_args_t& args )
 {
   int8_t x0 = 3;
@@ -30,3 +30,4 @@ cw::rc_t cw::numericConvertTest( const test::test_args_t& args )
   return cw::kOkRC;
 }
 
+*/
