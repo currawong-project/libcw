@@ -6159,7 +6159,7 @@ namespace cw
         p->hzA = mem::allocZ<double>(p->hzN);
         
         for(unsigned i=0; i<midi::kMidiNoteCnt; ++i)
-          p->hzA[i] = midi_to_hz(i);
+          p->hzA[i] = midi::midiToHz(i);
 
         p->done_fl = true;
         
