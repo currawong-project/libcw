@@ -19,6 +19,7 @@ target_sources(test_main
   test_file.cpp
   test_mem.cpp
   test_numeric_convert.cpp
+  test_log.cpp
 )
 
 target_compile_options(cw PRIVATE

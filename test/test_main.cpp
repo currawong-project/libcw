@@ -9,7 +9,7 @@
 using namespace cw;
 
 
-TEST( LogTest, TestBuf )
+TEST( GlobalLogTest, TestBuf )
 {
   const char* s = "***blah";
   log::handle_t logH = log::globalHandle();
