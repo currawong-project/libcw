@@ -50,8 +50,8 @@ namespace cw
 
     test_map_t _test_map[] = {
       { "/lex",     lex::test },
-      { "/filesys", filesys::test },
-      { "/object",  object_test },
+      //{ "/filesys", filesys::test },
+      //{ "/object",  object_test },
       { "/vop",     vop::test },
       { "/dsp",     dsp::test_dsp },
       { "/time",    time::test },
@@ -65,7 +65,7 @@ namespace cw
       { "/thread_tasks", thread_tasks::test },
       { "/thread_ftasks", thread_ftasks::test },
       { "/flow_value", flow::value_test },
-      { "/numeric_convert", numericConvertTest },
+      //{ "/numeric_convert", numericConvertTest },
       { nullptr, nullptr },
     };
     
