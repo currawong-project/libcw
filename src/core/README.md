@@ -93,3 +93,28 @@ resetting state, and querying token details such as ID, text,
 character count, and converted numerical values. It also tracks line
 and column numbers for error reporting and provides an error code
 mechanism.
+
+### `cwFileSys`
+
+The `cwFileSys` module provides a set of cross-platform utilities for
+interacting with the file system. It offers an API for listing the
+contents of directories, manipulating path strings (e.g., extracting
+components), checking for the existence of files and directories, and
+creating or removing directories. The module is designed to abstract
+away platform-specific details of file system operations and
+integrates with other core modules for string and memory management.
+
+### `cwObject`
+
+The `cwObject` module provides a comprehensive framework for creating,
+parsing, and manipulating JSON-like hierarchical data structures. It
+supports dynamic objects including dictionaries (key-value pairs),
+lists, and primitives (strings, numbers, booleans, and null). The
+module features a robust parser to deserialize text from a string or
+file into a navigable tree of `object_t` nodes. An extensive API allows
+for programmatically building these object trees, finding specific
+nodes, and safely retrieving or modifying their values. Furthermore,
+it can serialize the entire object structure back into a compact
+string, making it ideal for configuration files, data exchange, and
+inter-process communication. `cwObject` relies entirely on `cwMem` for
+its internal memory management.
