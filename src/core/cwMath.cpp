@@ -167,27 +167,6 @@ unsigned cw::math::modIncr(int idx, int delta, int maxN )
 }
 
 
-unsigned cw::math::hzToMidi( double hz )
-{
-
-  float midi = 12.0 * std::log2(hz/13.75) + 9;
-
-  if( midi < 0 )
-    midi = 0;
-  if( midi > 127 )
-    midi = 127;
-
-  return (unsigned)lround(midi);
-}
-
-float    cw::math::midiToHz( unsigned midi )
-{
-  double m = midi <= 127 ? midi : 127;
-  
-  return (float)( 13.75 * pow(2.0,(m - 9.0)/12.0)); 
-}
-
-
 
 //=================================================================
 // Random numbers

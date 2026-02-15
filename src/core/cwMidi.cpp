@@ -286,3 +286,26 @@ uint8_t    cw::midi::sciPitchToMidi( const char* sciPitchStr )
   return sciPitchToMidiPitch( *sciPitchStr, acc, octave );
   
 }
+
+unsigned cw::midi::hzToMidi( double hz )
+{
+
+  float midi = 12.0 * std::log2(hz/13.75) + 9;
+
+  if( midi < 0 )
+    midi = 0;
+  if( midi > 127 )
+    midi = 127;
+
+  return (unsigned)lround(midi);
+}
+
+float    cw::midi::midiToHz( unsigned midi )
+{
+  double m = midi <= 127 ? midi : 127;
+  
+  return (float)( 13.75 * pow(2.0,(m - 9.0)/12.0)); 
+}
+
+
+

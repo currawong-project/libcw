@@ -207,10 +207,6 @@ namespace cw
     
 
 
-    //=================================================================
-    // Pitch conversion
-    unsigned hzToMidi( double hz );
-    float    midiToHz( unsigned midi );
 
     //=================================================================
     // Floating point byte swapping
@@ -251,8 +247,6 @@ namespace cw
     // 'seed' sets the initial delay state.
     // 'yV[yN]' is the the output vector
     // 'yN' is count of elements in yV.
-    // The function resturn kOkAtRC on success or kInvalidArgsRCRC if any arguments are invalid.
-    // /sa lFSR_Test.
     void   lFSR( unsigned lfsrN, unsigned tapMask, unsigned seed, unsigned* yV, unsigned yN );
 
     // Example and test code for lFSR() 

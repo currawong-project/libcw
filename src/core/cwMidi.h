@@ -161,8 +161,12 @@ namespace cw
     // of this range will be returned as kInvalidMidiPitch.   
     uint8_t    sciPitchToMidi( const char* sciPitchStr );
 
+    //=================================================================
+    // Pitch conversion
+    unsigned hzToMidi( double hz );
+    float    midiToHz( unsigned midi );
     
-#define midi_to_hz( midi_pitch ) ((13.75 * std::pow(2,(-9.0/12.0))) * std::pow(2.0,(midi_pitch / 12.0)))
+    
 
 
   }
