@@ -91,7 +91,7 @@ namespace cw
       // push the blob
       if((rc = nbmpscq::push(p->qH,blob,blob_byte_cnt)) != kOkRC )
       {
-        p->flags = cwClrFlag(p->flags,kSkipQueueFl);
+        p->flags = cwSetFlag(p->flags,kSkipQueueFl);
         
         // don't use the log to report this error because it will recurse.
         cwLogError(rc,"log queue push failed.");
@@ -121,15 +121,19 @@ namespace cw
           unsigned textN   = textLength(text);
           unsigned idx     = p->textBufCharIdx.fetch_add(textN);
 
-          if( idx < p->textBufCharCnt )
+          if( idx+textN < p->textBufCharCnt )
           {
-            textCat(p->textBuf, p->textBufCharCnt, text, textN);
+            textCat(p->textBuf + idx, p->textBufCharCnt, text, textN);
           }
         }
         
         if( cwIsFlag(p->flags,kFileOutFl) && p->fileH.isValid() )
-          file::print(p->fileH,text);
-
+        {
+          rc_t rc;
+          if((rc = file::print(p->fileH,text)) != kOkRC )
+            cwLogError(rc,"Log file write failed.");
+        }
+        
         if( p->outCbFunc != nullptr )
           p->outCbFunc(p->outCbArg, level, text );
 
@@ -150,7 +154,7 @@ namespace cw
     
         if( b.rc != kOkRC )
         {
-          p->flags = cwClrFlag(p->flags,kSkipQueueFl);      
+          p->flags = cwSetFlag(p->flags,kSkipQueueFl);      
           rc = cwLogError(b.rc,"Log message dequeue failed. Log message may have been lost. The queue has been disabled.");
           break;
         }
@@ -166,7 +170,7 @@ namespace cw
 
         if( b.rc != kOkRC )
         {
-          p->flags = cwClrFlag(p->flags,kSkipQueueFl);      
+          p->flags = cwSetFlag(p->flags,kSkipQueueFl);      
           rc = cwLogError(b.rc,"Log message queue advance failed. Log messages may have been lost. The queue has been disabled.");
           break;
         }
@@ -366,8 +370,9 @@ cw::rc_t cw::log::destroy( handle_t& hRef )
 
 cw::rc_t cw::log::msg( handle_t h, unsigned flags, logLevelId_t level, const char* function, const char* filename, unsigned line, int systemErrorCode, rc_t result_code, const char* fmt, va_list vl )
 {
-  log_t*  p        = _handleToPtr(h);
-  
+  // _handleToPtr() will assert if h is invalid and so we test it before calling.
+  log_t*  p = h.isValid() ? _handleToPtr(h) : nullptr;
+
   // It is possible that this function is called prior to the handle pointer being set.
   // In this case the log message goes directly to the console.
   bool    level_fl = p ==nullptr ||  level >= p->level;
@@ -377,7 +382,7 @@ cw::rc_t cw::log::msg( handle_t h, unsigned flags, logLevelId_t level, const cha
   {  
     va_list vl1;
     va_copy(vl1,vl);
-  
+
     int n = vsnprintf(nullptr,0,fmt,vl);
     cwAssert(n != -1);
 
