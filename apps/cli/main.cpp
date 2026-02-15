@@ -385,9 +385,52 @@ cw::rc_t svgTest(   const cw::object_t* cfg, const cw::object_t* args, int argc,
 
 //cw::rc_t dirEntryTest( const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) {  return cw::filesys::dirEntryTest(args); }
 
+#define ASSERT_NE(A,B) assert( (A) != (B))
+#define ASSERT_EQ(A,B) assert( (A) == (B))
+#define EXPECT_EQ(A,B) while(1){ if((A)!=(B)) printf("Unexpected EQ on line:%i\n",__LINE__); break;}
+#define EXPECT_NE(A,B) while(1){ if((A)==(B)) printf("Unexpected NE on line:%i\n",__LINE__); break;}
+#define EXPECT_TRUE(A) while(1){ if((A)!=true) printf("Unexpected TRUE on line:%i\n",__LINE__); break;}
+#define EXPECT_FALSE(A) while(1){ if((A)!=false) printf("Unexpected TRUE on line:%i\n",__LINE__); break;}
+#define EXPECT_STREQ(A,B) while(1){ if(!textIsEqual(A,B)) printf("Unexpected string mismatch on line:%i\n",__LINE__); break;}
+using namespace cw;
 cw::rc_t stubTest( const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] )
 {
-  cw::rc_t rc = cw::kOkRC;
+  rc_t rc = kOkRC;
+  
+    object_t* obj = nullptr;
+
+    // Test parsing malformed strings
+    EXPECT_NE(objectFromString("{ a: 1, ", obj), kOkRC);
+    EXPECT_EQ(obj, nullptr);
+    EXPECT_NE(objectFromString("[1, 2", obj), kOkRC);
+    EXPECT_EQ(obj, nullptr);
+    EXPECT_NE(objectFromString("{ key: }", obj), kOkRC);
+    EXPECT_EQ(obj, nullptr);
+    //EXPECT_NE(objectFromString("{ [ foo ] }", obj), kOkRC);
+    //EXPECT_EQ(obj, nullptr);
+
+    // Test 'readv' with an unknown field
+    const char* s = "{ a:1, b:2, c:3 }";
+    ASSERT_EQ(objectFromString(s, obj), kOkRC);
+    int a,b;
+    // This should fail because 'c' is in the object but not in the readv list.
+    EXPECT_NE(obj->readv("a", 0, a, "b", 0, b), kOkRC);
+    obj->free();
+
+    // Test 'get' for a required field that doesn't exist
+    ASSERT_EQ(objectFromString("{a:1}", obj), kOkRC);
+    int z;
+    EXPECT_NE(obj->get("z", z), kOkRC);
+
+    // Test 'append_child' to a non-container
+    object_t* val_node = obj->find("a");
+    ASSERT_NE(val_node, nullptr);
+    EXPECT_FALSE(val_node->is_container());
+    object_t* new_child = newObject(123);
+    EXPECT_NE(val_node->append_child(new_child), kOkRC);
+    new_child->free(); // Must free since it wasn't added
+    
+    obj->free();
   return rc;
 }
 
