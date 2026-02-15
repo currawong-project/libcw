@@ -9,7 +9,8 @@ namespace cw
   objType_t* _objIdToType( objTypeId_t tid );
   object_t*  _objAllocate( objTypeId_t tid=kInvalidTId, object_t* parent=NULL );
   object_t*  _objCreateConainerNode( lex::handle_t lexH, object_t* parent, objTypeId_t tid );
-  object_t*  _objAppendRightMostNode( object_t* parent, object_t* newNode );
+  rc_t       _objAppendRightMostNode( object_t* parent, object_t* newNode );
+  object_t*  _objAllocAndAttach( objTypeId_t tid, object_t* parent);
 
   template< typename T >
     object_t* _objSetLeafValue( object_t* obj,  T value )
@@ -126,13 +127,30 @@ namespace cw
     return obj;
   }
 
-                              
+
+  template< typename T >
+  object_t*_objCreateValueNode( object_t* parent,  T value, const char* msg=nullptr, unsigned flags=0 )
+  {
+    object_t* o = _objAllocate();
+    
+    if(_objAppendRightMostNode( parent, _objCallSetLeafValue( o, value )) != kOkRC )
+    {
+      o->free();
+      o = nullptr;
+    }
+      
+    return o;
+  }
+  
+/*                              
   template< typename T >
     object_t*_objCreateValueNode( object_t* obj,  T value, const char* msg=nullptr, unsigned flags=0 )
   {
     cwLogError(kObjAllocFailRC,"Unhandled type at value node.");
     return NULL;
   }
+
+  
 
   template<> object_t* _objCreateValueNode<uint8_t>( object_t* parent,  uint8_t value, const char* msg, unsigned flags )
   { return _objAppendRightMostNode( parent, _objCallSetLeafValue( _objAllocate(), value ) ); }
@@ -172,12 +190,14 @@ namespace cw
   
   template<> object_t* _objCreateValueNode<bool>( object_t* parent, bool value, const char* msg, unsigned flags )
   { return _objAppendRightMostNode( parent, _objCallSetLeafValue( _objAllocate(), value ) ); }
-
+*/
 
   template< typename T >
     object_t*_objCreatePairNode( object_t* parentObj,  const char* label, const T& value, const char* msg=nullptr, unsigned flags=0 )
   {
-    object_t* pair = _objAppendRightMostNode(parentObj, _objAllocate( kPairTId, parentObj) );
+    object_t* pair;
+    if((pair = _objAllocAndAttach(kPairTId,parentObj)) == nullptr )
+      return nullptr;
 
     _objCreateValueNode<const char*>( pair, label, msg, flags );
     return _objCreateValueNode<T>( pair, value, msg, flags );

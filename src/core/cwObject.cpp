@@ -317,13 +317,30 @@ namespace cw
   }
 
 
+  object_t* _objAllocAndAttach( unsigned tid, object_t* parent )
+  {
+    // do not attach the object when it is allocated because it is not attached
+    // to the parent until the call to _objAppendRightMostNode()
+    object_t* o = _objAllocate( tid, nullptr );
+    
+    if( _objAppendRightMostNode( parent, o) != kOkRC )
+    {
+      o->free();
+      o = nullptr;
+    }
+    return o;
+    
+  }
 
   object_t* _objTypeDuplContainer( const struct object_str* src, struct object_str* parent )
   {
-    object_t* o = _objAppendRightMostNode( parent, _objAllocate( src->type->id, parent ));
-    for(object_t* ch=src->u.children; ch!=nullptr; ch=ch->sibling)
-      ch->type->duplicate(ch,o);
-
+    object_t* o;
+    if((o = _objAllocAndAttach( src->type->id, parent)) != nullptr )
+    {
+      for(object_t* ch=src->u.children; ch!=nullptr; ch=ch->sibling)
+        ch->type->duplicate(ch,o);
+    }
+    
     return o;
   }
   
@@ -333,9 +350,9 @@ namespace cw
   object_t* _objTypeDuplInt8(   const struct object_str* src, struct object_str* parent ) { return _objCreateValueNode<int8_t>(parent,src->u.i8); }
   object_t* _objTypeDuplUInt8(  const struct object_str* src, struct object_str* parent ) { return _objCreateValueNode<uint8_t>(parent,src->u.u8); }
   object_t* _objTypeDuplInt16(  const struct object_str* src, struct object_str* parent ) { return _objCreateValueNode<int16_t>(parent,src->u.i16); }
-  object_t* _objTypeDuplUInt16( const struct object_str* src, struct object_str* parent ) { return _objCreateValueNode<int16_t>(parent,src->u.u16); }
+  object_t* _objTypeDuplUInt16( const struct object_str* src, struct object_str* parent ) { return _objCreateValueNode<uint16_t>(parent,src->u.u16); }
   object_t* _objTypeDuplInt32(  const struct object_str* src, struct object_str* parent ) { return _objCreateValueNode<int32_t>(parent,src->u.i32); }
-  object_t* _objTypeDuplUInt32( const struct object_str* src, struct object_str* parent ) { return _objCreateValueNode<int32_t>(parent,src->u.u32); }
+  object_t* _objTypeDuplUInt32( const struct object_str* src, struct object_str* parent ) { return _objCreateValueNode<uint32_t>(parent,src->u.u32); }
   object_t* _objTypeDuplInt64(  const struct object_str* src, struct object_str* parent ) { return _objCreateValueNode<int64_t>(parent,src->u.i64); }
   object_t* _objTypeDuplUInt64( const struct object_str* src, struct object_str* parent ) { return _objCreateValueNode<uint64_t>(parent,src->u.u64); }
   object_t* _objTypeDuplBool(   const struct object_str* src, struct object_str* parent ) { return _objCreateValueNode<bool   >(parent,src->u.b  ); }
@@ -424,11 +441,11 @@ namespace cw
     va_start(vl,fmt);
 
     cwLogVError( kSyntaxErrorRC, fmt, vl );
-    cwLogError(  kSyntaxErrorRC, "Error on line: %i.", lex::currentLineNumber(lexH));
+    cwLogError(  kSyntaxErrorRC, "Error on line: %i column:%i.", lex::currentLineNumber(lexH),lex::currentColumnNumber(lexH));
     va_end(vl);
     return kSyntaxErrorRC;
   }
- 
+
   
   rc_t _objVerifyParentIsValueContainer( lex::handle_t lexH, const object_t* parent, const char* msg )
   {
@@ -442,14 +459,36 @@ namespace cw
     return kOkRC;
   }
   
-  object_t* _objAppendRightMostNode( object_t* parent, object_t* newNode )
+  rc_t  _objAppendRightMostNode( object_t* parent, object_t* newNode )
   {
+    rc_t rc = kOkRC;
+    
     if( newNode == nullptr )
-      return nullptr;
+    {
+      rc =  cwLogError(kInvalidStateRC,"An attempt was made to append a null child to a parent node.");
+      goto errLabel;      
+    }
 
     if( parent != nullptr )
     {
-      assert( parent->is_container() );
+      if( !parent->is_container() )
+      {
+        rc =  cwLogError(kInvalidStateRC,"An attempt was made to append a child to a non-container node.");
+        goto errLabel;
+      }
+
+      if( newNode->is_pair() && !parent->is_dict() )
+      {
+        rc =  cwLogError(kInvalidStateRC,"An attempt was made to append a pair to a non-dict node.");
+        goto errLabel;
+      }
+
+      if( !newNode->is_pair() && parent->is_dict() )
+      {
+        rc = cwLogError(kInvalidStateRC,"An attempt was made to append a non-pair to a dict node.");
+        goto errLabel;
+      }
+
       
       object_t* child = parent->u.children;
 
@@ -465,13 +504,15 @@ namespace cw
     }
       
     newNode->parent = parent;
-    return newNode;
+    
+  errLabel:
+    return rc;
   }
 
   object_t* _objCreateConainerNode( lex::handle_t lexH, object_t* parent, objTypeId_t tid )
   {
     if( _objVerifyParentIsValueContainer(lexH,parent,_objTypeIdToLabel(tid)) == kOkRC )
-      return _objAppendRightMostNode( parent, _objAllocate( tid, parent ));
+      return _objAllocAndAttach( tid, parent );
     
     return nullptr;            
   }
@@ -508,6 +549,9 @@ namespace cw
           case 'n': s[oi] = '\n'; break;
           case 'r': s[oi] = '\r'; break;
           case 't': s[oi] = '\t'; break;
+          case '"': s[oi] = '"'; break;
+          case '\\': s[oi] = '\\'; break;
+          case '/': s[oi] = '/'; break;            
           default:
             s[oi++] = '\\';
             s[oi]   = s[ii];
@@ -582,8 +626,7 @@ cw::rc_t cw::object_t::append_child( struct object_str* child )
   if( !is_container() )
     return cwLogError(kInvalidDataTypeRC,"The parent of a child object node must be a 'container'.");
   
-  _objAppendRightMostNode( this, child );
-  return kOkRC;
+  return _objAppendRightMostNode( this, child );
 }
 
 
@@ -774,7 +817,7 @@ cw::object_t* cw::newObject( std::uint64_t v, object_t* parent)
 { return _objCreateValueNode<uint64_t>( parent, v ); }
 
 cw::object_t* cw::newObject( std::int64_t v, object_t* parent)
-{ return _objCreateValueNode<uint64_t>( parent, v ); }
+{ return _objCreateValueNode<int64_t>( parent, v ); }
 
 cw::object_t* cw::newObject( bool v, object_t* parent)
 { return _objCreateValueNode<bool>( parent, v ); }
@@ -792,19 +835,21 @@ cw::object_t* cw::newObject( const char* v, object_t* parent)
 { return _objCreateValueNode<const char*>( parent, v ); }
 
 cw::object_t* cw::newDictObject( object_t* parent )
-{ return _objAppendRightMostNode(parent,  _objAllocate( kDictTId, parent) ); }
+{ return _objAllocAndAttach( kDictTId, parent); }
     
 cw::object_t* cw::newListObject( object_t* parent )
-{ return _objAppendRightMostNode(parent,  _objAllocate( kListTId, parent) ); }
+{ return _objAllocAndAttach(kListTId, parent); }
 
 cw::object_t* cw::newPairObject( const char* label, object_t* value, object_t* parent)
 {
-  object_t* pair = _objAppendRightMostNode(parent, _objAllocate( kPairTId, parent) );
+  object_t* pair;
+  if((pair = _objAllocAndAttach(kPairTId,parent)) != nullptr )
+  {
+    _objCreateValueNode<const char*>( pair, label );
 
-  _objCreateValueNode<const char*>( pair, label );
-
-  pair->append_child(value);
-
+    pair->append_child(value);
+  }
+  
   return value;
 }
 
@@ -830,7 +875,7 @@ cw::object_t* cw::newPairObject( const char* label, std::uint64_t v, object_t* p
 { return _objCreatePairNode<uint64_t>( parent, label, v ); }
 
 cw::object_t* cw::newPairObject( const char* label, std::int64_t v, object_t* parent)
-{ return _objCreatePairNode<uint64_t>( parent, label, v ); }
+{ return _objCreatePairNode<int64_t>( parent, label, v ); }
 
 cw::object_t* cw::newPairObject( const char* label, bool v, object_t* parent)
 { return _objCreatePairNode<bool>( parent, label, v ); }
@@ -848,16 +893,402 @@ cw::object_t* cw::newPairObject( const char* label, const char* v, object_t* par
 { return _objCreatePairNode<const char*>( parent, label, v ); }
 
 
+namespace cw {
+
+  rc_t _parseDict( lex::handle_t lexH, object_t* parent );
+  rc_t _parseList( lex::handle_t lexH, object_t* parent );
+    
+  
+  rc_t _parseStringNode( lex::handle_t lexH, unsigned lexId, object_t* parent )
+  {
+    rc_t rc = kOkRC;
+    
+    // copy the identifier text into zero terminated string
+    unsigned n = lex::tokenCharCount(lexH);
+    char s[ n + 1 ];
+    memcpy(s,lex::tokenText(lexH),n);
+    s[n] = 0;
+
+    // if the this is a quoted string then escape the text
+    unsigned identFl = 0;
+    if( lexId == lex::kQStrLexTId )
+      _escape_string(s);
+    else
+      identFl = kIdentFl;
+
+    // create the string node 
+    if(_objCreateValueNode<char*>( parent, s, "string", identFl ) == nullptr )
+    {
+      rc = _objSyntaxError(lexH,"Pair label create failed.");
+      goto errLabel;      
+    }
+
+  errLabel:
+    return rc;
+  }
+
+  template<typename T>
+  rc_t _parseSimpleValueNode( object_t* parent, const T& v, const char* msg, unsigned flags=0 )
+  {
+    rc_t rc = kOkRC;
+    if( _objCreateValueNode( parent, v, msg, flags ) == nullptr )
+    {
+      rc = kSyntaxErrorRC;
+    }
+
+    return rc;
+
+  }
+
+  rc_t _parseValue( lex::handle_t lexH, object_t* parent, unsigned lexId )
+  {
+    rc_t rc = kOkRC;
+
+    switch( lexId )
+    {
+      case kLCurlyLexTId:
+        rc = _parseDict(lexH,parent);
+        break;
+          
+      case kLHardLexTId:
+        rc = _parseList(lexH,parent);
+        break;
+
+
+      case kRCurlyLexTId:          
+      case kRHardLexTId:
+      case kColonLexTId:
+      case kCommaLexTId:
+        rc = _objSyntaxError( lexH, "Unexpected '%s' token while parsing a value statement.",lex::idToLabel(lexH,lexId));
+        goto errLabel;
+        
+      case lex::kRealLexTId:
+        if( tokenIsSinglePrecision(lexH) )
+          rc = _parseSimpleValueNode( parent, lex::tokenFloat(lexH),"float" );
+        else
+          rc = _parseSimpleValueNode( parent, lex::tokenDouble(lexH), "double" );
+        break;
+        
+      case lex::kIntLexTId:
+        if( tokenIsUnsigned(lexH) )
+          rc = _parseSimpleValueNode( parent, lex::tokenUInt(lexH), "uint" );
+        else
+          rc = _parseSimpleValueNode( parent, lex::tokenInt(lexH), "int" );
+        break;
+        
+      case lex::kHexLexTId:
+        rc = _parseSimpleValueNode( parent, lex::tokenInt(lexH), "int", kHexFl );
+        break;
+        
+      case kTrueLexTId:
+        rc = _parseSimpleValueNode( parent, true, "true" );        
+        break;
+
+      case kFalseLexTId:
+        rc = _parseSimpleValueNode( parent, false, "false" );        
+        break;
+
+      case kNullLexTId:
+        if( _objAllocAndAttach( kNullTId, parent) == nullptr )
+        {
+          rc = _objSyntaxError(lexH,"Null node allocation failed.");
+          goto errLabel;
+        }
+        break;        
+
+      case kSegmentedIdLexTId:
+      case lex::kIdentLexTId:
+      case lex::kQStrLexTId:
+        rc = _parseStringNode( lexH, lexId, parent );
+        break;
+
+      case lex::kErrorLexTId:
+        rc = _objSyntaxError(lexH,"A lexer error occurred while parsing a value statement.");
+        break;
+          
+      case lex::kEofLexTId:
+        rc = _objSyntaxError(lexH,"An unexpected end-of-string was encountered while parsing a value statement.");
+        break;
+
+      default:
+        rc = _objSyntaxError(lexH,"Unknown token type (%i) in text.", int(lexId) );
+    }
+      
+  errLabel:
+    
+    return rc;
+  }
+  
+  rc_t _parseList( lex::handle_t lexH, object_t* parent )
+  {
+    rc_t      rc     = kOkRC;
+    object_t* list;
+    unsigned  lexId  = lex::kErrorLexTId;
+    bool      doneFl = false;
+    
+    enum {
+      kValueOrEndStateId,        // next token must be id or '}'
+      kValueOrCommaOrEndStateId, // next token must be id,',' or '}'
+    };
+    unsigned stateId = kValueOrEndStateId;
+    
+    if((list = _objCreateConainerNode( lexH, parent, kListTId )) == nullptr )
+    {
+      rc = _objSyntaxError(lexH,"Dictionary create failed.");
+      goto errLabel;
+    }
+    
+    while( rc == kOkRC && !doneFl ) 
+    {
+      switch( lexId = lex::getNextToken(lexH) )
+      {
+        case lex::kErrorLexTId:
+          rc = _objSyntaxError(lexH,"An unknown token was encountered during list parsing.");
+          goto errLabel;
+          
+        case lex::kEofLexTId:
+          rc = _objSyntaxError(lexH,"An unexpected end of string was encountered during list parsing.");
+          goto errLabel;
+      }
+        
+      switch( stateId )
+      {
+        case kValueOrEndStateId:
+        case kValueOrCommaOrEndStateId:
+          switch( lexId )
+          {
+            case kRHardLexTId:
+              // expected end of parse
+              doneFl = true;
+              break;
+                
+            case kCommaLexTId:
+              
+              // a comma can never be the first token in a dictionary
+              if( stateId == kValueOrEndStateId )
+              {
+                rc = _objSyntaxError(lexH,"Unexpected ',' token in list.");
+                goto errLabel;                  
+              }
+
+              // once we get a comma only value or ']' can follow
+              stateId = kValueOrEndStateId;
+              break;
+
+            default:
+              
+              // ... this token is the start of a value
+              if((rc = _parseValue(lexH,list,lexId)) != kOkRC )
+              {
+                goto errLabel;
+              }
+              
+              stateId = kValueOrCommaOrEndStateId;
+                
+          }
+          break;
+            
+      } // state switch
+        
+    } // while
+
+    if( lexId != kRHardLexTId )
+    {
+      rc = _objSyntaxError(lexH,"Unexpected end of dictionary.");
+      goto errLabel;
+    }
+    
+  errLabel:
+    if( rc != kOkRC )
+    {
+      list->free();
+    }
+    return rc;
+  }
+
+  rc_t _create_pair( lex::handle_t lexH, unsigned lexId,  object_t* dict, object_t*& pair_ref )
+  {    
+    rc_t      rc   = kOkRC;
+    object_t* pair = nullptr;
+
+    // the parents of pairs must be dict's
+    if( !dict->is_dict() )
+    {
+      _objSyntaxError(lexH,"Program logic error. The parent of a dictionary pair was not a dictionary.");
+      goto errLabel;
+    }
+
+    // allocate the pair object
+    if((pair = _objAllocAndAttach( kPairTId, dict )) == nullptr)
+    {
+      rc = _objSyntaxError(lexH,"Pair alloc and attach failed.");
+      goto errLabel;
+    }
+
+    // create the label for this pair
+    if((rc = _parseStringNode( lexH, lexId, pair )) != kOkRC )
+    {
+      goto errLabel;
+    }
+
+    pair_ref = pair;
+
+  errLabel:
+    if( rc != kOkRC && pair != nullptr )
+    {
+      pair->free();
+    }
+    
+    return rc;
+  }
+  
+  rc_t _parseDict( lex::handle_t lexH, object_t* parent )
+  {
+    enum {
+      kIdentOrEndStateId,       // next token must be id or '}'
+      kIdentOrCommaOrEndStateId, // next token must be id,',' or '}'
+      kColonStateId,            // next token must be ':'
+      kValueStateId             // the next token must start a value node
+    };
+    
+    rc_t      rc     = kOkRC;
+    object_t* dict;
+    unsigned  lexId  = lex::kErrorLexTId;
+    object_t* pair   = nullptr;
+    bool      doneFl = false;
+    
+    unsigned stateId = kIdentOrEndStateId;
+    
+    if((dict = _objCreateConainerNode( lexH, parent, kDictTId )) == nullptr )
+    {
+      rc = _objSyntaxError(lexH,"Dictionary create failed.");
+      goto errLabel;
+    }
+    
+    while( rc == kOkRC && !doneFl ) 
+    {
+      switch( lexId = lex::getNextToken(lexH) )
+      {
+        case lex::kErrorLexTId:
+          rc = _objSyntaxError(lexH,"An unknown token was encountered during dictionary parsing.");
+          goto errLabel;
+          
+        case lex::kEofLexTId:
+          rc = _objSyntaxError(lexH,"An unexpected end of string was encountered during dictionary parsing.");
+          goto errLabel;
+      }
+      
+      switch( stateId )
+      {
+        case kIdentOrEndStateId:
+        case kIdentOrCommaOrEndStateId:
+          switch( lexId )
+          {
+            case kRCurlyLexTId:
+              // expected end-of-dictionary
+              doneFl = true;
+              break;
+                
+            case kCommaLexTId:
+              
+              // a comma can never be the first token in a dictionary
+              if( stateId == kIdentOrEndStateId )
+              {
+                rc = _objSyntaxError(lexH,"Unexpected ',' token in dict.");
+                goto errLabel;                  
+              }
+
+              // once we get a comma only an identifer or '}' can follow
+              stateId = kIdentOrEndStateId;
+              break;
+
+
+            case kSegmentedIdLexTId:
+            case lex::kIdentLexTId:
+            case lex::kQStrLexTId:
+              // this is an identifier
+              
+              // create a pair without the value ... the value will be filled in after we get the subsequent ':'
+              if((rc = _create_pair(lexH,lexId,dict,pair)) != kOkRC )
+                goto errLabel;
+
+              // a colon must be next
+              stateId = kColonStateId;
+              break;
+              
+            default:              
+                rc = _objSyntaxError(lexH,"Unexpected '%s' token where we expected an identifier.",lex::idToLabel(lexH,lexId));
+                goto errLabel;
+              
+                
+          }
+          break;
+            
+        case kColonStateId:
+          if( pair == nullptr )
+          {
+            rc = _objSyntaxError(lexH,"A colon was encountered but no pair exists.");
+            goto errLabel;
+          }
+
+          if( lexId != kColonLexTId )
+          {
+            rc = _objSyntaxError(lexH,"A missing colon was encountered while parsing a dictionary pair.");
+            goto errLabel;
+          }
+
+          stateId = kValueStateId;
+          break;
+          
+        case kValueStateId:
+          // what follows must start a value node
+          if((rc = _parseValue( lexH, pair, lexId)) != kOkRC )
+          {
+            goto errLabel;
+          }
+
+          // the pair is now attached to the dict and can be dropped
+          pair = nullptr;            
+          stateId = kIdentOrCommaOrEndStateId;
+          break;
+            
+        default:
+          assert(0);
+          
+      } // state switch
+        
+    } // while
+
+    // if the last token was not a '}' then there was a problem
+    if( lexId != kRCurlyLexTId )
+    {
+      rc = _objSyntaxError(lexH,"Unexpected end of dictionary.");
+      goto errLabel;
+    }
+    
+  errLabel:
+    if( pair != nullptr )
+      pair->free();
+    
+    if( rc != kOkRC )
+    {
+      dict->free();
+    }
+    return rc;
+  }
+}
+
 cw::rc_t cw::objectFromString( const char* s, object_t*& objRef )
 {
   lex::handle_t lexH;
   rc_t          rc;
   unsigned      lexFlags = 0;
   unsigned      lexId    = lex::kErrorLexTId;
-  object_t*     cnp      = _objAllocate(kRootTId,nullptr);
-  object_t*     root     = cnp;
+  object_t*     root     = _objAllocate(kRootTId,nullptr);
+  
   objRef = nullptr;
 
+  // create the lexer
   if((rc = lex::create(lexH,s,textLength(s), lexFlags )) != kOkRC )
     return rc;
 
@@ -877,134 +1308,56 @@ cw::rc_t cw::objectFromString( const char* s, object_t*& objRef )
   }
 
   // main parser loop
-  while((lexId = lex::getNextToken(lexH)) != lex::kErrorLexTId && (lexId != lex::kEofLexTId) && (rc == kOkRC))
-  {
-    
-    switch( lexId )
-    {
-      case kLCurlyLexTId:
-        cnp = _objCreateConainerNode( lexH, cnp, kDictTId );
-        break;
-
-      case kRCurlyLexTId:
-        if( cnp == nullptr )
-          _objSyntaxError(lexH,"An end of 'object' was encountered without an associated 'object' start.");
-        else
-          cnp = cnp->parent;
-        break;
-
-      case kLHardLexTId:        
-        cnp = _objCreateConainerNode( lexH, cnp, kListTId );
-        break;
-
-      case kRHardLexTId:
-        if( cnp == nullptr )
-          rc = _objSyntaxError(lexH,"An end of 'array' was encountered without an associated 'array' start.");
-        else
-          cnp = cnp->parent;
-        break;
-
-      case kColonLexTId:
-        if( cnp == nullptr || !cnp->is_pair() )
-          rc = _objSyntaxError(lexH,"A colon was encountered outside a 'pair' node.");
-        break;
-
-      case kCommaLexTId:
-        if( cnp == nullptr || (!cnp->is_list() && !cnp->is_dict()) )
-          rc = _objSyntaxError(lexH,"Unexpected comma outside of 'array' or 'object'.");
-        break;
-        
-      case lex::kRealLexTId:
-        if( tokenIsSinglePrecision(lexH) )
-          _objCreateValueNode( cnp, lex::tokenFloat(lexH),"float" );
-         else
-          _objCreateValueNode( cnp, lex::tokenDouble(lexH), "double" );
-        break;
-        
-      case lex::kIntLexTId:
-        if( tokenIsUnsigned(lexH) )
-          _objCreateValueNode( cnp, lex::tokenUInt(lexH), "uint" );
-        else
-          _objCreateValueNode( cnp, lex::tokenInt(lexH), "int" );
-        break;
-        
-      case lex::kHexLexTId:
-        _objCreateValueNode( cnp, lex::tokenInt(lexH), "int", kHexFl );
-        break;
-        
-      case kTrueLexTId:
-        _objCreateValueNode( cnp, true, "true" );        
-        break;
-
-      case kFalseLexTId:
-        _objCreateValueNode( cnp, false, "false" );        
-        break;
-
-      case kNullLexTId:
-        _objAppendRightMostNode( cnp, _objAllocate( kNullTId, cnp ));
-        break;        
-
-      case kSegmentedIdLexTId:
-      case lex::kIdentLexTId:
-      case lex::kQStrLexTId:
-        {
-          
-          // if the parent is an object then this string must be a pair label
-          if( cnp->is_dict() )
-            cnp = _objAppendRightMostNode( cnp, _objAllocate( kPairTId, cnp ));
-
-          unsigned n = lex::tokenCharCount(lexH);
-          char s[ n + 1 ];
-          memcpy(s,lex::tokenText(lexH),n);
-          s[n] = 0;
-
-          unsigned identFl = 0;
-          if( lexId == lex::kQStrLexTId )
-            _escape_string(s);
-          else
-            identFl = kIdentFl;
-          
-          _objCreateValueNode<char*>( cnp, s, "string", identFl );
-        }
-        break;
-
-      case lex::kEofLexTId:
-        break;
-
-      default:
-        _objSyntaxError(lexH,"Unknown token type (%i) in text.", int(lexId) );
-    }
-
-    if( cnp == nullptr )
-    {
-      rc = _objSyntaxError( lexH, "Node parse failed." );
-      goto errLabel;
-    }
-
-    // if this is a pair node and it now has both values 
-    // then make the parent 'object' the current node
-    if( cnp->is_pair() && cnp->child_count()==2 )
-      cnp = cnp->parent;
-  }
-
-  if( lexId == lex::kErrorLexTId )
-  {
-    rc = cwLogError(kSyntaxErrorRC,"A lexical element was not recognized.");
-    goto errLabel;    
-  }
+  lexId = lex::getNextToken(lexH);
   
+  switch( lexId )
+  {
+    case kLCurlyLexTId:
+      if((rc = _parseDict(lexH,root)) != kOkRC )
+        goto errLabel;
+      break;
+      
+    case kLHardLexTId:
+      if((rc = _parseList(lexH,root)) != kOkRC )
+        goto errLabel;
+      break;
+      
+    case lex::kEofLexTId:
+      // the text was blank
+      root->free();
+      root = nullptr;
+      break;
+            
+    case lex::kErrorLexTId:
+      rc = cwLogError(kSyntaxErrorRC,"No top level lexical element was not recognized.");
+      goto errLabel;    
+      
+    default:
+      if((rc = _parseValue(lexH,root,lexId)) != kOkRC )
+        goto errLabel;        
+      
+  }
+
+
   // if the root has only one child then make the child the root
   if( root != nullptr && root->child_count() == 1 )
   {
-    cnp = root->u.children;
-    cnp->unlink();
+    object_t* np = root->u.children;
+    np->unlink();
     root->free();
-    root = cnp;
+    root = np;
   }
   
   objRef = root;
   
- errLabel:
+errLabel:
+  
+  if( rc != kOkRC )
+  {
+    root->free();
+    objRef = nullptr;
+  }
+  
   rc_t rc0 = lex::destroy(lexH);
 
   return rc != kOkRC ? rc : rc0;
@@ -1023,7 +1376,9 @@ cw::rc_t cw::objectFromFile( const char* fn, object_t*& objRef )
     rc = cwLogError(kOpFailRC,"File to text buffer conversion failed on '%s'.",cwStringNullGuard(fn));
   else
   {
-    rc = objectFromString( buf, objRef );
+    if((rc = objectFromString( buf, objRef )) != kOkRC )
+      rc = cwLogError(rc,"File parse failed on:'%s'.",cwStringNullGuard(fn));
+    
     mem::release(buf);
   }
 
@@ -1066,6 +1421,7 @@ cw::rc_t cw::objectToFile( const char* fn, const object_t* obj )
   return rc;
 }
 
+/*
 namespace cw
 {
   rc_t _object_test_basic( const test::test_args_t& args )
@@ -1181,3 +1537,4 @@ errLabel:
   return rc;
 }
 
+*/
