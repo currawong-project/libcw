@@ -29,11 +29,29 @@
 	    "displayName":"Debug Build",
 	    "inherits":"default",
 	    "cacheVariables":{
-		"CMAKE_BUILD_TYPE":"Debug",
-		"CW_ADDRESS_SANITIZER_FL": { "type":"BOOL", "value":"ON" },
-		"CW_COVERAGE_FL": { "type":"BOOL", "value":"ON" }
+		"CMAKE_BUILD_TYPE":"Debug"
 	    }
 	},
+	{
+	    "name":"debug-lsan",
+	    "displayName":"Debug Build with LSAN",
+	    "inherits":"debug",
+	    "cacheVariables":{
+		"CW_ADDRESS_SANITIZER_FL": { "type":"BOOL", "value":"ON" }
+	    }
+	    
+	},
+	{
+	    "name":"debug-lsan-coverage",
+	    "displayName":"Debug Build with LSAN",
+	    "inherits":"debug-lsan",
+	    "cacheVariables":{
+		"CW_COVERAGE_FL": { "type":"BOOL", "value":"ON" }
+	    }
+	    
+	},
+	
+	
 	{
 	    "name":"release",
 	    "displayName":"Release Build",
