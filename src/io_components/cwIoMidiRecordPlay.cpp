@@ -875,7 +875,9 @@ namespace cw
         mem::release(msgArrayRef);
         msgArrayRef = nullptr;
         msgArrayCntRef = 0;
-      } 
+      }
+
+      file::close(fH);
         
       return rc;        
     }
