@@ -369,8 +369,10 @@ namespace cw
       const object_t* takeL    = nullptr;
       const char*     c_folder = nullptr;
       char*           folder   = nullptr;
+      const char*     fname    = nullptr;
       
       if((rc = fileEle->getv("folder",c_folder,
+                             "fname",fname,
                              "takeL",takeL)) != kOkRC )
       {
         rc = cwLogError(rc,"Parse of 'folder' and 'takeL' of SF2 test case failed.");
@@ -400,7 +402,7 @@ namespace cw
           char* record_folder = mem::printf<char>(nullptr,"record_%i",take_num);      
           
           // form MIDI csv file name
-          char* midi_csv_fname = filesys::makeFn(folder,"fix_midi","csv", record_folder, nullptr );
+          char* midi_csv_fname = filesys::makeFn(folder,fname,nullptr, record_folder, nullptr );
 
           // parse MIDI file into an array
           if((rc = parse_midi_file( midi_csv_fname, srate, kInvalidIdx, kInvalidIdx, kInvalidIdx, kCsvVersion0Id, mf )) == kOkRC )
