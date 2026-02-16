@@ -37,6 +37,7 @@ namespace cw
     //
     
     typedef enum {
+      kInvalidProcTypeId= 0x00,
       kLocalProcTypeId  = 0x01,
       kLocalVarTypeId   = 0x02,
       kRemoteProcTypeId = 0x04,
@@ -45,13 +46,13 @@ namespace cw
     
     typedef struct io_ele_str
     {
-      io_ele_type_id_t typeId;       // See k???TypeId above
-      char*            label;        // label of in or src id
-      unsigned         base_sfx_id;  // Literal base_sfx_id or kInvalidId if the base_sfx_id was not given or 'is_iter_fl' is false
-      unsigned         sfx_id;       // 'sfx_id' is only used by _io_stmt_connect_vars()
-      unsigned         sfx_id_count; // Literal sfx_id_count or kInvalidCnt if not given
-      unsigned         is_iter_fl;   // This id included an '_' (underscore)
-      unsigned         has_sfx_fl;   // true if a suffix was specified (differentiates label0 from label)
+      io_ele_type_id_t typeId       = kInvalidProcTypeId; // See k???TypeId above
+      char*            label        = nullptr;            // label of in or src id
+      unsigned         base_sfx_id  = kInvalidId;         // Literal base_sfx_id or kInvalidId if the base_sfx_id was not given or 'is_iter_fl' is false
+      unsigned         sfx_id       = kBaseSfxId;         // 'sfx_id' is only used by _io_stmt_connect_vars()
+      unsigned         sfx_id_count = kInvalidCnt;        // Literal sfx_id_count or kInvalidCnt if not given
+      unsigned         is_iter_fl   = false;              // This id included an '_' (underscore)
+      unsigned         has_sfx_fl   = false;              // true if a suffix was specified (differentiates label0 from label)
     } io_ele_t;
 
     typedef struct io_stmt_str
@@ -2432,7 +2433,7 @@ namespace cw
       for(unsigned i=0; i<argN; ++i)
       {
         const object_t* arg_pair = arg_cfg->child_ele(i);
-        io_ele_t r;
+        io_ele_t r = {};
 
         // validate the arg pair 
         if( arg_pair==nullptr || !arg_pair->is_pair() || arg_pair->pair_label()==nullptr || arg_pair->pair_value()==nullptr )
