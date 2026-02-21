@@ -747,7 +747,26 @@ Variables whose changes can be tracked by var_set() are noticed and marked for o
 Variables that are buffers (abuf,fbuf,mbuf,rbuf) are output if they contain non-zero elements.
 All other variable types are logged on every cycle.
 
+UI
+----
+Proc Desc.
 
+```
+ui: {
+  type: meter | list
+  flags: [ horizontal ]
+}
+```
+
+Proc instance:
+```
+ui: { create_fl: true|false, 
+      vars:{
+	    <var_label>:{ 'sfx_id':<> 'ch_idx':<>, 'title':<>, 'flags':[hide,show,enable,disable] 
+	  }
+
+    }
+```
 
 Records Data Type
 ------------------
