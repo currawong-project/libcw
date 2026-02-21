@@ -85,15 +85,32 @@ namespace cw
     rc_t set_variable_value( network_t& net, const ui_var_t* ui_var, T value )
     {
       rc_t rc = kOkRC;
+      variable_t* var = nullptr;
+      
+      if((rc = var_find(ui_var->ui_proc->proc, ui_var->vid, ui_var->ch_idx, var)) != kOkRC )
+      {
+        goto errLabel;
+      }
       
       // set the variable value
-      if((rc = var_set( ui_var->ui_proc->proc, ui_var->vid, ui_var->ch_idx, value )) != kOkRC )
+      if((rc = var_set( var, value )) != kOkRC )
       {
-        rc = cwLogError(kOpFailRC,"The variable set failed on instance:'%s:%i' variable:'%s:%i'.",cwStringNullGuard(ui_var->ui_proc->proc->label),ui_var->ui_proc->proc->label_sfx_id,cwStringNullGuard(ui_var->label),ui_var->label_sfx_id);
+        goto errLabel;
+      }
+
+      // schedule the var's owning proc to recieve notification that of the change in value
+      // (we need to do this because var_set() only notifies vars that are connected
+      //  downstream of this var that the variable changed - it doesn't actually tell
+      //  the owning proc that the var has changed because in general var_set() is called
+      //  by the owning proc.)
+      if((rc = var_schedule_notification(var)) != kOkRC )
+      {
         goto errLabel;
       }
 
     errLabel:
+      if( rc != kOkRC )
+        rc = cwLogError(rc,"The variable set failed on instance:'%s:%i' variable:'%s:%i'.",cwStringNullGuard(ui_var->ui_proc->proc->label),ui_var->ui_proc->proc->label_sfx_id,cwStringNullGuard(ui_var->label),ui_var->label_sfx_id);
       return rc;
     }
 
