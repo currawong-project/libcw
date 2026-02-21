@@ -3302,7 +3302,7 @@ namespace cw
         cw::perf_score::handle_t       scoreH;
         cw::score_follow_2::handle_t   sfH;
         unsigned                       i_midi_field_idx;
-        unsigned                       o_midi_field_idx;
+        //unsigned                       o_midi_field_idx;
         unsigned                       loc_field_idx;
         unsigned                       meas_field_idx;
         unsigned                       vel_field_idx;
@@ -3389,7 +3389,7 @@ namespace cw
     
         
         p->i_midi_field_idx = recd_type_field_index( in_rbuf->type, "midi");
-        p->o_midi_field_idx = recd_type_field_index( p->recd_array->type, "midi");
+        //p->o_midi_field_idx = recd_type_field_index( p->recd_array->type, "midi");
         p->loc_field_idx    = recd_type_field_index( p->recd_array->type, "loc");
         p->meas_field_idx   = recd_type_field_index(p->recd_array->type, "meas");
         p->vel_field_idx    = recd_type_field_index( p->recd_array->type, "score_vel");
@@ -3565,7 +3565,8 @@ namespace cw
               }
             }
 
-            _set_output_record( proc, p, o_rbuf, i_rbuf->recdA+i, loc_id, meas_numb, score_vel );
+            //_set_output_record( proc, p, o_rbuf, i_rbuf->recdA+i, loc_id, meas_numb, score_vel );
+            _set_output_record( proc, p, o_rbuf, nullptr, loc_id, meas_numb, score_vel );
           
           }
         }
@@ -5970,7 +5971,806 @@ namespace cw
       };
       
     }    // gutim_pgm_ctl
+
     
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // demo_202602_ctl
+    //
+    namespace demo_202602_ctl
+    {
+      enum {
+        kCfgFnamePId,
+        kSfLocPId,
+
+        k01MpPlayerPId,
+        k02MpPlayerPId,
+        k03MpPlayerPId,
+        k04MpPlayerPId,
+        k05MpPlayerPId,
+        k06MpPlayerPId,
+        k07MpPlayerPId,
+        k08MpPlayerPId,
+        k09MpPlayerPId,
+        k10MpPlayerPId,
+        k11MpPlayerPId,
+        k12MpPlayerPId,
+        k13MpPlayerPId,
+        k14MpPlayerPId,
+        k15MpPlayerPId,
+        k16MpPlayerPId,
+        k17MpPlayerPId,
+        k18MpPlayerPId,
+
+        kBegSegIdxPId,
+        kEndSegIdxPId,
+        
+        kResetPId,
+        kStartPId,
+        
+        kSfBegLocPId,
+        kSfEndLocPId,
+        kSfResetFlPId,
+
+        kMpStartPlayIdPId,
+        kMpPlayIdPId,
+        kMpResetFlPId,
+        kMpClearFlPId,
+        
+      };
+
+      enum seg_type_t {
+        kInvalidSegTypeId,
+        kGutimSegTypeId,
+        kScriabinSegTypeId,
+        kSpirioSegTypeId
+      };
+
+      enum {
+        kVidToSegMapN=18
+      };
+
+      struct mp_player_t {
+        char*    title;
+        unsigned mp_player_id;
+      };
+
+      struct seg_t
+      {
+        unsigned   seg_idx;      // the segment index (and the index of this record in segA[])
+        seg_type_t type_id;      // segment type id
+        char*      title;        // UI title of this segment        
+        unsigned   beg_loc;      // begin score location for this segment
+        unsigned   end_loc;      // end score location for this segment
+        
+        unsigned     mp_playerN;
+        mp_player_t* mp_playerA;
+
+        list_t*     ui_list;
+        
+        unsigned   cur_mp_player_id; // current multi-player player_id       
+      };
+      
+      typedef struct
+      {
+        unsigned segN; 
+        seg_t*   segA;                          // segA[segN] holds the multi-player player id for each segment
+        
+        unsigned vidToSegMapA[ kVidToSegMapN ]; // map k??MpPlayerPId to an associated segment index
+        
+        list_t* beg_seg_list;                  // the UI list used by kBeg/EndSegIdxPId
+        list_t* end_seg_list;                  //
+        
+        unsigned cur_seg_idx;                   // index into segA[] of the currently playing segment
+        unsigned end_seg_idx;
+
+        unsigned loc_field_idx;
+      } inst_t;
+
+
+      rc_t _parse_seg_mp_player_id_list( proc_t* proc, seg_t* seg, const object_t* menuD, const char* seg_title )
+      {
+        rc_t            rc   = kOkRC;
+        const object_t* pair = nullptr;
+
+        // verify that the syntax of the player label/id list
+        if( !menuD->is_dict() )
+        {
+          rc = proc_error(proc,kSyntaxErrorRC,"The player list is not a dictionary.");
+          goto errLabel;
+        }
+
+        // the list should never be empty
+        if( menuD->child_count() == 0 )
+        {
+          rc = proc_error(proc,kSyntaxErrorRC,"The player list must have at least player.");
+          goto errLabel;
+        }
+
+        // allocate the object to hold the list
+        seg->mp_playerN = menuD->child_count();
+        seg->mp_playerA = mem::allocZ<mp_player_t>(seg->mp_playerN);
+
+        // If this segment has multiple players then create a UI list to display the possible players
+        if( seg->mp_playerN > 1 )
+        {
+          if((rc = list_create(seg->ui_list, seg->mp_playerN )) != kOkRC )
+          {
+            proc_error(proc,rc,"UI list create failed.");
+            goto errLabel;
+          }
+        }
+
+        // for each player assigned to this segment
+        for(unsigned i=0; (pair = menuD->next_child_ele(pair)) != nullptr; ++i)
+        {
+          const char* title;
+
+          // validate the label/id syntax
+          if( !pair->is_pair() || pair->pair_label()==nullptr || pair->pair_value()==nullptr)
+          {
+            rc = proc_error(proc,kSyntaxErrorRC,"The player list item at index '%i' syntax is invalid.",i);
+            goto errLabel;
+          }
+
+          // parse the player id
+          if((rc = pair->pair_value()->value( seg->mp_playerA[i].mp_player_id )) != kOkRC )
+          {
+            rc = proc_error(proc,kSyntaxErrorRC,"The player id for item '%s' at index '%i' is could not be parsed.",pair->pair_label(),i);
+            goto errLabel;
+          }
+
+          // add the label/player id to the UI list
+          if( seg->ui_list != nullptr )
+            if((rc = list_append(seg->ui_list, pair->pair_label(), seg->mp_playerA[i].mp_player_id )) != kOkRC )
+            {
+              rc = proc_error(proc,rc,"UI list append failed.");
+              goto errLabel;
+            }
+
+          // store the title
+          seg->mp_playerA[i].title = mem::duplStr(pair->pair_label());
+
+          //printf("%s : %i\n",seg->mp_playerA[i].title,seg->mp_playerA[i].mp_player_id);
+        }
+
+      errLabel:
+        if( rc != kOkRC )
+          rc = proc_error(proc,rc,"Parsing failed on the player list for segment '%s'.",cwStringNullGuard(seg_title));
+        
+        return rc;
+      }
+      
+      rc_t _parse_cfg( proc_t* proc, inst_t* p, const char* fn )
+      {
+        rc_t                rc          = kOkRC;
+        object_t*           cfg         = nullptr;
+        const object_t*     segL        = nullptr;
+        const id_label_pair_tpl<seg_type_t> typeArray[] = { {kGutimSegTypeId,"gutim"}, {kScriabinSegTypeId,"scriabin"}, {kSpirioSegTypeId,"spirio"}, {kInvalidSegTypeId,""} };
+        unsigned            vid_map_idx = 0;
+        variable_t*         var         = nullptr;
+
+        // parse the cfg file into an object format
+        if((rc = objectFromFile( fn, cfg )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Cfg. file parse failed.");
+          goto errLabel;
+        }
+
+        // get the segment list
+        if((rc = cfg->getv("segL", segL )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Cfg. missing 'seg_idL'.");
+          goto errLabel;
+        }
+        
+        p->segN = segL->child_count();
+        p->segA = mem::allocZ<seg_t>(p->segN);
+
+        // create the starting segment UI list
+        if((rc = list_create(p->beg_seg_list, p->segN )) != kOkRC )
+          goto errLabel;        
+
+        // create the ending segment UI list
+        if((rc = list_create(p->end_seg_list, p->segN )) != kOkRC )
+          goto errLabel;
+        
+        // for each segment
+        for(unsigned seg_idx=0; seg_idx<p->segN; ++seg_idx)
+        {
+          const object_t* menuD          = nullptr;
+          const char*     seg_type_label = nullptr;
+          const char*     seg_title      = nullptr;
+          seg_t*          seg            = p->segA + seg_idx;
+
+          // verfiy that the segment cfg is valid
+          if( segL->child_ele(seg_idx) == nullptr )
+          {
+            rc = proc_error(proc,kOpFailRC,"Cfg. parse failed on segment id at index %i.",seg_idx);
+            goto errLabel;
+          }
+
+          // parse the segment cfg top level
+          if((rc = segL->child_ele(seg_idx)->getv("type_id", seg_type_label,
+                                                  "title",   seg_title,
+                                                  "seg_idx", seg->seg_idx,
+                                                  "beg_loc", seg->beg_loc,
+                                                  "end_loc", seg->end_loc,
+                                                  "menuD",   menuD )) != kOkRC )
+          {
+            rc = proc_error(proc,rc,"Cfg. parse failed on segment info at index %i.",seg_idx);
+            goto errLabel;            
+          }
+
+
+          // validate the segment label
+          if(textLength(seg_title) == 0 )
+          {
+            rc = proc_error(proc,kSyntaxErrorRC,"The segment label at index %i is blank.",seg_idx);
+            goto errLabel;
+          }
+          
+          // there must be exactly one segment cfg for each cfg. record and they must be ordered sequentially
+          if( seg->seg_idx != seg_idx )
+          {
+            rc = proc_error(proc,kInvalidStateRC,"The segment index %i and the stored record index %i do not match.",seg->seg_idx,seg_idx);
+            goto errLabel;
+          }
+
+          // validate the score location values
+          if( seg->beg_loc >= seg->end_loc )
+          {
+            rc = proc_error(proc,kInvalidArgRC,"The begin (%i) and end (%i) score locations are not valid on segment '%s'.",seg->beg_loc,seg->end_loc,cwStringNullGuard(seg_title));
+            goto errLabel;
+          }
+
+          // get the type (gutim,scriabin,spirio) of this segment
+          if((seg->type_id = label_to_id(typeArray,seg_type_label,kInvalidSegTypeId)) == kInvalidSegTypeId )
+          {
+            rc = proc_error(proc,kSyntaxErrorRC,"The segment type '%s' is not valid on segment '%s'.",cwStringNullGuard(seg_type_label),cwStringNullGuard(seg_title));
+            goto errLabel;
+          }
+
+          // get the mp player id's for this segment
+          if((rc = _parse_seg_mp_player_id_list( proc, seg, menuD, seg_title )) != kOkRC )
+          {
+            goto errLabel;
+          }
+
+          // validate the mp player array for this segment
+          if( seg->mp_playerA == nullptr || seg->mp_playerN == 0 )
+          {
+            rc = proc_error(proc,kSyntaxErrorRC,"The segment '%s' does not name any players.",cwStringNullGuard(seg_title));
+            goto errLabel;
+          }
+
+          // if this segment  has only one player it must be a 'scriabin' or 'spirio' segment
+          if( seg->mp_playerN == 1 )
+          {
+            if( seg->type_id != kScriabinSegTypeId && seg->type_id != kSpirioSegTypeId )
+            {
+              rc = proc_error(proc,kSyntaxErrorRC,"Invalid segment '%s': Only 'spirio' and 'scriabin' segments should have exactly one player.",cwStringNullGuard(seg_title));
+              goto errLabel;
+            }
+          }
+          else
+          {
+            unsigned vid = k01MpPlayerPId + vid_map_idx;
+            
+            // if this segment has multiple players it must be a 'gutim' segment
+            if( seg->type_id != kGutimSegTypeId )
+            {
+              rc = proc_error(proc,kSyntaxErrorRC,"Invalid segment '%s': Only 'gutim' segments can have multiple players.",cwStringNullGuard(seg_title));
+              goto errLabel;
+            }
+
+            // validate the vid map idx
+            if( vid_map_idx >= kVidToSegMapN )
+            {
+              rc = proc_error(proc,kInvalidStateRC,"The count of segments with multiple possible players cannot exceed '%i'.",kVidToSegMapN);
+              goto errLabel;
+            }
+
+            // find the var player seg variable
+            if((rc = var_find(proc, vid, kAnyChIdx, var )) != kOkRC )
+            {
+              rc = proc_error(proc,rc,"The segment player variable could not be found on segment '%s'.",cwStringNullGuard(seg_title));
+              goto errLabel;
+            }
+
+            if((rc = var_set(proc, vid, kAnyChIdx, seg->mp_playerA[0].mp_player_id)) != kOkRC )
+            {
+              rc = proc_error(proc,rc,"The player selection menu could not be set on segment '%s'.",cwStringNullGuard(seg_title));
+              goto errLabel;
+              
+            }
+
+            // tell the UI about the list
+            var->value_list = seg->ui_list;
+            
+
+            // map the input menu variable to this segment
+            p->vidToSegMapA[ vid_map_idx++ ] = seg_idx;
+
+            
+          }
+
+          // add this segment to the UI segment list
+          if((rc = list_append( p->beg_seg_list, seg_title, seg_idx )) != kOkRC )
+          {
+            goto errLabel;
+          }
+
+          if((rc = list_append( p->end_seg_list, seg_title, seg_idx )) != kOkRC )
+          {
+            goto errLabel;
+          }
+          
+          seg->title             = mem::duplStr(seg_title);
+          seg->cur_mp_player_id  = seg->mp_playerA[0].mp_player_id;
+          //printf("CUR: %s seg_idx:%i player_id:%i\n",seg->title,seg_idx,seg->cur_mp_player_id);
+          
+        }
+
+        // find the 'beg_seg_idx' variable
+        if((rc = var_find(proc, kBegSegIdxPId, kAnyChIdx, var )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"The 'beg_seg_idx' variable could not be found.");
+          goto errLabel;
+        }
+
+        // tell the UI about the list
+        var->value_list = p->beg_seg_list;
+
+
+        // find the 'end_seg_idx' variable
+        if((rc = var_find(proc, kEndSegIdxPId, kAnyChIdx, var )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"The 'end_seg_idx' variable could not be found.");
+          goto errLabel;
+        }
+
+        var->value_list = p->end_seg_list;
+
+        if((rc = var_set(var,p->segN-1)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Failed to set the end segment index to the last segment.");
+          goto errLabel;
+        }
+
+
+        
+      errLabel:
+        if(rc != kOkRC )
+          rc = proc_error(proc,rc,"Configuration from '%s' failed.",cwStringNullGuard(fn));
+        
+        return rc;
+      }
+
+      rc_t _pre_play_setup( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+        
+        // get the starting segment index and store it in p->cur_seg_idx
+        if((rc = var_get(proc,kBegSegIdxPId,p->cur_seg_idx)) != kOkRC || p->cur_seg_idx >= p->segN )
+        {
+          rc = proc_error(proc,rc,"Error getting the starting segment index.");
+          goto errLabel;
+        }
+
+        // validate the starting segment index
+        if( p->cur_seg_idx >= p->segN )
+        {
+          rc = proc_error(proc,kInvalidArgRC,"The seg index %i is out of range of %i.",p->cur_seg_idx,p->segN);
+          goto errLabel;
+        }
+
+        // get the ending segment index and store it in p->cur_seg_idx
+        if((rc = var_get(proc,kEndSegIdxPId,p->end_seg_idx)) != kOkRC || p->cur_seg_idx >= p->segN )
+        {
+          rc = proc_error(proc,rc,"Error getting the starting segment index.");
+          goto errLabel;
+        }
+
+        // validate the ending segment index
+        if( p->end_seg_idx >= p->segN )
+        {
+          rc = proc_error(proc,kInvalidArgRC,"The seg index %i is out of range of %i.",p->cur_seg_idx,p->segN);
+          goto errLabel;
+        }
+
+        if( p->end_seg_idx < p->cur_seg_idx )
+        {
+          rc = proc_error(proc,kInvalidStateRC,"The 'end-segment' %i is before the begin segment '%i'. Playback is not possible.",p->end_seg_idx,p->cur_seg_idx);
+          goto errLabel;
+        }
+        
+        // set the SF begin location
+        if((rc = var_set(proc,kSfBegLocPId,p->segA[p->cur_seg_idx].beg_loc)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Error setting 'beg-loc'.");
+          goto errLabel;
+        }
+
+        // set the SF end location
+        if((rc = var_set(proc,kSfEndLocPId,p->segA[p->end_seg_idx].end_loc)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Error setting 'end-loc'.");
+          goto errLabel;
+        }
+
+        // reset the score follower
+        if((rc = var_set(proc,kSfResetFlPId,true)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Error setting 'end-loc'.");
+          goto errLabel;
+        }
+
+      errLabel:
+        if( rc != kOkRC )
+          rc = proc_error(proc,rc,"Pre-play setup failed.");
+
+        return rc;
+      }
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t          rc              = kOkRC;        
+        const char*   cfg_fname       = nullptr;
+        const rbuf_t* rbuf            = nullptr;
+
+        if((rc = var_register_and_get(proc,kAnyChIdx,
+                                      kCfgFnamePId, "cfg_fname",kBaseSfxId, cfg_fname,
+                                      kSfLocPId,    "sf_loc",   kBaseSfxId, rbuf)) != kOkRC )
+        {
+           goto errLabel;
+        }
+
+        if((rc = var_register(proc,kAnyChIdx,
+                             
+                              k01MpPlayerPId, "gutim_01_plyr_id", kBaseSfxId,
+                              k02MpPlayerPId, "gutim_02_plyr_id", kBaseSfxId,
+                              k03MpPlayerPId, "gutim_03_plyr_id", kBaseSfxId,
+                              k04MpPlayerPId, "gutim_04_plyr_id", kBaseSfxId,
+                              k05MpPlayerPId, "gutim_05_plyr_id", kBaseSfxId,
+                              k06MpPlayerPId, "gutim_06_plyr_id", kBaseSfxId,
+                              k07MpPlayerPId, "gutim_07_plyr_id", kBaseSfxId,
+                              k08MpPlayerPId, "gutim_08_plyr_id", kBaseSfxId,
+                              k09MpPlayerPId, "gutim_09_plyr_id", kBaseSfxId,
+                              k10MpPlayerPId, "gutim_10_plyr_id", kBaseSfxId,
+                              k11MpPlayerPId, "gutim_11_plyr_id", kBaseSfxId,
+                              k12MpPlayerPId, "gutim_12_plyr_id", kBaseSfxId,
+                              k13MpPlayerPId, "gutim_13_plyr_id", kBaseSfxId,
+                              k14MpPlayerPId, "gutim_14_plyr_id", kBaseSfxId,
+                              k15MpPlayerPId, "gutim_15_plyr_id", kBaseSfxId,
+                              k16MpPlayerPId, "gutim_16_plyr_id", kBaseSfxId,
+                              k17MpPlayerPId, "gutim_17_plyr_id", kBaseSfxId,
+                              k18MpPlayerPId, "gutim_18_plyr_id", kBaseSfxId,
+
+                              kBegSegIdxPId,  "beg_seg_idx",      kBaseSfxId,
+                              kEndSegIdxPId,  "end_seg_idx",      kBaseSfxId,
+                              
+                              kResetPId,      "reset",            kBaseSfxId,
+                              kStartPId,      "start",            kBaseSfxId,
+                              
+                              kSfBegLocPId,  "sf_beg_loc",   kBaseSfxId,
+                              kSfEndLocPId,  "sf_end_loc",   kBaseSfxId,
+                              kSfResetFlPId, "sf_reset_fl",  kBaseSfxId,
+
+                              kMpStartPlayIdPId, "mp_start_play_id", kBaseSfxId, 
+                              kMpPlayIdPId,      "mp_play_id",       kBaseSfxId,
+                              kMpResetFlPId,     "mp_reset_fl",      kBaseSfxId,
+                              kMpClearFlPId,     "mp_clear_fl",      kBaseSfxId)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((rc = _parse_cfg( proc, p, cfg_fname )) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+
+        if( p->segN > 0 && p->segA[0].mp_playerN > 0 )
+        {
+          // set the starting segment id to the first player on the first segment.
+          if((rc = var_set( proc, kMpStartPlayIdPId, kAnyChIdx, p->segA[0].mp_playerA[0].mp_player_id )) != kOkRC )
+          {
+            rc = proc_error(proc,rc,"Error setting the initial starting segment player id'.");
+            goto errLabel;
+          }
+        }
+
+        if(rbuf==nullptr || (p->loc_field_idx  = recd_type_field_index( rbuf->type, "loc")) == kInvalidIdx )
+        {
+          rc = proc_error(proc,rc,"Unable to locate the 'loc' field index on 'sf_loc'.");
+          goto errLabel;
+        }
+
+        if((rc = _pre_play_setup( proc, p )) != kOkRC )
+          goto errLabel;
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        for(unsigned i=0; i<p->segN; ++i)
+        {
+          for(unsigned j=0; j<p->segA[i].mp_playerN; ++j)
+          {
+            mem::release(p->segA[i].mp_playerA[j].title);
+          }
+          
+          mem::release(p->segA[i].mp_playerA);
+          mem::release(p->segA[i].title);
+          list_destroy(p->segA[i].ui_list);
+        }
+
+        mem::release(p->segA);
+        list_destroy(p->beg_seg_list);
+        list_destroy(p->end_seg_list);
+        
+        return rc;
+      }
+
+      rc_t _on_mp_player_menu_select( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t     rc       = kOkRC;
+        unsigned in_idx   = var->vid - k01MpPlayerPId;
+        unsigned seg_idx  = kInvalidIdx;
+        unsigned player_id = kInvalidId;
+        
+        if( in_idx >= kVidToSegMapN )
+        {
+          rc = proc_error(proc,kInvalidArgRC,"The input vid %i is out of range:%i.",in_idx,kVidToSegMapN);
+          goto errLabel;
+        }
+
+        // map the variable vid to it's associated segment record
+        seg_idx = p->vidToSegMapA[ in_idx ];
+
+        if( seg_idx == kInvalidIdx || seg_idx >= p->segN )
+        {
+          rc = proc_error(proc,kInvalidArgRC,"The seg. index %i is out of range:%i.",seg_idx,p->segN);
+          goto errLabel;
+        }
+
+        
+        // get the index of the selected menu element
+        if((rc = var_get(var,player_id)) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+        // update the mp_player_id to use with this segment
+        p->segA[ seg_idx ].cur_mp_player_id = player_id; //p->segA[ seg_idx ].mp_playerA[ player_id ].mp_player_id;
+        
+        printf("PLYR_MENU_SEL:%s %i %i\n",p->segA[ seg_idx ].title, player_id, p->segA[ seg_idx ].cur_mp_player_id );
+        
+      errLabel:
+        if(rc != kOkRC )
+          proc_error(proc,rc,"MP player select failed.");
+        
+        return rc;
+      }
+
+      rc_t _on_set_start_player_id( proc_t* proc, inst_t* p, const variable_t* beg_seg_idx_var )
+      {
+        rc_t     rc      = kOkRC;
+        unsigned seg_idx = kInvalidIdx;
+
+        // get the new starting segment index (note that the menu selection index is the same as the selected segment index)
+        if((rc = var_get(beg_seg_idx_var,seg_idx)) != kOkRC )
+          goto errLabel;
+
+        // validate the segment index
+        if( seg_idx >= p->segN )
+        {
+          rc = proc_error(proc,kInvalidArgRC,"An invalid segment index '%i' was encountered from the 'beg_seg_idx' variable.");
+          goto errLabel;
+        }
+
+        // set the starting player id
+        if((rc = var_set(proc, kMpStartPlayIdPId, p->segA[ seg_idx ].cur_mp_player_id)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Starting player id update failed.");
+          goto errLabel;
+        }
+
+        printf("START-PLYR: seg_idx:%i player_id:%i\n",seg_idx,p->segA[ seg_idx ].cur_mp_player_id);
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _on_set_end_seg_idx(proc_t* proc,inst_t* p,variable_t* end_seg_var)
+      {
+        rc_t rc = kOkRC;
+        
+        unsigned beg_seg_idx = kInvalidIdx;
+        unsigned end_seg_idx = kInvalidIdx;
+
+        if((rc = var_get(end_seg_var,end_seg_idx)) != kOkRC )
+          goto errLabel;
+
+        if((rc = var_get(proc,kEndSegIdxPId,kAnyChIdx,beg_seg_idx)) != kOkRC )
+          goto errLabel;
+
+        if( end_seg_idx < beg_seg_idx )
+          cwLogWarning("The 'end segment' is before the begin segment. This will prevent playback.");
+
+      errLabel:
+        return rc;
+      }
+      
+      rc_t _on_reset( proc_t* proc )
+      {
+        rc_t rc = kOkRC;
+        
+        if((rc = var_set(proc,kSfResetFlPId,true)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"SF reset output failed.");
+          goto errLabel;
+        }
+        
+        if((rc = var_set(proc,kMpResetFlPId,true)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"MP player reset output failed.");
+          goto errLabel;
+        }
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _on_start( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        if((rc = _pre_play_setup(proc,p)) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+        // tell the MP player to start playing the current player on the current segment.
+        if((rc = var_set(proc,kMpPlayIdPId,p->segA[p->cur_seg_idx].cur_mp_player_id)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Error setting the MP player 'play' id.");
+          goto errLabel;
+        }
+
+        proc_info(proc,"Start - seg:%i player:%i",p->cur_seg_idx,p->segA[p->cur_seg_idx].cur_mp_player_id);
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _on_sf_loc( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t          rc   = kOkRC;
+        const rbuf_t* rbuf = nullptr;
+
+        // get the incoming score-follwed MIDI record
+        if((rc = var_get(var,rbuf)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // for each incoming record
+        for(unsigned i=0; i<rbuf->recdN; ++i)
+        {
+          unsigned loc_id = kInvalidId;
+
+          // get the loc field
+          if((rc = recd_get( rbuf->type, rbuf->recdA + i, p->loc_field_idx, loc_id)) != kOkRC )
+          {
+            goto errLabel;
+          }
+
+          if( loc_id != kInvalidId )
+          {
+
+            // if the location is past the end of the current segment ...
+            while( p->cur_seg_idx < p->segN && loc_id >= p->segA[p->cur_seg_idx].end_loc )
+            {
+              // ... advance the current segment
+              p->cur_seg_idx += 1;
+              
+              // if there is a next segment ....
+              if( p->cur_seg_idx < p->segN )
+              {
+                proc_info(proc,"Starting next segment:%i player:%i",p->cur_seg_idx,p->segA[p->cur_seg_idx].cur_mp_player_id);
+                
+                // ... then start it
+                if((rc = var_set(proc, kMpPlayIdPId, p->segA[p->cur_seg_idx].cur_mp_player_id )) != kOkRC )
+                  goto errLabel;
+              }
+            }
+          }
+        }
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+
+        switch( var->vid )
+        {
+          case kSfLocPId:
+            _on_sf_loc(proc,p,var);
+            break;
+            
+          case k01MpPlayerPId:
+          case k02MpPlayerPId:
+          case k03MpPlayerPId:
+          case k04MpPlayerPId:
+          case k05MpPlayerPId:
+          case k06MpPlayerPId:
+          case k07MpPlayerPId:
+          case k08MpPlayerPId:
+          case k09MpPlayerPId:
+          case k10MpPlayerPId:
+          case k11MpPlayerPId:
+          case k12MpPlayerPId:
+          case k13MpPlayerPId:
+          case k14MpPlayerPId:
+          case k15MpPlayerPId:
+          case k16MpPlayerPId:
+          case k17MpPlayerPId:
+          case k18MpPlayerPId:
+            _on_mp_player_menu_select(proc,p,var);
+            break;
+
+          case kBegSegIdxPId:
+            _on_set_start_player_id( proc, p, var );
+            break;
+
+          case kEndSegIdxPId:
+            _on_set_end_seg_idx(proc,p,var);
+            break;
+            
+          case kResetPId:
+            _on_reset(proc);
+            break;
+
+          case kStartPId:
+            _on_start(proc,p);
+            break;
+            
+        }
+        
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t rc      = kOkRC;
+        
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    // demo_202602_ctl
+
     
   } // flow
 } //cw
