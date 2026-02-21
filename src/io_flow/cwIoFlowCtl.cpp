@@ -243,7 +243,7 @@ namespace cw
       {
         const object_t* pgm = pgmL->child_ele(i);
 
-        if( pgm->pair_label()==nullptr || pgm->pair_value()==nullptr || !pgm->pair_value()->is_dict() )
+        if( !pgm->is_pair() || pgm->pair_label()==nullptr || pgm->pair_value()==nullptr || !pgm->pair_value()->is_dict() )
         {
           rc = cwLogError(kSyntaxErrorRC,"The program at index %i has a syntax error.",i);
           goto errLabel;
@@ -1051,6 +1051,7 @@ cw::rc_t cw::io_flow_ctl::set_variable_value( handle_t h, const flow::ui_var_t* 
 { return set_variable_value( _handleToPtr(h)->flowH, ui_var, value ); }
 cw::rc_t cw::io_flow_ctl::set_variable_value( handle_t h, const flow::ui_var_t* ui_var, unsigned value )
 { return set_variable_value( _handleToPtr(h)->flowH, ui_var, value ); }
+
 cw::rc_t cw::io_flow_ctl::set_variable_value( handle_t h, const flow::ui_var_t* ui_var, float value )
 { return set_variable_value( _handleToPtr(h)->flowH, ui_var, value ); }
 cw::rc_t cw::io_flow_ctl::set_variable_value( handle_t h, const flow::ui_var_t* ui_var, double value )
