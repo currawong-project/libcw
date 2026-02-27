@@ -33,6 +33,7 @@ namespace cw
       uint8_t  vel;      
       unsigned sample_idx;
       double   sec;
+      unsigned loc;
     } midi_evt_t;
 
     typedef struct midi_file_str
@@ -264,6 +265,35 @@ namespace cw
         rc = cwLogError(rc,"MIDI csv file parse failed on '%s'.",cwStringNullGuard(midi_csv_fname));
       return rc;      
     }
+
+    rc_t _set_loc_in_mf( score_follow_2::handle_t sfH,
+                         midi_file_t& mf )
+    {
+      rc_t rc = kOkRC;
+      
+      const score_follow_2::result_t* resultA = nullptr;
+      unsigned resultN = 0;
+      
+      if((resultA = result_array(sfH,resultN)) == nullptr )
+      {
+        rc = cwLogError(kOpFailRC,"The score follower result could not be accessed to be written.");
+        goto errLabel;
+      }
+      else        
+      {
+        // for each found location
+        for(unsigned i=0; i<resultN; ++i)
+        {
+          // for each midi note-on event
+          for(unsigned j=0; j<mf.evtN; ++j )
+            if(mf.evtA[j].uid == resultA[i].perf_uid )
+              mf.evtA[j].loc = resultA[i].match_loc_id;
+        }
+      
+      }
+    errLabel:
+      return rc;
+    }
     
     rc_t run( perf_score::handle_t& scoreH,
               double          srate,
@@ -272,7 +302,7 @@ namespace cw
               unsigned        beg_loc_id,
               unsigned        end_loc_id,
               bool            rpt_per_note_fl,
-              const midi_file_t& mf,
+              midi_file_t& mf,
               score_follow_2::rpt_t& rpt_ref )
     {
 
@@ -306,7 +336,7 @@ namespace cw
       }
 
       // for each cycle
-      for(unsigned smp_idx=0; smp_idx < mf.sampleN; smp_idx += smp_per_cycle)        
+      for(unsigned smp_idx=0; midi_evt_idx<mf.evtN && smp_idx < mf.sampleN; smp_idx += smp_per_cycle)        
       {
         while( smp_idx <= mf.evtA[midi_evt_idx].sample_idx && mf.evtA[midi_evt_idx].sample_idx < smp_idx + smp_per_cycle )
         {
@@ -345,6 +375,9 @@ namespace cw
           }
         }
       }
+
+      _set_loc_in_mf(sfH,mf);
+      
       score_follow_2::report_summary(sfH,rpt_ref);
       
     errLabel:
