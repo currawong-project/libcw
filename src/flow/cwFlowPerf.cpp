@@ -1595,6 +1595,7 @@ namespace cw
         const char* vel_tbl_fname = nullptr;
         const char* vel_tbl_label = nullptr;
         const rbuf_t* rbuf = nullptr;
+        rbuf_t* o_rbuf = nullptr;
         unsigned recdBufN = 128;
         
         if((rc = var_register_and_get(proc,kAnyChIdx,
@@ -1625,12 +1626,19 @@ namespace cw
           goto errLabel;                          
         }
 
-        // create the internal record array
-        if((rc = recd_array_create( p->recd_array, rbuf->type, nullptr,  rbuf->maxRecdN )) != kOkRC )
+        
+        // create one output record buffer
+        if((rc = var_alloc_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, p->recd_array )) != kOkRC )
         {
-          rc = proc_error(proc,rc,"The internal record array create failed.");
-          goto errLabel;                                    
+          goto errLabel;
         }
+
+        // create the internal record array
+        //if((rc = recd_array_create( p->recd_array, rbuf->type, nullptr,  rbuf->maxRecdN )) != kOkRC )
+        //{
+        //  rc = proc_error(proc,rc,"The internal record array create failed.");
+        //  goto errLabel;                                    
+        //}
         
         // get the record field index for the outgoing record
         if((p->o_midi_fld_idx = recd_type_field_index( p->recd_array->type, "midi")) == kInvalidIdx )
@@ -1639,12 +1647,7 @@ namespace cw
           goto errLabel;                          
         }
 
-        // create one output record buffer
-        if((rc = var_alloc_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, p->recd_array )) != kOkRC )
-        {
-          goto errLabel;
-        }
-
+        
         p->midiN = p->recd_array->allocRecdN;
         p->midiA = mem::allocZ<midi::ch_msg_t>(p->midiN);
 
@@ -1770,7 +1773,7 @@ namespace cw
           }
 
           // update the MIDI pointer in the output record 
-          recd_set(o_rbuf->type,i_r,o_r,p->o_midi_fld_idx, o_m );
+          recd_set(o_rbuf->type,nullptr,o_r,p->o_midi_fld_idx, o_m );
         }
 
         //printf("RECDN:%i\n",i_rbuf->recdN);
@@ -3382,7 +3385,7 @@ namespace cw
           goto errLabel;
         }
         
-        if((rc = var_alloc_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, p->recd_array )) != kOkRC )
+        if((rc = var_alloc_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, in_rbuf->type, p->recd_array )) != kOkRC )
         {
           goto errLabel;
         }
@@ -3565,8 +3568,8 @@ namespace cw
               }
             }
 
-            //_set_output_record( proc, p, o_rbuf, i_rbuf->recdA+i, loc_id, meas_numb, score_vel );
-            _set_output_record( proc, p, o_rbuf, nullptr, loc_id, meas_numb, score_vel );
+            _set_output_record( proc, p, o_rbuf, i_rbuf->recdA+i, loc_id, meas_numb, score_vel );
+            //_set_output_record( proc, p, o_rbuf, nullptr, loc_id, meas_numb, score_vel );
           
           }
         }
