@@ -170,8 +170,8 @@ TEST_F(FileTest, LastRC) {
     // After a failed read
     createTempFile(test_filename, "data");
     open(h, test_filename, kReadFl);
-    char buf[1];
-    read(h, buf, 100); // Try to read more than available
+    char buf[100];
+    read(h, buf, 10); // Try to read more than available in the file
     EXPECT_EQ(lastRC(h), kEofRC); // Should be EOF after attempting to read past end
     close(h);
 
