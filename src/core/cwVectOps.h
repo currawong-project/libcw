@@ -348,7 +348,7 @@ namespace cw
     //
     // Fill y[0:min(n,cnt)] with values {beg,beg+step,beg+2*step .... beg+(cnt-1)*step}}
     template< typename T >
-      void seq( T* y, unsigned n, const T& beg, const T& cnt, const T& step )
+      void seq( T* y, unsigned n, const T& beg, const unsigned& cnt, const T& step )
     {
       if( cnt < n )
         n = cnt;
