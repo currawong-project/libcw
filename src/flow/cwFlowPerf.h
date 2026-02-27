@@ -12,6 +12,6 @@ namespace cw
     namespace gutim_sf_ctl     { extern class_members_t members;  }    
     namespace gutim_spirio_ctl { extern class_members_t members;  }
     namespace gutim_pgm_ctl    { extern class_members_t members;  }
-    
+    namespace demo_202602_ctl  { extern class_members_t members;  }
   }
 }

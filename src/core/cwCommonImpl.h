@@ -172,6 +172,55 @@ namespace cw
   unsigned    labelToId( const idLabelPair_t* array, const char* label, unsigned eolId );
 
 
+  template< typename T >
+  struct id_label_pair_tpl
+  {
+    T id;
+    const char* label;
+  };
+
+  template< typename T >
+  const id_label_pair_tpl<T>* id_to_slot( const id_label_pair_tpl<T>* array, const T& id, const T& eolId )
+  {
+    const id_label_pair_tpl<T>* p = array;
+    for(; p->id != eolId; ++p)
+      if( p->id == id )
+        break;
+    
+    return p;    
+  }
+  
+  template< typename T >
+  const char* id_to_label_null( const id_label_pair_tpl<T>* array, const T& id, const T& eolId )
+  {
+    const id_label_pair_tpl<T>* p = id_to_slot(array,id,eolId);
+    
+    return p->id == eolId ? nullptr : p->label;
+  }
+
+  template< typename T >
+  const char* id_to_label( const id_label_pair_tpl<T>* array, const T& id, const T&  eolId )
+  {
+    const id_label_pair_tpl<T>* p = id_to_slot(array,id,eolId);
+    
+    return p->label;
+  }
+
+  template< typename T >
+  T label_to_id( const id_label_pair_tpl<T>* array, const char* label, const T& eolId )
+  {
+    const id_label_pair_tpl<T>* p = array;
+    
+    if( label != nullptr )
+      for(; p->id != eolId; ++p)
+        if( p->label != nullptr && std::strcmp(label,p->label) == 0 )
+          return p->id;
+    
+    return eolId;
+  }
+  
+
+
   inline rc_t rcSelect() { return kOkRC; }
 
   template<typename T, typename... ARGS>

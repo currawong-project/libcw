@@ -549,8 +549,8 @@ namespace cw
     
     void               proc_print( proc_t* proc );
 
-    rc_t               proc_log_msg( proc_t* proc, variable_t* var, log::handle_t logH, log::logLevelId_t log_level, const char* function, const char* file, unsigned line, rc_t rc, const char* fmt, va_list vl );
-    rc_t               proc_log_msg( proc_t* proc, variable_t* var, log::handle_t logH, log::logLevelId_t log_level, const char* function, const char* file, unsigned line, rc_t rc, const char* fmt, ... );
+    rc_t               net_log_msg( const network_t* net, const proc_t* proc, const variable_t* var, log::handle_t logH, log::logLevelId_t level, const char* function, const char* filename, unsigned line, rc_t rc, const char* fmt, va_list vl );
+    rc_t               net_log_msg( const network_t* net, const proc_t* proc, const variable_t* var, log::handle_t logH, log::logLevelId_t level, const char* function, const char* filename, unsigned line, rc_t rc, const char* fmt, ... );
 
 
     // Count of all var instances on this proc.  This is a count of the length of proc->varL.
@@ -877,15 +877,21 @@ namespace cw
   }
 }
 
-#define proc_printf(proc,   fmt,...) cw::flow::proc_log_msg( proc, nullptr, cw::log::globalHandle(), cw::log::kPrint_LogLevel,   __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
-#define proc_debug( proc,   fmt,...) cw::flow::proc_log_msg( proc, nullptr, cw::log::globalHandle(), cw::log::kDebug_LogLevel,   __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
-#define proc_info(  proc,   fmt,...) cw::flow::proc_log_msg( proc, nullptr, cw::log::globalHandle(), cw::log::kInfo_LogLevel,    __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
-#define proc_warn(  proc,   fmt,...) cw::flow::proc_log_msg( proc, nullptr, cw::log::globalHandle(), cw::log::kWarning_LogLevel, __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
-#define proc_error( proc,rc,fmt,...) cw::flow::proc_log_msg( proc, nullptr, cw::log::globalHandle(), cw::log::kError_LogLevel,   __FUNCTION__, __FILE__, __LINE__, rc,    fmt, ##__VA_ARGS__ )
+#define net_printf(net,   fmt,...) cw::flow::net_log_msg( net, nullptr, nullptr, cw::log::globalHandle(), cw::log::kPrint_LogLevel,   __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
+#define net_debug( net,   fmt,...) cw::flow::net_log_msg( net, nullptr, nullptr, cw::log::globalHandle(), cw::log::kDebug_LogLevel,   __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
+#define net_info(  net,   fmt,...) cw::flow::net_log_msg( net, nullptr, nullptr, cw::log::globalHandle(), cw::log::kInfo_LogLevel,    __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
+#define net_warn(  net,   fmt,...) cw::flow::net_log_msg( net, nullptr, nullptr, cw::log::globalHandle(), cw::log::kWarning_LogLevel, __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
+#define net_error( net,rc,fmt,...) cw::flow::net_log_msg( net, nullptr, nullptr, cw::log::globalHandle(), cw::log::kError_LogLevel,   __FUNCTION__, __FILE__, __LINE__, rc,    fmt, ##__VA_ARGS__ )
 
-#define var_printf(proc,  fmt,...) cw::flow::proc_log_msg( nullptr, var, cw::log::globalHandle(), cw::log::kPrint_LogLevel,   __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
-#define var_debug( proc,  fmt,...) cw::flow::proc_log_msg( nullptr, var, cw::log::globalHandle(), cw::log::kDebug_LogLevel,   __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
-#define var_info(  proc,  fmt,...) cw::flow::proc_log_msg( nullptr, var, cw::log::globalHandle(), cw::log::kInfo_LogLevel,    __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
-#define var_warn(  var,   fmt,...) cw::flow::proc_log_msg( nullptr, var, cw::log::globalHandle(), cw::log::kWarning_LogLevel, __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
-#define var_error( var,rc,fmt,...) cw::flow::proc_log_msg( nullptr, var, cw::log::globalHandle(), cw::log::kError_LogLevel,   __FUNCTION__, __FILE__, __LINE__, rc, fmt, ##__VA_ARGS__ )
+#define proc_printf(proc,   fmt,...) cw::flow::net_log_msg( nullptr, proc, nullptr, cw::log::globalHandle(), cw::log::kPrint_LogLevel,   __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
+#define proc_debug( proc,   fmt,...) cw::flow::net_log_msg( nullptr, proc, nullptr, cw::log::globalHandle(), cw::log::kDebug_LogLevel,   __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
+#define proc_info(  proc,   fmt,...) cw::flow::net_log_msg( nullptr, proc, nullptr, cw::log::globalHandle(), cw::log::kInfo_LogLevel,    __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
+#define proc_warn(  proc,   fmt,...) cw::flow::net_log_msg( nullptr, proc, nullptr, cw::log::globalHandle(), cw::log::kWarning_LogLevel, __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
+#define proc_error( proc,rc,fmt,...) cw::flow::net_log_msg( nullptr, proc, nullptr, cw::log::globalHandle(), cw::log::kError_LogLevel,   __FUNCTION__, __FILE__, __LINE__, rc,    fmt, ##__VA_ARGS__ )
+
+#define var_printf(proc,  fmt,...) cw::flow::net_log_msg( nullptr, nullptr, var, cw::log::globalHandle(), cw::log::kPrint_LogLevel,   __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
+#define var_debug( proc,  fmt,...) cw::flow::net_log_msg( nullptr, nullptr, var, cw::log::globalHandle(), cw::log::kDebug_LogLevel,   __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
+#define var_info(  proc,  fmt,...) cw::flow::net_log_msg( nullptr, nullptr, var, cw::log::globalHandle(), cw::log::kInfo_LogLevel,    __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
+#define var_warn(  var,   fmt,...) cw::flow::net_log_msg( nullptr, nullptr, var, cw::log::globalHandle(), cw::log::kWarning_LogLevel, __FUNCTION__, __FILE__, __LINE__, kOkRC, fmt, ##__VA_ARGS__ )
+#define var_error( var,rc,fmt,...) cw::flow::net_log_msg( nullptr, nullptr, var, cw::log::globalHandle(), cw::log::kError_LogLevel,   __FUNCTION__, __FILE__, __LINE__, rc, fmt, ##__VA_ARGS__ )
 
