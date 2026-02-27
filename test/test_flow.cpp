@@ -81,18 +81,18 @@ TEST( FlowTest, NumberTest )
 	      procs: {
 	        n_a : { class: number, args:{ in:1 } }
 	        n_b : { class: number, args:{ in:1 } }
-	        add_a : { class: add, in: { in0:n_a.out, in1:n_b.out } },	    
+	        add_a : { class: add, in: { in0:n_a.out, in1:n_b.out } }
 	        p_a : { class: print, in:{ in0:add_a.out }, args:{ text:["A:"], eol_str:" "} }
 	    
 	        n_c : { class: number, args:{ in:1 } }
-	        add_b : { class: add, in: { in0:n_c.out, in1:add_a.out }, out:{ out:n_a.in } }
-	        p_b : { class: print, in:{ in0::add_b.out } args:{ text:["B:"], eol_str:" " } }
+	        add_b : { class: add,   in: { in0:n_c.out, in1:add_a.out }, out:{ out:n_a.in } }
+	        p_b   : { class: print, in: { in0:add_b.out }, args:{ text:["B:"], eol_str:" " } }
 	      } 
 	    }
     })";
 
   const char* result = "A:2.000000 B:3.000000 A:4.000000 B:5.000000 A:6.000000 B:7.000000 A:8.000000 B:9.000000 A:10.000000 B:11.000000 A:12.000000 B:13.000000 A:14.000000 B:15.000000 A:16.000000 B:17.000000 A:18.000000 B:19.000000 A:20.000000 B:21.000000 ";
-  
+
   EXPECT_EQ( FlowExec(pgm_src,result), kOkRC );
     
 }
