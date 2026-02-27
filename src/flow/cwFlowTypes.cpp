@@ -48,7 +48,7 @@ namespace cw
         return cwLogError(kInvalidArgRC,"Cannnot get the value of a non-existent variable.");
       
       if( var->value == nullptr )
-        return cwLogError(kInvalidStateRC,"No value has been assigned to the variable: %s:%i.%s:%i ch:%i.",cwStringNullGuard(var->proc->label),var->proc->label_sfx_id,cwStringNullGuard(var->label),var->label_sfx_id,var->chIdx);
+        return var_error(var,kInvalidStateRC,"No value has been assigned to the variable: %s:%i.%s:%i ch:%i.",cwStringNullGuard(var->proc->label),var->proc->label_sfx_id,cwStringNullGuard(var->label),var->label_sfx_id,var->chIdx);
 
       return value_get(var->value,valRef);
     
@@ -69,7 +69,7 @@ namespace cw
           return kOkRC;
         }
       }
-      return cwLogError(kInvalidIdRC,"The variable matching id:%i ch:%i on proc '%s:%i' could not be found.", vid, chIdx, proc->label, proc->label_sfx_id);
+      return proc_error(proc,kInvalidIdRC,"The variable matching id:%i ch:%i on proc '%s:%i' could not be found.", vid, chIdx, proc->label, proc->label_sfx_id);
     }
 
     // Variable lookup: Exact match on label and chIdx
@@ -89,14 +89,14 @@ namespace cw
     {
       rc_t rc = kOkRC;
       if((var_ref = _var_find_on_label_and_ch(proc,var_label,sfx_id,chIdx)) == nullptr )
-        rc = cwLogError(kEleNotFoundRC,"The variable '%s:%i' cannot be found on the proc:%s.",cwStringNullGuard(var_label),sfx_id,cwStringNullGuard(proc->label));
+        rc = proc_error(proc,kEleNotFoundRC,"The variable '%s:%i' cannot be found on the proc:%s.",cwStringNullGuard(var_label),sfx_id,cwStringNullGuard(proc->label));
       return rc;
     }
     
     rc_t _validate_var_assignment( variable_t* var, unsigned typeFl )
     {
       if( cwIsFlag(var->varDesc->flags, kSrcVarDescFl ) )
-        return cwLogError(kInvalidStateRC, "The variable '%s:%i' on proc '%s:%i' cannot be set because it is a 'src' variable.", var->label, var->label_sfx_id, var->proc->label,var->proc->label_sfx_id);
+        return var_error(var,kInvalidStateRC, "The variable '%s:%i' on proc '%s:%i' cannot be set because it is a 'src' variable.", var->label, var->label_sfx_id, var->proc->label,var->proc->label_sfx_id);
       /*
       if( !cwIsFlag(var->varDesc->type, typeFl ) )
         return cwLogError(kTypeMismatchRC, "The variable '%s:%i' on proc '%s:%i' is not a  '%s'.", var->label, var->label_sfx_id, var->proc->label, var->proc->label_sfx_id, _typeFlagToLabel( typeFl ));
@@ -184,7 +184,7 @@ namespace cw
         // (use acquire to prevent rd/wr from moving before this op)
         if( var->proc->modVarMapFullCnt.fetch_add(1,std::memory_order_acquire) >= var->proc->modVarMapN )
         {
-          rc = cwLogError(kBufTooSmallRC,"The mod var map overflowed on '%s:%i-%s:%i'",cwStringNullGuard(var->proc->label),var->proc->label_sfx_id,cwStringNullGuard(var->label),var->label_sfx_id);
+          rc = var_error(var,kBufTooSmallRC,"The mod var map overflowed on '%s:%i-%s:%i'",cwStringNullGuard(var->proc->label),var->proc->label_sfx_id,cwStringNullGuard(var->label),var->label_sfx_id);
           goto errLabel;
         }
       
@@ -212,7 +212,7 @@ namespace cw
       
       // it is not legal to set the value of a variable that is connected to a 'source' variable.
       if( var->src_var != nullptr )
-        return cwLogError(kInvalidStateRC, "The variable '%s:%i %s:%i' cannot be set because it is connected to a source variable.", var->proc->label,var->proc->label_sfx_id, var->label, var->label_sfx_id);      
+        return var_error(var,kInvalidStateRC, "The variable '%s:%i %s:%i' cannot be set because it is connected to a source variable.", var->proc->label,var->proc->label_sfx_id, var->label, var->label_sfx_id);      
 
       
       // var->type is the allowable type for this var's value.
@@ -238,7 +238,7 @@ namespace cw
         // if the incoming type is not in the set of allowable types then it is an error
         if( value_type_flag == 0  )
         {
-          rc = cwLogError(kTypeMismatchRC,"The type 0x%x is not valid for the variable: %s:%i %s:%i type:0x%x.",
+          rc = var_error(var,kTypeMismatchRC,"The type 0x%x is not valid for the variable: %s:%i %s:%i type:0x%x.",
                           argTypeFlag,var->proc->label,var->proc->label_sfx_id,var->label,var->label_sfx_id,var->varDesc->type);
           goto errLabel;
         }
@@ -250,7 +250,7 @@ namespace cw
       // set the new local value in var->local_value[next_local_value_idx]
       if((rc = value_set(&var->my_value, val)) != kOkRC )
       {
-        rc = cwLogError(rc,"Value set failed on '%s:%i %s:%i",var->proc->label,var->proc->label_sfx_id,var->label,var->label_sfx_id);
+        rc = var_error(var,rc,"Value set failed on '%s:%i %s:%i",var->proc->label,var->proc->label_sfx_id,var->label,var->label_sfx_id);
         goto errLabel;
       }
 
@@ -295,7 +295,7 @@ namespace cw
       // if this variable is fed from the output of an external proc - then it's local value cannot be set
       if(is_connected_to_source(var)   )
       {
-        return cwLogError(kInvalidStateRC,"Cannot set the value on the connected variable %s:%i-%s:%i.",var->proc->label,var->proc->label_sfx_id,var->label,var->label_sfx_id);
+        return var_error(var,kInvalidStateRC,"Cannot set the value on the connected variable %s:%i-%s:%i.",var->proc->label,var->proc->label_sfx_id,var->label,var->label_sfx_id);
       }
 
       // if this assignment targets a specific channel ...
@@ -311,7 +311,7 @@ namespace cw
       }
 
       if(rc != kOkRC )
-        rc = cwLogError(rc,"Variable value set failed on '%s:%i %s:%i",cwStringNullGuard(var->proc->label),var->proc->label_sfx_id,cwStringNullGuard(var->label),var->label_sfx_id);
+        rc = var_error(var,rc,"Variable value set failed on '%s:%i %s:%i",cwStringNullGuard(var->proc->label),var->proc->label_sfx_id,cwStringNullGuard(var->label),var->label_sfx_id);
       
       return rc;
     }
@@ -377,7 +377,7 @@ namespace cw
 
       // verify that the map idx is valid
       if( idx >= proc->varMapN )
-        return cwLogError(kAssertFailRC,"The variable map positioning location %i is out of the range %i on proc '%s:%i' vid:%i ch:%i.", idx, proc->varMapN, proc->label,proc->label_sfx_id,vid,chIdx);
+        return proc_error(proc,kAssertFailRC,"The variable map positioning location %i is out of the range %i on proc '%s:%i' vid:%i ch:%i.", idx, proc->varMapN, proc->label,proc->label_sfx_id,vid,chIdx);
 
       idxRef = idx;
   
@@ -409,7 +409,7 @@ namespace cw
       
       if((base_var = _var_find_on_label_and_ch( proc, new_var->label, new_var->label_sfx_id, kAnyChIdx )) == nullptr )
       {
-        rc = cwLogError(kInvalidStateRC,"The base channel variable does not exist for '%s:%i.%s:%i'. This is an illegal state.", proc->label, proc->label_sfx_id, new_var->label, new_var->label_sfx_id );
+        rc = proc_error(proc,kInvalidStateRC,"The base channel variable does not exist for '%s:%i.%s:%i'. This is an illegal state.", proc->label, proc->label_sfx_id, new_var->label, new_var->label_sfx_id );
         goto errLabel;
       }
 
@@ -439,7 +439,7 @@ namespace cw
 
       if( cwIsNotFlag(var->classVarDesc->type,kRuntimeTFl) )
       {
-        rc = cwLogError(kOpFailRC,"It is invalid to change the type of a static (non-runtime) type variable.");
+        rc = var_error(var,kOpFailRC,"It is invalid to change the type of a static (non-runtime) type variable.");
         goto errLabel;
       }
 
@@ -471,14 +471,14 @@ namespace cw
       // if this var already exists - it can't be created again
       if((var = _var_find_on_label_and_ch(proc,var_label, sfx_id, chIdx)) != nullptr )
       {
-        rc = cwLogError(kInvalidStateRC,"The variable '%s:%i' ch:%i has already been created on the proc: '%s:%i'.",var_label,sfx_id,chIdx,proc->label,proc->label_sfx_id);
+        rc = proc_error(proc,kInvalidStateRC,"The variable '%s:%i' ch:%i has already been created on the proc: '%s:%i'.",var_label,sfx_id,chIdx,proc->label,proc->label_sfx_id);
         goto errLabel;
       }
 
       // locate the var desc
       if((vd = var_desc_find( proc->class_desc, var_label)) == nullptr )
       {
-        rc = cwLogError(kInvalidIdRC,"Unable to locate the variable '%s:%i' in class '%s'.", var_label, sfx_id, proc->class_desc->label );
+        rc = proc_error(proc,kInvalidIdRC,"Unable to locate the variable '%s:%i' in class '%s'.", var_label, sfx_id, proc->class_desc->label );
         goto errLabel;
       }
 
@@ -532,7 +532,7 @@ namespace cw
       if( rc != kOkRC )
       {
         var_destroy(var);
-        cwLogError(kOpFailRC,"Variable creation failed on '%s:%i.%s:%i' ch:%i.", proc->label, proc->label_sfx_id, var_label, sfx_id, chIdx );
+        proc_error(proc,kOpFailRC,"Variable creation failed on '%s:%i.%s:%i' ch:%i.", proc->label, proc->label_sfx_id, var_label, sfx_id, chIdx );
       }
       else
       {
@@ -605,13 +605,13 @@ namespace cw
   
       if((rc = string_cfg->value(s)) != kOkRC )
       {
-        rc = cwLogError(rc,"The record format specifier string could not be accessed.");
+        rc = net_error(&net,rc,"The record format specifier string could not be accessed.");
         goto errLabel;
       }
   
       if((recd_fmt_cfg_ref = network_find_record_format( net, s )) == nullptr )
       {
-        rc = cwLogError(kEleNotFoundRC,"The record format identifier '%s' could not be found.",cwStringNullGuard(s));
+        rc = net_error(&net,kEleNotFoundRC,"The record format identifier '%s' could not be found.",cwStringNullGuard(s));
         goto errLabel;
       }
 
@@ -973,7 +973,7 @@ cw::rc_t cw::flow::proc_mult_sfx_id_array( const network_t& net, const char* pro
     {
       if( multN >= idAllocN )
       {
-        rc = cwLogError(kBufTooSmallRC,"The mult-sfx-id result array is too small for the proc:'%s'.",cwStringNullGuard(proc_label));
+        rc = net_error(&net,kBufTooSmallRC,"The mult-sfx-id result array is too small for the proc:'%s'.",cwStringNullGuard(proc_label));
         goto errLabel;
       }
       
@@ -1010,13 +1010,13 @@ const cw::object_t* cw::flow::network_find_record_format( const network_t& net, 
 
     if( class_desc_char_cnt == 0 )
     {
-      cwLogError(kInvalidArgRC,"The record format name '%s' does not contain a proc. description part.",cwStringNullGuard(format_name));
+      net_error(&net,kInvalidArgRC,"The record format name '%s' does not contain a proc. description part.",cwStringNullGuard(format_name));
       goto errLabel;
     }
 
     if( textLength(period) < 1 )
     {
-      cwLogError(kInvalidArgRC,"The record format name '%s' does not contain a variable description part.",cwStringNullGuard(format_name));
+      net_error(&net,kInvalidArgRC,"The record format name '%s' does not contain a variable description part.",cwStringNullGuard(format_name));
       goto errLabel;
     }
 
@@ -1032,7 +1032,7 @@ const cw::object_t* cw::flow::network_find_record_format( const network_t& net, 
           {
             if( vd->fmt.recd_fmt == nullptr )
             {
-              cwLogError(kInvalidArgRC,"A class proc/variable named '%s' was found but it does not have a record format specifier.",format_name);
+              net_error(&net,kInvalidArgRC,"A class proc/variable named '%s' was found but it does not have a record format specifier.",format_name);
               goto errLabel;
             }
             
@@ -1044,7 +1044,7 @@ const cw::object_t* cw::flow::network_find_record_format( const network_t& net, 
   
 errLabel:
   if( recd_fmt_cfg == nullptr )
-    cwLogError(kEleNotFoundRC,"A record format named '%s' could not be found.",format_name);
+    net_error(&net,kEleNotFoundRC,"A record format named '%s' could not be found.",format_name);
     
   
   return recd_fmt_cfg;
@@ -1097,33 +1097,33 @@ cw::rc_t cw::flow::proc_validate( proc_t* proc )
   {
     if( var->label == nullptr )
     {
-      rc = cwLogError(kInvalidStateRC,"A var with no label was encountered.");
+      rc = var_error(var,kInvalidStateRC,"A var with no label was encountered.");
       continue;      
     }
 
     if( var->vid == kInvalidId )
     {
-      rc = cwLogError(kInvalidStateRC,"The var '%s:%i' has not been registered.",var->label,var->label_sfx_id);
+      rc = var_error(var,kInvalidStateRC,"The var '%s:%i' has not been registered.",var->label,var->label_sfx_id);
       continue;
     }
     
     if( var->value == nullptr )
     {
-      rc = cwLogError(kInvalidStateRC,"The var '%s:%i' has no value.",var->label,var->label_sfx_id);
+      rc = var_error(var,kInvalidStateRC,"The var '%s:%i' has no value.",var->label,var->label_sfx_id);
       continue;      
     }
 
     // the assigned value must have exactly one type
     if(!math::isPowerOfTwo( var->value->tflag ) )
     {
-      rc = cwLogError(kInvalidStateRC,"The var '%s:%i' has the invalid type flag:0x%x",var->label,var->label_sfx_id,var->value->tflag);
+      rc = var_error(var,kInvalidStateRC,"The var '%s:%i' has the invalid type flag:0x%x",var->label,var->label_sfx_id,var->value->tflag);
       continue;
     }
 
     // if var is using a local value (not connected to a source variable) then the type of the value must be valid with the variable class
     if( !is_connected_to_source(var) && !(var->varDesc->type & var->value->tflag) )
     {
-      rc = cwLogError(kInvalidStateRC, "The value type flag '%s' (0x%x) of '%s:%i-%s:%i' is not found in the variable class type flags: '%s' (0x%x)",
+      rc = var_error(var,kInvalidStateRC, "The value type flag '%s' (0x%x) of '%s:%i-%s:%i' is not found in the variable class type flags: '%s' (0x%x)",
                       value_type_flag_to_label(var->value->tflag),var->value->tflag,
                       var->proc->label,var->proc->label_sfx_id,
                       var->label,var->label_sfx_id,
@@ -1164,7 +1164,7 @@ cw::rc_t cw::flow::proc_find( network_t& net, const char* proc_label, unsigned s
   if((procPtrRef = proc_find(net,proc_label,sfx_id)) != nullptr )
     return rc;
       
-  return cwLogError(kInvalidArgRC,"The proc '%s:%i' was not found.", proc_label, sfx_id );
+  return net_error(&net,kInvalidArgRC,"The proc '%s:%i' was not found.", proc_label, sfx_id );
 }
 
 const cw::flow::class_preset_t* cw::flow::proc_preset_find( const proc_t* proc, const char* preset_label )
@@ -1186,7 +1186,7 @@ cw::rc_t cw::flow::proc_recd_format_create( proc_t* proc, const object_t* recd_c
   
   if( recd_cfg_specifier == nullptr )
   {
-    rc = cwLogError(kInvalidArgRC,"The record format specifier is empty.");
+    rc = proc_error(proc,kInvalidArgRC,"The record format specifier is empty.");
     goto errLabel;
   }
 
@@ -1210,7 +1210,7 @@ cw::rc_t cw::flow::proc_recd_format_create( proc_t* proc, const object_t* recd_c
     // if the specifier is a dictionary
     if( !recd_cfg_specifier->is_dict() )
     {
-      rc = cwLogError(kInvalidArgRC,"The record format specifier must be either a string or dictionary.");
+      rc = proc_error(proc,kInvalidArgRC,"The record format specifier must be either a string or dictionary.");
       goto errLabel;
     }
 
@@ -1222,7 +1222,7 @@ cw::rc_t cw::flow::proc_recd_format_create( proc_t* proc, const object_t* recd_c
       // 'alloc_cnt' is optional - and is ignored if it is less than the parameter 'allocRecdN'.
       if((rc = recd_cfg_specifier->getv_opt("alloc_cnt",opt_alloc_recdN)) != kOkRC )
       {
-        rc = cwLogError(rc,"An error occurred while attempting to parse the 'alloc_cnt' field.");
+        rc = proc_error(proc,rc,"An error occurred while attempting to parse the 'alloc_cnt' field.");
         goto errLabel;
       }
 
@@ -1278,7 +1278,7 @@ cw::rc_t  cw::flow::global_var_alloc( proc_t* proc, const char* var_label, const
 
   if((v = global_var(proc,var_label)) != nullptr )
   {
-    rc = cwLogError(kInvalidArgRC,"The global variable '%s:%s' already exists.",cwStringNullGuard(proc->class_desc->label),cwStringNullGuard(var_label));
+    rc = proc_error(proc,kInvalidArgRC,"The global variable '%s:%s' already exists.",cwStringNullGuard(proc->class_desc->label),cwStringNullGuard(var_label));
     goto errLabel;
   }
 
@@ -1312,6 +1312,118 @@ void cw::flow::proc_print( proc_t* proc )
     proc->class_desc->members->report( proc );
 }
 
+cw::rc_t  cw::flow::net_log_msg( const network_t* net, const proc_t* proc, const variable_t* var, log::handle_t logH, log::logLevelId_t level, const char* function, const char* filename, unsigned line, rc_t rc, const char* fmt, va_list vl )
+{
+  const char* var_label  = "";
+  const char* var_fmt    = "%s:%i";
+  unsigned    var_labelN = 0;
+
+  const char* proc_label  = "";
+  const char* proc_fmt    = "%s:%i";
+  unsigned    proc_labelN = 0;
+
+  unsigned    net_labelN  = 0;
+  const char* net_label = "";
+
+  const char* prefix_fmt  = "%s.%s.%s";
+
+  // if a var was given then get the length of its label
+  if( var == nullptr )
+    prefix_fmt = "%s.%s%s";
+  else
+  {
+    var_labelN = snprintf(nullptr,0,var_fmt,var->label,var->label_sfx_id);
+
+    if( proc == nullptr && var->proc != nullptr )
+      proc = var->proc;
+  }
+
+  // if a proc was given then get the length of its label
+  if( proc == nullptr )
+    prefix_fmt = "%s%s%s";
+  else
+  {
+    proc_labelN = snprintf(nullptr,0,proc_fmt,proc->label,proc->label_sfx_id);
+
+    if( net == nullptr && proc->net != nullptr )
+      net = proc->net;
+  }
+
+  // if a net was given get the length of its label
+  if( net != nullptr )
+    net_labelN = textLength(net->label);
+
+  // if the prefix is empty
+  if( var_labelN + proc_labelN + net_labelN == 0 )
+    rc = log::msg( logH, 0, level, function, filename, line, 0, rc, fmt, vl);
+  else
+  {    
+    // allocate the prefix label buffers
+    char var_label_buf[  var_labelN  + 1];
+    char proc_label_buf[ proc_labelN + 1];
+    char net_label_buf[  net_labelN  + 1 ];    
+
+    if( var_labelN )
+    {
+      unsigned n0 = snprintf( var_label_buf,  var_labelN+1,  var_fmt,  var->label,  var->label_sfx_id);
+      var_label = var_label_buf;
+      assert(n0 == var_labelN);
+    }
+
+    if( proc_labelN )
+    {
+      unsigned n1 = snprintf( proc_label_buf, proc_labelN+1, proc_fmt, proc->label, proc->label_sfx_id);
+      proc_label = proc_label_buf;
+      assert(n1 == proc_labelN);
+    }
+
+    if( net_labelN )
+    {
+      unsigned n2 = snprintf( net_label_buf,  net_labelN+1,  "%s", net->label );
+      net_label = net_label_buf;
+      assert(n2 == net_labelN);
+    }
+
+
+    // get the length of the prefix
+    unsigned prefixN = snprintf(nullptr,0,prefix_fmt,net_label,proc_label,var_label);
+    char prefix_label[ prefixN + 1 ];
+
+    // print the prefix
+    unsigned n3 = snprintf(prefix_label,prefixN+1,prefix_fmt,net_label,proc_label,var_label);
+
+    assert( n3 == prefixN);
+
+    va_list vl1;
+    va_copy(vl1,vl);
+    unsigned textN = vsnprintf(nullptr,0,fmt,vl1);
+
+    char text[ textN + 1 ];
+    unsigned n4 = vsnprintf(text,textN+1,fmt,vl);
+  
+    assert(n4 == textN);
+  
+    text[textN] = 0;
+  
+    va_end(vl1);
+
+  
+    rc = log::msg( logH, 0, level, function, filename, line, 0, rc, "%s : %s", prefix_label,text);
+  }
+  
+  return rc;
+}
+
+cw::rc_t  cw::flow::net_log_msg( const network_t* net, const proc_t* proc, const variable_t* var, log::handle_t logH, log::logLevelId_t level, const char* function, const char* filename, unsigned line, rc_t rc, const char* fmt, ... )
+{
+  va_list vl;
+  va_start(vl,fmt);
+  rc = net_log_msg( net, proc, var, logH, level, function, filename, line, rc, fmt, vl );
+  va_end(vl);  
+  return rc;    
+}
+
+/*
 cw::rc_t  cw::flow::proc_log_msg( proc_t* proc, variable_t* var, log::handle_t logH, log::logLevelId_t level, const char* function, const char* filename, unsigned line, rc_t rc, const char* fmt, va_list vl )
 {
   int         n0       = 0;
@@ -1341,7 +1453,7 @@ cw::rc_t  cw::flow::proc_log_msg( proc_t* proc, variable_t* var, log::handle_t l
   int n3 = 0;
   const char* var_fmt =".%s:%i";
   if( var != nullptr )
-    n2 = snprintf(nullptr,0,var_fmt,cwStringNullGuard(var->label),var->label_sfx_id);
+     = snprintf(nullptr,0,var_fmt,cwStringNullGuard(var->label),var->label_sfx_id);
   
   char s1[n2+1];
   s1[0] = 0;
@@ -1381,7 +1493,7 @@ cw::rc_t  cw::flow::proc_log_msg( proc_t* proc, variable_t* var, log::handle_t l
   va_end(vl);  
   return rc;  
 }
-
+*/
 
 unsigned cw::flow::proc_var_count( proc_t* proc )
 {
@@ -1419,7 +1531,7 @@ cw::rc_t cw::flow::proc_notify( proc_t* proc, unsigned flags )
   if( proc->modVarMapN == 0  )
   {
     if( cwIsNotFlag(flags,kQuietPnFl) )
-      rc =cwLogError(kInvalidStateRC,"Calling proc_notify() on the processor '%s:%i' is invalid because it does not have any variables marked for notification.",cwStringNullGuard(proc->label),proc->label_sfx_id);
+      rc = proc_error(proc,kInvalidStateRC,"Calling proc_notify() on the processor '%s:%i' is invalid because it does not have any variables marked for notification.",cwStringNullGuard(proc->label),proc->label_sfx_id);
   }
   else
   {
@@ -1479,7 +1591,7 @@ cw::rc_t cw::flow::proc_exec( proc_t* proc )
   // should shutudown at the end of this cycle. 
   if((rc = proc->class_desc->members->exec(proc)) != kOkRC && rc != kEofRC )
   {
-    rc = cwLogError(rc,"Execution failed on the proc:%s:%i.",cwStringNullGuard(proc->label),proc->label_sfx_id);    
+    rc = proc_error(proc,rc,"Execution failed on the proc:%s:%i.",cwStringNullGuard(proc->label),proc->label_sfx_id);    
     goto errLabel;
   }
 
@@ -1529,7 +1641,7 @@ cw::rc_t  cw::flow::var_channelize( proc_t* proc, const char* var_label, unsigne
 
   if((base_var = _var_find_on_label_and_ch( proc, var_label, sfx_id, kAnyChIdx)) == nullptr)
   {
-    rc = cwLogError(kInvalidStateRC,"The base ('any') channel variable could not be located on '%s:%i.%s:%i'.",proc->label,proc->label_sfx_id,var_label,sfx_id);
+    rc = proc_error(proc,kInvalidStateRC,"The base ('any') channel variable could not be located on '%s:%i.%s:%i'.",proc->label,proc->label_sfx_id,var_label,sfx_id);
     goto errLabel;
   }
  
@@ -1636,7 +1748,7 @@ cw::rc_t  cw::flow::var_channelize( proc_t* proc, const char* var_label, unsigne
   
  errLabel:
   if( rc != kOkRC )
-    rc = cwLogError(rc,"Channelize failed for variable '%s:%i' on proc '%s:%i' ch:%i.", var_label, sfx_id, proc->label, proc->label_sfx_id, chIdx );
+    rc = proc_error(proc,rc,"Channelize failed for variable '%s:%i' on proc '%s:%i' ch:%i.", var_label, sfx_id, proc->label, proc->label_sfx_id, chIdx );
   
   return rc;
 }
@@ -1649,7 +1761,7 @@ unsigned cw::flow::var_channel_count( proc_t* proc, const char* var_label, unsig
 
   if((rc = _var_find_on_label_and_ch( proc, var_label, sfx_id, kAnyChIdx, base_var)) != kOkRC || base_var==nullptr)
   {
-    cwLogError(rc,"Var. channel count calc failed.");
+    proc_error(proc,rc,"Var. channel count calc failed.");
     goto errLabel;
   }
 
@@ -1752,7 +1864,7 @@ bool  cw::flow::var_is_a_source( proc_t* proc, const char* label, unsigned sfx_i
   variable_t* varPtr = nullptr;
   if((rc = var_find( proc, label, sfx_id, chIdx, varPtr)) != kOkRC )
   {
-    cwLogError(kEleNotFoundRC,"The variable '%s:%i' was not found on proc:'%s:%i'. 'source' state query is invalid.",cwStringNullGuard(label),sfx_id,cwStringNullGuard(proc->label),proc->label_sfx_id);
+    proc_error(proc,kEleNotFoundRC,"The variable '%s:%i' was not found on proc:'%s:%i'. 'source' state query is invalid.",cwStringNullGuard(label),sfx_id,cwStringNullGuard(proc->label),proc->label_sfx_id);
     return false;
   }
   
@@ -1765,7 +1877,7 @@ bool  cw::flow::var_is_a_source( proc_t* proc, unsigned vid, unsigned chIdx )
   variable_t* varPtr = nullptr;
   if((rc = var_find( proc, vid, chIdx, varPtr)) != kOkRC )
   {
-    cwLogError(kEleNotFoundRC,"The variable with vid '%i' was not found on proc:'%s:%i'. 'source' state query is invalid.",vid,cwStringNullGuard(proc->label),proc->label_sfx_id);
+    proc_error(proc,kEleNotFoundRC,"The variable with vid '%i' was not found on proc:'%s:%i'. 'source' state query is invalid.",vid,cwStringNullGuard(proc->label),proc->label_sfx_id);
     return false;
   }
   
@@ -1793,7 +1905,7 @@ cw::rc_t cw::flow::var_find( proc_t* proc, unsigned vid, unsigned chIdx, variabl
       var = proc->varMapA[idx];
     else
     {
-      rc = cwLogError(kInvalidIdRC,"The index of variable vid:%i chIdx:%i on proc '%s:%i' could not be calculated and the variable value could not be retrieved.", vid, chIdx, proc->label,proc->label_sfx_id);
+      rc = proc_error(proc,kInvalidIdRC,"The index of variable vid:%i chIdx:%i on proc '%s:%i' could not be calculated and the variable value could not be retrieved.", vid, chIdx, proc->label,proc->label_sfx_id);
       goto errLabel;
     }
   }
@@ -1818,7 +1930,7 @@ cw::rc_t cw::flow::var_find( proc_t* proc, const char* label, unsigned sfx_id, u
     return kOkRC;
   }
 
-  return cwLogError(kInvalidIdRC,"The proc '%s:%i' does not have a variable named '%s:%i'.", proc->label, proc->label_sfx_id, label, sfx_id );  
+  return proc_error(proc,kInvalidIdRC,"The proc '%s:%i' does not have a variable named '%s:%i'.", proc->label, proc->label_sfx_id, label, sfx_id );  
 }
 
 cw::rc_t cw::flow::var_find( proc_t* proc, const char* label, unsigned sfx_id, unsigned chIdx, const variable_t*& vRef )
@@ -1835,7 +1947,7 @@ cw::rc_t  cw::flow::var_channel_count( proc_t* proc, const char* label, unsigned
   rc_t rc = kOkRC;
   const variable_t* var= nullptr;
   if((rc = var_find(proc,label,sfx_id,kAnyChIdx,var)) != kOkRC )
-    return cwLogError(rc,"Channel count was not available because the variable '%s:%i.%s:%i' does not exist.",cwStringNullGuard(proc->label),proc->label_sfx_id,cwStringNullGuard(label),sfx_id);
+    return proc_error(proc,rc,"Channel count was not available because the variable '%s:%i.%s:%i' does not exist.",cwStringNullGuard(proc->label),proc->label_sfx_id,cwStringNullGuard(label),sfx_id);
 
   return var_channel_count(var,chCntRef);
 }
@@ -1849,7 +1961,7 @@ cw::rc_t  cw::flow::var_channel_count( const variable_t* var, unsigned& chCntRef
   
   if((rc = var_find( var->proc, var->label, var->label_sfx_id, kAnyChIdx, v )) != kOkRC )
   {
-    rc = cwLogError(kInvalidStateRC,"The base channel variable proc could not be found for the variable '%s:%i.%s:%i'.",var->proc->label,var->proc->label_sfx_id,var->label,var->label_sfx_id);
+    rc = var_error(var,kInvalidStateRC,"The base channel variable proc could not be found for the variable '%s:%i.%s:%i'.",var->proc->label,var->proc->label_sfx_id,var->label,var->label_sfx_id);
     goto errLabel;
   }
 
@@ -1891,7 +2003,7 @@ cw::rc_t cw::flow::var_register( proc_t* proc, const char* var_label, unsigned s
       // ... then create it here
       if((rc = var_create( proc, var_label, sfx_id, kInvalidId, kAnyChIdx, nullptr, kInvalidTFl, dum )) != kOkRC )
       {
-        rc = cwLogError(rc,"An attempt to create the 'any-channel' for '%s:%i' failed.",cwStringNullGuard(var_label),sfx_id);
+        rc = proc_error(proc,rc,"An attempt to create the 'any-channel' for '%s:%i' failed.",cwStringNullGuard(var_label),sfx_id);
         goto errLabel;
       }
 
@@ -1914,7 +2026,7 @@ cw::rc_t cw::flow::var_register( proc_t* proc, const char* var_label, unsigned s
 
   // The kAnyChIdx shares the 'vid' with channelized variables - this is by design (vids are unique across variables, but shared across channels)
   if((var = _var_find_on_label_and_ch(proc,var_label,sfx_id,kAnyChIdx)) == nullptr )
-    rc = cwLogError(kInvalidStateRC,"The variable '%s:%i' proc '%s:%i' has no base channel.", var_label, sfx_id, proc->label, proc->label_sfx_id, chIdx);
+    rc = proc_error(proc,kInvalidStateRC,"The variable '%s:%i' proc '%s:%i' has no base channel.", var_label, sfx_id, proc->label, proc->label_sfx_id, chIdx);
   else
   {
     var->vid = vid;  // ... this guarantee's that the kAnyChIdx variable has a valid vid
@@ -1922,7 +2034,7 @@ cw::rc_t cw::flow::var_register( proc_t* proc, const char* var_label, unsigned s
   
  errLabel:
   if( rc != kOkRC )
-    rc = cwLogError(rc,"Registration failed on variable '%s:%i' proc '%s:%i' ch: %i.", var_label, sfx_id, proc->label, proc->label_sfx_id, chIdx);
+    rc = proc_error(proc,rc,"Registration failed on variable '%s:%i' proc '%s:%i' ch: %i.", var_label, sfx_id, proc->label, proc->label_sfx_id, chIdx);
   
   return rc;
 }
@@ -2034,7 +2146,7 @@ cw::rc_t  cw::flow::var_mult_sfx_id_array( proc_t* proc, const char* var_label, 
         // ... and we still have space left in the output arrau
         if( idN_ref >= idAllocN )
         {
-          rc = cwLogError(kBufTooSmallRC,"The mult-sfx-id result array is too small for the var:'%s'.",cwStringNullGuard(var_label));
+          rc = proc_error(proc,kBufTooSmallRC,"The mult-sfx-id result array is too small for the var:'%s'.",cwStringNullGuard(var_label));
           goto errLabel;
         }
 
@@ -2117,7 +2229,7 @@ cw::rc_t        cw::flow::var_register_and_set( proc_t* proc, const char* var_la
   abuf_t* abuf;
   
   if((abuf = abuf_create( srate, chN, frameN )) == nullptr )
-    return cwLogError(kOpFailRC,"abuf create failed on proc:'%s:%i' variable:'%s:%i'.", proc->label, proc->label_sfx_id, var_label,sfx_id);
+    return proc_error(proc,kOpFailRC,"abuf create failed on proc:'%s:%i' variable:'%s:%i'.", proc->label, proc->label_sfx_id, var_label,sfx_id);
 
   if((rc = _var_register_and_set( proc, var_label, sfx_id, vid, chIdx, abuf )) != kOkRC )
     abuf_destroy(abuf);
@@ -2130,7 +2242,7 @@ cw::rc_t cw::flow::var_register_and_set( proc_t* proc, const char* var_label, un
   rc_t rc = kOkRC;
   fbuf_t* fbuf;
   if((fbuf = fbuf_create( srate, chN, maxBinN_V, binN_V, hopSmpN_V, magV, phsV, hzV )) == nullptr )
-    return cwLogError(kOpFailRC,"fbuf create failed on proc:'%s:%i' variable:'%s:%i'.", proc->label, proc->label_sfx_id, var_label,sfx_id);
+    return proc_error(proc,kOpFailRC,"fbuf create failed on proc:'%s:%i' variable:'%s:%i'.", proc->label, proc->label_sfx_id, var_label,sfx_id);
 
   if((rc = _var_register_and_set( proc, var_label, sfx_id, vid, chIdx, fbuf )) != kOkRC )
     fbuf_destroy(fbuf);
@@ -2144,7 +2256,7 @@ cw::rc_t        cw::flow::var_register_and_set( proc_t* proc, const char* var_la
   mbuf_t* mbuf;
   
   if((mbuf = mbuf_create(msgA,msgN)) == nullptr )
-    return cwLogError(kOpFailRC,"mbuf create failed on proc:'%s:%i' variable:'%s:%i'.", proc->label, proc->label_sfx_id, var_label, sfx_id);
+    return proc_error(proc,kOpFailRC,"mbuf create failed on proc:'%s:%i' variable:'%s:%i'.", proc->label, proc->label_sfx_id, var_label, sfx_id);
 
   if((rc = _var_register_and_set( proc, var_label, sfx_id, vid, chIdx, mbuf )) != kOkRC )
     mbuf_destroy(mbuf);
@@ -2170,7 +2282,7 @@ cw::rc_t   cw::flow::var_register_and_set( proc_t* proc, const char* var_label, 
 
   rbuf_t* rbuf;
   if((rbuf = rbuf_create(recd_type,recdA,recdN,maxRecdN)) == nullptr )
-    return cwLogError(kOpFailRC,"rbuf create failed on proc:'%s:%i' variable:'%s:%i'.", proc->label, proc->label_sfx_id, var_label, sfx_id);
+    return proc_error(proc,kOpFailRC,"rbuf create failed on proc:'%s:%i' variable:'%s:%i'.", proc->label, proc->label_sfx_id, var_label, sfx_id);
     
   if((rc = _var_register_and_set( proc, var_label, sfx_id, vid, chIdx, rbuf )) != kOkRC )
     rbuf_destroy(rbuf);
@@ -2197,7 +2309,7 @@ cw::rc_t   cw::flow::var_alloc_register_and_set( proc_t* proc, const char* var_l
 errLabel:
   if( rc != kOkRC )
   {
-    rc = cwLogError(rc,"Record array create failed on the variable '%s:%i ch:%i.",cwStringNullGuard(var_label),sfx_id,chIdx);
+    rc = proc_error(proc,rc,"Record array create failed on the variable '%s:%i ch:%i.",cwStringNullGuard(var_label),sfx_id,chIdx);
     if( recd_array != nullptr )
       recd_array_destroy(recd_array);
   }     
@@ -2215,14 +2327,14 @@ cw::rc_t   cw::flow::var_alloc_record_array( proc_t* proc, const char* var_label
   // find the record variable
   if((rc = var_find( proc, var_label, sfx_id, chIdx, var )) != kOkRC )
   {
-    rc = cwLogError(rc,"The record variable '%s:%i' could was not found.",cwStringNullGuard(var_label),sfx_id);
+    rc = proc_error(proc,rc,"The record variable '%s:%i' could was not found.",cwStringNullGuard(var_label),sfx_id);
     goto errLabel; 
   }
 
   // verify that the variable has a record format
   if( !var_has_recd_format(var) )
   {
-    rc = cwLogError(kInvalidArgRC,"The variable does not have a valid record format.");
+    rc = proc_error(proc,kInvalidArgRC,"The variable does not have a valid record format.");
     goto errLabel;
   }
   else
@@ -2233,7 +2345,7 @@ cw::rc_t   cw::flow::var_alloc_record_array( proc_t* proc, const char* var_label
     // verify that a non-zero length was given to the count of records in the array
     if( alloc_cnt == 0 )
     {
-      rc = cwLogError(kInvalidArgRC,"A non-zero record array length has not been assigned to the the varaible '%s'.",cwStringNullGuard(var_label));
+      rc = var_error(var,kInvalidArgRC,"A non-zero record array length has not been assigned to the the varaible '%s'.",cwStringNullGuard(var_label));
       goto errLabel;
     }
 
@@ -2247,7 +2359,7 @@ cw::rc_t   cw::flow::var_alloc_record_array( proc_t* proc, const char* var_label
 errLabel:
   
   if( rc != kOkRC )
-    rc = cwLogError(rc,"Record array alloc, based on the variable '%s:%i ch:%i, failed.",cwStringNullGuard(var_label),sfx_id,chIdx);
+    rc = proc_error(proc,rc,"Record array alloc, based on the variable '%s:%i ch:%i, failed.",cwStringNullGuard(var_label),sfx_id,chIdx);
 
   return rc;
 }
@@ -2311,7 +2423,7 @@ cw::rc_t cw::flow::var_set_from_cfg( variable_t* var, const object_t* cfg_value 
   
 errLabel:
   if( rc != kOkRC )
-    rc = cwLogError(kSyntaxErrorRC,"The %s:%i.%s:%i could not extract a type:%s from a configuration value.",var->proc->label,var->proc->label_sfx_id,var->label,var->label_sfx_id,value_type_flag_to_label(var->varDesc->type & kTypeMask));
+    rc = var_error(var,kSyntaxErrorRC,"The %s:%i.%s:%i could not extract a type:%s from a configuration value.",var->proc->label,var->proc->label_sfx_id,var->label,var->label_sfx_id,value_type_flag_to_label(var->varDesc->type & kTypeMask));
       
   return rc;
       
@@ -2335,7 +2447,7 @@ cw::rc_t cw::flow::var_set( variable_t* var, const value_t* val )
     case kMBufTFl:   rc = _var_set_driver(var,val->tflag,val->u.mbuf); break;
     case kRBufTFl:   rc = _var_set_driver(var,val->tflag,val->u.rbuf); break;
     default:
-      rc = cwLogError(kNotImplementedRC,"The var_set() from value_t has not been implemented for the type 0x%x.",val->tflag);
+      rc = var_error(var,kNotImplementedRC,"The var_set() from value_t has not been implemented for the type 0x%x.",val->tflag);
   }
 
   return rc;
