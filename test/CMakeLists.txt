@@ -1,7 +1,6 @@
 enable_testing()
 
-option(CW_ADDRESS_SANITIZER_FL "Enable the address sanitizer." OFF)
-option(CW_THREAD_SANITIZER_FL "Enable the address sanitizer." OFF)
+
 
 
 add_executable(test_main)
@@ -22,7 +21,7 @@ target_sources(test_main
   test_log.cpp
 )
 
-target_compile_options(cw PRIVATE
+target_compile_options(test_main PRIVATE
     # Add specific flags only for the Debug configuration (e.g., Address Sanitizer)
     $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=undefined -Wall -Wextra -Wno-unused>    
     $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>,$<BOOL:${CW_ADDRESS_SANITIZER_FL}>>:-fsanitize=address>    
