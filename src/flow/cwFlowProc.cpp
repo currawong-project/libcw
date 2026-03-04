@@ -5541,6 +5541,7 @@ namespace cw
         bool damp_down_fl;
         bool sost_down_fl;
         unsigned active_voice_cnt;
+
       } inst_t;
 
 
@@ -5716,16 +5717,6 @@ namespace cw
         return rc;
       }
 
-      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
-      {
-        rc_t rc = kOkRC;
-        if( var->vid == kResetPId )
-        {
-          _reset_all_voices(proc,p);
-        }
-        return rc;
-      }
-
       rc_t _update_voice_msg( proc_t* proc, inst_t* p, unsigned voice_idx, const midi::ch_msg_t* m )
       {
         rc_t     rc   = kOkRC;
@@ -5742,7 +5733,7 @@ namespace cw
           v->mbuf->msgA = v->msgA;
           v->mbuf->msgN = v->msg_idx;
 
-          //printf("vctl:%i : st:%i %i %i\n",voice_idx,m->status,m->d0,m->d1);
+          //proc_info(proc,"vctl:%i : st:%i %i %i",voice_idx,m->status,m->d0,m->d1);
         }
         
       errLabel:
@@ -5985,6 +5976,20 @@ namespace cw
               goto errLabel;        
           }
       errLabel:
+        return rc;
+      }
+
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        if( var->vid == kResetPId )
+        {
+          // Note: We can't send any more messages to the voices at this point
+          // because resetting the voices will clear out the MIDI msg. output buffers.
+          // The voices need to be reset by some other mechanism.
+          _reset_all_voices(proc,p);
+        }
         return rc;
       }
 
@@ -6327,6 +6332,7 @@ namespace cw
       enum {
         kWtbFnPId,
         kWtbInstrPId,
+        kResetPId,
         kInPId,
         kOutPId,
         kDoneFlPId,
@@ -6457,6 +6463,7 @@ namespace cw
         const char*        wtb_fname     = nullptr;
         const char*        wtb_instr     = nullptr;
         mbuf_t*            mbuf          = nullptr;
+        bool               reset_fl      = false;
         bool               done_fl       = false;
         bool               gate_fl       = false;
         srate_t            srate         = proc->ctx->sample_rate;
@@ -6469,6 +6476,7 @@ namespace cw
         if((rc = var_register_and_get( proc, kAnyChIdx,
                                        kWtbFnPId,     "wtb_fname", kBaseSfxId, wtb_fname,
                                        kWtbInstrPId,  "wtb_instr", kBaseSfxId, wtb_instr,
+                                       kResetPId,     "reset",     kBaseSfxId, reset_fl,
                                        kInPId,        "in",        kBaseSfxId, mbuf,
                                        kDoneFlPId,    "done_fl",   kBaseSfxId, done_fl,
                                        kGateFlPId,    "gate_fl",   kBaseSfxId, gate_fl,
@@ -6665,12 +6673,6 @@ namespace cw
         return rc;
       }
 
-      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
-      {
-        rc_t rc = kOkRC;
-        return rc;
-      }
-
       void _finish_note( proc_t* proc, inst_t* p )
       {
         p->done_fl = true;
@@ -6681,6 +6683,17 @@ namespace cw
         TRACE_TIME(proc->trace_id,tracer::kEndEvtId,0,0);
       }
 
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        if( var->vid == kResetPId )
+        {
+          _finish_note(proc,p);
+        }
+        return rc;
+      }
+
+      
       sample_t _calc_rms( inst_t* p, abuf_t* abuf )
       {
         p->rms_buf[ p->rms_buf_idx ] = 0;
