@@ -8,14 +8,19 @@
 	    "name":"default",
 	    "displayName":"Default configuration",
 	    "description":"Default 'cw' build configuration.",
+
+	    "environment": {
+		"MKLROOT": "/opt/intel/oneapi/mkl/latest"
+	    },
+	    
 	    "cacheVariables": {
-		"CW_FFTW_FL":        { "type":"BOOL",  "value":"ON" },
+		"CW_FFTW_FL":        { "type":"BOOL",  "value":"OFF" },
 		"CW_FFTW_LIB_HINTS": { "type":"STRING","value":"" },
 		
 		"CW_WEBSOCK_FL":     { "type":"BOOL",  "value":"ON" },
 		"CW_WEBSOCK_VERSION":{ "type":"STRING","value":"4.3.5" },
 		
-		"CW_MKL_FL":         { "type":"BOOL",  "value":"OFF" },
+		"CW_MKL_FL":         { "type":"BOOL",  "value":"ON" },
 		
 		"CW_ALSA_FL":        { "type":"BOOL",  "value":"ON" },
 		
@@ -29,7 +34,7 @@
 	    "displayName":"Debug Build",
 	    "inherits":"default",
 	    "cacheVariables":{
-		"CMAKE_BUILD_TYPE":"Debug"
+		"CMAKE_BUILD_TYPE":"Debug"		
 	    }
 	},
 	{
@@ -49,13 +54,14 @@
 		"CW_COVERAGE_FL": { "type":"BOOL", "value":"ON" }
 	    }
 	    
-	},
-	
-	
+	},	
 	{
 	    "name":"release",
 	    "displayName":"Release Build",
-	    "inherits":"default"
+	    "inherits":"default",
+	    "cacheVariables": {
+		"CMAKE_BUILD_TYPE": "Release"
+	    }
 	}
 	
     ],
@@ -64,12 +70,17 @@
 	{
 	    "name":"default",
 	    "configurePreset":"default",
-	    "jobs":8  
+	    "jobs":8
 	},
 	{
 	    "name":"debug",
 	    "inherits":"default"
-	}
+	},
+	{
+	    "name":"release",
+	    "inherits":"default"
+	}	
+	
     ],
     
     "testPresets":[

@@ -39,5 +39,5 @@ function( cwFFT_Func target_name )
   )  
   
   # Link libcw internal library to the external library
-  target_link_libraries(${target_name} PRIVATE FFTw3d::FFTw3d FFTw3f::FFTw3f)
+  target_link_libraries(${target_name} PUBLIC FFTw3d::FFTw3d FFTw3f::FFTw3f)
 endfunction()

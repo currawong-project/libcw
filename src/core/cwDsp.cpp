@@ -15,7 +15,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 //  fft
 //
-
+#ifdef cwFFTW
 unsigned cw::dsp::fft::window_sample_count_to_bin_count( unsigned wndSmpN )
 { return wndSmpN/2 + 1; }
 
@@ -105,6 +105,7 @@ cw::rc_t cw::dsp::ifft::test()
   return rc;
   
 }
+#endif // cwFFTW
 
 //----------------------------------------------------------------------------------------------------------------------
 //  intel_fft
@@ -162,19 +163,19 @@ cw::rc_t cw::dsp::intel_ifft::test()
 {
   typedef double real_t;
   
-  struct fft::obj_str<real_t>* ft  = nullptr;
+  struct intel_fft::obj_str<real_t>* ft  = nullptr;
   struct obj_str<real_t>*      ift = nullptr;
   rc_t                         rc  = kOkRC;
   unsigned                     xN  = 16;
   real_t                       xV[xN];
 
-  if( (rc = fft::create<real_t>(ft,xN,fft::kToPolarFl)) != kOkRC )
+  if( (rc = intel_fft::create<real_t>(ft,xN,intel_fft::kToPolarFl)) != kOkRC )
   {
     rc = cwLogError(rc,"FFT procedure allocation failed.");
     goto errLabel;
   }
 
-  if((rc = create<real_t>(ift, fft::bin_count(ft))) != kOkRC )
+  if((rc = create<real_t>(ift, intel_fft::bin_count(ft))) != kOkRC )
   {
     rc = cwLogError(rc,"IFFT procedure allocation failed.");
     goto errLabel;
@@ -183,14 +184,14 @@ cw::rc_t cw::dsp::intel_ifft::test()
   vop::zero(xV,xN);
   vop::sine(xV,xN,(double)xN,1.0);
   
-  fft::exec(ft,xV,xN);
+  intel_fft::exec(ft,xV,xN);
 
 
-  exec_polar(ift, fft::magn(ft), fft::phase(ft) );
+  exec_polar(ift, intel_fft::magn(ft), intel_fft::phase(ft) );
 
   vop::print( xV,          xN,               "%f ", "sin " );
-  vop::print( magn(ft),  fft::bin_count(ft), "%f ", "mag " );
-  vop::print( phase(ft), fft::bin_count(ft), "%f ", "phs " );
+  vop::print( magn(ft),  intel_fft::bin_count(ft), "%f ", "mag " );
+  vop::print( phase(ft), intel_fft::bin_count(ft), "%f ", "phs " );
   vop::print( out(ift),     out_count(ift),  "%f ", "sig " );
   
  errLabel:
@@ -261,13 +262,13 @@ cw::rc_t cw::dsp::test_dsp( const test::test_args_t& args )
 
   if( textIsEqual(args.test_label,"fft") )
   {
-    rc = fft::test();
+    rc = FFT::test();
     goto errLabel;
   }
   
   if( textIsEqual(args.test_label,"ifft") )
   {
-    rc = ifft::test();
+    rc = IFFT::test();
     goto errLabel;
   }
 #ifdef cwMKL
