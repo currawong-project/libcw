@@ -97,8 +97,13 @@ else()
 endif()
 
 if( CW_MKL_FL )
+
+  # MKLROOT is an environmental variable to /opt/intell/oneapi/mkl/latest
+  # that is set in the CMakePresets.json.
+  list(PREPEND CMAKE_PREFIX_PATH "$ENV{MKLROOT}")
   find_package(MKL CONFIG REQUIRED)
-  target_link_libraries(cw PRIVATE MKL::MKL )
+  
+  target_link_libraries(cw PUBLIC MKL::MKL )
   target_compile_definitions(cw PUBLIC cwMKL)
 else()
   message(STATUS "Intel Math Kernel Library is not being used.")
