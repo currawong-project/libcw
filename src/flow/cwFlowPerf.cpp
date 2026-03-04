@@ -1031,9 +1031,9 @@ namespace cw
 
         
         p->midi_fld_idx = recd_type_field_index( p->recd_array->type, "midi");
-        p->loc_fld_idx  = recd_type_field_index( p->recd_array->type, "loc");
-        p->meas_fld_idx = recd_type_field_index( p->recd_array->type, "meas");
-        p->port_fld_idx= recd_type_field_index( p->recd_array->type, "port_id");
+        p->loc_fld_idx  = recd_type_field_index( p->recd_array->type, "mp_loc");
+        p->meas_fld_idx = recd_type_field_index( p->recd_array->type, "mp_meas");
+        p->port_fld_idx= recd_type_field_index( p->recd_array->type, "mp_port_id");
         
 
       errLabel:
@@ -1267,7 +1267,7 @@ namespace cw
         // if a starting player index was found
         if( plyr_idx == kInvalidIdx )
         {
-          rc = proc_error(proc,kInvalidArgRC,"A valid start player was not found for '%s'.",cwStringNullGuard(proc->label));
+          proc_warn(proc,"No player was assigned to begin on 'start'.");
         }
         else
         {
@@ -3549,7 +3549,7 @@ namespace cw
                   //var_set(proc,kDVelPId,kAnyChIdx,dvel);
                   //proc_info(proc,"DVEL::%f",dvel);
                             
-                  //proc_info(proc,"sf (%s) LOC:%i",proc->label,loc_id);
+                  proc_info(proc,"sf (%s) LOC:%i",proc->label,loc_id);
                   //printf("sf (%s) LOC:%i\n",proc->label,loc_id);
                 }
               }
@@ -5211,6 +5211,748 @@ namespace cw
       
     } // gutim_spirio_ctl
 
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // end_seg_detector
+    //
+    namespace end_seg_detector
+    {
+      enum {
+        kCfgFnamePId,
+        kResetPId,
+        kSegIdInPId,
+        kPlayIdInPId,
+        kMidiInPId,
+        kPlayIdOutPId,
+        kPedalRlsPId
+      };
+
+      enum {
+        kPianoStateDetTypeId,
+        kSequenceDetTypeId
+      };
+
+      enum {
+        kMidiPortCnt = 2
+      };
+
+      typedef midi_detect::state_t event_t;
+      
+      typedef struct recd_str
+      {
+        unsigned id;
+        char*    label;
+        unsigned piano_id;
+        unsigned trig_seg_id;        // 
+        unsigned det_type_id;        // See k???DetTypeId above
+        unsigned det_id;             // det_id provided by midi_detector::piano or midi_detector::seq
+        unsigned min_ms;             // wait at least this long after the detector is activated to trigger the Spirio
+        unsigned max_ms;             // wait at most this long after the detector is activated to trigger the Spirio
+        unsigned min_cycle_cnt;      // derived from min_ms
+        unsigned max_cycle_cnt;      // derived from max_ms (set to 0 to disable time-out)
+        unsigned pdetEvtN;
+        event_t* pdetEvtA;
+        unsigned sdetEvtN;
+        event_t* sdetEvtA;
+      } recd_t;
+      
+      typedef struct
+      {
+        unsigned recdN;
+        recd_t*  recdA;
+        unsigned ped_release_thresh;
+        unsigned midi_fld_idx;
+        unsigned armed_player_id;
+        unsigned armed_recd_idx;
+        unsigned armed_cycle_cnt;
+        unsigned defer_detect_fl;
+        unsigned dont_wait_fl;       // the first play_in_id recieved after a reset is passed directly through to play_out_id
+
+        midi_detect::piano::handle_t pnoDetA[ kMidiPortCnt ];
+        midi_detect::seq::handle_t   seqDetA[ kMidiPortCnt ];
+
+        
+      } inst_t;
+
+      rc_t _setup_detector( proc_t* proc, inst_t* p, recd_t* r )
+      {
+        rc_t rc = kOkRC;
+        
+        switch( r->det_type_id )
+        {
+          case kPianoStateDetTypeId:
+            if((rc = setup_detector(p->pnoDetA[ r->piano_id ],r->pdetEvtA,r->pdetEvtN,r->det_id)) != kOkRC )
+            {
+              rc = proc_error(proc,rc,"The piano state detector setup failed on spirio player record: '%s'.",cwStringNullGuard(r->label));
+              goto errLabel;
+            }
+            break;
+
+          case kSequenceDetTypeId:
+            if((rc = setup_detector(p->seqDetA[ r->piano_id ],r->sdetEvtA,r->sdetEvtN,r->pdetEvtA,r->pdetEvtN,r->det_id)) != kOkRC )
+            {
+              rc = proc_error(proc,rc,"The sequence state detector setup failed on spirio player record: '%s'.",cwStringNullGuard(r->label));
+              goto errLabel;
+            }
+            break;
+
+          default:
+            rc = proc_error(proc,kInvalidArgRC,"Unknown detector type.");
+        }
+
+      errLabel:
+        return rc;
+        
+      }
+
+
+      rc_t _create_detectors( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+        
+        for(unsigned i=0; i<kMidiPortCnt; ++i)
+        {
+          if((rc = create( p->pnoDetA[i], p->recdN, p->ped_release_thresh )) != kOkRC )
+          {
+            rc = proc_error(proc,rc,"MIDI piano state detector create failed.");
+            goto errLabel;
+          }
+
+          if((rc = create( p->seqDetA[i], p->recdN, p->ped_release_thresh )) != kOkRC )
+          {
+          rc = proc_error(proc,rc,"MIDI sequence detector create failed.");
+          goto errLabel;
+          }
+        }
+
+        for(unsigned i=0; i<p->recdN; ++i)
+        {
+          recd_t* r = p->recdA + i;
+          if((rc = _setup_detector(proc,p,r)) != kOkRC )
+          {
+            goto errLabel;
+          }
+        }
+
+      errLabel:
+        return rc;
+        
+      }
+
+      
+
+      rc_t _reset_detector( proc_t* proc, inst_t* p, unsigned recd_idx )
+      {
+        rc_t rc = kOkRC;
+        recd_t* r = nullptr;
+
+        if( recd_idx == kInvalidIdx )
+          goto errLabel;
+
+        if( recd_idx >= p->recdN )
+        {
+          rc = proc_error(proc,kInvalidArgRC,"An invalid detector index was encountered.");
+          goto errLabel;
+        }
+        
+        r = p->recdA + recd_idx;
+        
+        switch( r->det_type_id )
+        {
+          case kPianoStateDetTypeId:
+            if((rc = reset(p->pnoDetA[r->piano_id])) != kOkRC )
+            {
+              rc = proc_error(proc,rc,"The piano state detector reset failed on spirio player record: '%s'.",cwStringNullGuard(r->label));
+              goto errLabel;
+            }
+            break;
+
+          case kSequenceDetTypeId:
+            if((rc = reset(p->seqDetA[r->piano_id])) != kOkRC )
+            {
+              rc = proc_error(proc,rc,"The sequence state detector reset failed on spirio player record: '%s'.",cwStringNullGuard(r->label));
+              goto errLabel;
+            }
+            break;
+
+          default:
+            rc = proc_error(proc,kInvalidArgRC,"Unknown detector type.");
+        }
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _arm_detector( proc_t* proc, inst_t* p, unsigned recd_idx )
+      {
+        rc_t    rc = kOkRC;
+        recd_t* r = nullptr;
+
+        if( recd_idx == kInvalidIdx )
+          goto errLabel;
+
+        if( recd_idx >= p->recdN )
+        {
+          rc = proc_error(proc,kInvalidArgRC,"An invalid detector index was encountered.");
+          goto errLabel;
+        }
+        
+        r = p->recdA + recd_idx;
+        
+        switch( r->det_type_id )
+        {
+          case kPianoStateDetTypeId:
+            break;
+
+          case kSequenceDetTypeId:
+            if((rc = arm_detector(p->seqDetA[r->piano_id],r->det_id)) != kOkRC )
+            {
+              rc = proc_error(proc,rc,"The sequence state detector activation failed on spirio player record: '%s'.",cwStringNullGuard(r->label));
+              goto errLabel;
+            }
+            break;
+
+          default:
+            rc = proc_error(proc,kInvalidArgRC,"Unknown detector type.");
+        }
+
+      errLabel:
+        return rc;
+      }
+
+
+      rc_t _is_detector_triggered( proc_t* proc, inst_t* p, bool& is_trig_fl_ref )
+      {
+        rc_t    rc = kOkRC;
+        recd_t* r = nullptr;
+        
+        is_trig_fl_ref = false;
+
+        // if no detector is activated then there is nothing to do
+        if( p->armed_recd_idx == kInvalidIdx )
+          goto errLabel;
+
+        // validate the armed detector index
+        if( p->armed_recd_idx >= p->recdN )
+        {
+          rc = proc_error(proc,kInvalidArgRC,"An invalid detector index was encountered.");
+          goto errLabel;
+        }
+        
+        r = p->recdA + p->armed_recd_idx;
+
+        // if the trigger was deferred and the min time has expired then issue the trigger
+        if( p->defer_detect_fl && r->min_cycle_cnt <= p->armed_cycle_cnt && p->armed_cycle_cnt <= r->max_cycle_cnt && r->max_cycle_cnt != 0 )
+        {
+          is_trig_fl_ref = true;
+          p->defer_detect_fl = false;
+          goto errLabel;
+        }
+
+        // check if the external detector has triggered
+        switch( r->det_type_id )
+        {
+          case kPianoStateDetTypeId:
+            if((rc = is_any_state_matched(p->pnoDetA[r->piano_id],r->det_id,is_trig_fl_ref)) != kOkRC )
+              rc = proc_error(proc,rc,"Piano state detector match test failed.");            
+            break;
+
+          case kSequenceDetTypeId:
+            is_trig_fl_ref = is_detector_triggered(p->seqDetA[r->piano_id]);
+            break;
+
+          default:
+            rc = proc_error(proc,kInvalidArgRC,"Unknown detector type.");
+        }
+
+        // if the external detector has triggered but we have not yet passed the
+        // min time since the detector was activated then defer reporting the trigger
+        if( is_trig_fl_ref && p->armed_cycle_cnt < r->min_cycle_cnt )
+        {
+          p->defer_detect_fl = true;
+          is_trig_fl_ref = false;
+        }
+
+        // If the detector was activated but it has not triggered in 'max_cycle_cnt' cycles 
+        // then force the trigger.
+        if( r->max_cycle_cnt != 0 && p->armed_cycle_cnt > r->max_cycle_cnt )
+        {
+          proc_info(proc,"'%s' Spirio playback timed out.  Trigger forced.",cwStringNullGuard(r->label));
+          
+          is_trig_fl_ref = true;
+          p->defer_detect_fl = false;              
+          
+        }
+
+        if( p->armed_recd_idx != kInvalidIdx )
+          p->armed_cycle_cnt += 1;
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _on_midi( proc_t* proc, inst_t* p, unsigned piano_id, const midi::ch_msg_t* m )
+      {
+        rc_t rc = kOkRC;
+        if((rc = on_midi(p->pnoDetA[piano_id],m,1)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"MIDI update failed on the piano state detector.");
+          goto errLabel;
+        }
+            
+        if((rc = on_midi(p->seqDetA[piano_id],m,1)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"MIDI update failed on the MIDI sequence detector.");
+          goto errLabel;
+        }
+            
+      errLabel:
+        return rc;
+      }
+
+      rc_t _parse_cfg_event_list( proc_t* proc, const object_t* cfg_evtL, recd_t* r, unsigned det_type_id, event_t*& evtA_ref, unsigned& evtN_ref )
+      {
+        rc_t rc;
+
+        evtN_ref = cfg_evtL->child_count();
+        evtA_ref = mem::allocZ<event_t>(evtN_ref);
+        
+          
+        for(unsigned j=0; j<evtN_ref; ++j)
+        {
+          const object_t* cfg_evt = cfg_evtL->child_ele(j);
+          event_t* evt = evtA_ref + j;
+            
+          if((rc = cfg_evt->getv("ch",evt->ch,
+                                 "status",evt->status,
+                                 "d0",evt->d0)) != kOkRC )
+          {
+            rc = proc_error(proc,rc,"Parse failed on spirio player record '%s' on event index %i.",cwStringNullGuard(r->label),j);
+              goto errLabel;
+          }
+          
+          evt->order = kInvalidId;
+
+          switch( det_type_id )
+          {
+          
+            case kSequenceDetTypeId:
+              if((rc = cfg_evt->getv("order",evt->order)) != kOkRC )
+              {
+                rc = proc_error(proc,rc,"Parse failed on spirio player record '%s' on 'order' field at event index %i.",cwStringNullGuard(r->label),j);
+                goto errLabel;
+              };
+              break;
+
+            case kPianoStateDetTypeId:
+              if((rc = cfg_evt->getv("release_fl",evt->release_fl)) != kOkRC )
+              {
+                rc = proc_error(proc,rc,"Parse failed on spirio player record '%s' on 'release_tl' field at event index %i.",cwStringNullGuard(r->label),j);
+                goto errLabel;
+              };
+              break;
+          }
+        }
+
+      errLabel:
+        return rc;
+      }
+/*
+{
+  "list": [
+    {
+      "id": 0,
+      "trig_seg_id": 3,
+      "seg_label": "gutim_4",
+      "spirio_label": "spirio_1",
+      "piano_id": 0,
+      "piano_label": "A",
+      "min_ms": 0,
+      "max_ms": 2000,
+      "type": "p_det",
+      "pdetL": [
+        {
+          "ch": 0,
+          "status": 144,
+          "d0": 43,
+          "release_fl": true
+        }
+      ],
+      "sdetL": []
+    },
+    {
+  
+ */
+      
+      rc_t _load_from_cfg( proc_t* proc, inst_t* p, const object_t* cfg )
+      {
+        rc_t rc = kOkRC;
+        const object_t* cfg_list = nullptr;
+
+        // get the 'list' element from the root
+        if((rc = cfg->getv("list", cfg_list)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Unable to locate the 'list' field gutim_ctl cfg.");
+          goto errLabel;
+        }
+
+        if( !cfg_list->is_list() )
+        {
+          rc = proc_error(proc,rc,"Expected gutim_ctl list to be of type 'list'.");
+          goto errLabel;
+        }
+
+        p->recdN           = cfg_list->child_count();
+        p->recdA           = mem::allocZ<recd_t>(p->recdN);
+        p->armed_recd_idx  = kInvalidIdx;
+        p->armed_cycle_cnt = 0;
+        p->defer_detect_fl = false;
+        p->dont_wait_fl    = true;
+
+        // for each detection location
+        for(unsigned i=0; i<p->recdN; ++i)
+        {
+          const object_t* ele        = cfg_list->child_ele(i);
+          recd_t*         r          = p->recdA + i;
+          const char*     type_str   = nullptr;
+          const object_t* cfg_pdetEvtL = nullptr;
+          const object_t* cfg_sdetEvtL = nullptr;
+          const char*     label;
+          
+          if((rc = ele->getv("id",r->id,
+                             "trig_seg_id",r->trig_seg_id,
+                             "spirio_label",label,
+                             "piano_id",r->piano_id,
+                             "min_ms",r->min_ms,
+                             "max_ms",r->max_ms,
+                             "type", type_str )) != kOkRC )
+          {
+            rc = proc_error(proc,rc,"Error parsing detector cfg at index %i.",i);
+            goto errLabel;
+          }
+
+          if((rc = ele->getv_opt("pdetL",cfg_pdetEvtL,
+                                 "sdetL",cfg_sdetEvtL)) != kOkRC )
+          {
+            
+            rc = proc_error(proc,rc,"Error parsing optional fields from detector cfg at index %i.",i);
+            goto errLabel;
+          }
+
+          if( r->piano_id == kInvalidId || r->piano_id >= kMidiPortCnt )
+          {
+            rc = proc_error(proc,kInvalidArgRC,"A piano id (%i) was found to be greater than the MIDI port count (%i).",r->piano_id,kMidiPortCnt );
+            goto errLabel;
+          }
+
+          if( textIsEqual(type_str,"p_det") )
+            r->det_type_id = kPianoStateDetTypeId;
+          else
+          {
+            if( textIsEqual(type_str,"s_det"))
+              r->det_type_id = kSequenceDetTypeId;
+            else
+            {
+              rc = proc_error(proc,kInvalidArgRC,"The event type '%s' is not recognized as a gutim spirio player event type in '%s'.", cwStringNullGuard(type_str),cwStringNullGuard(label));
+              goto errLabel;
+            }
+          }
+
+          if( r->min_ms > r->max_ms )
+          {
+            rc = proc_error(proc,kInvalidArgRC,"The 'min_ms' cannot be larger than the 'max_ms' in the spirio player event '%s'.",cwStringNullGuard(label));
+            goto errLabel;
+          }
+          
+          r->min_cycle_cnt = (unsigned)((r->min_ms * proc->ctx->sample_rate) / (proc->ctx->framesPerCycle * 1000));
+          r->max_cycle_cnt = (unsigned)((r->max_ms * proc->ctx->sample_rate) / (proc->ctx->framesPerCycle * 1000));
+
+          assert( r->max_cycle_cnt==0 || r->min_cycle_cnt <= r->max_cycle_cnt);
+
+          r->label = mem::duplStr(label);
+
+
+          // both the piano and seq detectors may have piano-state parameters
+          if((rc = _parse_cfg_event_list( proc, cfg_pdetEvtL, r, kPianoStateDetTypeId, r->pdetEvtA, r->pdetEvtN )) != kOkRC )
+          {
+            goto errLabel;
+          }
+
+          // only seq-detectors use seq parameters
+          if( r->det_type_id == kSequenceDetTypeId )
+          {
+            if((rc = _parse_cfg_event_list( proc, cfg_sdetEvtL, r, kSequenceDetTypeId, r->sdetEvtA, r->sdetEvtN )) != kOkRC )
+            {
+              goto errLabel;
+            }
+          }
+        }
+
+        if((rc = _create_detectors(proc,p)) != kOkRC )
+          goto errLabel;
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _parse_cfg_file( proc_t* proc, inst_t* p, const char* fname )
+      {
+        rc_t rc = kOkRC;
+        char* fn = nullptr;;
+        object_t* cfg = nullptr;
+        
+        if((fn = proc_expand_filename(proc,fname)) == nullptr )
+        {
+          rc = proc_error(proc,kOpFailRC,"The cfg file name '%s' could not be expanded.",cwStringNullGuard(fname));
+          goto errLabel;
+        }
+          
+        if((rc = objectFromFile( fn, cfg )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Unable to parse cfg from '%s'.",cwStringNullGuard(fn));
+          goto errLabel;
+        }
+
+        if((rc = _load_from_cfg( proc, p, cfg)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+      errLabel:
+        if( rc != kOkRC )
+          rc = proc_error(proc,rc,"Configuration file parsing failed on '%s' in '%s'.",cwStringNullGuard(fname),cwStringNullGuard(proc->label));
+
+        mem::release(fn);
+
+        if( cfg != nullptr )
+          cfg->free();
+        
+        return rc;
+      }
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t          rc          = kOkRC;        
+        const char*   cfg_fname   = nullptr;
+        bool          reset_fl    = false;
+        unsigned      seg_id_in   = kInvalidId;
+        unsigned      play_id_in  = kInvalidId;
+        const rbuf_t* midi_rbuf   = nullptr;
+        unsigned      seg_id_out  = kInvalidId;
+        
+        if((rc = var_register_and_get(proc, kAnyChIdx,
+                                      kCfgFnamePId, "cfg_fname", kBaseSfxId, cfg_fname,
+                                      kResetPId,    "reset",     kBaseSfxId, reset_fl,
+                                      kSegIdInPId,  "seg_id_in", kBaseSfxId, seg_id_in,
+                                      kPlayIdInPId, "play_id_in",kBaseSfxId, play_id_in,
+                                      kMidiInPId,   "midi_in",   kBaseSfxId, midi_rbuf,
+                                      kPlayIdOutPId,"play_id_out",kBaseSfxId, seg_id_out,
+                                      kPedalRlsPId, "ped_rls",   kBaseSfxId, p->ped_release_thresh)) != kOkRC )
+
+        {
+          goto errLabel;
+        }
+
+        if((rc = _parse_cfg_file(proc,p,cfg_fname)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if(( p->midi_fld_idx = recd_type_field_index(midi_rbuf->type,"midi")) == kInvalidIdx )
+        {
+          rc = proc_error(proc,kInvalidArgRC,"The MIDI input record does not contain the field 'midi' in '%s'.",cwStringNullGuard(proc->label));
+          goto errLabel;
+        }
+
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        for(unsigned i=0; i<p->recdN; ++i)
+        {
+          mem::release(p->recdA[i].label);
+          mem::release(p->recdA[i].pdetEvtA);
+          mem::release(p->recdA[i].sdetEvtA);
+        }
+
+        for(unsigned i=0; i<kMidiPortCnt; ++i)
+        {
+          destroy(p->pnoDetA[i]);
+          destroy(p->seqDetA[i]);
+            
+        }
+
+        mem::release(p->recdA);
+
+        return rc;
+      }
+
+      rc_t _handle_seg_id( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+        unsigned seg_id = kInvalidId;
+        
+        if((rc = var_get(proc,kSegIdInPId,kAnyChIdx,seg_id)) != kOkRC )
+          goto errLabel;
+        
+        // check each record to see if this seg activates any detectors
+        for(unsigned j=0; j<p->recdN; ++j)
+        {
+          if( p->recdA[j].trig_seg_id == seg_id )
+          {
+
+            if((rc =_arm_detector(proc, p, j )) != kOkRC )
+              goto errLabel;
+            
+            p->armed_recd_idx  = j;
+            p->armed_cycle_cnt = 0;
+            p->defer_detect_fl = false;
+
+            proc_info(proc,"END SEGMENT ACTIVATED:%s",cwStringNullGuard(p->recdA[ p->armed_recd_idx].label));
+              
+            break;
+          }
+        }
+        
+      errLabel:
+        return rc;       
+      }
+
+      rc_t _handle_play_id(proc_t* proc, inst_t* p, variable_t* var)
+      {
+        rc_t rc = kOkRC;
+        unsigned seg_id;
+        
+        if((rc = var_get(var,p->armed_player_id)) != kOkRC )
+          goto errLabel;
+
+        if( p->dont_wait_fl )
+        {
+          //printf("ESD: no wait:%i\n",p->armed_player_id);
+          if((rc = var_set(proc,kPlayIdOutPId,kAnyChIdx,p->armed_player_id)) != kOkRC )
+            goto errLabel;
+          
+          p->dont_wait_fl = false;
+        }
+        else
+        {
+          //printf("ESD: begin wait:%i\n",p->armed_player_id);
+          rc = _handle_seg_id(proc,p);
+        }
+      errLabel:
+        return rc;
+        
+      }
+
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        if( proc->ctx->isInRuntimeFl )
+        {
+          switch( var->vid )
+          {
+            case kSegIdInPId:
+              //printf("ESD: SegInId\n");
+              //_handle_seg_id(proc,p);
+              break;
+
+            case kPlayIdInPId:
+              //printf("ESD: PlayInId\n");
+              _handle_play_id(proc,p,var);
+              break;
+              
+            case kResetPId:
+              //printf("ESD: Reset\n");
+              p->armed_recd_idx = kInvalidIdx;
+              p->dont_wait_fl   = true;
+              break;
+          }
+        }
+        return rc;
+      }
+
+      
+
+      rc_t _handle_midi( proc_t* proc, inst_t* p, unsigned vid, unsigned midi_fld_idx )
+      {
+        rc_t            rc   = kOkRC;
+        const rbuf_t*   rbuf = nullptr;
+        midi::ch_msg_t* m    = nullptr;
+        
+        if((rc = var_get(proc,vid,kAnyChIdx,rbuf)) != kOkRC )
+          goto errLabel;
+
+        for(unsigned i=0; i<rbuf->recdN; ++i)
+        {
+          if((rc = recd_get( rbuf->type, rbuf->recdA+i, midi_fld_idx, m)) != kOkRC )
+          {
+            rc = proc_error(proc,rc,"The 'midi' field read failed.");
+            goto errLabel;
+          }
+
+          switch(vid)
+          {
+            case kMidiInPId:
+              _on_midi(proc,p,0,m);
+              break;
+              
+            default:
+              assert(0);
+          }
+
+         
+        }
+        
+      errLabel:
+        return rc;
+      }
+
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t rc      = kOkRC;
+        bool trig_fl = false;
+        
+        if((rc = _handle_midi(proc,p,kMidiInPId,p->midi_fld_idx)) != kOkRC )
+          goto errLabel;
+
+        if((rc = _is_detector_triggered(proc,p,trig_fl )) != kOkRC )
+          goto errLabel;
+           
+        if( trig_fl )
+        {
+          proc_info(proc,"END SEG. DETECTOR TRIGGERED:%s",cwStringNullGuard(p->recdA[ p->armed_recd_idx].label));
+          //var_set(proc,kSegIdOutPId,kAnyChIdx,p->recdA[ p->armed_recd_idx ].trig_seg_id);
+          var_set(proc,kPlayIdOutPId,kAnyChIdx,p->armed_player_id);
+          p->armed_recd_idx = kInvalidIdx;
+        }
+
+      errLabel:
+        
+        return rc;
+        
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    } // end_seg_detector
+    
     //------------------------------------------------------------------------------------------------------------------
     //
     // gutim_pgm_ctl
@@ -5992,11 +6734,13 @@ namespace cw
         k17MpPlayerPId,
         k18MpPlayerPId,
 
-        kBegSegIdxPId,
-        kEndSegIdxPId,
-        
         kResetPId,
         kStartPId,
+        
+        kBegSegIdxPId,
+        kEndSegIdxPId,
+        kCurSegIdxPId,
+        
         
         kSfBegLocPId,
         kSfEndLocPId,
@@ -6439,6 +7183,7 @@ namespace cw
 
                               kBegSegIdxPId,  "beg_seg_idx",      kBaseSfxId,
                               kEndSegIdxPId,  "end_seg_idx",      kBaseSfxId,
+                              kCurSegIdxPId,  "cur_seg_idx",      kBaseSfxId,
                               
                               kResetPId,      "reset",            kBaseSfxId,
                               kStartPId,      "start",            kBaseSfxId,
@@ -6539,7 +7284,7 @@ namespace cw
         // update the mp_player_id to use with this segment
         p->segA[ seg_idx ].cur_mp_player_id = player_id; //p->segA[ seg_idx ].mp_playerA[ player_id ].mp_player_id;
         
-        printf("PLYR_MENU_SEL:%s %i %i\n",p->segA[ seg_idx ].title, player_id, p->segA[ seg_idx ].cur_mp_player_id );
+        //printf("PLYR_MENU_SEL:%s %i %i\n",p->segA[ seg_idx ].title, player_id, p->segA[ seg_idx ].cur_mp_player_id );
         
       errLabel:
         if(rc != kOkRC )
@@ -6673,7 +7418,7 @@ namespace cw
               // if there is a next segment ....
               if( p->cur_seg_idx < p->segN )
               {
-                proc_info(proc,"Starting next segment:%i player:%i",p->cur_seg_idx,p->segA[p->cur_seg_idx].cur_mp_player_id);
+                proc_info(proc,"Starting next segment:%i player:%i | %s",p->cur_seg_idx,p->segA[p->cur_seg_idx].cur_mp_player_id,p->segA[p->cur_seg_idx].title);
                 
                 // ... then start it
                 if((rc = var_set(proc, kMpPlayIdPId, p->segA[p->cur_seg_idx].cur_mp_player_id )) != kOkRC )

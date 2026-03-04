@@ -106,6 +106,7 @@ namespace cw
       { "gutim_ctl",       &gutim_ctl::members },
       { "gutim_sf_ctl",    &gutim_sf_ctl::members },
       { "gutim_spirio_ctl",&gutim_spirio_ctl::members },
+      { "end_seg_detector",&end_seg_detector::members },
       { "gutim_pgm_ctl",   &gutim_pgm_ctl::members },
       { "demo_202602_ctl", &demo_202602_ctl::members },
       { nullptr, nullptr }
