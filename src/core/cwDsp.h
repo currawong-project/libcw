@@ -223,15 +223,18 @@ namespace cw
       return rp;
     }
 
+#ifdef cwFFTW    
     //---------------------------------------------------------------------------------------------------------------------------------
     // FFT
     //
+    
     namespace fft
     {
 
       
       unsigned window_sample_count_to_bin_count( unsigned wndSmpN );
       unsigned bin_count_to_window_sample_count( unsigned binN );
+
       
       enum
       {
@@ -505,7 +508,8 @@ namespace cw
       
       rc_t test();         
     }
-
+#endif // cwFFTW
+    
 #ifdef cwMKL
     
     //---------------------------------------------------------------------------------------------------------------------------------
@@ -698,7 +702,7 @@ namespace cw
         p = mem::allocZ< obj_str<T> >(1);
         
         p->binN  = binN;
-        p->outN  = fft::bin_count_to_window_sample_count(binN); 
+        p->outN  = intel_fft::bin_count_to_window_sample_count(binN); 
 
         p->outV  = mem::allocZ<T>( p->outN );
         p->cplxV = mem::allocZ<std::complex<T> >( p->outN);
@@ -814,7 +818,7 @@ namespace cw
       
       rc_t test();         
     }
-#endif
+#endif // cwMKL
     
     //---------------------------------------------------------------------------------------------------------------------------------
     // Convolution
