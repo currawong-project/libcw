@@ -370,7 +370,7 @@ namespace cw {
       }
 
 
-      // Return true if the ch,status,d0 and release_fl of the MIDI msg match this state
+      // Return true if the ch and d0 of the MIDI msg match this state
       bool _does_midi_match_state( const seq_det_t* p, const midi::ch_msg_t* m, const state_t& s )
       {
         return s.ch == m->ch && s.d0 == m->d0;
