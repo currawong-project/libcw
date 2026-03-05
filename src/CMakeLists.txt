@@ -77,7 +77,7 @@ endif()
 if( CW_FFTW_FL )
   cwFFT_Func(cw)
 else()
-  message(STATUS "FFTW is not being used.")
+  message(STATUS "FFTW is not being used. Hints:" ${CW_FFTW_LIB_HINTS} )
 endif()
 
 if( CW_WEBSOCK_FL )
