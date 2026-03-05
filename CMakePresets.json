@@ -14,7 +14,7 @@
 	    },
 	    
 	    "cacheVariables": {
-		"CW_FFTW_FL":        { "type":"BOOL",  "value":"OFF" },
+		"CW_FFTW_FL":        { "type":"BOOL",  "value":"ON" },
 		"CW_FFTW_LIB_HINTS": { "type":"STRING","value":"" },
 		
 		"CW_WEBSOCK_FL":     { "type":"BOOL",  "value":"ON" },
