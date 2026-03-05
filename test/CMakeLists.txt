@@ -20,6 +20,7 @@ target_sources(test_main
   test_mem.cpp
   test_numeric_convert.cpp
   test_log.cpp
+  test_midi.cpp
 )
 
 target_compile_options(test_main PRIVATE
