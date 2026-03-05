@@ -88,10 +88,10 @@ namespace cw
 
     template< typename T> bool isCtlStatus( T s ) { return  removeCh(s) == kCtlMdId; }
     
-    template< typename T> bool isNoteOnStatus( T s )        { return ( kNoteOnMdId <= removeCh(s) && removeCh(s) <= (kNoteOnMdId + kMidiChCnt) ); }
-    template< typename T> bool isNoteOn( T s, T d1 )  { return ( isNoteOnStatus(removeCh(s)) && (d1)!=0) ; }
-    template< typename T> bool isNoteOff( T s, T d1 ) { return ( (isNoteOnStatus(removeCh(s)) && (d1)==0) || (kNoteOffMdId <= removeCh(s) && removeCh(s) <= (kNoteOffMdId + kMidiChCnt)) ); }
-    template< typename T> bool isCtl( T s )           { return ( kCtlMdId <= removeCh(s) && removeCh(s) <= (kCtlMdId + kMidiChCnt) ); }
+    template< typename T> bool isNoteOnStatus( T s )        { return removeCh(s) == kNoteOnMdId; }
+    template< typename T> bool isNoteOn( T s, T d1 )  { return isNoteOnStatus(s) && (d1)!=0; }
+    template< typename T> bool isNoteOff( T s, T d1 ) { return (isNoteOnStatus(s) && (d1)==0) || removeCh(s) == kNoteOffMdId; }
+    template< typename T> bool isCtl( T s )           { return removeCh(s) == kCtlMdId; }
 
     template< typename T> bool isPedal(     T s, T d0 )        { return isCtlStatus(s) && kSustainCtlMdId <= (d0) && (d0) <= kLegatoCtlMdId; }
     template< typename T> bool isPedalDown( T d1 )             { return ( (d1)>=64 ); }

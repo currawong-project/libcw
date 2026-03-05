@@ -213,7 +213,7 @@ const char*     cw::midi::midiToSciPitch( uint8_t pitch, char* label, unsigned l
 
   assert( -1 <= octave && octave <= 9);
 
-  snprintf(label+idx,kMidiSciPitchCharCnt-idx-1,"%i",octave);
+  snprintf(label+idx,kMidiSciPitchCharCnt-idx,"%i",octave);
 
   return label;
 }
