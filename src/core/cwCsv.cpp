@@ -292,8 +292,8 @@ namespace cw
         while( *fieldStr && isspace(*fieldStr) )
           ++fieldStr;
 
-        // the first char must be a number or decimal point
-        if( isdigit(*fieldStr) || (*fieldStr=='.' && std::is_floating_point<T>()) )
+        // the first char must be a number, sign or decimal point
+        if( isdigit(*fieldStr) || *fieldStr=='-' || *fieldStr=='+' || (*fieldStr=='.' && std::is_floating_point<T>()) )
         {    
         
           if((rc = string_to_number(fieldStr,valueRef)) != kOkRC )
