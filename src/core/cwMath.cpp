@@ -93,11 +93,6 @@ void cw::math::doubleToX80(double val, unsigned char rate[10])
 
 }
 
-bool		cw::math::isPowerOfTwo( unsigned x )
-{
-  return x==1 || (!( (x < 2) || (x & (x-1)) ));
-}
-
 unsigned 	cw::math::nextPowerOfTwo(	unsigned val )
 {
   unsigned i;
