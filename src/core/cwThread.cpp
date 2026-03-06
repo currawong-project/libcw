@@ -129,7 +129,7 @@ namespace cw
           switch(rc)
           {
             case kTimeOutRC:
-              // the mutex is not locked
+              // timeout - but the mutex is locked
               break;
               
             case kOkRC:
@@ -145,7 +145,7 @@ namespace cw
           curDoFlags = p->doFlags.load(std::memory_order_acquire);
 
           // if exit was requested - and the mutex is unlocked
-          if( cwIsFlag(curDoFlags,kDoExitThFl) && rc != kOkRC )
+          if( cwIsFlag(curDoFlags,kDoExitThFl) && rc != kOkRC && rc != kTimeOutRC )
           {
             // this will cause the waitOnCondVar() to
             // immediately return at the top of the loop
