@@ -7280,9 +7280,11 @@ namespace cw
         {
           goto errLabel;
         }
+
+        assert( player_id <= p->segA[ seg_idx ].mp_playerN );
         
         // update the mp_player_id to use with this segment
-        p->segA[ seg_idx ].cur_mp_player_id = player_id; //p->segA[ seg_idx ].mp_playerA[ player_id ].mp_player_id;
+        p->segA[ seg_idx ].cur_mp_player_id = p->segA[ seg_idx ].mp_playerA[ player_id ].mp_player_id;
         
         //printf("PLYR_MENU_SEL:%s %i %i\n",p->segA[ seg_idx ].title, player_id, p->segA[ seg_idx ].cur_mp_player_id );
         
@@ -7362,6 +7364,32 @@ namespace cw
         return rc;
       }
 
+      rc_t _do_start_next_segment( proc_t* proc, inst_t* p )
+      {
+        rc_t rc;
+        
+        // tell the MP player to start playing the current player on the current segment.
+        if((rc = var_set(proc,kMpPlayIdPId,p->segA[p->cur_seg_idx].cur_mp_player_id)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Error setting the MP player 'play' id.");
+          goto errLabel;
+        }
+
+        if((rc = var_set(proc, kSfBegLocPId, p->segA[p->cur_seg_idx].beg_loc )) != kOkRC )
+          goto errLabel;
+                
+        if((rc = var_set(proc, kSfEndLocPId, p->segA[p->cur_seg_idx].end_loc )) != kOkRC )
+          goto errLabel;
+
+        if((rc = var_set(proc, kSfResetFlPId, true )) != kOkRC )
+          goto errLabel;
+        
+        proc_info(proc,"Start - seg:%i player:%i",p->cur_seg_idx,p->segA[p->cur_seg_idx].cur_mp_player_id);
+
+      errLabel:
+        return rc;
+      }
+
       rc_t _on_start( proc_t* proc, inst_t* p )
       {
         rc_t rc = kOkRC;
@@ -7371,15 +7399,7 @@ namespace cw
           goto errLabel;
         }
         
-        // tell the MP player to start playing the current player on the current segment.
-        if((rc = var_set(proc,kMpPlayIdPId,p->segA[p->cur_seg_idx].cur_mp_player_id)) != kOkRC )
-        {
-          rc = proc_error(proc,rc,"Error setting the MP player 'play' id.");
-          goto errLabel;
-        }
-
-        proc_info(proc,"Start - seg:%i player:%i",p->cur_seg_idx,p->segA[p->cur_seg_idx].cur_mp_player_id);
-
+        rc = _do_start_next_segment(proc,p);
       errLabel:
         return rc;
       }
@@ -7421,8 +7441,9 @@ namespace cw
                 proc_info(proc,"Starting next segment:%i player:%i | %s",p->cur_seg_idx,p->segA[p->cur_seg_idx].cur_mp_player_id,p->segA[p->cur_seg_idx].title);
                 
                 // ... then start it
-                if((rc = var_set(proc, kMpPlayIdPId, p->segA[p->cur_seg_idx].cur_mp_player_id )) != kOkRC )
+                if((rc = _do_start_next_segment(proc,p)) != kOkRC )
                   goto errLabel;
+                
               }
             }
           }
