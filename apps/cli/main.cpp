@@ -28,7 +28,7 @@
 #include "cwDsp.h"
 #include "cwAudioTransforms.h"
 #include "cwAudioFileProc.h"
-#include "cwPvAudioFileProc.h"
+#include "cwAudioFilePvProc.h"
 
 #include "cwTime.h"
 #include "cwMidi.h"

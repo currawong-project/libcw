@@ -35,8 +35,8 @@ list( APPEND CORE_SRC_FILES core/cwTracer.cpp core/cwTest.cpp  )
 list( APPEND CORE_HDR_FILES core/cwDspTypes.h core/cwDsp.h   core/cwFFT.h   core/cwAudioTransforms.h   core/cwDspTransforms.h )
 list( APPEND CORE_SRC_FILES                   core/cwDsp.cpp core/cwFFT.cpp core/cwAudioTransforms.cpp core/cwDspTransforms.cpp )
 
-list( APPEND CORE_HDR_FILES core/cwAudioFileOps.h   core/cwAudioFileProc.h   core/cwPvAudioFileProc.h   core/cwDataSets.h )
-list( APPEND CORE_SRC_FILES core/cwAudioFileOps.cpp core/cwAudioFileProc.cpp core/cwPvAudioFileProc.cpp core/cwDataSets.cpp )
+list( APPEND CORE_HDR_FILES core/cwAudioFileOps.h   core/cwAudioFileProc.h   core/cwAudioFilePvProc.h   core/cwDataSets.h )
+list( APPEND CORE_SRC_FILES core/cwAudioFileOps.cpp core/cwAudioFileProc.cpp core/cwAudioFilePvProc.cpp core/cwDataSets.cpp )
 
   
 
