@@ -508,21 +508,24 @@ namespace cw
 
         for(i=0; i<p->binCnt; ++i)
         {
+          // Get the raw phase difference
           T dPhs = phsV[i] - p->phsV[i];
 
-          // unwrap phase - see phase_study.m for explanation
-          T k = round( (p->wV[i] - dPhs) / twoPi);
+          // Calculate deviation from the bin's nominal phase change (wV[i])
+          T dev = dPhs - p->wV[i];
 
-          // convert phase change to Hz
-          p->hzV[i] = (k * twoPi + dPhs) * p->srate /  den;
+          // Wrap deviation to [-PI, PI]
+          while( dev >  M_PI ) dev -= (T)twoPi;
+          while( dev < -M_PI ) dev += (T)twoPi;
+
+          // Instantaneous frequency = (Nominal Phase Change + Deviation) converted to Hz
+          p->hzV[i] = (p->wV[i] + dev) * p->srate /  den;
   
           // store phase for next iteration
           p->phsV[i] = phsV[i];
-
         }
   
         return rc;  
-        
       }
       
     }
@@ -583,7 +586,7 @@ namespace cw
         p->flags      = flags;
         p->procSmpCnt = procSmpCnt;
         p->maxWndSmpCnt = maxWndSmpCnt;
-        p->maxBinCnt    = FFT::window_sample_count_to_bin_count(maxWndSmpCnt);
+        p->maxBinCnt    = window_sample_count_to_bin_count(maxWndSmpCnt);
         p->wndSmpCnt  = wndSmpCnt;
         p->hopSmpCnt  = hopSmpCnt;
         p->binCnt     = p->ft->binN;
@@ -753,45 +756,30 @@ namespace cw
 
         for(k=0; k<p->binCnt; ++k)
         {
-          // phase dist between cur and prv frame
-          T1 dp = phsV[k] - p->phs0V[k];
+          // Calculate the expected phase change based on the bin frequency
+          // and the deviation between the actual phase difference and the expected change.
+          T1 dev = phsV[k] - p->phs0V[k] - p->itrV[k];
 
-          // dist must be positive (accum phase always increases)
-          if( dp < -0.00001 )
-            dp += twoPi;
+          // Wrap the deviation to [-PI, PI] to find the principle argument.
+          while( dev >  M_PI ) dev -= (T1)twoPi;
+          while( dev < -M_PI ) dev += (T1)twoPi;
 
-          // add in complete revolutions based on the bin frequency
-          // (these would have been lost from 'dp' due to phase wrap)
-          dp += p->itrV[k];
-
-          // constrain the phase change to lie within the range of the kth bin
-          if( dp < p->minRphV[k] )
-            dp += twoPi;
-
-          if( dp > p->maxRphV[k] )
-            dp -= twoPi;
-
-          p->phsV[k] = p->phs0V[k] + dp;
+          // Accumulate the new phase: Previous Phase + Expected Change + Wrapped Deviation
+          p->phsV[k] = p->phs0V[k] + p->itrV[k] + dev;
           p->magV[k] = p->mag0V[k];
      
-    
           p->phs0V[k] = phsV[k];
           p->mag0V[k] = magV[k];
         }
   
-        IFFT::exec_polar( p->ft, magV, phsV );
+        // Synthesize the time signal using the newly accumulated phase.
+        IFFT::exec_polar( p->ft, magV, p->phsV );
 
         // convert double to float
         T0 v[ p->ft->outN ];
         vop::copy( v, p->ft->outV, p->ft->outN );
   
         ola::exec( p->ola, v, p->ft->outN ); 
-
-        //printf("%i %i\n",p->binCnt,p->ft.binCnt );
-
-        //cmVOR_Print( p->obj.ctx->outFuncPtr, 1, p->binCnt, magV );
-        //cmVOR_Print( p->obj.ctx->outFuncPtr, 1, p->binCnt, p->phsV );
-        //cmVOS_Print( p->obj.ctx->outFuncPtr, 1, 10, p->ft.outV );
 
         return kOkRC;
         
@@ -1216,6 +1204,7 @@ namespace cw
         rc_t rc = kOkRC;
         file::handle_t h;
         struct block_str<T>* b = p->head;
+        bool header_fl = true;
         
         if((rc = file::open(h,fn,file::kWriteFl)) != kOkRC )
         {
@@ -1228,8 +1217,9 @@ namespace cw
           unsigned frameN = b->link==NULL ? p->frameIdx : p->frameN;
           for(unsigned fi=0, rowIdx=0; fi<frameN; ++fi,++rowIdx)
           {
-            if( rowIdx == 0 )
+            if( rowIdx == 0 && header_fl )
             {
+              header_fl = false;
               for(unsigned ci=0; ci<p->colLabelN; ++ci)
                 file::printf(h,"%s, ", p->colLabelA[ci] );
             }
