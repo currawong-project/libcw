@@ -508,9 +508,14 @@ namespace cw
 
         for(i=0; i<p->binCnt; ++i)
         {
+
+          
           // Get the raw phase difference
           T dPhs = phsV[i] - p->phsV[i];
 
+          //// unwrap phase - see phase_study.m for explanation
+          //T k = round( (p->wV[i] - dPhs) / twoPi);          
+          
           // Calculate deviation from the bin's nominal phase change (wV[i])
           T dev = dPhs - p->wV[i];
 
@@ -518,6 +523,9 @@ namespace cw
           while( dev >  M_PI ) dev -= (T)twoPi;
           while( dev < -M_PI ) dev += (T)twoPi;
 
+          //// convert phase change to Hz
+          //p->hzV[i] = (k * twoPi + dPhs) * p->srate /  den;
+          
           // Instantaneous frequency = (Nominal Phase Change + Deviation) converted to Hz
           p->hzV[i] = (p->wV[i] + dev) * p->srate /  den;
   
