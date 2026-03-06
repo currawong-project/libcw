@@ -257,9 +257,9 @@ cw::rc_t cw::nbmpscq::push( handle_t h, const void* blob, unsigned blobByteN )
       // if the allocation was not valid
       if( idx >= b->bufByteN || idx+nodeByteN > b->bufByteN )
       {
-        // incr the 'clean count' and mark the block as full
-        p->cleanBlkN.fetch_add(1,std::memory_order_relaxed);
-        b->full_flag.store(true,std::memory_order_release);
+        // mark the block as full - only increment cleanBlkN if we were the one to mark it full
+        if( b->full_flag.exchange(true, std::memory_order_acq_rel) == false )
+          p->cleanBlkN.fetch_add(1,std::memory_order_relaxed);
       }
       else
       {

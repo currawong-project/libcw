@@ -69,7 +69,6 @@ namespace cw
       unsigned       curFrmIdx;   // current frame offset 
       unsigned       fileByteCnt; // file byte cnt 
       unsigned       smpByteOffs; // byte offset of the first sample
-      marker_t*      markArray;
       unsigned       flags;
       char*          fn;
     } af_t;
@@ -96,6 +95,7 @@ namespace cw
           p->fp = nullptr;
         }
 
+        mem::release(p->info.markerArray);
         mem::release(p->fn);
         mem::release(p);
         
@@ -339,8 +339,6 @@ namespace cw
 
       p->info.markerCnt = ui16;
 
-      assert(p->markArray == NULL);
-
       marker_t* m = mem::allocZ<marker_t>(p->info.markerCnt);
 
       p->info.markerArray = m; 
@@ -401,7 +399,7 @@ namespace cw
       return rc;
     }
 
-    rc_t _readDatcmhunk( af_t* p, unsigned chkByteCnt )
+    rc_t _readDataChunk( af_t* p, unsigned chkByteCnt )
     {
       // if the 'fmt' chunk was read before the 'data' chunk then info.chCnt is non-zero
       if( p->info.chCnt != 0 )
@@ -512,7 +510,7 @@ namespace cw
               break;
 
             case 'atad':
-              if((rc = _readDatcmhunk(p,chkByteCnt)) != kOkRC )
+              if((rc = _readDataChunk(p,chkByteCnt)) != kOkRC )
                 goto errLabel;
               break;
 
@@ -1112,29 +1110,52 @@ namespace cw
     //
 
     // sample writer: int->uint8_t
-    rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const int* sbuf, int8_t* dbuf )
+    rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const int* sbuf, uint8_t* dbuf )
     {
-      for(unsigned i=0; i<bufSmpCnt; ++i)
-        dbuf[i] =  (((long)sbuf[i]*255) / ((long)INT_MAX - INT_MIN)) + 127;
-       return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);
+      if( cwIsFlag(p->info.flags,kAiffAfFl) )
+      {
+        for(unsigned i=0; i<bufSmpCnt; ++i)
+          dbuf[i] =  (int8_t)((((long)sbuf[i]*255) / ((long)INT_MAX - INT_MIN)));
+      }
+      else
+      {
+        for(unsigned i=0; i<bufSmpCnt; ++i)
+          dbuf[i] =  (uint8_t)((((long)sbuf[i]*255) / ((long)INT_MAX - INT_MIN)) + 128);
+      }
+      return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);
     }
 
     // sample writer:  float->uint8_t
-    rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const float* sbuf, int8_t* dbuf )
+    rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const float* sbuf, uint8_t* dbuf )
     {
-      for(unsigned i=0; i<bufSmpCnt; ++i)
-        dbuf[i] =  (uint8_t)(sbuf[i] * 128) + 127; 
-       return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);      
+      if( cwIsFlag(p->info.flags,kAiffAfFl) )
+      {
+        for(unsigned i=0; i<bufSmpCnt; ++i)
+          dbuf[i] =  (int8_t)std::clamp((long)std::lround(sbuf[i] * 128.0f), -128L, 127L);
+      }
+      else
+      {
+        for(unsigned i=0; i<bufSmpCnt; ++i)
+          dbuf[i] =  (uint8_t)std::clamp((long)std::lround(sbuf[i] * 128.0f + 128.0f), 0L, 255L);
+      }
+      return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);
     }
 
-    // sample writer:  double->uint8_t    
-    rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const double* sbuf, int8_t* dbuf )
+    // sample writer:  double->uint8_t
+    rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const double* sbuf, uint8_t* dbuf )
     {
-      for(unsigned i=0; i<bufSmpCnt; ++i)
-        dbuf[i] =  (uint8_t)(sbuf[i] * 128) + 127; 
-       return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);      
+      if( cwIsFlag(p->info.flags,kAiffAfFl) )
+      {
+        for(unsigned i=0; i<bufSmpCnt; ++i)
+          dbuf[i] =  (int8_t)std::clamp((long)std::lround(sbuf[i] * 128.0), -128L, 127L);
+      }
+      else
+      {
+        for(unsigned i=0; i<bufSmpCnt; ++i)
+          dbuf[i] =  (uint8_t)std::clamp((long)std::lround(sbuf[i] * 128.0 + 128.0), 0L, 255L);
+      }
+      return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);
     }
-
 
     //
     //   Write 16 bit samples
@@ -1152,7 +1173,7 @@ namespace cw
     rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const float* sbuf, short* dbuf )
     {
       for(unsigned i=0; i<bufSmpCnt; ++i)
-        dbuf[i] =  (short)(sbuf[i] * SHRT_MAX);
+        dbuf[i] =  (short)std::clamp((long)std::lround(sbuf[i] * 32768.0f), -32768L, 32767L);
        return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);      
     }
 
@@ -1160,7 +1181,7 @@ namespace cw
     rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const double* sbuf, short* dbuf )
     {
       for(unsigned i=0; i<bufSmpCnt; ++i)
-        dbuf[i] =  (short)(sbuf[i] * SHRT_MAX);
+        dbuf[i] =  (short)std::clamp((long)std::lround(sbuf[i] * 32768.0), -32768L, 32767L);
        return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);      
     }
 
@@ -1196,7 +1217,7 @@ namespace cw
       
       for(unsigned i=0; i<bufSmpCnt; dbp+=3, ++i)
       {
-        int ismp = (int)(sbuf[i]*(int)kMax24Bits);
+        int ismp = (int)std::clamp((long)std::lround(sbuf[i]*8388608.0f), -8388608L, 8388607L);
         int_to_24(ismp,dbp);
       }
       
@@ -1210,7 +1231,7 @@ namespace cw
       
       for(unsigned i=0; i<bufSmpCnt; dbp+=3, ++i)
       {
-        int ismp = (int)(sbuf[i]*(int)kMax24Bits);
+        int ismp = (int)std::clamp((long)std::lround(sbuf[i]*8388608.0), -8388608L, 8388607L);
         int_to_24(ismp,dbp);
       }
       return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);      
@@ -1231,7 +1252,7 @@ namespace cw
     rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const float* sbuf, int* dbuf )
     {
       for(unsigned i=0; i<bufSmpCnt; ++i)
-        dbuf[i] =  (int)(sbuf[i] * INT_MAX);
+        dbuf[i] =  (int)std::clamp(std::llround(sbuf[i] * 2147483648.0f), -2147483648LL, 2147483647LL);
       return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);      
     }
 
@@ -1239,7 +1260,7 @@ namespace cw
     rc_t _write_samples( af_t* p, unsigned bufSmpCnt, const double* sbuf, int* dbuf )
     {
       for(unsigned i=0; i<bufSmpCnt; ++i)
-        dbuf[i] =  (int)(sbuf[i] * INT_MAX);
+        dbuf[i] =  (int)std::clamp(std::llround(sbuf[i] * 2147483648.0), -2147483648LL, 2147483647LL);
       return _write_samples_to_file(p,sizeof(dbuf[0]),bufSmpCnt,dbuf);      
     }
 
@@ -1697,9 +1718,19 @@ cw::rc_t    cw::audiofile::writeInt(    handle_t h, unsigned frmCnt, unsigned ch
       if( p->info.bits == 8 )
       {
         char*  dbp = buf + ci;
-        for(; sbp < sep; dbp+=chCnt )
-          *dbp = (char)*sbp++;             
+        if( cwIsFlag(p->info.flags,kAiffAfFl) )
+        {
+          for(; sbp < sep; dbp+=chCnt )
+            *dbp = (char)*sbp++;
+        }
+        else
+        {
+          // WAV files use unsigned 8 bit samples with 128 as the midpoint
+          for(; sbp < sep; dbp+=chCnt )
+            *dbp = (unsigned char)(*sbp++ + 128);
+        }
       }
+
       else
       {
         // if the samples do need to be byte swapped

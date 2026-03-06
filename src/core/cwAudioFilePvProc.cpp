@@ -17,7 +17,7 @@
 #include "cwDsp.h"
 #include "cwAudioTransforms.h"
 #include "cwAudioFileProc.h"
-#include "cwPvAudioFileProc.h"
+#include "cwAudioFilePvProc.h"
 
 //------------------------------------------------------------------------------------------------
 // Phase Vocoder File Processor

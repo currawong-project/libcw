@@ -11,7 +11,8 @@ namespace cw
     double   x80ToDouble( unsigned char s[10] );
     void     doubleToX80( double v, unsigned char s[10] );
 
-    bool     isPowerOfTwo(   unsigned i );
+    inline bool     isPowerOfTwo(   unsigned x ) { return x==1 || (!( (x < 2) || (x & (x-1)) )); }
+
     unsigned nextPowerOfTwo( unsigned i );
     unsigned nearPowerOfTwo( unsigned i );
 
@@ -21,7 +22,7 @@ namespace cw
     unsigned prevOddU(  unsigned v );
     unsigned nextEvenU( unsigned v );
     unsigned prevEvenU( unsigned v );
-
+    
     /// Increment or decrement 'idx' by 'delta' always wrapping the result into the range
     /// 0 to (maxN-1).
     /// 'idx': initial value 

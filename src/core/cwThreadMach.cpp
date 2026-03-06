@@ -449,8 +449,8 @@ cw::rc_t cw::thread_tasks::run( handle_t h, task_t* taskA, unsigned taskN, unsig
       break;
         
     case kTimeOutRC:
-      // mutex is unlocked
-      p->mutexLockFl = false;
+      // mutex is locked
+      p->mutexLockFl = true;
       cwLogWarning("Thread tasks timed out after %i ms.",timeOutMs);
       break;
         

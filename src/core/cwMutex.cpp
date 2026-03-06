@@ -193,8 +193,8 @@ cw::rc_t cw::mutex::waitOnCondVar( handle_t h, bool lockThenWaitFl, unsigned tim
     //if((rc = time::futureMs(ts,timeOutMs)) == kOkRC )    
       if((sysRC = pthread_cond_timedwait(&p->cvar,&p->mutex,&ts)) != 0 )
       {
-        if( sysRC == ETIMEDOUT )
-          rc = kTimeOutRC;
+        if( sysRC == ETIMEDOUT )          
+          rc = kTimeOutRC;  // and the mutex is locked
         else
           return cwLogSysError(kInvalidOpRC,sysRC,"Thread cond. var. wait failed.");
       }

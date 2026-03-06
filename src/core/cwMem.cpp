@@ -5,6 +5,27 @@
 #include "cwCommonImpl.h"
 #include "cwMem.h"
 
+/*
+
+ssss = count of data bytes
+
+ssss is always offset by 8 bytes from base of data
+
+ 
+32  32  32  32
+v   v   v   v
+0123456789012345
+ssss----dddd...
+
+64      64      64
+v       v       v
+01234567890123456
+ssss----dddd...
+
+    
+*/
+
+
 bool g_warn_on_alloc_fl = false;
 
 void* cw::mem::_alloc( void* p0, unsigned n, unsigned flags )
@@ -30,8 +51,10 @@ void* cw::mem::_alloc( void* p0, unsigned n, unsigned flags )
 
     if( g_warn_on_alloc_fl )
       cwLogWarning("Memory allocation:%i",n);
-    
-    p = malloc(n);  // allocate new memory
+
+    // allocate 64bit aligned data
+    p = std::aligned_alloc(64,n);
+    //p = malloc(n);  // allocate new memory
 
     // if expanding then copy in data from existing block
     if( p0 != nullptr )

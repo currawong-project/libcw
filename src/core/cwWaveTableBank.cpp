@@ -140,20 +140,23 @@ namespace cw
       {
         pitch_t* pr = instr->pitchA + i;
         for(unsigned j=0; j<pr->velN; ++j)
-        {
-          vel_t* vr = pr->velA + j;
-          for(unsigned ch_idx=0; ch_idx<vr->mc_seq.chN; ++ch_idx)
+          if( pr->velA != nullptr )
           {
-            wt_seq_t* wts = vr->mc_seq.chA + ch_idx;
-            for(unsigned wti=0; wti<wts->wtN; ++wti)
-            {
-              wt_t* wt = wts->wtA + wti;
-              mem::release(wt->aV);              
-            }
-            mem::release(wts->wtA);
+            vel_t* vr = pr->velA + j;
+            for(unsigned ch_idx=0; ch_idx<vr->mc_seq.chN; ++ch_idx)
+              if( vr->mc_seq.chA != nullptr )
+              {
+                wt_seq_t* wts = vr->mc_seq.chA + ch_idx;
+                for(unsigned wti=0; wti<wts->wtN; ++wti)
+                {
+                  wt_t* wt = wts->wtA + wti;
+                  if( wt != nullptr )
+                    mem::release(wt->aV);              
+                }
+                mem::release(wts->wtA);
+              }
+            mem::release(vr->mc_seq.chA);            
           }
-          mem::release(vr->mc_seq.chA);            
-        }
         mem::release(pr->velA);
       }
       mem::release(instr->pitchA);
@@ -376,6 +379,7 @@ namespace cw
             // will wrap at floor(srate/hz) and so the wave table must be at least
             // this long.  (See cwAudioTransforms::wt_str<>._process_loop())
             wtei = std::max(wtei,wtbi + (unsigned)std::floor((2.0* srate)/hz));
+            wtei = std::min(wtei,abuf.frmN);
 
             // if this is the first looping wave table then insert the attack wave table before it
             if( wti==0 )
@@ -456,16 +460,15 @@ cw::rc_t cw::wt_bank::destroy( handle_t& hRef )
 
 cw::rc_t cw::wt_bank::load( handle_t h, const char* instr_json_fname, unsigned threadN )
 {
-  rc_t            rc          = kOkRC;
-  wt_bank_t*      p           = _handleToPtr(h);
-  object_t*       f           = nullptr;
-  const object_t* pitchL      = nullptr;
-  const char*     instr_label = nullptr;
-  instr_t*        instr       = nullptr;
-  //audio_buf_t     abuf{};
-  load_pitch_t*         argsA = nullptr;
+  rc_t                   rc          = kOkRC;
+  wt_bank_t*             p           = _handleToPtr(h);
+  object_t*              f           = nullptr;
+  const object_t*        pitchL      = nullptr;
+  const char*            instr_label = nullptr;
+  instr_t*               instr       = nullptr;
+  load_pitch_t*          argsA       = nullptr;
   thread_tasks::handle_t threadTasksH; //  
-  thread_tasks::task_t* taskA = nullptr;
+  thread_tasks::task_t*  taskA       = nullptr;
   
   if((rc = objectFromFile(instr_json_fname,f)) != kOkRC )
     goto errLabel;
@@ -521,10 +524,6 @@ cw::rc_t cw::wt_bank::load( handle_t h, const char* instr_json_fname, unsigned t
       goto errLabel;
     }
     
-    for(unsigned i=0; i<instr->pitchN; ++i)
-    {
-      p->allocAudioBytesN += argsA[i].allocByteN;
-    }
   }
   else
   {
@@ -533,6 +532,12 @@ cw::rc_t cw::wt_bank::load( handle_t h, const char* instr_json_fname, unsigned t
         goto errLabel;
   } 
 
+  for(unsigned i=0; i<instr->pitchN; ++i)
+  {
+    p->allocAudioBytesN += argsA[i].allocByteN;
+  }
+
+  
   if((rc = _create_instr_pv_map( instr )) != kOkRC )
     goto errLabel;
 

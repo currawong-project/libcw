@@ -60,6 +60,20 @@ primitive data types (`readInt`, `writeFloat`), string serialization
 (`readStr`, `writeStr`), formatted output (`printf`, `print`), and a
 file backup mechanism (`backup`) for creating versioned copies.
 
+### `cwCsv`
+
+The `cwCsv` module provides a specialized parser for Comma-Separated
+Values (CSV) files, designed for efficient tabular data retrieval. It
+utilizes a `handle_t` abstraction to manage file state and integrates
+with the `cwFile` and `cwMem` modules. A key feature is its
+header-first approach, where the first line is parsed to allow
+subsequent data rows to be accessed by column title or index. The
+module supports standard CSV features including quoted fields, escaped
+characters, and automatic type conversion to primitives (integers,
+doubles, booleans) and strings. It also provides utility functions for
+rewinding the file, querying line counts, and handling rows with
+varying column counts.
+
 ### `cwVectOps`
 
 The `cwVectOps` module provides a templated library for common vector

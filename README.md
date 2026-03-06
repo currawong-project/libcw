@@ -74,3 +74,60 @@ genhtml build/debug/coverage.info --output-directory build/debug/coverage --rc l
 
 
 
+## Testing coverage on core
+cwAudioFileOps.h
+cwAudioFileProc.h
+cwAudioFilePvProc.h
+cwB23Tree.h 
+cwDataSets.h
+cwLib.h
+cwMath.h
+cwMidiFile.h
+cwMidiParser.h
+cwMidiState.h
+cwMtx.h
+cwSvg.h
+cwTest.h
+cwThreadMach.h
+cwTracer.h
+cwVariant.h
+
+
+### Skip:
+cwFFT.h : Dummy FFT implementation
+
+cwMtQueueTester.h   : Tester 
+cwMpScNbCircQueue.h : Only used in cwMtQueueTester.cpp
+cwMpScQueue.h       : Not used.
+cwMpScNbQueue.h     : Not used
+cwSpScBuf.h         : Not used
+cwSpScQueueTmpl.h   : Not used
+ 
+
+### DONE:
+cwAudioFile.h
+cwAudioTransforms.h
+cwCommon.h
+cwCommonImpl.h 
+cwCsv.h
+cwDsp.h
+cwDspTransforms.h
+cwDspTypes.h
+cwFile.h
+cwFileSys.h
+cwLex.h
+cwLog.h
+cwMem.h
+cwMidi.hc
+wMidiDecls.h
+cwMutex.h
+cwNbMpScQueue.h
+cwNumericConvert.h
+cwObject.h
+cwObjectTemplate.h
+cwText.h
+cwTextBuf.h
+cwThread.h
+cwTime.h
+cwVectOps.h
+cwWaveTableBank.h

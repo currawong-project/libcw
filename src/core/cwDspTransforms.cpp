@@ -159,6 +159,11 @@ void cw::dsp::compressor::set_release_ms( obj_t* p, ftime_t ms )
   _ms_to_samples(p,ms,p->rlsSmp);
 }
     
+void cw::dsp::compressor::set_thresh_db(  obj_t* p, coeff_t thresh )
+{
+  p->threshDb = thresh;
+}
+    
 void cw::dsp::compressor::set_rms_wnd_ms( obj_t* p, ftime_t ms )
 {
   p->rmsWndCnt = std::max((unsigned)1,(unsigned)floor(ms * p->srate / (1000.0 * p->procSmpCnt)));
@@ -421,6 +426,7 @@ cw::rc_t cw::dsp::audio_meter::exec( obj_t* p, const sample_t* xV, unsigned xN )
 {
   rc_t rc = kOkRC;
   unsigned n = 0;
+  unsigned original_xN = xN;
 
   // copy the incoming audio samples to the buffer
   while( xN )
@@ -462,9 +468,10 @@ cw::rc_t cw::dsp::audio_meter::exec( obj_t* p, const sample_t* xV, unsigned xN )
   p->outDb  = ampl_to_db(p->outLin);           // RMS dB
 
   p->peakFl = p->outDb > p->peakThreshDb;   // set peak flag
-  p->clipFl = vop::max(xV,xN) >= 1.0;       // set clip flag
+  p->clipFl = vop::max(xV, original_xN) >= 1.0;       // set clip flag
 
   p->peakCnt += p->peakFl ? 1 : 0;          // count peak violations
+  p->clipCnt += p->clipFl ? 1 : 0;
   
   return rc;
 }
