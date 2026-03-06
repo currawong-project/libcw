@@ -28,6 +28,8 @@ namespace cw
     // the condition var. returns (w/ the mutex locked) even though it was
     // not acutally signals. If it matters to the application then it must
     // provide this logic.
+    //
+    // Note that if the function times out then the mutex is still locked on return.
     rc_t waitOnCondVar( handle_t h, bool lockThenWaitFl, unsigned timeOutMs );
 
     rc_t signalCondVar( handle_t h);
