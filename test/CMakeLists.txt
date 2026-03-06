@@ -21,6 +21,15 @@ target_sources(test_main
   test_numeric_convert.cpp
   test_log.cpp
   test_midi.cpp
+  test_dsp.cpp
+  test_thread.cpp
+  test_textbuf.cpp
+  test_nbmpscqueue.cpp
+  test_audiofile.cpp
+  test_mutex.cpp
+  test_audio_transforms.cpp
+  test_dsp_transforms.cpp
+  test_wave_table_bank.cpp
 )
 
 target_compile_options(test_main PRIVATE
