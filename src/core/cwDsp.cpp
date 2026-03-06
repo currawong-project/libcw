@@ -16,11 +16,6 @@
 //  fft
 //
 #ifdef cwFFTW
-unsigned cw::dsp::fft::window_sample_count_to_bin_count( unsigned wndSmpN )
-{ return wndSmpN/2 + 1; }
-
-unsigned cw::dsp::fft::bin_count_to_window_sample_count( unsigned binN )
-{ return (binN-1) * 2; }
 
 cw::rc_t cw::dsp::fft::test()
 {
@@ -111,12 +106,6 @@ cw::rc_t cw::dsp::ifft::test()
 //  intel_fft
 //
 #ifdef cwMKL
-
-unsigned cw::dsp::intel_fft::window_sample_count_to_bin_count( unsigned wndSmpN )
-{ return wndSmpN/2 + 1; }
-
-unsigned cw::dsp::intel_fft::bin_count_to_window_sample_count( unsigned binN )
-{ return (binN-1) * 2; }
 
 cw::rc_t cw::dsp::intel_fft::test()
 {

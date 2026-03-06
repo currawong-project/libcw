@@ -18,9 +18,6 @@
 #define IFFT ifft
 #endif
 
-
-#include <type_traits>
-
 namespace cw
 {
   namespace dsp
@@ -122,7 +119,12 @@ namespace cw
     template< typename T >      
       T*	gaussian( T* dbp, unsigned dn, double mean, double variance )
     {
-  
+      if (dn <= 1 || variance == 0)
+      {
+        cwLogError(kInvalidArgRC,"Invalid vector size %i in call to gaussian().",dn);
+        return nullptr;
+      }
+
       int      M		    =  dn-1;
       double   sqrt2pi	= sqrt(2.0*M_PI);
       unsigned i;
@@ -145,6 +147,12 @@ namespace cw
     template< typename T >      
       T* hamming( T* dbp, unsigned dn )
     {
+      if (dn <= 1)
+      {
+        cwLogError(kInvalidArgRC,"Invalid window size %i in call to hamming().",dn);
+        return nullptr;
+      }
+      
       const T* dep = dbp + dn;
       T* dp   = dbp;
       double        fact = 2.0 * M_PI / (dn-1);
@@ -159,6 +167,12 @@ namespace cw
     template< typename T >      
       T* hann( T* dbp, unsigned dn )
     {
+      if (dn <= 1)
+      {
+        cwLogError(kInvalidArgRC,"Invalid window size %i in call to hann().",dn);
+        return nullptr;
+      }
+      
       const T* dep = dbp + dn;
       T* dp   = dbp;
       double        fact = 2.0 * M_PI / (dn-1);
@@ -185,11 +199,23 @@ namespace cw
     }
 
 
-
     template< typename T >      
       T* triangle( T* dbp, unsigned dn )
     {
-      unsigned     n    = dn/2;
+      unsigned     n  = dn/2;
+      
+      if (dn == 0)
+      {
+        cwLogError(kInvalidArgRC,"Invalid window size %i in call to triangle().",dn);
+        return nullptr;
+      }
+      
+      if (n == 0)
+      {
+        *dbp = 1.0;
+        return dbp;
+      }
+    
       T incr = 1.0/n;
 
       T v0 = 0;
@@ -205,17 +231,26 @@ namespace cw
       T*	gauss_window( T* dbp, unsigned dn, double arg )	
     {
       const T* dep = dbp + dn;
-      T* rp = dbp;
-      int           N  = (dep - dbp) - 1;
-      int           n  = -N/2;
+      T*       rp  = dbp;
+      int      N   = (dep - dbp) - 1;
+      int      n   = -N/2;
   
-      if( N == 0 )
-        *dbp = 1.0;
+      if( N <= 0 )
+      {
+        if (dn > 0)
+          *dbp = 1.0;
+        else
+        {
+          cwLogError(kInvalidArgRC,"Invalid window size %i in call to gauss_window().",dn);
+          return nullptr;
+        }
+        
+      }
       else
       {
         while( dbp < dep )
         {
-          double a = (arg * n++) / (N/2);
+          double a = (arg * n++) / (N/2.0);
 
           *dbp++ = (T)exp( -(a*a)/2 );
         }
@@ -223,19 +258,107 @@ namespace cw
       return rp;
     }
 
+
+    inline unsigned window_sample_count_to_bin_count( unsigned wndSmpN ) { return wndSmpN/2 + 1; }
+
+    inline unsigned bin_count_to_window_sample_count( unsigned binN ) { return (binN-1) * 2; }
+    
+    template< typename T >
+    void real_polar_to_complex( std::complex<T>* cplxV, unsigned cplxN, const T* magV, const T* phsV, unsigned binN )
+    {
+      if( cplxV==nullptr || binN == 0 || cplxN == 0 )
+        return;
+
+      unsigned n = bin_count_to_window_sample_count(binN);
+
+      // if input spectrum was given
+      if( magV != nullptr && phsV != nullptr )
+      {
+        // verify the length of the complex output vector
+        assert( cplxN >= n );
+
+        // All bins get scaled by 0.5 to compensate for the n/2 normalization in the forward FFT.
+        // We force the imaginary part to zero for DC and Nyquist to ensure a real-valued time signal.
+        cplxV[0]      = std::complex<T>( std::polar( magV[0] * (T)0.5, phsV[0] ).real(), 0 );          
+        cplxV[binN-1] = std::complex<T>( std::polar( magV[binN-1] * (T)0.5, phsV[binN-1] ).real(), 0 );
+          
+        for(unsigned i=1; i < binN-1; ++i)
+        {
+          // apply scaling to each bin
+          cplxV[i]   = std::polar( magV[i] * (T)0.5, phsV[i] );
+          
+          // compute the symetric conjugate part
+          cplxV[n-i] = std::conj(cplxV[i]);
+        }          
+      }
+      else // no input spectrum was given, it is already in the first half of cplxV[] ...
+      {
+        assert( cplxN >= n );
+
+        // ... force DC and Nyquist imaginary parts to zero ...
+        cplxV[0]      = std::complex<T>( cplxV[0].real(), 0 );
+        cplxV[binN-1] = std::complex<T>( cplxV[binN-1].real(), 0 );
+
+        // ... fill the symetric conjugate part of the real spectrum
+        for(unsigned i=1; i < binN-1; ++i)
+          cplxV[n-i] = std::conj(cplxV[i]);
+        
+      }
+    }
+
+    template< typename T >
+    void real_rect_to_complex( std::complex<T>* cplxV, unsigned cplxN,  const T* rV, const T* iV, unsigned binN )
+    {
+      if( cplxV==nullptr || binN == 0 || cplxN == 0 )
+        return;
+
+      unsigned n = bin_count_to_window_sample_count(binN);
+
+      if( rV != nullptr && iV != nullptr )
+      {
+        // verify the length of the complex output vector
+        assert( cplxN >= n );
+
+        // All bins get scaled by 0.5 to compensate for the n/2 normalization in the forward FFT.
+        // We force the imaginary part to zero for DC and Nyquist to ensure a real-valued time signal.
+        cplxV[0]      = std::complex<T>( rV[0] * (T)0.5, 0 );
+        cplxV[binN-1] = std::complex<T>( rV[binN-1] * (T)0.5, 0 );
+
+        for(unsigned i=1; i < binN-1; ++i)
+        {
+          // apply scaling to each bin
+          cplxV[i]   = std::complex<T>(rV[i] * (T)0.5, iV[i] * (T)0.5);
+
+          // compute the symetric conjugate part
+          cplxV[n-i] = std::conj(cplxV[i]);
+        }
+        
+      }
+      else // no input spectrum was given, it is already in the first half of cplxV[] ...
+      {
+        assert( cplxN >= n );
+
+        // ... force DC and Nyquist imaginary parts to zero ...
+        cplxV[0]      = std::complex<T>( cplxV[0].real(), 0 );
+        cplxV[binN-1] = std::complex<T>( cplxV[binN-1].real(), 0 );
+
+        // ... fill the symetric conjugate part of the real spectrum
+        for(unsigned i=1; i < binN-1; ++i)
+          cplxV[n-i] = std::conj(cplxV[i]);
+      }
+    }
+
+
+
+    
+
 #ifdef cwFFTW    
     //---------------------------------------------------------------------------------------------------------------------------------
     // FFT
     //
     
     namespace fft
-    {
-
-      
-      unsigned window_sample_count_to_bin_count( unsigned wndSmpN );
-      unsigned bin_count_to_window_sample_count( unsigned binN );
-
-      
+    {      
       enum
       {
         kToPolarFl = 0x01,  // convert to polar (magn./phase)
@@ -247,14 +370,14 @@ namespace cw
       {
         unsigned         flags;
         
-        T*               inV;
-        std::complex<T>* cplxV;
+        T*               inV;   // inV[ inN ]
+        std::complex<T>* cplxV; // cplxV[ binN ]
         
-        T*               magV;
-        T*               phsV;
+        T*               magV;   // magV[ binN ] - magnitude or real part
+        T*               phsV;   // phsV[ binN ] - phase or imag. part
         
-        unsigned         inN;
-        unsigned         binN;
+        unsigned         inN;    // inN is a power of two
+        unsigned         binN;   // binN = inN/2 + 1
         
         union
         {
@@ -267,7 +390,15 @@ namespace cw
       template< typename T >
       rc_t create( struct obj_str<T>*& p, unsigned xN, unsigned flags=kToPolarFl )
       {
+        rc_t rc = kOkRC;
         p = mem::allocZ< obj_str<T> >(1);
+
+        if( !math::isPowerOfTwo(xN) )
+        {
+          rc = cwLogError(kInvalidArgRC,"The length of the input vector to the FFT object must be a power of two not %i.",xN);
+          goto errLabel;
+        }
+        
         
         p->flags = flags;
         p->inN   = xN;
@@ -289,6 +420,7 @@ namespace cw
           p->u.dplan = fftw_plan_dft_r2c_1d((int)xN, (double*)p->inV, reinterpret_cast<fftw_complex*>(p->cplxV), FFTW_PATIENT );          
         }
 
+      errLabel:
         return kOkRC;        
       }
 
@@ -344,27 +476,31 @@ namespace cw
         // convert to polar
         if( cwIsFlag(p->flags,kToPolarFl) )
         {
+          T norm = p->inN > 0 ? (T)p->inN/2.0 : 1.0;
           for(unsigned i=0; i<p->binN; ++i)
           {
-            p->magV[i] = std::abs(p->cplxV[i])/(p->inN/2);
+            p->magV[i] = std::abs(p->cplxV[i])/norm;
             p->phsV[i] = std::arg(p->cplxV[i]);
           }
         }
         else
+        {
           // convert to rect
           if( cwIsFlag(p->flags,kToRectFl) )
           {
+            T norm = p->inN > 0 ? (T)p->inN/2.0 : 1.0;
             for(unsigned i=0; i<p->binN; ++i)
             {
-              p->magV[i] = std::real(p->cplxV[i]);
-              p->phsV[i] = std::imag(p->cplxV[i]);
+              p->magV[i] = std::real(p->cplxV[i])/norm;
+              p->phsV[i] = std::imag(p->cplxV[i])/norm;
             }
           }
           else
           {
             // do nothing - leave the result in p->cplxV[]
           }
-  
+        }
+        
         return rc;        
       }
 
@@ -389,11 +525,11 @@ namespace cw
       template< typename T >
         struct obj_str
       {
-        T               *outV;        
-        std::complex<T> *cplxV;
+        T               *outV;   // outV[ outN ]     
+        std::complex<T> *cplxV;  // cplxV[ outN ]
         
-        unsigned         outN;
-        unsigned         binN;
+        unsigned         outN;   // outN >= (binN-1)*2
+        unsigned         binN;   // (bin-1)*2 is a power of two
 
         union
         {
@@ -401,15 +537,24 @@ namespace cw
           fftwf_plan fplan;
         } u;
       };
+
       
       template< typename T >
       rc_t create( struct obj_str<T>*& p, unsigned binN )
       {
+        rc_t rc = kOkRC;
         p = mem::allocZ< obj_str<T> >(1);
+
+        if( !math::isPowerOfTwo( bin_count_to_window_sample_count(binN)  ) )
+        {
+          rc = cwLogError(kInvalidArgRC,"(binN-1)/2 must be a power of two. %i is not valid.",binN);
+          goto errLabel;
+        }
         
         p->binN  = binN;
-        p->outN  = fft::bin_count_to_window_sample_count(binN); 
-
+        
+        p->outN = bin_count_to_window_sample_count(binN);
+        
         if( std::is_same<T,float>::value )
         {
           p->outV  = (T*)fftwf_malloc( sizeof(T)*p->outN );
@@ -420,10 +565,11 @@ namespace cw
         {
           p->outV  = (T*)fftw_malloc( sizeof(T)*p->outN );
           p->cplxV = (std::complex<T>*)fftw_malloc( sizeof(std::complex<T>)*p->outN);  
-          p->u.dplan  = fftw_plan_dft_c2r_1d((int)p->outN, reinterpret_cast<fftw_complex*>(p->cplxV), (double*)p->outV, FFTW_BACKWARD | FFTW_PATIENT );          
+          p->u.dplan = fftw_plan_dft_c2r_1d((int)p->outN, reinterpret_cast<fftw_complex*>(p->cplxV), (double*)p->outV, FFTW_BACKWARD | FFTW_PATIENT );          
         }
 
-        return kOkRC;;
+      errLabel:
+        return rc;;
       }
 
       template< typename T >
@@ -456,15 +602,8 @@ namespace cw
         rc_t exec_polar( struct obj_str<T>* p, const T* magV, const T* phsV )
       {
         rc_t    rc    = kOkRC;
-
-        if( magV != nullptr && phsV != nullptr )
-        {
-          for(unsigned i=0; i<p->binN; ++i)
-            p->cplxV[i] = std::polar( magV[i] / 2, phsV[i] );
         
-          for(unsigned i=p->outN-1,j=1; j<p->binN-1; --i,++j)
-            p->cplxV[i] = std::polar( magV[j] / 2, phsV[j] ); 
-        }
+        real_polar_to_complex(p->cplxV, p->outN, magV, phsV, p->binN);
         
         if( std::is_same<T,float>::value )
           fftwf_execute(p->u.fplan);
@@ -475,26 +614,16 @@ namespace cw
       }
 
       template< typename T >
-        rc_t exec_rect( struct obj_str<T>* p, const T* iV, const T* rV )
+        rc_t exec_rect( struct obj_str<T>* p, const T* rV, const T* iV )
       {
         rc_t rc = kOkRC;
 
-        if( iV != nullptr && rV != nullptr )
-        {
-          unsigned i,j;
-          
-          for(i=0; i<p->binN; ++i)
-            p->cplxV[i] = std::complex(rV[i], iV[i]);
-
-          for(i=p->outN-1,j=1; j<p->binN-1; --i,++j)
-            p->cplxV[i] = std::complex(rV[j], iV[j]);
-          
-          if( std::is_same<T,float>::value )
-            fftwf_execute(p->u.fplan);
-          else
-            fftw_execute(p->u.dplan);          
-        }
+        real_rect_to_complex(p->cplxV, p->outN, rV, iV, p->binN);
         
+        if( std::is_same<T,float>::value )
+          fftwf_execute(p->u.fplan);
+        else
+          fftw_execute(p->u.dplan);          
         
         return rc;
       }
@@ -517,9 +646,6 @@ namespace cw
     //
     namespace intel_fft
     {
-      unsigned window_sample_count_to_bin_count( unsigned wndSmpN );
-      unsigned bin_count_to_window_sample_count( unsigned binN );
-      
       enum
       {
         kToPolarFl = 0x01,  // convert to polar (magn./phase)
@@ -553,6 +679,7 @@ namespace cw
       template< typename T >
       rc_t create( struct obj_str<T>*& p, unsigned xN, unsigned flags=kToPolarFl )
       {
+        rc_t rc = kOkRC;
         MKL_LONG status;
         
         p = mem::allocZ< obj_str<T> >(1);
@@ -566,26 +693,26 @@ namespace cw
         p->cplxV = mem::allocZ<std::complex<T>>(xN);
         DFTI_CONFIG_VALUE  mkl_data_type = std::is_same<T,float>::value ? DFTI_SINGLE : DFTI_DOUBLE;
 
-        if((status = DftiCreateDescriptor(&p->fftHandle, mkl_data_type, DFTI_REAL, 1, xN)) != 0 )
+        if((status = DftiCreateDescriptor(&p->fftHandle, mkl_data_type, DFTI_REAL, 1, xN)) != DFTI_NO_ERROR  )
         {
-          cwLogError(kOpFailRC,"Forward FFT handle create failed. MKL error:%i.",status);
+          rc = cwLogError(kOpFailRC,"Forward FFT handle create failed. MKL error:%i.",status);
           goto errLabel;
         }
                 
-        if((status = DftiSetValue(p->fftHandle, DFTI_PLACEMENT, DFTI_NOT_INPLACE)) != 0 )
+        if((status = DftiSetValue(p->fftHandle, DFTI_PLACEMENT, DFTI_NOT_INPLACE)) != DFTI_NO_ERROR  )
         {
-          cwLogError(kOpFailRC,"Forward FFT set value failed. MKL error:%i.",status);
+          rc = cwLogError(kOpFailRC,"Forward FFT set value failed. MKL error:%i.",status);
           goto errLabel;
         }
           
-        if((status = DftiCommitDescriptor(p->fftHandle)) != 0 )
+        if((status = DftiCommitDescriptor(p->fftHandle)) != DFTI_NO_ERROR  )
         {
-          cwLogError(kOpFailRC,"Forward FFT commit failed. MKL error:%i.",status);
+          rc = cwLogError(kOpFailRC,"Forward FFT commit failed. MKL error:%i.",status);
           goto errLabel;
         }
 
       errLabel:
-        return kOkRC;        
+        return rc;
       }
 
       template< typename T >
@@ -624,36 +751,40 @@ namespace cw
         memcpy(p->inV,xV,sizeof(T)*xN);
 
         // execute the FT
-        if((status = DftiComputeForward(p->fftHandle, p->inV, p->cplxV)) != 0 )
+        if((status = DftiComputeForward(p->fftHandle, p->inV, p->cplxV)) != DFTI_NO_ERROR  )
         {
-          cwLogError(kOpFailRC,"Forward FFT failed. MKL error:%i.",status);
+          rc = cwLogError(kOpFailRC,"Forward FFT failed. MKL error:%i.",status);
           goto errLabel;
         }
 
         // convert to polar
         if( cwIsFlag(p->flags,kToPolarFl) )
         {
+          T norm = p->inN > 0 ? (T)p->inN/2.0 : 1.0;
           for(unsigned i=0; i<p->binN; ++i)
           {
-            p->magV[i] = std::abs(p->cplxV[i])/(p->inN/2);
+            p->magV[i] = std::abs(p->cplxV[i])/norm;
             p->phsV[i] = std::arg(p->cplxV[i]);
           }
         }
         else
+        {
           // convert to rect
           if( cwIsFlag(p->flags,kToRectFl) )
           {
+            T norm = p->inN > 0 ? (T)p->inN/2.0 : 1.0;
             for(unsigned i=0; i<p->binN; ++i)
             {
-              p->magV[i] = std::real(p->cplxV[i]);
-              p->phsV[i] = std::imag(p->cplxV[i]);
+              p->magV[i] = std::real(p->cplxV[i])/norm;
+              p->phsV[i] = std::imag(p->cplxV[i])/norm;
             }
           }
           else
           {
             // do nothing - leave the result in p->cplxV[]
           }
-
+        }
+        
       errLabel:
         return rc;        
       }
@@ -693,37 +824,40 @@ namespace cw
           fftwf_plan fplan;
         } u;
       };
-      
+
       template< typename T >
       rc_t create( struct obj_str<T>*& p, unsigned binN )
       {
+        rc_t rc = kOkRC;
         unsigned status;
         DFTI_CONFIG_VALUE mkl_data_type = std::is_same<T,float>::value ? DFTI_SINGLE : DFTI_DOUBLE;
         p = mem::allocZ< obj_str<T> >(1);
         
         p->binN  = binN;
-        p->outN  = intel_fft::bin_count_to_window_sample_count(binN); 
-
+        
+        p->outN = bin_count_to_window_sample_count(binN);
+        
         p->outV  = mem::allocZ<T>( p->outN );
         p->cplxV = mem::allocZ<std::complex<T> >( p->outN);
 
-        if((status = DftiCreateDescriptor(&p->ifftHandle, mkl_data_type, DFTI_REAL, 1, p->outN)) != 0)
+        if((status = DftiCreateDescriptor(&p->ifftHandle, mkl_data_type, DFTI_REAL, 1, p->outN)) != DFTI_NO_ERROR)
         {          
-          cwLogError(kOpFailRC,"Inverse FFT handle create failed. MKL error:%i.",status);
+          rc = cwLogError(kOpFailRC,"Inverse FFT handle create failed. MKL error:%i.",status);
           goto errLabel;
         }
         
-        if((status = DftiSetValue(p->ifftHandle, DFTI_PLACEMENT, DFTI_NOT_INPLACE)) != 0)
+        if((status = DftiSetValue(p->ifftHandle, DFTI_PLACEMENT, DFTI_NOT_INPLACE)) != DFTI_NO_ERROR)
         {
-          cwLogError(kOpFailRC,"Inverse FFT handle set placement value failed. MKL error:%i.",status);
+          rc = cwLogError(kOpFailRC,"Inverse FFT handle set placement value failed. MKL error:%i.",status);
           goto errLabel;
         }
         
-        if((status = DftiSetValue(p->ifftHandle, DFTI_CONJUGATE_EVEN_STORAGE, DFTI_COMPLEX_COMPLEX)) != 0)
+        if((status = DftiSetValue(p->ifftHandle, DFTI_CONJUGATE_EVEN_STORAGE, DFTI_COMPLEX_COMPLEX)) != DFTI_NO_ERROR)
         {
-          cwLogError(kOpFailRC,"Inverse FFT handle set input format failed. MKL error:%i.",status);
+          rc = cwLogError(kOpFailRC,"Inverse FFT handle set input format failed. MKL error:%i.",status);
           goto errLabel;
         }
+        
         /*
         if((status = DftiSetValue(p->ifftHandle, DFTI_BACKWARD_SCALE, 1.0 / p->outN)) != 0)
         {
@@ -731,14 +865,15 @@ namespace cw
           goto errLabel;
         }
         */
-        if((status = DftiCommitDescriptor(p->ifftHandle)) != 0)
+        
+        if((status = DftiCommitDescriptor(p->ifftHandle)) != DFTI_NO_ERROR)
         {
-          cwLogError(kOpFailRC,"Inverse FFT handle commit failed. MKL error:%i.",status);
+          rc = cwLogError(kOpFailRC,"Inverse FFT handle commit failed. MKL error:%i.",status);
           goto errLabel;
         }
 
       errLabel:
-        return kOkRC;;
+        return rc;
       }
 
       template< typename T >
@@ -763,16 +898,9 @@ namespace cw
         unsigned status;          
         rc_t    rc    = kOkRC;
 
-        if( magV != nullptr && phsV != nullptr )
-        {
-          for(unsigned i=0; i<p->binN; ++i)
-            p->cplxV[i] = std::polar( magV[i] / 2, phsV[i] );
-        
-          for(unsigned i=p->outN-1,j=1; j<p->binN-1; --i,++j)
-            p->cplxV[i] = std::polar( magV[j] / 2, phsV[j] ); 
-        }
+        real_polar_to_complex(p->cplxV, p->outN, magV, phsV, p->binN);
 
-        if((status = DftiComputeBackward(p->ifftHandle, p->cplxV, p->outV)) != 0)
+        if((status = DftiComputeBackward(p->ifftHandle, p->cplxV, p->outV)) != DFTI_NO_ERROR)
         {
           cwLogError(kOpFailRC,"Inverse polar FFT failed. MKL error:%i.",status);
           goto errLabel;          
@@ -783,22 +911,17 @@ namespace cw
       }
 
       template< typename T >
-        rc_t exec_rect( struct obj_str<T>* p, const T* iV, const T* rV )
+        rc_t exec_rect( struct obj_str<T>* p, const T* rV, const T* iV )
       {
         rc_t rc = kOkRC;
 
-        if( iV != nullptr && rV != nullptr )
+        if( rV != nullptr && iV != nullptr )
         {
           unsigned status;
-          unsigned i,j;
           
-          for(i=0; i<p->binN; ++i)
-            p->cplxV[i] = std::complex(rV[i], iV[i]);
+          real_rect_to_complex(p->cplxV,p->outN,rV,iV,p->binN);
 
-          for(i=p->outN-1,j=1; j<p->binN-1; --i,++j)
-            p->cplxV[i] = std::complex(rV[j], iV[j]);
-
-          if((status = DftiComputeBackward(p->ifftHandle, p->cplxV, p->outV)) == 0)
+          if((status = DftiComputeBackward(p->ifftHandle, p->cplxV, p->outV)) != DFTI_NO_ERROR)
           {
             cwLogError(kOpFailRC,"Inverse rect FFT failed. MKL error:%i.",status);
             goto errLabel;          
@@ -835,31 +958,41 @@ namespace cw
         std::complex<T>*   hV;
         unsigned           hN;
         
-        T*                 olaV; // olaV[olaN]
-        unsigned           olaN; // olaN == cN - procSmpN
-        T*                 outV; // outV[procSmpN]
+        T*                 olaV; // olaV[cN - 1]
+        unsigned           olaN; // olaN == cN - 1
+        T*                 outV; // outV[cN]
         unsigned           outN; // outN == procSmpN
       };
 
       template< typename T >
       rc_t create(struct obj_str<T>*& p, const T* hV, unsigned hN, unsigned procSmpN, T hScale=1 )
       {
+        rc_t rc = kOkRC;
+        unsigned binN = 0;
         p = mem::allocZ<struct obj_str<T>>(1);
 
         unsigned cN   = math::nextPowerOfTwo( hN + procSmpN - 1 );
         
-        FFT::create<T>(p->ft,cN,0);
+        if((rc = FFT::create<T>(p->ft,cN,0)) != kOkRC )
+        {
+          goto errLabel;
+        }
 
-        unsigned binN = FFT::bin_count( p->ft );
+        binN = FFT::bin_count( p->ft );
 
-        IFFT::create<T>(p->ift, binN);
+        if((rc = IFFT::create<T>(p->ift, binN)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        assert( p->ift->outN >= cN );
         
         p->hN   = hN;
         p->hV   = mem::allocZ< std::complex<T> >(binN);
         p->outV = mem::allocZ<T>( cN );
         p->outN = procSmpN;
-        p->olaV = p->outV + procSmpN;  // olaV[] overlaps outV[] with an offset of procSmpN
-        p->olaN = cN - procSmpN;
+        p->olaV = mem::allocZ<T>( cN - 1 );
+        p->olaN = cN - 1;
        
         FFT::exec( p->ft, hV, hN );
 
@@ -867,8 +1000,14 @@ namespace cw
           p->hV[i] = hScale * p->ft->cplxV[i] / ((T)cN);
 
         //printf("procN:%i cN:%i hN:%i binN:%i outN:%i\n", procSmpN, cN, hN, binN, p->outN );
+
         
-        return kOkRC;
+      errLabel:
+        
+        if( rc != kOkRC )
+          rc = cwLogError(rc,"Convolution create failed.");
+        
+        return rc;
       }
 
       template< typename T >
@@ -881,6 +1020,7 @@ namespace cw
         IFFT::destroy(pRef->ift);
         mem::release(pRef->hV);
         mem::release(pRef->outV);
+        mem::release(pRef->olaV);
         mem::release(pRef);
         return kOkRC;
       }
@@ -895,17 +1035,32 @@ namespace cw
         for(unsigned i=0; i<p->ft->binN; ++i)
           p->ift->cplxV[i] = p->hV[i] * p->ft->cplxV[i];
 
+        // Fill symmetry for MKL/Full-spectrum IFFT (not needed for FFTW c2r but good for consistency)
+        //for(unsigned i=1; i * 2 < p->ift->outN; ++i)
+        //  p->ift->cplxV[p->ift->outN - i] = std::conj(p->ift->cplxV[i]);
+
+
         // take the IFFT of the convolved spectrum
         IFFT::exec_polar<T>(p->ift,nullptr,nullptr);
 
-        // sum with previous impulse response tail
-        vop::add( p->outV,  (const T*)p->olaV, (const T*)p->ift->outV, p->outN-1 );
-
-        // first sample of the impulse response tail is complete 
-        p->outV[p->outN-1] = p->ift->outV[p->outN-1];
-
-        // store the new impulse response tail
-        vop::copy(p->olaV, p->ift->outV + p->outN, p->hN-1 );
+        // Output block is OLA + current IFFT result
+        vop::add( p->outV, (const T*)p->olaV, (const T*)p->ift->outV, p->outN );
+        
+        // Update OLA buffer for the next step
+        // 1. Shift existing OLA
+        unsigned moveN = (p->olaN > p->outN) ? (p->olaN - p->outN) : 0;
+        if (moveN > 0)
+          memmove(p->olaV, p->olaV + p->outN, moveN * sizeof(T));
+        
+        // 2. Zero out the vacated part
+        unsigned zeroN = std::min(p->olaN, p->outN);
+        if (zeroN > 0)
+          memset(p->olaV + moveN, 0, zeroN * sizeof(T));
+        
+        // 3. Add current IFFT tail to OLA
+        unsigned remainingN = std::min(p->olaN, p->ift->outN - p->outN);
+        if (remainingN > 0)
+          vop::add(p->olaV, (const T*)p->olaV, (const T*)(p->ift->outV + p->outN), remainingN);
 
         return kOkRC;
       }
@@ -913,6 +1068,7 @@ namespace cw
       template< typename T >
         rc_t apply( const T* xV, unsigned xN, const T* hV, unsigned hN, T* yV, unsigned yN, T hScale=1 )
       {
+        
         unsigned    procSmpN = std::min(xN,hN);
         obj_str<T> *p        = nullptr;
         unsigned    yi       = 0;
@@ -923,35 +1079,24 @@ namespace cw
         
         for(unsigned xi=0; xi<xN && yi<yN; xi+=procSmpN )
         {
-          exec<T>(p,xV+xi,std::min(procSmpN,xN-xi));
+          unsigned curXN = std::min(procSmpN,xN-xi);
+          exec<T>(p,xV+xi,curXN);
           
           unsigned outN = std::min(yN-yi,p->outN);
           vop::copy(yV+yi, p->outV, outN );
-
-
-          //printf("xi:%i yi:%i outN:%i\n", xi, yi, outN );
-          //vop::print( yV+yi, outN, "%f ", "outV ");
           
           yi += outN;
         }
 
-        //printf("yi:%i\n",yi);
-
-        /*
-        // if the tail of the hV[] is still in the OLA buffer
+        // Flush the OLA buffer
         if( yi < yN )
         {
-          
           unsigned outN = std::min(yN-yi, p->olaN);
-
-          // fill yV[] with as much of OLA as is available
           vop::copy(yV + yi, p->olaV, outN);
           yi += outN;
-
-          // zero any remaining space in yV[]
-          vop::zero(yV + yi, yN-yi );
+          if (yi < yN)
+            vop::zero(yV + yi, yN-yi );
         }
-        */
         
         destroy(p);
         
