@@ -1247,6 +1247,7 @@ namespace cw
       {
         if( rc != kTimeOutRC )
         {
+          // even though the wait timed out the mutex is still locked
           cwLogError(rc,"Audio thread Wait-on-condition-var failed.");
           return false;
         }
