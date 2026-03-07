@@ -7012,7 +7012,7 @@ namespace cw
               goto errLabel;
             }
 
-            if((rc = var_set(proc, vid, kAnyChIdx, seg->mp_playerA[0].mp_player_id)) != kOkRC )
+            if((rc = var_set(proc, vid, kAnyChIdx, 0 /*seg->mp_playerA[0].mp_player_id*/)) != kOkRC )
             {
               rc = proc_error(proc,rc,"The player selection menu could not be set on segment '%s'.",cwStringNullGuard(seg_title));
               goto errLabel;
@@ -7318,7 +7318,7 @@ namespace cw
           goto errLabel;
         }
 
-        printf("START-PLYR: seg_idx:%i player_id:%i\n",seg_idx,p->segA[ seg_idx ].cur_mp_player_id);
+        //printf("START-PLYR: seg_idx:%i player_id:%i\n",seg_idx,p->segA[ seg_idx ].cur_mp_player_id);
         
       errLabel:
         return rc;
