@@ -52,9 +52,7 @@ void* cw::mem::_alloc( void* p0, unsigned n, unsigned flags )
     if( g_warn_on_alloc_fl )
       cwLogWarning("Memory allocation:%i",n);
 
-    // allocate 64bit aligned data
-    p = std::aligned_alloc(64,n);
-    //p = malloc(n);  // allocate new memory
+    p = malloc(n);  // allocate new memory
 
     // if expanding then copy in data from existing block
     if( p0 != nullptr )

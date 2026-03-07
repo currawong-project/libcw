@@ -52,14 +52,20 @@ ctest -R "MyTest" --test-dir build/debug/test --verbose # Identify the tests to 
 ```
 ## Debug a test:
 ```
-file = ~/src/libcw/build/debug/test/test_main  
-set args=--gtest_filter=FlowTest.NumberTest --gtest_death_test_style=threadsafe
+file  ~/src/libcw/build/debug/test/test_main  
+set args --gtest_filter=FlowTest.NumberTest --gtest_death_test_style=threadsafe
 catch signal SIGABRT
 r
 ```
 
 ## Generate a test coverage report from a debug build
 ```
+rm -rf build/debug
+
+cmake -B build/debug --preset debug-lsan-coverage
+
+cmake --build build/debug --preset debug
+
 ctest --test-dir build/debug/test
 
 # generate coverage data

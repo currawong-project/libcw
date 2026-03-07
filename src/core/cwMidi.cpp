@@ -7,6 +7,7 @@
 #include "cwMem.h"
 #include "cwTime.h"
 #include "cwMidi.h"
+#include "cwText.h"
 
 namespace cw {
   namespace midi {
@@ -252,8 +253,9 @@ uint8_t    cw::midi::sciPitchToMidi( const char* sciPitchStr )
   bool        flatFl  = false;
   int         octave;
   int         acc     = 0;
+  unsigned    sn      = textLength(sciPitchStr);
 
-  if( sciPitchStr==NULL || strlen(sciPitchStr) > 5 )
+  if( sn < 2 )
     return kInvalidMidiPitch;
 
   // skip over leading letter
