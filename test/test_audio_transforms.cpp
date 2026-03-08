@@ -120,14 +120,27 @@ TEST_F(AudioTransformsTest, ShiftBuf) {
     bool first_found = false;
     bool second_found = false;
     
-    for(unsigned i=0; i < iSmpCnt; i += procSmpCnt) {
-        while(shift_buf::exec(p, x.data() + i, procSmpCnt)) {
-            if (j == 0) {
-                for(unsigned k=0; k<wndSmpCnt; ++k) EXPECT_NEAR(p->outV[k], expected_first[k], 1e-6f);
+    for(unsigned i=0; i < iSmpCnt; i += procSmpCnt)
+    {
+      if( i + procSmpCnt <= iSmpCnt )
+        while(shift_buf::exec(p, x.data() + i, procSmpCnt))
+        {
+            if (j == 0)
+            {
+                for(unsigned k=0; k<wndSmpCnt; ++k)
+                  EXPECT_NEAR(p->outV[k], expected_first[k], 1e-6f);
+                
                 first_found = true;
-            } else if (j == 1) {
-                for(unsigned k=0; k<wndSmpCnt; ++k) EXPECT_NEAR(p->outV[k], expected_second[k], 1e-6f);
+            }
+            else
+            {
+              if (j == 1)
+              {
+                for(unsigned k=0; k<wndSmpCnt; ++k)
+                  EXPECT_NEAR(p->outV[k], expected_second[k], 1e-6f);
+                
                 second_found = true;
+              }
             }
             j++;
         }

@@ -76,6 +76,8 @@ lcov --remove build/debug/coverage.info '/usr/include/*' --output-file build/deb
 
 # generate the coverage report
 genhtml build/debug/coverage.info --output-directory build/debug/coverage --rc lcov_branch_coverage=1
+
+ xdg-open build/debug/coverage/index.html 
 ```
 
 

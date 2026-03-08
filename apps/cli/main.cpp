@@ -389,49 +389,42 @@ cw::rc_t svgTest(   const cw::object_t* cfg, const cw::object_t* args, int argc,
 #define ASSERT_EQ(A,B) assert( (A) == (B))
 #define EXPECT_EQ(A,B) while(1){ if((A)!=(B)) printf("Unexpected EQ on line:%i\n",__LINE__); break;}
 #define EXPECT_NE(A,B) while(1){ if((A)==(B)) printf("Unexpected NE on line:%i\n",__LINE__); break;}
+#define EXPECT_LE(A,B) assert( (A) <= (B) )
 #define EXPECT_TRUE(A) while(1){ if((A)!=true) printf("Unexpected TRUE on line:%i\n",__LINE__); break;}
 #define EXPECT_FALSE(A) while(1){ if((A)!=false) printf("Unexpected TRUE on line:%i\n",__LINE__); break;}
 #define EXPECT_STREQ(A,B) while(1){ if(!textIsEqual(A,B)) printf("Unexpected string mismatch on line:%i\n",__LINE__); break;}
+#define EXPECT_NEAR(A,B,C) EXPECT_LE(::std::abs((A) - (B)), (C))
+
 using namespace cw;
+using namespace cw::dsp;
+#include <vector>
 cw::rc_t stubTest( const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] )
 {
   rc_t rc = kOkRC;
-  
-    object_t* obj = nullptr;
-
-    // Test parsing malformed strings
-    EXPECT_NE(objectFromString("{ a: 1, ", obj), kOkRC);
-    EXPECT_EQ(obj, nullptr);
-    EXPECT_NE(objectFromString("[1, 2", obj), kOkRC);
-    EXPECT_EQ(obj, nullptr);
-    EXPECT_NE(objectFromString("{ key: }", obj), kOkRC);
-    EXPECT_EQ(obj, nullptr);
-    //EXPECT_NE(objectFromString("{ [ foo ] }", obj), kOkRC);
-    //EXPECT_EQ(obj, nullptr);
-
-    // Test 'readv' with an unknown field
-    const char* s = "{ a:1, b:2, c:3 }";
-    ASSERT_EQ(objectFromString(s, obj), kOkRC);
-    int a,b;
-    // This should fail because 'c' is in the object but not in the readv list.
-    EXPECT_NE(obj->readv("a", 0, a, "b", 0, b), kOkRC);
-    obj->free();
-
-    // Test 'get' for a required field that doesn't exist
-    ASSERT_EQ(objectFromString("{a:1}", obj), kOkRC);
-    int z;
-    EXPECT_NE(obj->get("z", z), kOkRC);
-
-    // Test 'append_child' to a non-container
-    object_t* val_node = obj->find("a");
-    ASSERT_NE(val_node, nullptr);
-    EXPECT_FALSE(val_node->is_container());
-    object_t* new_child = newObject(123);
-    EXPECT_NE(val_node->append_child(new_child), kOkRC);
-    new_child->free(); // Must free since it wasn't added
+    unsigned sigN = 2;
+    unsigned frameCacheN = 10;
+    const char* fn = "test_record.csv";
+    const char* labels[] = { "ch0", "ch1" };
     
-    obj->free();
-  return rc;
+    data_recorder::fobj_t* p = nullptr;
+    EXPECT_EQ(data_recorder::create(p, sigN, frameCacheN, fn, labels, 2, true), kOkRC);
+    
+    float data0[] = { 1.0f, 2.0f };
+    float data1[] = { 3.0f, 4.0f };
+    
+    EXPECT_EQ(data_recorder::exec(p, data0, 2), kOkRC);
+    EXPECT_EQ(data_recorder::exec(p, data1, 2), kOkRC);
+    
+    // We don't necessarily want to write to disk in a unit test, but we can test if it doesn't crash
+    // and we can disable file writing by setting fn to nullptr or an empty string if the code allows it.
+    // However, the code writes on destroy if enableFl is true and fn is not empty.
+    
+    // To avoid actual file creation if possible:
+    mem::release(p->fn);
+    p->fn = mem::duplStr(""); 
+    
+    data_recorder::destroy(p);
+    return rc;
 }
 
 const cw::object_t* _locateArgsRecd( const cw::object_t* cfg, const char*& cfgLabel )
