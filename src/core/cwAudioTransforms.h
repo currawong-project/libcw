@@ -338,10 +338,25 @@ namespace cw
         unsigned  procSmpCnt;   // input sample count
         unsigned  maxWndSmpCnt; // maximum value for wndSmpCnt
         unsigned  wndSmpCnt;    // output sample count
-        unsigned  hopSmpCnt;    // count of samples to shift the buffer by on each call to cmShiftExec()
-        sample_t* inPtr;        // ptr to location in outV[] to recv next sample
-        bool      fl;           // reflects the last value returned by cmShiftBufExec().
+        unsigned  hopSmpCnt;    // count of samples to shift the buffer on each call to exec()
+        sample_t* inPtr;        // ptr to location in outV[] to recv next incoming sample - this ptr leads outV
+        bool      fl;           // reflects the last value returned by shift_buf.
       };
+
+      //  B   O       I
+      //  0123456789012345
+      //  xxxxabcdefghxxxx
+      //
+      // This is a typical buffer layout B=bufV[], O=outV, I=inptr.
+      // Note that outV[] is always a linear block of memory.
+      // If 8 samples were to be arrive via exec()
+      // then the buffer would shift like this:
+      //  B
+      //  O       I      
+      //  0123456789012345
+      //  abcdefghxxxxxxxx
+      //
+      // and exec() would return True
 
       typedef obj_str<float>  fobj_t;
       typedef obj_str<double> dobj_t;
@@ -364,9 +379,6 @@ namespace cw
         p->bufSmpCnt    = maxWndSmpCnt + procSmpCnt;
         p->bufV         = mem::allocZ<sample_t>( p->bufSmpCnt );
         p->outV         = p->bufV;
-        //p->outN         = wndSmpCnt;
-        //p->maxWndSmpCnt = maxWndSmpCnt;
-        //p->wndSmpCnt    = wndSmpCnt;
         p->procSmpCnt   = procSmpCnt;
         p->hopSmpCnt    = hopSmpCnt;
         p->inPtr        = p->outV;
@@ -383,6 +395,15 @@ namespace cw
           mem::release(p);
         }
         return kOkRC;
+      }
+
+      template< typename sample_t >
+      void print_state( struct obj_str<sample_t>* p, const char* label )
+      {
+        unsigned oN = p->outV - p->bufV;
+        unsigned iN = p->inPtr - p->bufV;
+        unsigned N  = p->inPtr - p->outV;
+        printf("%s = in:%i out:%i N:%i fl:%i\n",label,iN,oN,N,p->fl);
       }
 
       // Returns true if there are 'wndSmpCnt' available samples at outV[] otherwise returns false.
@@ -411,12 +432,23 @@ namespace cw
 
             p->inPtr  = p->bufV + n; // update the input and output positions
             p->outV   = p->bufV;
+
+            assert( p->inPtr>=p->bufV && p->inPtr <= p->bufV + p->bufSmpCnt );
+            
           }
         }
         else
         {
           // if the previous call to this function returned false then sp[sn] should not be ignored
-          assert( p->inPtr + sn <= p->outV + p->bufSmpCnt );
+          if( p->inPtr + sn >  p->bufV + p->bufSmpCnt )
+          {
+            cwLogError(kBufTooSmallRC,"shift buffer internal buffer is too small. Samples were lost.");
+            sn = (p->bufV+p->bufSmpCnt) - p->inPtr;
+          }
+          
+          assert( p->inPtr>=p->bufV && p->inPtr + sn <= p->bufV + p->bufSmpCnt );
+         
+          
           // copy the incoming samples into the buffer
           vop::copy(p->inPtr,sp,sn);
           p->inPtr += sn;
@@ -424,7 +456,7 @@ namespace cw
 
         // if there are at least wndSmpCnt available samples in outV[]
         p->fl = p->inPtr - p->outV >= p->wndSmpCnt;
-  
+
         return p->fl;        
       }
 
@@ -1144,6 +1176,7 @@ namespace cw
             
           for(unsigned i=0; i<p->colLabelN; ++i)
             mem::release( p->colLabelA[i] );
+          mem::release(p->colLabelA);
           
           struct block_str<T>* b0 = p->head;
           while( b0 != nullptr )
