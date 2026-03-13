@@ -1080,6 +1080,8 @@ namespace cw
 
         p->playerA[ plyr_idx ].next_msg_idx = 0;
         p->playerA[ plyr_idx ].start_smp_idx = p->global_smp_idx;
+
+        proc_info(proc,"starting: %i %s",p->playerA[ plyr_idx ].id,p->playerA[ plyr_idx ].label);
         
       errLabel:
         return rc;
@@ -1280,6 +1282,8 @@ namespace cw
       rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
+
+        proc_info(proc,"NOTIFY: %i %s",var->vid,var->label);
                 
         if( proc->ctx->isInRuntimeFl )
         {
@@ -1301,7 +1305,6 @@ namespace cw
                 unsigned plyr_id  = kInvalidId;
                 if(var_get(var,plyr_id) == kOkRC )
                   _start_player( proc, p, _player_id_to_index(p,plyr_id) );
-                proc_info(proc,"%s : play id:%i",cwStringNullGuard(proc->label),plyr_id);
               }            
               break;
 
@@ -7118,6 +7121,13 @@ namespace cw
           rc = proc_error(proc,kInvalidStateRC,"The 'end-segment' %i is before the begin segment '%i'. Playback is not possible.",p->end_seg_idx,p->cur_seg_idx);
           goto errLabel;
         }
+
+        // Set the current segment index
+        if((rc = var_set(proc,kCurSegIdxPId,p->cur_seg_idx)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Error setting 'cur-seg-idx'.");
+          goto errLabel;
+        }
         
         // set the SF begin location
         if((rc = var_set(proc,kSfBegLocPId,p->segA[p->cur_seg_idx].beg_loc)) != kOkRC )
@@ -7286,7 +7296,7 @@ namespace cw
         // update the mp_player_id to use with this segment
         p->segA[ seg_idx ].cur_mp_player_id = p->segA[ seg_idx ].mp_playerA[ player_id ].mp_player_id;
         
-        //printf("PLYR_MENU_SEL:%s %i %i\n",p->segA[ seg_idx ].title, player_id, p->segA[ seg_idx ].cur_mp_player_id );
+        proc_info(proc,"PLYR_MENU_SEL:%s %i %i",p->segA[ seg_idx ].title, player_id, p->segA[ seg_idx ].cur_mp_player_id );
         
       errLabel:
         if(rc != kOkRC )
@@ -7367,6 +7377,12 @@ namespace cw
       rc_t _do_start_next_segment( proc_t* proc, inst_t* p )
       {
         rc_t rc;
+
+        if((rc = var_set(proc,kCurSegIdxPId,p->cur_seg_idx)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Error setting the 'cur-seg-idx'.");
+          goto errLabel;
+        }
         
         // tell the MP player to start playing the current player on the current segment.
         if((rc = var_set(proc,kMpPlayIdPId,p->segA[p->cur_seg_idx].cur_mp_player_id)) != kOkRC )
