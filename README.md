@@ -42,6 +42,12 @@ cmake --build ~/src/libcw/build/debug --preset debug
 cmake --install ~/src/libcw/build/debug 
 ```
 
+# Cmake notes:
+
+`CMAKE_EXPORT_COMPILE_COMMANDS` creates compile-commands.json which is used by the `clangd` LSP server.
+
+
+
 # Run tests with 'ctest'
 
 See https://cmake.org/cmake/help/latest/manual/ctest.1.html#manual:ctest(1) for more options.

@@ -1,0 +1,29 @@
+
+CompileFlags:
+
+  # Tell clangd where the CMake compilation database lives
+  CompilationDatabase: build/debug
+  
+  # Add project-root include paths and generated headers
+  Add:
+    - -Isrc/core
+    - -Isrc/cw
+    - -Isrc/flow
+    - -Isrc/io_flow
+    - -Isrc/io_components
+    - -Isrc/io_flow
+    - -Wno-unused-parameter
+    - -Wno-vla-cxx-extension
+
+Diagnostics:
+  # Avoid noise from external headers
+  Suppress:
+    - unused-includes
+
+Index:
+  # Faster project indexing
+  Background: Build
+
+# InlayHints controls small inline annotations that the editor displays inside the code
+InlayHints:
+  Enabled: Yes

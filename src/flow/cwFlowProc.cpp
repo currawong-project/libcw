@@ -1265,7 +1265,7 @@ namespace cw
         kEnableFlPId,
       };
       
-      typedef struct
+      typedef struct instr_str
       {
         external_device_t* ext_dev;
         bool rin_exists_fl;

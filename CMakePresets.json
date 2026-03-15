@@ -14,6 +14,8 @@
 	    },
 	    
 	    "cacheVariables": {
+		"CMAKE_EXPORT_COMPILE_COMMANDS": { "type":"BOOL",  "value":"ON" },
+
 		"CW_FFTW_FL":        { "type":"BOOL",  "value":"ON" },
 		"CW_FFTW_LIB_HINTS": { "type":"STRING","value":"" },
 		
