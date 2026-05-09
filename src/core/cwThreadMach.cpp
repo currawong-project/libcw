@@ -19,15 +19,16 @@ namespace cw
   {
     typedef struct thread_str
     {
-      thread::handle_t thH;
-      threadFunc_t     func;
-      void*            arg;
-      struct thread_str* link;
+      thread::handle_t    thH;
+      threadFunc_t        func;
+      void*               arg;
+      struct thread_str*  link;
     } thread_t;
     
     typedef struct thread_mach_str
     {
       thread_t* threadL;
+      unsigned  staggerMs;
     } thread_mach_t;
 
     thread_mach_t* _handleToPtr( handle_t h )
@@ -83,7 +84,7 @@ namespace cw
   }  
 }
 
-cw::rc_t cw::thread_mach::create( handle_t& hRef, threadFunc_t threadFunc, void* contextArray, unsigned contexRecdByteN, unsigned threadN )
+cw::rc_t cw::thread_mach::create( handle_t& hRef, threadFunc_t threadFunc, void* contextArray, unsigned contexRecdByteN, unsigned threadN, unsigned staggerMs )
 {
   rc_t rc;
   
@@ -138,9 +139,14 @@ cw::rc_t cw::thread_mach::start( handle_t h )
   rc_t rc0;
   
   thread_mach_t* p = _handleToPtr(h);
-  for(thread_t* t=p->threadL; t!=nullptr; t=t->link)
+  for (thread_t *t = p->threadL; t != nullptr; t = t->link)
+  {
     if((rc0 = thread::unpause( t->thH )) != kOkRC )
-      rc = cwLogError(rc0,"Thread start failed.");
+      rc = cwLogError(rc0, "Thread start failed.");
+
+    sleepMs(p->staggerMs);
+
+  }
   
   return rc;
 }

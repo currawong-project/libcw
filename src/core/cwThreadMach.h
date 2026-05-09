@@ -13,7 +13,7 @@ namespace cw
     // Create a thread machine instance.
     // contextArray[ threadN ][ contextRecdByteN ] is an optional  blob consisting of 'threadN' records each of size 'contextRecdByteN'.
     // Each of the records then becomes the entity which is used as the 'arg' value in the callback for the first 'threadN' threads.
-    rc_t create(  handle_t& hRef, threadFunc_t threadFunc=nullptr, void* contextArray=nullptr, unsigned contexRecdByteN=0, unsigned threadN=0 );
+    rc_t create(  handle_t& hRef, threadFunc_t threadFunc=nullptr, void* contextArray=nullptr, unsigned contexRecdByteN=0, unsigned threadN=0, unsigned staggerMs=100 );
     rc_t destroy( handle_t& hRef );
 
     // Create an additional thread. Note that the additional thread will be started by the next
