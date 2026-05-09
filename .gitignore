@@ -6,3 +6,4 @@ build
 vg0.txt
 __pycache__
 apps/cli/cfg/test/cur
+.clangd

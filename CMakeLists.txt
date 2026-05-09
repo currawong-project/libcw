@@ -8,6 +8,11 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED On)
 set(CMAKE_VERBOSE_MAKEFILE ON CACHE BOOL "Enable verbose output" FORCE)
 
+# Generate .clangd - this is required to support emacs eglot LSP client.
+# The file requires hard coded project paths and therefore must be generated.
+include("cmake/gen_clangd.cmake")
+gen_clangd()
+
 include(FetchContent)
 
 FetchContent_Declare(
