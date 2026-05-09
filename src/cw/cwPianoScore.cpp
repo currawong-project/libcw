@@ -492,12 +492,14 @@ namespace cw
         
       }
 
-
+      if(rc == kEofRC)
+        rc = kOkRC;
+      
     errLabel:
       rc = rcSelect(rc,csv::destroy(csvH));
       
       if(rc != kOkRC )
-        rc = cwLogError(rc,"CSV object destroy failed on '%s'.",cwStringNullGuard(fn));
+        rc = cwLogError(rc,"CSV parse failed on '%s'.",cwStringNullGuard(fn));
       
       return rc;
     }
