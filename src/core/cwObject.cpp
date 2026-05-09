@@ -1373,15 +1373,17 @@ cw::rc_t cw::objectFromFile( const char* fn, object_t*& objRef )
   objRef = nullptr;
   
   if(( buf = file::fnToStr(fn, &bufByteCnt)) == NULL )
-    rc = cwLogError(kOpFailRC,"File to text buffer conversion failed on '%s'.",cwStringNullGuard(fn));
+    rc = kOpFailRC;
   else
   {
-    if((rc = objectFromString( buf, objRef )) != kOkRC )
-      rc = cwLogError(rc,"File parse failed on:'%s'.",cwStringNullGuard(fn));
+    rc = objectFromString( buf, objRef );
     
     mem::release(buf);
   }
 
+  if (rc != kOkRC)
+    rc = cwLogError(rc,"Object parse failed on '%s'.",cwStringNullGuard(fn));
+  
   return rc;
 }
 

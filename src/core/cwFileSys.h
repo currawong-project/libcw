@@ -84,6 +84,7 @@ namespace cw
     // Set 'includeFlags' with the  kXXXFsFl flags of the files to include in the returned 
     // directory entry array.  The value pointed to by dirEntryCntPtr will be set to the
     // number of records in the returned array.
+    // The returned array must be released via mem::release()
     dirEntry_t* dirEntries( const char* dirStr, unsigned includeFlags, unsigned* dirEntryCntRef );
 
 
