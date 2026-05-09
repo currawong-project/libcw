@@ -6,6 +6,9 @@
 #include "cwText.h"
 #include "cwObject.h"
 #include "cwVectOps.h"
+#include "cwFile.h"
+#include "cwFileSys.h"
+#include "cwNumericConvert.h"
 
 #include "cwMtx.h"
 
@@ -3429,7 +3432,7 @@ namespace cw
 
         p->cur_loc_id = kInvalidId;
 
-        //proc_info(proc,"SF (%s) reset:%i %i",proc->label, beg_loc_id,end_loc_id);
+        proc_info(proc,"SF (%s) reset:%i %i",proc->label, beg_loc_id,end_loc_id);
 
       errLabel:
 
@@ -5225,6 +5228,7 @@ namespace cw
         kCfgFnamePId,
         kResetPId,
         kSegIdInPId,
+        kPlayDelayMsPId,
         kPlayIdInPId,
         kMidiInPId,
         kPlayIdOutPId,
@@ -5271,6 +5275,9 @@ namespace cw
         unsigned armed_cycle_cnt;
         unsigned defer_detect_fl;
         unsigned dont_wait_fl;       // the first play_in_id recieved after a reset is passed directly through to play_out_id
+
+        bool     use_rt_delay_cycle_cnt_fl; // if set then rt_delay_cycle_cnt overrides the detector min_cycle_cnt.
+        unsigned rt_delay_cycle_cnt;        // real-time trigger defer duration received from the 'play_delay_ms' variable
 
         midi_detect::piano::handle_t pnoDetA[ kMidiPortCnt ];
         midi_detect::seq::handle_t   seqDetA[ kMidiPortCnt ];
@@ -5339,11 +5346,8 @@ namespace cw
         }
 
       errLabel:
-        return rc;
-        
+        return rc;        
       }
-
-      
 
       rc_t _reset_detector( proc_t* proc, inst_t* p, unsigned recd_idx )
       {
@@ -5427,8 +5431,9 @@ namespace cw
 
       rc_t _is_detector_triggered( proc_t* proc, inst_t* p, bool& is_trig_fl_ref )
       {
-        rc_t    rc = kOkRC;
-        recd_t* r = nullptr;
+        rc_t     rc              = kOkRC;
+        recd_t*  r               = nullptr;
+        unsigned min_cycle_cnt = 0;
         
         is_trig_fl_ref = false;
 
@@ -5445,9 +5450,12 @@ namespace cw
         
         r = p->recdA + p->armed_recd_idx;
 
+        min_cycle_cnt = p->use_rt_delay_cycle_cnt_fl ? p->rt_delay_cycle_cnt : r->min_cycle_cnt;
+        
         // if the trigger was deferred and the min time has expired then issue the trigger
-        if( p->defer_detect_fl && r->min_cycle_cnt <= p->armed_cycle_cnt && p->armed_cycle_cnt <= r->max_cycle_cnt && r->max_cycle_cnt != 0 )
+        if( p->defer_detect_fl && min_cycle_cnt <= p->armed_cycle_cnt && p->armed_cycle_cnt <= r->max_cycle_cnt && r->max_cycle_cnt != 0 )
         {
+          proc_info(proc,"'%s' deferred trigger complete. %i %i %i",cwStringNullGuard(r->label), p->use_rt_delay_cycle_cnt_fl, p->rt_delay_cycle_cnt, r->min_cycle_cnt);
           is_trig_fl_ref = true;
           p->defer_detect_fl = false;
           goto errLabel;
@@ -5468,13 +5476,17 @@ namespace cw
           default:
             rc = proc_error(proc,kInvalidArgRC,"Unknown detector type.");
         }
-
+        
         // if the external detector has triggered but we have not yet passed the
         // min time since the detector was activated then defer reporting the trigger
-        if( is_trig_fl_ref && p->armed_cycle_cnt < r->min_cycle_cnt )
+        if( is_trig_fl_ref )
         {
-          p->defer_detect_fl = true;
-          is_trig_fl_ref = false;
+          
+          if( p->armed_cycle_cnt < min_cycle_cnt )
+          {
+            p->defer_detect_fl           = true;
+            is_trig_fl_ref               = false;            
+          }
         }
 
         // If the detector was activated but it has not triggered in 'max_cycle_cnt' cycles 
@@ -5492,6 +5504,10 @@ namespace cw
           p->armed_cycle_cnt += 1;
         
       errLabel:
+        if( is_trig_fl_ref )
+          p->use_rt_delay_cycle_cnt_fl = false;
+
+          
         return rc;
       }
 
@@ -5736,22 +5752,24 @@ namespace cw
 
       rc_t _create( proc_t* proc, inst_t* p )
       {
-        rc_t          rc          = kOkRC;        
-        const char*   cfg_fname   = nullptr;
-        bool          reset_fl    = false;
-        unsigned      seg_id_in   = kInvalidId;
-        unsigned      play_id_in  = kInvalidId;
-        const rbuf_t* midi_rbuf   = nullptr;
-        unsigned      seg_id_out  = kInvalidId;
+        rc_t          rc            = kOkRC;        
+        const char*   cfg_fname     = nullptr;
+        bool          reset_fl      = false;
+        unsigned      seg_id_in     = kInvalidId;
+        unsigned      play_id_in    = kInvalidId;
+        const rbuf_t* midi_rbuf     = nullptr;
+        unsigned      seg_id_out    = kInvalidId;
+        unsigned      play_delay_ms = 0;
         
         if((rc = var_register_and_get(proc, kAnyChIdx,
-                                      kCfgFnamePId, "cfg_fname", kBaseSfxId, cfg_fname,
-                                      kResetPId,    "reset",     kBaseSfxId, reset_fl,
-                                      kSegIdInPId,  "seg_id_in", kBaseSfxId, seg_id_in,
-                                      kPlayIdInPId, "play_id_in",kBaseSfxId, play_id_in,
-                                      kMidiInPId,   "midi_in",   kBaseSfxId, midi_rbuf,
-                                      kPlayIdOutPId,"play_id_out",kBaseSfxId, seg_id_out,
-                                      kPedalRlsPId, "ped_rls",   kBaseSfxId, p->ped_release_thresh)) != kOkRC )
+                                      kCfgFnamePId,    "cfg_fname",     kBaseSfxId, cfg_fname,
+                                      kResetPId,       "reset",         kBaseSfxId, reset_fl,
+                                      kSegIdInPId,     "seg_id_in",     kBaseSfxId, seg_id_in,
+                                      kPlayDelayMsPId, "play_delay_ms", kBaseSfxId, play_delay_ms,
+                                      kPlayIdInPId,    "play_id_in",    kBaseSfxId, play_id_in,
+                                      kMidiInPId,      "midi_in",       kBaseSfxId, midi_rbuf,
+                                      kPlayIdOutPId,   "play_id_out",   kBaseSfxId, seg_id_out,
+                                      kPedalRlsPId,    "ped_rls",       kBaseSfxId, p->ped_release_thresh)) != kOkRC )
 
         {
           goto errLabel;
@@ -5827,7 +5845,7 @@ namespace cw
         return rc;       
       }
 
-      rc_t _handle_play_id(proc_t* proc, inst_t* p, variable_t* var)
+      rc_t _handle_play_id_in(proc_t* proc, inst_t* p, variable_t* var)
       {
         rc_t rc = kOkRC;
         unsigned seg_id;
@@ -5835,6 +5853,7 @@ namespace cw
         if((rc = var_get(var,p->armed_player_id)) != kOkRC )
           goto errLabel;
 
+        // The first play_id_in received ater reset is passed directly through.
         if( p->dont_wait_fl )
         {
           //printf("ESD: no wait:%i\n",p->armed_player_id);
@@ -5853,6 +5872,14 @@ namespace cw
         
       }
 
+      void _on_play_delay_ms( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        unsigned ms;
+        var_get(var,ms);
+        p->rt_delay_cycle_cnt = (unsigned)((ms * proc->ctx->sample_rate) / (proc->ctx->framesPerCycle * 1000));
+        p->use_rt_delay_cycle_cnt_fl = true;
+        printf("END-SEG:%i %i\n", ms, p->rt_delay_cycle_cnt );
+      }
 
       rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
@@ -5868,13 +5895,17 @@ namespace cw
 
             case kPlayIdInPId:
               //printf("ESD: PlayInId\n");
-              _handle_play_id(proc,p,var);
+              _handle_play_id_in(proc,p,var);
               break;
               
             case kResetPId:
               //printf("ESD: Reset\n");
               p->armed_recd_idx = kInvalidIdx;
               p->dont_wait_fl   = true;
+              break;
+
+            case kPlayDelayMsPId:
+              _on_play_delay_ms(proc, p, var );
               break;
           }
         }
@@ -5932,7 +5963,6 @@ namespace cw
         if( trig_fl )
         {
           proc_info(proc,"END SEG. DETECTOR TRIGGERED:%s",cwStringNullGuard(p->recdA[ p->armed_recd_idx].label));
-          //var_set(proc,kSegIdOutPId,kAnyChIdx,p->recdA[ p->armed_recd_idx ].trig_seg_id);
           var_set(proc,kPlayIdOutPId,kAnyChIdx,p->armed_player_id);
           p->armed_recd_idx = kInvalidIdx;
         }
@@ -6753,6 +6783,20 @@ namespace cw
         kMpPlayIdPId,
         kMpResetFlPId,
         kMpClearFlPId,
+
+        kPresetScanPId,
+        kPresetIdPId,
+
+        kXfEnableFlPId,
+        kXfProbFlPId,
+        kXfUniFlPId,
+        kXfDryOnPlayFlPId,
+        kXfPerNoteFlPId,
+        kXfAllowAllFlPId,
+        kXfDryOnSelFlPId,
+
+        kEsDelayMsPId,
+        kEsPlayIdInPId
         
       };
 
@@ -6767,43 +6811,554 @@ namespace cw
         kVidToSegMapN=18
       };
 
+      enum {
+        kPerfSourceId,
+        kScoreSourceId
+      };
+
+      struct seg_t;
+      struct mp_player_t;
+      
+      struct preset_seg_t
+      {
+        seg_t*             seg;             // segment that this preset refers to
+        unsigned           meas_num;        // measure this segment is in
+        unsigned           section_id;      // section id associated with this segment
+        unsigned           source_id;       // Set to either kPerfSourceId or kScoreSourceId
+        const mp_player_t* mp_player;       // mp_player that will play this segment
+        unsigned           delay_ms;        // delay before starting the next segment
+        bool               xform_enable_fl; // If true then the following transform param. fields are active
+        bool               use_prob_fl;     // 
+        bool               uniform_prob_fl;
+        bool               dry_on_play_fl;
+        bool               per_note_fl;
+        bool               allow_all_fl;
+        bool               dry_on_sel_fl;
+      };
+
+      struct preset_t
+      {
+        char*         title;
+        preset_seg_t* segA;
+        unsigned      segN;
+      };
+
       struct mp_player_t {
         char*    title;
         unsigned mp_player_id;
+        unsigned menu_idx;
       };
 
+      // seg_t represents a segment
       struct seg_t
       {
         unsigned   seg_idx;      // the segment index (and the index of this record in segA[])
-        seg_type_t type_id;      // segment type id
+        char*      seg_label;    // segment label
+        seg_type_t type_id;      // segment type id  (gutim,scriabin,spirio)
         char*      title;        // UI title of this segment        
         unsigned   beg_loc;      // begin score location for this segment
         unsigned   end_loc;      // end score location for this segment
-        
-        unsigned     mp_playerN;
-        mp_player_t* mp_playerA;
 
-        list_t*     ui_list;
+        unsigned   vid;          // Variable Id of the drop-down associated with this segment
         
-        unsigned   cur_mp_player_id; // current multi-player player_id       
+        unsigned     mp_playerN; //
+        mp_player_t* mp_playerA; // mp_playerA[ mp_playerN ] - all possible performances of this segment
+
+        list_t*     ui_list;     // 
+        
+        unsigned   cur_mp_player_id; // current multi-player player_id
+
+        preset_seg_t* cur_preset_seg; // currrent preset segment assigned to this segment
       };
       
       typedef struct
       {
-        unsigned segN; 
-        seg_t*   segA;                          // segA[segN] holds the multi-player player id for each segment
+        unsigned  segN; 
+        seg_t*    segA;      // segA[segN] holds the multi-player player id's for each segment
+ 
+        unsigned  presetN;   
+        preset_t* presetA;  // presetA[presetN] preset configurations
         
         unsigned vidToSegMapA[ kVidToSegMapN ]; // map k??MpPlayerPId to an associated segment index
         
-        list_t* beg_seg_list;                  // the UI list used by kBeg/EndSegIdxPId
-        list_t* end_seg_list;                  //
+        list_t* beg_seg_list;   // the UI list used by kBeg/EndSegIdxPId
+        list_t* end_seg_list;   //
+        list_t* preset_list;    // preset UI list
         
-        unsigned cur_seg_idx;                   // index into segA[] of the currently playing segment
-        unsigned end_seg_idx;
+        unsigned cur_seg_idx;   // index into segA[] of the currently playing segment
+        unsigned end_seg_idx;   // 
 
-        unsigned loc_field_idx;
+        unsigned loc_field_idx; //
+
+        
       } inst_t;
 
+        
+      unsigned _next_non_white(const char* text, unsigned bi, unsigned text_charN )
+      {
+        for(unsigned i=bi; i<text_charN; ++i)
+          if( !isspace(text[i]) )
+            return i;
+
+        return kInvalidIdx;
+      }
+
+      unsigned _next_white(const char* text, unsigned bi, unsigned text_charN )
+      {
+        for(unsigned i=bi; i<text_charN; ++i)
+          if( isspace(text[i]) )
+            return i;
+
+        return kInvalidIdx;
+      }
+
+
+      rc_t _parse_int(proc_t* proc, inst_t* p, const char* fieldLabel, const char* buf, unsigned& valRef )
+      {
+        rc_t rc;
+        if((rc = string_to_number(buf,valRef)) != kOkRC )
+          rc = proc_error(proc,rc,"%s is not a valid integer.",fieldLabel);
+        return rc;
+      }
+      
+      rc_t _parse_bool(proc_t* proc, inst_t* p, const char* fieldLabel, const char* buf, bool& flRef )
+      {
+        rc_t rc = kOkRC;
+        
+        if( textIsEqualI("on",buf) )
+          flRef = true;
+        else
+        {
+          if(textIsEqual("off",buf))
+            flRef = false;
+          else
+            rc = proc_error(proc,kSyntaxErrorRC,"The field '%s' must be set to either 'on' or 'off'.",fieldLabel);
+          
+        }
+        
+        return rc;
+      }
+      
+      rc_t _parse_seg_name(proc_t* proc, inst_t* p, const char* seg_label, preset_seg_t* pseg )
+      {
+        rc_t rc = kOkRC;
+        
+        const seg_t* seg = nullptr;
+
+        // find the segment recd named by seg_label
+        for(unsigned i=0; i<p->segN; ++i)
+          if( textIsEqual(seg_label,p->segA[i].seg_label) )
+          {
+            pseg->seg = p->segA + i;
+            break;
+          }
+
+        if( pseg->seg == nullptr )
+        {
+          rc = proc_error(proc,kSyntaxErrorRC,"A segment named '%s' could not be found.",seg_label);
+          goto errLabel;
+        }
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _parse_perf_name(proc_t* proc, inst_t* p, const char* buf, preset_seg_t* pseg )
+      {
+        rc_t rc = kOkRC;
+
+        if( pseg->seg == nullptr )
+        {
+          rc = proc_error(proc,kOpFailRC,"The performance name (%s) cannot be resolved until the segment is located.",buf);
+          goto errLabel;
+        }
+
+        pseg->mp_player = nullptr;
+
+        // locate the mp_player associated with the performance label
+        for(unsigned i=0; i<pseg->seg->mp_playerN; ++i)
+          if( textIsEqual(buf,pseg->seg->mp_playerA[i].title) )
+          {
+            pseg->mp_player = pseg->seg->mp_playerA + i;
+            break;
+          }
+
+        if( pseg->mp_player == nullptr )
+          rc = proc_error(proc,kOpFailRC,"The performance '%s' could not be located.", buf);
+        
+      errLabel:
+        return rc;
+      }
+      
+      rc_t _parse_source(proc_t* proc, inst_t* p, const char* buf, preset_seg_t* pseg )
+      {
+        rc_t rc = kOkRC;
+        
+        if( textIsEqualI("perf",buf) )
+          pseg->source_id = kPerfSourceId;
+        else
+        {
+          if(textIsEqual("score",buf))
+            pseg->source_id = kScoreSourceId;
+          else
+            rc = proc_error(proc,kSyntaxErrorRC,"The field 'source' must be set to either 'perf' or 'score'.");
+          
+        }
+        
+        return rc;
+      }
+
+      void _print_preset_seg( proc_t* proc, const preset_seg_t* ps )
+      {
+        proc_info(proc,"%12s %3i %4i %5s '%12s' %4i %3s %3s %3s %3s %3s %3s %3s",
+               ps->seg->seg_label,
+               ps->meas_num,
+               ps->section_id,
+               ps->source_id == kPerfSourceId ? "perf" : "score",
+               ps->mp_player->title,
+               ps->delay_ms,
+               ps->xform_enable_fl ? "on" : "off",
+               ps->use_prob_fl     ? "on" : "off",
+               ps->uniform_prob_fl ? "on" : "off",
+               ps->dry_on_play_fl  ? "on" : "off",
+               ps->per_note_fl     ? "on" : "off",
+               ps->allow_all_fl    ? "on" : "off",
+               ps->dry_on_sel_fl   ? "on" : "off" );
+               
+      }
+
+      void _print_preset( proc_t* proc, const preset_t* pre )
+      {
+        printf("%s\n",pre->title);
+        if( pre->segN > 0 )
+        {
+          proc_info(proc,"  Segement   Mea Sect Sourc   Performance  Dlay Xfm Prb Uni DoP Per All DoS");
+          proc_info(proc,"------------ --- ---- ----- -------------- ---- --- --- --- --- --- --- ---");
+        }
+        
+        for(unsigned i=0; i<pre->segN; ++i)
+          _print_preset_seg(proc,pre->segA + i);
+          
+      }
+      
+      rc_t _parse_preset_line(proc_t* proc, inst_t* p, const char* line,unsigned char_cnt, preset_t* preset)
+      {
+        rc_t rc = kOkRC;
+        enum { kSegName, kMeas, kSection, kPerfName, kSource, kDelay, kXformEnable, kUseProb, kUniProb, kDryOnPlay, kPerNote, kAllowAll, kDryOnSel, kFieldN };
+        
+        if( line == nullptr || char_cnt == 0 )
+          return rc;
+
+        // get the preset segment to be loaded from the text in 'line'.
+        preset_seg_t* pseg = preset->segA + preset->segN;
+
+        unsigned bi = 0;
+        unsigned ei = 0;
+        const unsigned bufCharN = 128;
+        char buf[ bufCharN ];
+          
+        for(unsigned i=0; i<kFieldN && rc == kOkRC; ++i)
+        {
+          // get the start of this column token as index into 'line'
+          bi = _next_non_white(line,ei,char_cnt);
+
+
+          // get the end of this column token as an index into 'line'
+          ei = _next_white(line,bi,char_cnt);
+
+          // verify that the token fits in the buffer
+          if( ei - bi >= bufCharN )
+          {
+            proc_error(proc,kSyntaxErrorRC,"Field index %i is greater than %i characters.",i,bufCharN);
+            goto errLabel;
+          }
+
+          // copy the text into a buffer so that the token is terminated
+          strncpy(buf,line+bi,ei-bi);
+          buf[ei-bi] = 0;
+          
+          switch(i)
+          {
+            case kSegName:
+              // if this line begins with '#' then it is a comment line 
+              if( ei>bi && line[bi] == '#' )
+                goto errLabel;
+              
+              rc = _parse_seg_name(proc, p, buf, pseg);
+              break;
+              
+            case kMeas:
+              rc = _parse_int(proc, p, "measure", buf, pseg->meas_num );
+              break;
+              
+            case kSection:
+              rc = _parse_int(proc, p, "section", buf, pseg->section_id );
+              break;
+              
+            case kPerfName:
+              if((rc = _parse_perf_name(proc, p, buf, pseg )) != kOkRC )
+              {
+                printf("Fail.\n");
+              }
+              break;
+              
+            case kSource:
+              rc = _parse_source(proc, p, buf, pseg );
+              break;
+              
+            case kDelay:
+              rc = _parse_int(proc, p, "delay", buf, pseg->delay_ms );
+              break;
+              
+            case kXformEnable:
+              rc =  _parse_bool(proc, p, "xform enable", buf, pseg->xform_enable_fl );
+              break;
+              
+            case kUseProb:
+              rc = _parse_bool(proc, p, "use prob.", buf, pseg->use_prob_fl );
+              break;
+              
+            case kUniProb:
+              rc = _parse_bool(proc, p, "uniform prob.", buf, pseg->uniform_prob_fl );
+              break;
+              
+            case kDryOnPlay:
+              rc = _parse_bool(proc, p, "dry on play", buf, pseg->dry_on_play_fl );
+              break;
+              
+            case kPerNote:
+              rc = _parse_bool(proc, p, "per note", buf, pseg->per_note_fl );
+              break;
+              
+            case kAllowAll:
+              rc = _parse_bool(proc, p, "allow all", buf, pseg->allow_all_fl );
+              break;
+              
+            case kDryOnSel:
+              rc = _parse_bool(proc, p, "dry on select", buf, pseg->dry_on_sel_fl );
+              break;
+              
+            default:
+              rc = proc_error(proc,kSyntaxErrorRC,"Unknown field id %i",i);
+          }            
+          
+        }
+
+        if( rc == kOkRC )
+        {
+          preset->segN += 1;
+        }
+        
+      errLabel:
+        
+        return rc;        
+      }
+    
+      void _release_one_preset( preset_t* pre )
+      {
+        mem::release(pre->title);
+        mem::release(pre->segA);        
+      }
+      
+      void _release_presets(proc_t* proc, inst_t* p )
+      {
+        for(unsigned i=0; i<p->presetN; ++i)
+          _release_one_preset(p->presetA + i );
+        
+        mem::release(p->presetA);
+        p->presetN = 0;
+      }            
+
+      rc_t _parse_preset_file( proc_t* proc, inst_t* p, const char* dir, const char* fname, preset_t* preset )
+      {
+        rc_t           rc       = kOkRC;
+        file::handle_t fH;
+        char*          line     = nullptr;
+        unsigned       char_cnt = 0;
+        unsigned       line_num = 1;
+        unsigned       line_cnt = 0;
+        char*          fn       = nullptr;
+
+        // Form the complete filename from the dir and file name.
+        if((fn = filesys::makeFn(  dir, fname, nullptr, nullptr )) == nullptr )
+        {
+          rc = proc_error(proc,kOpFailRC,"The full preset file name for '%s' could not be formed.",fname);
+          goto errLabel;
+        }
+
+        // Open the preset file
+        if((rc = file::open(fH,fn,file::kReadFl)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Preset file open failed.");
+          goto errLabel;
+        }
+
+        // Get the count of lines in the preset file.
+        if((rc = lineCount( fH, line_cnt )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Preset line count query failed.");
+          goto errLabel;
+        }
+
+        // If the file is empty
+        if( line_cnt == 0 )
+        {
+          goto errLabel;
+        }
+
+        // Allocate the preset segment records
+        preset->segA  = mem::allocZ<preset_seg_t>(line_cnt);
+
+        // Read the next line
+        while((rc = getLineAuto( fH, &line, char_cnt )) == kOkRC )
+        {
+          // Parse the line text into the next preset->segA[] record
+          if((rc = _parse_preset_line(proc,p,line,char_cnt,preset)) != kOkRC )
+          {
+            rc = proc_error(proc,rc,"Line parse failed on line %i.",line_num);
+            break;
+          }
+          
+          line_num += 1;
+        }
+
+        // Verify that the complete file was read.
+        if( rc != kEofRC )
+        {
+          proc_error(proc,kSyntaxErrorRC,"Preset file line read failed on line %i.",line_num);
+          goto errLabel;
+        }
+
+        // Close the file
+        if((rc =  file::close(fH)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Preset file close failed.");
+          goto errLabel;
+        }
+
+        // Set the title of the preset
+        preset->title = mem::duplStr(fname);
+
+      errLabel:
+        if( rc != kOkRC )
+        {
+          mem::release(fn);
+          _release_one_preset(preset);
+          rc = proc_error(proc,rc,"Preset file parse failed on '%s'.",cwStringNullGuard(fname));
+        }
+        
+        return rc;
+      }
+
+      rc_t  _scan_presets_folder(proc_t* proc, inst_t* p)
+      {
+        rc_t                 rc                = kOkRC;
+        const char*          base_dir          = "$/presets";
+        char*                expanded_base_dir = nullptr;
+        filesys::dirEntry_t* dir_entries       = nullptr;
+        unsigned             dir_entryN        = 0;
+
+        // If the presets array already exist then destroy it
+        _release_presets(proc,p);
+
+        // form the complete preset directory
+        if((expanded_base_dir = proc_expand_filename(proc,base_dir)) == nullptr )
+        {
+          rc = proc_error(proc,kOpFailRC,"Preset directory name expansion failed.");
+          goto errLabel;
+        }
+
+        // read the names of the files in the preset directory
+        if((dir_entries = dirEntries( expanded_base_dir, filesys::kFileFsFl, &dir_entryN )) == nullptr )
+        {
+          rc = proc_error(proc,kOpFailRC,"Scan of directory '%s' failed.",cwStringNullGuard(expanded_base_dir));
+          goto errLabel;
+        }
+
+        proc_info(proc,"%i preset files found.",dir_entryN);
+
+        if( dir_entryN > 0)
+        {
+          // Allocate an array to hold the presets
+          p->presetA = mem::allocZ<preset_t>(dir_entryN+1);
+
+          // Insert the first (No Preset) preset.
+          p->presetA[0].title = mem::duplStr("(No Preset)");
+          p->presetA[0].segN = 0;
+          p->presetA[0].segA = nullptr;
+          p->presetN = 1;
+          
+          // Read each preset file
+          for(unsigned i=0; i<dir_entryN; ++i)
+          {
+            if((rc = _parse_preset_file( proc, p, expanded_base_dir, dir_entries[i].name, p->presetA + p->presetN )) != kOkRC )
+            {
+              rc = proc_error(proc,kOpFailRC,"The preset file '%s' was not loaded.",cwStringNullGuard(dir_entries[i].name));
+              goto errLabel;
+            }
+
+            p->presetN += 1;
+            
+          }
+        }
+        
+        // if the preset UI list has not been created ...        
+        if( p->preset_list == nullptr )
+        {
+          variable_t* var = nullptr;
+          
+          // ... then create it here
+          if( p->presetN > 0 )
+          {
+            if((rc = list_create(p->preset_list, p->presetN )) != kOkRC )
+              goto errLabel;
+
+            // find the list variable
+            if((rc = var_find(proc, kPresetIdPId, kAnyChIdx, var )) != kOkRC )
+            {
+              rc = proc_error(proc,rc,"The preset list variable could not be found.");
+              goto errLabel;
+            }
+            
+            var->value_list = p->preset_list;
+          }
+
+        }
+        else
+        {
+          // ... otherwise clear the list
+          list_clear(p->preset_list);
+
+          // notify the UI that that the UI list should be cleared
+          if((rc = var_send_to_ui_list_clear(proc, kPresetIdPId, kAnyChIdx )) != kOkRC )
+          {
+            rc = proc_error(proc,rc,"Preset list clear failed.");
+            goto errLabel;
+          }
+
+          // notify the UI that the UI list should be reloaded
+          if((rc = var_send_to_ui_list_reload(proc, kPresetIdPId, kAnyChIdx )) != kOkRC )
+          {
+            rc = proc_error(proc,rc,"Preset list reload failed.");
+            goto errLabel;
+          }
+        }
+
+        // Append the preset labels to the UI list
+        for(unsigned i=0; i<p->presetN; ++i)
+          if((rc = list_append(p->preset_list, p->presetA[i].title, i )) != kOkRC )
+          {
+            rc = proc_error(proc,rc,"Preset list append failed on %s.",cwStringNullGuard(p->presetA[i].title));
+            goto errLabel;
+          }
+
+      errLabel:
+        mem::release(expanded_base_dir);
+        mem::release(dir_entries);
+                  
+        return rc;
+        
+      }
 
       rc_t _parse_seg_mp_player_id_list( proc_t* proc, seg_t* seg, const object_t* menuD, const char* seg_title )
       {
@@ -6867,6 +7422,7 @@ namespace cw
 
           // store the title
           seg->mp_playerA[i].title = mem::duplStr(pair->pair_label());
+          seg->mp_playerA[i].menu_idx = i;
 
           //printf("%s : %i\n",seg->mp_playerA[i].title,seg->mp_playerA[i].mp_player_id);
         }
@@ -6878,7 +7434,7 @@ namespace cw
         return rc;
       }
       
-      rc_t _parse_cfg( proc_t* proc, inst_t* p, const char* fn )
+      rc_t _init_from_cfg_file( proc_t* proc, inst_t* p, const char* fn )
       {
         rc_t                rc          = kOkRC;
         object_t*           cfg         = nullptr;
@@ -6915,10 +7471,11 @@ namespace cw
         // for each segment
         for(unsigned seg_idx=0; seg_idx<p->segN; ++seg_idx)
         {
-          const object_t* menuD          = nullptr;
-          const char*     seg_type_label = nullptr;
-          const char*     seg_title      = nullptr;
-          seg_t*          seg            = p->segA + seg_idx;
+          const object_t*  menuD          = nullptr;
+          const char*      seg_type_label = nullptr;
+          const char      *seg_title      = nullptr;
+          const char*      seg_label      = nullptr;
+          seg_t*           seg            = p->segA + seg_idx;
 
           // verfiy that the segment cfg is valid
           if( segL->child_ele(seg_idx) == nullptr )
@@ -6930,6 +7487,7 @@ namespace cw
           // parse the segment cfg top level
           if((rc = segL->child_ele(seg_idx)->getv("type_id", seg_type_label,
                                                   "title",   seg_title,
+                                                  "seg_label", seg_label,
                                                   "seg_idx", seg->seg_idx,
                                                   "beg_loc", seg->beg_loc,
                                                   "end_loc", seg->end_loc,
@@ -6989,6 +7547,8 @@ namespace cw
               rc = proc_error(proc,kSyntaxErrorRC,"Invalid segment '%s': Only 'spirio' and 'scriabin' segments should have exactly one player.",cwStringNullGuard(seg_title));
               goto errLabel;
             }
+
+            seg->vid = kInvalidId; // this player does not have a UI widget because it always plays from the score
           }
           else
           {
@@ -7029,6 +7589,8 @@ namespace cw
             // map the input menu variable to this segment
             p->vidToSegMapA[ vid_map_idx++ ] = seg_idx;
 
+            seg->vid = vid;
+            
             
           }
 
@@ -7044,6 +7606,7 @@ namespace cw
           }
           
           seg->title             = mem::duplStr(seg_title);
+          seg->seg_label         = mem::duplStr(seg_label);
           seg->cur_mp_player_id  = seg->mp_playerA[0].mp_player_id;
           //printf("CUR: %s seg_idx:%i player_id:%i\n",seg->title,seg_idx,seg->cur_mp_player_id);
           
@@ -7075,7 +7638,8 @@ namespace cw
           goto errLabel;
         }
 
-
+        if((rc = _scan_presets_folder(proc, p)) != kOkRC )
+          goto errLabel;
         
       errLabel:
         if(rc != kOkRC )
@@ -7205,17 +7769,31 @@ namespace cw
                               kMpStartPlayIdPId, "mp_start_play_id", kBaseSfxId, 
                               kMpPlayIdPId,      "mp_play_id",       kBaseSfxId,
                               kMpResetFlPId,     "mp_reset_fl",      kBaseSfxId,
-                              kMpClearFlPId,     "mp_clear_fl",      kBaseSfxId)) != kOkRC )
+                              kMpClearFlPId,     "mp_clear_fl",      kBaseSfxId,
+                              
+                              kPresetScanPId,    "preset_scan",      kBaseSfxId,
+                              kPresetIdPId,      "preset_id",        kBaseSfxId,
+
+                              kXfEnableFlPId,    "xf_enable_fl",      kBaseSfxId,
+                              kXfProbFlPId,      "xf_prob_fl",        kBaseSfxId,
+                              kXfUniFlPId,       "xf_uni_fl",         kBaseSfxId,
+                              kXfDryOnPlayFlPId, "xf_dry_on_play_fl", kBaseSfxId,
+                              kXfPerNoteFlPId,   "xf_per_note_fl",    kBaseSfxId,
+                              kXfAllowAllFlPId,  "xf_allow_all_fl",   kBaseSfxId,
+                              kXfDryOnSelFlPId,  "xf_dry_on_sel_fl",  kBaseSfxId,
+
+                              kEsDelayMsPId,     "es_delay_ms",       kBaseSfxId,
+                              kEsPlayIdInPId,    "es_play_id_in",     kBaseSfxId )) != kOkRC )
         {
           goto errLabel;
         }
 
-        if((rc = _parse_cfg( proc, p, cfg_fname )) != kOkRC )
+        // 
+        if((rc = _init_from_cfg_file( proc, p, cfg_fname )) != kOkRC )
         {
           goto errLabel;
         }
         
-
         if( p->segN > 0 && p->segA[0].mp_playerN > 0 )
         {
           // set the starting segment id to the first player on the first segment.
@@ -7243,6 +7821,8 @@ namespace cw
       {
         rc_t rc = kOkRC;
 
+        _release_presets(proc,p);
+
         for(unsigned i=0; i<p->segN; ++i)
         {
           for(unsigned j=0; j<p->segA[i].mp_playerN; ++j)
@@ -7252,12 +7832,14 @@ namespace cw
           
           mem::release(p->segA[i].mp_playerA);
           mem::release(p->segA[i].title);
+          mem::release(p->segA[i].seg_label);
           list_destroy(p->segA[i].ui_list);
         }
 
         mem::release(p->segA);
         list_destroy(p->beg_seg_list);
         list_destroy(p->end_seg_list);
+        list_destroy(p->preset_list);
         
         return rc;
       }
@@ -7267,7 +7849,7 @@ namespace cw
         rc_t     rc       = kOkRC;
         unsigned in_idx   = var->vid - k01MpPlayerPId;
         unsigned seg_idx  = kInvalidIdx;
-        unsigned player_id = kInvalidId;
+        unsigned player_idx = kInvalidId;
         
         if( in_idx >= kVidToSegMapN )
         {
@@ -7286,17 +7868,17 @@ namespace cw
 
         
         // get the index of the selected menu element
-        if((rc = var_get(var,player_id)) != kOkRC )
+        if((rc = var_get(var,player_idx)) != kOkRC )
         {
           goto errLabel;
         }
 
-        assert( player_id <= p->segA[ seg_idx ].mp_playerN );
+        assert( player_idx <= p->segA[ seg_idx ].mp_playerN );
         
         // update the mp_player_id to use with this segment
-        p->segA[ seg_idx ].cur_mp_player_id = p->segA[ seg_idx ].mp_playerA[ player_id ].mp_player_id;
+        p->segA[ seg_idx ].cur_mp_player_id = p->segA[ seg_idx ].mp_playerA[ player_idx ].mp_player_id;
         
-        proc_info(proc,"PLYR_MENU_SEL:%s %i %i",p->segA[ seg_idx ].title, player_id, p->segA[ seg_idx ].cur_mp_player_id );
+        //proc_info(proc,"PLYR_MENU_SEL:%s %i %i",p->segA[ seg_idx ].title, player_idx, p->segA[ seg_idx ].cur_mp_player_id );
         
       errLabel:
         if(rc != kOkRC )
@@ -7374,13 +7956,48 @@ namespace cw
         return rc;
       }
 
+      rc_t _reset_score_follower(proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+        
+        if((rc = var_set(proc, kSfBegLocPId, p->segA[p->cur_seg_idx].beg_loc )) != kOkRC )
+          goto errLabel;
+                
+        if((rc = var_set(proc, kSfEndLocPId, p->segA[p->cur_seg_idx].end_loc )) != kOkRC )
+          goto errLabel;
+
+        if((rc = var_set(proc, kSfResetFlPId, true )) != kOkRC )
+          goto errLabel;
+
+      errLabel:
+        if( rc != kOkRC )
+          proc_error(proc,rc,"Score follower reset failed.");
+        return rc;
+      }
+
+      
       rc_t _do_start_next_segment( proc_t* proc, inst_t* p )
       {
         rc_t rc;
-
+        unsigned es_delay_ms = 0;
+        
         if((rc = var_set(proc,kCurSegIdxPId,p->cur_seg_idx)) != kOkRC )
         {
           rc = proc_error(proc,rc,"Error setting the 'cur-seg-idx'.");
+          goto errLabel;
+        }
+
+        // if a preset has been assigned to this seg ...
+        if( p->segA[p->cur_seg_idx].cur_preset_seg != nullptr )
+        {
+          // ... then get the end-seg delay from the preset
+          es_delay_ms = p->segA[p->cur_seg_idx].cur_preset_seg->delay_ms;          
+        }
+
+        // Tell the end-seg detector how long to wait between the end-segment trigger and issuing the associated mp_play_id.
+        if((rc = var_set(proc,kEsDelayMsPId,es_delay_ms)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Error setting end-seg delay.");
           goto errLabel;
         }
         
@@ -7391,13 +8008,7 @@ namespace cw
           goto errLabel;
         }
 
-        if((rc = var_set(proc, kSfBegLocPId, p->segA[p->cur_seg_idx].beg_loc )) != kOkRC )
-          goto errLabel;
-                
-        if((rc = var_set(proc, kSfEndLocPId, p->segA[p->cur_seg_idx].end_loc )) != kOkRC )
-          goto errLabel;
-
-        if((rc = var_set(proc, kSfResetFlPId, true )) != kOkRC )
+        if((rc = _reset_score_follower(proc,p)) != kOkRC )
           goto errLabel;
         
         proc_info(proc,"Start - seg:%i player:%i",p->cur_seg_idx,p->segA[p->cur_seg_idx].cur_mp_player_id);
@@ -7469,6 +8080,98 @@ namespace cw
         return rc;
       }
 
+      rc_t _on_preset_select( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        unsigned preset_idx;
+        preset_t* preset = nullptr;
+
+        // Get the preset index of the selected preset
+        if((rc = var_get(var,preset_idx)) != kOkRC )
+           goto errLabel;
+
+        proc_info(proc,"Preset %i selected.",preset_idx);
+
+        if( preset_idx >= p->presetN )
+        {
+          rc = proc_error(proc,kInvalidArgRC,"An invalid preset index (%i) was encountered.",preset_idx);
+          goto errLabel;
+        }
+
+        preset = p->presetA + preset_idx;
+
+        // if the '(No Preset)' preset was selected then
+        // clear the 'cur_preset_seg' pointer in each segment.
+        if( preset->segN == 0 )
+        {
+          for(unsigned i=0; i<p->segN; ++i)
+            p->segA[i].cur_preset_seg = nullptr;
+        }
+
+        // for each segment named in this preset
+        for(unsigned i=0; i<preset->segN; ++i)
+        {
+          preset_seg_t* pseg = preset->segA + i;
+
+          // set the player assigned to this segment from the preset
+          pseg->seg->cur_mp_player_id = pseg->mp_player->mp_player_id;
+
+          // update the UI to match the presets segment
+          if( pseg->seg->vid != kInvalidId )
+            var_set( proc, pseg->seg->vid, kAnyChIdx, pseg->mp_player->menu_idx );
+
+          pseg->seg->cur_preset_seg = pseg;
+        }
+
+        _print_preset( proc, preset );
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _on_end_segment_play(proc_t* proc,inst_t* p,variable_t* var)
+      {
+        rc_t rc = kOkRC;
+
+        unsigned new_mp_play_id;
+        var_get(var,new_mp_play_id);
+
+        // the new player id should match the current segment new player id
+        if( new_mp_play_id != p->segA[p->cur_seg_idx].cur_mp_player_id )
+        {
+          proc_warn(proc,"The new player id as reported by the end-seg detector (%i) doesn't match the expected player (%i).",new_mp_play_id, p->segA[p->cur_seg_idx].cur_mp_player_id);
+          goto errLabel;
+        }
+
+        if((rc = _reset_score_follower(proc,p)) != kOkRC )
+          goto errLabel;
+
+        // if a preset is assigned to the curent segment
+        if( p->segA[p->cur_seg_idx].cur_preset_seg != nullptr )
+        {
+          preset_seg_t* pseg         = p->segA[p->cur_seg_idx].cur_preset_seg;
+          bool          xf_enable_fl = false;
+          
+          var_get(proc,kXfEnableFlPId,kAnyChIdx,xf_enable_fl);
+
+          // if the transform update is enabled ...
+          if( xf_enable_fl )
+          {
+            // ... update the transform selection parameters
+            var_set(proc,kXfProbFlPId,kAnyChIdx,pseg->use_prob_fl);
+            var_set(proc,kXfUniFlPId, kAnyChIdx, pseg->uniform_prob_fl );
+            var_set(proc,kXfDryOnPlayFlPId, kAnyChIdx, pseg->dry_on_play_fl );
+            var_set(proc,kXfPerNoteFlPId, kAnyChIdx, pseg->per_note_fl );
+            var_set(proc,kXfAllowAllFlPId, kAnyChIdx, pseg->allow_all_fl );
+            var_set(proc,kXfDryOnSelFlPId, kAnyChIdx, pseg->dry_on_sel_fl );
+          }
+        }
+
+      errLabel:
+        return rc;
+      }
+      
+
       rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
@@ -7514,6 +8217,20 @@ namespace cw
 
           case kStartPId:
             _on_start(proc,p);
+            break;
+
+          case kPresetScanPId:
+            if( proc->ctx->isInRuntimeFl )
+              _scan_presets_folder(proc, p);
+            break;
+            
+          case kPresetIdPId:
+            _on_preset_select(proc,p,var);
+            break;
+
+          case kEsPlayIdInPId:
+            if( proc->ctx->isInRuntimeFl )
+              _on_end_segment_play(proc,p,var);
             break;
             
         }
