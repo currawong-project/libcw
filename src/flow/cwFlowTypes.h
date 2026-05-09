@@ -104,8 +104,8 @@ namespace cw
       var_desc_t*          varDesc;      // the effective variable description for this variable (set to classVarDesc or localVarDesc)
       
       value_t              my_value;
-      struct variable_str* src_var;                     // pointer to this input variables source link (or null if it uses the local_value)
-      value_t*             value;                       // pointer to the value associated with this variable
+      struct variable_str* src_var;      // pointer to this input variables source link (or null if it uses the local_value)
+      value_t*             value;        // pointer to the value associated with this variable
 
       const list_t*        value_list;   // list of valid values for this variable or nullptr if not applicable
 
@@ -126,6 +126,7 @@ namespace cw
       
       ui_var_t*            ui_var;       // this variables UI description
       std::atomic<struct variable_str*> ui_var_link; // UI update var link based on flow_t ui_var_head;
+      std::atomic<unsigned> ui_var_link_fl;          // Counter to guard against attempting to a variable on the UI update list multiple times.
 
       std::atomic<unsigned> modN; // count of modifications made to this variable during this cycle
       
@@ -630,11 +631,16 @@ namespace cw
     // Get all the label-sfx-id's associated with a give var label
     rc_t           var_mult_sfx_id_array( proc_t* proc, const char* var_label, unsigned* idA, unsigned idAllocN, unsigned& idN_ref );
 
+    // Return true if the variable has a UI instance.
+    bool           var_has_a_ui( const variable_t* var );
+    
     // Send a variable value to the UI
     rc_t           var_send_to_ui( variable_t* var );
     rc_t           var_send_to_ui( proc_t* proc, unsigned vid,  unsigned chIdx );
     rc_t           var_send_to_ui_enable( proc_t* proc, unsigned vid,  unsigned chIdx, bool enable_fl );
     rc_t           var_send_to_ui_show(   proc_t* proc, unsigned vid,  unsigned chIdx, bool show_fl );
+    rc_t           var_send_to_ui_list_clear( proc_t* proc, unsigned vid, unsigned chIdx );
+    rc_t           var_send_to_ui_list_reload(proc_t* proc, unsigned vid, unsigned chIdx );
 
 
     //-----------------

@@ -2338,15 +2338,22 @@ errLabel:
 
 namespace cw {
   namespace flow {
+    void _list_clear( list_t* list )
+    {
+      // Release all of the elements of the list but do not release eleA[]
+      for(unsigned i=0; i<list->eleN; ++i)
+      {
+        mem::release(list->eleA[i].label);
+        value_release(&list->eleA[i].value );
+      }
+      list->eleN = 0;
+    }
+    
     rc_t _list_destroy( list_t*& list_ref )
     {
       if( list_ref != nullptr )
       {
-        for(unsigned i=0; i<list_ref->eleN; ++i)
-        {
-          mem::release(list_ref->eleA[i].label);
-          value_release(&list_ref->eleA[i].value );
-        }
+        _list_clear(list_ref);
         mem::release(list_ref->eleA);
         mem::release(list_ref);
       }
@@ -2475,33 +2482,45 @@ cw::rc_t cw::flow::list_destroy( list_t*& list_ref )
   return _list_destroy(list_ref);
 }
 
+cw::rc_t cw::flow::list_clear( list_t* list )
+{
+  rc_t rc = kOkRC;
+  _list_clear(list);
+  return rc;
+}
+
 cw::rc_t cw::flow::list_append( list_t* list, const char* label, const value_t& value )
 {
   rc_t rc = kOkRC;
 
+  // Validate the list label
   if( textLength(label) == 0 )
   {
     rc = cwLogError(kInvalidArgRC,"List elements must have a valid label.");
     goto errLabel;
   }
-  
+
+  // If there is not enough space to accept another list element then reallocate the list.
   if( list->eleN >= list->eleAllocN )
   {
-    rc = cwLogError(kBufTooSmallRC,"Cannot append '%s' to a full list.",label);
-    goto errLabel;
+    list->eleAllocN *= 2;
+    list->eleA = mem::resizeZ(list->eleA, list->eleAllocN*2 );
   }
 
+  // All element of the list share the same 'value' type and thereore have the same 'tflag'.
   if( list->eleN == 0 )
     list->eleA[0].value.tflag = value.tflag;
   else
     list->eleA[list->eleN].value.tflag = list->eleA[0].value.tflag;
 
+  // Copy the value into the element value field
   if((rc = value_from_value( value, list->eleA[list->eleN].value )) != kOkRC )
   {
     rc = cwLogError(rc,"Value conversion failed. All value types must be convertiable to type of the first list value.");
     goto errLabel;
   }
 
+  // Realloc the label into the element label field.
   list->eleA[list->eleN].label = mem::duplStr(label);
   
   list->eleN += 1;

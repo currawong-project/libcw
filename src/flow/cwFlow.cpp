@@ -834,7 +834,7 @@ namespace cw
 
       // Get the first variable to send to the UI
       variable_t* var = p->ui_var_tail->ui_var_link.load(std::memory_order_relaxed);
-      
+
       while( var!=nullptr)
       {
         // Send the var to the UI
@@ -844,9 +844,9 @@ namespace cw
         // Get the next var to send to the UI
         variable_t* var0 = var->ui_var_link.load(std::memory_order_relaxed);
 
-        // Nullify the list links as they are used
+        // Nullify the list links as they are used and zero the ui_var_link_fl guard counter
         var->ui_var_link.store(nullptr,std::memory_order_relaxed);
-        
+        var->ui_var_link_fl.store(0,std::memory_order_relaxed);
         var = var0;
       }
 
@@ -854,7 +854,7 @@ namespace cw
       p->ui_var_head.store(&p->ui_var_stub,std::memory_order_relaxed);
       p->ui_var_tail    = &p->ui_var_stub;
       p->ui_var_stub.ui_var_link.store(nullptr,std::memory_order_relaxed);
-      
+
     }
 
     void _print_abuf( const abuf_t* abuf )

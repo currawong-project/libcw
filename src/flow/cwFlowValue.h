@@ -506,6 +506,7 @@ namespace cw
 
     rc_t list_destroy( list_t*& list_ref );
 
+    rc_t list_clear( list_t* list );    
     rc_t list_append( list_t* list, const char* label, const value_t& value );
 
     

@@ -549,6 +549,46 @@ namespace cw
       return rc;
     }
 
+    rc_t _var_send_msg_id_to_ui( proc_t* proc, variable_t* var, unsigned msgId )
+    {
+      rc_t rc = kOkRC;
+      
+      if( var->ui_var->msgId_idx >= kMsgIdN )
+      {
+        rc = var_error(var,kOpFailRC,"The UI var msg queue (ui_var->msgIdA[]) is full. Message %i dropped.",msgId );
+        goto errLabel;
+      }
+
+      var->ui_var->msgIdA[ var->ui_var->msgId_idx++ ] = msgId;
+
+      if((rc = var_send_to_ui(var)) != kOkRC )
+      {
+        rc = var_error(var,kOpFailRC,"Var UI msg send failed.",msgId );
+        goto errLabel;
+      }
+      
+    errLabel:
+      return rc;
+    }
+
+    rc_t _var_send_msg_id_to_ui( proc_t* proc, unsigned vid, unsigned chIdx, unsigned msgId )
+    {
+      rc_t rc = kOkRC;
+      variable_t* var = nullptr;
+
+      if((rc = var_find(proc, vid, chIdx, var )) != kOkRC )
+      {
+        rc = proc_error(proc,rc,"Variable not found. Send to UI failed.");
+        goto errLabel;
+      }
+
+      if((rc= _var_send_msg_id_to_ui(proc,var,msgId)) != kOkRC )
+        goto errLabel;
+      
+    errLabel:
+      return rc;
+    }
+
     void _class_desc_print( const class_desc_t* cd )
     {
       const var_desc_t*   vd = cd->varDescL;
@@ -1785,6 +1825,7 @@ errLabel:
   return chN;
 }
 
+
 // This function is called, by the upstream proc, to inform the
 // downstream (destination) 'var' that the value has changed.  If the
 // 'var' is tagged for notification then it will be added to it's proc
@@ -1799,6 +1840,12 @@ cw::rc_t cw::flow::var_schedule_notification( variable_t* var )
   // Add the var to var->proc->modVarMapA[] so that it's proc->notify() is called the next time it the var->proc executes.
   if((rc = _mod_var_map_update( var )) != kOkRC )
     goto errLabel;
+
+  // If the var has a UI then update it
+  if( var_has_a_ui(var)  )
+  {
+    var_send_to_ui(var);
+  }
 
   // Record the fact that this variable changed on this cycle.
   if( cwIsFlag(var->flags,kLogRtVarFl) )
@@ -2172,21 +2219,31 @@ errLabel:
   return rc;
 }
 
+bool  cw::flow::var_has_a_ui( const variable_t* var )
+{
+  return var->ui_var != nullptr && var->ui_var->user_arg != nullptr;
+}
 
 cw::rc_t  cw::flow::var_send_to_ui( variable_t* var )
 {
 
-  // var->ui_var_link is set to null when the var is removed from the list
+  unsigned already_on_ui_update_list_fl = var->ui_var_link_fl.fetch_add(1,std::memory_order_acq_rel);
+
+  if( already_on_ui_update_list_fl == 0 )
+  {
+    // var->ui_var_link is set to null when the var is removed from the list
   
-  // 1. Atomically set _head to the new node and return 'old-head'
-  variable_t* prev   = var->proc->ctx->ui_var_head.exchange(var,std::memory_order_acq_rel);  
+    // 1. Atomically set _head to the new node and return 'old-head'
+    variable_t* prev   = var->proc->ctx->ui_var_head.exchange(var,std::memory_order_acq_rel);  
+    
+    // Note that at this point only the new node may have the 'old-head' as it's predecssor.
+    // Other threads may therefore safely interrupt at this point.
+    
+    // 2. Set the old-head next pointer to the new node (thereby adding the new node to the list)
+    prev->ui_var_link.store(var,std::memory_order_release); // RELEASE 'next' to consumer
 
-  // Note that at this point only the new node may have the 'old-head' as it's predecssor.
-  // Other threads may therefore safely interrupt at this point.
-      
-  // 2. Set the old-head next pointer to the new node (thereby adding the new node to the list)
-  prev->ui_var_link.store(var,std::memory_order_release); // RELEASE 'next' to consumer            
-
+  }
+  
   return kOkRC;
 }
 
@@ -2205,27 +2262,37 @@ cw::rc_t  cw::flow::var_send_to_ui_enable( proc_t* proc, unsigned vid,  unsigned
 {
   rc_t rc = kOkRC;
   variable_t* var = nullptr;
-
-  if((rc = var_find(proc, vid, chIdx, var )) == kOkRC )
+  
+  if((rc = var_find(proc, vid, chIdx, var )) != kOkRC )
   {
-    var->ui_var->new_disable_fl = !enable_fl;
-    rc = var_send_to_ui(var);
+    rc = proc_error(proc,rc,"Variable not found. Send to UI failed.");
+    goto errLabel;
   }
+
+  // if the variable is connected to a source then it cannot be enabled.
+  if( !is_connected_to_source(var) && enable_fl )
+    if((rc = _var_send_msg_id_to_ui( proc, var, enable_fl ? kEnableUiVarMsgId : kDisableUiVarMsgId )) != kOkRC )
+      goto errLabel;
+
+errLabel:
   return rc;
 }
 
 cw::rc_t  cw::flow::var_send_to_ui_show(   proc_t* proc, unsigned vid,  unsigned chIdx, bool show_fl )
 {
-  rc_t rc = kOkRC;
-  variable_t* var = nullptr;
-
-  if((rc = var_find(proc, vid, chIdx, var )) == kOkRC )
-  {
-    var->ui_var->new_hide_fl = !show_fl;
-    rc = var_send_to_ui(var);
-  }
-  return rc;
+  return _var_send_msg_id_to_ui( proc, vid, chIdx, show_fl ? kShowUiVarMsgId : kHideUiVarMsgId );
 }
+
+cw::rc_t  cw::flow::var_send_to_ui_list_clear( proc_t* proc, unsigned vid, unsigned chIdx )
+{
+  return _var_send_msg_id_to_ui( proc, vid, chIdx, kListClearUiVarMsgId );
+}
+
+cw::rc_t  cw::flow::var_send_to_ui_list_reload(proc_t* proc, unsigned vid, unsigned chIdx )
+{
+  return _var_send_msg_id_to_ui( proc, vid, chIdx, kListReloadUiVarMsgId );
+}
+
 
 
 cw::rc_t cw::flow::var_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, variable_t*& varRef )

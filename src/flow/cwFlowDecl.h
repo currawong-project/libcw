@@ -111,6 +111,18 @@ namespace cw
 
     struct ui_proc_str;
     struct list_str;
+
+    enum {
+      kDisableUiVarMsgId,
+      kEnableUiVarMsgId,
+      kShowUiVarMsgId,
+      kHideUiVarMsgId,
+      kListClearUiVarMsgId,
+      kListReloadUiVarMsgId,
+    };
+    enum {
+      kMsgIdN = 8
+    };
     
     typedef struct ui_var_str
     {
@@ -140,8 +152,8 @@ namespace cw
       bool disable_fl;  // true if this ui var is disabled
       bool hide_fl;     // true if this ui var is hidden
 
-      bool new_disable_fl;
-      bool new_hide_fl;
+      unsigned msgIdA[ kMsgIdN ];
+      unsigned msgId_idx;
       
     } ui_var_t;
 

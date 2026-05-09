@@ -4175,9 +4175,7 @@ namespace cw
             ui_var->has_source_fl     = is_connected_to_source( var );
             ui_var->title             = var->ui_title == nullptr ? var->label : var->ui_title;
             ui_var->disable_fl        = var->ui_disable_fl || ui_var->has_source_fl || cwIsFlag(var->varDesc->flags,flow::kInitVarDescFl);
-            ui_var->new_disable_fl    = ui_var->disable_fl;
             ui_var->hide_fl           = var->ui_hide_fl;
-            ui_var->new_hide_fl       = ui_var->hide_fl;
             ui_var->vid               = var->vid;
             ui_var->ch_cnt            = var_channel_count( net.procA[i], var->label, var->label_sfx_id );
             ui_var->ch_idx            = var->chIdx;

@@ -605,11 +605,35 @@ namespace cw
       return rc;
     }
 
+    rc_t _ui_list_reload( io_flow_ctl_t* p, flow::ui_var_t* ui_var )
+    {
+      rc_t rc = kOkRC;
+
+      unsigned list_uuid = _ui_var_to_widget_uuid(ui_var);
+      
+      for(unsigned i=0; i<ui_var->list->eleN; ++i)
+      {
+        unsigned uuid   = 0;
+        unsigned chanId = i;
+        unsigned appId  = i;
+        
+        if((rc = uiCreateOption( p->ioH, uuid, list_uuid, NULL, appId, chanId, nullptr, list_ele_label(ui_var->list,i) )) != kOkRC )
+        {
+          rc = cwLogError(rc,"List option create failed on '%s:%i' index '%i'.",cwStringNullGuard(ui_var->label),ui_var->label_sfx_id,i);
+          goto errLabel;
+        }
+      }
+
+    errLabel:
+      return rc;
+    }
+
     // This function is called with messages for the UI from the flow proc instances 
     rc_t _ui_callback( void* arg, flow::ui_var_t* ui_var )
     {
       rc_t rc = kOkRC;
-      
+      const char* msgLabel = "";
+        
       io_flow_ctl_t* p = (io_flow_ctl_t*)arg;
 
       if( ui_var->user_arg == nullptr )
@@ -618,34 +642,51 @@ namespace cw
         goto errLabel;
       }
 
-      if( ui_var->new_disable_fl != ui_var->disable_fl )
+      // for each UI mod. msg in ui_var->msgIdA[]
+      for(unsigned i=0; i<ui_var->msgId_idx; ++i)
       {
-
-        uiSetEnable( p->ioH, _ui_var_to_label_uuid(ui_var), !ui_var->new_disable_fl );
-        
-        if((rc = uiSetEnable( p->ioH, _ui_var_to_widget_uuid(ui_var), !ui_var->new_disable_fl )) != kOkRC )
+        switch(ui_var->msgIdA[i] )
         {
-          rc = cwLogError(rc,"UI enable/disable update failed.");
-          goto errLabel;
+          case flow::kDisableUiVarMsgId:
+            msgLabel = "Disable";
+            rc = uiSetEnable( p->ioH, _ui_var_to_label_uuid(ui_var), false );
+            break;
+          case flow::kEnableUiVarMsgId:
+            msgLabel = "Enable";
+            rc = uiSetEnable( p->ioH, _ui_var_to_label_uuid(ui_var), true );
+            break;
+          case flow::kShowUiVarMsgId:
+            msgLabel = "Show";
+            rc = uiSetVisible( p->ioH, _ui_var_to_container_uuid(ui_var), true );
+            break;
+          case flow::kHideUiVarMsgId:
+            msgLabel = "Hide";
+            rc = uiSetVisible( p->ioH, _ui_var_to_container_uuid(ui_var), false );
+            break;
+          case flow::kListClearUiVarMsgId:
+            msgLabel = "Clear list";
+            rc = uiEmptyParent(  p->ioH, _ui_var_to_widget_uuid(ui_var));
+            break;
+          case flow::kListReloadUiVarMsgId:
+            msgLabel = "Reload list";
+            rc = _ui_list_reload( p, ui_var );
+            break;
+          
         }
 
-        ui_var->disable_fl = ui_var->new_disable_fl;
-      }
-
-      if( ui_var->new_hide_fl != ui_var->hide_fl )
-      {
-        if((rc = uiSetVisible( p->ioH, _ui_var_to_container_uuid(ui_var), !ui_var->new_hide_fl )) != kOkRC )
+        if( rc != kOkRC )
         {
-          rc = cwLogError(rc,"UI hide/show update failed.");
+          rc = proc_error(ui_var->ui_proc->proc,rc,"%s var UI failed on '%s:%i'.",msgLabel,cwStringNullGuard(ui_var->label),ui_var->label_sfx_id);
           goto errLabel;
         }
-
-        ui_var->hide_fl = ui_var->new_hide_fl;
       }
+
+      ui_var->msgId_idx = 0;
       
       switch( ui_var->value_tid & flow::kTypeMask )
       {
         case flow::kBoolTFl:
+        case flow::kAllTFl:  // This is a hack!!! kAll is usually a trigger which is represented as a checkbox
           rc = _ui_callback_tpl<bool>(p,ui_var);
           break;
 
@@ -668,6 +709,10 @@ namespace cw
         case flow::kStringTFl:
           rc = _ui_callback_tpl<const char*>(p,ui_var);
           break;
+
+        default:
+          rc = cwLogError(kInvalidStateRC,"An attempt was made to update the UI with an unknown data type: 0x%x.",ui_var->value_tid & flow::kTypeMask);
+
           
       }
 
