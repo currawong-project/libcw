@@ -985,27 +985,24 @@ namespace cw
 
       rc_t notify( proc_t* proc, variable_t* var )
       {
+        switch(var->vid)
+        {
+          case kInPId:
+            {
+              coeff_t value = 1;
+            
+              var_get(var,  value);
+              var_set(proc, kOutPId,    kAnyChIdx, value);
+              var_set(proc, kInvOutPId, kAnyChIdx, (coeff_t)(1.0 - value) );
+            }
+            break;
+        }
         return kOkRC;
       }
 
       rc_t exec( proc_t* proc )
       {
-        rc_t   rc = kOkRC;
-        inst_t* inst = (inst_t*)(proc->userPtr);
-        
-        coeff_t value = 1;
-        
-        var_get(proc, kInPId,     kAnyChIdx, value);
-        var_set(proc, kOutPId,    kAnyChIdx, value);
-        var_set(proc, kInvOutPId, kAnyChIdx, (coeff_t)(1.0 - value) );
-
-        if( inst->value != value )
-        {
-          inst->value = value;
-        }
-        
-
-        return rc;
+        return kOkRC;
       }
 
       class_members_t members = {
