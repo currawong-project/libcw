@@ -57,7 +57,7 @@ namespace cw
       char     grace_mark[4]; // grace mark or 0
       unsigned bar;           // bar number or 0
       unsigned barPitchIdx;   // bar pitch index or 0 
-      unsigned section;       // section number or 0
+      unsigned section;       // section number or 0      
       unsigned chord_note_cnt;// count of notes in the chord which this note-on msg is part of
       unsigned chord_note_idx;// which note in the chord is this note-on msg (or kInvalididx if this is not a note-on msg)
 
@@ -91,7 +91,7 @@ namespace cw
     //    See _read_csv()
     //
     // 3. "meas","loc","sec","sci_pitch","status","d0","d1","bar","section","oloc","index","grace",{"player_id"},{"piano_id"},{has_stats_fl}
-    //    This CSV parse is chosen if the 'oloc' is not contained in the CSV column title row.
+    //    This CSV parse is chosen if the 'oloc' is  contained in the CSV column title row.
     //    oloc  -> loc
     //    index -> uid
     //    If 'hast_stats_fl' exists and is set then a wide set of statistics columns are included see: _read_meas_stats().

@@ -16,6 +16,7 @@
 #include "cwCsv.h"
 #include "cwVectOps.h"
 #include "cwPianoScore.h"
+#include "cwNumericConvert.h"
 
 #define INVALID_PERF_MEAS (-1)
 
@@ -186,13 +187,62 @@ namespace cw
       return rc;
     }
 
+    rc_t _section_label_to_id( const char* section_label, unsigned& section_id_ref  )
+    {
+      rc_t rc = kOkRC;
+      unsigned section_id = 0;
+      unsigned id_offset = 0;
+      
+      // there was no section label on this line
+      if(section_label == nullptr || textLength(section_label) == 0)
+      {
+        goto errLabel;
+      }
+
+      if( isInteger( section_label ) )
+      {
+        string_to_number(section_label,section_id);
+      }
+      else
+      {
+        errno = 0;
+        char* end_ptr = nullptr;
+        section_id = strtoul(section_label, &end_ptr, 10);
+        
+        if( section_id==0 || end_ptr == section_label || errno != 0 || end_ptr == nullptr )
+        {
+          rc = cwLogError(kSyntaxErrorRC,"The section label '%s' could not be parsed.",cwStringNullGuard(section_label));
+          goto errLabel;   
+        }
+        
+        char c = tolower(*end_ptr);
+        if( textLength(end_ptr)==1 && 'a' <= c && c <= 'z' )
+        {
+          id_offset = 'a' - c;
+        }
+        else
+        {
+          rc = cwLogError(kSyntaxErrorRC,"The section label suffix is expected to contain exactly on character in the range 'a' to 'z'.");
+          goto errLabel;
+        }
+        
+        section_id_ref = section_id*10 + id_offset;
+          
+      }
+
+    errLabel:
+      return rc;
+      
+    }
+    
     rc_t _read_csv_line( score_t* p,  bool score_fl, csv::handle_t csvH )
     {
-      rc_t     rc = kOkRC;
-      event_t* e  = mem::allocZ<event_t>();
+      rc_t        rc            = kOkRC;
+      event_t*    e             = mem::allocZ<event_t>();
+      int         has_stats_fl  = 0;
+      const char* section_label = nullptr;
       const char* sci_pitch;
-      unsigned sci_pitch_char_cnt;
-      int has_stats_fl = 0;
+      unsigned    sci_pitch_char_cnt;
         
       if((rc = getv(csvH,
                     "meas",e->meas,
@@ -203,7 +253,7 @@ namespace cw
                     "d0", e->d0,
                     "d1", e->d1,
                     "bar", e->bar,
-                    "section", e->section)) != kOkRC )
+                    "section", section_label)) != kOkRC )
       {
         rc = cwLogError(rc,"Error parsing CSV.");
         goto errLabel;
@@ -215,8 +265,16 @@ namespace cw
           rc = cwLogError(rc,"Error parsing optional fields.");
           goto errLabel;
         }
-      
+
       e->valid_stats_fl = has_stats_fl;
+
+      // translate the section label to a numeric id
+      if((rc = _section_label_to_id( section_label, e->section  )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Section label to integer conversion failed on '%s'.",cwStringNullGuard(section_label));
+        goto errLabel;
+      }
+      
       
       if( score_fl )
       {
