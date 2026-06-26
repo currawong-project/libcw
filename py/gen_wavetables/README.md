@@ -13,7 +13,7 @@ Generate a MIDI file in CSV format to trigger the sampler with a sequence of vel
 
 `sample_ivory.py`
 ---------------
-Use the MIDI file from 'gen_midi_csv.py' to trigger the sampler and record the resulting audio and onset/offset TSV marker file.
+Use the MIDI file from `gen_midi_csv.py` to trigger the sampler and record the resulting audio and onset/offset TSV marker file.
 
 `calc_sample_atk_dur.py`
 ----------------------
@@ -28,6 +28,10 @@ Create a JSON file of wave tables for all pitches and velocities.
 Generate a set of notes using the wavetables found by `calc_wavetables.py`.
 This program implements a wavetable oscillator which can interpret the wavetables
 created by `calc_wavetables.py`
+
+`gen_synth_wt.py` 
+-----------------
+Generate a complete set of wavetables using a sine tone as the signal source.
 
 
 Obsolete
