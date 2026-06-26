@@ -250,7 +250,7 @@ namespace cw
 
       // set 'match_ni' to the best match candidate
       for(unsigned ni=trk->search_bni; ni<=trk->search_eni; ++ni)
-        if( trk->note_match_cntA[ni]==0 && trk->sf->noteA[ni].pitch==pitch && (match_ni==kInvalidIdx || trk->expV[ni]>match_val))
+        if( trk->note_match_cntA[ni]==0 && trk->sf->noteA[ni].pitch==pitch && (match_ni==kInvalidIdx || trk->expV[ni]>match_val) && trk->sf->beg_loc_id <= trk->sf->noteA[ni].loc_id && trk->sf->noteA[ni].loc_id <= trk->sf->end_loc_id  )
         {
           match_ni = ni;
           match_val = trk->expV[ni];
@@ -786,7 +786,7 @@ cw::rc_t cw::score_follow_2::parse_args( const object_t* cfg, args_t& args )
 {
   rc_t rc = kOkRC;
 
-  if((rc                                                               = cfg->getv("rpt_fl",args.rpt_fl,
+  if((rc = cfg->getv("rpt_fl",args.rpt_fl,
                      "pre_affinity_sec",    args.pre_affinity_sec,
                      "post_affinity_sec",   args.post_affinity_sec,
                      "pre_wnd_sec",         args.pre_wnd_sec,
