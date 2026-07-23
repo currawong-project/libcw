@@ -47,7 +47,8 @@ namespace cw
           
           unsigned            framesPerCycle;
           double              srate;
-
+          unsigned            verbLevel;
+          
           cbFunc_t            cbFunc;
           void*               cbArg;
           unsigned            cbDevIdx;
@@ -658,6 +659,7 @@ cw::rc_t    cw::audio::device::file::create( handle_t& hRef, struct driver_str*&
   p->driver.deviceLabel          = deviceLabel;
   p->driver.deviceChannelCount   = deviceChannelCount;
   p->driver.deviceSampleRate     = deviceSampleRate;
+  p->driver.deviceVerbLevel      = deviceVerbLevel;
   p->driver.deviceFramesPerCycle = deviceFramesPerCycle;
   p->driver.deviceSetup          = deviceSetup;
   p->driver.deviceStart          = deviceStart;
@@ -795,6 +797,18 @@ double      cw::audio::device::file::deviceSampleRate(     struct driver_str* dr
   return d->srate;
 }
 
+unsigned      cw::audio::device::file::deviceVerbLevel(     struct driver_str* drv, unsigned devIdx )
+{
+  rc_t       rc= kOkRC;
+  dev_t*     d = nullptr;
+  dev_mgr_t* p = _driverToPtr(drv);
+  
+  if((rc = _indexToDev( p, devIdx, d )) != kOkRC )
+    return 0;
+
+  return d->verbLevel;
+}
+
 unsigned    cw::audio::device::file::deviceFramesPerCycle( struct driver_str* drv, unsigned devIdx, bool inputFl )
 {
   rc_t       rc= kOkRC;
@@ -808,7 +822,7 @@ unsigned    cw::audio::device::file::deviceFramesPerCycle( struct driver_str* dr
   
 }
 
-cw::rc_t    cw::audio::device::file::deviceSetup( struct driver_str* drv, unsigned devIdx, double srate, unsigned frmPerCycle, cbFunc_t cbFunc, void* cbArg, unsigned cbDevIdx )
+cw::rc_t    cw::audio::device::file::deviceSetup( struct driver_str* drv, unsigned devIdx, double srate, unsigned frmPerCycle, cbFunc_t cbFunc, void* cbArg, unsigned cbDevIdx, unsigned verbLevel )
 {
   rc_t       rc0 = kOkRC;
   rc_t       rc1 = kOkRC;
@@ -823,6 +837,7 @@ cw::rc_t    cw::audio::device::file::deviceSetup( struct driver_str* drv, unsign
 
   d->framesPerCycle = frmPerCycle;
   d->srate          = srate;
+  d->verbLevel      = verbLevel;
   d->cbFunc         = cbFunc;
   d->cbArg          = cbArg;
   d->cbDevIdx       = cbDevIdx;
@@ -1116,6 +1131,7 @@ cw::rc_t cw::audio::device::file::test( const object_t* cfg)
   unsigned           framesPerCycle = 0;
   cb_object_t        obj            = {};
   void*              cbArg          = &obj;
+  unsigned           verbLevel      = 1;
   audiofile::info_t  info;
   handle_t           h;
 
@@ -1158,7 +1174,7 @@ cw::rc_t cw::audio::device::file::test( const object_t* cfg)
   }
 
   // setup the audio device file device
-  if((rc =  deviceSetup( driver_ptr, devIdx, info.srate, framesPerCycle, driverCallback, cbArg, devIdx )) != kOkRC )
+  if((rc =  deviceSetup( driver_ptr, devIdx, info.srate, framesPerCycle, driverCallback, cbArg, devIdx, verbLevel )) != kOkRC )
   {
     rc = cwLogError(rc,"Error setting up the audio device file.");
     goto errLabel;

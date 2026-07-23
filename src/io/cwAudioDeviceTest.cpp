@@ -34,6 +34,7 @@ namespace  cw
         unsigned      framesPerCycle; // DSP frames per cycle
         double        srate;          // audio sample rate
         unsigned      meterMs;        // audio meter buffer length
+        unsigned      verbLevel;      // 0=off
         
         unsigned      inDevIdx;       // input device index
         unsigned      outDevIdx;      // output device index
@@ -55,12 +56,13 @@ namespace  cw
 
         r->bufCnt         = 3;
         r->srate          = 48000;
+        r->verbLevel      = 1;
         r->framesPerCycle = 512;
         r->meterMs        = 50;
         r->amHz           = 0;
         r->amMaxGain      = 0.8;
         
-        if((rc = cfg->getv_opt("inDev",r->inDevLabel,"outDev",r->outDevLabel,"srate",r->srate,"bufN",r->bufCnt,"framesPerCycle",r->framesPerCycle,"meterMs",r->meterMs,"amHz",r->amHz,"amMaxGain",r->amMaxGain)) != kOkRC )
+        if((rc = cfg->getv_opt("inDev",r->inDevLabel,"outDev",r->outDevLabel,"srate",r->srate,"bufN",r->bufCnt,"framesPerCycle",r->framesPerCycle,"verbLevel",r->verbLevel,"meterMs",r->meterMs,"amHz",r->amHz,"amMaxGain",r->amMaxGain)) != kOkRC )
           return cwLogError(rc,"The audio device configuration is invalid.");
 
         return rc;
@@ -179,11 +181,11 @@ cw::rc_t cw::audio::device::test( const object_t* cfg )
     buf::report( r.audioBufH );
     
     // setup an output device
-    if(setup(h, r.outDevIdx,r.srate,r.framesPerCycle,_cmApPortCb2,&r) != kOkRC )
+    if(setup(h, r.outDevIdx,r.srate,r.framesPerCycle,_cmApPortCb2,&r,r.verbLevel) != kOkRC )
       cwLogInfo("Out device setup failed.");
     else
       // setup an input device
-      if( setup(h, r.inDevIdx,r.srate,r.framesPerCycle,_cmApPortCb2,&r) != kOkRC )
+      if( setup(h, r.inDevIdx,r.srate,r.framesPerCycle,_cmApPortCb2,&r,r.verbLevel) != kOkRC )
         cwLogInfo("In device setup failed.");
       else
         // start the input device

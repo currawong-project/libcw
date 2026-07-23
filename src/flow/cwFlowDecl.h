@@ -29,6 +29,7 @@ namespace cw
     {
       struct abuf_str* abuf;  // Buffer to receive incoming or send outgoing audio for this device
                               // The audio_in/audio_out proc's locate and use these buffers.
+      unsigned ioDevErrCnt;  
     } audio_dev_cfg_t;
 
     struct external_device_str;

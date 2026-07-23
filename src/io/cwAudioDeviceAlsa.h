@@ -19,10 +19,11 @@ namespace cw
         
         unsigned    deviceCount(          struct driver_str* drv);
         const char* deviceLabel(          struct driver_str* drv, unsigned devIdx );
-        unsigned    deviceChannelCount(   struct driver_str* drv, unsigned devIdx, bool inputFl );
+        unsigned    deviceChannelCount(   struct driver_str* drv, unsigned devIdx, bool inputFl );        
         double      deviceSampleRate(     struct driver_str* drv, unsigned devIdx );
+        unsigned    deviceVerbLevel(      struct driver_str* drv, unsigned devIdx );        
         unsigned    deviceFramesPerCycle( struct driver_str* drv, unsigned devIdx, bool inputFl );
-        rc_t        deviceSetup(          struct driver_str* drv, unsigned devIdx, double sr, unsigned frmPerCycle, cbFunc_t cbFunc, void* cbArg, unsigned cbDevIdx );
+        rc_t        deviceSetup(          struct driver_str* drv, unsigned devIdx, double sr, unsigned frmPerCycle, cbFunc_t cbFunc, void* cbArg, unsigned cbDevIdx, unsigned verbLevel );
         rc_t        deviceStart(          struct driver_str* drv, unsigned devIdx );
         rc_t        deviceStop(           struct driver_str* drv, unsigned devIdx );
         bool        deviceIsStarted(      struct driver_str* drv, unsigned devIdx );

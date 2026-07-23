@@ -30,6 +30,7 @@ namespace cw
         void*        audioBytesPtr;  // pointer to sample data
         void*        cbArg;          // user defined argument passed in via deviceSetup()
         time::spec_t timeStamp;      // Packet time stamp.
+        unsigned     errCnt;         // accumulating error count
       }  audioPacket_t; 
 
     }

@@ -59,8 +59,9 @@ namespace cw
         const char* (*deviceLabel)(          struct driver_str* drvArg, unsigned devIdx );
         unsigned    (*deviceChannelCount)(   struct driver_str* drvArg, unsigned devIdx, bool inputFl );
         double      (*deviceSampleRate)(     struct driver_str* drvArg, unsigned devIdx );
+        unsigned    (*deviceVerbLevel)(      struct driver_str* drvArg, unsigned devIdx );
         unsigned    (*deviceFramesPerCycle)( struct driver_str* drvArg, unsigned devIdx, bool inputFl );
-        rc_t        (*deviceSetup)(          struct driver_str* drvArg, unsigned devIdx, double sr, unsigned frmPerCycle, cbFunc_t cb, void* cbData, unsigned cbDevIdx );
+        rc_t        (*deviceSetup)(          struct driver_str* drvArg, unsigned devIdx, double sr, unsigned frmPerCycle, cbFunc_t cb, void* cbData, unsigned cbDevIdx, unsigned verbLevel );
         rc_t        (*deviceStart)(          struct driver_str* drvArg, unsigned devIdx );
         rc_t        (*deviceStop)(           struct driver_str* drvArg, unsigned devIdx );
         bool        (*deviceIsStarted)(      struct driver_str* drvArg, unsigned devIdx );
@@ -92,6 +93,7 @@ namespace cw
       const char* label(          handle_t h, unsigned devIdx );
       unsigned    channelCount(   handle_t h, unsigned devIdx, bool inputFl );
       double      sampleRate(     handle_t h, unsigned devIdx );
+      unsigned    verbLevel(      handle_t h, unsigned devIdx );
       unsigned    framesPerCycle( handle_t h, unsigned devIdx, bool inputFl );
       bool        isAsync(        handle_t h, unsigned devIdx );
       
@@ -112,7 +114,8 @@ namespace cw
         double   sr,
         unsigned frmPerCycle,
         cbFunc_t cb,
-        void*    cbData );
+        void*    cbData,
+        unsigned verbLevel );
       
       rc_t        start(          handle_t h, unsigned devIdx );
       rc_t        stop(           handle_t h, unsigned devIdx );

@@ -159,6 +159,14 @@ double cw::audio::device::sampleRate( handle_t h, unsigned devIdx )
   return 0;
 }
 
+unsigned cw::audio::device::verbLevel( handle_t h, unsigned devIdx )
+{
+  drv_t* d;
+  if((d = _indexToDriver(h,devIdx)) != nullptr )
+    return d->drv->deviceVerbLevel( d->drv, devIdx - d->begIdx );
+  return 0;
+}
+
 unsigned cw::audio::device::framesPerCycle( handle_t h, unsigned devIdx, bool inputFl )
 {
   drv_t* d;
@@ -167,11 +175,11 @@ unsigned cw::audio::device::framesPerCycle( handle_t h, unsigned devIdx, bool in
   return 0;
 }
 
-cw::rc_t  cw::audio::device::setup( handle_t h, unsigned devIdx, double sr, unsigned frmPerCycle, cbFunc_t cb, void* cbData )
+cw::rc_t  cw::audio::device::setup( handle_t h, unsigned devIdx, double sr, unsigned frmPerCycle, cbFunc_t cb, void* cbData, unsigned verbLevel )
 {
   drv_t* d;
   if((d = _indexToDriver(h,devIdx)) != nullptr )
-    return d->drv->deviceSetup( d->drv, devIdx - d->begIdx, sr, frmPerCycle, cb, cbData, devIdx );
+    return d->drv->deviceSetup( d->drv, devIdx - d->begIdx, sr, frmPerCycle, cb, cbData, devIdx, verbLevel );
   return kInvalidArgRC;
 }
 

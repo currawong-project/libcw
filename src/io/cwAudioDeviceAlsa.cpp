@@ -41,6 +41,7 @@ namespace cw
           unsigned             periodsPerBuf;  // sub-buffers per buffer
           snd_async_handler_t* ahandler;
           unsigned             srate;          // device sample rate
+          unsigned             verbLevel;      // 0=off
 
           unsigned             iChCnt;         // ch count 
           unsigned             oChCnt;
@@ -105,7 +106,7 @@ namespace cw
           struct pollfd*    pollfds         = nullptr; // pollfds[ pollfdsAllocCnt ]
           pollfdsDesc_t    *pollfdsDesc     = nullptr; // pollfdsDesc[ pollfdsAllocCnt ]
           unsigned          pollfdsCnt      = 0;       // count of active recds in pollfds[] and pollfdsDesc[]
-  
+
         } alsa_t;
         
         alsa_t* _handleToPtr( handle_t h) { return handleToPtr<handle_t,alsa_t>(h); }
@@ -337,6 +338,9 @@ namespace cw
         // Called by create() to append a devRecd to the alsa_t.devArray[].
         void _devAppend( alsa_t* p, devRecd_t* drp )
         {
+
+          drp->verbLevel = 1;
+          
           const int reallocN = 5;
           if( p->devCnt == p->devAllocCnt )
           {
@@ -453,8 +457,8 @@ namespace cw
                       _alsaSetupError(err,inputFl,drp,"restart failed.");
                 }
         
-
-                cwLogInfo("EPIPE %c %i %i %i",dirCh,drp->devIdx,drp->oCbCnt,line);
+                if( drp->verbLevel )
+                  cwLogInfo("EPIPE %c %i %i %i",dirCh,drp->devIdx,drp->oCbCnt,line);
 
                 break;
               }
@@ -640,7 +644,8 @@ namespace cw
   
           if( err < 0 )
           {
-            _alsaSetupError( err, false, drp, "ALSA write error" );
+            if( drp->verbLevel )
+              _alsaSetupError( err, false, drp, "ALSA write error" );
           }
           else
             if( err > 0 && ((unsigned)err) != frmCnt )
@@ -670,7 +675,8 @@ namespace cw
           // if a read error occurred
           if( err < 0 )
           {
-            _alsaSetupError( err, false, drp, "ALSA read error" );
+            if( drp->verbLevel )
+              _alsaSetupError( err, false, drp, "ALSA read error" );
           }
           else
             if( err > 0 && ((unsigned)err) != frmCnt )
@@ -754,9 +760,10 @@ namespace cw
           devRecd_t*        drp     = (devRecd_t*)snd_async_handler_get_callback_private(ahandler);
           snd_pcm_t*        pcmH    = snd_async_handler_get_pcm(ahandler);
           bool              inputFl = snd_pcm_stream(pcmH) == SND_PCM_STREAM_CAPTURE;
-          device::sample_t* b       = inputFl ? drp->iBuf   : drp->oBuf;
-          unsigned          chCnt   = inputFl ? drp->iChCnt : drp->oChCnt;
-          unsigned          frmCnt  = inputFl ? drp->iFpC   : drp->oFpC;
+          device::sample_t* b       = inputFl ? drp->iBuf    : drp->oBuf;
+          unsigned          chCnt   = inputFl ? drp->iChCnt  : drp->oChCnt;
+          unsigned          frmCnt  = inputFl ? drp->iFpC    : drp->oFpC;
+          unsigned          errCnt  = inputFl ? drp->iErrCnt : drp->oErrCnt;
           device::audioPacket_t pkt;
 
           inputFl ? drp->iCbCnt++ : drp->oCbCnt++;
@@ -769,7 +776,8 @@ namespace cw
           pkt.flags          = kInterleavedApFl | kFloatApFl;
           pkt.audioBytesPtr  = b;
           pkt.cbArg          = drp->cbArg;
-  
+          pkt.errCnt         = errCnt;
+
           _devStateRecover( pcmH, drp, inputFl );
   
           while( (avail = snd_pcm_avail_update(pcmH)) >= (snd_pcm_sframes_t)frmCnt )
@@ -840,6 +848,8 @@ namespace cw
                   unsigned              chCnt   = inputFl ? drp->iChCnt : drp->oChCnt;
                   unsigned              frmCnt  = inputFl ? drp->iFpC   : drp->oFpC;
                   device::sample_t*     b       = inputFl ? drp->iBuf   : drp->oBuf;
+                  unsigned              errCnt  = inputFl ? drp->iErrCnt : drp->oErrCnt;
+                  
                   unsigned short        revents = 0;
                   int                   err;
                   device::audioPacket_t pkt;
@@ -855,13 +865,15 @@ namespace cw
                   pkt.flags          = kInterleavedApFl | kFloatApFl;
                   pkt.audioBytesPtr  = b;
                   pkt.cbArg          = drp->cbArg;
-
+                  pkt.errCnt         = errCnt;
+                  
                   inputFl ? drp->iCbCnt++ : drp->oCbCnt++;
 
                   // get the timestamp for this buffer
                   if((err = snd_pcm_htimestamp(pcmH,&avail_frames,&pkt.timeStamp)) != 0 )
                   {
-                    _alsaSetupError( err, p->pollfdsDesc[i].inputFl, drp, "Get timestamp error.");
+                    if( drp->verbLevel )
+                      _alsaSetupError( err, p->pollfdsDesc[i].inputFl, drp, "Get timestamp error.");
                     pkt.timeStamp.tv_sec  = 0;
                     pkt.timeStamp.tv_nsec = 0;
                   }
@@ -914,7 +926,8 @@ namespace cw
 
                   if(revents & POLLERR)
                   {
-                    _alsaSetupError( err, p->pollfdsDesc[i].inputFl, drp, "Poll error.");
+                    if( drp->verbLevel )
+                      _alsaSetupError( err, p->pollfdsDesc[i].inputFl, drp, "Poll error.");
                     _devStateRecover( pcmH, drp, inputFl );    
                     //goto errLabel;
                   }
@@ -1390,6 +1403,7 @@ cw::rc_t cw::audio::device::alsa::create( handle_t& hRef, struct driver_str*& dr
     p->driver.deviceLabel          = deviceLabel;
     p->driver.deviceChannelCount   = deviceChannelCount;
     p->driver.deviceSampleRate     = deviceSampleRate;
+    p->driver.deviceVerbLevel      = deviceVerbLevel;
     p->driver.deviceFramesPerCycle = deviceFramesPerCycle;
     p->driver.deviceSetup          = deviceSetup;
     p->driver.deviceStart          = deviceStart;
@@ -1452,6 +1466,13 @@ double cw::audio::device::alsa::deviceSampleRate(  struct driver_str* drv, unsig
   return (double)p->devArray[devIdx].srate;    
 }
 
+unsigned cw::audio::device::alsa::deviceVerbLevel(  struct driver_str* drv, unsigned devIdx )
+{
+  alsa_t* p = static_cast<alsa_t*>(drv->drvArg);
+  cwAssert( devIdx < deviceCount(drv));
+  return (double)p->devArray[devIdx].verbLevel;    
+}
+
 unsigned cw::audio::device::alsa::deviceFramesPerCycle( struct driver_str* drv, unsigned devIdx, bool inputFl )
 {
   alsa_t* p = static_cast<alsa_t*>(drv->drvArg);
@@ -1459,7 +1480,7 @@ unsigned cw::audio::device::alsa::deviceFramesPerCycle( struct driver_str* drv, 
   return p->devArray[devIdx].framesPerCycle;  
 }
 
-cw::rc_t  cw::audio::device::alsa::deviceSetup( struct driver_str* drv, unsigned devIdx, double srate, unsigned framesPerCycle, cbFunc_t cbFunc, void* cbArg, unsigned cbDevIdx )
+cw::rc_t  cw::audio::device::alsa::deviceSetup( struct driver_str* drv, unsigned devIdx, double srate, unsigned framesPerCycle, cbFunc_t cbFunc, void* cbArg, unsigned cbDevIdx, unsigned verbLevel )
 {
   alsa_t* p = static_cast<alsa_t*>(drv->drvArg);
   cwAssert( devIdx < deviceCount(drv));
@@ -1475,6 +1496,7 @@ cw::rc_t  cw::audio::device::alsa::deviceSetup( struct driver_str* drv, unsigned
   if((rc = _devSetup(drp, srate, framesPerCycle, periodsPerBuf )) == kOkRC )
   {
     drp->srate          = srate;
+    drp->verbLevel      = verbLevel;
     drp->framesPerCycle = framesPerCycle;
     drp->periodsPerBuf  = periodsPerBuf;
     drp->cbFunc         = cbFunc;
