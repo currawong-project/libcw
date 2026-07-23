@@ -99,7 +99,8 @@ namespace cw
 
   // Realloc s0 and append s1.
   char* textAppend( char* s0, const char* s1 );
-  
+
+  // Returns count of char's copied to buf. Will be zero terminated if there is enough space.
   unsigned toText( char* buf, unsigned bufN, bool v );
   unsigned toText( char* buf, unsigned bufN, unsigned char v );
   unsigned toText( char* buf, unsigned bufN, char v );
