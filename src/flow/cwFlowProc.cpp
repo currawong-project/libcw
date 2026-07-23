@@ -1450,25 +1450,32 @@ namespace cw
       enum
       {
         kDevLabelPId,
-        kOutPId
+        kOutPId,
+        kErrCntPId,
+        kClearPId        
       };
       
       typedef struct
       {
         const char*        dev_label;
         external_device_t* ext_dev;
+        unsigned           base_err_cnt;   // The device error count against which we are comparing.
+        unsigned           last_err_cnt;   // The most recent count of errors.
       } inst_t;
       
       rc_t create( proc_t* proc )
       {
-        rc_t rc = kOkRC;
-        
-        inst_t*                  inst = mem::allocZ<inst_t>();
+        rc_t    rc       = kOkRC;        
+        inst_t* inst     = mem::allocZ<inst_t>();
+        bool    clear_fl = false;
         
         proc->userPtr = inst;
 
         // Register variable and get their current value
-        if((rc = var_register_and_get( proc, kAnyChIdx, kDevLabelPId, "dev_label", kBaseSfxId, inst->dev_label )) != kOkRC )
+        if((rc = var_register_and_get( proc, kAnyChIdx,
+                                       kErrCntPId,   "err_cnt",   kBaseSfxId, inst->base_err_cnt,
+                                       kClearPId,    "clear",     kBaseSfxId, clear_fl,
+                                       kDevLabelPId, "dev_label", kBaseSfxId, inst->dev_label )) != kOkRC )
         {
           goto errLabel;
         }
@@ -1500,17 +1507,28 @@ namespace cw
 
       rc_t notify( proc_t* proc, variable_t* var )
       {
-        rc_t rc = kOkRC;
+        rc_t    rc   = kOkRC;
+        inst_t* inst = (inst_t*)proc->userPtr;
+
+        switch( var->vid )
+        {
+          case kClearPId:
+            inst->base_err_cnt = inst->last_err_cnt;
+            var_set(proc,kErrCntPId,kAnyChIdx, 0 );
+            break;
+        }
+        
         return rc;
       }
       
       rc_t exec( proc_t* proc )
       {
-        rc_t     rc           = kOkRC;
-        inst_t*  inst         = (inst_t*)proc->userPtr;
-        abuf_t*  abuf         = nullptr;
+        rc_t     rc      = kOkRC;
+        inst_t*  inst    = (inst_t*)proc->userPtr;
+        abuf_t*  abuf    = nullptr;
+        unsigned err_cnt = 0;
 
-
+        
         // verify that a source buffer exists
         if((rc = var_get(proc,kOutPId,kAnyChIdx,abuf)) != kOkRC )
         {
@@ -1518,9 +1536,37 @@ namespace cw
         }
         else
         {
+          // Copy the samples from the device into the output signal variable.
           unsigned chN    = std::min(inst->ext_dev->u.a.abuf->chN, abuf->chN );
           unsigned frameN = std::min(inst->ext_dev->u.a.abuf->frameN, abuf->frameN );
           memcpy(abuf->buf,inst->ext_dev->u.a.abuf->buf, frameN*chN*sizeof(sample_t));
+
+
+          
+          // store the new error count from the device
+          inst->last_err_cnt = inst->ext_dev->u.a.ioDevErrCnt;
+          
+          // If the cur error count is less than the base error count then the device error count must have wrapped
+          // (this will only happen in degenerate situations)
+          if( inst->last_err_cnt < inst->base_err_cnt )
+          {
+            inst->base_err_cnt = inst->ext_dev->u.a.ioDevErrCnt;            
+          }
+          else
+          {
+            unsigned      cur_err_cnt = 0;
+            
+            // get the last displayed diff. to the base error count
+            var_get(proc,kErrCntPId,kAnyChIdx,cur_err_cnt);
+
+            unsigned new_err_cnt = inst->last_err_cnt - inst->base_err_cnt;
+            
+            // if the displayed error count has changed then update the UI
+            if( new_err_cnt != cur_err_cnt )
+              var_set(proc,kErrCntPId,kAnyChIdx, new_err_cnt );
+          }
+          
+          
         }
 
         return rc;
@@ -1548,25 +1594,32 @@ namespace cw
       {
         kInPId,
         kDevLabelPId,
+        kErrCntPId,
+        kClearPId
       };
       
       typedef struct
       {
         const char*        dev_label;
         external_device_t* ext_dev;
-
+        unsigned           base_err_cnt;   // The device error count against which we are comparing.
+        unsigned           last_err_cnt;   // The most recent count of errors.
       } inst_t;
       
       rc_t create( proc_t* proc )
       {
-        rc_t          rc            = kOkRC;                 //
-        inst_t*       inst          = mem::allocZ<inst_t>(); //
-        const abuf_t* src_abuf      = nullptr;
+        rc_t          rc       = kOkRC; //
+        inst_t*       inst     = mem::allocZ<inst_t>(); //
+        const abuf_t* src_abuf = nullptr;
+        bool          clear_fl = false;
+        
         proc->userPtr = inst;
 
         // Register variables and get their current value
         if((rc = var_register_and_get( proc, kAnyChIdx,
                                        kDevLabelPId, "dev_label", kBaseSfxId, inst->dev_label,
+                                       kErrCntPId,   "err_cnt",   kBaseSfxId, inst->base_err_cnt,
+                                       kClearPId,    "clear",     kBaseSfxId, clear_fl,
                                        kInPId,       "in",        kBaseSfxId, src_abuf)) != kOkRC )
         {
           goto errLabel;
@@ -1576,7 +1629,9 @@ namespace cw
         {
           rc = proc_error(proc,kOpFailRC,"The audio output device description '%s' could not be found.", cwStringNullGuard(inst->dev_label));
           goto errLabel;
-        }        
+        }
+
+        var_set(proc,kErrCntPId,kAnyChIdx,0);
 
       errLabel:
         return rc;
@@ -1594,7 +1649,17 @@ namespace cw
 
       rc_t notify( proc_t* proc, variable_t* var )
       {
-        rc_t rc = kOkRC;
+        rc_t    rc   = kOkRC;
+        inst_t* inst = (inst_t*)proc->userPtr;
+
+        switch( var->vid )
+        {
+          case kClearPId:
+            inst->base_err_cnt = inst->last_err_cnt;
+            var_set(proc,kErrCntPId,kAnyChIdx, 0 );
+            break;
+        }
+        
         return rc;
       }
       
@@ -1604,6 +1669,7 @@ namespace cw
         inst_t*       inst   = (inst_t*)proc->userPtr;
         const abuf_t* src_abuf = nullptr;
 
+        
         if((rc = var_get(proc,kInPId,kAnyChIdx,src_abuf)) != kOkRC )
           rc = proc_error(proc,kInvalidStateRC,"The audio file instance '%s' does not have a valid input connection.",proc->label);
         else
@@ -1622,6 +1688,31 @@ namespace cw
             //}
             
             dst[i]  = dsp::clip_sample_value(dst[i]);            
+          }
+
+
+          // store the new error count from the device
+          inst->last_err_cnt = inst->ext_dev->u.a.ioDevErrCnt;
+
+          
+          // If the cur error count is less than the base error count then the device error count must have wrapped
+          // (this shoud only happen in  situations)
+          if( inst->last_err_cnt < inst->base_err_cnt )
+          {
+            inst->base_err_cnt = inst->ext_dev->u.a.ioDevErrCnt;            
+          }
+          else
+          {
+            unsigned      cur_err_cnt = 0;
+            
+            // get the last displayed diff. to the base error count
+            var_get(proc,kErrCntPId,kAnyChIdx,cur_err_cnt);
+
+            unsigned new_err_cnt = inst->last_err_cnt - inst->base_err_cnt;
+            
+            // if the displayed error count has changed then update the UI
+            if( new_err_cnt != cur_err_cnt )
+              var_set(proc,kErrCntPId,kAnyChIdx, new_err_cnt );
           }
         }
         
