@@ -5,6 +5,7 @@
 #include "cwCommonImpl.h"
 #include "cwTest.h"
 #include "cwMem.h"
+#include "cwText.h"
 #include "cwObject.h"
 #include "cwTime.h"
 #include "cwFileSys.h"
@@ -23,6 +24,10 @@
 #define UI_ENABLE_LABEL     "enable"
 #define UI_ORDER_LABEL      "order"
 #define UI_SCROLL_TOP_LABEL "scroll_top"
+#define UI_SET_CLASS_LABEL  "set_class"
+#define UI_ADD_CLASS_LABEL  "add_class"
+#define UI_REM_CLASS_LABEL  "rem_class"
+
 namespace cw
 {
   namespace ui
@@ -73,7 +78,7 @@ namespace cw
       unsigned        appId;     // application assigned id - application assigned id
       unsigned        chanId;    //
       char*           eleName;   // javascript id
-      object_t*       attr;      // attribute dictionary object 
+      object_t*       attr;      // attribute dictionary object containing key:value pairs
       void*           blob;      // blob[ blobByteN ] user data
       unsigned        blobByteN; //
 
@@ -593,7 +598,7 @@ namespace cw
     { return e->attr->find_child(label) != nullptr; }
 
     template< typename T >
-    rc_t _set_attribute( ele_t* e, const char* label, const T& value )
+    rc_t _set_or_create_attribute( ele_t* e, const char* label, const T& value )
     {
       object_t* pair_value;
       if((pair_value = e->attr->find(label)) == nullptr )
@@ -604,8 +609,33 @@ namespace cw
       return kOkRC;              
     }
 
+    
+    rc_t _remove_attribute( ele_t* e, const char* label )
+    {
+      rc_t rc = kOkRC;
+      
+      const object_t* pair_value;
+      if((pair_value = e->attr->find(label)) == nullptr )
+      {
+        rc = cwLogError(kInvalidIdRC,"Unable to locate the UI element attribute '%s' on uuid:%i.",cwStringNullGuard(label),e->uuId);
+        goto errLabel;
+      }
+
+      if(pair_value->parent == nullptr )
+      {
+        rc = cwLogError(kInvalidIdRC,"The UI element attribute '%s' on uuid:%i appears to be corrupt.",cwStringNullGuard(label),e->uuId);
+        goto errLabel;
+      }
+      
+      pair_value->parent->unlink();
+      pair_value->parent->free();
+        
+    errLabel:
+      return rc;        
+    }
+
     template< typename T >
-    rc_t _get_attribute( ele_t* e, const char* label, T& valueRef )
+    rc_t _get_attribute_value( ele_t* e, const char* label, T& valueRef )
     {
       rc_t rc = kOkRC;
       
@@ -1301,17 +1331,33 @@ namespace cw
     {
       ui_t* p = _handleToPtr(h);
       rc_t rc = kOkRC;
-  
+      const unsigned valBufCharN = 255;
+      char valBuf[ valBufCharN+1 ];
+      char quote_char = ' ';
+
       ele_t* ele = nullptr;
-      const char* mFmt = "{ \"op\":\"set\", \"type\":\"%s\", \"uuId\":%i, \"value\":%i }";
+      const char* mFmt = "{ \"op\":\"set\", \"type\":\"%s\", \"uuId\":%i, \"value\":%c%s%c }";
       const int   mbufN = 256;
       char        mbuf[mbufN];
+
+      if constexpr (std::is_same_v<T, const char* >)
+      {
+        quote_char = '"';
+      }
       
-      if( snprintf(mbuf,mbufN,mFmt,propertyStr,uuId,value) >= mbufN-1 )
+      if( toText(valBuf,valBufCharN,value) >= valBufCharN )
+      {
+        rc = cwLogError(kBufTooSmallRC,"The value buffer is too small.");
+        goto errLabel;        
+      }
+      
+      if( snprintf(mbuf,mbufN,mFmt,propertyStr,uuId,quote_char,valBuf,quote_char) >= mbufN-1 )
       {
         rc = cwLogError(kBufTooSmallRC,"The msg buffer is too small.");
         goto errLabel;
       }
+
+      //printf("%s\n",mbuf);
   
       if((ele = _uuIdToEle(p,uuId)) == nullptr )
       {
@@ -1319,7 +1365,7 @@ namespace cw
         goto errLabel;
       }
       
-      if((rc = _set_attribute(ele,propertyStr,value)) != kOkRC )
+      if((rc = _set_or_create_attribute(ele,propertyStr,value)) != kOkRC )
       {
         cwLogError(rc,"Property assignment failed.");
         goto errLabel;
@@ -2112,7 +2158,7 @@ bool cw::ui::isClickable( handle_t h, unsigned uuId )
   bool   clickableFl = false;
 
   if((ele = _uuIdToEle(p,uuId)) != nullptr )
-    _get_attribute(ele,UI_CLICKABLE_LABEL,clickableFl);
+    _get_attribute_value(ele,UI_CLICKABLE_LABEL,clickableFl);
   
   return clickableFl;   
 }
@@ -2131,7 +2177,7 @@ bool cw::ui::isSelected( handle_t h, unsigned uuId )
   bool   selectFl = false;
 
   if((ele = _uuIdToEle(p,uuId)) != nullptr )
-    _get_attribute(ele,UI_SELECT_LABEL,selectFl);
+    _get_attribute_value(ele,UI_SELECT_LABEL,selectFl);
   
   return selectFl;   
 }
@@ -2149,7 +2195,7 @@ bool cw::ui::isVisible( handle_t h, unsigned uuId )
   bool   visibleFl = false;
 
   if((ele = _uuIdToEle(p,uuId)) != nullptr )
-    _get_attribute(ele,UI_VISIBLE_LABEL,visibleFl);
+    _get_attribute_value(ele,UI_VISIBLE_LABEL,visibleFl);
   
   return visibleFl;   
 }
@@ -2167,7 +2213,7 @@ bool cw::ui::isEnabled( handle_t h, unsigned uuId )
   bool   enableFl = false;
 
   if((ele = _uuIdToEle(p,uuId)) != nullptr )
-    enableFl = _get_attribute(ele,UI_ENABLE_LABEL,enableFl);
+    enableFl = _get_attribute_value(ele,UI_ENABLE_LABEL,enableFl);
   
   return enableFl;   
 }
@@ -2182,10 +2228,48 @@ int cw::ui::getOrderKey( handle_t h, unsigned uuId )
   ele_t* ele = nullptr;
   int orderKey = 0;
   if((ele = _uuIdToEle(p,uuId)) != nullptr)
-    rc = _get_attribute(ele,UI_ORDER_LABEL,orderKey);
+    rc = _get_attribute_value(ele,UI_ORDER_LABEL,orderKey);
   
   return rc;
 }
+
+
+cw::rc_t cw::ui::setClassName(    handle_t h, unsigned uuId, const char* className )
+{
+  rc_t   rc  = kOkRC;
+  ui_t*  p   = _handleToPtr(h);
+  ele_t* ele = nullptr;
+  int orderKey = 0;
+  if((ele = _uuIdToEle(p,uuId)) != nullptr)
+    rc = _setPropertyValue(h, UI_SET_CLASS_LABEL, uuId, className );
+  return rc;
+}
+    
+cw::rc_t cw::ui::replaceClassName(handle_t h, unsigned uuId, const char* curClassName, const char* newClassName)
+{
+  rc_t   rc  = kOkRC;
+  ui_t*  p   = _handleToPtr(h);
+  ele_t* ele = nullptr;
+  int orderKey = 0;
+  if((ele = _uuIdToEle(p,uuId)) != nullptr)
+    if((rc = _setPropertyValue(h, UI_REM_CLASS_LABEL, uuId, curClassName )) == kOkRC )
+      rc = _setPropertyValue(h, UI_ADD_CLASS_LABEL, uuId, newClassName );
+  
+  return rc;
+}
+
+cw::rc_t cw::ui::appendClassName(    handle_t h, unsigned uuId, const char* className )
+{
+  rc_t   rc  = kOkRC;
+  ui_t*  p   = _handleToPtr(h);
+  ele_t* ele = nullptr;
+  int orderKey = 0;
+  if((ele = _uuIdToEle(p,uuId)) != nullptr)
+    rc = _setPropertyValue(h, UI_ADD_CLASS_LABEL, uuId, className );
+  return rc;
+}
+
+
 
 cw::rc_t cw::ui::setScrollTop(   handle_t h, unsigned uuId )
 { return _setPropertyValue( h, UI_SCROLL_TOP_LABEL,uuId,0); }

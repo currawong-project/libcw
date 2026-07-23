@@ -159,6 +159,16 @@ namespace cw
     rc_t setOrderKey(    handle_t h, unsigned uuId, int orderKey );
     int  getOrderKey(    handle_t h, unsigned uuId );
 
+    // Set the the class name of an element with 'className'.  This removes all other class names.
+    rc_t setClassName(    handle_t h, unsigned uuId, const char* className );
+    
+    // Replace 'curClassName' with 'newClassName'. Any other class names on assigned to the element are unchanged.
+    rc_t replaceClassName(handle_t h, unsigned uuId, const char* curClassName, const char* newClassName);
+
+    // Append a new class name to the UI element.
+    rc_t appendClassName(    handle_t h, unsigned uuId, const char* className );
+
+
     // Scroll the element identified by 'uuId' to the top of the list.
     // (uuId must identify a list element whose parent is a 'uiList')
     rc_t setScrollTop(   handle_t h, unsigned uuId );

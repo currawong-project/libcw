@@ -90,6 +90,7 @@ namespace cw
     {
       bool               activeFl; // True if this device was enabled by the user
       bool               meterFl;  // True if meters are enabled on this device
+      unsigned           verbLevel; // Verbosity level 0=off
       const char*        label;    // User label
       unsigned           userId;   // User id
       char*              devName;  // System device name
@@ -1404,7 +1405,7 @@ namespace cw
 
     // If audioDev (devIdx) is ready then update audio_group_dev.readyCnt and store a pointer to it's associated group in groupA[].
     // Return the count of pointers stored in groupA[].
-    unsigned _audioDeviceUpdateReadiness( io_t* p, unsigned devIdx, bool inputFl, audioGroup_t** groupA, unsigned groupN, unsigned curGroupN, audioDev_t*& syncAdRef )
+    unsigned _audioDeviceUpdateReadiness( io_t* p, unsigned devIdx, bool inputFl, audioGroup_t** groupA, unsigned groupN, unsigned curGroupN, unsigned errCnt, audioDev_t*& syncAdRef )
     {
       audioDev_t* ad;
 
@@ -1426,6 +1427,7 @@ namespace cw
           std::atomic_store_explicit(&ad->iagd->readyCnt, ad->iagd->readyCnt+1,  std::memory_order_relaxed); 
           curGroupN = _audioDeviceUpdateGroupArray( groupA, groupN, curGroupN, ad->iGroup ); 
           ad->iagd->cbCnt += 1; // update the callback count for this device
+          ad->iagd->errCnt = errCnt;
           syncAdRef = ad->clockInList;
         }
       }
@@ -1436,6 +1438,7 @@ namespace cw
           std::atomic_store_explicit(&ad->oagd->readyCnt, ad->oagd->readyCnt+1, std::memory_order_relaxed); // atomic incr  
           curGroupN = _audioDeviceUpdateGroupArray( groupA, groupN, curGroupN, ad->oGroup );
           ad->oagd->cbCnt += 1;
+          ad->oagd->errCnt = errCnt;
           syncAdRef = ad->clockOutList;
         }          
       }
@@ -1521,11 +1524,11 @@ namespace cw
 
       // update the readiness of the input devices
       for(unsigned i=0; i<inPktCnt; ++i)
-        curGroupN = _audioDeviceUpdateReadiness( p, inPktArray[i].devIdx, true, groupA, groupN, curGroupN, iSyncDevListA[i] );
+        curGroupN = _audioDeviceUpdateReadiness( p, inPktArray[i].devIdx, true, groupA, groupN, curGroupN, inPktArray[i].errCnt, iSyncDevListA[i] );
       
       // update the readiness of the output devices
       for(unsigned i=0; i<outPktCnt; ++i)
-        curGroupN = _audioDeviceUpdateReadiness( p, outPktArray[i].devIdx, false, groupA, groupN, curGroupN, oSyncDevListA[i] );
+        curGroupN = _audioDeviceUpdateReadiness( p, outPktArray[i].devIdx, false, groupA, groupN, curGroupN, outPktArray[i].errCnt, oSyncDevListA[i] );
       
       // groupA[] contains the set of groups which may have been made ready during this callback
       _audioGroupNotifyIfReady( p, groupA, curGroupN );
@@ -1712,7 +1715,7 @@ namespace cw
       return rc;      
     }
 
-    rc_t _audioDeviceConfigure( io_t* p, audioDev_t*   ad, audioGroup_t* iag, audioGroup_t* oag, unsigned cycleCnt, unsigned framesPerCycle )
+    rc_t _audioDeviceConfigure( io_t* p, audioDev_t*   ad, audioGroup_t* iag, audioGroup_t* oag, unsigned cycleCnt, unsigned framesPerCycle, unsigned verbLevel )
     {
       rc_t          rc             = kOkRC;
 
@@ -1770,7 +1773,7 @@ namespace cw
       }
           
       // setup the device based on the configuration
-      if((rc = audio::device::setup(p->audioH, ad->devIdx, srate, framesPerCycle, _audioDeviceCallback, p)) != kOkRC )
+      if((rc = audio::device::setup(p->audioH, ad->devIdx, srate, framesPerCycle, _audioDeviceCallback, p, verbLevel)) != kOkRC )
       {
         rc = cwLogError(rc,"Unable to setup the audio hardware device:'%s'.", ad->devName);
         goto errLabel;
@@ -1822,6 +1825,7 @@ namespace cw
         audioDev_t*   ad             = nullptr;
         bool          activeFl       = false;
         bool          meterFl        = false;
+        unsigned      verbLevel      = 0;
         char*         userLabel      = nullptr;
         unsigned      userId         = kInvalidId;
         char*         devName        = nullptr;
@@ -1864,6 +1868,7 @@ namespace cw
           if((rc = node->getv_opt(
                 "userId",     userId,
                 "meterFl",    meterFl,
+                "verbLevel",  verbLevel,
                 "inGroup",    inGroupLabel,
                 "outGroup",   outGroupLabel,
                 "clockSrcDev",clockSrcDev,
@@ -1899,7 +1904,7 @@ namespace cw
           if( outGroupLabel != nullptr )
             oag = _audioGroupFromLabel(p, outGroupLabel);
 
-          if((rc = _audioDeviceConfigure(p, ad, iag, oag, cycleCnt, framesPerCycle )) != kOkRC )
+          if((rc = _audioDeviceConfigure(p, ad, iag, oag, cycleCnt, framesPerCycle, verbLevel )) != kOkRC )
             goto errLabel;
 
           /*
@@ -1992,6 +1997,7 @@ namespace cw
           // set the device group pointers
           ad->activeFl = activeFl;
           ad->meterFl  = meterFl;
+          ad->verbLevel = verbLevel;
           ad->label    = userLabel;
           ad->userId   = userId;
           ad->iGroup   = iag;
@@ -3495,7 +3501,7 @@ cw::rc_t  cw::io::audioGroupReconfigure( handle_t h, unsigned groupIdx, double s
     if( iGroupFl || oGroupFl )
     {
       // reconfigure the device with the updated srate and framesPerCycle
-      if((rc = _audioDeviceConfigure(p, ad, ad->oGroup, ad->oGroup, ad->cycleCnt, ad->framesPerCycle )) != kOkRC )
+      if((rc = _audioDeviceConfigure(p, ad, ad->oGroup, ad->oGroup, ad->cycleCnt, ad->framesPerCycle, ad->verbLevel )) != kOkRC )
         goto errLabel;
 
       cwLogInfo("The audio device: '%s' was reconfigured srate=%f dspFrameCnt:%i.",cwStringNullGuard(ad->label), srate,dspFrameN);
@@ -4181,6 +4187,33 @@ cw::rc_t cw::io::uiSetOrderKey(    handle_t h, unsigned uuId, int orderKey )
   ui::handle_t uiH;
   if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
     rc = ui::setOrderKey(uiH,uuId,orderKey);
+  return rc;
+}
+
+cw::rc_t cw::io::uiSetClassName(    handle_t h, unsigned uuId, const char* className )
+{
+  rc_t rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::setClassName(uiH,uuId,className);
+  return rc;
+}
+
+cw::rc_t cw::io::uiReplaceClassName(handle_t h, unsigned uuId, const char* curClassName, const char* newClassName)
+{
+  rc_t rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::replaceClassName(uiH,uuId,curClassName, newClassName);
+  return rc;
+}
+
+cw::rc_t cw::io::uiAppendClassName(    handle_t h, unsigned uuId, const char* className )
+{
+  rc_t rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::appendClassName(uiH,uuId,className);
   return rc;
 }
 

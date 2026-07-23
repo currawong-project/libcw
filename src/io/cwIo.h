@@ -80,7 +80,7 @@ namespace cw
       unsigned                    chCnt;   // Count of audio channels on this device      
       unsigned                    cbCnt;   // Count of device driver callbacks
       sample_t*                   meterA;  // Meter values for this device.
-      
+      unsigned                    errCnt;  // Accumulating error count for this device
       std::atomic_uint            readyCnt;// Used internally
 
       struct audio_group_dev_str* link;    // 
@@ -425,6 +425,15 @@ namespace cw
 
     rc_t uiSetOrderKey(    handle_t h, unsigned uuId, int orderKey );
     int  uiGetOrderKey(    handle_t h, unsigned uuId );
+
+    // Set the the class name of an element with 'className'.  This removes all other class names.
+    rc_t uiSetClassName(    handle_t h, unsigned uuId, const char* className );
+    
+    // Replace 'curClassName' with 'newClassName'. Any other class names on assigned to the element are unchanged.
+    rc_t uiReplaceClassName(handle_t h, unsigned uuId, const char* curClassName, const char* newClassName);
+
+    // Append a new class name to the UI element.
+    rc_t uiAppendClassName(    handle_t h, unsigned uuId, const char* className );
 
     rc_t uiSetScrollTop(   handle_t h, unsigned uuId );
 
