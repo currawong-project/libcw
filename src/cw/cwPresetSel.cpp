@@ -63,6 +63,8 @@ namespace cw
 
       unsigned         cur_alt_idx;
 
+      bool             timestamp_valid_fl; // true if the frag_t.endTimestamp fields are valid
+
       unsigned dryPresetIdx;
       
     } preset_sel_t;
@@ -1577,6 +1579,14 @@ bool cw::preset_sel::track_timestamp( handle_t h, const time::spec_t& ts, const 
   frag_t*       f               = nullptr;
   bool          frag_changed_fl = false;
 
+  frag_Ref = nullptr;
+  
+  if( !p->timestamp_valid_fl )
+  {
+    cwLogError(kInvalidStateRC,"Preset timestamps cannot be tracked because they are not populated.");
+    return false;    
+  }
+
   time::spec_t t0;
   time::setZero(t0);
   //unsigned elapsedMs = time::elapsedMs(t0,ts);
@@ -1905,7 +1915,7 @@ cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
   preset_sel_t*   p            = _handleToPtr(h);  
   object_t*       root         = nullptr;
   const object_t* fragL_obj    = nullptr;
-  
+  unsigned        begLoc       = 0;
 
   // parse the preset  file
   if((rc = objectFromFile(fn,root)) != kOkRC )
@@ -1941,31 +1951,55 @@ cw::rc_t cw::preset_sel::read( handle_t h, const char* fn )
     unsigned        activePresetN = 0;
     unsigned        begPlayLoc   = 0;
     unsigned        endPlayLoc   = 0;
-    double          igain        = 0;
-    double          ogain        = 0;
-    double          wetDryGain   = 0;
-    double          fadeOutMs    = 0;
+    double          igain        = 1.0;
+    double          ogain        = 1.0;
+    double          wetDryGain   = 0.5;
+    double          fadeOutMs    = 50;
     const char*     note         = nullptr;
     const object_t* presetL_obj  = nullptr;
-    time::spec_t    end_ts;
+    time::spec_t    end_ts = {0,0};
 
     // parse the fragment record
     if((rc = r->getv("fragId",fragId,
                      "endLoc",endLoc,
-                     "endTimestamp_sec",end_ts.tv_sec,
-                     "endTimestamp_nsec",end_ts.tv_nsec,
+                     "presetN", presetN,
+                     "presetL", presetL_obj )) != kOkRC )
+    {
+      rc = cwLogError(rc,"Fragment restore record parse failed.");
+      goto errLabel;
+    }
+
+    begPlayLoc = begLoc;
+    endPlayLoc = endLoc;
+    begLoc = endLoc + 1;  // setup begLoc for the next iteration
+
+    // parse the fragment record
+    if((rc = r->getv_opt(
                      "inGain",igain,
                      "outGain",ogain,
                      "wetDryGain",wetDryGain,
                      "fadeOutMs",fadeOutMs,
                      "begPlayLoc",begPlayLoc,
                      "endPlayLoc",endPlayLoc,
-                     "note",note,
-                     "presetN", presetN,
-                     "presetL", presetL_obj )) != kOkRC )
+                     "note",note  )) != kOkRC )
     {
       rc = cwLogError(rc,"Fragment restore record parse failed.");
       goto errLabel;
+    }
+
+    
+    // if the fragment has timestamp information ..
+    if( r->find("endTimestamp_sec") )
+    {
+      // ... then parse it
+      if((rc = r->getv( "endTimestamp_sec",end_ts.tv_sec,
+                        "endTimestamp_nsec",end_ts.tv_nsec )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Fragment restore record optional args. parse failed.");
+        goto errLabel;
+      }
+
+      p->timestamp_valid_fl = true;
     }
 
     // create a new fragment
