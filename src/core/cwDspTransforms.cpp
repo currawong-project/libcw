@@ -465,10 +465,15 @@ cw::rc_t cw::dsp::audio_meter::exec( obj_t* p, const sample_t* xV, unsigned xN )
     sum += _sum_square(p->wndV + i1, n1, p->clipFl );
 
   p->outLin = std::sqrt( sum / (n0+n1) );  // linear RMS
-  p->outDb  = ampl_to_db(p->outLin);           // RMS dB
+  p->outDb  = ampl_to_db(p->outLin);    // RMS dB
 
-  p->peakFl = p->outDb > p->peakThreshDb;   // set peak flag
-  p->clipFl = vop::max(xV, original_xN) >= 1.0;       // set clip flag
+  p->outDb = pow((p->outDb + 100.0) / 100.0,4.0);
+  p->outDb = (p->outDb*100) - 100.0;
+    
+  
+
+  p->peakFl = p->outDb > p->peakThreshDb;              // set peak flag
+  p->clipFl = vop::max(xV, original_xN) >= 1.0;   // set clip flag
 
   p->peakCnt += p->peakFl ? 1 : 0;          // count peak violations
   p->clipCnt += p->clipFl ? 1 : 0;
