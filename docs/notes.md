@@ -617,6 +617,7 @@ Proc Desc.
 ```
 ui: {
   type: meter | list
+  layout: row | col   # layout multiple channels as a row or column (row is default)
   flags: [ horizontal ]
 }
 ```
