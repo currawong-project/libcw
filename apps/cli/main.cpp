@@ -13,6 +13,7 @@
 #include "cwB23Tree.h"
 #include "cwVectOps.h"
 #include "cwMtx.h"
+#include "cwTracer.h"
 #include "cwThread.h"
 #include "cwKeyboard.h"
 #include "cwSpScBuf.h"
@@ -306,6 +307,7 @@ cw::rc_t csvTest(            const cw::object_t* cfg, const cw::object_t* args, 
 cw::rc_t translateFrags(     const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::preset_sel::translate_frags(args); }
 cw::rc_t scoreFollow2(       const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::score_follow_2::test(args); }
 cw::rc_t midiDetect(         const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::midi_detect::test(args); }
+cw::rc_t threadSTasks(       const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::thread_stasks::test(args); } 
 
 #if defined(cwWEBSOCK)
 cw::rc_t websockSrvTest(    const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::websockSrvTest(args); }
@@ -456,6 +458,164 @@ const cw::object_t* _locateArgsRecd( const cw::object_t* cfg, const char*& cfgLa
   return o;
 }
 
+rc_t _parse_log_args( const object_t* log_cfg, log::log_args_t& log_args )
+{
+  rc_t            rc       = kOkRC;
+  const object_t* flagsL   = nullptr;
+  unsigned        flagsN   = 0;
+  const char*     levelStr = nullptr;
+  const object_t* flag_cfg = nullptr;
+  
+
+  idLabelPair_t flagRefA[] = {
+    { log::kDateTimeFl,      "date_time"},
+    { log::kFileOutFl,       "file_out"},
+    { log::kConsoleFl,       "console"},
+    { log::kSkipQueueFl,     "skip_queue"},
+    { log::kOverwriteFileFl, "overwrite_file"},
+    { log::kNoFlags,         "<invalid>"}
+  };
+  
+  if((rc = log_cfg->readv("flags",              kOptFl, flagsL,
+                          "level",              kOptFl, levelStr,
+                          "log_filename",       kOptFl, log_args.log_fname,
+                          "queue_blk_cnt",      kOptFl, log_args.queueBlkCnt,
+                          "queue_blk_byte_cnt", kOptFl, log_args.queueBlkByteCnt)) != kOkRC )
+  {
+    rc = cwLogError(rc,"Log parameter parsing failed.");
+    goto errLabel;
+  }
+
+  //
+  // Parse the log level
+  //
+  log_args.level = log::kInvalid_LogLevel;
+    
+  if( levelStr != nullptr )
+    log_args.level = log::levelFromString(levelStr);
+
+  if( log_args.level == log::kInvalid_LogLevel)
+    log_args.level = log::kDefault_LogLevel;
+
+
+  //
+  // Parse the flags list
+  //
+  log_args.flags = log::kNoFlags;
+
+  while( flagsL!=nullptr && (flag_cfg = flagsL->next_child_ele(flag_cfg)) != nullptr )
+  {
+    const char*     flag_str = nullptr;
+    
+    if( flag_cfg->is_string() && flag_cfg->value(flag_str)==kOkRC && flag_str!=nullptr )
+    {
+      unsigned flag;
+      if((flag = labelToId( flagRefA, flag_str, log::kNoFlags )) == log::kNoFlags)
+      {
+        rc = cwLogError(kSyntaxErrorRC,"An invalid log flag '%s' was encountered.",cwStringNullGuard(flag_str));
+        goto errLabel;
+      }
+      log_args.flags += flag;
+    }
+    else
+    {
+      rc = cwLogError(kSyntaxErrorRC,"Log 'flags' parameter parsing failed.");
+      goto errLabel;
+    }
+  }
+      
+    
+errLabel:
+  return rc;    
+}
+
+
+rc_t _create_log( const cw::object_t* cfg )
+{
+  rc_t            rc      = kOkRC;
+  const object_t* log_cfg = nullptr;
+  log::log_args_t log_args;
+
+  // get the default log args
+  log::init_default_args(log_args);
+
+  // locate the 'log' cfg in the 'cfg'.
+  if((rc = cfg->getv_opt("log",log_cfg)) != kOkRC )
+  {
+    rc = cwLogError(rc,"The 'log' label access failed in the cfg. file.");
+    goto errLabel;
+  }
+
+  // parse the log cfg.
+  if (log_cfg == nullptr)
+  {
+    cwLogWarning("No log configuration was provided. Using defaults.");
+  }
+  else
+  {
+    if((rc = _parse_log_args( log_cfg, log_args )) != kOkRC )
+    {
+      rc = cwLogError(rc,"Log arguments cfg. parse failed.");
+      goto errLabel;
+    }
+  }
+
+  // skip the queue until we see that we are in real-time mode
+  log_args.flags = cwSetFlag(log_args.flags,log::kSkipQueueFl);    
+  
+  // recreate the global log with the updated parameters
+  if((rc = log::createGlobal(  log_args  )) != kOkRC )
+  {
+    goto errLabel;
+  }
+  
+errLabel:
+  return rc;  
+}
+
+rc_t _tracer_create( tracer::handle_t& tracerH_Ref, const cw::object_t* cfg )
+{
+  rc_t rc = kOkRC;
+  const object_t* tracer_cfg = nullptr;
+  
+  // locate the 'log' cfg in the 'cfg'.
+  if((rc = cfg->getv_opt("tracer",tracer_cfg)) != kOkRC )
+  {
+    rc = cwLogError(rc,"The 'tracer' label access failed in the cfg. file.");
+    goto errLabel;
+  }
+
+  // if a tracer cfg. was given
+  if(tracer_cfg != nullptr )
+  {
+    if((rc = tracer::create(tracerH_Ref,tracer_cfg)) == kOkRC )
+      set_global_handle(tracerH_Ref);  
+  }
+    
+errLabel:
+  if( rc != kOkRC )
+    rc = cwLogError(rc,"Tracer instantiation failed.");
+                    
+  return rc;  
+}
+
+rc_t _tracer_destroy( tracer::handle_t tracerH )
+{
+  rc_t rc = kOkRC;
+  
+  if( tracerH.isValid() )
+  {
+    if((rc = write(tracerH)) != kOkRC )
+      cwLogError(rc,"Tracer write failed.");
+    
+    if((rc = destroy(tracerH)) != kOkRC )
+      rc = cwLogError(rc,"Tracer destroy failed.");
+    
+  }
+  return rc;
+}
+
+
 int main( int argc, const char* argv[] )
 {  
   cw::rc_t      rc    = cw::kOkRC;
@@ -463,7 +623,7 @@ int main( int argc, const char* argv[] )
   const char*   cfgFn = nullptr;
   const char*   mode  = nullptr;
   cw::log::log_args_t log_args;
-
+  cw::tracer::handle_t tracerH;
   
   typedef struct func_str
   {
@@ -525,6 +685,7 @@ int main( int argc, const char* argv[] )
    { "translate_frags", translateFrags },
    { "sf2", scoreFollow2 },
    { "midi_detect",midiDetect},
+   {"thread_stasks",threadSTasks},
    { "stub", stubTest },
    { nullptr, nullptr }
   };
@@ -563,11 +724,24 @@ int main( int argc, const char* argv[] )
   }
   else
   {
+    cw::rc_t            rc       = cw::kOkRC;
+    const cw::object_t* test_cfg = nullptr;
+    const cw::object_t* args     = nullptr;
+    int                 i        = 0;
 
-    cw::rc_t rc = cw::kOkRC;
-    const cw::object_t* test_cfg;
-    const cw::object_t* args;
-    int  i = 0;
+    // create the fully configured log based on the 'log:' cfg. parameters.
+    if((rc = _create_log( cfg )) != kOkRC )
+    {
+      goto errLabel;
+    }
+
+    // create the tracer 
+    if((rc = _tracer_create(tracerH, cfg)) != kOkRC )
+    {
+      goto errLabel;
+    }
+
+    
 
     // get the dict. of test cfg. records
     if((rc = cfg->getv("test", test_cfg)) != cw::kOkRC )
@@ -601,6 +775,8 @@ int main( int argc, const char* argv[] )
   if( cfg != nullptr )
       cfg->free();
 
+  _tracer_destroy(tracerH);
+  
   cw::log::destroyGlobal();
 
   return (int)rc;
