@@ -5,6 +5,7 @@
 #include "cwCommonImpl.h"
 #include "cwTest.h"
 #include "cwMem.h"
+#include "cwObject.h"
 #include "cwSpScBuf.h"
 #include "cwThread.h"
 #include "cwThreadMach.h"
