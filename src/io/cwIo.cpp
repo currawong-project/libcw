@@ -1423,11 +1423,13 @@ namespace cw
       {
         if( audio::buf::isDeviceReady( p->audioBufH, devIdx, audio::buf::kInFl) && ad->iagd != nullptr )
         {
+          
           // atomic incr  - note that the ordering doesn't matter because the update does not control access to any other variables from another thread
           std::atomic_store_explicit(&ad->iagd->readyCnt, ad->iagd->readyCnt+1,  std::memory_order_relaxed); 
           curGroupN = _audioDeviceUpdateGroupArray( groupA, groupN, curGroupN, ad->iGroup ); 
           ad->iagd->cbCnt += 1; // update the callback count for this device
           ad->iagd->errCnt = errCnt;
+          audio::buf::getStatus( p->audioBufH, devIdx, audio::buf::kInFl, nullptr, 0, &ad->iagd->overrunCnt );
           syncAdRef = ad->clockInList;
         }
       }
@@ -1439,6 +1441,7 @@ namespace cw
           curGroupN = _audioDeviceUpdateGroupArray( groupA, groupN, curGroupN, ad->oGroup );
           ad->oagd->cbCnt += 1;
           ad->oagd->errCnt = errCnt;
+          audio::buf::getStatus( p->audioBufH, devIdx, audio::buf::kOutFl, nullptr, 0, &ad->oagd->overrunCnt );
           syncAdRef = ad->clockOutList;
         }          
       }
@@ -2677,12 +2680,12 @@ void cw::io::report( handle_t h )
       bool     inputFl = j==0;
       unsigned m       = midiDevicePortCount(h,i,inputFl);
       for(unsigned k=0; k<m; ++k)
-        printf("midi: %s: %s : %s\n", inputFl ? "in ":"out", midiDeviceName(h,i), midiDevicePortName(h,i,inputFl,k));
+        printf("midi: %s: %i:%s : %i:%s\n", inputFl ? "in ":"out", i,midiDeviceName(h,i), k, midiDevicePortName(h,i,inputFl,k));
         
     }
 
   for(unsigned i=0; i<audioDeviceCount(h); ++i)
-    printf("audio: %s\n", cwStringNullGuard(audioDeviceName(h,i)));  
+    printf("audio: %i:%s\n", i,cwStringNullGuard(audioDeviceName(h,i)));  
 }
 
 

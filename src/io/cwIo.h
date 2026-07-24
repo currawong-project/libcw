@@ -71,17 +71,18 @@ namespace cw
 
     typedef struct audio_group_dev_str
     {
-      const char*                 label;   // User supplied label
-      unsigned                    userId;  // User supplied id
-      const char*                 devName; // Audio device name
-      unsigned                    devIdx;  // Audio device index
-      unsigned                    flags;   //  kInFl | kOutFl | kMeterFl
-      unsigned                    chIdx;   // First channel of this device in i/oBufArray
-      unsigned                    chCnt;   // Count of audio channels on this device      
-      unsigned                    cbCnt;   // Count of device driver callbacks
-      sample_t*                   meterA;  // Meter values for this device.
-      unsigned                    errCnt;  // Accumulating error count for this device
-      std::atomic_uint            readyCnt;// Used internally
+      const char*                 label;      // User supplied label
+      unsigned                    userId;     // User supplied id
+      const char*                 devName;    // Audio device name
+      unsigned                    devIdx;     // Audio device index
+      unsigned                    flags;      //  kInFl | kOutFl | kMeterFl
+      unsigned                    chIdx;      // First channel of this device in i/oBufArray
+      unsigned                    chCnt;      // Count of audio channels on this device      
+      unsigned                    cbCnt;      // Count of device driver callbacks
+      sample_t*                   meterA;     // Meter values for this device.
+      unsigned                    errCnt;     // Accumulating error count for this hardware device
+      unsigned                    overrunCnt; // Count of over/under runs on this device
+      std::atomic_uint            readyCnt;   // Used internally
 
       struct audio_group_dev_str* link;    // 
     } audio_group_dev_t;

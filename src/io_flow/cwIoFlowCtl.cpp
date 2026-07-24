@@ -420,7 +420,7 @@ namespace cw
 
     }
 
-    rc_t _device_index_to_abuf( io_flow_ctl_t* p, unsigned ioGroupIdx, unsigned ioDevIdx, unsigned inOrOutFl, unsigned ioDevErrCnt, flow::abuf_t*& abuf_ref )
+    rc_t _device_index_to_abuf( io_flow_ctl_t* p, unsigned ioGroupIdx, unsigned ioDevIdx, unsigned inOrOutFl, unsigned ioDevErrCnt, unsigned overrunCnt, flow::abuf_t*& abuf_ref )
     {
 
       rc_t rc = kOkRC;
@@ -435,6 +435,7 @@ namespace cw
             if( adA[di].ioDevIdx == ioDevIdx )
             {
               adA[di].adc->ioDevErrCnt = ioDevErrCnt;
+              adA[di].adc->overrunCnt = overrunCnt;
               abuf_ref = &adA[di].abuf;
               return rc;
             }
@@ -503,7 +504,7 @@ namespace cw
         for(io::audio_group_dev_t* agd = m.iDevL; agd!=nullptr; agd=agd->link)
         {
           // get the abuf associated with each device in this group
-          if((rc = _device_index_to_abuf( p, m.groupIndex, agd->devIdx, flow::kInFl, agd->errCnt, abuf )) != kOkRC )            
+          if((rc = _device_index_to_abuf( p, m.groupIndex, agd->devIdx, flow::kInFl, agd->errCnt, agd->overrunCnt,  abuf )) != kOkRC )            
             goto errLabel;
 
           // fill the input audio buf from the the external audio device
@@ -522,7 +523,7 @@ namespace cw
         for(io::audio_group_dev_t* agd=m.oDevL; agd!=nullptr; agd=agd->link)
         {
           // get the output audio buf associated with this external audio device
-          if((rc = _device_index_to_abuf( p, m.groupIndex, agd->devIdx, flow::kOutFl, agd->errCnt, abuf )) != kOkRC )
+          if((rc = _device_index_to_abuf( p, m.groupIndex, agd->devIdx, flow::kOutFl, agd->errCnt, agd->overrunCnt, abuf )) != kOkRC )
             goto errLabel;
 
           // zerot the output buffer
@@ -553,7 +554,7 @@ namespace cw
         for(io::audio_group_dev_t* agd=m.oDevL; agd!=nullptr; agd=agd->link)
         {
           // get the output audio buf associated with this external audio device
-          if((rc = _device_index_to_abuf( p, m.groupIndex, agd->devIdx, flow::kOutFl, agd->errCnt, abuf )) != kOkRC )
+          if((rc = _device_index_to_abuf( p, m.groupIndex, agd->devIdx, flow::kOutFl, agd->errCnt, agd->overrunCnt, abuf )) != kOkRC )
             goto errLabel;
 
           // copy the samples from the flow 'audio_out' buffers to the outgoing buffer passed from the device driver
