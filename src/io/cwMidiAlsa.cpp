@@ -325,6 +325,36 @@ namespace cw
           return rc;
         }
 
+        void _cmMpChangeDeviceName( alsa_device_t* p, unsigned dev_idx, unsigned dev_suffix )
+        {
+          char* dum = nullptr;
+          char* newName = mem::printf(dum,"%s_%i",p->devArray[dev_idx].nameStr,dev_suffix);
+          mem::release(p->devArray[dev_idx].nameStr);
+          p->devArray[dev_idx].nameStr = mem::duplStr(newName);
+          mem::release(newName);
+        }
+
+        void _cmMpFixDuplicateDeviceNames( alsa_device_t* p )
+        {
+          for(unsigned i=0; i<p->devCnt-1; i++)
+          {
+            unsigned dupl_cnt = 0;
+            for(unsigned j=i+1; j<p->devCnt; ++j)
+              if( textIsEqual(p->devArray[i].nameStr,p->devArray[j].nameStr) )
+              {
+                if( dupl_cnt == 0 )
+                {
+                  _cmMpChangeDeviceName(p,i,0);
+                  dupl_cnt += 1;
+                }
+                
+                _cmMpChangeDeviceName(p,j,dupl_cnt);
+                dupl_cnt += 1;
+                
+              }
+          }
+        }
+
         rc_t _cmMpAllocStruct( alsa_device_t* p, const char* appNameStr, cbFunc_t cbFunc, void* cbDataPtr, unsigned parserBufByteCnt )
         {
           rc_t                      rc   = kOkRC;
@@ -512,6 +542,8 @@ namespace cw
             p->devArray[i].iPortCnt = j;
             p->devArray[i].oPortCnt = k;
           }
+
+          _cmMpFixDuplicateDeviceNames( p );
 
         errLabel:
           if( pip != NULL)
