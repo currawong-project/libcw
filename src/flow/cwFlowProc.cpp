@@ -1096,6 +1096,8 @@ namespace cw
           goto errLabel;
         }
 
+        // printf("%s : DEV FILTER: %s %s : %i %i : enabled:%i %i\n", proc->label, inst->ext_dev->devLabel, inst->ext_dev->portLabel, inst->ext_dev->ioDevIdx, inst->ext_dev->ioPortIdx, inst->dev_filt_fl, inst->port_filt_fl );
+
         // Allocate a buffer large enough to hold the max. number of messages arriving on a single call to exec().
         inst->bufN = inst->ext_dev->u.m.maxMsgCnt;
         inst->buf = mem::allocZ<midi::ch_msg_t>( inst->bufN );
@@ -1188,9 +1190,9 @@ namespace cw
             unsigned j = 0;
             for(unsigned i=0; i<inst->ext_dev->u.m.msgCnt && j<inst->bufN; ++i)
             {
-              //printf("%s : dev:(msg:%i io:%i) : port:(msg:%i io:%i)\n",proc->label, m->devIdx,inst->ext_dev->ioDevIdx, m->portIdx,inst->ext_dev->ioPortIdx);
+              // printf("%s : dev:(msg:%i io:%i) : port:(msg:%i io:%i)\n",proc->label, m[i].devIdx,inst->ext_dev->ioDevIdx, m[i].portIdx,inst->ext_dev->ioPortIdx);
               
-              if( m->devIdx == inst->ext_dev->ioDevIdx && (!inst->port_filt_fl || m->portIdx == inst->ext_dev->ioPortIdx) )
+              if( m[i].devIdx == inst->ext_dev->ioDevIdx && (!inst->port_filt_fl || m[i].portIdx == inst->ext_dev->ioPortIdx) )
                 inst->buf[j++] = m[i];
             }
             mbuf->msgN = j;
@@ -1375,11 +1377,11 @@ namespace cw
       
       rc_t _exec( proc_t* proc, inst_t* p )
       {
-        rc_t          rc       = kOkRC;
-        const rbuf_t* rbuf = nullptr;
-        bool          print_fl = false;
+        rc_t          rc        = kOkRC;
+        const rbuf_t* rbuf      = nullptr;
+        bool          print_fl  = false;
         bool          enable_fl = true;
-        const mbuf_t* src_mbuf = nullptr;
+        const mbuf_t* src_mbuf  = nullptr;
 
         var_get(proc,kPrintFlPId,kAnyChIdx,print_fl);
         var_get(proc,kEnableFlPId,kAnyChIdx,enable_fl);
@@ -1452,6 +1454,7 @@ namespace cw
         kDevLabelPId,
         kOutPId,
         kErrCntPId,
+        kOverrunCntPId,
         kClearPId        
       };
       
@@ -1459,8 +1462,11 @@ namespace cw
       {
         const char*        dev_label;
         external_device_t* ext_dev;
-        unsigned           base_err_cnt;   // The device error count against which we are comparing.
-        unsigned           last_err_cnt;   // The most recent count of errors.
+        unsigned           base_err_cnt;     // The device error count against which we are comparing.
+        unsigned           last_err_cnt;     // The most recent count of errors.
+        unsigned           base_overrun_cnt; // The device buffer overrun count against which we are comparing
+        unsigned           last_overrun_cnt; // The most recent count overruns.
+        
       } inst_t;
       
       rc_t create( proc_t* proc )
@@ -1474,6 +1480,7 @@ namespace cw
         // Register variable and get their current value
         if((rc = var_register_and_get( proc, kAnyChIdx,
                                        kErrCntPId,   "err_cnt",   kBaseSfxId, inst->base_err_cnt,
+                                       kOverrunCntPId,   "overrun_cnt",   kBaseSfxId, inst->base_overrun_cnt,
                                        kClearPId,    "clear",     kBaseSfxId, clear_fl,
                                        kDevLabelPId, "dev_label", kBaseSfxId, inst->dev_label )) != kOkRC )
         {
@@ -1515,12 +1522,67 @@ namespace cw
           case kClearPId:
             inst->base_err_cnt = inst->last_err_cnt;
             var_set(proc,kErrCntPId,kAnyChIdx, 0 );
+            
+            inst->base_overrun_cnt = inst->last_overrun_cnt;
+            var_set(proc,kOverrunCntPId,kAnyChIdx, 0 );
             break;
         }
         
         return rc;
       }
-      
+
+      void _exec_err_cnt( proc_t* proc, inst_t* inst )
+      {
+        // store the new error count from the device
+        inst->last_err_cnt = inst->ext_dev->u.a.ioDevErrCnt;
+          
+        // If the cur error count is less than the base error count then the device error count must have wrapped
+        // (this will only happen in degenerate situations)
+        if( inst->last_err_cnt < inst->base_err_cnt )
+        {
+          inst->base_err_cnt = inst->ext_dev->u.a.ioDevErrCnt;            
+        }
+        else
+        {
+          unsigned      cur_err_cnt = 0;
+            
+          // get the last displayed diff. to the base error count
+          var_get(proc,kErrCntPId,kAnyChIdx,cur_err_cnt);
+
+          unsigned new_err_cnt = inst->last_err_cnt - inst->base_err_cnt;
+            
+          // if the displayed error count has changed then update the UI
+          if( new_err_cnt != cur_err_cnt )
+            var_set(proc,kErrCntPId,kAnyChIdx, new_err_cnt );
+        }
+      }
+
+      void _exec_overrun_cnt( proc_t* proc, inst_t* inst )
+      {
+        // store the new overrun count from the device
+        inst->last_overrun_cnt = inst->ext_dev->u.a.overrunCnt;
+          
+        // If the cur overrun count is less than the base overrun count then the device overrun count must have wrapped
+        // (this will only happen in degenerate situations)
+        if( inst->last_overrun_cnt < inst->base_overrun_cnt )
+        {
+          inst->base_overrun_cnt = inst->ext_dev->u.a.overrunCnt;            
+        }
+        else
+        {
+          unsigned      cur_overrun_cnt = 0;
+            
+          // get the last displayed diff. to the base overrun count
+          var_get(proc,kOverrunCntPId,kAnyChIdx,cur_overrun_cnt);
+
+          unsigned new_overrun_cnt = inst->last_overrun_cnt - inst->base_overrun_cnt;
+            
+          // if the displayed error overrun has changed then update the UI
+          if( new_overrun_cnt != cur_overrun_cnt )
+            var_set(proc,kOverrunCntPId,kAnyChIdx, new_overrun_cnt );
+        }
+      }
+     
       rc_t exec( proc_t* proc )
       {
         rc_t     rc      = kOkRC;
@@ -1541,31 +1603,9 @@ namespace cw
           unsigned frameN = std::min(inst->ext_dev->u.a.abuf->frameN, abuf->frameN );
           memcpy(abuf->buf,inst->ext_dev->u.a.abuf->buf, frameN*chN*sizeof(sample_t));
 
-
+          _exec_err_cnt(proc,inst);
           
-          // store the new error count from the device
-          inst->last_err_cnt = inst->ext_dev->u.a.ioDevErrCnt;
-          
-          // If the cur error count is less than the base error count then the device error count must have wrapped
-          // (this will only happen in degenerate situations)
-          if( inst->last_err_cnt < inst->base_err_cnt )
-          {
-            inst->base_err_cnt = inst->ext_dev->u.a.ioDevErrCnt;            
-          }
-          else
-          {
-            unsigned      cur_err_cnt = 0;
-            
-            // get the last displayed diff. to the base error count
-            var_get(proc,kErrCntPId,kAnyChIdx,cur_err_cnt);
-
-            unsigned new_err_cnt = inst->last_err_cnt - inst->base_err_cnt;
-            
-            // if the displayed error count has changed then update the UI
-            if( new_err_cnt != cur_err_cnt )
-              var_set(proc,kErrCntPId,kAnyChIdx, new_err_cnt );
-          }
-          
+          _exec_overrun_cnt(proc,inst);
           
         }
 
@@ -1595,6 +1635,7 @@ namespace cw
         kInPId,
         kDevLabelPId,
         kErrCntPId,
+        kUnderrunCntPId,
         kClearPId
       };
       
@@ -1604,6 +1645,8 @@ namespace cw
         external_device_t* ext_dev;
         unsigned           base_err_cnt;   // The device error count against which we are comparing.
         unsigned           last_err_cnt;   // The most recent count of errors.
+        unsigned           base_underrun_cnt; // The device buffer underrun count against which we are comparing
+        unsigned           last_underrun_cnt; // The most recent count underruns.        
       } inst_t;
       
       rc_t create( proc_t* proc )
@@ -1618,9 +1661,10 @@ namespace cw
         // Register variables and get their current value
         if((rc = var_register_and_get( proc, kAnyChIdx,
                                        kDevLabelPId, "dev_label", kBaseSfxId, inst->dev_label,
-                                       kErrCntPId,   "err_cnt",   kBaseSfxId, inst->base_err_cnt,
-                                       kClearPId,    "clear",     kBaseSfxId, clear_fl,
-                                       kInPId,       "in",        kBaseSfxId, src_abuf)) != kOkRC )
+                                       kErrCntPId,      "err_cnt",      kBaseSfxId, inst->base_err_cnt,
+                                       kUnderrunCntPId, "underrun_cnt", kBaseSfxId, inst->base_underrun_cnt,
+                                       kClearPId,       "clear",        kBaseSfxId, clear_fl,
+                                       kInPId,          "in",           kBaseSfxId, src_abuf)) != kOkRC )
         {
           goto errLabel;
         }
@@ -1657,18 +1701,74 @@ namespace cw
           case kClearPId:
             inst->base_err_cnt = inst->last_err_cnt;
             var_set(proc,kErrCntPId,kAnyChIdx, 0 );
+
+            inst->base_underrun_cnt = inst->last_underrun_cnt;
+            var_set(proc,kUnderrunCntPId,kAnyChIdx, 0 );            
             break;
         }
         
         return rc;
       }
+
+
+      void _exec_err_cnt( proc_t* proc, inst_t* inst )
+      {
+        // store the new error count from the device
+        inst->last_err_cnt = inst->ext_dev->u.a.ioDevErrCnt;
+          
+        // If the cur error count is less than the base error count then the device error count must have wrapped
+        // (this will only happen in degenerate situations)
+        if( inst->last_err_cnt < inst->base_err_cnt )
+        {
+          inst->base_err_cnt = inst->ext_dev->u.a.ioDevErrCnt;            
+        }
+        else
+        {
+          unsigned      cur_err_cnt = 0;
+            
+          // get the last displayed diff. to the base error count
+          var_get(proc,kErrCntPId,kAnyChIdx,cur_err_cnt);
+
+          unsigned new_err_cnt = inst->last_err_cnt - inst->base_err_cnt;
+            
+          // if the displayed error count has changed then update the UI
+          if( new_err_cnt != cur_err_cnt )
+            var_set(proc,kErrCntPId,kAnyChIdx, new_err_cnt );
+        }
+      }
+
+      void _exec_underrun_cnt( proc_t* proc, inst_t* inst )
+      {
+        // store the new underrun count from the device
+        inst->last_underrun_cnt = inst->ext_dev->u.a.overrunCnt;
+          
+        // If the cur underrun count is less than the base underrun count then the device underrun count must have wrapped
+        // (this will only happen in degenerate situations)
+        if( inst->last_underrun_cnt < inst->base_underrun_cnt )
+        {
+          inst->base_underrun_cnt = inst->ext_dev->u.a.overrunCnt;            
+        }
+        else
+        {
+          unsigned      cur_underrun_cnt = 0;
+            
+          // get the last displayed diff. to the base underrun count
+          var_get(proc,kUnderrunCntPId,kAnyChIdx,cur_underrun_cnt);
+
+          unsigned new_underrun_cnt = inst->last_underrun_cnt - inst->base_underrun_cnt;
+            
+          // if the displayed underrun count has changed then update the UI
+          if( new_underrun_cnt != cur_underrun_cnt )
+            var_set(proc,kUnderrunCntPId,kAnyChIdx, new_underrun_cnt );
+        }
+      }
+      
       
       rc_t exec( proc_t* proc )
       {
-        rc_t          rc     = kOkRC;
-        inst_t*       inst   = (inst_t*)proc->userPtr;
+        rc_t          rc       = kOkRC;
+        inst_t*       inst     = (inst_t*)proc->userPtr;
         const abuf_t* src_abuf = nullptr;
-
         
         if((rc = var_get(proc,kInPId,kAnyChIdx,src_abuf)) != kOkRC )
           rc = proc_error(proc,kInvalidStateRC,"The audio file instance '%s' does not have a valid input connection.",proc->label);
@@ -1690,30 +1790,9 @@ namespace cw
             dst[i]  = dsp::clip_sample_value(dst[i]);            
           }
 
-
-          // store the new error count from the device
-          inst->last_err_cnt = inst->ext_dev->u.a.ioDevErrCnt;
-
+          _exec_err_cnt( proc, inst );
           
-          // If the cur error count is less than the base error count then the device error count must have wrapped
-          // (this shoud only happen in  situations)
-          if( inst->last_err_cnt < inst->base_err_cnt )
-          {
-            inst->base_err_cnt = inst->ext_dev->u.a.ioDevErrCnt;            
-          }
-          else
-          {
-            unsigned      cur_err_cnt = 0;
-            
-            // get the last displayed diff. to the base error count
-            var_get(proc,kErrCntPId,kAnyChIdx,cur_err_cnt);
-
-            unsigned new_err_cnt = inst->last_err_cnt - inst->base_err_cnt;
-            
-            // if the displayed error count has changed then update the UI
-            if( new_err_cnt != cur_err_cnt )
-              var_set(proc,kErrCntPId,kAnyChIdx, new_err_cnt );
-          }
+          _exec_underrun_cnt( proc, inst );
         }
         
         return rc;
@@ -10901,7 +10980,7 @@ namespace cw
           // expand the filename to handle '$' and '~' prefixes
           if((fn = proc_expand_filename(proc,fname)) == nullptr )
           {
-            rc = proc_error(proc,kOpFailRC,"Filename expansion failed on the cfg fille '%s'.",cwStringNullGuard(fname));
+            rc = proc_error(proc,kOpFailRC,"Filename expansion failed on the cfg file '%s'.",cwStringNullGuard(fname));
             goto errLabel;
           }
 
@@ -12590,6 +12669,7 @@ namespace cw
         const char* dir = nullptr;
         const char* fname = nullptr;
         bool write_fl = false;
+        char* record_dir = nullptr;
         
         if((rc = var_register_and_get(proc,kAnyChIdx,
                                       kRInPId,"rin",kBaseSfxId,rbuf,
@@ -12612,11 +12692,18 @@ namespace cw
           proc_info(proc,"%s : The incoming record does not have the optional 'loc' field.",cwStringNullGuard(proc->label));
         else
           proc_info(proc,"%s : The 'loc' field was found in the the incoming record.",cwStringNullGuard(proc->label));
-          
 
-        if( textLength(dir)==0 || !filesys::isDir(dir) )
+        // expand the storage directory
+        if((record_dir = proc_expand_filename(proc,dir)) == nullptr )
         {
-          rc = proc_error(proc,kInvalidArgRC,"The 'dir' argument (%s) does not specify an existing directory in '%s'.",cwStringNullGuard(dir),cwStringNullGuard(proc->label));
+          rc = proc_error(proc,kOpFailRC,"Filename expansion failed on the record directory '%s'.",cwStringNullGuard(dir));
+          goto errLabel;
+          
+        }
+      
+        if( textLength(record_dir)==0 || !filesys::isDir(record_dir) )
+        {
+          rc = proc_error(proc,kInvalidArgRC,"The 'dir' argument (%s) does not specify an existing directory in '%s'.",cwStringNullGuard(record_dir),cwStringNullGuard(proc->label));
           goto errLabel;
         }
 
@@ -12628,9 +12715,10 @@ namespace cw
 
         p->msgA = mem::allocZ<msg_t>(p->allocMsgN);
         p->msgN = 0;
-        p->dir  = mem::duplStr(dir);
+        p->dir  = mem::duplStr(record_dir);
         p->fname = mem::duplStr(fname);
       errLabel:
+        mem::release(record_dir);
         return rc;
       }
 
