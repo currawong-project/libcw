@@ -228,7 +228,7 @@ namespace cw
             mm->status = score_evt->status & 0xf0;
             mm->d0     = score_evt->d0;
             mm->d1     = score_evt->d1;
-            m->d1      = score_evt->d1;  // track the initial d1 before vel. mapping is applied
+            m->d1      = score_evt->d1;  // trakc the initial d1 before vel. mapping is applied
 
             
 
@@ -236,8 +236,8 @@ namespace cw
             {
               bool down_fl = pedalStateFlags & kDampPedalDownFl;
               pedalStateFlags = cwEnaFlag(pedalStateFlags, kDampPedalDownFl, midi::isPedalDown( mm->d1 ) );
-              if( (pedalStateFlags & kDampPedalDownFl) == down_fl )
-                proc_error(proc,kInvalidStateRC,"Two damper pedal %s msg's without an intervening %s msg. meas:%i", down_fl ? "down" : "up", down_fl ? "up" : "down", m->meas );
+              //if( (pedalStateFlags & kDampPedalDownFl) == down_fl )
+              //  proc_error(proc,kInvalidStateRC,"Two damper pedal %s msg's without an intervening %s msg. meas:%i", down_fl ? "down" : "up", down_fl ? "up" : "down", m->meas );
               
             }
 
@@ -5236,8 +5236,8 @@ namespace cw
       };
 
       enum {
-        kPianoStateDetTypeId,
-        kSequenceDetTypeId
+        kPianoStateDetTypeId, 
+        kSequenceDetTypeId,
       };
 
       enum {
@@ -5493,7 +5493,7 @@ namespace cw
         // then force the trigger.
         if( r->max_cycle_cnt != 0 && p->armed_cycle_cnt > r->max_cycle_cnt )
         {
-          proc_info(proc,"'%s' Spirio playback timed out.  Trigger forced.",cwStringNullGuard(r->label));
+          proc_info(proc,"'%s' end-seg playback timed out.  Trigger forced.",cwStringNullGuard(r->label));
           
           is_trig_fl_ref = true;
           p->defer_detect_fl = false;              
@@ -5878,7 +5878,6 @@ namespace cw
         var_get(var,ms);
         p->rt_delay_cycle_cnt = (unsigned)((ms * proc->ctx->sample_rate) / (proc->ctx->framesPerCycle * 1000));
         p->use_rt_delay_cycle_cnt_fl = true;
-        printf("END-SEG:%i %i\n", ms, p->rt_delay_cycle_cnt );
       }
 
       rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
