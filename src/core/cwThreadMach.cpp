@@ -732,12 +732,13 @@ namespace cw
       if( t->label != nullptr )
         pthread_setname_np(t->pthreadH, t->label);
 
+      /*
       sched_parm.sched_priority = 80;
       if((sysRC = pthread_setschedparam(pthread_self(), SCHED_RR, &sched_parm)) != 0 )
       {
         cwLogSysError(kOpFailRC,sysRC,"Thread scheduler set failed on ftask thread.");
       }
-      
+      */
       
       do
       {
@@ -964,7 +965,7 @@ cw::rc_t cw::thread_ftasks::run( handle_t h, task_t* taskA, unsigned taskN, unsi
 
   // Put this thread into wait mode.
   // When the last task in p->taskA[] is completed
-  // 'app_futex_var' is set to 1 and this thread is a awaken.
+  // 'app_futex_var' is set to 1 and this thread is a awakened.
   
   // wait for the tasks to run
   if( _futex_wait(&p->app_futex_var, 0) == -1 )
@@ -1382,6 +1383,427 @@ namespace cw
 }
 
 cw::rc_t cw::thread_atasks::test( const test::test_args_t& args )
+{
+  rc_t           rc      = kOkRC;
+  const unsigned threadN = 2;
+  const unsigned taskN   = 50;
+  const unsigned execN   = 20;
+  handle_t       ttH;
+
+  test_task_t* test_taskA = mem::allocZ<test_task_t>(taskN);
+  task_t*      taskA      = mem::allocZ<task_t>(taskN);
+
+  for(unsigned i=0; i<taskN; ++i)
+  {
+    taskA[i].func = testThreadFunc;
+    taskA[i].arg  = test_taskA + i;    
+  }
+
+  if((rc = create(  ttH, threadN, nullptr, "test_thread" )) != kOkRC )
+  {
+    rc = cwLogError(rc,"Thread tasks object create failed.");
+    goto errLabel;
+  }
+
+  sleepMs(500);
+
+  for(unsigned i=0; i<execN; ++i)
+  {
+    if((rc = run(ttH, taskA, taskN, 10000 )) != kOkRC )
+    {
+      rc = cwLogError(rc,"Thread tasks exec failed on iteration %i.",i);
+      goto errLabel;      
+    }
+    sleepMs(1);
+  }
+
+  for(unsigned i=0; i<taskN; ++i)
+    cwLogPrint("task:%i = %i\n",i,test_taskA[i].cnt.load());
+
+errLabel:
+  if((rc = destroy(ttH)) != kOkRC )
+  {
+    rc = cwLogError(rc,"Thread tasks object destroy failed.");
+    goto errLabel;
+  }
+
+  mem::release(test_taskA);
+  
+  return rc;
+}
+
+
+//---------------------------------------------------------------------------------------------------
+// thread_stasks
+//
+#include <stdatomic.h>
+#include <xmmintrin.h>
+
+namespace cw
+{
+  namespace thread_stasks
+  {
+    enum {
+      kWaitOpId,
+      kRunOpId,
+      kExitOpId
+    };
+    
+    struct thread_tasks_str;
+    
+    typedef struct thread_str
+    {
+      pthread_attr_t                 attr;
+      pthread_t                      pthreadH;
+      struct thread_tasks_str*       p;
+      char*                          label;
+      bool                           created_fl;
+      unsigned                       trace_id;
+      std::atomic_flag               lock_fl;
+      volatile std::atomic<unsigned> state_id;
+    } thread_t;
+
+    
+    typedef struct thread_tasks_str
+    {
+      thread_t* threadA; 
+      unsigned  threadN;
+
+      task_t*   taskA;
+      std::atomic<unsigned>  taskN;
+
+      
+      std::atomic<unsigned> next_task_idx;
+      volatile std::atomic<unsigned> done_cnt;
+
+      unsigned trace_id;
+      
+    } thread_tasks_t;
+
+    thread_tasks_t* _handleToPtr( handle_t h )
+    {
+      return handleToPtr<handle_t,thread_tasks_t>(h);
+    }
+
+    bool _run_one_task( thread_tasks_t* p, unsigned trace_id, unsigned thread_task_cnt )
+    {
+      // get the next available task
+      unsigned nti = p->next_task_idx.fetch_add(1, std::memory_order_acq_rel);
+
+      // if nti is a valid task index ...
+      if( nti >= p->taskN )
+      {
+        // all tasks have been completed
+        return false;
+      }
+        
+      // ... then execute the task
+      task_t* task = p->taskA + nti;
+      task->rc     = task->func( task->arg );
+      
+      TRACE_DATA(trace_id, tracer::kDataEvtId, nti, thread_task_cnt );                   
+      
+      // main thread is blocked on p->done_cnt < taskN
+      p->done_cnt.fetch_add(1, std::memory_order_acq_rel);
+
+      return true;      
+    }
+
+    void _set_worker_state( thread_t* t, unsigned state )
+    {
+      
+      // Set lock_fl with memory_order_relaxed because the memory_order_release at the end of the function will guarantee the order of operations
+      switch( state )
+      {
+        case kWaitOpId:
+          std::atomic_flag_test_and_set_explicit(&t->lock_fl,std::memory_order_relaxed);
+          break;
+          
+        case kRunOpId:
+          std::atomic_flag_clear_explicit(&t->lock_fl,std::memory_order_relaxed);
+          break;
+
+        case kExitOpId:
+          std::atomic_flag_clear_explicit(&t->lock_fl,std::memory_order_relaxed);
+          break;
+
+      }
+      
+      t->state_id.store(state, std::memory_order_release );
+      
+    }
+
+    unsigned _get_worker_state( thread_t* t )
+    {
+      return t->state_id.load( std::memory_order_acquire );
+    }
+
+    void _run_worker_tasks( thread_t* t )
+    {
+      unsigned cnt = 0; // 'cnt' is used for tracing purposes only
+
+      // run until there are no more available taskes
+      while( _run_one_task(t->p,t->trace_id,cnt) )
+        ++cnt;
+
+      // return to the wait state
+      _set_worker_state(t,kWaitOpId);
+
+    }
+
+    
+    // Returns kRunOpId or kExitOpId
+    unsigned _worker_wait( thread_t* t )
+    {
+      // atomic_test_and_set() sets 'lock_fl' and returns it's previous state
+      while (std::atomic_flag_test_and_set_explicit(&t->lock_fl, std::memory_order_acquire))
+      {
+        _mm_pause();
+      }      
+      
+      
+      return _get_worker_state(t);
+    }
+
+    
+    void* _worker_thread_func( void* arg )
+    {
+      thread_t* t = (thread_t*)arg;
+      unsigned op_id;
+      
+      t->created_fl = true;
+      
+      if( t->label != nullptr )
+        pthread_setname_np(t->pthreadH, t->label);
+
+      // the thread is initially in 'wait' mode
+      _set_worker_state( t, kWaitOpId );
+
+      do
+      {
+        // Block the thread here waiting for the thread state to change
+        op_id = _worker_wait(t);
+
+        switch( op_id )
+        {
+          case kWaitOpId:
+            break;
+            
+          case kRunOpId:
+            //TRACE_TIME( t->trace_id, tracer::kBegEvtId, 0, 0 );
+            _run_worker_tasks(t); // run as many tasks as possible
+            //TRACE_TIME( t->trace_id, tracer::kEndEvtId, 0, 0 );
+            break;
+            
+          case kExitOpId:
+            break;
+        }
+        
+
+      }while( _get_worker_state(t) != kExitOpId );
+      
+      return nullptr;
+    }
+
+      
+    rc_t _create_worker_thread( thread_tasks_t* p, thread_t* t, unsigned thread_idx, unsigned cpu_affinity, const char* thread_prefix_label )
+    {
+      rc_t      rc    = kOkRC;
+      int       sysRC = 0;
+      cpu_set_t cpu_set;
+
+      CPU_ZERO(&cpu_set);
+
+      t->p = p;
+
+      
+      // create the thread label
+      if( thread_prefix_label != nullptr )
+      {
+        t->label = mem::printf(t->label,"%s-%i",thread_prefix_label,thread_idx);
+      }
+
+      // initialize the thread attribute argument record
+      if((sysRC = pthread_attr_init(&t->attr)) != 0)
+      {
+        rc = cwLogSysError(kOpFailRC,sysRC,"Thread attribute init failed.");
+        goto errLabel;
+      }
+
+      if( cpu_affinity != kInvalidIdx )
+      {
+        CPU_SET( cpu_affinity, &cpu_set);
+
+        // set the thread CPU affinity
+        if((sysRC = pthread_attr_setaffinity_np(&t->attr, sizeof(cpu_set), &cpu_set)) != 0 )
+        {
+          rc = cwLogSysError(kOpFailRC,sysRC,"Thread CPU affinity set failed.");
+          goto errLabel;
+        }
+      }
+
+      // create the thread
+      if((sysRC = pthread_create(&t->pthreadH, &t->attr, _worker_thread_func, (void*)t )) != 0 )
+      {
+        rc = cwLogSysError(kOpFailRC,sysRC,"Thread create failed.");
+        goto errLabel;
+      }
+      
+      TRACE_REG(thread_prefix_label,thread_idx,t->trace_id);
+
+    errLabel:
+      if( rc != kOkRC )
+        rc = cwLogError(rc,"stask thread create failed.");
+      
+      return rc;
+        
+    }
+
+    rc_t _destroy( thread_tasks_t* p )
+    {
+      rc_t rc = kOkRC;
+
+      // Wake-up the task threads and tell them to exit.
+      for(unsigned i=0; i<p->threadN; ++i)
+        _set_worker_state(p->threadA + i, kExitOpId );
+      
+      // release the resource of each thread
+      for(unsigned i=0; i<p->threadN; ++i)
+        if( p->threadA[i].created_fl )
+        {
+          int sysRC;
+
+          if((sysRC = pthread_join(p->threadA[i].pthreadH,NULL)) != 0 )
+            rc = cwLogSysError(kOpFailRC,sysRC,"Thread join failed.");
+
+          mem::release(p->threadA[i].label);
+        }
+      
+
+      mem::release(p->threadA);
+      mem::release(p);
+
+      return rc;
+    }    
+  }
+}
+
+cw::rc_t cw::thread_stasks::create(  handle_t& hRef, unsigned threadN, const unsigned* cpu_affinityA, const char* thread_label_prefix )
+{
+  rc_t            rc = kOkRC;;
+  thread_tasks_t* p  = nullptr;
+  
+  if((rc = destroy(hRef)) != kOkRC )
+    return rc;
+
+  p = mem::allocZ<thread_tasks_t>();
+
+  p->threadA = mem::allocZ<thread_t>(threadN);
+  p->threadN = threadN;
+
+  p->done_cnt.store(0);
+
+  TRACE_REG("stask_main",threadN,p->trace_id);
+  
+  for(unsigned i=0; i<p->threadN; ++i)
+  {
+    unsigned cpu_affinity = kInvalidIdx;
+    
+    if( cpu_affinityA != nullptr )
+      cpu_affinity = cpu_affinityA[i];
+    
+    if((rc = _create_worker_thread( p, p->threadA + i, i, cpu_affinity, thread_label_prefix )) != kOkRC )
+      goto errLabel;
+  }
+
+  hRef.set(p);
+  
+errLabel:
+  if(rc != kOkRC )
+     _destroy(p);
+     
+  return rc;
+}
+
+cw::rc_t cw::thread_stasks::destroy( handle_t& hRef )
+{
+  rc_t rc = kOkRC;
+  
+  if(!hRef.isValid())
+    return rc;
+
+  thread_tasks_t* p = _handleToPtr(hRef);
+
+  if((rc = _destroy(p)) != kOkRC )
+    return rc;
+
+  hRef.clear();
+
+  return rc;
+}
+
+cw::rc_t cw::thread_stasks::run( handle_t h, task_t* taskA, unsigned taskN, unsigned timeOutMs )
+{
+  rc_t rc = kOkRC;
+  
+  thread_tasks_t* p = _handleToPtr(h);
+  unsigned next_worker_thread_idx = 0;
+  unsigned main_thread_task_cnt = 0;
+  unsigned main_thread_trace_id = 0;
+  
+  p->next_task_idx.store(0);
+  p->done_cnt.store(0);
+  
+  p->taskA = taskA;
+  p->taskN = taskN;
+
+  TRACE_TIME( p->trace_id, tracer::kBegEvtId, 0, 0);
+
+
+  while( p->done_cnt.load() < taskN )
+  {
+    // If a worker is available to start and we have executed 5 tasks since the last thread we started
+    // Spreading thread starts by the time it takes to execute 5 tasks on the main thread
+    // is intended to prevent many threads from being started simultaneously
+    // and thereby putting sudden and excessive pressure on the system.
+    if( next_worker_thread_idx < p->threadN && main_thread_task_cnt % 5 == 0 )
+    {
+      _set_worker_state( p->threadA + next_worker_thread_idx, kRunOpId );
+      next_worker_thread_idx += 1;
+    }
+
+    // Allow the main thread to execute tasks while the worker threads start.
+    // (The main thread is already running and so it might as well execute tasks while the worker threads start.)
+    if( _run_one_task( p, p->trace_id, main_thread_task_cnt ) )
+      main_thread_task_cnt += 1;
+  }
+    
+  TRACE_TIME( p->trace_id, tracer::kEndEvtId, 0, 0);
+ 
+  return rc;
+}
+
+namespace cw
+{
+  namespace thread_stasks
+  {
+    typedef struct test_task_str
+    {
+      std::atomic<unsigned> cnt;
+    } test_task_t;
+    
+    rc_t testThreadFunc( void* arg )
+    {
+      test_task_t* t = (test_task_t*)arg;
+
+      t->cnt.fetch_add(1,std::memory_order_relaxed);
+      return kOkRC;
+    }
+    
+  }
+}
+
+cw::rc_t cw::thread_stasks::test( const object_t* cfg )
 {
   rc_t           rc      = kOkRC;
   const unsigned threadN = 2;
