@@ -4414,24 +4414,43 @@ void cw::io::latency_measure_report(handle_t h)
 
   if( r.note_on_input_ts.tv_nsec )
   {
-    if( r.note_on_output_ts.tv_nsec )
+    if( r.note_on_output_ts.tv_nsec && time::isLTE(r.note_on_input_ts, r.note_on_output_ts) )
     {
       t0 = time::elapsedMicros(r.note_on_input_ts,r.note_on_output_ts);
-      printf("midi in  - midi out:  %6i\n",t0);
+      printf("midi in  - midi out:  %6i usec\n",t0);
     }
 
     if( r.audio_in_ts.tv_nsec )
     {
-      t0 = time::elapsedMicros(r.note_on_output_ts,r.audio_in_ts);
-      t1 = time::elapsedMicros(r.note_on_input_ts,r.audio_in_ts);
-      printf("midi out - audio in:  %6i %6i\n",t0,t1);
+
+      if( time::isLTE( r.note_on_output_ts,r.audio_in_ts ) )
+      {
+        t0 = time::elapsedMicros(r.note_on_output_ts,r.audio_in_ts);
+        printf("midi out - audio in: %6i usec\n",t0);
+        
+      }
+
+      if( time::isLTE( r.note_on_input_ts,r.audio_in_ts ) )
+      {
+        t1 = time::elapsedMicros(r.note_on_input_ts,r.audio_in_ts);
+        printf("midi in - audio in: %6i usec\n",t1);
+      }
+      
     }
 
     if( r.audio_out_ts.tv_nsec )
     {
-      t0 = time::elapsedMicros(r.audio_in_ts,r.audio_out_ts);
-      t1 = time::elapsedMicros(r.note_on_input_ts,r.audio_out_ts);
-      printf("audio in - audio out: %6i %6i\n",t0,t1);
+      if( time::isLTE( r.audio_in_ts,r.audio_out_ts ) )
+      {
+        t0 = time::elapsedMicros(r.audio_in_ts,r.audio_out_ts);
+        printf("audio in - audio out: %6i usec\n",t0);
+      }
+
+      if( time::isLTE( r.note_on_input_ts,r.audio_out_ts ) )
+      {
+        t1 = time::elapsedMicros(r.note_on_input_ts,r.audio_out_ts);
+        printf("midi in - audio out: %6i usec\n",t1);
+      }
     }
 
   }
