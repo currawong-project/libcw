@@ -610,6 +610,110 @@ Variables whose changes can be tracked by var_set() are noticed and marked for o
 Variables that are buffers (abuf,fbuf,mbuf,rbuf) are output if they contain non-zero elements.
 All other variable types are logged on every cycle.
 
+Tracing
+-------
+
+The tracer is a global object which supports logging elapsed time information from local trace variables.
+It is automatically instantiated by the 'caw' and 'cli', and configured by their respective 
+program files like this:
+```	
+tracer: {  
+   trace_cnt:1024,     // Count of traces - as instantiated by TRACE_REG()
+   msg_cnt: 1024000,   // Total count of stored trace messages accross all traces
+   enable_fl:true,     // Set to instantiate the global tracer object.
+   activate_fl:true,   // Set to activate the tracing. 
+   out_fname:"my_file"  // Base file name of output files. Will result in: my_file_ref.csv and my_file_data.csv.
+}
+```
+
+Example Usage:
+
+  1. Create a single trace and recieve an id to refer to it in futre calls using TRACE_REG()
+```
+  unsigned my_trace_id = 42;        // user assigned id
+  unsigned trace_id = kInvalidId;   // system assigned id
+  
+  // register a trace
+  TRACE_REG("my_trace",my_trace_id,trace_id);
+  ...
+```
+
+  2. Record the start time of an arbitrary period along with some identifying data - in this case net.flow->cycleIndex and 0
+```  
+  TRACE_TIME( trace_id, tracer::kBegEvtId, net.flow->cycleIndex,0 );
+  ...
+  do something here
+  ...
+```
+
+  3. Record the end time of an arbitrary period
+```  
+  TRACE_TIME( trace_id, tracer::kEndEvtId, net.flow->cycleIndex, 0 );
+```
+
+  4. Record an ordered data record without the time stamp.
+  
+```  
+  TRACE_DATA( trace_id, 97, 15, 73 );
+```
+
+WARNING: cwTRACER must be defined prior to `#include cwTracer.h` in the module containing the tracer macros or the macros will be ignored.
+This allows the trace operations to be completely removed from production code.
+
+The trace records are stored in memory then written to the output file when the program closes.
+The 'ref' CSV file contains three colums: `id`,`label`,`label_id` and one row for each trace.
+The `id` is the system generated id returned via `TRACE_REG()`.
+The `label` and `label_id` are the application defined label and id passed to `TRACE_REG()`
+
+The 'data' CSV file contains the time stamped trace records.
+
+`libcw/py/tracer.py` contains code examples for parsing the data records.
+
+Latency Measurement
+--------------------
+The IO subsystem contains built in MIDI and Audio latency measurement functionality.
+
+The system is enabled by calling `latency_measure_setup()`.
+See `io_t.latency_meas_enable_fl`.
+
+The system will then record four times:
+1. The time of the next received MIDI note-on.
+2. The time of the next transmitted MIDI note-off.
+3. The time of the next audio input sample greater than -50 db (See `io_t.latency_meas_thresh_db`).
+4. The time of the next audio output sample greater than -50 db.
+
+See io::`_audio_latency_measure()` for details of the audio threshold detector.
+
+Call io::latency_measure_report() to print the latency report to stdout.
+Three latency measurements are reported:
+
+1. midi-in to midi-out: This is the time between the last received MIDI note-on message and the
+transmitted note-onf MIDI message. It is measuring the time it takes to receive and then transmit a MIDI note-on message.
+
+2. midi-out to audio-in: This it the time between the transmitted MIDI note-on message and the
+subsequent audio-in threshold detection.  This is measuring the time it takes to transmit a 
+message to an external device and then receive and audio response.
+
+3. audio-in to audio-out: This is the time between the first detected audio-in put theshold
+and the subsequent audio output threshold detection.
+
+4. midi-out to audio-out: This is the time between the first detected MIDI note-on msg and the
+the first audio output threshold detection.
+
+Direction:
+
+1. Setup a network with the following connections.
+	- Echo MIDI-in to MIDI-out.
+	- MIDI-in to sampler to audio-out.
+	- Wire audio devices outputs to inputs.
+
+2. In the `caw` UI interface click the 'Latency Reset'.
+3. Send a note-on to MIDI-in.
+4. Clock 'Latency Reset' again.
+
+The latency report will then be printed to stdout.
+
+
 UI
 ----
 Proc Desc.
