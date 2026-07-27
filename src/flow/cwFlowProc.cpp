@@ -641,8 +641,8 @@ namespace cw
       typedef struct
       {
         bool                   parallel_fl;  // true if the subnets should be executed in parallel
-        thread_ftasks::handle_t threadTasksH; //  
-        thread_ftasks::task_t*  taskA;        // taskA[ count ]
+        thread_stasks::handle_t threadTasksH; //  
+        thread_stasks::task_t*  taskA;        // taskA[ count ]
         voice_t*               voiceA;       // voiceA[ count ]
         unsigned               voiceN;
         unsigned               preset_sfx_id;
@@ -824,14 +824,14 @@ namespace cw
             }
                     
           // create a thread_ftasks object
-          if((rc = thread_ftasks::create(  inst->threadTasksH, inst->thread_cnt, cpuAffinityA, "task_thread" )) != kOkRC )
+          if((rc = thread_stasks::create(  inst->threadTasksH, inst->thread_cnt, cpuAffinityA, "task_thread" )) != kOkRC )
           {
             rc = proc_error(proc,rc,"Thread machine create failed.");
             goto errLabel;
           }
 
           // the taskA[] array is needed to hold voice specific info. for the call to thread_ftasks::run()
-          inst->taskA  = mem::allocZ<thread_ftasks::task_t>(inst->voiceN);
+          inst->taskA  = mem::allocZ<thread_stasks::task_t>(inst->voiceN);
           inst->voiceA = mem::allocZ<voice_t>(inst->voiceN);
           
           for(unsigned i=0; net !=nullptr; ++i)
@@ -865,7 +865,7 @@ namespace cw
         if( proc->internal_net != nullptr )
           network_destroy(proc->internal_net);
 
-        thread_ftasks::destroy(p->threadTasksH);
+        thread_stasks::destroy(p->threadTasksH);
         mem::release( p->taskA);
         mem::release( p->voiceA);
         mem::release( proc->userPtr );
@@ -907,7 +907,7 @@ namespace cw
 
         if( p->parallel_fl )
         {
-          if((rc = thread_ftasks::run(p->threadTasksH,p->taskA,p->voiceN)) != kOkRC )
+          if((rc = thread_stasks::run(p->threadTasksH,p->taskA,p->voiceN)) != kOkRC )
           {
             rc = proc_error(proc,rc,"poly internal network parallel exec failed.");
           }
@@ -5320,7 +5320,7 @@ namespace cw
         unsigned      chN    = 0;
 
         bool rptFl = inst->rptPeriodSmpN != 0 && inst->rptPhase >= inst->rptPeriodSmpN;
-        bool consoleFl = false;
+        bool consoleFl = true;
 
         var_get(proc,kConsoleFlPId, kAnyChIdx, consoleFl);
         
