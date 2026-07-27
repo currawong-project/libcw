@@ -4,15 +4,15 @@
 /*
   The tracer is a global object which supports logging elapsed time information from local trace variables.
 
-  1. Create a single trace and get recieve an id to refer to it in futre calls using TRACE_REG()
-  unsigned my_trace_id = 42;
-  unsigned trace_id = kInvalidId;
+  1. Create a single trace and recieve an id to refer to it in futre calls using TRACE_REG()
+  unsigned my_trace_id = 42;        // user assigned id
+  unsigned trace_id = kInvalidId;   // system assigned id
   
   // register a trace
   TRACE_REG("my_trace",my_trace_id,trace_id);
   ...
   
-  2. Record the start time of an arbitrary period.
+  2. Record the start time of an arbitrary period along with some identifying data - in this case net.flow->cycleIndex and 0
   TRACE_TIME( trace_id, tracer::kBegEvtId, net.flow->cycleIndex,0 );
   ...
   do something here
@@ -46,11 +46,13 @@ namespace cw
     // start/stop event recording.
     rc_t activate( handle_t h, bool activate_fl );
 
-    // Register a trace and get a trace id.
+    // Register a trace and get back a trace id.
     rc_t register_trace( handle_t h, const char* label, unsigned label_id, unsigned& trace_id_ref );
 
-    // Log the time of a trace event along with some identifying data.
+    // Log the time of a trace event along with the arguments to the function.
     rc_t log_trace_time( handle_t h, unsigned trace_id, unsigned event_id, unsigned user_data_0, unsigned user_data_1 );
+
+    // Store trace_id,event_id,user_data_0,user_data_1 but don't record the time stamp.
     rc_t log_trace_data( handle_t h, unsigned trace_id, unsigned event_id, unsigned user_data_0, unsigned user_data_1 );
 
     rc_t write( handle_t h );

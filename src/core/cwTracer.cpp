@@ -10,6 +10,8 @@
 #include "cwTracer.h"
 #include "cwText.h"
 
+#undef cwTRACER
+
 namespace cw
 {
   namespace tracer
