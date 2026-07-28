@@ -5649,6 +5649,7 @@ namespace cw
         kVoiceCntPId,
         kPruneThreshPId,
         kResetPId,
+        kActiveCntPId,
         kBaseOutPId,
       };
 
@@ -5798,10 +5799,12 @@ namespace cw
         rc_t        rc            = kOkRC;
         rbuf_t*     rbuf          = nullptr;
         bool reset_fl = false;
+        unsigned active_cnt = 0;
         
         if((rc = var_register_and_get(proc,kAnyChIdx,
                                       kInPId,          "in",           kBaseSfxId, rbuf,
                                       kResetPId,       "reset",        kBaseSfxId, reset_fl,
+                                      kActiveCntPId,   "active_cnt",   kBaseSfxId, active_cnt,
                                       kPruneThreshPId, "prune_thresh", kBaseSfxId, p->prune_thresh,
                                       kVoiceCntPId,    "voice_cnt",    kBaseSfxId, p->voiceN)) != kOkRC )
         {
@@ -6230,7 +6233,8 @@ namespace cw
         }
 
         TRACE_DATA( proc->trace_id, tracer::kDataEvtId, p->active_voice_cnt, 0);
-          
+        var_set(proc,kActiveCntPId,kAnyChIdx,p->active_voice_cnt);
+        
       errLabel:
         return rc;
       }
