@@ -25,6 +25,7 @@ namespace cw
       kUiDisableVarDescFl = 0x080,
       kUiHideVarDescFl    = 0x100,
       kNotifyVarDescFl    = 0x200,
+      kReadOnlyVarDescFl  = 0x400
     };
     
     typedef struct class_members_str
