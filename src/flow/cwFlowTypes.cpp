@@ -37,6 +37,7 @@ namespace cw
       { kUiDisableVarDescFl,"ui_disable" },
       { kUiHideVarDescFl,   "ui_hide" },
       { kNotifyVarDescFl,   "notify" },
+      { kReadOnlyVarDescFl, "ro" }, // read-only
       { kInvalidVarDescFl, "<invalid>" }
     };
 
