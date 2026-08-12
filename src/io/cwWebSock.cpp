@@ -593,9 +593,23 @@ namespace cw
 
       return rc;
     }
+
+    void custom_log_emit(int level, const char *line)
+    {
+      // If it's a warning trying to probe for archive files, drop it entirely
+      if ((level & LLL_WARN) && 
+          (strstr(line, ".zip/") || strstr(line, ".jar/") || strstr(line, ".war/"))) {
+        return; 
+      }
+    
+      // Otherwise, pass everything else directly to standard error (default LWS behavior)
+      fprintf(stderr, "%s", line);
+    }
     
   }
 }
+
+
 
 cw::rc_t cw::websock::create(
   handle_t&         h,
@@ -623,7 +637,7 @@ cw::rc_t cw::websock::create(
   if( extraLogsFl )
     logs |= LLL_NOTICE;
   
-	lws_set_log_level(logs, nullptr);
+	lws_set_log_level(logs, custom_log_emit);
 
   p->_event_loop_ops_custom = {};
   p->_event_loop_ops_custom.name                  = "custom";
