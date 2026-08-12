@@ -23,6 +23,8 @@
 #include "cwFlowNet.h"
 #include "cwFlowProc.h"
 #include "cwFlowPerf.h"
+#include "cwFlowGutim.h"
+
 namespace cw
 {
   namespace flow
@@ -109,6 +111,8 @@ namespace cw
       { "end_seg_detector",&end_seg_detector::members },
       { "gutim_pgm_ctl",   &gutim_pgm_ctl::members },
       { "demo_202602_ctl", &demo_202602_ctl::members },
+      { "gutim_2_sf_ctl",  &gutim_2_sf_ctl::members },
+      { "timeline_player", &timeline_player::members },
       { nullptr, nullptr }
     };
 
