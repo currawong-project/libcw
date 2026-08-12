@@ -39,6 +39,7 @@ namespace cw
 
       unsigned prv_loc_idx; // loc reported on the previous cycle
       unsigned exp_loc_idx; // expected location on this cycle
+      double   exp_sec;     // expected time of next note
       
       unsigned search_bni;  // current search window 
       unsigned search_eni;  //
@@ -106,6 +107,8 @@ namespace cw
 
       unsigned beg_loc_id;
       unsigned end_loc_id;
+      double   beg_loc_sec;
+      double   end_loc_sec;
 
       result_t* resultA; // resultA[ resultN ]
       unsigned resultAllocN;
@@ -168,6 +171,7 @@ namespace cw
       
       trk->prv_loc_idx = kInvalidIdx;
       trk->exp_loc_idx = trk->sf->locMapA[ beg_loc_id ];
+      trk->exp_sec     = 0;
       
       trk->search_bni = kInvalidIdx;  // current search window 
       trk->search_eni = kInvalidIdx;  //
@@ -273,6 +277,7 @@ namespace cw
         match_loc_id = trk->sf->noteA[match_ni].loc_id;
         unsigned match_loc_idx= trk->sf->locMapA[match_loc_id];
         double   match_sec    = trk->sf->locA[match_loc_idx].sec;
+        bool     reset_on_reject_fl = false;
 
         // set d_loc_id to the diff between the matched loc and the expected match loc
         if( exp_loc_id != kInvalidIdx )
@@ -287,6 +292,7 @@ namespace cw
         {
           trk->beg_score_sec = match_sec;
           trk->beg_perf_sec = sec;
+          reset_on_reject_fl = true;
         }
 
         // track the score time diff. between this match and the prev score match
@@ -319,6 +325,10 @@ namespace cw
         {
           if( sec - trk->beg_perf_sec > 0 && (match_sec - trk->beg_score_sec) > 0 )
           {
+            // time-fact = score_dur / perf_dur:   (slow-perf < 1.0 > fast-perf)
+            // To convert perf-dur  to score-dur : est_score_dur = known_perf_dur  * time-fact
+            //            score-dur to perf-dur  : est_perf_dur  = known_score_dur / time_fact
+            //
             trk->time_delta_sum += (match_sec - trk->beg_score_sec)/(sec - trk->beg_perf_sec);
             trk->time_delta_cnt += 1;
             trk->time_fact = trk->time_delta_sum / trk->time_delta_cnt;
@@ -336,6 +346,12 @@ namespace cw
         {          
           match_ni = kInvalidIdx;   // ... then reject the match
           rpt_status = "rejected";
+          if( reset_on_reject_fl )
+          {
+            trk->beg_score_sec = INVALID_SEC;
+            trk->beg_perf_sec = INVALID_SEC;
+          }
+          
         }
         else
         {
@@ -349,6 +365,7 @@ namespace cw
           score_vel_ref = trk->sf->noteA[ match_ni ].vel;
           matched_loc_id_ref = match_loc_id;
           meas_numb_ref = trk->sf->locA[ match_loc_idx ].meas_num;
+          
           
           // notice if we arrived at the end of the score tracking range
           if( match_loc_id >= trk->sf->end_loc_id )
@@ -376,6 +393,10 @@ namespace cw
 
               // update the expected loc. for the next cycle
               trk->exp_loc_idx = exp_loc_idx;
+
+              double exp_perf_dsec = std::max(0.0,trk->sf->locA[ exp_loc_idx ].sec - trk->sf->locA[ match_loc_idx ].sec) * trk->time_fact;
+              
+              trk->exp_sec = sec + exp_perf_dsec;
             }              
           }          
         }
@@ -405,6 +426,7 @@ namespace cw
         else
           printf(": dLoc:     ");
 
+        printf("| sec:%6.3f exp sec:%6.3f ",sec,trk->exp_sec);
         
         if( d_match_score_sec_valid_fl )
           printf("| Match dsec score:%6.3f ",d_match_score_sec);
@@ -421,7 +443,7 @@ namespace cw
         else
           printf("corr:      ");
 
-        //printf(" : (%f %i %f) : ",trk->time_delta_sum,trk->time_delta_cnt,trk->time_fact);
+        printf(" : (%f %i %f) : ",trk->time_delta_sum,trk->time_delta_cnt,trk->time_fact);
         
         printf("%s ",rpt_status);
 
@@ -878,36 +900,55 @@ cw::rc_t cw::score_follow_2::reset( handle_t h, unsigned beg_loc_id, unsigned en
 {
   rc_t  rc = kOkRC;
   sf_t* p = _handleToPtr(h);
+  
+  unsigned end_sec_loc_id = end_loc_id > p->max_loc_id ? p->max_loc_id : end_loc_id;
 
-  if( beg_loc_id > p->max_loc_id )
+  if( beg_loc_id > p->max_loc_id )    
   {
-    rc = cwLogError(kInvalidArgRC,"An invalid location id (%i) was encountered.",beg_loc_id);
+    rc = cwLogError(kInvalidArgRC,"An invalid location score begin location id (%i) was passed to score_follower reset.",beg_loc_id);
     goto errLabel;
   }
 
+  
   //_report_score(p,beg_loc_id,end_loc_id);
   
   
   p->beg_loc_id = beg_loc_id;
+  p->beg_loc_sec = p->locA[ p->locMapA[ beg_loc_id ] ].sec;
+  
   p->end_loc_id = end_loc_id;
+  p->end_loc_sec = p->locA[ p->locMapA[ end_sec_loc_id ] ].sec;
+
 
   p->resultN = 0;
 
   _trkr_reset(p->trk,beg_loc_id);
 
-  //cwLogInfo("SF2 reset: %i %i",beg_loc_id,end_loc_id);
+  cwLogInfo("SF2 reset: %i %i",beg_loc_id,end_loc_id);
 
 errLabel:
   
   return rc;
 }
 
-cw::rc_t cw::score_follow_2::on_new_note( handle_t h, unsigned uid, double sec, uint8_t pitch, uint8_t vel, unsigned& matched_loc_id_ref, unsigned& meas_numb_ref, unsigned& score_vel_ref )
+cw::rc_t cw::score_follow_2::on_new_note( handle_t  h,
+                                          unsigned  uid,
+                                          double    sec,
+                                          uint8_t   pitch,
+                                          uint8_t   vel,
+                                          unsigned& matched_loc_id_ref,
+                                          unsigned& meas_numb_ref,
+                                          unsigned& score_vel_ref,
+                                          double&   loc_pct_ref )
 {
   rc_t  rc = kOkRC;
   sf_t* p  = _handleToPtr(h);
-  
+
+  loc_pct_ref = -1.0;
   _trkr_on_new_note(p->trk,sec,pitch,vel, p->args.rpt_fl, matched_loc_id_ref, meas_numb_ref, score_vel_ref);
+
+  if( matched_loc_id_ref != kInvalidIdx )
+    loc_pct_ref = (p->locA[ p->locMapA[ matched_loc_id_ref ] ].sec - p->beg_loc_sec)/(p->end_loc_sec - p->beg_loc_sec);
 
   if( p->resultN < p->resultAllocN )
   {
@@ -922,12 +963,13 @@ cw::rc_t cw::score_follow_2::on_new_note( handle_t h, unsigned uid, double sec, 
   return rc;
 }
 
-cw::rc_t cw::score_follow_2::do_exec( handle_t h )
+cw::rc_t cw::score_follow_2::do_exec( handle_t h, double sec )
 {
   rc_t  rc = kOkRC;
   sf_t* p  = _handleToPtr(h);
 
-  _trkr_do_decay(p->trk);
+  if( sec > p->trk->exp_sec )
+    _trkr_do_decay(p->trk);
   return rc;
 }
 

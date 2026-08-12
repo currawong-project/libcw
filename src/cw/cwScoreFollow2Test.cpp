@@ -341,20 +341,22 @@ namespace cw
         while( smp_idx <= mf.evtA[midi_evt_idx].sample_idx && mf.evtA[midi_evt_idx].sample_idx < smp_idx + smp_per_cycle )
         {
           const midi_evt_t* e         = mf.evtA + midi_evt_idx++;
+          double            sec       = smp_idx / srate;
           unsigned          loc_id    = kInvalidId;
           unsigned          score_vel = -1;
           unsigned          meas_numb = -1;
-          
+          double            loc_pct   = -1;
           //printf("%f pitch:%i vel:%i\n",e->sec,e->pitch,e->vel);
           
-          if((rc = on_new_note( sfH, e->uid, e->sec, e->pitch, e->vel, loc_id, meas_numb, score_vel )) != kOkRC )
+          if((rc = on_new_note( sfH, e->uid, e->sec, e->pitch, e->vel, loc_id, meas_numb, score_vel, loc_pct )) != kOkRC )
           {
             rc = cwLogError(rc,"SF2 note processing failed on note UID:%i.",e->uid);
             goto errLabel;
           }
         }
+
         
-        if((rc = do_exec(sfH)) != kOkRC )
+        if((rc = do_exec(sfH,smp_idx/srate)) != kOkRC )
         {
           rc = cwLogError(rc,"SF2 exec processing failed.");
           goto errLabel;
