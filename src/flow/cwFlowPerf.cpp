@@ -1071,7 +1071,7 @@ namespace cw
         
         if( plyr_idx == kInvalidIdx)
         {
-          rc = proc_error(proc,kInvalidArgRC,"An invalid player could not be started.");
+          rc = proc_error(proc,kInvalidArgRC,"An invalid player (%i) could not be started.",plyr_idx);
           goto errLabel;
         }
         
@@ -3288,7 +3288,11 @@ namespace cw
         kMaxLocPId,
         kResetTrigPId,
         kEnableFlPId,
+        kLocPctPId,
+        kLastLocPId,
+        kLastMeasPId,
         kDVelPId,
+        kLocLogFlPId,
         kPrintFlPId,
         kOutPId,
       };
@@ -3304,7 +3308,9 @@ namespace cw
         unsigned                       vel_field_idx;
         recd_array_t*                  recd_array;  // output record array
         unsigned                       cur_loc_id;
+        unsigned                       cur_meas_numb;
         bool                           enable_fl;
+        bool                           loc_log_fl;
       } inst_t;
 
 
@@ -3317,6 +3323,7 @@ namespace cw
         unsigned               beg_loc_id = kInvalidId;
         unsigned               end_loc_id = kInvalidId;
         bool                   reset_trig_fl = false;
+        
         float dvel = 1.0;
         cw::score_follow_2::args_t sf_args = {
           .pre_affinity_sec = 1.0,
@@ -3342,6 +3349,7 @@ namespace cw
                                       kResetTrigPId,  "reset_trigger", kBaseSfxId, reset_trig_fl,
                                       kEnableFlPId,   "enable_fl",     kBaseSfxId, p->enable_fl,
                                       kDVelPId,       "dvel",          kBaseSfxId, dvel,
+                                      kLocLogFlPId,   "loc_log_fl",    kBaseSfxId, p->loc_log_fl,
                                       kPrintFlPId,    "print_fl",      kBaseSfxId, sf_args.rpt_fl )) != kOkRC )
         {
           goto errLabel;
@@ -3373,7 +3381,10 @@ namespace cw
         }
 
         if((rc = var_register_and_set(proc,kAnyChIdx,
-                                      kMaxLocPId,"loc_cnt", kBaseSfxId, max_loc_id(p->sfH) )) != kOkRC )
+                                      kLocPctPId, "loc_pct", kBaseSfxId, 0.0,
+                                      kLastLocPId,"last_loc", kBaseSfxId, 0,
+                                      kLastMeasPId,"last_meas", kBaseSfxId, 0,
+                                      kMaxLocPId, "loc_cnt",  kBaseSfxId, max_loc_id(p->sfH) )) != kOkRC )
         {
           goto errLabel;
         }
@@ -3431,6 +3442,7 @@ namespace cw
         }
 
         p->cur_loc_id = kInvalidId;
+        p->cur_meas_numb = 0;
 
         proc_info(proc,"SF (%s) reset:%i %i",proc->label, beg_loc_id,end_loc_id);
 
@@ -3453,6 +3465,10 @@ namespace cw
           case kEnableFlPId:
             var_get(var,p->enable_fl);
             proc_info(proc,"SF (%s) ENABLE = %i",cwStringNullGuard(proc->label),p->enable_fl);
+            break;
+
+          case kLocLogFlPId:
+            var_get(var,p->loc_log_fl);            
             break;
         }
         return rc;
@@ -3527,6 +3543,7 @@ namespace cw
             unsigned        loc_id    = kInvalidId;
             unsigned        score_vel = -1;
             unsigned        meas_numb = -1;
+            double          loc_pct   = -1;
 
             if((rc = recd_get( i_rbuf->type, i_rbuf->recdA+i, p->i_midi_field_idx, m)) != kOkRC )
             {
@@ -3536,10 +3553,10 @@ namespace cw
 
             if( midi::isNoteOn( m->status, m->d1 ) )
             {
-
+              
               //printf("%s : %i %i %i %i\n",proc->label,m->uid,m->status,m->d0,m->d1);
             
-              if((rc = on_new_note( p->sfH, m->uid, sec, m->d0, m->d1, loc_id, meas_numb, score_vel )) != kOkRC )
+              if((rc = on_new_note( p->sfH, m->uid, sec, m->d0, m->d1, loc_id, meas_numb, score_vel, loc_pct )) != kOkRC )
               {
                 rc = proc_error(proc,rc,"Score follower note processing failed.");
                 goto errLabel;              
@@ -3554,8 +3571,22 @@ namespace cw
                   //float dvel = _dvel(m->d1,score_vel);
                   //var_set(proc,kDVelPId,kAnyChIdx,dvel);
                   //proc_info(proc,"DVEL::%f",dvel);
-                            
-                  proc_info(proc,"sf (%s) LOC:%i",proc->label,loc_id);
+
+                  var_set(proc,kLastLocPId,kAnyChIdx,loc_id);
+
+                  // if the measure number changed 
+                  if( meas_numb != p->cur_meas_numb )
+                  {                    
+                    var_set(proc,kLastMeasPId,kAnyChIdx,meas_numb);
+                    p->cur_meas_numb = meas_numb;
+                  }
+                  
+
+                  loc_pct = (std::min(1.0,std::max(0.0,loc_pct))*100.0) - 100.0;
+                  var_set(proc,kLocPctPId,kAnyChIdx,loc_pct);
+                  
+                  if( p->loc_log_fl )
+                    proc_info(proc,"sf (%s) LOC:%i",proc->label,loc_id);
                   //printf("sf (%s) LOC:%i\n",proc->label,loc_id);
                 }
               }
@@ -3566,7 +3597,7 @@ namespace cw
           
           }
         }
-        do_exec(p->sfH);
+        do_exec(p->sfH,sec);
         
       errLabel:
         return rc;
