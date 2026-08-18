@@ -113,6 +113,7 @@ namespace cw
       { "demo_202602_ctl", &demo_202602_ctl::members },
       { "gutim_2_sf_ctl",  &gutim_2_sf_ctl::members },
       { "timeline_player", &timeline_player::members },
+      { "key_state_monitor", &key_state_monitor::members },
       { nullptr, nullptr }
     };
 
