@@ -77,8 +77,8 @@ set(  FLOW_SRC_FILES                   flow/cwFlowValue.cpp flow/cwFlowTypes.cpp
 
 #-------------------------------------
 # cw
-set(  CW_HDR_FILES cw/cwMidiDetectors.h   cw/cwPianoScore.h   cw/cwPresetSel.h )
-set(  CW_SRC_FILES cw/cwMidiDetectors.cpp cw/cwPianoScore.cpp cw/cwPresetSel.cpp )
+set(  CW_HDR_FILES cw/cwMidiDetectors.h   cw/cwPianoScore.h   cw/cwPresetSel.h   cw/cwKeyStateMonitor.h )
+set(  CW_SRC_FILES cw/cwMidiDetectors.cpp cw/cwPianoScore.cpp cw/cwPresetSel.cpp cw/cwKeyStateMonitor.cpp )
   
 list( APPEND CW_HDR_FILES cw/cwScoreFollow2.h   cw/cwScoreFollow2Test.h   )
 list( APPEND CW_SRC_FILES cw/cwScoreFollow2.cpp cw/cwScoreFollow2Test.cpp )
