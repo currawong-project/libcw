@@ -768,8 +768,6 @@ namespace cw
 
 
 
-    void           _var_destroy( variable_t* var );
-
     bool           var_exists(      proc_t* proc, const char* label, unsigned sfx_id, unsigned chIdx );
     bool           var_has_value(   proc_t* proc, const char* label, unsigned sfx_id, unsigned chIdx );
     bool           var_is_a_source( proc_t* proc, const char* label, unsigned sfx_id, unsigned chIdx );
