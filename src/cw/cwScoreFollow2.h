@@ -71,7 +71,18 @@ namespace cw
 
     rc_t destroy( handle_t& hRef );
 
-    rc_t reset( handle_t h, unsigned beg_loc_id, unsigned end_loc_id );
+    // Note: post_gap_dur_sec is set to -1.0 if it is invalid or if this is the last segment in the score.
+    rc_t reset( handle_t h, unsigned beg_loc_id, unsigned end_loc_id, double post_gap_dur_sec=-1.0 );
+
+    typedef enum {
+      kInvalidStatusId,
+      kResetStatusId,
+      kSearchingStatusId,
+      kTrackingStatusId,
+      kFailedStatusId
+    } status_id_t;
+
+    const char* status_label( status_id_t status_id );
 
     rc_t on_new_note( handle_t h,
                       unsigned uid,
@@ -81,11 +92,14 @@ namespace cw
                       unsigned& loc_id_ref,
                       unsigned& meas_numb_ref,
                       unsigned& score_vel_ref,
-                      double&   loc_pct_ref ); // Unit percent of matched loc_id btwn beg/end of last reset range or -1 if loc_id_ref == kInvalidId
+                      double&   loc_pct_ref, // Unit percent of matched loc_id btwn beg/end of last reset range or -1 if loc_id_ref == kInvalidId
+                      status_id_t& status ); 
 
     // Decay the affinity window and if necessary trigger a cycle of async background processing
     rc_t do_exec( handle_t h, double sec );
 
+    bool is_done( handle_t h, double sec, double max_ioi_fact );
+    
     typedef struct rpt_str
     {
       unsigned matchN;      // count of matched notes

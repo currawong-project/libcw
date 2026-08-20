@@ -346,9 +346,11 @@ namespace cw
           unsigned          score_vel = -1;
           unsigned          meas_numb = -1;
           double            loc_pct   = -1;
+          status_id_t       status_id = kInvalidStatusId;
+          
           //printf("%f pitch:%i vel:%i\n",e->sec,e->pitch,e->vel);
           
-          if((rc = on_new_note( sfH, e->uid, e->sec, e->pitch, e->vel, loc_id, meas_numb, score_vel, loc_pct )) != kOkRC )
+          if((rc = on_new_note( sfH, e->uid, e->sec, e->pitch, e->vel, loc_id, meas_numb, score_vel, loc_pct, status_id )) != kOkRC )
           {
             rc = cwLogError(rc,"SF2 note processing failed on note UID:%i.",e->uid);
             goto errLabel;
