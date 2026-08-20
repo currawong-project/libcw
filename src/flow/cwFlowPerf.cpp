@@ -711,6 +711,9 @@ namespace cw
         kStartPlyrSegIdPId,
         kStartPId,
         kPlayPlyrIdPId,
+        kRPlayIdPId,
+        kRPlayFieldPId,
+        kRestartFlPId,       
         kClearPId,
         kResetPId,
         kPlayNowPlyrIdPId,
@@ -742,8 +745,8 @@ namespace cw
         unsigned msgN;     //  Count of records in msgA[]
         msg_t*   msgA;     //  msgA[ msgN ] -
 
-        unsigned  next_msg_idx;  // Next message to emit from this player or kInvalidId if this player is not active
-        unsigned  start_smp_idx; // 
+        unsigned  next_msg_idx;  // Next message to emit from this player or kInvalidIdx if this player is not active
+        unsigned  start_smp_idx; // The sample frame index that this player was started on
         unsigned* keyM;          // keyM[ kMidiChCnt*kMidiNoteCnt ] of last velocity for each note
         unsigned* ctlM;          // ctlM[ kMIdiChCnt*kMidiCtlCnt  ] of last control value for each contrl
 
@@ -767,12 +770,15 @@ namespace cw
         unsigned loc_fld_idx;
         unsigned meas_fld_idx;
         unsigned port_fld_idx;
-
+        unsigned play_id_fld_idx;
+        
         unsigned global_smp_idx; // Global current sample idx - incremented on each call to _exec()
         bool     start_trig_fl;
         bool     clear_trig_fl;
         bool     reset_trig_fl;        
         unsigned play_excl_trig_fl;
+
+        recd_type_t null_recd_type{ .fieldL=nullptr, .fieldN=0, .base=nullptr };
         
       } inst_t;
 
@@ -997,29 +1003,62 @@ namespace cw
 
       rc_t _create( proc_t* proc, inst_t* p )
       {
-        rc_t        rc                = kOkRC;
-        const char* cfg_fname         = nullptr;
-        const char* start_plyr_label  = nullptr;
-        unsigned    start_plyr_seg_id = kInvalidId;
-        bool        start_fl          = false;
-        unsigned    play_plyr_id      = kInvalidId;
-        bool        reset_fl          = false;
-        bool        clear_fl          = false;
-        unsigned    play_excl_plyr_id = kInvalidId;
-        unsigned    done_plyr_id      = kInvalidId;
+        rc_t          rc                = kOkRC;
+        const char*   cfg_fname         = nullptr;
+        const char*   start_plyr_label  = nullptr;
+        unsigned      start_plyr_seg_id = kInvalidId;
+        bool          start_fl          = false;
+        unsigned      play_plyr_id      = kInvalidId;
+        bool          reset_fl          = false;
+        bool          clear_fl          = false;
+        unsigned      play_excl_plyr_id = kInvalidId;
+        unsigned      done_plyr_id      = kInvalidId;
+        const rbuf_t* r_play_id_rbuf    = nullptr;
+        const char*   r_play_field      = nullptr;
+        bool          restart_fl        = false;
 
         if((rc = var_register_and_get(proc,kAnyChIdx,
-                                      kCfgFnamePId,      "cfg_fname",   kBaseSfxId, cfg_fname,
-                                      kStartPlyrLabelPId,"start_label", kBaseSfxId, start_plyr_label,
-                                      kStartPlyrSegIdPId,"start_seg_id",kBaseSfxId, start_plyr_seg_id,
-                                      kStartPId,         "start",       kBaseSfxId, start_fl,
-                                      kPlayPlyrIdPId,    "play_id",     kBaseSfxId, play_plyr_id,
-                                      kClearPId,         "clear",       kBaseSfxId, clear_fl,
-                                      kResetPId,         "reset",       kBaseSfxId, reset_fl,
-                                      kPlayNowPlyrIdPId, "play_excl_id",kBaseSfxId, play_excl_plyr_id,
-                                      kDonePlyrIdPId,    "done_id",     kBaseSfxId, done_plyr_id)) != kOkRC )
+                                      kCfgFnamePId,      "cfg_fname",    kBaseSfxId, cfg_fname,
+                                      kStartPlyrLabelPId,"start_label",  kBaseSfxId, start_plyr_label,
+                                      kStartPlyrSegIdPId,"start_seg_id", kBaseSfxId, start_plyr_seg_id,
+                                      kStartPId,         "start",        kBaseSfxId, start_fl,
+                                      kPlayPlyrIdPId,    "play_id",      kBaseSfxId, play_plyr_id,
+                                      kRPlayFieldPId,    "r_play_field", kBaseSfxId, r_play_field,
+                                      kRestartFlPId,     "restart_fl",   kBaseSfxId, restart_fl,                                      
+                                      kClearPId,         "clear",        kBaseSfxId, clear_fl,
+                                      kResetPId,         "reset",        kBaseSfxId, reset_fl,
+                                      kPlayNowPlyrIdPId, "play_excl_id", kBaseSfxId, play_excl_plyr_id,
+                                      kDonePlyrIdPId,    "done_id",      kBaseSfxId, done_plyr_id)) != kOkRC )
         {
+          rc = proc_error(proc,rc,"An error occurred while registering the proc. variables.");
           goto errLabel;
+        }
+
+        // if the 'r_play_id' record input variable has a value then it exists and is connected ...
+        if( var_has_value(proc, "r_play_id", kBaseSfxId, kAnyChIdx ) )
+        {
+          // ... register it and get a pointer to the incoming record buffer 
+          if((rc = var_register_and_get( proc, kAnyChIdx,kRPlayIdPId, "r_play_id", kBaseSfxId, r_play_id_rbuf )) != kOkRC )
+            goto errLabel;
+
+          if((p->play_id_fld_idx = recd_type_field_index( r_play_id_rbuf->type, r_play_field )) == kInvalidIdx )
+          {
+            rc = proc_error(proc,kEleNotFoundRC,"The field '%s' was not found on the input record on 'r_play_id'.");
+            goto errLabel;
+          }
+
+          proc_info(proc,"'r_play_id' is connected.");
+          
+        }
+        else
+        {
+          p->play_id_fld_idx = kInvalidIdx;
+          
+          proc_warn(proc,"The record input 'r_play_id' was found to be disconnected. This input will be ignored.");
+          
+          // ... otherwise give it an empty record buf to get by the post proc create variable value checker
+          if((rc = var_register_and_set( proc, "r_play_id", kBaseSfxId, kRPlayIdPId, kAnyChIdx, &p->null_recd_type, nullptr, 0, 0 )) != kOkRC )
+            goto errLabel;
         }
 
         if((rc = _parse_cfg_file(proc,p,cfg_fname)) != kOkRC )
@@ -1032,11 +1071,12 @@ namespace cw
           goto errLabel;
         }
 
+            
         
-        p->midi_fld_idx = recd_type_field_index( p->recd_array->type, "midi");
-        p->loc_fld_idx  = recd_type_field_index( p->recd_array->type, "mp_loc");
-        p->meas_fld_idx = recd_type_field_index( p->recd_array->type, "mp_meas");
-        p->port_fld_idx= recd_type_field_index( p->recd_array->type, "mp_port_id");
+        p->midi_fld_idx    = recd_type_field_index( p->recd_array->type, "midi");
+        p->loc_fld_idx     = recd_type_field_index( p->recd_array->type, "mp_loc");
+        p->meas_fld_idx    = recd_type_field_index( p->recd_array->type, "mp_meas");
+        p->port_fld_idx    = recd_type_field_index( p->recd_array->type, "mp_port_id");
         
 
       errLabel:
@@ -1065,10 +1105,17 @@ namespace cw
         return rc;
       }
 
+      bool _is_player_playing( const player_t* plyr )
+      {
+        return plyr->next_msg_idx != kInvalidIdx && plyr->start_smp_idx != kInvalidIdx && plyr->next_msg_idx < plyr->msgN;
+      }
+
       rc_t _start_player( proc_t* proc, inst_t* p, unsigned plyr_idx )
       {
         rc_t rc = kOkRC;
-        
+        bool restart_fl = false;
+
+        // validate the player index
         if( plyr_idx == kInvalidIdx)
         {
           rc = proc_error(proc,kInvalidArgRC,"An invalid player (%i) could not be started.",plyr_idx);
@@ -1081,10 +1128,24 @@ namespace cw
           goto errLabel;
         }
 
+        // get the 'restart_fl'
+        if((rc = var_get(proc,kRestartFlPId,kAnyChIdx,restart_fl)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Error accessing 'restart_fl'.");
+          goto errLabel;
+        }
+
+        // if the player is active and restart_fl is off then do not restart the player
+        if( restart_fl == false && _is_player_playing(p->playerA + plyr_idx))
+        {
+          rc = proc_info(proc,"Restart on player '%s' inhibited.",cwStringNullGuard(p->playerA[plyr_idx].label) );
+          goto errLabel;
+        }
+        
         p->playerA[ plyr_idx ].next_msg_idx = 0;
         p->playerA[ plyr_idx ].start_smp_idx = p->global_smp_idx;
 
-        proc_info(proc,"starting: %i %s",p->playerA[ plyr_idx ].id,p->playerA[ plyr_idx ].label);
+        proc_info(proc,"starting: %i %s",p->playerA[ plyr_idx ].id,cwStringNullGuard(p->playerA[ plyr_idx ].label));
         
       errLabel:
         return rc;
@@ -1325,6 +1386,9 @@ namespace cw
               p->play_excl_trig_fl = true;
               proc_info(proc,"%s : play_excl",cwStringNullGuard(proc->label));
               break;
+
+            case kRestartFlPId:
+              break;
           }
         }
         return rc;
@@ -1332,31 +1396,72 @@ namespace cw
 
       rc_t _exec( proc_t* proc, inst_t* p )
       {
-        rc_t    rc      = kOkRC;
-        rbuf_t* rbuf    = nullptr;
+        rc_t          rc     = kOkRC;
+        rbuf_t*       o_rbuf = nullptr;
+        const rbuf_t* i_rbuf = nullptr;
 
         
         // get the output variable
-        if((rc = var_get(proc,kOutPId,kAnyChIdx,rbuf)) != kOkRC )
+        if((rc = var_get(proc,kOutPId,kAnyChIdx,o_rbuf)) != kOkRC )
         {
-          rc = proc_error(proc,kInvalidStateRC,"The multi-player '%s' does not have a validoutput buffer.",proc->label);
+          rc = proc_error(proc,kInvalidStateRC,"The multi-player does not have a valid output record buffer.");
           goto errLabel;
         }
 
-        rbuf->recdA = p->recd_array->recdA;
-        rbuf->recdN = 0;
+        // if the r_play_id record input is being used ...
+        if(p->play_id_fld_idx != kInvalidIdx )
+        {
+          // ... then get the r_play_id record input buffer
+          if((rc = var_get(proc,kRPlayIdPId,kAnyChIdx,i_rbuf)) != kOkRC )
+          {
+            rc = proc_error(proc,kInvalidStateRC,"The multi-player does not have a valid 'r_play_id' input record buffer.");
+            goto errLabel;
+          }
+        }
+
+        o_rbuf->recdA = p->recd_array->recdA;
+        o_rbuf->recdN = 0;
         
         p->global_smp_idx += proc->ctx->framesPerCycle;
 
-        // do play-excl first because an early call to _do_reset() will set play_excl_trig_fl to false
+        
+        // handle play requests from incoming 'r_play_id' records first - to allow them to be overridden by exclusive play requests below
+        if( i_rbuf != nullptr )
+        {
+          
+          for(unsigned ri=0; ri<i_rbuf->recdN; ++ri)
+          {
+            unsigned player_id = kInvalidId;
+            unsigned player_idx = kInvalidIdx;
+            
+            // get the next player id
+            if((rc = recd_get(i_rbuf->type,i_rbuf->recdA + ri,p->play_id_fld_idx,player_id)) != kOkRC )
+            {
+              rc = proc_error(proc,rc,"An error occurred while accessing a player id input record.");
+              goto errLabel;
+            }
+
+            // convert the player id to an index
+            if((player_idx = _player_id_to_index(p,player_id)) == kInvalidIdx )
+            {
+              rc = proc_error(proc,kInvalidArgRC,"The 'player_id' %i is not valid.",player_id);
+              goto errLabel;
+            }
+
+            // start the player
+            _start_player(proc, p, player_idx );
+          }
+        }
+        
+        
+        // do play-excl now because an early call to _do_reset() will set play_excl_trig_fl to false
         if( p->play_excl_trig_fl  )
         {
           unsigned play_excl_id = kInvalidId;
           
           if( var_get(proc,kPlayNowPlyrIdPId,kAnyChIdx,play_excl_id) == kOkRC )
-          {
-          
-            _do_reset(proc, p, rbuf );
+          {          
+            _do_reset(proc, p, o_rbuf );
 
             if( play_excl_id != kInvalidId )
               _start_player(proc, p, _player_id_to_index(p,play_excl_id));
@@ -1364,16 +1469,16 @@ namespace cw
           
           p->play_excl_trig_fl = false;
         }
-        
+
         if( p->clear_trig_fl )
         {
-          _do_clear(proc, p,rbuf);
+          _do_clear(proc, p,o_rbuf);
           p->clear_trig_fl = false;
         }
         
         if( p->reset_trig_fl )
         {
-          _do_reset(proc,p,rbuf );
+          _do_reset(proc,p,o_rbuf );
           p->reset_trig_fl = false;
         }
         
@@ -1382,37 +1487,43 @@ namespace cw
           _on_start_trigger(proc,p);
           p->start_trig_fl = false;
         }
+
         
+        // update each active player
         for(unsigned i=0; i<p->playerN; ++i)
         {
           player_t* plyr           = p->playerA + i;
-          unsigned  player_smp_idx = p->global_smp_idx - plyr->start_smp_idx;
-          
-          if( plyr->next_msg_idx != kInvalidIdx && plyr->next_msg_idx < plyr->msgN && player_smp_idx >= plyr->msgA[ plyr->next_msg_idx ].sample_idx )
+
+          // if this player is active
+          if( _is_player_playing(plyr) )
           {
-            msg_t* msg = plyr->msgA + plyr->next_msg_idx;
-            
-            if((rc = _set_output_record(proc,p, plyr, rbuf, &msg->midi, msg->meas, plyr->port_id, msg->loc )) != kOkRC )
+            // get the current global time relative to this players start time
+            unsigned  player_smp_idx = p->global_smp_idx - plyr->start_smp_idx;
+
+            // while the player has expired messages
+            while( player_smp_idx >= plyr->msgA[ plyr->next_msg_idx ].sample_idx )
             {
-              proc_error(proc,rc,"Player output failed on '%s'.",cwStringNullGuard(proc->label));
-              goto errLabel;
-            }
-
-            plyr->next_msg_idx += 1;
-
-            //printf("%i %i\n",plyr->id,plyr->next_msg_idx);
+              msg_t* msg = plyr->msgA + plyr->next_msg_idx;
             
-            if( plyr->next_msg_idx >= plyr->msgN )
-            {
-              //printf("DONE:%i\n",plyr->id);
-              var_set(proc,kDonePlyrIdPId,kAnyChIdx,plyr->id);
-              
-              
-              plyr->next_msg_idx = kInvalidIdx;
-              plyr->start_smp_idx = kInvalidIdx;
-              
-            }
+              if((rc = _set_output_record(proc,p, plyr, o_rbuf, &msg->midi, msg->meas, plyr->port_id, msg->loc )) != kOkRC )
+              {
+                proc_error(proc,rc,"Player output failed on '%s'.",cwStringNullGuard(proc->label));
+                goto errLabel;
+              }
 
+              plyr->next_msg_idx += 1;
+
+              // if this player is done
+              if( plyr->next_msg_idx >= plyr->msgN )
+              {
+              
+                var_set(proc,kDonePlyrIdPId,kAnyChIdx,plyr->id);              
+              
+                plyr->next_msg_idx = kInvalidIdx;
+                plyr->start_smp_idx = kInvalidIdx;
+                break;
+              }
+            }
           }
         }
 
