@@ -1765,11 +1765,20 @@ namespace cw
         for(unsigned pi=0; pi<p->in_port_cnt; ++pi)
         {
           const rbuf_t* i_rbuf = nullptr;
+          rbuf_t* o_rbuf = nullptr;
+              
           
           if((rc = var_get(proc,kInBasePId+pi,kAnyChIdx,i_rbuf)) != kOkRC )
           {
             goto errLabel;
           }
+          
+          if((rc = var_get(proc,kOutPId,kAnyChIdx,o_rbuf)) != kOkRC )
+          {
+            goto errLabel;
+          }
+          
+          o_rbuf->recdN = 0;
 
           for(unsigned i=0; i<i_rbuf->recdN; ++i)
           {
@@ -1802,11 +1811,6 @@ namespace cw
             // if any triggers fired
             if( target_cnt )
             {
-              rbuf_t* o_rbuf = nullptr;
-              
-              if((rc = var_get(proc,kOutPId,kAnyChIdx,o_rbuf)) != kOkRC )
-                goto errLabel;
-
               // get the array of triggers that fired
               if((trigA = trigger_array( p->ksmH, target_cnt )) != nullptr )
               {
@@ -1814,7 +1818,7 @@ namespace cw
                 for(unsigned j=0; j<target_cnt && j<p->recd_array->allocRecdN; ++j)
                 {
                   recd_set( o_rbuf->type, nullptr, p->recd_array->recdA + j, p->trig_id_fld_idx, trigA[j].id );
-                  o_rbuf->recdN = j;
+                  o_rbuf->recdN += 1;
                 }
               }
             }
