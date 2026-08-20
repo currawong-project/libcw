@@ -949,8 +949,16 @@ cw::flow::external_device_t* cw::flow::external_device_find( flow_t* p, const ch
         && cwIsFlag(p->deviceA[i].flags,inOrOutFl)
         && (midiPortLabel==nullptr || cw::textIsEqual(p->deviceA[i].portLabel,midiPortLabel)) )
       return p->deviceA + i;
-  
-  cwLogError(kInvalidArgRC,"The %s device named '%s' could not be found.", cwIsFlag(inOrOutFl,kInFl) ? "in" : "out", device_label );
+
+  const char* midi_port_label = "";
+  const char* colon = "";
+  if( midiPortLabel != nullptr )
+  {
+    colon = ":";
+    midi_port_label = midiPortLabel;    
+  }
+    
+  cwLogError(kInvalidArgRC,"The %s device named '%s%s%s' could not be found.", cwIsFlag(inOrOutFl,kInFl) ? "in" : "out", device_label,colon,midi_port_label );
   
   return nullptr;
 }
