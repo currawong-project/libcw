@@ -45,11 +45,13 @@ namespace cw
       enum {
         kCfgFnamePId,
         kSfLocPId,
+        kSfDoneFlPId,
         kGotoMeasPId,
         kGotoSectionPId,
         kGotoLocPId,
         kBegLocSfPId,
         kEndLocSfPId,
+        kPostGapSecSfPId,
         kResetSfPId
       };
 
@@ -70,7 +72,8 @@ namespace cw
         unsigned beg_loc;
         unsigned end_loc;
         unsigned piano_id;
-        unsigned player_id;        
+        double   post_gap_dur_sec;  // last record is set to -1
+        //unsigned player_id;        
       } recd_t;
       
       typedef struct
@@ -85,11 +88,10 @@ namespace cw
         unsigned       sect_locN;
         
         unsigned cur_recd_idx;
-        unsigned cur_loc_id;
         unsigned loc_fld_idx;
 
         list_t*  section_list;
-
+        bool exec_done_fl;
         
       } inst_t;
 
@@ -98,8 +100,7 @@ namespace cw
             "beg_loc": 0,
             "end_loc": 251,
             "player_id": 4,
-            "player_label": "AK",
-            "color": "purple",
+            "post_gap_dur_sec": "23.32",
             "piano_id": 0
           },
 
@@ -209,7 +210,7 @@ namespace cw
           if((rc = r_cfg->getv("beg_loc",   r->beg_loc,
                                "end_loc",   r->end_loc,
                                "piano_id",  r->piano_id,
-                               "player_id", r->player_id )) != kOkRC )
+                               "post_gap_dur_sec", r->post_gap_dur_sec )) != kOkRC )
           {
             rc = proc_error(proc,rc,"Error parsing cfg record at index:%i",i);
             goto errLabel;
@@ -330,7 +331,10 @@ namespace cw
         rc_t rc = kOkRC;
         if( recd_idx >= p->recdN )
         {
-          rc= proc_error(proc,kInvalidArgRC,"Requested range record invalid %i >= %i.",recd_idx,p->recdN);
+          if( recd_idx == p->recdN )
+            proc_info(proc,"End-of-score encountered. Done!");
+          else
+            rc= proc_error(proc,kInvalidArgRC,"Requested range record invalid %i >= %i.",recd_idx,p->recdN);
           goto errLabel;
         }
         else
@@ -342,11 +346,13 @@ namespace cw
         
           var_set(proc,kBegLocSfPId,kAnyChIdx,next_loc );
           var_set(proc,kEndLocSfPId,kAnyChIdx,r->end_loc );
+          var_set(proc,kPostGapSecSfPId,kAnyChIdx,r->post_gap_dur_sec);
           var_set(proc,kResetSfPId, kAnyChIdx,true );
 
           p->cur_recd_idx = recd_idx;
-
-          proc_info(proc,"The 'gutim_2_sf_ctl' has set to range: %i - %i.",r->beg_loc,r->end_loc);
+          p->exec_done_fl = false;
+          
+          //proc_info(proc,"New range: %i - %i.",next_loc,r->end_loc);
 
         }
       errLabel:
@@ -369,7 +375,6 @@ namespace cw
         {
           rc = proc_error(proc,kInvalidArgRC,"The 'goto' location '%i' is not valid.",loc);
           p->cur_recd_idx = kInvalidIdx;
-          p->cur_loc_id = kInvalidIdx;
         }
         
         return rc;
@@ -444,13 +449,14 @@ namespace cw
         
       }
 
+      
       rc_t _on_sf_loc(proc_t* proc, inst_t* p, unsigned loc_id )
       {
         rc_t rc = kOkRC;
 
-        if( loc_id == p->cur_loc_id )
+        if( loc_id == kInvalidId )
           return rc;
-        
+
         if( p->cur_recd_idx == kInvalidIdx )
         {          
           proc_warn(proc,"The 'gutim_2_sf_ctl' does not have a valid tracking range."); 
@@ -468,10 +474,14 @@ namespace cw
           // if we are at, or past, the end of the current range
           if( loc_id >= p->recdA[ p->cur_recd_idx ].end_loc )
           {
-            // if a next range exists
-            if( p->cur_recd_idx+1 < p->recdN )
-            {             
-              _setup_sf(proc,p,p->cur_recd_idx + 1, loc_id+1);
+            // if no next range exists
+            if( p->cur_recd_idx+1 >= p->recdN )
+            {
+              proc_info(proc,"Preparing to encounter end-of-score.");
+            }
+            else
+            {
+              //proc_info(proc,"loc:%i cur-end-loc:%i At the end of the SF segment. Waiting for transition.",loc_id,p->recdA[ p->cur_recd_idx ].end_loc);
               
               ok_fl = true;
             }
@@ -479,7 +489,7 @@ namespace cw
 
           if( !ok_fl )
           {
-            proc_info(proc,"SF loc %i out of range (%i %i)\n",loc_id,p->recdA[p->cur_recd_idx].beg_loc,p->recdA[p->cur_recd_idx].end_loc);
+            proc_info(proc,"SF loc %i out of range (%i %i)",loc_id,p->recdA[p->cur_recd_idx].beg_loc,p->recdA[p->cur_recd_idx].end_loc);
           }
           
         }
@@ -487,6 +497,30 @@ namespace cw
         
         return rc;
       }
+
+      rc_t _on_sf_done(proc_t* proc, inst_t* p)
+      {
+        rc_t rc = kOkRC;
+        bool done_fl=false;
+        if((rc = var_get(proc,kSfDoneFlPId,kAnyChIdx,done_fl)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"'done_fl' access failed.");
+          goto errLabel;
+        }
+
+        if( done_fl )
+        {
+          double post_gap_sec = -1;
+          var_get(proc,kPostGapSecSfPId,kAnyChIdx,post_gap_sec);
+          proc_info(proc,"Post SF gap wait: %5.1f secs",post_gap_sec);
+          _setup_sf(proc,p,p->cur_recd_idx + 1);
+        }
+
+      errLabel:
+        return rc;
+      }
+
+
       
       rc_t _create( proc_t* proc, inst_t* p )
       {
@@ -496,12 +530,13 @@ namespace cw
         unsigned      goto_loc = kInvalidId;
         unsigned      goto_meas = 0;
         unsigned      goto_sect = 0;
+        bool          sf_done_fl = false;
 
         p->cur_recd_idx = kInvalidIdx;
-        p->cur_loc_id = kInvalidIdx;
         
         if((rc = var_register_and_get(proc,kAnyChIdx,
                                       kSfLocPId,   "sf_loc",   kBaseSfxId, rbuf,
+                                      kSfDoneFlPId,       "sf_done_fl",   kBaseSfxId, sf_done_fl,
                                       kGotoMeasPId,    "goto_meas",    kBaseSfxId, goto_meas,
                                       kGotoSectionPId, "goto_section", kBaseSfxId, goto_sect,
                                       kGotoLocPId,     "goto_loc",     kBaseSfxId, goto_loc,
@@ -513,6 +548,7 @@ namespace cw
         if((rc = var_register(proc,kAnyChIdx,
                               kBegLocSfPId, "sf_beg_loc",   kBaseSfxId,
                               kEndLocSfPId, "sf_end_loc",   kBaseSfxId,
+                              kPostGapSecSfPId, "sf_post_gap_sec", kBaseSfxId,
                               kResetSfPId,  "sf_reset_fl",  kBaseSfxId )) != kOkRC )
         {
           goto errLabel;
@@ -538,6 +574,7 @@ namespace cw
         return rc;
       }
 
+
       rc_t _destroy( proc_t* proc, inst_t* p )
       {
         rc_t rc = kOkRC;
@@ -557,6 +594,10 @@ namespace cw
         {
           switch( var->vid )
           {
+            case kSfDoneFlPId:
+              p->exec_done_fl = true;
+              break;
+              
             case kGotoMeasPId:
               _goto_meas(proc,p,var);
               break;
@@ -603,6 +644,15 @@ namespace cw
           _on_sf_loc(proc,p,loc_id);
           
         }
+
+        // check for 'done' from the SF after all the incoming loc's are processed otherwise
+        // the segment boundaries will will be updated and the incoming loc's may be out of range.
+        if( p->exec_done_fl )
+        {
+          _on_sf_done(proc,p);
+          p->exec_done_fl = false;
+        }
+        
         errLabel:
         
         return rc;
@@ -668,7 +718,6 @@ namespace cw
         unsigned number;
         double   start_sec;
         unsigned msg_idx;
-        unsigned msg_cnt;
       } meas_t;
 
       typedef struct port_str {
@@ -769,8 +818,7 @@ namespace cw
           
           if((rc = meas_cfg->getv("number",    meas->number,
                                   "start_sec", meas->start_sec,
-                                  "msg_idx",   meas->msg_idx,                                  
-                                  "msg_cnt",   meas->msg_cnt)) != kOkRC )
+                                  "msg_idx",   meas->msg_idx)) != kOkRC )
           {
             rc = proc_error(proc,rc,"Error parsing the measure header record at index:%i.",i);
             goto errLabel;
@@ -1492,12 +1540,13 @@ namespace cw
           
           var_get(proc,kMeasPId,kAnyChIdx,cur_meas_numb);
           
-
-
           // while there are expired msgs 
           while( p->next_msg_idx < p->msgN && p->msgA[ p->next_msg_idx].smp_idx <= p->cur_smp_idx )
           {
             msg_t* msg = p->msgA + p->next_msg_idx;
+
+            //if( msg->meas_numb == 202 && midi::isNoteOn( msg->midi_ch_msg.status, msg->midi_ch_msg.d1) )
+            //  printf("%6.3f %i : %i : %i\n",msg->sec,msg->smp_idx,msg->midi_ch_msg.d0,p->cur_smp_idx-msg->smp_idx);
 
             // add the msg to the output record buffer
             if((rc = _set_output_record(proc,p, o_rbuf, msg->meas_numb, msg->port_id, &msg->midi_ch_msg )) != kOkRC )
@@ -1521,6 +1570,7 @@ namespace cw
           if( p->next_msg_idx >= p->msgN )
           {
             proc_info(proc,"Last timeline message sent.");
+            _on_stop( proc, p, o_rbuf );
           }
 
           // advance time

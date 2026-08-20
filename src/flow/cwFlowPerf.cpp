@@ -3285,13 +3285,16 @@ namespace cw
         kFnamePId,
         kBegLocPId,
         kEndLocPId,
+        kPostGapSecPId,
         kMaxLocPId,
         kResetTrigPId,
         kEnableFlPId,
         kLocPctPId,
         kLastLocPId,
         kLastMeasPId,
+        kStatusPId,
         kDVelPId,
+        kDoneFlPId,
         kLocLogFlPId,
         kPrintFlPId,
         kOutPId,
@@ -3301,6 +3304,7 @@ namespace cw
       {
         cw::perf_score::handle_t       scoreH;
         cw::score_follow_2::handle_t   sfH;
+        cw::score_follow_2::status_id_t sf_status_id;
         unsigned                       i_midi_field_idx;
         //unsigned                       o_midi_field_idx;
         unsigned                       loc_field_idx;
@@ -3310,7 +3314,9 @@ namespace cw
         unsigned                       cur_loc_id;
         unsigned                       cur_meas_numb;
         bool                           enable_fl;
+        bool                           done_fl;
         bool                           loc_log_fl;
+        double                         max_ioi_fact;
       } inst_t;
 
 
@@ -3322,8 +3328,11 @@ namespace cw
         char*                  score_fname          = nullptr;
         unsigned               beg_loc_id = kInvalidId;
         unsigned               end_loc_id = kInvalidId;
+        double                 post_gap_sec = 0.0;
         bool                   reset_trig_fl = false;
-        
+        bool                   done_fl = false;
+
+        p->max_ioi_fact = 1.5;
         float dvel = 1.0;
         cw::score_follow_2::args_t sf_args = {
           .pre_affinity_sec = 1.0,
@@ -3346,9 +3355,11 @@ namespace cw
                                       kFnamePId,      "score_fname",   kBaseSfxId, c_score_fname,
                                       kBegLocPId,     "b_loc",         kBaseSfxId, beg_loc_id,
                                       kEndLocPId,     "e_loc",         kBaseSfxId, end_loc_id,
+                                      kPostGapSecPId, "post_gap_sec",  kBaseSfxId, post_gap_sec,
                                       kResetTrigPId,  "reset_trigger", kBaseSfxId, reset_trig_fl,
                                       kEnableFlPId,   "enable_fl",     kBaseSfxId, p->enable_fl,
                                       kDVelPId,       "dvel",          kBaseSfxId, dvel,
+                                      kDoneFlPId,     "done_fl",       kBaseSfxId, done_fl,
                                       kLocLogFlPId,   "loc_log_fl",    kBaseSfxId, p->loc_log_fl,
                                       kPrintFlPId,    "print_fl",      kBaseSfxId, sf_args.rpt_fl )) != kOkRC )
         {
@@ -3384,6 +3395,7 @@ namespace cw
                                       kLocPctPId, "loc_pct", kBaseSfxId, 0.0,
                                       kLastLocPId,"last_loc", kBaseSfxId, 0,
                                       kLastMeasPId,"last_meas", kBaseSfxId, 0,
+                                      kStatusPId, "status", kBaseSfxId, "",
                                       kMaxLocPId, "loc_cnt",  kBaseSfxId, max_loc_id(p->sfH) )) != kOkRC )
         {
           goto errLabel;
@@ -3422,6 +3434,7 @@ namespace cw
         rc_t rc = kOkRC;
         unsigned beg_loc_id;
         unsigned end_loc_id;
+        double   post_gap_sec;
 
         if((rc = var_get(proc,kBegLocPId,kAnyChIdx,beg_loc_id)) != kOkRC )
         {
@@ -3435,16 +3448,28 @@ namespace cw
           goto errLabel;
         }
 
-        if((rc = reset(p->sfH,beg_loc_id,end_loc_id)) != kOkRC )
+        if((rc = var_get(proc,kPostGapSecPId,kAnyChIdx,post_gap_sec)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"end_loc read failed.");
+          goto errLabel;
+        }
+        
+        if((rc = reset(p->sfH,beg_loc_id,end_loc_id,post_gap_sec)) != kOkRC )
         {
           rc = proc_error(proc,rc,"Score follower reset failed..");
           goto errLabel;          
         }
 
+        if((rc = var_set(proc,kDoneFlPId,kAnyChIdx,false)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"done_fl clear failed.");
+          goto errLabel;
+        }
+
         p->cur_loc_id = kInvalidId;
         p->cur_meas_numb = 0;
 
-        proc_info(proc,"SF (%s) reset:%i %i",proc->label, beg_loc_id,end_loc_id);
+        proc_info(proc,"SF reset: beg:%i end:%i",beg_loc_id,end_loc_id);
 
       errLabel:
 
@@ -3519,7 +3544,8 @@ namespace cw
         double        sec             = ((double)sample_idx) / proc->ctx->sample_rate;
         const rbuf_t* i_rbuf          = nullptr;
         rbuf_t*       o_rbuf          = nullptr;
-
+        bool          done_fl         = false;
+        
         if((rc = var_get(proc,kInPId,kAnyChIdx,i_rbuf)) != kOkRC )
           goto errLabel;
 
@@ -3539,11 +3565,12 @@ namespace cw
           // for each incoming record
           for(unsigned i=0; i<i_rbuf->recdN; ++i)
           {
-            midi::ch_msg_t* m         = nullptr;
-            unsigned        loc_id    = kInvalidId;
-            unsigned        score_vel = -1;
-            unsigned        meas_numb = -1;
-            double          loc_pct   = -1;
+            midi::ch_msg_t*                   m         = nullptr;
+            unsigned                          loc_id    = kInvalidId;
+            unsigned                          score_vel = -1;
+            unsigned                          meas_numb = -1;
+            double                            loc_pct   = -1;
+            cw::score_follow_2::status_id_t sf_status_id    = cw::score_follow_2::kInvalidStatusId;
 
             if((rc = recd_get( i_rbuf->type, i_rbuf->recdA+i, p->i_midi_field_idx, m)) != kOkRC )
             {
@@ -3551,15 +3578,21 @@ namespace cw
               goto errLabel;
             }
 
+            //printf("SF: %s : %i %i %i %i\n",proc->label,m->uid,m->status,m->d0,m->d1);
+            
             if( midi::isNoteOn( m->status, m->d1 ) )
             {
-              
-              //printf("%s : %i %i %i %i\n",proc->label,m->uid,m->status,m->d0,m->d1);
             
-              if((rc = on_new_note( p->sfH, m->uid, sec, m->d0, m->d1, loc_id, meas_numb, score_vel, loc_pct )) != kOkRC )
+              if((rc = on_new_note( p->sfH, m->uid, sec, m->d0, m->d1, loc_id, meas_numb, score_vel, loc_pct, sf_status_id )) != kOkRC )
               {
                 rc = proc_error(proc,rc,"Score follower note processing failed.");
                 goto errLabel;              
+              }
+
+              if( sf_status_id != p->sf_status_id )
+              {
+                //var_set(proc,kStatusPId,kAnyChIdx,cw::score_follow_2::status_label(sf_status_id));
+                p->sf_status_id = sf_status_id;
               }
 
               if( loc_id != kInvalidId )
@@ -3597,7 +3630,18 @@ namespace cw
           
           }
         }
-        do_exec(p->sfH,sec);
+
+        if((rc = var_get(proc,kDoneFlPId,kAnyChIdx,done_fl)) == kOkRC && done_fl == false )
+        {
+          do_exec(p->sfH,sec);
+
+          if( is_done(p->sfH, sec, p->max_ioi_fact  ) )
+          {
+            proc_info(proc,"SF Done detected.");
+            var_set(proc,kDoneFlPId,kAnyChIdx,true);
+          }
+        }
+
         
       errLabel:
         return rc;
