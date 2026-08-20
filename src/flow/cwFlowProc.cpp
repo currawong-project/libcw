@@ -1328,7 +1328,7 @@ namespace cw
 
         if((p->ext_dev = external_device_find( proc->ctx, dev_label, kMidiDevTypeId, kOutFl, port_label )) == nullptr )
         {
-          rc = proc_error(proc,kOpFailRC,"The audio output device description '%s' could not be found.", cwStringNullGuard(dev_label));
+          rc = proc_error(proc,kOpFailRC,"The MIDI output device description '%s' could not be found.", cwStringNullGuard(dev_label));
           goto errLabel;
         }
         
@@ -7634,10 +7634,11 @@ namespace cw
         {
           var_set( proc, kOutTypePId, kAnyChIdx, out_type_label );
         }
-                  
+        
         // Create the output variable
         if((rc = var_create( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, out_type_fl, first_in_var )) != kOkRC )
         {
+          rc = proc_error(proc,rc,"'out' variable re-create failed.");
           goto errLabel;
         }
         
