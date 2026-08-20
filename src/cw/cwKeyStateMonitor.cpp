@@ -498,8 +498,6 @@ namespace cw
           src->target = p->targetA + tgt_idx;   // set the target and port pointer on the new source record
           src->port   = p->portA + port_idx;    //
 
-          src->link = src->target->source_list; // put the source on the target list
-          src->target->source_list = src;
 
           // load the new source recd from the cfg
           if((rc = _parse_source(p,src,src_cfg)) != kOkRC )
@@ -554,11 +552,33 @@ namespace cw
         rc = cwLogError(rc,"The key-state-monitor cfg. file parse failed.");
           
       return rc;
-    }
+    }    
 
     bool _source_compare( const source_t& s0, const source_t& s1 )
     {
       return s0.beg_loc < s1.beg_loc;
+    }
+
+    void _sort_and_link_sources( ksm_t* p )
+    {
+      // sort the portA[].sourceA[] 
+      for(unsigned port_idx = 0; port_idx < p->portN; ++port_idx)
+        std::sort(p->portA[port_idx].sourceA,p->portA[port_idx].sourceA + p->portA[port_idx].sourceN, _source_compare );
+
+      // build the target->source_list
+      for(target_t* t=p->targetA; t<p->targetA+p->targetN; ++t)
+      {
+        for(port_t* port=p->portA; port<p->portA+p->portN; ++port)
+        {
+          for(source_t* s=port->sourceA; s<port->sourceA + port->sourceN; ++s)            
+            if( textIsEqual(s->target->label,t->label) )
+            {
+              assert( s->link == nullptr );
+              s->link = s->target->source_list;
+              s->target->source_list = s;
+            }
+        }
+      }
     }
 
     rc_t _parse_cfg_file( ksm_t* p, const char* fname )
@@ -578,9 +598,7 @@ namespace cw
         goto errLabel;
       }
 
-      // sort the portA[].sourceA[] 
-      for(unsigned port_idx = 0; port_idx < p->portN; ++port_idx)
-        std::sort(p->portA[port_idx].sourceA,p->portA[port_idx].sourceA + p->portA[port_idx].sourceN, _source_compare );
+      _sort_and_link_sources(p);
       
     errLabel:
       if( rc != kOkRC )
@@ -592,13 +610,20 @@ namespace cw
       return rc;      
     }
 
-    void _set_state( source_t* src, state_id_t state_id )
+    void _set_state( source_t* src, state_id_t state_id, unsigned smp_idx )
     {
-      cwLogInfo("KSM: %s : %s %s",_state_id_to_label(state_id),src->target->label,src->label);
-      src->state_id = state_id;
+      if( src->state_id != state_id )
+      {
+        cwLogInfo("%i KSM: %s : %s %s",
+                  smp_idx,
+                  _state_id_to_label(state_id),
+                  src->target->label,
+                  src->label);
+        src->state_id = state_id;
+      }
     }
 
-    rc_t _on_port_loc(ksm_t* p, port_t* port, unsigned loc_id)
+    rc_t _on_port_loc(ksm_t* p, port_t* port, unsigned loc_id, unsigned smp_idx)
     {
       rc_t rc = kOkRC;
       for(unsigned si=0; si<port->sourceN; ++si)
@@ -607,7 +632,7 @@ namespace cw
         
         if( src->state_id == kPendingStateId && src->beg_loc <= loc_id and loc_id <= src->end_loc )
         {
-          _set_state(src,kPrimedStateId);
+          _set_state(src,kPrimedStateId,smp_idx);
         }
       }
       return rc;
@@ -675,7 +700,7 @@ namespace cw
       }
 
     }
-    void _update_port_state( ksm_t* p, unsigned smp_idx, port_t* port, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
+    void _update_port_midi_state( ksm_t* p, unsigned smp_idx, port_t* port, uint8_t ch, uint8_t status, uint8_t d0, uint8_t d1 )
     {
       switch( status )
       {
@@ -756,14 +781,18 @@ namespace cw
     {
       rc_t rc = kOkRC;
 
+      // verify that the MIDI values are valid
       if( ch>=midi::kMidiChCnt || d0>=midi::kMidiNoteCnt || d1>127 )
         return cwLogError(kInvalidArgRC,"An invalid MIDI value was encountered: ch:%i status:%i d0:%i d1:%i",ch,status,d0,d1); 
-      
+
+      // convert note-on vel=0 to note-off
       if( status == midi::kNoteOnMdId && d1==0 )
         status = midi::kNoteOffMdId;
 
-      _update_port_state(p, smp_idx, port, ch, status, d0, d1 );
-      
+      // track the keyboard and pedal state on this port
+      _update_port_midi_state(p, smp_idx, port, ch, status, d0, d1 );
+
+      // update the state of each source assigned to this port
       for(unsigned si=0; si<port->sourceN; ++si)
       {
         source_t* src = port->sourceA + si;
@@ -783,7 +812,7 @@ namespace cw
           if(    ((src->trig_flags & kNoteOnAttrFl)  == (src->attr_flags & kNoteOnAttrFl)) && 
                  ((src->trig_flags & kNoteOffAttrFl) == (src->attr_flags & kNoteOffAttrFl)) )
           {
-            _set_state(src,kKeyPedalUpStateId);
+            _set_state(src,kKeyPedalUpStateId,smp_idx);
           }
         }
 
@@ -792,12 +821,12 @@ namespace cw
         {
           _update_pedal_key_state(src,smp_idx);
 
-          // if the 
+          // if the key/pedal state has been acheived
           if(    ((src->trig_flags & kDampUpAttrFl) == (src->attr_flags & kDampUpAttrFl)) && 
                  ((src->trig_flags & kSostUpAttrFl) == (src->attr_flags & kSostUpAttrFl)) &&
                  ((src->trig_flags & kKeysUpAttrFl) == (src->attr_flags & kKeysUpAttrFl)) )
           {
-            _set_state(src,kTrigDelayStateId);
+            _set_state(src,kTrigDelayStateId,smp_idx);
             src->trig_delay_start_smp = smp_idx;
           }          
         }
@@ -808,14 +837,15 @@ namespace cw
           // if the delay has expired
           if( smp_idx >= src->trig_delay_start_smp && (smp_idx - src->trig_delay_start_smp) > src->trig_delay_smp )
           {
-            // mark all source that detect for this target as superceded
-            for(source_t* s = src->target->source_list; s!=nullptr; s=s->link)
-              if( s != src )
-                _set_state(s,kSupercededStateId);
-
             // mark this source as having triggered the target
-            _set_state(src,kTriggeredStateId);
+            _set_state(src,kTriggeredStateId,smp_idx);
             
+            // mark all other sources assigned to this target as 'superceded'
+            for(source_t* s = src->target->source_list; s!=nullptr; s=s->link)
+              if( s->state_id != kTriggeredStateId )
+                _set_state(s,kSupercededStateId,smp_idx);
+
+            // insert the trigger in the output buffer for pickup by the client
             if( p->cur_trig_cnt >= p->triggerN )
               rc = cwLogError(kInvalidStateRC,"The trigger count %i exceeded the trigger buffer size %i.",p->cur_trig_cnt,p->triggerN);
             else
@@ -942,7 +972,7 @@ cw::rc_t cw::key_state_monitor::on_msg( handle_t h, unsigned smp_idx, unsigned p
   
   if( loc_id != kInvalidId )
   {
-    rc = _on_port_loc(p,port,loc_id);
+    rc = _on_port_loc(p,port,loc_id,smp_idx);
   }
 
   if( status != midi::kInvalidStatusMdId )
