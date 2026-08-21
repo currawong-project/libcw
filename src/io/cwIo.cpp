@@ -3902,6 +3902,15 @@ cw::rc_t cw::io::uiCreateCheck(      handle_t h, unsigned& uuIdRef, unsigned par
   return rc;  
 }
 
+cw::rc_t cw::io::uiCreateStatus(     handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title  )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc  = ui::createStatus(uiH,uuIdRef,parentUuId,eleName,appId,chanId,clas,title);
+  return rc;  
+}
+
 cw::rc_t cw::io::uiCreateSelect(     handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
 {
   rc_t         rc;
@@ -4054,6 +4063,16 @@ cw::rc_t cw::io::uiSetProgRange( handle_t h, unsigned uuId, double minValue, dou
     rc = ui::setProgRange(uiH,uuId,minValue,maxValue,value);
   return rc;
 }
+
+cw::rc_t cw::io::uiAttachStatusState( handle_t h, unsigned uuId, const char* label, unsigned value, const char* color )
+{
+  rc_t         rc;
+  ui::handle_t uiH;
+  if((rc = _handleToUiHandle(h,uiH)) == kOkRC )
+    rc = ui::attachStatusState(uiH,uuId,label,value,color);
+  return rc;
+}
+
 
 cw::rc_t cw::io::uiSetLogLine(     handle_t h, unsigned uuId, const char* text )
 {
