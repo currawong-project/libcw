@@ -1360,7 +1360,7 @@ namespace cw
         return kOkRC;
       }
 
-      void _send_msg( inst_t* p, bool  print_fl, bool enable_fl, const midi::ch_msg_t* m )
+      void _send_msg( proc_t* proc, inst_t* p, bool  print_fl, bool enable_fl, const midi::ch_msg_t* m )
       {
         //if( midi::isNoteOn(m->status,m->d1) )
         //  printf("mo:%i %s\n",m->d0,midi::midiToSciPitch(m->d0));
@@ -1371,7 +1371,7 @@ namespace cw
         
         if( print_fl )
         {
-          cwLogPrint("%2i 0x%2x %3i %3i : %s %s\n",m->ch, m->status, m->d0, m->d1, cwStringNullGuard(p->ext_dev->devLabel),cwStringNullGuard(p->ext_dev->portLabel));
+          proc_info(proc,"%2i 0x%2x %3i %3i : %s %s\n",m->ch, m->status, m->d0, m->d1, cwStringNullGuard(p->ext_dev->devLabel),cwStringNullGuard(p->ext_dev->portLabel));
         }
       }
       
@@ -1399,7 +1399,7 @@ namespace cw
               const midi::ch_msg_t* m = nullptr;
 
               if((rc = recd_get(rbuf->type,r,p->midi_fld_idx,m)) == kOkRC )
-                _send_msg(p,print_fl,enable_fl,m);
+                _send_msg(proc,p,print_fl,enable_fl,m);
               else
               {
                 rc = proc_error(proc,rc,"Record 'midi' field read failed.");
@@ -1419,7 +1419,7 @@ namespace cw
           {
             for(unsigned i=0; i<src_mbuf->msgN; ++i)
             {
-              _send_msg(p,print_fl,enable_fl,src_mbuf->msgA + i);
+              _send_msg(proc,p,print_fl,enable_fl,src_mbuf->msgA + i);
             }
           }
         }
@@ -6398,7 +6398,7 @@ namespace cw
           const midi::ch_msg_t* m = mbuf->msgA + i;
           
           if( print_fl )
-            cwLogPrint("%2i 0x%2x %3i %3i : %s:%i\n",m->ch, m->status, m->d0, m->d1, cwStringNullGuard(proc->label),proc->label_sfx_id);
+            proc_info(proc,"%2i 0x%2x %3i %3i : %s:%i\n",m->ch, m->status, m->d0, m->d1, cwStringNullGuard(proc->label),proc->label_sfx_id);
 
           switch( m->status )
           {
