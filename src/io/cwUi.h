@@ -116,6 +116,8 @@ namespace cw
 
     // Create check: w/ value. The value will be sent to the engine as the new value of the associated varaible.
     rc_t createCheck(      handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, bool value );
+
+    rc_t createStatus(     handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
     
     rc_t createSelect(     handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
     rc_t createOption(     handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
@@ -135,9 +137,11 @@ namespace cw
 
     rc_t setTitle(       handle_t h, unsigned uuId, const char* title );
     
-    rc_t setNumbRange(   handle_t h, unsigned uuId, double minValue, double maxValue, double stepValue, unsigned decPl, double value );
-    rc_t setProgRange(   handle_t h, unsigned uuId, double minValue, double maxValue, double value );
-    rc_t setLogLine(     handle_t h, unsigned uuId, const char* text );
+    rc_t setNumbRange(      handle_t h, unsigned uuId, double minValue, double maxValue, double stepValue, unsigned decPl, double value );
+    rc_t setProgRange(      handle_t h, unsigned uuId, double minValue, double maxValue, double value );
+    rc_t attachStatusState( handle_t h, unsigned uuId, const char* label, unsigned value, const char* color );
+
+    rc_t setLogLine(     handle_t h, unsigned uuId, const char* text );    
     rc_t emptyParent(    handle_t h, unsigned uuId );
     
     rc_t setClickable(   handle_t h, unsigned uuId, bool clickableFl=true );

@@ -3506,7 +3506,7 @@ namespace cw
                                       kLocPctPId, "loc_pct", kBaseSfxId, 0.0,
                                       kLastLocPId,"last_loc", kBaseSfxId, 0,
                                       kLastMeasPId,"last_meas", kBaseSfxId, 0,
-                                      kStatusPId, "status", kBaseSfxId, "",
+                                      kStatusPId, "status", kBaseSfxId, cw::score_follow_2::kInvalidStatusId,
                                       kMaxLocPId, "loc_cnt",  kBaseSfxId, max_loc_id(p->sfH) )) != kOkRC )
         {
           goto errLabel;
@@ -3702,7 +3702,7 @@ namespace cw
 
               if( sf_status_id != p->sf_status_id )
               {
-                //var_set(proc,kStatusPId,kAnyChIdx,cw::score_follow_2::status_label(sf_status_id));
+                var_set(proc,kStatusPId,kAnyChIdx,sf_status_id);
                 p->sf_status_id = sf_status_id;
               }
 

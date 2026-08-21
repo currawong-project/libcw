@@ -219,6 +219,9 @@ namespace cw
 
     status_id_t _trkr_status( trkr_t* trk )
     {
+      if( trk->end_fl )
+        return kDoneStatusId;
+      
       if( trk->new_note_idx < 5 )
         return kResetStatusId;
       
@@ -1013,6 +1016,9 @@ const char* cw::score_follow_2::status_label( status_id_t status_id )
       
     case kTrackingStatusId:
       return "tracking";
+
+    case kDoneStatusId:
+      return "done";
       
     case kFailedStatusId:
       return "failed";

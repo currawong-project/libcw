@@ -47,6 +47,7 @@ namespace cw
       { "label",     false },
       { "button",    false },
       { "check",     false },
+      { "status",    false },
       { "select",    false },
       { "option",    false },
       { "str_disp",  false },
@@ -1943,6 +1944,9 @@ cw::rc_t cw::ui::createCheck( handle_t h, unsigned& uuIdRef, unsigned parentUuId
 cw::rc_t cw::ui::createCheck( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, bool value  )
 { return _createOneEle( _handleToPtr(h), uuIdRef, "check", kInvalidId, parentUuId, eleName, appId, chanId, clas, title, "value", value ); }
 
+cw::rc_t cw::ui::createStatus( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
+{ return _createOneEle( _handleToPtr(h), uuIdRef, "status", kInvalidId, parentUuId, eleName, appId, chanId, clas, title ); }
+
 cw::rc_t cw::ui::createSelect( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title )
 { return _createOneEle( _handleToPtr(h), uuIdRef, "select", kInvalidId, parentUuId, eleName, appId, chanId, clas, title ); }
 
@@ -2039,6 +2043,24 @@ cw::rc_t cw::ui::setProgRange( handle_t h, unsigned uuId, double minValue, doubl
 
   return rc;
 }
+
+cw::rc_t cw::ui::attachStatusState(   handle_t h, unsigned uuId, const char* label, unsigned value, const char* color )
+{
+  rc_t rc = kOkRC;  
+  ui_t* p = _handleToPtr(h);
+  
+  const char* mFmt = "{ \"op\":\"set\", \"type\":\"attach_status_state\", \"uuId\":%i, \"label\":\"%s\", \"color\":\"%s\", \"value\":%i }";
+  const int   mbufN = 256;
+  char        mbuf[mbufN];
+      
+  if( snprintf(mbuf,mbufN,mFmt,uuId,label,color,value) >= mbufN-1 )
+    return cwLogError(kBufTooSmallRC,"The msg buffer is too small.");
+  
+  rc = _websockSend(p,kInvalidId,mbuf);
+
+  return rc;  
+}
+
 
 cw::rc_t cw::ui::setLogLine(   handle_t h, unsigned uuId, const char* text )
 {

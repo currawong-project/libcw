@@ -376,13 +376,15 @@ namespace cw
     // Create check: w/ value. The value will be sent to the engine as the new value of the associated varaible.
     rc_t uiCreateCheck(      handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
     rc_t uiCreateCheck(      handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, bool value );
+
+    rc_t uiCreateStatus(     handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
     
     rc_t uiCreateSelect(     handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
     rc_t uiCreateOption(     handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
 
     rc_t uiCreateStrDisplay( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
     rc_t uiCreateStrDisplay( handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, const char* value );
-    
+
     rc_t uiCreateStr(        handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
     rc_t uiCreateStr(        handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title, const char* value );
     
@@ -401,10 +403,12 @@ namespace cw
     rc_t uiCreateHList(      handle_t h, unsigned& uuIdRef, unsigned parentUuId, const char* eleName, unsigned appId, unsigned chanId, const char* clas, const char* title );
 
 
-    rc_t uiSetTitle( handle_t h, unsigned uuId, const char* title );
+    rc_t uiSetTitle(         handle_t h, unsigned uuId, const char* title );
 
-    rc_t uiSetNumbRange( handle_t h, unsigned uuId, double minValue, double maxValue, double stepValue, unsigned decPl, double value );
-    rc_t uiSetProgRange( handle_t h, unsigned uuId, double minValue, double maxValue, double value );
+    rc_t uiSetNumbRange(     handle_t h, unsigned uuId, double minValue, double maxValue, double stepValue, unsigned decPl, double value );
+    rc_t uiSetProgRange(     handle_t h, unsigned uuId, double minValue, double maxValue, double value );
+    rc_t uiAttachStatusState(handle_t h, unsigned uuId, const char* label, unsigned value, const char* color );
+
     rc_t uiSetLogLine(   handle_t h, unsigned uuId, const char* text );
     rc_t uiEmptyParent(  handle_t h, unsigned uuId); // empty a list or selection menu of all children
     
