@@ -79,6 +79,7 @@ namespace cw
       kResetStatusId,
       kSearchingStatusId,
       kTrackingStatusId,
+      kDoneStatusId,
       kFailedStatusId
     } status_id_t;
 
