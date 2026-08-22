@@ -1145,7 +1145,7 @@ namespace cw
         p->playerA[ plyr_idx ].next_msg_idx = 0;
         p->playerA[ plyr_idx ].start_smp_idx = p->global_smp_idx;
 
-        proc_info(proc,"starting: %i %s",p->playerA[ plyr_idx ].id,cwStringNullGuard(p->playerA[ plyr_idx ].label));
+        proc_info(proc,"MP starting: %i %s",p->playerA[ plyr_idx ].id,cwStringNullGuard(p->playerA[ plyr_idx ].label));
         
       errLabel:
         return rc;
@@ -1347,7 +1347,7 @@ namespace cw
       {
         rc_t rc = kOkRC;
 
-        proc_info(proc,"NOTIFY: %i %s",var->vid,var->label);
+        //proc_info(proc,"NOTIFY: %i %s",var->vid,var->label);
                 
         if( proc->ctx->isInRuntimeFl )
         {
