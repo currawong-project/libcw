@@ -38,6 +38,8 @@ namespace cw
     } trigger_id_t;
 
     const trigger_id_t* trigger_array( handle_t h, unsigned& trig_cnt );
+
+    void report_trigger_status( handle_t h );
   }  
 }
 
