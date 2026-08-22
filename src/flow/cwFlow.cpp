@@ -78,6 +78,7 @@ namespace cw
       { "counter",         &counter::members },
       { "list",            &list::members },
       { "add",             &add::members },
+      { "max",             &max::members },
       { "preset",          &preset::members },
       { "print",           &print::members },
       { "on_start",        &on_start::members },

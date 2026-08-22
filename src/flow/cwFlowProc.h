@@ -79,6 +79,7 @@ namespace cw
     namespace counter         { extern class_members_t members;  }
     namespace list            { extern class_members_t members;  }
     namespace add             { extern class_members_t members;  }
+    namespace max             { extern class_members_t members;  }
     namespace preset          { extern class_members_t members;  }
     namespace print           { extern class_members_t members;  }
     namespace on_start        { extern class_members_t members;  }
