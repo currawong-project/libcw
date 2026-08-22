@@ -5380,7 +5380,7 @@ namespace cw
         .exec    = exec,
         .report  = report
       };      
-    }
+    } // audio_meter
 
     //------------------------------------------------------------------------------------------------------------------
     //
@@ -9294,7 +9294,211 @@ namespace cw
         .exec = exec,
         .report = nullptr
       };      
+    }    // add
+
+
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // max
+    //
+    namespace max
+    {
+      enum {
+        kOutPId,
+        kOTypePId,
+        kInPId
+      };
+      
+      typedef struct
+      {
+        bool delta_fl;
+        unsigned inN;
+      } inst_t;
+
+
+      template< typename T >
+      rc_t _max( proc_t* proc, variable_t* var )
+      {
+        rc_t rc      = kOkRC;
+        inst_t*  p = (inst_t*)proc->userPtr;
+        
+        T out_val = 0;
+        
+        // read each input
+        for(unsigned i=0; i<p->inN; ++i)
+        {
+          T val;          
+          if((rc = var_get(proc,kInPId+i,kAnyChIdx,val)) == kOkRC )
+          {
+            if(i == 0)
+              out_val = val;
+            else
+              out_val = val > out_val ? val : out_val;            
+          }
+          else
+          {
+            rc = proc_error(proc,rc,"Operand index %i read failed.",i);
+            goto errLabel;
+          }
+        }
+
+        // set the output
+        if((rc = var_set(var,out_val)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Result set failed.");
+          goto errLabel;
+        }
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, variable_t* out_var=nullptr )
+      {
+        rc_t rc = kOkRC;
+        inst_t* p = (inst_t*)(proc->userPtr);
+
+        if( !p->delta_fl )
+          return rc;
+
+        p->delta_fl = false;
+
+        if( out_var == nullptr )
+          if((rc = var_find(proc,kOutPId,kAnyChIdx,out_var)) != kOkRC )
+          {
+            rc = proc_error(proc,rc,"The output variable could not be found.");
+            goto errLabel;
+          }
+        
+        switch( out_var->varDesc->type )
+        {
+          case kBoolTFl:   rc = _max<bool>(proc,out_var);     break;
+          case kUIntTFl:   rc = _max<unsigned>(proc,out_var); break; 
+          case kIntTFl:    rc = _max<int>(proc,out_var);      break;
+          case kFloatTFl:  rc = _max<float>(proc,out_var);    break;
+          case kDoubleTFl: rc = _max<double>(proc,out_var);   break;
+          default:
+            rc = proc_error(proc,kInvalidArgRC,"The output type %s (0x%x) is not valid.",value_type_flag_to_label(out_var->value->tflag),out_var->value->tflag);
+            goto errLabel;
+        }
+
+        if(rc != kOkRC )
+          rc = proc_error(proc,kOpFailRC,"Sum failed.");
+
+      errLabel:
+        return rc;
+
+      }
+      
+      rc_t create( proc_t* proc )
+      {
+        rc_t    rc   = kOkRC;        
+        inst_t* p = mem::allocZ<inst_t>();
+        proc->userPtr = p;
+
+        variable_t* out_var        = nullptr;
+        const char* out_type_label = nullptr;
+        unsigned    out_type_flag  = kInvalidTFl;
+        unsigned    sfxIdAllocN    = proc_var_count(proc);
+        unsigned    sfxIdA[ sfxIdAllocN ];
+        p->inN = 0;
+
+        // get a count of the number of input variables
+        if((rc = var_mult_sfx_id_array(proc, "in", sfxIdA, sfxIdAllocN, p->inN )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Unable to obtain the array of mult label-sfx-id's for the variable 'in'.");
+          goto errLabel;
+        }
+
+        // if the unit has no inputs
+        if( p->inN == 0 )
+        {
+          rc = proc_error(proc,rc,"The proc does not appear to  have any inputs.");
+          goto errLabel;
+        }
+
+        // sort the input id's in ascending order
+        std::sort(sfxIdA, sfxIdA + p->inN, [](unsigned& a,unsigned& b){ return a<b; } );
+
+        // register each of the input vars
+        for(unsigned i=0; i<p->inN; ++i)
+        {
+          variable_t* dum;
+          if((rc = var_register(proc, "in", sfxIdA[i], kInPId+i, kAnyChIdx, nullptr, dum )) != kOkRC )
+          {
+            rc = proc_error(proc,rc,"Variable registration failed for the variable 'in:%i'.",sfxIdA[i]);;
+            goto errLabel;
+          }
+        }
+
+        // Get the output type label as a string
+        if((rc = var_register_and_get(proc,kAnyChIdx,kOTypePId,"otype",kBaseSfxId,out_type_label)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Variable registration failed for the variable 'otype:0'.");;
+          goto errLabel;          
+        }
+
+        // Convert the output type label into a flag
+        if((out_type_flag = value_type_label_to_flag(out_type_label)) == kInvalidTFl )
+        {
+          rc = proc_error(proc,rc,"The type label '%s' does not identify a valid type.",cwStringNullGuard(out_type_label));;
+          goto errLabel;          
+        }
+
+        // Create the output var
+        if((rc = var_create( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, out_type_flag, out_var )) != kOkRC )
+        {          
+          rc = proc_error(proc,rc,"The output variable create failed.");
+          goto errLabel;
+        }
+
+        
+        p->delta_fl=true;
+        _exec(proc,out_var);
+      errLabel:
+        return rc;
+      }
+
+      rc_t destroy( proc_t* proc )
+      {
+        rc_t rc = kOkRC;
+
+        inst_t* p = (inst_t*)proc->userPtr;
+
+        mem::release(p);
+        
+        return rc;
+      }
+
+      rc_t notify( proc_t* proc, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        inst_t* p = (inst_t*)(proc->userPtr);
+
+        // The check for 'isInRuntimeFl' prevents the adder from issuing an output
+        // on cycle 0 - otherwise the delta flag will be set by the adder
+        // receiving pre-runtime messages.
+        if( kInPId <= var->vid && var->vid < kInPId+p->inN && proc->ctx->isInRuntimeFl )
+          p->delta_fl = true;
+        
+        return rc;
+      }
+
+      rc_t exec( proc_t* proc )
+      {
+        return _exec(proc);
+      }
+
+      class_members_t members = {
+        .create = create,
+        .destroy = destroy,
+        .notify   = notify,
+        .exec = exec,
+        .report = nullptr
+      };      
     }    
+    
 
 
     //------------------------------------------------------------------------------------------------------------------
@@ -11529,7 +11733,48 @@ namespace cw
         unsigned* o_field_indexA;
       } inst_t;
 
-      rc_t _create_field_index_array(proc_t* proc, inst_t* p, const rbuf_t* i_rbuf )
+      rc_t _out_to_in_field_label( proc_t* proc, const object_t* field_name_map_cfg, const char* out_field_label_key, const char*& in_field_label_ref )
+      {
+        rc_t rc = kEleNotFoundRC;
+        
+        in_field_label_ref = nullptr;
+        
+        // for each field map entry
+        for(unsigned i=0; i<field_name_map_cfg->child_count(); ++i)
+        {
+          const object_t* pair_cfg      = field_name_map_cfg->child_ele(i);
+          const char*     out_fld_label = nullptr;
+
+          // validate the syntax of the input field label
+          if( pair_cfg == nullptr || !pair_cfg->is_pair() || pair_cfg->pair_label() == nullptr || pair_cfg->pair_value() == nullptr || !pair_cfg->pair_value()->is_string() )
+          {
+            rc = proc_error(proc,kSyntaxErrorRC,"The 'recd_extract' field map has an invalid syntax on the entry at index %i.",i);
+            goto errLabel;
+          }
+
+          // get the output field label
+          if((rc = pair_cfg->pair_value()->value(out_fld_label)) != kOkRC )
+          {
+            rc = proc_error(proc,rc,"Error accessing the output field name at index %i in the 'recd_extract' field map",i);
+            goto errLabel;
+          }
+
+          // if the output field label match the output field label key
+          if( textIsEqual(out_field_label_key, out_fld_label) )
+          {
+            // return the input field label
+            rc = kOkRC;            
+            in_field_label_ref = pair_cfg->pair_label();
+            break;
+          }
+        
+        }
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _create_field_index_array(proc_t* proc, inst_t* p, const rbuf_t* i_rbuf, const object_t* field_name_map_cfg )
       {
         rc_t rc = kOkRC;
 
@@ -11542,12 +11787,24 @@ namespace cw
         unsigned i = 0;
         for(; i < p->field_indexN && fld!=nullptr; ++i,fld=fld->link)
         {
+          const char* in_field_label = nullptr;
+
+          // get the input field label that maps to the output field label
+          if((rc = _out_to_in_field_label( proc, field_name_map_cfg, fld->label, in_field_label))!= kOkRC )
+          {
+            rc = proc_error(proc,rc,"No output field named '%s' was found in the field input/output mapping.",cwStringNullGuard(fld->label));
+            goto errLabel;
+          }
+
+          
           // get the field index in the incoming recd that matches the field index in the outgoing recd
-          if((p->i_field_indexA[i] = recd_type_field_index(i_rbuf->type, fld->label)) == kInvalidIdx )
+          if((p->i_field_indexA[i] = recd_type_field_index(i_rbuf->type, in_field_label)) == kInvalidIdx )
           {
             rc = proc_error(proc,kInvalidArgRC,"The output field label '%s' could not be matched in the incoming record in '%s'.",cwStringNullGuard(fld->label),cwStringNullGuard(proc->label));
             goto errLabel;
           }
+
+          
 
           // get the field index of the 'ith' output field (this should by equal to 'i')
           if((p->o_field_indexA[i] = recd_type_field_index(p->recd_fmt->recd_type, fld->label)) == kInvalidIdx )
@@ -11569,6 +11826,36 @@ namespace cw
           return rc;
       }
 
+      rc_t _parse_cfg( proc_t* proc, inst_t* p, const object_t* out_fmt_cfg, const rbuf_t* i_rbuf )
+      {
+        rc_t            rc      = kOkRC;
+        const object_t* map_cfg = nullptr;
+        const object_t* fmt_cfg = nullptr;
+        
+        if((rc = out_fmt_cfg->getv("fmt",fmt_cfg,
+                                   "map",map_cfg)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Cfg. parsing failed on the top level.");
+          goto errLabel;
+        }
+
+        if((rc = recd_format_create( p->recd_fmt, fmt_cfg )) != kOkRC )
+        {
+          proc_error(proc,rc,"The output record format is not valid.");
+          goto errLabel;
+        }
+
+        if((rc = _create_field_index_array(proc, p, i_rbuf, map_cfg )) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+        
+
+      errLabel:
+        return rc;
+      }
+
 
       rc_t _create( proc_t* proc, inst_t* p )
       {
@@ -11583,14 +11870,7 @@ namespace cw
           goto errLabel;
         }
 
-        if((rc = recd_format_create( p->recd_fmt, out_fmt_cfg )) != kOkRC )
-        {
-          proc_error(proc,rc,"The output record format for '%s' is not valid.",cwStringNullGuard(proc->label));
-          goto errLabel;
-        }
-
-        // get the field indexes for the outgoing record from the incoming record
-        if((rc= _create_field_index_array(proc, p, i_rbuf )) != kOkRC )
+        if((rc = _parse_cfg(proc, p, out_fmt_cfg, i_rbuf )) != kOkRC )
         {
           goto errLabel;
         }
