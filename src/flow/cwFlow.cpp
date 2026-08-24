@@ -104,6 +104,8 @@ namespace cw
       { "multi_player",    &multi_player::members },
       { "vel_table",       &vel_table::members },
       { "preset_select",   &preset_select::members },
+      { "ps_class_select", &ps_class_select::members },
+      { "emit_preset",     &emit_preset::members },      
       { "gutim_ps",        &gutim_ps::members },
       { "score_follower_2",&score_follower_2::members },
       { "gutim_ctl",       &gutim_ctl::members },
