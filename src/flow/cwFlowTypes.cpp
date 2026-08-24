@@ -1950,6 +1950,20 @@ bool  cw::flow::var_is_a_source( proc_t* proc, unsigned vid, unsigned chIdx )
   return is_a_source_var(varPtr);
 }
 
+bool cw::flow::var_is_connected(proc_t* proc, unsigned vid, unsigned chIdx )
+{
+  rc_t rc;
+  variable_t* var = nullptr;
+  if((rc = var_find( proc, vid, chIdx, var)) != kOkRC )
+  {
+    proc_error(proc,kEleNotFoundRC,"The variable with vid '%i' was not found on proc:'%s:%i'. 'connection' state query is invalid.",vid,cwStringNullGuard(proc->label),proc->label_sfx_id);
+    return false;
+  }
+
+  return is_connected_to_source(var);
+}
+
+
 cw::rc_t cw::flow::var_find( proc_t* proc, unsigned vid, unsigned chIdx, variable_t*& varRef )
 {
   rc_t        rc  = kOkRC;
@@ -2279,7 +2293,7 @@ cw::rc_t  cw::flow::var_send_to_ui_enable( proc_t* proc, unsigned vid,  unsigned
   }
 
   // if the variable is connected to a source then it cannot be enabled.
-  if( !is_connected_to_source(var) && enable_fl )
+  if( !is_connected_to_source(var)  )
     if((rc = _var_send_msg_id_to_ui( proc, var, enable_fl ? kEnableUiVarMsgId : kDisableUiVarMsgId )) != kOkRC )
       goto errLabel;
 

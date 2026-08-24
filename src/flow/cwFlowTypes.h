@@ -772,6 +772,7 @@ namespace cw
     bool           var_has_value(   proc_t* proc, const char* label, unsigned sfx_id, unsigned chIdx );
     bool           var_is_a_source( proc_t* proc, const char* label, unsigned sfx_id, unsigned chIdx );
     bool           var_is_a_source( proc_t* proc, unsigned vid, unsigned chIdx );
+    bool           var_is_connected(proc_t* proc, unsigned vid, unsigned chIdx );
 
     rc_t           var_find(   proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx, const variable_t*& varRef );
     rc_t           var_find(   proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx,       variable_t*& varRef );
