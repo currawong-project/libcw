@@ -5648,8 +5648,11 @@ namespace cw
         kInPId,
         kVoiceCntPId,
         kPruneThreshPId,
+        kSegCntPId,
+        kMidiFldPId,
+        kSegIdxFldPId,        
         kResetPId,
-        kActiveCntPId,
+        kRecdOutPId,
         kBaseOutPId,
       };
 
@@ -5673,6 +5676,8 @@ namespace cw
         unsigned        msg_idx;  // current count of msg's in msgA[]
 
         mbuf_t*         mbuf;      // cached mbuf for this output variable
+
+        unsigned        seg_idx;   // the segment to which this voice belongs
         
       } voice_t;
 
@@ -5682,33 +5687,47 @@ namespace cw
         unsigned voice_idx;    // voice assigned to this note or null if no voice is assigned to this note.
         unsigned cycle_idx;    // BUG BUG BUG: see _reset_voice() below.
       } midi_t;
+
+      typedef struct seg_str
+      {
+        midi_t midiA[ midi::kMidiNoteCnt ];
+
+        bool damp_down_fl;
+        bool sost_down_fl;
+        unsigned active_voice_cnt;
+        
+      } seg_t;
       
       typedef struct
       {
         unsigned baseGateFlPId;
         unsigned baseDoneFlPId;
+        unsigned baseActiveCntPId;
 
-        midi_t midiA[ midi::kMidiNoteCnt ];
         
         unsigned voiceN;   // voiceA[ voiceN ]
         voice_t* voiceA;
 
         unsigned prune_thresh;
 
+        unsigned segN;
+        seg_t*   segA;
+        unsigned voicesPerSegN;
+
         // sizeof of each voice msgA[] (same as voice_t.msgN)
         unsigned voiceMsgN;
 
         unsigned  midi_fld_idx;
-
+        unsigned  port_fld_idx;
+        unsigned  voice_idx_fld_idx;
+        
+        recd_array_t* recd_array;
+        
         // note_state debugging related variables
         bool          state_fl;
         state_t*      stateA;
         unsigned      stateN;
         unsigned      state_idx;
-
-        bool damp_down_fl;
-        bool sost_down_fl;
-        unsigned active_voice_cnt;
 
       } inst_t;
 
@@ -5725,7 +5744,10 @@ namespace cw
           s->pitch     = voice_idx == kInvalidIdx ? -1 : p->voiceA[voice_idx].pitch;
           s->vel       = voice_idx == kInvalidIdx ? -1 : p->voiceA[voice_idx].vel;
           s->flags     = flags;
-          s->active_voice_cnt = p->active_voice_cnt;
+          if( voice_idx == kInvalidIdx )
+            s->active_voice_cnt = kInvalidCnt;
+          else
+            s->active_voice_cnt = p->segA[ p->voiceA[voice_idx].seg_idx ].active_voice_cnt;
         }
       }
 
@@ -5769,14 +5791,16 @@ namespace cw
       void _reset_voice( proc_t* proc, inst_t* p, unsigned voice_idx )
       {
         // BUG BUG BUG: don't clear midiA[].voice_idx if it was turned on earlier in this cycle
-
-        if( p->voiceA[voice_idx].pitch < midi::kMidiNoteCnt && p->midiA[ p->voiceA[voice_idx].pitch ].cnt == 0 && p->midiA[ p->voiceA[voice_idx].pitch ].voice_idx == voice_idx )
-          p->midiA[ p->voiceA[voice_idx].pitch ].voice_idx = kInvalidIdx;
+        voice_t* v = p->voiceA + voice_idx;
+        seg_t* seg = p->segA + v->seg_idx;
+        
+        if( v->pitch < midi::kMidiNoteCnt && seg->midiA[ v->pitch ].cnt == 0 && seg->midiA[ v->pitch ].voice_idx == voice_idx )
+          seg->midiA[ v->pitch ].voice_idx = kInvalidIdx;
 
         _update_state( proc, p, voice_idx, kResetStateFl );
         
         p->voiceA[voice_idx].activeFl = false;
-        p->voiceA[voice_idx].pitch = midi::kInvalidMidiPitch;
+        p->voiceA[voice_idx].pitch    = midi::kInvalidMidiPitch;
         
 
         // set the gate signal low
@@ -5787,25 +5811,31 @@ namespace cw
 
       void _reset_all_voices( proc_t* proc, inst_t* p )
       {
-        for(unsigned i=0; i<midi::kMidiNoteCnt; ++i)
-          p->midiA[i].cnt = 0;
+        for(unsigned seg_idx=0; seg_idx < p->segN; ++seg_idx )
+          for(unsigned i=0; i<midi::kMidiNoteCnt; ++i)
+            p->segA[seg_idx].midiA[i].cnt = 0;
         
         for(unsigned i=0; i<p->voiceN; ++i)
-          _reset_voice(proc,p,i);
+          _reset_voice(proc,p,i);        
       }
       
       rc_t _create( proc_t* proc, inst_t* p )
       {
-        rc_t        rc            = kOkRC;
-        rbuf_t*     rbuf          = nullptr;
-        bool reset_fl = false;
-        unsigned active_cnt = 0;
+        rc_t          rc                = kOkRC;
+        const rbuf_t* i_rbuf            = nullptr;
+        rbuf_t*       o_rbuf            = nullptr;
+        bool          reset_fl          = false;
+        unsigned      active_cnt        = 0;
+        const char*   midi_fld_label    = nullptr;
+        const char*   seg_idx_fld_label = nullptr;
         
         if((rc = var_register_and_get(proc,kAnyChIdx,
-                                      kInPId,          "in",           kBaseSfxId, rbuf,
+                                      kInPId,          "in",           kBaseSfxId, i_rbuf,
                                       kResetPId,       "reset",        kBaseSfxId, reset_fl,
-                                      kActiveCntPId,   "active_cnt",   kBaseSfxId, active_cnt,
                                       kPruneThreshPId, "prune_thresh", kBaseSfxId, p->prune_thresh,
+                                      kSegCntPId,      "seg_cnt",      kBaseSfxId, p->segN,
+                                      kMidiFldPId,     "midi_fld",     kBaseSfxId, midi_fld_label,
+                                      kSegIdxFldPId,   "seg_idx_fld",  kBaseSfxId, seg_idx_fld_label,
                                       kVoiceCntPId,    "voice_cnt",    kBaseSfxId, p->voiceN)) != kOkRC )
         {
           goto errLabel; 
@@ -5817,17 +5847,36 @@ namespace cw
           goto errLabel;
         }
 
-        p->baseGateFlPId = kBaseOutPId      + p->voiceN;
-        p->baseDoneFlPId = p->baseGateFlPId + p->voiceN;
+        p->baseGateFlPId    = kBaseOutPId      + p->voiceN;
+        p->baseDoneFlPId    = p->baseGateFlPId + p->voiceN;
+        p->baseActiveCntPId = p->baseDoneFlPId + p->voiceN;
+        
         p->voiceMsgN     = kVoiceMsgN;
         p->voiceA        = mem::allocZ<voice_t>(p->voiceN);
-        
-        if((p->midi_fld_idx  = recd_type_field_index( rbuf->type, "midi")) == kInvalidIdx )
+        p->segN          = std::max(1u,p->segN);
+        p->segA          = mem::allocZ<seg_t>(p->segN);
+        p->voicesPerSegN = p->voiceN / p->segN;
+        p->prune_thresh /= p->segN;
+
+        // get the 'midi' input record field index
+        if((p->midi_fld_idx  = recd_type_field_index( i_rbuf->type, midi_fld_label)) == kInvalidIdx )
         {
-          rc = proc_error(proc,kInvalidArgRC,"The 'in' record does not have a 'midi' field.");
+          rc = proc_error(proc,kInvalidArgRC,"The 'in' record does not have a '%s' field.",cwStringNullGuard(midi_fld_label));
           goto errLabel;
         }
 
+        
+        if( p->segN > 1 )
+        {
+          // if multiple segments are being used get the input record 'seg_idx' field index
+          if((p->port_fld_idx  = recd_type_field_index( i_rbuf->type, seg_idx_fld_label)) == kInvalidIdx )
+          {
+            rc = proc_error(proc,kInvalidArgRC,"The 'in' record must have a '%s' field to use voice segmentation.",cwStringNullGuard(seg_idx_fld_label));
+            goto errLabel;
+          }
+        }
+
+        // Initialize each voice
         for(unsigned i=0; i<p->voiceN; ++i)
         {
           // create one output MIDI variable per voice
@@ -5838,10 +5887,12 @@ namespace cw
           if((rc = var_register_and_set( proc, kAnyChIdx,
                                          p->baseDoneFlPId + i, "done_fl", i, false,
                                          p->baseGateFlPId + i, "gate_fl", i, false )) != kOkRC )
+          {
             goto errLabel;
+          }
 
-          p->voiceA[i].msgA = mem::allocZ<midi::ch_msg_t>(p->voiceMsgN);
-          p->voiceA[i].msgN = p->voiceMsgN;
+          p->voiceA[i].msgA  = mem::allocZ<midi::ch_msg_t>(p->voiceMsgN);
+          p->voiceA[i].msgN  = p->voiceMsgN;
           p->voiceA[i].pitch = midi::kInvalidMidiPitch;
 
           // cache a pointer to each output variables mbuf (because we know these won't change)
@@ -5849,12 +5900,44 @@ namespace cw
             goto errLabel;
         }
 
-        for(unsigned i=0; i<midi::kMidiNoteCnt; ++i)
+        // Initialize each segment
+        for(unsigned seg_idx=0; seg_idx<p->segN; ++seg_idx)
         {
-          p->midiA[i].cnt = 0;
-          p->midiA[i].voice_idx = kInvalidIdx;
+          // zero the MIDI state array
+          for(unsigned i=0; i<midi::kMidiNoteCnt; ++i)
+          {
+            p->segA[seg_idx].midiA[i].cnt = 0;
+            p->segA[seg_idx].midiA[i].voice_idx = kInvalidIdx;
+          }
+
+          // create one 'active_cnt' field for this segment
+          if((rc = var_register_and_set( proc, kAnyChIdx, p->baseActiveCntPId + seg_idx, "active_cnt", seg_idx, 0 )) != kOkRC )
+          {
+            goto errLabel;
+          }
+          
         }
 
+        // register the recd output port
+        if((rc = var_alloc_register_and_set(proc, "recd_out", kBaseSfxId, kRecdOutPId, kAnyChIdx, i_rbuf->type, p->recd_array )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // get the output record buf
+        if((rc = var_get(proc,kRecdOutPId,kAnyChIdx,o_rbuf)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // get the index of the output record 'voice_idx' field
+        if((p->voice_idx_fld_idx =  recd_type_field_index( o_rbuf->type, "voice_idx")) == kInvalidIdx )
+        {
+          rc = proc_error(proc,kInvalidArgRC,"The 'out' record must have a 'voice_idx' field.");
+          goto errLabel;
+        }
+
+        
         p->state_fl = false;
         p->stateN = 4096;
         p->stateA = mem::allocZ<state_t>(p->stateN);
@@ -5883,6 +5966,9 @@ namespace cw
         
         mem::release( p->voiceA );
         mem::release( p->stateA );
+        mem::release( p->segA);
+
+        recd_array_destroy(p->recd_array);
         p->voiceN = 0;
         return rc;
       }
@@ -5930,26 +6016,28 @@ namespace cw
         
           // proc_info(proc,"Early stop:%i %s",m.d0,reason_msg);
 
+          // send the voice msg to the output
           _update_voice_msg( proc, p, voice_idx, &m );
 
-
+          // update the state of the voice
           _update_state( proc, p, voice_idx, kStopStateFl );
         }
         return rc;
       }
 
-      unsigned _get_next_avail_voice( proc_t* proc, inst_t* p, unsigned pitch )
+      unsigned _get_next_avail_voice( proc_t* proc, inst_t* p, unsigned pitch, unsigned seg_idx )
       {
-        unsigned next_voice_idx = kInvalidIdx;
-        unsigned max_age_idx    = kInvalidIdx;
-        unsigned inactive_idx   = kInvalidIdx;
-        unsigned early_stop_idx = kInvalidIdx;
+        unsigned next_voice_idx   = kInvalidIdx;
+        unsigned max_age_idx      = kInvalidIdx;
+        unsigned inactive_idx     = kInvalidIdx;
+        unsigned early_stop_idx   = kInvalidIdx;
         unsigned active_voice_cnt = 0;
+        unsigned min_voice_idx    = seg_idx * p->voicesPerSegN;
 
-        // examine all the voices
-        for(unsigned i=0; i<p->voiceN; ++i)
+        // examine all the voices in this segment
+        for(unsigned i=min_voice_idx; i<min_voice_idx + p->voicesPerSegN; ++i)
         {
-          // get the inactive channel
+          // if this voice is not active - then save the voice index
           if( inactive_idx==kInvalidIdx && p->voiceA[i].activeFl == false )
             inactive_idx = i;
 
@@ -5982,11 +6070,11 @@ namespace cw
         }
         else
         {
-          proc_warn(proc,"All voices (%i of %i) active!.",active_voice_cnt,p->voiceN);
+          proc_warn(proc,"All voices (%i of %i) active!.",active_voice_cnt,p->voicesPerSegN);
           next_voice_idx = max_age_idx;
         }
 
-        // if more than half the voices are in use then begin turning off old voices
+        // if more than 'prune_thresh' voices are in use then begin turning off old voices
         if( active_voice_cnt > p->prune_thresh )
         {
           if( early_stop_idx == kInvalidIdx && max_age_idx == kInvalidIdx )
@@ -5997,38 +6085,43 @@ namespace cw
           }
         }
 
-        p->active_voice_cnt = active_voice_cnt;
+        p->segA[seg_idx].active_voice_cnt = active_voice_cnt;
         
         return next_voice_idx;
       }
       
 
-      rc_t _on_note_on( proc_t* proc, inst_t* p, const midi::ch_msg_t* m  )
+      rc_t _on_note_on( proc_t* proc, inst_t* p, const midi::ch_msg_t* m, unsigned seg_idx, unsigned& voice_idx_ref  )
       {
         rc_t     rc         = kOkRC;
-        
+
         assert( m->d0 < midi::kMidiNoteCnt );
 
-        p->midiA[ m->d0 ].cnt += 1;
+        voice_idx_ref = kInvalidIdx;
+
+        // increment the count of times this note has been attacked
+        p->segA[ seg_idx ].midiA[ m->d0 ].cnt += 1;
+
+        // get the voice_idx associated with this note
+        unsigned voice_idx = p->segA[ seg_idx ].midiA[ m->d0 ].voice_idx;
         
-        unsigned voice_idx = p->midiA[ m->d0 ].voice_idx;
-        
-        // if there is already a voice assigned to this pitch
-        if( p->midiA[ m->d0 ].cnt>1 && voice_idx != kInvalidIdx )
+        // if there was already a voice assigned to this pitch then this is a reattack
+        if( p->segA[ seg_idx ].midiA[ m->d0 ].cnt>1 && voice_idx != kInvalidIdx )
         {
           // ... then stop it early
           _stop_note_early(proc,p,voice_idx," reattack");
         }
 
         // get a new voice for this note
-        if((voice_idx  = _get_next_avail_voice(proc,p,m->d0)) == kInvalidIdx )
+        if((voice_idx  = _get_next_avail_voice(proc,p,m->d0, seg_idx)) == kInvalidIdx )
         {
           proc_warn(proc,"All voices in use. Note-on %i dropped.",m->d0);
           goto errLabel;
         }
         else
         {
-          p->midiA[ m->d0 ].voice_idx = voice_idx;          
+          // connect this midi note to the voice playing it
+          p->segA[seg_idx].midiA[ m->d0 ].voice_idx = voice_idx;          
         
           assert( voice_idx <= p->voiceN);
 
@@ -6040,8 +6133,9 @@ namespace cw
           v->earlyStopFl = false;
           v->pitch       = m->d0;
           v->vel         = m->d1;
+          v->seg_idx     = seg_idx;
 
-          //printf("%i v_idx:%i non pitch:%i vel:%i\n",proc->ctx->cycleIndex, voice_idx,v->pitch,m->d1);
+          //printf("%i seg:%i v_idx:%i non pitch:%i vel:%i\n",proc->ctx->cycleIndex, seg_idx, voice_idx,v->pitch,m->d1);
 
           rc = _update_voice_msg(proc,p,voice_idx,m);
 
@@ -6050,55 +6144,66 @@ namespace cw
           // set the gate signal high
           //printf("pvc:%i on\n",voice_idx);
           var_set(proc,p->baseGateFlPId + voice_idx,kAnyChIdx,true);
+
+          voice_idx_ref = voice_idx;
         }
       errLabel:
         return rc;
       }
             
-      rc_t _on_note_off( proc_t* proc, inst_t* p, const midi::ch_msg_t* m )
+      rc_t _on_note_off( proc_t* proc, inst_t* p, const midi::ch_msg_t* m, unsigned seg_idx, unsigned& voice_idx_ref )
       {
         rc_t     rc   = kOkRC;
 
+        assert( seg_idx < p->segN );
+        
+        voice_idx_ref = kInvalidIdx;
+
+        // get the midi record associated with this note off
+        midi_t& midi = p->segA[ seg_idx ].midiA[ m->d0 ];
+        const voice_t* v = p->voiceA + midi.voice_idx;
+
         // if this pitch does not have any assoc'd note-on's then there is nothing to do
-        if( p->midiA[ m->d0 ].cnt == 0 )
+        if( midi.cnt == 0 )
         {
           //proc_warn(proc,"Extra note-off:%i.",m->d0);
           goto errLabel;
         }
 
         // if this pitch is active then decr the cnt
-        if( p->midiA[ m->d0 ].cnt >= 1 )
+        if( midi.cnt >= 1 )
         {
-          p->midiA[ m->d0 ].cnt -= 1;
+          midi.cnt -= 1;
         }
 
-        //printf("%i nof %i cnt:%i\n",proc->ctx->cycleIndex,m->d0,p->midiA[ m->d0 ].cnt);
+        //printf("%i nof seg:%i v_idx:%i d0:%i cnt:%i : act:%i nof:%i erly:%i %i\n",proc->ctx->cycleIndex,seg_idx,midi.voice_idx,m->d0,midi.cnt, v->activeFl , v->noffFl==false , v->earlyStopFl==false , v->pitch==m->d0);
         
         // if this pitch should be turned-off
-        if( p->midiA[ m->d0 ].cnt == 0 )
+        if( midi.cnt == 0 )
         {
 
-          unsigned voice_idx = p->midiA[ m->d0 ].voice_idx;
-
-          if( voice_idx == kInvalidIdx )
+          if( midi.voice_idx == kInvalidIdx )
             proc_warn(proc,"Voice not found for note-off:%i.",m->d0);
           else
           {
 
-            voice_t* v = p->voiceA + voice_idx;
-            
+            // get the voice associated with this midi note
+            voice_t* v = p->voiceA + midi.voice_idx;
+
+            // if the voice fits all the stopping criteria 
             if(v->activeFl && v->noffFl==false && v->earlyStopFl==false && v->pitch==m->d0 )
             {
               v->noffFl = true;
-            
-              rc = _update_voice_msg(proc,p,voice_idx,m);
 
-              _update_state( proc, p, voice_idx, kNoteOffStateFl );
+              // send the note-off msg. to the output
+              rc = _update_voice_msg(proc,p,midi.voice_idx,m);
 
-              goto errLabel;
+              // update the state of the voice
+              _update_state( proc, p, midi.voice_idx, kNoteOffStateFl );
 
             }
-          
+
+            voice_idx_ref = midi.voice_idx;
           }
         }
       errLabel:
@@ -6106,12 +6211,15 @@ namespace cw
       }
       
 
-      rc_t _send_to_all_voices( proc_t* proc, inst_t*p, const midi::ch_msg_t* m )
+      rc_t _send_to_all_voices( proc_t* proc, inst_t*p, const midi::ch_msg_t* m, unsigned seg_idx )
       {
         rc_t rc = kOkRC;
 
+        unsigned min_voice_idx = seg_idx * p->voicesPerSegN;
+        seg_t*   seg           = p->segA + seg_idx;
+
         if( midi::isChStatus( m->status ) )
-          for(unsigned i=0; i<p->voiceN; ++i)
+          for(unsigned i=min_voice_idx; i<min_voice_idx+p->voicesPerSegN; ++i)
           {
             if( p->state_fl && midi::isCtlStatus(m->status) )
             {
@@ -6119,11 +6227,11 @@ namespace cw
               {
                 case midi::kSostenutoCtlMdId:
                 {
-                  if( midi::isPedalDown(m->d1) != p->sost_down_fl )
+                  if( midi::isPedalDown(m->d1) != seg->sost_down_fl )
                   {
-                    p->sost_down_fl = !p->sost_down_fl;
+                    seg->sost_down_fl = !seg->sost_down_fl;
                     
-                    _update_state( proc, p, -1, p->sost_down_fl ? kSostDnStateFl : kSostUpStateFl );
+                    _update_state( proc, p, -1, seg->sost_down_fl ? kSostDnStateFl : kSostUpStateFl );
                   }
                   
                 }
@@ -6131,11 +6239,11 @@ namespace cw
                   
                 case midi::kSustainCtlMdId:
                 {
-                  if( midi::isPedalDown(m->d1) != p->damp_down_fl )
+                  if( midi::isPedalDown(m->d1) != seg->damp_down_fl )
                   {
-                    p->damp_down_fl = !p->damp_down_fl;
+                    seg->damp_down_fl = !seg->damp_down_fl;
                     
-                    _update_state( proc, p, -1, p->damp_down_fl ? kDampDnStateFl : kDampUpStateFl );
+                    _update_state( proc, p, -1, seg->damp_down_fl ? kDampDnStateFl : kDampUpStateFl );
                   }
                 }
                 break;
@@ -6167,12 +6275,14 @@ namespace cw
       rc_t _exec( proc_t* proc, inst_t* p )
       {
         rc_t    rc   = kOkRC;
-        rbuf_t* rbuf = nullptr;
-
+        const rbuf_t* i_rbuf = nullptr;
+        rbuf_t*       o_rbuf = nullptr;
+        
         // update the state of each voice
         for(unsigned i=0; i<p->voiceN; ++i)
         {
           bool done_fl;
+          
           // get the 'done_fl' for voice i
           var_get(proc,p->baseDoneFlPId+i,kAnyChIdx,done_fl);
 
@@ -6192,22 +6302,45 @@ namespace cw
           p->voiceA[i].mbuf->msgA = nullptr;
         }
         
-        // get the input MIDI buffer
-        if((rc = var_get(proc,kInPId,kAnyChIdx,rbuf)) != kOkRC )
+        // get the input record buffer
+        if((rc = var_get(proc,kInPId,kAnyChIdx,i_rbuf)) != kOkRC )
           goto errLabel;
 
+        // get the output record buffer
+        if((rc = var_get(proc,kRecdOutPId,kAnyChIdx,o_rbuf)) != kOkRC )
+          goto errLabel;
 
-        // process the incoming MIDI messages
-        for(unsigned i=0; i<rbuf->recdN; ++i)
+        o_rbuf->recdN = 0;
+
+        // process each incoming record
+        for(unsigned i=0; i<i_rbuf->recdN; ++i)
         {
-          const recd_t* r = rbuf->recdA + i;
-          const midi::ch_msg_t* m = nullptr;
+          const recd_t*         r       = i_rbuf->recdA + i;
+          const midi::ch_msg_t* m       = nullptr;
+          unsigned              seg_idx = 0;
+          unsigned              voice_idx = kInvalidIdx;
 
-          // get the midi msg stored in the record
-          if((rc = recd_get(rbuf->type,r,p->midi_fld_idx,m)) != kOkRC )
+          // get the midi msg from the incoming record
+          if((rc = recd_get(i_rbuf->type,r,p->midi_fld_idx,m)) != kOkRC )
           {
             rc = proc_error(proc,rc,"Record 'midi' field read failed.");
             goto errLabel;
+          }
+
+          if( p->segN > 1 )
+          {
+            // get the 'seg_idx' from the incoming record
+            if((rc = recd_get(i_rbuf->type,r,p->port_fld_idx,seg_idx)) != kOkRC )
+            {
+              rc = proc_error(proc,rc,"Record 'seg_idx' field read failed.");
+              goto errLabel;
+            }
+
+            if( seg_idx >= p->segN )
+            {
+              proc_error(proc,rc,"An invalid 'seg_idx' %i was encountered. Defaulting to seg_idx=0.");
+              seg_idx = 0;
+            }
           }
 
           //printf("0x%x %i %i\n",m->status,m->d0,m->d1);
@@ -6217,23 +6350,37 @@ namespace cw
           {
             case midi::kNoteOnMdId:
               if( m->d1 == 0 )
-                rc = _on_note_off(proc,p,m);
+                rc = _on_note_off(proc,p,m,seg_idx,voice_idx);
               else
-                rc = _on_note_on(proc,p,m);                  
+                rc = _on_note_on(proc,p,m,seg_idx,voice_idx);                  
               break;
 
             case midi::kNoteOffMdId:
-              rc = _on_note_off(proc,p,m);
+              rc = _on_note_off(proc,p,m,seg_idx,voice_idx);
               break;
               
             default:
-              rc = _send_to_all_voices(proc,p,m);
+              rc = _send_to_all_voices(proc,p,m,seg_idx);
               break;
           }
+
+          TRACE_DATA( proc->trace_id, tracer::kDataEvtId, p->segA[ seg_idx ].active_voice_cnt, 0);
+          var_set(proc,p->baseActiveCntPId + seg_idx,kAnyChIdx,p->segA[ seg_idx ].active_voice_cnt);
+
+          // send the 'recd_out' output record
+          if( o_rbuf->recdN >= o_rbuf->maxRecdN )
+          {
+            rc = proc_error(proc,kBufTooSmallRC,"The 'recd_out' output buffer is too small.");
+            goto errLabel;
+          }
+          else
+          {
+            recd_set( o_rbuf->type, i_rbuf->recdA + i, p->recd_array->recdA + o_rbuf->recdN, p->voice_idx_fld_idx, voice_idx );
+            o_rbuf->recdN += 1;
+          }
+          
         }
 
-        TRACE_DATA( proc->trace_id, tracer::kDataEvtId, p->active_voice_cnt, 0);
-        var_set(proc,kActiveCntPId,kAnyChIdx,p->active_voice_cnt);
         
       errLabel:
         return rc;
