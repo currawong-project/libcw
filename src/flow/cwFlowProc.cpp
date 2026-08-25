@@ -1371,7 +1371,7 @@ namespace cw
         
         if( print_fl )
         {
-          proc_info(proc,"%2i 0x%2x %3i %3i : %s %s\n",m->ch, m->status, m->d0, m->d1, cwStringNullGuard(p->ext_dev->devLabel),cwStringNullGuard(p->ext_dev->portLabel));
+          proc_info(proc,"%2i 0x%2x %3i %3i : %s %s",m->ch, m->status, m->d0, m->d1, cwStringNullGuard(p->ext_dev->devLabel),cwStringNullGuard(p->ext_dev->portLabel));
         }
       }
       
@@ -11672,6 +11672,10 @@ namespace cw
         }
 
       errLabel:
+
+        //for(unsigned i=0; i<p->outVarN; ++i)
+        //  if( p->outVarA[i].rbuf->recdN > 0 )
+        //    proc_info(proc,"RR %i record count:%i",i,p->outVarA[i].rbuf->recdN);
         
         return rc;
       }
@@ -11841,6 +11845,10 @@ namespace cw
         o_rbuf->recdN = p->recd_array->recdN;
 
       errLabel:
+
+        //if( o_rbuf->recdN > 0 )
+        //  proc_info(proc,"RM recd count: %i",o_rbuf->recdN);
+        
         return rc;
       }
 
@@ -12089,11 +12097,14 @@ namespace cw
               goto errLabel;
             }
 
-            o_rbuf->recdN += 1;
           }
+          o_rbuf->recdN += 1;
         }
         
       errLabel:
+        //if( o_rbuf->recdN > 0 )
+        //  proc_info(proc,"RE recd count: %i",o_rbuf->recdN);
+            
         return rc;
       }
 
@@ -12172,7 +12183,7 @@ namespace cw
 
         // Register a local input variable  whose value will never be used since it will be overridden by a src connection later in the network creating.
         if((rc = var_register_and_set(proc, "in", kBaseSfxId, kInPId, kAnyChIdx, p->recd_fmt->recd_type, nullptr, 0, p->recd_array->allocRecdN)) != kOkRC )
-          goto errLabel;
+          goto errLabel;        
         
         p->is_input_validated_fl = false;
         
@@ -12202,12 +12213,13 @@ namespace cw
         rc_t          rc     = kOkRC;
         const rbuf_t* i_rbuf = nullptr;
         rbuf_t*       o_rbuf = nullptr;
-        
+
         if((rc = var_get(proc,kInPId,kAnyChIdx,i_rbuf)) != kOkRC )
           goto errLabel;
         
         if((rc = var_get(proc,kOutPId,kAnyChIdx,o_rbuf)) != kOkRC )
           goto errLabel;
+
 
         o_rbuf->recdN = 0;
 
@@ -12229,7 +12241,7 @@ namespace cw
           {
             o_rbuf->type  = i_rbuf->type;
             o_rbuf->recdA = i_rbuf->recdA;
-            o_rbuf->recdN = i_rbuf->recdN;
+            o_rbuf->recdN = i_rbuf->recdN;            
           }
         }
         
