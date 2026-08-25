@@ -2162,7 +2162,7 @@ cw::rc_t cw::flow::recd_array_create( recd_array_t*& recd_array_ref, const recd_
   recd_array->type->fieldN = recd_type->fieldN;
   recd_array->type->base   = base;
   
-  recd_array->valA = mem::allocZ<value_t>(recd_array->type->fieldN * allocRecdN);
+  recd_array->valA = recd_array->type->fieldN==0 ? nullptr : mem::allocZ<value_t>(recd_array->type->fieldN * allocRecdN);
   recd_array->recdA = mem::allocZ<recd_t>(allocRecdN);
   recd_array->allocRecdN = allocRecdN;
   recd_array->recdN = 0;
@@ -2171,7 +2171,7 @@ cw::rc_t cw::flow::recd_array_create( recd_array_t*& recd_array_ref, const recd_
   for(unsigned i=0; i<allocRecdN; ++i)
   {
     // set the value array for this record
-    recd_array->recdA[i].valA = recd_array->valA + (i*recd_array->type->fieldN);
+    recd_array->recdA[i].valA = recd_array->valA==nullptr ? nullptr : recd_array->valA + (i*recd_array->type->fieldN);
 
     // set the value type of all records in the array
     _recd_set_value_type( recd_array->type->fieldL, recd_array->recdA + i );
