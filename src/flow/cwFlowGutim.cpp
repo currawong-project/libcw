@@ -1316,7 +1316,7 @@ namespace cw
           goto errLabel;
         }
 
-
+        assert( m != nullptr );
         //printf("TLP port:%i :  ch:%i status:%i d0:%i d1:%i\n",m->devIdx,m->ch,m->status,m->d0,m->d1);
 
         _update_key_state( proc, p, port_id, m );
@@ -1578,6 +1578,11 @@ namespace cw
 
         }
       errLabel:
+
+        //if( o_rbuf != nullptr && o_rbuf->recdN > 0 )
+        //  proc_info(proc,"TLP recd count:%i",o_rbuf->recdN);
+        
+        
         return rc;
       }
 
@@ -1753,6 +1758,7 @@ namespace cw
         switch( var->vid )
         {
           case kResetPId:
+            reset(p->ksmH);
             break;
         }
         return rc;
@@ -1761,11 +1767,18 @@ namespace cw
       rc_t _exec( proc_t* proc, inst_t* p )
       {
         rc_t rc      = kOkRC;
-
+        rbuf_t* o_rbuf = nullptr;
+          
+        if((rc = var_get(proc,kOutPId,kAnyChIdx,o_rbuf)) != kOkRC )
+        {
+          goto errLabel;
+        }
+          
+        o_rbuf->recdN = 0;
+        
         for(unsigned pi=0; pi<p->in_port_cnt; ++pi)
         {
           const rbuf_t* i_rbuf = nullptr;
-          rbuf_t* o_rbuf = nullptr;
               
           
           if((rc = var_get(proc,kInBasePId+pi,kAnyChIdx,i_rbuf)) != kOkRC )
@@ -1773,12 +1786,6 @@ namespace cw
             goto errLabel;
           }
           
-          if((rc = var_get(proc,kOutPId,kAnyChIdx,o_rbuf)) != kOkRC )
-          {
-            goto errLabel;
-          }
-          
-          o_rbuf->recdN = 0;
 
           for(unsigned i=0; i<i_rbuf->recdN; ++i)
           {
