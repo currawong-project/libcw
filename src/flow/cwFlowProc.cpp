@@ -1027,6 +1027,7 @@ namespace cw
       {
         kDevLabelPId,
         kPortLabelPId,
+        kPortIdPId,
         kPrintFlPId,
         kOutPId,
         kROutPId
@@ -1038,11 +1039,12 @@ namespace cw
         unsigned           bufN;
         bool               dev_filt_fl;
         bool               port_filt_fl;        
+        unsigned           port_id;
         external_device_t* ext_dev;
 
         recd_array_t* recd_array;    // output record array for 'out'.
         unsigned      midi_fld_idx;  // pre-computed record field indexes
-
+        unsigned      port_id_fld_idx; 
 
         
       } inst_t;
@@ -1060,7 +1062,8 @@ namespace cw
         // Register variable and get their current value
         if((rc = var_register_and_get( proc, kAnyChIdx,
                                        kDevLabelPId,  "dev_label",  kBaseSfxId, dev_label,
-                                       kPortLabelPId, "port_label", kBaseSfxId, port_label )) != kOkRC )
+                                       kPortLabelPId, "port_label", kBaseSfxId, port_label,
+                                       kPortIdPId,    "port_id", kBaseSfxId, inst->port_id)) != kOkRC )
           
         {
           goto errLabel;
@@ -1116,6 +1119,7 @@ namespace cw
         }
 
         inst->midi_fld_idx = recd_type_field_index( inst->recd_array->type, "midi");
+        inst->port_id_fld_idx = recd_type_field_index( inst->recd_array->type, "port_id");
         
       errLabel: 
         return rc;
@@ -1151,6 +1155,7 @@ namespace cw
         }
 
         recd_set( rbuf->type, nullptr, p->recd_array->recdA + rbuf->recdN, p->midi_fld_idx, (midi::ch_msg_t*)m );
+        recd_set( rbuf->type, nullptr, p->recd_array->recdA + rbuf->recdN, p->port_id_fld_idx, p->port_id );
         rbuf->recdN += 1;
 
       errLabel:
