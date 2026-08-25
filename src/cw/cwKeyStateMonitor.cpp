@@ -939,7 +939,7 @@ cw::rc_t cw::key_state_monitor::destroy( handle_t& hRef )
 }
 
 
-cw::rc_t cw::key_state_monitor::reset( handle_t h, unsigned loc )
+cw::rc_t cw::key_state_monitor::reset( handle_t h )
 {
   rc_t   rc = kOkRC;
   ksm_t* p  = _handleToPtr(h);

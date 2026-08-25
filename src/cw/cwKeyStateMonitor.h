@@ -18,7 +18,7 @@ namespace cw
     
     rc_t destroy( handle_t& hRef );
 
-    rc_t reset( handle_t h, unsigned loc );
+    rc_t reset( handle_t h );
 
     // Set status to kInvalidStatusMdId is there is no MIDI msg to accompany the 'loc_id'.
     // Set loc_id to kInvalidId if there is no loc to accompany the MIDI msg.
