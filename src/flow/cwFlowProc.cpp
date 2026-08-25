@@ -11719,6 +11719,15 @@ namespace cw
         recd_array_t*  recd_array;
       } inst_t;
 
+      // Record types that have empty top levels (fieldN=0)  can appear to be equivalent
+      // with types that have fields in their top level - but they are not.
+      // This function strips empty top level types.
+      const recd_type_t* _strip_empty_types( const recd_type_t* rt )
+      {
+        while( rt->fieldN == 0 )
+          rt = rt->base;
+        return rt;
+      }
 
       rc_t _create( proc_t* proc, inst_t* p )
       {
@@ -11760,7 +11769,7 @@ namespace cw
           else
           {
             
-            if( !recd_types_are_equivalent(r0buf->type,rbuf->type) )
+            if( !recd_types_are_equivalent(_strip_empty_types(r0buf->type),_strip_empty_types(rbuf->type)) )
             {
               rc = proc_error(proc,kInvalidArgRC,"The incoming record types must be of equivalent types. The type on in:%i does not match the type on in:0.",sfxIdA[i]);
               goto errLabel;
@@ -11772,14 +11781,14 @@ namespace cw
         }
         
         // create a record type whose base type matches the input type and has no additional fields
-        if((rc = recd_type_create( p->recd_type, rbuf->type, nullptr )) != kOkRC )
+        if((rc = recd_type_create( p->recd_type, _strip_empty_types(rbuf->type), nullptr )) != kOkRC )
         {
           rc = proc_error(proc,rc,"Record type create failed.");
           goto errLabel;
         }
         
         // create the output recd_array
-        if((rc = recd_array_create( p->recd_array, p->recd_type, rbuf->type, recdBufN )) != kOkRC )
+        if((rc = recd_array_create( p->recd_array, p->recd_type, _strip_empty_types(rbuf->type), recdBufN )) != kOkRC )
         {
           goto errLabel;
         }
