@@ -4909,6 +4909,9 @@ namespace cw
           goto errLabel;
         }
 
+        p->sf_status_id = cw::score_follow_2::kDoneStatusId;
+        var_set(proc,kStatusPId,kAnyChIdx,p->sf_status_id);
+
         p->cur_loc_id = kInvalidId;
         p->cur_meas_numb = 0;
 
