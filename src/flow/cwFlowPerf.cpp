@@ -7532,6 +7532,11 @@ namespace cw
         kResetSfBPId,
         kEnableSfBPId,
 
+        kBegLocSfCPId,
+        kEndLocSfCPId,
+        kResetSfCPId,
+        kEnableSfCPId,
+        
         kSimPlayPId,
         kSimResetPId,
         kSimClearPId,
@@ -7544,7 +7549,8 @@ namespace cw
 
       enum {
         kSfAId,
-        kSfBId
+        kSfBId,
+        kSfCId
       };
       
       enum {
@@ -7654,11 +7660,13 @@ namespace cw
           goto errLabel;
         }
 
-        if( cmd->sf_id != kSfAId && cmd->sf_id != kSfBId )
+        if( cmd->sf_id != kSfAId && cmd->sf_id != kSfBId && cmd->sf_id != kSfCId )
         {
-          rc = proc_error(proc,kInvalidArgRC,"The SF id must be either 0 or 1 not '%i'.",cmd->sf_id);
+          rc = proc_error(proc,kInvalidArgRC,"The SF id must be either 0,1 or 2 not '%i'.",cmd->sf_id);
           goto errLabel;
         }
+
+        //proc_info(proc,"parse sf cmd: %i : b:%i e:%i",cmd->sf_id,cmd->beg_loc,cmd->end_loc);
         
       errLabel:
         return rc;
@@ -7877,7 +7885,12 @@ namespace cw
                               kEndLocSfBPId, "sf_b_end_loc",   kBaseSfxId,
                               kResetSfBPId,  "sf_b_reset_fl",  kBaseSfxId,
                               kEnableSfBPId, "sf_b_enable_fl", kBaseSfxId,
-
+                              
+                              kBegLocSfCPId, "sf_c_beg_loc",   kBaseSfxId,
+                              kEndLocSfCPId, "sf_c_end_loc",   kBaseSfxId,
+                              kResetSfCPId,  "sf_c_reset_fl",  kBaseSfxId,
+                              kEnableSfCPId, "sf_c_enable_fl", kBaseSfxId,
+                              
                               kSimPlayPId,   "sim_play_id",    kBaseSfxId,
                               kSimResetPId,  "sim_reset_fl",   kBaseSfxId,
                               kSimClearPId,  "sim_clear_fl",   kBaseSfxId,
@@ -7936,6 +7949,8 @@ namespace cw
       rc_t _apply_sf_cmd( proc_t* proc, inst_t* p, const sf_cmd_t& cmd )
       {
         rc_t rc = kOkRC;
+
+        //proc_info(proc,"apply sf: %i : b:%i e:%i",cmd.sf_id, cmd.beg_loc, cmd.end_loc);
         
         switch( cmd.sf_id )
         {
@@ -7951,6 +7966,13 @@ namespace cw
             var_set(proc,kEndLocSfBPId,kAnyChIdx,cmd.end_loc);
             var_set(proc,kEnableSfBPId,kAnyChIdx,cmd.enable_fl);
             var_set(proc,kResetSfBPId,kAnyChIdx,true);
+            break;
+
+          case kSfCId:
+            var_set(proc,kBegLocSfCPId,kAnyChIdx,cmd.beg_loc);
+            var_set(proc,kEndLocSfCPId,kAnyChIdx,cmd.end_loc);
+            var_set(proc,kEnableSfCPId,kAnyChIdx,cmd.enable_fl);
+            var_set(proc,kResetSfCPId,kAnyChIdx,true);
             break;
             
           default:
@@ -8161,6 +8183,10 @@ namespace cw
             
           case kSfBId:
             var_set(proc,kEnableSfBPId,kAnyChIdx,false);
+            break;
+
+          case kSfCId:
+            var_set(proc,kEnableSfCPId,kAnyChIdx,false);
             break;
             
           default:
