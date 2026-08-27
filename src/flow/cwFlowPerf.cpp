@@ -2294,7 +2294,7 @@ namespace cw
         if( var->ui_var == NULL )
           return rc;
 
-        proc_info(proc,"Notify:%i",var->vid);
+        proc_debug(proc,"Notify:%i",var->vid);
         
         switch(var->vid)
         {
@@ -2535,7 +2535,7 @@ namespace cw
 
           _init_loc_array(p);
           
-          proc_info(proc,"reset.");
+          proc_debug(proc,"reset.");
         }
         
         return rc;
@@ -2603,7 +2603,7 @@ namespace cw
 
         unsigned pri = p->cur_manual_pri_preset_idx == kInvalidIdx ? p->cur_pri_preset_idx : p->cur_manual_pri_preset_idx;
         unsigned sec = p->cur_manual_sec_preset_idx == kInvalidIdx ? p->cur_sec_preset_idx : p->cur_manual_sec_preset_idx;
-        proc_info(proc,"Preset:%s%s%s",_preset_index_to_label(p,pri), p->sec_fl ? "->":" ",_preset_index_to_label(p,sec));
+        proc_debug(proc,"Preset:%s%s%s",_preset_index_to_label(p,pri), p->sec_fl ? "->":" ",_preset_index_to_label(p,sec));
         return rc;
       }
       
@@ -4915,7 +4915,7 @@ namespace cw
         p->cur_loc_id = kInvalidId;
         p->cur_meas_numb = 0;
 
-        proc_info(proc,"SF reset: beg:%i end:%i",beg_loc_id,end_loc_id);
+        proc_info(proc,"reset: beg:%i end:%i",beg_loc_id,end_loc_id);
 
       errLabel:
 
@@ -4935,7 +4935,7 @@ namespace cw
 
           case kEnableFlPId:
             var_get(var,p->enable_fl);
-            proc_info(proc,"SF (%s) ENABLE = %i",cwStringNullGuard(proc->label),p->enable_fl);
+            proc_info(proc,"enable = %i",p->enable_fl);
             break;
 
           case kLocLogFlPId:
@@ -5039,6 +5039,8 @@ namespace cw
               {
                 var_set(proc,kStatusPId,kAnyChIdx,sf_status_id);
                 p->sf_status_id = sf_status_id;
+                proc_info(proc,"status:%s",status_label(p->sf_status_id));
+
               }
 
               if( loc_id != kInvalidId )
