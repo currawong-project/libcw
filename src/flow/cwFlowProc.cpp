@@ -1264,6 +1264,7 @@ namespace cw
         kDevLabelPId,
         kPortLabelPId,
         kBufMsgCntPId,
+        kInFldPId,
         kInPId,
         kRInPId,
         kPrintFlPId,
@@ -1288,6 +1289,7 @@ namespace cw
         rc_t        rc         = kOkRC; //h
         const char* dev_label  = nullptr;
         const char* port_label = nullptr;
+        const char* in_fld_label     = nullptr;
         rbuf_t*     rbuf       = nullptr;
         bool        printFl    = false;
         bool        enableFl   = false;
@@ -1296,6 +1298,7 @@ namespace cw
         if((rc = var_register_and_get( proc, kAnyChIdx,
                                        kDevLabelPId, "dev_label",  kBaseSfxId, dev_label,
                                        kPortLabelPId,"port_label", kBaseSfxId, port_label,
+                                       kInFldPId,    "in_fld",     kBaseSfxId, in_fld_label,
                                        kPrintFlPId,  "print_fl",   kBaseSfxId, printFl,
                                        kEnableFlPId, "enable_fl",  kBaseSfxId, enableFl,
                                        kBufMsgCntPId,"buf_cnt",    kBaseSfxId, p->msgN )) != kOkRC )
@@ -1342,7 +1345,7 @@ namespace cw
           p->midi_fld_idx = kInvalidIdx;
         else
         {
-          if((p->midi_fld_idx  = recd_type_field_index( rbuf->type, "midi")) == kInvalidIdx )
+          if((p->midi_fld_idx  = recd_type_field_index( rbuf->type, in_fld_label)) == kInvalidIdx )
           {
             rc = proc_error(proc,kInvalidArgRC,"The 'rin' record does not have a 'midi' field.");
             goto errLabel;
