@@ -7519,6 +7519,7 @@ namespace cw
         
         kSfLocPId,
         kGotoSegPId,
+        kGotoLocPId,
         kPlayNowPId,
         kRecoverPId,
         kResetPId,
@@ -7585,7 +7586,6 @@ namespace cw
       typedef struct cmd_str
       {
         unsigned tid;              // kPlayCmdTId | kSfCmdTId
-        unsigned active_sf_id;     // this is the sf_id of the SF that is active during this segment
         union {
           sf_cmd_t   sf;
           plyr_cmd_t plyr;
@@ -7858,9 +7858,9 @@ namespace cw
 
       rc_t _create( proc_t* proc, inst_t* p )
       {
-        rc_t          rc        = kOkRC;        
-        const char*   cfg_fname = nullptr;
-        const rbuf_t* rbuf      = nullptr;
+        rc_t          rc              = kOkRC;        
+        const char*   cfg_fname       = nullptr;
+        const rbuf_t* rbuf            = nullptr;
         unsigned      starting_seg_id = kInvalidId;
         
         if((rc = var_register_and_get(proc,kAnyChIdx,
@@ -7872,7 +7872,7 @@ namespace cw
         }
 
         if((rc = var_register(proc,kAnyChIdx,
-                              kGotoSegPId,   "goto_seg",kBaseSfxId,
+                              kGotoLocPId, "goto_loc", kBaseSfxId,
                               kPlayNowPId,   "play_now",kBaseSfxId,
                               kRecoverPId,   "recover", kBaseSfxId,
                               kResetPId,     "reset",   kBaseSfxId,
@@ -7948,30 +7948,46 @@ namespace cw
 
 
 
-      rc_t _apply_sf_cmd( proc_t* proc, inst_t* p, const sf_cmd_t& cmd )
+      // use 'loc_id' to pass a starting location that is inside the 'sf_cmd' range.
+      rc_t _apply_sf_cmd( proc_t* proc, inst_t* p, const sf_cmd_t& cmd, unsigned loc_id = kInvalidId )
       {
         rc_t rc = kOkRC;
+
+        unsigned beg_loc = cmd.beg_loc;
+        
+        if( loc_id != kInvalidId )
+        {
+          if( cmd.beg_loc > loc_id || loc_id > cmd.end_loc )
+          {
+            proc_warn(proc,"The specified beg-loc '%i' is out of the range: %i to %i. The default begin location %i will be used instead.",loc_id,cmd.beg_loc,cmd.end_loc,cmd.beg_loc);            
+          }
+          else
+          {
+            beg_loc = loc_id;
+          }
+              
+        }
 
         //proc_info(proc,"apply sf: %i : b:%i e:%i",cmd.sf_id, cmd.beg_loc, cmd.end_loc);
         
         switch( cmd.sf_id )
         {
           case kSfAId:
-            var_set(proc,kBegLocSfAPId,kAnyChIdx,cmd.beg_loc);
+            var_set(proc,kBegLocSfAPId,kAnyChIdx,beg_loc);
             var_set(proc,kEndLocSfAPId,kAnyChIdx,cmd.end_loc);
             var_set(proc,kEnableSfAPId,kAnyChIdx,cmd.enable_fl);
             var_set(proc,kResetSfAPId,kAnyChIdx,true);
             break;
             
           case kSfBId:
-            var_set(proc,kBegLocSfBPId,kAnyChIdx,cmd.beg_loc);
+            var_set(proc,kBegLocSfBPId,kAnyChIdx,beg_loc);
             var_set(proc,kEndLocSfBPId,kAnyChIdx,cmd.end_loc);
             var_set(proc,kEnableSfBPId,kAnyChIdx,cmd.enable_fl);
             var_set(proc,kResetSfBPId,kAnyChIdx,true);
             break;
 
           case kSfCId:
-            var_set(proc,kBegLocSfCPId,kAnyChIdx,cmd.beg_loc);
+            var_set(proc,kBegLocSfCPId,kAnyChIdx,beg_loc);
             var_set(proc,kEndLocSfCPId,kAnyChIdx,cmd.end_loc);
             var_set(proc,kEnableSfCPId,kAnyChIdx,cmd.enable_fl);
             var_set(proc,kResetSfCPId,kAnyChIdx,true);
@@ -8009,7 +8025,7 @@ namespace cw
         return rc;
       }
       
-      rc_t _apply_ctl_record( proc_t* proc, inst_t* p, unsigned ctl_idx, bool exec_play_fl, bool play_now_fl )
+      rc_t _apply_ctl_record( proc_t* proc, inst_t* p, unsigned ctl_idx, bool exec_play_fl, bool play_now_fl, unsigned loc_id=kInvalidId )
       {
         rc_t         rc                = kOkRC;
         const ctl_t* ctl               = nullptr;
@@ -8029,7 +8045,7 @@ namespace cw
           switch( ctl->cmdA[i].tid )
           {
             case kSfCmdTId:
-              if((rc = _apply_sf_cmd(proc,p,ctl->cmdA[i].u.sf)) != kOkRC )
+              if((rc = _apply_sf_cmd(proc,p,ctl->cmdA[i].u.sf,loc_id)) != kOkRC )
                 goto errLabel;
               
               if( ctl->cmdA[i].u.sf.sf_id == ctl->active_sf_id )
@@ -8093,11 +8109,11 @@ namespace cw
         return rc;
       }
 
-      rc_t _exec_seg( proc_t* proc, inst_t* p, unsigned seg_id, bool exec_play_fl, bool play_now_fl )
+      rc_t _exec_seg( proc_t* proc, inst_t* p, unsigned seg_id, bool exec_play_fl, bool play_now_fl, unsigned loc_id=kInvalidId )
       {
         for(unsigned i=0; i<p->ctlN; ++i)
           if( p->ctlA[i].seg_id == seg_id )
-            return _apply_ctl_record(proc,p,i, exec_play_fl, play_now_fl );
+            return _apply_ctl_record(proc,p,i, exec_play_fl, play_now_fl, loc_id );
         
         return proc_error(proc,kInvalidArgRC,"The segment id '%i' was not found.",seg_id);
       }
@@ -8125,6 +8141,57 @@ namespace cw
       errLabel:
         return rc;        
       }
+
+      rc_t _on_goto_loc(proc_t* proc,inst_t* p,variable_t* var)
+      {
+        rc_t rc = kOkRC;
+        unsigned loc_id = kInvalidId;
+        unsigned beg_loc = kInvalidId;
+        unsigned loc_seg_id = kInvalidId;
+
+        if((rc = var_get(var,loc_id)) != kOkRC )
+        {          
+          rc = proc_error(proc,rc,"'goto_loc' location could not be accessed");
+          goto errLabel;
+        }
+
+        // for each ctlA[] record
+        for(unsigned ctl_idx=0; beg_loc==kInvalidId && ctl_idx<p->ctlN; ++ctl_idx)
+        {
+          const ctl_t* ctl = p->ctlA + ctl_idx;
+
+          // for each cmd_t record on this control
+          for(unsigned cmd_idx=0; cmd_idx<ctl->cmdN; ++cmd_idx)
+          {
+            const cmd_t* cmd = ctl->cmdA + cmd_idx;
+
+            // if this is an SF cmd this is the SF command active at this control and 'loc' is inside the SF command loc span ...
+            if( cmd->tid == kSfCmdTId  && cmd->u.sf.sf_id == ctl->active_sf_id && cmd->u.sf.beg_loc <= loc_id && loc_id <= cmd->u.sf.end_loc )
+            {
+              // then this is the cmd we are seeking
+              loc_seg_id = ctl->seg_id;
+              beg_loc = cmd->u.sf.beg_loc;
+              break;
+            }
+          }
+        } 
+
+        if( beg_loc == kInvalidId )
+        {
+          rc = proc_error(proc,kEleNotFoundRC,"The segment associated with the score location: %i could not be found.",loc_id);
+          goto errLabel;
+        }
+
+        // execute this segment - and set the score follower to begin at 'beg_loc' rather than at cmd->beg_loc.
+        if((rc = _exec_seg(proc, p, loc_seg_id, true, false, beg_loc )) != kOkRC )
+          goto errLabel;
+
+
+      errLabel:
+        return rc;
+        
+      }
+
 
       rc_t _on_play_now( proc_t* proc, inst_t* p )
       {
@@ -8225,6 +8292,10 @@ namespace cw
           {              
             case kGotoSegPId:
               _on_goto_seg(proc,p);
+              break;
+
+            case kGotoLocPId:
+              _on_goto_loc(proc,p,var);
               break;
               
             case kPlayNowPId:
