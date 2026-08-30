@@ -344,7 +344,10 @@ namespace cw
     // Get the field index associated with a named field.
     // Use '.' notation to separate groups from fields.
     // Note if this is a 'local' field then the high bit in the returned index will be set.    
-    unsigned recd_type_field_index( const recd_type_t* recd_type, const char* field_label);
+    unsigned recd_type_field_index( const recd_type_t* recd_type, const char* field_label, bool report_missing_fl = true );
+
+    // Same as recd_type_field_index() except does not report an error if the field is not found.
+    unsigned recd_type_field_index_silent( const recd_type_t* recd_type, const char* field_label );
 
     // Given a field index return the field label.
     const char* recd_type_field_index_to_label( const recd_type_t* recd_type, unsigned field_idx );

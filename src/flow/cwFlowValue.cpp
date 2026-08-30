@@ -2040,19 +2040,24 @@ unsigned cw::flow::recd_type_max_field_count( const recd_type_t* recd_type )
   return n;
 }
 
-unsigned cw::flow::recd_type_field_index( const recd_type_t* recd_type, const char* field_label)
+unsigned cw::flow::recd_type_field_index( const recd_type_t* recd_type, const char* field_label, bool report_missing_fl )
 {
   unsigned index;
   
   if((index = _calc_value_field_index( recd_type, field_label)) == kInvalidIdx )
   {
-    cwLogError(kInvalidArgRC,"The record field label '%s' was not found.",cwStringNullGuard(field_label));
+    if( report_missing_fl )
+      cwLogError(kInvalidArgRC,"The record field label '%s' was not found.",cwStringNullGuard(field_label));
     goto errLabel;
   }
 
 errLabel:
   return index;
 }
+
+unsigned cw::flow::recd_type_field_index_silent( const recd_type_t* recd_type, const char* field_label )
+{ return recd_type_field_index(recd_type, field_label, false ); }
+
 
 const char* cw::flow::recd_type_field_index_to_label( const recd_type_t* recd_type, unsigned field_idx )
 {
