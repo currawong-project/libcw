@@ -6,6 +6,8 @@ namespace cw
     namespace multi_player     { extern class_members_t members;  }
     namespace vel_table        { extern class_members_t members;  }
     namespace preset_select    { extern class_members_t members;  }
+    namespace ps_class_select  { extern class_members_t members;  }
+    namespace emit_preset      { extern class_members_t members;  }
     namespace gutim_ps         { extern class_members_t members;  }
     namespace score_follower_2 { extern class_members_t members;  }
     namespace gutim_ctl        { extern class_members_t members;  }

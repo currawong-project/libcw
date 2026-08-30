@@ -2040,19 +2040,24 @@ unsigned cw::flow::recd_type_max_field_count( const recd_type_t* recd_type )
   return n;
 }
 
-unsigned cw::flow::recd_type_field_index( const recd_type_t* recd_type, const char* field_label)
+unsigned cw::flow::recd_type_field_index( const recd_type_t* recd_type, const char* field_label, bool report_missing_fl )
 {
   unsigned index;
   
   if((index = _calc_value_field_index( recd_type, field_label)) == kInvalidIdx )
   {
-    cwLogError(kInvalidArgRC,"The record field label '%s' was not found.",cwStringNullGuard(field_label));
+    if( report_missing_fl )
+      cwLogError(kInvalidArgRC,"The record field label '%s' was not found.",cwStringNullGuard(field_label));
     goto errLabel;
   }
 
 errLabel:
   return index;
 }
+
+unsigned cw::flow::recd_type_field_index_silent( const recd_type_t* recd_type, const char* field_label )
+{ return recd_type_field_index(recd_type, field_label, false ); }
+
 
 const char* cw::flow::recd_type_field_index_to_label( const recd_type_t* recd_type, unsigned field_idx )
 {
@@ -2162,7 +2167,7 @@ cw::rc_t cw::flow::recd_array_create( recd_array_t*& recd_array_ref, const recd_
   recd_array->type->fieldN = recd_type->fieldN;
   recd_array->type->base   = base;
   
-  recd_array->valA = mem::allocZ<value_t>(recd_array->type->fieldN * allocRecdN);
+  recd_array->valA = recd_array->type->fieldN==0 ? nullptr : mem::allocZ<value_t>(recd_array->type->fieldN * allocRecdN);
   recd_array->recdA = mem::allocZ<recd_t>(allocRecdN);
   recd_array->allocRecdN = allocRecdN;
   recd_array->recdN = 0;
@@ -2171,7 +2176,7 @@ cw::rc_t cw::flow::recd_array_create( recd_array_t*& recd_array_ref, const recd_
   for(unsigned i=0; i<allocRecdN; ++i)
   {
     // set the value array for this record
-    recd_array->recdA[i].valA = recd_array->valA + (i*recd_array->type->fieldN);
+    recd_array->recdA[i].valA = recd_array->valA==nullptr ? nullptr : recd_array->valA + (i*recd_array->type->fieldN);
 
     // set the value type of all records in the array
     _recd_set_value_type( recd_array->type->fieldL, recd_array->recdA + i );

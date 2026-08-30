@@ -79,12 +79,14 @@ namespace cw
     namespace counter         { extern class_members_t members;  }
     namespace list            { extern class_members_t members;  }
     namespace add             { extern class_members_t members;  }
+    namespace max             { extern class_members_t members;  }
     namespace preset          { extern class_members_t members;  }
     namespace print           { extern class_members_t members;  }
     namespace on_start        { extern class_members_t members;  }
     namespace halt            { extern class_members_t members;  }
     namespace midi_msg        { extern class_members_t members;  }    
     namespace make_midi       { extern class_members_t members;  }
+    namespace midi_fourteen   { extern class_members_t members;  }    
     namespace midi_select     { extern class_members_t members;  }
     namespace midi_split      { extern class_members_t members;  }
     namespace midi_file       { extern class_members_t members;  }
@@ -100,5 +102,7 @@ namespace cw
     namespace score_player_ctl { extern class_members_t members; }
     namespace midi_recorder    { extern class_members_t members; }
     namespace button_array     { extern class_members_t members; }
+    namespace button_list      { extern class_members_t members; }
+      
   }
 }

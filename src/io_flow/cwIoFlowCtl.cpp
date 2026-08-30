@@ -655,10 +655,12 @@ namespace cw
           case flow::kDisableUiVarMsgId:
             msgLabel = "Disable";
             rc = uiSetEnable( p->ioH, _ui_var_to_label_uuid(ui_var), false );
+            rc = uiSetEnable( p->ioH, _ui_var_to_widget_uuid(ui_var), false );
             break;
           case flow::kEnableUiVarMsgId:
             msgLabel = "Enable";
             rc = uiSetEnable( p->ioH, _ui_var_to_label_uuid(ui_var), true );
+            rc = uiSetEnable( p->ioH, _ui_var_to_widget_uuid(ui_var), true );
             break;
           case flow::kShowUiVarMsgId:
             msgLabel = "Show";

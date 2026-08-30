@@ -67,9 +67,11 @@ namespace cw
 
     struct source_str;
     typedef struct {
-      char*     label;                // user supplied target label
-      unsigned  id;                   // user supplied target id
-      struct source_str* source_list; // linked list of sources that may trigger this target
+      char*              label;        // user supplied target label
+      unsigned           id;           // user supplied target id
+      struct source_str* source_list;  // linked list of sources that may trigger this target
+      unsigned           trig_smp_idx; // the sample index at which this target triggered or kInvalidIdx if has not been triggered
+      struct source_str* trig_src;     // the source that triggered this target of nullptr if the target has not been triggered
     } target_t;
 
     typedef struct {
@@ -146,6 +148,26 @@ namespace cw
 
     ksm_t* _handleToPtr( handle_t h )
     { return handleToPtr<handle_t,ksm_t>(h); }
+
+    void _report_trigger_status( ksm_t* p )
+    {
+      cwLogInfo("Trigger status report:");
+      
+      for(unsigned i=0; i<p->targetN; ++i)
+      {
+        const char* trig_src_label = "not-triggered";
+        unsigned    trig_smp_idx = 0;
+
+        if( p->targetA[i].trig_src != nullptr )
+        {
+          trig_src_label = p->targetA[i].trig_src->label;
+          trig_smp_idx   = p->targetA[i].trig_smp_idx;
+        }
+
+        cwLogInfo("%20s : %10i %s",p->targetA[i].label,trig_smp_idx,trig_src_label);
+          
+      }
+    }
 
     rc_t _destroy( ksm_t* p )
     {
@@ -260,8 +282,10 @@ namespace cw
         }
         
 
-        p->targetA[i].label = mem::duplStr(target_label);
-        p->targetA[i].id    = target_id;
+        p->targetA[i].label        = mem::duplStr(target_label);
+        p->targetA[i].id           = target_id;
+        p->targetA[i].trig_smp_idx = kInvalidIdx;
+        p->targetA[i].trig_src     = nullptr;
       }
 
     errLabel:
@@ -850,6 +874,9 @@ namespace cw
               rc = cwLogError(kInvalidStateRC,"The trigger count %i exceeded the trigger buffer size %i.",p->cur_trig_cnt,p->triggerN);
             else
             {
+              src->target->trig_smp_idx = smp_idx;
+              src->target->trig_src     = src;
+              
               p->triggerA[ p->cur_trig_cnt ].id    = src->target->id;
               p->triggerA[ p->cur_trig_cnt ].label = src->target->label;
             
@@ -912,7 +939,7 @@ cw::rc_t cw::key_state_monitor::destroy( handle_t& hRef )
 }
 
 
-cw::rc_t cw::key_state_monitor::reset( handle_t h, unsigned loc )
+cw::rc_t cw::key_state_monitor::reset( handle_t h )
 {
   rc_t   rc = kOkRC;
   ksm_t* p  = _handleToPtr(h);
@@ -1002,4 +1029,12 @@ const cw::key_state_monitor::trigger_id_t* cw::key_state_monitor::trigger_array(
 
   trig_cnt_ref = 0;
   return nullptr;
+}
+
+
+void cw::key_state_monitor::report_trigger_status( handle_t h )
+{
+  ksm_t* p = _handleToPtr(h);
+
+  _report_trigger_status(p);
 }

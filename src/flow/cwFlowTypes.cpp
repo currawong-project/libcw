@@ -36,6 +36,8 @@ namespace cw
       { kUiCreateVarDescFl, "no_ui" }, // even if the proc ui is enabled, don't show this var
       { kUiDisableVarDescFl,"ui_disable" },
       { kUiHideVarDescFl,   "ui_hide" },
+      { kUiNoTitleVarDescFl,   "ui_no_title" },  // do not create a label for this var
+      { kUiTitleToLabelVarDescFl,"ui_title_to_label" }, // used to show the title in place of the var. label inside the button
       { kNotifyVarDescFl,   "notify" },
       { kReadOnlyVarDescFl, "ro" }, // read-only
       { kInvalidVarDescFl, "<invalid>" }
@@ -1950,6 +1952,20 @@ bool  cw::flow::var_is_a_source( proc_t* proc, unsigned vid, unsigned chIdx )
   return is_a_source_var(varPtr);
 }
 
+bool cw::flow::var_is_connected(proc_t* proc, unsigned vid, unsigned chIdx )
+{
+  rc_t rc;
+  variable_t* var = nullptr;
+  if((rc = var_find( proc, vid, chIdx, var)) != kOkRC )
+  {
+    proc_error(proc,kEleNotFoundRC,"The variable with vid '%i' was not found on proc:'%s:%i'. 'connection' state query is invalid.",vid,cwStringNullGuard(proc->label),proc->label_sfx_id);
+    return false;
+  }
+
+  return is_connected_to_source(var);
+}
+
+
 cw::rc_t cw::flow::var_find( proc_t* proc, unsigned vid, unsigned chIdx, variable_t*& varRef )
 {
   rc_t        rc  = kOkRC;
@@ -2233,6 +2249,28 @@ bool  cw::flow::var_has_a_ui( const variable_t* var )
   return var->ui_var != nullptr && var->ui_var->user_arg != nullptr;
 }
 
+cw::rc_t cw::flow::var_set_ui_title( variable_t* var, char* title )
+{
+  rc_t rc = kOkRC;
+
+  mem::release(var->ui_title);
+  var->ui_title = title;
+  
+  return rc;
+}
+
+cw::rc_t cw::flow::var_set_ui_title( proc_t* proc, unsigned vid,  unsigned chIdx, char* title )
+{
+  rc_t rc = kOkRC;
+  variable_t* var = nullptr;
+  
+  if((rc = var_find(proc, vid, chIdx, var )) == kOkRC )
+    rc = var_set_ui_title(var,title);
+  
+  return rc;
+}
+
+
 cw::rc_t  cw::flow::var_send_to_ui( variable_t* var )
 {
 
@@ -2279,7 +2317,7 @@ cw::rc_t  cw::flow::var_send_to_ui_enable( proc_t* proc, unsigned vid,  unsigned
   }
 
   // if the variable is connected to a source then it cannot be enabled.
-  if( !is_connected_to_source(var) && enable_fl )
+  if( !is_connected_to_source(var)  )
     if((rc = _var_send_msg_id_to_ui( proc, var, enable_fl ? kEnableUiVarMsgId : kDisableUiVarMsgId )) != kOkRC )
       goto errLabel;
 

@@ -18,7 +18,7 @@ namespace cw
     
     rc_t destroy( handle_t& hRef );
 
-    rc_t reset( handle_t h, unsigned loc );
+    rc_t reset( handle_t h );
 
     // Set status to kInvalidStatusMdId is there is no MIDI msg to accompany the 'loc_id'.
     // Set loc_id to kInvalidId if there is no loc to accompany the MIDI msg.
@@ -38,6 +38,8 @@ namespace cw
     } trigger_id_t;
 
     const trigger_id_t* trigger_array( handle_t h, unsigned& trig_cnt );
+
+    void report_trigger_status( handle_t h );
   }  
 }
 
