@@ -14,18 +14,20 @@ namespace cw
     // var_desc_t attribute flags
     enum
     {
-      kInvalidVarDescFl   = 0x000,
-      kSrcVarDescFl       = 0x001,
-      kSrcOptVarDescFl    = 0x002,
-      kNoSrcVarDescFl     = 0x004,
-      kInitVarDescFl      = 0x008,
-      kMultVarDescFl      = 0x010,
-      kUdpOutVarDescFl    = 0x020,
-      kUiCreateVarDescFl  = 0x040,
-      kUiDisableVarDescFl = 0x080,
-      kUiHideVarDescFl    = 0x100,
-      kNotifyVarDescFl    = 0x200,
-      kReadOnlyVarDescFl  = 0x400
+      kInvalidVarDescFl        = 0x0000,
+      kSrcVarDescFl            = 0x0001,
+      kSrcOptVarDescFl         = 0x0002,
+      kNoSrcVarDescFl          = 0x0004,
+      kInitVarDescFl           = 0x0008,
+      kMultVarDescFl           = 0x0010,
+      kUdpOutVarDescFl         = 0x0020,
+      kUiCreateVarDescFl       = 0x0040,
+      kUiDisableVarDescFl      = 0x0080,
+      kUiHideVarDescFl         = 0x0100,
+      kUiNoTitleVarDescFl      = 0x0200,
+      kUiTitleToLabelVarDescFl = 0x0400,
+      kNotifyVarDescFl         = 0x0800,
+      kReadOnlyVarDescFl       = 0x1000,
     };
     
     typedef struct class_members_str
@@ -634,6 +636,10 @@ namespace cw
 
     // Return true if the variable has a UI instance.
     bool           var_has_a_ui( const variable_t* var );
+
+    // Set the variable_t.ui_title. This string will be deleted by the system with mem::release().
+    rc_t           var_set_ui_title( variable_t* var, char* title );
+    rc_t           var_set_ui_title( proc_t* proc, unsigned vid,  unsigned chIdx, char* title );
     
     // Send a variable value to the UI
     rc_t           var_send_to_ui( variable_t* var );

@@ -36,6 +36,8 @@ namespace cw
       { kUiCreateVarDescFl, "no_ui" }, // even if the proc ui is enabled, don't show this var
       { kUiDisableVarDescFl,"ui_disable" },
       { kUiHideVarDescFl,   "ui_hide" },
+      { kUiNoTitleVarDescFl,   "ui_no_title" },  // do not create a label for this var
+      { kUiTitleToLabelVarDescFl,"ui_title_to_label" }, // used to show the title in place of the var. label inside the button
       { kNotifyVarDescFl,   "notify" },
       { kReadOnlyVarDescFl, "ro" }, // read-only
       { kInvalidVarDescFl, "<invalid>" }
@@ -2246,6 +2248,28 @@ bool  cw::flow::var_has_a_ui( const variable_t* var )
 {
   return var->ui_var != nullptr && var->ui_var->user_arg != nullptr;
 }
+
+cw::rc_t cw::flow::var_set_ui_title( variable_t* var, char* title )
+{
+  rc_t rc = kOkRC;
+
+  mem::release(var->ui_title);
+  var->ui_title = title;
+  
+  return rc;
+}
+
+cw::rc_t cw::flow::var_set_ui_title( proc_t* proc, unsigned vid,  unsigned chIdx, char* title )
+{
+  rc_t rc = kOkRC;
+  variable_t* var = nullptr;
+  
+  if((rc = var_find(proc, vid, chIdx, var )) == kOkRC )
+    rc = var_set_ui_title(var,title);
+  
+  return rc;
+}
+
 
 cw::rc_t  cw::flow::var_send_to_ui( variable_t* var )
 {
