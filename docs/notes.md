@@ -720,11 +720,14 @@ Proc Desc.
 
 ```
 ui: {
-  type: meter | list
+  type: meter | list | status
   layout: row | col   # layout multiple channels as a row or column (row is default)
   flags: [ horizontal ]
 }
 ```
+
+type: See cawUI.cpp : `_get_widget_type_id()`
+layout: See cawUI.cpp : `_get_var_layout_id()`
 
 Proc instance:
 ```
