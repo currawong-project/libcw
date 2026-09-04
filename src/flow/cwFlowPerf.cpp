@@ -1074,10 +1074,10 @@ namespace cw
             
         
         p->midi_fld_idx    = recd_type_field_index( p->recd_array->type, "midi");
-        p->loc_fld_idx     = recd_type_field_index( p->recd_array->type, "mp_loc");
-        p->meas_fld_idx    = recd_type_field_index( p->recd_array->type, "mp_meas");
-        p->port_fld_idx    = recd_type_field_index( p->recd_array->type, "mp_port_id");
-        
+        //p->loc_fld_idx     = recd_type_field_index( p->recd_array->type, "mp_loc");
+        //p->meas_fld_idx    = recd_type_field_index( p->recd_array->type, "mp_meas");
+        //p->port_fld_idx    = recd_type_field_index( p->recd_array->type, "mp_port_id");
+        p->port_fld_idx    = recd_type_field_index( p->recd_array->type, "port_id");
 
       errLabel:
         return rc;
@@ -1192,8 +1192,8 @@ namespace cw
         _update_key_state( plyr, m );
         
         recd_set( rbuf->type, nullptr, r, p->midi_fld_idx, m );
-        recd_set( rbuf->type, nullptr, r, p->loc_fld_idx,  loc  );
-        recd_set( rbuf->type, nullptr, r, p->meas_fld_idx, meas );
+        //recd_set( rbuf->type, nullptr, r, p->loc_fld_idx,  loc  );
+        //recd_set( rbuf->type, nullptr, r, p->meas_fld_idx, meas );
         recd_set( rbuf->type, nullptr, r, p->port_fld_idx, port_id);
         
         rbuf->recdN += 1;
@@ -4851,10 +4851,10 @@ namespace cw
     
         
         p->i_midi_field_idx = recd_type_field_index( in_rbuf->type, "midi");
-        //p->o_midi_field_idx = recd_type_field_index( p->recd_array->type, "midi");
         p->loc_field_idx    = recd_type_field_index( p->recd_array->type, "loc");
         p->meas_field_idx   = recd_type_field_index(p->recd_array->type, "meas");
         p->vel_field_idx    = recd_type_field_index( p->recd_array->type, "score_vel");
+        printf("m:%i l:%i meas:%i vel:%i\n",p->i_midi_field_idx,p->loc_field_idx,p->meas_field_idx,p->vel_field_idx);
 
       errLabel:
         mem::release(score_fname);
@@ -5018,6 +5018,8 @@ namespace cw
             double                            loc_pct   = -1;
             cw::score_follow_2::status_id_t sf_status_id    = cw::score_follow_2::kInvalidStatusId;
 
+            //printf("SF: %s : %i %i\n",proc->label,i,i_rbuf->recdN);
+            
             if((rc = recd_get( i_rbuf->type, i_rbuf->recdA+i, p->i_midi_field_idx, m)) != kOkRC )
             {
               rc = proc_error(proc,rc,"The 'midi' field read failed.");

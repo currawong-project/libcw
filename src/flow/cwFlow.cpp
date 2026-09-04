@@ -120,6 +120,8 @@ namespace cw
       { "gutim_2_sf_ctl",  &gutim_2_sf_ctl::members },
       { "timeline_player", &timeline_player::members },
       { "key_state_monitor", &key_state_monitor::members },
+      { "mp_merge",  &mp_merge::members },
+      { "trig_merge",  &trig_merge::members },
       { nullptr, nullptr }
     };
 

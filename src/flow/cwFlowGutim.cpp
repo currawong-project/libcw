@@ -46,6 +46,7 @@ namespace cw
         kCfgFnamePId,
         kSfLocPId,
         kSfDoneFlPId,
+        kAdvancePId,
         kGotoMeasPId,
         kGotoSectionPId,
         kGotoLocPId,
@@ -520,6 +521,19 @@ namespace cw
         return rc;
       }
 
+      rc_t _on_advance(proc_t* proc, inst_t* p)
+      {
+        rc_t rc = kOkRC;
+
+        if( p->cur_recd_idx == kInvalidIdx )
+          proc_warn(proc,"The current SF position is not set and therefore cannot be advanced.");
+        else
+          _setup_sf(proc, p, p->cur_recd_idx + 1 );
+
+      errLabel:
+        return rc;
+      }
+
 
       
       rc_t _create( proc_t* proc, inst_t* p )
@@ -546,6 +560,7 @@ namespace cw
         }
 
         if((rc = var_register(proc,kAnyChIdx,
+                              kAdvancePId, "advance",   kBaseSfxId,
                               kBegLocSfPId, "sf_beg_loc",   kBaseSfxId,
                               kEndLocSfPId, "sf_end_loc",   kBaseSfxId,
                               kPostGapSecSfPId, "sf_post_gap_sec", kBaseSfxId,
@@ -594,6 +609,10 @@ namespace cw
         {
           switch( var->vid )
           {
+            case kAdvancePId:
+              _on_advance(proc,p);
+              break;
+              
             case kSfDoneFlPId:
               p->exec_done_fl = true;
               break;
@@ -1852,6 +1871,345 @@ namespace cw
       };
       
     }    // key_state_monitor
+
+    
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // mp_merge
+    //
+    namespace mp_merge
+    {
+      enum {
+        kInAPId,
+        kInBPId,
+        kOutPId
+      };
+      
+      typedef struct
+      {
+        recd_array_t* recd_array;
+        unsigned a_midi_fld_idx;
+        unsigned a_port_fld_idx;
+        unsigned b_midi_fld_idx;
+        unsigned b_port_fld_idx;
+        unsigned o_midi_fld_idx;
+        unsigned o_port_fld_idx;
+
+      } inst_t;
+
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t          rc       = kOkRC;        
+        const rbuf_t* i_a_rbuf = nullptr;
+        const rbuf_t* i_b_rbuf = nullptr;
+
+        if((rc = var_register_and_get(proc,kAnyChIdx,
+                                      kInAPId, "in_a", kBaseSfxId, i_a_rbuf,
+                                      kInBPId, "in_b", kBaseSfxId, i_b_rbuf)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // register the output port
+        if((rc = var_alloc_register_and_set(proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, p->recd_array )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((p->a_midi_fld_idx = recd_type_field_index(i_a_rbuf->type, "midi")) == kInvalidIdx )
+        {
+          rc = kInvalidArgRC;
+          goto errLabel;
+        }
+        
+        if((p->b_midi_fld_idx = recd_type_field_index(i_b_rbuf->type, "midi")) == kInvalidIdx )
+        {
+          rc = kInvalidArgRC;
+          goto errLabel;
+        }
+        if((p->o_midi_fld_idx = recd_type_field_index(p->recd_array->type, "midi")) == kInvalidIdx )
+        {
+          rc = kInvalidArgRC;
+          goto errLabel;
+        }
+
+        if((p->a_port_fld_idx = recd_type_field_index(i_a_rbuf->type, "port_id")) == kInvalidIdx )
+        {
+          rc = kInvalidArgRC;
+          goto errLabel;
+        }
+        if((p->b_port_fld_idx = recd_type_field_index(i_b_rbuf->type, "port_id")) == kInvalidIdx )
+        {
+          rc = kInvalidArgRC;
+          goto errLabel;
+        }
+        if((p->o_port_fld_idx = recd_type_field_index(p->recd_array->type, "port_id")) == kInvalidIdx )
+        {
+          rc = kInvalidArgRC;
+          goto errLabel;
+        }
+
+      errLabel:
+        
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        recd_array_destroy(p->recd_array);
+        
+        return rc;
+      }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+
+      rc_t _transfer_record(proc_t* proc, inst_t* p, rbuf_t* o_rbuf, unsigned in_vid, unsigned midi_fld_idx, unsigned port_fld_idx )
+      {
+        rc_t rc = kOkRC;
+        rbuf_t* i_rbuf = nullptr;
+        
+        // get the input buffer
+        if((rc = var_get(proc,in_vid,i_rbuf)) != kOkRC )
+          goto errLabel;
+
+        // for each recd in the input buffer
+        for(unsigned i=0; i<i_rbuf->recdN; ++i)
+        {
+          unsigned port_id = kInvalidId;
+          midi::ch_msg_t* m = nullptr;
+
+          // if the output buffer is not full
+          if(o_rbuf->recdN >= p->recd_array->allocRecdN )
+          {
+            proc_error(proc,kBufTooSmallRC,"The output buffer overrun.");
+            goto errLabel;
+          }
+
+          // get the midi field value
+          if((rc = recd_get(i_rbuf->type, i_rbuf->recdA + i, midi_fld_idx, m)) != kOkRC )
+            goto errLabel;
+
+          // get the port id field value
+          if((rc = recd_get(i_rbuf->type, i_rbuf->recdA + i, port_fld_idx, port_id)) != kOkRC )
+            goto errLabel;
+
+          // set the midi field value
+          if((rc = recd_set( o_rbuf->type, nullptr, p->recd_array->recdA + o_rbuf->recdN, p->o_midi_fld_idx, m )) != kOkRC )
+            goto errLabel;
+
+          // set the port id field value
+          if((rc = recd_set( o_rbuf->type, nullptr, p->recd_array->recdA + o_rbuf->recdN, p->o_port_fld_idx, port_id )) != kOkRC )
+            goto errLabel;
+
+          o_rbuf->recdN += 1;
+        }
+        
+        //o_rbuf->recdN = p->recd_array->recdN;
+
+        if( rc != kOkRC )
+          proc_error(proc,rc,"Record transfer failed.");
+
+      errLabel:
+        return rc;
+      }
+        
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t rc      = kOkRC;
+        
+        const rbuf_t* i_a_rbuf = nullptr;
+        const rbuf_t* o_b_rbuf = nullptr;
+        rbuf_t* o_rbuf = nullptr;
+
+        if((rc = var_get(proc,kOutPId,o_rbuf)) != kOkRC )
+          goto errLabel;
+
+        o_rbuf->recdN = 0;
+
+        if((rc = _transfer_record(proc, p, o_rbuf, kInAPId, p->a_midi_fld_idx, p->a_port_fld_idx )) != kOkRC )          
+          goto errLabel;
+
+        if((rc = _transfer_record(proc, p, o_rbuf, kInBPId, p->b_midi_fld_idx, p->b_port_fld_idx )) != kOkRC )          
+          goto errLabel;
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    // mp_merge
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // trig_merge
+    //
+    namespace trig_merge
+    {
+      enum {
+        kInAPId,
+        kInBPId,
+        kOutPId
+      };
+      
+      typedef struct
+      {
+        recd_array_t* recd_array;
+        unsigned i_value_fld_idx;
+        unsigned i_trig_fld_idx;
+        unsigned o_trig_fld_idx;
+
+      } inst_t;
+
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t          rc       = kOkRC;        
+        const rbuf_t* i_a_rbuf = nullptr;
+        const rbuf_t* i_b_rbuf = nullptr;
+
+        if((rc = var_register_and_get(proc,kAnyChIdx,
+                                      kInAPId, "in_a", kBaseSfxId, i_a_rbuf,
+                                      kInBPId, "in_b", kBaseSfxId, i_b_rbuf)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // register the output port
+        if((rc = var_alloc_register_and_set(proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, p->recd_array )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((p->i_value_fld_idx = recd_type_field_index(i_a_rbuf->type, "value")) == kInvalidIdx )
+        {
+          rc = kInvalidArgRC;
+          goto errLabel;
+        }
+        
+        if((p->i_trig_fld_idx = recd_type_field_index(i_b_rbuf->type, "trigger_id")) == kInvalidIdx )
+        {
+          rc = kInvalidArgRC;
+          goto errLabel;
+        }
+        
+        if((p->o_trig_fld_idx = recd_type_field_index(p->recd_array->type, "trigger_id")) == kInvalidIdx )
+        {
+          rc = kInvalidArgRC;
+          goto errLabel;
+        }
+
+      errLabel:
+        
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        recd_array_destroy(p->recd_array);
+        return rc;
+      }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+
+      rc_t _transfer_record(proc_t* proc, inst_t* p, rbuf_t* o_rbuf, unsigned in_vid, unsigned in_fld_idx, const char* label )
+      {
+        rc_t rc = kOkRC;
+        rbuf_t* i_rbuf = nullptr;
+        
+        // get the input buffer
+        if((rc = var_get(proc,in_vid,i_rbuf)) != kOkRC )
+          goto errLabel;
+
+        // for each recd in the input buffer
+        for(unsigned i=0; i<i_rbuf->recdN; ++i)
+        {
+          unsigned value;
+
+          // if the output buffer is not full
+          if(o_rbuf->recdN >= p->recd_array->allocRecdN )
+          {
+            proc_error(proc,kBufTooSmallRC,"The output buffer overrun.");
+            goto errLabel;
+          }
+
+          // get the input field value
+          if((rc = recd_get(i_rbuf->type, i_rbuf->recdA + i, in_fld_idx, value)) != kOkRC )
+            goto errLabel;
+
+          // set the midi field value
+          if((rc = recd_set( o_rbuf->type, nullptr, p->recd_array->recdA + o_rbuf->recdN, p->o_trig_fld_idx, value )) != kOkRC )
+            goto errLabel;
+
+          o_rbuf->recdN += 1;
+        }
+        
+
+        if( rc != kOkRC )
+          proc_error(proc,rc,"Record transfer failed.");
+
+      errLabel:
+        return rc;
+      }
+      
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t rc      = kOkRC;
+        
+        const rbuf_t* i_a_rbuf = nullptr;
+        const rbuf_t* o_b_rbuf = nullptr;
+        rbuf_t* o_rbuf = nullptr;
+
+        if((rc = var_get(proc,kOutPId,o_rbuf)) != kOkRC )
+          goto errLabel;
+
+        o_rbuf->recdN = 0;
+
+        if((rc = _transfer_record(proc, p, o_rbuf, kInAPId, p->i_value_fld_idx,"a" )) != kOkRC )          
+          goto errLabel;
+        
+        if((rc = _transfer_record(proc, p, o_rbuf, kInBPId, p->i_trig_fld_idx,"b" )) != kOkRC )          
+          goto errLabel;
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    // trig_merge
     
     
   }

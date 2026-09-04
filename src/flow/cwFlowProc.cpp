@@ -10723,10 +10723,12 @@ namespace cw
             proc_info(proc,"value:%i",value);
           }          
           
-          if((rc = recd_set(p->recd_array->type, i_rbuf->recdA + i, p->recd_array->recdA+o_rbuf->recdN, p->o_value_fld_idx, &value)) != kOkRC )
+          if((rc = recd_set(p->recd_array->type, i_rbuf->recdA + i, p->recd_array->recdA+o_rbuf->recdN, p->o_value_fld_idx, value)) != kOkRC )
           {
             goto errLabel;
           }
+
+          o_rbuf->recdN += 1;
         }
         
         
@@ -11999,6 +12001,8 @@ namespace cw
       // This function strips empty top level types.
       const recd_type_t* _strip_empty_types( const recd_type_t* rt )
       {
+        return rt;
+        
         while( rt->fieldN == 0 )
           rt = rt->base;
         return rt;
@@ -12116,6 +12120,9 @@ namespace cw
           if((rc = var_get(proc, kBaseInPId+i, kAnyChIdx, i_rbuf)) != kOkRC )
             goto errLabel;
 
+          //if( i_rbuf != nullptr && i_rbuf->recdN > 0 )
+          //  proc_info(proc,"in:%i RM recd count: %i",i,i_rbuf->recdN);
+          
           for(unsigned j=0; j<i_rbuf->recdN; ++j)
           {
             if( p->recd_array->recdN >= p->recd_array->allocRecdN )
@@ -12135,7 +12142,7 @@ namespace cw
 
       errLabel:
 
-        //if( o_rbuf->recdN > 0 )
+        //if( o_rbuf != nullptr && o_rbuf->recdN > 0 )
         //  proc_info(proc,"RM recd count: %i",o_rbuf->recdN);
         
         return rc;

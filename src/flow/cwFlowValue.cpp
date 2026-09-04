@@ -2042,7 +2042,7 @@ unsigned cw::flow::recd_type_max_field_count( const recd_type_t* recd_type )
 
 unsigned cw::flow::recd_type_field_index( const recd_type_t* recd_type, const char* field_label, bool report_missing_fl )
 {
-  unsigned index;
+  unsigned index = kInvalidIdx;
 
   if(field_label == nullptr || textLength(field_label) == 0 || ((index = _calc_value_field_index( recd_type, field_label)) == kInvalidIdx) )
   {

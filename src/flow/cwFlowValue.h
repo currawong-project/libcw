@@ -368,12 +368,17 @@ namespace cw
 
     // Read the value from a single record field
     template< typename T >
-    rc_t recd_get( const recd_type_t* type, const recd_t* recd, unsigned field_idx, T& val_ref )
+    rc_t recd_get( const recd_type_t* type, const recd_t* recd, unsigned field_idx, T& val_ref, unsigned recurse =0 )
     {
+      if( field_idx == kInvalidId )
+        return cwLogError(kInvalidArgRC,"An invalid record field index '%i' was encountered.",field_idx);
+      
       if( field_idx < type->fieldN )
         return value_get( recd->valA + field_idx, val_ref );
 
-      return recd_get( type->base, recd->base, field_idx - type->fieldN, val_ref );
+      //printf("level:%i field_idx:%i fN:%i type:%p type->base:%p recd:%p recd->base:%p\n",recurse,field_idx,type->fieldN,type,type->base,recd,recd->base);
+      
+      return recd_get( type->base, recd->base, field_idx - type->fieldN, val_ref, recurse+1 );
     }
 
     inline rc_t _recd_get(const recd_type_t* recd_type, recd_t* r ) { return kOkRC; }
