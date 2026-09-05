@@ -270,6 +270,9 @@ namespace cw
     rc_t value_get( const value_t* val, const midi::ch_msg_t*& valRef );
     rc_t value_set(       value_t* val, midi::ch_msg_t* v );
 
+    rc_t value_get( const value_t* val, value_t& valRef );
+    rc_t value_get(       value_t* val, value_t& valRef );
+
 
 
     //------------------------------------------------------------------------------------------------------------------------
@@ -364,7 +367,7 @@ namespace cw
     // Set the record base pointer and the value of all fields with default values.
     rc_t recd_init( const recd_type_t* recd_type, const recd_t* base, recd_t* r );
 
-    rc_t recd_get_value( const recd_type_t* type, const recd_t* recd, unsigned field_idx, value_t& val_ref );
+    //rc_t recd_get_value( const recd_type_t* type, const recd_t* recd, unsigned field_idx, value_t& val_ref );
 
     // Read the value from a single record field
     template< typename T >

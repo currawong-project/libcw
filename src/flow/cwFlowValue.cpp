@@ -1913,6 +1913,20 @@ cw::rc_t cw::flow::value_set(value_t* val, midi::ch_msg_t* v )
   return rc;  
 }
 
+cw::rc_t cw::flow::value_get( const value_t* val, value_t& valRef )
+{
+  if( val == nullptr )
+    return cwLogError(kInvalidArgRC,"The source value reference is null.");
+  
+  return value_from_value( *val, valRef );
+}
+
+cw::rc_t cw::flow::value_get( value_t* val, value_t& valRef )
+{
+  return value_get((const value_t*)val, valRef );
+}
+
+
 
 //------------------------------------------------------------------------------------------------------------------------
 //
@@ -2100,7 +2114,7 @@ void cw::flow::recd_type_print( const recd_type_t* recd_type )
 {
   _recd_type_print(recd_type,recd_type);
 }
-
+/*
 cw::rc_t cw::flow::recd_get_value( const recd_type_t* type, const recd_t* recd, unsigned field_idx, value_t& val_ref )
 {
   if( field_idx < type->fieldN )
@@ -2108,7 +2122,7 @@ cw::rc_t cw::flow::recd_get_value( const recd_type_t* type, const recd_t* recd, 
   
   return recd_get_value( type->base, recd->base, field_idx - type->fieldN, val_ref );
 }
-
+*/
 cw::rc_t cw::flow::recd_set_value( const recd_type_t* type, const recd_t* base, recd_t* recd, unsigned field_idx, const value_t& val )
 {
   if( field_idx >= type->fieldN )

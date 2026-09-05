@@ -12373,7 +12373,7 @@ namespace cw
             value_t v = {};
 
             // get the field value from the incoming record
-            if((rc = recd_get_value( i_rbuf->type, i_rbuf->recdA+i, p->i_field_indexA[j], v)) != kOkRC )
+            if((rc = recd_get( i_rbuf->type, i_rbuf->recdA+i, p->i_field_indexA[j], v)) != kOkRC )
             {
               rc = proc_error(proc,rc,"Unable to get the input record field '%s' in '%s'.",cwStringNullGuard(recd_type_field_index_to_label(i_rbuf->type,p->i_field_indexA[j])),cwStringNullGuard(proc->label));
               goto errLabel;
