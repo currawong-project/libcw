@@ -14,6 +14,7 @@
 #include "cwMtx.h"
 #include "cwTime.h"
 #include "cwMidiDecls.h"
+#include "cwIdTable.h"
 
 #include "cwTime.h"
 #include "cwMidiDecls.h"

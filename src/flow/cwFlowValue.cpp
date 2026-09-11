@@ -12,6 +12,7 @@
 #include "cwDspTypes.h" // real_t, sample_t
 #include "cwTime.h"
 #include "cwMidiDecls.h"
+#include "cwIdTable.h"
 #include "cwFlowValue.h"
 
 namespace cw
@@ -73,9 +74,6 @@ namespace cw
       {
         recd_field_t* f0 = f->link;
 
-        if( f->group_fl )
-          _recd_type_destroy_field_list(f->u.group_fieldL);
-
         mem::release(f->doc);
         mem::release(f->label);
         mem::release(f);
@@ -87,10 +85,7 @@ namespace cw
     unsigned _recd_field_list_set_index( recd_field_t* fld, unsigned index )
     {
       for(recd_field_t* f=fld; f!=nullptr; f=f->link)
-        if( f->group_fl )
-          index = _recd_field_list_set_index(f->u.group_fieldL,index);
-        else
-          f->u.index = index++;
+        f->val_idx = index++;
       return index;
     }
 
@@ -99,15 +94,9 @@ namespace cw
       const recd_field_t* result = nullptr;
       
       for(; f!=nullptr && result==nullptr; f=f->link)
-      {
-        if( f->group_fl )
-          result = _find_field_from_index( f->u.group_fieldL, field_idx );
-        else
-        {
-          if( f->u.index == field_idx )
+        if( f->val_idx == field_idx )
             result = f;
-        }
-      }
+        
       return result;
     }
 
@@ -146,11 +135,12 @@ namespace cw
         goto errLabel;
       }
 
-
       // allocate the field record
-      field        = mem::allocZ<recd_field_t>();
-      field->label = mem::duplStr(label);
-      field->doc   = mem::duplStr(doc_string);
+      field          = mem::allocZ<recd_field_t>();
+      field->label   = mem::duplStr(label);
+      field->doc     = mem::duplStr(doc_string);
+      field->uid     = id_table::get_id(field->label);
+      field->src_uid = kInvalidIdx;
       
       // add the new field to the end of the field list
       if( field_list_ref == nullptr )
@@ -207,61 +197,33 @@ namespace cw
             goto errLabel;
           }
                 
-          if( textIsEqual(type_label,"group") )
+          // validate the value type flag
+          if((field->value.tflag = value_type_label_to_flag( type_label )) == kInvalidTFl )
           {
-            const object_t* field_dict = nullptr;
-            char* new_group_path = nullptr;
-            
-            field->group_fl = true;
-
-            // get the group 'fields' dictionary
-            if((rc = pair->pair_value()->getv("fields",field_dict)) != kOkRC )
-            {
-              rc = cwLogError(rc,"The field group '%s' does not have a field list.",pair->pair_label());
-              goto errLabel;
-            }
-
-            // recursively read the group field list
-            rc = _recd_field_list_from_cfg(field->u.group_fieldL,field_dict);
-
-            if(rc != kOkRC )
-            {
-              rc = cwLogError(rc,"The creation of field group '%s' failed.",pair->pair_label());
-              goto errLabel;
-            }
-        
+            rc = cwLogError(kSyntaxErrorRC,"The value type label '%s' is not valid on the field specifier '%s'.",cwStringNullGuard(type_label),cwStringNullGuard(pair->pair_label()));
+            goto errLabel;
           }
-          else
+
+          // get the optional default value 
+          if((val_cfg = pair->pair_value()->find("value")) != nullptr )
           {
-      
-            // validate the value type flag
-            if((field->value.tflag = value_type_label_to_flag( type_label )) == kInvalidTFl )
+            value_t v;
+            v.tflag = kInvalidTFl;
+
+            // parse the value into 'v'
+            if((rc = value_from_cfg(val_cfg,v)) != kOkRC )
             {
-              rc = cwLogError(kSyntaxErrorRC,"The value type label '%s' is not valid on the field specifier '%s'.",cwStringNullGuard(type_label),cwStringNullGuard(pair->pair_label()));
+              rc = cwLogError(rc,"The default value parse failed for the field '%s'.",cwStringNullGuard(pair->pair_label()));
               goto errLabel;
             }
 
-            // get the optional default value 
-            if((val_cfg = pair->pair_value()->find("value")) != nullptr )
+            // convert the value from 'v' into field->value
+            if((rc = value_from_value(v,field->value)) != kOkRC )
             {
-              value_t v;
-              v.tflag = kInvalidTFl;
-
-              // parse the value into 'v'
-              if((rc = value_from_cfg(val_cfg,v)) != kOkRC )
-              {
-                rc = cwLogError(rc,"The default value parse failed for the field '%s'.",cwStringNullGuard(pair->pair_label()));
-                goto errLabel;
-              }
-
-              // convert the value from 'v' into field->value
-              if((rc = value_from_value(v,field->value)) != kOkRC )
-              {
-                rc = cwLogError(rc,"The default value assignment failed for the field '%s'.",cwStringNullGuard(pair->pair_label()));
-                goto errLabel;          
-              }
-            } 
-          }
+              rc = cwLogError(rc,"The default value assignment failed for the field '%s'.",cwStringNullGuard(pair->pair_label()));
+              goto errLabel;          
+            }
+          } 
         }
     
       }
@@ -269,15 +231,6 @@ namespace cw
       return rc;
     }
 
-    void _recd_set_value_type( recd_field_t* fieldL, recd_t* r )
-    {
-      recd_field_t* f = fieldL;
-      for(; f!=nullptr; f=f->link)
-        if( f->group_fl )
-          _recd_set_value_type( f->u.group_fieldL, r );
-        else
-          r->valA[ f->u.index ].tflag = f->value.tflag; 
-    }
 
     rc_t _recd_set_default_value( recd_field_t* fieldL, recd_t* r )
     {
@@ -286,17 +239,12 @@ namespace cw
       
       for(; f!=nullptr; f=f->link)
       {
-        if( f->group_fl )
-          _recd_set_default_value( f->u.group_fieldL, r );
-        else
+        if(f->value.tflag != kInvalidTFl)
         {
-          if(f->value.tflag != kInvalidTFl)
+          if((rc = value_from_value( f->value, r->valA[f->val_idx] )) != kOkRC )
           {
-            if((rc = value_from_value( f->value, r->valA[f->u.index] )) != kOkRC )
-            {
-              rc = cwLogError(rc,"Set default value failed on the field '%s'.",cwStringNullGuard(f->label));
-              goto errLabel;
-            }
+            rc = cwLogError(rc,"Set default value failed on the field '%s'.",cwStringNullGuard(f->label));
+            goto errLabel;
           }
         }
       }
@@ -304,15 +252,15 @@ namespace cw
     errLabel:
       return rc;
     }
+
     
-    
-    const recd_field_t* _find_field( const recd_field_t* fieldL, const char* label, unsigned label_charN, bool group_fl )
+    const recd_field_t* _find_field( const recd_field_t* fieldL, const char* label, unsigned label_charN )
     {
       for(const recd_field_t* f = fieldL; f!=nullptr; f=f->link)
       {
         unsigned n = textLength(f->label);
         
-        if( (f->group_fl == group_fl) && n==label_charN && textIsEqual(f->label,label,label_charN) )
+        if( n==label_charN && textIsEqual(f->label,label,label_charN) )
           return f;
       }   
       return nullptr;      
@@ -327,13 +275,10 @@ namespace cw
         const recd_field_t* f = nullptr;
 
         // if this field label is found in 'ref' ...
-        if((f = _find_field(ref,f0->label,textLength(f0->label),f0->group_fl)) != nullptr )
+        if((f = _find_field(ref,f0->label,textLength(f0->label))) != nullptr )
         {
-          // ... but the match is on a group label and no labels in the group match ...
-          if( f0->group_fl && (f = _get_duplicate_field(f0->u.group_fieldL,f->u.group_fieldL)) == nullptr )
-            continue; // ... then keep searching through f0
 
-          // ... otherwise a duplicate label was found
+          // a duplicate label was found
           return f;
         }
         
@@ -347,113 +292,81 @@ namespace cw
       const recd_field_t* f      = nullptr;;
 
       // if we are searching for a value field label
-      if( period == nullptr )
+      if((f = _find_field( fieldL, field_label, textLength(field_label) )) ==  nullptr )
       {
-        if((f = _find_field( fieldL, field_label, textLength(field_label), false )) ==  nullptr )
-        {
-          goto errLabel;
-        }
+        goto errLabel;
       }
-      else // otherwise we are searching for a group 
-      {
-        if((f = _find_field( fieldL, field_label, period-field_label, true )) == nullptr )
-        {
-          goto errLabel;
-        }
-        
-        return _find_value_field(f->u.group_fieldL,period+1);
-
-      }
+      
       
     errLabel:      
       return f;
     }
-    
-    unsigned _calc_value_field_index( const recd_type_t* recd_type, const char* field_label)
-    {      
-      const recd_field_t* f;
-      unsigned index = kInvalidIdx;
-      
-      // if the field label is in the local record
-      if((f = _find_value_field( recd_type->fieldL, field_label )) != nullptr )
-      {
-        assert(f->group_fl == false );
-        index = f->u.index;
-      }
-      else
-      {
-        // recursively look for the field in the base type
-        if( recd_type->base != nullptr )
-        {
-          if(( index = _calc_value_field_index( recd_type->base, field_label )) != kInvalidIdx )
-            index += recd_type->fieldN;
-        }
-      }
-      
-      return index;
+
+    unsigned _field_label_to_index( const recd_type_t* type, const char* field_label )
+    {
+      if( field_label == nullptr )
+        return kInvalidIdx;
+
+      for(unsigned i=0; i<type->fieldMapN; ++i)
+        if( textIsEqual(type->fieldMapA[i].field_desc->label,field_label))
+          return i;
+      return kInvalidIdx;
     }
 
+    
     bool _fields_are_equivalent( const recd_field_t* f0, const recd_field_t* f1)
     {
-      if( f0->group_fl != f1->group_fl )
-        return false;
 
       if( !textIsEqual(f0->label,f1->label) )
         return false;
-
-      if( f0->group_fl )
-        return true;
       
-      return f0->u.index==f1->u.index && f0->value.tflag == f1->value.tflag;
+      return /*f0->val_idx==f1->val_idx &&*/ f0->value.tflag == f1->value.tflag;
     }
     
+    void _recd_type_print_field( unsigned field_idx, unsigned level, const recd_field_t* f )
+    {
+        unsigned labelN = textLength(f->label) + 2;
+        char label[ labelN ];
+        label[0] = 0;
+        label[labelN-1] = 0;
+          
+        strcat(label,f->label);
+
+        const bool print_type_label_fl = true;
+        cwLogPrint("(lvl:%i : fidx:%i vidx:%2i u:%3i su:%3i %s:",level, field_idx,f->val_idx,f->uid,f->src_uid,f->label);
+        value_print(&f->value,print_type_label_fl,kMinimalValPrintVerb);
+        cwLogPrint(")");
+    }
     
-    void _recd_type_print_fields( const recd_type_t* rt0, const recd_field_t* fieldL, const char* group_label )
+    void _recd_type_print_fields( unsigned level, const recd_type_t* rt )
     {
       const recd_field_t* f;
 
-      // print non-group fields first
-      for(f=fieldL; f!=nullptr; f=f->link)        
-        if( f->group_fl == false )
-        {
-          unsigned labelN = textLength(f->label) + textLength(group_label) + 2;
-          char label[ labelN ];
-          label[0] = 0;
-          label[labelN-1] = 0;
-          
-          if( group_label != nullptr )
-          {
-            strcpy(label,group_label);
-            strcat(label,".");
-          }
-          strcat(label,f->label);
+      for(f=rt->fieldL; f!=nullptr; f=f->link)        
+      {
+        unsigned field_idx = recd_type_field_index( rt, f->label);
+        _recd_type_print_field(field_idx,level,f);
+      }
 
-          const bool print_type_label_fl = true;
-          unsigned field_idx = recd_type_field_index( rt0, label);
-          cwLogPrint("(%i %i %s:",field_idx,f->u.index,f->label);
-          value_print(&f->value,print_type_label_fl,kMinimalValPrintVerb);
-          cwLogPrint(")");
-        }
-
-      // print group fields next
-      for(f=fieldL; f!=nullptr; f=f->link)        
-        if( f->group_fl )
-        {
-          cwLogPrint("%s:",f->label);
-          _recd_type_print_fields(rt0,f->u.group_fieldL,f->label);
-        }
       
     }
     
-    void _recd_type_print( const recd_type_t* rt0, const recd_type_t* rt )
+    void _recd_type_print( unsigned level_idx, const recd_type_t* rt )
     {
+      if( rt->fieldL != nullptr )
+      {
+        _recd_type_print_fields(level_idx,rt);
+        cwLogPrint("\n");
+      }
+      
       if( rt->base != nullptr )
-        _recd_type_print( rt0, rt->base );
+      {
+        _recd_type_print( level_idx + 1, rt->base );
+      }      
 
-      _recd_type_print_fields(rt0,rt->fieldL,nullptr);
     }
 
-    void _recd_print_field_list( const char* group_label, const recd_field_t* fieldL,  const value_t* valA )
+    void _recd_print_field_list( const recd_field_t* fieldL,  const value_t* valA )
     {
       const bool print_type_label_fl = false;
       const recd_field_t* f;
@@ -464,45 +377,206 @@ namespace cw
       cwLogPrint("(");
       for(f=fieldL; f!=nullptr; f=f->link)
       {
-        if(f->group_fl)
-          _recd_print_field_list(f->label,f->u.group_fieldL,valA);
-        else
-        {
-          if( group_label != nullptr )
-            cwLogPrint("%i:%s.%s=",f->u.index,group_label,f->label);
-          else
-            cwLogPrint("%i:%s=",f->u.index,f->label);
-          
-          value_print(valA + f->u.index, print_type_label_fl, kMinimalValPrintVerb);
-          
-          if( f->link != nullptr)
-            cwLogPrint(",");
-        }
+        cwLogPrint("%i:%s=",f->val_idx,f->label);
+        
+        value_print(valA + f->val_idx, print_type_label_fl, kMinimalValPrintVerb);
+        
+        if( f->link != nullptr)
+          cwLogPrint(",");
+        
       }
       cwLogPrint(")");
     }
-      
 
-    rc_t _recd_print( const recd_type_t* rt, const recd_t* r )
+    void _recd_print_field( const recd_t* recd, const recd_field_map_t* fm )
+    {
+      const bool          print_type_label_fl = false;
+      const recd_field_t* fd                  = fm->field_desc;
+      value_t val;
+        
+      //for(unsigned level_idx=0; level_idx<fm->level_idx; level_idx++)
+      //  recd = recd->base;
+        
+      cwLogPrint("%s=",fd->label);
+
+      if( recd_get_from_uid(recd,fd->uid,val) == kOkRC )        
+        value_print(&val, print_type_label_fl, kMinimalValPrintVerb);
+
+      // value_print(recd->valA + fd->val_idx, print_type_label_fl, kMinimalValPrintVerb);
+    }
+
+      
+    void _recd_print( const recd_t* recd )
+    {      
+      cwLogPrint("(");
+      for(unsigned i=0; i<recd->type->fieldMapN; ++i)
+      {
+        _recd_print_field(recd, recd->type->fieldMapA + i );
+        
+        if( i+1 < recd->type->fieldMapN )
+          cwLogPrint(",");
+        
+      }
+      cwLogPrint(")");
+    }
+        
+    rc_t _recd_type_create_default_map( recd_type_t* type )
     {
       rc_t rc = kOkRC;
 
-      if(rt->base != nullptr )
+      mem::release(type->fieldMapA);
+      type->fieldMapN = 0;
+
+      // the length of the field map is the count of all fields in the type (including base fields)
+      type->fieldMapN = recd_type_max_field_count( type );
+      type->fieldMapA = mem::allocZ<recd_field_map_t>(type->fieldMapN);
+
+      unsigned            map_idx  = 0;
+      const recd_field_t* fld_desc = type->fieldL;
+      
+      // the fields in the top level type go into the first type->fieldN map entries
+      for(; fld_desc!=nullptr; fld_desc=fld_desc->link,++map_idx)
       {
-        if( r->base == nullptr )
+        assert(map_idx < type->fieldMapN );
+        type->fieldMapA[map_idx].field_desc = fld_desc;
+        type->fieldMapA[map_idx].level_idx  = 0;
+      }
+
+      // The following map entries are taken from the map on the second level
+      for(unsigned i=0; type->base != nullptr && i<type->base->fieldMapN; ++i,++map_idx)
+      {
+        assert(map_idx < type->fieldMapN );
+          
+        type->fieldMapA[map_idx].field_desc = type->base->fieldMapA[i].field_desc;
+        type->fieldMapA[map_idx].level_idx  = type->base->fieldMapA[i].level_idx + 1;
+      }
+
+      type->fieldMapN = map_idx;
+       
+      return rc;
+    }
+
+    rc_t _recd_type_create_map( recd_type_t* type, const char* const * labelA, unsigned labelN )
+    {
+      rc_t rc             = kOkRC;
+      unsigned max_fieldN = recd_type_max_field_count( type );
+
+      // verify that there are not more field labels to map than there are fields
+      if( max_fieldN < labelN )
+      {
+        cwLogError(kInvalidArgRC,"The count of field labels (%i) exceeds the count of possible fields. (%i).",labelN,max_fieldN);
+        goto errLabel;
+      }
+
+      // if the map was previously allocated then release it
+      mem::release(type->fieldMapA);
+      type->fieldMapN = 0;
+
+      // allocate the new map
+      type->fieldMapN = labelN;
+      type->fieldMapA = mem::allocZ<recd_field_map_t>(type->fieldMapN);
+      
+      // for each label
+      for(unsigned i=0; i<labelN; ++i)
+      {
+        const recd_field_t* fld_desc = nullptr;
+        unsigned level_idx = kInvalidIdx;
+
+        // first attempt to locate the label in the top level record
+        if((fld_desc = _find_field( type->fieldL, labelA[i], textLength(labelA[i]) )) != nullptr )
         {
-          rc = cwLogError(kInvalidStateRC,"recd with base type does not have a base instance.");
+          level_idx = 0;
+        }
+        else 
+        {
+          // next attempt to locate the label in the base 
+          for(unsigned j=0; type->base != nullptr && j<type->base->fieldMapN; ++j)
+            if( textIsEqual(type->base->fieldMapA[j].field_desc->label,labelA[i]) )
+            {
+              fld_desc = type->base->fieldMapA[j].field_desc;
+              level_idx = type->base->fieldMapA[j].level_idx + 1;
+              break;
+            }
+        }
+
+        // if the label was not found
+        if( fld_desc == nullptr )
+        {
+          cwLogError(kInvalidArgRC,"The record map field '%s' could not be found.",cwStringNullGuard(labelA[i]));
           goto errLabel;
         }
-        
-        _recd_print( rt->base, r->base );
+
+        // setup the map record
+        type->fieldMapA[i].field_desc = fld_desc;
+        type->fieldMapA[i].level_idx  = 0;
       }
-      
-      _recd_print_field_list( nullptr, rt->fieldL,  r->valA );
 
     errLabel:
-      return rc;
+      if( rc != kOkRC )
+        rc = cwLogError(rc,"Field map create failed.");
       
+      return rc;
+    }
+
+    rc_t _recd_type_create_map( recd_type_t* type, const object_t* map_list_cfg )
+    {
+      rc_t     rc  = kOkRC;
+      unsigned labelN = 0;
+      char**   labelA = nullptr;
+
+      // validate map list cfg object
+      if( map_list_cfg == nullptr )
+      {
+        rc = cwLogError(kInvalidArgRC,"An null record type field map was encountered.");
+        goto errLabel;
+      }
+
+      // verify the map list cfg is a list
+      if( !map_list_cfg->is_list() )
+      {
+        rc = cwLogError(kInvalidArgRC,"The record type field map specifier must be a list of strings.");
+        goto errLabel;        
+      }
+
+      // get the count of labels
+      if((labelN = map_list_cfg->child_count()) == 0)
+      {
+        cwLogWarning("The record type field map list is empty.");
+        goto errLabel;        
+      }
+
+      // allocate an array of strings to hold the labels
+      labelA = mem::allocZ<char*>(labelN);
+
+      for(unsigned i=0; i<labelN; ++i)
+      {
+        char* label = nullptr;
+        const object_t* label_cfg;
+
+        //  get the label string cfg
+        if((label_cfg = map_list_cfg->child_ele(i)) == nullptr )
+        {
+          rc = cwLogError(kSyntaxErrorRC,"The record type map list element at index %i could not be accessed.",i);
+          goto errLabel;
+        }
+
+        // get the C string
+        if((rc = label_cfg->value(label)) != kOkRC )
+        {
+          rc = cwLogError(kSyntaxErrorRC,"The record type map list element at index %i could not be parsed as an integer.",i);
+          goto errLabel;
+        }
+
+        // store the label
+        labelA[i] = label;
+      }
+      
+      // given the list of label create the field map
+      rc = _recd_type_create_map(type,labelA,labelN);
+      
+    errLabel:      
+      mem::release(labelA);
+      return rc;
     }
 
   } // flow
@@ -892,7 +966,7 @@ void cw::flow::rbuf_print( const rbuf_t* rbuf, unsigned verbosity )
     if( verbosity == kAllValPrintVerb )
     {
       for(unsigned i=0; i<rbuf->recdN; ++i)
-        recd_print(rbuf->type, rbuf->recdA + i);
+        recd_print( rbuf->recdA + i);
     }
     
   }
@@ -1926,6 +2000,14 @@ cw::rc_t cw::flow::value_get( value_t* val, value_t& valRef )
   return value_get((const value_t*)val, valRef );
 }
 
+cw::rc_t cw::flow::value_set( value_t* val, const value_t& valRef )
+{
+  if( val == nullptr )
+    return cwLogError(kInvalidArgRC,"The source value reference is null.");
+  
+  return value_from_value( valRef, *val );
+}
+
 
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -1934,7 +2016,7 @@ cw::rc_t cw::flow::value_get( value_t* val, value_t& valRef )
 //
 
 
-cw::rc_t cw::flow::recd_format_create( recd_fmt_t*& recd_fmt_ref, const object_t* cfg, unsigned dflt_alloc_cnt )
+cw::rc_t cw::flow::  recd_format_create( recd_fmt_t*& recd_fmt_ref, const object_t* cfg, unsigned dflt_alloc_cnt, const recd_type_t* base_type )
 {
   rc_t         rc        = kOkRC;
   recd_fmt_t*  recd_fmt  = nullptr;
@@ -1944,7 +2026,7 @@ cw::rc_t cw::flow::recd_format_create( recd_fmt_t*& recd_fmt_ref, const object_t
   recd_fmt = mem::allocZ<recd_fmt_t>();
 
   if( cfg->find( "fields" ) != nullptr )
-    if((rc = recd_type_create(recd_fmt->recd_type,nullptr,cfg)) != kOkRC )
+    if((rc = recd_type_create(recd_fmt->recd_type,base_type,cfg)) != kOkRC )
       goto errLabel;
 
   recd_fmt->alloc_cnt = dflt_alloc_cnt;
@@ -2025,7 +2107,13 @@ cw::rc_t  cw::flow::recd_type_create( recd_type_t*& recd_type_ref, const recd_ty
   
   recd_type->base = base;
   recd_type_ref = recd_type;
-  
+
+  // create the default field map
+  if((rc = _recd_type_create_default_map( recd_type )) != kOkRC )
+  {
+    goto errLabel;
+  }
+
 errLabel:
   if( rc != kOkRC )
   {
@@ -2036,15 +2124,137 @@ errLabel:
   return rc;
 }
 
+
+cw::rc_t  cw::flow::recd_type_create_from_map( recd_type_t*& recd_type_ref, const recd_type_t* base_type, const object_t* field_map_cfg )
+{
+  rc_t         rc               = kOkRC;
+  recd_type_t* rt               = nullptr;
+  
+  recd_type_ref = nullptr;
+
+  if( field_map_cfg == nullptr )
+    return cwLogError(kInvalidArgRC,"A null record type field map was encountered.");
+  
+  if( base_type == nullptr )
+    return cwLogError(kInvalidArgRC,"A record type cannot be derived from a map without being given an explicit base type.");
+
+  // create a type with only a base
+  if((rc = recd_type_create(rt,base_type,nullptr)) != kOkRC )
+    return rc;
+  
+  unsigned          mapN      = field_map_cfg->child_count();  
+  recd_field_map_t* fieldMapA = mem::allocZ<recd_field_map_t>(mapN);
+
+  for(unsigned i=0; i<mapN; ++i)
+  {
+    const object_t*         pair_cfg      = field_map_cfg->child_ele(i);
+    const char*             i_field_label = nullptr;
+    const recd_field_map_t* i_field_map   = nullptr;
+    const char*             o_field_label = nullptr;
+    const recd_field_map_t* o_field_map   = nullptr;
+    const recd_field_t*     field_desc    = nullptr;
+
+    // validate the syntax of the input/output field pair
+    if( pair_cfg == nullptr || !pair_cfg->is_pair() || pair_cfg->pair_label() == nullptr || pair_cfg->pair_value() == nullptr || !pair_cfg->pair_value()->is_string() )
+    {
+      cwLogError(kSyntaxErrorRC,"A input/output mapping pair could not be parsed at index %i.",i);
+      goto errLabel;
+    }
+
+    // get the input record field label
+    i_field_label = pair_cfg->pair_label();
+          
+    // get the output record field label
+    if((rc = pair_cfg->pair_value()->value(o_field_label)) != kOkRC )
+    {
+      cwLogError(kSyntaxErrorRC,"The output map field label could not be parsed at index:%i.",i);
+      goto errLabel;
+    }
+
+    // verify that the output field label is not already in use
+    for(unsigned j=0; j<i; ++j)
+      if( textIsEqual(o_field_label,fieldMapA[j].field_desc->label) )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The output field label '%s' was used multiple times.",cwStringNullGuard(o_field_label));
+        goto errLabel;
+      }
+
+    // get the input field desc.
+    if((i_field_map = recd_type_field_label_to_map(base_type,i_field_label)) == nullptr )
+    {
+      cwLogError(kEleNotFoundRC,"The input field named '%s' could not be found.",cwStringNullGuard(i_field_label));
+      goto errLabel;      
+    }
+
+    // if the input field name matches the output field name then we can use the existing field_desc 
+    if(textIsEqual(o_field_label,i_field_label))
+      field_desc = i_field_map->field_desc;
+    else
+    {
+      // duplicate the input field desc but use the output field name
+      recd_field_t* rf  = mem::allocZ<recd_field_t>();
+      rf->label         = mem::duplStr(o_field_label);
+      rf->uid           = id_table::get_id(rf->label); 
+      rf->src_uid       = id_table::get_id(i_field_map->field_desc->label);
+      rf->value         = i_field_map->field_desc->value;
+      rf->doc           = mem::duplStr(i_field_map->field_desc->doc);
+      rf->val_idx       = kInvalidIdx; // this field will never be directly accessed. i_field_map->field_desc->val_idx; // use the input val index as this val index
+      rf->link          = rt->fieldL;
+      rt->fieldL        = rf;
+      rt->fieldN       += 1;
+
+      field_desc = rf;
+    }
+
+    fieldMapA[i].field_desc = field_desc;
+    fieldMapA[i].level_idx  = i_field_map->level_idx + 1;
+    
+  }
+  
+  mem::release(rt->fieldMapA);
+  rt->fieldMapA = fieldMapA;
+  rt->fieldMapN = mapN;
+  rt->read_only_fl = true;
+  recd_type_ref = rt;
+  
+errLabel:
+  if( rc != kOkRC )
+  {
+    recd_type_destroy(rt);
+    mem::release(fieldMapA);
+  }
+  
+  return rc;  
+}
+
+
 void  cw::flow::recd_type_destroy( recd_type_t*& recd_type_ref )
 {
   if( recd_type_ref == nullptr )
     return;
 
   _recd_type_destroy_field_list(recd_type_ref->fieldL);
+  mem::release(recd_type_ref->fieldMapA);
   mem::release(recd_type_ref);
 }
 
+cw::rc_t cw::flow::recd_type_apply_map( recd_type_t* recd_type, const char* const * labelA, unsigned labelN )
+{
+  return _recd_type_create_map(recd_type, labelA, labelN );
+}
+
+cw::rc_t cw::flow::recd_type_apply_map( recd_type_t* recd_type, const object_t* map_list_cfg )
+{
+  return _recd_type_create_map(recd_type, map_list_cfg );
+}
+
+cw::flow::recd_field_map_t* cw::flow::recd_type_field_label_to_map( const recd_type_t* recd_type, const char* field_label )
+{
+  for(unsigned i=0; i<recd_type->fieldMapN; ++i)
+    if( textIsEqual(recd_type->fieldMapA[i].field_desc->label,field_label))
+      return recd_type->fieldMapA + i;
+  return nullptr;
+}
 
 unsigned cw::flow::recd_type_max_field_count( const recd_type_t* recd_type )
 {
@@ -2054,23 +2264,32 @@ unsigned cw::flow::recd_type_max_field_count( const recd_type_t* recd_type )
   return n;
 }
 
-unsigned cw::flow::recd_type_field_index( const recd_type_t* recd_type, const char* field_label, bool report_missing_fl )
+unsigned cw::flow::recd_type_field_index( const recd_type_t* recd_type, const char* field_label )
 {
-  unsigned index;
-
-  if(field_label == nullptr || textLength(field_label) == 0 || ((index = _calc_value_field_index( recd_type, field_label)) == kInvalidIdx) )
+  unsigned field_idx;
+  if((field_idx = _field_label_to_index( recd_type, field_label )) == kInvalidIdx )
   {
-    if( report_missing_fl )
-      cwLogError(kInvalidArgRC,"The record field label '%s' was not found.",cwStringNullGuard(field_label));
-    goto errLabel;
+    cwLogError(kEleNotFoundRC,"The record field label '%s' was not found.",cwStringNullGuard(field_label));
+    recd_type_print(recd_type);    
   }
 
-errLabel:
-  return index;
+  return field_idx;
 }
 
+cw::rc_t  cw::flow::recd_type_field_index( const recd_type_t* recd_type, const char* field_label, unsigned& field_idx_ref )
+{
+  rc_t rc = kOkRC;
+
+  if((field_idx_ref = recd_type_field_index(recd_type,field_label)) == kInvalidIdx )
+  {
+    rc = kEleNotFoundRC;
+  }
+  return rc;
+}
+
+
 unsigned cw::flow::recd_type_field_index_silent( const recd_type_t* recd_type, const char* field_label )
-{ return recd_type_field_index(recd_type, field_label, false ); }
+{ return _field_label_to_index(recd_type, field_label ); }
 
 
 const char* cw::flow::recd_type_field_index_to_label( const recd_type_t* recd_type, unsigned field_idx )
@@ -2079,6 +2298,12 @@ const char* cw::flow::recd_type_field_index_to_label( const recd_type_t* recd_ty
 
   return f==nullptr ? nullptr : f->label;
 }
+
+bool cw::flow::recd_fields_data_types_are_equivalent( const recd_field_t* fd0, const recd_field_t* fd1 )
+{
+  return fd0->value.tflag == fd1->value.tflag;
+}
+
 
 bool cw::flow::recd_types_are_equivalent( const recd_type_t* rt0, const recd_type_t* rt1 )
 {
@@ -2091,18 +2316,12 @@ bool cw::flow::recd_types_are_equivalent( const recd_type_t* rt0, const recd_typ
   if( rt0 == nullptr || rt1 == nullptr )
     return false;
 
-  n0 = recd_type_max_field_count(rt0);
-  n1 = recd_type_max_field_count(rt1);
-
-  if( n0 != n1 )
+  if( rt0->fieldMapN != rt1->fieldMapN )
     return false;
 
-  for(unsigned i=0; i<n0; ++i)
+  for(unsigned i=0; i<rt0->fieldMapN; ++i)
   {
-    const recd_field_t* f0 = _find_field_from_index( rt0, i );
-    const recd_field_t* f1 = _find_field_from_index( rt1, i );
-    
-    if( !_fields_are_equivalent(f0,f1) )
+    if( !_fields_are_equivalent(rt0->fieldMapA[i].field_desc,rt1->fieldMapA[i].field_desc) )
       return false;
   }
 
@@ -2110,51 +2329,171 @@ bool cw::flow::recd_types_are_equivalent( const recd_type_t* rt0, const recd_typ
 }
 
 
+namespace cw
+{
+  namespace flow
+  {
+    void _recd_type_print_alt( const recd_type_t* rt, unsigned i, unsigned level )
+    {
+      if( rt == nullptr )
+        return;
+
+      for(const recd_field_t* rf = rt->fieldL; rf!=nullptr; rf=rf->link)
+      {
+        _recd_type_print_field( i++, level, rf );
+        cwLogPrint("\n");
+      }
+      
+      _recd_type_print_alt(rt->base,i,level+1);
+
+    }
+  }
+}
+
 void cw::flow::recd_type_print( const recd_type_t* recd_type )
 {
-  _recd_type_print(recd_type,recd_type);
+  /*
+  //_recd_type_print(0,recd_type);
+  for(unsigned i=0; i<recd_type->fieldMapN; ++i)
+  {
+    const recd_field_map_t* fm = recd_type->fieldMapA + i;
+    _recd_type_print_field( i, fm->level_idx, fm->field_desc );
+    //_recd_type_print_field( i, -1, fm->field_desc );
+    cwLogPrint("\n");
+  }
+  */
+  _recd_type_print_alt(recd_type,0,0);
 }
-/*
-cw::rc_t cw::flow::recd_get_value( const recd_type_t* type, const recd_t* recd, unsigned field_idx, value_t& val_ref )
+
+namespace cw
 {
-  if( field_idx < type->fieldN )
-    return value_from_value( recd->valA[field_idx], val_ref );
+  namespace flow
+  {
+    void _recd_type_print(const recd_t* r, unsigned i, unsigned level )
+    {
+      if( r == nullptr )
+        return;
+
+      for(const recd_field_t* rf = r->type->fieldL; rf!=nullptr; rf=rf->link)
+      {
+        _recd_type_print_field( i++, level, rf );
+        cwLogPrint("\n");
+      }
+      
+      _recd_type_print(r->base,i,level+1);
+
+    }
+  }
+}
+
+void cw::flow::recd_type_print( const recd_t* r )
+{
+  _recd_type_print(r,0,0);
+}
+
+cw::rc_t cw::flow::recd_set_value( const recd_t* base, recd_t* recd, unsigned field_idx, const value_t& val )
+{
+  if( recd->type->read_only_fl )
+    return cwLogError(kInvalidStateRC,"Attempt to write to a read-only record.");
   
-  return recd_get_value( type->base, recd->base, field_idx - type->fieldN, val_ref );
-}
-*/
-cw::rc_t cw::flow::recd_set_value( const recd_type_t* type, const recd_t* base, recd_t* recd, unsigned field_idx, const value_t& val )
-{
-  if( field_idx >= type->fieldN )
+  if( field_idx >= recd->type->fieldN )
     return cwLogError(kInvalidArgRC,"Only 'local' record value may be set.");
   
   // set the base of this record
-  recd_set_base(type,recd,base);
+  recd_set_base(recd,base);
   
   return value_from_value(val, recd->valA[field_idx]);
-}
-    
+}    
 
 
 cw::rc_t cw::flow::recd_init( const recd_type_t* recd_type, const recd_t* base, recd_t* r )
 {
+  r->type = recd_type;
   r->base = base;
+  
   return _recd_set_default_value( recd_type->fieldL, r );
   
 }
 
-cw::rc_t cw::flow::recd_print( const recd_type_t* recd_type, const recd_t* r )
-{ return _recd_print( recd_type, r ); }
+void cw::flow::recd_print( const recd_t* r )
+{ 
+  //recd_type_print(r->type);
+  return _recd_print(  r ); 
+}
+/*
+re  :
+(lvl:0 : fidx:0 vidx:-1 u: 17 su: 16 f1:u:0)
+(lvl:0 : fidx:1 vidx:-1 u: 16 su: 17 f0:u:1)
+(lvl:2 : fidx:2 vidx: 0 u: 16 su: -1 f0:u:0)
+(lvl:2 : fidx:3 vidx: 1 u: 17 su: -1 f1:u:1)
+(lvl:2 : fidx:4 vidx: 2 u: 19 su: -1 f2:f:0.000000)
+(lvl:2 : fidx:5 vidx: 3 u: 18 su: -1 sel:u:-1)
+(f0=1,f1=10,sel=2)
+
+ */
+/*
+re  :
+(lvl:0 : fidx:0 vidx:-1 f1:u:0)
+(lvl:0 : fidx:1 vidx:-1 f0:u:1)
+(lvl:2 : fidx:2 vidx:0 f0:u:0)
+(lvl:2 : fidx:3 vidx:1 f1:u:1)
+(lvl:2 : fidx:4 vidx:2 f2:f:0.000000)
+(lvl:2 : fidx:5 vidx:3 sel:u:-1)
+(f0=1,f1=10,sel=2)
+*/
+/*
+(lvl:0 : fidx:0 vidx: 0 u:  4 su: -1 loc:u:-1)
+(lvl:0 : fidx:1 vidx: 1 u:  5 su: -1 meas:u:-1)
+(lvl:0 : fidx:2 vidx: 2 u: 12 su: -1 score_vel:u:-1)
+(lvl:3 : fidx:3 vidx:-1 u:  1 su: 10 port_id:u:-1)
+(lvl:4 : fidx:4 vidx: 0 u:  0 su: -1 midi:m:)
+(lvl:4 : fidx:5 vidx: 1 u:  7 su: -1 mp_score_vel:u:0)
+(lvl:4 : fidx:6 vidx: 2 u:  8 su: -1 mp_loc:u:-1)
+(lvl:4 : fidx:7 vidx: 3 u:  9 su: -1 mp_meas:u:-1)
+(lvl:4 : fidx:8 vidx: 4 u: 10 su: -1 mp_port_id:u:-1)
+
+(lvl:0 : fidx:0 vidx: 0 u:  4 su: -1 loc:u:-1)
+(lvl:0 : fidx:1 vidx: 1 u:  5 su: -1 meas:u:-1)
+(lvl:0 : fidx:2 vidx: 2 u: 12 su: -1 score_vel:u:-1)
+(lvl:3 : fidx:3 vidx:-1 u:  1 su: 10 port_id:u:-1)
+(lvl:4 : fidx:4 vidx: 0 u:  0 su: -1 midi:m:)
+(lvl:4 : fidx:5 vidx: 1 u:  7 su: -1 mp_score_vel:u:0)
+(lvl:4 : fidx:6 vidx: 2 u:  8 su: -1 mp_loc:u:-1)
+(lvl:4 : fidx:7 vidx: 3 u:  9 su: -1 mp_meas:u:-1)
+(lvl:4 : fidx:8 vidx: 4 u: 10 su: -1 mp_port_id:u:-1)
+
+info: 21:54:57.407: root.sf_b:0 : reset: beg:0 end:6   
+ */
 
 
+/*
+error: 22:09:36.643: root.vctl:0 : Record 'seg_idx' field read failed.  (0)  rc:22 _exec line:6351 /home/kevin/src/caw/src/libcw/src/flow/cwFlowProc.cpp
+(lvl:0 : fidx:0 vidx: 0 u: 11 su: -1 vt_midi:m:)
+(lvl:2 : fidx:1 vidx: 0 u:  4 su: -1 loc:u:-1)
+(lvl:2 : fidx:2 vidx: 1 u:  5 su: -1 meas:u:-1)
+(lvl:2 : fidx:3 vidx: 2 u: 12 su: -1 score_vel:u:-1)
+(lvl:5 : fidx:4 vidx:-1 u:  1 su: 10 port_id:u:-1)
+(lvl:6 : fidx:5 vidx: 0 u:  0 su: -1 midi:m:)
+(lvl:6 : fidx:6 vidx: 1 u:  7 su: -1 mp_score_vel:u:0)
+(lvl:6 : fidx:7 vidx: 2 u:  8 su: -1 mp_loc:u:-1)
+(lvl:6 : fidx:8 vidx: 3 u:  9 su: -1 mp_meas:u:-1)
+(lvl:6 : fidx:9 vidx: 4 u: 10 su: -1 mp_port_id:u:-1)
+(vt_midi=
+error: 22:09:36.643: Value conversion failed during value to value assignement.  (0)  rc:19 value_from_value line:1232 /home/kevin/src/caw/src/libcw/src/flow/cwFlowValue.cpp
+,loc=error: 22:09:36.643: A uint could not be converted to a  <invalid> (0xed0de990).  (0)  rc:29 value_set line:1560 /home/kevin/src/caw/src/libcw/src/flow/cwFlowValue.cpp
 
-cw::rc_t cw::flow::recd_array_create( recd_array_t*& recd_array_ref, const recd_type_t* recd_type, const recd_type_t* base, unsigned allocRecdN, const object_t* data_cfg )
+ */
+cw::rc_t cw::flow::recd_array_create( recd_array_t*&     recd_array_ref,
+                                      const recd_type_t* recd_type,
+                                      unsigned           allocRecdN,
+                                      const object_t*    data_cfg )
 {
   rc_t          rc         = kOkRC;
   recd_array_t* recd_array = nullptr;
 
   recd_array_ref = nullptr;
-  
+
+  // if data_cfg was given
   if( data_cfg != nullptr  )
   {
     if( !data_cfg->is_list() )
@@ -2162,43 +2501,36 @@ cw::rc_t cw::flow::recd_array_create( recd_array_t*& recd_array_ref, const recd_
 
     allocRecdN = std::max(allocRecdN,data_cfg->child_count());
   }
-
-  // if a base was given - then verify that it does not have any fields that duplicate fields in the underlying type
-  if( base != nullptr )
-  {
-    const recd_field_t* f;
-    if((f = _get_duplicate_field( base->fieldL, recd_type->fieldL )) != nullptr )
-    {
-      rc = cwLogError(kInvalidStateRC,"The field '%s' is duplicated in the record type.",cwStringNullGuard(f->label));
-      goto errLabel;
-    }
-  }
   
-  recd_array= mem::allocZ<recd_array_t>();
-
-  recd_array->type = mem::allocZ<recd_type_t>();
-  recd_array->type->fieldL = recd_type->fieldL;
-  recd_array->type->fieldN = recd_type->fieldN;
-  recd_array->type->base   = base;
+  recd_array       = mem::allocZ<recd_array_t>();
+  recd_array->type = recd_type;
   
-  recd_array->valA = recd_array->type->fieldN==0 ? nullptr : mem::allocZ<value_t>(recd_array->type->fieldN * allocRecdN);
-  recd_array->recdA = mem::allocZ<recd_t>(allocRecdN);
+  recd_array->valA       = (recd_type->read_only_fl || recd_type->fieldN==0) ? nullptr : mem::allocZ<value_t>(recd_array->type->fieldN * allocRecdN);
+  recd_array->recdA      = mem::allocZ<recd_t>(allocRecdN);
   recd_array->allocRecdN = allocRecdN;
-  recd_array->recdN = 0;
+  recd_array->recdN      = 0;
 
   // for each record
   for(unsigned i=0; i<allocRecdN; ++i)
   {
     // set the value array for this record
     recd_array->recdA[i].valA = recd_array->valA==nullptr ? nullptr : recd_array->valA + (i*recd_array->type->fieldN);
+    recd_array->recdA[i].type = recd_type;
 
-    // set the value type of all records in the array
-    _recd_set_value_type( recd_array->type->fieldL, recd_array->recdA + i );
+    // set the value type of all fields in the record
+    if( recd_array->recdA[i].valA != nullptr )
+    {
+      recd_field_t* f = recd_type->fieldL;
+      for(; f!=nullptr; f=f->link)
+        recd_array->recdA[i].valA[ f->val_idx ].tflag = f->value.tflag; 
+    } 
   }
 
   if( data_cfg != nullptr )
+  {
     if((rc = recd_array_append_from_cfg(recd_array,data_cfg)) != kOkRC )
       goto errLabel;
+  }
   
   recd_array_ref = recd_array;
 
@@ -2210,13 +2542,41 @@ errLabel:
   return rc;
 }
 
+cw::rc_t cw::flow::recd_array_create( recd_array_t*&     recd_array_ref,
+                                      const recd_type_t* base_type,
+                                      const object_t*    fmt_cfg,
+                                      unsigned           allocRecdN,
+                                      const object_t*    data_cfg )
+{
+  rc_t         rc        = kOkRC;
+  recd_type_t* recd_type = nullptr;
+  
+  if((rc = recd_type_create(  recd_type, base_type, fmt_cfg )) != kOkRC )
+  {
+    goto errLabel;
+  }
+
+  if((rc = recd_array_create( recd_array_ref, recd_type, allocRecdN, data_cfg)) != kOkRC )
+  {
+    goto errLabel;
+  }
+
+  recd_array_ref->_type = recd_type;
+
+errLabel:
+
+  if( rc != kOkRC )
+    rc = cwLogError(rc,"recd_array_create failed.");
+  
+  return rc;
+}
 
 
 cw::rc_t cw::flow::recd_array_destroy( recd_array_t*& recd_array_ref )
 {
   if( recd_array_ref != nullptr )
   {
-    mem::release(recd_array_ref->type);
+    recd_type_destroy(recd_array_ref->_type);
     mem::release(recd_array_ref->valA);
     mem::release(recd_array_ref->recdA);
     mem::release(recd_array_ref);
@@ -2283,14 +2643,14 @@ cw::rc_t cw::flow::recd_array_append_from_cfg( recd_array_t* recd_array, const o
       }
 
       // double check that there is sufficient space
-      if( recd_array->recdN + recd_idx >= recd_array->allocRecdN )
+      if( recd_array->recdN >= recd_array->allocRecdN )
       {
         rc = cwLogError(kInvalidStateRC,"The recd_array has insufficient space to hold the provided data list.");
         goto errLabel;
       }
       
       // copy the value into the record
-      if((rc = recd_set_value( recd_array->type, nullptr, recd_array->recdA + recd_array->recdN + recd_idx, field_idx, field_value )) != kOkRC )
+      if((rc = recd_set_value( nullptr, recd_array->recdA + recd_array->recdN, field_idx, field_value )) != kOkRC )
       {
         rc = cwLogError(rc,"The value assignment of the cfg. data field '%s' at element index %i failed.",cwStringNullGuard(pair->pair_label()),recd_idx);
         goto errLabel;              
@@ -2299,6 +2659,7 @@ cw::rc_t cw::flow::recd_array_append_from_cfg( recd_array_t* recd_array, const o
     }
 
     recd_idx += 1;
+    recd_array->recdN += 1;
   }
 
 errLabel:
@@ -2308,46 +2669,108 @@ errLabel:
   return rc;
   
 }
-/*
-cw::rc_t cw::flow::recd_copy( const recd_type_t* recd_type, const recd_t* recdA, unsigned recdN, recd_array_t* dst_recd_array, unsigned dst_recd_idx )
+
+
+bool cw::flow::recd_array_is_type_equivalent( recd_array_t* recd_array, const recd_type_t* type )
+{
+  return recd_types_are_equivalent( recd_array->type, type );
+}
+
+cw::rc_t cw::flow::recd_array_concat( recd_array_t* dst_array, const recd_t* recdA, unsigned recdN )
 {
   rc_t rc = kOkRC;
+  if( dst_array->type->fieldN != 0 || dst_array->type->fieldL != nullptr )
+    return cwLogError(kInvalidStateRC,"The destination array in a record concatenation operation must have an empty top level.");
 
-  // verify that there is adequate space in the destination
-  if( dst_recd_idx + recdN > dst_recd_array->allocRecdN  )
-  {
-    rc = cwLogError(kBufTooSmallRC,"Not enough space in the destination record array.");
-    goto errLabel;
-  }
-
-  // The src and dst records should be the same type and so their field counts should also match
-  // (this is a fast way to catch many type mismatches)
-  if( recd_type->fieldN != dst_recd_array->type->fieldN )
-  {
-    rc = cwLogError(kInvalidArgRC,"Field count mismatch between source and destination records..");
-    goto errLabel;
-  }
-
-  // TODO: add an optional real type check where each field is checked - rather than just the count of fields
-
-  // for each src record to copy
+  if( dst_array->recdN + recdN > dst_array->allocRecdN )
+    return cwLogError(kBufTooSmallRC,"Not enough space to copy %i records into %i available slots.",recdN,dst_array->allocRecdN - dst_array->recdN );
+  
   for(unsigned i=0; i<recdN; ++i)
   {
-    // for each field in this recd
-    for(unsigned j=0; j<recd_type->fieldN; ++j)
-    {
-      dst_recd_array->recdA[dst_recd_idx + i].valA[j] = recdA[i].valA[j];
-      dst_recd_array->recdA[dst_recd_idx + i].base    = recdA[i].base;
-    }
+    assert( recd_types_are_equivalent( dst_array->type, recdA[i].type ) );
+
+    dst_array->recdA[ dst_array->recdN + i ].type = recdA[i].type;
+    dst_array->recdA[ dst_array->recdN + i ].valA = recdA[i].valA;
+    dst_array->recdA[ dst_array->recdN + i ].base = recdA[i].base;
   }
-  
-errLabel:
-  if( rc!=kOkRC )
-    rc = cwLogError(rc,"Record copy failed.");
+
+  dst_array->recdN += recdN;
   
   return rc;
 }
-*/
+
+cw::rc_t cw::flow::recd_array_split( const recd_t* srcA, unsigned srcRecdN, unsigned src_fld_idx, recd_array_t** dst_arrayAA, unsigned dst_array_cnt, unsigned dflt_dst_idx )
+{
+  rc_t rc = kOkRC;
+
+  for(unsigned i=0; i<srcRecdN; ++i)
+  {
+    unsigned sel_dst_idx = dflt_dst_idx;
+
+    // if a default dest. index was not selected and a field index was provided
+    if( sel_dst_idx == kInvalidIdx && src_fld_idx != kInvalidIdx )
+    {
+      if((rc = recd_get(srcA +i,src_fld_idx,sel_dst_idx)) != kOkRC)
+      {
+        rc = cwLogError(rc,"Source record access failed on input record index %i.",i);
+        goto errLabel;
+      }
+    }
+
+    // validate the dest. index
+    if( sel_dst_idx == kInvalidIdx || sel_dst_idx >= dst_array_cnt )
+    {
+      rc = cwLogWarning("An invalid destination record array selector %i was encountered.",sel_dst_idx);
+      goto errLabel;
+    }
+
+    // copy a single record into the dest.
+    if((rc = recd_array_concat( dst_arrayAA[sel_dst_idx], srcA + i, 1)) != kOkRC )
+    {
+      rc = cwLogError(rc,"Record array append failed on record index %i",i);
+      goto errLabel;
+    }
+  }
+
+errLabel:
+  return rc;
+}
+
+cw::rc_t cw::flow::recd_array_remap( const recd_t* srcA, unsigned srcRecdN, recd_array_t* dst_recd_array )
+{
+  rc_t rc = kOkRC;
+
+  if( dst_recd_array->recdN + srcRecdN > dst_recd_array->allocRecdN )
+  {
+    return cwLogError(kBufTooSmallRC,"The recd_array remap output array is too small.");
+  }
+  
+  for(unsigned i=0; i<srcRecdN; ++i)
+  {
+    dst_recd_array->recdA[i].base = srcA + i;
+    dst_recd_array->recdA[i].type = dst_recd_array->type;
+    
+    dst_recd_array->recdA[i].valA = nullptr;
+
+    //cwLogPrint("REMAP:");
+    //recd_print(dst_recd_array->recdA + i);
+    //cwLogPrint("\n");
+  }
+  dst_recd_array->recdN += srcRecdN;
+
+  return rc;
+}
+
+void cw::flow::recd_array_print( const recd_array_t* recd_array )
+{
+  for(unsigned i=0; i<recd_array->recdN; ++i)
+  {
+    recd_print(recd_array->recdA + i );
+    cwLogPrint("\n");
+  }
+}
+
+
 
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -2581,184 +3004,7 @@ unsigned    cw::flow::list_ele_index( const list_t* list, const char* label )
 //------------------------------------------------------------------------------------------------------------------------
 cw::rc_t cw::flow::value_test( const test::test_args_t& args )
 {
-  rc_t          rc   = kOkRC;  
-  object_t*     cfg0 = nullptr;
-  object_t*     cfg1 = nullptr;
-  object_t*     data0=nullptr;
-  recd_fmt_t*   fmt0 = nullptr;
-  recd_fmt_t*   fmt1 = nullptr;
-  recd_fmt_t*   fmt2 = nullptr;
-  recd_type_t*  rt0 = nullptr;
-  recd_array_t* ra0  = nullptr;
-  recd_array_t* ra1  = nullptr;
-  recd_array_t* ra2  = nullptr;
-  
-  
-  const char* s0 = "{ alloc_cnt:3, fields: {" 
-    "a:  { type:bool,          doc:\"A floater.\" },"
-    "b:  { type:uint, value:1, doc:\"My uint.\" },"
-    "c:  { type:uint, value:2, doc:\"My other uint.\" }"
-    "g0: { type:group, doc:\"A group.\""
-    "fields:{ a:{type:int, value:0, doc:\"My int.\" }"
-    "         b:{type:bool, value:true, doc:\"My flag.\" }"
-    "         c:{type:double, value:1, doc:\"Another field.\" }"
-    "}}"
-    "}}";
-
-  const char* s1 = "{ alloc_cnt:3, fields: {" 
-    "d: { type:double,         doc:\"d doc.\" },"
-    "e: { type:uint, value:-1, doc:\"e doc.\" },"
-    "f: { type:uint, value:-1, doc:\"f doc.\" }"
-    "g1: { type:group, doc:\"A group.\""
-    "fields:{ a:{type:int, value:0, doc:\"My int.\" }"
-    "         b:{type:bool, value:true, doc:\"My flag.\" }"
-    "         c:{type:uint, value:1, doc:\"Another field.\" }"
-    "}}"    
-    "}}";
-
-  const char* d0 = "["
-    "{ a:true,  b:1, c:2, g0.a:3, g0.b:false, g0.c:4.3 }"
-    "{ a:false, b:2, c:3, g0.a:4, g0.b:true,  g0.c:5.4 }"
-    "]";
-  
-  if((rc = objectFromString(s0,cfg0)) != kOkRC )
-  {
-    rc = cwLogError(rc,"cfg0 parse failed.");
-    goto errLabel;
-  }
-
-  if((rc = objectFromString(s1,cfg1)) != kOkRC )
-  {
-    rc = cwLogError(rc,"cfg1 parse failed.");
-    goto errLabel;
-  }
-
-  if((rc = objectFromString(d0,data0)) != kOkRC )
-  {
-    rc = cwLogError(rc,"d0 parse failed.");
-    goto errLabel;
-  }
-
-  if((rc = recd_format_create( fmt0, cfg0 )) != kOkRC )
-  {
-    rc = cwLogError(rc,"fmt0 create failed.");
-    goto errLabel;
-  }
-
-  if((rc = recd_format_create( fmt1, cfg1 )) != kOkRC )
-  {
-    rc = cwLogError(rc,"fmt1 create failed.");
-    goto errLabel;
-  }
-
-  if((rc = recd_format_create( fmt2, cfg1 )) != kOkRC )
-  {
-    rc = cwLogError(rc,"fmt2 create failed.");
-    goto errLabel;
-  }
-
-  // create a type whose base matches the fmt0 but and has no additional fields
-  if((rc = recd_type_create( rt0, fmt0->recd_type, nullptr )) != kOkRC )
-  {
-    rc = cwLogError(rc,"rt0 create failed.");
-    goto errLabel;
-  }
-
-  cwLogPrint("fmt0 and fmt1 have %s types.\n", recd_types_are_equivalent(fmt0->recd_type,fmt1->recd_type) ? "equivalent" : "non-equivalent");
-  cwLogPrint("fmt1 and fmt2 have %s types.\n", recd_types_are_equivalent(fmt1->recd_type,fmt2->recd_type) ? "equivalent" : "non-equivalent");
-  cwLogPrint("fmt0 and rt0  have %s types.\n", recd_types_are_equivalent(fmt0->recd_type,rt0)             ? "equivalent" : "non-equivalent");
-  
-  if((rc = recd_array_create( ra0, fmt0->recd_type, nullptr,  fmt0->alloc_cnt )) != kOkRC )
-  {
-    rc = cwLogError(rc,"recd array 0 create failed.");
-    goto errLabel;
-  }
-
-  if((rc = recd_array_create( ra1, fmt1->recd_type, fmt0->recd_type, fmt1->alloc_cnt )) != kOkRC )
-  {
-    rc = cwLogError(rc,"recd array 1 create failed.");
-    goto errLabel;
-  }
-
-  if((rc = recd_array_create( ra2, fmt0->recd_type, nullptr,  fmt0->alloc_cnt, data0 )) != kOkRC )
-  {
-    rc = cwLogError(rc,"recd array 2 create failed.");
-    goto errLabel;
-  }
-  
-  cwLogPrint("ra1 type: field cnt:%i\n",recd_type_max_field_count( ra0->type ));
-  for(unsigned i=0; i<recd_type_max_field_count( ra0->type ); ++i)
-    cwLogPrint("%i:%s\n",i,recd_type_field_index_to_label( ra0->type, i ) );
-
-
-  for(unsigned i=0; i<ra0->allocRecdN; ++i)
-  {
-    recd_t* r = ra0->recdA + i;
-
-    if((rc = recd_set( ra0->type, nullptr, r,
-                       recd_type_field_index(ra0->type,"a"), 0.0f*i,
-                       recd_type_field_index(ra0->type,"g0.a"), 4.0*i,
-                       recd_type_field_index(ra0->type,"g0.b"), 5*i,
-                       recd_type_field_index(ra0->type,"g0.c"), 6*i)) != kOkRC )
-    {
-      cwLogError(rc,"recd_set() failed on ra0.");
-      goto errLabel;
-    }
-  }
-
-  cwLogPrint("ra0\n");
-  for(unsigned i=0; i<ra0->allocRecdN; ++i)
-  {
-    recd_print(ra0->type,ra0->recdA+i);
-    cwLogPrint("\n");
-  }
-
-  for(unsigned i=0; i<ra1->allocRecdN; ++i)
-  {
-    recd_t* r = ra1->recdA + i;
-    recd_t* r_base = ra0->recdA + i;
-
-    if((rc = recd_set( ra1->type, r_base, r,
-                       recd_type_field_index(ra1->type,"d"), 0.0f*i,
-                       recd_type_field_index(ra1->type,"g1.a"), 4.0*i*2,
-                       recd_type_field_index(ra1->type,"g1.b"), 5*i*2,
-                       recd_type_field_index(ra1->type,"g1.c"), 6*i*2)) != kOkRC )
-    {
-      cwLogError(rc,"recd_set() failed on ra1.");
-      goto errLabel;
-    }
-  }
-
-  cwLogPrint("ra1\n");
-  for(unsigned i=0; i<ra1->allocRecdN; ++i)
-  {
-    recd_print(ra1->type,ra1->recdA+i);
-    cwLogPrint("\n");
-  }
-
-  cwLogPrint("ra2\n");
-  for(unsigned i=0; i<ra2->allocRecdN; ++i)
-  {
-    recd_print(ra2->type,ra2->recdA+i);
-    cwLogPrint("\n");
-  }
-
-  
-  recd_array_destroy( ra0 );
-  recd_array_destroy( ra1 );
-  recd_array_destroy( ra2 );
-  
-  recd_format_destroy( fmt0 );
-  recd_format_destroy( fmt1 );
-  recd_format_destroy( fmt2 );
-
-  recd_type_destroy( rt0 );
-
-  cfg0->free();
-  cfg1->free();
-  data0->free();
-
-errLabel:
+  rc_t          rc   = kOkRC;
   return rc;
 }
 

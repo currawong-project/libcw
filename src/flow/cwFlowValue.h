@@ -272,7 +272,7 @@ namespace cw
 
     rc_t value_get( const value_t* val, value_t& valRef );
     rc_t value_get(       value_t* val, value_t& valRef );
-
+    rc_t value_set(       value_t* val, const value_t& valRef );
 
 
     //------------------------------------------------------------------------------------------------------------------------
@@ -282,26 +282,33 @@ namespace cw
     
     typedef struct recd_field_str
     {
-      bool        group_fl; // set if this field record is a group
-      char*       label;    // field or group label
+      char*       label;    // field label
+      unsigned    uid;      // unique id from the global id table
       value_t     value;    // default value for this field
       char*       doc;      // documentation field for this field
-      union
-      {
-        unsigned               index; // index into recd_t.valA of the value associated with this field
-        struct recd_field_str* group_fieldL; 
-      } u;
+      unsigned    val_idx;  // index into recd_t.valA of the value associated with this field
+      unsigned    src_uid;  // 
         
-      struct recd_field_str* link;
+      struct recd_field_str* link;  // link for recd_type_t.fieldL linked list
     } recd_field_t;
 
+
+    typedef struct field_map_str
+    {
+      const recd_field_t* field_desc; // Field desc this map represents.
+      unsigned            level_idx;  // Count of levels in the recd_t which must be traversed to get to the value base array
+    } recd_field_map_t;
+    
     typedef struct recd_type_str
     {
-      recd_field_t*               fieldL;  // linked list of field spec's
-      unsigned                    fieldN;  // length of fieldL list   (fieldN + base->fieldN) is total field count
-      const struct recd_type_str* base;    // base recd type that this field inherits from
+      recd_field_t*               fieldL;      // linked list of field spec's for this type (excluding the base type)
+      unsigned                    fieldN;      // length of fieldL list   
+      const struct recd_type_str* base;        // base recd type that this field inherits from
+      recd_field_map_t*           fieldMapA;   // Maps from field indexes to field value for all fields including the base fields.
+      unsigned                    fieldMapN;   // Count of records in fieldN and all fields in all bases.
+      bool                        read_only_fl;// This record is read only
     } recd_type_t;
-
+    
     // Record format  represents the 'cfg' data structure commonly
     // used to specify record types.  
     typedef struct recd_fmt_str
@@ -310,18 +317,21 @@ namespace cw
       const object_t* req_fieldL; // label of required fields
       recd_type_t*    recd_type;  // record type for this variable
     } recd_fmt_t;
-
+    
     typedef struct recd_array_str
     {
-      recd_type_t*     type;       // recd_type_t of this record array
-      value_t*         valA;       // valA[ allocRecdN * type->fieldN ]
-      struct recd_str* recdA;      // recdA[ allocRecdN ]
-      unsigned         allocRecdN; //
-      unsigned         recdN; 
+      const recd_type_t* type;       // The type of all records in the array are logically equivalent to this type but may have different physical layouts.
+                                     // This type may therefore be used to determine the label to field index mapping for all records in the array.
+      recd_type_t*       _type;      // Internally allocated record type. Always has the same value as 'type' or is null.
+      value_t*           valA;       // valA[ allocRecdN * type->fieldN ] value memory for all fields defined in type.
+      struct recd_str*   recdA;      // recdA[ allocRecdN ]
+      unsigned           allocRecdN; // Allocated size of recdA[]
+      unsigned           recdN;      // Current count of records in use within recdA[].
     } recd_array_t;
 
     typedef struct recd_str
     {
+      const recd_type_t*      type;   // Type of this record
       struct value_str*       valA;   // varA[ recd_type_t.fieldN ] array of field values
       const struct recd_str*  base;   // Pointer to the records inherited fields.
     } recd_t;
@@ -331,15 +341,28 @@ namespace cw
     // Cfg Syntax:
     // { alloc_cnt:<>, required:[ 'fieldname' ], fields:{ <field_label>:{ "type":<>, "value":<>, "doc":<> } } }
     // Note: dflt_alloc_cnt  is overridden by the 'alloc_cnt' field in 'cfg' if it exists.
-    rc_t recd_format_create( recd_fmt_t*& recd_fmt_ref, const object_t* cfg, unsigned dflt_alloc_cnt=32 );
+    rc_t recd_format_create( recd_fmt_t*& recd_fmt_ref, const object_t* cfg, unsigned dflt_alloc_cnt=32, const recd_type_t* base_type=nullptr );
     void recd_format_destroy( recd_fmt_t*& recd_fmt_ref );
 
     // Create a recd_type_t instance from a cfg. description.
     // Note that if 'cfg' is null then this type will have only fields specified by 'base_type'
     // The format of the cfg is the same as that used by recd_format_create() however only the
     // 'fields' list is used (e.g. { fields:{ ... }} ).
-    rc_t recd_type_create( recd_type_t*& recd_type_ref, const recd_type_t* base_type, const object_t* cfg );
-    void recd_type_destroy( recd_type_t*& recd_type );
+    // A default field map is instantiated that includes all fields including the base fields.
+    rc_t recd_type_create(  recd_type_t*& recd_type_ref, const recd_type_t* base_type, const object_t* cfg );
+
+    // 'field_map_cfg' is a dictionary of input:output field labels.
+    // The input fields must exist in 'base_type'.
+    // If the output fields do not exist in the base type then it is assumed that the field is being renamed.
+    // In this case the input field aliased with the new name.
+    // The order of the output fields defines the logical layout of the output record.
+    rc_t recd_type_create_from_map(  recd_type_t*& recd_type_ref, const recd_type_t* base_type, const object_t* field_map_cfg );
+    void recd_type_destroy( recd_type_t*& recd_type_ref );
+
+    rc_t recd_type_apply_map( recd_type_t* recd_type, const char* const * labelA, unsigned labelN );
+    rc_t recd_type_apply_map( recd_type_t* recd_type, const object_t* map_list_cfg );
+
+    recd_field_map_t* recd_type_field_label_to_map( const recd_type_t* recd_type, const char* field_label );
 
     // Count of fields combined local and base record types. 
     rc_t recd_type_max_field_count( const recd_type_t* recd_type );
@@ -347,99 +370,174 @@ namespace cw
     // Get the field index associated with a named field.
     // Use '.' notation to separate groups from fields.
     // Note if this is a 'local' field then the high bit in the returned index will be set.    
-    unsigned recd_type_field_index( const recd_type_t* recd_type, const char* field_label, bool report_missing_fl = true );
+    unsigned recd_type_field_index( const recd_type_t* recd_type, const char* field_label );
+    rc_t     recd_type_field_index( const recd_type_t* recd_type, const char* field_label, unsigned& field_idx_ref );
 
     // Same as recd_type_field_index() except does not report an error if the field is not found.
     unsigned recd_type_field_index_silent( const recd_type_t* recd_type, const char* field_label );
 
+    inline rc_t recd_type_to_field_index( const recd_type_t* ) { return kOkRC; }
+    
+    template < typename... ARGS >
+    rc_t recd_type_to_field_index(const recd_type_t* recd_type, const char* field_label, unsigned& index_ref, ARGS&&... args)
+    {
+      rc_t rc = kOkRC;
+      
+      if((rc = recd_type_field_index(recd_type,field_label,index_ref)) != kOkRC )
+        return rc;
+
+      return recd_type_to_field_index(recd_type,std::forward<ARGS>(args)...);            
+    }
+    
     // Given a field index return the field label.
     const char* recd_type_field_index_to_label( const recd_type_t* recd_type, unsigned field_idx );
 
+    // Returns true if both fields have same data type.
+    bool recd_fields_data_types_are_equivalent( const recd_field_t* fd0, const recd_field_t* fd1 );
+    
+    // Compare two record types for 'logical' equivalence.
     // Returns true if these two record types match on field name, default value type, and group.
-    // Record types that are equivalent can safely exchange records without having to
+    // Record types that are logically equivalent can safely exchange records without having to
     // reformat or rearrange the data in recd_t.valA[].
+    // Note that logical equivalence is not 'physical' equivalence a record CANNOT be decoded
+    // with a logically equivalent type record.  Logical equivalence only guaraentees
+    // that the same field index will return a value from a same named/typed field.
+    // The recd_type_t which describes the record however must be used to set or decode
+    // the contents of the record.
     bool recd_types_are_equivalent( const recd_type_t* rt0, const recd_type_t* rt1 );
 
     // Print the recd_type info. to the console.
     void recd_type_print( const recd_type_t* recd_type );
-
+    void recd_type_print( const recd_t* recd );
     
     // Set the record base pointer and the value of all fields with default values.
     rc_t recd_init( const recd_type_t* recd_type, const recd_t* base, recd_t* r );
 
-    //rc_t recd_get_value( const recd_type_t* type, const recd_t* recd, unsigned field_idx, value_t& val_ref );
 
+
+    template< typename T >
+    rc_t recd_get_from_uid( const recd_t* r,  unsigned uid, T& val_ref )
+    {
+      if( r == nullptr )
+        return cwLogError(kEleNotFoundRC,"The field associated with uid:%i '%s' was not found.",uid,cwStringNullGuard(id_table::get_label(uid)));
+
+      //if( (r->type->fieldL != nullptr && r->valA == nullptr) || (r->type->fieldL ==nullptr &&  r->valA != nullptr) )
+      //  return cwLogError(kInvalidStateRC,"The recd type field list and recd valA array are inconsistent.");
+
+      if( r->valA != nullptr )
+      {
+        for(const recd_field_t* f = r->type->fieldL; f!=nullptr; f=f->link)
+          if( f->uid == uid )
+          {
+            if( f->src_uid == kInvalidIdx )
+              return value_get( r->valA + f->val_idx, val_ref );
+
+            return recd_get_from_uid(r->base,f->src_uid,val_ref);
+            
+          }
+      }
+      
+      return recd_get_from_uid( r->base, uid, val_ref);
+    }
+                         
+    template< typename T >
+    rc_t recd_get( const recd_t* recd, unsigned field_idx, T& val_ref )
+    {
+      assert( field_idx < recd->type->fieldMapN );
+      rc_t          rc = kOkRC;
+      const recd_t* r  = recd;
+      const recd_field_t* rf = recd->type->fieldMapA[ field_idx ].field_desc;
+      
+      //unsigned uid = rf->src_uid == kInvalidId ? rf->uid : rf->src_uid;
+
+      return recd_get_from_uid(recd,rf->uid,val_ref);
+    }
+    /*
     // Read the value from a single record field
     template< typename T >
-    rc_t recd_get( const recd_type_t* type, const recd_t* recd, unsigned field_idx, T& val_ref )
+    rc_t recd_get( const recd_t* recd, unsigned field_idx, T& val_ref )
     {
-      if( field_idx < type->fieldN )
-        return value_get( recd->valA + field_idx, val_ref );
+      assert( field_idx < recd->type->fieldMapN );
+      rc_t          rc = kOkRC;
+      const recd_t* r  = recd;
+      
+      // iterate down the record hierarchy to 'level_idx'.
+      for(unsigned i=0; i<recd->type->fieldMapA[ field_idx ].level_idx; ++i)
+      {
+        if(r->base == nullptr )
+        {
+          rc = cwLogError(kInvalidStateRC,"The recd type field map attempted to iterate past the bottom of the record hierarchy. i=%i level_idx:%i",i,recd->type->fieldMapA[ field_idx ].level_idx);
+          recd_type_print(recd->type);
+          goto errLabel;
+        }
+        
+        r = r->base;
+      }
 
-      return recd_get( type->base, recd->base, field_idx - type->fieldN, val_ref );
+      // r is now pointing to the record level whose valA[] contains the field value of interest.
+
+      //printf("get: %p %i %i %s\n",r->valA, field_idx, recd->type->fieldMapA[ field_idx ].field_desc->u.index, recd_type_field_index_to_label( recd->type, field_idx ) );
+
+      // get the value
+      return value_get( r->valA + recd->type->fieldMapA[ field_idx ].field_desc->val_idx, val_ref );
+      
+    errLabel:
+      return rc;
     }
-
-    inline rc_t _recd_get(const recd_type_t* recd_type, recd_t* r ) { return kOkRC; }
+    */
+    
+    inline rc_t _recd_get( const recd_t* r ) { return kOkRC; }
     
     template< typename T1, typename... ARGS >
-    rc_t _recd_get( const recd_type_t* recd_type, const recd_t* recd, unsigned field_idx, T1& val, ARGS&&... args )
+    rc_t _recd_get( const recd_t* recd, unsigned field_idx, T1& val, ARGS&&... args )
     {
       rc_t rc = kOkRC;
       
-      if((rc = recd_get(recd_type,recd,field_idx,val)) != kOkRC )
+      if((rc = recd_get(recd,field_idx,val)) != kOkRC )
         return rc;
 
-      return _recd_get(recd_type,recd,std::forward<ARGS>(args)...);      
+      return _recd_get(recd,std::forward<ARGS>(args)...);      
     }
 
     // Read the value of multiple record fields.
     template< typename T1, typename... ARGS >
-    rc_t recd_get( const recd_type_t* recd_type, const recd_t* recd, unsigned field_idx, T1& val, ARGS&&... args )
+    rc_t recd_get( const recd_t* recd, unsigned field_idx, T1& val, ARGS&&... args )
     {
-      return _recd_get(recd_type,recd,field_idx,val,args...);
+      return _recd_get(recd,field_idx,val,args...);
     }
 
     // Set the base record pointer for a record with an inherited base
-    inline rc_t recd_set_base( const recd_type_t* type, recd_t* recd, const recd_t* base )
+    inline rc_t recd_set_base( recd_t* recd, const recd_t* base )
     {
       // if we are setting base then the type must have a base type
-      assert( (type->base == nullptr && base==nullptr) || (type->base!=nullptr && base!=nullptr) );
+      assert( (recd->type->base == nullptr && base==nullptr) || (recd->type->base!=nullptr && base!=nullptr) );
       
       recd->base = base;
       return kOkRC;
     }
+   
+    rc_t recd_set_value( const recd_t* base, recd_t* recd, unsigned field_idx, const value_t& val );
 
-    rc_t recd_set_value( const recd_type_t* type, const recd_t* base, recd_t* recd, unsigned field_idx, const value_t& val );
-
-    template< typename T >
-    rc_t recd_set( const recd_type_t* type, const recd_t* base, recd_t* recd, unsigned field_idx, const T& val )
-    {
-      if( field_idx >= type->fieldN )
-        return cwLogError(kInvalidArgRC,"Only 'local' record value may be set.");
-      
-      // set the base of this record
-      recd_set_base(type,recd,base);
-      
-      return value_set( recd->valA + field_idx, val );
-    }
-
-    inline rc_t _recd_set( const recd_type_t* recd_type, recd_t* recd ) { return kOkRC; }
+    inline rc_t _recd_set( const recd_type_t* type, recd_t* recd ) { return kOkRC; }
 
     template< typename T1, typename... ARGS >
-    rc_t _recd_set( const recd_type_t* recd_type, recd_t* recd, unsigned field_idx, const T1& val, ARGS&&... args )
+    rc_t _recd_set( const recd_type_t* type, recd_t* recd, unsigned field_idx, const T1& val, ARGS&&... args )
     {
       rc_t rc = kOkRC;
 
-      if( field_idx >= recd_type->fieldN )
+      if( field_idx >= recd->type->fieldN )
         return cwLogError(kInvalidArgRC,"Fields in the inherited record may not be set.");
-              
+
+      //printf("set: %p %i %s\n",recd->valA, field_idx, recd_type_field_index_to_label( recd->type, field_idx ) );
+
+      
       if((rc = value_set( recd->valA + field_idx, val)) != kOkRC )
       {
-        rc = cwLogError(rc,"Field set failed on '%s'.", cwStringNullGuard(recd_type_field_index_to_label( recd_type, field_idx )));
+        rc = cwLogError(rc,"Field set failed on '%s'.", cwStringNullGuard(recd_type_field_index_to_label( recd->type, field_idx )));
         goto errLabel;
       }
       
-      return _recd_set(recd_type,recd,std::forward<ARGS>(args)...);
+      return _recd_set(type, recd,std::forward<ARGS>(args)...);
 
     errLabel:
       return rc;
@@ -447,14 +545,20 @@ namespace cw
 
     // Set multiple fields of a record.
     template< typename T1, typename... ARGS >
-    rc_t recd_set( const recd_type_t* recd_type, const recd_t* base, recd_t* recd, unsigned field_idx, const T1& val, ARGS&&... args )
+    rc_t recd_set( const recd_type_t* type, const recd_t* base, recd_t* recd, unsigned field_idx, const T1& val, ARGS&&... args )
     {
       rc_t rc = kOkRC;
-      if((rc = recd_init( recd_type, base, recd )) != kOkRC )
+      
+      if( type->read_only_fl )
+      {
+        rc = cwLogError(kInvalidStateRC,"Attempt to write to a read-only record.");
+        goto errLabel;
+      }
+          
+      if((rc = recd_init( type, base, recd )) != kOkRC )
         goto errLabel;
       
-
-      if((rc = _recd_set(recd_type,recd,field_idx,val,args...)) != kOkRC )
+      if((rc = _recd_set(type,recd,field_idx,val,args...)) != kOkRC )
         goto errLabel;
 
     errLabel:
@@ -463,10 +567,23 @@ namespace cw
     }
 
     // Print a record to the console.
-    rc_t recd_print( const recd_type_t* recd_type, const recd_t* r );
+    void recd_print( const recd_t* r );
 
     // Create/destroy a buffer of records.
-    rc_t recd_array_create( recd_array_t*& recd_array_ref, const recd_type_t* recd_type, const recd_type_t* base,  unsigned allocRecdN, const object_t* data_cfg=nullptr );
+    // Count of acutal records allocated is max(data_cfg->alloc_cnt,allocRecdN);
+    // The recd_type is not cloned and is expected to exist for the life of the recd_array.
+    rc_t recd_array_create( recd_array_t*&     recd_array_ref,
+                            const recd_type_t* recd_type,
+                            unsigned           allocRecdN,
+                            const object_t*    data_cfg = nullptr );
+
+    // This version of recd_array_create() creates the record type internally from 'fmt_cfg' and 'base'.
+    rc_t recd_array_create( recd_array_t*&     recd_array_ref,
+                            const recd_type_t* base,
+                            const object_t*    fmt_cfg,
+                            unsigned           allocRecdN,
+                            const object_t*    data_cfg = nullptr );
+    
     rc_t recd_array_destroy( recd_array_t*& recd_array_ref );
 
     // Data must be a list of dictionaries of the form:
@@ -476,11 +593,31 @@ namespace cw
     // Ex: [ { x:3, c:"blue"},{ x:4, c:"red"}, { x:7, c:"green"} ] 
     rc_t recd_array_append_from_cfg( recd_array_t* recd_array, const object_t* cfg );
 
-    // Copy records into a recd_array.  This function fails if there are less than
-    // 'src_recdN' records already allocated in 'dest_recd_array'.
-    // The source and destination record types should be the same, but this
-    // function does very little to verify that they actually are.
-    //rc_t recd_copy( const recd_type_t* src_recd_type, const recd_t* src_recdA, unsigned src_recdN, recd_array_t* dst_recd_array, unsigned dst_recd_idx = 0 );
+    // True if the internal type of this array is logically equivalent to 'type'.
+    bool recd_array_is_type_equivalent( recd_array_t* recd_array, const recd_type_t* type );
+
+    // The type of the records in recdA[recdN] must be logically equivalent to the type of dst_array.
+    // This equivalance is asserted in the debug build, but not the release build.
+    // The top level of dst_array->type must always be empty. (e.g. dst_array.type->fieldN == 0) because
+    // this function works by setting the 'base' pointer of every output record to the incoming
+    // record. This implies that the output record has no top level record.
+    rc_t recd_array_concat( recd_array_t* dst_array, const recd_t* recdA, unsigned recdN );
+
+    // Split the records in srcA[] into one of the destination arrays in dst_arrayAA[][] based
+    // on the value of the the source field identified by 'src_fld_idx' or if src_fld_idx is invalid
+    // then 'dflt_dst_idx;.  If 'src_fld_idx' is valid then the value of stored in the associated
+    // field must be between 0 and dst_array_cnt-1.  Likewise if 'dflt_dst_idx' is valid then
+    // it must be a value between 0 and dst_array_cnt-1.
+    rc_t recd_array_split( const recd_t* srcA, unsigned srcRecdN, unsigned src_fld_idx, recd_array_t** dst_arrayAA, unsigned dst_array_cnt, unsigned dflt_dst_idx=kInvalidIdx );
+
+    rc_t recd_array_remap( const recd_t* srcA, unsigned srcRecdN, recd_array_t* dst_recd_array );
+
+    
+
+    // Print the contents of the array.
+    void recd_array_print( const recd_array_t* recd_array );
+
+    
 
 
     //------------------------------------------------------------------------------------------------------------------------

@@ -9,6 +9,7 @@ target_sources(test_main
   PRIVATE
   test_main.cpp
   test_flow.cpp
+  test_flow_util.cpp
   test_filesys.cpp
   test_lex.cpp
   test_object.cpp

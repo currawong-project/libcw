@@ -9,6 +9,7 @@
 #include "cwFile.h"
 #include "cwFileSys.h"
 #include "cwNumericConvert.h"
+#include "cwIdTable.h"
 
 #include "cwMtx.h"
 
@@ -501,10 +502,14 @@ namespace cw
           goto errLabel;
         }
         
-        recd_set( rbuf->type, nullptr, r, p->midi_fld_idx, m->midi );
-        recd_set( rbuf->type, nullptr, r, p->loc_fld_idx,  m->loc  );
-        recd_set( rbuf->type, nullptr, r, p->meas_fld_idx, m->meas );
-        recd_set( rbuf->type, nullptr, r, p->piano_fld_idx,m->piano_id);
+        if((rc = recd_set( r->type, nullptr, r,
+                           p->midi_fld_idx, m->midi,
+                           p->loc_fld_idx,  m->loc,
+                           p->meas_fld_idx, m->meas,
+                           p->piano_fld_idx,m->piano_id )) != kOkRC )
+        {
+          
+        }
         rbuf->recdN += 1;
 
       errLabel:
@@ -778,7 +783,7 @@ namespace cw
         bool     reset_trig_fl;        
         unsigned play_excl_trig_fl;
 
-        recd_type_t null_recd_type{ .fieldL=nullptr, .fieldN=0, .base=nullptr };
+        recd_type_t null_recd_type; //{ .fieldL=nullptr, .fieldN=0, .base=nullptr, .fieldMapA=nullptr, .fieldMapN=0 };
         
       } inst_t;
 
@@ -1191,11 +1196,16 @@ namespace cw
 
         _update_key_state( plyr, m );
         
-        recd_set( rbuf->type, nullptr, r, p->midi_fld_idx, m );
-        recd_set( rbuf->type, nullptr, r, p->loc_fld_idx,  loc  );
-        recd_set( rbuf->type, nullptr, r, p->meas_fld_idx, meas );
-        recd_set( rbuf->type, nullptr, r, p->port_fld_idx, port_id);
-        
+        if((rc = recd_set( r->type, nullptr, r,
+                           p->midi_fld_idx, m,
+                           p->loc_fld_idx,  loc,
+                           p->meas_fld_idx, meas,
+                           p->port_fld_idx, port_id )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Record set failed.");
+          goto errLabel;
+        }
+                
         rbuf->recdN += 1;
 
       errLabel:
@@ -1435,7 +1445,7 @@ namespace cw
             unsigned player_idx = kInvalidIdx;
             
             // get the next player id
-            if((rc = recd_get(i_rbuf->type,i_rbuf->recdA + ri,p->play_id_fld_idx,player_id)) != kOkRC )
+            if((rc = recd_get(i_rbuf->recdA + ri,p->play_id_fld_idx,player_id)) != kOkRC )
             {
               rc = proc_error(proc,rc,"An error occurred while accessing a player id input record.");
               goto errLabel;
@@ -1818,7 +1828,7 @@ namespace cw
           midi::ch_msg_t* o_m = p->midiA + i;
 
           // get a pointer to the incoming MIDI record
-          if((rc = recd_get(i_rbuf->type,i_r,p->i_midi_fld_idx,i_m)) != kOkRC )
+          if((rc = recd_get(i_r,p->i_midi_fld_idx,i_m)) != kOkRC )
           {
             rc = proc_error(proc,rc,"Record 'midi' field read failed.");
             goto errLabel;
@@ -1849,7 +1859,7 @@ namespace cw
               unsigned score_vel = -1;
 
               // get the score_vel
-              if((rc = recd_get(i_rbuf->type,i_r,p->i_score_vel_fld_idx,score_vel)) != kOkRC )
+              if((rc = recd_get(i_r,p->i_score_vel_fld_idx,score_vel)) != kOkRC )
               {
                 rc = proc_error(proc,kOpFailRC,"'score_velocity access failed in velocity table.");
                 goto errLabel;
@@ -1875,7 +1885,7 @@ namespace cw
           }
 
           // update the MIDI pointer in the output record 
-          recd_set(o_rbuf->type,i_r,o_r,p->o_midi_fld_idx, o_m );
+          recd_set(o_r->type,i_r,o_r,p->o_midi_fld_idx, o_m );
         }
 
         //printf("RECDN:%i\n",i_rbuf->recdN);
@@ -2018,7 +2028,7 @@ namespace cw
         {
 
           // get the 'loc' field
-          if((rc = recd_get( in_rbuf->type, in_rbuf->recdA+i, p->loc_fld_idx, loc)) != kOkRC )
+          if((rc = recd_get(  in_rbuf->recdA+i, p->loc_fld_idx, loc)) != kOkRC )
           {
             rc = proc_error(proc,rc,"The 'loc' field read failed.");
             goto errLabel;
@@ -2730,7 +2740,7 @@ namespace cw
           const recd_t*   i_r            = i_rbuf->recdA + i;
                     
           // get the 'midi' field
-          if((rc = recd_get( i_rbuf->type, i_r, p->i_midi_fld_idx, m)) != kOkRC )
+          if((rc = recd_get( i_r, p->i_midi_fld_idx, m)) != kOkRC )
           {
             rc = proc_error(proc,rc,"The 'midi' field read failed.");
             goto errLabel;
@@ -2739,7 +2749,7 @@ namespace cw
           if( p->loc_fld_idx != kInvalidIdx )
           {
             // get the 'loc' field
-            if((rc = recd_get( i_rbuf->type, i_r, p->loc_fld_idx, loc_id)) != kOkRC )
+            if((rc = recd_get( i_r, p->loc_fld_idx, loc_id)) != kOkRC )
             {
               rc = proc_error(proc,rc,"The 'loc' field read failed.");
               goto errLabel;
@@ -2780,15 +2790,15 @@ namespace cw
           {
             unsigned voice_idx_fld_idx = recd_type_field_index( i_rbuf->type, "voice_idx");
             unsigned voice_idx = kInvalidIdx;
-            recd_get(i_rbuf->type, i_r, voice_idx_fld_idx, voice_idx);
+            recd_get( i_r, voice_idx_fld_idx, voice_idx);
 
             proc_info(proc,"%i %i %i :  v:%i :  %i %i",m->status,m->d0,m->d1,voice_idx,pri_preset_idx,sec_preset_idx);
           }
           
           // set the output record
-          recd_set(o_rbuf->type, i_rbuf->recdA+i, o_r,
+          recd_set(o_r->type, i_rbuf->recdA+i, o_r,
                    p->o_pri_preset_fld_idx, pri_preset_idx,
-                       p->o_sec_preset_fld_idx, sec_preset_idx );
+                   p->o_sec_preset_fld_idx, sec_preset_idx );
           
           o_rbuf->recdN += 1;
           
@@ -3347,7 +3357,7 @@ namespace cw
           unsigned              sec_preset_idx = kInvalidIdx;
           const recd_t*         i_r            = i_rbuf->recdA + i;
           
-          if((rc = recd_get( i_rbuf->type, i_r, p->voice_idx_fld_idx, voice_idx)) != kOkRC )
+          if((rc = recd_get(  i_r, p->voice_idx_fld_idx, voice_idx)) != kOkRC )
           {
             rc = proc_error(proc,rc,"'voice_idx' not found in ctl_in record.");
             goto errLabel;
@@ -3358,14 +3368,14 @@ namespace cw
             mbuf_t* mbuf = nullptr;
 
             // get the pri_preset_idx for this voice
-            if((rc = recd_get( i_rbuf->type, i_r, p->pri_preset_fld_idx, pri_preset_idx)) != kOkRC )
+            if((rc = recd_get(  i_r, p->pri_preset_fld_idx, pri_preset_idx)) != kOkRC )
             {
               rc = proc_error(proc,rc,"'pri_preset_idx' not found in ctl_in record.");
               goto errLabel;
             }
 
             // get the sec_preset_idx for this voice
-            if((rc = recd_get( i_rbuf->type, i_r, p->sec_preset_fld_idx, sec_preset_idx)) != kOkRC )
+            if((rc = recd_get(  i_r, p->sec_preset_fld_idx, sec_preset_idx)) != kOkRC )
             {
               rc = proc_error(proc,rc,"'sec_preset_idx' not found in ctl_in record.");
               goto errLabel;
@@ -4318,7 +4328,7 @@ namespace cw
         {
           unsigned tmp;
           // get the 'loc' field
-          if((rc = recd_get( in_rbuf->type, in_rbuf->recdA+i, p->loc_fld_idx, tmp)) != kOkRC )
+          if((rc = recd_get(  in_rbuf->recdA+i, p->loc_fld_idx, tmp)) != kOkRC )
           {
             rc = proc_error(proc,rc,"The 'loc' field read failed.");
             goto errLabel;
@@ -4848,7 +4858,9 @@ namespace cw
         {
           goto errLabel;
         }
-    
+
+        proc_printf(proc,"Out Type:\n");
+        recd_type_print(p->recd_array->type);
         
         p->i_midi_field_idx = recd_type_field_index( in_rbuf->type, "midi");
         //p->o_midi_field_idx = recd_type_field_index( p->recd_array->type, "midi");
@@ -4949,6 +4961,8 @@ namespace cw
       rc_t _set_output_record( proc_t* proc, inst_t* p, rbuf_t* rbuf, const recd_t* base, unsigned loc_id, unsigned meas_numb, unsigned vel )
       {
         rc_t rc = kOkRC;
+
+        recd_type_print(p->recd_array->type);
         
         recd_t* r = p->recd_array->recdA + rbuf->recdN;
         
@@ -4959,9 +4973,15 @@ namespace cw
           goto errLabel;
         }
         
-        recd_set( rbuf->type, base, r, p->loc_field_idx,  loc_id  );
-        recd_set( rbuf->type, base, r, p->meas_field_idx, meas_numb );
-        recd_set( rbuf->type, base, r, p->vel_field_idx,  vel );
+        if((rc = recd_set( rbuf->type, base, r,
+                           p->loc_field_idx,  loc_id,
+                           p->meas_field_idx, meas_numb,
+                           p->vel_field_idx,  vel)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Record set failed.");
+          goto errLabel;
+        }
+        
         rbuf->recdN += 1;
 
       errLabel:
@@ -5018,7 +5038,7 @@ namespace cw
             double                            loc_pct   = -1;
             cw::score_follow_2::status_id_t sf_status_id    = cw::score_follow_2::kInvalidStatusId;
 
-            if((rc = recd_get( i_rbuf->type, i_rbuf->recdA+i, p->i_midi_field_idx, m)) != kOkRC )
+            if((rc = recd_get(  i_rbuf->recdA+i, p->i_midi_field_idx, m)) != kOkRC )
             {
               rc = proc_error(proc,rc,"The 'midi' field read failed.");
               goto errLabel;
@@ -5607,7 +5627,7 @@ namespace cw
         for(unsigned i=0; i<rbuf->recdN; ++i)
         {
           unsigned loc_id;
-          if((rc = recd_get(rbuf->type, rbuf->recdA + i, p->loc_fld_idx, loc_id)) != kOkRC )
+          if((rc = recd_get(rbuf->recdA + i, p->loc_fld_idx, loc_id)) != kOkRC )
           {
             goto errLabel;
           }
@@ -5984,7 +6004,7 @@ namespace cw
             unsigned loc_id;
 
             // get the location id
-            if((rc = recd_get(rbuf->type, rbuf->recdA + i, loc_fld_idx_ref, loc_id)) != kOkRC )
+            if((rc = recd_get( rbuf->recdA + i, loc_fld_idx_ref, loc_id)) != kOkRC )
             {
               rc = proc_error(proc,rc,"Error accessing 'loc' field on '%s'.",cwStringNullGuard(proc->label));
               goto errLabel;
@@ -6672,7 +6692,7 @@ namespace cw
 
         for(unsigned i=0; i<rbuf->recdN; ++i)
         {
-          if((rc = recd_get( rbuf->type, rbuf->recdA+i, midi_fld_idx, m)) != kOkRC )
+          if((rc = recd_get( rbuf->recdA+i, midi_fld_idx, m)) != kOkRC )
           {
             rc = proc_error(proc,rc,"The 'midi' field read failed.");
             goto errLabel;
@@ -7447,7 +7467,7 @@ namespace cw
 
         for(unsigned i=0; i<rbuf->recdN; ++i)
         {
-          if((rc = recd_get( rbuf->type, rbuf->recdA+i, midi_fld_idx, m)) != kOkRC )
+          if((rc = recd_get( rbuf->recdA+i, midi_fld_idx, m)) != kOkRC )
           {
             rc = proc_error(proc,rc,"The 'midi' field read failed.");
             goto errLabel;
@@ -8328,7 +8348,7 @@ namespace cw
           unsigned loc_id = kInvalidId;
           
           // get the loc field
-          if((rc = recd_get( i_rbuf->type, i_rbuf->recdA + i, p->sf_loc_fld_idx, loc_id)) != kOkRC )
+          if((rc = recd_get(  i_rbuf->recdA + i, p->sf_loc_fld_idx, loc_id)) != kOkRC )
           {
             goto errLabel;
           }
@@ -9667,7 +9687,7 @@ namespace cw
           unsigned loc_id = kInvalidId;
 
           // get the loc field
-          if((rc = recd_get( rbuf->type, rbuf->recdA + i, p->loc_field_idx, loc_id)) != kOkRC )
+          if((rc = recd_get( rbuf->recdA + i, p->loc_field_idx, loc_id)) != kOkRC )
           {
             goto errLabel;
           }

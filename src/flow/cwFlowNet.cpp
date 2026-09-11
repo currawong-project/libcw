@@ -10,6 +10,7 @@
 #include "cwObject.h"
 #undef cwTRACER
 #include "cwTracer.h"
+#include "cwIdTable.h"
 
 #include "cwAudioFile.h"
 #include "cwVectOps.h"

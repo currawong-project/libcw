@@ -10,6 +10,7 @@
 #include "cwFileSys.h"
 #include "cwNumericConvert.h"
 #include "cwVectOps.h"
+#include "cwIdTable.h"
 
 #include "cwMtx.h"
 
@@ -635,7 +636,7 @@ namespace cw
         {
           unsigned loc_id;
           
-          if((rc = recd_get(rbuf->type, rbuf->recdA + i, p->loc_fld_idx, loc_id)) != kOkRC )
+          if((rc = recd_get(rbuf->recdA + i, p->loc_fld_idx, loc_id)) != kOkRC )
           {
             rc = proc_error(proc,rc,"Loc field read failed.");
             goto errLabel;
@@ -1321,9 +1322,14 @@ namespace cw
 
         _update_key_state( proc, p, port_id, m );
         
-        recd_set( rbuf->type, nullptr, r, p->midi_fld_idx, m );
-        recd_set( rbuf->type, nullptr, r, p->meas_fld_idx, meas_numb );
-        recd_set( rbuf->type, nullptr, r, p->port_fld_idx, port_id);
+        if((rc = recd_set( r->type, nullptr, r,
+                           p->midi_fld_idx, m,
+                           p->meas_fld_idx, meas_numb,
+                           p->port_fld_idx, port_id )) != kOkRC )
+        {
+          proc_error(proc,rc,"Output record set failed.");
+          goto errLabel;
+        }
         
         rbuf->recdN += 1;
 
@@ -1795,14 +1801,14 @@ namespace cw
             const cw::key_state_monitor::trigger_id_t* trigA      = nullptr;
 
             // get the MIDI msg 
-            if((rc = recd_get(i_rbuf->type, i_rbuf->recdA + i, p->midi_fld_idx, m)) != kOkRC )
+            if((rc = recd_get(i_rbuf->recdA + i, p->midi_fld_idx, m)) != kOkRC )
             {
               rc = proc_error(proc,rc,"MIDI field read failed.");
               goto errLabel;
             }
 
             // get the SF loc id
-            if((rc = recd_get(i_rbuf->type, i_rbuf->recdA + i, p->loc_fld_idx, loc_id)) != kOkRC )
+            if((rc = recd_get(i_rbuf->recdA + i, p->loc_fld_idx, loc_id)) != kOkRC )
             {
               rc = proc_error(proc,rc,"Loc field read failed.");
               goto errLabel;
@@ -1824,7 +1830,12 @@ namespace cw
                 // set the id of each trigger in an output record
                 for(unsigned j=0; j<target_cnt && j<p->recd_array->allocRecdN; ++j)
                 {
-                  recd_set( o_rbuf->type, nullptr, p->recd_array->recdA + j, p->trig_id_fld_idx, trigA[j].id );
+                  if((rc = recd_set( p->recd_array->recdA[j].type, nullptr, p->recd_array->recdA + j, p->trig_id_fld_idx, trigA[j].id )) != kOkRC )
+                  {
+                    proc_error(proc,rc,"Record set failed.");
+                    goto errLabel;
+                  }
+                  
                   o_rbuf->recdN += 1;
                 }
               }

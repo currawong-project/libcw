@@ -9,6 +9,7 @@
 #include "cwNumericConvert.h"
 #include "cwObject.h"
 #include "cwLex.h"
+#include "cwIdTable.h"
 
 #include "cwTime.h"
 #include "cwFile.h"

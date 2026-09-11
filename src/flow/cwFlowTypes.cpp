@@ -13,6 +13,7 @@
 #include "cwMtx.h"
 #include "cwDspTypes.h" // real_t, sample_t
 #include "cwTime.h"
+#include "cwIdTable.h"
 #include "cwMidiDecls.h"
 #include "cwFlowDecl.h"
 #include "cwFlow.h"
@@ -2465,6 +2466,7 @@ cw::rc_t   cw::flow::var_alloc_record_array( proc_t* proc, const char* var_label
   {
     recd_fmt_t*   recd_fmt  = var->varDesc->fmt.recd_fmt;
     unsigned      alloc_cnt = std::max(recd_fmt->alloc_cnt,allocRecdN);
+    recd_type_t*  recd_type = var->varDesc->fmt.recd_fmt->recd_type;
 
     // verify that a non-zero length was given to the count of records in the array
     if( alloc_cnt == 0 )
@@ -2472,10 +2474,15 @@ cw::rc_t   cw::flow::var_alloc_record_array( proc_t* proc, const char* var_label
       rc = var_error(var,kInvalidArgRC,"A non-zero record array length has not been assigned to the the varaible '%s'.",cwStringNullGuard(var_label));
       goto errLabel;
     }
-
+    
     // create the recd_array
-    if((rc = recd_array_create( recd_array_ref, recd_fmt->recd_type, base, alloc_cnt )) != kOkRC )
+    //if((rc = recd_array_create( recd_array_ref, recd_fmt->recd_type, alloc_cnt )) != kOkRC )
+    //{
+    //  goto errLabel;
+    //}
+    if((rc = recd_array_create( recd_array_ref, base, var->varDesc->fmt_cfg, alloc_cnt )) != kOkRC )
     {
+      rc = var_error(var,rc,"Record array create failed.");
       goto errLabel;
     }
   }

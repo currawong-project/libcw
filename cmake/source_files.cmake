@@ -1,5 +1,5 @@
-set( CORE_HDR_FILES          core/cwCommon.h                            core/cwLog.h   core/cwMem.h )
-set( CORE_SRC_FILES          core/cwCommonImpl.h  core/cwCommonImpl.cpp core/cwLog.cpp core/cwMem.cpp )
+set( CORE_HDR_FILES          core/cwCommon.h                            core/cwLog.h   core/cwMem.h    core/cwIdTable.h )
+set( CORE_SRC_FILES          core/cwCommonImpl.h  core/cwCommonImpl.cpp core/cwLog.cpp core/cwMem.cpp  core/cwIdTable.cpp )
 # Note that cwCommonImpl.h is included with the SRC files because it is not PUBLIC.
 
 list( APPEND CORE_HDR_FILES  core/cwNumericConvert.h   core/cwObjectTemplate.h core/cwObject.h)
