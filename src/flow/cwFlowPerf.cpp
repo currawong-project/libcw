@@ -4859,8 +4859,8 @@ namespace cw
           goto errLabel;
         }
 
-        proc_printf(proc,"Out Type:\n");
-        recd_type_print(p->recd_array->type);
+        //proc_printf(proc,"Out Type:\n");
+        //recd_type_print(p->recd_array->type);
         
         p->i_midi_field_idx = recd_type_field_index( in_rbuf->type, "midi");
         //p->o_midi_field_idx = recd_type_field_index( p->recd_array->type, "midi");
@@ -4962,7 +4962,7 @@ namespace cw
       {
         rc_t rc = kOkRC;
 
-        recd_type_print(p->recd_array->type);
+        //recd_type_print(p->recd_array->type);
         
         recd_t* r = p->recd_array->recdA + rbuf->recdN;
         
