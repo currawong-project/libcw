@@ -347,8 +347,6 @@ namespace cw
         unsigned field_idx = recd_type_field_index( rt, f->label);
         _recd_type_print_field(field_idx,level,f);
       }
-
-      
     }
     
     void _recd_type_print( unsigned level_idx, const recd_type_t* rt )
@@ -392,17 +390,12 @@ namespace cw
     {
       const bool          print_type_label_fl = false;
       const recd_field_t* fd                  = fm->field_desc;
-      value_t val;
-        
-      //for(unsigned level_idx=0; level_idx<fm->level_idx; level_idx++)
-      //  recd = recd->base;
+      value_t             val{};
         
       cwLogPrint("%s=",fd->label);
 
       if( recd_get_from_uid(recd,fd->uid,val) == kOkRC )        
         value_print(&val, print_type_label_fl, kMinimalValPrintVerb);
-
-      // value_print(recd->valA + fd->val_idx, print_type_label_fl, kMinimalValPrintVerb);
     }
 
       
@@ -945,7 +938,7 @@ void cw::flow::rbuf_print( const rbuf_t* rbuf, unsigned verbosity )
     return;
   }
 
-  if( rbuf == nullptr )
+  if( rbuf == nullptr || rbuf->recdA==nullptr || rbuf->recdN==0 )
   {
     cwLogPrint("rbuf: <null>");
     return;
@@ -959,8 +952,7 @@ void cw::flow::rbuf_print( const rbuf_t* rbuf, unsigned verbosity )
     
     if( verbosity == kSummaryValPrintVerb )
     {
-      if( rbuf->type != nullptr )
-        recd_type_print(rbuf->type);
+        recd_type_print(rbuf->recdA);
     }
     
     if( verbosity == kAllValPrintVerb )

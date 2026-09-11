@@ -421,20 +421,28 @@ namespace cw
       if( r == nullptr )
         return cwLogError(kEleNotFoundRC,"The field associated with uid:%i '%s' was not found.",uid,cwStringNullGuard(id_table::get_label(uid)));
 
-      //if( (r->type->fieldL != nullptr && r->valA == nullptr) || (r->type->fieldL ==nullptr &&  r->valA != nullptr) )
-      //  return cwLogError(kInvalidStateRC,"The recd type field list and recd valA array are inconsistent.");
-
-      if( r->valA != nullptr )
+      // for each field in this data record
+      for(const recd_field_t* f = r->type->fieldL; f!=nullptr; f=f->link)
       {
-        for(const recd_field_t* f = r->type->fieldL; f!=nullptr; f=f->link)
-          if( f->uid == uid )
+        // if this is the target 'uid' 
+        if( f->uid == uid )
+        {
+          // if this field does not contain a link to another field ...
+          if( f->src_uid == kInvalidIdx )
           {
-            if( f->src_uid == kInvalidIdx )
-              return value_get( r->valA + f->val_idx, val_ref );
+            // verify that the record is not corrupted
+            if( r->valA == nullptr )
+              return cwLogError(kInvalidStateRC,"No data is available for the field:'%s'.",cwStringNullGuard(f->label));
 
-            return recd_get_from_uid(r->base,f->src_uid,val_ref);
-            
+            // return the field value
+            return value_get( r->valA + f->val_idx, val_ref );
           }
+
+          // ... this record is a link to another field - the other field must be in the base.
+          // (since the only way to make a link is via the 'reformat' option)
+          return recd_get_from_uid(r->base,f->src_uid,val_ref);
+            
+        }
       }
       
       return recd_get_from_uid( r->base, uid, val_ref);
@@ -443,48 +451,14 @@ namespace cw
     template< typename T >
     rc_t recd_get( const recd_t* recd, unsigned field_idx, T& val_ref )
     {
-      assert( field_idx < recd->type->fieldMapN );
       rc_t          rc = kOkRC;
-      const recd_t* r  = recd;
+      
+      assert( field_idx < recd->type->fieldMapN );
+      
       const recd_field_t* rf = recd->type->fieldMapA[ field_idx ].field_desc;
       
-      //unsigned uid = rf->src_uid == kInvalidId ? rf->uid : rf->src_uid;
-
       return recd_get_from_uid(recd,rf->uid,val_ref);
     }
-    /*
-    // Read the value from a single record field
-    template< typename T >
-    rc_t recd_get( const recd_t* recd, unsigned field_idx, T& val_ref )
-    {
-      assert( field_idx < recd->type->fieldMapN );
-      rc_t          rc = kOkRC;
-      const recd_t* r  = recd;
-      
-      // iterate down the record hierarchy to 'level_idx'.
-      for(unsigned i=0; i<recd->type->fieldMapA[ field_idx ].level_idx; ++i)
-      {
-        if(r->base == nullptr )
-        {
-          rc = cwLogError(kInvalidStateRC,"The recd type field map attempted to iterate past the bottom of the record hierarchy. i=%i level_idx:%i",i,recd->type->fieldMapA[ field_idx ].level_idx);
-          recd_type_print(recd->type);
-          goto errLabel;
-        }
-        
-        r = r->base;
-      }
-
-      // r is now pointing to the record level whose valA[] contains the field value of interest.
-
-      //printf("get: %p %i %i %s\n",r->valA, field_idx, recd->type->fieldMapA[ field_idx ].field_desc->u.index, recd_type_field_index_to_label( recd->type, field_idx ) );
-
-      // get the value
-      return value_get( r->valA + recd->type->fieldMapA[ field_idx ].field_desc->val_idx, val_ref );
-      
-    errLabel:
-      return rc;
-    }
-    */
     
     inline rc_t _recd_get( const recd_t* r ) { return kOkRC; }
     
