@@ -10714,7 +10714,8 @@ namespace cw
         rc_t          rc     = kOkRC;
         rbuf_t*       o_rbuf = nullptr;
         const rbuf_t* i_rbuf = nullptr;
-
+        unsigned      i      = 0;
+        
         if((rc = var_get(proc,kInPId,i_rbuf)) != kOkRC )
           goto errLabel;
         
@@ -10723,7 +10724,7 @@ namespace cw
 
         o_rbuf->recdN = 0;
 
-        for(unsigned i=0; i<i_rbuf->recdN && i < p->recd_array->allocRecdN; ++i)
+        for(i=0; i<i_rbuf->recdN && i < p->recd_array->allocRecdN; ++i)
         {
           unsigned value = 0;
           midi::ch_msg_t* m = nullptr;
@@ -10739,12 +10740,15 @@ namespace cw
             proc_info(proc,"value:%i",value);
           }          
           
-          if((rc = recd_set(p->recd_array->type, i_rbuf->recdA + i, p->recd_array->recdA+o_rbuf->recdN, p->o_value_fld_idx, &value)) != kOkRC )
+          if((rc = recd_set(p->recd_array->type, i_rbuf->recdA + i, p->recd_array->recdA + i, p->o_value_fld_idx, &value)) != kOkRC )
           {
+            proc_error(proc,rc,"Record set failed.");
             goto errLabel;
           }
         }
-        
+
+        o_rbuf->recdN = i;
+        p->recd_array->recdN = i;        
         
       errLabel:
         return rc;
