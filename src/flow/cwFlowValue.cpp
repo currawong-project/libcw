@@ -386,10 +386,9 @@ namespace cw
       cwLogPrint(")");
     }
 
-    void _recd_print_field( const recd_t* recd, const recd_field_map_t* fm )
+    void _recd_print_field( const recd_t* recd, const recd_field_t* fd )
     {
       const bool          print_type_label_fl = false;
-      const recd_field_t* fd                  = fm->field_desc;
       value_t             val{};
         
       cwLogPrint("%s=",fd->label);
@@ -402,14 +401,13 @@ namespace cw
     void _recd_print( const recd_t* recd )
     {      
       cwLogPrint("(");
-      for(unsigned i=0; i<recd->type->fieldMapN; ++i)
-      {
-        _recd_print_field(recd, recd->type->fieldMapA + i );
-        
-        if( i+1 < recd->type->fieldMapN )
-          cwLogPrint(",");
-        
-      }
+      
+      for(const recd_field_t* f=recd->type->fieldL; f!=nullptr; f=f->link)
+        _recd_print_field(recd,f);
+
+      if( recd->base != nullptr )
+        _recd_print(recd->base);
+      
       cwLogPrint(")");
     }
         
