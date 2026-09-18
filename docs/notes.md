@@ -815,6 +815,46 @@ required in a proc. instance statement.
 
 See test/test.cfg `test_recd_registry` for examples of both of these uses.
 
+Record Implementation:
+----------------------
+
+When record types are instantiated a check is done to verify that 
+none of the new top level fields have matching field labels with any fields
+in the base hierarchy. 
+
+Record types (`recd_type_t`)  are registered in a global registery when they are created.
+At this time they are assigned `class_id` (`recd_type_t.class_id`).
+Record types that are physically equivalent are assigned the same `class_id` and have the same
+physical layout. That is they have the same chain of `recd_type_t`'s through
+the base type pointers and at each level have matching field descriptions (`label_id`,`dflt_value.tflag`,`val_idx`).
+
+Each `recd_array_t` maintains a list (`typeA`) of all the unique
+record types that will be stored in it as well as a list of all the
+fields (`comFieldA`) that are common to all of these types.  Common
+fields are defined by 'logical equivalence'. That is they are fields
+with matching labels and value types (`value_t.tflag`) across all the
+record array record types.  Fields that are common to
+all types are eligible for access by users of the record array.
+Fields that are not common are ignored and are inaccessable.
+
+Each record has a `recd_type_link_t` pointer which gives it access to
+the `recd_type_t` which defines it's layout as well as the field
+information (`recd_type_link_t.fieldLocA`) required to access the
+contents of the record data.  The `fieldLocA` array is ordered
+according to the `comFieldA` of the owning record array.  This
+guarantees that 'ith' entry in `fieldLocA` will access the same field
+for all records originating from the same record array - no matter
+that their underlying `recd_type_t`s are different.
+
+The rationale for this scheme is to support use of a common field index 
+that can be established when the record array is created, and then used for the life
+of the array. The common field index supports simple lookup of the location
+information for a given field value across the multiple types that may be contained
+in the record array.
+
+
+
+
 Variable Change Notification
 ----------------------------
 Processors are not *directly* notified when one of their connected

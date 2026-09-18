@@ -13,6 +13,7 @@
 #include "cwTime.h"
 #include "cwMidiDecls.h"
 #include "cwFlowValue.h"
+#include "cwFlowRecd.h"
 
 namespace cw
 {
@@ -66,7 +67,7 @@ namespace cw
     {
       return idToLabel(_typeLabelFlagsA,flag,kInvalidTFl);
     }
-
+#ifdef NOTDEF
     void _recd_type_destroy_field_list( recd_field_t* f )
     {  
       while( f != nullptr )
@@ -504,7 +505,8 @@ namespace cw
       return rc;
       
     }
-
+#endif
+    
   } // flow
 } // cw
 
@@ -892,7 +894,7 @@ void cw::flow::rbuf_print( const rbuf_t* rbuf, unsigned verbosity )
     if( verbosity == kAllValPrintVerb )
     {
       for(unsigned i=0; i<rbuf->recdN; ++i)
-        recd_print(rbuf->type, rbuf->recdA + i);
+        recd_print(rbuf->recdA + i);
     }
     
   }
@@ -1926,6 +1928,10 @@ cw::rc_t cw::flow::value_get( value_t* val, value_t& valRef )
   return value_get((const value_t*)val, valRef );
 }
 
+cw::rc_t cw::flow::value_set(       value_t* val, const value_t& v )
+{
+  return value_from_value( v, *val);
+}
 
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -1933,7 +1939,7 @@ cw::rc_t cw::flow::value_get( value_t* val, value_t& valRef )
 // Record
 //
 
-
+#ifdef NOTDEF
 cw::rc_t cw::flow::recd_format_create( recd_fmt_t*& recd_fmt_ref, const object_t* cfg, unsigned dflt_alloc_cnt )
 {
   rc_t         rc        = kOkRC;
@@ -2348,7 +2354,7 @@ errLabel:
   return rc;
 }
 */
-
+#endif
 
 //------------------------------------------------------------------------------------------------------------------------
 //
@@ -2581,7 +2587,8 @@ unsigned    cw::flow::list_ele_index( const list_t* list, const char* label )
 //------------------------------------------------------------------------------------------------------------------------
 cw::rc_t cw::flow::value_test( const test::test_args_t& args )
 {
-  rc_t          rc   = kOkRC;  
+  rc_t          rc   = kOkRC;
+  #ifdef NOTDEF
   object_t*     cfg0 = nullptr;
   object_t*     cfg1 = nullptr;
   object_t*     data0=nullptr;
@@ -2759,6 +2766,7 @@ cw::rc_t cw::flow::value_test( const test::test_args_t& args )
   data0->free();
 
 errLabel:
+  #endif
   return rc;
 }
 

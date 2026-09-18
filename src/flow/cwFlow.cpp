@@ -19,6 +19,7 @@
 #include "cwFlowDecl.h"
 #include "cwFlow.h"
 #include "cwFlowValue.h"
+#include "cwFlowRecd.h"
 #include "cwFlowTypes.h"
 #include "cwFlowNet.h"
 #include "cwFlowProc.h"
@@ -36,6 +37,7 @@ namespace cw
     } library_t;
     
     library_t g_library[] = {
+      #ifdef NOT_DEF
       { "user_def_proc",   &user_def_proc::members },
       { "poly",            &poly::members },
       { "midi_in",         &midi_in::members },
@@ -120,6 +122,7 @@ namespace cw
       { "gutim_2_sf_ctl",  &gutim_2_sf_ctl::members },
       { "timeline_player", &timeline_player::members },
       { "key_state_monitor", &key_state_monitor::members },
+      #endif
       { nullptr, nullptr }
     };
 

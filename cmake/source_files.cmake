@@ -1,5 +1,5 @@
-set( CORE_HDR_FILES          core/cwCommon.h                            core/cwLog.h   core/cwMem.h )
-set( CORE_SRC_FILES          core/cwCommonImpl.h  core/cwCommonImpl.cpp core/cwLog.cpp core/cwMem.cpp )
+set( CORE_HDR_FILES          core/cwCommon.h                            core/cwLog.h   core/cwMem.h   core/cwIdTable.h)
+set( CORE_SRC_FILES          core/cwCommonImpl.h  core/cwCommonImpl.cpp core/cwLog.cpp core/cwMem.cpp core/cwIdTable.cpp)
 # Note that cwCommonImpl.h is included with the SRC files because it is not PUBLIC.
 
 list( APPEND CORE_HDR_FILES  core/cwNumericConvert.h   core/cwObjectTemplate.h core/cwObject.h)
@@ -71,8 +71,8 @@ list( APPEND IO_SRC_FILES io/cwIo.cpp )
 
 #-------------------------------------
 # flow source files
-set(  FLOW_HDR_FILES flow/cwFlowDecl.h flow/cwFlowValue.h   flow/cwFlowTypes.h   flow/cwFlowNet.h   flow/cwFlow.h   flow/cwFlowPerf.h   flow/cwFlowProc.h   flow/cwFlowGutim.h   flow/cwFlowTest.h )
-set(  FLOW_SRC_FILES                   flow/cwFlowValue.cpp flow/cwFlowTypes.cpp flow/cwFlowNet.cpp flow/cwFlow.cpp flow/cwFlowPerf.cpp flow/cwFlowProc.cpp flow/cwFlowGutim.cpp flow/cwFlowTest.cpp)
+set(  FLOW_HDR_FILES flow/cwFlowDecl.h flow/cwFlowValue.h   flow/cwFlowRecd.h   flow/cwFlowTypes.h   flow/cwFlowNet.h   flow/cwFlow.h   flow/cwFlowTest.h) # flow/cwFlowPerf.h   flow/cwFlowProc.h   flow/cwFlowGutim.h   flow/cwFlowTest.h )
+set(  FLOW_SRC_FILES                   flow/cwFlowValue.cpp flow/cwFlowRecd.cpp flow/cwFlowTypes.cpp flow/cwFlowNet.cpp flow/cwFlow.cpp flow/cwFlowTest.cpp) # flow/cwFlowPerf.cpp flow/cwFlowProc.cpp flow/cwFlowGutim.cpp flow/cwFlowTest.cpp)
 
 
 #-------------------------------------

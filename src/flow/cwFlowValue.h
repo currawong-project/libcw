@@ -272,9 +272,9 @@ namespace cw
 
     rc_t value_get( const value_t* val, value_t& valRef );
     rc_t value_get(       value_t* val, value_t& valRef );
+    rc_t value_set(       value_t* val, const value_t& v );
 
-
-
+    #ifdef NOT_DEF
     //------------------------------------------------------------------------------------------------------------------------
     //
     // Record
@@ -481,7 +481,7 @@ namespace cw
     // The source and destination record types should be the same, but this
     // function does very little to verify that they actually are.
     //rc_t recd_copy( const recd_type_t* src_recd_type, const recd_t* src_recdA, unsigned src_recdN, recd_array_t* dst_recd_array, unsigned dst_recd_idx = 0 );
-
+#endif
 
     //------------------------------------------------------------------------------------------------------------------------
     //
