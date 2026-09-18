@@ -38,8 +38,23 @@ namespace cw
 
     recd_registry_t __global_recd_reg__{};
 
+    inline const value_t& _recd_field_dflt_value( const recd_field_desc_t* f )
+    { return f->_alias == nullptr ? f->_dflt_value : f->_alias->_dflt_value; }
+
+    inline unsigned _recd_field_tflag( const recd_field_desc_t* f )
+    { return f->_alias == nullptr ? f->_dflt_value.tflag : f->_alias->_dflt_value.tflag; }
+    
+    inline const char* _recd_field_doc( const recd_field_desc_t* f )
+    { return f->_alias == nullptr ? f->_doc : f->_alias->_doc; }
+
+    inline unsigned _recd_field_value_index( const recd_field_desc_t* f )
+    { return f->_alias == nullptr ? f->_val_idx : f->_alias->_val_idx; }
+
+    inline unsigned _recd_field_level_offset( const recd_field_desc_t* f )
+    { return f->_alias == nullptr ? 0 : f->_alias_level_offset; };
+
     bool _is_recd_field_desc_physically_equivalent( const recd_field_desc_t* f0, const recd_field_desc_t* f1 )
-    { return f0->label_id == f1->label_id && f0->val_idx==f1->val_idx && f0->dflt_value.tflag == f1->dflt_value.tflag; }
+    { return f0->label_id == f1->label_id && _recd_field_value_index(f0)==_recd_field_value_index(f1) && _recd_field_tflag(f0) == _recd_field_tflag(f1); }
 
     bool _is_recd_type_physically_equivalent( const recd_type_t* rt0, const recd_type_t* rt1 )
     {
@@ -86,10 +101,12 @@ namespace cw
       if( recd_type->class_id == kInvalidIdx )
       {
         // assign an unused id to the new type
-        recd_type->class_id = __global_recd_reg__.next_id++;
-        recd_reg_node_t* n = mem::allocZ<recd_reg_node_t>();
-        n->recd_type = recd_type;
-        n->link = __global_recd_reg__.nodeL;
+        recd_type->class_id       = __global_recd_reg__.next_id++;
+
+        // create a new registry node to hold the new type
+        recd_reg_node_t* n        = mem::allocZ<recd_reg_node_t>();
+        n->recd_type              = recd_type;
+        n->link                   = __global_recd_reg__.nodeL;
         __global_recd_reg__.nodeL = n;
       }
     }
@@ -106,7 +123,7 @@ namespace cw
     const recd_field_desc_t* _field_find_equivalent( const recd_type_t* rt, unsigned label_id, unsigned t_flag )
     {
       for(unsigned i=0; i<rt->fieldDescN; ++i)
-        if( rt->fieldDescA[i].label_id==label_id && rt->fieldDescA[i].dflt_value.tflag == t_flag )
+        if( rt->fieldDescA[i].label_id==label_id && _recd_field_tflag(rt->fieldDescA+i) == t_flag )
           return rt->fieldDescA + i;
 
       return nullptr;
@@ -114,7 +131,7 @@ namespace cw
 
     const recd_field_desc_t* _field_find_equivalent( const recd_type_t* rt, const recd_field_desc_t* fd )
     {
-      return _field_find_equivalent( rt, fd->label_id, fd->dflt_value.tflag);
+      return _field_find_equivalent( rt, fd->label_id, _recd_field_tflag(fd));
     }
 
     const recd_field_desc_t* _field_find_equivalent_recurse( const recd_type_t* rt, const recd_common_field_t* rcf )
@@ -129,94 +146,190 @@ namespace cw
 
       return _field_find_equivalent_recurse(rt->base_type,rcf);
     }
-    
-  
-    rc_t _recd_field_desc_array_from_cfg( recd_type_t* rt, const object_t* field_dict_cfg )
+
+    const recd_field_desc_t* _field_desc_from_label_recurse( const recd_type_t* rt, const char* field_label, unsigned& level_ref )
+    {
+      const recd_field_desc_t* rfd = nullptr;
+
+      if( rt == nullptr )
+        return nullptr;
+      
+      if((rfd = _field_label_to_desc(rt,field_label)) != nullptr )
+        return rfd;
+
+      level_ref += 1;
+      return _field_desc_from_label_recurse(rt->base_type,field_label,level_ref);
+        
+    }
+
+    rc_t _recd_field_desc_validate_cfg( const object_t* field_dict_cfg, bool& is_alias_fl_ref )
     {
       rc_t rc = kOkRC;
-  
+      const object_t* pair = nullptr;
+      
+      is_alias_fl_ref = false;
+
       if( !field_dict_cfg->is_dict() )
       {
         rc = cwLogError(kSyntaxErrorRC,"The field cfg. is not a dictionary.");
         goto errLabel;
       }
-      else
+      
+      if( field_dict_cfg->child_count() == 0 )
       {
-        unsigned fieldN  = field_dict_cfg->child_count();
-        rt->fieldDescA = mem::allocZ<recd_field_desc_t>(fieldN);
+        rc = cwLogError(kInvalidArgRC,"The field cfg. is empty.");
+        goto errLabel;
+      }
 
-        for(unsigned i=0; i<fieldN; ++i)
+      if((pair = field_dict_cfg->child_ele(0)) == nullptr )
+      {
+        rc = cwLogError(kInvalidArgRC,"The field cfg. first element could not be accessed.");
+        goto errLabel;        
+      }
+
+      if( !pair->is_pair() || pair->pair_value()==nullptr )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The field cfg. first element is not a pair.");
+        goto errLabel;                
+      }
+
+      
+
+      if( pair->pair_value()->is_string() )
+      {
+        is_alias_fl_ref = true;
+      }
+
+    errLabel:
+      return rc;
+    }
+
+    rc_t _recd_field_alias_array_from_cfg( recd_type_t* rt, const recd_type_t* base_type, const object_t* field_dict_cfg )
+    {
+      rc_t     rc     = kOkRC;
+      unsigned fieldN = field_dict_cfg->child_count();
+
+      if( base_type == nullptr )
+      {
+        rc = cwLogError(kInvalidArgRC,"No base was given to accompany a record alias list.");
+        goto errLabel;
+      }
+      
+      rt->fieldDescA = mem::allocZ<recd_field_desc_t>(fieldN);
+
+      for(unsigned i=0; i<fieldN; ++i)
+      {
+        const object_t*          pair              = field_dict_cfg->child_ele(i);
+        const char*              base_field_label  = nullptr;
+        const char*              alias_field_label = nullptr;
+        const recd_field_desc_t* base_rfd          = nullptr;
+        unsigned                 level_offset      = 0;
+
+        if( pair==nullptr || pair->pair_label()==nullptr || pair->pair_value()==nullptr || !pair->pair_value()->is_string() )
         {
-          const object_t*    pair       = field_dict_cfg->child_ele(i);
-          const char*        type_label = nullptr;
-          const char*        doc_string = nullptr;
-          const object_t*    val_cfg    = nullptr;
-          const char*        field_label= nullptr;
+          rc = cwLogError(kSyntaxErrorRC,"Syntax error on the field desc alias list at index %i.",i);
+          goto errLabel;
+        }
 
-          // parse the required fields
-          if((rc = pair->pair_value()->getv("type",type_label,
-                                            "doc",doc_string)) != kOkRC )
+        base_field_label = pair->pair_label();
+        pair->pair_value()->value(alias_field_label);
+
+        if((base_rfd = _field_desc_from_label_recurse(base_type, base_field_label, level_offset )) == nullptr )
+        {
+          rc = cwLogError(kInvalidArgRC,"The alias target base field '%s' was not found in the base type.",cwStringNullGuard(base_field_label));
+          goto errLabel;
+        }
+        
+        rt->fieldDescA[i].label             = mem::duplStr(alias_field_label);
+        rt->fieldDescA[i].label_id          = id_table::get_id( alias_field_label );
+        rt->fieldDescA[i]._alias            = base_rfd;
+        rt->fieldDescA[i]._alias_level_offset = level_offset + 1;
+        rt->fieldDescA[i]._val_idx          = kInvalidIdx;
+        rt->fieldDescA[i]._dflt_value.tflag = kInvalidTFl;
+
+        rt->fieldDescN += 1;
+      }
+
+      
+    errLabel:
+      return rc;
+    }
+    
+    rc_t _recd_field_desc_array_from_cfg( recd_type_t* rt, const object_t* field_dict_cfg )
+    {
+      rc_t rc = kOkRC;
+      unsigned fieldN = field_dict_cfg->child_count();
+      rt->fieldDescA = mem::allocZ<recd_field_desc_t>(fieldN);
+      
+      for(unsigned i=0; i<fieldN; ++i)
+      {
+        const object_t*    pair       = field_dict_cfg->child_ele(i);
+        const char*        type_label = nullptr;
+        const char*        doc_string = nullptr;
+        const object_t*    val_cfg    = nullptr;
+        const char*        field_label= nullptr;
+
+        // parse the required fields
+        if((rc = pair->pair_value()->getv("type",type_label,
+                                          "doc",doc_string)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Error parsing the record type field '%s'.",cwStringNullGuard(pair->pair_label()));
+          goto errLabel;
+        }
+
+        // verify that the field label is not blank
+        field_label = pair->pair_label();
+        if( field_label==nullptr || textLength(field_label)==0)
+        {
+          rc = cwLogError(kInvalidArgRC,"A blank or missing field label was encountered.");
+          goto errLabel;
+        }
+
+        // verify that this is not a duplicate field label
+        rt->fieldDescN = i+1;
+        if( _field_label_to_desc( rt, field_label) != nullptr )
+        {
+          rc = cwLogError(kInvalidArgRC,"The field label '%s' is used multiple times in a record type.",cwStringNullGuard(field_label));
+          goto errLabel;
+        }
+
+        // fill the field record
+        rt->fieldDescA[i].label    = mem::duplStr(field_label);
+        rt->fieldDescA[i].label_id = id_table::get_id(field_label);
+        rt->fieldDescA[i]._doc      = mem::duplStr(doc_string);
+        rt->fieldDescA[i]._val_idx  = i;
+
+        // validate the value type flag
+        if((rt->fieldDescA[i]._dflt_value.tflag = value_type_label_to_flag( type_label )) == kInvalidTFl )
+        {
+          rc = cwLogError(kSyntaxErrorRC,"The value type label '%s' is not valid on the field specifier '%s'.",cwStringNullGuard(type_label),cwStringNullGuard(pair->pair_label()));
+          goto errLabel;
+        }
+
+        // get the optional default value 
+        if((val_cfg = pair->pair_value()->find("value")) != nullptr )
+        {
+          value_t v;
+          v.tflag = kInvalidTFl;
+
+          // parse the value into 'v'
+          if((rc = value_from_cfg(val_cfg,v)) != kOkRC )
           {
-            rc = cwLogError(rc,"Error parsing the record type field '%s'.",cwStringNullGuard(pair->pair_label()));
+            rc = cwLogError(rc,"The default value parse failed for the field '%s'.",cwStringNullGuard(pair->pair_label()));
             goto errLabel;
           }
 
-          // verify that the field label is not blank
-          field_label = pair->pair_label();
-          if( field_label==nullptr || textLength(field_label)==0)
+          // convert the value from 'v' into field->value
+          if((rc = value_from_value(v,rt->fieldDescA[i]._dflt_value)) != kOkRC )
           {
-            rc = cwLogError(kInvalidArgRC,"A blank or missing field label was encountered.");
-            goto errLabel;
+            rc = cwLogError(rc,"The default value assignment failed for the field '%s'.",cwStringNullGuard(pair->pair_label()));
+            goto errLabel;          
           }
-
-          // verify that this is not a duplicate field label
-          rt->fieldDescN = i+1;
-          if( _field_label_to_desc( rt, field_label) != nullptr )
-          {
-            rc = cwLogError(kInvalidArgRC,"The field label '%s' is used multiple times in a record type.",cwStringNullGuard(field_label));
-            goto errLabel;
-          }
-
-          // fill the field record
-          rt->fieldDescA[i].label    = mem::duplStr(field_label);
-          rt->fieldDescA[i].label_id = id_table::get_id(field_label);
-          rt->fieldDescA[i].doc      = mem::duplStr(doc_string);
-          rt->fieldDescA[i].val_idx  = i;
-
-          // validate the value type flag
-          if((rt->fieldDescA[i].dflt_value.tflag = value_type_label_to_flag( type_label )) == kInvalidTFl )
-          {
-            rc = cwLogError(kSyntaxErrorRC,"The value type label '%s' is not valid on the field specifier '%s'.",cwStringNullGuard(type_label),cwStringNullGuard(pair->pair_label()));
-            goto errLabel;
-          }
-
-          // get the optional default value 
-          if((val_cfg = pair->pair_value()->find("value")) != nullptr )
-          {
-            value_t v;
-            v.tflag = kInvalidTFl;
-
-            // parse the value into 'v'
-            if((rc = value_from_cfg(val_cfg,v)) != kOkRC )
-            {
-              rc = cwLogError(rc,"The default value parse failed for the field '%s'.",cwStringNullGuard(pair->pair_label()));
-              goto errLabel;
-            }
-
-            // convert the value from 'v' into field->value
-            if((rc = value_from_value(v,rt->fieldDescA[i].dflt_value)) != kOkRC )
-            {
-              rc = cwLogError(rc,"The default value assignment failed for the field '%s'.",cwStringNullGuard(pair->pair_label()));
-              goto errLabel;          
-            }
-          }
+          
         }
       }
       
     errLabel:
-
-      if( rc == kOkRC )
-        std::sort(rt->fieldDescA, rt->fieldDescA + rt->fieldDescN, [](const recd_field_desc_t& f0,const recd_field_desc_t& f1){ return f0.label_id<f1.label_id; } );
       
       return rc;
     }
@@ -357,6 +470,7 @@ namespace cw
 void cw::flow::recd_registry_create()
 {
   recd_registry_destroy();
+  __global_recd_reg__.nodeL = nullptr;
   __global_recd_reg__.is_initialized_fl = true;
 }
 
@@ -370,6 +484,7 @@ void cw::flow::recd_registry_destroy()
     mem::release(node);
     node = n;
   }
+  __global_recd_reg__.nodeL = nullptr;
   __global_recd_reg__.is_initialized_fl = false;
 
 }
@@ -377,8 +492,10 @@ void cw::flow::recd_registry_destroy()
 void cw::flow::recd_field_desc_print( const recd_field_desc_t* f )
 {
   const bool print_type_label_fl = true;
-  cwLogPrint("%6i %6i %15s : ",f->label_id,f->val_idx,cwStringNullGuard(f->label));
-  value_print(&f->dflt_value,print_type_label_fl,kMinimalValPrintVerb); 
+  cwLogPrint("%6i %6i %15s : ",f->label_id,_recd_field_value_index(f),cwStringNullGuard(f->label));
+  value_print(&_recd_field_dflt_value(f),print_type_label_fl,kMinimalValPrintVerb);
+  if( f->_alias != nullptr )
+    cwLogPrint(" (alias:%s) ",cwStringNullGuard(f->_alias->label));
 }
 
 cw::rc_t  cw::flow::recd_type_create( recd_type_t*& recd_type_ref, const recd_type_t* base_type, const object_t* cfg )
@@ -386,6 +503,7 @@ cw::rc_t  cw::flow::recd_type_create( recd_type_t*& recd_type_ref, const recd_ty
   rc_t            rc          = kOkRC;  
   const object_t* fields_dict = nullptr;;
   recd_type_t*    recd_type   = mem::allocZ<recd_type_t>();
+  bool            is_alias_fl = false;
   
   recd_type_ref = nullptr;
 
@@ -398,11 +516,32 @@ cw::rc_t  cw::flow::recd_type_create( recd_type_t*& recd_type_ref, const recd_ty
       goto errLabel;
     }
 
-    // load the fields list
-    if((rc = _recd_field_desc_array_from_cfg(recd_type,fields_dict)) != kOkRC )
+    // validate the basic fields_dict layout and check if this is an alias list  
+    if((rc = _recd_field_desc_validate_cfg( fields_dict, is_alias_fl )) != kOkRC )
     {
+      rc = cwLogError(rc,"The record field description array cfg. could not be validated.");
       goto errLabel;
     }
+
+    if( is_alias_fl )
+    {
+      if((rc = _recd_field_alias_array_from_cfg(recd_type,base_type,fields_dict)) != kOkRC )
+      {
+        goto errLabel;
+      }
+    }
+    else
+    {
+      // load the fields list
+      if((rc = _recd_field_desc_array_from_cfg(recd_type,fields_dict)) != kOkRC )
+      {
+        goto errLabel;
+      }
+    }
+
+    
+    std::sort(recd_type->fieldDescA, recd_type->fieldDescA + recd_type->fieldDescN, [](const recd_field_desc_t& f0,const recd_field_desc_t& f1){ return f0.label_id<f1.label_id; } );
+
   }
 
   // if a base was given verify that no field labels were re-used by the top level
@@ -448,7 +587,7 @@ void  cw::flow::recd_type_destroy( recd_type_t*& recd_type_ref )
     for(unsigned i=0; i<rt->fieldDescN; ++i)
     { 
       mem::release(rt->fieldDescA[i].label);
-      mem::release(rt->fieldDescA[i].doc);
+      mem::release(rt->fieldDescA[i]._doc);
     }
     
     mem::release(rt->fieldDescA);
@@ -457,6 +596,10 @@ void  cw::flow::recd_type_destroy( recd_type_t*& recd_type_ref )
 
   mem::release(recd_type_ref);
 }
+
+
+bool cw::flow::recd_type_is_alias( const recd_type_t* rt )
+{ return rt->fieldDescN>0 && rt->fieldDescA[0]._alias != nullptr; }
 
 void cw::flow::recd_type_print( const recd_type_t* rt )
 {
@@ -577,7 +720,7 @@ namespace cw
         recd_common_field_t* rcf = rcfA + rcfi;
         rcf->field_label    = rt->fieldDescA[i].label;
         rcf->label_id       = rt->fieldDescA[i].label_id;
-        rcf->val_type_tflag = rt->fieldDescA[i].dflt_value.tflag;
+        rcf->val_type_tflag = _recd_field_tflag(rt->fieldDescA+i);
         
         rcfi += 1;
       }
@@ -695,8 +838,8 @@ namespace cw
       
       if((fd = _field_find_equivalent(rt,com_field->label_id,com_field->val_type_tflag)) != nullptr )
       {
-        level_cnt_ref = level;
-        val_idx_ref = fd->val_idx;
+        level_cnt_ref = level + _recd_field_level_offset( fd );
+        val_idx_ref = _recd_field_value_index(fd);
         return kOkRC;
       }
 
@@ -709,14 +852,17 @@ namespace cw
       rc_t rc = kOkRC;
       recd_array->typeLinkA = mem::allocZ<recd_type_link_t>(recd_array->typeN);
 
+      // for each type known to this recd_array
       for(unsigned i=0; i<recd_array->typeN; ++i)
       {
         recd_type_link_t* link = recd_array->typeLinkA + i;
 
+        // populate the link header fields
         link->recd_type = recd_array->typeA[i];
         link->fieldLocN = recd_array->comFieldN;
         link->fieldLocA = mem::allocZ<recd_field_loc_t>( link->fieldLocN );
 
+        // for each location 
         for(unsigned fli=0; fli<link->fieldLocN; ++fli)
         {
           recd_field_loc_t* loc = link->fieldLocA + fli;
@@ -735,11 +881,38 @@ namespace cw
       return rc;
     }
 
+    rc_t _create_base_class_id_map(recd_array_t* recd_array, unsigned maxBaseClassId )
+    {
+      rc_t rc = kOkRC;
+      
+      if( maxBaseClassId == kInvalidId )
+        return rc;
+      
+      recd_array->baseMapN = maxBaseClassId+1;
+      recd_array->baseMapA = mem::allocZ<unsigned>(recd_array->baseMapN);
+      vop::fill(recd_array->baseMapA,recd_array->baseMapN,kInvalidIdx);
+
+      for(unsigned i=0; i<recd_array->typeN; ++i)        
+        if( recd_array->typeLinkA[i].recd_type->base_type != nullptr   )
+        {
+          unsigned class_id = recd_array->typeLinkA[i].recd_type->base_type->class_id;
+          
+          if( class_id < recd_array->baseMapN )
+            recd_array->baseMapA[ class_id ] = i;
+        }
+      
+      return rc;
+    }
+
     rc_t _set_recd_empty( recd_t* recd, const recd_type_t* top_level_recd_type )
     {
       rc_t                     rc  = kOkRC; 
       unsigned                 fdN = top_level_recd_type->fieldDescN;
       const recd_field_desc_t* fdA = top_level_recd_type->fieldDescA;
+
+      // if this record does not have any settable fields.
+      if( recd->valA == nullptr )
+        return rc;
 
       recd->link = nullptr;
       recd->base = nullptr;;
@@ -747,11 +920,11 @@ namespace cw
       // fill in the default values for all fields
       for(unsigned i =0; i<fdN; ++i)
       {
-        value_t& dst_val = recd->valA[ fdA[i].val_idx ];
+        value_t& dst_val = recd->valA[ _recd_field_value_index(fdA+i) ];
         
         dst_val.tflag = kInvalidTFl;
     
-        if((rc = value_from_value( fdA[i].dflt_value, dst_val )) != kOkRC )
+        if((rc = value_from_value( _recd_field_dflt_value(fdA+i), dst_val )) != kOkRC )
         {
           rc = cwLogError(rc,"Default field value assignment failed on '%s'.",cwStringNullGuard(fdA[i].label));
           goto errLabel;
@@ -801,25 +974,31 @@ cw::rc_t cw::flow::recd_array_create( recd_array_t*&             recd_array_ref,
                                       unsigned                   base_recd_typeN,
                                       unsigned                   allocRecdN )
 {
-  rc_t          rc         = kOkRC;
-  recd_array_t* recd_array = nullptr;
-  unsigned*     classIdA   = nullptr;
-  bool*         rt_dropA   = nullptr;
-  unsigned      n          = 0;
-  unsigned      topLevelFieldN = 0;
+  rc_t                     rc                   = kOkRC;
+  recd_array_t*            recd_array           = nullptr;
+  unsigned*                classIdA             = nullptr;
+  bool*                    rt_dropA             = nullptr;
+  unsigned                 n                    = 0;
+  unsigned                 topLevelFieldN       = 0;
+  unsigned                 maxBaseClassId       = kInvalidId;
+  bool                     is_alias_fl          = false;
   const recd_type_t* const no_base_recd_typeA[] = {nullptr};
-  
-  if( base_recd_typeN == 0 )
-  {
-    base_recd_typeA = no_base_recd_typeA;
-    base_recd_typeN = 1;
-  }
-    
+
   recd_array_ref = nullptr;
 
+  // if there is no way to form the recd types this recd_array will hold
   if( top_level_fmt_cfg==nullptr && base_recd_typeN == 0 )
     return cwLogError(kInvalidArgRC,"A record array cannot be created unless at least one base or top level record type is provided.");
   
+  // if no base types are being used with this data array ...
+  if( base_recd_typeN == 0 )
+  {
+    // ... create a single type to hold the top level type formed from top_level_fmt_cfg
+    base_recd_typeA = no_base_recd_typeA;
+    base_recd_typeN = 1;
+  }
+
+  // create the recd_array object
   recd_array= mem::allocZ<recd_array_t>();
 
   // get the unique base types
@@ -827,8 +1006,13 @@ cw::rc_t cw::flow::recd_array_create( recd_array_t*&             recd_array_ref,
   rt_dropA = mem::allocZ<bool>( base_recd_typeN );   // True if the associated recd_type_t* is a duplicate of another other type in recd_typeA[]
   recd_array->typeN = _get_unique_class_ids( base_recd_typeA, base_recd_typeN, classIdA, rt_dropA );
   
-  
   // recd_array->typeN now holds the count of unique recd_types recd_typeA[]
+
+  if( recd_array->typeN == 0 )
+  {
+    rc = cwLogError(kInvalidStateRC,"No valid record types were found during recd array creation.");
+    goto errLabel;
+  }
   
   recd_array->typeA = mem::allocZ<recd_type_t*>(recd_array->typeN );
 
@@ -848,14 +1032,35 @@ cw::rc_t cw::flow::recd_array_create( recd_array_t*&             recd_array_ref,
       // store the new type 
       recd_array->typeA[n++] = new_rt;
 
-      topLevelFieldN = new_rt->fieldDescN;
+      // track the max. base class id 
+      if( new_rt->base_type != nullptr
+          && new_rt->base_type->class_id != kInvalidId
+          && new_rt->base_type->class_id <1024
+          && (maxBaseClassId==kInvalidId || new_rt->base_type->class_id>maxBaseClassId ))
+      {
+        maxBaseClassId = new_rt->base_type->class_id;        
+      }
     }
   }
 
   // verify that that the established count of unique recd_types is the same as the stored count
-  assert(n == recd_array->typeN );
+  if(n != recd_array->typeN )
+  {
+    rc = cwLogError(kInvalidStateRC,"The pre-calculated and actual count of recd_array counts is not the same.");
+    goto errLabel;
+  }
 
-  recd_array->valA       = topLevelFieldN==0 ? nullptr : mem::allocZ<value_t>(topLevelFieldN * allocRecdN);
+  // at least one recd_type must have been created
+  assert( recd_array->typeN>0);
+
+  // the field count for all top-level types is the same - get the top-level field count from the first type
+  topLevelFieldN = recd_array->typeA[0]->fieldDescN;
+
+  // if the top-level type of the first type is aliasing then they are all aliasing
+  is_alias_fl = recd_type_is_alias(recd_array->typeA[0]);
+  
+
+  recd_array->valA       = is_alias_fl || topLevelFieldN==0 ? nullptr : mem::allocZ<value_t>(topLevelFieldN * allocRecdN);
   recd_array->recdA      = mem::allocZ<recd_t>(allocRecdN);
   recd_array->allocRecdN = allocRecdN;
   recd_array->recdN      = 0;
@@ -871,6 +1076,13 @@ cw::rc_t cw::flow::recd_array_create( recd_array_t*&             recd_array_ref,
   {
     goto errLabel;
   }
+
+  // create the base class_id lookup table
+  if((rc = _create_base_class_id_map( recd_array, maxBaseClassId )) != kOkRC )
+  {
+    goto errLabel;
+  }
+    
   
   // for each record
   for(unsigned i=0; i<allocRecdN; ++i)
@@ -878,7 +1090,7 @@ cw::rc_t cw::flow::recd_array_create( recd_array_t*&             recd_array_ref,
     // set the value array for this record
     recd_array->recdA[i].valA = recd_array->valA==nullptr ? nullptr : recd_array->valA + (i*topLevelFieldN);
 
-    // set the default values for all fields 
+    // set the default values for all fields
     if((rc = _set_recd_empty( recd_array->recdA + i, recd_array->typeA[0] )) != kOkRC )
       goto errLabel;
   }
@@ -913,6 +1125,7 @@ cw::rc_t cw::flow::recd_array_destroy( recd_array_t*& recd_array_ref )
   mem::release(recd_array->comFieldA);
   mem::release(recd_array->valA);
   mem::release(recd_array->recdA);
+  mem::release(recd_array->baseMapA);
   mem::release(recd_array_ref);
   
   return kOkRC;
@@ -1044,6 +1257,15 @@ errLabel:
 cw::rc_t cw::flow::recd_array_type_link( const recd_array_t* recd_array, unsigned base_type_class_id, const cw::flow::recd_type_link_t*& link_ref )
 {
   rc_t rc = kOkRC;
+
+  if( base_type_class_id != kInvalidId && base_type_class_id < recd_array->baseMapN )
+    if( recd_array->baseMapA[ base_type_class_id ] != kInvalidIdx )
+    {
+      assert( recd_array->baseMapA[ base_type_class_id ] < recd_array->typeN);
+      link_ref = recd_array->typeLinkA + recd_array->baseMapA[ base_type_class_id ];
+      return rc;
+    }
+  
   link_ref = nullptr;
   for(unsigned i=0; i<recd_array->typeN; ++i)
     if( recd_array->typeLinkA[i].recd_type->base_type != nullptr && recd_array->typeLinkA[i].recd_type->base_type->class_id == base_type_class_id )
@@ -1110,7 +1332,7 @@ errLabel:
 
 void cw::flow::recd_array_print_info( const recd_array_t* recd_array )
 {
-  cwLogPrint("allocRecdN:%i recdN:5i\n",recd_array->allocRecdN,recd_array->recdN);
+  cwLogPrint("allocRecdN:%i recdN:%5i\n",recd_array->allocRecdN,recd_array->recdN);
 
   // for each type contained in this recd_array
   for(unsigned ti=0; ti<recd_array->typeN; ++ti)

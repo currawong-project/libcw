@@ -17,11 +17,13 @@ namespace cw
     
     typedef struct recd_field_desc_str
     {
-      char*    label;           // field label
-      unsigned label_id;        // automatically generated unique id based on the label
-      value_t  dflt_value;      // default value for this field
-      char*    doc;             // documentation field for this field
-      unsigned val_idx;         // index into recd_t.valA of the value associated with this field
+      char*                             label;       // field label
+      unsigned                          label_id;    // automatically generated unique id based on the label
+      value_t                           _dflt_value; // _alias ? tflag=kInvalidTFl : default value for this field
+      char*                             _doc;        // _alias ? nullptr           : documentation field for this field
+      unsigned                          _val_idx;    // _alias ? kInvalidIdx       : index into recd_t.valA of the value associated with this field
+      const struct recd_field_desc_str* _alias;      // Set if this is an alias field desc otherwise null.
+      unsigned                          _alias_level_offset;  // Offset to alias level or 0 if _alias == nullptr;
     } recd_field_desc_t;
 
     void recd_field_desc_print( const recd_field_desc_t* f );
@@ -38,9 +40,14 @@ namespace cw
     // Create a recd_type_t instance from a cfg. description.
     // Note that if 'fieldD_cfg' is null then this type will have only fields specified by 'base_type'
     // The syntax of the 'fieldD_cfg' is {'fields':{ <field_label>:{ "type":<>, "value":<>, "doc":<> } } }
+    // or for aliasing base fields:      {'fields':{ <base_target_field_label>:<alias_field_label> } }
+    // Note that the the recd_type is either used to represent actual data fields or or used to rename (alias) base type fields
+    // it cannot do both.
     rc_t recd_type_create(  recd_type_t*& recd_type_ref, const recd_type_t* base_type, const object_t* fieldD_cfg=nullptr );
     void recd_type_destroy( recd_type_t*& recd_type_ref );
-    void recd_type_print( const recd_type_t* r );
+    // Returns true if this is an aliasing type.
+    bool recd_type_is_alias( const recd_type_t* rt );
+    void recd_type_print( const recd_type_t* rt );
     
     const char* recd_type_field_index_to_label( const recd_type_t* rt, unsigned field_idx );
 
@@ -91,6 +98,9 @@ namespace cw
 
       recd_common_field_t* comFieldA;  // comFieldA[comFieldN] Common fields across all types
       unsigned             comFieldN;
+
+      unsigned*            baseMapA;   // baseMapA[baseMapN] translate base class_id to index into typeLinkA[]
+      unsigned             baseMapN;
 
       value_t*             valA;       // valA[ allocRecdN * topLevelFieldN ] value memory for all fields defined in type.
       struct recd_str*     recdA;      // recdA[ allocRecdN ]

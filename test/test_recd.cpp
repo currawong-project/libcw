@@ -46,6 +46,13 @@ const char* data_0_json = R"(
     { "field_a":4, "field_b":-5, "field_c":6.0, "field_d":3.8, sel_fld:1 }
   ])";
 
+struct ab_t {
+  unsigned a;
+  int b;
+};
+
+ab_t abA[] = { {1,-2}, {2,-3}, {3,-4}, {4,-5}, {10,-20}, {20,-30}, {30,-40}, {40,-50} };
+
 
 const char* type_1_json = R"(
    {
@@ -78,6 +85,12 @@ const char* data_2_json = R"(
     { "field_a":40, "field_b":-50, "field_x":6.0, "field_y":3.8, sel_fld:1 }
   ])";
 
+const char* type_3_json = R"(
+  {
+     alloc_cnt:10,
+     fields: { field_a:field_x, field_b:field_y }
+  }
+)";
 
 typedef struct
 {
@@ -447,12 +460,6 @@ TEST( RecdTest, RecdArrayMerge )
     // read and validate the output array
     for(unsigned i=0; i<recd_array_count(recd_array_2); ++i)
     {
-      struct ab_t {
-        unsigned a;
-        int b;
-      };
-
-      ab_t abA[] = { {1,-2}, {2,-3}, {3,-4}, {4,-5}, {10,-20}, {20,-30}, {30,-40}, {40,-50} };
       
       unsigned a;
       int b;
@@ -490,7 +497,101 @@ errLabel:
   recd_registry_destroy();
   id_table::destroy_global();
   
-  EXPECT_EQ(rc,kOkRC);
-  
-  
+  EXPECT_EQ(rc,kOkRC);  
 }
+
+TEST( RecdTest, RecdArrayRename )
+{
+  rc_t          rc         = kOkRC;
+  recd_array_t* recd_array_0 = nullptr;
+  recd_array_t* recd_array_1 = nullptr;
+  object_t*     type_0_cfg   = nullptr;
+  object_t*     data_0_cfg   = nullptr;
+  object_t*     type_1_cfg   = nullptr;
+  unsigned      allocRecdN = 10;
+  const char*   err_msg    = "";
+  unsigned      xfi        = kInvalidIdx;
+  unsigned      yfi        = kInvalidIdx;
+  
+  id_table::create_global();
+  recd_registry_create();
+  
+  if((rc = test_recd_array_create(type_0_json, data_0_json, allocRecdN, type_0_cfg, data_0_cfg, recd_array_0, err_msg )) != kOkRC )
+  {
+    FAIL() << err_msg;
+    goto errLabel;
+  }
+
+  if((rc = objectFromString(type_3_json,type_1_cfg)) != kOkRC )
+  {
+    FAIL() <<  "Alias type cfg. parse failed.";
+    goto errLabel;
+  }
+
+  if((rc = recd_array_create( recd_array_1, type_1_cfg, recd_array_0->typeA, recd_array_0->typeN, allocRecdN )) != kOkRC )
+  {
+    FAIL() <<  "Aliasing recd. array create failed.";
+    goto errLabel;    
+  }
+
+  recd_array_print_info(recd_array_1);
+  
+  // get field indexes for two fields that are common to both input arrays
+  if((rc = recd_array_field_index(recd_array_1,
+                                  "field_x",xfi,
+                                  "field_y",yfi)) != kOkRC )
+  {
+    FAIL() <<  "recd_array_field_index() failed.";
+    goto errLabel;              
+  }
+  
+  for(unsigned i=0; i<recd_array_count(recd_array_0); ++i)
+  {
+    if((rc = recd_array_append_pass_through( recd_array_1, recd_array_0->recdA + i )) != kOkRC )
+    {
+      FAIL() <<  "Recd. array pass-through failed.";
+      goto errLabel;        
+    }
+  }
+
+  for(unsigned i=0; i<recd_array_count(recd_array_1); ++i)
+  {
+    int x;
+    unsigned y;
+
+    if((rc = recd_get( recd_array_1->recdA + i, xfi, x, yfi, y)) != kOkRC )
+    {
+      FAIL() << "Record get failed on index: "<< i;
+      goto errLabel;
+    }
+
+    EXPECT_EQ(abA[i].a,x);
+    EXPECT_EQ(abA[i].b,y);
+
+  }
+  
+
+
+
+  recd_array_print(recd_array_1);
+  
+errLabel:
+  recd_array_destroy(recd_array_1);
+  recd_array_destroy(recd_array_0);
+
+  if( type_0_cfg != nullptr )
+    type_0_cfg->free();
+
+  if( type_1_cfg != nullptr )
+    type_1_cfg->free();
+  
+  if( data_0_cfg != nullptr )
+    data_0_cfg->free();
+
+  
+  recd_registry_destroy();
+  id_table::destroy_global();
+  
+  EXPECT_EQ(rc,kOkRC);  
+}  
+
