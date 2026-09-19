@@ -11519,6 +11519,8 @@ namespace cw
           goto errLabel;          
         }
 
+        proc_printf(proc,"Original:\n");
+        recd_array_print_info(p->recd_array);
         
       errLabel:
         return rc;
@@ -11639,7 +11641,7 @@ namespace cw
       {
         rc_t rc      = kOkRC;
                   
-        recd_array_empty(p->recd_array);
+        recd_array_empty(p->out_recd_array);
         
 
         // if output records were requsted.
@@ -11982,7 +11984,7 @@ namespace cw
           if((rc = var_register_and_get( proc, kAnyChIdx, kBaseInPId+i, "in", sfxIdA[i], rbuf )) != kOkRC )
             goto errLabel;
 
-          for(unsigned k=0; i<rbuf->recd_array->typeN; ++k)
+          for(unsigned k=0; k<rbuf->recd_array->typeN; ++k)
           {
             assert( j < baseTypeN );
             baseTypeA[j++] = rbuf->recd_array->typeA[k];
@@ -12208,6 +12210,7 @@ namespace cw
       {
         recd_fmt_t*   recd_fmt;
         recd_array_t* recd_array;
+        bool is_validated_fl;
       } inst_t;
 
 
@@ -12236,7 +12239,7 @@ namespace cw
           goto errLabel;
         }
 
-        // Create a record array - this is only used pre-runtime to inform the destination procs of the expected recd type and count
+        // Create a record array - this is only used pre-runtime to inform the downstream procs of the expected recd type and count
         if((rc = recd_array_create(p->recd_array, fmt->fieldD_cfg, nullptr, 0, fmt->alloc_cnt)) != kOkRC )
         {
           rc = proc_error(proc,rc,"The internal record array create failed.");
@@ -12254,7 +12257,8 @@ namespace cw
         // Register a local input variable  whose value will never be used since it will be overridden by a src connection later in the network creating.
         if((rc = var_register_and_set(proc, "in", kBaseSfxId, kInPId, kAnyChIdx, p->recd_array)) != kOkRC )
           goto errLabel;        
-        
+
+        p->is_validated_fl = false;
         
       errLabel:
         
@@ -12288,6 +12292,21 @@ namespace cw
         
         if((rc = var_get(proc,kOutPId,kAnyChIdx,o_rbuf)) != kOkRC )
           goto errLabel;
+
+        if( !p->is_validated_fl)
+        {
+          if( !recd_arrays_are_physically_equivalent( i_rbuf->recd_array, o_rbuf->recd_array ) )
+          {
+            proc_printf(proc,"Advertised\n");
+            recd_array_print_info(o_rbuf->recd_array);
+            proc_printf(proc,"Actual\n");
+            recd_array_print_info(i_rbuf->recd_array);
+            rc = proc_error(proc,kInvalidStateRC,"The advertised recd_array physical layout does not match the actual physical layout.");
+            goto errLabel;
+          }
+
+          p->is_validated_fl = true;
+        }
 
         o_rbuf->recd_array = i_rbuf->recd_array;
         

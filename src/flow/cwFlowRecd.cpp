@@ -969,6 +969,19 @@ namespace cw
   
     }
 
+    bool _is_field_loc_equivalent( const recd_field_loc_t* loc0,  const recd_field_loc_t* loc1 )
+    {
+      if( !textIsEqual(loc0->com_field->field_label,loc1->com_field->field_label) )
+        return false;
+
+      if( loc0->com_field->label_id != loc1->com_field->label_id )
+        return false;
+
+      if( loc0->com_field->val_type_tflag != loc1->com_field->val_type_tflag )
+        return false;
+
+      return loc0->level_cnt==loc1->level_cnt && loc0->value_idx==loc1->value_idx;
+    }
   }
 }
 
@@ -1145,6 +1158,9 @@ cw::rc_t cw::flow::recd_array_destroy( recd_array_t*& recd_array_ref )
 {
   recd_array_t* recd_array = recd_array_ref;
 
+  if(recd_array == nullptr )
+    return kOkRC;
+  
   for(unsigned i=0; i<recd_array->typeN; ++i)
   {
     recd_type_destroy( recd_array->typeA[i] );
@@ -1162,6 +1178,28 @@ cw::rc_t cw::flow::recd_array_destroy( recd_array_t*& recd_array_ref )
   
   return kOkRC;
 }
+
+bool cw::flow::recd_arrays_are_physically_equivalent( const recd_array_t* ra0, const recd_array_t* ra1 )
+{
+  if( ra0->typeN != ra1->typeN )
+    return false;
+  
+  for(unsigned i=0; i<ra0->typeN; ++i)
+  {
+    if( !_is_recd_type_physically_equivalent( ra0->typeLinkA[i].recd_type, ra1->typeLinkA[i].recd_type ) )
+      return false;
+
+    if( ra0->typeLinkA[i].fieldLocN != ra1->typeLinkA[i].fieldLocN )
+      return false;
+
+    for(unsigned j=0; j<ra0->typeLinkA[i].fieldLocN; ++j)
+      if( !_is_field_loc_equivalent(ra0->typeLinkA[i].fieldLocA + j, ra1->typeLinkA[i].fieldLocA + j) )
+        return false;
+  }
+
+  return true;
+}
+
 
 cw::rc_t cw::flow::recd_array_empty( recd_array_t* recd_array )
 {

@@ -133,6 +133,8 @@ namespace cw
 
     inline rc_t recd_array_count( const recd_array_t* recd_array){ return recd_array->recdN; }
 
+    bool recd_arrays_are_physically_equivalent( const recd_array_t* recd_array0, const recd_array_t* recd_array1 );
+
     // Set the record count to zero and initialize all previously set fields to their default values.
     rc_t     recd_array_empty( recd_array_t* recd_array );
 
@@ -146,6 +148,7 @@ namespace cw
     // The data array must therefore have been created with a possible incoming recd_type
     // with a 'null' base type.
     rc_t     recd_array_append_from_cfg( recd_array_t* recd_array, const object_t* data_cfg );
+
     
 
     // Given the base class id of a type known to this recd_array_t return the assocated recd_type_link_t.
