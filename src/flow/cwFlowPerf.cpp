@@ -1728,7 +1728,7 @@ namespace cw
 
         
         // create one output record buffer
-        if((rc = var_alloc_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, rbuf->recd_array->typeA, rbuf->recd_array->recdN, p->recd_array )) != kOkRC )
+        if((rc = var_alloc_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, rbuf->recd_array->typeA, rbuf->recd_array->typeN, p->recd_array )) != kOkRC )
         {
           goto errLabel;
         }
@@ -1781,14 +1781,11 @@ namespace cw
         rc_t rc      = kOkRC;
 
         const rbuf_t* i_rbuf = nullptr;
-        rbuf_t*       o_rbuf = nullptr;
 
         if((rc = var_get(proc,kInPId,kAnyChIdx,i_rbuf)) != kOkRC )
           goto errLabel;
 
-        if((rc = var_get(proc,kOutPId,kAnyChIdx,o_rbuf)) != kOkRC )
-          goto errLabel;
-
+        recd_array_empty(p->recd_array);
         
         // for each incoming record
         for(unsigned i=0; i<i_rbuf->recd_array->recdN; ++i)
@@ -1804,7 +1801,6 @@ namespace cw
           }
 
           // Get pointers to the output records
-          recd_t*         o_r = p->recd_array->recdA + i;
           midi::ch_msg_t* o_m = p->midiA + i;
 
           // get a pointer to the incoming MIDI record
@@ -1851,7 +1847,7 @@ namespace cw
                 // verify that the 'score_vel' is inside the range of the table
                 if(score_vel >= p->activeVelTbl->tblN )
                 {
-                  rc = proc_error(proc,kInvalidArgRC,"The pre-mapped score velocity value %i is outside of the range (%i) of the velocity table '%s'.",score_vel,p->activeVelTbl->tblN,cwStringNullGuard(p->activeVelTbl->label));
+                  proc_error(proc,kInvalidArgRC,"The pre-mapped score velocity value %i is outside of the range (%i) of the velocity table '%s'.",score_vel,p->activeVelTbl->tblN,cwStringNullGuard(p->activeVelTbl->label));
                   goto errLabel;                  
                 }
 
@@ -1867,7 +1863,7 @@ namespace cw
           // update the MIDI pointer in the output record 
           if((rc = recd_append(p->recd_array, i_r, p->o_midi_fld_idx, o_m )) != kOkRC )
           {
-            rc = proc_error(proc,rc,"Record output failed.");
+            proc_error(proc,rc,"Record output failed.");
             goto errLabel;
           }
         }

@@ -1202,9 +1202,13 @@ namespace cw
           for(unsigned i=0; i<mbuf->msgN; ++i)
           {
 
-            recd_append( inst->recd_array, nullptr,
-                         inst->midi_fld_idx, (midi::ch_msg_t*)mbuf->msgA + i,
-                         inst->port_id_fld_idx, inst->port_id );
+            if((rc = recd_append( inst->recd_array, nullptr,
+                                  inst->midi_fld_idx, (midi::ch_msg_t*)mbuf->msgA + i,
+                                  inst->port_id_fld_idx, inst->port_id )) != kOkRC )
+            {
+              proc_error(proc,rc,"Record output failed.");
+              break;
+            }
           }
 
 
@@ -5840,7 +5844,7 @@ namespace cw
         p->prune_thresh /= p->segN;
 
         // get the 'midi' input record field index
-        if((p->midi_fld_idx  = recd_array_field_index( i_rbuf->recd_array, midi_fld_label)) == kInvalidIdx )
+        if((rc = recd_array_field_index( i_rbuf->recd_array, midi_fld_label, p->midi_fld_idx)) != kOkRC )
         {
           rc = proc_error(proc,kInvalidArgRC,"The 'in' record does not have a '%s' field.",cwStringNullGuard(midi_fld_label));
           goto errLabel;
@@ -5850,7 +5854,7 @@ namespace cw
         if( p->segN > 1 )
         {
           // if multiple segments are being used get the input record 'seg_idx' field index
-          if((p->port_fld_idx  = recd_array_field_index( i_rbuf->recd_array, seg_idx_fld_label)) == kInvalidIdx )
+          if((rc = recd_array_field_index( i_rbuf->recd_array, seg_idx_fld_label,p->port_fld_idx)) != kOkRC )
           {
             rc = proc_error(proc,kInvalidArgRC,"The 'in' record must have a '%s' field to use voice segmentation.",cwStringNullGuard(seg_idx_fld_label));
             goto errLabel;
@@ -6346,6 +6350,7 @@ namespace cw
           // send the 'recd_out' output record
           if((rc = recd_append( p->recd_array, i_rbuf->recd_array->recdA + i, p->voice_idx_fld_idx, voice_idx )) != kOkRC )
           {
+            proc_error(proc,rc,"Record output failed.");
             goto errLabel;
           }
           
@@ -10414,7 +10419,11 @@ namespace cw
 
         if( p->recd_array->allocRecdN > 0 )
         {
-          recd_append( p->recd_array, nullptr, p->midi_fld_idx, &p->ch_msg );
+          if((rc = recd_append( p->recd_array, nullptr, p->midi_fld_idx, &p->ch_msg )) != kOkRC )
+          {
+            proc_error(proc,rc,"Record output failed.");            
+          }
+          
         }
         
         return rc;
@@ -10506,6 +10515,7 @@ namespace cw
         
         if((rc = recd_append(p->recd_array, nullptr, p->midi_fld_idx, &p->chMsgA[p->recd_array->recdN])) != kOkRC )
         {
+          proc_error(proc,rc,"Record output failed.");          
           goto errLabel;
         }
 
@@ -10678,6 +10688,7 @@ namespace cw
           
           if((rc = recd_append(p->recd_array, i_rbuf->recd_array->recdA + i,  p->o_value_fld_idx, &value)) != kOkRC )
           {
+            proc_error(proc,rc,"Record output failed.");
             goto errLabel;
           }
         }
@@ -11412,7 +11423,10 @@ namespace cw
         if( p->playing_fl )
           for(unsigned i=0; i<mbuf->msgN; ++i)
           {
-            recd_append( p->recd_array, nullptr, p->midi_fld_idx, (midi::ch_msg_t*)(mbuf->msgA + i));
+            if((rc = recd_append( p->recd_array, nullptr, p->midi_fld_idx, (midi::ch_msg_t*)(mbuf->msgA + i))) != kOkRC )
+            {
+              proc_error(proc,rc,"Record output failed.");
+            }
           }
           
         if( done_fl || p->stop_trig_fl )
@@ -11518,9 +11532,6 @@ namespace cw
           rc = proc_error(proc,rc,"Data insertion failed.");
           goto errLabel;          
         }
-
-        proc_printf(proc,"Original:\n");
-        recd_array_print_info(p->recd_array);
         
       errLabel:
         return rc;
