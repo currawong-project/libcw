@@ -8,8 +8,26 @@ namespace cw
     };
 
     // Create/Destroy the global recd_type_t registry.
-    void recd_registry_create();
-    void recd_registry_destroy();
+    void recd_global_registry_create();
+    void recd_global_registry_destroy();
+
+    // Record format  represents the 'cfg' data structure commonly
+    // used to specify record types.  
+    typedef struct recd_fmt_str
+    {
+      unsigned        alloc_cnt;  // count of records to pre-allocate
+      const object_t* req_fieldL; // label of required fields
+      const object_t* fieldD_cfg; // optional list of field s
+    } recd_fmt_t;
+
+    // Create/destroy a recd_format_t object.
+    // Cfg Syntax:
+    // { alloc_cnt:<>, required:[ 'fieldname' ], depth:<>, fields:{ <field_label>:{ "type":<>, "value":<>, "doc":<> } } }
+    // or for aliasing base fields:              'fields':{ <base_target_field_label>:<alias_field_label> }
+    // See recd_type_create() for an explanation of the cfg. content.
+    rc_t recd_format_create( recd_fmt_t*& fmt, const object_t* fmt_cfg, unsigned alloc_recdN=kDefaultAllocRecdCnt );
+    void recd_format_destroy( recd_fmt_t*& fmt );
+
     
     typedef struct recd_field_desc_str
     {
@@ -30,15 +48,20 @@ namespace cw
       recd_field_desc_t*          fieldDescA; // Array of field spec's for this level (excludes base_type) sorted on recd_desc_t.label_id 
       unsigned                    fieldDescN; // length of fieldL list   
       const struct recd_type_str* base_type;  // base recd type that this field inherits from
+      struct recd_type_str*       _owned;     // dependent recd_type that must be destroyed with this recd_type
     } recd_type_t;
 
 
     // Create a recd_type_t instance from a cfg. description.
-    // Note that if 'fieldD_cfg' is null then this type will have only fields specified by 'base_type'
-    // The syntax of the 'fieldD_cfg' is {'fields':{ <field_label>:{ "type":<>, "value":<>, "doc":<> } } }
+    // The syntax of the 'fieldD_cfg' is {'depth:<>, 'fields':{ <field_label>:{ "type":<>, "value":<>, "doc":<> } } }
     // or for aliasing base fields:      {'fields':{ <base_target_field_label>:<alias_field_label> } }
-    // Note that the the recd_type is either used to represent actual data fields or or used to rename (alias) base type fields
-    // it cannot do both.
+    // Notes:
+    // 1) If 'fieldD_cfg' is null then this type will have only fields specified by 'base_type'
+    // 2) The recd_type is either used to represent actual data fields
+    //    or used to rename (alias) base type fields it cannot do both.
+    // 3) The 'depth' argument is optional and defaults to 0. If a positive value is given then
+    // it specifies how many blank top-level types should be placed above the type specificied by
+    // the 'fields' dictionary.
     rc_t recd_type_create(  recd_type_t*& recd_type_ref, const recd_type_t* base_type, const object_t* fieldD_cfg=nullptr );
     void recd_type_destroy( recd_type_t*& recd_type_ref );
     
@@ -48,21 +71,6 @@ namespace cw
     
     const char* recd_type_field_index_to_label( const recd_type_t* rt, unsigned field_idx );
 
-
-    // Record format  represents the 'cfg' data structure commonly
-    // used to specify record types.  
-    typedef struct recd_fmt_str
-    {
-      unsigned        alloc_cnt;  // count of records to pre-allocate
-      const object_t* req_fieldL; // label of required fields
-      const object_t* fieldD_cfg; // optional list of field s
-    } recd_fmt_t;
-
-    // Create/destroy a recd_format_t object.
-    // Cfg Syntax:
-    // { alloc_cnt:<>, required:[ 'fieldname' ], fields:{ <field_label>:{ "type":<>, "value":<>, "doc":<> } } }
-    rc_t recd_format_create( recd_fmt_t*& fmt, const object_t* fmt_cfg, unsigned alloc_recdN=kDefaultAllocRecdCnt );
-    void recd_format_destroy( recd_fmt_t*& fmt );
     
     typedef struct field_map_str
     {      
