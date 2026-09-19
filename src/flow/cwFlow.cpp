@@ -94,7 +94,7 @@ namespace cw
       { "recd_list",       &recd_list::members },
       { "recd_route",      &recd_route::members },
       { "recd_merge",      &recd_merge::members },
-      { "recd_extract",    &recd_extract::members },
+      { "recd_rename",    &recd_rename::members },
       { "recd_pass",       &recd_pass::members },
       { "midi_merge",      &midi_merge::members },
       { "poly_xform_ctl",  &poly_xform_ctl::members },

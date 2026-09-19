@@ -12070,9 +12070,9 @@ namespace cw
 
     //------------------------------------------------------------------------------------------------------------------
     //
-    // recd_extract
+    // recd_rename
     //
-    namespace recd_extract
+    namespace recd_rename
     {
       enum {
         kCfgPId,
@@ -12191,7 +12191,7 @@ namespace cw
         .report  = std_report<inst_t>
       };
       
-    }    // recd_extract
+    }    // recd_rename
 
 
     //------------------------------------------------------------------------------------------------------------------
