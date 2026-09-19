@@ -1239,7 +1239,7 @@ cw::rc_t cw::flow::exec_cycle( handle_t h )
 
   TRACE_TIME(p->trace_id,tracer::kEndEvtId,p->cycleIndex-1,0);
 
-  if( rc == kEofRC )
+  if( rc == kEofRC || rc != kOkRC )
     mem::clear_warn_on_alloc();
     
   return rc;
