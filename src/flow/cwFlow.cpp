@@ -104,8 +104,7 @@ namespace cw
       { "midi_recorder",   &midi_recorder::members },
       { "button_array",    &button_array::members },
       {"button_list", &button_list::members },
-#ifdef NOT_DEF
-
+      // perf
       { "score_player",    &score_player::members },
       { "multi_player",    &multi_player::members },
       { "vel_table",       &vel_table::members },
@@ -120,10 +119,10 @@ namespace cw
       { "end_seg_detector",&end_seg_detector::members },
       { "gutim_pgm_ctl",   &gutim_pgm_ctl::members },
       { "demo_202602_ctl", &demo_202602_ctl::members },
+      // gutim
       { "gutim_2_sf_ctl",  &gutim_2_sf_ctl::members },
       { "timeline_player", &timeline_player::members },
       { "key_state_monitor", &key_state_monitor::members },
-      #endif
       { nullptr, nullptr }
     };
 
