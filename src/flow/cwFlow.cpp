@@ -817,7 +817,7 @@ namespace cw
       network_destroy(p->net);
 
       // destroy the global recd_type_t registry
-      recd_registry_destroy();
+      recd_global_registry_destroy();
 
       global_var_t* gv=p->globalVarL;
       while( gv != nullptr )
@@ -1109,7 +1109,7 @@ cw::rc_t cw::flow::initialize( handle_t h,
   }
 
   // create the global recd_type_t registry
-  recd_registry_create();
+  recd_global_registry_create();
   
   // instantiate the network
   if((rc = network_create(p,&root_label,&p->networkCfg,1,proxyVarL,1,p->net)) != kOkRC )

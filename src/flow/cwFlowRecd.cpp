@@ -462,17 +462,36 @@ namespace cw
       
     }
 
+    recd_type_t*  _recd_type_apply_depth( recd_type_t* recd_type, unsigned depth )
+    {
+      for(unsigned i=0; i<depth; ++i)
+      {
+        recd_type_t* rt = mem::allocZ<recd_type_t>();
+        rt->base_type = recd_type;
+        rt->_owned    = recd_type;
+        rt->class_id  = kInvalidId;
+
+        _recd_register_type( rt );
+        assert( rt->class_id != kInvalidIdx);
+
+        recd_type = rt;
+        
+      }
+
+      return recd_type;
+    }
+
   }  
 }
 
-void cw::flow::recd_registry_create()
+void cw::flow::recd_global_registry_create()
 {
-  recd_registry_destroy();
+  recd_global_registry_destroy();
   __global_recd_reg__.nodeL = nullptr;
   __global_recd_reg__.is_initialized_fl = true;
 }
 
-void cw::flow::recd_registry_destroy()
+void cw::flow::recd_global_registry_destroy()
 {
   recd_registry_t* p    = &__global_recd_reg__;
   recd_reg_node_t* node = p->nodeL;
@@ -486,133 +505,6 @@ void cw::flow::recd_registry_destroy()
   __global_recd_reg__.is_initialized_fl = false;
 
 }
-
-void cw::flow::recd_field_desc_print( const recd_field_desc_t* f )
-{
-  const bool print_type_label_fl = true;
-  cwLogPrint("%6i %6i %15s : ",f->label_id,_recd_field_value_index(f),cwStringNullGuard(f->label));
-  value_print(&_recd_field_dflt_value(f),print_type_label_fl,kMinimalValPrintVerb);
-  if( f->_alias != nullptr )
-    cwLogPrint(" (alias:%s) ",cwStringNullGuard(f->_alias->label));
-}
-
-cw::rc_t  cw::flow::recd_type_create( recd_type_t*& recd_type_ref, const recd_type_t* base_type, const object_t* cfg )
-{
-  rc_t            rc          = kOkRC;  
-  const object_t* fields_dict = nullptr;;
-  recd_type_t*    recd_type   = mem::allocZ<recd_type_t>();
-  bool            is_alias_fl = false;
-  
-  recd_type_ref = nullptr;
-
-  if( cfg != nullptr )
-  {
-    // get the fields list
-    if((rc = cfg->getv("fields",fields_dict)) != kOkRC )
-    {
-      rc = cwLogError(rc,"The 'fields' dictionary was not found in the record 'fmt' specifier.");
-      goto errLabel;
-    }
-
-    // validate the basic fields_dict layout and check if this is an alias list  
-    if((rc = _recd_field_desc_validate_cfg( fields_dict, is_alias_fl )) != kOkRC )
-    {
-      rc = cwLogError(rc,"The record field description array cfg. could not be validated.");
-      goto errLabel;
-    }
-
-    if( is_alias_fl )
-    {
-      if((rc = _recd_field_alias_array_from_cfg(recd_type,base_type,fields_dict)) != kOkRC )
-      {
-        goto errLabel;
-      }
-    }
-    else
-    {
-      // load the fields list
-      if((rc = _recd_field_desc_array_from_cfg(recd_type,fields_dict)) != kOkRC )
-      {
-        goto errLabel;
-      }
-    }
-
-    
-    std::sort(recd_type->fieldDescA, recd_type->fieldDescA + recd_type->fieldDescN, [](const recd_field_desc_t& f0,const recd_field_desc_t& f1){ return f0.label_id<f1.label_id; } );
-
-  }
-
-  // if a base was given verify that no field labels were re-used by the top level
-  if( base_type != nullptr )
-  {
-    for(unsigned i=0; i<recd_type->fieldDescN; ++i)
-    {
-      if( _is_field_label_used_recurse( base_type, recd_type->fieldDescA[i].label  ) )
-      {
-        rc = cwLogError(kInvalidStateRC,"The field '%s' is already used in the base record type.",cwStringNullGuard(recd_type->fieldDescA[i].label));
-        goto errLabel;
-      }
-    }
-  }
-  
-  recd_type->class_id  = kInvalidId;
-  recd_type->base_type = base_type;
-  recd_type_ref        = recd_type;
-
-  // Register this recd_type_t and assign it a class_id
-  _recd_register_type( recd_type );
-  assert( recd_type->class_id != kInvalidIdx);
-  
-errLabel:
-  if( rc != kOkRC )
-  {
-    rc = cwLogError(rc,"recd_type create failed.");
-    recd_type_destroy(recd_type);
-  }
-  
-  return rc;
-}
-
-void  cw::flow::recd_type_destroy( recd_type_t*& recd_type_ref )
-{
-  if( recd_type_ref == nullptr )
-    return;
-
-  recd_type_t* rt = recd_type_ref;
-
-  if( rt->fieldDescA!=nullptr )
-  {
-    for(unsigned i=0; i<rt->fieldDescN; ++i)
-    { 
-      mem::release(rt->fieldDescA[i].label);
-      mem::release(rt->fieldDescA[i]._doc);
-    }
-    
-    mem::release(rt->fieldDescA);
-    rt->fieldDescN = 0;
-  }
-
-  mem::release(recd_type_ref);
-}
-
-
-bool cw::flow::recd_type_is_alias( const recd_type_t* rt )
-{ return rt->fieldDescN>0 && rt->fieldDescA[0]._alias != nullptr; }
-
-void cw::flow::recd_type_print( const recd_type_t* rt )
-{
-  _recd_type_print(0,rt);
-}
-
-const char* cw::flow::recd_type_field_index_to_label( const recd_type_t* rt, unsigned field_idx )
-{
-  if( field_idx > rt->fieldDescN )
-    return nullptr;
-  
-  return rt->fieldDescA[ field_idx ].label;
-}
-
-
 
 cw::rc_t cw::flow::recd_format_create( recd_fmt_t*& recd_fmt_ref, const object_t* cfg, unsigned dflt_alloc_cnt )
 {
@@ -662,6 +554,148 @@ void cw::flow::recd_format_destroy( recd_fmt_t*& recd_fmt_ref )
     mem::release(recd_fmt_ref);
   }
 }
+
+
+void cw::flow::recd_field_desc_print( const recd_field_desc_t* f )
+{
+  const bool print_type_label_fl = true;
+  cwLogPrint("%6i %6i %15s : ",f->label_id,_recd_field_value_index(f),cwStringNullGuard(f->label));
+  value_print(&_recd_field_dflt_value(f),print_type_label_fl,kMinimalValPrintVerb);
+  if( f->_alias != nullptr )
+    cwLogPrint(" (alias:%s) ",cwStringNullGuard(f->_alias->label));
+}
+
+cw::rc_t  cw::flow::recd_type_create( recd_type_t*& recd_type_ref, const recd_type_t* base_type, const object_t* cfg )
+{
+  rc_t            rc          = kOkRC;  
+  const object_t* fields_dict = nullptr;;
+  recd_type_t*    recd_type   = mem::allocZ<recd_type_t>();
+  bool            is_alias_fl = false;
+  unsigned        depth       = 0;
+  
+  recd_type_ref = nullptr;
+
+  if( cfg != nullptr )
+  {
+    // get the fields list
+    if((rc = cfg->getv("fields",fields_dict)) != kOkRC )
+    {
+      rc = cwLogError(rc,"The 'fields' dictionary was not found in the record 'fmt' specifier.");
+      goto errLabel;
+    }
+
+    if((rc = cfg->getv_opt("depth",depth)) != kOkRC )
+    {
+      rc = cwLogError(rc,"The 'depth' value parse in the record 'fmt' specifier failed.");
+      goto errLabel;
+    }
+
+    // validate the basic fields_dict layout and check if this is an alias list  
+    if((rc = _recd_field_desc_validate_cfg( fields_dict, is_alias_fl )) != kOkRC )
+    {
+      rc = cwLogError(rc,"The record field description array cfg. could not be validated.");
+      goto errLabel;
+    }
+
+    if( is_alias_fl )
+    {
+      if((rc = _recd_field_alias_array_from_cfg(recd_type,base_type,fields_dict)) != kOkRC )
+      {
+        goto errLabel;
+      }
+    }
+    else
+    {
+      // load the fields list
+      if((rc = _recd_field_desc_array_from_cfg(recd_type,fields_dict)) != kOkRC )
+      {
+        goto errLabel;
+      }
+
+    }
+    
+    std::sort(recd_type->fieldDescA, recd_type->fieldDescA + recd_type->fieldDescN, [](const recd_field_desc_t& f0,const recd_field_desc_t& f1){ return f0.label_id<f1.label_id; } );
+
+  }
+
+  // if a base was given verify that no field labels were re-used by the top level
+  if( base_type != nullptr )
+  {
+    for(unsigned i=0; i<recd_type->fieldDescN; ++i)
+    {
+      if( _is_field_label_used_recurse( base_type, recd_type->fieldDescA[i].label  ) )
+      {
+        rc = cwLogError(kInvalidStateRC,"The field '%s' is already used in the base record type.",cwStringNullGuard(recd_type->fieldDescA[i].label));
+        goto errLabel;
+      }
+    }
+  }
+
+  recd_type->class_id  = kInvalidId;
+  recd_type->base_type = base_type;
+  recd_type_ref        = recd_type;
+
+  // Register this recd_type_t and assign it a class_id
+  _recd_register_type( recd_type );
+  assert( recd_type->class_id != kInvalidIdx);
+
+  // if this type has blank levels above it
+  recd_type = _recd_type_apply_depth( recd_type, depth );
+
+errLabel:
+  if( rc != kOkRC )
+  {
+    rc = cwLogError(rc,"recd_type create failed.");
+    recd_type_destroy(recd_type);
+  }
+  
+  return rc;
+}
+
+void  cw::flow::recd_type_destroy( recd_type_t*& recd_type_ref )
+{
+  if( recd_type_ref == nullptr )
+    return;
+
+  recd_type_t* rt = recd_type_ref;
+
+  if( rt->fieldDescA!=nullptr )
+  {
+    for(unsigned i=0; i<rt->fieldDescN; ++i)
+    { 
+      mem::release(rt->fieldDescA[i].label);
+      mem::release(rt->fieldDescA[i]._doc);
+    }
+    
+    mem::release(rt->fieldDescA);
+    rt->fieldDescN = 0;
+  }
+
+  if( rt->_owned != nullptr )
+    recd_type_destroy(rt->_owned);
+  
+  mem::release(recd_type_ref);
+}
+
+
+bool cw::flow::recd_type_is_alias( const recd_type_t* rt )
+{ return rt->fieldDescN>0 && rt->fieldDescA[0]._alias != nullptr; }
+
+void cw::flow::recd_type_print( const recd_type_t* rt )
+{
+  _recd_type_print(0,rt);
+}
+
+const char* cw::flow::recd_type_field_index_to_label( const recd_type_t* rt, unsigned field_idx )
+{
+  if( field_idx > rt->fieldDescN )
+    return nullptr;
+  
+  return rt->fieldDescA[ field_idx ].label;
+}
+
+
+
 
 
 

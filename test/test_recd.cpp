@@ -164,7 +164,7 @@ TEST( RecdTest, RecdTypeCreate )
   object_t* type_cfg = nullptr;
 
   id_table::create_global();
-  recd_registry_create();
+  recd_global_registry_create();
 
   if((rc = objectFromString(type_0_json,type_cfg)) != kOkRC )
   {
@@ -188,7 +188,7 @@ errLabel:
   if( type_cfg != nullptr )
     type_cfg->free();
   
-  recd_registry_destroy();
+  recd_global_registry_destroy();
   id_table::destroy_global();
 }
 
@@ -207,7 +207,7 @@ TEST( RecdTest, RecdArrayCreate )
   unsigned      selfi      = kInvalidIdx;
   
   id_table::create_global();
-  recd_registry_create();
+  recd_global_registry_create();
   
   if((rc = test_recd_array_create(type_0_json, data_0_json, allocRecdN, type_cfg, data_cfg, recd_array, err_msg )) != kOkRC )
   {
@@ -288,7 +288,7 @@ errLabel:
   if( data_cfg != nullptr )
     data_cfg->free();
 
-  recd_registry_destroy();
+  recd_global_registry_destroy();
   id_table::destroy_global();
   
   EXPECT_EQ(rc,kOkRC);
@@ -311,7 +311,7 @@ TEST( RecdTest, RecdArrayInherit )
   unsigned      dfi          = kInvalidIdx;
 
   id_table::create_global();
-  recd_registry_create();
+  recd_global_registry_create();
   
   if((rc = test_recd_array_create(type_0_json, data_0_json, allocRecdN, type_0_cfg, data_0_cfg, recd_array_0, err_msg )) != kOkRC )
   {
@@ -371,7 +371,7 @@ errLabel:
     data_0_cfg->free();
 
   
-  recd_registry_destroy();
+  recd_global_registry_destroy();
   id_table::destroy_global();
   
   EXPECT_EQ(rc,kOkRC);
@@ -395,7 +395,7 @@ TEST( RecdTest, RecdArrayMerge )
   const unsigned base_typeN = std::size(base_typeA);
   
   id_table::create_global();
-  recd_registry_create();
+  recd_global_registry_create();
 
   // create input array 0
   if((rc = test_recd_array_create(type_0_json, data_0_json, allocRecdN, type_0_cfg, data_0_cfg, recd_array_0, err_msg )) != kOkRC )
@@ -492,7 +492,7 @@ errLabel:
   if( data_1_cfg != nullptr )
     data_1_cfg->free();
   
-  recd_registry_destroy();
+  recd_global_registry_destroy();
   id_table::destroy_global();
   
   EXPECT_EQ(rc,kOkRC);  
@@ -512,7 +512,7 @@ TEST( RecdTest, RecdArrayRename )
   unsigned      yfi        = kInvalidIdx;
   
   id_table::create_global();
-  recd_registry_create();
+  recd_global_registry_create();
   
   if((rc = test_recd_array_create(type_0_json, data_0_json, allocRecdN, type_0_cfg, data_0_cfg, recd_array_0, err_msg )) != kOkRC )
   {
@@ -587,7 +587,7 @@ errLabel:
     data_0_cfg->free();
 
   
-  recd_registry_destroy();
+  recd_global_registry_destroy();
   id_table::destroy_global();
   
   EXPECT_EQ(rc,kOkRC);  
