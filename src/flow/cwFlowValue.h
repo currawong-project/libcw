@@ -98,14 +98,10 @@ namespace cw
       } u;
     } mtx_t;
 
-    struct recd_type_str;
-    struct recd_str;
+    struct recd_array_str;
     typedef struct rbuf_str
-    {
-      const struct recd_type_str* type;     // all msgs are formed from this type      
-      const struct recd_str*      recdA;    // recdA[ recdN ] 
-      unsigned                    recdN;    //
-      unsigned                    maxRecdN; // largest possible value of recdN for the life of the network.
+    {      
+      const struct recd_array_str* recd_array;
     } rbuf_t;
 
     typedef struct value_str
@@ -191,10 +187,12 @@ namespace cw
     mbuf_t*        mbuf_duplicate( const mbuf_t* src );
     void           mbuf_print( const mbuf_t* mbuf, unsigned verbosity );
 
-    rbuf_t*        rbuf_create( const struct recd_type_str* type=nullptr, const struct recd_str* recdA=nullptr, unsigned recdN=0, unsigned maxRecdN=0 );
+    rbuf_t*        rbuf_create( const struct recd_array_str* recd_array );
     void           rbuf_destroy( rbuf_t*& buf );
     rbuf_t*        rbuf_duplicate( const rbuf_t* src );
-    void           rbuf_setup( rbuf_t* rbuf, struct recd_type_str* type, struct recd_str* recdA, unsigned recdN, unsigned maxRecdN );
+    void           rbuf_setup( rbuf_t* rbuf, const struct recd_array_str* recd_array );
+    unsigned       rbuf_count( const rbuf_t* rbuf );
+    unsigned       rbuf_max_count( const rbuf_t* rbuf );
     void           rbuf_print( const rbuf_t* rbuf, unsigned verbosity );
 
     

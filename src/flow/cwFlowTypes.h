@@ -728,7 +728,7 @@ namespace cw
     rc_t           var_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, midi::ch_msg_t* midiA, unsigned midiN );
     rc_t           var_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_sample_t** magV=nullptr, const fd_sample_t** phsV=nullptr, const fd_sample_t** hzV=nullptr );
     rc_t           var_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_sample_t** magV=nullptr, const fd_sample_t** phsV=nullptr, const fd_sample_t** hzV=nullptr );
-    rc_t           var_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, const recd_type_t* recd_type, recd_t* recdA, unsigned recdN, unsigned maxRecdN );
+    rc_t           var_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, const recd_array_t* recd_array );
 
     // If the var description has a 'recd_format_t' compatible cfg. in `var_desc_t.fmt.recd_fmt` then
     // use this function to allocate a backing recd_array_t buffer for it and then register a variable
@@ -737,14 +737,14 @@ namespace cw
     // Note that the rbuf_t served by the variable in this call will be initialy empty (recdA=nullptr,recdN=0)
     // Alloc a recd_array, using an internal call to var_alloc_recd_array(), and assign all records to the specified variable.
     // The caller is responsible for destroying (recd_array_destroy()) the returned recd_array.    
-    rc_t           var_alloc_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, const recd_type_t* base, recd_array_t*& recd_arrray_ref, unsigned allocRecdN=0 );
+    rc_t           var_alloc_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, const recd_type_t* const * baseA, unsigned baseN, recd_array_t*& recd_arrray_ref, unsigned allocRecdN=0 );
 
 
     // Alloc the recd_array_t based on the recd_format_t included in the variable description. See var_desc_t.fmt.recd_fmt.
     // If arg. `allocRecdN` is non-zero then the allocated size of the recd_array_t will be  max(allocRecdN,recd_format_t.allocRecdN)
     // where recd_format_t.allocRecdN is taken from the variables recd_format_t.
     // The caller is responsible for destroying (recd_array_destroy()) the returned recd_array.
-    rc_t           var_alloc_record_array( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx, const recd_type_t* base, recd_array_t*& recd_array_ref, unsigned allocRecdN=0 );
+    rc_t           var_alloc_record_array( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx, const recd_type_t* const* baseA, unsigned baseN, recd_array_t*& recd_array_ref, unsigned allocRecdN=0 );
     
     
     inline rc_t _var_register_and_set(cw::flow::proc_t*, unsigned int ) { return kOkRC; }

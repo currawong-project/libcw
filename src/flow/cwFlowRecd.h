@@ -1,8 +1,3 @@
-#include "cwCommon.h"
-#include "cwCommonImpl.h"
-#include "cwLog.h"
-#include "cwObject.h"
-#include "cwFlowValue.h"
 
 namespace cw
 {
@@ -12,6 +7,7 @@ namespace cw
       kDefaultAllocRecdCnt=1024
     };
 
+    // Create/Destroy the global recd_type_t registry.
     void recd_registry_create();
     void recd_registry_destroy();
     
@@ -45,6 +41,7 @@ namespace cw
     // it cannot do both.
     rc_t recd_type_create(  recd_type_t*& recd_type_ref, const recd_type_t* base_type, const object_t* fieldD_cfg=nullptr );
     void recd_type_destroy( recd_type_t*& recd_type_ref );
+    
     // Returns true if this is an aliasing type.
     bool recd_type_is_alias( const recd_type_t* rt );
     void recd_type_print( const recd_type_t* rt );
@@ -58,7 +55,7 @@ namespace cw
     {
       unsigned        alloc_cnt;  // count of records to pre-allocate
       const object_t* req_fieldL; // label of required fields
-      const object_t* fieldD_cfg; // optional list of field 
+      const object_t* fieldD_cfg; // optional list of field s
     } recd_fmt_t;
 
     // Create/destroy a recd_format_t object.
@@ -154,6 +151,7 @@ namespace cw
     rc_t recd_array_print( const recd_array_t* recd_array);
     void recd_array_print_info( const recd_array_t* recd_array );
 
+    const char* recd_array_field_index_to_label( const recd_array_t* recd_array, unsigned com_field_idx );
     unsigned recd_array_field_index( const recd_array_t* recd_array, const char* field_label );
     rc_t     recd_array_field_index( const recd_array_t* recd_array, const char* field_label, unsigned& field_idx_ref );
     
@@ -251,6 +249,64 @@ namespace cw
       return _recd_set( recd,com_field_idx,val,args...);
     }
 
+    template< typename T, typename... ARGS >
+    rc_t recd_append( recd_array_t* recd_array,
+                      const recd_t* base,
+                      unsigned      com_field_idx,
+                      const T&      val,
+                      ARGS&&...     args )
+    {
+      rc_t rc = kOkRC;
+      const recd_type_link_t* link = nullptr;
+
+      // verify that there is space in the recd_array
+      if( recd_array->recdN >= recd_array->allocRecdN )
+      {
+        rc = cwLogError(kBufTooSmallRC,"The recd_array is full.");
+        goto errLabel;
+      }
+
+      // determine the 'link' pointer based on the base class_id
+      if( base == nullptr )
+      {        
+        if( recd_array->typeN != 1 )
+        {
+          rc = cwLogError(kInvalidArgRC,"No base record was given but the recd_array has multiple base types registered.");
+          goto errLabel;
+        }
+        
+        link = recd_array->typeLinkA;
+      }
+      else
+      {
+        if( base->link == nullptr || base->link->recd_type == nullptr )
+        {
+          rc = cwLogError(kInvalidStateRC,"The supplied 'base' record is not valid.");
+          goto errLabel;
+        }
+        
+        if((rc = recd_array_type_link( recd_array, base->link->recd_type->class_id, link )) != kOkRC )
+        {
+          goto errLabel;
+        }
+      }
+
+      assert(link != nullptr );
+      
+      if((rc = recd_set( link, recd_array->recdA + recd_array->recdN, base, com_field_idx, val, args...)) != kOkRC )
+      {
+        goto errLabel;
+      }
+
+      recd_array->recdN += 1;
+      
+    errLabel:
+      if( rc != kOkRC )
+        rc = cwLogError(rc,"Record append failed.");
+      
+      return rc;
+    }
+    
     
   }
 }

@@ -19,6 +19,7 @@
 #include "cwMidiDecls.h"
 #include "cwFlowDecl.h"
 #include "cwFlowValue.h"
+#include "cwFlowRecd.h"
 #include "cwFlowTypes.h"
 #include "cwFlowNet.h"
 #include "cwFlowProc.h"
@@ -2134,12 +2135,13 @@ namespace cw
               goto errLabel;
             }
 
-            if(recd_type_field_index( rbuf->type, field_label) == kInvalidIdx )
+            
+            //if(recd_type_field_index( rbuf->type, field_label) == kInvalidIdx )
+            if( recd_array_field_index(rbuf->recd_array, field_label) == kInvalidIdx )
             {
               rc = proc_error(proc,rc,"The required field '%s' does not exist on var '%s:%i'.",cwStringNullGuard(field_label),cwStringNullGuard(var->label),var->label_sfx_id);
               goto errLabel;
             }
-
             //printf("required field '%s' verified on '%s:%i-%s:%i'.\n",field_label,cwStringNullGuard(proc->label),proc->label_sfx_id,cwStringNullGuard(var->label),var->label_sfx_id);
             
           }

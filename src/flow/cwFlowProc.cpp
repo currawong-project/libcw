@@ -22,6 +22,7 @@
 #include "cwFlowDecl.h"
 #include "cwFlow.h"
 #include "cwFlowValue.h"
+#include "cwFlowRecd.h"
 #include "cwFlowTypes.h"
 #include "cwFlowNet.h"
 #include "cwFlowProc.h"
@@ -1112,14 +1113,14 @@ namespace cw
           goto errLabel;
         }
         
-        if((rc = var_alloc_register_and_set( proc, "r_out", kBaseSfxId, kROutPId, kAnyChIdx, nullptr, inst->recd_array )) != kOkRC )
+        if((rc = var_alloc_register_and_set( proc, "r_out", kBaseSfxId, kROutPId, kAnyChIdx, nullptr, 0, inst->recd_array )) != kOkRC )
         {
           rc = proc_error(proc,rc,"'r_out' allocate and register failed.");
           goto errLabel;
         }
 
-        inst->midi_fld_idx = recd_type_field_index( inst->recd_array->type, "midi");
-        inst->port_id_fld_idx = recd_type_field_index( inst->recd_array->type, "port_id");
+        inst->midi_fld_idx = recd_array_field_index( inst->recd_array, "midi");
+        inst->port_id_fld_idx = recd_array_field_index( inst->recd_array, "port_id");
         
       errLabel: 
         return rc;
@@ -1142,33 +1143,12 @@ namespace cw
       rc_t notify( proc_t* proc, variable_t* var )
       { return kOkRC; }
 
-
-      rc_t _set_output_record( proc_t* proc, inst_t* p, rbuf_t* rbuf, const midi::ch_msg_t* m )
-      {
-        rc_t rc = kOkRC;
-        
-        // if the output record array is full
-        if( rbuf->recdN >= p->recd_array->allocRecdN )
-        {
-          rc = proc_error(proc,kBufTooSmallRC,"The internal record buffer overflowed. (buf recd count:%i).",p->recd_array->allocRecdN);
-          goto errLabel;
-        }
-
-        recd_set( rbuf->type, nullptr, p->recd_array->recdA + rbuf->recdN, p->midi_fld_idx, (midi::ch_msg_t*)m );
-        recd_set( rbuf->type, nullptr, p->recd_array->recdA + rbuf->recdN, p->port_id_fld_idx, p->port_id );
-        rbuf->recdN += 1;
-
-      errLabel:
-        return rc;
-      }
-
       
       rc_t exec( proc_t* proc )
       {
         rc_t    rc   = kOkRC;
         inst_t* inst = (inst_t*)proc->userPtr;
         mbuf_t* mbuf = nullptr;
-        rbuf_t* rbuf1    = nullptr;
         bool    print_fl = false;
 
         var_get(proc,kPrintFlPId,kAnyChIdx,print_fl);
@@ -1216,25 +1196,17 @@ namespace cw
           }
 
 
+          // empty the output array
+          recd_array_empty(inst->recd_array);
           
-          // get the output variable 1
-          if((rc = var_get(proc,kROutPId,kAnyChIdx,rbuf1)) != kOkRC )
+          for(unsigned i=0; i<mbuf->msgN; ++i)
           {
-            rc = proc_error(proc,kInvalidStateRC,"The midi-in '%s' does not have a valid output record buffer.",proc->label);
-          }
-          else
-          {
-            rbuf1->recdA = inst->recd_array->recdA;
-            rbuf1->recdN = 0;
-            
-            for(unsigned i=0; i<mbuf->msgN; ++i)
-            {
-              _set_output_record(proc,inst,rbuf1, mbuf->msgA + i);
-            }
 
-            //if( rbuf->recdN )
-            //  printf("r:%i\n",rbuf->recdN);
+            recd_append( inst->recd_array, nullptr,
+                         inst->midi_fld_idx, (midi::ch_msg_t*)mbuf->msgA + i,
+                         inst->port_id_fld_idx, inst->port_id );
           }
+
 
         }
         
@@ -1281,7 +1253,7 @@ namespace cw
         unsigned           msg_idx;
         
         unsigned midi_fld_idx;
-        recd_type_t null_recd_type{ .fieldL=nullptr, .fieldN=0, .base=nullptr };
+        //recd_type_t null_recd_type{ .fieldL=nullptr, .fieldN=0, .base=nullptr };
       } inst_t;
       
       rc_t _create( proc_t* proc, inst_t* p )
@@ -1331,7 +1303,7 @@ namespace cw
         else
         {
           // ... otherwise give it an empty record buf to get by the post proc create variable value checker
-          if((rc = var_register_and_set( proc, "rin", kBaseSfxId, kRInPId, kAnyChIdx, &p->null_recd_type, nullptr, 0, 0 )) != kOkRC )
+          if((rc = var_register_and_set( proc, "rin", kBaseSfxId, kRInPId, kAnyChIdx, nullptr )) != kOkRC )
             goto errLabel;
         }
 
@@ -1345,9 +1317,9 @@ namespace cw
           p->midi_fld_idx = kInvalidIdx;
         else
         {
-          if((p->midi_fld_idx  = recd_type_field_index( rbuf->type, in_fld_label)) == kInvalidIdx )
+          if((p->midi_fld_idx  = recd_array_field_index( rbuf->recd_array, in_fld_label)) == kInvalidIdx )
           {
-            rc = proc_error(proc,kInvalidArgRC,"The 'rin' record does not have a 'midi' field.");
+            rc = proc_error(proc,kInvalidArgRC,"The 'rin' record does not have a '%s' field.",cwStringNullGuard(in_fld_label));
             goto errLabel;
           }
         }
@@ -1402,12 +1374,12 @@ namespace cw
             rc = proc_error(proc,kInvalidStateRC,"The the record input connection is not valid.");
           else
           {
-            for(unsigned i=0; i<rbuf->recdN; ++i)
+            for(unsigned i=0; i<rbuf->recd_array->recdN; ++i)
             {
-              const recd_t*  r = rbuf->recdA + i;
+              const recd_t*  r = rbuf->recd_array->recdA + i;
               const midi::ch_msg_t* m = nullptr;
 
-              if((rc = recd_get(rbuf->type,r,p->midi_fld_idx,m)) == kOkRC )
+              if((rc = recd_get(rbuf->recd_array->recdA+i,p->midi_fld_idx,m)) == kOkRC )
                 _send_msg(proc,p,print_fl,enable_fl,m);
               else
               {
@@ -5868,7 +5840,7 @@ namespace cw
         p->prune_thresh /= p->segN;
 
         // get the 'midi' input record field index
-        if((p->midi_fld_idx  = recd_type_field_index( i_rbuf->type, midi_fld_label)) == kInvalidIdx )
+        if((p->midi_fld_idx  = recd_array_field_index( i_rbuf->recd_array, midi_fld_label)) == kInvalidIdx )
         {
           rc = proc_error(proc,kInvalidArgRC,"The 'in' record does not have a '%s' field.",cwStringNullGuard(midi_fld_label));
           goto errLabel;
@@ -5878,7 +5850,7 @@ namespace cw
         if( p->segN > 1 )
         {
           // if multiple segments are being used get the input record 'seg_idx' field index
-          if((p->port_fld_idx  = recd_type_field_index( i_rbuf->type, seg_idx_fld_label)) == kInvalidIdx )
+          if((p->port_fld_idx  = recd_array_field_index( i_rbuf->recd_array, seg_idx_fld_label)) == kInvalidIdx )
           {
             rc = proc_error(proc,kInvalidArgRC,"The 'in' record must have a '%s' field to use voice segmentation.",cwStringNullGuard(seg_idx_fld_label));
             goto errLabel;
@@ -5928,7 +5900,7 @@ namespace cw
         }
 
         // register the recd output port
-        if((rc = var_alloc_register_and_set(proc, "recd_out", kBaseSfxId, kRecdOutPId, kAnyChIdx, i_rbuf->type, p->recd_array )) != kOkRC )
+        if((rc = var_alloc_register_and_set(proc, "recd_out", kBaseSfxId, kRecdOutPId, kAnyChIdx, i_rbuf->recd_array->typeA, i_rbuf->recd_array->typeN, p->recd_array )) != kOkRC )
         {
           goto errLabel;
         }
@@ -5940,7 +5912,7 @@ namespace cw
         }
 
         // get the index of the output record 'voice_idx' field
-        if((p->voice_idx_fld_idx =  recd_type_field_index( o_rbuf->type, "voice_idx")) == kInvalidIdx )
+        if((p->voice_idx_fld_idx =  recd_array_field_index( o_rbuf->recd_array, "voice_idx")) == kInvalidIdx )
         {
           rc = proc_error(proc,kInvalidArgRC,"The 'out' record must have a 'voice_idx' field.");
           goto errLabel;
@@ -6285,7 +6257,6 @@ namespace cw
       {
         rc_t    rc   = kOkRC;
         const rbuf_t* i_rbuf = nullptr;
-        rbuf_t*       o_rbuf = nullptr;
         
         // update the state of each voice
         for(unsigned i=0; i<p->voiceN; ++i)
@@ -6315,22 +6286,18 @@ namespace cw
         if((rc = var_get(proc,kInPId,kAnyChIdx,i_rbuf)) != kOkRC )
           goto errLabel;
 
-        // get the output record buffer
-        if((rc = var_get(proc,kRecdOutPId,kAnyChIdx,o_rbuf)) != kOkRC )
-          goto errLabel;
-
-        o_rbuf->recdN = 0;
+        recd_array_empty(p->recd_array);
 
         // process each incoming record
-        for(unsigned i=0; i<i_rbuf->recdN; ++i)
+        for(unsigned i=0; i<i_rbuf->recd_array->recdN; ++i)
         {
-          const recd_t*         r       = i_rbuf->recdA + i;
+          const recd_t*         r       = i_rbuf->recd_array->recdA + i;
           const midi::ch_msg_t* m       = nullptr;
           unsigned              seg_idx = 0;
           unsigned              voice_idx = kInvalidIdx;
 
           // get the midi msg from the incoming record
-          if((rc = recd_get(i_rbuf->type,r,p->midi_fld_idx,m)) != kOkRC )
+          if((rc = recd_get(r,p->midi_fld_idx,m)) != kOkRC )
           {
             rc = proc_error(proc,rc,"Record 'midi' field read failed.");
             goto errLabel;
@@ -6339,7 +6306,7 @@ namespace cw
           if( p->segN > 1 )
           {
             // get the 'seg_idx' from the incoming record
-            if((rc = recd_get(i_rbuf->type,r,p->port_fld_idx,seg_idx)) != kOkRC )
+            if((rc = recd_get(r,p->port_fld_idx,seg_idx)) != kOkRC )
             {
               rc = proc_error(proc,rc,"Record 'seg_idx' field read failed.");
               goto errLabel;
@@ -6377,15 +6344,9 @@ namespace cw
           var_set(proc,p->baseActiveCntPId + seg_idx,kAnyChIdx,p->segA[ seg_idx ].active_voice_cnt);
 
           // send the 'recd_out' output record
-          if( o_rbuf->recdN >= o_rbuf->maxRecdN )
+          if((rc = recd_append( p->recd_array, i_rbuf->recd_array->recdA + i, p->voice_idx_fld_idx, voice_idx )) != kOkRC )
           {
-            rc = proc_error(proc,kBufTooSmallRC,"The 'recd_out' output buffer is too small.");
             goto errLabel;
-          }
-          else
-          {
-            recd_set( o_rbuf->type, i_rbuf->recdA + i, p->recd_array->recdA + o_rbuf->recdN, p->voice_idx_fld_idx, voice_idx );
-            o_rbuf->recdN += 1;
           }
           
         }
@@ -10377,7 +10338,7 @@ namespace cw
         }
 
         // Create the output record array
-        if((rc = var_alloc_register_and_set(proc, "r_out", kBaseSfxId, kROutPId, kAnyChIdx, nullptr, p->recd_array )) != kOkRC )
+        if((rc = var_alloc_register_and_set(proc, "r_out", kBaseSfxId, kROutPId, kAnyChIdx, nullptr, 0, p->recd_array )) != kOkRC )
         {
           goto errLabel;
         }
@@ -10390,25 +10351,25 @@ namespace cw
         rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, 0  );
 
 
-        p->midi_fld_idx = recd_type_field_index( p->recd_array->type, "midi");
+        p->midi_fld_idx = recd_array_field_index( p->recd_array, "midi");
 
 
-        if((p->ch_fld_idx = recd_type_field_index_silent( i_rbuf->type, "ch" )) != kInvalidIdx )
+        if((p->ch_fld_idx = recd_array_field_index( i_rbuf->recd_array, "ch" )) != kInvalidIdx )
         {
           proc_info(proc,"'ch' input record field found");
         }
         
-        if((p->status_fld_idx = recd_type_field_index_silent( i_rbuf->type, "status" )) != kInvalidIdx )
+        if((p->status_fld_idx = recd_array_field_index( i_rbuf->recd_array, "status" )) != kInvalidIdx )
         {
           proc_info(proc,"'status' input record field found");
         }
         
-        if((p->byte_a_fld_idx = recd_type_field_index_silent( i_rbuf->type, "byte_a" )) != kInvalidIdx )
+        if((p->byte_a_fld_idx = recd_array_field_index( i_rbuf->recd_array, "byte_a" )) != kInvalidIdx )
         {
           proc_info(proc,"'byte_a' input record field found");
         }
         
-        if((p->byte_b_fld_idx = recd_type_field_index_silent( i_rbuf->type, "byte_b" )) != kInvalidIdx )
+        if((p->byte_b_fld_idx = recd_array_field_index( i_rbuf->recd_array, "byte_b" )) != kInvalidIdx )
         {
           proc_info(proc,"'byte_b' input record field found");
         }
@@ -10427,7 +10388,7 @@ namespace cw
         return rc;
       }
 
-      rc_t _gen_msg( proc_t* proc, inst_t* p, rbuf_t* rbuf, mbuf_t* mbuf )
+      rc_t _gen_msg( proc_t* proc, inst_t* p, mbuf_t* mbuf )
       {
         rc_t     rc     = kOkRC;
         unsigned ch     = 0;
@@ -10453,15 +10414,13 @@ namespace cw
 
         if( p->recd_array->allocRecdN > 0 )
         {
-          recd_set( rbuf->type, nullptr, p->recd_array->recdA, p->midi_fld_idx, &p->ch_msg );
-          rbuf->recdA = p->recd_array->recdA;
-          rbuf->recdN = 1;
+          recd_append( p->recd_array, nullptr, p->midi_fld_idx, &p->ch_msg );
         }
         
         return rc;
       }
 
-      rc_t _get_value( proc_t* proc, const recd_type_t* recd_type, const recd_t* i_r, unsigned vid, unsigned fld_idx, const char* err_msg, unsigned& value_ref )
+      rc_t _get_value( proc_t* proc, const recd_t* i_r, unsigned vid, unsigned fld_idx, const char* err_msg, unsigned& value_ref )
       {
         rc_t rc = kOkRC;
         
@@ -10475,7 +10434,7 @@ namespace cw
         } 
         else
         {
-          if((rc = recd_get(recd_type,i_r,fld_idx, value_ref )) != kOkRC )
+          if((rc = recd_get(i_r,fld_idx, value_ref )) != kOkRC )
           {
             rc = proc_error(proc,rc,"Error accessing the '%s' input field.",err_msg);
             goto errLabel;
@@ -10487,7 +10446,7 @@ namespace cw
         return rc;
       }
 
-      rc_t _send_output_record(proc_t* proc,inst_t* p, const recd_type_t* i_recd_type, const recd_t* i_r, rbuf_t* o_rbuf )
+      rc_t _send_output_record(proc_t* proc,inst_t* p, const recd_t* i_r )
       {
         rc_t rc = kOkRC;
         midi::ch_msg_t* ch_msg = nullptr;
@@ -10496,28 +10455,28 @@ namespace cw
         unsigned d0 = 0;
         unsigned d1 = 0;
         
-        if( o_rbuf->recdN >= p->recd_array->allocRecdN )
+        if( p->recd_array->recdN >= p->recd_array->allocRecdN )
         {
           rc = proc_error(proc,kBufTooSmallRC,"The output record buffer has overflowed. (length:%i)",p->recd_array->recdN);
           goto errLabel;
         }
 
-        if((rc = _get_value(proc, i_recd_type, i_r, kChPId, p->ch_fld_idx, "ch", ch )) != kOkRC )
+        if((rc = _get_value(proc, i_r, kChPId, p->ch_fld_idx, "ch", ch )) != kOkRC )
         {
           goto errLabel;
         }
 
-        if((rc = _get_value(proc, i_recd_type, i_r, kStatusPId, p->status_fld_idx, "status", status )) != kOkRC )
+        if((rc = _get_value(proc, i_r, kStatusPId, p->status_fld_idx, "status", status )) != kOkRC )
         {
           goto errLabel;
         }
 
-        if((rc = _get_value(proc, i_recd_type, i_r, kD0PId, p->byte_a_fld_idx, "byte_a", d0 )) != kOkRC )
+        if((rc = _get_value(proc, i_r, kD0PId, p->byte_a_fld_idx, "byte_a", d0 )) != kOkRC )
         {
           goto errLabel;
         }
 
-        if((rc = _get_value(proc, i_recd_type, i_r, kD1PId, p->byte_b_fld_idx, "byte_b", d1 )) != kOkRC )
+        if((rc = _get_value(proc, i_r, kD1PId, p->byte_b_fld_idx, "byte_b", d1 )) != kOkRC )
         {
           goto errLabel;
         }
@@ -10539,20 +10498,17 @@ namespace cw
           }
         }
 
-        p->chMsgA[o_rbuf->recdN].ch = ch;
-        p->chMsgA[o_rbuf->recdN].status = status;
-        p->chMsgA[o_rbuf->recdN].d0 = d0;
-        p->chMsgA[o_rbuf->recdN].d1 = d1;
+        p->chMsgA[p->recd_array->recdN].ch = ch;
+        p->chMsgA[p->recd_array->recdN].status = status;
+        p->chMsgA[p->recd_array->recdN].d0 = d0;
+        p->chMsgA[p->recd_array->recdN].d1 = d1;
 
         
-        if((rc = recd_set(p->recd_array->type, nullptr, p->recd_array->recdA+o_rbuf->recdN, p->midi_fld_idx, &p->chMsgA[o_rbuf->recdN])) != kOkRC )
+        if((rc = recd_append(p->recd_array, nullptr, p->midi_fld_idx, &p->chMsgA[p->recd_array->recdN])) != kOkRC )
         {
           goto errLabel;
         }
 
-        o_rbuf->recdN += 1;
-        o_rbuf->recdA = p->recd_array->recdA;
-        
         
       errLabel:
         return rc;        
@@ -10580,30 +10536,27 @@ namespace cw
       {
         rc_t rc      = kOkRC;
         mbuf_t* mbuf = nullptr;
-        rbuf_t* o_rbuf = nullptr;
         const rbuf_t* i_rbuf = nullptr;
 
         var_get(proc, kRInPId, kAnyChIdx, i_rbuf);
         var_get(proc, kOutPId,   kAnyChIdx, mbuf);
-        var_get(proc, kROutPId,  kAnyChIdx, o_rbuf);
         
         mbuf->msgN = 0;
         mbuf->msgA = nullptr;
-        o_rbuf->recdN = 0;
-        o_rbuf->recdA = nullptr;
+        recd_array_empty(p->recd_array);
 
 
         // handle individual inputs triggered from 'make_fl'
         if( p->trig_fl )
         {
           p->trig_fl = false;
-          _gen_msg( proc, p, o_rbuf, mbuf );
+          _gen_msg( proc, p, mbuf );
         }
 
         // handle record inputs from 'r_in'
-        for(unsigned i=0; i<i_rbuf->recdN; ++i)
+        for(unsigned i=0; i<i_rbuf->recd_array->recdN; ++i)
         {
-          _send_output_record(proc,p, i_rbuf->type, i_rbuf->recdA+i, o_rbuf);
+          _send_output_record(proc,p, i_rbuf->recd_array->recdA+i);
         }
         
         return rc;
@@ -10652,12 +10605,12 @@ namespace cw
           goto errLabel;
         }
 
-        if((rc = var_alloc_register_and_set(proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, i_rbuf->type, p->recd_array)) != kOkRC )
+        if((rc = var_alloc_register_and_set(proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, i_rbuf->recd_array->typeA, i_rbuf->recd_array->typeN, p->recd_array)) != kOkRC )
         {
           goto errLabel;
         }
 
-        if((p->i_midi_fld_idx = recd_type_field_index(i_rbuf->type,"midi")) == kInvalidIdx )
+        if((p->i_midi_fld_idx = recd_array_field_index(i_rbuf->recd_array,"midi")) == kInvalidIdx )
         {
           rc = kInvalidArgRC;
           goto errLabel;
@@ -10668,7 +10621,7 @@ namespace cw
           goto errLabel;
         }
         
-        if((p->o_value_fld_idx = recd_type_field_index(o_rbuf->type,"value")) == kInvalidIdx )
+        if((p->o_value_fld_idx = recd_array_field_index(o_rbuf->recd_array,"value")) == kInvalidIdx )
         {
           rc = kInvalidArgRC;
           goto errLabel;
@@ -10705,14 +10658,14 @@ namespace cw
         if((rc = var_get(proc, kOutPId, o_rbuf)) != kOkRC)
           goto errLabel;
 
-        o_rbuf->recdN = 0;
+        recd_array_empty(p->recd_array);
 
-        for(unsigned i=0; i<i_rbuf->recdN && i < p->recd_array->allocRecdN; ++i)
+        for(unsigned i=0; i<i_rbuf->recd_array->recdN && i < p->recd_array->allocRecdN; ++i)
         {
           unsigned value = 0;
           midi::ch_msg_t* m = nullptr;
           
-          if((rc = recd_get(i_rbuf->type,i_rbuf->recdA + i,p->i_midi_fld_idx, m )) != kOkRC )
+          if((rc = recd_get(i_rbuf->recd_array->recdA + i,p->i_midi_fld_idx, m )) != kOkRC )
           {
             goto errLabel;
           }
@@ -10723,7 +10676,7 @@ namespace cw
             proc_info(proc,"value:%i",value);
           }          
           
-          if((rc = recd_set(p->recd_array->type, i_rbuf->recdA + i, p->recd_array->recdA+o_rbuf->recdN, p->o_value_fld_idx, &value)) != kOkRC )
+          if((rc = recd_append(p->recd_array, i_rbuf->recd_array->recdA + i,  p->o_value_fld_idx, &value)) != kOkRC )
           {
             goto errLabel;
           }
@@ -11310,10 +11263,10 @@ namespace cw
         // create one output MIDI buffer
         rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, 0  );
 
-        if((rc = var_alloc_register_and_set(proc, "r_out", kBaseSfxId, kROutPId, kAnyChIdx, nullptr, p->recd_array)) != kOkRC )
+        if((rc = var_alloc_register_and_set(proc, "r_out", kBaseSfxId, kROutPId, kAnyChIdx, nullptr, 0,p->recd_array)) != kOkRC )
           goto errLabel;
 
-        p->midi_fld_idx = recd_type_field_index( p->recd_array->type, "midi");
+        p->midi_fld_idx = recd_array_field_index( p->recd_array, "midi");
 
         p->midiChMsgA[kAllNotesOffMsgIdx]   = { .timeStamp={ .tv_sec=0, .tv_nsec=0}, .devIdx=kInvalidIdx, .portIdx=kInvalidIdx, .uid=0, .ch=0, .status=midi::kCtlMdId, .d0=midi::kAllNotesOffMdId,  .d1=0  };
         p->midiChMsgA[kResetAllCtlsMsgIdx]  = { .timeStamp={ .tv_sec=0, .tv_nsec=0}, .devIdx=kInvalidIdx, .portIdx=kInvalidIdx, .uid=0, .ch=0, .status=midi::kCtlMdId, .d0=midi::kResetAllCtlsMdId, .d1=0  };
@@ -11367,23 +11320,6 @@ namespace cw
         return rc;
       }
 
-      rc_t _set_output_record( proc_t* proc, inst_t* p, rbuf_t* rbuf, const midi::ch_msg_t* m )
-      {
-        rc_t rc = kOkRC;
-        
-        // if the output record array is full
-        if( rbuf->recdN >= p->recd_array->allocRecdN )
-        {
-          rc = proc_error(proc,kBufTooSmallRC,"The internal record buffer overflowed. (buf recd count:%i).",p->recd_array->allocRecdN);
-          goto errLabel;
-        }
-
-        recd_set( rbuf->type, nullptr, p->recd_array->recdA + rbuf->recdN, p->midi_fld_idx, (midi::ch_msg_t*)m );
-        rbuf->recdN += 1;
-
-      errLabel:
-        return rc;
-      }
       
       rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
@@ -11471,30 +11407,23 @@ namespace cw
             }
         }
         
-        // get the output variable
-        if((rc = var_get(proc,kROutPId,kAnyChIdx,rbuf)) != kOkRC )
-        {
-          rc = proc_error(proc,kInvalidStateRC,"The midi_file '%s' does not have a valid output record buffer.",proc->label);
-        }
-        else
-        {
-          rbuf->recdA = p->recd_array->recdA;
-          rbuf->recdN = 0;
-
-          if( p->playing_fl )
-            for(unsigned i=0; i<mbuf->msgN; ++i)
-              _set_output_record(proc,p,rbuf, mbuf->msgA + i);
-
-          if( done_fl || p->stop_trig_fl )
+        recd_array_empty(p->recd_array);
+        
+        if( p->playing_fl )
+          for(unsigned i=0; i<mbuf->msgN; ++i)
           {
-            // copy the 'all-note-off','all-ctl-off' msg into output record array
-            _set_output_record(proc,p,rbuf,p->midiChMsgA + kAllNotesOffMsgIdx);
-            _set_output_record(proc,p,rbuf,p->midiChMsgA + kResetAllCtlsMsgIdx);
-            p->playing_fl = false;
-            p->stop_trig_fl = false;
+            recd_append( p->recd_array, nullptr, p->midi_fld_idx, (midi::ch_msg_t*)(mbuf->msgA + i));
           }
-            
+          
+        if( done_fl || p->stop_trig_fl )
+        {
+          // copy the 'all-note-off','all-ctl-off' msg into output record array
+          recd_append(p->recd_array, nullptr, p->midi_fld_idx,p->midiChMsgA + kAllNotesOffMsgIdx);
+          recd_append(p->recd_array, nullptr, p->midi_fld_idx,p->midiChMsgA + kResetAllCtlsMsgIdx);
+          p->playing_fl = false;
+          p->stop_trig_fl = false;
         }
+            
           
         if( done_fl )
           var_set(proc, kDoneFlPId, kAnyChIdx, true );
@@ -11535,8 +11464,7 @@ namespace cw
         object_t*     cfg;
         recd_fmt_t*   recd_fmt;
         recd_array_t* recd_array;
-        recd_type_t*  out_recd_type;
-        recd_array_t* out_recd_buf;
+        recd_array_t* out_recd_array;
         unsigned      out_recd_idx;
         unsigned      out_recd_cnt;
       } inst_t;
@@ -11578,10 +11506,17 @@ namespace cw
         }
 
         // create the storage recd array 
-        if((rc = recd_array_create(p->recd_array, p->recd_fmt->recd_type, nullptr, data_recd_cnt, data_cfg )) != kOkRC )
+        if((rc = recd_array_create(p->recd_array, p->recd_fmt->fieldD_cfg, nullptr, 0, data_recd_cnt )) != kOkRC )
         {
           rc = proc_error(proc,rc,"Internal recd storage array create failed.");
           goto errLabel;
+        }
+
+        // Load the recd_array from the cfg.
+        if((rc = recd_array_append_from_cfg( p->recd_array, data_cfg)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Data insertion failed.");
+          goto errLabel;          
         }
 
         
@@ -11644,25 +11579,20 @@ namespace cw
           rc = proc_error(proc,rc,"Record format parsing failed.");
           goto errLabel;
         }
-
-        // Create a record type which only has a 'base' component that is set to the type of the storage recd array.
-        // We will then be able to load records into this by setting the 'base' pointer of each recd to the a recd in the storage array.
-        if((rc = recd_type_create( p->out_recd_type, p->recd_array->type, nullptr )) != kOkRC )
-        {
-          rc = proc_error(proc,rc,"Record type create failed.");
-          goto errLabel;
-        }
         
-        // create the output recd buf with the same size as the storage array
-        if((rc = recd_array_create( p->out_recd_buf, p->out_recd_type, p->recd_array->type, p->recd_array->allocRecdN )) != kOkRC )
+        // Create the output record array with a 'base' component that is set to the type of the storage recd array.
+        // We will then be able to load records into this by setting the 'base' pointer of each recd to the a recd in the storage array.
+        if((rc = recd_array_create( p->out_recd_array, nullptr, p->recd_array->typeA, p->recd_array->typeN, p->recd_array->allocRecdN )) != kOkRC )
         {
           rc = proc_error(proc,rc,"The output buffer record array create failed.");
           goto errLabel;
         }
-
-        // register this output variable
-        if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, p->out_recd_buf->type, nullptr, 0, p->recd_array->allocRecdN  )) != kOkRC )
+        
+        // register this output record variable
+        if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, p->out_recd_array  )) != kOkRC )
+        {
           goto errLabel;
+        }
         
         // initialize the record request range.
         p->out_recd_idx = kInvalidIdx;
@@ -11679,9 +11609,8 @@ namespace cw
         rc_t rc = kOkRC;
 
         recd_format_destroy(p->recd_fmt);
-        recd_array_destroy(p->out_recd_buf);
+        recd_array_destroy(p->out_recd_array);
         recd_array_destroy(p->recd_array);
-        recd_type_destroy(p->out_recd_type);
 
         if( p->cfg != nullptr )
           p->cfg->free();
@@ -11709,17 +11638,8 @@ namespace cw
       rc_t _exec( proc_t* proc, inst_t* p )
       {
         rc_t rc      = kOkRC;
-        
-        rbuf_t* obuf = nullptr;
-          
-        // get the output record buffer
-        if((rc = var_get(proc,kOutPId,kAnyChIdx,obuf)) != kOkRC || obuf == nullptr )
-        {
-          goto errLabel;
-        }
-
-        obuf->recdA = nullptr;
-        obuf->recdN = 0;
+                  
+        recd_array_empty(p->recd_array);
         
 
         // if output records were requsted.
@@ -11736,11 +11656,14 @@ namespace cw
             for(unsigned i=0; i<p->out_recd_cnt; ++i)
             {
               const recd_t* src_recd = p->recd_array->recdA + p->out_recd_idx + i;
-              p->out_recd_buf->recdA[i].base = src_recd;
+              
+              if((rc = recd_array_append_pass_through( p->out_recd_array, src_recd )) != kOkRC )
+              {
+                rc = proc_error(proc,rc,"Append record to output failed.");
+                goto errLabel;
+              }
+              
             }
-
-            obuf->recdA = p->out_recd_buf->recdA;
-            obuf->recdN = p->out_recd_cnt;
           }
         }
 
@@ -11793,7 +11716,7 @@ namespace cw
         unsigned       outVarN;        
         unsigned       sel_fld_idx;
         recd_array_t** recd_arrayA; // recd_arrayA[ outVarN ] - one record array per output variable
-        recd_type_t*   recd_type;
+        //recd_type_t*   recd_type;
       } inst_t;
 
       
@@ -11824,26 +11747,28 @@ namespace cw
         p->outVarA = mem::allocZ<out_var_t>(p->outVarN);
 
         // create  a record type whose base type matches the input record type
+        /*
         if((rc = recd_type_create( p->recd_type, i_rbuf->type, nullptr )) != kOkRC )
         {
           rc = proc_error(proc,rc,"Record type create failed.");
           goto errLabel;
         }
+        */
         
         // if the input recd buffer may contain more records than the requested buffer size - then use the input buffer size
-        allocRecdBufN = std::max(allocRecdBufN,i_rbuf->maxRecdN);
+        allocRecdBufN = std::max(allocRecdBufN,i_rbuf->recd_array->allocRecdN);
 
         for(unsigned i=0; i<p->outVarN; ++i)
         {
           // create the output recd_array
-          if((rc = recd_array_create( p->outVarA[i].recd_array, p->recd_type, i_rbuf->type, allocRecdBufN )) != kOkRC )
+          if((rc = recd_array_create( p->outVarA[i].recd_array, nullptr, i_rbuf->recd_array->typeA, i_rbuf->recd_array->typeN, allocRecdBufN )) != kOkRC )
           {
             rc = proc_error(proc,rc,"The recd_array create failed.");
             goto errLabel;
           }
           
           // register this output variable
-          if((rc = var_register_and_set( proc, "out", i, kBaseOutPId + i, kAnyChIdx, p->outVarA[i].recd_array->type, p->outVarA[i].recd_array->recdA, 0, allocRecdBufN  )) != kOkRC )
+          if((rc = var_register_and_set( proc, "out", i, kBaseOutPId + i, kAnyChIdx, p->outVarA[i].recd_array  )) != kOkRC )
             goto errLabel;
 
           // cache pointers to the output rbuf's so we don't have to get them in _exec()
@@ -11862,7 +11787,7 @@ namespace cw
         else
         {
           // get the record field index for the incoming record
-          if((p->sel_fld_idx = recd_type_field_index( i_rbuf->type, sel_field_label)) == kInvalidIdx )
+          if((p->sel_fld_idx = recd_array_field_index( i_rbuf->recd_array, sel_field_label)) == kInvalidIdx )
           {
             rc = proc_warn(proc,"The incoming record does not have a field named '%s'. The selection field has been diabled.",cwStringNullGuard(sel_field_label));
             p->sel_fld_idx = kInvalidIdx;
@@ -11883,7 +11808,6 @@ namespace cw
           for(unsigned i=0; i<p->outVarN; ++i)
             recd_array_destroy(p->outVarA[i].recd_array);
         mem::release(p->outVarA);
-        recd_type_destroy(p->recd_type);
         
         return rc;
       }
@@ -11911,19 +11835,20 @@ namespace cw
 
         // empty the output record buffers
         for(unsigned i=0; i<p->outVarN; ++i)
-          p->outVarA[i].rbuf->recdN = 0;
+          recd_array_empty(p->outVarA[i].recd_array);
+          
 
 
         // for each incoming record
-        for(unsigned i=0; i<i_rbuf->recdN; ++i)
+        for(unsigned i=0; i<i_rbuf->recd_array->recdN; ++i)
         {
-          const recd_t* i_r      = i_rbuf->recdA + i;
+          const recd_t* i_r      = i_rbuf->recd_array->recdA + i;
           unsigned      ovar_idx = dflt_ovar_idx;
           out_var_t*    ovar     = nullptr;
 
           // if a selector field index was given then get the associated value 
           if( p->sel_fld_idx != kInvalidIdx )
-            recd_get(i_rbuf->type,i_r, p->sel_fld_idx, ovar_idx);
+            recd_get(i_r, p->sel_fld_idx, ovar_idx);
 
           // if the output variable index is not valid then skip this record
           if( ovar_idx == kInvalidIdx )
@@ -11943,10 +11868,11 @@ namespace cw
           ovar = p->outVarA + ovar_idx;
 
           // copy the input record to the output record
-          ovar->recd_array->recdA[ ovar->rbuf->recdN ].base = i_rbuf->recdA + i;
-          
-          // advance the output variable record count
-          ovar->rbuf->recdN += 1;
+          if((rc = recd_array_append_pass_through( ovar->recd_array, i_rbuf->recd_array->recdA + i )) != kOkRC )
+          {
+            rc = proc_error(proc,rc,"Append output record failed.");
+            goto errLabel;
+          }
 
           //printf("ovar idx:%i ovar->rbuf->recdN%i\n",ovar_idx,ovar->rbuf->recdN );
         }
@@ -11989,20 +11915,11 @@ namespace cw
       
       typedef struct
       {
-        unsigned           inVarN;
+        unsigned       inVarN;
         recd_type_t*   recd_type;
         recd_array_t*  recd_array;
       } inst_t;
 
-      // Record types that have empty top levels (fieldN=0)  can appear to be equivalent
-      // with types that have fields in their top level - but they are not.
-      // This function strips empty top level types.
-      const recd_type_t* _strip_empty_types( const recd_type_t* rt )
-      {
-        while( rt->fieldN == 0 )
-          rt = rt->base;
-        return rt;
-      }
 
       rc_t _create( proc_t* proc, inst_t* p )
       {
@@ -12011,6 +11928,9 @@ namespace cw
         const rbuf_t* r0buf    = nullptr;
         const rbuf_t* rbuf     = nullptr;
         unsigned      inVarN   = var_mult_count(proc,"in");
+        unsigned      baseTypeN = 0;
+        const recd_type_t** baseTypeA = nullptr;
+        
         
         unsigned    sfxIdA[ inVarN ];
 
@@ -12033,43 +11953,50 @@ namespace cw
           if((rc = var_register_and_get( proc, kAnyChIdx, kBaseInPId+i, "in", sfxIdA[i], rbuf )) != kOkRC )
             goto errLabel;
           
-          if( rbuf == nullptr )
+          if( rbuf == nullptr || rbuf->recd_array == nullptr  )
           {
             rc = proc_error(proc,kInvalidArgRC,"The input in:%i is unconnected.",sfxIdA[i]);
             goto errLabel;                                                                                                                          
           }
-          
-          if( i == 0 )
-            r0buf = rbuf;
-          else
-          {
-            
-            if( !recd_types_are_equivalent(_strip_empty_types(r0buf->type),_strip_empty_types(rbuf->type)) )
-            {
-              rc = proc_error(proc,kInvalidArgRC,"The incoming record types must be of equivalent types. The type on in:%i does not match the type on in:0.",sfxIdA[i]);
-              goto errLabel;
-            }
-          }
 
-          recdBufN = std::max(recdBufN,rbuf->maxRecdN);
+          // Track the total base type count across all input vars
+          baseTypeN += rbuf->recd_array->typeN;          
+          
+          recdBufN = std::max(recdBufN,rbuf->recd_array->allocRecdN);
           
         }
-        
-        // create a record type whose base type matches the input type and has no additional fields
-        if((rc = recd_type_create( p->recd_type, _strip_empty_types(rbuf->type), nullptr )) != kOkRC )
+
+        if( baseTypeN == 0 )
         {
-          rc = proc_error(proc,rc,"Record type create failed.");
+          rc = proc_error(proc,rc,"The input type count is zero. There appears to be no streams to merge.");
           goto errLabel;
+        }
+
+        // allocate the base type pointer
+        baseTypeA = mem::allocZ<const recd_type_t*>(baseTypeN);
+
+
+        // fill in the base base type pointer
+        for(unsigned i=0,j=0; i<p->inVarN; ++i)
+        {
+          if((rc = var_register_and_get( proc, kAnyChIdx, kBaseInPId+i, "in", sfxIdA[i], rbuf )) != kOkRC )
+            goto errLabel;
+
+          for(unsigned k=0; i<rbuf->recd_array->typeN; ++k)
+          {
+            assert( j < baseTypeN );
+            baseTypeA[j++] = rbuf->recd_array->typeA[k];
+          } 
         }
         
         // create the output recd_array
-        if((rc = recd_array_create( p->recd_array, p->recd_type, _strip_empty_types(rbuf->type), recdBufN )) != kOkRC )
+        if((rc = recd_array_create( p->recd_array, nullptr, baseTypeA, baseTypeN, recdBufN )) != kOkRC )
         {
           goto errLabel;
         }
 
         // register the output var
-        if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, p->recd_array->type, p->recd_array->recdA, 0, recdBufN  )) != kOkRC )
+        if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, p->recd_array  )) != kOkRC )
         {
           goto errLabel;
         }
@@ -12077,6 +12004,7 @@ namespace cw
         
         
       errLabel:
+        mem::release(baseTypeA);
         return rc;
       }
 
@@ -12096,17 +12024,8 @@ namespace cw
       rc_t _exec( proc_t* proc, inst_t* p )
       {
         rc_t     rc       = kOkRC;
-        rbuf_t*  o_rbuf = nullptr;
-        
-        // get the output buffer
-        if((rc = var_get(proc,kOutPId,kAnyChIdx,o_rbuf)) != kOkRC )
-        {
-          rc = proc_error(proc,kInvalidStateRC,"The recd merge instance '%s' does not have a valid output connection.",proc->label);
-          goto errLabel;
-        }
 
-        o_rbuf->recdN        = 0;
-        p->recd_array->recdN = 0;
+        recd_array_empty(p->recd_array);
         
         // get the rbuf from each input 
         for(unsigned i=0; i<p->inVarN; ++i)
@@ -12116,28 +12035,20 @@ namespace cw
           if((rc = var_get(proc, kBaseInPId+i, kAnyChIdx, i_rbuf)) != kOkRC )
             goto errLabel;
 
-          for(unsigned j=0; j<i_rbuf->recdN; ++j)
+          for(unsigned j=0; j<i_rbuf->recd_array->recdN; ++j)
           {
-            if( p->recd_array->recdN >= p->recd_array->allocRecdN )
+            if((rc = recd_array_append_pass_through( p->recd_array, i_rbuf->recd_array->recdA + j )) != kOkRC )
             {
-              rc = proc_error(proc,kBufTooSmallRC,"The internal recd array is too small Current size:%i.",p->recd_array->allocRecdN);
+              rc = proc_error(proc,rc,"Copy to output failed.");
               goto errLabel;
             }
             
-            p->recd_array->recdA[ p->recd_array->recdN++ ].base = i_rbuf->recdA + j;
           }
 
         }
 
-        assert(o_rbuf->recdA == p->recd_array->recdA);
-        
-        o_rbuf->recdN = p->recd_array->recdN;
-
       errLabel:
 
-        //if( o_rbuf->recdN > 0 )
-        //  proc_info(proc,"RM recd count: %i",o_rbuf->recdN);
-        
         return rc;
       }
 
@@ -12169,132 +12080,34 @@ namespace cw
         
       typedef struct
       {
-        recd_fmt_t*   recd_fmt;
         recd_array_t* recd_array;
 
-        unsigned  field_indexN;
-        unsigned* i_field_indexA;
-        unsigned* o_field_indexA;
       } inst_t;
 
-      rc_t _out_to_in_field_label( proc_t* proc, const object_t* field_name_map_cfg, const char* out_field_label_key, const char*& in_field_label_ref )
-      {
-        rc_t rc = kEleNotFoundRC;
-        
-        in_field_label_ref = nullptr;
-        
-        // for each field map entry
-        for(unsigned i=0; i<field_name_map_cfg->child_count(); ++i)
-        {
-          const object_t* pair_cfg      = field_name_map_cfg->child_ele(i);
-          const char*     out_fld_label = nullptr;
-
-          // validate the syntax of the input field label
-          if( pair_cfg == nullptr || !pair_cfg->is_pair() || pair_cfg->pair_label() == nullptr || pair_cfg->pair_value() == nullptr || !pair_cfg->pair_value()->is_string() )
-          {
-            rc = proc_error(proc,kSyntaxErrorRC,"The 'recd_extract' field map has an invalid syntax on the entry at index %i.",i);
-            goto errLabel;
-          }
-
-          // get the output field label
-          if((rc = pair_cfg->pair_value()->value(out_fld_label)) != kOkRC )
-          {
-            rc = proc_error(proc,rc,"Error accessing the output field name at index %i in the 'recd_extract' field map",i);
-            goto errLabel;
-          }
-
-          // if the output field label match the output field label key
-          if( textIsEqual(out_field_label_key, out_fld_label) )
-          {
-            // return the input field label
-            rc = kOkRC;            
-            in_field_label_ref = pair_cfg->pair_label();
-            break;
-          }
-        
-        }
-
-      errLabel:
-        return rc;
-      }
-
-      rc_t _create_field_index_array(proc_t* proc, inst_t* p, const rbuf_t* i_rbuf, const object_t* field_name_map_cfg )
-      {
-        rc_t rc = kOkRC;
-
-        // Create an array to hold the indexes into the incoming record of all the fields in the outgoing recd
-        p->field_indexN = p->recd_fmt->recd_type->fieldN;
-        p->i_field_indexA = mem::allocZ<unsigned>(p->field_indexN);
-        p->o_field_indexA = mem::allocZ<unsigned>(p->field_indexN);
-
-        const recd_field_t* fld = p->recd_fmt->recd_type->fieldL;
-        unsigned i = 0;
-        for(; i < p->field_indexN && fld!=nullptr; ++i,fld=fld->link)
-        {
-          const char* in_field_label = nullptr;
-
-          // get the input field label that maps to the output field label
-          if((rc = _out_to_in_field_label( proc, field_name_map_cfg, fld->label, in_field_label))!= kOkRC )
-          {
-            rc = proc_error(proc,rc,"No output field named '%s' was found in the field input/output mapping.",cwStringNullGuard(fld->label));
-            goto errLabel;
-          }
-
-          
-          // get the field index in the incoming recd that matches the field index in the outgoing recd
-          if((p->i_field_indexA[i] = recd_type_field_index(i_rbuf->type, in_field_label)) == kInvalidIdx )
-          {
-            rc = proc_error(proc,kInvalidArgRC,"The output field label '%s' could not be matched in the incoming record in '%s'.",cwStringNullGuard(fld->label),cwStringNullGuard(proc->label));
-            goto errLabel;
-          }
-
-          
-
-          // get the field index of the 'ith' output field (this should by equal to 'i')
-          if((p->o_field_indexA[i] = recd_type_field_index(p->recd_fmt->recd_type, fld->label)) == kInvalidIdx )
-          {
-            rc = proc_error(proc,kInvalidArgRC,"The output field label '%s' could not be matched in the incoming record in '%s'.",cwStringNullGuard(fld->label),cwStringNullGuard(proc->label));
-            goto errLabel;
-          }
-          
-        }
-
-        // 
-        if( i!=p->field_indexN || fld != nullptr )
-        {
-          rc = proc_error(proc,kInvalidStateRC,"There was an unexpected field count mismatch on the output record of '%s'.",cwStringNullGuard(proc->label));
-          goto errLabel;
-        }
-        
-        errLabel:
-          return rc;
-      }
 
       rc_t _parse_cfg( proc_t* proc, inst_t* p, const object_t* out_fmt_cfg, const rbuf_t* i_rbuf )
       {
         rc_t            rc      = kOkRC;
-        const object_t* map_cfg = nullptr;
         const object_t* fmt_cfg = nullptr;
         
-        if((rc = out_fmt_cfg->getv("fmt",fmt_cfg,
-                                   "map",map_cfg)) != kOkRC )
+        if((rc = out_fmt_cfg->getv("fmt",fmt_cfg)) != kOkRC )
         {
           rc = proc_error(proc,rc,"Cfg. parsing failed on the top level.");
           goto errLabel;
         }
 
-        if((rc = recd_format_create( p->recd_fmt, fmt_cfg )) != kOkRC )
+        // create the output array with the aliased field names contained in fmt_cfg
+        if((rc = recd_array_create( p->recd_array, fmt_cfg, i_rbuf->recd_array->typeA, i_rbuf->recd_array->typeN, i_rbuf->recd_array->allocRecdN )) != kOkRC )
         {
-          proc_error(proc,rc,"The output record format is not valid.");
-          goto errLabel;
-        }
-
-        if((rc = _create_field_index_array(proc, p, i_rbuf, map_cfg )) != kOkRC )
-        {
+          rc = proc_error(proc,rc,"The output recd_array create failed.");
           goto errLabel;
         }
         
-        
+        // register the output var
+        if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, p->recd_array  )) != kOkRC )
+        {
+          goto errLabel;
+        }
 
       errLabel:
         return rc;
@@ -12319,18 +12132,6 @@ namespace cw
           goto errLabel;
         }
 
-
-        if((rc = recd_array_create( p->recd_array, p->recd_fmt->recd_type, nullptr,  p->recd_fmt->alloc_cnt )) != kOkRC )
-        {
-          proc_error(proc,rc,"The output record array format for '%s' failed.",cwStringNullGuard(proc->label));
-          goto errLabel;
-        }
-
-        // register the output var
-        if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, p->recd_array->type, p->recd_array->recdA, 0, p->recd_array->allocRecdN  )) != kOkRC )
-        {
-          goto errLabel;
-        }
                 
       errLabel:
         return rc;
@@ -12341,7 +12142,6 @@ namespace cw
         rc_t rc = kOkRC;
 
         recd_array_destroy(p->recd_array);
-        //recd_type_destroy(p->recd_fmt);
 
         return rc;
       }
@@ -12361,38 +12161,19 @@ namespace cw
         if( var_get(proc,kInPId,kAnyChIdx,i_rbuf) != kOkRC )
           goto errLabel;
 
-        if( var_get(proc,kOutPId,kAnyChIdx,o_rbuf) != kOkRC )
-          goto errLabel;
+        recd_array_empty(p->recd_array);
 
-        o_rbuf->recdN = 0;
-
-        for(unsigned i=0; i<i_rbuf->recdN; ++i)
+        for(unsigned i=0; i<i_rbuf->recd_array->recdN; ++i)
         {
-          for(unsigned j=0; j<p->field_indexN; ++j)
+          if((rc = recd_array_append_pass_through( p->recd_array, i_rbuf->recd_array->recdA + i )) != kOkRC )
           {
-            value_t v = {};
-
-            // get the field value from the incoming record
-            if((rc = recd_get( i_rbuf->type, i_rbuf->recdA+i, p->i_field_indexA[j], v)) != kOkRC )
-            {
-              rc = proc_error(proc,rc,"Unable to get the input record field '%s' in '%s'.",cwStringNullGuard(recd_type_field_index_to_label(i_rbuf->type,p->i_field_indexA[j])),cwStringNullGuard(proc->label));
-              goto errLabel;
-            }
-            
-            // set the field in the outgoing recd
-            if((rc = recd_set_value( o_rbuf->type, nullptr, p->recd_array->recdA + i, p->o_field_indexA[j], v)) != kOkRC )
-            {
-              rc = proc_error(proc,rc,"Unable to get the input record field '%s' in '%s'.",cwStringNullGuard(recd_type_field_index_to_label(o_rbuf->type,p->o_field_indexA[j])),cwStringNullGuard(proc->label));
-              goto errLabel;
-            }
-
+            rc = proc_error(proc,rc,"Output array pass-through copy failed.");
+            goto errLabel;
           }
-          o_rbuf->recdN += 1;
+             
         }
         
       errLabel:
-        //if( o_rbuf->recdN > 0 )
-        //  proc_info(proc,"RE recd count: %i",o_rbuf->recdN);
             
         return rc;
       }
@@ -12427,7 +12208,6 @@ namespace cw
       {
         recd_fmt_t*   recd_fmt;
         recd_array_t* recd_array;
-        bool          is_input_validated_fl;
       } inst_t;
 
 
@@ -12435,8 +12215,8 @@ namespace cw
       {
         rc_t            rc      = kOkRC;
         const object_t* fmt_cfg = nullptr;
+        recd_fmt_t*     fmt     = nullptr;
         rbuf_t*         i_rbuf  = nullptr;
-        unsigned        allocRecdN = 16;
         
         if((rc = var_register_and_get(proc, kAnyChIdx, kFmtPId, "fmt", kBaseSfxId, fmt_cfg)) != kOkRC )
         {
@@ -12450,31 +12230,31 @@ namespace cw
         }
 
         // Create a recd_fmt_t for the the record format that this proc. will pass
-        if((rc = proc_recd_format_create( proc, fmt_cfg, allocRecdN, p->recd_fmt )) != kOkRC )
+        if((rc = recd_format_create( fmt, fmt_cfg )) != kOkRC )
         {
           rc = proc_error(proc,rc,"The record format could not be created.");
           goto errLabel;
         }
 
-        // Create an output record array - this is only used pre-runtime to inform the destination procs of the expected recd type and count
-        if((rc = recd_array_create(p->recd_array, p->recd_fmt->recd_type, nullptr, allocRecdN)) != kOkRC )
+        // Create a record array - this is only used pre-runtime to inform the destination procs of the expected recd type and count
+        if((rc = recd_array_create(p->recd_array, fmt->fieldD_cfg, nullptr, 0, fmt->alloc_cnt)) != kOkRC )
         {
           rc = proc_error(proc,rc,"The internal record array create failed.");
           goto errLabel;
         }
 
         // Register the output variable
-        if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, p->recd_fmt->recd_type, p->recd_array->recdA, 0, p->recd_array->allocRecdN  )) != kOkRC )
+        if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, p->recd_array  )) != kOkRC )
         {
           rc = proc_error(proc,rc,"The 'out' variable create failed.");
           goto errLabel;          
         }
 
+        
         // Register a local input variable  whose value will never be used since it will be overridden by a src connection later in the network creating.
-        if((rc = var_register_and_set(proc, "in", kBaseSfxId, kInPId, kAnyChIdx, p->recd_fmt->recd_type, nullptr, 0, p->recd_array->allocRecdN)) != kOkRC )
+        if((rc = var_register_and_set(proc, "in", kBaseSfxId, kInPId, kAnyChIdx, p->recd_array)) != kOkRC )
           goto errLabel;        
         
-        p->is_input_validated_fl = false;
         
       errLabel:
         
@@ -12509,30 +12289,8 @@ namespace cw
         if((rc = var_get(proc,kOutPId,kAnyChIdx,o_rbuf)) != kOkRC )
           goto errLabel;
 
-
-        o_rbuf->recdN = 0;
-
-        if( i_rbuf->recdN > 0 )
-        {
-          if( !p->is_input_validated_fl )
-          {
-            variable_t* in_var = nullptr;
-            if( var_find(proc,kInPId,kAnyChIdx,in_var) == kOkRC && is_connected_to_source(in_var) )
-            {
-              if((p->is_input_validated_fl = recd_types_are_equivalent( o_rbuf->type, i_rbuf->type )) == false )
-              {
-                proc_warn(proc,"Input record type validation failed.");
-              }
-            }
-          }
-
-          if( p->is_input_validated_fl )
-          {
-            o_rbuf->type  = i_rbuf->type;
-            o_rbuf->recdA = i_rbuf->recdA;
-            o_rbuf->recdN = i_rbuf->recdN;            
-          }
-        }
+        o_rbuf->recd_array = i_rbuf->recd_array;
+        
         
       errLabel:
         return rc;
@@ -13033,7 +12791,7 @@ namespace cw
           goto errLabel;
         }
 
-        if((p->loc_fld_idx  = recd_type_field_index( in_rbuf->type, "loc")) == kInvalidIdx )
+        if((p->loc_fld_idx  = recd_array_field_index( in_rbuf->recd_array, "loc")) == kInvalidIdx )
         {
           proc_error(proc,kInvalidArgRC,"The  input record does not have a 'loc' field.");
           goto errLabel;
@@ -13062,11 +12820,11 @@ namespace cw
         }
 
         // for each incoming record
-        for(unsigned i=0; i<in_rbuf->recdN; ++i)
+        for(unsigned i=0; i<in_rbuf->recd_array->recdN; ++i)
         {
           unsigned loc;
           
-          if((rc = recd_get( in_rbuf->type, in_rbuf->recdA + i, p->loc_fld_idx, loc)) != kOkRC )
+          if((rc = recd_get( in_rbuf->recd_array->recdA + i, p->loc_fld_idx, loc)) != kOkRC )
           {
             rc = proc_error(proc,rc,"'loc' field access failed.");
             goto errLabel;
@@ -13290,7 +13048,7 @@ namespace cw
         }
 
 
-        if((p->loc_fld_idx  = recd_type_field_index( rbuf->type, "loc")) == kInvalidIdx )
+        if((p->loc_fld_idx  = recd_array_field_index( rbuf->recd_array, "loc")) == kInvalidIdx )
         {
           proc_error(proc,kInvalidArgRC,"The  input record does not have a 'loc' field.");
           goto errLabel;
@@ -13327,11 +13085,11 @@ namespace cw
           goto errLabel;
         }
 
-        for(unsigned i=0; i<rbuf->recdN; ++i)
+        for(unsigned i=0; i<rbuf->recd_array->recdN; ++i)
         {
           unsigned loc;
           
-          if((rc = recd_get(rbuf->type, rbuf->recdA + i, p->loc_fld_idx, loc)) != kOkRC )
+          if((rc = recd_get(rbuf->recd_array->recdA + i, p->loc_fld_idx, loc)) != kOkRC )
           {
             rc = proc_error(proc,rc,"Loc field read failed.");
             goto errLabel;
@@ -13414,14 +13172,14 @@ namespace cw
           goto errLabel;
         }
 
-        if((p->midi_fld_idx  = recd_type_field_index( rbuf->type, "midi")) == kInvalidIdx )
+        if((p->midi_fld_idx  = recd_array_field_index( rbuf->recd_array, "midi")) == kInvalidIdx )
         {
           rc = proc_error(proc,kInvalidArgRC,"The input record does not have a MIDI field in '%s'.",cwStringNullGuard(proc->label));
           goto errLabel;
         }
 
         // the location field is optional and so we report an error if it is not found
-        if( (p->loc_fld_idx  = recd_type_field_index( rbuf->type, "loc")) == kInvalidIdx )
+        if( (p->loc_fld_idx  = recd_array_field_index( rbuf->recd_array, "loc")) == kInvalidIdx )
           proc_info(proc,"%s : The incoming record does not have the optional 'loc' field.",cwStringNullGuard(proc->label));
         else
           proc_info(proc,"%s : The 'loc' field was found in the the incoming record.",cwStringNullGuard(proc->label));
@@ -13526,21 +13284,21 @@ namespace cw
           goto errLabel;
 
         
-        for(unsigned i=0; i<rbuf->recdN; ++i )
+        for(unsigned i=0; i<rbuf->recd_array->recdN; ++i )
         {
-          const recd_t*  r = rbuf->recdA + i;
+          const recd_t*  r = rbuf->recd_array->recdA + i;
           const midi::ch_msg_t* m = nullptr;
           
           if( p->loc_fld_idx != kInvalidIdx )
           {            
-            if((rc = recd_get(rbuf->type,r,p->loc_fld_idx,p->msgA[ p->msgN ].loc)) != kOkRC )
+            if((rc = recd_get(r,p->loc_fld_idx,p->msgA[ p->msgN ].loc)) != kOkRC )
             {
               proc_error(proc,rc,"Record 'loc' field read failed.");
               break;
             }
           }
 
-          if((rc = recd_get(rbuf->type,r,p->midi_fld_idx,m)) != kOkRC )
+          if((rc = recd_get(r,p->midi_fld_idx,m)) != kOkRC )
           {
             proc_error(proc,rc,"Record 'midi' field read failed.");
             break;
@@ -13739,11 +13497,11 @@ namespace cw
       
       typedef struct
       {
-        btn_t* btnA;
-        unsigned btnN;
+        btn_t*        btnA;
+        unsigned      btnN;
         recd_array_t* recd_array;
-        unsigned value_fld_idx;
-        unsigned exec_btn_idx;
+        unsigned      value_fld_idx;
+        unsigned      exec_btn_idx;
       } inst_t;
 
       rc_t _parse_cfg(proc_t* proc, inst_t* p, const char* fname )
@@ -13852,13 +13610,13 @@ namespace cw
           }
         }
 
-        if((rc = var_alloc_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, p->recd_array )) != kOkRC )
+        if((rc = var_alloc_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, 0, p->recd_array )) != kOkRC )
         {
           rc = proc_error(proc,rc,"'r_out' allocate and register failed.");
           goto errLabel;
         }
 
-        if((p->value_fld_idx = recd_type_field_index( p->recd_array->type, "value"))  == kInvalidIdx )
+        if((p->value_fld_idx = recd_array_field_index( p->recd_array, "value"))  == kInvalidIdx )
         {
           rc = proc_error(proc,rc,"Unable to locate the output field index 'value'.");
           goto errLabel;
@@ -13897,9 +13655,9 @@ namespace cw
 
         proc_info(proc,"click %i %s",btn_idx,cwStringNullGuard(p->btnA[btn_idx].title));
 
-        for(unsigned i=0; i<p->btnA[btn_idx].valueN && o_rbuf->recdN < p->recd_array->allocRecdN; ++i)
+        for(unsigned i=0; i<p->btnA[btn_idx].valueN && o_rbuf->recd_array->recdN < p->recd_array->allocRecdN; ++i)
         {
-          if((rc = recd_set( o_rbuf->type, nullptr, p->recd_array->recdA + o_rbuf->recdN++, p->value_fld_idx, p->btnA[btn_idx].valueA[i])) != kOkRC )
+          if((rc = recd_append(p->recd_array, nullptr, p->value_fld_idx, p->btnA[btn_idx].valueA[i] )) != kOkRC )
           {
             rc = proc_error(proc,rc,"Value set on output failed.");
             goto errLabel;
@@ -13950,7 +13708,7 @@ namespace cw
           goto errLabel;
         }
         
-        o_rbuf->recdN = 0;        
+        recd_array_empty(p->recd_array);
 
         if( p->exec_btn_idx != kInvalidIdx )
         {

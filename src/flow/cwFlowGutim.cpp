@@ -23,6 +23,7 @@
 #include "cwFlowDecl.h"
 #include "cwFlow.h"
 #include "cwFlowValue.h"
+#include "cwFlowRecd.h"
 #include "cwFlowTypes.h"
 #include "cwFlowNet.h"
 #include "cwFlowProc.h"

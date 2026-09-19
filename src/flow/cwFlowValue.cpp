@@ -838,13 +838,10 @@ void cw::flow::mbuf_print( const mbuf_t* mbuf, unsigned verbosity )
 }
 
 
-cw::flow::rbuf_t* cw::flow::rbuf_create( const recd_type_t* type, const recd_t* recdA, unsigned recdN, unsigned max_recdN )
+cw::flow::rbuf_t* cw::flow::rbuf_create( const struct recd_array_str* recd_array )
 {
   rbuf_t* m = mem::allocZ<rbuf_t>();
-  m->type = type;
-  m->recdA = recdA;
-  m->recdN = recdN;
-  m->maxRecdN = max_recdN;
+  m->recd_array = recd_array;
   return m;
 }
 
@@ -855,16 +852,16 @@ void cw::flow::rbuf_destroy( rbuf_t*& buf )
 
 cw::flow::rbuf_t* cw::flow::rbuf_duplicate( const rbuf_t* src )
 {
-  return rbuf_create(src->type,src->recdA,src->recdN,src->maxRecdN);
+  return rbuf_create(src->recd_array );
 }
 
-void  cw::flow::rbuf_setup( rbuf_t* rbuf, recd_type_t* type, recd_t* recdA, unsigned recdN, unsigned maxRecdN )
+void  cw::flow::rbuf_setup( rbuf_t* rbuf, const struct recd_array_str* recd_array)
 {
-  rbuf->type = type;
-  rbuf->recdA = recdA;
-  rbuf->recdN = recdN;
-  rbuf->maxRecdN = maxRecdN;
+  rbuf->recd_array = recd_array;
 }
+
+unsigned  cw::flow::rbuf_count( const rbuf_t* rbuf ) { assert( rbuf->recd_array != nullptr);     return rbuf->recd_array->recdN; }
+unsigned  cw::flow::rbuf_max_count( const rbuf_t* rbuf ) { assert( rbuf->recd_array != nullptr); return rbuf->recd_array->allocRecdN; }
 
 void cw::flow::rbuf_print( const rbuf_t* rbuf, unsigned verbosity )
 {
@@ -873,7 +870,7 @@ void cw::flow::rbuf_print( const rbuf_t* rbuf, unsigned verbosity )
     return;
   }
 
-  if( rbuf == nullptr )
+  if( rbuf == nullptr || rbuf->recd_array==nullptr )
   {
     cwLogPrint("rbuf: <null>");
     return;
@@ -882,19 +879,17 @@ void cw::flow::rbuf_print( const rbuf_t* rbuf, unsigned verbosity )
     
   if( verbosity >= kMinimalValPrintVerb )
   {
-    if( rbuf->recdN > 5 )
-      cwLogPrint("cnt:%i ",rbuf->recdN);
+    if( recd_array_count(rbuf->recd_array) > 5 )
+      cwLogPrint("cnt:%i ",recd_array_count(rbuf->recd_array));
     
     if( verbosity == kSummaryValPrintVerb )
     {
-      if( rbuf->type != nullptr )
-        recd_type_print(rbuf->type);
+      recd_array_print_info(rbuf->recd_array);
     }
     
     if( verbosity == kAllValPrintVerb )
     {
-      for(unsigned i=0; i<rbuf->recdN; ++i)
-        recd_print(rbuf->recdA + i);
+      recd_array_print(rbuf->recd_array);
     }
     
   }
@@ -1335,7 +1330,7 @@ bool cw::flow::value_has_elements_now( const value_t* v )
 
 
     case kRBufTFl:
-      return v->u.rbuf != nullptr && v->u.rbuf->recdN != 0;
+      return v->u.rbuf != nullptr && v->u.rbuf->recd_array != nullptr && recd_array_count(v->u.rbuf->recd_array) != 0;
           
     case kBoolMtxTFl:
     case kUIntMtxTFl:

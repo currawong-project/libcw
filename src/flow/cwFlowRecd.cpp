@@ -1367,6 +1367,14 @@ void cw::flow::recd_array_print_info( const recd_array_t* recd_array )
 }
 
 
+const char* cw::flow::recd_array_field_index_to_label( const recd_array_t* recd_array, unsigned com_field_idx )
+{
+  if( com_field_idx >= recd_array->comFieldN )
+    return nullptr;
+  
+  return recd_array->comFieldA[ com_field_idx ].field_label;
+}
+
 unsigned cw::flow::recd_array_field_index( const recd_array_t* recd_array, const char* field_label )
 {
   unsigned label_id = id_table::get_id(field_label);

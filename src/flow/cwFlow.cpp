@@ -37,7 +37,6 @@ namespace cw
     } library_t;
     
     library_t g_library[] = {
-      #ifdef NOT_DEF
       { "user_def_proc",   &user_def_proc::members },
       { "poly",            &poly::members },
       { "midi_in",         &midi_in::members },
@@ -105,6 +104,8 @@ namespace cw
       { "midi_recorder",   &midi_recorder::members },
       { "button_array",    &button_array::members },
       {"button_list", &button_list::members },
+#ifdef NOT_DEF
+
       { "score_player",    &score_player::members },
       { "multi_player",    &multi_player::members },
       { "vel_table",       &vel_table::members },
@@ -816,6 +817,9 @@ namespace cw
 
       network_destroy(p->net);
 
+      // destroy the global recd_type_t registry
+      recd_registry_destroy();
+
       global_var_t* gv=p->globalVarL;
       while( gv != nullptr )
       {
@@ -1104,6 +1108,9 @@ cw::rc_t cw::flow::initialize( handle_t h,
     // override the program assigned 'preset' 
     p->init_net_preset_label = preset_label_str;
   }
+
+  // create the global recd_type_t registry
+  recd_registry_create();
   
   // instantiate the network
   if((rc = network_create(p,&root_label,&p->networkCfg,1,proxyVarL,1,p->net)) != kOkRC )

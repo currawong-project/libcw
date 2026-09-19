@@ -17,6 +17,7 @@
 #include "cwFlowDecl.h"
 #include "cwFlow.h"
 #include "cwFlowValue.h"
+#include "cwFlowRecd.h"
 #include "cwFlowTypes.h"
 
 
@@ -2400,12 +2401,12 @@ cw::rc_t cw::flow::var_register_and_set( proc_t* proc, const char* var_label, un
   return var_register_and_set(proc,var_label,sfx_id,vid,chIdx,srate, chN, maxBinN_V, binN_V, hopSmpN_V, magV, phsV, hzV);
 }
 
-cw::rc_t   cw::flow::var_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, const recd_type_t* recd_type, recd_t* recdA, unsigned recdN, unsigned maxRecdN )
+cw::rc_t   cw::flow::var_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, const recd_array_t* recd_array )
 {
   rc_t rc = kOkRC;
 
   rbuf_t* rbuf;
-  if((rbuf = rbuf_create(recd_type,recdA,recdN,maxRecdN)) == nullptr )
+  if((rbuf = rbuf_create(recd_array)) == nullptr )
     return proc_error(proc,kOpFailRC,"rbuf create failed on proc:'%s:%i' variable:'%s:%i'.", proc->label, proc->label_sfx_id, var_label, sfx_id);
     
   if((rc = _var_register_and_set( proc, var_label, sfx_id, vid, chIdx, rbuf )) != kOkRC )
@@ -2416,18 +2417,18 @@ cw::rc_t   cw::flow::var_register_and_set( proc_t* proc, const char* var_label, 
 
 
 
-cw::rc_t   cw::flow::var_alloc_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, const recd_type_t* base, recd_array_t*& recd_array_ref, unsigned allocRecdN )
+cw::rc_t   cw::flow::var_alloc_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, const recd_type_t* const * baseA, unsigned baseN, recd_array_t*& recd_array_ref, unsigned allocRecdN )
 {
   rc_t rc = kOkRC;
   recd_array_t* recd_array = nullptr;
   recd_array_ref = nullptr;
   
-  if((rc = var_alloc_record_array(proc,var_label,sfx_id,chIdx,base,recd_array,allocRecdN)) != kOkRC )
-    goto errLabel;
-  
-  if((rc = var_register_and_set(proc, var_label, sfx_id, vid, chIdx, recd_array->type, recd_array->recdA, 0, recd_array->allocRecdN )) != kOkRC )
+  if((rc = var_alloc_record_array(proc,var_label,sfx_id,chIdx,baseA, baseN, recd_array,allocRecdN)) != kOkRC )
     goto errLabel;
 
+  if((rc = var_register_and_set(proc, var_label, sfx_id, vid, chIdx, recd_array )) != kOkRC )
+    goto errLabel;
+  
   recd_array_ref = recd_array;
         
 errLabel:
@@ -2441,7 +2442,7 @@ errLabel:
   
 }
 
-cw::rc_t   cw::flow::var_alloc_record_array( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx, const recd_type_t* base, recd_array_t*& recd_array_ref, unsigned allocRecdN )
+cw::rc_t   cw::flow::var_alloc_record_array( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned chIdx, const recd_type_t* const * baseA, unsigned baseN, recd_array_t*& recd_array_ref, unsigned allocRecdN )
 {
   rc_t        rc  = kOkRC;
   variable_t* var = nullptr;
@@ -2473,11 +2474,13 @@ cw::rc_t   cw::flow::var_alloc_record_array( proc_t* proc, const char* var_label
       goto errLabel;
     }
 
-    // create the recd_array
-    if((rc = recd_array_create( recd_array_ref, recd_fmt->recd_type, base, alloc_cnt )) != kOkRC )
+
+    if((rc = recd_array_create( recd_array_ref, recd_fmt->fieldD_cfg, baseA, baseN, alloc_cnt )) != kOkRC )
     {
       goto errLabel;
     }
+
+    
   }
 
 errLabel:
@@ -2487,6 +2490,7 @@ errLabel:
 
   return rc;
 }
+
 
 cw::rc_t  cw::flow::var_get( const variable_t* var, bool& valRef )
 { return _val_get_driver(var,valRef); }

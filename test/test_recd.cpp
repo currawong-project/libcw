@@ -343,7 +343,7 @@ TEST( RecdTest, RecdArrayInherit )
 
   for(unsigned i=0; i<recd_array_count(recd_array_0); ++i)
   {
-    if((rc = recd_set(recd_array_1->typeLinkA,recd_array_1->recdA + i, recd_array_0->recdA + i,
+    if((rc = recd_append(recd_array_1, recd_array_0->recdA + i,
                       afi, abc_dataA[i].a,
                       bfi, abc_dataA[i].b,
                       cfi, abc_dataA[i].c,
@@ -351,8 +351,6 @@ TEST( RecdTest, RecdArrayInherit )
     {
       FAIL() << "recd_set() failed on record index: " << i;
     }
-
-    recd_array_1->recdN += 1;
   }
 
 
