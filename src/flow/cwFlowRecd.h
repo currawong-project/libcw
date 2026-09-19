@@ -155,8 +155,8 @@ namespace cw
     void recd_array_print_info( const recd_array_t* recd_array );
 
     const char* recd_array_field_index_to_label( const recd_array_t* recd_array, unsigned com_field_idx );
-    unsigned recd_array_field_index( const recd_array_t* recd_array, const char* field_label );
-    rc_t     recd_array_field_index( const recd_array_t* recd_array, const char* field_label, unsigned& field_idx_ref );
+    unsigned    recd_array_field_index( const recd_array_t* recd_array, const char* field_label );
+    rc_t        recd_array_field_index( const recd_array_t* recd_array, const char* field_label, unsigned& field_idx_ref );
     
     inline rc_t recd_array_field_index( const recd_array_t* ) { return kOkRC; }
     

@@ -193,8 +193,6 @@ namespace cw
         goto errLabel;                
       }
 
-      
-
       if( pair->pair_value()->is_string() )
       {
         is_alias_fl_ref = true;
@@ -1407,6 +1405,9 @@ void cw::flow::recd_array_print_info( const recd_array_t* recd_array )
 
 const char* cw::flow::recd_array_field_index_to_label( const recd_array_t* recd_array, unsigned com_field_idx )
 {
+  if( recd_array == nullptr )
+    return nullptr;
+  
   if( com_field_idx >= recd_array->comFieldN )
     return nullptr;
   
@@ -1415,10 +1416,13 @@ const char* cw::flow::recd_array_field_index_to_label( const recd_array_t* recd_
 
 unsigned cw::flow::recd_array_field_index( const recd_array_t* recd_array, const char* field_label )
 {
-  unsigned label_id = id_table::get_id(field_label);
-  for(unsigned i=0; i<recd_array->comFieldN; ++i)
-    if( recd_array->comFieldA[i].label_id == label_id )
-      return i;
+  if( recd_array != nullptr )
+  {  
+    unsigned label_id = id_table::get_id(field_label);
+    for(unsigned i=0; i<recd_array->comFieldN; ++i)
+      if( recd_array->comFieldA[i].label_id == label_id )
+        return i;
+  }
   
   return kInvalidIdx;
 }
