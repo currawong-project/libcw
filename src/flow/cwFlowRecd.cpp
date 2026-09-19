@@ -584,12 +584,6 @@ cw::rc_t  cw::flow::recd_type_create( recd_type_t*& recd_type_ref, const recd_ty
       goto errLabel;
     }
 
-    if((rc = cfg->getv_opt("depth",depth)) != kOkRC )
-    {
-      rc = cwLogError(rc,"The 'depth' value parse in the record 'fmt' specifier failed.");
-      goto errLabel;
-    }
-
     // validate the basic fields_dict layout and check if this is an alias list  
     if((rc = _recd_field_desc_validate_cfg( fields_dict, is_alias_fl )) != kOkRC )
     {
@@ -606,6 +600,13 @@ cw::rc_t  cw::flow::recd_type_create( recd_type_t*& recd_type_ref, const recd_ty
     }
     else
     {
+      // depth is not applicable to aliasing recd_type so we parse it here rather than above
+      if((rc = cfg->getv_opt("depth",depth)) != kOkRC )
+      {
+        rc = cwLogError(rc,"The 'depth' value parse in the record 'fmt' specifier failed.");
+        goto errLabel;
+      }
+      
       // load the fields list
       if((rc = _recd_field_desc_array_from_cfg(recd_type,fields_dict)) != kOkRC )
       {
@@ -633,7 +634,6 @@ cw::rc_t  cw::flow::recd_type_create( recd_type_t*& recd_type_ref, const recd_ty
 
   recd_type->class_id  = kInvalidId;
   recd_type->base_type = base_type;
-  recd_type_ref        = recd_type;
 
   // Register this recd_type_t and assign it a class_id
   _recd_register_type( recd_type );
@@ -642,6 +642,8 @@ cw::rc_t  cw::flow::recd_type_create( recd_type_t*& recd_type_ref, const recd_ty
   // if this type has blank levels above it
   recd_type = _recd_type_apply_depth( recd_type, depth );
 
+  recd_type_ref        = recd_type;
+  
 errLabel:
   if( rc != kOkRC )
   {
@@ -1463,10 +1465,14 @@ unsigned cw::flow::recd_array_field_index( const recd_array_t* recd_array, const
 
 cw::rc_t cw::flow::recd_array_field_index( const recd_array_t* recd_array, const char* field_label, unsigned& field_idx_ref )
 {
+  rc_t rc = kOkRC;
+  
   if((field_idx_ref = recd_array_field_index(recd_array,field_label)) == kInvalidIdx )
-    return cwLogError(kEleNotFoundRC,"The field label '%s' was not found.",cwStringNullGuard(field_label));
-
-  return kOkRC;
+  {
+     rc = cwLogError(kEleNotFoundRC,"The field label '%s' was not found.",cwStringNullGuard(field_label));
+     recd_array_print(recd_array);     
+  }
+  return rc;
 }
 
 
