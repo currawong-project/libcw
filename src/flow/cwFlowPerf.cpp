@@ -4835,15 +4835,21 @@ namespace cw
           goto errLabel;
         }
 
-        if((rc = recd_array_field_index( in_rbuf->recd_array,
-                                         "midi",p->i_midi_field_idx,
+        if((rc = recd_array_field_index( in_rbuf->recd_array,"midi",p->i_midi_field_idx)) != kOkRC )
+        {
+          proc_error(proc,rc,"Record field lookup failed.");
+          goto errLabel;
+        }
+
+        if((rc = recd_array_field_index( p->recd_array,
                                          "loc",p->loc_field_idx,
                                          "meas",p->meas_field_idx,
                                          "score_vel",p->vel_field_idx)) != kOkRC )
         {
+          proc_error(proc,rc,"Record field lookup failed.");
           goto errLabel;
         }
-                                         
+        
       errLabel:
         mem::release(score_fname);
         return rc;
