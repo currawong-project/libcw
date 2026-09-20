@@ -1287,6 +1287,7 @@ namespace cw
     //---------------------------------------------------------------------------------------------------------------------------------
     // wt_osc
     //
+
     
     namespace wt_osc
     {
@@ -1312,6 +1313,30 @@ namespace cw
         unsigned        posn_smp_idx; // The location of this sample in the original audio file. 
       };
 
+      //template< typename sample_t >
+      //sample_t cube_interp(sample_t x, sample_t y0, sample_t y1,sample_t y2, sample_t y3):
+      //  return ((y3) - (y2) - (y0) + (y1))*(x)*(x)*(x) + ((y0) - (y1) - ((y3) - (y2) - (y0) + (y1)))*(x)*(x) + ((y2) - (y0))*(x) + (y1)
+
+      
+      template< typename sample_t >
+      sample_t table_read_3( const sample_t* tab, double frac, unsigned N )
+      {
+        int i0 = floor(frac);
+
+        sample_t y0 = tab[i0-1];
+        sample_t y1 = tab[i0];
+        sample_t y2 = tab[i0+1];
+        sample_t y3 = tab[i0+2];
+
+        sample_t   x  = (sample_t)(frac - int(frac));
+
+        assert( i0+2<(int)N );
+
+        // given x, calc. the y value between points y1 and y2
+        
+        return  (sample_t)(((y3) - (y2) - (y0) + (y1))*(x)*(x)*(x) + ((y0) - (y1) - ((y3) - (y2) - (y0) + (y1)))*(x)*(x) + ((y2) - (y0))*(x) + (y1));
+      }
+      
       template< typename sample_t >
       sample_t table_read_2( const sample_t* tab, double frac, unsigned N )
       {
@@ -1323,7 +1348,6 @@ namespace cw
         assert( i0<N && i1<N );
 
         return (sample_t)(tab[i0] + (tab[i1] - tab[i0]) * f);
-
       }
 
       template< typename sample_t >
@@ -1383,8 +1407,8 @@ namespace cw
         
         for(unsigned i=0; i<aN; ++i)
         {
-          sample_t s0 = table_read_2( p->wt->aV+p->wt->pad_smpN, phs0, p->wt->aN + p->wt->pad_smpN );
-          sample_t s1 = table_read_2( p->wt->aV+p->wt->pad_smpN, phs1, p->wt->aN + p->wt->pad_smpN );
+          sample_t s0 = table_read_3( p->wt->aV+p->wt->pad_smpN, phs0, p->wt->aN + p->wt->pad_smpN );
+          sample_t s1 = table_read_3( p->wt->aV+p->wt->pad_smpN, phs1, p->wt->aN + p->wt->pad_smpN );
 
           sample_t e0 = hann_read<sample_t>(phs0,p->fsmp_per_wt);
           sample_t e1 = hann_read<sample_t>(phs1,p->fsmp_per_wt);
