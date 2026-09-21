@@ -6685,7 +6685,7 @@ namespace cw
         rc_t        rc            = kOkRC;
         const char* wtb_var_label = "wtb";
         char*       exp_wtb_fname = nullptr;
-        unsigned    padSmpN       = 3;
+        unsigned    padSmpN       = WT_OSC_PAD_SAMPLE_CNT;
         
         // if the global wave table bank has not yet been created
         if((p->wtbH_ptr = (wt_bank::handle_t*)global_var(proc, wtb_var_label )) == nullptr )

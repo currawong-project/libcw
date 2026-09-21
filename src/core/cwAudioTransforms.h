@@ -1288,6 +1288,12 @@ namespace cw
     // wt_osc
     //
 
+    #define WT_OSC_INTERP_USE_INTERP_3
+    #ifdef WT_OSC_INTERP_USE_INTERP_3
+    #define WT_OSC_PAD_SAMPLE_CNT (3)
+    #else
+    #define WT_OSC_PAD_SAMPLE_CNT (1)
+    #endif
     
     namespace wt_osc
     {
@@ -1312,11 +1318,6 @@ namespace cw
         unsigned        pad_smpN;     // Count of mirrored sampled added to the begin and end of the audio vector
         unsigned        posn_smp_idx; // The location of this sample in the original audio file. 
       };
-
-      //template< typename sample_t >
-      //sample_t cube_interp(sample_t x, sample_t y0, sample_t y1,sample_t y2, sample_t y3):
-      //  return ((y3) - (y2) - (y0) + (y1))*(x)*(x)*(x) + ((y0) - (y1) - ((y3) - (y2) - (y0) + (y1)))*(x)*(x) + ((y2) - (y0))*(x) + (y1)
-
       
       template< typename sample_t >
       sample_t table_read_3( const sample_t* tab, double frac, unsigned N )
@@ -1407,9 +1408,14 @@ namespace cw
         
         for(unsigned i=0; i<aN; ++i)
         {
+          #ifdef WT_OSC_INTERP_USE_INTERP_3
           sample_t s0 = table_read_3( p->wt->aV+p->wt->pad_smpN, phs0, p->wt->aN + p->wt->pad_smpN );
           sample_t s1 = table_read_3( p->wt->aV+p->wt->pad_smpN, phs1, p->wt->aN + p->wt->pad_smpN );
-
+          #else
+          sample_t s0 = table_read_3( p->wt->aV+p->wt->pad_smpN, phs0, p->wt->aN + p->wt->pad_smpN );
+          sample_t s1 = table_read_3( p->wt->aV+p->wt->pad_smpN, phs1, p->wt->aN + p->wt->pad_smpN );
+          #endif
+          
           sample_t e0 = hann_read<sample_t>(phs0,p->fsmp_per_wt);
           sample_t e1 = hann_read<sample_t>(phs1,p->fsmp_per_wt);
 
