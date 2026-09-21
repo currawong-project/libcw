@@ -818,6 +818,28 @@ See test/test.cfg `test_recd_registry` for examples of both of these uses.
 Record Implementation:
 ----------------------
 
+
+- The record schema (a.k.a type) is formed from a heirarchy of record types.
+
+- Only the top level of the heirarchy is writable. The base type and below is read-only.
+
+- Duplicate field names are not allowed in the type hierarchy.
+
+- A data record is made from  a tuple of the form (type, values, base) where
+  + 'values' is an array containing one entry for each field in the 'type'
+  + 'base' is a pointer to the base record.
+  
+- A record schema is made up of a tuple (fields,map)
+  + 'fields' is an array of field desc (fdesc) tuples of the form (name,value_type,offset).
+  + The field value of a data record is accessed as the offset into the record
+  value array given by the associated map fdesc->offset.
+  
+
+- The rationale for the above characteristics is as follows:
+  + Records may be split (routed) into separate arrays by simpy setting the base pointer
+    of the new record to the record being routed.  No data copying is required.
+
+
 When record types are instantiated a check is done to verify that 
 none of the new top level fields have matching field labels with any fields
 in the base hierarchy. 
@@ -837,6 +859,11 @@ record array record types.  Fields that are common to
 all types are eligible for access by users of the record array.
 Fields that are not common are ignored and are inaccessable.
 
+Note that records which are logically equivalent may not be `physically` equivalent
+because the values associated with the common fields may be located at
+different levels of the record type hierarchy or the fields may be at different
+offsets into their associated `recd_t.valA[]` arrays. 
+
 Each record has a `recd_type_link_t` pointer which gives it access to
 the `recd_type_t` which defines it's layout as well as the field
 information (`recd_type_link_t.fieldLocA`) required to access the
@@ -851,6 +878,20 @@ that can be established when the record array is created, and then used for the 
 of the array. The common field index supports simple lookup of the location
 information for a given field value across the multiple types that may be contained
 in the record array.
+
+As currently implemented only fields that are common to all the types contained
+in the `recd_array_t` instance may be accessed. This limitation exists because
+the field index used by `recd_get()` is an index into the `comFieldA[]` array - which
+only contains field information for 'common' fields.  The advantage to this
+limitation is that if a field index is returned via a call to `recd_array_field_index()` it is guaranteed
+that the field exists in the `recd_array_t`.
+
+
+
+The `recd_array_t.baseMapA[]` provides a way to map directly from a 'base' type class-id
+to an entry in the typeLinkA[].  This allows very fast lookup of a 'link' pointer
+for a given record.  See `recd_append()`.
+
 
 
 
