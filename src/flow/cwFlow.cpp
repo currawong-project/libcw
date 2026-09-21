@@ -57,6 +57,7 @@ namespace cw
       { "sine_tone",       &sine_tone::members },
       { "pv_analysis",     &pv_analysis::members },
       { "pv_synthesis",    &pv_synthesis::members },
+      { "spec_harm_map",   &spec_harm_map::members },
       { "spec_dist",       &spec_dist::members },
       { "compressor",      &compressor::members },
       { "limiter",         &limiter::members },

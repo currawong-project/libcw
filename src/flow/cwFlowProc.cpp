@@ -4256,6 +4256,166 @@ namespace cw
 
     //------------------------------------------------------------------------------------------------------------------
     //
+    // spec_map
+    //
+    namespace spec_harm_map
+    {
+      typedef struct dsp::spec_harm_map::obj_str<fd_sample_t,fd_sample_t> spec_harm_map_t;
+      
+      enum {
+        kInPId,
+        kEnablePId,
+        kBypassPId,
+        kPitchPId,
+        kCoeff0PId,
+        kOutPId
+      };
+      
+      typedef struct
+      {
+        spec_harm_map_t** hmA;
+        unsigned          hmN;
+      } inst_t;
+
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t          rc     = kOkRC;
+        const fbuf_t* srcBuf = nullptr; //
+        inst_t*       inst   = mem::allocZ<inst_t>();
+        bool          enable_fl = true;
+        
+        proc->userPtr = inst;
+
+        // verify that a source buffer exists
+        if((rc = var_register_and_get(proc, kAnyChIdx,
+                                      kInPId,"in",kBaseSfxId, srcBuf,
+                                      kEnablePId, "enable", kBaseSfxId, enable_fl )) != kOkRC )          
+        {
+          goto errLabel;
+        }
+        else
+        {
+          // allocate pv channel array
+          inst->hmN = srcBuf->chN;
+          inst->hmA = mem::allocZ<spec_harm_map_t*>( inst->hmN );  
+        
+          const fd_sample_t* magV[ srcBuf->chN ];
+          const fd_sample_t* phsV[ srcBuf->chN ];
+          const fd_sample_t*  hzV[ srcBuf->chN ];
+        
+          // create a spec_dist object for each input channel
+          for(unsigned i=0; i<srcBuf->chN; ++i)
+          {
+            bool     bypass_fl  = false;
+            unsigned midi_pitch = 0;
+            coeff_t  coeff0     = 0;
+          
+            // setup the output buffer pointers
+            magV[i] = inst->hmA[i]->outMagV;
+            phsV[i] = inst->hmA[i]->outPhsV;
+            hzV[i]  = nullptr;
+
+            spec_harm_map_t* hm = inst->hmA[i];
+
+            if((rc = var_register_and_get(proc,kAnyChIdx,
+                                          kBypassPId, "bypass", kBaseSfxId, bypass_fl,
+                                          kCoeff0PId, "coeff_0", kBaseSfxId, coeff0,
+                                          kPitchPId,  "pitch", kBaseSfxId, midi_pitch)) != kOkRC )
+            {
+              goto errLabel;
+            }
+          
+
+            if((rc = create( inst->hmA[i], srcBuf->binN_V[i], midi_pitch, coeff0, bypass_fl )) != kOkRC )
+            {
+              rc = proc_error(proc,kOpFailRC,"The 'spec harm map' object create failed on the instance '%s'.",proc->label);
+              goto errLabel;
+            }
+
+          }
+        
+          // create the output buffer
+          if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, srcBuf->srate, srcBuf->chN, srcBuf->maxBinN_V, srcBuf->binN_V, srcBuf->hopSmpN_V, magV, phsV, hzV )) != kOkRC )
+          {
+            goto errLabel;
+          }
+        }
+          
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        for(unsigned i=0; i<p->hmN; ++i)
+          destroy(p->hmA[i]);
+
+        mem::release(p->hmA);
+        return rc;
+      }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t          rc        = kOkRC;
+        inst_t*       inst      = (inst_t*)proc->userPtr;
+        const fbuf_t* srcBuf    = nullptr;
+        fbuf_t*       dstBuf    = nullptr;
+        bool          enable_fl = true;
+        unsigned      chN       = 0;
+
+        // get the src buffer
+        if((rc = var_get(proc,kInPId, kAnyChIdx, srcBuf )) != kOkRC )
+          goto errLabel;
+
+        // get the dst buffer
+        if((rc = var_get(proc,kOutPId, kAnyChIdx, dstBuf)) != kOkRC )
+          goto errLabel;
+
+        // get the enable flag
+        if((rc = var_get(proc,kEnablePId, kAnyChIdx, enable_fl )) != kOkRC )
+          goto errLabel;
+
+        chN = std::min(srcBuf->chN,inst->hmN);
+                
+        for(unsigned i=0; i<chN; ++i)
+        {
+          dstBuf->readyFlV[i] = false;
+          if( srcBuf->readyFlV[i] )
+          {          
+            dsp::spec_harm_map::exec( inst->hmA[i], srcBuf->magV[i], srcBuf->phsV[i], srcBuf->binN_V[i], enable_fl );
+
+            dstBuf->readyFlV[i] = true;
+          }
+        }
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    // spec_map
+    
+    //------------------------------------------------------------------------------------------------------------------
+    //
     // Spec Dist
     //
     namespace spec_dist
@@ -4281,7 +4441,7 @@ namespace cw
       {
         spec_dist_t** sdA;
         unsigned sdN;
-        bool enableFl;
+        //bool enableFl;
       } inst_t;
     
 
