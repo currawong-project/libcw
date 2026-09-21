@@ -2327,6 +2327,7 @@ namespace cw
 
           case kSecFlPId:
             var_get(var,p->sec_fl);
+            var_send_to_ui_enable(proc, kSecProbFlPId,   kAnyChIdx, p->sec_fl );            
             break;
 
           case kSecProbFlPId:
@@ -3023,6 +3024,42 @@ namespace cw
 
       }
 
+
+      void _print_preset_array( proc_t* proc, inst_t* p )
+      {
+        for(unsigned i=0; i<p->presetN; ++i)
+        {
+          const preset_t* preset = p->presetA + i;
+
+          // for each value of interest in this preset
+          for(unsigned j=0; j<kPresetVarN; ++j)
+          {
+            printf("%s %s : %s : ",preset->ps_label,preset->cls_label,_var_cfgA[j].var_label);
+            const preset_var_t* var = preset->varA + j;
+            for(unsigned k=0; k<kMaxChN; ++k)
+            {
+              const preset_value_t* val = var->chA + k;
+              switch( val->tid )
+              {
+                case kNoPresetValTId:
+                  printf("---- ");
+                  break;
+                  
+                case kUIntPresetValTId:
+                  printf("%i ",val->u.uint);
+                  break;
+                  
+                case kCoeffPresetValTId:
+                  printf("%f ",val->u.coeff);
+                  break;
+              }
+            }
+            printf("\n");
+          }
+          
+        }
+      }
+      
       rc_t _create_and_fill_preset_array( proc_t* proc, inst_t* p )
       {
         rc_t rc = kOkRC;
