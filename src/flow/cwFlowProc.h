@@ -57,6 +57,7 @@ namespace cw
     namespace sine_tone       { extern class_members_t members;  }
     namespace pv_analysis     { extern class_members_t members;  }
     namespace pv_synthesis    { extern class_members_t members;  }
+    namespace spec_harm_map   { extern class_members_t members;  }    
     namespace spec_dist       { extern class_members_t members;  }
     namespace compressor      { extern class_members_t members;  }
     namespace limiter         { extern class_members_t members;  }

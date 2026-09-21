@@ -827,6 +827,90 @@ namespace cw
       
     } 
 
+    //---------------------------------------------------------------------------------------------------------------------------------
+    // Spectral Harmonic Map
+    //
+    
+    namespace spec_harm_map
+    {
+      template< typename T0, typename T1  >
+      struct obj_str
+      {
+        bool bypassFl;
+
+        T1   coeff;
+        T0   ogain;
+
+        T0*  outMagV;
+        T0*  outPhsV;
+        
+      };
+
+      typedef struct obj_str<float,float>   fobj_t;
+      typedef struct obj_str<double,double> dobj_t;
+
+      template< typename T0, typename T1 >
+      rc_t create( struct obj_str<T0,T1>*& p, unsigned binN, unsigned pitch, T1 coeff, bool bypassFl=false )
+      {
+        rc_t rc = kOkRC;
+        
+        p = mem::allocZ< struct obj_str<T0,T1> >();
+
+        p->bypassFl = bypassFl;
+        p->coeff    = coeff;
+        p->ogain    = 1;
+
+        p->outMagV  = mem::allocZ<T0>( binN );
+        p->outPhsV  = mem::allocZ<T0>( binN );
+
+        return rc;
+      }
+
+      template< typename T0, typename T1 >
+      rc_t destroy( struct obj_str<T0,T1>*& p )
+      {
+        rc_t rc = kOkRC;
+        if( p != nullptr )
+        {
+          mem::release(p->outMagV);
+          mem::release(p->outPhsV);
+          mem::release(p);
+        }
+        return rc;
+      }
+      
+      template< typename T0, typename T1 >
+      rc_t exec( struct obj_str<T0,T1>* p, const T0* magV, const T0* phsV, unsigned binN, bool enable_fl=true )
+      {
+        rc_t rc = kOkRC;
+
+        if( p->bypassFl || !enable_fl )
+        {
+          vop::copy( p->outMagV, magV, binN );
+        }
+        else
+        {
+          double X0m[binN];
+          double X1m[binN];
+          
+          // convert magnitude to db (range=-1000.0 to 0.0)
+          vop::ampl_to_db(X0m, magV, binN );
+
+          // convert db back to magnitude
+          vop::db_to_ampl(X1m, X0m, binN );
+
+          // apply the output gain
+          //vop::mul(  p->outMagV, X1m, std::min((T1)4.0,p->ogain), binN);
+          vop::mul(  p->outMagV, X1m, p->ogain, binN);
+          
+        }
+        
+        vop::copy( p->outPhsV, phsV, binN);
+
+        return rc;
+      }
+      
+    }
     
     //---------------------------------------------------------------------------------------------------------------------------------
     // Spectral Distortion
