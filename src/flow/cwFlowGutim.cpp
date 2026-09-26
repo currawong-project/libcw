@@ -74,7 +74,6 @@ namespace cw
         unsigned end_loc;
         unsigned piano_id;
         double   post_gap_dur_sec;  // last record is set to -1
-        //unsigned player_id;        
       } recd_t;
       
       typedef struct
@@ -101,7 +100,8 @@ namespace cw
             "beg_loc": 0,
             "end_loc": 251,
             "player_id": 4,
-            "post_gap_dur_sec": "23.32",
+            "post_gap_dur_sec": 23.32,
+            "max_dur_sec: 1.5634,  # max IOI duration 
             "piano_id": 0
           },
 
