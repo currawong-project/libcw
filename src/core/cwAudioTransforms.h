@@ -944,6 +944,7 @@ namespace cw
         {
           mem::release(p->outMagV);
           mem::release(p->outPhsV);
+          mem::release(p->xV);
           mem::release(p->hV);
           mem::release(p);
         }
