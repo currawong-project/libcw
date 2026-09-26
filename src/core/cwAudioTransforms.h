@@ -464,7 +464,7 @@ namespace cw
       rc_t set_window_sample_count( struct obj_str<sample_t>* p, unsigned wndSmpCnt )
       {
         if( wndSmpCnt > p->maxWndSmpCnt )
-          return cwLogError( kInvalidArgRC, "The shift buffer window sample count (%i) cannot be larger than the max window sample count (%i).", p->wndSmpCnt, p->maxWndSmpCnt );
+          return cwLogError( kInvalidArgRC, "The shift buffer window sample count (%i) cannot be larger than the max window sample count (%i).", wndSmpCnt, p->maxWndSmpCnt );
 
         p->wndSmpCnt = wndSmpCnt;
         p->outN      = wndSmpCnt;
@@ -618,10 +618,29 @@ namespace cw
         
         p = mem::allocZ< struct obj_str<T0,T1> >();
 
-        shift_buf::create( p->sb, procSmpCnt, maxWndSmpCnt, wndSmpCnt, hopSmpCnt );
-        wnd_func::create(  p->wf, wnd_func::kHannWndId  | wnd_func::kNormByLengthWndFl, maxWndSmpCnt, wndSmpCnt, 0 );
-        FFT::create(       p->ft, maxWndSmpCnt, FFT::kToPolarFl);
-        phs_to_frq::create(p->pf, srate, p->ft->binN, hopSmpCnt );
+        if((rc = shift_buf::create( p->sb, procSmpCnt, maxWndSmpCnt, wndSmpCnt, hopSmpCnt )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Shift buf create failed.");
+          goto errLabel;
+        }
+        
+        if((rc = wnd_func::create(  p->wf, wnd_func::kHannWndId  | wnd_func::kNormByLengthWndFl, maxWndSmpCnt, wndSmpCnt, 0 )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Window function create failed.");
+          goto errLabel;
+        }
+        
+        if((rc = FFT::create(       p->ft, maxWndSmpCnt, FFT::kToPolarFl)) != kOkRC )
+        {
+          rc = cwLogError(rc,"FFT function create failed.");
+          goto errLabel;
+        }
+        
+        if((rc = phs_to_frq::create(p->pf, srate, p->ft->binN, hopSmpCnt )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Phase-to-frequency function create failed.");
+          goto errLabel;
+        }
 
         p->flags      = flags;
         p->procSmpCnt = procSmpCnt;
@@ -634,7 +653,8 @@ namespace cw
         p->magV       = p->ft->magV; 
         p->phsV       = p->ft->phsV;
         p->hzV        = p->pf->hzV;
-        
+
+      errLabel:
         return rc;
       }
 
@@ -747,9 +767,23 @@ namespace cw
         p->magV       = mem::allocZ<T1>( p->binCnt );
 
 
-        wnd_func::create( p->wf, wndTypeId, wndSmpCnt, wndSmpCnt, 0);
-        IFFT::create(     p->ft, p->binCnt );
-        ola::create(      p->ola, wndSmpCnt, hopSmpCnt, procSmpCnt, wndTypeId );
+        if((rc = wnd_func::create( p->wf, wndTypeId, wndSmpCnt, wndSmpCnt, 0)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Create window function failed.");
+          goto errLabel;
+        }
+        
+        if((rc = IFFT::create(     p->ft, p->binCnt )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Create IFFT function failed.");
+          goto errLabel;
+        }
+          
+        if((rc = ola::create(      p->ola, wndSmpCnt, hopSmpCnt, procSmpCnt, wndTypeId )) != kOkRC )
+        {
+          rc = cwLogError(rc,"Overlap-add function failed.");
+          goto errLabel;
+        }
         
         for(k=0; k<(int)p->binCnt; ++k)
         {
@@ -761,7 +795,7 @@ namespace cw
 
           //printf("%f %f %f\n",p->itrV[k],p->minRphV[k],p->maxRphV[k]);
         }
-
+      errLabel:
         return rc;  
       }
       
@@ -836,33 +870,69 @@ namespace cw
       template< typename T0, typename T1  >
       struct obj_str
       {
-        bool bypassFl;
-
-        T1   coeff;
-        T0   ogain;
+        bool     bypassFl;
+        T1       srate;
+        T1       igain;
+        unsigned hnum;
+        bool     peak_fl;
+        T1       peak_gain;
+        T1       hgain;
+        T1       stretch;
+        T1       expo;
+        T1       hfeedback;
+        T1       ogain;
 
         T0*  outMagV;
         T0*  outPhsV;
-        
+        T0*  xV;
+        T0*  hV;
+
+        unsigned binN;
+        double fundHz;
+        double binHz;
       };
 
       typedef struct obj_str<float,float>   fobj_t;
       typedef struct obj_str<double,double> dobj_t;
 
       template< typename T0, typename T1 >
-      rc_t create( struct obj_str<T0,T1>*& p, unsigned binN, unsigned pitch, T1 coeff, bool bypassFl=false )
+      rc_t create( struct obj_str<T0,T1>*& p, unsigned binN, T1 srate )
       {
-        rc_t rc = kOkRC;
-        
+        rc_t rc = kOkRC;        
         p = mem::allocZ< struct obj_str<T0,T1> >();
-
-        p->bypassFl = bypassFl;
-        p->coeff    = coeff;
-        p->ogain    = 1;
 
         p->outMagV  = mem::allocZ<T0>( binN );
         p->outPhsV  = mem::allocZ<T0>( binN );
+        p->xV       = mem::allocZ<T0>( binN );
+        p->hV       = mem::allocZ<T0>( binN );
+        p->binN     = binN;
+        p->srate    = srate;
+        
+        return rc;
+      }
 
+      template< typename T0, typename T1 >
+      rc_t setup( struct obj_str<T0,T1>* p, unsigned pitch, T1 igain, unsigned hnum, bool peak_fl, T1 peak_gain, T1 hgain, T1 stretch, T1 expo, T1 hfeedback, T1 ogain, bool bypassFl=false )
+      {
+        rc_t rc = kOkRC;
+        p->fundHz   = midi::midiToHz(pitch);
+        p->binHz    = (p->srate/p->binN)/2;
+        p->bypassFl = bypassFl;
+        p->igain    = igain;
+        p->hnum     = hnum;
+        p->peak_fl  = peak_fl;
+        p->peak_gain= peak_gain;
+        p->hgain    = hgain;
+        p->stretch  = stretch;
+        p->expo     = expo;
+        p->hfeedback= hfeedback;
+        p->ogain    = ogain;
+        
+        vop::zero(p->hV,p->binN);
+        
+        printf("setup:%i bypass:%i hnum:%i pk_fl:%i pkgain:%5.3f hgain:%5.3f stretch:%6.3f expo:%6.3f hfeedback:%5.3f: fund:%8.2f bin:%8.2f\n",
+               pitch,p->bypassFl,hnum,peak_fl,peak_gain,hgain,stretch,expo,hfeedback,p->fundHz,p->binHz);
+        
         return rc;
       }
 
@@ -874,9 +944,145 @@ namespace cw
         {
           mem::release(p->outMagV);
           mem::release(p->outPhsV);
+          mem::release(p->hV);
           mem::release(p);
         }
         return rc;
+      }
+
+      // Apply gain to the harmonic bins exclusively.
+      template< typename T0, typename T1 >
+      void _peaker( struct obj_str<T0,T1>* p,  const T0* xV, T0* yV)
+      {
+        T1 fund_hz_bin_idx_frac;
+        T1 bins_per_harm = p->fundHz / p->binHz;
+
+        vop::copy(yV,xV,p->binN);
+
+        // iterate over each harmonic position beginning with harmonic 'hnum'.
+        for(unsigned hnum=p->hnum; (fund_hz_bin_idx_frac = (hnum*p->fundHz) / p->binHz) <  p->binN-1; hnum += 1 )
+        {
+          // define the range of bins where the hnum is located
+          
+          // calc. the lower harmonic bin index
+          int lwr_bin_idx = std::max(0,(int)floor(fund_hz_bin_idx_frac - bins_per_harm/2));
+
+          // calc the upper harmonic bin index
+          int upr_bin_idx = std::min((int)p->binN-1,(int)ceil( fund_hz_bin_idx_frac + bins_per_harm/2));
+
+          //  if the harmonic bin can be isolated relative the the bins around it
+          // (i.e. there are at least 3 bins in the range)
+          if( lwr_bin_idx < upr_bin_idx && upr_bin_idx - lwr_bin_idx >= 2 )
+          {
+            // get the count of bins in the range
+            unsigned n = (upr_bin_idx-lwr_bin_idx)+1;
+            
+            // pick the max valued bin as the one containing the harmonic
+            unsigned i = lwr_bin_idx + vop::arg_max(xV+lwr_bin_idx,n);
+
+            // TODO: This is too simple.
+            // - Harmonic energy may be spread to adjoining bins
+            // - Better scaling strategies would be more interesting than simpl gain.
+
+            // apply gain to this bin
+            yV[i] += std::min((T0)1.0,p->peak_gain*xV[i]);            
+          }
+
+        }
+      }
+
+      
+      // Compress the spectrum by incrementing the y index fractionally while
+      // incrementing the x index by 1.
+      template< typename T0, typename T1 >
+      void _calc_transform_0( struct obj_str<T0,T1>* p,  const T0* xV, T0* yV)
+      {
+        // fraction bin index where the fundametnal is located
+        T1 fund_hz_bin_idx_frac  = (p->fundHz*p->hnum) / p->binHz;
+
+        // integer bin index near but possibly above
+        unsigned fund_hz_bin_idx = (unsigned)ceil(fund_hz_bin_idx_frac);
+
+        // index of the first bin to begin applying warping
+        T1       y_idx_frac = fund_hz_bin_idx + 1;
+        unsigned y_idx      = 0;
+        T1       a          = p->hgain * p->stretch;
+
+        vop::zero(yV,p->binN);
+       
+        for(unsigned i=0; i<p->binN; ++i )
+        {
+          if( i < fund_hz_bin_idx )
+          {
+            yV[i] = xV[i];
+          }
+          else
+          {            
+            y_idx  = std::min(p->binN-1,(unsigned)floor(y_idx_frac));
+
+            yV[y_idx] += pow(xV[i],p->expo) * a;
+
+            y_idx_frac += p->stretch;            
+          }
+        }
+
+        for(; y_idx<p->binN; ++y_idx)
+          yV[y_idx] = 0;
+
+        for(unsigned i = fund_hz_bin_idx; i<p->binN; ++i)
+        {
+          T0 y = ((1.0-p->hfeedback) * yV[i]) + (p->hfeedback * p->hV[i]);
+          yV[i]    = y;
+          p->hV[i] = y;
+        }
+       
+      }
+
+      
+      // Expand the spectrum by increnting the x spectrum fractionally while
+      // incrementing the y spectrum by 1.
+      template< typename T0, typename T1 >
+      void _calc_transform_1( struct obj_str<T0,T1>* p,  const T0* xV, T0* yV)
+      {
+        // fraction bin index where the fundametnal is located
+        T1 fund_hz_bin_idx_frac  = (p->hnum*p->fundHz) / p->binHz;
+
+        // integer bin index near but possibly above
+        unsigned fund_hz_bin_idx = (unsigned)ceil(fund_hz_bin_idx_frac);
+
+        // index of the first bin to begin applying warping
+        T1 x_idx_frac = fund_hz_bin_idx + 1;
+        
+        T1 x_idx_incr = p->stretch / ceil(p->stretch);
+        T1 a = p->hgain/x_idx_incr;
+        
+        unsigned x_idx = 0;
+
+        vop::zero(yV,p->binN);
+       
+        for(unsigned i=0; i<p->binN; ++i )
+        {
+          if( i < fund_hz_bin_idx )
+          {
+            yV[i] = xV[i];
+          }
+          else
+          {
+            x_idx = std::min(p->binN-1,(unsigned)floor(x_idx_frac));
+            
+            yV[i] += pow(xV[x_idx],p->expo) * a;
+
+            x_idx_frac += x_idx_incr;
+          }
+        }
+
+        for(unsigned i = fund_hz_bin_idx; i<p->binN; ++i)
+        {
+          T0 y = ((1.0-p->hfeedback) * yV[i]) + (p->hfeedback * p->hV[i]);
+          yV[i] = y;
+          p->hV[i] = y;
+        }
+       
       }
       
       template< typename T0, typename T1 >
@@ -890,18 +1096,33 @@ namespace cw
         }
         else
         {
-          double X0m[binN];
-          double X1m[binN];
+          T0 X0m[binN];
+          T0 X1m[binN];
+          const T0* input = magV;
           
-          // convert magnitude to db (range=-1000.0 to 0.0)
-          vop::ampl_to_db(X0m, magV, binN );
+          // TODO: Perform transform decibels.
 
-          // convert db back to magnitude
-          vop::db_to_ampl(X1m, X0m, binN );
+          if( p->peak_fl )
+          {
+            _peaker( p,  magV, X1m);
+            input = X1m;
+          }
 
+          vop::mul( X0m, input, p->igain, binN);
+          T1 sum0 = vop::sum(X0m,binN);
+
+          // TODO: expand and compress do not need separate functions
+          if( p->stretch <= 1 )            
+            _calc_transform_0( p,  X0m,  X1m);
+          else
+            _calc_transform_1( p,  X0m,  X1m);
+
+          // preserve the energy in the input
+          T1 sum1 = vop::sum(X1m,binN);
+          T1 mult = sum0/sum1;
+                    
           // apply the output gain
-          //vop::mul(  p->outMagV, X1m, std::min((T1)4.0,p->ogain), binN);
-          vop::mul(  p->outMagV, X1m, p->ogain, binN);
+          vop::mul(  p->outMagV, X1m, p->ogain * mult, binN);
           
         }
         

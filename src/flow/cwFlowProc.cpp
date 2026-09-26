@@ -4256,7 +4256,7 @@ namespace cw
 
     //------------------------------------------------------------------------------------------------------------------
     //
-    // spec_map
+    // spec_harm_map
     //
     namespace spec_harm_map
     {
@@ -4267,12 +4267,21 @@ namespace cw
         kEnablePId,
         kBypassPId,
         kPitchPId,
-        kCoeff0PId,
+        kIGainPId,
+        kHNumPId,
+        kPeakFlPId,
+        kPeakGainPId,
+        kHGainPId,
+        kHFeedbackPId,
+        kStretchPId,
+        kExpoPId,
+        kOGainPId,
         kOutPId
       };
       
       typedef struct
       {
+        bool              enable_fl;
         spec_harm_map_t** hmA;
         unsigned          hmN;
       } inst_t;
@@ -4283,14 +4292,18 @@ namespace cw
         rc_t          rc     = kOkRC;
         const fbuf_t* srcBuf = nullptr; //
         inst_t*       inst   = mem::allocZ<inst_t>();
-        bool          enable_fl = true;
+        bool          enable_fl = false;
+        bool          bypass_fl = false;
+        unsigned      pitch = midi::kInvalidMidiPitch;
         
         proc->userPtr = inst;
 
-        // verify that a source buffer exists
+        // verify that a source buffer exists a
         if((rc = var_register_and_get(proc, kAnyChIdx,
                                       kInPId,"in",kBaseSfxId, srcBuf,
-                                      kEnablePId, "enable", kBaseSfxId, enable_fl )) != kOkRC )          
+                                      kBypassPId, "bypass", kBaseSfxId, bypass_fl,
+                                      kEnablePId, "enable", kBaseSfxId, enable_fl,
+                                      kPitchPId, "pitch", kBaseSfxId, pitch)) != kOkRC )
         {
           goto errLabel;
         }
@@ -4298,7 +4311,7 @@ namespace cw
         {
           // allocate pv channel array
           inst->hmN = srcBuf->chN;
-          inst->hmA = mem::allocZ<spec_harm_map_t*>( inst->hmN );  
+          inst->hmA = mem::allocZ<spec_harm_map_t*>( inst->hmN );
         
           const fd_sample_t* magV[ srcBuf->chN ];
           const fd_sample_t* phsV[ srcBuf->chN ];
@@ -4307,29 +4320,40 @@ namespace cw
           // create a spec_dist object for each input channel
           for(unsigned i=0; i<srcBuf->chN; ++i)
           {
-            bool     bypass_fl  = false;
-            unsigned midi_pitch = 0;
-            coeff_t  coeff0     = 0;
-          
+            unsigned hnum      = 1;
+            bool     peak_fl   = false;
+            coeff_t  peak_gain = 1.0;
+            coeff_t  hgain     = 1.0;
+            coeff_t  hfeedback = 0.0;
+            coeff_t  stretch   = 0;
+            coeff_t  expo      = 1.0;
+            coeff_t  igain     = 1.0;
+            coeff_t  ogain     = 1.0;
+            
+            
+            if((rc =  dsp::spec_harm_map::create( inst->hmA[i], srcBuf->binN_V[i], proc->ctx->sample_rate )) != kOkRC )
+            {
+              rc = proc_error(proc,kOpFailRC,"The 'spec harm map' object create failed on the instance '%s'.",proc->label);
+              goto errLabel;
+            }
+            
             // setup the output buffer pointers
             magV[i] = inst->hmA[i]->outMagV;
             phsV[i] = inst->hmA[i]->outPhsV;
             hzV[i]  = nullptr;
 
-            spec_harm_map_t* hm = inst->hmA[i];
-
-            if((rc = var_register_and_get(proc,kAnyChIdx,
-                                          kBypassPId, "bypass", kBaseSfxId, bypass_fl,
-                                          kCoeff0PId, "coeff_0", kBaseSfxId, coeff0,
-                                          kPitchPId,  "pitch", kBaseSfxId, midi_pitch)) != kOkRC )
+            // register the per channel variables
+            if((rc = var_register_and_get(proc,i,
+                                          kIGainPId,    "igain",     kBaseSfxId, igain,
+                                          kHNumPId,     "hnum",      kBaseSfxId, hnum,
+                                          kPeakFlPId,   "peak_fl",   kBaseSfxId, peak_fl,
+                                          kPeakGainPId, "peak_gain", kBaseSfxId, peak_gain,
+                                          kHGainPId,    "hgain",     kBaseSfxId, hgain,
+                                          kHFeedbackPId,"hfeedback", kBaseSfxId, hfeedback,
+                                          kStretchPId,  "stretch",   kBaseSfxId, stretch,
+                                          kExpoPId,     "expo",      kBaseSfxId, expo,
+                                          kOGainPId,    "ogain",     kBaseSfxId, ogain)) != kOkRC )
             {
-              goto errLabel;
-            }
-          
-
-            if((rc = create( inst->hmA[i], srcBuf->binN_V[i], midi_pitch, coeff0, bypass_fl )) != kOkRC )
-            {
-              rc = proc_error(proc,kOpFailRC,"The 'spec harm map' object create failed on the instance '%s'.",proc->label);
               goto errLabel;
             }
 
@@ -4357,9 +4381,139 @@ namespace cw
         return rc;
       }
 
+      rc_t _on_enable( proc_t* proc, inst_t* p, variable_t* var )
+      {        
+        rc_t rc = kOkRC;
+        if((rc = var_get(var,p->enable_fl)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Error accessing enable_fl variable.");
+          goto errLabel;
+        }
+
+        if( p->enable_fl )
+        {
+          unsigned pitch = midi::kInvalidMidiPitch;
+          bool bypass_fl = false;
+
+          if((rc = var_get(proc,kPitchPId,kAnyChIdx,pitch)) != kOkRC )
+          {
+            rc = proc_error(proc,rc,"Error accessing pitch variable.");
+            goto errLabel;
+          }
+
+          if((rc = var_get(proc,kBypassPId,kAnyChIdx,bypass_fl)) != kOkRC )
+          {
+            rc = proc_error(proc,rc,"Error accessing bypass_fl variable.");
+            goto errLabel;
+          }
+
+          for(unsigned i=0; i<p->hmN; ++i)
+          {
+            unsigned hnum      = 1;
+            bool     peak_fl   = false;
+            coeff_t  peak_gain = 1.0;
+            coeff_t  hgain     = 1.0;
+            coeff_t  stretch   = 0;
+            coeff_t  expo      = 1.0;
+            coeff_t  igain     = 1.0;
+            coeff_t  ogain     = 1.0;
+            coeff_t  hfeedback = 0.0;
+            
+            if((rc = var_get(proc,kIGainPId,i,igain)) != kOkRC )
+            {
+              goto errLabel;              
+            }
+
+            if((rc = var_get(proc,kHNumPId,i,hnum)) != kOkRC )
+            {
+              goto errLabel;              
+            }
+
+            if((rc = var_get(proc,kPeakFlPId,i,peak_fl)) != kOkRC )
+            {
+              goto errLabel;              
+            }
+
+            if((rc = var_get(proc,kPeakGainPId,i,peak_gain)) != kOkRC )
+            {
+              goto errLabel;              
+            }
+            
+            if((rc = var_get(proc,kHGainPId,i,hgain)) != kOkRC )
+            {
+              goto errLabel;              
+            }
+
+            if((rc = var_get(proc,kStretchPId,i,stretch)) != kOkRC )
+            {
+              goto errLabel;              
+            }
+
+            if((rc = var_get(proc,kExpoPId,i,expo)) != kOkRC )
+            {
+              goto errLabel;              
+            }
+
+            if((rc = var_get(proc,kHFeedbackPId,i,hfeedback)) != kOkRC )
+            {
+              goto errLabel;              
+            }
+            
+            if((rc = var_get(proc,kOGainPId,i,ogain)) != kOkRC )
+            {
+              goto errLabel;              
+            }
+            
+            if((rc = setup( p->hmA[i], pitch, igain, hnum, peak_fl, peak_gain, hgain, stretch, expo, hfeedback, ogain, bypass_fl)) != kOkRC )
+            {
+              rc = proc_error(proc,rc,"Internal spec-harm-map setup failed on channel:%i.",i);
+              goto errLabel;
+            }
+          }
+        }
+        
+      errLabel:
+        return rc;
+      }
+      
+      rc_t _on_coeff( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t    rc    = kOkRC;
+        coeff_t coeff = 0;
+
+        if( var->chIdx != kAnyChIdx && var->chIdx < p->hmN )
+        {
+          if((rc = var_get(var,coeff)) != kOkRC )
+          {
+            rc = proc_error(proc,rc,"Coeff. variable access failed on ch index:%i.",var->chIdx);
+            goto errLabel;            
+          }
+
+          if( var->chIdx >= p->hmN )
+          {
+            rc = proc_error(proc,kInvalidStateRC,"An invalid coeff ch. index (%i) was encountered.", var->chIdx );
+            goto errLabel;
+          }
+        } 
+      errLabel:
+        return rc;
+      }
+      
+
       rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
+        switch( var->vid )
+        {
+          case kEnablePId:
+            rc = _on_enable(proc,p,var);
+            break;
+            
+            
+          case kStretchPId:
+            rc = _on_coeff(proc,p,var);
+            break;
+        }
         return rc;
       }
 
@@ -6786,6 +6940,8 @@ namespace cw
         kWtbFnPId,
         kWtbInstrPId,
         kResetPId,
+        kPitchPId,
+        kVelocityPId,
         kInPId,
         kOutPId,
         kDoneFlPId,
@@ -6921,6 +7077,8 @@ namespace cw
         bool               gate_fl       = false;
         srate_t            srate         = proc->ctx->sample_rate;
         unsigned           load_thread_cnt = 16;
+        unsigned           pitch           = 0;
+        unsigned           velocity        = 0;
         
         p->kReleaseGain = 0.9;
         p->kGainThreshold = 0.01;
@@ -6930,6 +7088,8 @@ namespace cw
                                        kWtbFnPId,     "wtb_fname", kBaseSfxId, wtb_fname,
                                        kWtbInstrPId,  "wtb_instr", kBaseSfxId, wtb_instr,
                                        kResetPId,     "reset",     kBaseSfxId, reset_fl,
+                                       kPitchPId,     "pitch",     kBaseSfxId, pitch,
+                                       kVelocityPId,  "velocity",  kBaseSfxId, velocity,
                                        kInPId,        "in",        kBaseSfxId, mbuf,
                                        kDoneFlPId,    "done_fl",   kBaseSfxId, done_fl,
                                        kGateFlPId,    "gate_fl",   kBaseSfxId, gate_fl,
@@ -7020,6 +7180,8 @@ namespace cw
 
         var_set(proc,kDoneFlPId,kAnyChIdx,false);
         var_set(proc,kGateFlPId,kAnyChIdx,true);
+        var_set(proc, kPitchPId, kAnyChIdx, d0 );
+        var_set(proc, kVelocityPId, kAnyChIdx, d1 );
 
         TRACE_TIME(proc->trace_id,tracer::kBegEvtId,0,0);
 
@@ -7130,7 +7292,9 @@ namespace cw
       {
         p->done_fl = true;
         var_set(proc,kDoneFlPId,kAnyChIdx,true);
-        var_set(proc,kGateFlPId,kAnyChIdx,false);        
+        var_set(proc,kGateFlPId,kAnyChIdx,false);
+        var_set(proc,kPitchPId,kAnyChIdx,0);
+        var_set(proc,kVelocityPId, kAnyChIdx, 0);
         _store_note_state(proc, p, 0, 0, p->pitch, 0);
         p->gain_coeff = 0.0;  //
         TRACE_TIME(proc->trace_id,tracer::kEndEvtId,0,0);
