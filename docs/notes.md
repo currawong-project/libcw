@@ -567,7 +567,7 @@ log: { flags:[ `date_time`,      // Include date and time of each log call in th
 			   `skip_queue`      // Do not use the internal queue. Send all log messages directly to the output.
 			   ], 
        level:debug,              // Set the minimum log severity level: debug, info,warn,error,fatal
-	   log_filename:"log.txt",   // Log filename (only used if 'overwrite_file' is set.
+	   log_filename:"log.txt",   // Log filename (only used if 'file_out' is set.
 	   queue_blk_cnt:16,         // Count of blocks in the internal queue
 	   queue_blk_byte_cnt:4096 } // Size of each block in the internal queuue
 ```
