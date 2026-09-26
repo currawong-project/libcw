@@ -4801,12 +4801,12 @@ namespace cw
         p->max_ioi_fact = 1.5;
         float dvel = 1.0;
         cw::score_follow_2::args_t sf_args = {
-          .pre_affinity_sec = 1.0,
+          .pre_affinity_sec = 3.0, //1.0,
           .post_affinity_sec = 3.0,
-          .min_affinity_loc_cnt = 2,
-          .pre_wnd_sec = 2.0,
+          .min_affinity_loc_cnt = 4, //2,
+          .pre_wnd_sec = 4.0, //2.0,
           .post_wnd_sec = 5.0,
-          .min_wnd_loc_cnt = 2,
+          .min_wnd_loc_cnt = 4, //2,
           .decay_coeff = 0.995,
           .d_sec_err_thresh_lo = 0.4,
           .d_loc_thresh_lo = 3,
