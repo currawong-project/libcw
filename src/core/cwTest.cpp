@@ -25,6 +25,7 @@
 
 #include "cwDspTypes.h"
 #include "cwMath.h"
+#include "cwMidi.h"
 #include "cwDsp.h"
 #include "cwAudioTransforms.h"
 #include "cwWaveTableBank.h"

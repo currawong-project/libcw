@@ -12,6 +12,7 @@
 #include "cwAudioFile.h"
 #include "cwMath.h"
 #include "cwVectOps.h"
+#include "cwMidi.h"
 #include "cwDspTypes.h"
 #include "cwDsp.h"
 #include "cwAudioTransforms.h"
@@ -518,7 +519,7 @@ cw::rc_t cw::wt_bank::load( handle_t h, const char* instr_json_fname, unsigned t
       goto errLabel;
     }
   
-    if((rc = run(threadTasksH, taskA, instr->pitchN, 120*1000 )) != kOkRC )
+    if((rc = run(threadTasksH, taskA, instr->pitchN, 200*1000 )) != kOkRC )
     {
       rc = cwLogError(rc,"Thread machine run failed.");
       goto errLabel;

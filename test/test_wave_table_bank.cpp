@@ -10,6 +10,7 @@
 #include "cwObject.h"
 #include "cwFileSys.h"
 #include "cwAudioFile.h"
+#include "cwMidi.h"
 #include "cwDspTypes.h"
 #include "cwDsp.h"
 #include "cwAudioTransforms.h"

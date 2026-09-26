@@ -25,6 +25,7 @@
 #include "cwSerialPortSrv.h"
 #include "cwSocket.h"
 #include "cwMath.h"
+#include "cwMidi.h"
 #include "cwDspTypes.h"
 #include "cwDsp.h"
 #include "cwAudioTransforms.h"
@@ -32,7 +33,6 @@
 #include "cwAudioFilePvProc.h"
 
 #include "cwTime.h"
-#include "cwMidi.h"
 #include "cwMidiDecls.h"
 
 #include "cwFlowDecl.h"

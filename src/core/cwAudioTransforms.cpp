@@ -13,6 +13,7 @@
 #include "cwAudioFileOps.h"
 #include "cwVectOps.h"
 #include "cwMath.h"
+#include "cwMidi.h"
 #include "cwDspTypes.h"
 #include "cwDsp.h"
 #include "cwAudioTransforms.h"
