@@ -18,6 +18,7 @@
 #include "cwScoreFollow2.h"
 
 #define INVALID_SEC (-1.0)
+#define TRACKER_CNT (3)
 
 namespace cw
 {
@@ -28,12 +29,13 @@ namespace cw
     typedef struct trkr_str
     {
       struct sf_str* sf;
-
-      unsigned new_note_idx;
-      unsigned no_track_note_cnt; // count of notes not tracked
-      
+      unsigned id;
+      bool active_fl;
       bool end_fl;
       
+      unsigned new_note_idx;      // count of calls to on_new_note()
+      unsigned no_track_note_cnt; // count of notes not tracked
+
       unsigned* note_match_cntA;  // note_match_cntA[ sf->noteN ]
       unsigned* loc_match_cntA;   // loc_match_cntA[ sf->locN ]
       float*    expV;             // expV[ sf->pitchN ]
@@ -55,9 +57,11 @@ namespace cw
       double   prv_match_perf_sec;
       unsigned decay_cnt;
 
-      status_id_t status_id;        // current tracker stateus: (e.g. kResetStatusId, kTrackingStatusId, ...)
-      double      last_note_on_sec; // time of the last note-on msg
+      //status_id_t status_id;        // current tracker stateus: (e.g. kResetStatusId, kTrackingStatusId, ...)
       double      cur_max_ioi_sec;  // max. ioi between last matched loc. and the end-loc
+      double      cur_ete_dur_sec;  // current estimated time to the end of the segment.
+
+      unsigned duplA[ TRACKER_CNT ]; // track the count of time this tracker returned the same results as each other tracker
       
     } trkr_t;
     
@@ -78,12 +82,13 @@ namespace cw
     
     typedef struct loc_str
     {
-      unsigned  loc_id;     // id this location represents
-      unsigned  meas_num;   // measure number of this location
-      double    sec;        // score time in seconds
-      unsigned* note_idxA;  // note_idxA[ note_idxN ] indexes into noteA[] of notes starting at this location
-      unsigned  note_idxN;  //
+      unsigned  loc_id;      // id this location represents
+      unsigned  meas_num;    // measure number of this location
+      double    sec;         // score time in seconds
+      unsigned* note_idxA;   // note_idxA[ note_idxN ] indexes into noteA[] of notes starting at this location
+      unsigned  note_idxN;   //
       double    max_ioi_sec; // the longest IOI following this location
+      double    ete_dur_sec; // estimated time to end 
     } loc_t;
 
     typedef struct note_str
@@ -94,6 +99,12 @@ namespace cw
       unsigned vel;        // velocity of this note
     } note_t;
 
+    typedef struct pitch_info_str
+    {
+      unsigned min_loc_id;
+      unsigned max_loc_id;
+      unsigned cnt; // count of times this pitch appears in the current beg/end location window
+    } pitch_info_t;
     
     typedef struct sf_str
     {
@@ -115,6 +126,7 @@ namespace cw
       unsigned end_loc_id;
       double   beg_loc_sec;
       double   end_loc_sec;
+      unsigned cur_note_cnt; // number of notes between beg_loc_id and end_loc_id
       
       double   post_gap_dur_sec;
       
@@ -122,10 +134,48 @@ namespace cw
       unsigned resultAllocN;
       unsigned resultN;
 
-      trkr_t* trk;
+      trkr_t* trkA[ TRACKER_CNT ];
+
+      double      last_note_on_sec; // time of the last note-on msg
+      unsigned    no_match_cnt;
+
+      pitch_info_t pitchInfoA[ midi::kMidiNoteCnt ];
+      //trkr_t* trk;
 
     } sf_t;
 
+    rc_t _trkr_reset( trkr_t* trk, unsigned beg_loc_id );
+   
+    rc_t _trkr_activate( sf_t* p, unsigned beg_loc_id, unsigned& trk_idx_ref )
+    {
+      rc_t rc = kOkRC;
+      unsigned i;
+      
+      trk_idx_ref = kInvalidIdx;
+      
+      for(i=0; i<TRACKER_CNT; ++i)
+        if( !p->trkA[i]->active_fl )
+        {
+          if((rc = _trkr_reset( p->trkA[i], beg_loc_id )) !=kOkRC )
+          {
+            rc = cwLogError(rc,"Tracker reset failed on activate.");
+            goto errLabel;
+          }
+          p->trkA[i]->active_fl = true;
+          trk_idx_ref = i;
+          break;
+        }
+
+      if( i >= TRACKER_CNT )
+        cwLogWarning("No available trackers.");
+      
+    errLabel:
+      if( rc!= kOkRC )
+        cwLogError(rc,"Tracker activate failed.");
+      
+      return rc;
+    }
+    
 
     //================================================================================================================
     //
@@ -168,6 +218,7 @@ namespace cw
       trk->no_track_note_cnt = 0;
       
       trk->end_fl = false;
+      trk->active_fl = false;
 
       //printf("reset expV: %i\n",beg_loc_id);
       
@@ -183,6 +234,7 @@ namespace cw
       trk->exp_loc_idx = trk->sf->locMapA[ beg_loc_id ];
       trk->exp_sec     = 0;
       trk->cur_max_ioi_sec = trk->sf->locA[ trk->exp_loc_idx ].max_ioi_sec;
+      trk->cur_ete_dur_sec = trk->sf->locA[ trk->exp_loc_idx ].ete_dur_sec;
       
       trk->search_bni = kInvalidIdx;  // current search window 
       trk->search_eni = kInvalidIdx;  //
@@ -198,12 +250,14 @@ namespace cw
 
       _trkr_apply_affinity(trk,beg_loc_id);
 
-      trk->status_id = kResetStatusId;
+      vop::zero(trk->duplA,TRACKER_CNT);
+      
+      //trk->status_id = kResetStatusId;
 
       return kOkRC;
     }
     
-    trkr_t* _trkr_create( sf_t* sf )
+    trkr_t* _trkr_create( sf_t* sf, unsigned trkr_id )
     {
       trkr_t* trk = mem::allocZ<trkr_t>();
 
@@ -211,7 +265,8 @@ namespace cw
       trk->note_match_cntA = mem::allocZ<unsigned>(sf->noteN);
       trk->loc_match_cntA  = mem::allocZ<unsigned>(sf->locN);
       trk->expV            = mem::allocZ<float>(sf->noteN);
-
+      trk->id              = trkr_id;
+      
       _trkr_reset(trk,sf->locA[0].loc_id);
 
       return trk;
@@ -255,7 +310,7 @@ namespace cw
       
     }
     
-    rc_t _trkr_on_new_note( trkr_t* trk, double sec, unsigned pitch, unsigned vel, bool rpt_fl, unsigned& matched_loc_id_ref, unsigned& meas_numb_ref, unsigned& score_vel_ref )
+    rc_t _trkr_on_new_note( trkr_t* trk, double sec, unsigned pitch, unsigned vel, bool rpt_fl, unsigned& matched_loc_id_ref, unsigned& rej_loc_id_ref, unsigned& meas_numb_ref, unsigned& score_vel_ref )
     {
       rc_t        rc                         = kOkRC;
       double      d_corr_sec                 = 0.0;
@@ -275,13 +330,13 @@ namespace cw
 
       score_vel_ref = -1;
       matched_loc_id_ref = kInvalidId;
+      rej_loc_id_ref     = kInvalidId;
       meas_numb_ref      = kInvalidId;
       
       assert( trk->exp_loc_idx != kInvalidIdx && trk->exp_loc_idx < trk->sf->locN );
       
       trk->search_bni = trk->sf->loc_wndA[ trk->exp_loc_idx ].bni;
       trk->search_eni = trk->sf->loc_wndA[ trk->exp_loc_idx ].eni;
-      trk->last_note_on_sec = sec;
       
       // set 'match_ni' to the best match candidate
       for(unsigned ni=trk->search_bni; ni<=trk->search_eni; ++ni)
@@ -295,14 +350,40 @@ namespace cw
           match_val = trk->expV[ni];
         }
 
-      //if( pitch==62 )
-      //  _trkr_rpt_debug(trk,pitch,vel,trk->exp_loc_idx);
+      /*
+      if( pitch==48 )
+      {
+        _trkr_rpt_debug(trk,pitch,vel,trk->exp_loc_idx);
 
+        // time between the last note-on msg received and the current time.
+        double dsec = sec - trk->sf->last_note_on_sec;
+
+        // if we have come to the end of the segment then the IOI and ETE durations may be zero
+        // but there may still be notes to play
+        // bool gap_fl = p->trkA[i]->cur_max_ioi_sec==0 && p->trkA[i]->cur_ete_dur_sec == 0 && dsec > 3.0;
+        
+  
+        // if the duration betwen last recognized note and the expected time of the next note has elapsed
+        bool ioi_fl = trk->cur_max_ioi_sec && (dsec > trk->cur_max_ioi_sec * 1.5);
+
+        // if the duration betweenthe last recognized note and the expected end of the sequence has elapsed
+        bool ete_fl = dsec > trk->cur_ete_dur_sec * 1.5;
+
+        printf("dsec:%6.3f ioi:%6.3f ete:%6.3f \n",dsec,trk->cur_max_ioi_sec,trk->cur_ete_dur_sec);
+        
+      }
+      */
+      
       // if no match candidate was found
       if( match_ni == kInvalidIdx )
       {
-        rpt_status = "spurious";
-        trk->no_track_note_cnt += 1;
+        if( trk->sf->pitchInfoA[ pitch ].cnt == 0 )
+          rpt_status = "non_existent";
+        else
+        {
+          rpt_status = "spurious";
+          trk->no_track_note_cnt += 1;
+        }
       }
       else
       {
@@ -378,9 +459,17 @@ namespace cw
         bool hi_loc_thresh_fl  = d_loc_id_valid_fl && abs(d_loc_id) > trk->sf->args.d_loc_thresh_hi;
         
         // if this match breaks the threshold rules  ....
-        if( (lo_time_thresh_fl && lo_loc_thresh_fl) || hi_loc_thresh_fl || hi_time_thresh_fl )
+        //if( (lo_time_thresh_fl && lo_loc_thresh_fl) || hi_loc_thresh_fl || hi_time_thresh_fl )
+        //if( false )
+        if( hi_loc_thresh_fl )
         {
           trk->no_track_note_cnt += 1;
+
+          // don't offer the option to start a new tracker
+          // if the jump is backward by more than -7
+          // BUG BUG BUG: -7 should be an arg.
+          if( d_loc_id > -7 )
+            rej_loc_id_ref = match_loc_id;
           
           match_ni = kInvalidIdx;   // ... then reject the match
           rpt_status = "rejected";
@@ -400,6 +489,7 @@ namespace cw
           trk->loc_match_cntA[ match_loc_idx ] += 1;
           trk->note_match_cntA[ match_ni ]     += 1;
           trk->cur_max_ioi_sec                  = trk->sf->locA[ match_loc_idx ].max_ioi_sec;
+          trk->cur_ete_dur_sec                  = trk->sf->locA[ match_loc_idx ].ete_dur_sec;
           if( trk->no_track_note_cnt > 0)
             trk->no_track_note_cnt -= 1;
 
@@ -449,7 +539,10 @@ namespace cw
       if( rpt_fl )
       {
 
-        printf("%4i pitch:%3i ",trk->new_note_idx, pitch);
+        char sciPitchBuf[ midi::kMidiSciPitchCharCnt ];
+        midi::midiToSciPitch( pitch, sciPitchBuf, midi::kMidiSciPitchCharCnt );
+
+        printf("%1i %4i pitch:%3i %6s ",trk->id, trk->new_note_idx, pitch, sciPitchBuf );
 
         unsigned meas_num = 0;
         if( trk->prv_loc_idx != kInvalidIdx )
@@ -493,8 +586,8 @@ namespace cw
         else
           printf("corr:      ");
 
-        printf(" : (%f %i %f) : ",trk->time_delta_sum,trk->time_delta_cnt,trk->time_fact);
-        
+        printf(" : (%f %i %f) : %6.3f %6.3f ",trk->time_delta_sum,trk->time_delta_cnt,trk->time_fact,trk->cur_max_ioi_sec,trk->cur_ete_dur_sec);
+
         printf("%s ",rpt_status);
 
         if( vel < 5 )
@@ -546,8 +639,11 @@ namespace cw
           mem::release(p->loc_affA[i].envA);
       }
 
-      _trkr_destroy(p->trk);
+      for(unsigned i=0; i<TRACKER_CNT; ++i)
+        _trkr_destroy(p->trkA[i]);
 
+      //p->trk = nullptr;
+      
       mem::release(p->resultA);
       mem::release(p->noteA);
       mem::release(p->locA);
@@ -834,26 +930,48 @@ namespace cw
       return rc;
     }
 
-    void _set_loc_max_ioi( sf_t* p )
+    void _set_loc_max_ioi( sf_t* p, unsigned beg_loc_id, unsigned end_loc_id )
     {
-      double max_ioi_sec = 0;
-      unsigned i = p->locN-1;
-      do
+      if( beg_loc_id == kInvalidId
+          || end_loc_id == kInvalidId
+          || end_loc_id > p->locN
+          || p->locMapA[ end_loc_id ] > p->locN
+          || beg_loc_id > p->locN
+          || p->locMapA[ beg_loc_id ] > p->locN )
       {
-        i -= 1;
-        if( (p->locA[i+i].sec - p->locA[i].sec) > max_ioi_sec )
-          max_ioi_sec = p->locA[i+i].sec - p->locA[i].sec;
-        p->locA[i].max_ioi_sec = max_ioi_sec;
-        
-      }while(i>0);
+        return;
+      }
+      
+      double ioi_dsec_max = 0;
+      double last_note_on_sec = p->locA[ p->locMapA[ end_loc_id ] ].sec;
+
+      // iterate in reverse over the p->locA[] and track the duration to the end of the segment 
+      for(unsigned loc_id_1=end_loc_id; loc_id_1 >= 1 && loc_id_1 > beg_loc_id; --loc_id_1)
+      {
+        unsigned loc_id_0  = loc_id_1 - 1;
+        unsigned loc_idx_0 = p->locMapA[ loc_id_0 ];
+        unsigned loc_idx_1 = p->locMapA[ loc_id_1 ];
+
+        // calc. the IOI between two consecutive notes
+        double ioi_dsec = p->locA[ loc_idx_1 ].sec - p->locA[ loc_idx_0 ].sec;
+    
+        assert(ioi_dsec >= 0);
+
+        // trace the max IOI between the loc_id_0 and the end off the score segment
+        if( ioi_dsec > ioi_dsec_max )
+          ioi_dsec_max = ioi_dsec;
+    
+        p->locA[ loc_idx_0 ].max_ioi_sec = ioi_dsec_max;
+        p->locA[ loc_idx_0 ].ete_dur_sec = last_note_on_sec - p->locA[ loc_idx_0 ].sec;
+      }
       
     }
-
+    
     void _report_score( sf_t* p, unsigned beg_loc_id, unsigned end_loc_id )
     {
       for(unsigned ni=0; ni<p->noteN; ++ni)
         if(beg_loc_id <= p->noteA[ni].loc_id && p->noteA[ni].loc_id <= end_loc_id )
-          printf("%4i %6.2f %3i\n", p->noteA[ni].loc_id, p->locA[ p->locMapA[ p->noteA[ni].loc_id ] ].sec, p->noteA[ni].pitch );
+          printf("%4i %6.2f %3i : %6.3f %6.3f\n", p->noteA[ni].loc_id, p->locA[ p->locMapA[ p->noteA[ni].loc_id ] ].sec, p->noteA[ni].pitch, p->locA[ p->locMapA[ p->noteA[ni].loc_id ] ].max_ioi_sec, p->locA[ p->locMapA[ p->noteA[ni].loc_id ] ].ete_dur_sec  );
     }
 
     void _report_affinity( sf_t* p, unsigned N=10 )
@@ -867,6 +985,30 @@ namespace cw
         printf("]\n");
       }
     }
+
+    rc_t _jump_ahead(sf_t* p, unsigned& new_trkr_idx_ref )
+    {
+      rc_t     rc           = kOkRC;
+      unsigned max_search_eni      = 0;
+
+      new_trkr_idx_ref = kInvalidIdx;      
+      
+      for(unsigned i=0; i<TRACKER_CNT; ++i)
+        if( p->trkA[i]->active_fl )
+          max_search_eni = std::max(max_search_eni,p->trkA[i]->search_eni);
+
+      if((rc = _trkr_activate(p, p->noteA[ max_search_eni ].loc_id, new_trkr_idx_ref )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Tracker activate failed on jump-ahead.");
+        goto errLabel;
+      }
+
+      cwLogInfo("%i jumped ahead.",new_trkr_idx_ref);
+      
+    errLabel:
+      return rc;
+    }
+    
     
   }
 }
@@ -918,10 +1060,10 @@ cw::rc_t cw::score_follow_2::create( handle_t& hRef, const args_t& args, perf_sc
   if((rc = _alloc_and_fill_affinity_wnd_arrays(p, args.pre_affinity_sec, args.post_affinity_sec, args.min_affinity_loc_cnt )) != kOkRC )
     goto errLabel;
 
-  _set_loc_max_ioi(p);
-
-  p->trk = _trkr_create(p);
-
+  for(unsigned i=0; i<TRACKER_CNT; ++i)
+    p->trkA[i] = _trkr_create(p,i);
+  
+  //p->trk  = p->trkA[0];  
   p->args = args;
   
   p->resultAllocN = p->noteN*2;
@@ -969,7 +1111,9 @@ cw::rc_t cw::score_follow_2::reset( handle_t h, unsigned beg_loc_id, unsigned en
 {
   rc_t  rc = kOkRC;
   sf_t* p = _handleToPtr(h);
-  
+  double dsec_max = 0.0;
+  unsigned trkr_idx = kInvalidIdx;
+ 
   unsigned end_sec_loc_id = end_loc_id > p->max_loc_id ? p->max_loc_id : end_loc_id;
 
   if( beg_loc_id > p->max_loc_id )    
@@ -977,10 +1121,6 @@ cw::rc_t cw::score_follow_2::reset( handle_t h, unsigned beg_loc_id, unsigned en
     rc = cwLogError(kInvalidArgRC,"An invalid location score begin location id (%i) was passed to score_follower reset.",beg_loc_id);
     goto errLabel;
   }
-
-  
-  //_report_score(p,beg_loc_id,end_loc_id);
-  
   
   p->beg_loc_id = beg_loc_id;
   p->beg_loc_sec = p->locA[ p->locMapA[ beg_loc_id ] ].sec;
@@ -991,10 +1131,52 @@ cw::rc_t cw::score_follow_2::reset( handle_t h, unsigned beg_loc_id, unsigned en
   p->post_gap_dur_sec = post_gap_dur_sec;
   
   p->resultN = 0;
+  p->no_match_cnt = 0;
+  
+  _set_loc_max_ioi( p, beg_loc_id, end_loc_id );
 
-  _trkr_reset(p->trk,beg_loc_id);
+  for(unsigned i=0; i<TRACKER_CNT; ++i)
+    _trkr_reset(p->trkA[i],beg_loc_id);
 
-  //cwLogInfo("SF2 reset: %i %i",beg_loc_id,end_loc_id);
+  if((rc = _trkr_activate(p,beg_loc_id,trkr_idx)) != kOkRC )
+  {
+    rc = cwLogError(rc,"Initial tracker activation failed.");
+  }
+
+  for(unsigned i=0; i<midi::kMidiNoteCnt; ++i)
+  {
+    p->pitchInfoA[i].min_loc_id = kInvalidId;
+    p->pitchInfoA[i].max_loc_id = kInvalidId;
+    p->pitchInfoA[i].cnt = 0;
+  }
+
+  p->cur_note_cnt = 0;
+  for(unsigned loc_id=beg_loc_id; loc_id<end_loc_id; ++loc_id)
+  {
+    p->cur_note_cnt += p->locA[ p->locMapA[ loc_id ] ].note_idxN;
+    
+    for(unsigned i=0; i<p->locA[ p->locMapA[ loc_id ]].note_idxN; ++i)
+    {
+      unsigned      loc_idx = p->locMapA[ loc_id ];
+      const note_t& note    = p->noteA[ p->locA[loc_idx].note_idxA[ i ] ];
+      
+      assert( note.pitch < midi::kMidiNoteCnt );
+      
+      p->pitchInfoA[ note.pitch ].cnt += 1;
+      
+      if( p->pitchInfoA[ note.pitch ].min_loc_id == kInvalidId || p->pitchInfoA[ note.pitch ].min_loc_id < p->locA[loc_idx].loc_id )
+        p->pitchInfoA[ note.pitch ].min_loc_id = p->locA[loc_idx].loc_id;
+
+      if( p->pitchInfoA[ note.pitch ].max_loc_id == kInvalidId || p->pitchInfoA[ note.pitch ].max_loc_id > p->locA[loc_idx].loc_id )
+        p->pitchInfoA[ note.pitch ].max_loc_id = p->locA[loc_idx].loc_id;
+      
+    }
+  }
+  
+//report_score(h);
+
+   
+  cwLogInfo("reset: m.%i %i  to m.%i %i",p->locA[ p->locMapA[ beg_loc_id ] ].meas_num, beg_loc_id, p->locA[ p->locMapA[ end_loc_id ] ].meas_num, end_loc_id);
 
 errLabel:
   
@@ -1041,13 +1223,161 @@ cw::rc_t cw::score_follow_2::on_new_note( handle_t  h,
 {
   rc_t  rc = kOkRC;
   sf_t* p  = _handleToPtr(h);
-
   loc_pct_ref = -1.0;
-  _trkr_on_new_note(p->trk,sec,pitch,vel, p->args.rpt_fl, matched_loc_id_ref, meas_numb_ref, score_vel_ref);
 
-  if( matched_loc_id_ref != kInvalidIdx )
-    loc_pct_ref = (p->locA[ p->locMapA[ matched_loc_id_ref ] ].sec - p->beg_loc_sec)/(p->end_loc_sec - p->beg_loc_sec);
+  p->last_note_on_sec = sec;
+  
+  unsigned new_trkr_cnt = 0;
+  bool     match_fl     = false;
 
+  // for each active tracker
+  unsigned active_cnt = 0;
+  
+  for(unsigned i=0; i<TRACKER_CNT; ++i)
+  {
+    if( p->trkA[i]->active_fl )
+    {
+      unsigned rej_loc_id = kInvalidId;
+      active_cnt += 1;
+      
+      // update the ith tracker  with the incoming note
+      _trkr_on_new_note(p->trkA[i],sec,pitch,vel, p->args.rpt_fl, matched_loc_id_ref, rej_loc_id, meas_numb_ref, score_vel_ref);
+
+      // if the tracker found a match
+      if( matched_loc_id_ref != kInvalidId  )
+      {
+        match_fl = true;
+        
+        // update the percent complete return value
+        if( loc_pct_ref == -1.0 )
+          loc_pct_ref = (p->locA[ p->locMapA[ matched_loc_id_ref ] ].sec - p->beg_loc_sec)/(p->end_loc_sec - p->beg_loc_sec);
+      }
+      else // the tracker id not find a match
+      {
+        // if the tracker found a match but reject it ...
+        if( rej_loc_id != kInvalidId && new_trkr_cnt==0 )
+        {
+          unsigned new_trkr_idx = kInvalidIdx;
+          
+          // ... then activate another tracker starting on the reject location
+          if((rc = _trkr_activate(p,rej_loc_id,new_trkr_idx)) != kOkRC )
+          {
+            rc = cwLogError(rc,"Tracker activation failed on rejected location.");
+            // note that we are currently choosing not to act on this error 
+          }
+          else
+          {
+            rej_loc_id = kInvalidId;
+            active_cnt += 1;
+
+            // if this tracker was already run previously then run it again with the incoming note
+            // otherwise it will be run as part of the outer loop
+            if( new_trkr_idx < i )
+              _trkr_on_new_note(p->trkA[new_trkr_idx],sec,pitch,vel, p->args.rpt_fl, matched_loc_id_ref, rej_loc_id, meas_numb_ref, score_vel_ref);
+          }
+
+          // notice that a new tracker was started so that we only start one new tracker per call to this function
+          new_trkr_cnt += 1;
+        }
+      }
+      
+    }
+  }
+
+  if( match_fl )
+  {
+    if( p->no_match_cnt > 0)
+      p->no_match_cnt -= 1;    
+  }
+  else
+  {    
+    p->no_match_cnt+=1;
+
+    // if it has been a long time since we matched
+    // BUG BUG BUG: 10 must be an arg
+    if( p->no_match_cnt >= 10 && active_cnt < TRACKER_CNT )
+    {
+      unsigned new_trkr_idx = kInvalidIdx;
+      if((rc = _jump_ahead(p,new_trkr_idx)) == kOkRC )
+      {
+        p->no_match_cnt = 0; // zero no match cnt to prevent starting another tracker immediatly
+        
+        unsigned rej_loc_id = kInvalidId;
+        _trkr_on_new_note(p->trkA[new_trkr_idx],sec,pitch,vel, p->args.rpt_fl, matched_loc_id_ref, rej_loc_id, meas_numb_ref, score_vel_ref);
+        
+      }
+    }
+  }
+  
+  unsigned min_no_track_note_cnt = kInvalidCnt;
+  unsigned min_idx               = kInvalidIdx;
+
+  // iterate through all active trackers:
+  for(unsigned i=0; i<TRACKER_CNT; ++i)
+    if( p->trkA[i]->active_fl )
+    {
+      // if this tracker has not matched for 7 notes then deactivate it
+      // BUG BUG BUG: make '7' an argument
+      if( active_cnt>1 && p->trkA[i]->no_track_note_cnt > 7 )
+      {
+        cwLogInfo("Dropping tracker %i : No Matches",p->trkA[i]->id);        
+        p->trkA[i]->active_fl = false;
+      }
+      
+      // find the active tracker with the lowest number of unmatched notes
+      if( min_no_track_note_cnt == kInvalidCnt || p->trkA[i]->no_track_note_cnt < min_no_track_note_cnt )
+      {
+        min_idx = i;
+        min_no_track_note_cnt = p->trkA[i]->no_track_note_cnt;
+      }
+
+      // update the 'duplicate-results' array
+      for(unsigned j=0; j<TRACKER_CNT; ++j)
+        if( j!=i && p->trkA[j]->active_fl )
+        {
+          if( p->trkA[i]->exp_loc_idx == p->trkA[j]->exp_loc_idx )
+          {
+            p->trkA[i]->duplA[j] += 1;
+          
+            // BUG BUG BUG: make 5 an argument
+            if( p->trkA[i]->duplA[j] > 5 )
+            {
+              unsigned k = p->trkA[i]->no_track_note_cnt > p->trkA[j]->no_track_note_cnt ? i : j;
+              
+              // deactivate the duplicate with the most untracked notes
+              p->trkA[k]->active_fl = false;
+
+              cwLogInfo("Dropping tracker %i : Duplicates",p->trkA[k]->id);
+              
+              break;
+            }
+          }
+          else
+          {
+            if( p->trkA[i]->duplA[j] > 0 )
+              p->trkA[i]->duplA[j] -= 1;
+          }
+        }
+      
+    }
+
+  // if no trackers are active ...
+  if( active_cnt == 0 )
+  {
+    rc = cwLogError(kInvalidStateRC,"No active trackers.");
+    // BUG BUG BUG:
+    // We would like to activate a tracker but dont' know where to start it.
+    // Currently we hope that it will time out in is_done().
+    
+  }
+
+  // Set the returned status based on the tracker with the minumum number of unmatched notes
+  if( min_idx == kInvalidIdx )
+    status_id_ref = kResetStatusId;
+  else
+    status_id_ref = _trkr_status(p->trkA[min_idx]);
+
+  // BUG BUG BUG: the stored results should be based on matching tracker 
   if( p->resultN < p->resultAllocN )
   {
     result_t* r = p->resultA + p->resultN;
@@ -1058,7 +1388,6 @@ cw::rc_t cw::score_follow_2::on_new_note( handle_t  h,
     p->resultN += 1;
   }
 
-  status_id_ref = _trkr_status(p->trk);
 
   return rc;
 }
@@ -1068,8 +1397,9 @@ cw::rc_t cw::score_follow_2::do_exec( handle_t h, double sec )
   rc_t  rc = kOkRC;
   sf_t* p  = _handleToPtr(h);
 
-  if( sec > p->trk->exp_sec )
-    _trkr_do_decay(p->trk);
+  for(unsigned i=0; i<TRACKER_CNT; ++i)    
+    if( sec > p->trkA[i]->exp_sec )
+      _trkr_do_decay(p->trkA[i]);
 
   return rc;
 }
@@ -1077,15 +1407,50 @@ cw::rc_t cw::score_follow_2::do_exec( handle_t h, double sec )
 bool cw::score_follow_2::is_done( handle_t h, double sec, double max_ioi_fact )
 {
   sf_t* p = _handleToPtr(h);
-  
-  if( p->trk->end_fl )
-    return true;
 
-  if( p->trk->cur_max_ioi_sec > 0 && ((sec - p->trk->last_note_on_sec) > (p->trk->cur_max_ioi_sec * max_ioi_fact)) )
-    return true;
-    
+  for(unsigned i=0; i<TRACKER_CNT; ++i)
+    if(p->trkA[i]->active_fl )
+    {
+      if( p->trkA[i]->end_fl )
+      {
+        cwLogInfo("Done: The end-of-score was detected.");
+        return true;
+      }
+      
+      // time between the last note-on msg received and the current time.
+      double dsec = sec - p->last_note_on_sec;
+
+      // if we have come to the end of the segment then the IOI and ETE durations may be zero
+      // but there may still be notes to play
+      // bool gap_fl = p->trkA[i]->cur_max_ioi_sec==0 && p->trkA[i]->cur_ete_dur_sec == 0 && dsec > 3.0;
+
+  
+      // if the duration betwen last recognized note and the expected time of the next note has elapsed
+      bool ioi_fl = dsec > p->trkA[i]->cur_max_ioi_sec * max_ioi_fact;
+
+      // if the duration betweenthe last recognized note and the expected end of the sequence has elapsed
+      bool ete_fl = dsec > p->trkA[i]->cur_ete_dur_sec * max_ioi_fact;
+
+
+      unsigned min_note_cnt = p->cur_note_cnt/2;
+      
+      // 
+      if(  p->trkA[i]->new_note_idx > min_note_cnt && ioi_fl && ete_fl && dsec>1 )
+      {
+        cwLogInfo("Done: The score duration expired.");
+        return true;
+      }
+    }
+  
   return false;    
 }
+
+void cw::score_follow_2::report_score( handle_t h )
+{
+  sf_t* p = _handleToPtr(h);
+  _report_score(p,p->beg_loc_id,p->end_loc_id);
+}
+
 
 
 void cw::score_follow_2::report_summary( handle_t h, rpt_t& rpt_ref )
@@ -1106,7 +1471,7 @@ void cw::score_follow_2::report_summary( handle_t h, rpt_t& rpt_ref )
     
   unsigned bni = p->locA[ bli ].note_idxA[0];
   unsigned eni = p->locA[ eli ].note_idxA[ p->locA[eli].note_idxN-1 ];
-
+  /*
   for(unsigned ni=bni; ni<=eni; ++ni)
     if( p->trk->note_match_cntA[ni] == 0 )
       rpt_ref.missN += 1;
@@ -1114,7 +1479,8 @@ void cw::score_follow_2::report_summary( handle_t h, rpt_t& rpt_ref )
       rpt_ref.matchN += 1;
 
   rpt_ref.perfNoteN = p->trk->new_note_idx;
-
+  */
+  
   if( p->args.rpt_fl )
     cwLogInfo("Matched:%i Missed:%i Spurious:%i",rpt_ref.matchN,rpt_ref.missN,rpt_ref.spuriousN);
 

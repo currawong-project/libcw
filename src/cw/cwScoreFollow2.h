@@ -54,14 +54,14 @@ namespace cw
         
       double   decay_coeff;          // 0.995 affinity decay coeff
 
-      double   d_sec_err_thresh_lo;  // 0.4 reject if d_loc > d_loc_thresh_lod and d_time > d_time_thresh_lo
+      double   d_sec_err_thresh_lo;  // 0.4 reject if d_loc > d_loc_thresh_lo and d_time > d_time_thresh_lo
       int      d_loc_thresh_lo;      //   3  
       
       double   d_sec_err_thresh_hi;  // 1.5 reject if d_loc != 0 and d_time > d_time_thresh_hi
       int      d_loc_thresh_hi;      // 4   reject if d_loc > d_loc_thresh_hi
       int      d_loc_stats_thresh;   // 3   reject for time stats updates if d_loc > d_loc_stats_thresh
 
-      bool rpt_fl;  // set to turn on debug reporting
+      bool     rpt_fl;  // set to turn on debug reporting
       
     } args_t;
 
@@ -100,6 +100,9 @@ namespace cw
     rc_t do_exec( handle_t h, double sec );
 
     bool is_done( handle_t h, double sec, double max_ioi_fact );
+
+    // Print the current score segment as last configured by the last call to reset.
+    void report_score( handle_t h );
     
     typedef struct rpt_str
     {
