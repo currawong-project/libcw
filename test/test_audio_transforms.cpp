@@ -221,7 +221,7 @@ TEST_F(AudioTransformsTest, WtOsc) {
     wt.rms = 0;
     wt.hz = 1.0f;
     wt.srate = srate;
-    wt.pad_smpN = 1;
+    wt.pad_smpN = WT_OSC_PAD_SAMPLE_CNT;
     wt.posn_smp_idx = 0;
     
     wt_osc::obj_str<float, float> obj;
@@ -256,7 +256,7 @@ TEST_F(AudioTransformsTest, WtSeqOsc) {
     wt.rms = 0;
     wt.hz = 1.0f;
     wt.srate = srate;
-    wt.pad_smpN = 1;
+    wt.pad_smpN = WT_OSC_PAD_SAMPLE_CNT;
     wt.posn_smp_idx = 0;
     
     std::vector<wt_osc::wt_str<float, float>> wtA(3, wt);
@@ -298,7 +298,7 @@ TEST_F(AudioTransformsTest, MultiChWtSeqOsc) {
     wt.aN = 16;
     wt.hz = 1.0f;
     wt.srate = srate;
-    wt.pad_smpN = 1;
+    wt.pad_smpN = WT_OSC_PAD_SAMPLE_CNT;
     wt.posn_smp_idx = 0;
     
     std::vector<wt_osc::wt_str<float, float>> wtA(3, wt);
