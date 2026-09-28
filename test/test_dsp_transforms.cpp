@@ -179,7 +179,7 @@ TEST_F(DspTransformsTest, AudioMeter) {
     EXPECT_EQ(audio_meter::exec(p, x.data(), n), kOkRC);
     
     EXPECT_NEAR(p->outLin, 0.5f, 1e-6);
-    EXPECT_NEAR(p->outDb, ampl_to_db(0.5f), 1e-5);
+    EXPECT_NEAR(p->outMeasDb, ampl_to_db(0.5f), 1e-5);
     EXPECT_FALSE(p->peakFl);
 
     // Now exceed threshold

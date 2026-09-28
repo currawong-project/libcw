@@ -467,21 +467,23 @@ cw::rc_t cw::dsp::audio_meter::exec( obj_t* p, const sample_t* xV, unsigned xN )
   if( sum == 0 )
   {
     p->outLin = 0;
-    p->outDb = -100.0;
+    p->outMeasDb = -100.0;
+    p->outVisDb = -100.0;
     p->peakFl = false;
     p->clipFl = false;
   }
   else
   {
     p->outLin = std::sqrt( sum / (n0+n1) );  // linear RMS
-    p->outDb  = ampl_to_db(p->outLin);    // RMS dB
+    p->outMeasDb  = ampl_to_db(p->outLin);    // RMS dB
 
-    // use a power function to make the typical active signal area (-30 to -10) more visible
-    p->outDb = pow((p->outDb + 100.0) / 100.0,4.0);
-    p->outDb = (p->outDb*100) - 100.0;
-
-    p->peakFl = p->outDb > p->peakThreshDb;              // set peak flag
+    p->peakFl = p->outMeasDb > p->peakThreshDb;              // set peak flag
     p->clipFl = vop::max(xV, original_xN) >= 1.0;   // set clip flag
+    
+    // use a power function to make the typical active signal area (-30 to -10) more visible
+    p->outVisDb = pow((p->outMeasDb + 100.0) / 100.0,4.0);
+    p->outVisDb = (p->outVisDb*100) - 100.0;
+
     
   }
 

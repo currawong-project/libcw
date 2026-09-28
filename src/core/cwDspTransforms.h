@@ -112,7 +112,8 @@ namespace cw
         srate_t   srate;
         coeff_t    peakThreshDb;
         coeff_t    outLin;
-        coeff_t    outDb;
+        coeff_t    outMeasDb; // measured decibel value
+        coeff_t    outVisDb;  // outTrueDb scaled for better visualization
         bool      peakFl;
         bool      clipFl;
         unsigned  peakCnt;

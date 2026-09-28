@@ -5632,7 +5632,7 @@ namespace cw
         for(unsigned i=0; i<chN; ++i)
         {
           dsp::audio_meter::exec( inst->mtrA[i], srcBuf->buf + i*srcBuf->frameN, srcBuf->frameN );
-          var_set(proc, kOutPId,    i, inst->mtrA[i]->outDb  );
+          var_set(proc, kOutPId,    i, inst->mtrA[i]->outVisDb  );
           var_set(proc, kPeakFlPId, i, inst->mtrA[i]->peakFl );
           var_set(proc, kClipFlPId, i, inst->mtrA[i]->clipFl );
 
@@ -5640,7 +5640,7 @@ namespace cw
           {
             var_send_to_ui( proc, kOutPId,  i );
             if( consoleFl )
-              cwLogPrint("%6.2f ",inst->mtrA[i]->outDb);
+              cwLogPrint("%6.2f ",inst->mtrA[i]->outVisDb);
           }
         }
         
@@ -5666,7 +5666,7 @@ namespace cw
         {
           audio_meter_t* c = inst->mtrA[i];
           proc_info(proc,"%s ch:%i : %f %f db : pk:%i %i clip:%i %i ",
-                    proc->label,i,c->outLin,c->outDb,c->peakFl,c->peakCnt,c->clipFl,c->clipCnt );
+                    proc->label,i,c->outLin,c->outVisDb,c->peakFl,c->peakCnt,c->clipFl,c->clipCnt );
         }
         
         return rc;
