@@ -11,7 +11,7 @@
 #include "cwFlowDecl.h"
 #include "cwFlow.h"
 
-#define PROC_DICT_FNAME "../../../src/flow/rsrc/proc_dict.cfg"
+#define PROC_DICT_FNAME RSRC_DIR "/proc_dict.cfg"
 
 using namespace cw;
 
