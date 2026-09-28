@@ -55,10 +55,13 @@ See https://cmake.org/cmake/help/latest/manual/ctest.1.html#manual:ctest(1) for 
 ctest --test-dir build/debug/test                       # Run all tests.
 ctest --test-dir build/debug/test  --verbose            # Run all tests without surpressing output to stdout
 ctest -R "MyTest" --test-dir build/debug/test --verbose # Identify the tests to run with a regex.
+
+cd ~/src/caw
+ ctest --test-dir build/debug/_deps/cw-build/test -R GutimMeas.CreateTest --verbose
 ```
 ## Debug a test:
 ```
-file  ~/src/libcw/build/debug/test/test_main  
+file  ~/src/libcw/build/debug/test/test_main
 set args --gtest_filter=FlowTest.NumberTest --gtest_death_test_style=threadsafe
 catch signal SIGABRT
 r
