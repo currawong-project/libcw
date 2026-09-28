@@ -124,6 +124,7 @@ namespace cw
       { "gutim_2_sf_ctl",  &gutim_2_sf_ctl::members },
       { "timeline_player", &timeline_player::members },
       { "key_state_monitor", &key_state_monitor::members },
+      { "gutim_perf_eval", &gutim_perf_eval::members },
       { nullptr, nullptr }
     };
 

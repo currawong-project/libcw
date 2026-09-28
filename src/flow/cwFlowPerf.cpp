@@ -4775,6 +4775,7 @@ namespace cw
         //unsigned                       o_midi_field_idx;
         unsigned                       loc_field_idx;
         unsigned                       meas_field_idx;
+        unsigned                       sec_field_idx;
         unsigned                       vel_field_idx;
         recd_array_t*                  recd_array;  // output record array
         unsigned                       cur_loc_id;
@@ -4881,6 +4882,7 @@ namespace cw
         if((rc = recd_array_field_index( p->recd_array,
                                          "loc",p->loc_field_idx,
                                          "meas",p->meas_field_idx,
+                                         "sec",p->sec_field_idx,
                                          "score_vel",p->vel_field_idx)) != kOkRC )
         {
           proc_error(proc,rc,"Record field lookup failed.");
@@ -4977,13 +4979,14 @@ namespace cw
       }
 
 
-      rc_t _set_output_record( proc_t* proc, inst_t* p, const recd_t* base, unsigned loc_id, unsigned meas_numb, unsigned vel )
+      rc_t _set_output_record( proc_t* proc, inst_t* p, const recd_t* base, double sec, unsigned loc_id, unsigned meas_numb, unsigned vel )
       {
         rc_t rc = kOkRC;
         
         if((rc = recd_append( p->recd_array, base,
                               p->loc_field_idx,  loc_id,
                               p->meas_field_idx, meas_numb,
+                              p->sec_field_idx, sec,
                               p->vel_field_idx,  vel )) != kOkRC )
         {
           rc = proc_error(proc,rc,"Record output failed.");
@@ -5098,7 +5101,7 @@ namespace cw
               }
             }
 
-            _set_output_record( proc, p, i_rbuf->recd_array->recdA+i, loc_id, meas_numb, score_vel );
+            _set_output_record( proc, p, i_rbuf->recd_array->recdA+i, sec, loc_id, meas_numb, score_vel );
           
           }
         }

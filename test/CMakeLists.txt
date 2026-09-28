@@ -1,8 +1,5 @@
 enable_testing()
 
-
-
-
 add_executable(test_main)
 
 target_sources(test_main
@@ -31,6 +28,7 @@ target_sources(test_main
   test_audio_transforms.cpp
   test_dsp_transforms.cpp
   test_wave_table_bank.cpp
+  test_gutim_meas.cpp
 )
 
 target_compile_options(test_main PRIVATE
@@ -41,7 +39,10 @@ target_compile_options(test_main PRIVATE
     $<$<AND:$<CONFIG:Debug>,$<BOOL:${CW_COVERAGE_FL}>>:--coverage>    
 )
 
-  
+
+target_compile_definitions(test_main PRIVATE 
+    RSRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/rsrc"
+)
 
 target_link_libraries(
   test_main

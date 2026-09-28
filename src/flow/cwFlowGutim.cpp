@@ -30,7 +30,7 @@
 
 #include "cwFlowGutim.h"
 #include "cwKeyStateMonitor.h"
-
+#include "cwGutimMeas.h"
 
 namespace cw
 {
@@ -1829,6 +1829,172 @@ namespace cw
       
     }    // key_state_monitor
     
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // gutim_perf_eval
+    //
+    namespace gutim_perf_eval
+    {
+      enum {
+        kCfgFNamePId,
+        kResetPId,
+        kInPId,
+        kOutPId
+      };
+      
+      typedef struct
+      {
+        recd_array_t* recd_array;
+        gutim_meas::handle_t gmH;
+        unsigned i_loc_fld_idx;
+        unsigned i_sec_fld_idx;
+        unsigned i_midi_fld_idx;
+        unsigned i_score_vel_fld_idx;
+        unsigned o_chord_eval_fl_fld_idx;
+        unsigned o_chord_spread_fld_idx;
+      } inst_t;
+
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t          rc        = kOkRC;        
+        const char*   cfg_fname = nullptr;
+        const rbuf_t* i_rbuf    = nullptr;
+        bool          reset_fl  = false;
+
+        if((rc = var_register_and_get(proc,kAnyChIdx,
+                                      kCfgFNamePId,"cfg_fname",kBaseSfxId, cfg_fname,
+                                      kResetPId,   "reset",    kBaseSfxId, reset_fl,
+                                      kInPId,      "in",       kBaseSfxId, i_rbuf)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // register the output port
+        if((rc = var_alloc_register_and_set(proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, 0, p->recd_array )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((rc = recd_array_field_index( i_rbuf->recd_array,
+                                        "midi", p->i_midi_fld_idx,
+                                         "loc",       p->i_loc_fld_idx,
+                                         "sec",       p->i_sec_fld_idx,
+                                         "score_vel", p->i_score_vel_fld_idx )) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+        if((rc = recd_array_field_index( p->recd_array,
+                                         "chord_eval_fl", p->o_chord_eval_fl_fld_idx,
+                                         "chord_spread",  p->o_chord_spread_fld_idx )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((rc = create(p->gmH, cfg_fname )) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        if( p->gmH.isValid() )
+        {
+          destroy(p->gmH);
+        }
+
+        return rc;
+      }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        switch( var->vid )
+        {
+          case kResetPId:
+            gutim_meas::reset(p->gmH);
+            break;
+        }
+        
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t            rc     = kOkRC;
+        const rbuf_t*   i_rbuf = nullptr;
+        midi::ch_msg_t* m      = nullptr;
+        unsigned        loc_id = kInvalidId;
+        double          sec    = 0.0;
+        unsigned        score_vel = kInvalidId;
+        
+        if((rc = var_get(proc,kInPId,kAnyChIdx,i_rbuf)) != kOkRC )
+          goto errLabel;
+
+        recd_array_empty(p->recd_array);
+
+        for(unsigned i=0; i<i_rbuf->recd_array->recdN; ++i)
+        {
+          if((rc = recd_get(i_rbuf->recd_array->recdA + i,
+                            p->i_midi_fld_idx, m,
+                            p->i_sec_fld_idx, sec,
+                            p->i_score_vel_fld_idx, score_vel,
+                            p->i_loc_fld_idx, loc_id )) != kOkRC )
+          {
+            goto errLabel;
+          }
+
+          if((rc = on_note( p->gmH, loc_id, sec, m->d0, score_vel )) != kOkRC )
+          {
+            goto errLabel;
+          }
+          
+          if( is_section_complete(p->gmH) )
+          {
+            gutim_meas::results_t results{};
+            if((rc = get_results( p->gmH, results )) != kOkRC )
+            {
+              goto errLabel;
+            }
+
+            if((rc = recd_append(p->recd_array, nullptr,
+                                 p->o_chord_eval_fl_fld_idx, results.chord_eval_fl,
+                                 p->o_chord_spread_fld_idx,  results.chord_spread )) != kOkRC )
+            {
+              goto errLabel;
+            }
+            
+          }
+          
+        }
+        
+            
+        
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    // gutim_perf_eval
     
   }
 }
