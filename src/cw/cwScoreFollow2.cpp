@@ -1046,6 +1046,8 @@ cw::rc_t cw::score_follow_2::on_new_note( handle_t  h,
   loc_pct_ref = -1.0;
   _trkr_on_new_note(p->trk,sec,pitch,vel, p->args.rpt_fl, matched_loc_id_ref, meas_numb_ref, score_vel_ref);
 
+  perf_note_idx_ref = p->trk->new_note_idx;
+
   if( matched_loc_id_ref != kInvalidIdx )
     loc_pct_ref = (p->locA[ p->locMapA[ matched_loc_id_ref ] ].sec - p->beg_loc_sec)/(p->end_loc_sec - p->beg_loc_sec);
 
