@@ -4772,7 +4772,7 @@ namespace cw
         cw::score_follow_2::handle_t   sfH;
         cw::score_follow_2::status_id_t sf_status_id;
         unsigned                       i_midi_field_idx;
-        //unsigned                       o_midi_field_idx;
+        unsigned                       perf_note_idx_field_idx;
         unsigned                       loc_field_idx;
         unsigned                       meas_field_idx;
         unsigned                       sec_field_idx;
@@ -4881,6 +4881,7 @@ namespace cw
 
         if((rc = recd_array_field_index( p->recd_array,
                                          "loc",p->loc_field_idx,
+                                         "perf_note_idx",p->perf_note_idx_field_idx,
                                          "meas",p->meas_field_idx,
                                          "sec",p->sec_field_idx,
                                          "score_vel",p->vel_field_idx)) != kOkRC )
@@ -4979,12 +4980,13 @@ namespace cw
       }
 
 
-      rc_t _set_output_record( proc_t* proc, inst_t* p, const recd_t* base, double sec, unsigned loc_id, unsigned meas_numb, unsigned vel )
+      rc_t _set_output_record( proc_t* proc, inst_t* p, const recd_t* base, double sec, unsigned perf_note_idx, unsigned loc_id, unsigned meas_numb, unsigned vel )
       {
         rc_t rc = kOkRC;
         
         if((rc = recd_append( p->recd_array, base,
                               p->loc_field_idx,  loc_id,
+                              p->perf_note_idx_field_idx, perf_note_idx,
                               p->meas_field_idx, meas_numb,
                               p->sec_field_idx, sec,
                               p->vel_field_idx,  vel )) != kOkRC )
@@ -5039,12 +5041,13 @@ namespace cw
           // for each incoming record
           for(unsigned i=0; i<i_rbuf->recd_array->recdN; ++i)
           {
-            midi::ch_msg_t*                   m         = nullptr;
-            unsigned                          loc_id    = kInvalidId;
-            unsigned                          score_vel = -1;
-            unsigned                          meas_numb = -1;
-            double                            loc_pct   = -1;
-            cw::score_follow_2::status_id_t sf_status_id    = cw::score_follow_2::kInvalidStatusId;
+            midi::ch_msg_t*                 m             = nullptr;
+            unsigned                        perf_note_idx = kInvalidIdx;
+            unsigned                        loc_id        = kInvalidId;
+            unsigned                        score_vel     = -1;
+            unsigned                        meas_numb     = -1;
+            double                          loc_pct       = -1;
+            cw::score_follow_2::status_id_t sf_status_id  = cw::score_follow_2::kInvalidStatusId;
 
             if((rc = recd_get( i_rbuf->recd_array->recdA+i, p->i_midi_field_idx, m)) != kOkRC )
             {
@@ -5057,7 +5060,7 @@ namespace cw
             if( midi::isNoteOn( m->status, m->d1 ) )
             {
             
-              if((rc = on_new_note( p->sfH, m->uid, sec, m->d0, m->d1, loc_id, meas_numb, score_vel, loc_pct, sf_status_id )) != kOkRC )
+              if((rc = on_new_note( p->sfH, m->uid, sec, m->d0, m->d1, perf_note_idx, loc_id, meas_numb, score_vel, loc_pct, sf_status_id )) != kOkRC )
               {
                 rc = proc_error(proc,rc,"Score follower note processing failed.");
                 goto errLabel;              
@@ -5101,7 +5104,7 @@ namespace cw
               }
             }
 
-            _set_output_record( proc, p, i_rbuf->recd_array->recdA+i, sec, loc_id, meas_numb, score_vel );
+            _set_output_record( proc, p, i_rbuf->recd_array->recdA+i, sec, perf_note_idx, loc_id, meas_numb, score_vel );
           
           }
         }

@@ -62,6 +62,9 @@ cd ~/src/caw
 ## Debug a test:
 ```
 file  ~/src/libcw/build/debug/test/test_main
+or
+file ~/src/caw/build/debug/_deps/cw-build/test/test_main
+
 set args --gtest_filter=FlowTest.NumberTest --gtest_death_test_style=threadsafe
 catch signal SIGABRT
 r

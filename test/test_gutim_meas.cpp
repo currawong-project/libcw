@@ -16,11 +16,39 @@ TEST( GutimMeas, CreateTest )
 {
   rc_t                 rc    = kOkRC;
   gutim_meas::handle_t h;
-  const char*          fname = RSRC_DIR "/gutim_meas_group_info.json";
+  const char*          cfg_fname = RSRC_DIR "/gutim_meas_group_info.json";
+  const char*          vt_fname  = RSRC_DIR "/vel_table_perf.json";
+  const char*          vt_name   = "ivory";
 
-  if((rc = create(h,fname)) != kOkRC )
+  if((rc = create(h,cfg_fname,vt_fname,vt_name)) != kOkRC )
   {
     FAIL() << "Create failed.";
+  }
+
+  if((rc = destroy(h)) != kOkRC )
+  {
+    FAIL() << "Destroy failed.";  
+  }
+
+  EXPECT_EQ(rc,kOkRC);
+}
+
+TEST( GutimMeas, ReportTest )
+{
+  rc_t                 rc    = kOkRC;
+  gutim_meas::handle_t h;
+  const char*          fname = RSRC_DIR "/gutim_meas_group_info.json";
+  const char*          vt_fname  = RSRC_DIR "/vel_table_perf.json";
+  const char*          vt_name   = "ivory";
+
+  if((rc = create(h,fname,vt_fname,vt_name)) != kOkRC )
+  {
+    FAIL() << "Create failed.";
+  }
+
+  if((rc = report(h)) != kOkRC )
+  {
+    FAIL() << "Report failed.";
   }
 
   if((rc = destroy(h)) != kOkRC )

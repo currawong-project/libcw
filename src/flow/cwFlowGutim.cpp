@@ -1091,7 +1091,7 @@ namespace cw
 
         if((rc = recd_array_field_index( p->recd_array,
                                          "midi", p->midi_fld_idx,
-                                         "meas", p->meas_fld_idx,
+                                         "tlp_meas", p->meas_fld_idx,
                                          "port_id", p->port_fld_idx )) != kOkRC )
         {
           goto errLabel;
@@ -1837,7 +1837,12 @@ namespace cw
     {
       enum {
         kCfgFNamePId,
+        kVelTblFNamePId,
+        kVelTblNamePId,
         kResetPId,
+        kSfResetPId,
+        kSfBegLocPId,
+        kSfEndLocPId,
         kInPId,
         kOutPId
       };
@@ -1846,26 +1851,51 @@ namespace cw
       {
         recd_array_t* recd_array;
         gutim_meas::handle_t gmH;
+        unsigned i_perf_note_idx_fld_idx;
         unsigned i_loc_fld_idx;
         unsigned i_sec_fld_idx;
         unsigned i_midi_fld_idx;
         unsigned i_score_vel_fld_idx;
-        unsigned o_chord_eval_fl_fld_idx;
-        unsigned o_chord_spread_fld_idx;
+        
+        unsigned o_avg_loc_dev_sec_fi;
+        unsigned o_avg_dyn_fi;
+        unsigned o_avg_dyn_dev_fi;
+        unsigned o_chord_cnt_fi;
+        unsigned o_avg_chord_spread_secs_fi;
+        unsigned o_beat_group_cnt_fi;
+        unsigned o_avg_beat_period_dev_sec_fi;
+        unsigned o_avg_beat_dur_pct_fi;
+        unsigned o_grace_group_cnt_fi;
+        unsigned o_avg_grace_period_dev_sec_fi;
+        unsigned o_avg_grace_dur_pct_fi;
+        unsigned o_section_dur_dev_pct_fi;
       } inst_t;
 
 
       rc_t _create( proc_t* proc, inst_t* p )
       {
-        rc_t          rc        = kOkRC;        
-        const char*   cfg_fname = nullptr;
-        const rbuf_t* i_rbuf    = nullptr;
-        bool          reset_fl  = false;
+        rc_t          rc            = kOkRC;        
+        const char*   cfg_fname     = nullptr;
+        const char*   vt_fname      = nullptr;
+        const char*   vt_name       = nullptr;
+        const rbuf_t* i_rbuf        = nullptr;
+        bool          reset_fl      = false;
+        bool          sf_reset_fl   = false;
+        unsigned      sf_beg_loc    = kInvalidId;
+        unsigned      sf_end_loc    = kInvalidId;
+        char*         exp_vt_fname  = nullptr;
+        char*         exp_cfg_fname = nullptr;
+        
 
         if((rc = var_register_and_get(proc,kAnyChIdx,
-                                      kCfgFNamePId,"cfg_fname",kBaseSfxId, cfg_fname,
-                                      kResetPId,   "reset",    kBaseSfxId, reset_fl,
-                                      kInPId,      "in",       kBaseSfxId, i_rbuf)) != kOkRC )
+                                      kCfgFNamePId,    "cfg_fname",     kBaseSfxId, cfg_fname,
+                                      kVelTblFNamePId, "vel_tbl_fname", kBaseSfxId, vt_fname,
+                                      kVelTblNamePId,  "vel_tbl_name",  kBaseSfxId, vt_name,
+                                      kResetPId,       "reset",         kBaseSfxId, reset_fl,
+                                      kSfResetPId,     "sf_reset_fl",   kBaseSfxId, sf_reset_fl,
+                                      kSfBegLocPId,    "sf_beg_loc",    kBaseSfxId, sf_beg_loc,
+                                      kSfEndLocPId,    "sf_end_loc",    kBaseSfxId, sf_end_loc,
+                                      kInPId,          "in",            kBaseSfxId, i_rbuf)) != kOkRC )
         {
           goto errLabel;
         }
@@ -1878,6 +1908,7 @@ namespace cw
 
         if((rc = recd_array_field_index( i_rbuf->recd_array,
                                         "midi", p->i_midi_fld_idx,
+                                         "perf_note_idx", p->i_perf_note_idx_fld_idx,
                                          "loc",       p->i_loc_fld_idx,
                                          "sec",       p->i_sec_fld_idx,
                                          "score_vel", p->i_score_vel_fld_idx )) != kOkRC )
@@ -1886,19 +1917,43 @@ namespace cw
         }
         
         if((rc = recd_array_field_index( p->recd_array,
-                                         "chord_eval_fl", p->o_chord_eval_fl_fld_idx,
-                                         "chord_spread",  p->o_chord_spread_fld_idx )) != kOkRC )
+                                         "avg_loc_dev_sec",p->o_avg_loc_dev_sec_fi,
+                                         "avg_dyn",p->o_avg_dyn_fi,
+                                         "avg_dyn_dev",p->o_avg_dyn_dev_fi,
+                                         "chord_cnt",p->o_chord_cnt_fi,
+                                         "avg_chord_spread_secs",p->o_avg_chord_spread_secs_fi,
+                                         "beat_group_cnt",p->o_beat_group_cnt_fi,
+                                         "avg_beat_period_dev_sec",p->o_avg_beat_period_dev_sec_fi,
+                                         "avg_beat_dur_pct",p->o_avg_beat_dur_pct_fi,
+                                         "grace_group_cnt",p->o_grace_group_cnt_fi,
+                                         "avg_grace_period_dev_sec",p->o_avg_grace_period_dev_sec_fi,
+                                         "avg_grace_dur_pct",p->o_avg_grace_dur_pct_fi,
+                                         "section_dur_dev_pct",p->o_section_dur_dev_pct_fi )) != kOkRC )
         {
           goto errLabel;
         }
 
-        if((rc = create(p->gmH, cfg_fname )) != kOkRC )
+        if((exp_cfg_fname = proc_expand_filename(proc,cfg_fname)) == nullptr )
+        {
+          goto errLabel;
+        }
+
+        if((exp_vt_fname = proc_expand_filename(proc, vt_fname)) == nullptr )
+        {
+          goto errLabel;
+        }
+        
+        if((rc = create(p->gmH, exp_cfg_fname, exp_vt_fname, vt_name )) != kOkRC )
         {
           goto errLabel;
         }
         
 
       errLabel:
+
+        mem::release(exp_cfg_fname);
+        mem::release(exp_vt_fname);
+        
         return rc;
       }
 
@@ -1914,6 +1969,28 @@ namespace cw
         return rc;
       }
 
+      rc_t _on_sf_reset(proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+        unsigned beg_loc_id = kInvalidId;
+        unsigned end_loc_id = kInvalidId;
+
+        if((rc = var_get(proc,kSfBegLocPId,kAnyChIdx,beg_loc_id)) != kOkRC )
+          goto errLabel;
+          
+        if((rc = var_get(proc,kSfEndLocPId,kAnyChIdx,end_loc_id)) != kOkRC )
+          goto errLabel;
+        
+        if((rc = set_current_section(p->gmH,beg_loc_id,end_loc_id)) != kOkRC )
+          goto errLabel;
+          
+      errLabel:
+        if(rc != kOkRC )
+          proc_error(proc,rc,"Set section failed on beg:%i end:%i.", beg_loc_id, end_loc_id);
+        
+        return rc;
+      }
+
       rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
         rc_t rc = kOkRC;
@@ -1921,6 +1998,10 @@ namespace cw
         {
           case kResetPId:
             gutim_meas::reset(p->gmH);
+            break;
+
+          case kSfResetPId:
+            _on_sf_reset(proc,p);
             break;
         }
         
@@ -1933,8 +2014,10 @@ namespace cw
         const rbuf_t*   i_rbuf = nullptr;
         midi::ch_msg_t* m      = nullptr;
         unsigned        loc_id = kInvalidId;
+        unsigned        perf_note_idx = kInvalidIdx;
         double          sec    = 0.0;
         unsigned        score_vel = kInvalidId;
+        
         
         if((rc = var_get(proc,kInPId,kAnyChIdx,i_rbuf)) != kOkRC )
           goto errLabel;
@@ -1945,6 +2028,7 @@ namespace cw
         {
           if((rc = recd_get(i_rbuf->recd_array->recdA + i,
                             p->i_midi_fld_idx, m,
+                            p->i_perf_note_idx_fld_idx, perf_note_idx,
                             p->i_sec_fld_idx, sec,
                             p->i_score_vel_fld_idx, score_vel,
                             p->i_loc_fld_idx, loc_id )) != kOkRC )
@@ -1952,28 +2036,41 @@ namespace cw
             goto errLabel;
           }
 
-          if((rc = on_note( p->gmH, loc_id, sec, m->d0, score_vel )) != kOkRC )
+          if( perf_note_idx != kInvalidIdx )
           {
-            goto errLabel;
-          }
-          
-          if( is_section_complete(p->gmH) )
-          {
-            gutim_meas::results_t results{};
-            if((rc = get_results( p->gmH, results )) != kOkRC )
+            if((rc = on_note( p->gmH, perf_note_idx, loc_id, sec, m->d0, score_vel )) != kOkRC )
             {
               goto errLabel;
             }
+          
+            if( is_section_complete(p->gmH) )
+            {
+              gutim_meas::results_t* results;
+              if((rc = get_results( p->gmH, results )) != kOkRC && results != nullptr )
+              {
+                goto errLabel;
+              }
 
-            if((rc = recd_append(p->recd_array, nullptr,
-                                 p->o_chord_eval_fl_fld_idx, results.chord_eval_fl,
-                                 p->o_chord_spread_fld_idx,  results.chord_spread )) != kOkRC )
-            {
-              goto errLabel;
+              if((rc = recd_append(p->recd_array,nullptr,
+                                   p->o_avg_loc_dev_sec_fi,          results->avg_loc_dev_sec,
+                                   p->o_avg_loc_dev_sec_fi,          results->avg_loc_dev_sec,
+                                   p->o_avg_dyn_fi,                  results->avg_dyn,
+                                   p->o_avg_dyn_dev_fi,              results->avg_dyn_dev,
+                                   p->o_chord_cnt_fi,                results->chord_cnt,
+                                   p->o_avg_chord_spread_secs_fi,    results->avg_chord_spread_secs,
+                                   p->o_beat_group_cnt_fi,           results->beat_group_cnt,
+                                   p->o_avg_beat_period_dev_sec_fi,  results->avg_beat_period_dev_sec,
+                                   p->o_avg_beat_dur_pct_fi,         results->avg_beat_dur_pct,
+                                   p->o_grace_group_cnt_fi,          results->grace_group_cnt,
+                                   p->o_avg_grace_period_dev_sec_fi, results->avg_grace_period_dev_sec,
+                                   p->o_avg_grace_dur_pct_fi,        results->avg_grace_dur_pct,
+                                   p->o_section_dur_dev_pct_fi,      results->section_dur_dev_pct)) != kOkRC )
+              {
+                goto errLabel;
+              }
+              
             }
-            
-          }
-          
+          }          
         }
         
             

@@ -8,11 +8,15 @@
 #include "cwObject.h"
 #include "cwGutimMeas.h"
 #include "cwNumericConvert.h"
+#include "cwMidi.h"
 
 namespace cw
 {
   namespace gutim_meas
   {
+    // Two note records are stored for every note in the score.
+    // The first has the actual note pitch and dynamic value.
+    // The second has 
     typedef struct note_str
     {
       const char* note_id;
@@ -20,24 +24,30 @@ namespace cw
       unsigned    pitch;
       int         score_dyn;
 
-      bool     perf_fl;
-      double   perf_sec;
-      int      perf_dyn;
+      bool        perf_fl;
+      double      perf_sec;
+      int         perf_dyn;
 
-            struct note_str* loc_link;
+           struct note_str* loc_link;
+      
+      bool                   chord_fl;
       const struct note_str* chord_link;
     } note_t;
 
     typedef struct loc_str
     {
+      unsigned            loc_id; 
       struct section_str* section;   // this loc's section
       unsigned            meas;      // measure number
       double              score_sec; // location score time
       note_t*             noteL;     // list of notes associated with this location
       unsigned            noteN;     // count of notes at this location
       double              dur_pct;   // location time as percentage of total duration
-      
+
+      bool            beat_fl;
       struct loc_str* beat_link;   // beat_group->locL link
+
+      bool            grace_fl;
       struct loc_str* grace_link;  // grace_group->locL link
 
       bool   eval_fl;
@@ -53,8 +63,8 @@ namespace cw
       unsigned      noteN;          // count of notes in chord      
       struct chord_group_str* link; // section.chordGroupL link
 
-      bool   spread_dev_valid_fl; 
-      double spread_dev; 
+      bool   eval_fl;
+      double note_spread_sec; 
     } chord_group_t;
 
     typedef struct beat_group_str
@@ -66,9 +76,9 @@ namespace cw
       struct beat_group_str* link; // section.beatGroupL link
 
       bool   eval_fl;
-      double period_est_sec;
-      double period_dev_est_sec;
-      double dur_est_sec;
+      double period_est_sec;       // estimated beat period in seconds
+      double period_dev_est_sec;   // mean deviation from the estimated beat period
+      double dur_pct;              // 1=perfect match 0.5=performed at half-speed 2.0=performed at 2x speed.
       
     } beat_group_t;
 
@@ -81,11 +91,20 @@ namespace cw
       struct grace_group_str* link; // section.graceGroupL link
 
       bool   eval_fl;
-      double period_est_sec;
-      double period_dev_est_sec;
-      double dur_est_sec;
+      double period_est_sec;        // estimated grace loc period in seconds
+      double period_dev_est_sec;    // measn deviation from the estimated grace period
+      double dur_pct;               // 1=perfect match 0.5=performed at half-speed 2.0=performed at 2x speed.
       
     } grace_group_t;
+
+    typedef struct perf_note_str
+    {
+      unsigned perf_note_idx;
+      unsigned loc_id;
+      double   sec;
+      unsigned midi_pitch;
+      unsigned midi_velocity;
+    } perf_note_t;
     
     typedef struct section_str
     {
@@ -96,6 +115,8 @@ namespace cw
       
       double         score_bpm_estimate; // score BPM
       double         dur_sec;      // score section duration in seconds
+
+      unsigned       noteN;        // count of score notes in this section
       
       chord_group_t* chordGroupL; 
       unsigned       chordGroupN;  // count of chords in this seciton
@@ -105,17 +126,25 @@ namespace cw
 
       grace_group_t* graceGroupL;
       unsigned       graceGroupN;  // ground of grace note groups in this section
+      
 
-      bool eval_fl;
-      unsigned missing_loc_cnt; // count of missing locations
-      int mean_dyn;             // mean performed dynamic for this section
-      int mean_score_dev_dyn;   // mean deviation from the score for secion
+      bool       eval_fl;            // 
+      unsigned   missing_loc_cnt;    // count of missing locations
+      double     avg_loc_dev_sec;    // avg. deviation of all loc's times from the center time
+      double     mean_dyn;           // mean performed dynamic for this section
+      double     dyn_dev;            // deviation from the dyn. best fit
+
+      results_t  results;            // results for this section
+
       
     } section_t;
     
     typedef struct gutim_meas_str
     {
       object_t* file_cfg;
+
+      // see mapping from gutim/score_editor/apply_edit_file.py
+      unsigned vel_to_dynA[ midi::kMidiVelCnt ];   // vel_tableA[ k
       
       loc_t*   locA;        // locA[ locAllocN ] - storage for all loc records
       unsigned locAllocN;
@@ -139,8 +168,17 @@ namespace cw
       unsigned       graceGroupN;
       unsigned       graceGroupAllocN;
 
-      section_t* last_perf_section;   // section containing the last performed locations
-      section_t* ready_perf_section;  // non-null if this section is ready for evaluation
+
+      perf_note_t*   perfNoteA;   // perfNoteA[ perfNoteAllocN ]
+      unsigned       perfNoteAllocN;
+
+      unsigned   pni_cnt;  // current count of notes cached in perfNoteA[].
+      
+      section_t* next_eval_section;  // the next section that is ready to be evaluated or null if there is no section ready to be evaluated
+      section_t* next_done_section;  // the next section that will have results
+
+      unsigned   submitted_note_cnt;
+      unsigned   mismatch_overwrite_cnt;
       
     } gutim_meas_t;
 
@@ -155,6 +193,7 @@ namespace cw
         p->file_cfg = nullptr;
       }
 
+      mem::release(p->perfNoteA);
       mem::release(p->chordGroupA);
       mem::release(p->beatGroupA);
       mem::release(p->graceGroupA);
@@ -168,10 +207,12 @@ namespace cw
       return pair->is_pair() && textLength(pair->pair_label()) > 0 && pair->pair_value()!=nullptr && pair->pair_value()->is_dict();
     }
 
-    rc_t _accum_note_count( const object_t* all_cfg, unsigned& note_cnt_ref )
+    rc_t _section_note_count( const object_t* all_cfg, unsigned& note_cnt_ref )
     {
       rc_t     rc   = kOkRC;
       unsigned allN = all_cfg->child_count();
+
+      note_cnt_ref = 0;
       
       for(unsigned all_idx=0; all_idx<allN; ++all_idx)
       {
@@ -211,7 +252,8 @@ namespace cw
       
       p->noteAllocN = 0;
       p->locAllocN = 0;
-      
+
+      // for each section
       for(unsigned sect_idx=0; sect_idx<p->sectionN; ++sect_idx)
       {
         const object_t* sect_pair  = p->file_cfg->child_ele(sect_idx);
@@ -248,11 +290,17 @@ namespace cw
 
         //printf("section:%s beg_loc:%i end_loc:%i\n",sect_pair->pair_label(),p->sectionA[sect_idx].beg_loc,p->sectionA[sect_idx].end_loc);
 
-        // accumulate the count of notes in this section into p->noteAllocN
-        if((rc = _accum_note_count( all_cfg, p->noteAllocN )) != kOkRC )
+        // get the count of notes in this section
+        if((rc = _section_note_count( all_cfg, p->sectionA[sect_idx].noteN )) != kOkRC )
         {
           goto errLabel;
         }
+
+        // double the count of notes to allow for notes that do not match the pitch
+        p->sectionA[sect_idx].noteN *= 2;
+
+        // update the total score note count
+        p->noteAllocN += p->sectionA[sect_idx].noteN;
 
         // track the max. loc id
         if( p->sectionA[sect_idx].end_loc_id > max_loc_id )
@@ -271,7 +319,7 @@ namespace cw
 
         p->sectionA[sect_idx].section_id    = sect_pair->pair_label();
         p->sectionA[sect_idx].section_index = sect_idx;
-        
+
         // track the total count of locations
         p->locAllocN += (max_loc_id - p->sectionA[sect_idx].beg_loc_id)+1;
         
@@ -286,6 +334,31 @@ namespace cw
         if( textIsEqual(p->noteA[i].note_id,id))
           return p->noteA + i;
       return nullptr;
+    }
+
+    rc_t _store_note( gutim_meas_t* p, const char* note_id, unsigned loc_id, unsigned pitch, unsigned score_dyn )
+    {
+      rc_t    rc   = kOkRC;      
+      note_t* note = nullptr;
+      
+      if( p->noteN >= p->noteAllocN )
+      {
+        rc = cwLogError(kBufTooSmallRC,"The note array is full.");
+        goto errLabel;
+      }
+
+      note = p->noteA + p->noteN;
+
+      note->note_id = note_id;
+      note->loc_id  = loc_id;
+      note->pitch   = pitch;
+      note->score_dyn = score_dyn;
+
+      p->noteN += 1;
+
+    errLabel:
+      return rc;
+      
     }
     
     rc_t _parse_sections_pass_2( gutim_meas_t* p, const object_t* file_cfg )
@@ -364,7 +437,9 @@ namespace cw
           {
             const object_t* note_pair = note_dict->child_ele(ni);
             const object_t* note = nullptr;
-
+            unsigned midi_pitch = midi::kInvalidMidiPitch;
+            unsigned score_dyn = midi::kInvalidMidiVelocity;
+            
             if(!_pair_validate(note_pair))
             {              
               rc = cwLogError(rc,"Note pair validate failed on loc dict. on section index %i all index %i note index %i.",sect_idx,all_idx,ni);
@@ -389,21 +464,22 @@ namespace cw
               goto errLabel;
             }
 
-            if((rc = note->getv("pitch",p->noteA[p->noteN].pitch,
-                                "dlevel",p->noteA[p->noteN].score_dyn)) != kOkRC )
+            // get the note pitch and dynamic value
+            if((rc = note->getv("pitch",midi_pitch, "dlevel",score_dyn)) != kOkRC )
             {
               rc = cwLogError(rc,"Note dict field access failed on loc dict. on section index %i all index %i note index %i.",sect_idx,all_idx,ni);
               goto errLabel;
             }
 
-            p->noteA[p->noteN].note_id = note_pair->pair_label();
-            p->noteA[p->noteN].loc_id  = loc_id;
+            // store the note
+            if((rc = _store_note(p,note_pair->pair_label(),loc_id,midi_pitch,score_dyn)) != kOkRC )
+              goto errLabel;
 
-            //printf("    pitch:%i dlevel:%i id:%s\n",p->noteA[p->noteN].pitch,p->noteA[p->noteN].score_dyn,p->noteA[p->noteN].note_id);
+            // store a placeholder note to capture mismatched notes for every note in the score
+            if((rc = _store_note(p, "<mismatch>",loc_id,midi::kInvalidMidiPitch,midi::kInvalidMidiVelocity)) != kOkRC )
+              goto errLabel;
             
-            p->noteN += 1;
-            
-          }          
+          }
         }
       }
       
@@ -430,6 +506,7 @@ namespace cw
         // link the note onto the loc's note list
         note->loc_link = p->locA[ note->loc_id ].noteL;
         p->locA[ note->loc_id ].noteL = note;
+        p->locA[ note->loc_id ].noteN += 1;
       }
       
     errLabel:
@@ -548,7 +625,14 @@ namespace cw
               goto errLabel;
             }
 
+            if(note->chord_fl)
+            {
+              rc = cwLogError(kSyntaxErrorRC,"The note (%s) is assigned to multiple chords.",note_id);
+              goto errLabel;
+            }
+
             // link the note on to the chord note list
+            note->chord_fl         = true;
             note->chord_link       = new_chord_group->noteL;
             new_chord_group->noteL = note;
           }
@@ -619,7 +703,6 @@ namespace cw
       {
         const object_t* beat_id_pair   = beat_dict->child_ele(beat_id_idx);
         const object_t* beat_id_dict   = nullptr;
-        unsigned        beat_locN      = 0;
         beat_group_t*   new_beat_group = nullptr;
 
         // verify that there are beat group records available
@@ -631,12 +714,9 @@ namespace cw
 
         // get the next empty beat group recd
         new_beat_group = p->beatGroupA + p->beatGroupN;
-        p->beatGroupN += 1;
-
-        // link the beat group into the section
-        new_beat_group->locN += 1;
-        new_beat_group->link  = section->beatGroupL;
-        section->beatGroupL   = new_beat_group;
+        new_beat_group->locL = nullptr;
+        new_beat_group->locN = 0;
+        new_beat_group->link = nullptr;
 
         // validate the beat-id pair
         if(!_pair_validate(beat_id_pair))
@@ -652,12 +732,15 @@ namespace cw
           goto errLabel;          
         }
 
-        for(unsigned beat_loc_idx=0; beat_loc_idx<beat_locN; ++beat_loc_idx)
+        new_beat_group->locN = beat_id_dict->child_count();
+        
+        for(unsigned beat_loc_idx=0; beat_loc_idx<new_beat_group->locN; ++beat_loc_idx)
         {
           const object_t* beat_loc_pair  = beat_id_dict->child_ele(beat_loc_idx);
           const object_t* beat_note_list = nullptr;
           unsigned        noteN           = 0;
           unsigned        loc_id          = kInvalidId;
+          loc_t**         locpp           = nullptr;
 
           // verify that the note-loc pair is valid
           if( textLength(beat_loc_pair->pair_label()) == 0 || beat_loc_pair->pair_value()==nullptr || !beat_loc_pair->pair_value()->is_list())
@@ -680,9 +763,22 @@ namespace cw
             goto errLabel;            
           }
 
-          p->locA[ loc_id ].beat_link = new_beat_group->locL;
-          new_beat_group->locL = p->locA + loc_id;
-            
+          // a location can only be assigned to one beat
+          if( p->locA[loc_id].beat_fl)
+          {
+            rc = cwLogError(kSyntaxErrorRC,"The beat location %i is attached to multiple beat groups.",loc_id);
+            goto errLabel;
+          }
+
+          p->locA[ loc_id ].beat_fl = true;
+
+          // iterate to the end of the linked list ...
+          for(locpp = &new_beat_group->locL; *locpp != nullptr; locpp = &((*locpp)->beat_link) )
+          {}
+
+          // ... and point to the new end location
+          *locpp = p->locA + loc_id;
+                      
           // get the count of notes in the beat
           noteN = beat_note_list->child_count();
 
@@ -723,6 +819,12 @@ namespace cw
           }
         }
 
+        p->beatGroupN += 1;
+        
+        // link the beat group into the section
+        new_beat_group->link  = section->beatGroupL;
+        section->beatGroupL   = new_beat_group;
+        
         // calculate the scored beat group duration and period
         if((rc = _calc_beat_group_duration_and_period( new_beat_group )) != kOkRC )
         {
@@ -780,12 +882,6 @@ namespace cw
     errLabel:
       return rc;
     }
-
-    rc_t _calc_grace_group_meas( grace_group_t* grace_group )
-    {
-      rc_t rc = kOkRC;
-      return rc;
-    }
     
     rc_t _create_section_grace_groups( gutim_meas_t* p, section_t* section, const object_t* grace_dict )
     {
@@ -797,7 +893,6 @@ namespace cw
       {
         const object_t* grace_id_pair   = grace_dict->child_ele(grace_id_idx);
         const object_t* grace_id_dict   = nullptr;
-        unsigned        grace_locN      = 0;
         grace_group_t*  new_grace_group = nullptr;
 
         // verify that there are grace group records available
@@ -809,58 +904,79 @@ namespace cw
 
         // get the next empty grace group recd
         new_grace_group = p->graceGroupA + p->graceGroupN;
-        p->graceGroupN += 1;
 
-        // link the grace group into the section
-        new_grace_group->locN += 1;
-        new_grace_group->link  = section->graceGroupL;
-        section->graceGroupL   = new_grace_group;
+        new_grace_group->locL = nullptr;
+        new_grace_group->locN = 0;
+        new_grace_group->link = nullptr;
+        
 
-        // validate the grace-id pair
+        // validate the grace-id cfg pair
         if(!_pair_validate(grace_id_pair))
         {
           rc = cwLogError(kSyntaxErrorRC,"The grace-id pair is not valid at grace_id index %i.",grace_id_idx);
           goto errLabel;
         }
 
-        // get the grace-id dict. 
+        // get the grace-id cfg dict. 
         if((rc = grace_id_pair->pair_value()->value(grace_id_dict)) != kOkRC )
         {
           rc = cwLogError(kSyntaxErrorRC,"The grace-id dict is not valid at grace_id index %i.",grace_id_idx);
           goto errLabel;          
         }
 
-        for(unsigned grace_loc_idx=0; grace_loc_idx<grace_locN; ++grace_loc_idx)
+        // get the count of locations in this grace group
+        new_grace_group->locN = grace_id_dict->child_count();
+
+        for(unsigned grace_loc_idx=0; grace_loc_idx<new_grace_group->locN; ++grace_loc_idx)
         {
           const object_t* grace_loc_pair  = grace_id_dict->child_ele(grace_loc_idx);
           const object_t* grace_note_list = nullptr;
           unsigned        noteN           = 0;
           unsigned        loc_id          = kInvalidId;
+          loc_t**         locpp           = nullptr;
 
-          // verify that the note-loc pair is valid
+          // verify that the note-loc cfg pair is valid
           if( textLength(grace_loc_pair->pair_label()) == 0 || grace_loc_pair->pair_value()==nullptr || !grace_loc_pair->pair_value()->is_list())
           {
             rc = cwLogError(kSyntaxErrorRC,"grace-loc pair is not valid at grace index %i. : %i %i %i : %s",grace_loc_idx, textLength(grace_loc_pair->pair_label())==0,grace_loc_pair->pair_value()==nullptr, !grace_loc_pair->pair_value()->is_list(), grace_loc_pair->pair_label());
             goto errLabel;
           }
 
-          // verify that the note list is a list
+          // verify that the note list is a cfg list
           if((rc = grace_loc_pair->pair_value()->value(grace_note_list)) != kOkRC )
           {
             rc = cwLogError(kSyntaxErrorRC,"grace-loc pair value is not a list at grace index %i.",grace_loc_idx);
             goto errLabel;
           }
 
-          // validate the location id
+          // parse the cfg location id
           if(string_to_number(grace_loc_pair->pair_label(),loc_id) != kOkRC || loc_id == kInvalidId || loc_id >= p->locAllocN )
           {
             rc = cwLogError(kSyntaxErrorRC,"grace-loc location is not valid at grace index %i.",grace_loc_idx);
             goto errLabel;            
           }
 
-          p->locA[ loc_id ].grace_link = new_grace_group->locL;
-          new_grace_group->locL = p->locA + loc_id;
-            
+          // a location can only be assigned to one grace group
+          if( p->locA[loc_id].grace_fl)
+          {
+            cwLogWarning("The grace location %i is attached to multiple grace groups. This represents an error in the group_info.json file.",loc_id);
+            new_grace_group = nullptr;
+            assert( section->graceGroupN > 0 );
+            if( section->graceGroupN > 0 )
+              section->graceGroupN -= 1;
+            break;
+          }
+
+          p->locA[ loc_id ].grace_fl = true;
+
+          // iterate to the end of the linked list ...
+          for(locpp = &new_grace_group->locL; *locpp != nullptr; locpp = &((*locpp)->grace_link) )
+          {}
+
+          // ... and point to the new end location
+          *locpp = p->locA + loc_id;
+
+          
           // get the count of notes in the grace
           noteN = grace_note_list->child_count();
 
@@ -901,12 +1017,20 @@ namespace cw
           }
         }
 
-        // calculate the scored beat group duration and period
-        if((rc = _calc_grace_group_duration_and_period( new_grace_group )) != kOkRC )
+        if( new_grace_group != nullptr )
         {
-          goto errLabel;
+          p->graceGroupN += 1;
+          
+          // link the grace group into the section
+          new_grace_group->link  = section->graceGroupL;
+          section->graceGroupL   = new_grace_group;
+          
+          // calculate the scored beat group duration and period
+          if((rc = _calc_grace_group_duration_and_period( new_grace_group )) != kOkRC )
+          {
+            goto errLabel;
+          }
         }
-        
       }
     errLabel:
       if( rc == kOkRC )
@@ -981,7 +1105,14 @@ namespace cw
       return rc;
     }
 
-    rc_t _parse_cfg_fname( gutim_meas_t* p, const char* fname )
+    rc_t _validate( gutim_meas_t* p )
+    {
+      rc_t rc = kOkRC;
+      
+      return rc;
+    }
+
+    rc_t _parse_cfg_file( gutim_meas_t* p, const char* fname )
     {
       rc_t          rc         = kOkRC;
        
@@ -1007,8 +1138,17 @@ namespace cw
       p->locA  = mem::allocZ<loc_t>(p->locAllocN);
       p->noteA = mem::allocZ<note_t>(p->noteAllocN);
 
+      // allocate space for twice as many notes as are likely to be performed 
+      p->perfNoteAllocN = p->noteAllocN * 2;  
+      p->perfNoteA      = mem::allocZ<perf_note_t>(p->perfNoteAllocN);
+      p->pni_cnt        = 0;
+      
+
       for(unsigned i=0; i<p->noteAllocN; ++i)
         p->noteA[i].loc_id = kInvalidId;
+      
+      for(unsigned i=0; i<p->locAllocN; ++i)
+        p->locA[i].loc_id = i;
       
       // fill in p->locA[] and p->noteA[]
       if((rc = _parse_sections_pass_2(p, p->file_cfg )) != kOkRC )
@@ -1036,6 +1176,13 @@ namespace cw
         rc = cwLogError(rc,"Create groups failed.");
         goto errLabel;
       }
+
+      // validate the data structures
+      if((rc = _validate(p)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Validation failed.");
+        goto errLabel;
+      }
       
     errLabel:
 
@@ -1044,8 +1191,108 @@ namespace cw
 
       return rc;
     }
+    rc_t _fill_vel_table( gutim_meas_t* p, const object_t* vel_cfg_list )
+    {
+      rc_t     rc  = kOkRC;
+      unsigned vti = 0;
+      unsigned dyn = 0;
+      
+      unsigned cfg_vel_tbl_cnt = vel_cfg_list->child_count();
 
-    void _calc_chord_spread(gutim_meas_t* p, chord_group_t* cg )
+      // for each element in the cfg vel. table
+      for(unsigned cfg_idx=0; cfg_idx<cfg_vel_tbl_cnt; ++cfg_idx)
+      {
+        const object_t* int_cfg   = vel_cfg_list->child_ele(cfg_idx);
+        unsigned        upr_limit = midi::kInvalidMidiByte;
+
+        // read the upper limit on this segment of the vel table
+        if(!int_cfg->is_integer() || (rc = int_cfg->value(upr_limit)) != kOkRC )
+        {
+          rc = cwLogError(kSyntaxErrorRC,"Velocity table read failed on index %i.",cfg_idx);
+          goto errLabel;
+        }
+
+        // fill in this segment of the vel table
+        for(; vti<midi::kMidiVelCnt && vti<=upr_limit; ++vti)
+          p->vel_to_dynA[ vti ] = dyn;
+
+        dyn+= 1;
+      }
+      
+    errLabel:
+      return rc;
+    }
+    
+    rc_t _parse_vel_table( gutim_meas_t* p, const char* fname, const char* table_name )
+    {
+      rc_t            rc              = kOkRC;
+      object_t*       vt_file         = nullptr;
+      const object_t* tables_cfg_list = nullptr;
+      unsigned        tableN          = 0;
+      
+      if((rc = objectFromFile(fname,vt_file)) != kOkRC )
+      {
+        goto errLabel;
+      }
+      
+      if((rc = vt_file->getv("tables",tables_cfg_list)) != kOkRC )
+      {
+        goto errLabel;
+      }
+
+      if(!tables_cfg_list->is_list())
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The velocity table cfg list is not a list.");
+        goto errLabel;
+      }
+
+      tableN = tables_cfg_list->child_count();
+
+      // for each table in the vel table file
+      for(unsigned i=0; i<tableN; ++i)
+      {
+        const object_t* table_dict     = tables_cfg_list->child_ele(i);
+        const object_t* vel_cfg_list   = nullptr;
+        const char*     cfg_table_name = nullptr;
+
+        // validate the table-dict
+        if( !table_dict->is_dict() )
+        {
+          rc = cwLogError(kSyntaxErrorRC,"The table cfg dictionary is not a dictionary.");
+          goto errLabel;
+        }
+
+        // get the vel-table name and data list 
+        if((rc = table_dict->getv("name",cfg_table_name, "table", vel_cfg_list )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // if this is the table we are looking for
+        if( textIsEqual(table_name,cfg_table_name) )
+        {
+          // fill the vel-to-dyn table
+          if((rc = _fill_vel_table(p,vel_cfg_list)) != kOkRC )
+            goto errLabel;
+          
+          break;
+        }        
+      }
+      
+    errLabel:
+      if( rc != kOkRC )
+      {
+        rc = cwLogError(rc,"Velocity table parse failed.");
+      }
+      
+      if(vt_file != nullptr )
+        vt_file->free();
+      
+      return rc;
+    }
+
+
+    void _chord_eval(gutim_meas_t* p, chord_group_t* cg )
     {
       // if this chord has at least 2 notes
       if( cg->noteN > 2 && cg->noteL != nullptr && cg->noteL->chord_link != nullptr )
@@ -1066,364 +1313,612 @@ namespace cw
             sec0 = note->perf_sec;            
           }
 
-        cg->spread_dev_valid_fl = true;
-        cg->spread_dev          = acc/n;
+        cg->eval_fl = true;
+        cg->note_spread_sec = acc/n;
+        
+        cwLogInfo("     : chord : spread:%6.3f", cg->note_spread_sec ); 
+
       }
     }
 
-    void _calc_loc_time( gutim_meas_t* p, section_t* section )
+    void _section_loc_time_eval( gutim_meas_t* p, section_t* section )
     {
+      double  section_dev_accum = 0.0;
+      unsigned section_dev_cnt = 0;
+      
       // for each location in this section
       for(unsigned loc_id=section->beg_loc_id; loc_id<=section->end_loc_id; ++loc_id)
-      {
-        double   acc = 0;
-        unsigned n   = 0;
-        loc_t*   loc = p->locA + loc_id;
-        unsigned vi  = 0;
-        unsigned vN  = loc->noteN;
-        double   vA[ vN ];
-
-        // for each note at this location
-        for(const note_t* note=loc->noteL; vi<vN && note!=nullptr; note=note->loc_link)
-          if( note->perf_fl )
-          {
-            vA[vi++] = note->perf_sec;
-            acc += note->perf_sec;
-          }
-
-        // if some performed notes were found
-        if( vi > 0 )
+        if( p->locA[loc_id].noteN > 0 )
         {
-          loc->eval_fl = true;
+          double   acc = 0;
+          unsigned n   = 0;
+          loc_t*   loc = p->locA + loc_id;
+          unsigned vi  = 0;
+          unsigned vN  = loc->noteN;
+          double   vA[ vN ];
 
-          if( vi == 1 )
+          // for each note at this location
+          for(const note_t* note=loc->noteL; vi<vN && note!=nullptr; note=note->loc_link)
+            if( note->perf_fl )
+            {
+              vA[vi++] = note->perf_sec;
+              acc += note->perf_sec;
+            }
+
+          // if some performed notes were found
+          if( vi > 0 )
           {
-            loc->est_sec = acc;
-            loc->est_dev_sec = 0;
-          }
-          else
-          {          
-            // set the mean time of all notes as the location time
-            loc->est_sec = acc / vi;
+            loc->eval_fl = true;
+
+            if( vi == 1 )
+            {
+              loc->est_sec = acc;
+              loc->est_dev_sec = 0;
+            }
+            else
+            {          
+              // set the mean time of all notes as the location time
+              loc->est_sec = acc / vi;
             
-            // calc. the deviation from the mean
-            acc = 0.0;
-            for(unsigned i=0; i<vi; ++i)
-              acc += fabs(vA[i] - loc->est_sec);
-            loc->est_dev_sec = acc/vi;
+              // calc. the deviation from the mean
+              acc = 0.0;
+              for(unsigned i=0; i<vi; ++i)
+                acc += fabs(vA[i] - loc->est_sec);
+              loc->est_dev_sec = acc/vi;
+
+              section_dev_accum += loc->est_dev_sec;
+              section_dev_cnt   += 1;
+            }
           }
-        }
         
-      }
-    }
+        }
 
-    void _eval_dynamics( gutim_meas_t* p, section_t* section )
-    {
-      int      acc = 0;
-      int      d_acc = 0;
-      unsigned n = 0;
+      // get the total spread across all sections
+      section->avg_loc_dev_sec = section_dev_cnt==0 ? 0 : section_dev_accum / section_dev_cnt;
 
-      section->mean_dyn = 0;
-      section->mean_score_dev_dyn = 0;
-      
-      // for each location in this section
-      for(unsigned loc_id=section->beg_loc_id; loc_id<=section->end_loc_id; ++loc_id)
-      {
-        loc_t*   loc = p->locA + loc_id;
-
-        // for each note at this location
-        for(const note_t* note=loc->noteL; note!=nullptr; note=note->loc_link)
-          if( note->perf_fl )
-          {
-            acc   += note->perf_dyn;
-            d_acc += abs(note->perf_dyn - note->score_dyn);
-            n += 1;
-          }
-      }
-
-      if( n > 0 )
-      {
-        section->eval_fl = true;
-        section->mean_dyn     = acc/n;
-        section->mean_score_dev_dyn = d_acc/n;        
-      }
+      // update the results
+      section->results.avg_loc_dev_sec = section->avg_loc_dev_sec;
+      section->results.avg_dyn         = section->mean_dyn;
+      section->results.avg_dyn_dev     = section->dyn_dev;
       
     }
 
-
-    typedef struct seq_ele_str
+    rc_t _linear_fit(const double* X, const double* Y, int N, double& mean_y_ref, double& rss_ref)
     {
-      double sec;
-      bool   perf_fl;
-    } seq_ele_t;
+      rc_t   rc        = kOkRC;
+      double mean_x    = 0.0;
+      double mean_y    = 0.0;
+      double Sxx       = 0.0;
+      double Sxy       = 0.0;
+      double Syy       = 0.0;
+      double slope     = 0;
+      double intercept = 0;
 
-    void _beat_group_eval(gutim_meas_t* p, beat_group_t* bg)
-    {
-      bg->eval_fl = false;
-      
-      if( bg->locN < 3 )
-        return;
-      
-      seq_ele_t seqA[bg->locN];
-      unsigned  seq_idx  = 0;
-      unsigned  meas_n   = 0;
-      double    min_sec  = -1;
-      unsigned  min_idx  = kInvalidIdx;      
-      double    max_sec  = -1;
-      unsigned  max_idx  = kInvalidIdx;
-      double    sec0     = -1;
-      double    acc      = 0;
-      
-      // fill in seq_idx with measured values
-      for(const loc_t* loc=bg->locL; seq_idx<bg->locN && loc!=nullptr; loc=loc->beat_link,++seq_idx)
+
+      if( N < 2 )
       {
-        bool in_order_fl = sec0==-1 || sec0 < loc->est_sec;
-
-        // if this ele does not have a valid time or is out of time order
-        if( !loc->eval_fl || !in_order_fl )
-        {
-          seqA[seq_idx].perf_fl = false;
-        }
-        else
-        {
-          seqA[seq_idx].perf_fl = true;
-          seqA[seq_idx].sec     = loc->est_sec;
-          sec0                  = loc->est_sec;
-          meas_n += 1;
-
-          if( min_idx == kInvalidIdx || loc->est_sec < min_sec )
-          {
-            min_sec = loc->est_sec;
-            min_idx = seq_idx;
-          }
-          
-          if( max_idx == kInvalidIdx || loc->est_sec > max_sec )
-          {
-            max_sec = loc->est_sec;
-            max_idx = seq_idx;
-          }
-        }
+        rc = cwLogError(kInvalidArgRC,"linear_fit requires N >= 2");
+        goto errLabel;
       }
-
-      // if there are less than two valid measurements then there is nothing to be done
-      if( meas_n < 2 || min_idx==kInvalidIdx || max_idx==kInvalidIdx || min_idx >= max_idx || min_sec >= max_sec )
-      {
-        return;
-      }
-
-      // how many periods are there between the first and last measurement count
-      unsigned period_cnt = max_idx - min_idx;
-          
-      // estimate a single period duration based on the measurements
-      double period_est_sec = (max_sec - min_sec) / period_cnt;
       
-      // if there are missing measurments - then fill in the missing values with estimates
-      if( meas_n < bg->locN )
-      {          
-        // estimate the loc times between min and max
-        for(unsigned i=min_idx+1; i<max_idx; ++i)
-        {
-          seqA[i].sec = min_sec + (i-min_idx) * period_est_sec;
-          seqA[i].perf_fl = true;
-        }
-      }
-
-      // seqA[] now has measured or estimated times in all positions between min_idx and max_idx
-        
-      acc  = 0.0;
-      sec0 = seqA[min_idx].sec;
-      for(unsigned i=min_idx+1; i<=max_idx; ++i)
+      // First pass: means.
+      for (int i = 0; i < N; ++i)
       {
-        assert( seqA[i].perf_fl && seqA[i-1].sec < seqA[i].sec );
-          
-        acc += seqA[i].sec - sec0;
-        sec0 = seqA[i].sec;
+        mean_x += X[i];
+        mean_y += Y[i];
       }
 
-      // update the period estimate based on the the individual periods
-      period_est_sec = acc/(max_idx-min_idx);
+      mean_x /= N;
+      mean_y /= N;
+
+      // Second pass: centered sums.
+      for (int i = 0; i < N; ++i)
+      {
+        const double dx = X[i] - mean_x;
+        const double dy = Y[i] - mean_y;
+
+        Sxx += dx * dx;
+        Sxy += dx * dy;
+        Syy += dy * dy;
+      }
+
+      if (Sxx == 0.0)
+      {
+        cwLogWarning("Linear fit found 0 variance!");
+        goto errLabel;
+      }
       
-      acc = 0;
-      sec0 = seqA[min_idx].sec;
-      for(unsigned i=min_idx+1; i<=max_idx; ++i)
-      {
-        double dsec = seqA[i].sec - sec0;
-        acc += fabs(dsec - period_est_sec);
-        sec0 = seqA[i].sec;
-      }
+      slope     = Sxy / Sxx;
+      intercept = mean_y - slope * mean_x;
 
-      // calc the deviation from the mean period 
-      double dsec_dev_sec = acc/(max_idx-min_idx);
+      // Sum of squared residuals.
+      rss_ref    = Syy - slope * Sxy;
+      mean_y_ref = mean_y;
 
-      double est_dur_sec = 0;
-      if( min_idx > 0 )
-        est_dur_sec += period_est_sec * (min_idx-1);
-
-      est_dur_sec += max_sec - min_sec;
-
-      if( max_idx < bg->locN-1 )
-        est_dur_sec += period_est_sec * ((bg->locN-1) - max_idx);
-        
-      bg->eval_fl            = true;
-      bg->period_est_sec     = period_est_sec;
-      bg->period_dev_est_sec = dsec_dev_sec;
-      bg->dur_est_sec        = est_dur_sec;
+    errLabel:
+      if(rc!=kOkRC)
+        rc = cwLogError(rc,"Linear fit failed.");
+      
+      return rc;
     }
 
-    void _grace_group_eval(gutim_meas_t* p, grace_group_t* gg)
-    {
-      gg->eval_fl = false;
-      
-      if( gg->locN < 3 )
-        return;
-      
-      seq_ele_t seqA[gg->locN];
-      unsigned  seq_idx  = 0;
-      unsigned  meas_n   = 0;
-      double    min_sec  = -1;
-      unsigned  min_idx  = kInvalidIdx;      
-      double    max_sec  = -1;
-      unsigned  max_idx  = kInvalidIdx;
-      double    sec0     = -1;
-      double    acc      = 0;
-      
-      // fill in seq_idx with measured values
-      for(const loc_t* loc=gg->locL; seq_idx<gg->locN && loc!=nullptr; loc=loc->grace_link,++seq_idx)
-      {
-        bool in_order_fl = sec0==-1 || sec0 < loc->est_sec;
-
-        // if this ele does not have a valid time or is out of time order
-        if( !loc->eval_fl || !in_order_fl )
-        {
-          seqA[seq_idx].perf_fl = false;
-        }
-        else
-        {
-          seqA[seq_idx].perf_fl = true;
-          seqA[seq_idx].sec     = loc->est_sec;
-          sec0                  = loc->est_sec;
-          meas_n += 1;
-
-          if( min_idx == kInvalidIdx || loc->est_sec < min_sec )
-          {
-            min_sec = loc->est_sec;
-            min_idx = seq_idx;
-          }
-          
-          if( max_idx == kInvalidIdx || loc->est_sec > max_sec )
-          {
-            max_sec = loc->est_sec;
-            max_idx = seq_idx;
-          }
-        }
-      }
-
-      // if there are less than two valid measurements then there is nothing to be done
-      if( meas_n < 2 || min_idx==kInvalidIdx || max_idx==kInvalidIdx || min_idx >= max_idx || min_sec >= max_sec )
-      {
-        return;
-      }
-
-      // how many periods are there between the first and last measurement count
-      unsigned period_cnt = max_idx - min_idx;
-          
-      // estimate a single period duration based on the measurements
-      double period_est_sec = (max_sec - min_sec) / period_cnt;
-      
-      // if there are missing measurments - then fill in the missing values with estimates
-      if( meas_n < gg->locN )
-      {          
-        // estimate the loc times between min and max
-        for(unsigned i=min_idx+1; i<max_idx; ++i)
-        {
-          seqA[i].sec = min_sec + (i-min_idx) * period_est_sec;
-          seqA[i].perf_fl = true;
-        }
-      }
-
-      // seqA[] now has measured or estimated times in all positions between min_idx and max_idx
-        
-      acc  = 0.0;
-      sec0 = seqA[min_idx].sec;
-      for(unsigned i=min_idx+1; i<=max_idx; ++i)
-      {
-        assert( seqA[i].perf_fl && seqA[i-1].sec < seqA[i].sec );
-          
-        acc += seqA[i].sec - sec0;
-        sec0 = seqA[i].sec;
-      }
-
-      // update the period estimate based on the the individual periods
-      period_est_sec = acc/(max_idx-min_idx);
-      
-      acc = 0;
-      sec0 = seqA[min_idx].sec;
-      for(unsigned i=min_idx+1; i<=max_idx; ++i)
-      {
-        double dsec = seqA[i].sec - sec0;
-        acc += fabs(dsec - period_est_sec);
-        sec0 = seqA[i].sec;
-      }
-
-      // calc the deviation from the mean period 
-      double dsec_dev_sec = acc/(max_idx-min_idx);
-
-      double est_dur_sec = 0;
-      if( min_idx > 0 )
-        est_dur_sec += period_est_sec * (min_idx-1);
-
-      est_dur_sec += max_sec - min_sec;
-
-      if( max_idx < gg->locN-1 )
-        est_dur_sec += period_est_sec * ((gg->locN-1) - max_idx);
-        
-      gg->eval_fl            = true;
-      gg->period_est_sec     = period_est_sec;
-      gg->period_dev_est_sec = dsec_dev_sec;
-      gg->dur_est_sec        = est_dur_sec;
-    }
-    
-
-    rc_t _section_eval(gutim_meas_t* p, section_t* section, results_t* results )
+    rc_t _section_dynamics_eval( gutim_meas_t* p, section_t* section )
     {
       rc_t rc = kOkRC;
-
-      // calc the location times
-      _calc_loc_time( p, section );
-
-      _eval_dynamics( p, section );
       
+      if( section->noteN < 2  )
+      {
+        rc = cwLogError(kInvalidStateRC,"The section has fewer than 2 notes (%s).",cwStringNullGuard(section->section_id));
+        goto errLabel;
+      }
+      else
+      {
+        double score_dynV[ section->noteN ];
+        double perf_dynV[  section->noteN ];
+        unsigned vi = 0;
+        
+        // for each location in this section
+        for(unsigned loc_id=section->beg_loc_id; vi<section->noteN && loc_id<=section->end_loc_id; ++loc_id)
+        {
+          loc_t*   loc = p->locA + loc_id;
+          
+          // for each note at this location
+          for(const note_t* note=loc->noteL; vi<section->noteN && note!=nullptr; note=note->loc_link)
+            if( note->perf_fl )
+            {
+              score_dynV[ vi ] = note->score_dyn;
+              perf_dynV[  vi ] = note->perf_dyn;
+              vi += 1;
+            }
+        }
+
+        if((rc = _linear_fit(score_dynV, perf_dynV, vi, section->mean_dyn, section->dyn_dev)) != kOkRC )
+          goto errLabel;
+                  
+      }
       
-      // for each chord group in this section
+    errLabel:
+      if( rc != kOkRC )
+        rc = cwLogError(rc,"Dynamics evaluation failed.");
+      
+      return rc;
+        
+    }
+
+    rc_t _section_chord_eval( gutim_meas_t* p, section_t* section )
+    {
+      rc_t     rc    = kOkRC;
+      double   accum = 0.0;
+      unsigned n     = 0;
+      
       for(chord_group_t* cg=section->chordGroupL; cg!=nullptr; cg=cg->link)
       {
-        _calc_chord_spread(p,cg);
-      }
+        _chord_eval(p,cg);
 
-      // for each beat group
-      for(beat_group_t* bg=section->beatGroupL; bg!=nullptr; bg=bg->link)
-      {
-        _beat_group_eval(p,bg);
+        if( cg->eval_fl )
+        {
+          accum += cg->note_spread_sec;
+          n += 1;
+        }
+        
       }
-
-      // for each grace group
-      for(grace_group_t* gg=section->graceGroupL; gg!=nullptr; gg=gg->link)
-      {
-        _grace_group_eval(p,gg);
-      }
-
       
-      
+      section->results.chord_cnt = n;
+      section->results.avg_chord_spread_secs = n==0 ? 0 : accum / n;
 
     errLabel:
       return rc;
     }
     
+
+    typedef struct time_posn_str
+    {
+      double sec;
+      double position;
+    } time_posn_t;
+    
+    rc_t _period_and_deviation_estimate( const time_posn_t* psA, unsigned psN, double& est_period_sec_ref, double& period_dev_ref )
+    {
+      rc_t rc = kOkRC;
+      
+      double sec_mean = 0.0;
+      double pos_mean = 0.0;
+      double num      = 0.0;
+      double den      = 0.0;
+      double slope    = 0.0;
+      double rss      = 0.0;
+
+      if( psN < 2 )
+      {
+        rc = cwLogError(kInvalidArgRC,"The period of a sequence cannot be determined from less than 2 points.");
+        goto errLabel;
+      }
+      
+      for(unsigned i=0; i<psN; ++i)
+      {
+        sec_mean += psA[i].sec;
+        pos_mean += psA[i].position;
+      }
+
+      sec_mean /= psN;
+      pos_mean /= psN;
+
+      for(unsigned i=0; i<psN; ++i)
+      {
+        double x = psA[i].position - pos_mean;
+        num += x * (psA[i].sec - sec_mean);
+        den += x*x;
+      }
+
+      slope = num/den;
+
+      for(unsigned i=0; i<psN; ++i)
+      {
+        double x = psA[i].sec - (psA[0].sec + slope * psA[i].position);
+        rss = x*x;
+      }
+
+      est_period_sec_ref = slope;
+      period_dev_ref     = rss;
+
+    errLabel:
+      return rc;
+    }
+
+    rc_t _beat_group_eval(gutim_meas_t* p, beat_group_t* bg)
+    {
+      rc_t rc = kOkRC;
+
+      bg->eval_fl = false;
+
+      if( bg->locN < 2 )
+      {
+        cwLogWarning("Cannot evaluate a beat group with less than 2 beats.");
+        return rc;
+      }
+      
+           
+      time_posn_t  time_posA[bg->locN];
+      unsigned     beat_index  = 0;
+      unsigned     tpi         = 0;
+      const loc_t* min_sec_loc = nullptr;
+      const loc_t* max_sec_loc = nullptr;
+      
+      for(const loc_t* loc=bg->locL; tpi<bg->locN && loc!=nullptr; loc=loc->beat_link,++beat_index)
+        if( loc->eval_fl )
+        {
+          time_posA[tpi].sec = loc->est_sec;
+          time_posA[tpi].position = beat_index;
+          tpi += 1;
+
+          if( min_sec_loc == nullptr or loc->score_sec < min_sec_loc->score_sec )
+            min_sec_loc = loc;
+          
+          if( max_sec_loc == nullptr or loc->score_sec > max_sec_loc->score_sec )
+            max_sec_loc = loc;
+          
+        }
+
+      if( tpi < 2 )
+      {
+        cwLogWarning("Cannot evaluate a beat group with less than 2 observed beats.");
+        return rc;          
+      }
+
+      if((rc = _period_and_deviation_estimate(time_posA, tpi, bg->period_est_sec, bg->period_dev_est_sec )) != kOkRC )
+      {
+        goto errLabel;
+      }
+
+      // by default make the performed duration a perfect match to the score duration
+      bg->dur_pct = 1.0;
+      
+      // if the min/max observed locations are out of order then we can't estimate the performed duration
+      if( min_sec_loc->est_sec >= max_sec_loc->est_sec || min_sec_loc->score_sec > max_sec_loc->score_sec )
+      {
+        cwLogWarning("Min/max observed or score beat locations are out of time order.");
+        goto errLabel;
+      }
+      
+      bg->dur_pct = (max_sec_loc->est_sec - min_sec_loc->est_sec)/(max_sec_loc->score_sec - min_sec_loc->score_sec);
+
+      cwLogInfo("     : beat  : period: %6.3f dev:%6.3f dur pct:%6.3f", bg->period_est_sec, bg->period_dev_est_sec, bg->dur_pct ); 
+      
+    errLabel:
+      if( rc!=kOkRC )
+      {
+        rc = cwLogError(rc,"Beat group evaluation failed.");
+      }
+      
+      return rc;
+    }
+
+    rc_t _section_beat_group_eval( gutim_meas_t* p, section_t* section )
+    {
+      rc_t     rc = kOkRC;
+      unsigned n  = 0;
+      
+      // for each beat group
+      section->results.avg_beat_period_dev_sec = 0;
+      section->results.avg_beat_dur_pct = 0;
+      
+      for(beat_group_t* bg=section->beatGroupL; bg!=nullptr; bg=bg->link)
+      {
+        if((rc = _beat_group_eval(p,bg)) != kOkRC )
+          goto errLabel;
+
+        if(bg->eval_fl)
+        {
+          section->results.avg_beat_period_dev_sec += bg->period_est_sec;
+          section->results.avg_beat_dur_pct        += bg->period_dev_est_sec;
+          n += 1;
+        }        
+      }
+      
+      if( n != 0 )
+      { 
+        section->results.beat_group_cnt = n;
+        section->results.avg_beat_period_dev_sec /= n;
+        section->results.avg_beat_dur_pct /= n;
+      }
+
+    errLabel:
+      return rc;
+    } 
+
+    
+    rc_t _grace_group_eval(gutim_meas_t* p, grace_group_t* gg)
+    {
+      rc_t rc = kOkRC;
+
+      gg->eval_fl = false;
+
+      if( gg->locN < 2 )
+      {
+        cwLogWarning("Cannot evaluate a grace group with less than 2 grace notes.");
+        return rc;
+      }
+                 
+      time_posn_t  time_posA[gg->locN];
+      unsigned     grace_index = 0;
+      unsigned     tpi         = 0;
+      const loc_t* min_sec_loc = nullptr;
+      const loc_t* max_sec_loc = nullptr;
+      
+      for(const loc_t* loc=gg->locL; tpi<gg->locN && loc!=nullptr; loc=loc->grace_link,++grace_index)
+        if( loc->eval_fl )
+        {
+          time_posA[tpi].sec = loc->est_sec;
+          time_posA[tpi].position = grace_index;
+          tpi += 1;
+
+          if( min_sec_loc == nullptr or loc->score_sec < min_sec_loc->score_sec )
+            min_sec_loc = loc;
+          
+          if( max_sec_loc == nullptr or loc->score_sec > max_sec_loc->score_sec )
+            max_sec_loc = loc;          
+        }
+
+      if( tpi < 2 )
+      {
+        cwLogWarning("Cannot evaluate a grace group with less than 2 observed grace notes.");
+        return rc;          
+      }
+
+      if((rc = _period_and_deviation_estimate(time_posA, tpi, gg->period_est_sec, gg->period_dev_est_sec )) != kOkRC )
+      {
+        goto errLabel;
+      }
+
+      // by default make the performed duration a perfect match to the score duration
+      gg->dur_pct = 1.0;
+      
+      // if the min/max observed locations are out of order then we can't estimate the performed duration
+      if( min_sec_loc->est_sec >= max_sec_loc->est_sec || min_sec_loc->score_sec > max_sec_loc->score_sec )
+      {
+        cwLogWarning("Min/max observed or score grace note locations are out of time order.");
+        goto errLabel;
+      }
+      
+      gg->dur_pct = (max_sec_loc->est_sec - min_sec_loc->est_sec)/(max_sec_loc->score_sec - min_sec_loc->score_sec);
+
+      cwLogInfo("     : grace  : period: %6.3f dev:%6.3f dur pct:%6.3f", gg->period_est_sec, gg->period_dev_est_sec, gg->dur_pct ); 
+      
+    errLabel:
+      if( rc!=kOkRC )
+      {
+        rc = cwLogError(rc,"Grace group evaluation failed.");
+      }
+      
+      return rc;
+    }
+
+    rc_t _section_grace_group_eval( gutim_meas_t* p, section_t* section )
+    {
+      rc_t     rc = kOkRC;
+      unsigned n  = 0;
+      
+      // for each grace group
+      section->results.avg_grace_period_dev_sec = 0;
+      section->results.avg_grace_dur_pct = 0;
+      
+      for(grace_group_t* bg=section->graceGroupL; bg!=nullptr; bg=bg->link)
+      {
+        if((rc = _grace_group_eval(p,bg)) != kOkRC )
+          goto errLabel;
+
+        if(bg->eval_fl)
+        {
+          section->results.avg_grace_period_dev_sec += bg->period_est_sec;
+          section->results.avg_grace_dur_pct        += bg->period_dev_est_sec;
+          n += 1;
+        }        
+      }
+      
+      if( n != 0 )
+      {
+        section->results.grace_group_cnt = n;
+        section->results.avg_grace_period_dev_sec /= n;
+        section->results.avg_grace_dur_pct /= n;
+      }
+
+    errLabel:
+      return rc;
+    } 
+
+    
+    rc_t  _set_perf_note( gutim_meas_t* p, note_t* note, double sec, unsigned midi_vel )
+    {
+      rc_t rc = kOkRC;
+      if( midi_vel >= midi::kMidiVelCnt )
+      {
+        cwLogWarning("An invalid MIDI velocity was encountered.");
+        goto errLabel;
+      }
+      
+      note->perf_fl = true;
+      note->perf_sec = sec;
+      note->perf_dyn = p->vel_to_dynA[ midi_vel ];
+
+      p->submitted_note_cnt += 1;
+
+    errLabel:
+      return rc;
+    }
+    
+    rc_t _process_incoming_note( gutim_meas_t* p, unsigned loc_id, double sec, unsigned midi_pitch, unsigned midi_vel )
+    {
+      rc_t          rc  = kOkRC;
+      loc_t*        loc = nullptr;
+
+      if( loc_id == kInvalidId )
+        return rc;
+
+      if( loc_id >= p->locAllocN )
+      {
+        rc = cwLogError(kInvalidArgRC,"The loc. id %i is out of range %i.",loc_id,p->locAllocN);
+        goto errLabel;
+      }
+
+      loc = p->locA + loc_id;
+
+      if( midi_pitch != midi::kInvalidMidiPitch )
+      {
+        // for each note at the performed location
+        for(note_t* note = loc->noteL; note!=nullptr; note=note->loc_link)
+        {
+          // if this is the pitch of interest
+          if( note->pitch == midi_pitch )
+          {
+            rc = _set_perf_note( p, note, sec, midi_vel);
+            goto errLabel;           
+          }
+        }
+      }
+      else  // this is a mismatch note
+      {
+        note_t* fallback_note = nullptr;
+        
+        // for each note at the performed location
+        for(note_t* note = loc->noteL; note!=nullptr; note=note->loc_link)
+        {
+          // if this is a designated mismatch note
+          if( note->pitch == midi::kInvalidMidiPitch )
+          {
+            // if this note is already in use
+            if( note->perf_fl )
+            {
+              // track the oldest mis-match note
+              if( fallback_note == nullptr || note->perf_sec < fallback_note->perf_sec )
+                fallback_note = note;
+            }
+            else
+            {
+              rc = _set_perf_note(p,note,sec,midi_vel);
+              goto errLabel;
+            }
+          }
+        }
+
+        // all mismatch notes are in use - overwrite the oldest
+        if( fallback_note != nullptr )
+        {
+          p->mismatch_overwrite_cnt += 1;
+          
+          rc = _set_perf_note(p,fallback_note, sec, midi_vel );
+          goto errLabel;
+        }
+      }
+      
+      rc = cwLogError(kInvalidStateRC,"The pitch %i was not found at the location %i.",midi_pitch,loc_id);
+  
+    errLabel:
+      return rc;
+    }
+
+    rc_t _submit_cached_notes( gutim_meas_t* p )
+    {
+      rc_t rc = kOkRC;
+      unsigned n = 0;
+      
+      // Itertate through the cache 
+      for(unsigned i=0; i<p->pni_cnt; ++i)
+      {
+        perf_note_t* pn = p->perfNoteA + i;
+
+        // Cache records with an invalid perf_note_idx are empty.
+        if( pn->perf_note_idx != kInvalidIdx )
+        {
+          if((rc = _process_incoming_note(p,pn->loc_id, pn->sec, pn->midi_pitch, pn->midi_velocity)) != kOkRC )
+          {
+            rc = cwLogError(rc,"Note submission failed.");
+            goto errLabel;
+          }
+          
+          pn->perf_note_idx = kInvalidIdx;
+          n += 1;
+        }
+      }
+
+      cwLogInfo("%i notes submitted.",n);
+      p->pni_cnt = 0;
+      
+    errLabel:
+      return rc;
+    }
+
+    rc_t _section_eval(gutim_meas_t* p, section_t* section )
+    {
+      rc_t rc = kOkRC;
+      
+      cwLogInfo("Evaluating section:%s",cwStringNullGuard(section->section_id));
+
+      // calc the location times
+      _section_loc_time_eval( p, section );
+
+      // evaluate the dynamics across all notes in the section
+      _section_dynamics_eval( p, section );
+
+      // evaluate the chords in this section
+      _section_chord_eval(p,section);
+
+      // evaluate the beat groups
+      _section_beat_group_eval(p,section);
+
+      // evaluate the grace groups
+      _section_grace_group_eval(p,section);
+
+    errLabel:
+      if( rc != kOkRC )
+        rc = cwLogError(rc,"Section evaluation failed on '%s'.",cwStringNullGuard(section->section_id));
+      
+      return rc;
+    }
     
   }
 }
 
-cw::rc_t cw::gutim_meas::create( handle_t& hRef, const char* group_info_json_fname )
+cw::rc_t cw::gutim_meas::create( handle_t& hRef, const char* group_info_json_fname, const char* vel_table_fname, const char* vel_table_name )  
 {
   rc_t rc;
   if((rc = destroy(hRef)) != kOkRC )
@@ -1431,7 +1926,12 @@ cw::rc_t cw::gutim_meas::create( handle_t& hRef, const char* group_info_json_fna
 
   gutim_meas_t* p = mem::allocZ<gutim_meas_t>();
 
-  if((rc = _parse_cfg_fname(p, group_info_json_fname )) != kOkRC )
+  if((rc = _parse_cfg_file(p, group_info_json_fname )) != kOkRC )
+  {
+    goto errLabel;
+  }
+
+  if((rc = _parse_vel_table(p, vel_table_fname, vel_table_name )) != kOkRC )
   {
     goto errLabel;
   }
@@ -1469,8 +1969,10 @@ namespace cw
   {
     void _section_reset( section_t* section )
     {
+      section->eval_fl = false;
+      
       for(chord_group_t* cg=section->chordGroupL; cg!=nullptr; cg=cg->link)
-        cg->spread_dev_valid_fl = false;
+        cg->eval_fl = false;
 
       for(beat_group_t* bg=section->beatGroupL; bg!=nullptr; bg=bg->link)
         bg->eval_fl = false;
@@ -1487,8 +1989,9 @@ cw::rc_t cw::gutim_meas::reset( handle_t h )
   rc_t          rc  = kOkRC;
   gutim_meas_t* p   = _handleToPtr(h);
 
-  p->ready_perf_section = nullptr;
-  p->last_perf_section  = nullptr;
+  p->next_eval_section = p->sectionN>0 ? p->sectionA : nullptr;
+  p->next_done_section = p->next_eval_section;
+  p->pni_cnt = 0;
   
   for(unsigned i=0; i<p->noteN; ++i)
   {
@@ -1497,6 +2000,12 @@ cw::rc_t cw::gutim_meas::reset( handle_t h )
     p->noteA[i].perf_dyn = 0;
   }
 
+  for(unsigned i=0; i<p->perfNoteAllocN; ++i)
+  {
+    p->perfNoteA[i].perf_note_idx  = kInvalidIdx;
+  }
+  
+  
   for(unsigned i=0; i<p->locAllocN; ++i)
   {
     p->locA[i].eval_fl = false;
@@ -1504,61 +2013,94 @@ cw::rc_t cw::gutim_meas::reset( handle_t h )
 
   for(unsigned i=0; i<p->sectionN; ++i)
     _section_reset(p->sectionA + i );
-    
-  
 
 errLabel:
   return rc;
 }
 
-cw::rc_t cw::gutim_meas::on_note( handle_t h, unsigned loc_id, double sec, unsigned midi_pitch, unsigned midi_vel )
+cw::rc_t cw::gutim_meas::set_current_section( handle_t h, unsigned beg_loc_id, unsigned end_loc_id )
 {
   rc_t          rc  = kOkRC;
   gutim_meas_t* p   = _handleToPtr(h);
-  loc_t*        loc = nullptr;
 
-  if( loc_id == kInvalidId )
-    return rc;
-
-  if( loc_id >= p->locAllocN )
+  // sanity check the incoming beg/end location id's
+  if( beg_loc_id == kInvalidId || end_loc_id == kInvalidId || beg_loc_id >= p->locAllocN || end_loc_id >= p->locAllocN )
   {
-    rc = cwLogError(kInvalidArgRC,"The loc. id %i is out of range %i.",loc_id,p->locAllocN);
+    rc = cwLogError(kInvalidArgRC,"The begin (%i) or end (%i) location id is invalid or outside the range (%i) of the score.",beg_loc_id,end_loc_id,p->locAllocN);
+    goto errLabel;    
+  }
+
+  // submit all cached notes to their respective sections
+  if((rc = _submit_cached_notes(p)) != kOkRC )
+  {
+    // we're not going to fail if _submit_cached_notes_fails()
+    // goto errLabel;
+  }
+
+  
+  cwLogInfo("Gutim measurement: New section: locs:%i %i.",beg_loc_id,end_loc_id);
+  if( p->next_eval_section == nullptr )
+  {
+    cwLogInfo("No next eval section.");
+  }
+  else
+  {
+    cwLogInfo("Next eval section:%s (loc:%i %i).",cwStringNullGuard(p->next_eval_section->section_id),p->next_eval_section->beg_loc_id,p->next_eval_section->end_loc_id);
+  }
+
+  // check for sections that are complete
+  while( p->next_eval_section != nullptr && p->next_eval_section->end_loc_id < beg_loc_id )
+  {
+    if((rc = _section_eval(p,p->next_eval_section )) != kOkRC )
+    {
+      goto errLabel;
+    }
+
+    if( p->next_done_section == nullptr )
+      p->next_done_section = p->next_eval_section;
+    
+    p->next_eval_section = p->next_eval_section->section_index + 1 >= p->sectionN ? nullptr : p->sectionA + p->next_eval_section->section_index + 1;
+  }
+  
+errLabel:
+  if( rc != kOkRC )
+    rc = cwLogError(rc,"set section failed.");
+  
+  return rc;
+  
+}
+cw::rc_t cw::gutim_meas::on_note( handle_t h, unsigned perf_note_idx, unsigned loc_id, double sec, unsigned midi_pitch, unsigned midi_vel )
+{
+  rc_t          rc        = kOkRC;
+  gutim_meas_t* p         = _handleToPtr(h);
+  perf_note_t*  perf_note = nullptr;
+  unsigned      pni       = kInvalidIdx;
+
+  //printf("pni:%i loc:%i sec:%f %i %i\n",perf_note_idx,loc_id,sec,midi_pitch,midi_vel);
+
+  // validate loc_id
+  if( loc_id == kInvalidId )
+  {
+    rc = cwLogError(kInvalidArgRC,"The GUTIM meas. object only accepts notes with valid 'loc' id's.");
     goto errLabel;
   }
-
   
-  loc = p->locA + loc_id;
-  
-  // for each note at the performed location
-  for(note_t* note = loc->noteL; note!=nullptr; note=note->loc_link)
+  if( perf_note_idx >= p->perfNoteAllocN )
   {
-    // if this is the pitch of interest
-    if( note->pitch == midi_pitch )
-    {
-      // set the performance measurements
-      note->perf_fl  = true;
-      note->perf_sec = sec;
-      note->perf_dyn = midi_vel;
-
-      // if there is no valid 'last section' then make this the 'last section'
-      if( p->last_perf_section == nullptr )
-      {
-        p->last_perf_section = loc->section;
-        p->ready_perf_section = nullptr;
-      }
-      else 
-      {
-        // if this performed location is not in the same section as the last performed location then we are changing sections
-        if( p->last_perf_section != loc->section && p->last_perf_section->section_index+1 == loc->section->section_index )
-        {
-          p->ready_perf_section = p->last_perf_section;
-          p->last_perf_section  = loc->section;
-        }
-      }
-      return kOkRC;
-    }
+    rc = cwLogError(kInvalidStateRC,"The perf-note index (%i) is greater than the range of the perf-note cache (%i).",perf_note_idx,p->perfNoteAllocN);
+    goto errLabel;
   }
-  rc = cwLogError(kInvalidStateRC,"The pitch %i was not found at the location %i.",midi_pitch,loc_id);
+  
+  perf_note = p->perfNoteA + perf_note_idx;
+
+  perf_note->perf_note_idx = perf_note_idx;
+  perf_note->loc_id        = loc_id;
+  perf_note->sec           = sec;
+  perf_note->midi_pitch    = midi_pitch;
+  perf_note->midi_velocity = midi_vel;
+
+  if( perf_note_idx >=p->pni_cnt )
+    p->pni_cnt = perf_note_idx + 1;
   
 errLabel:
   return rc;
@@ -1569,28 +2111,118 @@ bool cw::gutim_meas::is_section_complete( handle_t h )
   rc_t          rc = kOkRC;
   gutim_meas_t* p  = _handleToPtr(h);
 
-  return p->ready_perf_section != nullptr;
+  return p->next_done_section != nullptr && p->next_done_section->eval_fl;
 }
 
 
 
-cw::rc_t cw::gutim_meas::get_results( handle_t h, results_t& results_ref )
+cw::rc_t cw::gutim_meas::get_results( handle_t h, results_t*& results_ref )
 {
   rc_t          rc = kOkRC;
   gutim_meas_t* p  = _handleToPtr(h);
 
-  if( p->ready_perf_section == nullptr )
+  results_ref = nullptr;
+
+  if( p->next_done_section == nullptr || p->next_done_section->eval_fl==false )
   {
     cwLogWarning("No sections ready for measurement analysis.");
     return kOkRC;
   }
-
-  if((rc = _section_eval(p,p->ready_perf_section,&results_ref)) != kOkRC )
-  {
-  }
      
-  p->ready_perf_section = nullptr;
+  results_ref = &p->next_done_section->results;
+
+  p->next_done_section = p->next_done_section->section_index + 1 >= p->sectionN ? nullptr : p->sectionA + p->next_done_section->section_index + 1;
+  
 errLabel:
+  
+  return rc;
+}
+
+cw::rc_t cw::gutim_meas::report( handle_t h )
+{
+  rc_t          rc = kOkRC;
+  gutim_meas_t* p  = _handleToPtr(h);
+
+  cwLogPrint("Notes submitted:%i mismatch-overwrite:%i",p->submitted_note_cnt,p->mismatch_overwrite_cnt);
+  
+  cwLogPrint("Vel-to-Dyn:\n");
+  for(unsigned i=0; i<midi::kMidiVelCnt; ++i)
+    cwLogPrint("%3i %3i\n",i,p->vel_to_dynA[i]);
+
+  for(unsigned sect_idx=0; sect_idx<p->sectionN; ++sect_idx)
+  {
+    const section_t* s = p->sectionA + sect_idx;
+    
+    cwLogPrint("section: %3i %s loc:(%i to %i) score:( dur:%8.2f bpm:%6.2f )\n", s->section_index, s->section_id, s->beg_loc_id, s->end_loc_id, s->dur_sec, s->score_bpm_estimate );
+
+    unsigned i = 0;
+    for(const chord_group_t* cg=s->chordGroupL; cg!=nullptr; cg=cg->link,++i)
+    {
+      cwLogPrint("  chord: %i of %i : loc:%i notes: ",i,s->chordGroupN,cg->loc_id);
+
+      if( cg->noteL == nullptr )
+      {
+        cwLogPrint("No-notes\n");
+      }
+      else
+      {
+        unsigned j=0;
+        for(const note_t* n=cg->noteL; n!=nullptr;  n=n->chord_link,++j)
+        {   
+          cwLogPrint("%3i ",n->pitch);
+          assert(n->loc_id == cg->loc_id);
+        }      
+        assert(j == cg->noteN );
+        cwLogPrint("\n");
+      }
+    }
+    assert(i==s->chordGroupN);
+
+    i = 0;
+    for(const beat_group_t* bg=s->beatGroupL; bg!=nullptr; bg=bg->link,++i)
+    {
+      cwLogPrint("  beat : %i of %i : score:( dur:%8.2f period:%8.2f ) : ", i, s->beatGroupN, bg->score_dur_sec, bg->score_period_sec);
+
+      if( bg->locL == nullptr )
+      {
+        cwLogPrint("No-locs\n");
+      }
+      else
+      {
+        unsigned j =0;
+        for(const loc_t* loc=bg->locL; loc!=nullptr; loc=loc->beat_link,++j)
+        {
+          cwLogPrint("%4i ",loc->loc_id);
+        }
+        assert(j==bg->locN);        
+        cwLogPrint("\n");
+      }
+    }
+    assert(i==s->beatGroupN);
+
+    i = 0;
+    for(const grace_group_t* gg=s->graceGroupL; gg!=nullptr; gg=gg->link,++i)
+    {
+      cwLogPrint("  grace: %i of %i : score:( dur:%8.2f period:%8.2f ) : ", i, s->graceGroupN, gg->score_dur_sec, gg->score_period_sec);
+
+      if( gg->locL == nullptr )
+      {
+        cwLogPrint("No-locs\n");
+      }
+      else
+      {
+        unsigned j =0;
+        for(const loc_t* loc=gg->locL; loc!=nullptr; loc=loc->grace_link,++j)
+        {
+          cwLogPrint("%4i ",loc->loc_id);
+        }
+        assert(j==gg->locN);        
+        cwLogPrint("\n");
+      }
+    }
+    assert(i==s->graceGroupN);
+    
+  } 
   
   return rc;
 }

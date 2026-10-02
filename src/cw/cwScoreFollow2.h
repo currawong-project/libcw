@@ -90,6 +90,7 @@ namespace cw
                       double sec,
                       uint8_t pitch,
                       uint8_t vel,
+                      unsigned& perf_note_idx_ref,
                       unsigned& loc_id_ref,
                       unsigned& meas_numb_ref,
                       unsigned& score_vel_ref,
