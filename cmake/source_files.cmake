@@ -83,8 +83,8 @@ list( APPEND FLOW_SRC_FILES flow/cwFlowProc.cpp flow/cwFlowPerf.cpp flow/cwFlowG
 set(  CW_HDR_FILES cw/cwMidiDetectors.h   cw/cwPianoScore.h   cw/cwPresetSel.h   cw/cwKeyStateMonitor.h )
 set(  CW_SRC_FILES cw/cwMidiDetectors.cpp cw/cwPianoScore.cpp cw/cwPresetSel.cpp cw/cwKeyStateMonitor.cpp )
   
-list( APPEND CW_HDR_FILES cw/cwScoreFollow2.h   cw/cwScoreFollow2Test.h   cw/cwGutimMeas.h )
-list( APPEND CW_SRC_FILES cw/cwScoreFollow2.cpp cw/cwScoreFollow2Test.cpp cw/cwGutimMeas.cpp )
+list( APPEND CW_HDR_FILES cw/cwScoreFollow2.h   cw/cwScoreFollow2Test.h   cw/cwGutimMeas.h   cw/cwAutoRange.h )
+list( APPEND CW_SRC_FILES cw/cwScoreFollow2.cpp cw/cwScoreFollow2Test.cpp cw/cwGutimMeas.cpp cw/cwAutoRange.cpp )
 
 list( APPEND CW_HDR_FILES cw/cwSvgMidi.h   cw/cwWaveTableNotes.h )
 list( APPEND CW_SRC_FILES cw/cwSvgMidi.cpp cw/cwWaveTableNotes.cpp )
