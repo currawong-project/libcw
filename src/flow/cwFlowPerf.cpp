@@ -2083,6 +2083,10 @@ namespace cw
         kMidiFldPId,
         kResetPId,
 
+        kPerfF_FlPId,
+        kPerfCtlFlPId,
+        kPerfShmFlPId,
+
         kPriManualSelPId,
         kSecManualSelPId,
         kPerNoteFlPId,
@@ -2146,8 +2150,11 @@ namespace cw
         unsigned i_voice_idx_fld_idx;  // The 'voice_idx' field in the 'in' record.
         unsigned i_midi_fld_idx;
 
+        unsigned o_perf_f_fl_fld_idx;
+        unsigned o_perf_shm_fl_fld_idx;
         unsigned o_pri_preset_fld_idx;
         unsigned o_sec_preset_fld_idx;
+       
 
         list_t*  manual_sel_list;            // list for selecting between auto and manual presets
         unsigned cur_manual_pri_preset_idx;  // Last manually selected primary preset index into cur_frag->presetA[]
@@ -2414,7 +2421,10 @@ namespace cw
         }
 
         if((rc = var_register( proc, kAnyChIdx,
-                               kResetPId,        "reset",          kBaseSfxId, 
+                               kResetPId,        "reset",          kBaseSfxId,
+                               kPerfF_FlPId,     "perf_f_fl",      kBaseSfxId,
+                               kPerfCtlFlPId,    "perf_ctl_fl",    kBaseSfxId,
+                               kPerfShmFlPId,    "perf_shm_fl",    kBaseSfxId,
                                kPerNoteFlPId,    "per_note_fl",    kBaseSfxId,
                                kPerLocFlPId,     "per_loc_fl",     kBaseSfxId  )) != kOkRC )
         {
@@ -2490,6 +2500,8 @@ namespace cw
         }
 
         if((rc = recd_array_field_index( p->recd_array,
+                                         "perf_f_fl", p->o_perf_f_fl_fld_idx,
+                                         "perf_shm_fl",    p->o_perf_shm_fl_fld_idx,
                                          "pri_preset_idx", p->o_pri_preset_fld_idx,
                                          "sec_preset_idx", p->o_sec_preset_fld_idx )) != kOkRC )
         {
@@ -2709,6 +2721,8 @@ namespace cw
         {
           midi::ch_msg_t* m              = nullptr;
           unsigned        loc_id         = kInvalidId;
+          bool            perf_f_fl     = false;
+          bool            perf_shm_fl    = false;
           unsigned        pri_preset_idx = kInvalidIdx;
           unsigned        sec_preset_idx = kInvalidIdx;
           const recd_t*   i_r            = i_rbuf->recd_array->recdA + i;
@@ -2768,9 +2782,17 @@ namespace cw
 
             proc_info(proc,"%i %i %i :  v:%i :  %i %i",m->status,m->d0,m->d1,voice_idx,pri_preset_idx,sec_preset_idx);
           }
+
+          if( var_get(proc,kPerfF_FlPId, kAnyChIdx, perf_f_fl) != kOkRC )
+            goto errLabel;
+          
+          if( var_get(proc,kPerfShmFlPId, kAnyChIdx, perf_shm_fl ) != kOkRC )
+            goto errLabel;
           
           // set the output record
           if((rc = recd_append( p->recd_array, i_rbuf->recd_array->recdA+i,
+                                p->o_perf_f_fl_fld_idx, perf_f_fl,
+                                p->o_perf_shm_fl_fld_idx, perf_shm_fl,
                                 p->o_pri_preset_fld_idx, pri_preset_idx,
                                 p->o_sec_preset_fld_idx, sec_preset_idx )) != kOkRC )
           {
@@ -3112,8 +3134,8 @@ namespace cw
           {            
             const preset_value_t* v = p->presetA[ preset_idx ].varA[ var_idx ].chA + ch_idx;
             
-            variable_t* varb;
-            var_find(proc, p->base[var_cfg->var_pid] + voice_idx,ch_idx, varb);
+            //variable_t* varb;
+            //var_find(proc, p->base[var_cfg->var_pid] + voice_idx,ch_idx, varb);
             
             switch( v->tid )
             {

@@ -31,6 +31,7 @@
 #include "cwFlowGutim.h"
 #include "cwKeyStateMonitor.h"
 #include "cwGutimMeas.h"
+#include "cwAutoRange.h"
 
 namespace cw
 {
@@ -1836,7 +1837,8 @@ namespace cw
     namespace gutim_perf_eval
     {
       enum {
-        kCfgFNamePId,
+        kMeasCfgFNamePId,
+        kMapCfgFNamePId,
         kVelTblFNamePId,
         kVelTblNamePId,
         kResetPId,
@@ -1844,51 +1846,111 @@ namespace cw
         kSfBegLocPId,
         kSfEndLocPId,
         kInPId,
-        kOutPId
+        kSdOutPId,
+        kCtlOutPId,
+        kShmOutPId
       };
       
       typedef struct
       {
-        recd_array_t* recd_array;
         gutim_meas::handle_t gmH;
         unsigned i_perf_note_idx_fld_idx;
         unsigned i_loc_fld_idx;
         unsigned i_sec_fld_idx;
         unsigned i_midi_fld_idx;
         unsigned i_score_vel_fld_idx;
+
+        auto_range::handle_t arH;
+
+        recd_array_t* sd_recd_array;
+        recd_array_t* ctl_recd_array;
+        recd_array_t* shm_recd_array;
+
+
+        // auto-range input variable id's
+        unsigned avg_loc_dev_sec_ar_id;
+        unsigned avg_dyn_ar_id;
+        unsigned avg_dyn_dev_ar_id;
+        unsigned avg_chord_spread_secs_ar_id;
+        unsigned avg_beat_period_dev_sec_ar_id;
+        unsigned avg_beat_dur_pct_ar_id;
+        unsigned avg_grace_period_dev_sec_ar_id;
+        unsigned avg_grace_dur_pct_ar_id;
+        unsigned section_dur_dev_pct_ar_id;
+
+        // auto-range output variable spec-dist id's
+        unsigned ceiling_sd_id;
+        unsigned expo_sd_id;
+        unsigned thresh_sd_id;
+        unsigned upr_sd_id;
+        unsigned lwr_sd_id;
+        unsigned mix_sd_id;
+
+        // auto-range output variable ctl id's
+        unsigned per_note_fl_ctl_id;
+        unsigned pri_prob_fl_ctl_id;
+        unsigned pri_uniform_fl_ctl_id;
+        unsigned pri_dry_on_play_fl_ctl_id;
+        unsigned pri_allow_all_fl_ctl_id;
+        unsigned pri_dry_on_sel_fl_ctl_id;
+
+        // auto-range output variable SHM id's
+        unsigned peak_fl_shm_id;
+        unsigned peak_gain_shm_id;
+        unsigned hgain_shm_id;
+        unsigned hfeedback_shm_id;
+        unsigned stretch_shm_id;
+        unsigned expo_shm_id;
+
+
+        //  sd output variable spec-dist id's
+        unsigned ceiling_sd_fi;
+        unsigned expo_sd_fi;
+        unsigned thresh_sd_fi;
+        unsigned upr_sd_fi;
+        unsigned lwr_sd_fi;
+        unsigned mix_sd_fi;
+
+        // ctl output variable ctl id's
+        unsigned per_note_fl_ctl_fi;
+        unsigned pri_prob_fl_ctl_fi;
+        unsigned pri_uniform_fl_ctl_fi;
+        unsigned pri_dry_on_play_fl_ctl_fi;
+        unsigned pri_allow_all_fl_ctl_fi;
+        unsigned pri_dry_on_sel_fl_ctl_fi;
+
+        // shm output variable SHM id's
+        unsigned peak_fl_shm_fi;
+        unsigned peak_gain_shm_fi;
+        unsigned hgain_shm_fi;
+        unsigned hfeedback_shm_fi;
+        unsigned stretch_shm_fi;
+        unsigned expo_shm_fi;
         
-        unsigned o_avg_loc_dev_sec_fi;
-        unsigned o_avg_dyn_fi;
-        unsigned o_avg_dyn_dev_fi;
-        unsigned o_chord_cnt_fi;
-        unsigned o_avg_chord_spread_secs_fi;
-        unsigned o_beat_group_cnt_fi;
-        unsigned o_avg_beat_period_dev_sec_fi;
-        unsigned o_avg_beat_dur_pct_fi;
-        unsigned o_grace_group_cnt_fi;
-        unsigned o_avg_grace_period_dev_sec_fi;
-        unsigned o_avg_grace_dur_pct_fi;
-        unsigned o_section_dur_dev_pct_fi;
+        
       } inst_t;
 
 
       rc_t _create( proc_t* proc, inst_t* p )
       {
-        rc_t          rc            = kOkRC;        
-        const char*   cfg_fname     = nullptr;
-        const char*   vt_fname      = nullptr;
-        const char*   vt_name       = nullptr;
-        const rbuf_t* i_rbuf        = nullptr;
-        bool          reset_fl      = false;
-        bool          sf_reset_fl   = false;
-        unsigned      sf_beg_loc    = kInvalidId;
-        unsigned      sf_end_loc    = kInvalidId;
-        char*         exp_vt_fname  = nullptr;
-        char*         exp_cfg_fname = nullptr;
+        rc_t          rc                 = kOkRC;        
+        const char*   meas_cfg_fname     = nullptr;
+        const char*   map_cfg_fname      = nullptr;
+        const char*   vt_fname           = nullptr;
+        const char*   vt_name            = nullptr;
+        const rbuf_t* i_rbuf             = nullptr;
+        bool          reset_fl           = false;
+        bool          sf_reset_fl        = false;
+        unsigned      sf_beg_loc         = kInvalidId;
+        unsigned      sf_end_loc         = kInvalidId;
+        char*         exp_meas_cfg_fname = nullptr;
+        char*         exp_map_cfg_fname  = nullptr;
+        char*         exp_vt_fname       = nullptr;
         
 
         if((rc = var_register_and_get(proc,kAnyChIdx,
-                                      kCfgFNamePId,    "cfg_fname",     kBaseSfxId, cfg_fname,
+                                      kMeasCfgFNamePId,    "meas_cfg_fname",     kBaseSfxId, meas_cfg_fname,
+                                      kMapCfgFNamePId, "map_cfg_fname", kBaseSfxId, map_cfg_fname,
                                       kVelTblFNamePId, "vel_tbl_fname", kBaseSfxId, vt_fname,
                                       kVelTblNamePId,  "vel_tbl_name",  kBaseSfxId, vt_name,
                                       kResetPId,       "reset",         kBaseSfxId, reset_fl,
@@ -1898,14 +1960,8 @@ namespace cw
                                       kInPId,          "in",            kBaseSfxId, i_rbuf)) != kOkRC )
         {
           goto errLabel;
-        }
-
-        // register the output port
-        if((rc = var_alloc_register_and_set(proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, 0, p->recd_array )) != kOkRC )
-        {
-          goto errLabel;
-        }
-
+        }        
+        
         if((rc = recd_array_field_index( i_rbuf->recd_array,
                                         "midi", p->i_midi_fld_idx,
                                          "perf_note_idx", p->i_perf_note_idx_fld_idx,
@@ -1915,25 +1971,59 @@ namespace cw
         {
           goto errLabel;
         }
-        
-        if((rc = recd_array_field_index( p->recd_array,
-                                         "avg_loc_dev_sec",p->o_avg_loc_dev_sec_fi,
-                                         "avg_dyn",p->o_avg_dyn_fi,
-                                         "avg_dyn_dev",p->o_avg_dyn_dev_fi,
-                                         "chord_cnt",p->o_chord_cnt_fi,
-                                         "avg_chord_spread_secs",p->o_avg_chord_spread_secs_fi,
-                                         "beat_group_cnt",p->o_beat_group_cnt_fi,
-                                         "avg_beat_period_dev_sec",p->o_avg_beat_period_dev_sec_fi,
-                                         "avg_beat_dur_pct",p->o_avg_beat_dur_pct_fi,
-                                         "grace_group_cnt",p->o_grace_group_cnt_fi,
-                                         "avg_grace_period_dev_sec",p->o_avg_grace_period_dev_sec_fi,
-                                         "avg_grace_dur_pct",p->o_avg_grace_dur_pct_fi,
-                                         "section_dur_dev_pct",p->o_section_dur_dev_pct_fi )) != kOkRC )
+
+        // create and register the sd_out record array
+        if((rc = var_alloc_register_and_set(proc, "sd_out", kBaseSfxId, kSdOutPId, kAnyChIdx, nullptr, 0, p->sd_recd_array )) != kOkRC )
         {
           goto errLabel;
         }
 
-        if((exp_cfg_fname = proc_expand_filename(proc,cfg_fname)) == nullptr )
+        if((rc = recd_array_field_index( p->sd_recd_array, 
+                                         "ceiling",p->ceiling_sd_fi,
+                                         "sd_expo",p->expo_sd_fi,
+                                         "thresh",p->thresh_sd_fi,
+                                         "upr",p->upr_sd_fi,
+                                         "lwr",p->lwr_sd_fi,
+                                         "mix",p->mix_sd_fi)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // create and register the ctl_out record array
+        if((rc = var_alloc_register_and_set(proc, "ctl_out", kBaseSfxId, kCtlOutPId, kAnyChIdx, nullptr, 0, p->ctl_recd_array )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((rc = recd_array_field_index( p->ctl_recd_array,                                         
+                                         "per_note_fl",p->per_note_fl_ctl_fi,
+                                         "pri_prob_fl",p->pri_prob_fl_ctl_fi,
+                                         "pri_uniform_fl",p->pri_uniform_fl_ctl_fi,
+                                         "pri_dry_on_play_fl",p->pri_dry_on_play_fl_ctl_fi,
+                                         "pri_allow_all_fl",p->pri_allow_all_fl_ctl_fi,
+                                         "pri_dry_on_sel_fl",p->pri_dry_on_sel_fl_ctl_fi)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // create and register the shm_out record array
+        if((rc = var_alloc_register_and_set(proc, "shm_out", kBaseSfxId, kShmOutPId, kAnyChIdx, nullptr, 0, p->shm_recd_array )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((rc = recd_array_field_index( p->shm_recd_array,
+                                         "peak_fl",p->peak_fl_shm_fi,
+                                         "peak_gain",p->peak_gain_shm_fi,
+                                         "hgain",p->hgain_shm_fi,
+                                         "hfeedback",p->hfeedback_shm_fi,
+                                         "stretch",p->stretch_shm_fi,
+                                         "shm_expo",p->expo_shm_fi)) != kOkRC )
+        {
+          goto errLabel;
+        }                                         
+        
+        if((exp_meas_cfg_fname = proc_expand_filename(proc,meas_cfg_fname)) == nullptr )
         {
           goto errLabel;
         }
@@ -1943,17 +2033,91 @@ namespace cw
           goto errLabel;
         }
         
-        if((rc = create(p->gmH, exp_cfg_fname, exp_vt_fname, vt_name )) != kOkRC )
+        if((rc = create(p->gmH, exp_meas_cfg_fname, exp_vt_fname, vt_name )) != kOkRC )
         {
           goto errLabel;
         }
-        
+
+        if((exp_map_cfg_fname = proc_expand_filename(proc,map_cfg_fname)) == nullptr )
+        {
+          goto errLabel;
+        }
+
+        if((rc = create( p->arH, exp_map_cfg_fname )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // get the auto-range input variable id's
+        if((rc = in_variable_label_to_id( p->arH, "avg_loc_dev_sec", p->avg_loc_dev_sec_ar_id )) != kOkRC )
+          goto errLabel;          
+        if((rc = in_variable_label_to_id( p->arH, "avg_loc_dev_sec", p->avg_loc_dev_sec_ar_id )) != kOkRC )
+          goto errLabel;
+        if((rc = in_variable_label_to_id( p->arH, "avg_dyn", p->avg_dyn_ar_id )) != kOkRC )
+          goto errLabel;
+        if((rc = in_variable_label_to_id( p->arH, "avg_dyn_dev", p->avg_dyn_dev_ar_id )) != kOkRC )
+          goto errLabel;
+        if((rc = in_variable_label_to_id( p->arH, "avg_chord_spread_secs", p->avg_chord_spread_secs_ar_id )) != kOkRC )
+          goto errLabel;
+        if((rc = in_variable_label_to_id( p->arH, "avg_beat_period_dev_sec", p->avg_beat_period_dev_sec_ar_id )) != kOkRC )
+          goto errLabel;
+        if((rc = in_variable_label_to_id( p->arH, "avg_beat_dur_pct", p->avg_beat_dur_pct_ar_id )) != kOkRC )
+          goto errLabel;
+        if((rc = in_variable_label_to_id( p->arH, "avg_grace_period_dev_sec", p->avg_grace_period_dev_sec_ar_id )) != kOkRC )
+          goto errLabel;
+        if((rc = in_variable_label_to_id( p->arH, "avg_grace_dur_pct", p->avg_grace_dur_pct_ar_id )) != kOkRC )
+          goto errLabel;
+        if((rc = in_variable_label_to_id( p->arH, "section_dur_dev_pct", p->section_dur_dev_pct_ar_id )) != kOkRC )
+          goto errLabel;
+
+        // get the auto-range output spec-dist variable id's 
+        if((rc = out_variable_label_to_id( p->arH, "ceiling", p->ceiling_sd_id )) != kOkRC )
+          goto errLabel;
+        if((rc = out_variable_label_to_id( p->arH, "sd_expo", p->expo_sd_id )) != kOkRC )
+          goto errLabel;
+        if((rc = out_variable_label_to_id( p->arH, "thresh", p->thresh_sd_id )) != kOkRC )
+          goto errLabel;
+        if((rc = out_variable_label_to_id( p->arH, "upr", p->upr_sd_id )) != kOkRC )
+          goto errLabel;
+        if((rc = out_variable_label_to_id( p->arH, "lwr", p->lwr_sd_id )) != kOkRC )
+          goto errLabel;
+        if((rc = out_variable_label_to_id( p->arH, "mix", p->mix_sd_id )) != kOkRC )
+          goto errLabel;
+
+        // get the auto-range output ctl variable id's 
+        if((rc = out_variable_label_to_id( p->arH, "per_note_fl", p->per_note_fl_ctl_id )) != kOkRC )
+          goto errLabel;
+        if((rc = out_variable_label_to_id( p->arH, "pri_prob_fl", p->pri_prob_fl_ctl_id )) != kOkRC )
+          goto errLabel;
+        if((rc = out_variable_label_to_id( p->arH, "pri_uniform_fl", p->pri_uniform_fl_ctl_id )) != kOkRC )
+          goto errLabel;
+        if((rc = out_variable_label_to_id( p->arH, "pri_dry_on_play_fl", p->pri_dry_on_play_fl_ctl_id )) != kOkRC )
+          goto errLabel;
+        if((rc = out_variable_label_to_id( p->arH, "pri_allow_all_fl", p->pri_allow_all_fl_ctl_id )) != kOkRC )
+          goto errLabel;
+        if((rc = out_variable_label_to_id( p->arH, "pri_dry_on_sel_fl", p->pri_dry_on_sel_fl_ctl_id )) != kOkRC )
+          goto errLabel;
+
+        // get the auto-range output SHM variable id's 
+        if((rc = out_variable_label_to_id( p->arH, "peak_fl", p->peak_fl_shm_id )) != kOkRC )
+          goto errLabel;
+        if((rc = out_variable_label_to_id( p->arH, "peak_gain", p->peak_gain_shm_id )) != kOkRC )
+          goto errLabel;
+        if((rc = out_variable_label_to_id( p->arH, "hgain", p->hgain_shm_id )) != kOkRC )
+          goto errLabel;
+        if((rc = out_variable_label_to_id( p->arH, "hfeedback", p->hfeedback_shm_id )) != kOkRC )
+          goto errLabel;
+        if((rc = out_variable_label_to_id( p->arH, "stretch", p->stretch_shm_id )) != kOkRC )
+          goto errLabel;
+        if((rc = out_variable_label_to_id( p->arH, "shm_expo", p->expo_shm_id )) != kOkRC )
+          goto errLabel;
+
 
       errLabel:
 
-        mem::release(exp_cfg_fname);
+        mem::release(exp_meas_cfg_fname);
         mem::release(exp_vt_fname);
-        
+        mem::release( exp_map_cfg_fname);
         return rc;
       }
 
@@ -2008,6 +2172,121 @@ namespace cw
         return rc;
       }
 
+      rc_t _update_auto_range_inputs( proc_t* proc, inst_t* p, double sec, const gutim_meas::results_t* results )
+      {
+        rc_t rc = kOkRC;
+        
+        if((rc = update_variable( p->arH, sec,
+                                  p->avg_loc_dev_sec_ar_id,results->avg_loc_dev_sec,
+                                  p->avg_dyn_ar_id,                  results->avg_dyn,
+                                  p->avg_dyn_dev_ar_id,              results->avg_dyn_dev,
+                                  p->avg_chord_spread_secs_ar_id,    results->avg_chord_spread_secs,
+                                  p->avg_beat_period_dev_sec_ar_id,  results->avg_beat_period_dev_sec,
+                                  p->avg_beat_dur_pct_ar_id,         results->avg_beat_dur_pct,
+                                  p->avg_grace_period_dev_sec_ar_id, results->avg_grace_period_dev_sec,
+                                  p->avg_grace_dur_pct_ar_id,        results->avg_grace_dur_pct,
+                                  p->section_dur_dev_pct_ar_id,      results->section_dur_dev_pct )) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _set_output_records( proc_t* proc, inst_t* p, double sec )
+      {
+        rc_t rc = kOkRC;
+        coeff_t ceiling,sd_expo,thresh,upr,lwr,mix;
+        bool per_note_fl, pri_prob_fl, pri_uniform_fl, pri_dry_on_play_fl, pri_allow_all_fl, pri_dry_on_sel_fl;
+        bool peak_fl;
+        coeff_t peak_gain, hgain, hfeedback, stretch, shm_expo;
+        
+        // get the SD auto-range output values
+        if((rc = get_value(p->arH,sec,
+                           p->ceiling_sd_id, ceiling,
+                           p->expo_sd_id, sd_expo,
+                           p->thresh_sd_id, thresh,
+                           p->upr_sd_id, upr,
+                           p->lwr_sd_id, lwr,
+                           p->mix_sd_id, mix)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"SD auto-range access failed.");
+          goto errLabel;
+        }
+        
+        // set the SD output records
+        if((rc = recd_append( p->sd_recd_array, nullptr,
+                         p->ceiling_sd_fi, ceiling,
+                         p->expo_sd_fi, sd_expo,
+                         p->thresh_sd_fi, thresh,
+                         p->upr_sd_fi, upr,
+                         p->lwr_sd_fi, lwr,
+                         p->mix_sd_fi, mix )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"SD record output failed.");
+          goto errLabel;
+        }
+
+        // get the ctl auto-range output values
+        if((rc = get_value( p->arH, sec,
+                            p->per_note_fl_ctl_id, per_note_fl,
+                            p->pri_prob_fl_ctl_id, pri_prob_fl,
+                            p->pri_uniform_fl_ctl_id, pri_uniform_fl,
+                            p->pri_dry_on_play_fl_ctl_id, pri_dry_on_play_fl,
+                            p->pri_allow_all_fl_ctl_id, pri_allow_all_fl,
+                            p->pri_dry_on_sel_fl_ctl_id, pri_dry_on_sel_fl)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"ctl auto-range access failed.");
+          goto errLabel;
+        }
+
+        // set the ctl output record
+        if((rc = recd_append( p->ctl_recd_array, nullptr,                            
+                         p->per_note_fl_ctl_fi,per_note_fl,
+                         p->pri_prob_fl_ctl_fi,pri_prob_fl,
+                         p->pri_uniform_fl_ctl_fi,pri_uniform_fl,
+                         p->pri_dry_on_play_fl_ctl_fi,pri_dry_on_play_fl,
+                         p->pri_allow_all_fl_ctl_fi,pri_allow_all_fl,
+                         p->pri_dry_on_sel_fl_ctl_fi,pri_dry_on_sel_fl)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"ctl record output failed.");
+          goto errLabel;
+        }
+
+        // get he SHM auto-range output values
+        if((rc = get_value( p->arH, sec,
+                            p->peak_fl_shm_id,peak_fl,
+                            p->peak_gain_shm_id,peak_gain,
+                            p->hgain_shm_id,hgain,
+                            p->hfeedback_shm_id,hfeedback,
+                            p->stretch_shm_id,stretch,
+                            p->expo_shm_id,shm_expo)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"SHM auto-range access failed.");
+          goto errLabel;
+        }
+
+        // set the SHM output record
+        if((rc = recd_append(p->shm_recd_array, nullptr,
+                            p->peak_fl_shm_fi,peak_fl,
+                            p->peak_gain_shm_fi,peak_gain,
+                            p->hgain_shm_fi,hgain,
+                            p->hfeedback_shm_fi,hfeedback,
+                            p->stretch_shm_fi,stretch,
+                            p->expo_shm_fi,shm_expo)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"SHM record output failed.");
+          goto errLabel;
+        }
+
+        // print the output values
+        report(p->arH);
+        
+      errLabel:
+        return rc;
+      }
+
       rc_t _exec( proc_t* proc, inst_t* p )
       {
         rc_t            rc     = kOkRC;
@@ -2022,8 +2301,7 @@ namespace cw
         if((rc = var_get(proc,kInPId,kAnyChIdx,i_rbuf)) != kOkRC )
           goto errLabel;
 
-        recd_array_empty(p->recd_array);
-
+        // for each incoming score-following record
         for(unsigned i=0; i<i_rbuf->recd_array->recdN; ++i)
         {
           if((rc = recd_get(i_rbuf->recd_array->recdA + i,
@@ -2036,38 +2314,41 @@ namespace cw
             goto errLabel;
           }
 
+          // this is a valid score-followed note-on record
           if( perf_note_idx != kInvalidIdx )
           {
+            // pass the score-followed note on to the GUTIM-meas object
             if((rc = on_note( p->gmH, perf_note_idx, loc_id, sec, m->d0, score_vel )) != kOkRC )
             {
               goto errLabel;
             }
-          
+
+            // if a measurement section is complete
             if( is_section_complete(p->gmH) )
             {
               gutim_meas::results_t* results;
+
+              // get the measurement results
               if((rc = get_results( p->gmH, results )) != kOkRC && results != nullptr )
               {
+                rc = cwLogError(rc,"measurements access failed.");
                 goto errLabel;
               }
 
-              if((rc = recd_append(p->recd_array,nullptr,
-                                   p->o_avg_loc_dev_sec_fi,          results->avg_loc_dev_sec,
-                                   p->o_avg_loc_dev_sec_fi,          results->avg_loc_dev_sec,
-                                   p->o_avg_dyn_fi,                  results->avg_dyn,
-                                   p->o_avg_dyn_dev_fi,              results->avg_dyn_dev,
-                                   p->o_chord_cnt_fi,                results->chord_cnt,
-                                   p->o_avg_chord_spread_secs_fi,    results->avg_chord_spread_secs,
-                                   p->o_beat_group_cnt_fi,           results->beat_group_cnt,
-                                   p->o_avg_beat_period_dev_sec_fi,  results->avg_beat_period_dev_sec,
-                                   p->o_avg_beat_dur_pct_fi,         results->avg_beat_dur_pct,
-                                   p->o_grace_group_cnt_fi,          results->grace_group_cnt,
-                                   p->o_avg_grace_period_dev_sec_fi, results->avg_grace_period_dev_sec,
-                                   p->o_avg_grace_dur_pct_fi,        results->avg_grace_dur_pct,
-                                   p->o_section_dur_dev_pct_fi,      results->section_dur_dev_pct)) != kOkRC )
+              // update the auto-range input variables
+              if((rc = _update_auto_range_inputs(proc,p,sec,results)) != kOkRC )
               {
+                rc = cwLogError(rc,"update auto-range input failed.");
                 goto errLabel;
               }
+
+              // get the auto-range output variables
+              if((rc = _set_output_records(proc, p, sec )) != kOkRC )
+              {
+                rc = cwLogError(rc,"update output failed.");
+                goto errLabel;
+              }
+
               
             }
           }          
