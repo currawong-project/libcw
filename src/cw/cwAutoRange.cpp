@@ -13,11 +13,10 @@ namespace cw
 {
   namespace auto_range
   {
-    typedef struct var_str
+    typedef struct in_var_str
     {
-      char*    label;       // variable label
-      unsigned id;          // variable id - same as index in to auto_range_t.varA[]
-      cfg_t    cfg;         // variable config. record
+      char*    label;       // input variable label
+      unsigned id;          // input variable id - same as index into auto_range_t.i_varA[]
       double*  bufA;        // bufA[ bufAllocN ]  - circular buffer
       unsigned bufAllocN;   // 
       unsigned bufN;        // bufN - count of filled elements in bufA[]
@@ -31,15 +30,30 @@ namespace cw
       double std_dev;  // std-dev of values in bufA[]
 
       double i_value;  // last input value
-      double o_value;  // last output value
+    } i_var_t;
+    
+    typedef struct var_str
+    {
+      char*          label;
+      unsigned       id;        // out variable id - same as index in to auto_range_t.o_varA[]
       
-    } var_t;
+      cfg_t          cfg;       // variable config. record
+      
+      const i_var_t* ivar;      // input variable
+      
+      double         o_value;   // last output value
+      
+    } o_var_t;
     
     typedef struct auto_range_str
     {
-      var_t*   varA;
-      unsigned varAllocN;
-      unsigned varN;
+      i_var_t* i_varA;
+      unsigned i_varAllocN;
+      unsigned i_varN;
+
+      o_var_t* o_varA;
+      unsigned o_varAllocN;
+      unsigned o_varN;
       
     } auto_range_t;
 
@@ -48,25 +62,39 @@ namespace cw
   
     rc_t _destroy( auto_range_t* p )
     {
-      for(unsigned i=0; i<p->varN; ++i)
+      for(unsigned i=0; i<p->i_varN; ++i)
       {
-        mem::release(p->varA[i].bufA);
-        mem::release(p->varA[i].label);
+        mem::release(p->i_varA[i].bufA);
+        mem::release(p->i_varA[i].label);
+      }
+
+      for(unsigned i=0; i<p->o_varN; ++i)
+      {
+        mem::release(p->o_varA[i].label);
       }
       
-      mem::release(p->varA);
+      mem::release(p->i_varA);
+      mem::release(p->o_varA);
       mem::release(p);
       return kOkRC;
     }
 
-    const var_t* _label_to_var( const auto_range_t* p, const char* label )
+    const i_var_t* _i_label_to_var( const auto_range_t* p, const char* label )
     {
-      for(unsigned i=0; i<p->varN; ++i)
-        if( textIsEqual(p->varA[i].label,label))
-          return p->varA + i;
+      for(unsigned i=0; i<p->i_varN; ++i)
+        if( textIsEqual(p->i_varA[i].label,label))
+          return p->i_varA + i;
       return nullptr;
     }
 
+    const o_var_t* _o_label_to_var( const auto_range_t* p, const char* label )
+    {
+      for(unsigned i=0; i<p->o_varN; ++i)
+        if( textIsEqual(p->o_varA[i].label,label))
+          return p->o_varA + i;
+      return nullptr;
+    }
+    
     
   }
 }
@@ -83,7 +111,6 @@ cw::rc_t cw::auto_range::create( handle_t& hRef, const char* fname )
   {
     goto errLabel;
   }
-
   
   if((rc = create(hRef,cfg)) != kOkRC )
     goto errLabel;
@@ -120,14 +147,15 @@ cw::rc_t cw::auto_range::create( handle_t& hRef, const object_t* cfg )
 
   var_cnt = varL->child_count();
 
-  if((rc = create(hRef,var_cnt,history_cnt)) != kOkRC )
+  if((rc = create(hRef,var_cnt,var_cnt,history_cnt)) != kOkRC )
   {
     goto errLabel;
   }
 
   for(unsigned i=0; i<var_cnt; ++i)
   {    
-    unsigned        var_id  = kInvalidId;
+    unsigned        in_var_id  = kInvalidId;
+    unsigned        out_var_id = kInvalidId;
     const object_t* var_cfg = varL->child_ele(i);
     cfg_t cfg{};
 
@@ -137,7 +165,8 @@ cw::rc_t cw::auto_range::create( handle_t& hRef, const object_t* cfg )
       goto errLabel;
     }
 
-    if((rc = var_cfg->getv("label",cfg.label,
+    if((rc = var_cfg->getv("i_label",cfg.i_label,
+                           "o_label",cfg.o_label,
                            "default_out_value",cfg.default_out_value,
                            "dev_mult",cfg.dev_mult,
                            "min_out_value",cfg.min_out_value,
@@ -149,22 +178,25 @@ cw::rc_t cw::auto_range::create( handle_t& hRef, const object_t* cfg )
       goto errLabel;
     }
 
-    if((rc = register_variable(hRef,cfg,var_id)) != kOkRC )
+    if((rc = register_variable(hRef,cfg,in_var_id,out_var_id)) != kOkRC )
     {
-      rc = cwLogError(rc,"'%s' variable registration failed.",cwStringNullGuard(cfg.label));
+      rc = cwLogError(rc,"'%s' variable registration failed.",cwStringNullGuard(cfg.o_label));
       goto errLabel;
     }    
   }
   
 errLabel:
   if(rc != kOkRC )
+  {
     rc = cwLogError(rc,"Auto-range instantiation failed.");
+    destroy(hRef);
+  }
   
   return rc;
 }
 
 
-cw::rc_t cw::auto_range::create( handle_t& hRef, unsigned value_cnt, unsigned history_cnt )
+cw::rc_t cw::auto_range::create( handle_t& hRef, unsigned in_var_cnt, unsigned out_var_cnt, unsigned history_cnt )
 {
   rc_t rc = kOkRC;
   if((rc = destroy(hRef)) != kOkRC )
@@ -172,15 +204,19 @@ cw::rc_t cw::auto_range::create( handle_t& hRef, unsigned value_cnt, unsigned hi
 
   auto_range_t* p = mem::allocZ<auto_range_t>();
 
-  p->varA = mem::allocZ<var_t>(value_cnt);
-  for(unsigned i=0; i<value_cnt; ++i)
+  p->i_varAllocN = in_var_cnt;
+  p->o_varAllocN = out_var_cnt;
+  p->i_varA = mem::allocZ<i_var_t>(p->i_varAllocN);
+  p->o_varA = mem::allocZ<o_var_t>(p->o_varAllocN);
+  for(unsigned i=0; i<p->i_varAllocN; ++i)
   {
-    var_t* var = p->varA + i;
+    i_var_t* var = p->i_varA + i;
 
     var->bufAllocN = history_cnt;
     var->bufA = mem::allocZ<double>(var->bufAllocN);    
   }
-    
+
+  hRef.set(p);
 errLabel:
   if( rc != kOkRC )
     _destroy(p);
@@ -207,126 +243,199 @@ cw::rc_t cw::auto_range::reset( handle_t h )
   rc_t rc = kOkRC;
   auto_range_t* p = _handleToPtr(h);
 
-  for(unsigned i=0; i<p->varN; ++i)
+  for(unsigned i=0; i<p->i_varN; ++i)
   {
-    vop::zero(p->varA[i].bufA,p->varA[i].bufAllocN);
+    vop::zero(p->i_varA[i].bufA,p->i_varA[i].bufAllocN);
     
-    p->varA[i].init_fl   = false;
-    p->varA[i].i_buf_idx = 0;
-    p->varA[i].bufN      = 0;
-    p->varA[i].sum       = 0;
-    p->varA[i].mean      = 0;
-    p->varA[i].std_dev   = 0;
-    p->varA[i].i_value   = 0;
-    p->varA[i].o_value   = 0;
-  } 
+    p->i_varA[i].init_fl   = false;
+    p->i_varA[i].i_buf_idx = 0;
+    p->i_varA[i].bufN      = 0;
+    p->i_varA[i].sum       = 0;
+    p->i_varA[i].mean      = 0;
+    p->i_varA[i].std_dev   = 0;
+    p->i_varA[i].i_value   = 0;
+  }
+
+  for(unsigned i=0; i<p->o_varN; ++i)
+    p->o_varA[i].o_value = 0;
+  
   return rc;
 }
 
-cw::rc_t cw::auto_range::register_variable( handle_t h, const cfg_t& cfg, unsigned var_id_ref )
+cw::rc_t cw::auto_range::register_variable( handle_t h, const cfg_t& cfg, unsigned& in_var_id_ref, unsigned& out_var_id_ref  )
 {
-  rc_t          rc  = kOkRC;
-  auto_range_t* p   = _handleToPtr(h);
-  var_t*        var = nullptr;
+  rc_t           rc  = kOkRC;
+  auto_range_t*  p   = _handleToPtr(h);
+  const i_var_t* i_var = nullptr;
+  o_var_t* o_var = nullptr;
   
-  if( p->varN >= p->varAllocN )
+  if( p->o_varN >= p->o_varAllocN )
   {
-    rc = cwLogError(kBufTooSmallRC,"All variables in use. Variable registration failed.");
+    rc = cwLogError(kBufTooSmallRC,"All output variables in use. Variable registration failed.");
     goto errLabel;
   }
 
-  if( _label_to_var(p,cfg.label) != nullptr )
+  if( _o_label_to_var(p,cfg.o_label) != nullptr )
   {
-    rc = cwLogError(kInvalidArgRC,"The variable label '%s' is already in use.",cwStringNullGuard(cfg.label));
+    rc = cwLogError(kInvalidArgRC,"The output variable label '%s' is already in use.",cwStringNullGuard(cfg.o_label));
     goto errLabel;
   }
 
+  // if this input variable has not yet been allocated ...
+  if(( i_var = _i_label_to_var(p,cfg.i_label)) == nullptr )
+  {
+    // ... and there is an available slot in p->i_varA[]
+    if( p->i_varN >= p->i_varAllocN )
+    {
+      rc = cwLogError(kBufTooSmallRC,"All input variables in use. Variable registration failed.");
+      goto errLabel;
+    }
+
+    // then allocate the input variable
+    p->i_varA[ p->i_varN ].label = mem::duplStr(cfg.i_label);
+    p->i_varA[ p->i_varN ].id    = p->i_varN;
+    
+    i_var = p->i_varA + p->i_varN;
+    
+    p->i_varN += 1;
+  }
   
-  var = p->varA + p->varN;
+  o_var = p->o_varA + p->o_varN;
 
-  var_id_ref = p->varN;
+  out_var_id_ref = p->o_varN;
+  in_var_id_ref  = i_var->id;
   
-  p->varN += 1;
+  p->o_varN += 1;
 
-  var->id        = var_id_ref;
-  var->label     = mem::duplStr(cfg.label);
-  var->cfg       = cfg;
-  var->cfg.label = var->label;
+  o_var->id          = out_var_id_ref;
+  o_var->label       = mem::duplStr(cfg.o_label);
+  o_var->ivar        = i_var;
+  o_var->cfg         = cfg;
+  o_var->cfg.o_label = o_var->label;
 
 
-  if( var->cfg.dev_mult == 0 )
-    var->cfg.dev_mult = 1.0;
+  if( o_var->cfg.dev_mult == 0 )
+    o_var->cfg.dev_mult = 1.0;
   
-  if( var->cfg.bool_threshold == 0 )
-    var->cfg.bool_threshold = 0.5;
+  if( o_var->cfg.bool_threshold == 0 )
+    o_var->cfg.bool_threshold = 0.5;
 
 errLabel:
   return rc;
 }
 
-
-unsigned cw::auto_range::variable_label_to_id( handle_t h, const char* label )
+unsigned cw::auto_range::in_variable_label_to_id( handle_t h, const char* label )
 {
   auto_range_t* p = _handleToPtr(h);
-  const var_t* var = nullptr;
+  const i_var_t* var = nullptr;
 
-  if((var = _label_to_var( p, label )) == nullptr )
+  if((var = _i_label_to_var( p, label )) == nullptr )
     return kInvalidId;
     
   return var->id;
 }
 
-unsigned cw::auto_range::variable_count( handle_t h )
+cw::rc_t cw::auto_range::in_variable_label_to_id( handle_t h, const char* label, unsigned& id_ref )
+{
+  rc_t     rc = kOkRC;
+  unsigned id = kInvalidId;
+  
+  id_ref = kInvalidId;
+  
+  if((id = in_variable_label_to_id(h,label)) == kInvalidId )
+  {
+    rc = cwLogError(kInvalidArgRC,"The auto-range input variable '%s' was not found.",cwStringNullGuard(label));
+    goto errLabel;
+  }
+
+  id_ref = id;
+errLabel:
+  return rc;
+}
+
+unsigned cw::auto_range::out_variable_label_to_id( handle_t h, const char* label )
 {
   auto_range_t* p = _handleToPtr(h);
-  return p->varN;
+  const o_var_t* var = nullptr;
+
+  if((var = _o_label_to_var( p, label )) == nullptr )
+    return kInvalidId;
+    
+  return var->id;
+}
+
+cw::rc_t cw::auto_range::out_variable_label_to_id( handle_t h, const char* label, unsigned& id_ref )
+{
+  rc_t     rc = kOkRC;
+  unsigned id = kInvalidId;
+  
+  id_ref = kInvalidId;
+  
+  if((id = out_variable_label_to_id(h,label)) == kInvalidId )
+  {
+    rc = cwLogError(kInvalidArgRC,"The auto-range input variable '%s' was not found.",cwStringNullGuard(label));
+    goto errLabel;
+  }
+
+  id_ref = id;
+errLabel:
+  return rc;
+}
+
+unsigned cw::auto_range::out_variable_count( handle_t h )
+{
+  auto_range_t* p = _handleToPtr(h);
+  return p->o_varN;
 }
 
     
-const cw::auto_range::cfg_t* cw::auto_range::index_to_cfg( handle_t h, unsigned index )
+const cw::auto_range::cfg_t* cw::auto_range::out_variable_index_to_cfg( handle_t h, unsigned index )
 {
   auto_range_t* p = _handleToPtr(h);
-  if( index >= p->varN )
+  if( index >= p->o_varN )
   {    
     return nullptr;
   }
 
-  return &p->varA[index].cfg;  
+  return &p->o_varA[index].cfg;  
 }
 
-const cw::auto_range::cfg_t* cw::auto_range::id_to_cfg( handle_t h, unsigned variable_id )
+const cw::auto_range::cfg_t* cw::auto_range::out_variable_id_to_cfg( handle_t h, unsigned variable_id )
 {
   auto_range_t* p = _handleToPtr(h);
-  for(unsigned i=0; i<p->varN; ++i)
-    if( p->varA[i].id == variable_id )
-      return &p->varA[i].cfg;
+  for(unsigned i=0; i<p->o_varN; ++i)
+    if( p->o_varA[i].id == variable_id )
+      return &p->o_varA[i].cfg;
   
   return nullptr;
 }
 
-
-
-
-cw::rc_t cw::auto_range::update_variable( handle_t h, unsigned var_id, const unsigned& value )
+cw::rc_t cw::auto_range::_update_variable( handle_t h, double sec, unsigned i_var_id, unsigned value )
 {
   double v = value;
-  return update_variable(h,var_id,v);
+  return _update_variable(h,sec, i_var_id,v);
 }
 
-cw::rc_t cw::auto_range::update_variable( handle_t h, unsigned var_id, const double&   value )
+cw::rc_t cw::auto_range::_update_variable( handle_t h, double sec, unsigned i_var_id, float    value )
 {
-  rc_t          rc  = kOkRC;
-  auto_range_t* p   = _handleToPtr(h);
-  var_t*        var = nullptr;
+  double v = value;
+  return _update_variable(h,sec, i_var_id,v);
+}
+
+cw::rc_t cw::auto_range::_update_variable( handle_t h, double sec, unsigned i_var_id, double   value )
+{
+  rc_t          rc      = kOkRC;
+  auto_range_t* p       = _handleToPtr(h);
+  i_var_t*      var     = nullptr;
   double        dev_sum = 0;
   
-  if( var_id >= p->varN )
+  if( i_var_id >= p->i_varN )
   {
-    rc = cwLogError(kInvalidArgRC,"The variable id %i is out of variable id range %i.",var_id, p->varN);
+    rc = cwLogError(kInvalidArgRC,"The variable id %i is out of variable id range %i.",i_var_id, p->i_varN);
     goto errLabel;
   }
 
-  var = p->varA + var_id;
+  var = p->i_varA + i_var_id;
 
   var->sum -= var->bufA[ var->i_buf_idx ];
   var->sum += value;
@@ -352,25 +461,25 @@ errLabel:
   return rc;
 }
 
-cw::rc_t cw::auto_range::get_value( handle_t h, double sec, unsigned var_id, bool& value_ref )
+cw::rc_t cw::auto_range::_get_value( handle_t h, double sec, unsigned o_var_id, bool& value_ref )
 {
   rc_t rc = kOkRC;
   auto_range_t* p = _handleToPtr(h);
   double o_value;
       
-  if((rc = get_value(h,sec,var_id,o_value)) != kOkRC )
+  if((rc = get_value(h,sec,o_var_id,o_value)) != kOkRC )
     return rc;
 
-  value_ref = o_value > p->varA[var_id].cfg.bool_threshold;
+  value_ref = o_value > p->o_varA[o_var_id].cfg.bool_threshold;
   
   return rc;
 }
 
-cw::rc_t cw::auto_range::get_value( handle_t h, double sec, unsigned var_id, int& value_ref )
+cw::rc_t cw::auto_range::_get_value( handle_t h, double sec, unsigned o_var_id, int& value_ref )
 {
   rc_t rc = kOkRC;
   double o_value;
-  if((rc = get_value(h,sec,var_id,o_value)) != kOkRC )
+  if((rc = get_value(h,sec,o_var_id,o_value)) != kOkRC )
     return rc;
 
   value_ref = (int)std::round(o_value);
@@ -378,11 +487,11 @@ cw::rc_t cw::auto_range::get_value( handle_t h, double sec, unsigned var_id, int
   return rc;
 }
 
-cw::rc_t cw::auto_range::get_value( handle_t h, double sec, unsigned var_id, unsigned& value_ref )
+cw::rc_t cw::auto_range::_get_value( handle_t h, double sec, unsigned o_var_id, unsigned& value_ref )
 {
   rc_t rc = kOkRC;
   double o_value;
-  if((rc = get_value(h,sec,var_id,o_value)) != kOkRC )
+  if((rc = get_value(h,sec,o_var_id,o_value)) != kOkRC )
     return rc;
 
   value_ref = (unsigned)std::round(o_value);
@@ -390,28 +499,40 @@ cw::rc_t cw::auto_range::get_value( handle_t h, double sec, unsigned var_id, uns
   return rc;
 }
 
-cw::rc_t cw::auto_range::get_value( handle_t h, double sec, unsigned var_id, double&   value_ref )
+cw::rc_t cw::auto_range::_get_value( handle_t h, double sec, unsigned o_var_id, float& value_ref )
+{
+  rc_t rc = kOkRC;
+  double o_value;
+  if((rc = get_value(h,sec,o_var_id,o_value)) != kOkRC )
+    return rc;
+
+  value_ref = (float)std::round(o_value);
+  
+  return rc;
+}
+
+cw::rc_t cw::auto_range::_get_value( handle_t h, double sec, unsigned o_var_id, double&   value_ref )
 {
   rc_t          rc      = kOkRC;
   auto_range_t* p       = _handleToPtr(h);
 
-  if( var_id >= p->varN )
+  if( o_var_id >= p->o_varN )
   {
-    return cwLogError(kInvalidArgRC,"The variable id %i is out of variable id range %i.",var_id, p->varN);
+    return cwLogError(kInvalidArgRC,"The variable id %i is out of variable id range %i.",o_var_id, p->o_varN);
   }
   
-  var_t*        var     = p->varA + var_id;
+  o_var_t*        var     = p->o_varA + o_var_id;
 
-  if( !var->init_fl )
+  if( !var->ivar->init_fl )
   {
     var->o_value = var->cfg.default_out_value;
     value_ref = var->cfg.default_out_value;
     return rc;
   }
   
-  double        min_val = var->mean - (var->std_dev*var->cfg.dev_mult);
-  double        max_val = var->mean + (var->std_dev*var->cfg.dev_mult);
-  double        i_val   = var->i_value;
+  double        min_val = var->ivar->mean - (var->ivar->std_dev*var->cfg.dev_mult);
+  double        max_val = var->ivar->mean + (var->ivar->std_dev*var->cfg.dev_mult);
+  double        i_val   = var->ivar->i_value;
   
   if( i_val < min_val )
     i_val = min_val;
@@ -439,10 +560,10 @@ void cw::auto_range::report( handle_t h )
 {
   auto_range_t* p = _handleToPtr(h);
 
-  for(unsigned i=0; i<p->varN; ++i)
+  for(unsigned i=0; i<p->o_varN; ++i)
   {
-    var_t* var = p->varA + i;
-    cwLogPrint("%i %16s u:%f sd:%f : i:%f o:%f\n",i,var->label,var->mean,var->std_dev,var->i_value,var->o_value);
+    o_var_t* var = p->o_varA + i;
+    cwLogPrint("%i %16s u:%f sd:%f : i:%f o:%f\n",i,var->label,var->ivar->mean,var->ivar->std_dev,var->ivar->i_value,var->o_value);
   }
   
 }

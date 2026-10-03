@@ -25,14 +25,14 @@ namespace cw
       {
         history_cnt:<>
         varL: [
-         { label:<>, .... bool_threshold:<> }
+         { i_label:<>, o_label:<>.... bool_threshold:<> }
         ]
       }
      */
 
     rc_t create( handle_t& hRef, const char* fname );
     rc_t create( handle_t& hRef, const object_t* cfg );    
-    rc_t create( handle_t& hRef, unsigned variable_cnt, unsigned history_cnt );
+    rc_t create( handle_t& hRef, unsigned in_variable_cnt, unsigned out_variable_cnt, unsigned history_cnt );
     
     rc_t destroy( handle_t& hRef );
 
@@ -40,7 +40,8 @@ namespace cw
 
     typedef struct
     {
-      const char*   label;
+      const char*   i_label;
+      const char*   o_label;
       double        default_out_value; // output value to report if no input values are available.
       double        dev_mult;          // how many std dev's define the unit range 0=default=1.0
       double        min_out_value;     // min possible output value
@@ -49,50 +50,59 @@ namespace cw
       double        bool_threshold;    // 0=default=0.5
     } cfg_t;
 
-    rc_t register_variable( handle_t h, const cfg_t& cfg, unsigned variable_id_ref );
+    rc_t register_variable( handle_t h, const cfg_t& cfg, unsigned& in_var_id_ref, unsigned& out_var_id_ref );
 
-    unsigned variable_label_to_id( handle_t h, const char* label );
+    unsigned  in_variable_label_to_id( handle_t h, const char* label );
+    rc_t      in_variable_label_to_id( handle_t h, const char* label, unsigned& id_ref );
+    unsigned out_variable_label_to_id( handle_t h, const char* label );
+    rc_t     out_variable_label_to_id( handle_t h, const char* label, unsigned& id_ref );
 
     // Return the count of registered variables.
-    unsigned variable_count( handle_t h );
+    unsigned out_variable_count( handle_t h );
     
     // Note that index is not a variable id, as returned by register_variable but rather an index
-    // in the range 0 to variable_count()-1. Returns null if index >= variable_count().
-    const cfg_t* index_to_cfg( handle_t h, unsigned index );
+    // in the range 0 to out_variable_count()-1. Returns null if index >= out_variable_count().
+    const cfg_t* out_variable_index_to_cfg( handle_t h, unsigned index );
 
-    // Given an id return the variable's 
-    const cfg_t* id_to_cfg( handle_t h, unsigned variable_id );
+    // Given an id return the variable's cfg. as passed to register_variable()
+    const cfg_t* out_variable_id_to_cfg( handle_t h, unsigned out_var_id );
 
-    rc_t update_variable( handle_t h, unsigned variable_id, const unsigned& value );
-    rc_t update_variable( handle_t h, unsigned variable_id, const double&   value );
+    // Update an input variable.  in_var_id is returned from register_variable()
+    // or it can be obtained by in_variable_label_to_id().
+    rc_t _update_variable( handle_t h, double sec, unsigned in_var_id, unsigned value );
+    rc_t _update_variable( handle_t h, double sec, unsigned in_var_id, float    value );
+    rc_t _update_variable( handle_t h, double sec, unsigned in_var_id, double   value );
     
 
     inline rc_t update_variable( handle_t h, double sec ) { return kOkRC; };
 
     template< typename T, typename... ARGS >
-    rc_t update_variable( handle_t h, double sec, unsigned variable_id, const T& value, ARGS&&... args )
+    rc_t update_variable( handle_t h, double sec, unsigned in_var_id, T value, ARGS&&... args )
     {
       rc_t rc = kOkRC;
       
-      if((rc = update_variable(h,sec,variable_id,value)) != kOkRC )
+      if((rc = _update_variable(h,sec,in_var_id,value)) != kOkRC )
         return rc;
 
       return update_variable(h,sec,std::forward<ARGS>(args)...);
     }
 
-    rc_t get_value( handle_t h, double sec, unsigned variable_id, bool& value_ref );
-    rc_t get_value( handle_t h, double sec, unsigned variable_id, int& value_ref );
-    rc_t get_value( handle_t h, double sec, unsigned variable_id, unsigned& value_ref );
-    rc_t get_value( handle_t h, double sec, unsigned variable_id, double&   value_ref );
+    // 
+    rc_t _get_value( handle_t h, double sec, unsigned out_var_id, bool& value_ref );
+    rc_t _get_value( handle_t h, double sec, unsigned out_var_id, int& value_ref );
+    rc_t _get_value( handle_t h, double sec, unsigned out_var_id, unsigned& value_ref );
+    rc_t _get_value( handle_t h, double sec, unsigned out_var_id, float&   value_ref );
+    rc_t _get_value( handle_t h, double sec, unsigned out_var_id, double&   value_ref );
 
     inline rc_t get_value(handle_t h, double sec ) { return kOkRC; }
     
     template< typename T, typename... ARGS >
-    rc_t get_value( handle_t h, double sec, unsigned variable_id, T& value_ref, ARGS&&... args )
+    rc_t get_value( handle_t h, double sec, unsigned out_var_id, T& value_ref, ARGS&&... args )
     {
       rc_t rc = kOkRC;
-      if((rc = get_value(h,sec,variable_id,value_ref)) != kOkRC )
+      if((rc = _get_value(h,sec,out_var_id,value_ref)) != kOkRC )
         return rc;
+      
       return get_value(h,sec,std::forward<ARGS>(args)...);
     }
 
