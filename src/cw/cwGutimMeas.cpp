@@ -200,6 +200,7 @@ namespace cw
       mem::release(p->locA);
       mem::release(p->noteA);
       mem::release(p->sectionA);
+      mem::release(p);
     }
 
     bool _pair_validate( const object_t* pair )
@@ -1957,7 +1958,6 @@ cw::rc_t cw::gutim_meas::destroy( handle_t& hRef )
 
   gutim_meas_t* p = _handleToPtr(hRef);
   _destroy(p);
-  mem::release(p);
   hRef.clear();
   return rc;
 }
