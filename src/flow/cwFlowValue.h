@@ -173,9 +173,18 @@ namespace cw
     rc_t            abuf_set_channel( abuf_t* buf, unsigned chIdx, const sample_t* v, unsigned vN );
     const sample_t* abuf_get_channel( abuf_t* buf, unsigned chIdx );
 
+    // Create an fbuf where each channel may contain a different sized mag,phs,hz vectors.
+    // Vector memory is only allocated when magV[ch_idx],phsV[ch_idx], or hzV[i] are respectively null.
+    // If vector memory is provided then it must have been allocated via mem::alloc<> since it will be released in fbuf_destroy().
+    // No tracking is done as to the owner of the allocated memory.
     fbuf_t*        fbuf_create( srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_sample_t** magV=nullptr, const fd_sample_t** phsV=nullptr, const fd_sample_t** hzV=nullptr );
+
+    // Create an fbuf where all channels contain the same sized mag,phs,hz vectors.
+    // Implemented in terms of above fbuf_create().
     fbuf_t*        fbuf_create( srate_t srate, unsigned chN, unsigned maxBinN, unsigned binN, unsigned hopSmpN, const fd_sample_t** magV=nullptr, const fd_sample_t** phsV=nullptr, const fd_sample_t** hzV=nullptr );
     void           fbuf_zero( fbuf_t* fbuf );
+
+    // Releases memory for all variables which may (or may not) have been allocated by fbuf_create().
     void           fbuf_destroy( fbuf_t*& buf );
     void           fbuf_print( const fbuf_t* fbuf, unsigned verbosity );
 

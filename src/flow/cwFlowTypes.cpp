@@ -2362,19 +2362,6 @@ cw::rc_t        cw::flow::var_register_and_set( proc_t* proc, const char* var_la
   return rc;
 }
 
-cw::rc_t cw::flow::var_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_sample_t** magV, const fd_sample_t** phsV, const fd_sample_t** hzV )
-{
-  rc_t rc = kOkRC;
-  fbuf_t* fbuf;
-  if((fbuf = fbuf_create( srate, chN, maxBinN_V, binN_V, hopSmpN_V, magV, phsV, hzV )) == nullptr )
-    return proc_error(proc,kOpFailRC,"fbuf create failed on proc:'%s:%i' variable:'%s:%i'.", proc->label, proc->label_sfx_id, var_label,sfx_id);
-
-  if((rc = _var_register_and_set( proc, var_label, sfx_id, vid, chIdx, fbuf )) != kOkRC )
-    fbuf_destroy(fbuf);
-
-  return rc;
-}
-
 cw::rc_t        cw::flow::var_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, midi::ch_msg_t* msgA, unsigned msgN  )
 {
   rc_t rc = kOkRC;
@@ -2385,6 +2372,20 @@ cw::rc_t        cw::flow::var_register_and_set( proc_t* proc, const char* var_la
 
   if((rc = _var_register_and_set( proc, var_label, sfx_id, vid, chIdx, mbuf )) != kOkRC )
     mbuf_destroy(mbuf);
+
+  return rc;
+}
+
+
+cw::rc_t cw::flow::var_register_and_set( proc_t* proc, const char* var_label, unsigned sfx_id, unsigned vid, unsigned chIdx, srate_t srate, unsigned chN, const unsigned* maxBinN_V, const unsigned* binN_V, const unsigned* hopSmpN_V, const fd_sample_t** magV, const fd_sample_t** phsV, const fd_sample_t** hzV )
+{
+  rc_t rc = kOkRC;
+  fbuf_t* fbuf;
+  if((fbuf = fbuf_create( srate, chN, maxBinN_V, binN_V, hopSmpN_V, magV, phsV, hzV )) == nullptr )
+    return proc_error(proc,kOpFailRC,"fbuf create failed on proc:'%s:%i' variable:'%s:%i'.", proc->label, proc->label_sfx_id, var_label,sfx_id);
+
+  if((rc = _var_register_and_set( proc, var_label, sfx_id, vid, chIdx, fbuf )) != kOkRC )
+    fbuf_destroy(fbuf);
 
   return rc;
 }
