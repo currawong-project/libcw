@@ -2083,9 +2083,9 @@ namespace cw
         kMidiFldPId,
         kResetPId,
 
-        kPerfF_FlPId,
+        kPerfFlPId,
         kPerfCtlFlPId,
-        kPerfShmFlPId,
+        kShmFlPId,
 
         kPriManualSelPId,
         kSecManualSelPId,
@@ -2107,6 +2107,7 @@ namespace cw
         kSecDryOnSelFlPId,
 
         kInPId,
+        kPerfCtlInPId,
         kOutPId,
         kBaseMidiInPId
       };
@@ -2150,8 +2151,6 @@ namespace cw
         unsigned i_voice_idx_fld_idx;  // The 'voice_idx' field in the 'in' record.
         unsigned i_midi_fld_idx;
 
-        unsigned o_perf_f_fl_fld_idx;
-        unsigned o_perf_shm_fl_fld_idx;
         unsigned o_pri_preset_fld_idx;
         unsigned o_sec_preset_fld_idx;
        
@@ -2172,7 +2171,11 @@ namespace cw
 
         recd_array_t* recd_array;
 
-
+        bool perf_ctl_fl;        // is preset selection under control of performance
+        
+        bool per_note_fl;
+        bool per_loc_fl;
+        
         bool pri_prob_fl;        // use probability to select cur_pri_preset_idx
         bool pri_uniform_fl;     // if pri_prob_fl then use uniform, as opposed to preference weighted probability, to select the cur_pri_preset_idx
         bool pri_dry_on_play_fl; // select the dry preset if the 'dry' preset 'play_fl' is selected in the current fragment.
@@ -2186,6 +2189,12 @@ namespace cw
         bool sec_allow_all_fl;
         bool sec_dry_on_sel_fl;
 
+        unsigned i_per_note_fl_fi;
+        unsigned i_pri_prob_fl_fi;
+        unsigned i_pri_uniform_fl_fi;
+        unsigned i_pri_dry_on_play_fl_fi;
+        unsigned i_pri_allow_all_fl_fi;
+        unsigned i_pri_dry_on_sel_fl_fi;
         
       } inst_t;
 
@@ -2198,6 +2207,7 @@ namespace cw
           label = _presetA[  preset_idx ].ps_label;
         return label;
       }
+
 
       rc_t _create_manual_select_list( proc_t* proc, inst_t* p )
       {
@@ -2292,7 +2302,7 @@ namespace cw
         switch(var->vid)
         {
           case kPerLocFlPId:
-            var_send_to_ui_enable(proc, kPriUniformFlPId,   kAnyChIdx, p->locN != 0 );
+            var_send_to_ui_enable(proc, kPerLocFlPId,   kAnyChIdx, p->locN != 0 );
             break;
             
           case kPriManualSelPId:
@@ -2388,6 +2398,7 @@ namespace cw
         const char*     loc_fld       = nullptr;
         const char*     midi_fld      = nullptr;
         const rbuf_t*   i_rbuf        = nullptr;
+        const rbuf_t*   pci_rbuf      = nullptr;
         rbuf_t*         o_rbuf        = nullptr;
         char*           exp_fname     = nullptr;
         const object_t* cfg           = nullptr;
@@ -2396,7 +2407,8 @@ namespace cw
           
         if((rc = var_register_and_get(proc,kAnyChIdx,
                                       kInitCfgPId,      "cfg",            kBaseSfxId, cfg,        // TODO: clean up the contents of this CFG                                      
-                                      kInPId,           "in",             kBaseSfxId, i_rbuf,                                      
+                                      kInPId,           "in",             kBaseSfxId, i_rbuf,
+                                      kPerfCtlInPId,    "perf_ctl_in",    kBaseSfxId, pci_rbuf,
                                       kCfgFnamePId,     "cfg_fname",      kBaseSfxId, cfg_fname,
                                       kLocCntPId,       "loc_cnt",        kBaseSfxId, p->locN,
                                       kLocFldPId,       "loc_fld",        kBaseSfxId, loc_fld,
@@ -2422,9 +2434,9 @@ namespace cw
 
         if((rc = var_register( proc, kAnyChIdx,
                                kResetPId,        "reset",          kBaseSfxId,
-                               kPerfF_FlPId,     "perf_f_fl",      kBaseSfxId,
+                               kPerfFlPId,       "perf_fl",        kBaseSfxId,
                                kPerfCtlFlPId,    "perf_ctl_fl",    kBaseSfxId,
-                               kPerfShmFlPId,    "perf_shm_fl",    kBaseSfxId,
+                               kShmFlPId,        "shm_fl",         kBaseSfxId,
                                kPerNoteFlPId,    "per_note_fl",    kBaseSfxId,
                                kPerLocFlPId,     "per_loc_fl",     kBaseSfxId  )) != kOkRC )
         {
@@ -2473,6 +2485,20 @@ namespace cw
           rc = proc_error(proc,kInvalidArgRC,"The incoming record does not have a '%s' field. Score tracking is disabled.", midi_fld);
           goto errLabel;
         }
+
+        // Get the field records indexes for the perf. automation control record
+        if((rc = recd_array_field_index( pci_rbuf->recd_array,
+                                         "per_note_fl",p->i_per_note_fl_fi,
+                                         "pri_prob_fl",p->i_pri_prob_fl_fi,
+                                         "pri_uniform_fl",p->i_pri_uniform_fl_fi,
+                                         "pri_dry_on_play_fl",p->i_pri_dry_on_play_fl_fi,
+                                         "pri_allow_all_fl",p->i_pri_allow_all_fl_fi,
+                                         "pri_dry_on_sel_fl",p->i_pri_dry_on_sel_fl_fi)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Performance control field index access failed.");
+          goto errLabel;
+        }
+                                         
         
         // create the output recd variable
         if((rc = var_alloc_register_and_set(proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, i_rbuf->recd_array->typeA, i_rbuf->recd_array->typeN, p->recd_array )) != kOkRC )
@@ -2500,8 +2526,6 @@ namespace cw
         }
 
         if((rc = recd_array_field_index( p->recd_array,
-                                         "perf_f_fl", p->o_perf_f_fl_fld_idx,
-                                         "perf_shm_fl",    p->o_perf_shm_fl_fld_idx,
                                          "pri_preset_idx", p->o_pri_preset_fld_idx,
                                          "sec_preset_idx", p->o_sec_preset_fld_idx )) != kOkRC )
         {
@@ -2531,16 +2555,31 @@ namespace cw
 
         _update_ui_state( proc, p, var );
 
-        if( var->vid == kResetPId   )
+        switch( var->vid )
         {
-          if( p->psH.isValid() )
-            track_loc_reset( p->psH);
-
-          _init_loc_array(p);
+          case kPerNoteFlPId:
+            var_get(var,p->per_note_fl);
+            break;
+            
+          case kPerLocFlPId:
+            var_get(var,p->per_loc_fl);
+            break;
+            
+          case kResetPId:
+            {
+              if( p->psH.isValid() )
+                track_loc_reset( p->psH);
+              
+              _init_loc_array(p);
           
-          proc_debug(proc,"reset.");
+              proc_debug(proc,"reset.");
+            }
+            break;
+
+          case kPerfCtlFlPId:
+            var_get(var,p->perf_ctl_fl);
+            break;
         }
-        
         return rc;
       }
 
@@ -2683,7 +2722,7 @@ namespace cw
         
       }
 
-      unsigned _get_preset_idx( inst_t* p, unsigned cur_preset_idx, unsigned manual_preset_idx, unsigned preset_idx )
+      unsigned _get_current_preset_idx( inst_t* p, unsigned cur_preset_idx, unsigned manual_preset_idx, unsigned preset_idx )
       {
         // if there is a valid manual preset idx then choose it
         if( manual_preset_idx != kInvalidIdx )
@@ -2699,30 +2738,101 @@ namespace cw
 
         return p->dry_preset_idx;
       }
+
+      rc_t _update_from_perf(proc_t* proc,inst_t* p,const rbuf_t* pci_rbuf)
+      {
+        rc_t rc             = kOkRC;
+        bool per_note_fl    = p->per_note_fl;
+        bool prob_fl        = p->pri_prob_fl;
+        bool uniform_fl     = p->pri_uniform_fl;
+        bool dry_on_play_fl = p->pri_dry_on_play_fl;
+        bool allow_all_fl   = p->pri_allow_all_fl;
+        bool dry_on_sel_fl  = p->pri_dry_on_sel_fl;
+
+        // get preset select control values from the incoming performance based record
+        for(unsigned i=0; i<pci_rbuf->recd_array->recdN; ++i)
+        {
+          if((rc = recd_get( pci_rbuf->recd_array->recdA +i,
+                             p->i_per_note_fl_fi, per_note_fl,
+                             p->i_pri_prob_fl_fi,        prob_fl,
+                             p->i_pri_uniform_fl_fi,     uniform_fl,
+                             p->i_pri_dry_on_play_fl_fi, dry_on_play_fl,
+                             p->i_pri_allow_all_fl_fi,   allow_all_fl,
+                             p->i_pri_dry_on_sel_fl_fi,  dry_on_sel_fl)) != kOkRC )
+          {
+            rc = proc_error(proc,rc,"Performance ctl record read failed.");
+            goto errLabel;
+          }
+                             
+        }
+
+        if(per_note_fl != p->per_note_fl )
+        {
+          var_set(proc,kPerNoteFlPId,kAnyChIdx,per_note_fl);
+          p->per_note_fl = per_note_fl;
+        }
+        
+        if( prob_fl  != p->pri_prob_fl )
+        {
+          var_set(proc,kPriProbFlPId,kAnyChIdx,prob_fl);
+          p->pri_prob_fl = prob_fl;
+        }
+          
+        if( uniform_fl != p->pri_uniform_fl )
+        {
+          var_set(proc,kPriUniformFlPId,kAnyChIdx,uniform_fl);
+          p->pri_uniform_fl = uniform_fl;
+        }
+
+        if(  dry_on_play_fl != p->pri_dry_on_play_fl )
+        {
+          var_set(proc, kPriDryOnPlayFlPId, kAnyChIdx, dry_on_play_fl );
+          p->pri_dry_on_play_fl = dry_on_play_fl;
+        }
+        
+        if( allow_all_fl != p->pri_allow_all_fl )
+        {
+          var_set(proc,kPriAllowAllFlPId,kAnyChIdx,allow_all_fl);
+          p->pri_allow_all_fl = allow_all_fl;
+        }
+        
+        if( dry_on_sel_fl  != p->pri_dry_on_sel_fl )
+        {
+          var_set(proc,kPriDryOnSelFlPId,kAnyChIdx,dry_on_sel_fl);
+          p->pri_dry_on_sel_fl = dry_on_sel_fl;
+        }
+        
+      errLabel:
+        return rc;
+      }
+
       
       rc_t _exec( proc_t* proc, inst_t* p )
       {
         rc_t          rc          = kOkRC;
         const rbuf_t* i_rbuf      = nullptr;
-        bool          per_note_fl = false;
-        bool          per_loc_fl  = false;;
 
         if((rc = var_get(proc,kInPId,kAnyChIdx,i_rbuf)) != kOkRC )
         {
           goto errLabel;
         }
 
+        // if performance base ctl automation is enabled
+        if( p->perf_ctl_fl )
+        {
+          const rbuf_t* pci_rbuf    = nullptr;
+          if((rc = var_get(proc,kPerfCtlInPId,kAnyChIdx,pci_rbuf)) != kOkRC )
+            _update_from_perf(proc,p,pci_rbuf);
+        }
+
         recd_array_empty(p->recd_array);
-        
-        var_get(proc,kPerNoteFlPId,kAnyChIdx,per_note_fl);        
-        var_get(proc,kPerLocFlPId,kAnyChIdx,per_loc_fl);
-        
+                
         for(unsigned i=0; i<i_rbuf->recd_array->recdN; ++i)
         {
           midi::ch_msg_t* m              = nullptr;
           unsigned        loc_id         = kInvalidId;
-          bool            perf_f_fl     = false;
-          bool            perf_shm_fl    = false;
+          bool            perf_fl        = false;
+          bool            shm_fl         = false;
           unsigned        pri_preset_idx = kInvalidIdx;
           unsigned        sec_preset_idx = kInvalidIdx;
           const recd_t*   i_r            = i_rbuf->recd_array->recdA + i;
@@ -2734,6 +2844,7 @@ namespace cw
             goto errLabel;
           }
 
+          //  if the the input record contains a score location field
           if( p->loc_fld_idx != kInvalidIdx )
           {
             // get the 'loc' field
@@ -2744,16 +2855,19 @@ namespace cw
             }
           }
 
+          // if a score location is associated withi this note
           if( loc_id != kInvalidId )
           {
-            // select a new fragment and a new preset index if !per_note and !per_loc
-            if((rc = _update_preset_frag(proc,p,loc_id,per_loc_fl,per_note_fl,pri_preset_idx,sec_preset_idx)) != kOkRC )
+            // By default we select a new preset when the location id indicates that we have entered a new preset fragment
+            // (select a new fragment and a new preset index if !per_note and !per_loc)
+            if((rc = _update_preset_frag(proc,p,loc_id,p->per_loc_fl,p->per_note_fl,pri_preset_idx,sec_preset_idx)) != kOkRC )
             {
               goto errLabel;
             }
 
 
-            if( per_loc_fl )
+            // if new preset is being selected per location
+            if( p->per_loc_fl )
             {
               if((rc = _get_loc_preset_index(proc,p,loc_id,pri_preset_idx,sec_preset_idx)) != kOkRC )
               {
@@ -2765,12 +2879,16 @@ namespace cw
           // if this is a note-on msg
           if( midi::isNoteOn(m->status,m->d1) )
           {
-            if( per_note_fl )
+            // if a new preset is begin selected per note
+            if( p->per_note_fl )
+            {
               if((rc = _update_cur_preset_idx( proc, p, p->cur_frag, pri_preset_idx, sec_preset_idx )) != kOkRC )
                 goto errLabel;
+            }
 
-            pri_preset_idx = _get_preset_idx(p, p->cur_pri_preset_idx, p->cur_manual_pri_preset_idx, pri_preset_idx );
-            sec_preset_idx = _get_preset_idx(p, p->cur_sec_preset_idx, p->cur_manual_sec_preset_idx, sec_preset_idx );
+            // get the current preset index
+            pri_preset_idx = _get_current_preset_idx(p, p->cur_pri_preset_idx, p->cur_manual_pri_preset_idx, pri_preset_idx );
+            sec_preset_idx = _get_current_preset_idx(p, p->cur_sec_preset_idx, p->cur_manual_sec_preset_idx, sec_preset_idx );
                 
           }         
 
@@ -2783,16 +2901,14 @@ namespace cw
             proc_info(proc,"%i %i %i :  v:%i :  %i %i",m->status,m->d0,m->d1,voice_idx,pri_preset_idx,sec_preset_idx);
           }
 
-          if( var_get(proc,kPerfF_FlPId, kAnyChIdx, perf_f_fl) != kOkRC )
+          if( var_get(proc,kPerfFlPId, kAnyChIdx, perf_fl) != kOkRC )
             goto errLabel;
           
-          if( var_get(proc,kPerfShmFlPId, kAnyChIdx, perf_shm_fl ) != kOkRC )
+          if( var_get(proc,kShmFlPId, kAnyChIdx, shm_fl ) != kOkRC )
             goto errLabel;
           
           // set the output record
           if((rc = recd_append( p->recd_array, i_rbuf->recd_array->recdA+i,
-                                p->o_perf_f_fl_fld_idx, perf_f_fl,
-                                p->o_perf_shm_fl_fld_idx, perf_shm_fl,
                                 p->o_pri_preset_fld_idx, pri_preset_idx,
                                 p->o_sec_preset_fld_idx, sec_preset_idx )) != kOkRC )
           {
@@ -2834,7 +2950,13 @@ namespace cw
         kInterpFlPId,
         kInterpDistPId,
         kInterpRandFlPId,
+
+        kShmFlPId,
+        kPerfFlPId,
+        
         kCtlInPId,
+        kPerfSdInPId,
+        kPerfShmInPId,
         
 
         kMinPId,
@@ -2846,6 +2968,15 @@ namespace cw
         kUprPId,
         kLwrPId,
         kMixPId,
+        
+        kShmBypassFlPId,
+        kPeakFlPId,
+        kPeakGainPId,
+        kHGainPId,
+        kHFeedbackPId,
+        kStretchPId,
+        kShmExpoPId,
+        
         kCIGainPId,
         kCOGainPId,
         kDryGainPId,
@@ -2855,14 +2986,29 @@ namespace cw
 
       enum {
         kPresetVarN = kMaxPId - kMinPId,
-        kMaxChN = 2 // all output variables are assume stereo values
+        kMaxChN = 2, // all output variables are assume stereo values
+      };
+
+      // indexes into p->perfPresetA[]
+      enum {
+        kPerfShmPresetIdx,
+        kPerfSdPresetIdx,
+        kPerfPresetN
       };
       
       typedef enum {
         kNoPresetValTId,
         kUIntPresetValTId,
         kCoeffPresetValTId,
+        kBoolPresetValTId,
       } value_tid_t;
+
+      typedef enum {
+        kNoXformTId,
+        kSdXformTId,
+        kShmXformTId        
+      } xform_tid_t;
+      
       
       typedef struct var_cfg_str
       {
@@ -2871,6 +3017,8 @@ namespace cw
         const char* cls_label;     // preset class proc label
         const char* cls_var_label; // preset class proc var label
         value_tid_t tid;           // gutim_ps var data type
+        xform_tid_t xid;           // transform type tid
+        unsigned    field_idx;     // perf. record field index
       } var_cfg_t;
                         
       typedef struct 
@@ -2879,6 +3027,7 @@ namespace cw
         union {
           unsigned uint;
           coeff_t  coeff;
+          bool     flag;
         } u;
       } preset_value_t;
 
@@ -2893,20 +3042,27 @@ namespace cw
         const char*    cls_label;
         preset_var_t   varA[ kPresetVarN ];        
       } preset_t;
-      
+
       // One var_cfg record for each transform parameter that gutim_ps outputs
       var_cfg_t _var_cfgA[] = {
-        { "wnd_smp_cnt", kWndSmpCntPId, "pv_analysis", "wndSmpN", kUIntPresetValTId },
-        { "ceiling",     kCeilingPId,   "spec_dist",   "ceiling", kCoeffPresetValTId },
-        { "expo",        kExpoPId,      "spec_dist",   "expo",    kCoeffPresetValTId },
-        { "thresh",      kThreshPId,    "spec_dist",   "thresh",  kCoeffPresetValTId },
-        { "upr",         kUprPId,       "spec_dist",   "upr",     kCoeffPresetValTId },
-        { "lwr",         kLwrPId,       "spec_dist",   "lwr",     kCoeffPresetValTId },
-        { "mix",         kMixPId,       "spec_dist",   "mix",     kCoeffPresetValTId },
-        { "c_igain",     kCIGainPId,    "compressor",  "igain",   kCoeffPresetValTId },
-        { "c_ogain",     kCOGainPId,    "compressor",  "ogain",   kCoeffPresetValTId },
-        { "dry_gain",    kDryGainPId,   "gutim_ps",    "dry_gain",kCoeffPresetValTId },
-        { nullptr,       kMaxPId,       nullptr,       nullptr,   kNoPresetValTId },
+        { "wnd_smp_cnt", kWndSmpCntPId, "pv_analysis", "wndSmpN", kUIntPresetValTId,  kNoXformTId, kInvalidId },
+        { "ceiling",     kCeilingPId,   "spec_dist",   "ceiling", kCoeffPresetValTId, kSdXformTId, kInvalidId },
+        { "sd_expo",     kExpoPId,      "spec_dist",   "expo",    kCoeffPresetValTId, kSdXformTId, kInvalidId },
+        { "thresh",      kThreshPId,    "spec_dist",   "thresh",  kCoeffPresetValTId, kSdXformTId, kInvalidId },
+        { "upr",         kUprPId,       "spec_dist",   "upr",     kCoeffPresetValTId, kSdXformTId, kInvalidId },
+        { "lwr",         kLwrPId,       "spec_dist",   "lwr",     kCoeffPresetValTId, kSdXformTId, kInvalidId },
+        { "mix",         kMixPId,       "spec_dist",   "mix",     kCoeffPresetValTId, kSdXformTId, kInvalidId },
+        { "shm_bypass_fl", kShmBypassFlPId, "spec_harm_map", "bypass", kBoolPresetValTId, kShmXformTId, kInvalidId },
+        { "peak_fl",     kPeakFlPId,    "spec_harm_map","peak_fl",kBoolPresetValTId,  kShmXformTId, kInvalidId },
+        { "peak_gain",   kPeakGainPId,  "spec_harm_map","peak_gain",kCoeffPresetValTId,kShmXformTId, kInvalidId },
+        { "hgain",       kHGainPId,     "spec_harm_map","hgain",   kCoeffPresetValTId, kShmXformTId, kInvalidId },
+        {"hfeedback",   kHFeedbackPId, "spec_harm_map","hfeedback",kCoeffPresetValTId,kShmXformTId, kInvalidId },
+        {"stretch",     kStretchPId,   "spec_harm_map","stretch", kCoeffPresetValTId, kShmXformTId, kInvalidId },
+        {"shm_expo",    kShmExpoPId,   "spec_harm_map","expo",    kCoeffPresetValTId, kShmXformTId, kInvalidId },
+        {"c_igain",     kCIGainPId,    "compressor",   "igain",   kCoeffPresetValTId, kNoXformTId, kInvalidId },
+        {"c_ogain",     kCOGainPId,    "compressor",   "ogain",   kCoeffPresetValTId, kNoXformTId, kInvalidId },
+        {"dry_gain",    kDryGainPId,   "gutim_ps",     "dry_gain",kCoeffPresetValTId, kNoXformTId, kInvalidId },
+        { nullptr,      kMaxPId,       nullptr,       nullptr,   kNoPresetValTId,     kNoXformTId, kInvalidId },
         
       };
 
@@ -2938,7 +3094,13 @@ namespace cw
         unsigned voice_idx_fld_idx;
         unsigned pri_preset_fld_idx;
         unsigned sec_preset_fld_idx;
+
+        preset_t perfPresetA[ kPerfPresetN ];
         
+        preset_value_t tmp;
+        unsigned f2_preset_idx;
+        unsigned f3_preset_idx;
+        unsigned shm_bypass_var_idx;
       } inst_t;
 
 
@@ -2951,6 +3113,45 @@ namespace cw
           label = _presetA[  preset_idx ].ps_label;
         return label;
       }
+
+      unsigned _preset_label_to_index( proc_t* proc, inst_t* p, const char* label )
+      {
+        for(unsigned i=0; i<p->presetN; ++i)
+          if( textIsEqual(p->presetA[i].ps_label,label))
+            return i;
+        return kInvalidIdx;
+      }
+
+      unsigned _var_label_to_index(proc_t* proc,inst_t* p, const char* var_label)
+      {
+        for(unsigned i=0; _var_cfgA[i].var_label != nullptr; ++i)
+          if( textIsEqual(_var_cfgA[i].var_label,var_label) )
+            return i;
+        return kInvalidIdx;
+      }
+
+      // Fill in the field indexes in the _var_cfgA[] 
+      rc_t _get_var_cfg_field_indexes( proc_t* proc, inst_t* p, xform_tid_t xform_tid, const rbuf_t* i_rbuf )
+      {
+        rc_t rc = kOkRC;
+
+        for(unsigned vci=0; _var_cfgA[vci].var_label!=nullptr; ++vci)
+        {
+          if( _var_cfgA[vci].xid == xform_tid )
+          {
+            var_cfg_t* var_cfg = _var_cfgA + vci;
+            if((rc = recd_array_field_index(i_rbuf->recd_array, var_cfg->var_label, var_cfg->field_idx )) != kOkRC )
+            {
+              rc = cwLogError(rc,"The performance field '%s' was not found.",var_cfg->var_label);
+              goto errLabel;
+            }            
+          }
+        }
+        
+      errLabel:
+        return rc;
+      }
+
       
       template< typename T >
       rc_t _read_class_preset_value( proc_t* proc, preset_t* preset, var_cfg_t* var_cfg,  unsigned ch_idx, T& val_ref )
@@ -3028,10 +3229,15 @@ namespace cw
             case kCoeffPresetValTId:
               rc = _read_class_preset_value( proc, preset, var_cfg, ch_idx, v->u.coeff );
               break;
+
+            case kBoolPresetValTId:
+              rc = _read_class_preset_value( proc, preset, var_cfg, ch_idx, v->u.flag );
+              break;
               
             default:
               rc = proc_error(proc,kInvalidDataTypeRC,"An invalid variable value data type (%i) was encountered.",var_cfg->tid);
           }
+          
         }
 
         if(rc != kOkRC )
@@ -3074,6 +3280,11 @@ namespace cw
                 case kCoeffPresetValTId:
                   printf("%f ",val->u.coeff);
                   break;
+
+                case kBoolPresetValTId:
+                  printf("%s ",val->u.flag ? "true" : "false");
+                  break;
+                  
               }
             }
             printf("\n");
@@ -3114,16 +3325,128 @@ namespace cw
         return rc;        
       }
 
-      rc_t _apply_preset_no_interp(proc_t* proc, inst_t* p, unsigned voice_idx, unsigned preset_idx)
+      rc_t _read_perf_recd( proc_t* proc, inst_t* p, const recd_array_t* recd_array, unsigned field_idx, value_tid_t tid, preset_value_t* ps_val )
+      {
+        rc_t rc = kOkRC;
+        
+        if( recd_array->recdN == 0 )
+        {
+          rc = proc_error(proc,kInvalidStateRC,"No perf. records are available to supply transform parameters.");
+          goto errLabel;
+        }
+        
+        switch( tid )
+        {
+          case kNoPresetValTId:
+            // this value is not used by this preset
+            break;
+            
+          case kUIntPresetValTId:
+            if((rc = recd_get( recd_array->recdA, field_idx, ps_val->u.uint )) != kOkRC )
+            {
+              goto errLabel;
+            }            
+            break;
+
+          case kCoeffPresetValTId:
+            if((rc = recd_get( recd_array->recdA, field_idx, ps_val->u.coeff )) != kOkRC )
+            {
+              goto errLabel;
+            }            
+            break;
+
+          case kBoolPresetValTId:
+            if((rc = recd_get( recd_array->recdA, field_idx, ps_val->u.flag )) != kOkRC )
+            {
+              goto errLabel;
+            }            
+            break;
+            
+          default:
+            rc = proc_error(proc,kInvalidArgRC,"An unexpected type id (%i) was encountered while reading a perf. record field.",tid);
+            goto errLabel;
+        }
+
+        
+        ps_val->tid = tid;
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _lookup_preset_value( proc_t* proc,
+                                 inst_t*  p,
+                                 unsigned preset_idx,
+                                 unsigned var_idx,
+                                 unsigned ch_idx,
+                                 bool     shm_fl,
+                                 bool     perf_fl,
+                                 const preset_value_t*& val_preset_ref )
       {
         rc_t rc = kOkRC;
 
+        val_preset_ref = nullptr;
+
+        // if 'shm_fl' is set and this the f2 preset
+        if( shm_fl && preset_idx == p->f2_preset_idx )
+        {
+          // the 'shm-bypass_fl' will always be false if we are using the SHM
+          if( var_idx == p->shm_bypass_var_idx )
+          {
+            p->tmp.tid = kBoolPresetValTId;
+            p->tmp.u.flag = false;
+            val_preset_ref = &p->tmp;
+          }
+          else
+          {          
+            // if the 'perf_fl' is set then read the SHM parameters from the perf. preset
+            if( perf_fl )
+            {
+              val_preset_ref = p->perfPresetA[ kPerfShmPresetIdx ].varA[ var_idx ].chA + ch_idx;
+            }
+            else // otherwise use the default SHM parameters from presetA[]
+            {
+              val_preset_ref = p->presetA[ preset_idx ].varA[ var_idx ].chA + ch_idx;
+            }
+          }
+        }
+        else
+        {
+          // if this is the f3 preset and 'perf_fl' is set
+          if( perf_fl && preset_idx == p->f3_preset_idx )
+          {
+            val_preset_ref = p->perfPresetA[ kPerfSdPresetIdx ].varA[ var_idx ].chA + ch_idx;
+          }
+          else // otherwise use the default SD parameter from presetA[] 
+          {
+            // ALL NON-f2/f3 presets will be served here.
+            val_preset_ref = p->presetA[ preset_idx ].varA[ var_idx ].chA + ch_idx;
+          }
+        }
+      errLabel:
+        if( rc != kOkRC )
+          rc = proc_error(proc,rc,"Parameter value lookup failed.");
+        return rc;
+      }
+                                 
+
+      rc_t _apply_preset_no_interp(proc_t* proc, inst_t* p, unsigned voice_idx, unsigned preset_idx)
+      {
+        rc_t          rc        = kOkRC;
+        bool          shm_fl    = false;
+        bool          perf_fl   = false;        
+                
         if( preset_idx == kInvalidIdx || preset_idx >= p->presetN )
         {
           rc = proc_error(proc,kInvalidArgRC,"The primary preset is invalid.");
           goto errLabel;
         }
-        
+
+        var_get(proc,kShmFlPId,kAnyChIdx,shm_fl);
+        var_get(proc, kPerfFlPId, kAnyChIdx, perf_fl);        
+          
+
+        // for each variable in this preset
         for(unsigned var_idx=0; _var_cfgA[var_idx].var_label!=nullptr; ++var_idx)
         {
           const var_cfg_t* var_cfg = _var_cfgA + var_idx;
@@ -3132,8 +3455,16 @@ namespace cw
           
           for(unsigned ch_idx=0; ch_idx<kMaxChN; ++ch_idx )
           {            
-            const preset_value_t* v = p->presetA[ preset_idx ].varA[ var_idx ].chA + ch_idx;
-            
+            //const preset_value_t* v = p->presetA[ preset_idx ].varA[ var_idx ].chA + ch_idx;
+            const preset_value_t* v = nullptr;
+
+            // return a pointer to the preset variable value for this variable
+            if((rc = _lookup_preset_value(proc,p,preset_idx,var_idx,ch_idx,shm_fl,perf_fl,v)) != kOkRC )
+            {
+              proc_error(proc,rc,"Transform value lookup failed.");
+              goto errLabel;
+            }
+                        
             //variable_t* varb;
             //var_find(proc, p->base[var_cfg->var_pid] + voice_idx,ch_idx, varb);
             
@@ -3151,6 +3482,11 @@ namespace cw
               case kCoeffPresetValTId:
                 //printf("PS: %i %s %s %f\n",ch_idx,var_cfg->var_label,varb->label,v->u.coeff);
                 var_set(proc, p->base[var_cfg->var_pid] + voice_idx, ch_idx, v->u.coeff );
+                break;
+
+              case kBoolPresetValTId:
+                //printf("PS: %i %s %s %i\n",ch_idx,var_cfg->var_label,varb->label,v->u.flag);
+                var_set(proc, p->base[var_cfg->var_pid] + voice_idx, ch_idx, v->u.flag );
                 break;
 
               default:
@@ -3187,8 +3523,7 @@ namespace cw
           assert( pri_preset_idx < p->presetN );
           
           for(unsigned ch_idx=0; ch_idx<kMaxChN; ++ch_idx )
-          {
-            
+          {            
             const preset_value_t* c0 = p->presetA[ pri_preset_idx ].varA[ var_idx ].chA + ch_idx;
             const preset_value_t* c1 = p->presetA[ sec_preset_idx ].varA[ var_idx ].chA + ch_idx;
             
@@ -3212,6 +3547,19 @@ namespace cw
                   coeff_t v0 = std::min(c0->u.coeff,c1->u.coeff);
                   coeff_t v1 = std::max(c0->u.coeff,c1->u.coeff);
                   coeff_t v = v0 + p->cur_interp_dist * (v1 - v0);
+                  var_set(proc, p->base[var_cfg->var_pid] + voice_idx, ch_idx, v );
+                }
+                break;
+
+              case kBoolPresetValTId:
+                {
+                  // by default we take c0->u.flag 
+                  bool v = c0->u.flag;
+
+                  // ... unless both values are the same - in which case we take that value
+                  if( c0->u.flag == c1->u.flag )
+                    v = c0->u.flag;
+                    
                   var_set(proc, p->base[var_cfg->var_pid] + voice_idx, ch_idx, v );
                 }
                 break;
@@ -3264,10 +3612,14 @@ namespace cw
       rc_t _create( proc_t* proc, inst_t* p )
       {
         rc_t          rc             = kOkRC;
-        const rbuf_t* i_rbuf         = nullptr;;
+        const rbuf_t* i_rbuf         = nullptr;
+        const rbuf_t* sdi_rbuf       = nullptr;
+        const rbuf_t* shmi_rbuf      = nullptr;
         bool          interp_fl      = false;
         float         interp_dist;
         bool          interp_rand_fl = false;
+        bool          shm_fl         = false;
+        bool          perf_fl        = false;
         
         // get the poly count from the midi input array - this will determine the poly count on the output variables
         if( (p->polyN = var_mult_count(proc,"midi_in")) == kInvalidCnt || p->polyN == 0 )
@@ -3277,9 +3629,13 @@ namespace cw
         }
 
         if((rc = var_register_and_get(proc, kAnyChIdx,
-                                      kCtlInPId,   "ctl_in",    kBaseSfxId, i_rbuf,
-                                      kInterpFlPId,     "interp_fl", kBaseSfxId, interp_fl,
-                                      kInterpDistPId,   "interp_dist", kBaseSfxId, interp_dist,
+                                      kCtlInPId,   "ctl_in",  kBaseSfxId, i_rbuf,
+                                      kPerfSdInPId,     "perf_sd_in",     kBaseSfxId, sdi_rbuf,
+                                      kPerfShmInPId,    "perf_shm_in",    kBaseSfxId, shmi_rbuf,
+                                      kShmFlPId,        "shm_fl",         kBaseSfxId, shm_fl,
+                                      kPerfFlPId,       "perf_fl",        kBaseSfxId, perf_fl,
+                                      kInterpFlPId,     "interp_fl",      kBaseSfxId, interp_fl,
+                                      kInterpDistPId,   "interp_dist",    kBaseSfxId, interp_dist,
                                       kInterpRandFlPId, "interp_rand_fl", kBaseSfxId, interp_rand_fl)) != kOkRC )
         {
           goto errLabel;
@@ -3303,12 +3659,22 @@ namespace cw
             if((rc = var_register(proc, ch_idx,
                                   p->base[ kMidiInPId ]    + i, "midi_in",     kBaseSfxId + i,
                                   p->base[ kWndSmpCntPId ] + i, "wnd_smp_cnt", kBaseSfxId + i,
+                                  
                                   p->base[ kCeilingPId ]   + i, "ceiling",     kBaseSfxId + i,
                                   p->base[ kExpoPId ]      + i, "expo",        kBaseSfxId + i,
                                   p->base[ kThreshPId ]    + i, "thresh",      kBaseSfxId + i,
                                   p->base[ kUprPId ]       + i, "upr",         kBaseSfxId + i,
                                   p->base[ kLwrPId ]       + i, "lwr",         kBaseSfxId + i,
                                   p->base[ kMixPId ]       + i, "mix",         kBaseSfxId + i,
+
+                                  p->base[ kShmBypassFlPId ]+ i, "shm_bypass_fl",  kBaseSfxId + i,
+                                  p->base[ kPeakFlPId   ]  + i, "peak_fl",     kBaseSfxId + i,
+                                  p->base[ kPeakGainPId ]  + i, "peak_gain",   kBaseSfxId + i,
+                                  p->base[ kHGainPId    ]  + i, "hgain",       kBaseSfxId + i,
+                                  p->base[ kHFeedbackPId]  + i, "hfeedback",   kBaseSfxId + i,
+                                  p->base[ kStretchPId]    + i, "stretch",     kBaseSfxId + i,
+                                  p->base[ kShmExpoPId]    + i, "shm_expo",    kBaseSfxId + i,
+                                                                    
                                   p->base[ kCIGainPId ]    + i, "c_igain",     kBaseSfxId + i,
                                   p->base[ kCOGainPId ]    + i, "c_ogain",     kBaseSfxId + i,
                                   p->base[ kDryGainPId ]   + i, "dry_gain",    kBaseSfxId + i )) != kOkRC )
@@ -3318,6 +3684,15 @@ namespace cw
           }
         }
 
+        // fill in the SD perf. field indexes
+        if((rc = _get_var_cfg_field_indexes( proc, p, kSdXformTId, sdi_rbuf )) != kOkRC )
+          goto errLabel;
+
+        // fill in the SHM perf. field indexes
+        if((rc = _get_var_cfg_field_indexes( proc, p, kShmXformTId, shmi_rbuf )) != kOkRC )
+          goto errLabel;
+
+        
         // Get the values for all the presets required by the transform parameter variables
         if((rc = _create_and_fill_preset_array( proc, p )) != kOkRC )
           goto errLabel;
@@ -3338,6 +3713,24 @@ namespace cw
         if((p->sec_preset_fld_idx = recd_array_field_index( i_rbuf->recd_array, "sec_preset_idx")) == kInvalidIdx )
         {
           rc = proc_error(proc,kInvalidArgRC,"The input record field 'sec_preset_idx' does not exist.");
+          goto errLabel;
+        }
+
+        if((p->f2_preset_idx =  _preset_label_to_index(proc, p, "f2" )) == kInvalidIdx )
+        {
+          rc = proc_error(proc,kInvalidStateRC,"The 'f2' preset could not be found in the preset array.");
+          goto errLabel;
+        }
+
+        if((p->f3_preset_idx =  _preset_label_to_index(proc, p, "f3" )) == kInvalidIdx )
+        {
+          rc = proc_error(proc,kInvalidStateRC,"The 'f3' preset could not be found in the preset array.");
+          goto errLabel;
+        }
+
+        if((p->shm_bypass_var_idx = _var_label_to_index(proc,p, "shm_bypass_fl")) == kInvalidIdx )
+        {
+          rc = proc_error(proc,kInvalidStateRC,"The 'shm_bypass_fl'  could not be found in the variable configuration array.");
           goto errLabel;
         }
         
@@ -3374,6 +3767,98 @@ namespace cw
         return rc;
       }
 
+
+      rc_t _update_perf_preset_value(proc_t* proc, inst_t* p, unsigned rbuf_vid, unsigned perf_preset_idx, xform_tid_t xid )
+      {
+        rc_t rc = kOkRC;
+        const rbuf_t* i_rbuf = nullptr;
+        
+        // get the rbuf for the permance record array
+        if((rc = var_get(proc,kPerfShmInPId,kAnyChIdx,i_rbuf)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // if there are records in the array
+        if( i_rbuf->recd_array->recdN > 0 )
+        {
+          // Select the last record as the parameter source
+          const recd_t* recd = i_rbuf->recd_array->recdA + i_rbuf->recd_array->recdN-1;
+
+          // for each parameter for this type (SHM or SD) transform
+          for(unsigned i=0; _var_cfgA[i].var_label != nullptr; ++i)
+            if( _var_cfgA[i].xid == xid  )
+            {
+              // get the destination preset var
+              preset_var_t& ps_var = p->perfPresetA[ perf_preset_idx ].varA[i];
+
+              // switch on the data type of the parameter value
+              switch( _var_cfgA[i].tid )
+              {
+                case kNoPresetValTId:
+                  break;
+                  
+                case kUIntPresetValTId:
+                {
+                  unsigned val;
+                  if((rc = recd_get( recd, _var_cfgA[i].field_idx, val )) != kOkRC )
+                  {
+                    goto errLabel;
+                  }
+                  
+                  for(unsigned ch_idx=0; ch_idx<kMaxChN; ++i)
+                  {
+                    ps_var.chA[ch_idx].tid    = kUIntPresetValTId;
+                    ps_var.chA[ch_idx].u.uint = val;
+                  }
+                }
+                break;
+                  
+                case kCoeffPresetValTId:
+                  {
+                    coeff_t val;
+                    if((rc = recd_get( recd, _var_cfgA[i].field_idx, val )) != kOkRC )
+                    {
+                      goto errLabel;
+                    }
+                    
+                    for(unsigned ch_idx=0; ch_idx<kMaxChN; ++i)
+                    {
+                      ps_var.chA[ch_idx].tid    = kCoeffPresetValTId;
+                      ps_var.chA[ch_idx].u.coeff = val;
+                    }
+                  }
+                  break;
+                  
+                case kBoolPresetValTId:
+                  {
+                    bool val;
+                    if((rc = recd_get( recd, _var_cfgA[i].field_idx, val )) != kOkRC )
+                    {
+                      goto errLabel;
+                    }
+                    
+                    for(unsigned ch_idx=0; ch_idx<kMaxChN; ++i)
+                    {
+                      ps_var.chA[ch_idx].tid    = kBoolPresetValTId;
+                      ps_var.chA[ch_idx].u.flag = val;
+                    }
+                  }
+                  break;
+              }
+            }
+        
+
+        } 
+        
+        
+      errLabel:
+          if( rc != kOkRC )
+            rc = cwLogError(rc,"Performance preset value update failed.");
+          
+        return rc;
+      }
+
       rc_t _exec( proc_t* proc, inst_t* p )
       {
         rc_t rc      = kOkRC;
@@ -3384,6 +3869,9 @@ namespace cw
           rc = proc_error(proc,rc,"Error accessing 'ctl_in' record.");
           goto errLabel;
         }
+
+        _update_perf_preset_value(proc, p, kPerfShmInPId, kPerfShmPresetIdx, kShmXformTId );
+        _update_perf_preset_value(proc, p, kPerfSdInPId, kPerfSdPresetIdx, kSdXformTId );
 
         for(unsigned i=0; i<i_rbuf->recd_array->recdN; ++i)
         {
