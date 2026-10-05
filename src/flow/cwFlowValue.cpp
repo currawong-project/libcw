@@ -780,7 +780,7 @@ void  cw::flow::fbuf_print( const fbuf_t* fbuf, unsigned verbosity )
 
   if( verbosity >= kMinimalValPrintVerb )
   {
-    cwLogPrint("fbuf: chN:%i flags:0x%x srate:%8.1f ", fbuf->chN, fbuf->flags, fbuf->srate );
+    cwLogPrint("fbuf: chN:%i srate:%8.1f ", fbuf->chN, fbuf->srate );
 
     cwLogPrint("(");
     for(unsigned i=0; i<fbuf->chN; ++i)

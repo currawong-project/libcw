@@ -39,7 +39,6 @@ namespace cw
       void*             mem;       // mem[ memByteN ] All dynamically allocated memory used by this fbuf.
       
       srate_t           srate;     // signal sample rate
-      unsigned          flags;     // See kXXXFbufFl
       unsigned          chN;       // count of channels
       unsigned*         maxBinN_V; // maxBinN_V[chN] max value that binN_V[i] is allowed to take
       unsigned*         binN_V;    // binN_V[ chN ] count of sample frames per channel
