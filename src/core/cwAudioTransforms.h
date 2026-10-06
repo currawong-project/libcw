@@ -930,7 +930,7 @@ namespace cw
         
         vop::zero(p->hV,p->binN);
         
-        printf("setup:%i bypass:%i hnum:%i pk_fl:%i pkgain:%5.3f hgain:%5.3f stretch:%6.3f expo:%6.3f hfeedback:%5.3f: fund:%8.2f bin:%8.2f\n",
+        cwLogPrint("setup:%i bypass:%i hnum:%i pk_fl:%i pkgain:%5.3f hgain:%5.3f stretch:%6.3f expo:%6.3f hfeedback:%5.3f: fund:%8.2f bin:%8.2f\n",
                pitch,p->bypassFl,hnum,peak_fl,peak_gain,hgain,stretch,expo,hfeedback,p->fundHz,p->binHz);
         
         return rc;
@@ -1162,6 +1162,13 @@ namespace cw
       typedef struct obj_str<float,float>   fobj_t;
       typedef struct obj_str<double,double> dobj_t;
 
+      template< typename T0, typename T1 >
+      void report( const struct obj_str<T0,T1>* p )
+      {
+        cwLogPrint("ceil:%6.2f expo:%6.2f mix:%6.2f thresh:%6.2f upr:%6.2f lwr:%6.2f ogain:%6.3f\n",
+                   p->ceiling,p->expo,p->mix,p->thresh,p->uprSlope,p->lwrSlope,p->ogain);
+      }
+      
       template< typename T0, typename T1 >
       rc_t create( struct obj_str<T0,T1>*& p, unsigned binN, bool bypassFl=false, T1 ceiling=30, T1 expo=2, T1 thresh=60, T1 uprSlope=0, T1 lwrSlope=2, T1 mix=0 )
       {

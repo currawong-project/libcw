@@ -4595,7 +4595,7 @@ namespace cw
       {
         spec_dist_t** sdA;
         unsigned sdN;
-        //bool enableFl;
+        bool enableFl;
       } inst_t;
     
 
@@ -4754,6 +4754,12 @@ namespace cw
             //If == 0 )
             //  printf("%f %f\n", vop::sum(srcBuf->magV[i],srcBuf->binN), vop::sum(dstBuf->magV[i], dstBuf->binN) );
           }
+        }
+
+        if( !inst->enableFl && enable_fl )
+        {
+          report(inst->sdA[0]);
+          inst->enableFl = true;
         }
 
       errLabel:
