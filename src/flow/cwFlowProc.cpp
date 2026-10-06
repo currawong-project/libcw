@@ -9539,6 +9539,86 @@ namespace cw
       
     }    
 
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // not
+    //
+    namespace negate
+    {
+      enum {
+        kInPId,
+        kOutPId
+      };
+      
+      typedef struct
+      {
+        
+      } inst_t;
+
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t    rc   = kOkRC;
+
+        if((rc = var_register(proc,kAnyChIdx,
+                              kInPId,"in",kBaseSfxId,
+                              kOutPId,"out",kBaseSfxId)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        return kOkRC;
+      }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc   = kOkRC;
+        bool flag = false;
+        
+        if( var->vid == kInPId )
+        {
+          if((rc = var_get(var,flag)) != kOkRC )
+          {
+            goto errLabel;
+          }
+
+          if((rc = var_set(proc,kOutPId,kAnyChIdx,!flag)) != kOkRC )
+          {
+            goto errLabel;
+          }
+        }
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t rc      = kOkRC;
+        
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    // negate
+    
     //------------------------------------------------------------------------------------------------------------------
     //
     // add
@@ -13862,9 +13942,16 @@ namespace cw
       {
         rc_t      rc   = kOkRC;
         object_t* cfgL = nullptr;
+        char* fn = nullptr;
+
+        if((fn = proc_expand_filename(proc,fname)) == nullptr )
+        {
+          rc = proc_error(proc,kOpFailRC,"The button_list cfg. file '%s' could not be expanded.",cwStringNullGuard(fname));
+          goto errLabel;
+        }
         
         // parse the cfg file into an object format
-        if((rc = objectFromFile( fname, cfgL )) != kOkRC )
+        if((rc = objectFromFile( fn, cfgL )) != kOkRC )
         {
           rc = proc_error(proc,rc,"Cfg. file parse failed.");
           goto errLabel;
@@ -13873,7 +13960,7 @@ namespace cw
         // verify that the file is not empty
         if( (p->btnN = cfgL->child_count()) == 0)
         {
-          proc_error(proc,kInvalidArgRC,"The cfg. file is empty.");
+          proc_error(proc,kInvalidArgRC,"The cfg. file (%s) is empty.",cwStringNullGuard(fn));
           goto errLabel;
         }
         
@@ -13922,7 +14009,8 @@ namespace cw
       errLabel:
         if( rc != kOkRC )
           rc = proc_error(proc,rc,"Parsing failed on the button array cfg file '%s'.",cwStringNullGuard(fname));
-        
+
+        mem::release(fn);
         return rc;
       }
 
