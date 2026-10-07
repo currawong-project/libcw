@@ -829,7 +829,7 @@ cw::object_t* cw::newObject( double v, object_t* parent)
 { return _objCreateValueNode<double>( parent, v ); }
  
 cw::object_t* cw::newObject( char* v, object_t* parent)
-{ return _objCreateValueNode<const char*>( parent, v ); }
+{ return _objCreateValueNode<char*>( parent, v ); }
 
 cw::object_t* cw::newObject( const char* v, object_t* parent)
 { return _objCreateValueNode<const char*>( parent, v ); }
