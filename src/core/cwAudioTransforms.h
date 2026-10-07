@@ -930,7 +930,7 @@ namespace cw
         
         vop::zero(p->hV,p->binN);
         
-        cwLogPrint("setup:%i bypass:%i hnum:%i pk_fl:%i pkgain:%5.3f hgain:%5.3f stretch:%6.3f expo:%6.3f hfeedback:%5.3f: fund:%8.2f bin:%8.2f\n",
+        cwLogPrint("SHM: pitch:%i bypass:%i hnum:%i pk_fl:%i pkgain:%5.3f hgain:%5.3f stretch:%6.3f expo:%6.3f hfeedback:%5.3f: fund:%8.2f bin:%8.2f\n",
                pitch,p->bypassFl,hnum,peak_fl,peak_gain,hgain,stretch,expo,hfeedback,p->fundHz,p->binHz);
         
         return rc;
@@ -1165,8 +1165,8 @@ namespace cw
       template< typename T0, typename T1 >
       void report( const struct obj_str<T0,T1>* p )
       {
-        cwLogPrint("ceil:%6.2f expo:%6.2f mix:%6.2f thresh:%6.2f upr:%6.2f lwr:%6.2f ogain:%6.3f\n",
-                   p->ceiling,p->expo,p->mix,p->thresh,p->uprSlope,p->lwrSlope,p->ogain);
+        cwLogPrint("SD: bypass:%i ceil:%6.2f expo:%6.2f mix:%6.2f thresh:%6.2f upr:%6.2f lwr:%6.2f ogain:%6.3f\n",
+                   p->bypassFl, p->ceiling,p->expo,p->mix,p->thresh,p->uprSlope,p->lwrSlope,p->ogain);
       }
       
       template< typename T0, typename T1 >
