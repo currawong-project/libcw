@@ -717,19 +717,26 @@ The latency report will then be printed to stdout.
 UI
 ----
 Proc Desc.
+```
+ui: {
+  add_class:<>  # Assign an additional class name to this proc.
+}
+```
+Proc Var Desc:
 
 ```
 ui: {
   type: meter | list | status
   layout: row | col   # layout multiple channels as a row or column (row is default)
   flags: [ horizontal ]
+  add_class:<>  # Assign an additional class name to this proc var.
 }
 ```
 
 type: See cawUI.cpp : `_get_widget_type_id()`
 layout: See cawUI.cpp : `_get_var_layout_id()`
 
-Proc instance:
+Proc Var Instance:
 ```
 ui: { create_fl: true|false, 
       vars:{
