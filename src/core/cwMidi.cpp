@@ -150,16 +150,16 @@ uint8_t cw::midi::statusToByteCount( uint8_t status )
 
 unsigned      cw::midi::to14Bits( uint8_t d0, uint8_t d1 )
 {
-  unsigned val = d0;
+  unsigned val = d1;
   val <<= 7;
-  val += d1;
+  val += d0;
   return val;
 }
 
 void          cw::midi::split14Bits( unsigned v, uint8_t& d0Ref, uint8_t& d1Ref )
 {
-  d0Ref = (v & 0x3f80) >> 7;
-  d1Ref = v & 0x7f;
+  d1Ref = (v & 0x3f80) >> 7;
+  d0Ref = v & 0x7f;
 }
 
 int           cw::midi::toPbend(  uint8_t d0, uint8_t d1 )
