@@ -95,8 +95,9 @@ namespace cw
     namespace recd_list       { extern class_members_t members;  }
     namespace recd_route      { extern class_members_t members;  }
     namespace recd_merge      { extern class_members_t members;  }
-    namespace recd_rename    { extern class_members_t members;  }
+    namespace recd_rename     { extern class_members_t members;  }
     namespace recd_pass       { extern class_members_t members;  }
+    namespace recd_blank      { extern class_members_t members;  }
     namespace midi_merge      { extern class_members_t members;  }
     namespace poly_xform_ctl  { extern class_members_t members;  }
     namespace gutim_ps_msg_table { extern class_members_t members; }

@@ -10803,6 +10803,26 @@ namespace cw
         return rc;
       }
 
+      void _do_14_bit_conversion( proc_t* proc, unsigned status, unsigned& d0, unsigned& d1 )
+      {
+        // if status indicates a 14 bit message (pbend) then convert d0 to a 14 bit value
+        // and split into d0 and d1
+        if( midi::removeCh(status) == midi::kPbendMdId )
+        {
+          bool no_cvt_fl = false;
+          
+          var_get(proc,kNoCvtFlPId,kAnyChIdx,no_cvt_fl);
+
+          if( !no_cvt_fl )
+          {
+            uint8_t d0_8, d1_8;
+            midi::split14Bits( d0, d0_8, d1_8 );            
+            d0 = d0_8;
+            d1 = d1_8;
+          }
+        }
+      }
+
       rc_t _gen_msg( proc_t* proc, inst_t* p, mbuf_t* mbuf )
       {
         rc_t     rc     = kOkRC;
@@ -10815,6 +10835,8 @@ namespace cw
         var_get(proc, kStatusPId,kAnyChIdx, status);
         var_get(proc, kD0PId,    kAnyChIdx, d0);
         var_get(proc, kD1PId,    kAnyChIdx, d1);
+
+        _do_14_bit_conversion( proc, status, d0, d1 );
 
         p->ch_msg.ch =     (uint8_t)(ch < midi::kMidiChCnt ? ch : 0);
         p->ch_msg.status = (uint8_t)status;
@@ -10900,22 +10922,7 @@ namespace cw
           goto errLabel;
         }
 
-        // if status indicates a 14 bit message (pbend or poly-touch) then convert d0 to a 14 bit value
-        // and split into d0 and d1
-        if( midi::removeCh(status) == midi::kPbendMdId || midi::removeCh(status) == midi::kPolyPresMdId )
-        {
-          bool no_cvt_fl = false;
-          
-          var_get(proc,kNoCvtFlPId,kAnyChIdx,no_cvt_fl);
-          
-          if( !no_cvt_fl )
-          {
-            uint8_t d0_8, d1_8;
-            midi::split14Bits( d0, d0_8, d1_8 );
-            d0 = d0_8;
-            d1 = d1_8;
-          }
-        }
+        _do_14_bit_conversion( proc, status, d0, d1 );
 
         p->chMsgA[p->recd_array->recdN].ch = ch;
         p->chMsgA[p->recd_array->recdN].status = status;
@@ -11003,6 +11010,7 @@ namespace cw
     {
       enum {
         kInPId,
+        kValuePId,
         kOutPId,
       };
       
@@ -11019,8 +11027,11 @@ namespace cw
         rc_t          rc     = kOkRC;        
         const rbuf_t* i_rbuf = nullptr;
         rbuf_t*       o_rbuf = nullptr;
-
-        if((rc = var_register_and_get(proc,kAnyChIdx,kInPId,"in",kBaseSfxId,i_rbuf)) != kOkRC )
+        unsigned      value  = -1;
+        
+        if((rc = var_register_and_get(proc,kAnyChIdx,
+                                      kValuePId,"value",kBaseSfxId,value,
+                                      kInPId,"in",kBaseSfxId,i_rbuf)) != kOkRC )
         {
           goto errLabel;
         }
@@ -11071,7 +11082,8 @@ namespace cw
         rc_t          rc     = kOkRC;
         rbuf_t*       o_rbuf = nullptr;
         const rbuf_t* i_rbuf = nullptr;
-
+        unsigned      value  = 0;
+        
         if((rc = var_get(proc,kInPId,i_rbuf)) != kOkRC )
           goto errLabel;
         
@@ -11082,7 +11094,6 @@ namespace cw
 
         for(unsigned i=0; i<i_rbuf->recd_array->recdN && i < p->recd_array->allocRecdN; ++i)
         {
-          unsigned value = 0;
           midi::ch_msg_t* m = nullptr;
           
           if((rc = recd_get(i_rbuf->recd_array->recdA + i,p->i_midi_fld_idx, m )) != kOkRC )
@@ -11093,7 +11104,6 @@ namespace cw
           if( midi::removeCh(m->status) == midi::kPbendMdId || midi::removeCh(m->status) )
           {
             value = midi::to14Bits( m->d0, m->d1 );
-            proc_info(proc,"value:%i",value);
           }          
           
           if((rc = recd_append(p->recd_array, i_rbuf->recd_array->recdA + i,  p->o_value_fld_idx, &value)) != kOkRC )
@@ -11102,7 +11112,12 @@ namespace cw
             goto errLabel;
           }
         }
-        
+
+        // Set the output variable 'value' to the value assigned to the 'value' field of the last output record.
+        if( i_rbuf->recd_array->recdN > 0 )
+        {
+          var_set(proc,kValuePId,kAnyChIdx,value);
+        }
         
       errLabel:
         return rc;
@@ -11137,7 +11152,9 @@ namespace cw
         kOutChPId,
         kOutStatusPId,
         kOutD0PId,
-        kOutD1PId
+        kOutD1PId,
+        kOutPId
+        
       };
       
       typedef struct
@@ -11146,6 +11163,14 @@ namespace cw
         unsigned sel_status;
         unsigned sel_d0;
         unsigned sel_d1;
+        recd_array_t* recd_array;
+
+        unsigned o_midi_fi;
+        unsigned o_ch_fi;
+        unsigned o_status_fi;
+        unsigned o_d0_fi;
+        unsigned o_d1_fi;
+        
       } inst_t;
 
 
@@ -11174,8 +11199,19 @@ namespace cw
         {
           goto errLabel;
         }
-                              
-                              
+
+        if((rc = var_alloc_register_and_set(proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, nullptr, 0,p->recd_array)) != kOkRC )
+          goto errLabel;
+
+        if((rc = recd_array_field_index(p->recd_array,
+                                        "midi",p->o_midi_fi,
+                                        "ch",p->o_ch_fi,
+                                        "status",p->o_status_fi,
+                                        "d0",p->o_d0_fi,
+                                        "d1",p->o_d1_fi)) != kOkRC )
+        {
+          goto errLabel;
+        }
         
       errLabel:
         return rc;
@@ -11221,6 +11257,8 @@ namespace cw
         rc_t rc      = kOkRC;
         const mbuf_t* mbuf;
 
+        recd_array_empty(p->recd_array);
+        
         if( var_get(proc,kInPId,kAnyChIdx,mbuf) != kOkRC )
           goto errLabel;
 
@@ -11245,6 +11283,18 @@ namespace cw
           var_set(proc,kOutD0PId,kAnyChIdx,m->d0);
           var_set(proc,kOutD1PId,kAnyChIdx,m->d1);
           //printf("SELECT: %i %i %i %i\n",m->ch,m->status,m->d0,m->d1);
+
+          if((rc = recd_append(p->recd_array,nullptr,
+                               p->o_midi_fi,m,
+                               p->o_ch_fi,m->ch,
+                               p->o_status_fi,m->status,
+                               p->o_d0_fi,m->d0,
+                               p->o_d1_fi,m->d1)) != kOkRC )
+          {
+            rc = proc_error(proc,rc,"Output record append failed.");
+            goto errLabel;
+          }
+          
         }
         
       errLabel:
@@ -12749,6 +12799,103 @@ namespace cw
       
     }    // recd_pass
 
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // recd_blank
+    //
+    namespace recd_blank
+    {
+      enum {
+        kFmtPId,
+        kOutPId,
+      };
+      
+      typedef struct
+      {
+        recd_fmt_t*   recd_fmt;
+        recd_array_t* recd_array;        
+      } inst_t;
+
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t            rc      = kOkRC;
+        const object_t* fmt_cfg = nullptr;
+        recd_fmt_t*     fmt     = nullptr;
+        rbuf_t*         i_rbuf  = nullptr;
+        
+        if((rc = var_register_and_get(proc, kAnyChIdx, kFmtPId, "fmt", kBaseSfxId, fmt_cfg)) != kOkRC )
+        {
+          goto errLabel;
+        }
+                                    
+        if( fmt_cfg == nullptr )
+        {
+          rc = proc_error(proc,kInvalidArgRC,"The record format could not be accessed.");
+          goto errLabel;
+        }
+
+        // Create a recd_fmt_t for the the record format that this proc. will pass
+        if((rc = recd_format_create( fmt, fmt_cfg )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"The record format could not be created.");
+          goto errLabel;
+        }
+
+        // Create a record array based on the recd_fmt
+        if((rc = recd_array_create(p->recd_array, fmt->fieldD_cfg, nullptr, 0, fmt->alloc_cnt)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"The internal record array create failed.");
+          goto errLabel;
+        }
+
+        // Register the output variable
+        if((rc = var_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, p->recd_array  )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"The 'out' variable create failed.");
+          goto errLabel;          
+        }
+                
+      errLabel:
+        
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        recd_array_destroy(p->recd_array);
+        recd_format_destroy(p->recd_fmt);
+        
+        return rc;
+      }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t rc      = kOkRC;
+        
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    // recd_blank
     
     //------------------------------------------------------------------------------------------------------------------
     //

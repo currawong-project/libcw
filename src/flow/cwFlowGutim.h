@@ -6,5 +6,6 @@ namespace cw
     namespace timeline_player    { extern class_members_t members; }
     namespace key_state_monitor  { extern class_members_t members; }
     namespace gutim_perf_eval    { extern class_members_t members; }
+    namespace event_trig_ctl     { extern class_members_t members; }
   }
 }

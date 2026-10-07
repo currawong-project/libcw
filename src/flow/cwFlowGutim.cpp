@@ -2130,6 +2130,10 @@ namespace cw
           destroy(p->gmH);
         }
 
+        recd_array_destroy(p->sd_recd_array);
+        recd_array_destroy(p->ctl_recd_array);
+        recd_array_destroy(p->shm_recd_array);
+        
         return rc;
       }
 
@@ -2301,6 +2305,10 @@ namespace cw
         if((rc = var_get(proc,kInPId,kAnyChIdx,i_rbuf)) != kOkRC )
           goto errLabel;
 
+        recd_array_empty(p->sd_recd_array);
+        recd_array_empty(p->ctl_recd_array);
+        recd_array_empty(p->shm_recd_array);
+        
         // for each incoming score-following record
         for(unsigned i=0; i<i_rbuf->recd_array->recdN; ++i)
         {
@@ -2373,6 +2381,688 @@ namespace cw
       };
       
     }    // gutim_perf_eval
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // event_trig_ctl
+    //
+    namespace event_trig_ctl
+    {
+      enum {
+        kCfgFNamePId,
+        kMeasPId,
+        kMidiInPId,
+        kMidiOutPId,
+        kBtnBasePId
+      };
+
+      enum {
+        kNextBtnOffset,
+        kPlayBtnOffset,
+        kStatusOffset,
+        kBtnCnt
+      };
+
+      enum {
+        kInvalidStatusId,
+        kNextStatusId,
+        kPlayingStatusId,
+        kDoneStatusId,
+        kWaitingStatusId,        
+      };
+
+      typedef struct {
+        char*    title;
+        unsigned meas;
+        
+        unsigned* dis_idA; // list of trigger id's which will disable this btn
+        unsigned  dis_idN;
+        
+        unsigned* valueA;  // list of trigger id's this btn will fire
+        unsigned  valueN;
+
+        unsigned delta_flag; //
+      } btn_t;
+      
+      typedef struct
+      {
+        btn_t*        btnA;
+        unsigned      btnN;
+        unsigned      next_btn_idx;
+        unsigned      play_now_btn_idx;
+        
+        recd_array_t* recd_array;
+
+        midi::ch_msg_t* midiA;
+        unsigned        midiN;
+        
+        unsigned      i_midi_fld_idx;
+        unsigned      o_midi_fld_idx;
+      } inst_t;
+
+      unsigned _next_btn_vid( unsigned btn_idx )
+      { return kBtnBasePId + (btn_idx*kBtnCnt) + kNextBtnOffset; }
+
+      unsigned _play_btn_vid( unsigned btn_idx )
+      { return kBtnBasePId + (btn_idx*kBtnCnt) + kPlayBtnOffset; }
+      
+      unsigned _status_vid( unsigned btn_idx )
+      { return kBtnBasePId + (btn_idx*kBtnCnt) + kStatusOffset; }
+     
+      rc_t _parse_cfg(proc_t* proc, inst_t* p, const char* fname )
+      {
+        rc_t      rc   = kOkRC;
+        object_t* cfgL = nullptr;
+        char* fn = nullptr;
+
+        if((fn = proc_expand_filename(proc,fname)) == nullptr )
+        {
+          rc = proc_error(proc,kOpFailRC,"The button_list cfg. file '%s' could not be expanded.",cwStringNullGuard(fname));
+          goto errLabel;
+        }
+        
+        // parse the cfg file into an object format
+        if((rc = objectFromFile( fn, cfgL )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Cfg. file parse failed.");
+          goto errLabel;
+        }
+
+        // verify that the file is not empty
+        if( (p->btnN = cfgL->child_count()) == 0)
+        {
+          proc_error(proc,kInvalidArgRC,"The cfg. file (%s) is empty.",cwStringNullGuard(fn));
+          goto errLabel;
+        }
+        
+        p->btnA = mem::allocZ<btn_t>(p->btnN);
+        
+        for(unsigned i=0; i<p->btnN; ++i)
+        {
+          const object_t* r       = cfgL->child_ele(i);
+          const char*     title   = nullptr;
+          const object_t* dis_idL = nullptr;
+          const object_t* valueL  = nullptr;
+          unsigned v;
+          
+          if((rc = r->getv("title",title,
+                           "meas",    p->btnA[i].meas,
+                           "dis_idL", dis_idL,
+                           "valueL",   valueL)) != kOkRC )
+          {
+            rc = proc_error(proc,rc,"An error occured while parsing the record at index %i.",i);
+            goto errLabel;
+          }
+
+          p->btnA[i].title   = mem::duplStr(title);
+          p->btnA[i].dis_idN = dis_idL->child_count();
+          p->btnA[i].dis_idA = mem::allocZ<unsigned>(p->btnA[i].dis_idN);
+          p->btnA[i].valueN  = valueL->child_count();
+          p->btnA[i].valueA  = mem::allocZ<unsigned>(p->btnA[i].valueN);
+
+          for(unsigned j=0; j<p->btnA[i].dis_idN; ++j)
+          {
+            if((rc = dis_idL->child_ele(j)->value(p->btnA[i].dis_idA[j])) != kOkRC )
+            {
+              proc_error(proc,rc,"Error parsing 'dis_idL' value at btn recd index %i dis_idL index %i.",i,j);
+              goto errLabel;
+            }
+
+            if( p->btnA[i].dis_idA[j] > midi::kMaxCtlValue )
+            {
+              rc = proc_error(proc,kInvalidArgRC,"The button array dis-id %i out of range %i.",p->btnA[i].dis_idA[j],midi::kMaxCtlValue);
+              goto errLabel;
+            }
+            
+          }
+          
+          for(unsigned j=0; j<p->btnA[i].valueN; ++j)
+          {
+            if((rc = valueL->child_ele(j)->value(p->btnA[i].valueA[j])) != kOkRC )
+            {
+              rc = proc_error(proc,rc,"Error parsing 'valueL' value at btn recd index %i valueL index %i.",i,j);
+              goto errLabel;
+            }
+
+            if( p->btnA[i].valueA[j] > midi::kMaxCtlValue )
+            {
+              rc = proc_error(proc,kInvalidArgRC,"The button array value %i out of range %i.",p->btnA[i].valueA[j],midi::kMaxCtlValue);
+              goto errLabel;
+            }
+          }
+        }
+        
+      errLabel:
+        if( rc != kOkRC )
+          rc = proc_error(proc,rc,"Parsing failed on the button array cfg file '%s'.",cwStringNullGuard(fname));
+
+        mem::release(fn);
+        return rc;
+      }
+
+      rc_t _reset( proc_t* proc, inst_t* p, unsigned meas_num )
+      {
+        rc_t rc       = kOkRC;
+        
+        p->next_btn_idx = kInvalidIdx;
+        p->play_now_btn_idx = kInvalidIdx;
+        
+        for(unsigned i=0; i<p->btnN; ++i)
+        {
+          unsigned status_vid = _status_vid(i);
+          unsigned status_id  = kInvalidStatusId;
+          
+          if( p->btnA[i].meas < meas_num )
+          {
+            status_id = kDoneStatusId;
+          }
+          else
+          {
+            if( p->next_btn_idx == kInvalidIdx )
+            {
+              status_id = kNextStatusId;
+              p->next_btn_idx = i;
+            }
+            else
+            {
+              status_id = kWaitingStatusId;
+            }
+          }
+
+          if((rc = var_set(proc,status_vid,status_id)) != kOkRC )
+          {
+            goto errLabel;
+          }
+        }
+        
+      errLabel:
+        return rc;
+      }
+
+      // Emit a MIDI msg to begin playing btnA[btn_idx].value[]
+      rc_t _start_playing(proc_t* proc, inst_t* p, unsigned btn_idx)
+      {
+        rc_t rc = kOkRC;
+        
+        if( btn_idx >= p->btnN )
+        {
+          rc = proc_error(proc,kInvalidStateRC,"The requested event index %i is out of range. (%i).",btn_idx,p->btnN);
+          goto errLabel;
+        }
+
+        // for each value in btnA[].valueA[]
+        for(unsigned i=0; i<p->btnA[btn_idx].valueN; ++i)
+        {
+          // verify that the MIDI msg buffer is sane
+          if( p->recd_array->recdN >= p->midiN )
+          {
+            rc = proc_error(proc,kInvalidStateRC,"The MIDI array is empty although the record array is not. This should be impossible.");
+            goto errLabel;
+          }
+
+          // get the output MIDI record
+          midi::ch_msg_t* m      = p->midiA + p->recd_array->recdN;
+
+          // get the event-id to transmit
+          unsigned        evt_id = p->btnA[btn_idx].valueA[i];
+
+          // validate the event-id (this was already done when the cfg. file was parsed)
+          if( evt_id > midi::kMaxCtlValue )
+          {
+            rc = proc_error(proc,kInvalidStateRC,"The output event-id %i is out of range: %i.",evt_id,midi::kMaxCtlValue);
+            goto errLabel;
+          }
+                    
+          m->status = midi::kCtlMdId;
+          m->d0     = 20;
+          m->d1     = evt_id;
+          
+          if((rc = recd_append(p->recd_array, nullptr, p->o_midi_fld_idx, m )) != kOkRC )
+          {
+            rc = proc_error(proc,rc,"MIDI record output failed.");
+            goto errLabel;
+          }
+        }
+        
+      errLabel:
+        return rc;
+      }
+
+      // Emit a MIDI msg to begin playing btnA[ p->next_btn_idx ].valueA[]
+      rc_t _on_play_next( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+        if( p->next_btn_idx == kInvalidIdx )
+        {
+          proc_warn(proc,"The next event to trigger has not yet been set.");
+          goto errLabel;
+        }
+
+        rc = _start_playing(proc,p,p->next_btn_idx);
+        
+      errLabel:
+        return rc;
+      }
+
+      bool _btn_has_value( const btn_t* btn, unsigned value )
+      {
+        for(unsigned i=0; i<btn->valueN; ++i)
+          if( btn->valueA[i] == value )
+            return true;
+        return false;
+      }
+      unsigned _value_to_btn_index( inst_t* p, unsigned btn_value )
+      {
+        for(unsigned i=0; i<p->btnN; ++i)
+          if( _btn_has_value(p->btnA+i,btn_value) )
+            return i;
+
+        return kInvalidIdx;          
+      }
+
+      rc_t _set_status_next( proc_t* proc, inst_t* p, unsigned next_btn_idx )
+      {
+
+        rc_t rc = kOkRC;
+        unsigned target_btn_idx = kInvalidIdx;
+
+        // for each possible btn
+        for(unsigned i=0; i<p->btnN; ++i)
+        {
+          unsigned status_vid = _status_vid(i);
+          unsigned cur_status = kInvalidStatusId;
+          
+          // get the current status of the btn
+          if((rc = var_get(proc,status_vid,kAnyChIdx,cur_status)) != kOkRC )
+            goto errLabel;
+
+          // if this is the specified button
+          if( i == next_btn_idx )
+          {
+            // if the current status is not the same as the new status ... then update the status
+            if( cur_status != kNextStatusId ) 
+              var_set(proc,status_vid,kAnyChIdx,kNextStatusId );
+
+            target_btn_idx = i;
+          }
+          else
+          {
+            // only one btn can be next - but this one say's it's also 'next'
+            if( cur_status == kNextStatusId )
+            {
+              proc_warn(proc,"Multiple btn's encoutered with 'next' status.");
+              unsigned status_id = target_btn_idx == kInvalidIdx ? kDoneStatusId : kWaitingStatusId;
+              
+              var_set(proc,status_vid, kAnyChIdx, status_id );
+            }
+          }            
+        }
+
+      errLabel:
+        return rc;
+        
+      }
+      
+      
+      // Receive notification that the player associated with 'btn_value' has begun playing
+      rc_t _on_set_status_playing( proc_t* proc, inst_t* p, unsigned btn_value )
+      {
+        rc_t rc = kOkRC;
+        unsigned target_btn_idx = kInvalidIdx;
+
+        // for each possible btn
+        for(unsigned i=0; i<p->btnN; ++i)
+        {
+          unsigned status_vid = _status_vid(i);
+          unsigned cur_status = kInvalidStatusId;
+          
+          // get the current status of the btn
+          if((rc = var_get(proc,status_vid,kAnyChIdx,cur_status)) != kOkRC )
+            goto errLabel;
+
+          
+          // if this is the specified button
+          if( _btn_has_value( p->btnA + i, btn_value) )
+          {
+            // if the current status is not the same as the new status ... then update the status
+            if( cur_status != kPlayingStatusId ) 
+              var_set(proc,status_vid,kAnyChIdx,kPlayingStatusId );
+
+            target_btn_idx = i;
+            break;
+          }
+          else
+          {
+            // notice btn's that are still 'waiting'
+            p->btnA[i].delta_flag = cur_status == kWaitingStatusId;
+          }
+            
+        }
+
+        // if the target btn was not found
+        if( target_btn_idx == kInvalidIdx )
+        {
+          rc = proc_error(proc,kInvalidArgRC,"The button associated with play target value '%i' was not found.",btn_value);
+          goto errLabel;
+        }
+
+        // Set the status of any btn's prior to the target btn that are still 'Waiting' to 'Done'.
+        for(unsigned i=0; i<target_btn_idx; ++i)
+          if( p->btnA[i].delta_flag )
+            var_set(proc,_status_vid(i),kAnyChIdx,kDoneStatusId);
+
+
+        if( target_btn_idx + 1 >= p->btnN )
+        {
+          proc_info(proc,"End-of-btn list encountered.");
+        }
+        else
+        {
+          p->next_btn_idx = target_btn_idx + 1;
+
+          rc = _set_status_next(proc,p,p->next_btn_idx);
+          
+        }
+        
+        
+      errLabel:
+        return rc;
+      }
+
+      // Receive notification that the player associated with 'btn_value' has finished playing
+      rc_t _on_set_status_done( proc_t* proc, inst_t* p, unsigned btn_value )
+      {
+        rc_t rc = kOkRC;
+        unsigned target_btn_idx = kInvalidIdx;
+
+        // for each possible btn
+        for(unsigned i=0; i<p->btnN; ++i)
+        {
+          unsigned status_vid = _status_vid(i);
+          unsigned cur_status = kInvalidStatusId;
+          
+          // get the current status of the btn
+          if((rc = var_get(proc,status_vid,kAnyChIdx,cur_status)) != kOkRC )
+            goto errLabel;
+
+          
+          // if this is the specified button
+          if( _btn_has_value( p->btnA + i, btn_value) )
+          {
+            // if the current status is not the same as the new status ... then update the status
+            if( cur_status != kDoneStatusId ) 
+              var_set(proc,status_vid,kAnyChIdx,kDoneStatusId );
+
+            target_btn_idx = i;
+            break;
+          }
+          else
+          {
+            // notice btn's that are still 'waiting'
+            p->btnA[i].delta_flag = cur_status == kWaitingStatusId;
+          }
+            
+        }
+
+        // if the target btn was not found
+        if( target_btn_idx == kInvalidIdx )
+        {
+          rc = proc_error(proc,kInvalidArgRC,"The button associated with 'done' target value '%i' was not found.",btn_value);
+          goto errLabel;
+        }
+
+        // Set the status of any btn's prior to the target btn that are still 'Waiting' to 'Done'.
+        for(unsigned i=0; i<target_btn_idx; ++i)
+          if( p->btnA[i].delta_flag )
+            var_set(proc,_status_vid(i),kAnyChIdx,kDoneStatusId);
+
+        
+      errLabel:
+        return rc;
+      }
+      
+
+      rc_t _on_midi_msg(proc_t* proc, inst_t* p, const midi::ch_msg_t* m)
+      {
+        rc_t rc = kOkRC;
+
+        switch( m->status )
+        {
+          case midi::kPbendMdId:
+            {
+              unsigned meas = midi::to14Bits( m->d0, m->d1 );
+              rc = _reset(proc,p,meas);
+            }
+            break;
+            
+          case midi::kCtlMdId:
+            {
+              switch( m->d0 )
+              {
+                case 20: // a 'play-next' trigger has arrived
+                  rc = _on_play_next(proc,p);
+                  break;
+                  
+                case 21: // confirmation that a player has started
+                  _on_set_status_playing(proc,p,m->d1);
+                  break;
+                  
+                case 22: // notiification that a player has finished
+                  _on_set_status_done(proc,p,m->d1);
+                  break;
+              }
+            }
+            break;
+            
+          default:
+            proc_warn(proc,"Unexpected MIDI status:0x%x",m->status);
+            break;
+        }
+          
+        
+      errLabel:
+        return rc;
+      }
+      
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t          rc        = kOkRC;
+        const char*   cfg_fname = nullptr;
+        const rbuf_t* i_rbuf    = nullptr;
+        unsigned      meas_num  = 0;
+
+        if((rc = var_register_and_get(proc,kAnyChIdx,
+                                      kCfgFNamePId,"cfg_fname",kBaseSfxId, cfg_fname,
+                                      kMeasPId,    "meas",   kBaseSfxId,meas_num,
+                                      kMidiInPId,  "midi_in",kBaseSfxId,i_rbuf)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // parse the button array file
+        if((rc = _parse_cfg(proc,p,cfg_fname)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // for each trigger event
+        for(unsigned i=0; i<p->btnN; ++i)
+        {
+          if((rc = var_register(proc,kAnyChIdx,_next_btn_vid(i),"next_btn",kBaseSfxId + i)) != kOkRC )
+          {
+            goto errLabel;
+          }
+
+          // Set the UI title on the 'next butn
+          if((rc = var_set_ui_title(proc,_next_btn_vid(i),kAnyChIdx,mem::duplStr(p->btnA[i].title))) != kOkRC )
+          {
+            goto errLabel;
+          }
+
+          // register the 'play' btn
+          if((rc = var_register(proc,kAnyChIdx,_play_btn_vid(i),"play",kBaseSfxId + i)) != kOkRC )
+          {
+            goto errLabel;
+          }
+          
+          // register the status 
+          if((rc = var_register(proc,kAnyChIdx,_status_vid(i),"status",kBaseSfxId + i)) != kOkRC )
+          {
+            goto errLabel;
+          }
+          
+        }
+        
+        // create and register the midi_out record array
+        if((rc = var_alloc_register_and_set(proc, "midi_out", kBaseSfxId, kMidiOutPId, kAnyChIdx, nullptr, 0, p->recd_array )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        p->midiN = p->recd_array->allocRecdN;
+        p->midiA = mem::allocZ<midi::ch_msg_t>(p->midiN);
+        
+
+        // get the field index for the MIDI input field
+        if((rc = recd_array_field_index(i_rbuf->recd_array,"midi",p->i_midi_fld_idx)) != kOkRC )
+          goto errLabel;
+
+        // get the field index for the MIDI output field
+        if((rc = recd_array_field_index(p->recd_array,"midi",p->o_midi_fld_idx)) != kOkRC )
+          goto errLabel;
+
+        _reset( proc, p, 1 );
+        
+      errLabel:        
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        for(unsigned i=0; i<p->btnN; ++i)
+        {
+          mem::release(p->btnA[i].title);
+          mem::release(p->btnA[i].dis_idA);
+          mem::release(p->btnA[i].valueA);
+        }
+        mem::release(p->btnA);
+        recd_array_destroy(p->recd_array);
+
+        return rc;
+      }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+
+        if( var->vid == kMeasPId )
+        {
+          unsigned meas_num = 0;
+          if((rc = var_get(var,meas_num)) != kOkRC )
+            goto errLabel;
+          
+          _reset(proc,p,meas_num);
+        }
+        else
+        {
+          // if this was a grid btn press
+          if( kBtnBasePId <= var->vid and var->vid < kBtnBasePId + (p->btnN*3) )
+          {
+            // determine the type of the btn (next/play/status)
+            unsigned btn_type = (var->vid - kBtnBasePId) % kBtnCnt;
+
+            // get the button array index assoc'd with this button
+            unsigned btn_idx = (var->vid - kBtnBasePId) / kBtnCnt;
+
+            // vaidate the button index
+            if( btn_idx >= p->btnN )
+            {
+              rc = proc_error(proc,kInvalidStateRC,"An out of range (%i) button id %i was encountered.",p->btnN,btn_idx);
+              goto errLabel;
+            }
+
+            // act on the button
+            switch( btn_type )
+            {
+              case kNextBtnOffset:
+                _reset(proc,p,p->btnA[btn_idx].meas);
+                break;
+                
+              case kPlayBtnOffset:
+                // defer playing until p->recd_array has been emptied.
+                p->play_now_btn_idx = btn_idx;
+                break;
+                
+              case kStatusOffset:
+                // the status indicator is not a button
+                break;
+
+              default:
+                assert(0);
+            }
+          }
+        }     
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t          rc     = kOkRC;
+        const rbuf_t* i_rbuf = nullptr;
+        
+        if((rc = var_get(proc,kMidiInPId,kAnyChIdx,i_rbuf)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        recd_array_empty(p->recd_array);
+
+        // if a 'play' btn was pressed
+        if( p->play_now_btn_idx != kInvalidIdx )
+        {
+          _start_playing(proc,p,p->play_now_btn_idx);
+          p->play_now_btn_idx = kInvalidIdx;
+        }
+
+        // check for incoming MIDI messages
+        for(unsigned i=0; i<i_rbuf->recd_array->recdN; ++i)
+        {
+          const midi::ch_msg_t* m;
+
+          // get the incoming MIDI msg
+          if((rc = recd_get(i_rbuf->recd_array->recdA + i, p->i_midi_fld_idx, m)) != kOkRC )
+          {
+            goto errLabel;
+          }
+
+          // handle the incoming MIDI msg
+          if((rc = _on_midi_msg(proc,p,m)) != kOkRC )
+            goto errLabel;
+        }
+
+        
+      errLabel:
+        
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    // event_trig_ctl
     
   }
 }
