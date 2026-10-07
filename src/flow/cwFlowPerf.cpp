@@ -704,7 +704,8 @@ namespace cw
         kClearPId,
         kResetPId,
         kPlayNowPlyrIdPId,
-        kDonePlyrIdPId,
+        kStartPlyrIdPId,
+        kDonePlyrIdPId,        
         kOutPId        
       };
 
@@ -1022,6 +1023,7 @@ namespace cw
         bool          reset_fl          = false;
         bool          clear_fl          = false;
         unsigned      play_excl_plyr_id = kInvalidId;
+        unsigned      start_plyr_id     = kInvalidId;
         unsigned      done_plyr_id      = kInvalidId;
         const rbuf_t* r_play_id_rbuf    = nullptr;
         const char*   r_play_field      = nullptr;
@@ -1038,6 +1040,7 @@ namespace cw
                                       kClearPId,         "clear",        kBaseSfxId, clear_fl,
                                       kResetPId,         "reset",        kBaseSfxId, reset_fl,
                                       kPlayNowPlyrIdPId, "play_excl_id", kBaseSfxId, play_excl_plyr_id,
+                                      kStartPlyrIdPId,   "start_id",     kBaseSfxId, start_plyr_id,
                                       kDonePlyrIdPId,    "done_id",      kBaseSfxId, done_plyr_id)) != kOkRC )
         {
           rc = proc_error(proc,rc,"An error occurred while registering the proc. variables.");
@@ -1164,6 +1167,8 @@ namespace cw
         
         p->playerA[ plyr_idx ].next_msg_idx = 0;
         p->playerA[ plyr_idx ].start_smp_idx = p->global_smp_idx;
+
+        var_set(proc,kStartPlyrIdPId,kAnyChIdx,p->playerA[ plyr_idx ].id);
 
         proc_info(proc,"MP starting: %i %s",p->playerA[ plyr_idx ].id,cwStringNullGuard(p->playerA[ plyr_idx ].label));
         
@@ -3393,8 +3398,8 @@ namespace cw
           // the 'shm-bypass_fl' will always be false if we are using the SHM
           if( var_idx == p->shm_bypass_var_idx )
           {
-            p->tmp.tid = kBoolPresetValTId;
-            p->tmp.u.flag = false;
+            p->tmp.tid     = kBoolPresetValTId;
+            p->tmp.u.flag  = false;
             val_preset_ref = &p->tmp;
           }
           else
