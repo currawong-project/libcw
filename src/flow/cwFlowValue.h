@@ -275,6 +275,7 @@ namespace cw
     rc_t value_get( const value_t* val, midi::ch_msg_t*& valRef );
     rc_t value_get( const value_t* val, const midi::ch_msg_t*& valRef );
     rc_t value_set(       value_t* val, midi::ch_msg_t* v );
+    rc_t value_set(       value_t* val, const midi::ch_msg_t* v );
 
     rc_t value_get( const value_t* val, value_t& valRef );
     rc_t value_get(       value_t* val, value_t& valRef );

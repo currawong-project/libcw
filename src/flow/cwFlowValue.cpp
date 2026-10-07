@@ -1910,6 +1910,11 @@ cw::rc_t cw::flow::value_set(value_t* val, midi::ch_msg_t* v )
   return rc;  
 }
 
+cw::rc_t cw::flow::value_set(value_t* val, const midi::ch_msg_t* v )
+{
+  return value_set(val,(midi::ch_msg_t*)v);
+}
+
 cw::rc_t cw::flow::value_get( const value_t* val, value_t& valRef )
 {
   if( val == nullptr )
