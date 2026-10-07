@@ -8,6 +8,7 @@ namespace cw
   namespace midi
   {
     const uint8_t kMidiChCnt           = 16;
+    const uint8_t kMaxCtlValue         = 127;
     const uint8_t kInvalidMidiByte     = 128;
     const uint8_t kMidiNoteCnt         = kInvalidMidiByte;
     const uint8_t kMidiCtlCnt          = kInvalidMidiByte;
