@@ -79,6 +79,7 @@ namespace cw
       { "timer",           &timer::members },
       { "counter",         &counter::members },
       { "list",            &list::members },
+      { "negate",          &negate::members },
       { "add",             &add::members },
       { "max",             &max::members },
       { "preset",          &preset::members },
@@ -97,6 +98,7 @@ namespace cw
       { "recd_merge",      &recd_merge::members },
       { "recd_rename",    &recd_rename::members },
       { "recd_pass",       &recd_pass::members },
+      { "recd_blank",      &recd_blank::members },
       { "midi_merge",      &midi_merge::members },
       { "poly_xform_ctl",  &poly_xform_ctl::members },
       { "gutim_ps_msg_table", &gutim_ps_msg_table::members },
@@ -125,6 +127,7 @@ namespace cw
       { "timeline_player", &timeline_player::members },
       { "key_state_monitor", &key_state_monitor::members },
       { "gutim_perf_eval", &gutim_perf_eval::members },
+      { "event_trig_ctl", &event_trig_ctl::members },
       { nullptr, nullptr }
     };
 
@@ -332,8 +335,9 @@ namespace cw
       return rc;
     }
 
-    rc_t _create_class_ui_desc( class_desc_t* desc )
+    rc_t _create_class_ui_desc( class_desc_t* desc, const object_t* uiD )
     {
+      rc_t rc = kOkRC;
       desc->ui = mem::allocZ<ui_proc_desc_t>();
       desc->ui->label = desc->label;
       for(class_preset_t* p0 = desc->presetL; p0!=nullptr; p0=p0->link)
@@ -348,7 +352,17 @@ namespace cw
         desc->ui->presetA[i].preset_idx = i;
       }
 
-      return kOkRC;
+      if( uiD != nullptr )
+      {
+        if((rc = uiD->getv_opt("add_class",desc->ui->add_class)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Parsing proc class UI desc. failed on proc. class '%s'.",cwStringNullGuard(desc->label));
+          goto errLabel;
+        }
+      }
+
+    errLabel:
+      return rc;
     }
 
     rc_t _create_preset_list( class_preset_t*& presetL, const object_t* presetD )
@@ -404,6 +418,7 @@ namespace cw
         const object_t* class_obj = classCfg->child_ele(i);
         const object_t* varD      = nullptr;
         const object_t* presetD   = nullptr;
+        const object_t* uiD       = nullptr;
         class_desc_t*   cd        = p->classDescA + i;
 
         cd->cfg    = class_obj->pair_value();
@@ -411,6 +426,7 @@ namespace cw
         
         // get the variable description 
         if((rc = cd->cfg->getv_opt("vars",  varD,
+                                   "ui", uiD,
                                    "presets", presetD,
                                    "poly_limit_cnt", cd->polyLimitN)) != kOkRC )
         {
@@ -426,7 +442,7 @@ namespace cw
         
 
         // create the class descripiton
-        if((rc = _create_class_ui_desc(cd)) != kOkRC )
+        if((rc = _create_class_ui_desc(cd, uiD)) != kOkRC )
         {          
           cwLogError(rc,"Class desc UI record create failed on '%s'.",cwStringNullGuard(cd->label));
           goto errLabel;

@@ -107,6 +107,7 @@ namespace cw
     typedef struct ui_proc_desc_str
     {
       const char*  label;     // class label
+      const char*  add_class; // additional DOM class name for this UI element.
       ui_preset_t* presetA;   // presetA[ presetN ]
       unsigned     presetN;      
     } ui_proc_desc_t;
@@ -145,7 +146,7 @@ namespace cw
       // List data structure associated with this variable or nullptr if this varaible is not a list.
       const struct list_str* list;
 
-      // Arbitrary sser settable argument assigned via set_variable_user_arg().
+      // Arbitrary user settable argument assigned via set_variable_user_arg().
       // This value must be dynamically allocated because it will be released via mem::release()
       // in var_destroy().
       void* user_arg;  
@@ -153,6 +154,8 @@ namespace cw
       const char* title; // UI override title from proc inst 'ui' cfg
       bool disable_fl;  // true if this ui var is disabled
       bool hide_fl;     // true if this ui var is hidden
+
+      const char* add_class; // additional DOM class name for this var 
 
       unsigned msgIdA[ kMsgIdN ];
       unsigned msgId_idx;
