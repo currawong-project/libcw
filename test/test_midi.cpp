@@ -6,33 +6,33 @@ using namespace cw::midi;
 
 TEST(MidiTest, UtilityFunctions) {
     // removeCh
-    EXPECT_EQ(removeCh(0x91), 0x90);
-    EXPECT_EQ(removeCh(0x8F), 0x80);
-    EXPECT_EQ(removeCh(0xF0), 0xF0);
+    EXPECT_EQ(removeCh(0x91), 0x90u);
+    EXPECT_EQ(removeCh(0x8F), 0x80u);
+    EXPECT_EQ(removeCh(0xF0), 0xF0u);
 
     // isStatus
-    EXPECT_TRUE(isStatus(0x80));
-    EXPECT_TRUE(isStatus(0x90));
-    EXPECT_TRUE(isStatus(0xF0));
-    EXPECT_TRUE(isStatus(0xFF));
-    EXPECT_FALSE(isStatus(0x7F));
-    EXPECT_FALSE(isStatus(0x00));
+    EXPECT_TRUE(isStatus(0x80u));
+    EXPECT_TRUE(isStatus(0x90u));
+    EXPECT_TRUE(isStatus(0xF0u));
+    EXPECT_TRUE(isStatus(0xFFu));
+    EXPECT_FALSE(isStatus(0x7Fu));
+    EXPECT_FALSE(isStatus(0x00u));
 
     // isChStatus
-    EXPECT_TRUE(isChStatus(0x80));
-    EXPECT_TRUE(isChStatus(0x91));
-    EXPECT_TRUE(isChStatus(0xEF));
-    EXPECT_FALSE(isChStatus(0xF0));
-    EXPECT_FALSE(isChStatus(0x7F));
+    EXPECT_TRUE(isChStatus(0x80u));
+    EXPECT_TRUE(isChStatus(0x91u));
+    EXPECT_TRUE(isChStatus(0xEFu));
+    EXPECT_FALSE(isChStatus(0xF0u));
+    EXPECT_FALSE(isChStatus(0x7Fu));
 
     // isCtlStatus
-    EXPECT_TRUE(isCtlStatus(0xB0));
-    EXPECT_TRUE(isCtlStatus(0xB5));
+    EXPECT_TRUE(isCtlStatus(0xB0u));
+    EXPECT_TRUE(isCtlStatus(0xB5u));
     EXPECT_FALSE(isCtlStatus(0x90));
 
     // isNoteOnStatus
-    EXPECT_TRUE(isNoteOnStatus(0x90));
-    EXPECT_TRUE(isNoteOnStatus(0x9F));
+    EXPECT_TRUE(isNoteOnStatus(0x90u));
+    EXPECT_TRUE(isNoteOnStatus(0x9Fu));
     EXPECT_FALSE(isNoteOnStatus(0x80));
 
     // isNoteOn
