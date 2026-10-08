@@ -1139,7 +1139,8 @@ void cw::flow::proc_destroy( proc_t* proc )
   proc->presetL = nullptr;
       
   proc->varL = nullptr;
-      
+
+  mem::release(proc->ui_title);
   mem::release(proc->label);
   mem::release(proc->varMapA);
   mem::release(proc->modVarMapA);
@@ -1688,8 +1689,10 @@ void cw::flow::var_destroy( variable_t* var )
     if( var->ui_var != nullptr )
       mem::release(var->ui_var->user_arg);
     
-    mem::release(var->label);
+    mem::release(var->label);    
     mem::release(var->ui_title);
+    mem::release(var->ui_btn_title);
+    mem::release(var->ui_add_class);
     mem::release(var);
   }
 }

@@ -124,8 +124,12 @@ namespace cw
       struct variable_str* log_link;        // Link used by proc_t.logVarL;
       
       char*                ui_title;     // class description UI overrides from the proc. inst 'ui' cfg. for this varaible
+      char*                ui_btn_title;
+      char*                ui_add_class;
       bool                 ui_hide_fl;
       bool                 ui_disable_fl;
+      bool                 ui_no_title_fl;
+      bool                 ui_title_to_label_fl;
       
       ui_var_t*            ui_var;       // this variables UI description
       std::atomic<struct variable_str*> ui_var_link; // UI update var link based on flow_t ui_var_head;
@@ -139,7 +143,8 @@ namespace cw
     struct network_str;
 
     enum {
-      kUiCreateProcFl = 0x01
+      kUiCreateProcFl = 0x01,
+      kUiTitleProcFl  = 0x02
     };
 
     typedef struct manual_notify_str
@@ -193,7 +198,9 @@ namespace cw
       time::spec_t prof_dur; // total time spent in this proc
       unsigned     prof_cnt; // total count of calls to this proc
       unsigned     trace_id;
-      
+
+      char* ui_title;
+
     } proc_t;
 
     struct network_preset_str;

@@ -723,7 +723,14 @@ ui: {
 }
 ```
 Proc Var Desc:
-
+```
+flags:[ no_ui,             # do not create a UI for this var
+        ui_disable,        # disable this var on initialization
+		ui_hide,           # hide this var on iniitialization
+		ui_no_title,       # do not show a title for this var
+		ui_title_to_label  # show the title in place of the var label inside the button
+    ]
+```
 ```
 ui: {
   type: meter | list | status
@@ -736,11 +743,14 @@ ui: {
 type: See cawUI.cpp : `_get_widget_type_id()`
 layout: See cawUI.cpp : `_get_var_layout_id()`
 
-Proc Var Instance:
+Proc and Var Instance:
 ```
 ui: { create_fl: true|false, 
+      title_fl: true|false,
+	  title: <>,
       vars:{
-	    <var_label>:{ 'sfx_id':<> 'ch_idx':<>, 'title':<>, 'flags':[hide,show,enable,disable] 
+	    <var_label>:{ 'sfx_id':<> 'ch_idx':<>, 'title':<>, 'btn_title':<>, 'add_class':<>, 
+		              'flags':[hide,show,enable,disable,no_title,title_to_label] 
 	  }
 
     }

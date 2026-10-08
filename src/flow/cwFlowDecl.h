@@ -151,11 +151,14 @@ namespace cw
       // in var_destroy().
       void* user_arg;  
 
-      const char* title; // UI override title from proc inst 'ui' cfg
-      bool disable_fl;  // true if this ui var is disabled
-      bool hide_fl;     // true if this ui var is hidden
+      const char* title;             // UI override title from proc inst 'ui' cfg
+      const char* btn_title;         // btn title from var instance ui:{}
+      const char* add_class;         // additional DOM class name for this var set from var instance ui:{}
+      bool        disable_fl;        // true if this ui var is disabled
+      bool        hide_fl;           // true if this ui var is hidden
+      bool        no_title_fl;       // true if this ui var does not display a title
+      bool        title_to_label_fl; // true if this ui var button should display is's title inside the button
 
-      const char* add_class; // additional DOM class name for this var 
 
       unsigned msgIdA[ kMsgIdN ];
       unsigned msgId_idx;

@@ -1976,6 +1976,8 @@ namespace cw
         unsigned        sfx_id = kBaseSfxId;
         unsigned        ch_idx = kAnyChIdx;
         const char*     title  = nullptr;
+        const char*     btn_title = nullptr;
+        const char*     add_class = nullptr;
         const object_t* flagsL = nullptr;
         variable_t*     var = nullptr;
         
@@ -1992,9 +1994,11 @@ namespace cw
         }
 
         if((rc = var_recd->readv( "sfx_id", kOptFl, sfx_id,
-                                  "ch_idx", kOptFl, ch_idx,
-                                  "title",  kOptFl, title,
-                                  "flags",  kOptFl, flagsL )) != kOkRC )
+                                  "ch_idx",    kOptFl, ch_idx,
+                                  "title",     kOptFl, title,
+                                  "btn_title", kOptFl, btn_title,
+                                  "add_class", kOptFl, add_class,
+                                  "flags",     kOptFl, flagsL )) != kOkRC )
         {
           rc = proc_error(proc,rc,"An error occurred while parsing the 'ui' variable record for '%s'",cwStringNullGuard(var_label));
           goto errLabel;          
@@ -2011,14 +2015,30 @@ namespace cw
           var->ui_title = mem::duplStr(title);
         }
 
+        if( btn_title != nullptr )
+        {
+          var->ui_btn_title = mem::duplStr(btn_title);
+        }
+
+        if( add_class != nullptr )
+        {
+          var->ui_add_class = mem::duplStr(add_class);
+        }
+
 
         if( flagsL != nullptr )
         {
           const object_t* flag = nullptr;
           while((flag = flagsL->next_child_ele(flag)) != nullptr)
           {
-            enum { kHideId, kShowId, kEnableId, kDisableId };
-            idLabelPair_t flagA[] = { {kHideId,"hide"}, {kShowId,"show"}, {kEnableId,"enable"}, {kDisableId,"disable"}, {kInvalidId,nullptr} };
+            enum { kHideId, kShowId, kEnableId, kDisableId, kNoTitleId, kTitleToLabelId };
+            idLabelPair_t flagA[] = { {kHideId,"hide"},
+                                      {kShowId,"show"},
+                                      {kEnableId,"enable"},
+                                      {kDisableId,"disable"},
+                                      {kNoTitleId,"no_title"},
+                                      {kTitleToLabelId,"title_to_label"},
+                                      {kInvalidId,nullptr} };
             
             const char* flag_str = nullptr;
             if( flag->value(flag_str ) != kOkRC )
@@ -2043,6 +2063,14 @@ namespace cw
                 
               case kDisableId:
                 var->ui_disable_fl = true;
+                break;
+
+              case kNoTitleId:
+                var->ui_no_title_fl = true;
+                break;
+
+              case kTitleToLabelId:
+                var->ui_title_to_label_fl = true;
                 break;
                 
               case kInvalidId:
@@ -2070,6 +2098,9 @@ namespace cw
     {
       rc_t rc = kOkRC;
       bool ui_create_fl = false;
+      bool ui_title_fl  = true;
+      const char* ui_proc_title = nullptr;
+      
       const object_t* varsL_cfg = nullptr;
 
       if( pstate.ui_cfg == nullptr )
@@ -2086,6 +2117,8 @@ namespace cw
       
       // parse the optional args
       if((rc = pstate.ui_cfg->getv_opt("create_fl",  ui_create_fl,
+                                       "title_fl",ui_title_fl,
+                                       "title",ui_proc_title,
                                        "vars", varsL_cfg)) != kOkRC )
       {
         goto errLabel;        
@@ -2093,6 +2126,12 @@ namespace cw
       
       if( ui_create_fl )
         proc->flags |= kUiCreateProcFl;
+      
+      if( ui_title_fl )
+        proc->flags |= kUiTitleProcFl;
+
+      if( ui_proc_title != nullptr )
+        proc->ui_title = mem::duplStr(ui_proc_title);
 
       if( varsL_cfg  != nullptr )
         rc = _proc_parse_ui_var_list_cfg(proc,varsL_cfg);
@@ -4176,8 +4215,12 @@ namespace cw
             ui_var->label_sfx_id      = var->label_sfx_id;
             ui_var->has_source_fl     = is_connected_to_source( var );
             ui_var->title             = var->ui_title == nullptr ? var->label : var->ui_title;
+            ui_var->btn_title         = var->ui_btn_title;
+            ui_var->add_class         = var->ui_add_class;
             ui_var->disable_fl        = var->ui_disable_fl || ui_var->has_source_fl || cwIsFlag(var->varDesc->flags,flow::kInitVarDescFl) || cwIsFlag(var->varDesc->flags,flow::kReadOnlyVarDescFl);
             ui_var->hide_fl           = var->ui_hide_fl;
+            ui_var->no_title_fl       = var->ui_no_title_fl || cwIsFlag(var->varDesc->flags,flow::kUiNoTitleVarDescFl);
+            ui_var->title_to_label_fl = var->ui_title_to_label_fl || cwIsFlag(var->varDesc->flags,flow::kUiTitleToLabelVarDescFl);
             ui_var->vid               = var->vid;
             ui_var->ch_cnt            = var_channel_count( net.procA[i], var->label, var->label_sfx_id );
             ui_var->ch_idx            = var->chIdx;
