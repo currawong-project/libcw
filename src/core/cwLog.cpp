@@ -127,7 +127,7 @@ namespace cw
           }
         }
         
-        if( cwIsFlag(p->flags,kFileOutFl) && p->fileH.isValid() )
+        if( cwIsNotFlag(p->flags,kNoFileOutFl) && cwIsFlag(p->flags,kFileOutFl) && p->fileH.isValid() )
         {
           rc_t rc;
           if((rc = file::print(p->fileH,text)) != kOkRC )
@@ -217,7 +217,7 @@ namespace cw
       char*                log_fname = nullptr;
       
       // if file backing was not requested
-      if( !cwIsFlag(p->flags,kFileOutFl) )
+      if( !cwIsFlag(p->flags,kFileOutFl) || cwIsFlag(p->flags,kNoFileOutFl))
         goto errLabel;
       
       // if the log filename is invalid

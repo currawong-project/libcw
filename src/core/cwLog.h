@@ -25,10 +25,11 @@ namespace cw
       kNoFlags         = 0x00,
       kDateTimeFl      = 0x01,  // Print the date/time the log message was generated.
       kFileOutFl       = 0x02,  // Send the log to a file.
-      kConsoleFl       = 0x04,  // Print the log to the console.
-      kSkipQueueFl     = 0x08,  // Print the log message immediately, don't queue the results for later output from exec().
-      kOverwriteFileFl = 0x10,  // Turn off automatic log file versioning, instead use the 'log_fname' parameter literally and overwrite it if it exists.
-      kBufEnableFl     = 0x20,  // Enable text buffer recording
+      kNoFileOutFl     = 0x04,  // Do not send the log to a file
+      kConsoleFl       = 0x08,  // Print the log to the console.
+      kSkipQueueFl     = 0x10,  // Print the log message immediately, don't queue the results for later output from exec().
+      kOverwriteFileFl = 0x20,  // Turn off automatic log file versioning, instead use the 'log_fname' parameter literally and overwrite it if it exists.
+      kBufEnableFl     = 0x40,  // Enable text buffer recording
     };
 
     const unsigned     kDefaultQueueBlkCnt     = 16;

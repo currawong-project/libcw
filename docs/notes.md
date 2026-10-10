@@ -562,6 +562,7 @@ the problem of the logging threads from blocking on the system locks which prote
 ```
 log: { flags:[ `date_time`,      // Include date and time of each log call in the log output
                `file_out`,       // Write the log to the file named below in 'log_filename'.
+			   `no_file_out`,    // Do not write the log to a file (This is the same as not setting 'file_out').
 			   `console`,        // Log to the system console.
 			   `overwrite_file`, // If set overwrite the log file if it exists, otherwise the file name will be versioned to prevent over-writing.
 			   `skip_queue`      // Do not use the internal queue. Send all log messages directly to the output.
