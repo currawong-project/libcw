@@ -2391,6 +2391,7 @@ namespace cw
       enum {
         kCfgFNamePId,
         kMeasPId,
+        kPendingSecPId,
         kMidiInPId,
         kMidiOutPId,
         kBtnBasePId
@@ -2405,6 +2406,7 @@ namespace cw
 
       enum {
         kInvalidStatusId,
+        kPendingStatusId,
         kNextStatusId,
         kPlayingStatusId,
         kDoneStatusId,
@@ -2438,6 +2440,12 @@ namespace cw
         
         unsigned      i_midi_fld_idx;
         unsigned      o_midi_fld_idx;
+
+        unsigned      pending_dur_sec;
+        unsigned      pending_btn_idx;
+        unsigned      pending_cycle_accum;
+        unsigned      pending_cycle_limit;
+        
       } inst_t;
 
       unsigned _next_btn_vid( unsigned btn_idx )
@@ -2543,9 +2551,12 @@ namespace cw
       rc_t _reset( proc_t* proc, inst_t* p, unsigned meas_num )
       {
         rc_t rc       = kOkRC;
-        
-        p->next_btn_idx = kInvalidIdx;
-        p->play_now_btn_idx = kInvalidIdx;
+
+        p->pending_cycle_accum = 0;
+        p->pending_btn_idx     = kInvalidIdx;
+        p->next_btn_idx        = kInvalidIdx;
+        p->play_now_btn_idx    = kInvalidIdx;
+        proc_info(proc,"reset: meas:%i next btn idx:<invalid>",meas_num);
         
         for(unsigned i=0; i<p->btnN; ++i)
         {
@@ -2562,6 +2573,7 @@ namespace cw
             {
               status_id = kNextStatusId;
               p->next_btn_idx = i;
+              proc_info(proc,"reset : next btn idx:%i",p->next_btn_idx);
             }
             else
             {
@@ -2583,6 +2595,8 @@ namespace cw
       rc_t _start_playing(proc_t* proc, inst_t* p, unsigned btn_idx)
       {
         rc_t rc = kOkRC;
+
+        proc_info(proc,"_start_playing btn_idx:%i",btn_idx);
         
         if( btn_idx >= p->btnN )
         {
@@ -2616,6 +2630,8 @@ namespace cw
           m->status = midi::kCtlMdId;
           m->d0     = 20;
           m->d1     = evt_id;
+
+          proc_info(proc,"Send start msg: %i",evt_id);
           
           if((rc = recd_append(p->recd_array, nullptr, p->o_midi_fld_idx, m )) != kOkRC )
           {
@@ -2638,6 +2654,12 @@ namespace cw
           goto errLabel;
         }
 
+        if( p->pending_btn_idx != kInvalidIdx )
+        {
+          proc_warn(proc,"Play requests are ignored while 'pending' actions exist to prevent re-triggering.");
+          goto errLabel;
+        }
+        
         rc = _start_playing(proc,p,p->next_btn_idx);
         
       errLabel:
@@ -2660,12 +2682,53 @@ namespace cw
         return kInvalidIdx;          
       }
 
-      rc_t _set_status_next( proc_t* proc, inst_t* p, unsigned next_btn_idx )
+      rc_t _set_status_pending( proc_t* proc, inst_t* p, unsigned pending_btn_idx )
       {
-
         rc_t rc = kOkRC;
         unsigned target_btn_idx = kInvalidIdx;
+        
+        // for each possible btn
+        for(unsigned i=0; i<p->btnN; ++i)
+        {
+          unsigned status_vid = _status_vid(i);
+          unsigned cur_status = kInvalidStatusId;
+          
+          // get the current status of the btn
+          if((rc = var_get(proc,status_vid,kAnyChIdx,cur_status)) != kOkRC )
+            goto errLabel;
 
+          // if this is the specified button
+          if( i == pending_btn_idx )
+          {
+            // if the current status is not the same as the new status ... then update the status
+            if( cur_status != kPendingStatusId ) 
+              var_set(proc,status_vid,kAnyChIdx,kPendingStatusId );
+
+            target_btn_idx = i;
+          }
+          else
+          {
+            // only one btn can be next - but this one say's it's also 'next'
+            if( cur_status == kPendingStatusId )
+            {
+              proc_warn(proc,"Multiple btn's encoutered with 'pending' status.");
+              unsigned status_id = target_btn_idx == kInvalidIdx ? kDoneStatusId : kWaitingStatusId;
+              
+              var_set(proc,status_vid, kAnyChIdx, status_id );
+            }
+          }            
+        }
+
+      errLabel:
+        return rc;
+        
+      }
+
+      rc_t _set_status_next( proc_t* proc, inst_t* p, unsigned next_btn_idx )
+      {
+        rc_t rc = kOkRC;
+        unsigned target_btn_idx = kInvalidIdx;
+        
         // for each possible btn
         for(unsigned i=0; i<p->btnN; ++i)
         {
@@ -2680,8 +2743,13 @@ namespace cw
           if( i == next_btn_idx )
           {
             // if the current status is not the same as the new status ... then update the status
-            if( cur_status != kNextStatusId ) 
-              var_set(proc,status_vid,kAnyChIdx,kNextStatusId );
+            if( cur_status != kNextStatusId )
+            {
+              if((rc = var_set(proc,status_vid,kAnyChIdx,kNextStatusId )) != kOkRC )
+                goto errLabel;
+              
+              proc_info(proc,"'next' btn status set.");
+            }
 
             target_btn_idx = i;
           }
@@ -2699,6 +2767,8 @@ namespace cw
         }
 
       errLabel:
+        if( rc != kOkRC )
+          proc_error(proc,rc,"Error setting 'next' status.");
         return rc;
         
       }
@@ -2758,9 +2828,15 @@ namespace cw
         }
         else
         {
-          p->next_btn_idx = target_btn_idx + 1;
+          if( p->pending_btn_idx != kInvalidIdx && p->pending_btn_idx != target_btn_idx+1 )
+            proc_warn(proc,"A pending button existed and is being ignored and overwritten.");
+              
+          p->pending_btn_idx = target_btn_idx + 1;
+          p->pending_cycle_accum = 0;
+          
+          proc_info(proc,"pending button advanced to:%i",p->pending_btn_idx);
 
-          rc = _set_status_next(proc,p,p->next_btn_idx);
+          rc = _set_status_pending(proc,p,p->pending_btn_idx);
           
         }
         
@@ -2826,11 +2902,14 @@ namespace cw
       {
         rc_t rc = kOkRC;
 
+        proc_info(proc,"on_midi: 0x%x %i %i",m->status,m->d0,m->d1);
+
         switch( m->status )
         {
           case midi::kPbendMdId:
             {
               unsigned meas = midi::to14Bits( m->d0, m->d1 );
+              proc_info(proc,"pbend reset to meas:%i",meas);
               rc = _reset(proc,p,meas);
             }
             break;
@@ -2873,9 +2952,10 @@ namespace cw
         unsigned      meas_num  = 0;
 
         if((rc = var_register_and_get(proc,kAnyChIdx,
-                                      kCfgFNamePId,"cfg_fname",kBaseSfxId, cfg_fname,
-                                      kMeasPId,    "meas",   kBaseSfxId,meas_num,
-                                      kMidiInPId,  "midi_in",kBaseSfxId,i_rbuf)) != kOkRC )
+                                      kCfgFNamePId,  "cfg_fname",   kBaseSfxId, cfg_fname,
+                                      kMeasPId,      "meas",        kBaseSfxId,meas_num,
+                                      kPendingSecPId,"pending_sec", kBaseSfxId, p->pending_dur_sec,
+                                      kMidiInPId,    "midi_in",     kBaseSfxId,i_rbuf)) != kOkRC )
         {
           goto errLabel;
         }
@@ -2932,7 +3012,11 @@ namespace cw
         if((rc = recd_array_field_index(p->recd_array,"midi",p->o_midi_fld_idx)) != kOkRC )
           goto errLabel;
 
+        p->pending_cycle_limit= (p->pending_dur_sec * proc->ctx->sample_rate) / proc->ctx->framesPerCycle;
+        proc_info(proc,"Pending duration %i sec's %i cycles",p->pending_dur_sec,p->pending_cycle_limit);
+        
         _reset( proc, p, 1 );
+
         
       errLabel:        
         return rc;
@@ -3045,6 +3129,19 @@ namespace cw
             goto errLabel;
         }
 
+        // check if there is a 'pending' next button
+        if( p->pending_btn_idx != kInvalidIdx )
+        {
+          p->pending_cycle_accum += 1;
+          if( p->pending_cycle_accum >= p->pending_cycle_limit )
+          {
+            proc_info(proc,"Pending expired - setting next.");
+            p->next_btn_idx = p->pending_btn_idx; // the pending button becomes the next button
+            p->pending_btn_idx = kInvalidIdx;
+            p->pending_cycle_accum = 0;
+            _set_status_next(proc,p,p->next_btn_idx);
+          }
+        }
         
       errLabel:
         
