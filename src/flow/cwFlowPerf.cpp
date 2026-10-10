@@ -2088,9 +2088,7 @@ namespace cw
         kMidiFldPId,
         kResetPId,
 
-        kPerfFlPId,
         kPerfCtlFlPId,
-        kShmFlPId,
 
         kPriManualSelPId,
         kSecManualSelPId,
@@ -2439,9 +2437,7 @@ namespace cw
 
         if((rc = var_register( proc, kAnyChIdx,
                                kResetPId,        "reset",          kBaseSfxId,
-                               kPerfFlPId,       "perf_fl",        kBaseSfxId,
                                kPerfCtlFlPId,    "perf_ctl_fl",    kBaseSfxId,
-                               kShmFlPId,        "shm_fl",         kBaseSfxId,
                                kPerNoteFlPId,    "per_note_fl",    kBaseSfxId,
                                kPerLocFlPId,     "per_loc_fl",     kBaseSfxId  )) != kOkRC )
         {
@@ -2836,8 +2832,8 @@ namespace cw
         {
           midi::ch_msg_t* m              = nullptr;
           unsigned        loc_id         = kInvalidId;
-          bool            perf_fl        = false;
-          bool            shm_fl         = false;
+          //bool            perf_fl        = false;
+          //bool            shm_fl         = false;
           unsigned        pri_preset_idx = kInvalidIdx;
           unsigned        sec_preset_idx = kInvalidIdx;
           const recd_t*   i_r            = i_rbuf->recd_array->recdA + i;
@@ -2905,12 +2901,6 @@ namespace cw
 
             proc_info(proc,"%i %i %i :  v:%i :  %i %i",m->status,m->d0,m->d1,voice_idx,pri_preset_idx,sec_preset_idx);
           }
-
-          if( var_get(proc,kPerfFlPId, kAnyChIdx, perf_fl) != kOkRC )
-            goto errLabel;
-          
-          if( var_get(proc,kShmFlPId, kAnyChIdx, shm_fl ) != kOkRC )
-            goto errLabel;
           
           // set the output record
           if((rc = recd_append( p->recd_array, i_rbuf->recd_array->recdA+i,
