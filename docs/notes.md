@@ -745,9 +745,9 @@ layout: See cawUI.cpp : `_get_var_layout_id()`
 
 Proc and Var Instance:
 ```
-ui: { create_fl: true|false, 
-      title_fl: true|false,
-	  title: <>,
+ui: { create_fl: true|false,  # Create a UI for this proc.
+      title_fl: true|false,   # Show a title for this proc
+	  title: <>,              # Override the default title
       vars:{
 	    <var_label>:{ 'sfx_id':<> 'ch_idx':<>, 'title':<>, 'btn_title':<>, 'add_class':<>, 
 		              'flags':[hide,show,enable,disable,no_title,title_to_label] 
