@@ -1130,7 +1130,7 @@ namespace cw
       // parse the sections and determine the sizes of the location and note arrays
       if((rc = _parse_sections_pass_1( p, p->file_cfg )) != kOkRC )
       {
-        rc = cwLogError(rc,"Section parse 1 failed.");
+        rc = cwLogError(rc,"Section parse pass 1 failed.");
         goto errLabel;
       }
 
@@ -1154,7 +1154,7 @@ namespace cw
       // fill in p->locA[] and p->noteA[]
       if((rc = _parse_sections_pass_2(p, p->file_cfg )) != kOkRC )
       {
-        rc = cwLogError(rc,"Section parse 2 failed.");
+        rc = cwLogError(rc,"Section parse pass 2 failed.");
         goto errLabel;
       }
 
