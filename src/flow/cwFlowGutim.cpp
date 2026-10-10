@@ -2323,7 +2323,7 @@ namespace cw
           }
 
           // this is a valid score-followed note-on record
-          if( perf_note_idx != kInvalidIdx )
+          if( perf_note_idx != kInvalidIdx && loc_id != kInvalidId )
           {
             // pass the score-followed note on to the GUTIM-meas object
             if((rc = on_note( p->gmH, perf_note_idx, loc_id, sec, m->d0, score_vel )) != kOkRC )
