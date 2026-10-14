@@ -51,8 +51,7 @@ cw::rc_t cw::score_follow_3::_exec_impl( sf_t* p, double perf_sec )
   return rc;
 }
 
-cw::rc_t cw::score_follow_3::_is_done_impl( sf_t* p )
+bool cw::score_follow_3::_is_done_impl( sf_t* p )
 {
-  rc_t rc = kOkRC;
-  return rc;
+  return false;
 }

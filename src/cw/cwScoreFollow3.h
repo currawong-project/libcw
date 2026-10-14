@@ -52,6 +52,7 @@ namespace cw
       unsigned          perf_uid;        // uid of a performed note
       unsigned          loc_id;          // Location assocated with this or kInvalidId if no location
       match_status_id_t match_status_id; // The type of score match this result represents.
+      double            confidence;
     } result_t;
 
     // This function 

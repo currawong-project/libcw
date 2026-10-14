@@ -65,7 +65,7 @@ namespace cw
         // track the min and max location id's and verify that the location id's are in increasing order
         if( se.loc_id < p->min_score_loc_id || se.loc_id < p->max_score_loc_id )
         {
-          cwLogError(kInvalidStateRC,"The location id's should be in increasing order. line:%i min:%i %i max:%i",i+1,p->min_score_loc_id,se.loc_id,p->max_score_loc_id);
+          rc = cwLogError(kInvalidStateRC,"The location id's should be in increasing order. line:%i min:%i %i max:%i",i+1,p->min_score_loc_id,se.loc_id,p->max_score_loc_id);
           goto errLabel;
         }
 
@@ -75,7 +75,7 @@ namespace cw
         // verify that the score events are given in time order
         if( se.sec < max_sec )
         {
-          cwLogError(kInvalidStateRC,"The score events must be in strictly increasing time order. line:%i (%f max:%f).", i+1,se.sec,max_sec);
+          rc = cwLogError(kInvalidStateRC,"The score events must be in strictly increasing time order. line:%i (%f max:%f).", i+1,se.sec,max_sec);
           goto errLabel;
         }
         else
@@ -147,6 +147,8 @@ namespace cw
         
       }
 
+      p->locN = loc_idx+1;
+
     errLabel:
       if( rc != kOkRC )
         rc = cwLogError(rc,"The location array create failed.");
@@ -176,12 +178,18 @@ namespace cw
         goto errLabel;
       }
       
-      if((rc = _loc_id_to_index(p,beg_loc_id,p->active_beg_loc_idx)) != kOkRC )
+      if((rc = _loc_id_to_index(p,end_loc_id,p->active_end_loc_idx)) != kOkRC )
       {
         goto errLabel;
       }
-
+      
       p->perf_base_time = std::numeric_limits<double>::infinity();
+
+      if((rc = _reset_impl(p)) != kOkRC )
+      {
+        rc = cwLogError(rc,"Rset implementation failed.");
+        goto errLabel;
+      }
       
     errLabel:
       if( rc != kOkRC )
@@ -212,15 +220,16 @@ cw::rc_t cw::score_follow_3::create( handle_t& hRef, const args_t& args, const s
     goto errLabel;
   }
   
+  if((rc = _create_impl(p,args)) != kOkRC )
+  {
+    goto errLabel;
+  }
+  
   if((rc = _reset(p,p->min_score_loc_id, p->max_score_loc_id)) != kOkRC )
   {
     goto errLabel;
   }
 
-  if((rc = _create_impl(p,args)) != kOkRC )
-  {
-    goto errLabel;
-  }
 
   hRef.set(p);
 
@@ -261,11 +270,6 @@ cw::rc_t cw::score_follow_3::reset( handle_t h, unsigned beg_loc_id, unsigned en
     goto errLabel;
   }
 
-  if((rc = _reset_impl(p)) != kOkRC )
-  {
-    rc = cwLogError(rc,"Rset implementation failed.");
-    goto errLabel;
-  }
 errLabel:
   return rc;
 }
@@ -332,7 +336,6 @@ errLabel:
 
 bool cw::score_follow_3::is_done( handle_t h )
 {
-  rc_t rc = kOkRC;
   sf_t* p = _handleToPtr(h);
   return _is_done_impl(p);
 }

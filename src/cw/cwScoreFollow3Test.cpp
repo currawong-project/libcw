@@ -34,10 +34,15 @@ namespace cw
       unsigned     beg_loc_id;
       unsigned     end_loc_id;
       
-      char*        fname;
+      char*        perf_fname;
+      char*        result_fname;
       
       perf_note_t* noteA;
       unsigned     noteN;
+
+      result_t*    resultA;
+      unsigned     resultN;
+      
     } run_args_t;
     
     typedef struct test_cfg_str
@@ -45,6 +50,7 @@ namespace cw
       double      srate;
       unsigned    smp_per_cycle;
       char*       score_fname;
+      char*       out_dir;
 
       args_t      sf_args;
 
@@ -63,13 +69,16 @@ namespace cw
       for(unsigned i=0; i<test_args.run_argsN; ++i)
       {
         mem::release(test_args.run_argsA[i].noteA);
-        mem::release(test_args.run_argsA[i].fname);        
+        mem::release(test_args.run_argsA[i].resultA);
+        mem::release(test_args.run_argsA[i].perf_fname);
+        mem::release(test_args.run_argsA[i].result_fname);
       }
       
       test_args.run_argsN = 0;
       mem::release(test_args.score_evtA);
       mem::release(test_args.run_argsA);
       mem::release(test_args.score_fname);
+      mem::release(test_args.out_dir);
       
       return rc;
     }
@@ -83,16 +92,16 @@ namespace cw
       unsigned       line_idx     = 0;
       unsigned       line_cnt = kInvalidCnt;
 
-      if((rc = file::open(fH,run_args.fname,file::kReadFl)) != kOkRC )
+      if((rc = file::open(fH,run_args.perf_fname,file::kReadFl)) != kOkRC )
       {
-        rc = cwLogError(rc,"Performance file open failed on '%s'.",cwStringNullGuard(run_args.fname));
+        rc = cwLogError(rc,"Performance file open failed on '%s'.",cwStringNullGuard(run_args.perf_fname));
         goto errLabel;
                         
       }
 
       if((rc = lineCount(fH,line_cnt)) != kOkRC )
       {
-        rc = cwLogError(rc,"The line count of the performance file '%s' could not be determined.",cwStringNullGuard(run_args.fname));
+        rc = cwLogError(rc,"The line count of the performance file '%s' could not be determined.",cwStringNullGuard(run_args.perf_fname));
         goto errLabel;
       }
 
@@ -144,6 +153,9 @@ namespace cw
         }        
       }
 
+      run_args.resultN = run_args.noteN;
+      run_args.resultA = mem::allocZ<result_t>(run_args.resultN);
+      
       if( rc == kEofRC )
         rc = kOkRC;
       
@@ -153,7 +165,7 @@ namespace cw
 
       if( rc != kOkRC )
       {
-        rc = cwLogError(rc,"Parsing failed on the performance file '%s'.",cwStringNullGuard(run_args.fname));
+        rc = cwLogError(rc,"Parsing failed on the performance file '%s'.",cwStringNullGuard(run_args.perf_fname));
       }
       return rc;
     }
@@ -176,6 +188,35 @@ namespace cw
     errLabel:
       return rc;
       
+    }
+
+    rc_t _form_result_file_name( const char* out_dir, const char* in_fname, char*& out_fname_ref )
+    {
+      rc_t                 rc = kOkRC;
+      filesys::pathPart_t* pp = nullptr;
+      char*                fn = nullptr;
+
+      
+      out_fname_ref = nullptr;
+
+      if((pp = filesys::pathParts(in_fname)) == nullptr )
+      {
+        rc = cwLogError(kOpFailRC,"The performance input file name '%s' could not be parsed.",cwStringNullGuard(in_fname));
+        goto errLabel;
+      }
+
+      if((out_fname_ref = filesys::makeFn(out_dir, pp->fnStr, ".csv", nullptr )) == nullptr )
+      {
+        goto errLabel;
+      }
+
+    errLabel:
+      mem::release(pp);
+
+      if( rc != kOkRC )
+        rc = cwLogError(rc,"The output filename could not be formed.");
+
+      return rc;
     }
     
     rc_t _parse_perf_list_cfg( const object_t* perf_cfgL, test_args_t& test_args )
@@ -210,7 +251,7 @@ namespace cw
         }
 
         // expand the filename
-        if((ra.fname = filesys::expandPath(fname)) == nullptr )
+        if((ra.perf_fname = filesys::expandPath(fname)) == nullptr )
         {
           rc = cwLogError(rc,"Performance file path expansion failed on '%s'.",cwStringNullGuard(fname));
           goto errLabel;
@@ -221,6 +262,12 @@ namespace cw
         {
           goto errLabel;
         }
+
+        if((rc = _form_result_file_name( test_args.out_dir, ra.perf_fname, ra.result_fname )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
 
         // convert the start measure to a score location
         if((rc = _meas_to_loc_id(test_args,ra.beg_meas_num,ra.beg_loc_id)) != kOkRC )
@@ -234,7 +281,7 @@ namespace cw
           goto errLabel;
         }
 
-        cwLogInfo("Perf notes:%i meas:%i-%i loc:%i-%i %s.",ra.noteN,ra.beg_meas_num,ra.end_meas_num,ra.beg_loc_id,ra.end_loc_id,cwStringNullGuard(ra.fname));
+        cwLogInfo("Perf notes:%i meas:%i-%i loc:%i-%i %s.",ra.noteN,ra.beg_meas_num,ra.end_meas_num,ra.beg_loc_id,ra.end_loc_id,cwStringNullGuard(ra.perf_fname));
         
       }
     errLabel:
@@ -257,7 +304,7 @@ namespace cw
         goto errLabel;
       }
 
-      sf_args.exec_period_sec = srate/smp_per_cycle;
+      sf_args.exec_period_sec = smp_per_cycle/srate;
       
     errLabel:
       return rc;
@@ -414,6 +461,7 @@ namespace cw
     {
       rc_t            rc          = kOkRC;
       const char*     score_fname = nullptr;
+      const char*     out_dir     = nullptr;
       const object_t* perf_cfgL   = nullptr;
       const object_t* sf_cfg      = nullptr;
 
@@ -421,6 +469,7 @@ namespace cw
       if((rc = cfg->getv("srate",test_args.srate,
                          "smp_per_cycle",test_args.smp_per_cycle,
                          "score_fname",score_fname,
+                         "out_dir",out_dir,
                          "perfL", perf_cfgL,
                          "follower",sf_cfg)) != kOkRC )
       {
@@ -432,6 +481,12 @@ namespace cw
       if(( test_args.score_fname = filesys::expandPath(score_fname)) == nullptr )
       {
         rc = cwLogError(rc,"Score file name expansion failed.");
+        goto errLabel;
+      }
+
+      if(( test_args.out_dir = filesys::expandPath(out_dir)) == nullptr )
+      {
+        rc = cwLogError(rc,"The output directory name expansion failed.");
         goto errLabel;
       }
 
@@ -466,9 +521,83 @@ namespace cw
       return rc;
     }
 
+    rc_t _write_result_json( const run_args_t& ra, unsigned result_cnt )
+    {
+      rc_t rc = kOkRC;
+      
+      object_t* root    = newDictObject();
+      object_t* resultL = newListObject();
+      root->insert_pair("resultL",resultL);
+
+      for(unsigned i=0; i<result_cnt; ++i)
+      {
+        const result_t& res = ra.resultA[i];
+        object_t* d = newDictObject(resultL);
+        d->insert_pair("perf_uid",res.perf_uid);
+        d->insert_pair("loc_id",res.loc_id);
+        d->insert_pair("match_status_id", res.match_status_id);
+        d->insert_pair("confidence", res.confidence);
+      }
+
+      if((rc = objectToFile( ra.result_fname, root )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Result file write failed on '%s'.",cwStringNullGuard(ra.result_fname));
+        goto errLabel;
+      }
+
+    errLabel:
+      if( root != nullptr )
+        root->free();
+
+      return rc;
+    }
+
+    rc_t _write_result_csv( const run_args_t& ra, unsigned result_cnt )
+    {
+      rc_t rc = kOkRC;
+      file::handle_t fH;
+      
+      if((rc = file::open(fH,ra.result_fname,file::kWriteFl)) != kOkRC )
+      {
+        goto errLabel;
+      }
+
+      if((rc = file::printf(fH,"perf_uid,loc_id,match_status_id,confidence\n")) != kOkRC )
+      {
+        rc = cwLogError(rc,"Title write failed.");
+        goto errLabel;
+      }
+      
+      for(unsigned i=0; i<result_cnt; ++i)
+      {
+        const result_t& res = ra.resultA[i];
+        if((rc = file::printf(fH,"%i,%i,%i,%f\n",res.perf_uid,res.loc_id,res.match_status_id,res.confidence)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Data write failed on line index:%i.",i);
+          goto errLabel;
+        }
+      }
+      
+    errLabel:
+      file::close(fH);
+
+      if( rc != kOkRC )
+        rc = cwLogError(rc,"Result file write failed on file '%s'.",cwStringNullGuard(ra.result_fname));
+      
+      return rc;
+    }
+
     rc_t _run_test( test_args_t& test_args, handle_t sfH, const run_args_t& r )
     {
-      rc_t              rc = kOkRC;
+      rc_t   rc   = kOkRC;
+      double sec0 = 0.0;
+      unsigned note_idx = 0;
+      
+      if( r.noteN == 0 )
+      {
+        rc = cwLogError(kInvalidStateRC,"The performance note list is empty.");
+        goto errLabel;
+      }
 
       // Reset the active score follower section to beg_loc_id:end_loc_id
       if((rc = reset(sfH,r.beg_loc_id,r.end_loc_id)) != kOkRC )
@@ -477,14 +606,31 @@ namespace cw
         goto errLabel;
       }
 
+      sec0 = r.noteA[0].sec;
+      
       // for each performed note ...
-      for(unsigned i=0; i<r.noteN; ++i)
+      for(note_idx=0; note_idx<r.noteN; ++note_idx)
       {
         result_t          result;
-        const perf_note_t note = r.noteA[i];
+        const perf_note_t note = r.noteA[note_idx];
+        double            dsec = note.sec - sec0;
+
+        assert(dsec >= 0);
+
+        // run 'exec' for the elapsed time between notes
+        for(double exec_sec = sec0; note_idx>0 && exec_sec < note.sec; exec_sec += test_args.sf_args.exec_period_sec )
+        {
+          if((rc = exec(sfH,exec_sec)) != kOkRC )
+          {
+            rc = cwLogError(rc,"Score follower 'exec' failed.");
+            goto errLabel;
+          }
+        }
+        
+        sec0 = note.sec;
 
         // submit the note to the score follower
-        if((rc = on_new_note(sfH,note.uid,note.sec,note.pitch,note.vel,result)) != kOkRC )
+        if((rc = on_new_note(sfH,note.uid,note.sec,note.pitch,note.vel,r.resultA[note_idx])) != kOkRC )
         {
           rc = cwLogError(rc,"Score follower failed on note uid:%i.",note.uid);
           goto errLabel;
@@ -493,8 +639,11 @@ namespace cw
       }
 
     errLabel:
+
+      _write_result_csv(r,note_idx);
+      
       if( rc != kOkRC )
-        cwLogError(rc,"Run test failed on '%s'.",cwStringNullGuard(r.fname));
+        cwLogError(rc,"Run test failed on '%s'.",cwStringNullGuard(r.perf_fname));
       return rc;
       
     }

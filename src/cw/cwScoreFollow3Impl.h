@@ -56,8 +56,6 @@ namespace cw
       unsigned active_beg_loc_idx; // Currently active score segment 
       unsigned active_end_loc_idx;
 
-      unsigned wnd_beg_loc_idx;  // search window location extents centered on this location
-      unsigned wnd_end_loc_idx;
       
       double perf_base_time;
     } sf_t;
@@ -69,7 +67,7 @@ namespace cw
     rc_t _reset_impl( sf_t* p );
     rc_t _on_new_note_impl( sf_t* p, unsigned uid, double perf_sec, unsigned pitch, unsigned vel, result_t& result_ref );
     rc_t _exec_impl( sf_t* p, double perf_sec );
-    rc_t _is_done_impl( sf_t* p );
+    bool _is_done_impl( sf_t* p );
     
   }
 }

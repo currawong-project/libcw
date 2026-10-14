@@ -6,7 +6,7 @@ An example set of arguments for the harness is contained in the `sf3` stanza of 
 
 As it is sf3 has no implementation it only sets up the data structures to allow
 flexible searching of the score. The actual implementation will be contained in
-`src/cw/cwScoreFollower3Impl.h` and `src/cw/cwScoreFollower3Impl.cpp`.
+`src/cw/cwScoreFollow3Impl.h` and `src/cw/cwScoreFollow3Impl.cpp`.
 
 
 The primary instrument sf3 is intended to follow is piano.
