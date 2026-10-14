@@ -46,6 +46,7 @@
 #include "cwPresetSel.h"
 
 #include "cwScoreFollow2Test.h"
+#include "cwScoreFollow3Test.h"
 #include "cwMidiDetectors.h"
 
 #include "cwCsv.h"
@@ -306,6 +307,7 @@ cw::rc_t midiStateTest(      const cw::object_t* cfg, const cw::object_t* args, 
 cw::rc_t csvTest(            const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::csv::test(args); }
 cw::rc_t translateFrags(     const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::preset_sel::translate_frags(args); }
 cw::rc_t scoreFollow2(       const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::score_follow_2::test(args); }
+cw::rc_t scoreFollow3(       const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::score_follow_3::test(args); }
 cw::rc_t midiDetect(         const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::midi_detect::test(args); }
 cw::rc_t threadSTasks(       const cw::object_t* cfg, const cw::object_t* args, int argc, const char* argv[] ) { return cw::thread_stasks::test(args); } 
 
@@ -684,6 +686,7 @@ int main( int argc, const char* argv[] )
    { "csv", csvTest },
    { "translate_frags", translateFrags },
    { "sf2", scoreFollow2 },
+   { "sf3", scoreFollow3 },
    { "midi_detect",midiDetect},
    {"thread_stasks",threadSTasks},
    { "stub", stubTest },
