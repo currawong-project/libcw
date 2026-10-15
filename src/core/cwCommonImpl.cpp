@@ -41,6 +41,18 @@ namespace cw
     return p;    
   }
 
+  const idLabelPair_t* _labelToSlot( const idLabelPair_t* array, const char* label, unsigned eolId )
+  {
+    const idLabelPair_t* p = array;
+
+    if( label != nullptr )
+      for(; p->id != eolId; ++p)
+        if( p->label != nullptr && std::strcmp(label,p->label) == 0 )
+          break;
+
+    return p;
+    
+  }
   
 }
 
@@ -91,14 +103,26 @@ const char* cw::idToLabel( const idLabelPair_t* array, unsigned id, unsigned eol
 
 unsigned cw::labelToId( const idLabelPair_t* array, const char* label, unsigned eolId )
 {
-  const idLabelPair_t* p = array;
+  const idLabelPair_t* p = _labelToSlot(array,label,eolId);
 
-  if( label != nullptr )
-    for(; p->id != eolId; ++p)
-      if( p->label != nullptr && std::strcmp(label,p->label) == 0 )
-        return p->id;
+  return p->id;  
+}
 
-  return eolId;
+cw::rc_t cw::labelToId( const idLabelPair_t* array, const char* label, unsigned eolId, unsigned& id_ref )
+{
+  rc_t rc = kOkRC;
+  const idLabelPair_t* p = _labelToSlot(array,label,eolId);
+
+  if(p->id != eolId )
+    id_ref = p->id;
+  else
+  {
+    id_ref = eolId;
+    rc = kEleNotFoundRC;
+  }
+
+  return rc;
+  
 }
 
 void cw::sleepSec( unsigned secs )
