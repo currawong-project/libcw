@@ -945,6 +945,107 @@ namespace cw
       return rc;
     }
 
+    double _pct( unsigned n, unsigned d )
+    { return d==0 ? 0.0 : (100.0 * n) / d; }
+
+    // Compare the follower results to the ground truth and print a summary.
+    // Results whose perf. note has no ground-truth record, or whose ground-truth status is 'blank', are not scored.
+    rc_t _report_gnd_truth_score( const test_args_t& ta, const run_args_t& ra, unsigned result_cnt )
+    {
+      rc_t           rc            = kOkRC;
+      const unsigned statusN       = kNoMatchTId + 1;
+      unsigned       confuseM[ statusN ][ statusN ] = {};  // confuseM[ gnd-truth status ][ result status ]
+      unsigned       gt_label_cnt  = 0;  // count of gnd-truth records with a non-blank status
+      unsigned       scored_cnt    = 0;  // count of results that were compared to a gnd-truth record
+      unsigned       status_ok_cnt = 0;  // count of results whose status matches the gnd-truth status
+      unsigned       loc_cnt       = 0;  // count of gnd-truth 'match' and 'mismatch' records which were scored
+      unsigned       loc_ok_cnt    = 0;  // count of results whose location matches a gnd-truth 'match' or 'mismatch' location
+      unsigned       agree_cnt     = 0;  // count of results that agree with the gnd-truth in both status and location
+
+      for(unsigned i=0; i<ra.gnd_truthN; ++i)
+        if( ra.gnd_truthA[i].status != kBlankTId )
+          gt_label_cnt += 1;
+
+      if( ta.sf_args.report_level >= 2 )
+        cwLogInfo("Ground truth disagreements: %s",cwStringNullGuard(ra.gnd_truth_fname));
+
+      // for each result
+      for(unsigned i=0; i<result_cnt; ++i)
+      {
+        const result_t&         res      = ra.resultA[i];
+        const gnd_truth_note_t* gt       = _uid_to_gnd_truth_note(ra, res.perf_uid, kInvalidIdx );
+        bool                    loc_fl   = false;
+        bool                    status_fl= false;
+        bool                    loc_ok_fl= true;
+        unsigned                res_meas = 0;
+
+        // skip results which are not labeled in the gnd-truth
+        if( gt == nullptr || gt->status == kBlankTId )
+          continue;
+
+        if( res.match_status_id >= statusN )
+        {
+          rc = cwLogError(kInvalidStateRC,"An unknown result match status id %i was encountered on perf uid:%i.",res.match_status_id,res.perf_uid);
+          goto errLabel;
+        }
+
+        scored_cnt += 1;
+        confuseM[ gt->status ][ res.match_status_id ] += 1;
+
+        status_fl = res.match_status_id == gt->status;
+        if( status_fl )
+          status_ok_cnt += 1;
+
+        // only 'match' and 'mismatch' gnd-truth records have a location to compare against
+        loc_fl = gt->status == kMatchTId || gt->status == kMismatchTId;
+        if( loc_fl )
+        {
+          loc_cnt  += 1;
+          loc_ok_fl = res.loc_id == gt->loc_id;
+          if( loc_ok_fl )
+            loc_ok_cnt += 1;
+        }
+
+        if( status_fl && loc_ok_fl )
+        {
+          agree_cnt += 1;
+          continue;
+        }
+
+        if( ta.sf_args.report_level >= 2 )
+        {
+          if((rc = _loc_id_to_meas( ta, res.loc_id, res_meas )) != kOkRC )
+            goto errLabel;
+
+          cwLogInfo("uid:%5i pitch:%3i  gt: loc:%5i meas:%3i %-8s  sf: loc:%5i meas:%3i %-8s conf:%5.3f",
+                    res.perf_uid, gt->pitch,
+                    gt->loc_id==kInvalidId ? -1 : (int)gt->loc_id, gt->meas_num, cwStringNullGuard(match_status_id_to_label(gt->status)),
+                    res.loc_id==kInvalidId ? -1 : (int)res.loc_id, res_meas,     cwStringNullGuard(match_status_id_to_label(res.match_status_id)),
+                    res.confidence);
+        }
+      }
+
+      cwLogInfo("Ground truth score: %s",cwStringNullGuard(ra.perf_fname));
+      cwLogInfo("  labeled:%i scored:%i (labeled notes not reached by the run:%i)",gt_label_cnt,scored_cnt,gt_label_cnt-scored_cnt);
+      cwLogInfo("  agree (status and loc): %4i / %4i  %6.2f%%",agree_cnt,scored_cnt,_pct(agree_cnt,scored_cnt));
+      cwLogInfo("  status correct:         %4i / %4i  %6.2f%%",status_ok_cnt,scored_cnt,_pct(status_ok_cnt,scored_cnt));
+      cwLogInfo("  loc correct:            %4i / %4i  %6.2f%%  (gt match + mismatch only)",loc_ok_cnt,loc_cnt,_pct(loc_ok_cnt,loc_cnt));
+
+      // print the confusion matrix: rows=gnd-truth status, columns=result status
+      cwLogInfo("  confusion (rows=gt, cols=sf):  %8s %8s %8s %8s",
+                match_status_id_to_label(kBlankTId),match_status_id_to_label(kMatchTId),match_status_id_to_label(kMismatchTId),match_status_id_to_label(kNoMatchTId));
+
+      for(unsigned gt_tid=kMatchTId; gt_tid<statusN; ++gt_tid)
+        cwLogInfo("  %28s:  %8i %8i %8i %8i",
+                  match_status_id_to_label((match_status_id_t)gt_tid),
+                  confuseM[gt_tid][kBlankTId],confuseM[gt_tid][kMatchTId],confuseM[gt_tid][kMismatchTId],confuseM[gt_tid][kNoMatchTId]);
+
+    errLabel:
+      if( rc != kOkRC )
+        rc = cwLogError(rc,"Ground truth scoring failed on '%s'.",cwStringNullGuard(ra.perf_fname));
+      return rc;
+    }
+
     rc_t _run_test( test_args_t& test_args, handle_t sfH, const run_args_t& r )
     {
       rc_t   rc   = kOkRC;
@@ -1001,7 +1102,11 @@ namespace cw
         rc1 = _write_result_json(test_args,r,note_idx);
       else
         rc1 = _write_result_csv(test_args,r,note_idx);
-      
+
+      // if ground truth was given then score the results
+      if( r.gnd_truthA != nullptr )
+        rc1 = rcSelect(rc1,_report_gnd_truth_score(test_args,r,note_idx));
+
       if( rc != kOkRC )
         cwLogError(rc,"Run test failed on '%s'.",cwStringNullGuard(r.perf_fname));
       
