@@ -155,9 +155,9 @@ namespace cw
     // 
     // char* buf        = nullptr;
     // unsigned  bufByteCnt = 0;
-    // while(fileGetLineAuto(h,&buf,bufByteRef)==kOkRC)
+    // while(getLineAuto(h,&buf,bufByteRef)==kOkRC)
     //   proc(buf);
-    // cmMemPtrFree(buf);
+    // mem::release(buf);
     //
     // On the first call to this function *bufPtrPtr must be set to nullptr and
     // bufByteCntRef must be set to 0.
