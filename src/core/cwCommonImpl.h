@@ -171,6 +171,9 @@ namespace cw
   // Returns eolId if the id is not found.
   unsigned    labelToId( const idLabelPair_t* array, const char* label, unsigned eolId );
 
+  // Return kEleNotFound if the label is not found
+  rc_t        labelToId( const idLabelPair_t* array, const char* label, unsigned eolId, unsigned& id_ref );
+
 
   template< typename T >
   struct id_label_pair_tpl

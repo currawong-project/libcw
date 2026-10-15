@@ -36,7 +36,7 @@ namespace cw
       
       unsigned* note_match_cntA;  // note_match_cntA[ sf->noteN ]
       unsigned* loc_match_cntA;   // loc_match_cntA[ sf->locN ]
-      float*    expV;             // expV[ sf->pitchN ]
+      float*    expV;             // expV[ sf->noteN ]
 
       unsigned prv_loc_idx; // loc reported on the previous cycle
       unsigned exp_loc_idx; // expected location on this cycle

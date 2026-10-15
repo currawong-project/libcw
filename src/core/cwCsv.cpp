@@ -260,7 +260,7 @@ namespace cw
       
       fieldStr_Ref = nullptr;
   
-      if( colIdx > p->curColCnt || p->colA[colIdx].char_idx == kInvalidIdx )
+      if( colIdx == kInvalidIdx || colIdx >= p->curColCnt || p->colA[colIdx].char_idx == kInvalidIdx )
       {
         rc = cwLogError(kInvalidArgRC,"The CSV column index '%i' is not valid on line index:%i. Field count:%i", colIdx,p->curLineIdx,p->curColCnt );
         goto errLabel;
