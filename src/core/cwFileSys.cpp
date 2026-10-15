@@ -890,7 +890,8 @@ char* cw::filesys::makeVersionedDirectory(const char* recordDir, const char* rec
 
 cw::rc_t cw::filesys::makeDir( const char* dirStr )
 {
-
+  rc_t rc= kOkRC;
+  
   if( textLength(dirStr) == 0 )
     return kOkRC;
   
@@ -898,11 +899,15 @@ cw::rc_t cw::filesys::makeDir( const char* dirStr )
 
   if( !isDir(s) )
     if( mkdir(s, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) != 0 )
-      return cwLogSysError( kOpFailRC, errno, "The attempt to create the directory '%s' failed.",dirStr);
-
+    {
+      rc = cwLogSysError( kOpFailRC, errno, "The attempt to create the directory '%s' failed.",dirStr);
+      goto errLabel;
+    }
+  
+errLabel:
   mem::release(s);
   
-  return kOkRC;
+  return rc;
 }
 
 cw::rc_t cw::filesys::rmDir( const char* dirStr )
