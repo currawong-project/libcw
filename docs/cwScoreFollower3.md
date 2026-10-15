@@ -71,7 +71,7 @@ Given a performed note there are 3 possible matching classifications:
 1. 'Match' : The pitch of the note is found to match the the pitch of a nearby score location.
 2. 'Mismatch' : The note time stamp matches to a score location but does not match a pitch at that location.
 In effect the note was played at the right time but with the wrong pitch.
-3. 'Spurious': This note matches in neither pitch or time to a nearby score note.
+3. 'NoMatch': This note matches in neither pitch or time to a nearby score note.
 
 These three classifications form a probability space and we can maintain
 a belief about the likelihood of a given a match being classified accordingly.
@@ -125,5 +125,9 @@ code for has a highly opinionated style. Do your best to stay withing that style
 
 Feel free to use C++ 20 and below standard library functions, but try to 
 avoid using the standard container classes.
+
+
+Build directions: `cmake --build ../../build/debug --preset debug`
+Run directions: `../../build/debug/bin/cli apps/cli/cfg/main.cfg sf3`
 
 

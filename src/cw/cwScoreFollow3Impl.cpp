@@ -29,6 +29,7 @@ cw::rc_t cw::score_follow_3::_create_impl( sf_t* p, const args_t& args )
 
 cw::rc_t cw::score_follow_3::_destroy_impl( sf_t* p )
 {
+  // Note that this call may occur without a prior call to _create_impl().
   rc_t rc = kOkRC;
   return rc;
 }

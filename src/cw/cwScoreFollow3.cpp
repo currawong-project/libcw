@@ -17,6 +17,15 @@ namespace cw
 {
   namespace score_follow_3
   {
+
+    idLabelPair_t _match_typeA[] = {
+      { kBlankTId, "<blank>"},
+      { kMatchTId, "match"},
+      { kMismatchTId, "mismatch" },
+      { kNoMatchTId, "nomatch" },
+      {kInvalidId,"<invalid>" }
+    };
+    
     
     sf_t* _handleToPtr(handle_t h)
     {
@@ -201,10 +210,34 @@ namespace cw
   }
 }
 
+
+const char* cw::score_follow_3::match_status_id_to_label( match_status_id_t tid )
+{
+  return idToLabelNull( _match_typeA, tid, kInvalidId );  
+}
+
+cw::rc_t cw::score_follow_3::match_status_label_to_id( const char* label, match_status_id_t& id_ref )
+{
+  rc_t rc = kOkRC;
+  unsigned id = kInvalidId;
+  
+  if( (id = labelToId(_match_typeA, label, kInvalidId )) == kInvalidId )
+  {
+    rc = kEleNotFoundRC;
+  }
+  else
+  {
+    id_ref = (match_status_id_t)id;
+  }
+  
+  return rc;
+}
+
+
+
 cw::rc_t cw::score_follow_3::create( handle_t& hRef, const args_t& args, const score_event_t* scoreA, unsigned scoreN )
 {
   rc_t rc = kOkRC;
-  
   if((rc = destroy(hRef)) != kOkRC )
     return rc;
 
@@ -285,8 +318,10 @@ cw::rc_t cw::score_follow_3::on_new_note( handle_t h,
   rc_t rc = kOkRC;
   sf_t* p = _handleToPtr(h);
   
-  result_ref.loc_id = kInvalidId;
-  result_ref.perf_uid = perf_uid;
+  result_ref.loc_id          = kInvalidId;
+  result_ref.perf_uid        = perf_uid;
+  result_ref.match_status_id = kBlankTId;
+  result_ref.confidence      = 0;
 
   if( !std::isfinite(p->perf_base_time) )
     p->perf_base_time = sec;
@@ -316,9 +351,15 @@ cw::rc_t cw::score_follow_3::exec( handle_t h, double sec )
   rc_t rc = kOkRC;
   sf_t* p = _handleToPtr(h);
 
+  // if the first note has not yet arrived
+  // or the active region has already been fully tracked there is nothing to do.
+  if( !std::isfinite(p->perf_base_time) || is_done(h) )
+    return kOkRC;
+
+
   if( sec < p->perf_base_time )
   {
-    cwLogWarning("Notes arrived out of time order: (%f < start time:%f).",sec,p->perf_base_time);
+    cwLogWarning("exec() occurred out of time order: (%f < perf start time:%f).",sec,p->perf_base_time);
     sec = p->perf_base_time;
   }
   
