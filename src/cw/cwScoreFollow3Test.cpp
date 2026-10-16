@@ -232,6 +232,12 @@ namespace cw
         goto errLabel;
       }
 
+      if( gt.perf_uid < ra.beg_perf_uid || ra.end_perf_uid < gt.perf_uid )
+      {
+        rc = cwLogError(kInvalidStateRC,"The ground truth note uid:%i is outside the specified perf. uid range: %i to %i .",gt.perf_uid,ra.beg_perf_uid,ra.end_perf_uid);
+        goto errLabel;
+      }
+
       // every ground-truth record must reference a perf. note record 
       if((rc = _perf_uid_to_note( ra, gt.perf_uid, perf_note )) != kOkRC )
       {
@@ -340,6 +346,7 @@ namespace cw
       unsigned       line_cnt  = 0;
       unsigned       line_idx  = 0;
       int            loc_id    = 0;
+      unsigned       gt_allocN  = 0;
       csv::handle_t  csvH;
 
       // Open the CSV and verify the existence of some of the columns
@@ -363,27 +370,15 @@ namespace cw
       }
 
       // allocate the ground truth array
-      ra.gnd_truthN = line_cnt - 1;
-      ra.gnd_truthA = mem::allocZ<gnd_truth_note_t>(ra.gnd_truthN);
+      gt_allocN     = line_cnt - 1;      
+      ra.gnd_truthA = mem::allocZ<gnd_truth_note_t>(gt_allocN);
+      ra.gnd_truthN = 0;
 
       // for each line in the gnd-truth CSV
-      for(line_idx=0; (rc = next_line(csvH)) == kOkRC && line_idx<ra.gnd_truthN; ++line_idx )
+      for(line_idx=0; (rc = next_line(csvH)) == kOkRC && line_idx<gt_allocN; ++line_idx )
       {
-        gnd_truth_note_t& gt = ra.gnd_truthA[line_idx];
+        gnd_truth_note_t& gt = ra.gnd_truthA[ra.gnd_truthN];
         const char* status_label = nullptr;
-
-        // get the status field as a string
-        if((rc = parse_field(csvH,title_col_index(csvH,"match_status_id"),status_label)) != kOkRC || status_label==nullptr)
-        {
-          rc = cwLogError(rc,"The ground truth 'status' field could not be parsed on line index:%i.",line_idx);
-          goto errLabel;
-        }
-
-        // convert the status label into an id.
-        if((rc = match_status_label_to_id(status_label,gt.status)) != kOkRC )
-        {
-          rc0 = cwLogError(rc,"The matching status label '%s' on line index:%i is not valid.",cwStringNullGuard(status_label),line_idx);
-        }
 
         // parse the rest of the fields
         if((rc = getv(csvH,
@@ -400,10 +395,27 @@ namespace cw
         if( gt.perf_uid < ra.beg_perf_uid || ra.end_perf_uid < gt.perf_uid )
           continue;
 
+        // commit to storing the new GT record
+        ra.gnd_truthN += 1;
+        
+        // get the status field as a string
+        if((rc = parse_field(csvH,title_col_index(csvH,"match_status_id"),status_label)) != kOkRC || status_label==nullptr)
+        {
+          rc = cwLogError(rc,"The ground truth 'status' field could not be parsed on line index:%i.",line_idx);
+          goto errLabel;
+        }
+
+        // convert the status label into an id.
+        if((rc = match_status_label_to_id(status_label,gt.status)) != kOkRC )
+        {
+          rc0 = cwLogError(rc,"The matching status label '%s' on line index:%i is not valid.",cwStringNullGuard(status_label),line_idx);
+        }
+
+        
         gt.loc_id = loc_id<0 ? kInvalidId : (unsigned)loc_id;
 
         // verify that the perf_uid is not duplicated 
-        if( line_idx>0 && _uid_to_gnd_truth_note(ra, gt.perf_uid, line_idx-1 ) != nullptr )
+        if( ra.gnd_truthN>1 && _uid_to_gnd_truth_note(ra, gt.perf_uid, ra.gnd_truthN-2 ) != nullptr )
         {
           rc0 = cwLogError(kInvalidStateRC,"The perf. note uid=%i is duplicated in the ground truth data on line index:%i.",gt.perf_uid,line_idx);
         }
@@ -421,9 +433,9 @@ namespace cw
       {
         rc = kOkRC;
 
-        if( line_idx != ra.gnd_truthN )
+        if( line_idx != gt_allocN )
         {
-          rc = cwLogError(kInvalidStateRC,"The count of lines parsed (%i) does not match the count of lines in the ground truth file (%i).",line_idx,ra.gnd_truthN);
+          rc = cwLogError(kInvalidStateRC,"The count of lines parsed (%i) does not match the count of lines in the ground truth file (%i).",line_idx,gt_allocN);
           goto errLabel;
         }
       }
@@ -637,6 +649,13 @@ namespace cw
         // convert the end measure to a score location
         if((rc = _meas_to_loc_id(test_args,ra.end_meas_num,true,ra.end_loc_id)) != kOkRC )
         {
+          goto errLabel;
+        }
+
+        // validate the performance range
+        if( ra.beg_perf_uid > ra.end_perf_uid )
+        {
+          rc = cwLogError(kSyntaxErrorRC,"The performance uid start uid:%i is greater than the end uid:%i.",ra.beg_perf_uid,ra.end_perf_uid);
           goto errLabel;
         }
 
