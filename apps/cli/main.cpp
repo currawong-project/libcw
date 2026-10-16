@@ -470,6 +470,7 @@ rc_t _parse_log_args( const object_t* log_cfg, log::log_args_t& log_args )
   idLabelPair_t flagRefA[] = {
     { log::kDateTimeFl,      "date_time"},
     { log::kFileOutFl,       "file_out"},
+    { log::kNoFileOutFl,     "no_file_out"},
     { log::kConsoleFl,       "console"},
     { log::kSkipQueueFl,     "skip_queue"},
     { log::kOverwriteFileFl, "overwrite_file"},

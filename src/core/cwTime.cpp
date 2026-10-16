@@ -460,6 +460,7 @@ unsigned cw::time::formatDateTime( char* buffer, unsigned bufN, bool includeDate
 {
   // from here: https://stackoverflow.com/questions/3673226/how-to-print-time-in-format-2009-08-10-181754-811
   int millisec;
+  struct tm  tm_buf;
   struct tm* tm_info;
   struct timeval tv;
   int n = 0;
@@ -475,7 +476,10 @@ unsigned cw::time::formatDateTime( char* buffer, unsigned bufN, bool includeDate
     tv.tv_sec++;
   }
 
-  tm_info = localtime(&tv.tv_sec);
+  // localtime_r() is used rather than localtime() because glibc's localtime() re-reads the
+  // time zone, and allocates memory, on every call when TZ is not set in the environment.
+  // localtime_r() is also thread safe.
+  tm_info = localtime_r(&tv.tv_sec, &tm_buf);
 
   const char* fmt = "%H:%M:%S";
 
