@@ -52,7 +52,77 @@ namespace cw
       return rc;
     }
 
-    rc_t _create_note_array( sf_t* p, const score_event_t* score_evtA, unsigned score_evtN )
+    // Validate the follower configuration.
+    // A particle filter given bad parameters does not crash - it quietly
+    // tracks poorly - so every parameter the model depends on is checked here.
+    rc_t _validate_args( const args_t& args )
+    {
+      rc_t   rc        = kOkRC;
+      double prior_sum = args.prior_match + args.prior_mismatch + args.prior_nomatch;
+
+      if( args.prior_match < 0 || args.prior_mismatch < 0 || args.prior_nomatch < 0 )
+      {
+        rc = cwLogError(kInvalidArgRC,"The class priors must not be negative. match:%f mismatch:%f nomatch:%f",args.prior_match,args.prior_mismatch,args.prior_nomatch);
+        goto errLabel;
+      }
+
+      // The priors are never normalized - they must already form a probability distribution.
+      if( std::fabs(prior_sum - 1.0) > 1e-6 )
+      {
+        rc = cwLogError(kInvalidArgRC,"The class priors must sum to 1.0. match:%f + mismatch:%f + nomatch:%f = %f",args.prior_match,args.prior_mismatch,args.prior_nomatch,prior_sum);
+        goto errLabel;
+      }
+
+      // Every particle always contributes a nomatch branch. A positive nomatch prior therefore
+      // guarantees that the total branch weight is never zero and the branches can always be normalized.
+      if( args.prior_nomatch <= 0 )
+      {
+        rc = cwLogError(kInvalidArgRC,"The nomatch prior must be greater than 0.");
+        goto errLabel;
+      }
+
+      if( args.particle_cnt == 0 )
+      {
+        rc = cwLogError(kInvalidArgRC,"The particle count must be greater than 0.");
+        goto errLabel;
+      }
+
+      if( args.time_sigma_sec <= 0 )
+      {
+        rc = cwLogError(kInvalidArgRC,"The time likelihood standard deviation (time_sigma_sec:%f) must be greater than 0.",args.time_sigma_sec);
+        goto errLabel;
+      }
+
+      if( args.time_fact_prior_sigma < 0 || args.time_fact_walk_sigma < 0 )
+      {
+        rc = cwLogError(kInvalidArgRC,"The time factor standard deviations must not be negative. prior:%f walk:%f",args.time_fact_prior_sigma,args.time_fact_walk_sigma);
+        goto errLabel;
+      }
+
+      // time_fact is drawn around 1.0 so the clamp range must include 1.0.
+      if( !(0 < args.time_fact_min && args.time_fact_min <= 1.0 && 1.0 <= args.time_fact_max) )
+      {
+        rc = cwLogError(kInvalidArgRC,"The time factor range must satisfy 0 < time_fact_min (%f) <= 1.0 <= time_fact_max (%f).",args.time_fact_min,args.time_fact_max);
+        goto errLabel;
+      }
+
+      if( args.pitch_min > args.pitch_max )
+      {
+        rc = cwLogError(kInvalidArgRC,"The min. pitch (%i) must not be greater than the max. pitch (%i).",args.pitch_min,args.pitch_max);
+        goto errLabel;
+      }
+
+      if( args.wnd_pre_sec < 0 || args.wnd_post_sec < 0 )
+      {
+        rc = cwLogError(kInvalidArgRC,"The search window durations must not be negative. pre:%f post:%f",args.wnd_pre_sec,args.wnd_post_sec);
+        goto errLabel;
+      }
+
+    errLabel:
+      return rc;
+    }
+    
+    rc_t _create_note_array( sf_t* p, unsigned pitch_min, unsigned pitch_max, const score_event_t* score_evtA, unsigned score_evtN )
     {
       rc_t rc = kOkRC;
       double max_sec = 0.0;
@@ -67,6 +137,13 @@ namespace cw
       {
         const score_event_t& se = score_evtA[i];
 
+        // verify that the score pitch range is valid
+        if( se.pitch < pitch_min || pitch_max < se.pitch )
+        {
+          rc = cwLogError(kInvalidStateRC,"The score pitch %i at loc:%i violates the pitch range limit:%i to %i.",se.pitch,se.loc_id,pitch_min,pitch_max) ;
+          goto errLabel;
+        }
+
         // since we are testing for increasing loc_id we only need to set the min_loc_id on the first iteration
         if( p->min_score_loc_id == kInvalidId )
           p->min_score_loc_id = se.loc_id;
@@ -77,7 +154,7 @@ namespace cw
           rc = cwLogError(kInvalidStateRC,"The location id's should be in increasing order. line:%i min:%i %i max:%i",i+1,p->min_score_loc_id,se.loc_id,p->max_score_loc_id);
           goto errLabel;
         }
-
+        
         // since we are testing for increasing loc_id we set the max_loc_id on every iteration
         p->max_score_loc_id = se.loc_id;
 
@@ -108,7 +185,35 @@ namespace cw
       
     }
 
-    rc_t _create_loc_array( sf_t* p, const score_event_t* score_evtA, unsigned score_evtN )
+    // Verify that a given score location does not refer to a pitch more than once.
+    rc_t _check_for_duplicate_loc_pitches(sf_t* p, unsigned pitch_min, const loc_t& loc, bool* flA, unsigned flN )
+    {
+      rc_t rc = kOkRC;
+      vop::fill(flA,flN,false);
+
+      for(unsigned ni=loc.beg_note_idx; ni<=loc.end_note_idx; ++ni)
+      {
+        assert( ni < p->noteN );
+        
+        unsigned fl_idx = p->noteA[ni].pitch - pitch_min;
+
+        assert(fl_idx < flN );
+        
+        if( flA[ fl_idx ] )
+        {
+          rc = cwLogError(kInvalidStateRC,"The duplicate pitch %i was found on loc %i.",p->noteA[ni].pitch,loc.loc_id);
+          goto errLabel;
+        }
+
+        flA[fl_idx] = true;
+      }
+
+    errLabel:
+      return rc;
+
+    }
+    
+    rc_t _create_loc_array( sf_t* p, unsigned pitch_min, unsigned pitch_max, const score_event_t* score_evtA, unsigned score_evtN )
     {
       rc_t rc = kOkRC;
 
@@ -121,6 +226,9 @@ namespace cw
       unsigned loc_idx      = 0;
       unsigned cur_loc_id   = score_evtA[0].loc_id;
       unsigned beg_note_idx = 0;
+
+      unsigned pitch_flN = (pitch_max - pitch_min) + 1;
+      bool*    pitch_flA = mem::allocZ<bool>(pitch_flN);
             
       for(unsigned i=0; i<score_evtN; ++i)
       {
@@ -129,12 +237,20 @@ namespace cw
         // if we have passed into the next loc.
         if( cur_loc_id != se.loc_id )
         {
+          if((rc = _check_for_duplicate_loc_pitches(p,pitch_min,p->locA[loc_idx],pitch_flA,pitch_flN)) != kOkRC )
+          {
+            goto errLabel;
+          }
+          
           loc_idx      += 1;
           beg_note_idx  = i;
           cur_loc_id    = se.loc_id;
+
+      
+          
         }
 
-        if( loc_idx > p->locN )
+        if( loc_idx >= p->locN )
         {
           rc = cwLogError(kInvalidStateRC,"The location array initialization failed.");
           goto errLabel;
@@ -146,19 +262,24 @@ namespace cw
         p->locA[loc_idx].beg_note_idx = beg_note_idx;
         p->locA[loc_idx].end_note_idx = i;
 
-        if( i > p->noteN )
+        if( i >= p->noteN )
         {
           rc = cwLogError(kInvalidStateRC,"The note index %i was found to be out of range:%i.",i,p->noteN);
           goto errLabel;
         }
-
-        p->noteA[i].loc = p->locA + loc_idx;
         
+        p->noteA[i].loc = p->locA + loc_idx;        
       }
 
+      if((rc = _check_for_duplicate_loc_pitches(p,pitch_min,p->locA[loc_idx],pitch_flA,pitch_flN)) != kOkRC )
+      {
+        goto errLabel;
+      }
+      
       p->locN = loc_idx+1;
 
     errLabel:
+      mem::release( pitch_flA );
       if( rc != kOkRC )
         rc = cwLogError(rc,"The location array create failed.");
       return rc;
@@ -243,12 +364,19 @@ cw::rc_t cw::score_follow_3::create( handle_t& hRef, const args_t& args, const s
 
   sf_t* p = mem::allocZ<sf_t>();
 
-  if((rc = _create_note_array(p,scoreA,scoreN)) != kOkRC )
+  if((rc = _validate_args( args )) != kOkRC )
+  {
+    goto errLabel;
+  }
+
+  p->args = args;
+  
+  if((rc = _create_note_array(p,args.pitch_min, args.pitch_max,scoreA,scoreN)) != kOkRC )
   {
     goto errLabel;
   }
   
-  if((rc = _create_loc_array(p,scoreA,scoreN)) != kOkRC )
+  if((rc = _create_loc_array(p,args.pitch_min, args.pitch_max,scoreA,scoreN)) != kOkRC )
   {
     goto errLabel;
   }

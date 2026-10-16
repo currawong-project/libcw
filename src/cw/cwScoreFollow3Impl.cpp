@@ -17,75 +17,6 @@ namespace cw
 {
   namespace score_follow_3
   {
-    // Validate the follower configuration.
-    // A particle filter given bad parameters does not crash - it quietly
-    // tracks poorly - so every parameter the model depends on is checked here.
-    rc_t _validate_args( const args_t& args )
-    {
-      rc_t   rc        = kOkRC;
-      double prior_sum = args.prior_match + args.prior_mismatch + args.prior_nomatch;
-
-      if( args.prior_match < 0 || args.prior_mismatch < 0 || args.prior_nomatch < 0 )
-      {
-        rc = cwLogError(kInvalidArgRC,"The class priors must not be negative. match:%f mismatch:%f nomatch:%f",args.prior_match,args.prior_mismatch,args.prior_nomatch);
-        goto errLabel;
-      }
-
-      // The priors are never normalized - they must already form a probability distribution.
-      if( std::fabs(prior_sum - 1.0) > 1e-6 )
-      {
-        rc = cwLogError(kInvalidArgRC,"The class priors must sum to 1.0. match:%f + mismatch:%f + nomatch:%f = %f",args.prior_match,args.prior_mismatch,args.prior_nomatch,prior_sum);
-        goto errLabel;
-      }
-
-      // Every particle always contributes a nomatch branch. A positive nomatch prior therefore
-      // guarantees that the total branch weight is never zero and the branches can always be normalized.
-      if( args.prior_nomatch <= 0 )
-      {
-        rc = cwLogError(kInvalidArgRC,"The nomatch prior must be greater than 0.");
-        goto errLabel;
-      }
-
-      if( args.particle_cnt == 0 )
-      {
-        rc = cwLogError(kInvalidArgRC,"The particle count must be greater than 0.");
-        goto errLabel;
-      }
-
-      if( args.time_sigma_sec <= 0 )
-      {
-        rc = cwLogError(kInvalidArgRC,"The time likelihood standard deviation (time_sigma_sec:%f) must be greater than 0.",args.time_sigma_sec);
-        goto errLabel;
-      }
-
-      if( args.time_fact_prior_sigma < 0 || args.time_fact_walk_sigma < 0 )
-      {
-        rc = cwLogError(kInvalidArgRC,"The time factor standard deviations must not be negative. prior:%f walk:%f",args.time_fact_prior_sigma,args.time_fact_walk_sigma);
-        goto errLabel;
-      }
-
-      // time_fact is drawn around 1.0 so the clamp range must include 1.0.
-      if( !(0 < args.time_fact_min && args.time_fact_min <= 1.0 && 1.0 <= args.time_fact_max) )
-      {
-        rc = cwLogError(kInvalidArgRC,"The time factor range must satisfy 0 < time_fact_min (%f) <= 1.0 <= time_fact_max (%f).",args.time_fact_min,args.time_fact_max);
-        goto errLabel;
-      }
-
-      if( args.pitch_min > args.pitch_max )
-      {
-        rc = cwLogError(kInvalidArgRC,"The min. pitch (%i) must not be greater than the max. pitch (%i).",args.pitch_min,args.pitch_max);
-        goto errLabel;
-      }
-
-      if( args.wnd_pre_sec < 0 || args.wnd_post_sec < 0 )
-      {
-        rc = cwLogError(kInvalidArgRC,"The search window durations must not be negative. pre:%f post:%f",args.wnd_pre_sec,args.wnd_post_sec);
-        goto errLabel;
-      }
-
-    errLabel:
-      return rc;
-    }
 
     // Return a conservative upper bound on the count of locations that any search window can contain.
     //
@@ -627,11 +558,6 @@ cw::rc_t cw::score_follow_3::_create_impl( sf_t* p, const args_t& args )
 {
   rc_t     rc                 = kOkRC;
   unsigned max_window_loc_cnt = 0;
-
-  if((rc = _validate_args(args)) != kOkRC )
-    goto errLabel;
-
-  p->args = args;
 
   // sf_t was allocated with mem::allocZ() which does not run constructors, therefore construct the generator in place.
   // It is re-seeded on every reset().
