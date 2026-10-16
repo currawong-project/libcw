@@ -1,3 +1,5 @@
+#include <random>  // std::mt19937
+
 namespace cw
 {
   namespace score_follow_3
@@ -32,16 +34,28 @@ namespace cw
       
     } particle_t;
 
+    // A branch is one candidate hypothesis for the current performed note.
+    // Each particle is expanded into a set of branches (match, mismatch, nomatch)
+    // and the branches are then resampled back into particles.
     typedef struct branch_str
     {
-      particle_t* parent;
-
-      match_status_id_t tid;
-      
-      
+      unsigned          parent_idx; // index into sf_t.particleA[] of the parent particle
+      match_status_id_t tid;        // kMatchTId, kMismatchTId or kNoMatchTId
+      unsigned          loc_idx;    // candidate location index into sf_t.locA[] or kInvalidIdx for nomatch
+      double            weight;     // parent.weight * prior(tid) * likelihood
     } branch_t;
 
-      
+
+    // A (loc_idx,tid) key and its total posterior mass. Used to report the top MAP keys at report_level >= 3.
+    typedef struct map_key_str
+    {
+      unsigned          loc_idx;    // location index or kInvalidIdx for the nomatch bucket
+      match_status_id_t tid;
+      double            mass;
+    } map_key_t;
+
+    enum { kMapTopN = 5 };  // count of MAP keys reported at report_level >= 3
+
     typedef struct sf_str
     {
       note_t*  noteA;  // noteA[noteN] - score notes in increasing time order
@@ -56,8 +70,37 @@ namespace cw
       unsigned active_beg_loc_idx; // Currently active score segment 
       unsigned active_end_loc_idx;
 
-      
+
       double perf_base_time;
+
+      //
+      // Fields below this point are owned by the implementation (cwScoreFollow3Impl.cpp).
+      //
+
+      args_t       args;               // copy of the args_t given to create()
+
+      particle_t*  particleA;          // particleA[particleN] - the current particle population
+      particle_t*  next_particleA;     // next_particleA[particleN] - resampling destination, swapped with particleA[] after each note
+      unsigned     particleN;          // count of particles (args.particle_cnt)
+
+      branch_t*    branchA;            // branchA[branchAllocN] - preallocated branch pool
+      unsigned     branchAllocN;       // allocated size of branchA[]
+      unsigned     branchN;            // count of branches in use on the current note
+
+      double*      match_massA;        // match_massA[locN] - per-location match mass accumulator used to form the MAP result
+      double*      mismatch_massA;     // mismatch_massA[locN] - per-location mismatch mass accumulator
+      unsigned*    touched_loc_idxA;   // touched_loc_idxA[locN] - locations whose accumulators were written on the current note
+      unsigned     touchedN;           // count of valid elements in touched_loc_idxA[]
+
+      std::mt19937 rng;                // random number generator, re-seeded from args.rand_seed on each reset()
+
+      double       prev_perf_sec;      // performance time of the previous note, used to form the prediction delta
+      unsigned     last_loc_idx;       // most recently reported location index or kInvalidIdx
+      bool         done_fl;            // set when the last location of the active region is reported, cleared by reset(), used by is_done()
+
+      map_key_t    map_topA[ kMapTopN ]; // largest MAP keys of the current note in decreasing mass order (report_level >= 3)
+      unsigned     map_topN;             // count of valid elements in map_topA[]
+
     } sf_t;
 
     rc_t _create_impl( sf_t* p, const args_t& args );
