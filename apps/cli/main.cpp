@@ -728,7 +728,6 @@ int main( int argc, const char* argv[] )
   }
   else
   {
-    cw::rc_t            rc       = cw::kOkRC;
     const cw::object_t* test_cfg = nullptr;
     const cw::object_t* args     = nullptr;
     int                 i        = 0;
