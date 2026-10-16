@@ -43,8 +43,13 @@ namespace cw
       
       unsigned     beg_loc_id;
       unsigned     end_loc_id;
-      
-      char*        perf_fname;
+
+      unsigned     beg_perf_uid;
+      unsigned     end_perf_uid;
+
+      double       self_test_time_scale; // >0 if this is a self-test run (see _create_self_test_perf())
+
+      char*        perf_fname;   // performance file name or the generated self-test name
       char*        gnd_truth_fname;
       char*        result_fname;
       
@@ -155,6 +160,10 @@ namespace cw
           rc = cwLogError(kSyntaxErrorRC,"Parse failed on perf. file line number:%i. %i tokens parsed",line_idx+1,tok_cnt);
           goto errLabel;
         }
+
+        // verify that the uid is the in the configured beg/end range 
+        if( uid < run_args.beg_perf_uid || run_args.end_perf_uid < uid )
+          continue;
 
         // if this is a note-on
         if( textIsEqual(nextNonWhiteChar(msg_type),"non",3) )
@@ -387,6 +396,10 @@ namespace cw
           goto errLabel;
         }
 
+        // ignore GT records that are out of the specified performance range
+        if( gt.perf_uid < ra.beg_perf_uid || ra.end_perf_uid < gt.perf_uid )
+          continue;
+
         gt.loc_id = loc_id<0 ? kInvalidId : (unsigned)loc_id;
 
         // verify that the perf_uid is not duplicated 
@@ -456,6 +469,84 @@ namespace cw
       
     }
 
+    // Self-test: form the performance from the score notes of the region beg_loc_id:end_loc_id
+    // rather than from a performance file.
+    //
+    // Each note is performed at its score time, relative to the first note of the region,
+    // multiplied by 'self_test_time_scale' (e.g. 1.25 is a performance 25% slower than the score).
+    // The perf_uid of each note is its index into test_args.score_evtA[].
+    //
+    // A ground-truth record, labeling each note as a match at its own location, is generated
+    // for every note. The follower should therefore match close to 100% of the notes and its
+    // mean time_fact should converge to 'self_test_time_scale'.
+    rc_t _create_self_test_perf( const test_args_t& test_args, run_args_t& ra )
+    {
+      rc_t     rc      = kOkRC;
+      unsigned note_cnt = 0;
+      double   beg_sec  = 0;
+
+      if( ra.self_test_time_scale <= 0 )
+      {
+        rc = cwLogError(kInvalidArgRC,"The self-test time scale (%f) must be greater than 0.",ra.self_test_time_scale);
+        goto errLabel;
+      }
+
+      // count the score notes in the region and locate the time of the first one
+      for(unsigned i=0; i<test_args.score_evtN; ++i)
+      {
+        const score_event_t& se = test_args.score_evtA[i];
+        if( ra.beg_loc_id <= se.loc_id && se.loc_id <= ra.end_loc_id )
+        {
+          if( note_cnt == 0 )
+            beg_sec = se.sec;
+          note_cnt += 1;
+        }
+      }
+
+      if( note_cnt == 0 )
+      {
+        rc = cwLogError(kInvalidStateRC,"The self-test score region loc:%i-%i is empty.",ra.beg_loc_id,ra.end_loc_id);
+        goto errLabel;
+      }
+
+      ra.noteA      = mem::allocZ<perf_note_t>(note_cnt);
+      ra.resultA    = mem::allocZ<result_t>(note_cnt);
+      ra.gnd_truthA = mem::allocZ<gnd_truth_note_t>(note_cnt);
+
+      // score_evtA[] is in time order so the generated performance is also in time order
+      for(unsigned i=0; i<test_args.score_evtN; ++i)
+      {
+        const score_event_t& se = test_args.score_evtA[i];
+
+        if( ra.beg_loc_id <= se.loc_id && se.loc_id <= ra.end_loc_id )
+        {
+          perf_note_t&      note = ra.noteA[ ra.noteN++ ];
+          gnd_truth_note_t& gt   = ra.gnd_truthA[ ra.gnd_truthN++ ];
+
+          note.uid   = i;
+          note.sec   = (se.sec - beg_sec) * ra.self_test_time_scale;
+          note.pitch = se.pitch;
+          note.vel   = se.velocity;
+
+          gt.perf_uid = i;
+          gt.pitch    = se.pitch;
+          gt.loc_id   = se.loc_id;
+          gt.meas_num = se.meas_num;
+          gt.status   = kMatchTId;
+        }
+      }
+
+      ra.resultN = ra.noteN;
+
+      // name the run, this name is also used to form the result file name
+      ra.perf_fname = mem::printf<char>(nullptr,"self_test_m%i-%i_x%03i",ra.beg_meas_num,ra.end_meas_num,(unsigned)std::lround(ra.self_test_time_scale*100));
+
+    errLabel:
+      if( rc != kOkRC )
+        rc = cwLogError(rc,"Self-test performance creation failed.");
+      return rc;
+    }
+
     rc_t _form_result_file_name( const char* out_dir, const char* in_fname, const char* fn_ext, char*& out_fname_ref )
     {
       rc_t                 rc = kOkRC;
@@ -513,48 +604,29 @@ namespace cw
         // read the configuration record
         if((rc = run_cfg->readv("beg_meas",kReqFl,ra.beg_meas_num,
                                 "end_meas",kReqFl,ra.end_meas_num,
-                                "fn",      kReqFl,fname,
-                                "gt_fn",   kOptFl,gt_fname)) != kOkRC )
+                                "beg_perf_uid",kReqFl,ra.beg_perf_uid,
+                                "end_perf_uid",kReqFl,ra.end_perf_uid,
+                                "fn",      kOptFl,fname,
+                                "gt_fn",   kOptFl,gt_fname,
+                                "self_test_time_scale",kOptFl,ra.self_test_time_scale)) != kOkRC )
         {
           rc = cwLogError(rc,"Parse error on perfL element at index %i.",i);
           goto errLabel;
         }
 
-        // expand the filename
-        if((ra.perf_fname = filesys::expandPath(fname)) == nullptr )
+        // a run is either a performance file or a self-test
+        if( (fname != nullptr) == (ra.self_test_time_scale != 0) )
         {
-          rc = cwLogError(kOpFailRC,"Performance file path expansion failed on '%s'.",cwStringNullGuard(fname));
+          rc = cwLogError(kSyntaxErrorRC,"The perfL element at index %i must have exactly one of 'fn' or 'self_test_time_scale'.",i);
           goto errLabel;
         }
 
-        // parse the file in to run_cfg_t.noteA[]
-        if((rc = _parse_perf_file( ra )) != kOkRC )
+        // a self-test generates its own ground truth
+        if( ra.self_test_time_scale != 0 && gt_fname != nullptr )
         {
+          rc = cwLogError(kSyntaxErrorRC,"The perfL element at index %i is a self-test and therefore may not have a 'gt_fn'.",i);
           goto errLabel;
         }
-
-        // if a ground truth file was given
-        if( gt_fname != nullptr )
-        {
-          // expand the gnd-truth filename
-          if((ra.gnd_truth_fname = filesys::expandPath(gt_fname))  == nullptr )
-          {
-            rc = cwLogError(kOpFailRC,"Performance ground-truth path expansion failed on '%s'.",cwStringNullGuard(gt_fname));
-            goto errLabel;
-          }
-
-          // parse the gnd-truth file
-          if((rc = _parse_gnd_truth_file(test_args,ra)) != kOkRC )
-          {
-            goto errLabel;
-          }
-        }
-        
-        if((rc = _form_result_file_name( test_args.out_dir, ra.perf_fname, fn_ext, ra.result_fname )) != kOkRC )
-        {
-          goto errLabel;
-        }
-
 
         // convert the start measure to a score location
         if((rc = _meas_to_loc_id(test_args,ra.beg_meas_num,false,ra.beg_loc_id)) != kOkRC )
@@ -564,6 +636,62 @@ namespace cw
         
         // convert the end measure to a score location
         if((rc = _meas_to_loc_id(test_args,ra.end_meas_num,true,ra.end_loc_id)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if( ra.self_test_time_scale != 0 )
+        {
+          // form the performance, and its ground truth, from the score
+          if((rc = _create_self_test_perf( test_args, ra )) != kOkRC )
+          {
+            goto errLabel;
+          }
+        }
+        else
+        {
+          // expand the perf. filename
+          if((ra.perf_fname = filesys::expandPath(fname)) == nullptr )
+          {
+            rc = cwLogError(kOpFailRC,"Performance file path expansion failed on '%s'.",cwStringNullGuard(fname));
+            goto errLabel;
+          }
+
+          // parse the file in to run_cfg_t.noteA[]
+          if((rc = _parse_perf_file( ra )) != kOkRC )
+          {
+            goto errLabel;
+          }
+
+          // if a ground truth file was given
+          if( gt_fname != nullptr )
+          {
+            // expand the gnd-truth filename
+            if((ra.gnd_truth_fname = filesys::expandPath(gt_fname))  == nullptr )
+            {
+              rc = cwLogError(kOpFailRC,"Performance ground-truth path expansion failed on '%s'.",cwStringNullGuard(gt_fname));
+              goto errLabel;
+            }
+
+            // verify that the ground truth file actually exists - it won't on the first pass because the ground truth
+            // file is created from the first result file.
+            if( !filesys::isFile(ra.gnd_truth_fname)  )
+            {
+              cwLogWarning("Ground truth analysis will be skipped. The specified file: %s does not exist.",cwStringNullGuard(ra.gnd_truth_fname));
+              mem::release(ra.gnd_truth_fname); // 
+            }
+            else
+            {
+              // parse the gnd-truth file
+              if((rc = _parse_gnd_truth_file(test_args,ra)) != kOkRC )
+              {
+                goto errLabel;
+              }
+            }
+          }
+        }
+        
+        if((rc = _form_result_file_name( test_args.out_dir, ra.perf_fname, fn_ext, ra.result_fname )) != kOkRC )
         {
           goto errLabel;
         }
@@ -967,7 +1095,7 @@ namespace cw
           gt_label_cnt += 1;
 
       if( ta.sf_args.report_level >= 2 )
-        cwLogInfo("Ground truth disagreements: %s",cwStringNullGuard(ra.gnd_truth_fname));
+        cwLogInfo("Ground truth disagreements: %s",cwStringNullGuard(ra.gnd_truth_fname != nullptr ? ra.gnd_truth_fname : ra.perf_fname));
 
       // for each result
       for(unsigned i=0; i<result_cnt; ++i)
