@@ -99,6 +99,13 @@ namespace cw
         goto errLabel;
       }
 
+      // The comparison is written so that NaN fails it.
+      if( !(args.pos_walk_sigma >= 0) )
+      {
+        rc = cwLogError(kInvalidArgRC,"The position process noise (pos_walk_sigma:%f) must not be negative.",args.pos_walk_sigma);
+        goto errLabel;
+      }
+
       // time_fact is drawn around 1.0 so the clamp range must include 1.0.
       if( !(0 < args.time_fact_min && args.time_fact_min <= 1.0 && 1.0 <= args.time_fact_max) )
       {
@@ -115,6 +122,26 @@ namespace cw
       if( args.wnd_pre_sec < 0 || args.wnd_post_sec < 0 )
       {
         rc = cwLogError(kInvalidArgRC,"The search window durations must not be negative. pre:%f post:%f",args.wnd_pre_sec,args.wnd_post_sec);
+        goto errLabel;
+      }
+
+      // The comparisons are written so that NaN fails them.
+      if( !(args.jump_stay >= 0 && args.jump_skip >= 0 && args.jump_back >= 0) )
+      {
+        rc = cwLogError(kInvalidArgRC,"The jump weights must not be negative. stay:%f skip:%f back:%f",args.jump_stay,args.jump_skip,args.jump_back);
+        goto errLabel;
+      }
+
+      // The next location must always be reachable or the follower could never advance past a fully played location.
+      if( !(args.jump_next > 0) )
+      {
+        rc = cwLogError(kInvalidArgRC,"The jump_next weight (%f) must be greater than 0.",args.jump_next);
+        goto errLabel;
+      }
+
+      if( !(0 < args.jump_decay && args.jump_decay < 1) )
+      {
+        rc = cwLogError(kInvalidArgRC,"The jump_decay (%f) must be in the range (0,1).",args.jump_decay);
         goto errLabel;
       }
 

@@ -20,12 +20,23 @@ namespace cw
       double prior_match;           // Prior probability that a note is a match, i.e. the right pitch near its predicted time.
       double prior_mismatch;        // Prior probability that a note is a mismatch, i.e. the right time but the wrong pitch. 
       double prior_nomatch;         // Prior probability that a note is a nomatch, unrelated to any nearby score note. The three priors must add up to 1.0.  
-      double time_sigma_sec;        // Standard deviation, in score seconds, of the Gaussian time likelihood between a particle's predicted score time and a candidate loc's time.
-      double time_fact_prior_sigma; // Standard deviation of the initial time_fact draw around 1.0 at reset(). 
-      double time_fact_walk_sigma;  // Standard deviation of the multiplicative random walk applied after each resample: time_fact *= exp(N(0,σ)).   
-      double time_fact_min;         // Lower clamp for time_fact.
+
+      // Each particle tracks its score position s and tempo r = 1/time_fact (score sec per perf sec) with a Kalman filter.
+      double time_sigma_sec;        // Onset noise: standard deviation, in score seconds, of a matched location's time around the true score position (Kalman R).
+      double time_fact_prior_sigma; // Standard deviation of the tempo r at reset(), where r starts at 1.0.
+      double time_fact_walk_sigma;  // Tempo process noise: standard deviation of the change in r per sqrt(performance second).
+      double pos_walk_sigma;        // Position process noise: standard deviation, in score seconds, of the change in s per sqrt(performance second).
+      double time_fact_min;         // Lower clamp for time_fact (i.e. 1/time_fact_min is the upper clamp for r).
       double time_fact_max;         // Upper clamp for time_fact.
-      
+
+      // Jump prior: the relative weight of a candidate location given its distance d = loc_idx - anchor_loc_idx
+      // from the location the particle last matched. The weights are normalized over each particle's candidate locations.
+      double jump_stay;             // d == 0: another note of the anchor location (only while it has unplayed notes).
+      double jump_next;             // d == 1: the next location.
+      double jump_skip;             // d >= 2: jump_skip * jump_decay^(d-2). Skipped locations.
+      double jump_back;             // d <  0: jump_back * jump_decay^(-d-1). Backward jumps and repeats.
+      double jump_decay;            // Geometric decay (0,1) applied per additional location of a skip or backward jump.
+
 
       double   exec_period_sec;      // period of calls to exec() in seconds
       

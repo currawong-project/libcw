@@ -1,4 +1,6 @@
 #include <random>  // std::mt19937
+#include <cstdint> // uint64_t
+#include <bit>     // std::popcount
 
 namespace cw
 {
@@ -26,10 +28,16 @@ namespace cw
 
     typedef struct particle_str
     {
-      double   pred_score_sec;     // particles predicted location in score seconds
-      double   time_fact;          // factor used to convert performed time to score time score_time = perf_time / time_fact
-      unsigned pred_loc_idx;       // location index of the last predicted location or kInvalidIdx if no location was predicted,
-      
+      // Kalman filter state [pred_score_sec, tempo] and its covariance. See _predict() and _kalman_update() in cwScoreFollow3Impl.cpp.
+      double   pred_score_sec;     // s: predicted score position in score seconds
+      double   tempo;              // r: score seconds per performance second. time_fact = 1/tempo.
+      double   cov_ss;             // covariance of the state: var(s), cov(s,r) and var(r)
+      double   cov_sr;
+      double   cov_rr;
+
+      unsigned anchor_loc_idx;     // location index of the last match or mismatch, or kInvalidIdx before the first one. Nomatch notes leave it unchanged.
+      uint64_t played_mask;        // bit i is set if note anchor.beg_note_idx+i has been matched since the particle moved to the anchor location.
+
       double   weight;   // Particle filter weight for this particle.
       
     } particle_t;
@@ -42,7 +50,8 @@ namespace cw
       unsigned          parent_idx; // index into sf_t.particleA[] of the parent particle
       match_status_id_t tid;        // kMatchTId, kMismatchTId or kNoMatchTId
       unsigned          loc_idx;    // candidate location index into sf_t.locA[] or kInvalidIdx for nomatch
-      double            weight;     // parent.weight * prior(tid) * likelihood
+      unsigned          note_ofs;   // match: offset of the matched note from loc.beg_note_idx, otherwise kInvalidIdx
+      double            weight;     // parent.weight * prior(tid) * jump prior * likelihood
     } branch_t;
 
 
@@ -55,6 +64,8 @@ namespace cw
     } map_key_t;
 
     enum { kMapTopN = 5 };  // count of MAP keys reported at report_level >= 3
+
+    enum { kMaxLocNoteN = 64 }; // max. count of notes at one location - the size of particle_t.played_mask in bits
 
     typedef struct sf_str
     {

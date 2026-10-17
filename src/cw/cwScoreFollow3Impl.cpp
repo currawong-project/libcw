@@ -105,40 +105,44 @@ namespace cw
       dur_sec_ref     = std::max(p->locA[e].sec - p->locA[b].sec, p->args.time_sigma_sec);
     }
 
-    // Return a draw from N(mean,sigma).
-    // std::normal_distribution requires sigma > 0, therefore sigma == 0 returns 'mean' exactly.
-    // The distribution object is created on the stack and does not allocate memory.
-    double _rand_normal( sf_t* p, double mean, double sigma )
+    // Clamp the tempo so that time_fact = 1/tempo stays within [time_fact_min,time_fact_max].
+    double _clamp_tempo( const sf_t* p, double tempo )
     {
-      if( sigma <= 0 )
-        return mean;
-
-      std::normal_distribution<double> dist(mean,sigma);
-      return dist(p->rng);
+      return std::clamp(tempo, 1.0 / p->args.time_fact_max, 1.0 / p->args.time_fact_min);
     }
 
-    double _clamp_time_fact( const sf_t* p, double time_fact )
+    // Return the Kalman filter standard deviation of a particle's time_fact.
+    // time_fact = 1/r therefore, to first order, sd(time_fact) = sd(r)/r^2.
+    double _kf_time_fact_std( const particle_t& pt )
     {
-      return std::clamp(time_fact, p->args.time_fact_min, p->args.time_fact_max);
+      return std::sqrt(std::max(0.0, pt.cov_rr)) / (pt.tempo * pt.tempo);
     }
 
-    // Calculate the population mean and standard deviation of pred_score_sec and time_fact.
-    void _particle_stats( const sf_t* p, double& score_sec_mean_ref, double& score_sec_std_ref, double& time_fact_mean_ref, double& time_fact_std_ref )
+    // Calculate the population mean and standard deviation of pred_score_sec and time_fact,
+    // and the population mean of each particle's own Kalman filter time_fact standard deviation.
+    // Resampled copies of a particle are identical, so the population spread measures disagreement
+    // between paths while the Kalman standard deviation measures each path's own tempo uncertainty.
+    void _particle_stats( const sf_t* p, double& score_sec_mean_ref, double& score_sec_std_ref, double& time_fact_mean_ref, double& time_fact_std_ref, double& time_fact_kf_std_ref )
     {
       double ss_sum = 0, ss_sq_sum = 0;
       double tf_sum = 0, tf_sq_sum = 0;
+      double kf_sum = 0;
 
       for(unsigned i=0; i<p->particleN; ++i)
       {
-        const particle_t& pt = p->particleA[i];
+        const particle_t& pt        = p->particleA[i];
+        double            time_fact = 1.0 / pt.tempo;
+
         ss_sum    += pt.pred_score_sec;
         ss_sq_sum += pt.pred_score_sec * pt.pred_score_sec;
-        tf_sum    += pt.time_fact;
-        tf_sq_sum += pt.time_fact * pt.time_fact;
+        tf_sum    += time_fact;
+        tf_sq_sum += time_fact * time_fact;
+        kf_sum    += _kf_time_fact_std(pt);
       }
 
-      score_sec_mean_ref = ss_sum / p->particleN;
-      time_fact_mean_ref = tf_sum / p->particleN;
+      score_sec_mean_ref   = ss_sum / p->particleN;
+      time_fact_mean_ref   = tf_sum / p->particleN;
+      time_fact_kf_std_ref = kf_sum / p->particleN;
 
       // max(0,...) guards against a tiny negative variance due to round-off
       score_sec_std_ref  = std::sqrt(std::max(0.0, ss_sq_sum / p->particleN - score_sec_mean_ref * score_sec_mean_ref));
@@ -149,14 +153,20 @@ namespace cw
     // Measurement model
     //
 
-    // Gaussian time likelihood N(dsec; 0, time_sigma_sec).
+    // Return the variance of a particle's Kalman filter predictive density for the score time of the next onset:
+    // S = var(s) + time_sigma_sec^2. It is always > 0 because time_sigma_sec > 0 (see _validate_args()).
+    double _innovation_var( const sf_t* p, const particle_t& pt )
+    {
+      return pt.cov_ss + p->args.time_sigma_sec * p->args.time_sigma_sec;
+    }
+
+    // Gaussian time likelihood N(dsec; 0, sigma), where sigma is the standard deviation of the particle's predictive density.
     // The normalizing constant 1/(sigma*sqrt(2*pi)) is required: the match and mismatch time terms
     // are compared directly with the nomatch uniform density (1/window_dur_sec) and therefore all
     // three must be densities over score seconds.
-    double _time_likelihood( const sf_t* p, double dsec )
+    double _time_likelihood( double dsec, double sigma )
     {
-      double sigma = p->args.time_sigma_sec;
-      double z     = dsec / sigma;
+      double z = dsec / sigma;
       return std::exp(-0.5 * z * z) / (sigma * std::sqrt(2.0 * M_PI));
     }
 
@@ -166,19 +176,58 @@ namespace cw
       return p->locA[loc_idx].end_note_idx - p->locA[loc_idx].beg_note_idx + 1;
     }
 
-    // Return true if 'pitch' is one of the notes at a location.
-    bool _loc_has_pitch( const sf_t* p, unsigned loc_idx, unsigned pitch )
+    // Return the offset from loc.beg_note_idx of the note at a location with 'pitch', or kInvalidIdx if the location does not contain the pitch.
+    // A location never contains the same pitch twice (see _check_for_duplicate_loc_pitches()) so the offset is unique.
+    unsigned _loc_pitch_note_ofs( const sf_t* p, unsigned loc_idx, unsigned pitch )
     {
       const loc_t& loc = p->locA[loc_idx];
       for(unsigned i=loc.beg_note_idx; i<=loc.end_note_idx; ++i)
         if( p->noteA[i].pitch == pitch )
-          return true;
-      return false;
+          return i - loc.beg_note_idx;
+      return kInvalidIdx;
+    }
+
+    // Return the jump distance d = loc_idx - anchor_loc_idx.
+    // Before the first match or mismatch the anchor is a virtual location just before the active region, so the first location of the region is d == 1.
+    int _jump_dist( const sf_t* p, const particle_t& pt, unsigned loc_idx )
+    {
+      int anchor = pt.anchor_loc_idx == kInvalidIdx ? (int)p->active_beg_loc_idx - 1 : (int)pt.anchor_loc_idx;
+      return (int)loc_idx - anchor;
+    }
+
+    // Return the count of notes at the particle's anchor location which it has not yet matched.
+    unsigned _unplayed_count( const sf_t* p, const particle_t& pt )
+    {
+      if( pt.anchor_loc_idx == kInvalidIdx )
+        return 0;
+
+      return _loc_note_count(p, pt.anchor_loc_idx) - std::popcount(pt.played_mask);
+    }
+
+    // Return the unnormalized jump prior weight of a candidate location at jump distance 'd'.
+    // Staying at the anchor is only possible while it has unplayed notes - a played note can not be matched again,
+    // so a repeated note must be explained by a backward jump or a nomatch.
+    double _jump_weight( const sf_t* p, int d, unsigned unplayedN )
+    {
+      if( d == 0 )
+        return unplayedN > 0 ? p->args.jump_stay : 0;
+
+      if( d == 1 )
+        return p->args.jump_next;
+
+      if( d > 1 )
+        return p->args.jump_skip * std::pow(p->args.jump_decay, d - 2);
+
+      return p->args.jump_back * std::pow(p->args.jump_decay, -d - 1);
     }
 
     // Append a branch to the branch pool.
-    rc_t _add_branch( sf_t* p, unsigned parent_idx, match_status_id_t tid, unsigned loc_idx, double weight )
+    // Zero weight branches are not added. They can never be selected by resampling and would only consume the pool.
+    rc_t _add_branch( sf_t* p, unsigned parent_idx, match_status_id_t tid, unsigned loc_idx, unsigned note_ofs, double weight )
     {
+      if( !(weight > 0) )
+        return kOkRC;
+
       // The pool bound is conservative, so this should never occur, but report it rather than overflowing.
       if( p->branchN >= p->branchAllocN )
         return cwLogError(kBufTooSmallRC,"The branch pool is full (%i branches).",p->branchAllocN);
@@ -187,6 +236,7 @@ namespace cw
       br.parent_idx = parent_idx;
       br.tid        = tid;
       br.loc_idx    = loc_idx;
+      br.note_ofs   = note_ofs;
       br.weight     = weight;
 
       return kOkRC;
@@ -212,25 +262,112 @@ namespace cw
       return false;
     }
 
-    // Advance each particle's predicted score time by the elapsed performance time since the previous note.
+    // Kalman filter prediction: advance each particle's state by the elapsed performance time D since the previous note.
+    //
+    //   s <- s + r*D                  F = [[1, D],[0, 1]]
+    //   P <- F P F' + Q(D)            Q = diag( pos_walk_sigma^2 * D, time_fact_walk_sigma^2 * D )
+    //
+    // The process noise grows with D so the notes of a chord, which arrive almost together, add almost none.
     void _predict( sf_t* p, double perf_sec )
     {
-      double delta_perf_sec = perf_sec - p->prev_perf_sec;
+      // Notes arrive in time order. A negative interval would make Q negative, therefore it is treated as zero.
+      double D  = std::max(0.0, perf_sec - p->prev_perf_sec);
+      double qs = p->args.pos_walk_sigma       * p->args.pos_walk_sigma       * D;
+      double qr = p->args.time_fact_walk_sigma * p->args.time_fact_walk_sigma * D;
 
       for(unsigned i=0; i<p->particleN; ++i)
-        p->particleA[i].pred_score_sec += delta_perf_sec / p->particleA[i].time_fact;
+      {
+        particle_t& pt = p->particleA[i];
+
+        pt.pred_score_sec += pt.tempo * D;
+
+        // cov_ss is updated first because it uses the prior cov_sr and cov_rr
+        pt.cov_ss += 2.0 * D * pt.cov_sr + D * D * pt.cov_rr + qs;
+        pt.cov_sr += D * pt.cov_rr;
+        pt.cov_rr += qr;
+      }
 
       p->prev_perf_sec = perf_sec;
     }
 
-    // Expand each particle into its candidate branches and weight each branch by
-    // parent.weight * prior(tid) * likelihood.
+    // Kalman filter update of a particle's state with the observation that the current onset is at score time 'loc_sec'.
     //
-    // Match    : prior_match    * N(loc.sec - pred_score_sec; 0, time_sigma_sec) * 1/k
-    // Mismatch : prior_mismatch * N(nearest.sec - pred_score_sec; 0, time_sigma_sec) * 1/(P-k)
+    //   S = cov_ss + R    K = [cov_ss, cov_sr]' / S    x <- x + K*(loc_sec - s)    P <- P - K*[cov_ss, cov_sr]
+    //
+    // The update moves both the position and the tempo, which is how the tempo is learned. Unlike a hard snap to
+    // loc_sec it keeps part of the prediction error, so a path which jumped to the wrong location keeps
+    // a lasting position error which later notes continue to penalize.
+    void _kalman_update( const sf_t* p, particle_t& pt, double loc_sec )
+    {
+      double S  = _innovation_var(p, pt);
+      double ks = pt.cov_ss / S;
+      double kr = pt.cov_sr / S;
+      double y  = loc_sec - pt.pred_score_sec;
+
+      pt.pred_score_sec += ks * y;
+      pt.tempo           = _clamp_tempo(p, pt.tempo + kr * y);
+
+      // cov_rr and cov_sr are updated before cov_ss because they use the prior cov_ss and cov_sr
+      pt.cov_rr -= kr * pt.cov_sr;
+      pt.cov_sr -= ks * pt.cov_sr;
+      pt.cov_ss -= ks * pt.cov_ss;
+    }
+
+    // A particle's candidate locations: its search window [beg_loc_idx,end_loc_idx] plus up to two extra
+    // locations, the anchor and the location after it, when they fall outside the window.
+    // The extra locations guarantee that the follower can always stay on or advance from its anchor,
+    // even when the predicted time has drifted away from it.
+    typedef struct cand_str
+    {
+      unsigned beg_loc_idx;
+      unsigned end_loc_idx;
+      double   wnd_dur_sec;  // window duration used by the nomatch time density (see _window())
+      unsigned extraA[2];
+      unsigned extraN;
+    } cand_t;
+
+    void _candidates( const sf_t* p, const particle_t& pt, cand_t& c )
+    {
+      _window(p, pt.pred_score_sec, c.beg_loc_idx, c.end_loc_idx, c.wnd_dur_sec);
+
+      // Before the first match the only extra candidate is the first location of the active region.
+      unsigned next_loc_idx = pt.anchor_loc_idx == kInvalidIdx ? p->active_beg_loc_idx : pt.anchor_loc_idx + 1;
+      unsigned locA[]       = { pt.anchor_loc_idx, next_loc_idx };
+
+      c.extraN = 0;
+      for(unsigned loc_idx : locA)
+        if( loc_idx != kInvalidIdx && p->active_beg_loc_idx <= loc_idx && loc_idx <= p->active_end_loc_idx && (loc_idx < c.beg_loc_idx || c.end_loc_idx < loc_idx) )
+          c.extraA[ c.extraN++ ] = loc_idx;
+    }
+
+    unsigned _cand_count( const cand_t& c )
+    {
+      return (c.end_loc_idx - c.beg_loc_idx + 1) + c.extraN;
+    }
+
+    // Return the location index of the k'th candidate, 0 <= k < _cand_count().
+    unsigned _cand_loc_idx( const cand_t& c, unsigned k )
+    {
+      unsigned wndN = c.end_loc_idx - c.beg_loc_idx + 1;
+      return k < wndN ? c.beg_loc_idx + k : c.extraA[ k - wndN ];
+    }
+
+    // Expand each particle into its candidate branches and weight each branch by
+    // parent.weight * prior(tid) * jump prior * likelihood.
+    //
+    // Match    : prior_match    * J(d) * N(loc.sec - pred_score_sec; 0, sqrt(S)) * 1/k
+    // Mismatch : prior_mismatch * J(d) * N(nearest.sec - pred_score_sec; 0, sqrt(S)) * 1/(P-k)
     // NoMatch  : prior_nomatch  * 1/window_dur_sec * 1/P
     //
-    // where P is the size of the pitch space and k is the count of notes at the candidate location.
+    // where S is the variance of the particle's Kalman filter predictive density (_innovation_var()),
+    // P is the size of the pitch space, k is the count of notes at the candidate location,
+    // d = loc_idx - anchor_loc_idx and J(d) is the jump prior (_jump_weight()) normalized over
+    // the particle's candidate locations. On a match at the anchor (d == 0) k is replaced by
+    // the count of unplayed notes, since the performed note must be one of them.
+    //
+    // Because J sums to 1 over the candidates, prior_match is the total probability of a match
+    // regardless of how many candidate locations contain the pitch, and the summed match term is
+    // a density over score seconds in the same units as the nomatch term.
     rc_t _branch( sf_t* p, unsigned pitch )
     {
       rc_t     rc = kOkRC;
@@ -241,49 +378,75 @@ namespace cw
       for(unsigned i=0; i<p->particleN; ++i)
       {
         const particle_t& pt              = p->particleA[i];
-        unsigned          beg_loc_idx     = kInvalidIdx;
-        unsigned          end_loc_idx     = kInvalidIdx;
-        double            wnd_dur_sec     = 0;
+        unsigned          unplayedN       = _unplayed_count(p, pt);
         unsigned          nearest_loc_idx = kInvalidIdx;
         double            nearest_dsec    = 0;
+        double            jump_sum        = 0;
+        double            pred_sigma      = std::sqrt(_innovation_var(p, pt));
+        cand_t            c;
 
-        _window(p, pt.pred_score_sec, beg_loc_idx, end_loc_idx, wnd_dur_sec);
+        _candidates(p, pt, c);
 
-        // Match branches: one for each window location which contains the performed pitch.
-        for(unsigned loc_idx=beg_loc_idx; loc_idx<=end_loc_idx; ++loc_idx)
+        unsigned candN = _cand_count(c);
+
+        // Sum the jump weights over every candidate location (not only those with the pitch)
+        // because J is the prior over where the next performed note comes from.
+        for(unsigned k=0; k<candN; ++k)
         {
-          double dsec = p->locA[loc_idx].sec - pt.pred_score_sec;
+          unsigned loc_idx = _cand_loc_idx(c, k);
+          jump_sum += _jump_weight(p, _jump_dist(p, pt, loc_idx), unplayedN);
+        }
 
-          // track the location nearest in time to the predicted score time
-          if( nearest_loc_idx == kInvalidIdx || std::fabs(dsec) < std::fabs(nearest_dsec) )
+        // Match branches: one for each candidate location which contains the performed pitch.
+        for(unsigned k=0; k<candN && jump_sum>0; ++k)
+        {
+          unsigned loc_idx  = _cand_loc_idx(c, k);
+          double   dsec     = p->locA[loc_idx].sec - pt.pred_score_sec;
+          int      d        = _jump_dist(p, pt, loc_idx);
+          unsigned note_ofs = _loc_pitch_note_ofs(p, loc_idx, pitch);
+
+          // track the window location nearest in time to the predicted score time
+          if( k < c.end_loc_idx - c.beg_loc_idx + 1 && (nearest_loc_idx == kInvalidIdx || std::fabs(dsec) < std::fabs(nearest_dsec)) )
           {
             nearest_loc_idx = loc_idx;
             nearest_dsec    = dsec;
           }
 
-          if( _loc_has_pitch(p, loc_idx, pitch) )
-          {
-            // The 1/k term keeps a chord location from receiving k times the evidence of a single-note location.
-            double k = _loc_note_count(p, loc_idx);
-            double w = pt.weight * p->args.prior_match * _time_likelihood(p, dsec) / k;
+          if( note_ofs == kInvalidIdx )
+            continue;
 
-            if((rc = _add_branch(p, i, kMatchTId, loc_idx, w)) != kOkRC )
-              goto errLabel;
+          // The 1/k term keeps a chord location from receiving k times the evidence of a single-note location.
+          double pitch_n = _loc_note_count(p, loc_idx);
+
+          if( d == 0 )
+          {
+            // a note which the particle has already matched at its anchor can not be matched again
+            if( pt.played_mask & (uint64_t(1) << note_ofs) )
+              continue;
+
+            pitch_n = unplayedN;
           }
+
+          double jw = _jump_weight(p, d, unplayedN) / jump_sum;
+          double w  = pt.weight * p->args.prior_match * jw * _time_likelihood(dsec, pred_sigma) / pitch_n;
+
+          if((rc = _add_branch(p, i, kMatchTId, loc_idx, note_ofs, w)) != kOkRC )
+            goto errLabel;
         }
 
-        // Mismatch branch: the note is assigned to the location nearest in time.
+        // Mismatch branch: the note is assigned to the window location nearest in time.
         // It is skipped if that location contains the pitch because the match branch already covers that case.
-        if( !_loc_has_pitch(p, nearest_loc_idx, pitch) )
+        if( nearest_loc_idx != kInvalidIdx && _loc_pitch_note_ofs(p, nearest_loc_idx, pitch) == kInvalidIdx )
         {
           unsigned k = _loc_note_count(p, nearest_loc_idx);
 
           // a mismatch is impossible if every pitch in the pitch space is present at the location
           if( k < P )
           {
-            double w = pt.weight * p->args.prior_mismatch * _time_likelihood(p, nearest_dsec) / (P - k);
+            double jw = _jump_weight(p, _jump_dist(p, pt, nearest_loc_idx), unplayedN) / jump_sum;
+            double w  = pt.weight * p->args.prior_mismatch * jw * _time_likelihood(nearest_dsec, pred_sigma) / (P - k);
 
-            if((rc = _add_branch(p, i, kMismatchTId, nearest_loc_idx, w)) != kOkRC )
+            if((rc = _add_branch(p, i, kMismatchTId, nearest_loc_idx, kInvalidIdx, w)) != kOkRC )
               goto errLabel;
           }
         }
@@ -291,9 +454,9 @@ namespace cw
         // NoMatch branch: the note is unrelated to any score location.
         // Its time density is uniform over the particle's window.
         {
-          double w = pt.weight * p->args.prior_nomatch / wnd_dur_sec / P;
+          double w = pt.weight * p->args.prior_nomatch / c.wnd_dur_sec / P;
 
-          if((rc = _add_branch(p, i, kNoMatchTId, kInvalidIdx, w)) != kOkRC )
+          if((rc = _add_branch(p, i, kNoMatchTId, kInvalidIdx, kInvalidIdx, w)) != kOkRC )
             goto errLabel;
         }
       }
@@ -435,21 +598,26 @@ namespace cw
       return best_loc_idx;
     }
 
-    // Systematic resampling of the branch pool back to particleN particles.
-    // A single uniform draw u in [0,1/N) places N evenly spaced pointers u + i/N which are
-    // walked against the cumulative branch weights. Each selected branch becomes one particle.
+    // Stratified resampling of the branch pool back to particleN particles.
+    // The pointers (i + u_i)/N, with an independent uniform draw u_i in [0,1) for each pointer,
+    // are walked against the cumulative branch weights. Each selected branch becomes one particle.
+    //
+    // Why not systematic resampling (a single u shared by every pointer): the branches of each parent are
+    // contiguous in the pool and, when the parents are identical copies, every parent's block has the same
+    // layout and exactly 1/N of the mass. A shared u then places every pointer at the same offset within its
+    // parent's block, so the whole population selects the same hypothesis together - a 2% branch takes
+    // every particle 2% of the time. Independent draws let each particle choose independently.
     void _resample( sf_t* p )
     {
       double                                 N        = p->particleN;
       double                                 init_wgt = 1.0 / N;
-      std::uniform_real_distribution<double> dist(0.0, init_wgt);
-      double                                 u        = dist(p->rng);
+      std::uniform_real_distribution<double> dist(0.0, 1.0);
       unsigned                               j        = 0;
       double                                 cum      = p->branchA[0].weight;
 
       for(unsigned i=0; i<p->particleN; ++i)
       {
-        double ptr = u + i * init_wgt;
+        double ptr = (i + dist(p->rng)) * init_wgt;
 
         // The j guard protects against the cumulative sum ending slightly below 1.0 due to round-off.
         while( ptr > cum && j < p->branchN-1 )
@@ -459,13 +627,26 @@ namespace cw
         const particle_t& parent = p->particleA[ br.parent_idx ];
         particle_t&       pt     = p->next_particleA[i];
 
-        // match and mismatch branches snap to the location, nomatch branches keep the parent's predicted state
-        pt                = parent;
-        pt.weight         = init_wgt;
-        pt.pred_loc_idx   = br.loc_idx;  // kInvalidIdx on nomatch branches
+        // Match and mismatch branches update the Kalman filter with the location's time and move the anchor to it.
+        // Nomatch branches keep the parent's predicted state, anchor and played notes.
+        pt        = parent;
+        pt.weight = init_wgt;
 
         if( br.tid != kNoMatchTId )
-          pt.pred_score_sec = p->locA[ br.loc_idx ].sec;
+        {
+          _kalman_update(p, pt, p->locA[ br.loc_idx ].sec);
+
+          // moving to a new anchor location starts a new set of played notes
+          if( br.loc_idx != parent.anchor_loc_idx )
+          {
+            pt.anchor_loc_idx = br.loc_idx;
+            pt.played_mask    = 0;
+          }
+
+          // It is not known which score note a mismatch replaced, so only a match marks a note as played.
+          if( br.tid == kMatchTId )
+            pt.played_mask |= uint64_t(1) << br.note_ofs;
+        }
       }
 
       // The parents were read from particleA[] while the survivors were written to next_particleA[].
@@ -489,13 +670,14 @@ namespace cw
     }
 
     // report_level >= 2: one line per note.
-    // The population statistics describe the particles after resampling and the time_fact walk.
+    // The population statistics describe the particles after resampling and the Kalman filter update.
+    // kf_std is the mean of the particles' own Kalman filter time_fact standard deviations.
     void _report_note( const sf_t* p, unsigned uid, double perf_sec, unsigned pitch, unsigned loc_idx, const result_t& r )
     {
-      double ss_mean, ss_std, tf_mean, tf_std;
+      double ss_mean, ss_std, tf_mean, tf_std, tf_kf_std;
       char   expect_buf[128];
 
-      _particle_stats(p, ss_mean, ss_std, tf_mean, tf_std);
+      _particle_stats(p, ss_mean, ss_std, tf_mean, tf_std, tf_kf_std);
 
       expect_buf[0] = 0;
 
@@ -509,11 +691,11 @@ namespace cw
           n += snprintf(expect_buf + n, sizeof(expect_buf) - n, " %i", p->noteA[i].pitch);
       }
 
-      cwLogInfo("sf3 uid:%5i sec:%8.3f pitch:%3i -> loc:%5i meas:%3i %-8s conf:%.3f | score_sec mean:%8.3f std:%6.3f time_fact mean:%6.3f std:%6.3f%s",
+      cwLogInfo("sf3 uid:%5i sec:%8.3f pitch:%3i -> loc:%5i meas:%3i %-8s conf:%.3f | score_sec mean:%8.3f std:%6.3f time_fact mean:%6.3f std:%6.3f kf_std:%6.3f%s",
                 uid, perf_sec, pitch,
                 _loc_idx_to_report_id(p, loc_idx), _loc_idx_to_report_meas(p, loc_idx),
                 cwStringNullGuard(match_status_id_to_label(r.match_status_id)), r.confidence,
-                ss_mean, ss_std, tf_mean, tf_std,
+                ss_mean, ss_std, tf_mean, tf_std, tf_kf_std,
                 expect_buf);
     }
 
@@ -529,25 +711,15 @@ namespace cw
       }
     }
 
-    // report_level >= 4: every particle after resampling and the time_fact walk.
+    // report_level >= 4: every particle after resampling and the Kalman filter update.
     void _report_particles( const sf_t* p )
     {
       for(unsigned i=0; i<p->particleN; ++i)
       {
         const particle_t& pt = p->particleA[i];
-        cwLogInfo("    particle %4i: score_sec:%8.3f time_fact:%6.4f loc:%5i weight:%.5f",
-                  i, pt.pred_score_sec, pt.time_fact, _loc_idx_to_report_id(p, pt.pred_loc_idx), pt.weight);
-      }
-    }
-
-    // Jitter each particle's time_fact by a multiplicative random walk.
-    // This occurs after resampling so that copies of the same branch each receive their own tempo hypothesis.
-    void _walk_time_fact( sf_t* p )
-    {
-      for(unsigned i=0; i<p->particleN; ++i)
-      {
-        particle_t& pt = p->particleA[i];
-        pt.time_fact = _clamp_time_fact(p, pt.time_fact * std::exp(_rand_normal(p, 0.0, p->args.time_fact_walk_sigma)));
+        cwLogInfo("    particle %4i: score_sec:%8.3f sd:%6.3f time_fact:%6.4f sd:%6.4f anchor:%5i played:0x%llx weight:%.5f",
+                  i, pt.pred_score_sec, std::sqrt(std::max(0.0, pt.cov_ss)), 1.0 / pt.tempo, _kf_time_fact_std(pt),
+                  _loc_idx_to_report_id(p, pt.anchor_loc_idx), (unsigned long long)pt.played_mask, pt.weight);
       }
     }
 
@@ -563,14 +735,23 @@ cw::rc_t cw::score_follow_3::_create_impl( sf_t* p, const args_t& args )
   // It is re-seeded on every reset().
   new (&p->rng) std::mt19937(args.rand_seed);
 
-  // Each particle produces at most one match branch per window location, plus one mismatch and one nomatch branch.
+  // particle_t.played_mask holds one bit per note of a location
+  for(unsigned i=0; i<p->locN; ++i)
+    if( _loc_note_count(p, i) > kMaxLocNoteN )
+    {
+      rc = cwLogError(kInvalidArgRC,"The score location %i has %i notes. The maximum is %i.",p->locA[i].loc_id,_loc_note_count(p, i),kMaxLocNoteN);
+      goto errLabel;
+    }
+
+  // Each particle produces at most one match branch per candidate location - the window plus the
+  // anchor and the location after it (see _candidates()) - plus one mismatch and one nomatch branch.
   max_window_loc_cnt = _max_window_loc_count(p);
 
   p->particleN      = args.particle_cnt;
   p->particleA      = mem::allocZ<particle_t>(p->particleN);
   p->next_particleA = mem::allocZ<particle_t>(p->particleN);
 
-  p->branchAllocN   = p->particleN * (max_window_loc_cnt + 2);
+  p->branchAllocN   = p->particleN * (max_window_loc_cnt + 2 + 2);
   p->branchA        = mem::allocZ<branch_t>(p->branchAllocN);
   p->branchN        = 0;
 
@@ -615,13 +796,19 @@ cw::rc_t cw::score_follow_3::_reset_impl( sf_t* p )
   // Re-seed so that every performance produces the same output whether it is run alone or after others.
   p->rng.seed(p->args.rand_seed);
 
-  // Every particle starts at the begin location (a point start) with its own tempo hypothesis.
+  // Every particle starts at the begin location (a point start, var(s) = 0) at the nominal tempo r = 1.
+  // The tempo prior is carried by the Kalman covariance rather than by a spread of particle tempos.
+  // Since r is close to 1 the time_fact prior standard deviation is also used as the standard deviation of r.
   for(unsigned i=0; i<p->particleN; ++i)
   {
     particle_t& pt = p->particleA[i];
     pt.pred_score_sec = beg_sec;
-    pt.pred_loc_idx   = kInvalidIdx;
-    pt.time_fact      = _clamp_time_fact(p, _rand_normal(p, 1.0, p->args.time_fact_prior_sigma));
+    pt.tempo          = 1.0;
+    pt.cov_ss         = 0;
+    pt.cov_sr         = 0;
+    pt.cov_rr         = p->args.time_fact_prior_sigma * p->args.time_fact_prior_sigma;
+    pt.anchor_loc_idx = kInvalidIdx;
+    pt.played_mask    = 0;
     pt.weight         = init_wgt;
   }
 
@@ -640,14 +827,14 @@ cw::rc_t cw::score_follow_3::_reset_impl( sf_t* p )
 
   if( p->args.report_level >= 1 )
   {
-    double ss_mean, ss_std, tf_mean, tf_std;
-    _particle_stats(p, ss_mean, ss_std, tf_mean, tf_std);
+    double ss_mean, ss_std, tf_mean, tf_std, tf_kf_std;
+    _particle_stats(p, ss_mean, ss_std, tf_mean, tf_std, tf_kf_std);
 
-    cwLogInfo("sf3 reset: loc_id:[%i,%i] loc_idx:[%i,%i] N:%i branch pool:%i (max wnd loc cnt:%i) time_fact: mean:%f std:%f",
+    cwLogInfo("sf3 reset: loc_id:[%i,%i] loc_idx:[%i,%i] N:%i branch pool:%i (max wnd loc cnt:%i) time_fact: mean:%f kf_std:%f",
               p->locA[ p->active_beg_loc_idx ].loc_id, p->locA[ p->active_end_loc_idx ].loc_id,
               p->active_beg_loc_idx, p->active_end_loc_idx,
-              p->particleN, p->branchAllocN, p->branchAllocN / p->particleN - 2,
-              tf_mean, tf_std );
+              p->particleN, p->branchAllocN, p->branchAllocN / p->particleN - 4,
+              tf_mean, tf_kf_std );
   }
 
   return rc;
@@ -676,8 +863,6 @@ cw::rc_t cw::score_follow_3::_on_new_note_impl( sf_t* p, unsigned uid, double pe
   loc_idx = _report_map(p, result_ref);
 
   _resample(p);
-
-  _walk_time_fact(p);
 
 reportLabel:
   if( p->args.report_level >= 2 )

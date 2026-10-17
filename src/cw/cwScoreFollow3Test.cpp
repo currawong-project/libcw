@@ -550,7 +550,7 @@ namespace cw
 
       ra.resultN = ra.noteN;
 
-      // name the run, this name is also used to form the result file name
+      // name the run for the log
       ra.perf_fname = mem::printf<char>(nullptr,"self_test_m%i-%i_x%03i",ra.beg_meas_num,ra.end_meas_num,(unsigned)std::lround(ra.self_test_time_scale*100));
 
     errLabel:
@@ -559,36 +559,6 @@ namespace cw
       return rc;
     }
 
-    rc_t _form_result_file_name( const char* out_dir, const char* in_fname, const char* fn_ext, char*& out_fname_ref )
-    {
-      rc_t                 rc = kOkRC;
-      filesys::pathPart_t* pp = nullptr;
-      char*                fn = nullptr;
-
-      
-      out_fname_ref = nullptr;
-
-      if((pp = filesys::pathParts(in_fname)) == nullptr )
-      {
-        rc = cwLogError(kOpFailRC,"The performance input file name '%s' could not be parsed.",cwStringNullGuard(in_fname));
-        goto errLabel;
-      }
-
-      if((out_fname_ref = filesys::makeFn(out_dir, pp->fnStr, fn_ext, nullptr )) == nullptr )
-      {
-        rc = cwLogError(kOpFailRC,"File parts join operation failed.");
-        goto errLabel;
-      }
-
-    errLabel:
-      mem::release(pp);
-
-      if( rc != kOkRC )
-        rc = cwLogError(rc,"The output filename could not be formed.");
-
-      return rc;
-    }
-    
     rc_t _parse_perf_list_cfg( const object_t* perf_cfgL, test_args_t& test_args )
     {
       rc_t rc = kOkRC;
@@ -607,11 +577,11 @@ namespace cw
       // for each performance file
       for(unsigned i=0; i<test_args.run_argsN; ++i)
       {
-        const object_t* run_cfg  = perf_cfgL->child_ele(i);
-        const char*     fname    = nullptr;
-        const char*     gt_fname = nullptr;
-        run_args_t&     ra       = test_args.run_argsA[i];
-        const char*     fn_ext   = test_args.output_json_fl ? ".json" : ".csv";
+        const object_t* run_cfg   = perf_cfgL->child_ele(i);
+        const char*     fname     = nullptr;
+        const char*     gt_fname  = nullptr;
+        const char*     res_fname = nullptr;
+        run_args_t&     ra        = test_args.run_argsA[i];
 
         // read the configuration record
         if((rc = run_cfg->readv("beg_meas",kReqFl,ra.beg_meas_num,
@@ -620,6 +590,7 @@ namespace cw
                                 "end_perf_uid",kReqFl,ra.end_perf_uid,
                                 "fn",      kOptFl,fname,
                                 "gt_fn",   kOptFl,gt_fname,
+                                "result_fn",kReqFl,res_fname,
                                 "self_test_time_scale",kOptFl,ra.self_test_time_scale)) != kOkRC )
         {
           rc = cwLogError(rc,"Parse error on perfL element at index %i.",i);
@@ -710,10 +681,20 @@ namespace cw
           }
         }
         
-        if((rc = _form_result_file_name( test_args.out_dir, ra.perf_fname, fn_ext, ra.result_fname )) != kOkRC )
+        // the result file name is given explicitly because several runs may share one performance file
+        if((ra.result_fname = filesys::makeFn(test_args.out_dir, res_fname, nullptr, nullptr )) == nullptr )
         {
+          rc = cwLogError(kOpFailRC,"The result file name could not be formed from '%s'.",cwStringNullGuard(res_fname));
           goto errLabel;
         }
+
+        // a duplicate result file name would silently overwrite an earlier run's results
+        for(unsigned j=0; j<i; ++j)
+          if( textIsEqual(test_args.run_argsA[j].result_fname,ra.result_fname) )
+          {
+            rc = cwLogError(kSyntaxErrorRC,"The perfL elements at index %i and %i have the same result file '%s'.",j,i,cwStringNullGuard(ra.result_fname));
+            goto errLabel;
+          }
 
         cwLogInfo("Perf notes:%i meas:%i-%i loc:%i-%i %s.",ra.noteN,ra.beg_meas_num,ra.end_meas_num,ra.beg_loc_id,ra.end_loc_id,cwStringNullGuard(ra.perf_fname));
         
@@ -740,8 +721,14 @@ namespace cw
                             "time_sigma_sec",kReqFl,sf_args.time_sigma_sec,
                             "time_fact_prior_sigma",kReqFl,sf_args.time_fact_prior_sigma,
                             "time_fact_walk_sigma",kReqFl,sf_args.time_fact_walk_sigma,
+                            "pos_walk_sigma",kReqFl,sf_args.pos_walk_sigma,
                             "time_fact_min",kReqFl,sf_args.time_fact_min,
-                            "time_fact_max",kReqFl,sf_args.time_fact_max,                                                        
+                            "time_fact_max",kReqFl,sf_args.time_fact_max,
+                            "jump_stay",kReqFl,sf_args.jump_stay,
+                            "jump_next",kReqFl,sf_args.jump_next,
+                            "jump_skip",kReqFl,sf_args.jump_skip,
+                            "jump_back",kReqFl,sf_args.jump_back,
+                            "jump_decay",kReqFl,sf_args.jump_decay,
                             "report_level",kReqFl,sf_args.report_level)) != kOkRC )
       {
         rc = cwLogError(rc,"Parse failed on follower args.");
@@ -1114,7 +1101,7 @@ namespace cw
           gt_label_cnt += 1;
 
       if( ta.sf_args.report_level >= 2 )
-        cwLogInfo("Ground truth disagreements: %s",cwStringNullGuard(ra.gnd_truth_fname != nullptr ? ra.gnd_truth_fname : ra.perf_fname));
+        cwLogInfo("Ground truth disagreements: %s",cwStringNullGuard(ra.result_fname)); // unique per run, unlike the perf. and gnd-truth files
 
       // for each result
       for(unsigned i=0; i<result_cnt; ++i)
