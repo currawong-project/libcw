@@ -352,9 +352,11 @@ namespace cw
       return cwLogError(kInvalidArgRC,"The loc. id %i was not found.",loc_id);
     }
 
-    rc_t _reset( sf_t* p, unsigned beg_loc_id, unsigned end_loc_id )
+    rc_t _reset( sf_t* p, unsigned beg_loc_id, unsigned end_loc_id, bool end_timeout_fl )
     {
       rc_t rc = kOkRC;
+
+      p->end_timeout_fl = end_timeout_fl;
       
       if((rc = _loc_id_to_index(p,beg_loc_id,p->active_beg_loc_idx)) != kOkRC )
       {
@@ -439,7 +441,7 @@ cw::rc_t cw::score_follow_3::create( handle_t& hRef, const args_t& args, const s
     goto errLabel;
   }
   
-  if((rc = _reset(p,p->min_score_loc_id, p->max_score_loc_id)) != kOkRC )
+  if((rc = _reset(p,p->min_score_loc_id, p->max_score_loc_id, false)) != kOkRC )
   {
     goto errLabel;
   }
@@ -475,11 +477,11 @@ errLabel:
   
 }
 
-cw::rc_t cw::score_follow_3::reset( handle_t h, unsigned beg_loc_id, unsigned end_loc_id )
+cw::rc_t cw::score_follow_3::reset( handle_t h, unsigned beg_loc_id, unsigned end_loc_id, bool end_timeout_fl )
 {
   rc_t rc = kOkRC;
   sf_t* p = _handleToPtr(h);
-  if((rc =  _reset(p,beg_loc_id,end_loc_id)) != kOkRC )
+  if((rc =  _reset(p,beg_loc_id,end_loc_id,end_timeout_fl)) != kOkRC )
   {
     goto errLabel;
   }

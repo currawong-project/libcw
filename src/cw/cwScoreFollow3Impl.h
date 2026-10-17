@@ -91,6 +91,7 @@ namespace cw
 
       unsigned active_beg_loc_idx; // Currently active score segment 
       unsigned active_end_loc_idx;
+      bool     end_timeout_fl;     // true if reporting the last location of the segment waits for the end timeout rather than ending the segment (see reset())
 
 
       double perf_base_time;
@@ -128,6 +129,7 @@ namespace cw
 
       double*      rem_max_ioi_secA;   // rem_max_ioi_secA[locN] - largest score time gap between consecutive locations from each location to the end of the active region (set by reset())
       double       last_note_perf_sec; // performance time of the latest note, including notes outside the pitch range
+      bool         end_loc_reported_fl;// set when the last location of the active region is first reported while end_timeout_fl is set (used only to log it once)
 
       map_key_t    map_topA[ kMapTopN ]; // largest MAP keys of the current note in decreasing mass order (report_level >= 3)
       unsigned     map_topN;             // count of valid elements in map_topA[]

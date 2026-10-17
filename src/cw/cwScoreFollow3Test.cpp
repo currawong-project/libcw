@@ -48,6 +48,7 @@ namespace cw
       unsigned     end_perf_uid;
 
       double       self_test_time_scale; // >0 if this is a self-test run (see _create_self_test_perf())
+      bool         end_timeout_fl;       // passed to reset(): wait for the end timeout rather than ending at the last location
 
       char*        perf_fname;   // performance file name or the generated self-test name
       char*        gnd_truth_fname;
@@ -72,6 +73,7 @@ namespace cw
       char*       out_dir;
       bool        output_json_fl;
       double      exec_tail_sec;   // duration of exec() calls after the last note, which allows the end of region timeout to expire
+      bool        end_timeout_fl;  // default for run_args_t.end_timeout_fl
 
       args_t      sf_args;
 
@@ -584,6 +586,9 @@ namespace cw
         const char*     res_fname = nullptr;
         run_args_t&     ra        = test_args.run_argsA[i];
 
+        // the per-run value is optional and defaults to the global value
+        ra.end_timeout_fl = test_args.end_timeout_fl;
+
         // read the configuration record
         if((rc = run_cfg->readv("beg_meas",kReqFl,ra.beg_meas_num,
                                 "end_meas",kReqFl,ra.end_meas_num,
@@ -592,7 +597,8 @@ namespace cw
                                 "fn",      kOptFl,fname,
                                 "gt_fn",   kOptFl,gt_fname,
                                 "result_fn",kReqFl,res_fname,
-                                "self_test_time_scale",kOptFl,ra.self_test_time_scale)) != kOkRC )
+                                "self_test_time_scale",kOptFl,ra.self_test_time_scale,
+                                "end_timeout_fl",kOptFl,ra.end_timeout_fl)) != kOkRC )
         {
           rc = cwLogError(rc,"Parse error on perfL element at index %i.",i);
           goto errLabel;
@@ -908,6 +914,7 @@ namespace cw
                          "out_dir",out_dir,
                          "output_json_fl",test_args.output_json_fl,
                          "exec_tail_sec",test_args.exec_tail_sec,
+                         "end_timeout_fl",test_args.end_timeout_fl,
                          "perfL", perf_cfgL,
                          "follower",sf_cfg)) != kOkRC )
       {
@@ -1228,7 +1235,7 @@ namespace cw
 
       if( done.id == kNotDoneId )
       {
-        cwLogInfo("End detection: %s  NOT DONE after a %.1f sec tail.",cwStringNullGuard(r.result_fname),ta.exec_tail_sec);
+        cwLogInfo("End detection: %s  mode:%s NOT DONE after a %.1f sec tail.",cwStringNullGuard(r.result_fname),r.end_timeout_fl ? "wait" : "immediate",ta.exec_tail_sec);
         return;
       }
 
@@ -1246,8 +1253,8 @@ namespace cw
       else
         snprintf(premature_buf,sizeof(premature_buf),"%s (%i notes)",premature_cnt>0 ? "PREMATURE" : "no",premature_cnt);
 
-      cwLogInfo("End detection: %s  by:%s at %.2f sec (%.2f sec after the last note) notes after done:%i premature:%s",
-                cwStringNullGuard(r.result_fname),
+      cwLogInfo("End detection: %s  mode:%s by:%s at %.2f sec (%.2f sec after the last note) notes after done:%i premature:%s",
+                cwStringNullGuard(r.result_fname), r.end_timeout_fl ? "wait" : "immediate",
                 done.id == kEndLocDoneId ? "end_loc" : "timeout",
                 done.sec, done.sec - last_sec, r.noteN - done.noteN, premature_buf);
     }
@@ -1267,7 +1274,7 @@ namespace cw
       }
 
       // Reset the active score follower section to beg_loc_id:end_loc_id
-      if((rc = reset(sfH,r.beg_loc_id,r.end_loc_id)) != kOkRC )
+      if((rc = reset(sfH,r.beg_loc_id,r.end_loc_id,r.end_timeout_fl)) != kOkRC )
       {
         rc = cwLogError(rc,"Score follower reset failed on locations: beg=%i end=%i.",r.beg_loc_id,r.end_loc_id);
         goto errLabel;

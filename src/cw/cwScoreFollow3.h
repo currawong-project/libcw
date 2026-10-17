@@ -93,7 +93,12 @@ namespace cw
 
     // Prepare to track the section of the score identified by the range beg_loc_id to end_loc_id.
     // The next calls to on_new_note() should therefore match to notes at or close to beg_loc_id.
-    rc_t reset( handle_t h, unsigned beg_loc_id, unsigned end_loc_id );
+    //
+    // If end_timeout_fl is false is_done() becomes true as soon as the last location of the region is reported,
+    // or when the inactivity timeout expires (see args_t.end_zone_sec). If it is true reporting the last location
+    // does not end the region: is_done() becomes true only when the inactivity timeout expires. This avoids ending
+    // the region early when a note is wrongly matched to the last location before the performer has reached it.
+    rc_t reset( handle_t h, unsigned beg_loc_id, unsigned end_loc_id, bool end_timeout_fl=false );
 
    
     // This function 

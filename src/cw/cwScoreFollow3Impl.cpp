@@ -635,12 +635,24 @@ namespace cw
         p->last_loc_idx = best_loc_idx;
 
       // Once the end of the active region has been reported the follower remains done until the next reset().
+      // If end_timeout_fl is set the end location does not end the region. It is always inside the end zone and its
+      // remaining inter-onset gap is 0, so the region ends after done_timeout_min_sec of silence (see _exec_impl()).
       if( best_loc_idx == p->active_end_loc_idx && !p->done_fl )
       {
-        p->done_fl = true;
+        if( !p->end_timeout_fl )
+        {
+          p->done_fl = true;
 
-        if( p->args.report_level >= 1 )
-          cwLogInfo("sf3 done: end loc:%i",p->locA[ best_loc_idx ].loc_id);
+          if( p->args.report_level >= 1 )
+            cwLogInfo("sf3 done: end loc:%i",p->locA[ best_loc_idx ].loc_id);
+        }
+        else
+        {
+          if( p->args.report_level >= 1 && !p->end_loc_reported_fl )
+            cwLogInfo("sf3 end loc:%i reached (waiting for timeout)",p->locA[ best_loc_idx ].loc_id);
+
+          p->end_loc_reported_fl = true;
+        }
       }
 
       // collect the largest keys for the report_level 3 MAP table
@@ -968,8 +980,9 @@ cw::rc_t cw::score_follow_3::_reset_impl( sf_t* p )
 
   p->branchN            = 0;
   p->prev_perf_sec      = 0;
-  p->last_note_perf_sec = 0;
-  p->last_loc_idx       = kInvalidIdx;
+  p->last_note_perf_sec  = 0;
+  p->end_loc_reported_fl = false;
+  p->last_loc_idx        = kInvalidIdx;
   p->done_fl            = false;
 
   _fill_rem_max_ioi(p);
