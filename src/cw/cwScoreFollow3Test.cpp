@@ -62,6 +62,8 @@ namespace cw
 
       gnd_truth_note_t* gnd_truthA;
       unsigned          gnd_truthN;
+
+      double*           seed_agree_pctA; // seed_agree_pctA[seed_cnt] - gnd-truth agreement of the run with each random seed (see test())
       
     } run_args_t;
     
@@ -74,6 +76,7 @@ namespace cw
       bool        output_json_fl;
       double      exec_tail_sec;   // duration of exec() calls after the last note, which allows the end of region timeout to expire
       bool        end_timeout_fl;  // default for run_args_t.end_timeout_fl
+      unsigned    seed_cnt;        // each run is repeated with the seeds sf_args.rand_seed to sf_args.rand_seed+seed_cnt-1
 
       args_t      sf_args;
 
@@ -97,6 +100,7 @@ namespace cw
         mem::release(test_args.run_argsA[i].perf_fname);
         mem::release(test_args.run_argsA[i].result_fname);
         mem::release(test_args.run_argsA[i].gnd_truth_fname);
+        mem::release(test_args.run_argsA[i].seed_agree_pctA);
       }
       
       test_args.run_argsN = 0;
@@ -589,6 +593,8 @@ namespace cw
         // the per-run value is optional and defaults to the global value
         ra.end_timeout_fl = test_args.end_timeout_fl;
 
+        ra.seed_agree_pctA = mem::allocZ<double>(test_args.seed_cnt);
+
         // read the configuration record
         if((rc = run_cfg->readv("beg_meas",kReqFl,ra.beg_meas_num,
                                 "end_meas",kReqFl,ra.end_meas_num,
@@ -915,10 +921,17 @@ namespace cw
                          "output_json_fl",test_args.output_json_fl,
                          "exec_tail_sec",test_args.exec_tail_sec,
                          "end_timeout_fl",test_args.end_timeout_fl,
+                         "seed_cnt",test_args.seed_cnt,
                          "perfL", perf_cfgL,
                          "follower",sf_cfg)) != kOkRC )
       {
         rc = cwLogError(rc,"Parse top level test cfg. failed.");
+        goto errLabel;
+      }
+
+      if( test_args.seed_cnt < 1 )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The 'seed_cnt' must be at least 1.");
         goto errLabel;
       }
 
@@ -1104,7 +1117,9 @@ namespace cw
 
     // Compare the follower results to the ground truth and print a summary.
     // Results whose perf. note has no ground-truth record, or whose ground-truth status is 'blank', are not scored.
-    rc_t _report_gnd_truth_score( const test_args_t& ta, const run_args_t& ra, unsigned result_cnt )
+    // Score the results against the gnd-truth and return the agreement (status and location) percentage in agree_pct_ref.
+    // If report_fl is false nothing is logged.
+    rc_t _report_gnd_truth_score( const test_args_t& ta, const run_args_t& ra, unsigned result_cnt, bool report_fl, double& agree_pct_ref )
     {
       rc_t           rc            = kOkRC;
       const unsigned statusN       = kNoMatchTId + 1;
@@ -1120,7 +1135,7 @@ namespace cw
         if( ra.gnd_truthA[i].status != kBlankTId )
           gt_label_cnt += 1;
 
-      if( ta.sf_args.report_level >= 2 )
+      if( report_fl && ta.sf_args.report_level >= 2 )
         cwLogInfo("Ground truth disagreements: %s",cwStringNullGuard(ra.result_fname)); // unique per run, unlike the perf. and gnd-truth files
 
       // for each result
@@ -1166,7 +1181,7 @@ namespace cw
           continue;
         }
 
-        if( ta.sf_args.report_level >= 2 )
+        if( report_fl && ta.sf_args.report_level >= 2 )
         {
           if((rc = _loc_id_to_meas( ta, res.loc_id, res_meas )) != kOkRC )
             goto errLabel;
@@ -1178,6 +1193,11 @@ namespace cw
                     res.confidence);
         }
       }
+
+      agree_pct_ref = _pct(agree_cnt,scored_cnt);
+
+      if( !report_fl )
+        goto errLabel;
 
       cwLogInfo("Ground truth score: %s",cwStringNullGuard(ra.perf_fname));
       cwLogInfo("  labeled:%i scored:%i (labeled notes not reached by the run:%i)",gt_label_cnt,scored_cnt,gt_label_cnt-scored_cnt);
@@ -1259,7 +1279,9 @@ namespace cw
                 done.sec, done.sec - last_sec, r.noteN - done.noteN, premature_buf);
     }
 
-    rc_t _run_test( test_args_t& test_args, handle_t sfH, const run_args_t& r )
+    // Run one performance. If report_fl is false the result file is not written and nothing is reported,
+    // but the gnd-truth agreement is still stored in r.seed_agree_pctA[seed_idx].
+    rc_t _run_test( test_args_t& test_args, handle_t sfH, const run_args_t& r, unsigned seed_idx, bool report_fl )
     {
       done_t done = { kNotDoneId, 0, 0 };
 
@@ -1325,25 +1347,66 @@ namespace cw
         _check_done(sfH, kTimeoutDoneId, exec_sec, note_idx, done);
       }
 
-      _report_done(test_args, r, done);
+      if( report_fl )
+        _report_done(test_args, r, done);
 
     errLabel:
 
       rc_t rc1 = kOkRC;
-      if( test_args.output_json_fl )
-        rc1 = _write_result_json(test_args,r,note_idx);
-      else
-        rc1 = _write_result_csv(test_args,r,note_idx);
+      if( report_fl )
+      {
+        if( test_args.output_json_fl )
+          rc1 = _write_result_json(test_args,r,note_idx);
+        else
+          rc1 = _write_result_csv(test_args,r,note_idx);
+      }
 
       // if ground truth was given then score the results
       if( r.gnd_truthA != nullptr )
-        rc1 = rcSelect(rc1,_report_gnd_truth_score(test_args,r,note_idx));
+        rc1 = rcSelect(rc1,_report_gnd_truth_score(test_args,r,note_idx,report_fl,r.seed_agree_pctA[seed_idx]));
 
       if( rc != kOkRC )
         cwLogError(rc,"Run test failed on '%s'.",cwStringNullGuard(r.perf_fname));
       
       return rcSelect(rc,rc1);
       
+    }
+    // Report the mean, min. and max. gnd-truth agreement of each run over the random seeds.
+    void _report_seed_summary( const test_args_t& ta )
+    {
+      unsigned seed_beg = ta.sf_args.rand_seed;
+
+      cwLogInfo("Seed summary: agreement (status and loc) over %i seeds (%i-%i)",ta.seed_cnt,seed_beg,seed_beg+ta.seed_cnt-1);
+
+      for(unsigned i=0; i<ta.run_argsN; ++i)
+      {
+        const run_args_t& r = ta.run_argsA[i];
+
+        if( r.gnd_truthA == nullptr )
+        {
+          cwLogInfo("  %-45s  (no gnd-truth)",cwStringNullGuard(r.result_fname));
+          continue;
+        }
+
+        double sum = 0;
+        double mn  = r.seed_agree_pctA[0];
+        double mx  = r.seed_agree_pctA[0];
+
+        for(unsigned k=0; k<ta.seed_cnt; ++k)
+        {
+          sum += r.seed_agree_pctA[k];
+          mn   = std::min(mn, r.seed_agree_pctA[k]);
+          mx   = std::max(mx, r.seed_agree_pctA[k]);
+        }
+
+        // report the result file name without the directory since it is unique per run
+        const char* name = r.result_fname;
+        for(const char* c=r.result_fname; c!=nullptr && *c; ++c)
+          if( *c == '/' )
+            name = c + 1;
+
+        cwLogInfo("  %-45s mean:%6.2f%%  min:%6.2f%%  max:%6.2f%%",cwStringNullGuard(name),sum/ta.seed_cnt,mn,mx);
+      }
     }
   }
 }
@@ -1359,19 +1422,38 @@ cw::rc_t cw::score_follow_3::test( const object_t* cfg )
     goto errLabel;
   }
 
-  if((rc = create( sfH, test_args.sf_args, test_args.score_evtA, test_args.score_evtN )) != kOkRC )
-  {
-    rc = cwLogError(rc,"Score follower create failed.");
-    goto errLabel;
-  }
-
+  // Each run is repeated once for each random seed. The seed is an args_t field, applied at create() and
+  // re-applied at each reset(), so the follower is re-created for each seed. Only the first seed, which is the
+  // configured rand_seed, writes the result file and reports. The other seeds only record their gnd-truth agreement.
   for(unsigned i=0; i<test_args.run_argsN; ++i)
   {
-    if((rc = _run_test(test_args, sfH, test_args.run_argsA[i])) != kOkRC )
+    for(unsigned k=0; k<test_args.seed_cnt; ++k)
     {
-      goto errLabel;
+      args_t sf_args    = test_args.sf_args;
+      bool   report_fl  = k == 0;
+
+      sf_args.rand_seed = test_args.sf_args.rand_seed + k;
+
+      // the follower's log is only of interest for the reported seed
+      if( !report_fl )
+        sf_args.report_level = 0;
+
+      if((rc = create( sfH, sf_args, test_args.score_evtA, test_args.score_evtN )) != kOkRC )
+      {
+        rc = cwLogError(rc,"Score follower create failed.");
+        goto errLabel;
+      }
+
+      rc = _run_test(test_args, sfH, test_args.run_argsA[i], k, report_fl);
+
+      destroy( sfH );
+
+      if( rc != kOkRC )
+        goto errLabel;
     }
   }
+
+  _report_seed_summary( test_args );
 
 errLabel:
   if(rc != kOkRC )
