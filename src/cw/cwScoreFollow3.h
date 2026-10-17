@@ -37,6 +37,18 @@ namespace cw
       double jump_back;             // d <  0: jump_back * jump_decay^(-d-1). Backward jumps and repeats.
       double jump_decay;            // Geometric decay (0,1) applied per additional location of a skip or backward jump.
 
+      // Consecutive locations within loc_group_sec of the first location of their group are treated by the jump prior
+      // as one chord, so they may be performed in any order. 0 disables grouping (every location is its own group).
+      double loc_group_sec;
+
+      // End of region detection. Besides reporting the last location of the region, the follower is done when
+      // its last reported location is within end_zone_sec of the end of the region and no note has arrived for
+      //   done_timeout_mult * time_fact_max * (largest inter-onset gap remaining before the end) + done_timeout_min_sec
+      // performance seconds. The timeout is evaluated by exec().
+      double end_zone_sec;          // Length, in score seconds, of the zone before the end of the region in which the timeout is armed.
+      double done_timeout_mult;     // Safety factor (>= 1) applied to the largest remaining inter-onset gap.
+      double done_timeout_min_sec;  // Floor (> 0) of the timeout in performance seconds.
+
 
       double   exec_period_sec;      // period of calls to exec() in seconds
       

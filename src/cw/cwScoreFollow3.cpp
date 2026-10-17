@@ -145,6 +145,32 @@ namespace cw
         goto errLabel;
       }
 
+      // The comparison is written so that NaN fails it.
+      if( !(args.loc_group_sec >= 0) )
+      {
+        rc = cwLogError(kInvalidArgRC,"The location group duration (loc_group_sec:%f) must not be negative.",args.loc_group_sec);
+        goto errLabel;
+      }
+
+      // The comparisons are written so that NaN fails them.
+      if( !(args.end_zone_sec >= 0) )
+      {
+        rc = cwLogError(kInvalidArgRC,"The end zone duration (end_zone_sec:%f) must not be negative.",args.end_zone_sec);
+        goto errLabel;
+      }
+
+      if( !(args.done_timeout_mult >= 1) )
+      {
+        rc = cwLogError(kInvalidArgRC,"The done timeout multiplier (done_timeout_mult:%f) must be at least 1.",args.done_timeout_mult);
+        goto errLabel;
+      }
+
+      if( !(args.done_timeout_min_sec > 0) )
+      {
+        rc = cwLogError(kInvalidArgRC,"The done timeout floor (done_timeout_min_sec:%f) must be greater than 0.",args.done_timeout_min_sec);
+        goto errLabel;
+      }
+
     errLabel:
       return rc;
     }

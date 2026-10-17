@@ -187,25 +187,39 @@ namespace cw
       return kInvalidIdx;
     }
 
-    // Return the jump distance d = loc_idx - anchor_loc_idx.
-    // Before the first match or mismatch the anchor is a virtual location just before the active region, so the first location of the region is d == 1.
-    int _jump_dist( const sf_t* p, const particle_t& pt, unsigned loc_idx )
+    // Return the count of notes in a group.
+    unsigned _grp_note_count( const sf_t* p, unsigned grp_idx )
     {
-      int anchor = pt.anchor_loc_idx == kInvalidIdx ? (int)p->active_beg_loc_idx - 1 : (int)pt.anchor_loc_idx;
-      return (int)loc_idx - anchor;
+      return p->grpA[grp_idx].end_note_idx - p->grpA[grp_idx].beg_note_idx + 1;
     }
 
-    // Return the count of notes at the particle's anchor location which it has not yet matched.
+    // Return the particle's anchor group index.
+    // Before the first match or mismatch the anchor is a virtual group just before the group of the first location
+    // of the active region, so that group is d == 1.
+    int _anchor_grp( const sf_t* p, const particle_t& pt )
+    {
+      return pt.anchor_grp_idx == kInvalidIdx ? (int)p->loc_grp_idxA[ p->active_beg_loc_idx ] - 1 : (int)pt.anchor_grp_idx;
+    }
+
+    // Return the jump distance d of a candidate group from the particle's anchor group.
+    // The jump prior is over groups rather than locations, so the locations of a chord split across
+    // several nearly simultaneous locations may be performed in any order without a backward jump.
+    int _jump_dist( const sf_t* p, const particle_t& pt, unsigned grp_idx )
+    {
+      return (int)grp_idx - _anchor_grp(p, pt);
+    }
+
+    // Return the count of notes in the particle's anchor group which it has not yet matched.
     unsigned _unplayed_count( const sf_t* p, const particle_t& pt )
     {
-      if( pt.anchor_loc_idx == kInvalidIdx )
+      if( pt.anchor_grp_idx == kInvalidIdx )
         return 0;
 
-      return _loc_note_count(p, pt.anchor_loc_idx) - std::popcount(pt.played_mask);
+      return _grp_note_count(p, pt.anchor_grp_idx) - std::popcount(pt.played_mask);
     }
 
-    // Return the unnormalized jump prior weight of a candidate location at jump distance 'd'.
-    // Staying at the anchor is only possible while it has unplayed notes - a played note can not be matched again,
+    // Return the unnormalized jump prior weight of a candidate group at jump distance 'd'.
+    // Staying in the anchor group is only possible while it has unplayed notes - a played note can not be matched again,
     // so a repeated note must be explained by a backward jump or a nomatch.
     double _jump_weight( const sf_t* p, int d, unsigned unplayedN )
     {
@@ -313,16 +327,20 @@ namespace cw
       pt.cov_ss -= ks * pt.cov_ss;
     }
 
-    // A particle's candidate locations: its search window [beg_loc_idx,end_loc_idx] plus up to two extra
-    // locations, the anchor and the location after it, when they fall outside the window.
-    // The extra locations guarantee that the follower can always stay on or advance from its anchor,
-    // even when the predicted time has drifted away from it.
+    // A particle's candidate locations: its search window [beg_loc_idx,end_loc_idx], widened to whole groups,
+    // plus up to two extra groups, the anchor group and the group after it, when they fall outside the window.
+    // The extra groups guarantee that the follower can always stay on or advance from its anchor,
+    // even when the predicted time has drifted away from it. All candidates are clipped to the active region.
     typedef struct cand_str
     {
-      unsigned beg_loc_idx;
+      unsigned beg_loc_idx;       // window locations
       unsigned end_loc_idx;
-      double   wnd_dur_sec;  // window duration used by the nomatch time density (see _window())
-      unsigned extraA[2];
+      unsigned beg_grp_idx;       // groups of the first and last window locations
+      unsigned end_grp_idx;
+      double   wnd_dur_sec;       // window duration used by the nomatch time density (see _window())
+      unsigned extra_grp_idxA[2]; // extra groups
+      unsigned extra_begA[2];     // first and last (inclusive) location of each extra group
+      unsigned extra_endA[2];
       unsigned extraN;
     } cand_t;
 
@@ -330,26 +348,66 @@ namespace cw
     {
       _window(p, pt.pred_score_sec, c.beg_loc_idx, c.end_loc_idx, c.wnd_dur_sec);
 
-      // Before the first match the only extra candidate is the first location of the active region.
-      unsigned next_loc_idx = pt.anchor_loc_idx == kInvalidIdx ? p->active_beg_loc_idx : pt.anchor_loc_idx + 1;
-      unsigned locA[]       = { pt.anchor_loc_idx, next_loc_idx };
+      // Widen the window so that it never holds part of a group. Otherwise the jump prior, which is
+      // normalized over groups, would give a partial group the mass of a whole one.
+      c.beg_loc_idx = std::max(p->grpA[ p->loc_grp_idxA[c.beg_loc_idx] ].beg_loc_idx, p->active_beg_loc_idx);
+      c.end_loc_idx = std::min(p->grpA[ p->loc_grp_idxA[c.end_loc_idx] ].end_loc_idx, p->active_end_loc_idx);
+      c.beg_grp_idx = p->loc_grp_idxA[c.beg_loc_idx];
+      c.end_grp_idx = p->loc_grp_idxA[c.end_loc_idx];
+
+      // Before the first match the only extra candidate is the group of the first location of the active region.
+      unsigned next_grp_idx = pt.anchor_grp_idx == kInvalidIdx ? p->loc_grp_idxA[ p->active_beg_loc_idx ] : pt.anchor_grp_idx + 1;
+      unsigned gA[]         = { pt.anchor_grp_idx, next_grp_idx };
 
       c.extraN = 0;
-      for(unsigned loc_idx : locA)
-        if( loc_idx != kInvalidIdx && p->active_beg_loc_idx <= loc_idx && loc_idx <= p->active_end_loc_idx && (loc_idx < c.beg_loc_idx || c.end_loc_idx < loc_idx) )
-          c.extraA[ c.extraN++ ] = loc_idx;
+      for(unsigned grp_idx : gA)
+        if( grp_idx != kInvalidIdx && grp_idx < p->grpN && (grp_idx < c.beg_grp_idx || c.end_grp_idx < grp_idx) )
+        {
+          unsigned b = std::max(p->grpA[grp_idx].beg_loc_idx, p->active_beg_loc_idx);
+          unsigned e = std::min(p->grpA[grp_idx].end_loc_idx, p->active_end_loc_idx);
+
+          // skip groups outside the active region
+          if( b <= e )
+          {
+            c.extra_grp_idxA[ c.extraN ] = grp_idx;
+            c.extra_begA[ c.extraN ]     = b;
+            c.extra_endA[ c.extraN ]     = e;
+            c.extraN += 1;
+          }
+        }
+    }
+
+    unsigned _cand_wnd_count( const cand_t& c )
+    {
+      return c.end_loc_idx - c.beg_loc_idx + 1;
     }
 
     unsigned _cand_count( const cand_t& c )
     {
-      return (c.end_loc_idx - c.beg_loc_idx + 1) + c.extraN;
+      unsigned n = _cand_wnd_count(c);
+      for(unsigned i=0; i<c.extraN; ++i)
+        n += c.extra_endA[i] - c.extra_begA[i] + 1;
+      return n;
     }
 
-    // Return the location index of the k'th candidate, 0 <= k < _cand_count().
+    // Return the location index of the k'th candidate, 0 <= k < _cand_count(). The window locations come first.
     unsigned _cand_loc_idx( const cand_t& c, unsigned k )
     {
-      unsigned wndN = c.end_loc_idx - c.beg_loc_idx + 1;
-      return k < wndN ? c.beg_loc_idx + k : c.extraA[ k - wndN ];
+      unsigned wndN = _cand_wnd_count(c);
+
+      if( k < wndN )
+        return c.beg_loc_idx + k;
+
+      k -= wndN;
+      for(unsigned i=0; i<c.extraN; ++i)
+      {
+        unsigned n = c.extra_endA[i] - c.extra_begA[i] + 1;
+        if( k < n )
+          return c.extra_begA[i] + k;
+        k -= n;
+      }
+
+      return kInvalidIdx; // not reachable for k < _cand_count()
     }
 
     // Expand each particle into its candidate branches and weight each branch by
@@ -360,10 +418,12 @@ namespace cw
     // NoMatch  : prior_nomatch  * 1/window_dur_sec * 1/P
     //
     // where S is the variance of the particle's Kalman filter predictive density (_innovation_var()),
-    // P is the size of the pitch space, k is the count of notes at the candidate location,
-    // d = loc_idx - anchor_loc_idx and J(d) is the jump prior (_jump_weight()) normalized over
-    // the particle's candidate locations. On a match at the anchor (d == 0) k is replaced by
-    // the count of unplayed notes, since the performed note must be one of them.
+    // P is the size of the pitch space, d is the distance of the candidate location's group from the
+    // particle's anchor group and J(d) is the jump prior (_jump_weight()) normalized over the particle's
+    // candidate groups. For a match k is the count of notes in the candidate location's group, which is
+    // treated as one chord; on a match in the anchor group (d == 0) k is replaced by the count of its
+    // unplayed notes, since the performed note must be one of them. For a mismatch k is the count of
+    // notes at the nearest location.
     //
     // Because J sums to 1 over the candidates, prior_match is the total probability of a match
     // regardless of how many candidate locations contain the pitch, and the summed match term is
@@ -389,24 +449,26 @@ namespace cw
 
         unsigned candN = _cand_count(c);
 
-        // Sum the jump weights over every candidate location (not only those with the pitch)
+        // Sum the jump weights over every candidate group (not only those with the pitch)
         // because J is the prior over where the next performed note comes from.
-        for(unsigned k=0; k<candN; ++k)
-        {
-          unsigned loc_idx = _cand_loc_idx(c, k);
-          jump_sum += _jump_weight(p, _jump_dist(p, pt, loc_idx), unplayedN);
-        }
+        // Each group is counted once however many of its locations are candidates.
+        for(unsigned grp_idx=c.beg_grp_idx; grp_idx<=c.end_grp_idx; ++grp_idx)
+          jump_sum += _jump_weight(p, _jump_dist(p, pt, grp_idx), unplayedN);
+
+        for(unsigned k=0; k<c.extraN; ++k)
+          jump_sum += _jump_weight(p, _jump_dist(p, pt, c.extra_grp_idxA[k]), unplayedN);
 
         // Match branches: one for each candidate location which contains the performed pitch.
         for(unsigned k=0; k<candN && jump_sum>0; ++k)
         {
           unsigned loc_idx  = _cand_loc_idx(c, k);
+          unsigned grp_idx  = p->loc_grp_idxA[loc_idx];
           double   dsec     = p->locA[loc_idx].sec - pt.pred_score_sec;
-          int      d        = _jump_dist(p, pt, loc_idx);
+          int      d        = _jump_dist(p, pt, grp_idx);
           unsigned note_ofs = _loc_pitch_note_ofs(p, loc_idx, pitch);
 
           // track the window location nearest in time to the predicted score time
-          if( k < c.end_loc_idx - c.beg_loc_idx + 1 && (nearest_loc_idx == kInvalidIdx || std::fabs(dsec) < std::fabs(nearest_dsec)) )
+          if( k < _cand_wnd_count(c) && (nearest_loc_idx == kInvalidIdx || std::fabs(dsec) < std::fabs(nearest_dsec)) )
           {
             nearest_loc_idx = loc_idx;
             nearest_dsec    = dsec;
@@ -415,13 +477,16 @@ namespace cw
           if( note_ofs == kInvalidIdx )
             continue;
 
-          // The 1/k term keeps a chord location from receiving k times the evidence of a single-note location.
-          double pitch_n = _loc_note_count(p, loc_idx);
+          // offset of the note within its group - its played_mask bit
+          unsigned grp_note_ofs = p->locA[loc_idx].beg_note_idx + note_ofs - p->grpA[grp_idx].beg_note_idx;
+
+          // The 1/k term keeps a chord from receiving k times the evidence of a single note.
+          double pitch_n = _grp_note_count(p, grp_idx);
 
           if( d == 0 )
           {
-            // a note which the particle has already matched at its anchor can not be matched again
-            if( pt.played_mask & (uint64_t(1) << note_ofs) )
+            // a note which the particle has already matched in its anchor group can not be matched again
+            if( pt.played_mask & (uint64_t(1) << grp_note_ofs) )
               continue;
 
             pitch_n = unplayedN;
@@ -430,7 +495,7 @@ namespace cw
           double jw = _jump_weight(p, d, unplayedN) / jump_sum;
           double w  = pt.weight * p->args.prior_match * jw * _time_likelihood(dsec, pred_sigma) / pitch_n;
 
-          if((rc = _add_branch(p, i, kMatchTId, loc_idx, note_ofs, w)) != kOkRC )
+          if((rc = _add_branch(p, i, kMatchTId, loc_idx, grp_note_ofs, w)) != kOkRC )
             goto errLabel;
         }
 
@@ -443,7 +508,7 @@ namespace cw
           // a mismatch is impossible if every pitch in the pitch space is present at the location
           if( k < P )
           {
-            double jw = _jump_weight(p, _jump_dist(p, pt, nearest_loc_idx), unplayedN) / jump_sum;
+            double jw = _jump_weight(p, _jump_dist(p, pt, p->loc_grp_idxA[nearest_loc_idx]), unplayedN) / jump_sum;
             double w  = pt.weight * p->args.prior_mismatch * jw * _time_likelihood(nearest_dsec, pred_sigma) / (P - k);
 
             if((rc = _add_branch(p, i, kMismatchTId, nearest_loc_idx, kInvalidIdx, w)) != kOkRC )
@@ -570,8 +635,13 @@ namespace cw
         p->last_loc_idx = best_loc_idx;
 
       // Once the end of the active region has been reported the follower remains done until the next reset().
-      if( best_loc_idx == p->active_end_loc_idx )
+      if( best_loc_idx == p->active_end_loc_idx && !p->done_fl )
+      {
         p->done_fl = true;
+
+        if( p->args.report_level >= 1 )
+          cwLogInfo("sf3 done: end loc:%i",p->locA[ best_loc_idx ].loc_id);
+      }
 
       // collect the largest keys for the report_level 3 MAP table
       if( p->args.report_level >= 3 )
@@ -627,7 +697,7 @@ namespace cw
         const particle_t& parent = p->particleA[ br.parent_idx ];
         particle_t&       pt     = p->next_particleA[i];
 
-        // Match and mismatch branches update the Kalman filter with the location's time and move the anchor to it.
+        // Match and mismatch branches update the Kalman filter with the location's time and move the anchor to its group.
         // Nomatch branches keep the parent's predicted state, anchor and played notes.
         pt        = parent;
         pt.weight = init_wgt;
@@ -636,10 +706,12 @@ namespace cw
         {
           _kalman_update(p, pt, p->locA[ br.loc_idx ].sec);
 
-          // moving to a new anchor location starts a new set of played notes
-          if( br.loc_idx != parent.anchor_loc_idx )
+          unsigned grp_idx = p->loc_grp_idxA[ br.loc_idx ];
+
+          // moving to a new anchor group starts a new set of played notes
+          if( grp_idx != parent.anchor_grp_idx )
           {
-            pt.anchor_loc_idx = br.loc_idx;
+            pt.anchor_grp_idx = grp_idx;
             pt.played_mask    = 0;
           }
 
@@ -651,6 +723,74 @@ namespace cw
 
       // The parents were read from particleA[] while the survivors were written to next_particleA[].
       std::swap(p->particleA, p->next_particleA);
+    }
+
+    //----------------------------------------------------------------------------------------
+    // End of region timeout
+    //
+
+    // Fill rem_max_ioi_secA[] over the active region: the largest score time gap between consecutive locations
+    // from each location to the end of the region. The last location has no following onset, so its value is 0
+    // and the duration of the final chord never delays the timeout.
+    void _fill_rem_max_ioi( sf_t* p )
+    {
+      unsigned b = p->active_beg_loc_idx;
+      unsigned e = p->active_end_loc_idx;
+
+      p->rem_max_ioi_secA[e] = 0;
+      for(unsigned i=e; i>b; --i)
+        p->rem_max_ioi_secA[i-1] = std::max(p->rem_max_ioi_secA[i], p->locA[i].sec - p->locA[i-1].sec);
+    }
+
+    // The timeout is armed while the last reported location is within end_zone_sec of the end of the active region.
+    // The reported location is used, rather than the particles' predicted position, because the prediction keeps
+    // advancing during silence and could therefore arm the timeout during a long pause before the zone.
+    bool _end_timeout_armed( const sf_t* p )
+    {
+      return p->last_loc_idx != kInvalidIdx && p->locA[ p->last_loc_idx ].sec >= p->locA[ p->active_end_loc_idx ].sec - p->args.end_zone_sec;
+    }
+
+    // Return the silence, in performance seconds, after which the follower is done.
+    // time_fact_max is used, rather than the current time_fact estimate, because the estimate lags exactly when
+    // the performer slows down - which is common at the end of a section.
+    double _end_timeout_sec( const sf_t* p )
+    {
+      return p->args.done_timeout_mult * p->args.time_fact_max * p->rem_max_ioi_secA[ p->last_loc_idx ] + p->args.done_timeout_min_sec;
+    }
+
+    // Partition the score locations into groups (see grp_t).
+    // A group starts at location i and takes each following location j while locA[j].sec - locA[i].sec <= loc_group_sec.
+    // The span is measured from the first location, rather than between neighbours, so that a fast run of
+    // notes can not chain into one long group. A group also ends before it would hold more than kMaxLocNoteN notes
+    // (the size of particle_t.played_mask). With loc_group_sec == 0 every location is its own group.
+    void _form_groups( sf_t* p )
+    {
+      p->grpN            = 0;
+      p->max_grp_loc_cnt = 0;
+
+      for(unsigned i=0; i<p->locN; )
+      {
+        unsigned j = i + 1;
+
+        while( j < p->locN
+               && p->args.loc_group_sec > 0
+               && p->locA[j].sec - p->locA[i].sec <= p->args.loc_group_sec
+               && p->locA[j].end_note_idx - p->locA[i].beg_note_idx + 1 <= kMaxLocNoteN )
+          ++j;
+
+        grp_t& g       = p->grpA[ p->grpN ];
+        g.beg_loc_idx  = i;
+        g.end_loc_idx  = j - 1;
+        g.beg_note_idx = p->locA[i].beg_note_idx;
+        g.end_note_idx = p->locA[j-1].end_note_idx;
+
+        for(unsigned k=i; k<j; ++k)
+          p->loc_grp_idxA[k] = p->grpN;
+
+        p->max_grp_loc_cnt = std::max(p->max_grp_loc_cnt, j - i);
+        p->grpN           += 1;
+        i                  = j;
+      }
     }
 
     //----------------------------------------------------------------------------------------
@@ -717,9 +857,12 @@ namespace cw
       for(unsigned i=0; i<p->particleN; ++i)
       {
         const particle_t& pt = p->particleA[i];
+        // the anchor is reported as the location id of the first location of the anchor group
+        unsigned anchor_loc_idx = pt.anchor_grp_idx == kInvalidIdx ? kInvalidIdx : p->grpA[ pt.anchor_grp_idx ].beg_loc_idx;
+
         cwLogInfo("    particle %4i: score_sec:%8.3f sd:%6.3f time_fact:%6.4f sd:%6.4f anchor:%5i played:0x%llx weight:%.5f",
                   i, pt.pred_score_sec, std::sqrt(std::max(0.0, pt.cov_ss)), 1.0 / pt.tempo, _kf_time_fact_std(pt),
-                  _loc_idx_to_report_id(p, pt.anchor_loc_idx), (unsigned long long)pt.played_mask, pt.weight);
+                  _loc_idx_to_report_id(p, anchor_loc_idx), (unsigned long long)pt.played_mask, pt.weight);
       }
     }
 
@@ -743,18 +886,26 @@ cw::rc_t cw::score_follow_3::_create_impl( sf_t* p, const args_t& args )
       goto errLabel;
     }
 
-  // Each particle produces at most one match branch per candidate location - the window plus the
-  // anchor and the location after it (see _candidates()) - plus one mismatch and one nomatch branch.
+  // There can be no more groups than locations.
+  p->grpA         = mem::allocZ<grp_t>(p->locN);
+  p->loc_grp_idxA = mem::allocZ<unsigned>(p->locN);
+  _form_groups(p);
+
+  // Each particle produces at most one match branch per candidate location plus one mismatch and one nomatch branch.
+  // The candidates are the window (see _max_window_loc_count()), which widening to whole groups can extend by
+  // max_grp_loc_cnt-1 locations at each end, plus the anchor group and the group after it (see _candidates()).
   max_window_loc_cnt = _max_window_loc_count(p);
+  p->max_wnd_loc_cnt = max_window_loc_cnt;
 
   p->particleN      = args.particle_cnt;
   p->particleA      = mem::allocZ<particle_t>(p->particleN);
   p->next_particleA = mem::allocZ<particle_t>(p->particleN);
 
-  p->branchAllocN   = p->particleN * (max_window_loc_cnt + 2 + 2);
+  p->branchAllocN   = p->particleN * (max_window_loc_cnt + 2*(p->max_grp_loc_cnt - 1) + 2*p->max_grp_loc_cnt + 2);
   p->branchA        = mem::allocZ<branch_t>(p->branchAllocN);
   p->branchN        = 0;
 
+  p->rem_max_ioi_secA = mem::allocZ<double>(p->locN);
   p->match_massA      = mem::allocZ<double>(p->locN);
   p->mismatch_massA   = mem::allocZ<double>(p->locN);
   p->touched_loc_idxA = mem::allocZ<unsigned>(p->locN);
@@ -783,6 +934,9 @@ cw::rc_t cw::score_follow_3::_destroy_impl( sf_t* p )
   mem::release(p->match_massA);
   mem::release(p->mismatch_massA);
   mem::release(p->touched_loc_idxA);
+  mem::release(p->grpA);
+  mem::release(p->loc_grp_idxA);
+  mem::release(p->rem_max_ioi_secA);
 
   return rc;
 }
@@ -807,15 +961,18 @@ cw::rc_t cw::score_follow_3::_reset_impl( sf_t* p )
     pt.cov_ss         = 0;
     pt.cov_sr         = 0;
     pt.cov_rr         = p->args.time_fact_prior_sigma * p->args.time_fact_prior_sigma;
-    pt.anchor_loc_idx = kInvalidIdx;
+    pt.anchor_grp_idx = kInvalidIdx;
     pt.played_mask    = 0;
     pt.weight         = init_wgt;
   }
 
-  p->branchN       = 0;
-  p->prev_perf_sec = 0;
-  p->last_loc_idx  = kInvalidIdx;
-  p->done_fl       = false;
+  p->branchN            = 0;
+  p->prev_perf_sec      = 0;
+  p->last_note_perf_sec = 0;
+  p->last_loc_idx       = kInvalidIdx;
+  p->done_fl            = false;
+
+  _fill_rem_max_ioi(p);
 
   // Clear the MAP accumulators. This is O(locN) but occurs only on reset(). During a note only the touched entries are cleared.
   for(unsigned i=0; i<p->locN; ++i)
@@ -830,10 +987,10 @@ cw::rc_t cw::score_follow_3::_reset_impl( sf_t* p )
     double ss_mean, ss_std, tf_mean, tf_std, tf_kf_std;
     _particle_stats(p, ss_mean, ss_std, tf_mean, tf_std, tf_kf_std);
 
-    cwLogInfo("sf3 reset: loc_id:[%i,%i] loc_idx:[%i,%i] N:%i branch pool:%i (max wnd loc cnt:%i) time_fact: mean:%f kf_std:%f",
+    cwLogInfo("sf3 reset: loc_id:[%i,%i] loc_idx:[%i,%i] N:%i branch pool:%i (max wnd loc cnt:%i) groups:%i (max locs:%i) time_fact: mean:%f kf_std:%f",
               p->locA[ p->active_beg_loc_idx ].loc_id, p->locA[ p->active_end_loc_idx ].loc_id,
               p->active_beg_loc_idx, p->active_end_loc_idx,
-              p->particleN, p->branchAllocN, p->branchAllocN / p->particleN - 4,
+              p->particleN, p->branchAllocN, p->max_wnd_loc_cnt, p->grpN, p->max_grp_loc_cnt,
               tf_mean, tf_kf_std );
   }
 
@@ -846,6 +1003,9 @@ cw::rc_t cw::score_follow_3::_on_new_note_impl( sf_t* p, unsigned uid, double pe
   unsigned loc_idx = kInvalidIdx;
 
   p->map_topN = 0;
+
+  // Every note, including one outside the pitch range, is activity for the end of region timeout.
+  p->last_note_perf_sec = perf_sec;
 
   // An out of range pitch is reported as nomatch and the particles are neither updated nor resampled.
   // prev_perf_sec is not updated, so the next prediction covers the whole time since the particles were last advanced.
@@ -883,15 +1043,30 @@ errLabel:
 cw::rc_t cw::score_follow_3::_exec_impl( sf_t* p, double perf_sec )
 {
   // In stage 1 the filter is entirely note driven and all of its steps occur in _on_new_note_impl().
+  // exec() only evaluates the end of region timeout, since is_done() has no notion of the current time.
   rc_t rc = kOkRC;
+
+  if( !p->done_fl && _end_timeout_armed(p) )
+  {
+    double silence_sec = perf_sec - p->last_note_perf_sec;
+    double timeout_sec = _end_timeout_sec(p);
+
+    if( silence_sec > timeout_sec )
+    {
+      p->done_fl = true;
+
+      if( p->args.report_level >= 1 )
+        cwLogInfo("sf3 done: timeout silence:%.2f timeout:%.2f last loc:%i",silence_sec,timeout_sec,p->locA[ p->last_loc_idx ].loc_id);
+    }
+  }
+
   return rc;
 }
 
 bool cw::score_follow_3::_is_done_impl( sf_t* p )
 {
-  // Stage 1: the follower is done once the last location of the active region has been reported
-  // (see _report_map()) and remains done until the next reset(), even if later notes are reported
-  // at earlier locations. The active region is a hard boundary for the search window, so no later
-  // location can be reported. Detecting the end of the region more robustly is deferred to a later stage.
+  // The follower is done once the last location of the active region has been reported (see _report_map())
+  // or the end of region timeout has expired (see _exec_impl()), and remains done until the next reset(),
+  // even if later notes are reported at earlier locations.
   return p->done_fl;
 }

@@ -26,6 +26,17 @@ namespace cw
       unsigned  end_note_idx; // index into sf_t.noteA[] of the last note associated with this location
     } loc_t;
 
+    // A group of consecutive locations whose times are within args.loc_group_sec of the first location of the group.
+    // The jump prior treats a group as one chord, so its notes may be performed in any order (see _form_groups()).
+    // A group's notes are contiguous in sf_t.noteA[] because its locations are.
+    typedef struct grp_str
+    {
+      unsigned beg_loc_idx;  // first location of the group
+      unsigned end_loc_idx;  // last location (inclusive) of the group
+      unsigned beg_note_idx; // locA[beg_loc_idx].beg_note_idx
+      unsigned end_note_idx; // locA[end_loc_idx].end_note_idx
+    } grp_t;
+
     typedef struct particle_str
     {
       // Kalman filter state [pred_score_sec, tempo] and its covariance. See _predict() and _kalman_update() in cwScoreFollow3Impl.cpp.
@@ -35,8 +46,8 @@ namespace cw
       double   cov_sr;
       double   cov_rr;
 
-      unsigned anchor_loc_idx;     // location index of the last match or mismatch, or kInvalidIdx before the first one. Nomatch notes leave it unchanged.
-      uint64_t played_mask;        // bit i is set if note anchor.beg_note_idx+i has been matched since the particle moved to the anchor location.
+      unsigned anchor_grp_idx;     // group index of the last match or mismatch, or kInvalidIdx before the first one. Nomatch notes leave it unchanged.
+      uint64_t played_mask;        // bit i is set if note grpA[anchor_grp_idx].beg_note_idx+i has been matched since the particle moved to the anchor group.
 
       double   weight;   // Particle filter weight for this particle.
       
@@ -50,7 +61,7 @@ namespace cw
       unsigned          parent_idx; // index into sf_t.particleA[] of the parent particle
       match_status_id_t tid;        // kMatchTId, kMismatchTId or kNoMatchTId
       unsigned          loc_idx;    // candidate location index into sf_t.locA[] or kInvalidIdx for nomatch
-      unsigned          note_ofs;   // match: offset of the matched note from loc.beg_note_idx, otherwise kInvalidIdx
+      unsigned          note_ofs;   // match: offset of the matched note from the group's beg_note_idx (its played_mask bit), otherwise kInvalidIdx
       double            weight;     // parent.weight * prior(tid) * jump prior * likelihood
     } branch_t;
 
@@ -65,7 +76,7 @@ namespace cw
 
     enum { kMapTopN = 5 };  // count of MAP keys reported at report_level >= 3
 
-    enum { kMaxLocNoteN = 64 }; // max. count of notes at one location - the size of particle_t.played_mask in bits
+    enum { kMaxLocNoteN = 64 }; // max. count of notes at one location, and in one group - the size of particle_t.played_mask in bits
 
     typedef struct sf_str
     {
@@ -90,6 +101,12 @@ namespace cw
 
       args_t       args;               // copy of the args_t given to create()
 
+      grp_t*       grpA;               // grpA[grpN] - location groups in increasing time order
+      unsigned     grpN;
+      unsigned*    loc_grp_idxA;       // loc_grp_idxA[locN] - group index of each location
+      unsigned     max_grp_loc_cnt;    // largest count of locations in one group
+      unsigned     max_wnd_loc_cnt;    // upper bound on the count of locations in a search window (see _max_window_loc_count())
+
       particle_t*  particleA;          // particleA[particleN] - the current particle population
       particle_t*  next_particleA;     // next_particleA[particleN] - resampling destination, swapped with particleA[] after each note
       unsigned     particleN;          // count of particles (args.particle_cnt)
@@ -107,7 +124,10 @@ namespace cw
 
       double       prev_perf_sec;      // performance time of the previous note, used to form the prediction delta
       unsigned     last_loc_idx;       // most recently reported location index or kInvalidIdx
-      bool         done_fl;            // set when the last location of the active region is reported, cleared by reset(), used by is_done()
+      bool         done_fl;            // set when the last location of the active region is reported or the end timeout expires, cleared by reset(), used by is_done()
+
+      double*      rem_max_ioi_secA;   // rem_max_ioi_secA[locN] - largest score time gap between consecutive locations from each location to the end of the active region (set by reset())
+      double       last_note_perf_sec; // performance time of the latest note, including notes outside the pitch range
 
       map_key_t    map_topA[ kMapTopN ]; // largest MAP keys of the current note in decreasing mass order (report_level >= 3)
       unsigned     map_topN;             // count of valid elements in map_topA[]

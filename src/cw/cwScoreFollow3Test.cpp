@@ -71,6 +71,7 @@ namespace cw
       char*       score_fname;
       char*       out_dir;
       bool        output_json_fl;
+      double      exec_tail_sec;   // duration of exec() calls after the last note, which allows the end of region timeout to expire
 
       args_t      sf_args;
 
@@ -729,6 +730,10 @@ namespace cw
                             "jump_skip",kReqFl,sf_args.jump_skip,
                             "jump_back",kReqFl,sf_args.jump_back,
                             "jump_decay",kReqFl,sf_args.jump_decay,
+                            "loc_group_sec",kReqFl,sf_args.loc_group_sec,
+                            "end_zone_sec",kReqFl,sf_args.end_zone_sec,
+                            "done_timeout_mult",kReqFl,sf_args.done_timeout_mult,
+                            "done_timeout_min_sec",kReqFl,sf_args.done_timeout_min_sec,
                             "report_level",kReqFl,sf_args.report_level)) != kOkRC )
       {
         rc = cwLogError(rc,"Parse failed on follower args.");
@@ -902,10 +907,18 @@ namespace cw
                          "score_fname",score_fname,
                          "out_dir",out_dir,
                          "output_json_fl",test_args.output_json_fl,
+                         "exec_tail_sec",test_args.exec_tail_sec,
                          "perfL", perf_cfgL,
                          "follower",sf_cfg)) != kOkRC )
       {
         rc = cwLogError(rc,"Parse top level test cfg. failed.");
+        goto errLabel;
+      }
+
+      // The comparison is written so that NaN fails it.
+      if( !(test_args.exec_tail_sec >= 0) )
+      {
+        rc = cwLogError(kSyntaxErrorRC,"The 'exec_tail_sec' (%f) must not be negative.",test_args.exec_tail_sec);
         goto errLabel;
       }
 
@@ -1180,8 +1193,69 @@ namespace cw
       return rc;
     }
 
+    // How and when is_done() first became true during a run (see _run_test()).
+    typedef enum
+    {
+      kNotDoneId,     // is_done() never became true
+      kEndLocDoneId,  // on_new_note() reported the last location of the region
+      kTimeoutDoneId  // exec() found that the end of region timeout had expired
+    } done_by_id_t;
+
+    typedef struct done_str
+    {
+      done_by_id_t id;
+      double       sec;     // performance time at which is_done() became true
+      unsigned     noteN;   // count of notes given to the follower before is_done() became true
+    } done_t;
+
+    // Record the first time that is_done() becomes true.
+    void _check_done( handle_t sfH, done_by_id_t id, double sec, unsigned noteN, done_t& done_ref )
+    {
+      if( done_ref.id == kNotDoneId && is_done(sfH) )
+      {
+        done_ref.id    = id;
+        done_ref.sec   = sec;
+        done_ref.noteN = noteN;
+      }
+    }
+
+    // Report how the end of the region was detected.
+    // The detection was premature if a note after it has a gnd-truth location before the last location of the region.
+    // Notes of the final location which arrive after it was reported are therefore not counted.
+    void _report_done( const test_args_t& ta, const run_args_t& r, const done_t& done )
+    {
+      double last_sec = r.noteA[ r.noteN-1 ].sec;
+
+      if( done.id == kNotDoneId )
+      {
+        cwLogInfo("End detection: %s  NOT DONE after a %.1f sec tail.",cwStringNullGuard(r.result_fname),ta.exec_tail_sec);
+        return;
+      }
+
+      unsigned premature_cnt = 0;
+      for(unsigned i=done.noteN; i<r.noteN; ++i)
+      {
+        const gnd_truth_note_t* gt = _uid_to_gnd_truth_note(r, r.noteA[i].uid, kInvalidIdx );
+        if( gt != nullptr && (gt->status == kMatchTId || gt->status == kMismatchTId) && gt->loc_id < r.end_loc_id )
+          premature_cnt += 1;
+      }
+
+      char premature_buf[64];
+      if( r.gnd_truthA == nullptr )
+        snprintf(premature_buf,sizeof(premature_buf),"n/a");
+      else
+        snprintf(premature_buf,sizeof(premature_buf),"%s (%i notes)",premature_cnt>0 ? "PREMATURE" : "no",premature_cnt);
+
+      cwLogInfo("End detection: %s  by:%s at %.2f sec (%.2f sec after the last note) notes after done:%i premature:%s",
+                cwStringNullGuard(r.result_fname),
+                done.id == kEndLocDoneId ? "end_loc" : "timeout",
+                done.sec, done.sec - last_sec, r.noteN - done.noteN, premature_buf);
+    }
+
     rc_t _run_test( test_args_t& test_args, handle_t sfH, const run_args_t& r )
     {
+      done_t done = { kNotDoneId, 0, 0 };
+
       rc_t   rc   = kOkRC;
       double sec0 = 0.0;
       unsigned note_idx = 0;
@@ -1216,6 +1290,8 @@ namespace cw
             rc = cwLogError(rc,"Score follower 'exec' failed.");
             goto errLabel;
           }
+
+          _check_done(sfH, kTimeoutDoneId, exec_sec, note_idx, done);
         }
         
         sec0 = note.sec;
@@ -1227,7 +1303,22 @@ namespace cw
           goto errLabel;
         }
 
+        _check_done(sfH, kEndLocDoneId, note.sec, note_idx+1, done);
       }
+
+      // Continue to run 'exec' after the last note so that the end of region timeout can expire.
+      for(double exec_sec = sec0; done.id == kNotDoneId && exec_sec <= sec0 + test_args.exec_tail_sec; exec_sec += test_args.sf_args.exec_period_sec )
+      {
+        if((rc = exec(sfH,exec_sec)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Score follower 'exec' failed.");
+          goto errLabel;
+        }
+
+        _check_done(sfH, kTimeoutDoneId, exec_sec, note_idx, done);
+      }
+
+      _report_done(test_args, r, done);
 
     errLabel:
 
