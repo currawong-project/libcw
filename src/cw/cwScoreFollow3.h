@@ -41,6 +41,12 @@ namespace cw
       // as one chord, so they may be performed in any order. 0 disables grouping (every location is its own group).
       double loc_group_sec;
 
+      // Notes played late: each particle keeps the notes it passed without playing in the last late_grp_cnt groups behind its
+      // anchor group (at most 64 notes). A late match to one of them does not move the anchor or update the Kalman filter.
+      unsigned late_grp_cnt;        // Count of groups behind the anchor group in the late window. 0 disables late matches.
+      double   jump_late;           // Jump prior weight of the late window (only while it holds pending notes).
+      double   late_sigma_sec;      // Extra time standard deviation of a late match, added in quadrature to the predictive standard deviation.
+
       // End of region detection. Besides reporting the last location of the region, the follower is done when
       // its last reported location is within end_zone_sec of the end of the region and no note has arrived for
       //   done_timeout_mult * time_fact_max * (largest inter-onset gap remaining before the end) + done_timeout_min_sec

@@ -48,6 +48,7 @@ namespace cw
 
       unsigned anchor_grp_idx;     // group index of the last match or mismatch, or kInvalidIdx before the first one. Nomatch notes leave it unchanged.
       uint64_t played_mask;        // bit i is set if note grpA[anchor_grp_idx].beg_note_idx+i has been matched since the particle moved to the anchor group.
+      uint64_t late_mask;          // bit i is set if note grpA[anchor_grp_idx].beg_note_idx-64+i is pending: it is in the late window and the particle passed it without matching it (see _late_advance()).
 
       double   weight;   // Particle filter weight for this particle.
       
@@ -61,7 +62,8 @@ namespace cw
       unsigned          parent_idx; // index into sf_t.particleA[] of the parent particle
       match_status_id_t tid;        // kMatchTId, kMismatchTId or kNoMatchTId
       unsigned          loc_idx;    // candidate location index into sf_t.locA[] or kInvalidIdx for nomatch
-      unsigned          note_ofs;   // match: offset of the matched note from the group's beg_note_idx (its played_mask bit), otherwise kInvalidIdx
+      unsigned          note_ofs;   // match: offset of the matched note from the group's beg_note_idx (its played_mask bit), late match: its late_mask bit, otherwise kInvalidIdx
+      bool              late_fl;    // true if this is a late match: a pending note of the late window, which does not move the anchor
       double            weight;     // parent.weight * prior(tid) * jump prior * likelihood
     } branch_t;
 
@@ -107,6 +109,8 @@ namespace cw
       unsigned*    loc_grp_idxA;       // loc_grp_idxA[locN] - group index of each location
       unsigned     max_grp_loc_cnt;    // largest count of locations in one group
       unsigned     max_wnd_loc_cnt;    // upper bound on the count of locations in a search window (see _max_window_loc_count())
+      unsigned*    late_beg_note_idxA; // late_beg_note_idxA[grpN] - first note of the late window of each anchor group, before clipping to the active region (see _form_late_windows())
+      unsigned     max_late_pitch_cnt; // largest count of one pitch in any late window - the bound on the late match branches of one particle
 
       particle_t*  particleA;          // particleA[particleN] - the current particle population
       particle_t*  next_particleA;     // next_particleA[particleN] - resampling destination, swapped with particleA[] after each note
@@ -120,6 +124,7 @@ namespace cw
       double*      mismatch_massA;     // mismatch_massA[locN] - per-location mismatch mass accumulator
       unsigned*    touched_loc_idxA;   // touched_loc_idxA[locN] - locations whose accumulators were written on the current note
       unsigned     touchedN;           // count of valid elements in touched_loc_idxA[]
+      unsigned     late_resampleN;     // count of particles which took a late match branch on the current note (report_level >= 2)
 
       std::mt19937 rng;                // random number generator, re-seeded from args.rand_seed on each reset()
 

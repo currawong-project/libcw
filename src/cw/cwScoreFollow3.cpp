@@ -153,6 +153,19 @@ namespace cw
       }
 
       // The comparisons are written so that NaN fails them.
+      if( !(args.jump_late >= 0) )
+      {
+        rc = cwLogError(kInvalidArgRC,"The jump_late weight (%f) must not be negative.",args.jump_late);
+        goto errLabel;
+      }
+
+      if( !(args.late_sigma_sec >= 0) )
+      {
+        rc = cwLogError(kInvalidArgRC,"The late match time deviation (late_sigma_sec:%f) must not be negative.",args.late_sigma_sec);
+        goto errLabel;
+      }
+
+      // The comparisons are written so that NaN fails them.
       if( !(args.end_zone_sec >= 0) )
       {
         rc = cwLogError(kInvalidArgRC,"The end zone duration (end_zone_sec:%f) must not be negative.",args.end_zone_sec);

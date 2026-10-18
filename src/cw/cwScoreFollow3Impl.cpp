@@ -235,9 +235,110 @@ namespace cw
       return p->args.jump_back * std::pow(p->args.jump_decay, -d - 1);
     }
 
+    //----------------------------------------------------------------------------------------
+    // Late window
+    //
+    // A particle's late_mask holds the pending notes behind its anchor group: notes in the last late_grp_cnt groups
+    // which the particle passed without matching. Bit i is note A-64+i, where A is the first note of the anchor group,
+    // so bit 63 is the note just before the anchor group and the bits are in ascending note order like played_mask.
+
+    // Return a mask with the low n bits set, 0 <= n <= 64. A shift by 64 is undefined, therefore n == 64 is a special case.
+    uint64_t _low_bits( unsigned n )
+    {
+      return n >= 64 ? ~uint64_t(0) : (uint64_t(1) << n) - 1;
+    }
+
+    // Return the first note of the late window of an anchor group, clipped to the active region.
+    unsigned _late_beg_note_idx( const sf_t* p, unsigned grp_idx )
+    {
+      return std::max(p->late_beg_note_idxA[grp_idx], p->locA[ p->active_beg_loc_idx ].beg_note_idx);
+    }
+
+    // Return the late_mask bits which are inside the late window of an anchor group: the top (A - window begin) bits.
+    // The window never holds more than 64 notes (see _form_late_windows()).
+    uint64_t _late_window_mask( const sf_t* p, unsigned grp_idx )
+    {
+      unsigned A = p->grpA[grp_idx].beg_note_idx;
+      unsigned b = _late_beg_note_idx(p, grp_idx);
+      unsigned n = A > b ? A - b : 0;
+
+      return ~_low_bits(64 - n);
+    }
+
+    // Move a particle's late window from its current anchor group to new_grp_idx.
+    // Must be called before the anchor and played_mask are changed.
+    //
+    // Forward, from anchor note A0 to A1: the notes [A0,A1) are the old anchor group and the skipped groups.
+    // A note at offset j from A0 is pending exactly when bit j of ~played_mask is set, because played_mask only has
+    // bits inside the old anchor group and every skipped note is unplayed.
+    // Backward: the pending notes still behind the new anchor keep their state. Notes newly inside the back of the
+    // window are not known to be pending, therefore they are treated as played.
+    // Before the first match the old anchor is the first note of the active region with nothing played,
+    // so the groups skipped at the start of the region become pending.
+    void _late_advance( const sf_t* p, particle_t& pt, unsigned new_grp_idx )
+    {
+      if( p->args.late_grp_cnt == 0 )
+        return;
+
+      bool     first_fl = pt.anchor_grp_idx == kInvalidIdx;
+      unsigned A0       = first_fl ? p->locA[ p->active_beg_loc_idx ].beg_note_idx : p->grpA[ pt.anchor_grp_idx ].beg_note_idx;
+      unsigned A1       = p->grpA[ new_grp_idx ].beg_note_idx;
+      uint64_t played   = first_fl ? 0 : pt.played_mask;
+      uint64_t late     = pt.late_mask;
+
+      if( A1 > A0 )
+      {
+        unsigned D = A1 - A0;
+
+        if( D < 64 )
+          late = (late >> D) | ((~played & _low_bits(D)) << (64 - D));
+        else
+          late = D - 64 < 64 ? ~played >> (D - 64) : ~uint64_t(0);
+      }
+      else
+      {
+        unsigned D = A0 - A1;
+        late = D < 64 ? late << D : 0;
+      }
+
+      pt.late_mask = late & _late_window_mask(p, new_grp_idx);
+    }
+
+    // Set late_beg_note_idxA[] and max_late_pitch_cnt. The late window of anchor group g is the whole groups
+    // g-late_grp_cnt to g-1, less the oldest groups which would take it over 64 notes (the size of late_mask).
+    // It is computed over the whole score, rather than the active region, so that reset() never needs to recompute it.
+    void _form_late_windows( sf_t* p )
+    {
+      enum { kPitchN = 128 };
+      unsigned cntA[ kPitchN ];
+
+      p->max_late_pitch_cnt = 0;
+
+      for(unsigned g=0; g<p->grpN; ++g)
+      {
+        unsigned A = p->grpA[g].beg_note_idx;
+        unsigned b = A;
+
+        for(unsigned k=1; k<=p->args.late_grp_cnt && k<=g; ++k)
+        {
+          if( A - p->grpA[g-k].beg_note_idx > 64 )
+            break;
+
+          b = p->grpA[g-k].beg_note_idx;
+        }
+
+        p->late_beg_note_idxA[g] = b;
+
+        std::fill(cntA, cntA + kPitchN, 0);
+        for(unsigned i=b; i<A; ++i)
+          if( p->noteA[i].pitch < kPitchN )
+            p->max_late_pitch_cnt = std::max(p->max_late_pitch_cnt, ++cntA[ p->noteA[i].pitch ]);
+      }
+    }
+
     // Append a branch to the branch pool.
     // Zero weight branches are not added. They can never be selected by resampling and would only consume the pool.
-    rc_t _add_branch( sf_t* p, unsigned parent_idx, match_status_id_t tid, unsigned loc_idx, unsigned note_ofs, double weight )
+    rc_t _add_branch( sf_t* p, unsigned parent_idx, match_status_id_t tid, unsigned loc_idx, unsigned note_ofs, double weight, bool late_fl=false )
     {
       if( !(weight > 0) )
         return kOkRC;
@@ -252,6 +353,7 @@ namespace cw
       br.loc_idx    = loc_idx;
       br.note_ofs   = note_ofs;
       br.weight     = weight;
+      br.late_fl    = late_fl;
 
       return kOkRC;
     }
@@ -425,6 +527,11 @@ namespace cw
     // unplayed notes, since the performed note must be one of them. For a mismatch k is the count of
     // notes at the nearest location.
     //
+    // Late : prior_match * J(late) * N(loc.sec - pred_score_sec; 0, sqrt(S + late_sigma_sec^2)) * 1/L
+    //
+    // for each pending note of the particle's late window with the performed pitch, where L is the count of pending
+    // notes. J(late) = jump_late, normalized with the other jump weights, and is only present while L > 0.
+    //
     // Because J sums to 1 over the candidates, prior_match is the total probability of a match
     // regardless of how many candidate locations contain the pitch, and the summed match term is
     // a density over score seconds in the same units as the nomatch term.
@@ -457,6 +564,11 @@ namespace cw
 
         for(unsigned k=0; k<c.extraN; ++k)
           jump_sum += _jump_weight(p, _jump_dist(p, pt, c.extra_grp_idxA[k]), unplayedN);
+
+        // The late window is one more destination of the jump prior while it holds pending notes.
+        unsigned lateN = std::popcount(pt.late_mask);
+        if( lateN > 0 )
+          jump_sum += p->args.jump_late;
 
         // Match branches: one for each candidate location which contains the performed pitch.
         for(unsigned k=0; k<candN && jump_sum>0; ++k)
@@ -497,6 +609,31 @@ namespace cw
 
           if((rc = _add_branch(p, i, kMatchTId, loc_idx, grp_note_ofs, w)) != kOkRC )
             goto errLabel;
+        }
+
+        // Late match branches: one for each pending note with the performed pitch.
+        // The note is late by design, so its time term is widened by late_sigma_sec.
+        if( lateN > 0 && p->args.jump_late > 0 && jump_sum > 0 )
+        {
+          unsigned A          = p->grpA[ pt.anchor_grp_idx ].beg_note_idx;
+          double   late_sigma = std::sqrt(_innovation_var(p, pt) + p->args.late_sigma_sec * p->args.late_sigma_sec);
+          double   jw         = p->args.jump_late / jump_sum;
+
+          for(uint64_t m=pt.late_mask; m!=0; m &= m-1)
+          {
+            unsigned      bit  = std::countr_zero(m);
+            const note_t& note = p->noteA[ A - 64 + bit ];
+
+            if( note.pitch != pitch )
+              continue;
+
+            unsigned loc_idx = note.loc - p->locA;
+            double   dsec    = p->locA[loc_idx].sec - pt.pred_score_sec;
+            double   w       = pt.weight * p->args.prior_match * jw * _time_likelihood(dsec, late_sigma) / lateN;
+
+            if((rc = _add_branch(p, i, kMatchTId, loc_idx, bit, w, true)) != kOkRC )
+              goto errLabel;
+          }
         }
 
         // Mismatch branch: the note is assigned to the window location nearest in time.
@@ -696,6 +833,7 @@ namespace cw
       std::uniform_real_distribution<double> dist(0.0, 1.0);
       unsigned                               j        = 0;
       double                                 cum      = p->branchA[0].weight;
+      unsigned                               late_resampleN = 0;
 
       for(unsigned i=0; i<p->particleN; ++i)
       {
@@ -714,6 +852,14 @@ namespace cw
         pt        = parent;
         pt.weight = init_wgt;
 
+        // A late match marks its note as played and changes nothing else: the note is not the current position,
+        // so neither the anchor nor the Kalman filter moves.
+        if( br.late_fl )
+        {
+          pt.late_mask &= ~(uint64_t(1) << br.note_ofs);
+          late_resampleN += 1;
+        }
+        else
         if( br.tid != kNoMatchTId )
         {
           _kalman_update(p, pt, p->locA[ br.loc_idx ].sec);
@@ -723,6 +869,7 @@ namespace cw
           // moving to a new anchor group starts a new set of played notes
           if( grp_idx != parent.anchor_grp_idx )
           {
+            _late_advance(p, pt, grp_idx);
             pt.anchor_grp_idx = grp_idx;
             pt.played_mask    = 0;
           }
@@ -735,6 +882,7 @@ namespace cw
 
       // The parents were read from particleA[] while the survivors were written to next_particleA[].
       std::swap(p->particleA, p->next_particleA);
+      p->late_resampleN = late_resampleN;
     }
 
     //----------------------------------------------------------------------------------------
@@ -843,11 +991,12 @@ namespace cw
           n += snprintf(expect_buf + n, sizeof(expect_buf) - n, " %i", p->noteA[i].pitch);
       }
 
-      cwLogInfo("sf3 uid:%5i sec:%8.3f pitch:%3i -> loc:%5i meas:%3i %-8s conf:%.3f | score_sec mean:%8.3f std:%6.3f time_fact mean:%6.3f std:%6.3f kf_std:%6.3f%s",
+      cwLogInfo("sf3 uid:%5i sec:%8.3f pitch:%3i -> loc:%5i meas:%3i %-8s conf:%.3f | score_sec mean:%8.3f std:%6.3f time_fact mean:%6.3f std:%6.3f kf_std:%6.3f late:%.3f%s",
                 uid, perf_sec, pitch,
                 _loc_idx_to_report_id(p, loc_idx), _loc_idx_to_report_meas(p, loc_idx),
                 cwStringNullGuard(match_status_id_to_label(r.match_status_id)), r.confidence,
                 ss_mean, ss_std, tf_mean, tf_std, tf_kf_std,
+                (double)p->late_resampleN / p->particleN,
                 expect_buf);
     }
 
@@ -872,9 +1021,13 @@ namespace cw
         // the anchor is reported as the location id of the first location of the anchor group
         unsigned anchor_loc_idx = pt.anchor_grp_idx == kInvalidIdx ? kInvalidIdx : p->grpA[ pt.anchor_grp_idx ].beg_loc_idx;
 
-        cwLogInfo("    particle %4i: score_sec:%8.3f sd:%6.3f time_fact:%6.4f sd:%6.4f anchor:%5i played:0x%llx weight:%.5f",
+        cwLogInfo("    particle %4i: score_sec:%8.3f sd:%6.3f time_fact:%6.4f sd:%6.4f anchor:%5i played:0x%llx late:0x%llx weight:%.5f",
                   i, pt.pred_score_sec, std::sqrt(std::max(0.0, pt.cov_ss)), 1.0 / pt.tempo, _kf_time_fact_std(pt),
-                  _loc_idx_to_report_id(p, anchor_loc_idx), (unsigned long long)pt.played_mask, pt.weight);
+                  _loc_idx_to_report_id(p, anchor_loc_idx), (unsigned long long)pt.played_mask, (unsigned long long)pt.late_mask, pt.weight);
+
+        // Debug check of the late window invariant: pending notes are only inside the anchor group's late window.
+        if( pt.late_mask != 0 && (pt.anchor_grp_idx == kInvalidIdx || (pt.late_mask & ~_late_window_mask(p, pt.anchor_grp_idx)) != 0) )
+          cwLogError(kInvalidStateRC,"particle %i: late_mask 0x%llx has bits outside the late window.",i,(unsigned long long)pt.late_mask);
       }
     }
 
@@ -903,9 +1056,13 @@ cw::rc_t cw::score_follow_3::_create_impl( sf_t* p, const args_t& args )
   p->loc_grp_idxA = mem::allocZ<unsigned>(p->locN);
   _form_groups(p);
 
+  p->late_beg_note_idxA = mem::allocZ<unsigned>(p->grpN);
+  _form_late_windows(p);
+
   // Each particle produces at most one match branch per candidate location plus one mismatch and one nomatch branch.
   // The candidates are the window (see _max_window_loc_count()), which widening to whole groups can extend by
-  // max_grp_loc_cnt-1 locations at each end, plus the anchor group and the group after it (see _candidates()).
+  // max_grp_loc_cnt-1 locations at each end, plus the anchor group and the group after it (see _candidates()),
+  // plus one late match branch per pending note with the performed pitch (at most max_late_pitch_cnt).
   max_window_loc_cnt = _max_window_loc_count(p);
   p->max_wnd_loc_cnt = max_window_loc_cnt;
 
@@ -913,7 +1070,7 @@ cw::rc_t cw::score_follow_3::_create_impl( sf_t* p, const args_t& args )
   p->particleA      = mem::allocZ<particle_t>(p->particleN);
   p->next_particleA = mem::allocZ<particle_t>(p->particleN);
 
-  p->branchAllocN   = p->particleN * (max_window_loc_cnt + 2*(p->max_grp_loc_cnt - 1) + 2*p->max_grp_loc_cnt + 2);
+  p->branchAllocN   = p->particleN * (max_window_loc_cnt + 2*(p->max_grp_loc_cnt - 1) + 2*p->max_grp_loc_cnt + 2 + p->max_late_pitch_cnt);
   p->branchA        = mem::allocZ<branch_t>(p->branchAllocN);
   p->branchN        = 0;
 
@@ -948,6 +1105,7 @@ cw::rc_t cw::score_follow_3::_destroy_impl( sf_t* p )
   mem::release(p->touched_loc_idxA);
   mem::release(p->grpA);
   mem::release(p->loc_grp_idxA);
+  mem::release(p->late_beg_note_idxA);
   mem::release(p->rem_max_ioi_secA);
 
   return rc;
@@ -975,10 +1133,12 @@ cw::rc_t cw::score_follow_3::_reset_impl( sf_t* p )
     pt.cov_rr         = p->args.time_fact_prior_sigma * p->args.time_fact_prior_sigma;
     pt.anchor_grp_idx = kInvalidIdx;
     pt.played_mask    = 0;
+    pt.late_mask      = 0;
     pt.weight         = init_wgt;
   }
 
   p->branchN            = 0;
+  p->late_resampleN     = 0;
   p->prev_perf_sec      = 0;
   p->last_note_perf_sec  = 0;
   p->end_loc_reported_fl = false;
