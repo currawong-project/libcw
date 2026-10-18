@@ -11425,6 +11425,7 @@ namespace cw
         kCsvFileName3PId,
         kStartPId,
         kStopPId,
+        kSeekUidPId,
         kDoneFlPId,
         kOutPId,
         kROutPId
@@ -11474,7 +11475,7 @@ namespace cw
         
       } inst_t;
       
-      void _get_first_msg_index( inst_t* p )
+      void _get_first_msg_index( inst_t* p, unsigned min_msg_idx )
       {
         // The first msg index is the earlies pedal down msg that is still active when the first note-on msg occurs
         // or the first note-on msg if no pedals are down at the first note-on msg.
@@ -11487,7 +11488,7 @@ namespace cw
         {
           const msg_t* m = p->msgA + i;
           
-          if( midi::isNoteOn(m->m->status,m->m->d1))
+          if( i >= min_msg_idx && midi::isNoteOn(m->m->status,m->m->d1))
           {
             p->first_msg_idx = sus_down_msg_idx;
             
@@ -11574,7 +11575,8 @@ namespace cw
             m->m->d0     = tmA[i]->u.chMsgPtr->d0; 
             m->m->d1     = tmA[i]->u.chMsgPtr->d1;
 
-            //printf("%lli %f %f %i %i ch:%i st:%i d0:%i d1:%i\n",tmA[i]->amicro/1000,secs,m->sample_idx/proc->ctx->sample_rate, p->msg_idx, m->m->uid, m->m->ch, m->m->status, m->m->d0, m->m->d1);
+            if( m->m->status == 144 )
+              printf("%lli %f %f %i uid:%i ch:%i st:%i d0:%i d1:%i\n",tmA[i]->amicro/1000,secs,m->sample_idx/proc->ctx->sample_rate, p->msg_idx, m->m->uid, m->m->ch, m->m->status, m->m->d0, m->m->d1);
                         
             p->msg_idx += 1;
           }
@@ -11583,7 +11585,7 @@ namespace cw
         p->msgN    = p->msg_idx;
         p->msg_idx = 0;
 
-        _get_first_msg_index( p );
+        //_get_first_msg_index( p, 0 );
 
         if( !p->auto_start_fl and p->playing_fl )
         {
@@ -11699,7 +11701,28 @@ namespace cw
         return rc;
       }
 
-      
+      rc_t _seek_to_uid( proc_t* proc, inst_t* p, unsigned seek_uid, unsigned& seek_msg_idx_ref )
+      {
+        rc_t rc = kOkRC;
+        
+        seek_msg_idx_ref = kInvalidIdx;
+        
+        proc_info(proc,"Seeking to %i",seek_uid);
+        
+        for(unsigned i=0; i<p->msgN; ++i)
+          if( p->msgA[i].m->uid == seek_uid )
+          {
+            seek_msg_idx_ref = i;
+            goto errLabel;            
+          }
+
+        
+        rc = proc_error(proc,kOpFailRC,"The MIDI seek UID %i was not found.",seek_uid);
+        
+      errLabel:
+        return rc;
+      }
+
 
       rc_t _create( proc_t* proc, inst_t* p )
       {
@@ -11711,6 +11734,7 @@ namespace cw
         bool                           done_fl    = false;
         bool                           start_fl   = false;
         bool                           stop_fl    = false;
+        unsigned                       seek_uid   = kInvalidId;
         time::spec_t                   asecs;
 
         p->playing_fl = false;
@@ -11724,6 +11748,7 @@ namespace cw
                                       kCsvFileName3PId, "csv_fname_b",   kBaseSfxId, csv_fname_3,
                                       kStartPId,        "start",         kBaseSfxId, start_fl,
                                       kStopPId,         "stop",          kBaseSfxId, stop_fl,
+                                      kSeekUidPId,      "seek_uid",      kBaseSfxId, seek_uid,
                                       kDoneFlPId,       "done_fl",       kBaseSfxId, done_fl)) != kOkRC )
         {
           goto errLabel;
@@ -11791,6 +11816,41 @@ namespace cw
         return rc;
       }
 
+      rc_t _on_start( proc_t* proc, inst_t* p )
+      {
+        rc_t     rc       = kOkRC;
+        unsigned seek_uid = kInvalidId;
+        unsigned msg_idx  = 0;
+
+        // get the starting location
+        if((rc = var_get(proc,kSeekUidPId,kAnyChIdx,seek_uid)) != kOkRC )
+        {          
+          goto errLabel;
+        }
+
+        // if the seek uid is set then seek to it
+        if( seek_uid != kInvalidId )
+        {
+          if(_seek_to_uid(proc,p,seek_uid,msg_idx) != kOkRC )
+            seek_uid = kInvalidId;
+        }
+
+        p->msg_idx = msg_idx;
+
+        if( p->msg_idx >= p->msgN )
+        {
+          rc = proc_error(proc,kInvalidStateRC,"The current msg index %i was found to be out of range %i.",p->msg_idx,p->msgN);
+          goto errLabel;
+        }
+        
+        p->sample_idx = p->msgN>0 ? p->msgA[p->msg_idx].sample_idx : 0;
+        p->playing_fl = true;
+        TRACE_ACTIVATE(true);
+        
+      errLabel:
+        return rc;        
+      }
+      
       
       rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
       {
@@ -11800,10 +11860,7 @@ namespace cw
         switch( var->vid )
         {
           case kStartPId:
-            p->msg_idx = p->first_msg_idx==kInvalidIdx ? 0 : p->first_msg_idx;
-            p->sample_idx = p->msgN>0 ? p->msgA[p->msg_idx].sample_idx : 0;
-            p->playing_fl = true;
-            TRACE_ACTIVATE(true);
+            _on_start(proc,p);
             proc_info(proc,"Start Clicked.");
             break;
             
@@ -11835,6 +11892,9 @@ namespace cw
           case kCsvFileName3PId:
             if( var_get(var,fname)==kOkRC )
               rc = _load_from_alt_csv_file(proc,p,fname,3);
+            break;
+
+          case kSeekUidPId:
             break;
             
         }
