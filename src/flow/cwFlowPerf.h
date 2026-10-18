@@ -10,6 +10,7 @@ namespace cw
     namespace emit_preset      { extern class_members_t members;  }
     namespace gutim_ps         { extern class_members_t members;  }
     namespace score_follower_2 { extern class_members_t members;  }
+    namespace score_follower_3 { extern class_members_t members;  }
     namespace gutim_ctl        { extern class_members_t members;  }
     namespace gutim_sf_ctl     { extern class_members_t members;  }    
     namespace gutim_spirio_ctl { extern class_members_t members;  }

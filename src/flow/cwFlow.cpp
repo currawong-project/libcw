@@ -116,6 +116,7 @@ namespace cw
       { "emit_preset",     &emit_preset::members },      
       { "gutim_ps",        &gutim_ps::members },
       { "score_follower_2",&score_follower_2::members },
+      { "score_follower_3",&score_follower_3::members },
       { "gutim_ctl",       &gutim_ctl::members },
       { "gutim_sf_ctl",    &gutim_sf_ctl::members },
       { "gutim_spirio_ctl",&gutim_spirio_ctl::members },

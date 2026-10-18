@@ -29,6 +29,7 @@
 
 #include "cwPianoScore.h"
 #include "cwScoreFollow2.h"
+#include "cwScoreFollow3.h"
 #include "cwPresetSel.h"
 #include "cwMidiDetectors.h"
 #include "cwFlowPerf.h"
@@ -5643,7 +5644,579 @@ namespace cw
       
     } // score_follower_2
 
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // score_follower_3
+    //
+    namespace score_follower_3
+    {
+      enum
+      {
+        kInPId,
+        kFnamePId,
+        kBegLocPId,
+        kEndLocPId,
+        kPostGapSecPId,
+        kMaxLocPId,
+        kResetTrigPId,
+        kEnableFlPId,
+        kLocPctPId,
+        kLastLocPId,
+        kLastMeasPId,
+        kStatusPId,
+        kDoneFlPId,
+        kLocLogFlPId,
+        kPrintFlPId,
+        kOutPId,
+      };
+      
+      typedef struct
+      {
+        score_follow_3::handle_t       sfH;
 
+        
+        score_follow_3::status_id_t    sf_status_id;
+        score_follow_3::score_event_t* score_evtA;        
+        unsigned                       score_evtN;
+        
+        unsigned                       i_midi_fi;
+        unsigned                       o_perf_note_idx_fi;
+        unsigned                       o_loc_fi;
+        unsigned                       o_meas_fi;
+        unsigned                       o_sec_fi;
+        unsigned                       o_vel_fi;
+        recd_array_t*                  recd_array;  // output record array
+        unsigned                       cur_loc_id;
+        unsigned                       cur_meas_numb;
+        bool                           enable_fl;
+        bool                           done_fl;
+        bool                           loc_log_fl;
+      } inst_t;
+
+
+      rc_t _parse_score_get_note_count( const object_t* loc_cfgD, unsigned& note_cnt_ref )
+      {
+        rc_t rc = kOkRC;
+        unsigned locN = 0;
+      
+        note_cnt_ref = 0;
+      
+        if( loc_cfgD == nullptr || !loc_cfgD->is_dict() )
+        {
+          rc = cwLogError(kSyntaxErrorRC,"The score 'locD' is not a dictionary.");
+          goto errLabel;
+        }
+      
+        locN = loc_cfgD->child_count();
+
+        for(unsigned score_idx=0; score_idx<locN; ++score_idx)
+        {
+          const object_t* loc_pair = loc_cfgD->child_ele(score_idx);
+          const object_t* note_cfgL = nullptr;
+                
+          if(loc_pair == nullptr || !loc_pair->is_pair() || loc_pair->pair_label() == nullptr || loc_pair->pair_value() == nullptr || !loc_pair->pair_value()->is_dict() )
+          {
+            rc = cwLogError(kSyntaxErrorRC,"The location pair at score file location index %i is invalid.",score_idx);
+            goto errLabel;
+          }
+
+          if((rc = loc_pair->pair_value()->getv("noteL",note_cfgL)) != kOkRC )
+          {
+            rc = cwLogError(kSyntaxErrorRC,"Parse failed on 'noteL' access at score file location %i.",score_idx);
+            goto errLabel;
+          }
+
+          if(note_cfgL == nullptr || !note_cfgL->is_list() )
+          {
+            rc = cwLogError(kSyntaxErrorRC,"The 'noteL' at score file location %i is not a list.",score_idx);
+            goto errLabel;
+          }
+
+          note_cnt_ref += note_cfgL->child_count();        
+        }
+      
+      errLabel:      
+        return rc;
+      }
+      
+      rc_t _parse_score( proc_t* proc, inst_t* p, const char* c_score_fname )
+      {
+        rc_t            rc                = kOkRC;
+        object_t*       score_cfg         = nullptr;
+        const object_t* loc_cfgD          = nullptr;
+        unsigned        score_cfg_loc_cnt = 0;
+        unsigned        score_evt_idx     = 0;
+        char*           score_fname = nullptr;
+        
+        if((score_fname = proc_expand_filename( proc, c_score_fname )) == nullptr )
+        {
+          rc = cwLogError(kOpFailRC,"Filename expansion failed on '%s'.",cwStringNullGuard(c_score_fname));
+          goto errLabel;
+        }
+      
+        if((rc = objectFromFile(score_fname,score_cfg)) != kOkRC )
+        {
+          rc = cwLogError(rc,"File to object conversion of the score file failed.");
+          goto errLabel;
+        }
+
+        if((rc = score_cfg->getv("locD",loc_cfgD)) != kOkRC )
+        {
+          rc = cwLogError(rc,"Score parse error extracing the 'locD' structure.");
+          goto errLabel;
+        }
+
+        if((rc = _parse_score_get_note_count( loc_cfgD, p->score_evtN )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        p->score_evtA = mem::allocZ<score_follow_3::score_event_t>( p->score_evtN );
+      
+        score_cfg_loc_cnt = loc_cfgD->child_count();
+      
+
+        for(unsigned i=0; i<score_cfg_loc_cnt; ++i)
+        {
+          const object_t* loc_pair     = loc_cfgD->child_ele(i);
+          const object_t* note_cfgL    = nullptr;
+          unsigned        loc_id       = kInvalidId;
+          unsigned        loc_note_cnt = 0;
+          double          sec          = 0;
+          unsigned        meas_num     = 0;
+        
+          if((rc = string_to_number(loc_pair->pair_label(),loc_id)) != kOkRC )
+          {
+            rc = cwLogError(rc,"Location id string to int conversion of %s failed at score file index %i.",cwStringNullGuard(loc_pair->pair_label()),i);
+            goto errLabel;
+          }
+
+          if((rc = loc_pair->pair_value()->getv("meas",meas_num,
+                                                "sec",sec,
+                                                "noteL",note_cfgL)) != kOkRC )
+          {
+            rc = cwLogError(rc,"Parse failed at score file index %i.",i);
+            goto errLabel;
+          }
+
+          loc_note_cnt = note_cfgL->child_count();
+
+          for(unsigned ni=0; ni<loc_note_cnt; ++ni,++score_evt_idx)
+          {
+            const object_t* note_cfg = note_cfgL->child_ele(ni);
+
+            if( score_evt_idx >= p->score_evtN )
+            {
+              rc = cwLogError(kBufTooSmallRC,"The test score event array is too small.");
+              goto errLabel;
+            }
+          
+            score_follow_3::score_event_t& se = p->score_evtA[score_evt_idx];
+
+            if((rc = note_cfg->getv("pitch",se.pitch,
+                                    "dyn",se.velocity,
+                                    "grace_fl",se.grace_fl)) != kOkRC )
+            {
+              rc = cwLogError(rc,"Parse of note at score file index %i failed.",i);
+              goto errLabel;
+            }
+
+            se.meas_num = meas_num;
+            se.sec      = sec;
+            se.loc_id   = loc_id;
+          }        
+        }
+
+        if( score_evt_idx != p->score_evtN )
+        {
+          rc = cwLogError(kInvalidStateRC,"The count of score events parsed (%i) does not match the expected count (%i).",score_evt_idx,p->score_evtN);
+          goto errLabel;
+        }
+
+        std::sort(p->score_evtA,p->score_evtA+p->score_evtN, [](const score_follow_3::score_event_t& se0,const score_follow_3::score_event_t& se1){ return se0.sec<se1.sec; } );
+      
+      errLabel:
+
+        mem::release(score_fname);
+        
+        if( score_cfg != nullptr )
+          score_cfg->free();
+      
+        if(rc != kOkRC )
+          rc = cwLogError(rc,"Score file parse failed on '%s'.",cwStringNullGuard(c_score_fname));
+
+      
+        return rc;
+      }
+      
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t        rc            = kOkRC;        
+        rbuf_t*     in_rbuf       = nullptr;
+        const char* c_score_fname = nullptr;
+        char*       score_fname   = nullptr;
+        unsigned    beg_loc_id    = kInvalidId;
+        unsigned    end_loc_id    = kInvalidId;
+        double      post_gap_sec  = 0.0;
+        bool        reset_trig_fl = false;
+        bool        done_fl       = false;
+        bool        rpt_fl        = false;
+
+        cw::score_follow_3::args_t sf_args = {
+          .pitch_min             = 21,   // mininum expected MIDI pitch value
+          .pitch_max             = 108,  // maximum expected MIDI pitch value      
+          .wnd_pre_sec           = 2.0,  // 2.0 look back search window 
+          .wnd_post_sec          = 5.0,  // 5.0 look forward search window
+          .wnd_pre_loc_cnt       = 5,    // min. loc's in backward search window
+          .wnd_post_loc_cnt      = 10,   // min. loc's in the forward search window
+          
+          .particle_cnt          = 200,  // Number of particles N. Sizes the particle array, and with the window bound it sizes the branch pool.
+          .rand_seed             = 0,    // Seed for the std::mt19937, re-applied at each reset() so runs are reproducible.  
+          .prior_match           = 0.85, // Prior probability that a note is a match, i.e. the right pitch near its predicted time.
+          .prior_mismatch        = 0.05, // Prior probability that a note is a mismatch, i.e. the right time but the wrong pitch. 
+          .prior_nomatch         = 0.10, // Prior probability that a note is a nomatch, unrelated to any nearby score note. The three priors must add up to 1.0.
+          
+          .time_sigma_sec        = 0.35, // Standard deviation, in score seconds, of the Gaussian time likelihood between a particle's predicted score time and a candidate loc's time.
+          .time_fact_prior_sigma = 0.25, // Standard deviation of the initial time_fact draw around 1.0 at reset(). 
+          .time_fact_walk_sigma  = 0.05, // Standard deviation of the multiplicative random walk applied after each resample: time_fact *= exp(N(0,σ)).
+          .pos_walk_sigma        = 0.05, // Position process noise: standard deviation, in score seconds, of the change in s per sqrt(performance second).
+          .time_fact_min         = 0.5,  // Lower clamp for time_fact.
+          .time_fact_max         = 2.0, // Upper clamp for time_fact.
+          
+          .jump_stay             = 0.70, // d == 0: another note of the anchor location (only while it has unplayed notes).
+          .jump_next             = 0.25, // d == 1: the next location.
+          .jump_skip             = 0.01, // d >= 2: jump_skip * jump_decay^(d-2). Skipped locations.
+          .jump_back             = 0.01, // d <  0: jump_back * jump_decay^(-d-1). Backward jumps and repeats.
+          .jump_decay            = 0.5,  // Geometric decay (0,1) applied per additional location of a skip or backward jump.
+          
+          .loc_group_sec         = 0.05, // Consecutive locations within loc_group_sec of the first location of their group are treated by the jump prior
+                                         // as one chord, so they may be performed in any order. 0 disables grouping (every location is its own group).
+      
+          // Notes played late: each particle keeps the notes it passed without playing in the last late_grp_cnt groups behind its
+          // anchor group (at most 64 notes). A late match to one of them does not move the anchor or update the Kalman filter.
+          .late_grp_cnt   = 0,         // Count of groups behind the anchor group in the late window. 0 disables late matches.
+          .jump_late      = 0.05,      // Jump prior weight of the late window (only while it holds pending notes).
+          .late_sigma_sec = 0.0,       // Extra time standard deviation of a late match, added in quadrature to the predictive standard deviation.
+
+          // End of region detection. Besides reporting the last location of the region, the follower is done when
+          // its last reported location is within end_zone_sec of the end of the region and no note has arrived for
+          //   done_timeout_mult * time_fact_max * (largest inter-onset gap remaining before the end) + done_timeout_min_sec
+          // performance seconds. The timeout is evaluated by exec().
+          .end_zone_sec         = 3.0, // Length, in score seconds, of the zone before the end of the region in which the timeout is armed.
+          .done_timeout_mult    = 3.0, // Safety factor (>= 1) applied to the largest remaining inter-onset gap.
+          .done_timeout_min_sec = 1.0, // Floor (> 0) of the timeout in performance seconds.
+
+           // Status: searching while the std. dev. of the particles' anchor groups, averaged over the last status_wnd_cnt notes,
+           // is above status_hi; back to tracking below status_lo (docs/cwScoreFollow3_dev_2.md).
+           .status_wnd_cnt     = 6,
+           .status_lo          = 1.74,    // groups
+           .status_hi          = 2.68,    // groups
+          
+          .exec_period_sec = proc->ctx->framesPerCycle / proc->ctx->sample_rate,      // period of calls to exec() in seconds
+          .report_level    = 3
+        };
+
+        if((rc = var_register_and_get(proc,kAnyChIdx,
+                                      kInPId,         "in",            kBaseSfxId, in_rbuf,
+                                      kFnamePId,      "score_fname",   kBaseSfxId, c_score_fname,
+                                      kBegLocPId,     "b_loc",         kBaseSfxId, beg_loc_id,
+                                      kEndLocPId,     "e_loc",         kBaseSfxId, end_loc_id,
+                                      kPostGapSecPId, "post_gap_sec",  kBaseSfxId, post_gap_sec,
+                                      kResetTrigPId,  "reset_trigger", kBaseSfxId, reset_trig_fl,
+                                      kEnableFlPId,   "enable_fl",     kBaseSfxId, p->enable_fl,
+                                      kDoneFlPId,     "done_fl",       kBaseSfxId, done_fl,
+                                      kLocLogFlPId,   "loc_log_fl",    kBaseSfxId, p->loc_log_fl,
+                                      kPrintFlPId,    "print_fl",      kBaseSfxId, rpt_fl )) != kOkRC )
+        {
+          goto errLabel;
+        }
+        if((score_fname = proc_expand_filename( proc, c_score_fname )) == nullptr )
+        {
+          rc = proc_error(proc,kOpFailRC,"Unable to expand the score filename '%s'.",cwStringNullGuard(c_score_fname));
+          goto errLabel;
+        }
+
+        // create the SF score
+        if((rc = _parse_score(proc,p,c_score_fname)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"SF3 Score create failed.");
+          goto errLabel;
+        }
+
+        // create the score follower
+        if((rc = create( p->sfH, sf_args, p->score_evtA, p->score_evtN )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"SF3 create failed.");
+          goto errLabel;          
+        }
+
+        if((rc = reset( p->sfH, beg_loc_id, end_loc_id )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Score follower reset failed.");
+          goto errLabel;
+        }
+
+        if((rc = var_register_and_set(proc,kAnyChIdx,
+                                      kLocPctPId, "loc_pct", kBaseSfxId, 0.0,
+                                      kLastLocPId,"last_loc", kBaseSfxId, 0,
+                                      kLastMeasPId,"last_meas", kBaseSfxId, 0,
+                                      kStatusPId, "status", kBaseSfxId, cw::score_follow_3::kResetStatusId,                                      
+                                      kMaxLocPId, "loc_cnt",  kBaseSfxId, max_loc_id(p->sfH) )) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
+        if((rc = var_alloc_register_and_set( proc, "out", kBaseSfxId, kOutPId, kAnyChIdx, in_rbuf->recd_array->typeA, in_rbuf->recd_array->typeN, p->recd_array )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((rc = recd_array_field_index( in_rbuf->recd_array,"midi",p->i_midi_fi)) != kOkRC )
+        {
+          proc_error(proc,rc,"Record field lookup failed.");
+          goto errLabel;
+        }
+
+        if((rc = recd_array_field_index( p->recd_array,
+                                         "loc",p->o_loc_fi,
+                                         "perf_note_idx",p->o_perf_note_idx_fi,
+                                         "meas",p->o_meas_fi,
+                                         "sec",p->o_sec_fi,
+                                         "score_vel",p->o_vel_fi)) != kOkRC )
+        {
+          proc_error(proc,rc,"Record field lookup failed.");
+          goto errLabel;
+        }
+        
+      errLabel:
+        mem::release(score_fname);
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        destroy(p->sfH);
+        mem::release(p->score_evtA);
+
+        return rc;
+      }
+
+      rc_t _reset_sf( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+        unsigned beg_loc_id;
+        unsigned end_loc_id;
+        double   post_gap_sec;
+
+        if((rc = var_get(proc,kBegLocPId,kAnyChIdx,beg_loc_id)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"beg_loc read failed.");
+          goto errLabel;
+        }
+        
+        if((rc = var_get(proc,kEndLocPId,kAnyChIdx,end_loc_id)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"end_loc read failed.");
+          goto errLabel;
+        }
+
+        if((rc = var_get(proc,kPostGapSecPId,kAnyChIdx,post_gap_sec)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"end_loc read failed.");
+          goto errLabel;
+        }
+        
+        if((rc = reset(p->sfH,beg_loc_id,end_loc_id,post_gap_sec)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Score follower reset failed..");
+          goto errLabel;          
+        }
+
+        if((rc = var_set(proc,kDoneFlPId,kAnyChIdx,false)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"done_fl clear failed.");
+          goto errLabel;
+        }
+
+        p->sf_status_id = cw::score_follow_3::kDoneStatusId;
+        var_set(proc,kStatusPId,kAnyChIdx,p->sf_status_id);
+
+        p->cur_loc_id = kInvalidId;
+        p->cur_meas_numb = 0;
+
+        proc_info(proc,"reset: beg:%i end:%i",beg_loc_id,end_loc_id);
+
+      errLabel:
+
+        if( rc != kOkRC )
+          rc = proc_error(proc,rc,"SF reset failed on %i %i",beg_loc_id,end_loc_id);
+        return rc;        
+      }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        switch( var->vid )
+        {
+          case kResetTrigPId:
+            rc = _reset_sf(proc,p);
+            break;
+
+          case kEnableFlPId:
+            var_get(var,p->enable_fl);
+            proc_info(proc,"enable = %i",p->enable_fl);
+            break;
+
+          case kLocLogFlPId:
+            var_get(var,p->loc_log_fl);            
+            break;
+        }
+        return rc;
+      }
+
+      rc_t _set_output_record( proc_t* proc, inst_t* p, const recd_t* base, double sec, unsigned perf_note_idx, unsigned loc_id, unsigned meas_numb, unsigned vel )
+      {
+        rc_t rc = kOkRC;
+        
+        if((rc = recd_append( p->recd_array, base,
+                              p->o_loc_fi,  loc_id,
+                              p->o_perf_note_idx_fi, perf_note_idx,
+                              p->o_meas_fi, meas_numb,
+                              p->o_sec_fi, sec,
+                              p->o_vel_fi,  vel )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"Record output failed.");
+          goto errLabel;
+        }
+
+      errLabel:
+        return rc;
+      }
+      
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t rc      = kOkRC;
+
+        unsigned      sample_idx      = proc->ctx->cycleIndex * proc->ctx->framesPerCycle;
+        double        sec             = ((double)sample_idx) / proc->ctx->sample_rate;
+        const rbuf_t* i_rbuf          = nullptr;
+        rbuf_t*       o_rbuf          = nullptr;
+        bool          done_fl         = false;
+        
+        if((rc = var_get(proc,kInPId,kAnyChIdx,i_rbuf)) != kOkRC )
+          goto errLabel;
+
+        if((rc = var_get(proc,kOutPId,kAnyChIdx,o_rbuf)) != kOkRC )
+          goto errLabel;
+
+        recd_array_empty(p->recd_array);
+
+        if( !p->enable_fl )
+          goto errLabel;
+
+        
+        // if the score follower is disabled - there is nothing to do
+        if( p->enable_fl )
+        {
+          // for each incoming record
+          for(unsigned i=0; i<i_rbuf->recd_array->recdN; ++i)
+          {
+            midi::ch_msg_t*                 m             = nullptr;
+            unsigned                        perf_note_idx = kInvalidIdx;
+            score_follow_3::result_t        sf_res;
+
+            sf_res.loc_id = kInvalidId;
+            sf_res.score_vel = -1;
+            sf_res.meas_numb = -1;
+            sf_res.loc_pct = -1.0;
+            
+            if((rc = recd_get( i_rbuf->recd_array->recdA+i, p->i_midi_fi, m)) != kOkRC )
+            {
+              rc = proc_error(proc,rc,"The 'midi' field read failed.");
+              goto errLabel;
+            }
+
+            //printf("SF: %s : %i %i %i %i\n",proc->label,m->uid,m->status,m->d0,m->d1);
+            
+            if( midi::isNoteOn( m->status, m->d1 ) )
+            {
+
+              if((rc = on_new_note( p->sfH, m->uid, sec, m->d0, m->d1, sf_res )) != kOkRC )
+              {
+                rc = proc_error(proc,rc,"Score follower note processing failed.");
+                goto errLabel;              
+              }
+
+              if( sf_res.status_id != p->sf_status_id )
+              {
+                var_set(proc,kStatusPId,kAnyChIdx,sf_res.status_id);
+                p->sf_status_id = sf_res.status_id;
+                proc_info(proc,"status:%s",status_label(p->sf_status_id));
+
+              }
+
+              if( sf_res.loc_id != kInvalidId )
+              {
+                if( sf_res.loc_id != p->cur_loc_id )
+                {
+                  p->cur_loc_id = sf_res.loc_id;
+
+                  var_set(proc,kLastLocPId,kAnyChIdx,sf_res.loc_id);
+
+                  // if the measure number changed 
+                  if( sf_res.meas_numb != p->cur_meas_numb )
+                  {                    
+                    var_set(proc,kLastMeasPId,kAnyChIdx,sf_res.meas_numb);
+                    p->cur_meas_numb = sf_res.meas_numb;
+                  }
+                  
+
+                  var_set(proc,kLocPctPId,kAnyChIdx,(std::min(1.0,std::max(0.0,sf_res.loc_pct))*100.0) - 100.0);
+                  
+                  if( p->loc_log_fl )
+                    proc_info(proc,"sf (%s) LOC:%i",proc->label,sf_res.loc_id);
+                  //printf("sf (%s) LOC:%i\n",proc->label,loc_id);
+                }
+              }
+            }
+
+            _set_output_record( proc, p, i_rbuf->recd_array->recdA+i, sec, perf_note_idx, sf_res.loc_id, sf_res.meas_numb, sf_res.score_vel );
+          
+          }
+        }
+
+        if((rc = var_get(proc,kDoneFlPId,kAnyChIdx,done_fl)) == kOkRC && done_fl == false )
+        {
+          exec(p->sfH,sec);
+
+          if( is_done(p->sfH  ) )
+          {
+            proc_info(proc,"SF Done detected.");
+            var_set(proc,kDoneFlPId,kAnyChIdx,true);
+          }
+        }
+
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    // score_follower_3
+
+    
     //------------------------------------------------------------------------------------------------------------------
     //
     // gutim_ctl
