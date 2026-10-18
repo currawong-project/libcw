@@ -149,6 +149,24 @@ namespace cw
       time_fact_std_ref  = std::sqrt(std::max(0.0, tf_sq_sum / p->particleN - time_fact_mean_ref * time_fact_mean_ref));
     }
 
+    // Standard deviation of the particles' anchor group index. Particles which have not matched yet count as group 0.
+    double _anchor_grp_spread( const sf_t* p )
+    {
+      double sum = 0, sq_sum = 0;
+
+      for(unsigned i=0; i<p->particleN; ++i)
+      {
+        double g = p->particleA[i].anchor_grp_idx == kInvalidIdx ? 0 : p->particleA[i].anchor_grp_idx;
+        sum    += g;
+        sq_sum += g * g;
+      }
+
+      double mean = sum / p->particleN;
+
+      // max(0,...) guards against a tiny negative variance due to round-off
+      return std::sqrt(std::max(0.0, sq_sum / p->particleN - mean * mean));
+    }
+
     //----------------------------------------------------------------------------------------
     // Measurement model
     //
@@ -679,6 +697,9 @@ namespace cw
       if( !(sum > 0) || !std::isfinite(sum) )
         return cwLogError(kInvalidStateRC,"The total branch weight (%f) is invalid.",sum);
 
+      // Every particle enters _branch() with weight 1/N, so the sum is the predictive probability of the note.
+      p->note_log_lik = std::log(sum);
+
       for(unsigned i=0; i<p->branchN; ++i)
         p->branchA[i].weight /= sum;
 
@@ -718,6 +739,7 @@ namespace cw
     unsigned _report_map( sf_t* p, unsigned pitch, result_t& result_ref )
     {
       double nomatch_mass = 0;
+      double match_mass   = 0;
 
       // accumulate the mass for each key
       for(unsigned i=0; i<p->branchN; ++i)
@@ -736,7 +758,10 @@ namespace cw
           p->touched_loc_idxA[ p->touchedN++ ] = br.loc_idx;
 
         if( br.tid == kMatchTId )
+        {
           p->match_massA[ br.loc_idx ] += br.weight;
+          match_mass                   += br.weight;
+        }
         else
           p->mismatch_massA[ br.loc_idx ] += br.weight;
       }
@@ -767,6 +792,7 @@ namespace cw
 
       result_ref.match_status_id = best_tid;
       result_ref.confidence      = best_mass;
+      p->note_match_mass         = match_mass;
       
       result_ref.score_vel = -1;
       
@@ -913,6 +939,42 @@ namespace cw
     }
 
     //----------------------------------------------------------------------------------------
+    // Status
+    //
+
+    // Called after _resample() on every note that updated the particles. Adds the group spread of the resampled particles
+    // to the status window and applies the tracking/searching hysteresis to the window mean. A change to searching
+    // needs at least min(status_wnd_cnt,3) notes in the window, so the first notes of a region cannot cause it.
+    void _update_status( sf_t* p )
+    {
+      unsigned M = p->args.status_wnd_cnt;
+
+      p->note_grp_spread = _anchor_grp_spread(p);
+
+      p->status_wndA[ p->status_wnd_idx ] = p->note_grp_spread;
+      p->status_wnd_idx = (p->status_wnd_idx + 1) % M;
+      if( p->status_wndN < M )
+        p->status_wndN += 1;
+
+      // The window holds at most 64 values, so the mean is recomputed rather than kept as a running sum which would accumulate round-off.
+      double sum = 0;
+      for(unsigned i=0; i<p->status_wndN; ++i)
+        sum += p->status_wndA[i];
+      p->status_wnd_mean = sum / p->status_wndN;
+
+      if( !p->status_searching_fl )
+      {
+        if( p->status_wndN >= std::min(M,3u) && p->status_wnd_mean > p->args.status_hi )
+          p->status_searching_fl = true;
+      }
+      else
+      {
+        if( p->status_wnd_mean < p->args.status_lo )
+          p->status_searching_fl = false;
+      }
+    }
+
+    //----------------------------------------------------------------------------------------
     // End of region timeout
     //
 
@@ -1018,12 +1080,14 @@ namespace cw
           n += snprintf(expect_buf + n, sizeof(expect_buf) - n, " %i", p->noteA[i].pitch);
       }
 
-      cwLogInfo("sf3 uid:%5i sec:%8.3f pitch:%3i -> loc:%5i meas:%3i %-8s conf:%.3f | score_sec mean:%8.3f std:%6.3f time_fact mean:%6.3f std:%6.3f kf_std:%6.3f late:%.3f%s",
+      cwLogInfo("sf3 uid:%5i sec:%8.3f pitch:%3i -> loc:%5i meas:%3i %-8s conf:%.3f | score_sec mean:%8.3f std:%6.3f time_fact mean:%6.3f std:%6.3f kf_std:%6.3f late:%.3f | mm:%.4f ll:%.3f gsd:%.3f wgsd:%.3f %s%s",
                 uid, perf_sec, pitch,
                 _loc_idx_to_report_id(p, loc_idx), _loc_idx_to_report_meas(p, loc_idx),
                 cwStringNullGuard(match_status_id_to_label(r.match_status_id)), r.confidence,
                 ss_mean, ss_std, tf_mean, tf_std, tf_kf_std,
                 (double)p->late_resampleN / p->particleN,
+                p->note_match_mass, p->note_log_lik, p->note_grp_spread, p->status_wnd_mean,
+                cwStringNullGuard(status_id_to_label(r.status_id)),
                 expect_buf);
     }
 
@@ -1107,6 +1171,8 @@ cw::rc_t cw::score_follow_3::_create_impl( sf_t* p, const args_t& args )
   p->touched_loc_idxA = mem::allocZ<unsigned>(p->locN);
   p->touchedN         = 0;
 
+  p->status_wndA      = mem::allocZ<double>(args.status_wnd_cnt);
+
   p->prev_perf_sec    = 0;
   p->last_loc_idx     = kInvalidIdx;
   p->done_fl          = false;
@@ -1134,6 +1200,7 @@ cw::rc_t cw::score_follow_3::_destroy_impl( sf_t* p )
   mem::release(p->loc_grp_idxA);
   mem::release(p->late_beg_note_idxA);
   mem::release(p->rem_max_ioi_secA);
+  mem::release(p->status_wndA);
 
   return rc;
 }
@@ -1172,6 +1239,13 @@ cw::rc_t cw::score_follow_3::_reset_impl( sf_t* p )
   p->last_loc_idx        = kInvalidIdx;
   p->done_fl            = false;
 
+  p->status_wnd_idx      = 0;
+  p->status_wndN         = 0;
+  p->status_wnd_mean     = 0;
+  p->status_note_fl      = false;
+  p->status_searching_fl = false;
+  p->note_grp_spread     = std::numeric_limits<double>::quiet_NaN();
+
   _fill_rem_max_ioi(p);
 
   // Clear the MAP accumulators. This is O(locN) but occurs only on reset(). During a note only the touched entries are cleared.
@@ -1202,7 +1276,13 @@ cw::rc_t cw::score_follow_3::_on_new_note_impl( sf_t* p, unsigned uid, double pe
   rc_t     rc      = kOkRC;
   unsigned loc_idx = kInvalidIdx;
 
-  p->map_topN = 0;
+  p->map_topN        = 0;
+  p->note_match_mass = std::numeric_limits<double>::quiet_NaN();
+  p->note_log_lik    = std::numeric_limits<double>::quiet_NaN();
+  p->note_grp_spread = std::numeric_limits<double>::quiet_NaN();
+
+  // The first note of any pitch ends the reset status.
+  p->status_note_fl = true;
 
   // Every note, including one outside the pitch range, is activity for the end of region timeout.
   p->last_note_perf_sec = perf_sec;
@@ -1224,7 +1304,11 @@ cw::rc_t cw::score_follow_3::_on_new_note_impl( sf_t* p, unsigned uid, double pe
 
   _resample(p);
 
+  _update_status(p);
+
 reportLabel:
+  result_ref.status_id = _status_impl(p);
+
   if( p->args.report_level >= 2 )
     _report_note(p, uid, perf_sec, pitch, loc_idx, result_ref);
 
@@ -1269,4 +1353,20 @@ bool cw::score_follow_3::_is_done_impl( sf_t* p )
   // or the end of region timeout has expired (see _exec_impl()), and remains done until the next reset(),
   // even if later notes are reported at earlier locations.
   return p->done_fl;
+}
+
+cw::score_follow_3::status_id_t cw::score_follow_3::_status_impl( const sf_t* p )
+{
+  // Precedence: done > finishing > searching > tracking (docs/cwScoreFollow3_dev_2.md section 2).
+  // The end zone test is the one that arms the end of region timeout, so the status and the timeout always agree.
+  if( p->done_fl )
+    return kDoneStatusId;
+
+  if( !p->status_note_fl )
+    return kResetStatusId;
+
+  if( _end_timeout_armed(p) )
+    return kFinishingStatusId;
+
+  return p->status_searching_fl ? kSearchingStatusId : kTrackingStatusId;
 }

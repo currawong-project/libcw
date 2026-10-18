@@ -55,6 +55,13 @@ namespace cw
       double done_timeout_mult;     // Safety factor (>= 1) applied to the largest remaining inter-onset gap.
       double done_timeout_min_sec;  // Floor (> 0) of the timeout in performance seconds.
 
+      // Status (see status()). The follower reports searching while the standard deviation of its particles' anchor groups,
+      // averaged over the last status_wnd_cnt notes, is high: tracking changes to searching when the average rises above
+      // status_hi and returns to tracking when it falls below status_lo. See docs/cwScoreFollow3_dev_2.md.
+      unsigned status_wnd_cnt;      // Count of notes in the window (1 to 64). Notes outside the pitch range are not counted.
+      double   status_lo;           // Group spread, in groups, below which searching returns to tracking.
+      double   status_hi;           // Group spread, in groups, above which tracking changes to searching. Must be >= status_lo.
+
 
       double   exec_period_sec;      // period of calls to exec() in seconds
       
@@ -85,6 +92,19 @@ namespace cw
     // Return kEleNotFoundRC if the label does not identify a known match status
     rc_t match_status_label_to_id( const char* label, match_status_id_t& id_ref );
 
+    typedef enum {
+      kResetStatusId,     // reset() has set a new score region and no note has arrived since.
+      kTrackingStatusId,  // The follower believes it is following the score.
+      kSearchingStatusId, // The follower's particles disagree about the score position (see args_t.status_hi).
+      kFinishingStatusId, // The last reported location is within args_t.end_zone_sec of the end of the region.
+      kDoneStatusId       // is_done() is true.
+    } status_id_t;
+
+    const char* status_label( status_id_t status_id );
+
+    // Returns nullptr if id is not found.
+    const char* status_id_to_label( status_id_t id );
+
     typedef struct result_str
     {
       unsigned          perf_uid;        // uid of a performed note
@@ -94,6 +114,7 @@ namespace cw
       double            loc_pct;         // The location as a percentage of the way through the current score region or -1.0 if loc_id is set to kInvalidId
       match_status_id_t match_status_id; // The type of score match this result represents.
       double            confidence;
+      status_id_t       status_id;       // The follower status after this note (see status()).
     } result_t;
     
     rc_t create( handle_t& hRef, const args_t& args, const score_event_t* scoreA, unsigned scoreN );
@@ -127,6 +148,9 @@ namespace cw
 
     // The max location id in the entire score
     unsigned max_loc_id( handle_t h );
+
+    // The current follower status. Besides on_new_note(), exec() can change it (to kDoneStatusId on the end of region timeout).
+    status_id_t status( handle_t h );
 
 
     

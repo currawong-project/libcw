@@ -68,6 +68,8 @@ namespace cw
 
       double*           note_usA;        // note_usA[seed_cnt*noteN] - on_new_note() duration in microseconds of each note with each random seed
       unsigned*         seed_note_cntA;  // seed_note_cntA[seed_cnt] - count of notes timed with each random seed
+
+      unsigned*         status_cntA;     // status_cntA[kStatusCntN] - over all seeds: count of results with each status_id_t, then the count of tracking/searching changes (see _check_status())
       
     } run_args_t;
     
@@ -107,6 +109,7 @@ namespace cw
         mem::release(test_args.run_argsA[i].seed_agree_pctA);
         mem::release(test_args.run_argsA[i].note_usA);
         mem::release(test_args.run_argsA[i].seed_note_cntA);
+        mem::release(test_args.run_argsA[i].status_cntA);
       }
       
       test_args.run_argsN = 0;
@@ -755,6 +758,9 @@ namespace cw
                             "end_zone_sec",kReqFl,sf_args.end_zone_sec,
                             "done_timeout_mult",kReqFl,sf_args.done_timeout_mult,
                             "done_timeout_min_sec",kReqFl,sf_args.done_timeout_min_sec,
+                            "status_wnd_cnt",kReqFl,sf_args.status_wnd_cnt,
+                            "status_lo",kReqFl,sf_args.status_lo,
+                            "status_hi",kReqFl,sf_args.status_hi,
                             "report_level",kReqFl,sf_args.report_level)) != kOkRC )
       {
         rc = cwLogError(rc,"Parse failed on follower args.");
@@ -1058,6 +1064,7 @@ namespace cw
         d->insert_pair("match_status_id",cwStringNullGuard(match_status_label));
         d->insert_pair("confidence", res.confidence);
         d->insert_pair("score_vel", res.score_vel==kInvalidId ? -1 : (int)res.score_vel);
+        d->insert_pair("status", cwStringNullGuard(status_id_to_label(res.status_id)));
       }
 
       if((rc = objectToFile( ra.result_fname, root )) != kOkRC )
@@ -1083,7 +1090,7 @@ namespace cw
         goto errLabel;
       }
 
-      if((rc = file::printf(fH,"perf_uid,pitch,loc_id,meas,confidence,match_status_id,score_vel\n")) != kOkRC )
+      if((rc = file::printf(fH,"perf_uid,pitch,loc_id,meas,confidence,match_status_id,score_vel,status\n")) != kOkRC )
       {
         rc = cwLogError(rc,"Title write failed.");
         goto errLabel;
@@ -1106,7 +1113,7 @@ namespace cw
           goto errLabel;
         }
         
-        if((rc = file::printf(fH,"%i,%i,%i,%i,%f,%s,%i\n",res.perf_uid,perf_note->pitch,res.loc_id,meas_num,res.confidence,match_status_label,res.score_vel==kInvalidId ? -1 : (int)res.score_vel)) != kOkRC )
+        if((rc = file::printf(fH,"%i,%i,%i,%i,%f,%s,%i,%s\n",res.perf_uid,perf_note->pitch,res.loc_id,meas_num,res.confidence,match_status_label,res.score_vel==kInvalidId ? -1 : (int)res.score_vel,cwStringNullGuard(status_id_to_label(res.status_id)))) != kOkRC )
         {
           rc = cwLogError(rc,"Data write failed on line index:%i.",i);
           goto errLabel;
@@ -1171,6 +1178,63 @@ namespace cw
         cwLogInfo("score_vel check: %i results OK (%i matches) on '%s'.",result_cnt,match_cnt,cwStringNullGuard(ra.result_fname));
 
       return kOkRC;
+    }
+
+    enum { kStatusChangeIdx = kDoneStatusId+1, kStatusCntN };  // status_cntA[] layout: one count per status_id_t then the change count
+
+    // Check the status reported during a run and add its counts to r.status_cntA[]:
+    // - the status after the run is kDoneStatusId exactly when is_done() is true;
+    // - a result after a done result is also done (done lasts until the next reset());
+    // - no result of a self-test run is searching.
+    // If report_fl is set the run's status counts are logged.
+    rc_t _check_status( const run_args_t& r, handle_t sfH, unsigned result_cnt, bool report_fl )
+    {
+      rc_t     rc            = kOkRC;
+      unsigned cntA[ kStatusCntN ] = {};
+      bool     done_fl       = false;
+      bool     searching_fl  = false;
+
+      if( (status(sfH) == kDoneStatusId) != is_done(sfH) )
+        rc = cwLogError(kInvalidStateRC,"The final status (%s) does not agree with is_done() (%i) on '%s'.",
+                        cwStringNullGuard(status_id_to_label(status(sfH))),is_done(sfH),cwStringNullGuard(r.result_fname));
+
+      for(unsigned i=0; i<result_cnt; ++i)
+      {
+        status_id_t id = r.resultA[i].status_id;
+
+        if( id > kDoneStatusId )
+        {
+          rc = cwLogError(kInvalidStateRC,"An unknown status id %i was reported on perf uid:%i.",id,r.resultA[i].perf_uid);
+          continue;
+        }
+
+        if( done_fl && id != kDoneStatusId )
+          rc = cwLogError(kInvalidStateRC,"The status changed from done to %s on perf uid:%i on '%s'.",
+                          cwStringNullGuard(status_id_to_label(id)),r.resultA[i].perf_uid,cwStringNullGuard(r.result_fname));
+
+        if( id == kSearchingStatusId && r.self_test_time_scale > 0 )
+          rc = cwLogError(kInvalidStateRC,"A self-test reported searching on perf uid:%i on '%s'.",r.resultA[i].perf_uid,cwStringNullGuard(r.result_fname));
+
+        // count the changes between tracking and searching
+        if( id == kTrackingStatusId || id == kSearchingStatusId )
+        {
+          if( (id == kSearchingStatusId) != searching_fl && i > 0 )
+            cntA[ kStatusChangeIdx ] += 1;
+          searching_fl = id == kSearchingStatusId;
+        }
+
+        done_fl     = id == kDoneStatusId;
+        cntA[id]   += 1;
+      }
+
+      for(unsigned i=0; i<kStatusCntN; ++i)
+        r.status_cntA[i] += cntA[i];
+
+      if( report_fl )
+        cwLogInfo("Status: %s  tracking:%i searching:%i finishing:%i done:%i changes:%i",cwStringNullGuard(r.result_fname),
+                  cntA[kTrackingStatusId],cntA[kSearchingStatusId],cntA[kFinishingStatusId],cntA[kDoneStatusId],cntA[kStatusChangeIdx]);
+
+      return rc;
     }
 
     double _pct( unsigned n, unsigned d )
@@ -1363,6 +1427,12 @@ namespace cw
         goto errLabel;
       }
 
+      if( status(sfH) != kResetStatusId )
+      {
+        rc = cwLogError(kInvalidStateRC,"The status after reset() is %s rather than reset.",cwStringNullGuard(status_id_to_label(status(sfH))));
+        goto errLabel;
+      }
+
       sec0 = r.noteA[0].sec;
       
       // for each performed note ...
@@ -1429,6 +1499,7 @@ namespace cw
       }
 
       rc1 = rcSelect(rc1,_check_score_vel(test_args,r,note_idx,report_fl));
+      rc1 = rcSelect(rc1,_check_status(r,sfH,note_idx,report_fl));
 
       // if ground truth was given then score the results
       if( r.gnd_truthA != nullptr )
@@ -1498,6 +1569,35 @@ namespace cw
     
     // Report the on_new_note() duration statistics of each run and of all runs together.
     // The reported seed (k==0) is left out when the follower logs (report_level > 0) because the log time is in the call.
+    // Report, for each run over all seeds, the percentage of results with each status and the mean count of tracking/searching changes per seed.
+    void _report_status_summary( const test_args_t& ta )
+    {
+      cwLogInfo("Status summary: percent of notes in each status over %i seeds, and tracking/searching changes per seed",ta.seed_cnt);
+
+      for(unsigned i=0; i<ta.run_argsN; ++i)
+      {
+        const run_args_t& r = ta.run_argsA[i];
+        unsigned          n = 0;
+
+        if( r.status_cntA == nullptr )
+          continue;
+
+        for(unsigned k=0; k<=kDoneStatusId; ++k)
+          n += r.status_cntA[k];
+
+        // report the result file name without the directory since it is unique per run
+        const char* name = r.result_fname;
+        for(const char* c=r.result_fname; c!=nullptr && *c; ++c)
+          if( *c == '/' )
+            name = c+1;
+
+        cwLogInfo("  %-45s tracking:%6.2f%% searching:%6.2f%% finishing:%6.2f%% done:%6.2f%% changes:%5.1f",cwStringNullGuard(name),
+                  _pct(r.status_cntA[kTrackingStatusId],n),_pct(r.status_cntA[kSearchingStatusId],n),
+                  _pct(r.status_cntA[kFinishingStatusId],n),_pct(r.status_cntA[kDoneStatusId],n),
+                  (double)r.status_cntA[kStatusChangeIdx]/ta.seed_cnt);
+      }
+    }
+
     void _report_timing_summary( const test_args_t& ta )
     {
       unsigned seed_beg = ta.sf_args.report_level == 0 ? 0 : 1;
@@ -1578,6 +1678,7 @@ cw::rc_t cw::score_follow_3::test( const object_t* cfg )
       {
         test_args.run_argsA[i].note_usA       = mem::allocZ<double>(test_args.seed_cnt * test_args.run_argsA[i].noteN);
         test_args.run_argsA[i].seed_note_cntA = mem::allocZ<unsigned>(test_args.seed_cnt);
+        test_args.run_argsA[i].status_cntA    = mem::allocZ<unsigned>(kStatusCntN);
       }
 
       rc = _run_test(test_args, sfH, test_args.run_argsA[i], k, report_fl);
@@ -1590,6 +1691,7 @@ cw::rc_t cw::score_follow_3::test( const object_t* cfg )
   }
 
   _report_seed_summary( test_args );
+  _report_status_summary( test_args );
   _report_timing_summary( test_args );
 
 errLabel:

@@ -141,6 +141,20 @@ namespace cw
       map_key_t    map_topA[ kMapTopN ]; // largest MAP keys of the current note in decreasing mass order (report_level >= 3)
       unsigned     map_topN;             // count of valid elements in map_topA[]
 
+      // Tracking signals of the current note (see docs/cwScoreFollow3_dev_2.md section 4). Both are NaN when the note
+      // did not update the particles (pitch out of range).
+      double       note_match_mass;    // total posterior mass of the match branches, including late matches
+      double       note_log_lik;       // log of the total branch weight before normalization: log p(note | previous notes)
+      double       note_grp_spread;    // standard deviation of the particles' anchor groups after resampling, NaN when the note did not update the particles
+
+      // Status (see _status_impl() and _update_status()).
+      double*      status_wndA;        // status_wndA[args.status_wnd_cnt] - ring buffer of note_grp_spread over the last notes that updated the particles
+      unsigned     status_wnd_idx;     // index of the next element of status_wndA[] to write
+      unsigned     status_wndN;        // count of valid elements in status_wndA[]
+      double       status_wnd_mean;    // mean of the valid elements of status_wndA[]
+      bool         status_note_fl;     // set by the first note after reset(), of any pitch: the status is no longer kResetStatusId
+      bool         status_searching_fl;// tracking/searching state of the hysteresis, which applies while the follower is neither finishing nor done
+
     } sf_t;
 
     rc_t _create_impl( sf_t* p, const args_t& args );
@@ -151,6 +165,7 @@ namespace cw
     rc_t _on_new_note_impl( sf_t* p, unsigned uid, double perf_sec, unsigned pitch, unsigned vel, result_t& result_ref );
     rc_t _exec_impl( sf_t* p, double perf_sec );
     bool _is_done_impl( sf_t* p );
+    status_id_t _status_impl( const sf_t* p );
     
   }
 }

@@ -25,6 +25,15 @@ namespace cw
       { kNoMatchTId, "nomatch" },
       {kInvalidId,"<invalid>" }
     };
+
+    idLabelPair_t _status_typeA[] = {
+      { kResetStatusId,     "reset" },
+      { kTrackingStatusId,  "tracking" },
+      { kSearchingStatusId, "searching" },
+      { kFinishingStatusId, "finishing" },
+      { kDoneStatusId,      "done" },
+      { kInvalidId,         "<invalid>" }
+    };
     
     
     sf_t* _handleToPtr(handle_t h)
@@ -162,6 +171,19 @@ namespace cw
       if( !(args.late_sigma_sec >= 0) )
       {
         rc = cwLogError(kInvalidArgRC,"The late match time deviation (late_sigma_sec:%f) must not be negative.",args.late_sigma_sec);
+        goto errLabel;
+      }
+
+      if( args.status_wnd_cnt < 1 || args.status_wnd_cnt > 64 )
+      {
+        rc = cwLogError(kInvalidArgRC,"The status window count (status_wnd_cnt:%i) must be in the range 1 to 64.",args.status_wnd_cnt);
+        goto errLabel;
+      }
+
+      // The comparisons are written so that NaN fails them.
+      if( !(args.status_lo >= 0 && args.status_lo <= args.status_hi) )
+      {
+        rc = cwLogError(kInvalidArgRC,"The status thresholds must satisfy 0 <= status_lo (%f) <= status_hi (%f).",args.status_lo,args.status_hi);
         goto errLabel;
       }
 
@@ -423,6 +445,21 @@ cw::rc_t cw::score_follow_3::match_status_label_to_id( const char* label, match_
   return rc;
 }
 
+const char* cw::score_follow_3::status_label( status_id_t status_id )
+{
+  const char* label = "<invalid>";
+  
+  switch( status_id )
+  {
+    case kResetStatusId:     label = "Reset";     break;
+    case kTrackingStatusId:  label = "Tracking";  break;
+    case kSearchingStatusId: label = "Searching"; break;
+    case kFinishingStatusId: label = "Finishing"; break;
+    case kDoneStatusId:      label = "Done";      break;
+  }  
+
+  return label;
+}
 
 
 cw::rc_t cw::score_follow_3::create( handle_t& hRef, const args_t& args, const score_event_t* scoreA, unsigned scoreN )
@@ -522,6 +559,7 @@ cw::rc_t cw::score_follow_3::on_new_note( handle_t h,
   result_ref.meas_numb       = -1;
   result_ref.loc_pct         = -1;
   result_ref.score_vel       = -1;
+  result_ref.status_id       = _status_impl(p);
 
   if( !std::isfinite(p->perf_base_time) )
     p->perf_base_time = sec;
@@ -585,4 +623,15 @@ unsigned cw::score_follow_3::max_loc_id( handle_t h )
 {
   sf_t* p = _handleToPtr(h);
   return p->max_score_loc_id;
+}
+
+const char* cw::score_follow_3::status_id_to_label( status_id_t id )
+{
+  return idToLabelNull( _status_typeA, id, kInvalidId );
+}
+
+cw::score_follow_3::status_id_t cw::score_follow_3::status( handle_t h )
+{
+  sf_t* p = _handleToPtr(h);
+  return _status_impl(p);
 }
