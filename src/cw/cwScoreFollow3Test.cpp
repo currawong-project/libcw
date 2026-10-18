@@ -12,6 +12,7 @@
 
 #include "cwCsv.h"
 #include "cwMidi.h"
+#include "cwTime.h"
 #include "cwScoreFollow3.h"
 #include "cwScoreFollow3Test.h"
 
@@ -64,6 +65,9 @@ namespace cw
       unsigned          gnd_truthN;
 
       double*           seed_agree_pctA; // seed_agree_pctA[seed_cnt] - gnd-truth agreement of the run with each random seed (see test())
+
+      double*           note_usA;        // note_usA[seed_cnt*noteN] - on_new_note() duration in microseconds of each note with each random seed
+      unsigned*         seed_note_cntA;  // seed_note_cntA[seed_cnt] - count of notes timed with each random seed
       
     } run_args_t;
     
@@ -101,6 +105,8 @@ namespace cw
         mem::release(test_args.run_argsA[i].result_fname);
         mem::release(test_args.run_argsA[i].gnd_truth_fname);
         mem::release(test_args.run_argsA[i].seed_agree_pctA);
+        mem::release(test_args.run_argsA[i].note_usA);
+        mem::release(test_args.run_argsA[i].seed_note_cntA);
       }
       
       test_args.run_argsN = 0;
@@ -1326,11 +1332,17 @@ namespace cw
         sec0 = note.sec;
 
         // submit the note to the score follower
+        time::spec_t t0 = time::current_time();
+        
         if((rc = on_new_note(sfH,note.uid,note.sec,note.pitch,note.vel,r.resultA[note_idx])) != kOkRC )
         {
           rc = cwLogError(rc,"Score follower failed on note uid:%i.",note.uid);
           goto errLabel;
         }
+
+        time::spec_t t1 = time::current_time();
+        r.note_usA[ seed_idx*r.noteN + note_idx ] = (t1.tv_sec - t0.tv_sec)*1e6 + (t1.tv_nsec - t0.tv_nsec)*1e-3;
+        r.seed_note_cntA[ seed_idx ] = note_idx + 1;
 
         _check_done(sfH, kEndLocDoneId, note.sec, note_idx+1, done);
       }
@@ -1408,6 +1420,67 @@ namespace cw
         cwLogInfo("  %-45s mean:%6.2f%%  min:%6.2f%%  max:%6.2f%%",cwStringNullGuard(name),sum/ta.seed_cnt,mn,mx);
       }
     }
+
+    // Sort vA[] in place and log the count, mean, median, p99 and max.
+    void _report_timing_line( const char* label, double* vA, unsigned vN )
+    {
+      if( vN == 0 )
+      {
+        cwLogInfo("  %-45s  (no timed notes)",cwStringNullGuard(label));
+        return;
+      }
+      
+      double sum = 0;
+      for(unsigned i=0; i<vN; ++i)
+        sum += vA[i];
+
+      std::sort(vA,vA+vN);
+
+      cwLogInfo("  %-45s n:%6i  mean:%8.1f  p50:%8.1f  p99:%8.1f  max:%8.1f",cwStringNullGuard(label),vN,sum/vN,vA[vN/2],vA[ std::min(vN-1,(unsigned)(0.99*vN)) ],vA[vN-1]);
+    }
+    
+    // Report the on_new_note() duration statistics of each run and of all runs together.
+    // The reported seed (k==0) is left out when the follower logs (report_level > 0) because the log time is in the call.
+    void _report_timing_summary( const test_args_t& ta )
+    {
+      unsigned seed_beg = ta.sf_args.report_level == 0 ? 0 : 1;
+      unsigned allN     = 0;
+      double*  allA     = nullptr;
+      unsigned allIdx   = 0;
+      
+      for(unsigned i=0; i<ta.run_argsN; ++i)
+        allN += ta.run_argsA[i].noteN * ta.seed_cnt;
+
+      allA = mem::allocZ<double>(allN);
+
+      cwLogInfo("Timing summary: on_new_note() duration in microseconds over seeds %i-%i",ta.sf_args.rand_seed+seed_beg,ta.sf_args.rand_seed+ta.seed_cnt-1);
+
+      for(unsigned i=0; i<ta.run_argsN; ++i)
+      {
+        const run_args_t& r      = ta.run_argsA[i];
+        unsigned          runIdx = allIdx;
+
+        if( r.note_usA != nullptr )
+          for(unsigned k=seed_beg; k<ta.seed_cnt; ++k)
+            for(unsigned j=0; j<r.seed_note_cntA[k]; ++j)
+              allA[ allIdx++ ] = r.note_usA[ k*r.noteN + j ];
+
+        // report the result file name without the directory since it is unique per run
+        const char* name = r.result_fname;
+        for(const char* c=r.result_fname; c!=nullptr && *c; ++c)
+          if( *c == '/' )
+            name = c + 1;
+
+        // sort a copy so that allA[] keeps the run's values for the overall line
+        double* runA = allIdx > runIdx ? mem::allocDupl<double>(allA + runIdx, allIdx - runIdx) : nullptr;
+        _report_timing_line(name, runA, allIdx - runIdx);
+        mem::release(runA);
+      }
+
+      _report_timing_line("all", allA, allIdx);
+      
+      mem::release(allA);
+    }
   }
 }
 
@@ -1444,6 +1517,12 @@ cw::rc_t cw::score_follow_3::test( const object_t* cfg )
         goto errLabel;
       }
 
+      if( test_args.run_argsA[i].note_usA == nullptr )
+      {
+        test_args.run_argsA[i].note_usA       = mem::allocZ<double>(test_args.seed_cnt * test_args.run_argsA[i].noteN);
+        test_args.run_argsA[i].seed_note_cntA = mem::allocZ<unsigned>(test_args.seed_cnt);
+      }
+
       rc = _run_test(test_args, sfH, test_args.run_argsA[i], k, report_fl);
 
       destroy( sfH );
@@ -1454,6 +1533,7 @@ cw::rc_t cw::score_follow_3::test( const object_t* cfg )
   }
 
   _report_seed_summary( test_args );
+  _report_timing_summary( test_args );
 
 errLabel:
   if(rc != kOkRC )
