@@ -89,6 +89,9 @@ namespace cw
     {
       unsigned          perf_uid;        // uid of a performed note
       unsigned          loc_id;          // Location assocated with this or kInvalidId if no location
+      unsigned          meas_numb;       // The measure number assocated with loc_id or -1 if loc_id is set to kInvalidId
+      unsigned          score_vel;       // The velocity of the matched note or -1 if loc_id is set to kInvalidId
+      double            loc_pct;         // The location as a percentage of the way through the current score region or -1.0 if loc_id is set to kInvalidId
       match_status_id_t match_status_id; // The type of score match this result represents.
       double            confidence;
     } result_t;
@@ -121,6 +124,9 @@ namespace cw
     // Return true if the end of the score section identified by the last call
     // to reset() has been reached or possibly passed over.
     bool is_done( handle_t h );
+
+    // The max location id in the entire score
+    unsigned max_loc_id( handle_t h );
 
 
     

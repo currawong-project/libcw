@@ -714,7 +714,8 @@ namespace cw
     // All nomatch branches are summed into a single bucket.
     // This occurs before resampling because the normalized branch weights are the exact posterior for this note.
     // Returns the index of the reported location or kInvalidIdx if the nomatch bucket won.
-    unsigned _report_map( sf_t* p, result_t& result_ref )
+    // pitch is the performed pitch. It selects the matched score note whose velocity is reported.
+    unsigned _report_map( sf_t* p, unsigned pitch, result_t& result_ref )
     {
       double nomatch_mass = 0;
 
@@ -765,8 +766,34 @@ namespace cw
       }
 
       result_ref.match_status_id = best_tid;
-      result_ref.loc_id          = best_loc_idx == kInvalidIdx ? kInvalidId : p->locA[ best_loc_idx ].loc_id;
       result_ref.confidence      = best_mass;
+      
+      result_ref.score_vel = -1;
+      
+      if( best_loc_idx == kInvalidIdx )
+      {
+        result_ref.loc_id    = kInvalidId;
+        result_ref.meas_numb = -1;
+        result_ref.loc_pct   = -1;
+      }
+      else
+      {
+        const loc_t& loc = p->locA[ best_loc_idx ];
+        
+        result_ref.loc_id    = loc.loc_id;
+        result_ref.meas_numb = loc.meas_num;
+        result_ref.loc_pct   = (loc.sec - p->locA[p->active_beg_loc_idx].sec)/p->active_dur_sec;
+
+        // A match reports the velocity of the score note with the performed pitch. A location holds at most one note of
+        // each pitch (see _check_for_duplicate_loc_pitches()). A mismatch has no corresponding score note, so it reports -1.
+        if( best_tid == kMatchTId )
+          for(unsigned k=loc.beg_note_idx; k<=loc.end_note_idx; ++k)
+            if( p->noteA[k].pitch == pitch )
+            {
+              result_ref.score_vel = p->noteA[k].velocity;
+              break;
+            }
+      }
 
       if( best_loc_idx != kInvalidIdx )
         p->last_loc_idx = best_loc_idx;
@@ -1193,7 +1220,7 @@ cw::rc_t cw::score_follow_3::_on_new_note_impl( sf_t* p, unsigned uid, double pe
   if((rc = _normalize_branches(p)) != kOkRC )
     goto errLabel;
 
-  loc_idx = _report_map(p, result_ref);
+  loc_idx = _report_map(p, pitch, result_ref);
 
   _resample(p);
 

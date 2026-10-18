@@ -881,7 +881,7 @@ namespace cw
           score_event_t& se = test_args.score_evtA[score_evt_idx];
 
           if((rc = note_cfg->getv("pitch",se.pitch,
-                                  "vel",se.velocity,
+                                  "dyn",se.velocity,
                                   "grace_fl",se.grace_fl)) != kOkRC )
           {
             rc = cwLogError(rc,"Parse of note at score file index %i failed.",i);
@@ -1057,6 +1057,7 @@ namespace cw
         d->insert_pair("meas",meas_num);
         d->insert_pair("match_status_id",cwStringNullGuard(match_status_label));
         d->insert_pair("confidence", res.confidence);
+        d->insert_pair("score_vel", res.score_vel==kInvalidId ? -1 : (int)res.score_vel);
       }
 
       if((rc = objectToFile( ra.result_fname, root )) != kOkRC )
@@ -1082,7 +1083,7 @@ namespace cw
         goto errLabel;
       }
 
-      if((rc = file::printf(fH,"perf_uid,pitch,loc_id,meas,confidence,match_status_id\n")) != kOkRC )
+      if((rc = file::printf(fH,"perf_uid,pitch,loc_id,meas,confidence,match_status_id,score_vel\n")) != kOkRC )
       {
         rc = cwLogError(rc,"Title write failed.");
         goto errLabel;
@@ -1105,7 +1106,7 @@ namespace cw
           goto errLabel;
         }
         
-        if((rc = file::printf(fH,"%i,%i,%i,%i,%f,%s\n",res.perf_uid,perf_note->pitch,res.loc_id,meas_num,res.confidence,match_status_label)) != kOkRC )
+        if((rc = file::printf(fH,"%i,%i,%i,%i,%f,%s,%i\n",res.perf_uid,perf_note->pitch,res.loc_id,meas_num,res.confidence,match_status_label,res.score_vel==kInvalidId ? -1 : (int)res.score_vel)) != kOkRC )
         {
           rc = cwLogError(rc,"Data write failed on line index:%i.",i);
           goto errLabel;
@@ -1119,6 +1120,57 @@ namespace cw
         rc = cwLogError(rc,"Result file write failed on file '%s'.",cwStringNullGuard(ra.result_fname));
       
       return rc;
+    }
+
+    // Verify result_t.score_vel against the score: a match must report the velocity of the score note at loc_id with the
+    // performed pitch and every other result must report -1. score_evtA[] is in increasing loc_id order (see create()).
+    // If report_fl is set the count of checked matches is logged.
+    rc_t _check_score_vel( const test_args_t& ta, const run_args_t& ra, unsigned result_cnt, bool report_fl )
+    {
+      unsigned match_cnt = 0;  // count of match results checked against a score velocity
+      unsigned err_cnt   = 0;  // count of results whose score_vel is wrong
+
+      for(unsigned i=0; i<result_cnt; ++i)
+      {
+        const result_t&    res          = ra.resultA[i];
+        const perf_note_t* perf_note    = nullptr;
+        unsigned           expected_vel = kInvalidId;
+
+        if( _perf_uid_to_note(ra,res.perf_uid,perf_note) != kOkRC )
+          return kInvalidStateRC;
+
+        if( res.match_status_id == kMatchTId && res.loc_id != kInvalidId )
+        {
+          const score_event_t* se = std::lower_bound(ta.score_evtA, ta.score_evtA + ta.score_evtN, res.loc_id,
+                                                     [](const score_event_t& e, unsigned loc_id){ return e.loc_id < loc_id; });
+
+          for(; se < ta.score_evtA + ta.score_evtN && se->loc_id == res.loc_id; ++se)
+            if( se->pitch == perf_note->pitch )
+            {
+              expected_vel = se->velocity;
+              break;
+            }
+
+          match_cnt += 1;
+        }
+
+        if( res.score_vel != expected_vel )
+        {
+          if( err_cnt < 10 )
+            cwLogError(kInvalidStateRC,"score_vel mismatch on uid:%i pitch:%i loc:%i status:%s: expected:%i actual:%i",
+                       res.perf_uid, perf_note->pitch, res.loc_id, cwStringNullGuard(match_status_id_to_label(res.match_status_id)),
+                       (int)expected_vel, (int)res.score_vel);
+          err_cnt += 1;
+        }
+      }
+
+      if( err_cnt > 0 )
+        return cwLogError(kInvalidStateRC,"%i of %i results reported the wrong score_vel on '%s'.",err_cnt,result_cnt,cwStringNullGuard(ra.result_fname));
+
+      if( report_fl )
+        cwLogInfo("score_vel check: %i results OK (%i matches) on '%s'.",result_cnt,match_cnt,cwStringNullGuard(ra.result_fname));
+
+      return kOkRC;
     }
 
     double _pct( unsigned n, unsigned d )
@@ -1375,6 +1427,8 @@ namespace cw
         else
           rc1 = _write_result_csv(test_args,r,note_idx);
       }
+
+      rc1 = rcSelect(rc1,_check_score_vel(test_args,r,note_idx,report_fl));
 
       // if ground truth was given then score the results
       if( r.gnd_truthA != nullptr )

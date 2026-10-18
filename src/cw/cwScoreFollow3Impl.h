@@ -13,7 +13,7 @@ namespace cw
       unsigned       uid;       // unique id of this note in the score
       const loc_str* loc;       // location that this note belongs to
       unsigned       pitch;     // score MIDI pitch
-      unsigned       velocity;  // score MIDI velocity
+      unsigned       velocity;  // score MIDI velocity      
       bool           grace_fl;  // true if this is a grace note
     } note_t;
     
@@ -93,8 +93,10 @@ namespace cw
 
       unsigned active_beg_loc_idx; // Currently active score segment 
       unsigned active_end_loc_idx;
-      bool     end_timeout_fl;     // true if reporting the last location of the segment waits for the end timeout rather than ending the segment (see reset())
 
+      double   active_dur_sec;     // Length of the active score region in seconds (or 1.0 if it is computed as 0.0)
+      
+      bool     end_timeout_fl;     // true if reporting the last location of the segment waits for the end timeout rather than ending the segment (see reset())
 
       double perf_base_time;
 

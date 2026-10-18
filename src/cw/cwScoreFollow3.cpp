@@ -188,7 +188,7 @@ namespace cw
       return rc;
     }
     
-    rc_t _create_note_array( sf_t* p, unsigned pitch_min, unsigned pitch_max, const score_event_t* score_evtA, unsigned score_evtN )
+    rc_t _create_note_array( sf_t* p, const args_t& args, const score_event_t* score_evtA, unsigned score_evtN )
     {
       rc_t rc = kOkRC;
       double max_sec = 0.0;
@@ -204,9 +204,9 @@ namespace cw
         const score_event_t& se = score_evtA[i];
 
         // verify that the score pitch range is valid
-        if( se.pitch < pitch_min || pitch_max < se.pitch )
+        if( se.pitch < args.pitch_min || args.pitch_max < se.pitch )
         {
-          rc = cwLogError(kInvalidStateRC,"The score pitch %i at loc:%i violates the pitch range limit:%i to %i.",se.pitch,se.loc_id,pitch_min,pitch_max) ;
+          rc = cwLogError(kInvalidStateRC,"The score pitch %i at loc:%i violates the pitch range limit:%i to %i.",se.pitch,se.loc_id,args.pitch_min,args.pitch_max) ;
           goto errLabel;
         }
 
@@ -279,7 +279,7 @@ namespace cw
 
     }
     
-    rc_t _create_loc_array( sf_t* p, unsigned pitch_min, unsigned pitch_max, const score_event_t* score_evtA, unsigned score_evtN )
+    rc_t _create_loc_array( sf_t* p, const args_t& args, const score_event_t* score_evtA, unsigned score_evtN )
     {
       rc_t rc = kOkRC;
 
@@ -293,7 +293,7 @@ namespace cw
       unsigned cur_loc_id   = score_evtA[0].loc_id;
       unsigned beg_note_idx = 0;
 
-      unsigned pitch_flN = (pitch_max - pitch_min) + 1;
+      unsigned pitch_flN = (args.pitch_max - args.pitch_min) + 1;
       bool*    pitch_flA = mem::allocZ<bool>(pitch_flN);
             
       for(unsigned i=0; i<score_evtN; ++i)
@@ -303,7 +303,7 @@ namespace cw
         // if we have passed into the next loc.
         if( cur_loc_id != se.loc_id )
         {
-          if((rc = _check_for_duplicate_loc_pitches(p,pitch_min,p->locA[loc_idx],pitch_flA,pitch_flN)) != kOkRC )
+          if((rc = _check_for_duplicate_loc_pitches(p,args.pitch_min,p->locA[loc_idx],pitch_flA,pitch_flN)) != kOkRC )
           {
             goto errLabel;
           }
@@ -311,9 +311,6 @@ namespace cw
           loc_idx      += 1;
           beg_note_idx  = i;
           cur_loc_id    = se.loc_id;
-
-      
-          
         }
 
         if( loc_idx >= p->locN )
@@ -321,6 +318,7 @@ namespace cw
           rc = cwLogError(kInvalidStateRC,"The location array initialization failed.");
           goto errLabel;
         }
+
         
         p->locA[loc_idx].sec          = se.sec;
         p->locA[loc_idx].loc_id       = se.loc_id;
@@ -337,7 +335,7 @@ namespace cw
         p->noteA[i].loc = p->locA + loc_idx;        
       }
 
-      if((rc = _check_for_duplicate_loc_pitches(p,pitch_min,p->locA[loc_idx],pitch_flA,pitch_flN)) != kOkRC )
+      if((rc = _check_for_duplicate_loc_pitches(p,args.pitch_min,p->locA[loc_idx],pitch_flA,pitch_flN)) != kOkRC )
       {
         goto errLabel;
       }
@@ -380,9 +378,12 @@ namespace cw
       {
         goto errLabel;
       }
+
+      p->active_dur_sec = std::max(0.0,(p->locA[p->active_end_loc_idx].sec - p->locA[p->active_beg_loc_idx].sec));
+      p->active_dur_sec = p->active_dur_sec == 0.0 ? 1.0 : p->active_dur_sec;
       
       p->perf_base_time = std::numeric_limits<double>::infinity();
-
+      
       if((rc = _reset_impl(p)) != kOkRC )
       {
         rc = cwLogError(rc,"Rset implementation failed.");
@@ -439,12 +440,12 @@ cw::rc_t cw::score_follow_3::create( handle_t& hRef, const args_t& args, const s
 
   p->args = args;
   
-  if((rc = _create_note_array(p,args.pitch_min, args.pitch_max,scoreA,scoreN)) != kOkRC )
+  if((rc = _create_note_array(p,args,scoreA,scoreN)) != kOkRC )
   {
     goto errLabel;
   }
   
-  if((rc = _create_loc_array(p,args.pitch_min, args.pitch_max,scoreA,scoreN)) != kOkRC )
+  if((rc = _create_loc_array(p,args,scoreA,scoreN)) != kOkRC )
   {
     goto errLabel;
   }
@@ -518,6 +519,9 @@ cw::rc_t cw::score_follow_3::on_new_note( handle_t h,
   result_ref.perf_uid        = perf_uid;
   result_ref.match_status_id = kBlankTId;
   result_ref.confidence      = 0;
+  result_ref.meas_numb       = -1;
+  result_ref.loc_pct         = -1;
+  result_ref.score_vel       = -1;
 
   if( !std::isfinite(p->perf_base_time) )
     p->perf_base_time = sec;
@@ -575,4 +579,10 @@ bool cw::score_follow_3::is_done( handle_t h )
 {
   sf_t* p = _handleToPtr(h);
   return _is_done_impl(p);
+}
+
+unsigned cw::score_follow_3::max_loc_id( handle_t h )
+{
+  sf_t* p = _handleToPtr(h);
+  return p->max_score_loc_id;
 }
