@@ -701,11 +701,12 @@ namespace cw
         kPlayPlyrIdPId,
         kRPlayIdPId,
         kRPlayFieldPId,
-        kRestartFlPId,       
+        kRestartFlPId,
+        kStopPlyrPId,
         kClearPId,
         kResetPId,
         kPlayNowPlyrIdPId,
-        kStartPlyrIdPId,
+        kStartAckPlyrIdPId,
         kDonePlyrIdPId,        
         kOutPId        
       };
@@ -1021,6 +1022,7 @@ namespace cw
         unsigned      start_plyr_seg_id = kInvalidId;
         bool          start_fl          = false;
         unsigned      play_plyr_id      = kInvalidId;
+        unsigned      stop_plyr_id      = kInvalidId;
         bool          reset_fl          = false;
         bool          clear_fl          = false;
         unsigned      play_excl_plyr_id = kInvalidId;
@@ -1037,11 +1039,12 @@ namespace cw
                                       kStartPId,         "start",        kBaseSfxId, start_fl,
                                       kPlayPlyrIdPId,    "play_id",      kBaseSfxId, play_plyr_id,
                                       kRPlayFieldPId,    "r_play_field", kBaseSfxId, r_play_field,
-                                      kRestartFlPId,     "restart_fl",   kBaseSfxId, restart_fl,                                      
+                                      kRestartFlPId,     "restart_fl",   kBaseSfxId, restart_fl,
+                                      kStopPlyrPId,      "stop_id",      kBaseSfxId, stop_plyr_id,
                                       kClearPId,         "clear",        kBaseSfxId, clear_fl,
                                       kResetPId,         "reset",        kBaseSfxId, reset_fl,
                                       kPlayNowPlyrIdPId, "play_excl_id", kBaseSfxId, play_excl_plyr_id,
-                                      kStartPlyrIdPId,   "start_id",     kBaseSfxId, start_plyr_id,
+                                      kStartAckPlyrIdPId,   "start_ack_id", kBaseSfxId, start_plyr_id,
                                       kDonePlyrIdPId,    "done_id",      kBaseSfxId, done_plyr_id)) != kOkRC )
         {
           rc = proc_error(proc,rc,"An error occurred while registering the proc. variables.");
@@ -1169,7 +1172,7 @@ namespace cw
         p->playerA[ plyr_idx ].next_msg_idx = 0;
         p->playerA[ plyr_idx ].start_smp_idx = p->global_smp_idx;
 
-        var_set(proc,kStartPlyrIdPId,kAnyChIdx,p->playerA[ plyr_idx ].id);
+        var_set(proc,kStartAckPlyrIdPId,kAnyChIdx,p->playerA[ plyr_idx ].id);
 
         proc_info(proc,"MP starting: %i %s",p->playerA[ plyr_idx ].id,cwStringNullGuard(p->playerA[ plyr_idx ].label));
         
@@ -1219,9 +1222,31 @@ namespace cw
       }
       
 
-      rc_t _send_clear_player( proc_t* proc, inst_t* p, player_t* plyr )
+      rc_t _send_clear_player( proc_t* proc, inst_t* p, unsigned plyr_idx )
       {
         rc_t rc = kOkRC;
+        player_t* plyr = nullptr;
+        
+        // validate the player index
+        if( plyr_idx == kInvalidIdx)
+        {
+          rc = proc_error(proc,kInvalidArgRC,"An invalid player (%i) could not be started.",plyr_idx);
+          goto errLabel;
+        }
+        
+        if( plyr_idx >= p->playerN )
+        {
+          rc = proc_error(proc,kInvalidArgRC,"'start' was requested on an out of range player index. %i >= %i",plyr_idx,p->playerN);
+          goto errLabel;
+        }
+
+        plyr = p->playerA + plyr_idx;
+
+        if(!_is_player_playing(plyr))
+        {
+          proc_warn(proc,"Player %i not playing. 'Stop' command ignored.", plyr_idx);
+          goto errLabel;
+        }
         
         for(unsigned ch_idx=0; ch_idx<midi::kMidiChCnt; ++ch_idx)
         {
@@ -1253,6 +1278,15 @@ namespace cw
           }
         }
 
+
+        vop::zero(plyr->keyM,kNoteCnt);
+        vop::zero(plyr->ctlM,kCtlCnt);
+
+        // mark this player as stopped
+        plyr->next_msg_idx  = kInvalidIdx;  
+        plyr->start_smp_idx = kInvalidIdx;
+        
+      errLabel:
         return rc;
       }
 
@@ -1263,14 +1297,8 @@ namespace cw
         // clear the key and control matrices of all players
         for(unsigned i=0; i<p->playerN; ++i)
         {
-          _send_clear_player(proc, p, p->playerA + i );
+          _send_clear_player(proc, p, i );
           
-          vop::zero(p->playerA[i].keyM,kNoteCnt);
-          vop::zero(p->playerA[i].ctlM,kCtlCnt);
-
-          // mark this player as stopped
-          p->playerA[i].next_msg_idx  = kInvalidIdx;  
-          p->playerA[i].start_smp_idx = kInvalidIdx;
         }
 
         return rc;
@@ -1388,6 +1416,14 @@ namespace cw
               }            
               break;
 
+            case kStopPlyrPId:
+              {
+                unsigned plyr_id  = kInvalidId;
+                if(var_get(var,plyr_id) == kOkRC )
+                  _send_clear_player( proc, p, _player_id_to_index(p,plyr_id) );
+              }
+              break;
+              
             case kClearPId:
               p->clear_trig_fl = true;
               proc_info(proc,"%s : clear",cwStringNullGuard(proc->label));              
