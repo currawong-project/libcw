@@ -701,12 +701,15 @@ namespace cw
         kPlayPlyrIdPId,
         kRPlayIdPId,
         kRPlayFieldPId,
+        kRStopIdPId,
+        kRStopFieldPId,
         kRestartFlPId,
         kStopPlyrPId,
         kClearPId,
         kResetPId,
         kPlayNowPlyrIdPId,
         kStartAckPlyrIdPId,
+        kStopAckPlyrIdPId,
         kDonePlyrIdPId,        
         kOutPId        
       };
@@ -761,6 +764,7 @@ namespace cw
         unsigned meas_fld_idx;
         unsigned port_fld_idx;
         unsigned play_id_fld_idx;
+        unsigned stop_id_fld_idx;
         
         unsigned global_smp_idx; // Global current sample idx - incremented on each call to _exec()
         bool     start_trig_fl;
@@ -768,7 +772,8 @@ namespace cw
         bool     reset_trig_fl;        
         unsigned play_excl_trig_fl;
 
-        recd_array_t* dum_recd_array;
+        recd_array_t* dum_play_recd_array;
+        recd_array_t* dum_stop_recd_array;
         
       } inst_t;
 
@@ -991,7 +996,7 @@ namespace cw
         return rc;
       }
 
-      rc_t _create_dummy_input( proc_t* proc, inst_t* p )
+      rc_t _create_dummy_play_input( proc_t* proc, inst_t* p )
       {
         rc_t         rc        = kOkRC;
         const char*  s         = "{ fields:{ play_id:{ type:uint, value:-1, doc:\"dummy\"}}}";
@@ -999,12 +1004,12 @@ namespace cw
         
         if((rc = objectFromString(s,cfg)) != kOkRC )
         {
-          proc_error(proc,rc,"Dummy recd type parse failed.");
+          proc_error(proc,rc,"Dummy play recd type parse failed.");
           goto errLabel;
         }
-        if((rc = recd_array_create(p->dum_recd_array, cfg, nullptr, 0 )) != kOkRC )
+        if((rc = recd_array_create(p->dum_play_recd_array, cfg, nullptr, 0 )) != kOkRC )
         {
-          proc_error(proc,rc,"Dummy recd array create failed.");
+          proc_error(proc,rc,"Dummy play recd array create failed.");
           goto errLabel;          
         }
         
@@ -1014,43 +1019,35 @@ namespace cw
         return rc;
       }
 
-      rc_t _create( proc_t* proc, inst_t* p )
+      rc_t _create_dummy_stop_input( proc_t* proc, inst_t* p )
       {
-        rc_t          rc                = kOkRC;
-        const char*   cfg_fname         = nullptr;
-        const char*   start_plyr_label  = nullptr;
-        unsigned      start_plyr_seg_id = kInvalidId;
-        bool          start_fl          = false;
-        unsigned      play_plyr_id      = kInvalidId;
-        unsigned      stop_plyr_id      = kInvalidId;
-        bool          reset_fl          = false;
-        bool          clear_fl          = false;
-        unsigned      play_excl_plyr_id = kInvalidId;
-        unsigned      start_plyr_id     = kInvalidId;
-        unsigned      done_plyr_id      = kInvalidId;
-        const rbuf_t* r_play_id_rbuf    = nullptr;
-        const char*   r_play_field      = nullptr;
-        bool          restart_fl        = false;
-
-        if((rc = var_register_and_get(proc,kAnyChIdx,
-                                      kCfgFnamePId,      "cfg_fname",    kBaseSfxId, cfg_fname,
-                                      kStartPlyrLabelPId,"start_label",  kBaseSfxId, start_plyr_label,
-                                      kStartPlyrSegIdPId,"start_seg_id", kBaseSfxId, start_plyr_seg_id,
-                                      kStartPId,         "start",        kBaseSfxId, start_fl,
-                                      kPlayPlyrIdPId,    "play_id",      kBaseSfxId, play_plyr_id,
-                                      kRPlayFieldPId,    "r_play_field", kBaseSfxId, r_play_field,
-                                      kRestartFlPId,     "restart_fl",   kBaseSfxId, restart_fl,
-                                      kStopPlyrPId,      "stop_id",      kBaseSfxId, stop_plyr_id,
-                                      kClearPId,         "clear",        kBaseSfxId, clear_fl,
-                                      kResetPId,         "reset",        kBaseSfxId, reset_fl,
-                                      kPlayNowPlyrIdPId, "play_excl_id", kBaseSfxId, play_excl_plyr_id,
-                                      kStartAckPlyrIdPId,   "start_ack_id", kBaseSfxId, start_plyr_id,
-                                      kDonePlyrIdPId,    "done_id",      kBaseSfxId, done_plyr_id)) != kOkRC )
+        rc_t         rc        = kOkRC;
+        const char*  s         = "{ fields:{ stop_id:{ type:uint, value:-1, doc:\"dummy\"}}}";
+        object_t*    cfg       = nullptr;
+        
+        if((rc = objectFromString(s,cfg)) != kOkRC )
         {
-          rc = proc_error(proc,rc,"An error occurred while registering the proc. variables.");
+          proc_error(proc,rc,"Dummy stop recd type parse failed.");
           goto errLabel;
         }
-
+        if((rc = recd_array_create(p->dum_stop_recd_array, cfg, nullptr, 0 )) != kOkRC )
+        {
+          proc_error(proc,rc,"Dummy stop recd array create failed.");
+          goto errLabel;          
+        }
+        
+      errLabel:
+        if( cfg != nullptr )
+          cfg->free();
+        return rc;
+      }
+      
+      rc_t _handle_r_play( proc_t* proc, inst_t* p, const char*   r_play_field )
+      {
+        rc_t rc = kOkRC;
+        
+        const rbuf_t* r_play_id_rbuf    = nullptr;
+        
         // if the 'r_play_id' record input variable has a value then it exists and is connected ...
         if( var_has_value(proc, "r_play_id", kBaseSfxId, kAnyChIdx ) )
         {
@@ -1073,16 +1070,116 @@ namespace cw
           
           proc_warn(proc,"The record input 'r_play_id' was found to be disconnected. This input will be ignored.");
 
-          if((rc = _create_dummy_input(proc,p)) != kOkRC )
+          if((rc = _create_dummy_play_input(proc,p)) != kOkRC )
           {
             goto errLabel;
           }
           
           // ... otherwise give it an empty record buf to get by the post proc create variable value checker
-          if((rc = var_register_and_set( proc, "r_play_id", kBaseSfxId, kRPlayIdPId, kAnyChIdx, p->dum_recd_array )) != kOkRC )
+          if((rc = var_register_and_set( proc, "r_play_id", kBaseSfxId, kRPlayIdPId, kAnyChIdx, p->dum_play_recd_array )) != kOkRC )
             goto errLabel;
         }
 
+      errLabel:
+        return rc;
+        
+      }
+
+      rc_t _handle_r_stop( proc_t* proc, inst_t* p, const char*   r_stop_field )
+      {
+        rc_t rc = kOkRC;
+        
+        const rbuf_t* r_stop_id_rbuf    = nullptr;
+        
+        // if the 'r_stop_id' record input variable has a value then it exists and is connected ...
+        if( var_has_value(proc, "r_stop_id", kBaseSfxId, kAnyChIdx ) )
+        {
+          // ... register it and get a pointer to the incoming record buffer 
+          if((rc = var_register_and_get( proc, kAnyChIdx,kRStopIdPId, "r_stop_id", kBaseSfxId, r_stop_id_rbuf )) != kOkRC )
+            goto errLabel;
+
+          if((p->stop_id_fld_idx = recd_array_field_index( r_stop_id_rbuf->recd_array, r_stop_field )) == kInvalidIdx )
+          {
+            rc = proc_error(proc,kEleNotFoundRC,"The field '%s' was not found on the input record on 'r_stop_id'.");
+            goto errLabel;
+          }
+
+          proc_info(proc,"'r_stop_id' is connected.");
+          
+        }
+        else
+        {
+          p->stop_id_fld_idx = kInvalidIdx;
+          
+          proc_warn(proc,"The record input 'r_stop_id' was found to be disconnected. This input will be ignored.");
+
+          if((rc = _create_dummy_stop_input(proc,p)) != kOkRC )
+          {
+            goto errLabel;
+          }
+          
+          // ... otherwise give it an empty record buf to get by the post proc create variable value checker
+          if((rc = var_register_and_set( proc, "r_stop_id", kBaseSfxId, kRStopIdPId, kAnyChIdx, p->dum_stop_recd_array )) != kOkRC )
+            goto errLabel;
+        }
+
+      errLabel:
+        return rc;
+        
+      }
+
+      
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t          rc                = kOkRC;
+        const char*   cfg_fname         = nullptr;
+        const char*   start_plyr_label  = nullptr;
+        unsigned      start_plyr_seg_id = kInvalidId;
+        bool          start_fl          = false;
+        unsigned      play_plyr_id      = kInvalidId;
+        unsigned      stop_plyr_id      = kInvalidId;
+        bool          reset_fl          = false;
+        bool          clear_fl          = false;
+        unsigned      play_excl_plyr_id = kInvalidId;
+        unsigned      start_ack_plyr_id     = kInvalidId;
+        unsigned      stop_ack_plyr_id = kInvalidId;
+        unsigned      done_plyr_id      = kInvalidId;
+        const rbuf_t* r_stop_id_rbuf    = nullptr;
+        const char*   r_play_field      = nullptr;
+        const char*   r_stop_field      = nullptr;
+        bool          restart_fl        = false;
+
+        if((rc = var_register_and_get(proc,kAnyChIdx,
+                                      kCfgFnamePId,      "cfg_fname",    kBaseSfxId, cfg_fname,
+                                      kStartPlyrLabelPId,"start_label",  kBaseSfxId, start_plyr_label,
+                                      kStartPlyrSegIdPId,"start_seg_id", kBaseSfxId, start_plyr_seg_id,
+                                      kStartPId,         "start",        kBaseSfxId, start_fl,
+                                      kPlayPlyrIdPId,    "play_id",      kBaseSfxId, play_plyr_id,
+                                      kRPlayFieldPId,    "r_play_field", kBaseSfxId, r_play_field,
+                                      kRStopFieldPId,    "r_stop_field", kBaseSfxId, r_stop_field,
+                                      kRestartFlPId,     "restart_fl",   kBaseSfxId, restart_fl,
+                                      kStopPlyrPId,      "stop_id",      kBaseSfxId, stop_plyr_id,
+                                      kClearPId,         "clear",        kBaseSfxId, clear_fl,
+                                      kResetPId,         "reset",        kBaseSfxId, reset_fl,
+                                      kPlayNowPlyrIdPId, "play_excl_id", kBaseSfxId, play_excl_plyr_id,
+                                      kStartAckPlyrIdPId,   "start_ack_id", kBaseSfxId, start_ack_plyr_id,
+                                      kStopAckPlyrIdPId, "stop_ack_id",  kBaseSfxId, stop_ack_plyr_id,
+                                      kDonePlyrIdPId,    "done_id",      kBaseSfxId, done_plyr_id)) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"An error occurred while registering the proc. variables.");
+          goto errLabel;
+        }
+
+        if((rc = _handle_r_play(proc,p,r_play_field)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        if((rc = _handle_r_stop(proc,p,r_stop_field)) != kOkRC )
+        {
+          goto errLabel;
+        }
+        
         if((rc = _parse_cfg_file(proc,p,cfg_fname)) != kOkRC )
         {
           goto errLabel;
@@ -1112,7 +1209,8 @@ namespace cw
         rc_t rc = kOkRC;
 
         recd_array_destroy(p->recd_array);
-        recd_array_destroy(p->dum_recd_array);
+        recd_array_destroy(p->dum_play_recd_array);
+        recd_array_destroy(p->dum_stop_recd_array);
         
         for(unsigned i=0;  i<p->playerN; ++i)
         {
@@ -1244,7 +1342,7 @@ namespace cw
 
         if(!_is_player_playing(plyr))
         {
-          proc_warn(proc,"Player %i not playing. 'Stop' command ignored.", plyr_idx);
+          proc_debug(proc,"Player %i not playing. 'Stop' command ignored.", plyr_idx);
           goto errLabel;
         }
         
@@ -1419,8 +1517,11 @@ namespace cw
             case kStopPlyrPId:
               {
                 unsigned plyr_id  = kInvalidId;
-                if(var_get(var,plyr_id) == kOkRC )
-                  _send_clear_player( proc, p, _player_id_to_index(p,plyr_id) );
+                if(var_get(var,plyr_id) == kOkRC && plyr_id != kInvalidId )
+                {
+                  if(_send_clear_player( proc, p, _player_id_to_index(p,plyr_id) ) == kOkRC )
+                    var_set(proc,kStopAckPlyrIdPId,kAnyChIdx,plyr_id);
+                }
               }
               break;
               
@@ -1446,11 +1547,11 @@ namespace cw
         return rc;
       }
 
-      rc_t _exec( proc_t* proc, inst_t* p )
+      rc_t _exec_r_play( proc_t* proc, inst_t* p )
       {
-        rc_t          rc     = kOkRC;
+        rc_t rc = kOkRC;
         const rbuf_t* i_rbuf = nullptr;
-
+        
         // if the r_play_id record input is being used ...
         if(p->play_id_fld_idx != kInvalidIdx )
         {
@@ -1462,15 +1563,9 @@ namespace cw
           }
         }
 
-        recd_array_empty(p->recd_array);
-        
-        p->global_smp_idx += proc->ctx->framesPerCycle;
-
-        
         // handle play requests from incoming 'r_play_id' records first - to allow them to be overridden by exclusive play requests below
         if( i_rbuf != nullptr )
-        {
-          
+        {          
           for(unsigned ri=0; ri<i_rbuf->recd_array->recdN; ++ri)
           {
             unsigned player_id = kInvalidId;
@@ -1495,6 +1590,75 @@ namespace cw
           }
         }
         
+      errLabel:        
+        return rc;
+
+      }
+
+      rc_t _exec_r_stop( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+        const rbuf_t* i_rbuf = nullptr;
+        
+        // if the r_stop_id record input is being used ...
+        if(p->stop_id_fld_idx != kInvalidIdx )
+        {
+          // ... then get the r_stop_id record input buffer
+          if((rc = var_get(proc,kRStopIdPId,kAnyChIdx,i_rbuf)) != kOkRC )
+          {
+            rc = proc_error(proc,kInvalidStateRC,"The multi-player does not have a valid 'r_stop_id' input record buffer.");
+            goto errLabel;
+          }
+        }
+
+        // handle stop requests from incoming 'r_stop_id' records first - to allow them to be overridden by exclusive stop requests below
+        if( i_rbuf != nullptr )
+        {          
+          for(unsigned ri=0; ri<i_rbuf->recd_array->recdN; ++ri)
+          {
+            unsigned player_id = kInvalidId;
+            unsigned player_idx = kInvalidIdx;
+            
+            // get the next player id
+            if((rc = recd_get(i_rbuf->recd_array->recdA + ri,p->stop_id_fld_idx,player_id)) != kOkRC )
+            {
+              rc = proc_error(proc,rc,"An error occurred while accessing a player id input record.");
+              goto errLabel;
+            }
+
+            // convert the player id to an index
+            if((player_idx = _player_id_to_index(p,player_id)) == kInvalidIdx )
+            {
+              rc = proc_error(proc,kInvalidArgRC,"The 'player_id' %i is not valid.",player_id);
+              goto errLabel;
+            }
+
+            // stop the player
+            if(_send_clear_player( proc, p, player_idx ) == kOkRC )
+              var_set(proc,kStopAckPlyrIdPId,kAnyChIdx,player_id);            
+          }
+        }
+        
+      errLabel:        
+        return rc;
+
+      }
+      
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t          rc     = kOkRC;
+
+        recd_array_empty(p->recd_array);
+        
+        p->global_smp_idx += proc->ctx->framesPerCycle;
+
+        // get record from r_play_id
+        if((rc = _exec_r_play(proc,p)) != kOkRC )
+          goto errLabel;
+
+        // get records from r_stop_id
+        if((rc = _exec_r_stop(proc,p)) != kOkRC )
+          goto errLabel;
         
         // do play-excl now because an early call to _do_reset() will set play_excl_trig_fl to false
         if( p->play_excl_trig_fl  )
