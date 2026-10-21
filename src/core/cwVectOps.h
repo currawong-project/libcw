@@ -158,6 +158,15 @@ namespace cw
     }
 
     template< typename T0, typename T1 >
+    T0* scale_add( T0* v0, const T1* v1, T1 scale_1, unsigned n )
+    {
+      for(unsigned i=0; i<n; ++i)
+        v0[i] =+  (v1[i] * scale_1);
+      
+      return v0;
+    }
+    
+    template< typename T0, typename T1 >
     T0* scale_add( T0* v0, T0 scale_0, const T1* v1, T1 scale_1, unsigned n )
     {
       for(unsigned i=0; i<n; ++i)

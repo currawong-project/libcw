@@ -3014,6 +3014,168 @@ namespace cw
       };
       
     }    
+
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // audio_cross_mix
+    //
+    namespace audio_cross_mix
+    {
+      enum {
+        kCrossPId,
+        kInBasePId
+      };
+      
+      typedef struct
+      {
+        unsigned ioAudioVarCnt;
+        unsigned outBasePId;
+      } inst_t;
+
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t    rc   = kOkRC;        
+
+        unsigned sfxIdAllocN  = proc_var_count(proc);
+        unsigned sfxIdA[ sfxIdAllocN ];
+        unsigned frameN = kInvalidCnt;
+        
+
+        // register the 'cross' variable
+        if((rc = var_register(proc,kAnyChIdx,kCrossPId,"cross",kBaseSfxId)) != kOkRC )
+          goto errLabel;
+          
+        
+        // get the the sfx_id's of the input audio variables 
+        if((rc = var_mult_sfx_id_array(proc, "in", sfxIdA, sfxIdAllocN, p->ioAudioVarCnt )) != kOkRC )
+          goto errLabel;
+
+        
+        assert( p->ioAudioVarCnt <= sfxIdAllocN );
+        
+
+        p->outBasePId = kInBasePId + p->ioAudioVarCnt;
+        
+        for(unsigned i=0; i<p->ioAudioVarCnt; ++i)
+        {
+          const abuf_t* abuf = nullptr;
+          
+          // register the input audio buffer
+          if((rc = var_register_and_get(proc, kAnyChIdx, kInBasePId + i,"in",sfxIdA[i], abuf )) != kOkRC )
+          {
+            goto errLabel;
+          }
+
+          // create the output signal variable
+          if((rc = var_register_and_set( proc, "out", sfxIdA[i], p->outBasePId+i, kAnyChIdx, abuf->srate, abuf->chN, abuf->frameN )) != kOkRC )
+          {
+            goto errLabel;
+          }
+
+          if( frameN == kInvalidCnt )
+          {
+            frameN = abuf->frameN;
+          }
+          
+          if( frameN != abuf->frameN )
+          {
+            proc_error(proc,kInvalidStateRC,"The frame buffer size of all input audio channels must match. %i != %i",frameN,abuf->frameN);
+            goto errLabel;
+          }
+          
+        }
+
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        // Custom clean-up code goes here
+
+        return rc;
+      }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+        abuf_t* abufA[ p->ioAudioVarCnt ];
+        coeff_t cross_coeff = 0;
+
+        // get the cross-mix coeff
+        if((rc = var_get(proc,kCrossPId,kAnyChIdx,cross_coeff)) != kOkRC )
+          goto errLabel;
+
+        // get the output audio buffer
+        for(unsigned i=0; i<p->ioAudioVarCnt; ++i)
+        {
+          if((rc = var_get(proc,p->outBasePId+i,kAnyChIdx,abufA[i])) != kOkRC )
+            goto errLabel;
+          abuf_zero(abufA[i]);
+        }
+
+        // for each audio input channel
+        for(unsigned ii=0; ii<p->ioAudioVarCnt; ++ii)
+        {
+          const abuf_t* i_abuf = nullptr;
+
+          if((rc = var_get(proc,kInBasePId+ii,kAnyChIdx,i_abuf)) != kOkRC )
+            goto errLabel;
+
+          // for each audio output channel
+          for(unsigned oi=0; oi<p->ioAudioVarCnt; ++oi)
+          {
+            abuf_t* o_abuf = abufA[oi];
+
+            if( i_abuf->frameN != o_abuf->frameN )
+            {
+              proc_error(proc,kInvalidStateRC,"The frame count of all input and output buffers must be the same: %i != %i.",i_abuf->frameN, o_abuf->frameN );
+              goto errLabel;
+            }
+
+            // if this output stream is the same as the input stream ...
+            if( oi == ii )
+            {
+              // ... then copy the full scale audio from input to output
+              assert( i_abuf->chN*i_abuf->frameN == o_abuf->chN*o_abuf->frameN );
+              vop::add(o_abuf->buf, (const sample_t*)i_abuf->buf,o_abuf->chN*o_abuf->frameN );
+            }
+            else
+            {
+              // ... otherwise it is a cross channel - just mix in a portion of the input audio stream to the output stream
+              unsigned chN = std::min(i_abuf->chN,o_abuf->chN);              
+              vop::scale_add(o_abuf->buf, i_abuf->buf, cross_coeff, chN*o_abuf->frameN );
+            }
+          }
+          
+        }
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    // audo_cross_mix
     
     //------------------------------------------------------------------------------------------------------------------
     //
@@ -10692,6 +10854,217 @@ namespace cw
       
     }    
 
+
+    //------------------------------------------------------------------------------------------------------------------
+    //
+    // midi_idicator
+    //
+    namespace midi_indicator
+    {
+      enum {
+        kRInPId,
+        kResetPId,
+        kPedalThreshPId,
+        kOnMsPId,
+        kMidiStatusPId,
+        kKeyStatusPId,
+        kPedalStatusPId
+      };
+
+      
+      typedef struct
+      {
+        unsigned key_cnt;
+        bool     sost_fl;
+        bool     damp_fl;
+        bool     soft_fl;
+        unsigned i_midi_fld_idx;
+        unsigned pedal_thresh;
+        
+        unsigned on_ms;
+        unsigned on_cycle_cnt;
+        
+        unsigned on_cycle_off_idx;
+        
+        unsigned key_cycle_idx;
+        bool     key_fl;
+        
+        unsigned pedal_cycle_idx;
+        bool     pedal_fl;
+        
+      } inst_t;
+
+
+      rc_t _create( proc_t* proc, inst_t* p )
+      {
+        rc_t          rc           = kOkRC;        
+        const rbuf_t* i_rbuf       = nullptr;
+        unsigned      key_status   = 0;
+        unsigned      pedal_status = 0;
+        unsigned      midi_status  = 0;
+        bool          reset_fl     = 0;
+
+        if((rc = var_register_and_get(proc,kAnyChIdx,
+                                      kRInPId,"r_in",kBaseSfxId,i_rbuf,
+                                      kResetPId,       "reset",       kBaseSfxId,reset_fl,
+                                      kPedalThreshPId, "pedal_thresh",kBaseSfxId,p->pedal_thresh,
+                                      kOnMsPId,        "on_ms",       kBaseSfxId,p->on_ms,
+                                      kMidiStatusPId,  "midi_status", kBaseSfxId,midi_status,
+                                      kKeyStatusPId,   "key_status",  kBaseSfxId,key_status,
+                                      kPedalStatusPId, "pedal_status",kBaseSfxId,pedal_status)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        
+        if((rc = recd_array_field_index( i_rbuf->recd_array, "midi",p->i_midi_fld_idx)) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        p->on_cycle_cnt = (p->on_ms * proc->ctx->sample_rate) / (1000.0 * proc->ctx->framesPerCycle);
+      errLabel:
+        return rc;
+      }
+
+      rc_t _destroy( proc_t* proc, inst_t* p )
+      {
+        rc_t rc = kOkRC;
+
+        // Custom clean-up code goes here
+
+        return rc;
+      }
+
+      rc_t _notify( proc_t* proc, inst_t* p, variable_t* var )
+      {
+        rc_t rc = kOkRC;
+        switch(var->vid)
+        {
+          case kResetPId:
+            var_set(proc,kKeyStatusPId,kAnyChIdx,0);
+            var_set(proc,kPedalStatusPId,kAnyChIdx,0);
+            var_set(proc,kMidiStatusPId,kAnyChIdx,0);
+            break;
+        }
+        return rc;
+      }
+
+      rc_t _exec( proc_t* proc, inst_t* p )
+      {
+        rc_t          rc              = kOkRC;
+        const rbuf_t* i_rbuf          = nullptr;
+        unsigned      midi_status_0   = 0;
+        unsigned      new_midi_status = 0;
+        unsigned      key_cnt_0       = p->key_cnt;
+        bool          soft_fl_0       = p->soft_fl;
+        bool          damp_fl_0       = p->damp_fl;
+        bool          sost_fl_0       = p->sost_fl;
+        
+        if((rc = var_get(proc, kRInPId, kAnyChIdx, i_rbuf)) != kOkRC )
+          goto errLabel;
+
+        if((rc = var_get(proc,kMidiStatusPId, kAnyChIdx, midi_status_0 )) != kOkRC )
+          goto errLabel;
+
+        for(unsigned i=0; i<i_rbuf->recd_array->recdN; ++i)
+        {
+          midi::ch_msg_t* m           = nullptr;
+          
+          
+          if((rc = recd_get(i_rbuf->recd_array->recdA + i,p->i_midi_fld_idx, m )) != kOkRC )
+          {
+            goto errLabel;
+          }
+
+          switch( m->status )
+          {
+            case midi::kNoteOnMdId:
+              if( m->d1 == 0 )
+              {
+                if( p->key_cnt > 0 )
+                  p->key_cnt -= 1;
+              }
+              else
+              {
+                p->key_cnt += 1;                
+              }
+              break;
+              
+            case midi::kNoteOffMdId:
+              if( p->key_cnt > 0 )
+                p->key_cnt -= 1;
+              break;
+              
+            case midi::kCtlMdId:
+              switch( m->d0 )
+              {
+                case midi::kSostenutoCtlMdId:
+                  p->sost_fl = m->d1 > p->pedal_thresh;
+                  break;
+                  
+                case midi::kSustainCtlMdId:
+                  p->damp_fl = m->d1 > p->pedal_thresh;
+                  break;
+                  
+                case midi::kSoftPedalCtlMdId:
+                  p->soft_fl = m->d1 > p->pedal_thresh;
+                  break;
+              }
+              break;
+          }
+        }
+
+        // if the key cnt transtioned to or from 0
+        if( (p->key_cnt==0 && key_cnt_0 != 0) || (p->key_cnt != 0 && key_cnt_0 == 0)  )
+        {
+          var_set(proc,kKeyStatusPId,kAnyChIdx,p->key_cnt==0 ? 0 : 1);
+        }
+        
+        // if the composite pedal state transitioned from down to up or from up to down
+        if( (p->sost_fl || p->damp_fl || p->soft_fl) != (sost_fl_0 || damp_fl_0 || soft_fl_0) )
+        {
+          bool pedal_fl = p->sost_fl || p->damp_fl || p->soft_fl;
+          var_set(proc,kPedalStatusPId, kAnyChIdx, pedal_fl ? 1 : 0 );
+        }
+
+        new_midi_status = midi_status_0;
+        
+        // if there was no MIDI activity on this cycle ...
+        if( i_rbuf->recd_array->recdN==0 )
+        {
+          // ... and the activity indicator is on and the activity timeout has expired ...
+          if( midi_status_0==1 && proc->ctx->cycleIndex > p->on_cycle_off_idx )
+          {
+            new_midi_status = 0;  // ... then turn off the indicator
+          }
+        }
+        else // there was MIDI activity on this cycle
+        {
+          p->on_cycle_off_idx = proc->ctx->cycleIndex + p->on_cycle_cnt;
+          new_midi_status = 1;
+        }
+
+        if( new_midi_status != midi_status_0)
+          var_set(proc,kMidiStatusPId,kAnyChIdx,new_midi_status);
+        
+      errLabel:
+        return rc;
+      }
+
+      rc_t _report( proc_t* proc, inst_t* p )
+      { return kOkRC; }
+
+      class_members_t members = {
+        .create  = std_create<inst_t>,
+        .destroy = std_destroy<inst_t>,
+        .notify  = std_notify<inst_t>,
+        .exec    = std_exec<inst_t>,
+        .report  = std_report<inst_t>
+      };
+      
+    }    // midi_indicator
+    
     //------------------------------------------------------------------------------------------------------------------
     //
     // make_midi

@@ -50,6 +50,7 @@ namespace cw
     namespace audio_split     { extern class_members_t members;  }
     namespace audio_merge     { extern class_members_t members;  }
     namespace audio_duplicate { extern class_members_t members;  }
+    namespace audio_cross_mix { extern class_members_t members;  }
     namespace audio_mix       { extern class_members_t members;  }
     namespace audio_marker    { extern class_members_t members;  }
     namespace audio_silence   { extern class_members_t members;  }
@@ -86,7 +87,8 @@ namespace cw
     namespace print           { extern class_members_t members;  }
     namespace on_start        { extern class_members_t members;  }
     namespace halt            { extern class_members_t members;  }
-    namespace midi_msg        { extern class_members_t members;  }    
+    namespace midi_msg        { extern class_members_t members;  }
+    namespace midi_indicator  { extern class_members_t members;  }
     namespace make_midi       { extern class_members_t members;  }
     namespace midi_fourteen   { extern class_members_t members;  }    
     namespace midi_select     { extern class_members_t members;  }
