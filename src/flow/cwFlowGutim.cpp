@@ -2402,7 +2402,8 @@ namespace cw
 
       enum {
         kNextBtnOffset,
-        kPlayBtnOffset,
+        //kPlayBtnOffset,
+        kGrpStatOffset,
         kStatusOffset,
         kBtnCnt
       };
@@ -2416,6 +2417,13 @@ namespace cw
         kWaitingStatusId,        
       };
 
+      enum {
+        kInvalidGrpStatId,
+        kNowGrpStatId,
+        kDoneGrpStatId,
+        kWaitingGrpStatId,        
+      };
+      
       enum {
         kStartPlayerMidiCtlOut = 20,
         kStopPlayerMidiCtlOut = 24,
@@ -2445,7 +2453,6 @@ namespace cw
         unsigned  valueN;
 
         unsigned  group_id;
-        unsigned  group_btn_idx;
         struct group_t* group;
 
       } btn_t;
@@ -2454,12 +2461,14 @@ namespace cw
       struct group_btn_t
       {
         unsigned   btn_idxN;
-        unsigned*  btn_idxA;  // btn_idxA[ btn_idxN ] - index of the buttons assigned to this group and ctl
-        unsigned   idx;
+        unsigned*  btn_idxA;     // btn_idxA[ btn_idxN ] - index of the buttons assigned to this group and ctl
+        bool*      btn_flA;      // btn_flA[ btn_idxN ]  - set when the button has played
+        unsigned   idx;          // count of btn's played so far
       };
       
       struct group_t
       {
+        unsigned     index; // index of this group in p->groupA[]
         unsigned     group_id;
         group_btn_t* ctl_btnA;  // ctl_btnA[ p->ctlN ] - one array for eachh ctl
         unsigned     min_btn_idx;
@@ -2550,8 +2559,11 @@ namespace cw
       unsigned _next_btn_vid( unsigned btn_idx )
       { return kBtnBasePId + (btn_idx*kBtnCnt) + kNextBtnOffset; }
 
-      unsigned _play_btn_vid( unsigned btn_idx )
-      { return kBtnBasePId + (btn_idx*kBtnCnt) + kPlayBtnOffset; }
+      //unsigned _play_btn_vid( unsigned btn_idx )
+      //{ return kBtnBasePId + (btn_idx*kBtnCnt) + kPlayBtnOffset; }
+
+      unsigned _grp_stat_vid( unsigned btn_idx )
+      { return kBtnBasePId + (btn_idx*kBtnCnt) + kGrpStatOffset; }
       
       unsigned _status_vid( unsigned btn_idx )
       { return kBtnBasePId + (btn_idx*kBtnCnt) + kStatusOffset; }
@@ -2632,6 +2644,100 @@ namespace cw
       errLabel:
         return rc;        
       }
+
+      bool _is_group_play_complete( inst_t* p, unsigned group_idx )
+      {
+        group_t* g = nullptr;
+        if( !_is_group_index_valid(p,group_idx) )
+          return false;
+
+        g = p->groupA + group_idx;
+
+        for(unsigned ci=0; ci<p->ctlN; ++ci)
+          if( g->ctl_btnA[ci].idx < g->ctl_btnA[ci].btn_idxN )
+            return false;
+
+        return true;
+      }
+
+      rc_t _mark_group_btn_as_played( proc_t* proc, inst_t* p, group_t* g, ctl_port_t* ctl, unsigned btn_idx )
+      {
+        g->ctl_btnA[ctl->ctl_idx].idx += 1;
+        
+        for(unsigned bi=0; bi<g->ctl_btnA[ctl->ctl_idx].btn_idxN; ++bi)
+          if( g->ctl_btnA[ctl->ctl_idx].btn_idxA[bi] == btn_idx )
+          {
+            g->ctl_btnA[ctl->ctl_idx].btn_flA[bi] = true;
+            return kOkRC;
+          }
+
+        return proc_error(proc,kEleNotFoundRC,"Mark played failed. The button index %i was not found in the group id=%i.",btn_idx,g->group_id);
+      }
+
+      unsigned _find_next_group_btn_index( inst_t* p, group_t* g )
+      {
+        unsigned min_not_played_btn_idx = kInvalidIdx;
+        unsigned max_played_btn_idx = kInvalidIdx;
+        unsigned close_btn_idx = kInvalidIdx;
+        unsigned close_btn_dist = 0;
+        
+        for(unsigned ci=0; ci<p->ctlN; ++ci)
+          for(unsigned bi=0; bi<g->ctl_btnA[ci].btn_idxN; ++bi)
+          {
+            // if this btn was played
+            if( g->ctl_btnA[ci].btn_flA[bi]  )
+            {
+              if( max_played_btn_idx == kInvalidIdx || g->ctl_btnA[ci].btn_idxA[bi] > max_played_btn_idx )
+                max_played_btn_idx = g->ctl_btnA[ci].btn_idxA[bi];
+            }
+            else // this btn was not played
+            {              
+              if( min_not_played_btn_idx == kInvalidIdx || g->ctl_btnA[ci].btn_idxA[bi] < min_not_played_btn_idx )
+                min_not_played_btn_idx = g->ctl_btnA[ci].btn_idxA[bi];
+            }
+          }
+        
+        // if all btn's have been played
+        if( min_not_played_btn_idx == kInvalidIdx )
+          return kInvalidIdx;
+
+        // if no btn's have been played
+        if( max_played_btn_idx == kInvalidIdx )
+          return min_not_played_btn_idx;
+
+        // if the min_not_played_btn_idx happens to be one past max_played ...
+        if( max_played_btn_idx + 1 == min_not_played_btn_idx )
+          return min_not_played_btn_idx;
+
+        // find the btn index just past the max_played ...
+        for(unsigned ci=0; ci<p->ctlN; ++ci)
+          for(unsigned bi=0; bi<g->ctl_btnA[ci].btn_idxN; ++bi)
+          {
+            // if this btn has not been played
+            if( !g->ctl_btnA[ci].btn_flA[bi]  )
+            {
+              if( close_btn_idx == kInvalidIdx )
+              {
+                close_btn_idx  = g->ctl_btnA[ci].btn_idxA[bi];
+                close_btn_dist = std::max(close_btn_idx,max_played_btn_idx) - std::min(close_btn_idx,max_played_btn_idx);
+              }
+              else
+              {
+                unsigned cand_btn_idx = g->ctl_btnA[ci].btn_idxA[bi];                
+                unsigned cand_btn_dist = std::max(cand_btn_idx,max_played_btn_idx) - std::min(cand_btn_idx,max_played_btn_idx);
+                if( cand_btn_dist < close_btn_dist )
+                {
+                  close_btn_idx  = cand_btn_idx;
+                  close_btn_dist = cand_btn_dist;
+                }
+              }
+            }
+          }
+        
+        return close_btn_idx==kInvalidIdx ? min_not_played_btn_idx : close_btn_idx;
+      }
+        
+
 
       void _reset_ctl( inst_t* p, ctl_port_t* ctl, unsigned start_btn_idx )
       {
@@ -2779,6 +2885,7 @@ namespace cw
           // Assign a group_id to each group.
           for(unsigned i=0; i<p->groupN; ++i)
           {
+            p->groupA[i].index    = i;
             p->groupA[i].group_id = min_group_id + i;
             p->groupA[i].ctl_btnA = mem::allocZ<group_btn_t>(p->ctlN);
             p->groupA[i].min_btn_idx = kInvalidIdx;
@@ -2806,6 +2913,7 @@ namespace cw
             {
               unsigned btnN = p->groupA[gi].ctl_btnA[ ci ].btn_idxN;
               p->groupA[gi].ctl_btnA[ ci ].btn_idxA = btnN==0 ? nullptr : mem::allocZ<unsigned>(btnN);
+              p->groupA[gi].ctl_btnA[ ci ].btn_flA  = btnN==0 ? nullptr : mem::allocZ<bool>(btnN);
             }
 
           // Assign btns to each group
@@ -2859,75 +2967,13 @@ namespace cw
       void _reset_group( inst_t* p, group_t* g )
       {
         for(unsigned ci=0; ci<p->ctlN; ++ci)
-          g->ctl_btnA[ci].idx = 0;
-      }
-
-      // Rest the state and the UI to the first trigger inside 'meas_num'
-      rc_t _reset( proc_t* proc, inst_t* p, unsigned meas_num )
-      {
-        rc_t rc       = kOkRC;
-
-        p->global_next_btn_idx  = kInvalidIdx;
-        p->play_now_btn_idx     = kInvalidIdx;
-        p->deferred_stop_all_fl = false;
-        p->group_idx            = kInvalidIdx;
-        
-        proc_info(proc,"reset: meas:%i next btn idx:<invalid>",meas_num);
-
-        // Reset all the groups
-        for(unsigned gi=0; gi<p->groupN; ++gi)
-          _reset_group(p,p->groupA + gi );
-        
-        for(unsigned i=0; i<p->btnN; ++i)
         {
-          unsigned status_vid = _status_vid(i);
-          unsigned status_id  = kInvalidStatusId;
-          
-          if( p->btnA[i].meas < meas_num )
-          {
-            status_id = kDoneStatusId;
-          }
-          else
-          {
-            if( p->global_next_btn_idx == kInvalidIdx )
-            {
-              status_id = kNextStatusId;
-              p->global_next_btn_idx = i;
-
-              // set p->group_idx to the group containing this 
-              if((rc = _group_id_to_index(proc,p,p->btnA[i].group_id,p->group_idx)) != kOkRC )
-              {
-                goto errLabel;
-              }
-
-              // setup the group to make p->global_next_btn_idx the next expected btn
-              if((rc = _set_group_to_btn_idx(proc, p, p->global_next_btn_idx )) != kOkRC )
-              {
-                goto errLabel;
-              }
-              
-              proc_info(proc,"reset : next btn idx:%i",p->global_next_btn_idx);
-            }
-            else
-            {
-              status_id = kWaitingStatusId;
-            }
-          }
-
-          if((rc = var_set(proc,status_vid,status_id)) != kOkRC )
-          {
-            goto errLabel;
-          }
+          g->ctl_btnA[ci].idx = 0;
+          for(unsigned bi=0; bi<g->ctl_btnA[ci].btn_idxN; ++bi)
+            g->ctl_btnA[ci].btn_flA[bi] = false;
         }
-
-        // reset the ctl ports
-        for(unsigned i=0; i<p->ctlN; ++i)
-          _reset_ctl(p, p->ctlA + i, p->global_next_btn_idx);
-          
-        
-      errLabel:
-        return rc;
       }
+
 
       // Emit a MIDI msg to begin playing btnA[btn_idx].value[]
       rc_t _send_play_command(proc_t* proc, inst_t* p, unsigned btn_idx)
@@ -3134,7 +3180,8 @@ namespace cw
             }        
         }        
       }
-      
+
+      /*
       void _advance_global_next_btn_index(proc_t* proc, inst_t* p, unsigned cur_btn_idx )
       {
         if( _is_system_completed(p) )
@@ -3146,11 +3193,79 @@ namespace cw
         // if we have not yet come to the end of the btn list
         if( cur_btn_idx >= p->global_next_btn_idx)
         {
+
+          if((next_group_btn_idx = _find_next_group_btn( p, p->groupA + p->group_idx )) != kInvalidIdx )
+          
           _set_global_next_btn_index(proc,p,cur_btn_idx + 1);
           proc_info(proc,"GLOBAL NBI ADVANCED:%i\n",p->global_next_btn_idx);
         }
       }
+      */
 
+
+      void _advance_global_next_btn_index(proc_t* proc, inst_t* p, unsigned cur_btn_idx )
+      {
+        unsigned next_global_btn_idx = kInvalidIdx;
+        
+        if( _is_system_completed(p) )
+          return;
+
+        if( !_is_group_index_valid(p,p->group_idx))
+          return;
+        
+        if((next_global_btn_idx = _find_next_group_btn_index( p, p->groupA + p->group_idx )) == kInvalidIdx )
+        {
+          if( p->group_idx + 1 < p->groupN )
+          {
+            next_global_btn_idx = p->groupA[p->group_idx+1].min_btn_idx;
+          }
+          else
+          {
+            next_global_btn_idx = p->btnN; //
+            proc_info(proc,"End-of-btn list encountered.");
+          }
+        }
+        
+        _set_global_next_btn_index(proc,p,next_global_btn_idx);
+
+        proc_info(proc,"GLOBAL NBI ADVANCED:%i\n",p->global_next_btn_idx);
+      }
+
+      void _set_group_index( proc_t* proc, inst_t* p, unsigned new_group_idx, unsigned btn_idx=kInvalidIdx )
+      {
+        
+        p->group_idx = new_group_idx;
+
+        for(unsigned bi=0; bi<p->btnN; ++bi)
+        {
+          unsigned new_grp_stat_id = kWaitingGrpStatId;
+          unsigned cur_grp_stat_id = kInvalidGrpStatId;
+          if( p->btnA[bi].group->index == p->group_idx )
+            new_grp_stat_id = kNowGrpStatId;
+          else
+          {
+            if( p->btnA[bi].group->index < p->group_idx )
+              new_grp_stat_id = kDoneGrpStatId;
+          }
+            
+          var_get(proc,_grp_stat_vid(bi),kAnyChIdx,cur_grp_stat_id);
+          if( cur_grp_stat_id != new_grp_stat_id )
+            var_set(proc,_grp_stat_vid(bi),kAnyChIdx,new_grp_stat_id);
+        }
+        
+
+        if( p->group_idx >= p->groupN )
+          return;
+
+        proc_info(proc,"GROUP IDX:%i",p->group_idx);
+
+        if( btn_idx == kInvalidIdx )
+          btn_idx = p->groupA[ p->group_idx ].min_btn_idx;
+        
+        _set_global_next_btn_index(proc, p, btn_idx );
+        
+      }
+      
       rc_t _do_advance_group_index(proc_t* proc, inst_t* p)
       {
         rc_t rc = kOkRC;
@@ -3158,20 +3273,80 @@ namespace cw
         if( !_is_group_index_valid(p,p->group_idx) )
           goto errLabel;
         
-        p->group_idx += 1;
-
-        if( p->group_idx >= p->groupN )
-          goto errLabel;
-
-        
-        _set_global_next_btn_index(proc, p, p->groupA[ p->group_idx ].min_btn_idx );
-
+        _set_group_index(proc,p,p->group_idx + 1);
       errLabel:
         return rc;
       }
       
 
-      
+            // Rest the state and the UI to the first trigger inside 'meas_num'
+      rc_t _reset( proc_t* proc, inst_t* p, unsigned meas_num )
+      {
+        rc_t rc       = kOkRC;
+
+        p->global_next_btn_idx  = kInvalidIdx;
+        p->play_now_btn_idx     = kInvalidIdx;
+        p->deferred_stop_all_fl = false;
+        p->group_idx            = kInvalidIdx;
+        
+        proc_info(proc,"reset: meas:%i next btn idx:<invalid>",meas_num);
+
+        // Reset all the groups
+        for(unsigned gi=0; gi<p->groupN; ++gi)
+          _reset_group(p,p->groupA + gi );
+        
+        for(unsigned i=0; i<p->btnN; ++i)
+        {
+          unsigned status_vid = _status_vid(i);
+          unsigned status_id  = kInvalidStatusId;
+          
+          if( p->btnA[i].meas < meas_num )
+          {
+            status_id = kDoneStatusId;
+          }
+          else
+          {
+            if( p->global_next_btn_idx == kInvalidIdx )
+            {
+              status_id = kNextStatusId;
+              p->global_next_btn_idx = i;
+
+              // set p->group_idx to the group containing this 
+              if((rc = _group_id_to_index(proc,p,p->btnA[i].group_id,p->group_idx)) != kOkRC )
+              {
+                goto errLabel;
+              }
+
+              _set_group_index(proc,p,p->group_idx);
+
+              // setup the group to make p->global_next_btn_idx the next expected btn
+              if((rc = _set_group_to_btn_idx(proc, p, p->global_next_btn_idx )) != kOkRC )
+              {
+                goto errLabel;
+              }
+              
+              proc_info(proc,"reset : next btn idx:%i",p->global_next_btn_idx);
+            }
+            else
+            {
+              status_id = kWaitingStatusId;
+            }
+          }
+
+          if((rc = var_set(proc,status_vid,status_id)) != kOkRC )
+          {
+            goto errLabel;
+          }
+        }
+
+        // reset the ctl ports
+        for(unsigned i=0; i<p->ctlN; ++i)
+          _reset_ctl(p, p->ctlA + i, p->global_next_btn_idx);
+          
+      errLabel:
+        return rc;
+      }
+
 
       bool _is_btn_ok_to_play( inst_t* p, ctl_port_t* ctl, unsigned btn_idx )
       {
@@ -3329,6 +3504,22 @@ namespace cw
         return rc;
       }
 
+      void _do_advance( proc_t* proc, inst_t* p, ctl_port_t* ctl )
+      {
+        ctl->stop_end_cycle_idx = kInvalidIdx;
+        ctl->dead_end_cycle_idx = proc->ctx->cycleIndex + p->dead_cycle_limit;
+
+        // mark the btn as played in the group 
+        _mark_group_btn_as_played( proc, p, p->btnA[ ctl->play_btn_idx ].group, ctl, ctl->play_btn_idx );
+            
+        // the stop-zone has expired - there is no going back - advance p->global_next_btn_index
+        _advance_global_next_btn_index(proc, p, ctl->nxt_btn_idx );
+
+        // set the visual status to 'playing'
+        if( _is_btn_index_valid(p,ctl->play_btn_idx) )
+          var_set(proc,_status_vid(ctl->play_btn_idx),kAnyChIdx,kPlayingStatusId);        
+      }
+
       rc_t _on_stop_tmo_sig( proc_t* proc, inst_t* p, ctl_port_t* ctl )
       {
         rc_t rc = kOkRC;
@@ -3339,24 +3530,18 @@ namespace cw
         {
           case kWaitForPlayAckStateId:
             // The play was not acknowledged.
-            proc_error(proc,kInvalidStateRC,"A play state was not acknowledged.  MIDI comm. problem?");
+            proc_error(proc,kInvalidStateRC,"A 'play' state was not acknowledged.  MIDI comm. problem?");
             _do_stop_ack( proc, p, ctl );            
+            break;
+
+          case kWaitForStopAckStateId:
+            proc_error(proc,kInvalidStateRC,"A 'stop' state was not acknowledged.  MIDI comm. problem?");
+            _do_stop_ack(proc, p, ctl);
             break;
             
           case kWaitForStopTmoStateId:            
             ctl->state_id           = kWaitForDeadTmoStateId;
-            ctl->stop_end_cycle_idx = kInvalidIdx;
-            ctl->dead_end_cycle_idx = proc->ctx->cycleIndex + p->dead_cycle_limit;
-
-            // update the group play counter
-            p->btnA[ ctl->nxt_btn_idx ].group->ctl_btnA[ctl->ctl_idx].idx += 1;
-            
-            // the stop-zone has expired - there is no going back - advance p->global_next_btn_index
-            _advance_global_next_btn_index(proc, p, ctl->nxt_btn_idx );
-
-            // set the visual status to 'playing'
-            if( _is_btn_index_valid(p,ctl->play_btn_idx) )
-              var_set(proc,_status_vid(ctl->play_btn_idx),kAnyChIdx,kPlayingStatusId);
+            _do_advance(proc,p,ctl);
             break;
             
           default:
@@ -3401,6 +3586,12 @@ namespace cw
         {
           case kWaitForPlayBtnStateId:
             break;
+
+          case kWaitForStopTmoStateId:
+            // play finished before the stop TMO - the ctl nxt_btn_idx still needs to be advanced
+            _do_advance(proc,p,ctl);
+
+            // fall through
             
           default:
             ctl->done_ack_cnt += 1;
@@ -3584,7 +3775,13 @@ namespace cw
           }
 
           // register the 'play' btn
-          if((rc = var_register(proc,kAnyChIdx,_play_btn_vid(i),"play",kBaseSfxId + i)) != kOkRC )
+          //if((rc = var_register(proc,kAnyChIdx,_play_btn_vid(i),"play",kBaseSfxId + i)) != kOkRC )
+          //{
+          //  goto errLabel;
+          //}
+          
+          // register the 'grp_stat'
+          if((rc = var_register(proc,kAnyChIdx,_grp_stat_vid(i),"grp_stat",kBaseSfxId + i)) != kOkRC )
           {
             goto errLabel;
           }
@@ -3635,7 +3832,10 @@ namespace cw
           for(unsigned ci=0; ci<p->ctlN; ++ci)
           {
             for(unsigned bi=0; bi<p->groupA[gi].ctl_btnA[ci].btn_idxN; ++bi)
+            {
               mem::release(p->groupA[gi].ctl_btnA[ci].btn_idxA);
+              mem::release(p->groupA[gi].ctl_btnA[ci].btn_flA);
+            }
           }
           mem::release(p->groupA[gi].ctl_btnA);
         }
@@ -3701,12 +3901,16 @@ namespace cw
                   case kNextBtnOffset:
                     // A 'next' btn was pushed to move global_next_btn_idx to an explicit position
                     p->deferred_stop_all_fl = false;
-                    _set_global_next_btn_index(proc,p,btn_idx);
+                    _set_group_index(proc,p, p->btnA[ btn_idx ].group->index, btn_idx);
                     break;
                 
-                  case kPlayBtnOffset:
+                    //case kPlayBtnOffset:
                     // defer playing until p->recd_array has been emptied.
-                    p->play_now_btn_idx = btn_idx;
+                    //p->play_now_btn_idx = btn_idx;
+                    //break;
+
+                  case kGrpStatOffset:
+                    // the group status indicator is not a button
                     break;
                 
                   case kStatusOffset:
@@ -3745,7 +3949,7 @@ namespace cw
         }
 
         // make this the next btn
-        _set_global_next_btn_index(proc,p,play_now_btn_idx);
+        _set_group_index(proc,p,p->btnA[ play_now_btn_idx ].group->index,play_now_btn_idx);
 
         // start this btn playing
         if((rc = _do_start_play(proc,p,ctl)) != kOkRC )
