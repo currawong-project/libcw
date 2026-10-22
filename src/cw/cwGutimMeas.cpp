@@ -1317,7 +1317,7 @@ namespace cw
         cg->eval_fl = true;
         cg->note_spread_sec = acc/n;
         
-        cwLogInfo("     : chord : spread:%6.3f", cg->note_spread_sec ); 
+        cwLogDebug("     : chord : spread:%6.3f", cg->note_spread_sec ); 
 
       }
     }
@@ -1398,7 +1398,8 @@ namespace cw
 
       if( N < 2 )
       {
-        rc = cwLogError(kInvalidArgRC,"linear_fit requires N >= 2");
+        rc = kInvalidStateRC;
+        cwLogDebug("linear_fit requires N >= 2");
         goto errLabel;
       }
       
@@ -1438,7 +1439,7 @@ namespace cw
 
     errLabel:
       if(rc!=kOkRC)
-        rc = cwLogError(rc,"Linear fit failed.");
+        cwLogDebug("Linear fit failed.");
       
       return rc;
     }
@@ -1449,7 +1450,8 @@ namespace cw
       
       if( section->noteN < 2  )
       {
-        rc = cwLogError(kInvalidStateRC,"The section has fewer than 2 notes (%s).",cwStringNullGuard(section->section_id));
+        rc = kInvalidStateRC;
+        cwLogDebug("The section has fewer than 2 notes (%s).",cwStringNullGuard(section->section_id));
         goto errLabel;
       }
       else
@@ -1480,7 +1482,7 @@ namespace cw
       
     errLabel:
       if( rc != kOkRC )
-        rc = cwLogError(rc,"Dynamics evaluation failed.");
+        cwLogDebug("Dynamics evaluation failed.");
       
       return rc;
         
@@ -1531,7 +1533,8 @@ namespace cw
 
       if( psN < 2 )
       {
-        rc = cwLogError(kInvalidArgRC,"The period of a sequence cannot be determined from less than 2 points.");
+        rc = kInvalidArgRC;
+        cwLogDebug("The period of a sequence cannot be determined from less than 2 points.");
         goto errLabel;
       }
       
@@ -1602,7 +1605,7 @@ namespace cw
 
       if( tpi < 2 )
       {
-        cwLogWarning("Cannot evaluate a beat group with less than 2 observed beats.");
+        cwLogDebug("Cannot evaluate a beat group with less than 2 observed beats.");
         return rc;          
       }
 
@@ -1623,12 +1626,12 @@ namespace cw
       
       bg->dur_pct = (max_sec_loc->est_sec - min_sec_loc->est_sec)/(max_sec_loc->score_sec - min_sec_loc->score_sec);
 
-      cwLogInfo("     : beat  : period: %6.3f dev:%6.3f dur pct:%6.3f", bg->period_est_sec, bg->period_dev_est_sec, bg->dur_pct ); 
+      cwLogDebug("     : beat  : period: %6.3f dev:%6.3f dur pct:%6.3f", bg->period_est_sec, bg->period_dev_est_sec, bg->dur_pct ); 
       
     errLabel:
       if( rc!=kOkRC )
       {
-        rc = cwLogError(rc,"Beat group evaluation failed.");
+        cwLogDebug("Beat group evaluation failed.");
       }
       
       return rc;
@@ -1676,7 +1679,7 @@ namespace cw
 
       if( gg->locN < 2 )
       {
-        cwLogWarning("Cannot evaluate a grace group with less than 2 grace notes.");
+        cwLogDebug("Cannot evaluate a grace group with less than 2 grace notes.");
         return rc;
       }
                  
@@ -1702,7 +1705,7 @@ namespace cw
 
       if( tpi < 2 )
       {
-        cwLogWarning("Cannot evaluate a grace group with less than 2 observed grace notes.");
+        cwLogDebug("Cannot evaluate a grace group with less than 2 observed grace notes.");
         return rc;          
       }
 
@@ -1723,12 +1726,12 @@ namespace cw
       
       gg->dur_pct = (max_sec_loc->est_sec - min_sec_loc->est_sec)/(max_sec_loc->score_sec - min_sec_loc->score_sec);
 
-      cwLogInfo("     : grace  : period: %6.3f dev:%6.3f dur pct:%6.3f", gg->period_est_sec, gg->period_dev_est_sec, gg->dur_pct ); 
+      cwLogDebug("     : grace  : period: %6.3f dev:%6.3f dur pct:%6.3f", gg->period_est_sec, gg->period_dev_est_sec, gg->dur_pct ); 
       
     errLabel:
       if( rc!=kOkRC )
       {
-        rc = cwLogError(rc,"Grace group evaluation failed.");
+        cwLogDebug("Grace group evaluation failed.");
       }
       
       return rc;
@@ -1881,7 +1884,7 @@ namespace cw
         }
       }
 
-      cwLogInfo("%i notes submitted.",n);
+      cwLogDebug("%i notes submitted.",n);
       p->pni_cnt = 0;
       
     errLabel:
@@ -1892,7 +1895,7 @@ namespace cw
     {
       rc_t rc = kOkRC;
       
-      cwLogInfo("Evaluating section:%s",cwStringNullGuard(section->section_id));
+      cwLogInfo("Meas. evaluation section:%s",cwStringNullGuard(section->section_id));
 
       // calc the location times
       _section_loc_time_eval( p, section );
