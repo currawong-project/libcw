@@ -244,6 +244,15 @@ namespace cw
                 status = kCtlMdId;
                 d0     = ev->data.control.param;
                 d1     = ev->data.control.value;
+                switch( d0 )
+                {                  
+                  case kSustainCtlMdId:
+                  case kSostenutoCtlMdId:
+                  case kSoftPedalCtlMdId:
+                    if( d1 < 15 )
+                      status= 0;
+                    break;
+                }
                 break;
 
               case SND_SEQ_EVENT_PITCHBEND:
@@ -714,6 +723,8 @@ cw::rc_t cw::midi::device::alsa::create(  handle_t&   h,
   // all time stamps will be an offset from this time stamp
   clock_gettime(CLOCK_MONOTONIC,&p->baseTimeStamp);
 
+  cwLogWarning("SEE HACK ON cwMidiAlsa.cpp SND_SEQ_EVENT_CONTROLLER handler!!!!");
+  
   h.set(p);
   
  errLabel:

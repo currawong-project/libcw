@@ -273,7 +273,7 @@ namespace cw
       // verify that there is space in the recd_array
       if( recd_array->recdN >= recd_array->allocRecdN )
       {
-        rc = cwLogError(kBufTooSmallRC,"The recd_array is full.");
+        rc = cwLogError(kBufTooSmallRC,"The recd_array is full. %i>=%i",recd_array->recdN,recd_array->allocRecdN);
         goto errLabel;
       }
 

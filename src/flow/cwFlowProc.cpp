@@ -7275,7 +7275,6 @@ namespace cw
         {
           goto errLabel;
         }
-
         
         // create one output audio buffer
         if((rc = var_register_and_set( proc, "out", kBaseSfxId,kOutPId, kAnyChIdx, srate, kChCnt, proc->ctx->framesPerCycle )) != kOkRC )
@@ -12830,7 +12829,7 @@ namespace cw
       rc_t _create( proc_t* proc, inst_t* p )
       {
         rc_t          rc       = kOkRC; //
-        unsigned      recdBufN = 0;
+        unsigned      recdBufN = 1024;
         const rbuf_t* r0buf    = nullptr;
         const rbuf_t* rbuf     = nullptr;
         unsigned      inVarN   = var_mult_count(proc,"in");
@@ -12869,6 +12868,8 @@ namespace cw
           baseTypeN += rbuf->recd_array->typeN;          
           
           recdBufN = std::max(recdBufN,rbuf->recd_array->allocRecdN);
+
+          
           
         }
 

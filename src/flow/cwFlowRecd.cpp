@@ -1363,7 +1363,7 @@ cw::rc_t cw::flow::recd_array_append_pass_through( recd_array_t* recd_array, con
 
   if( recd_array->recdN >= recd_array->allocRecdN )
   {
-    rc = cwLogError(kBufTooSmallRC,"The record array is full.");
+    rc = cwLogError(kBufTooSmallRC,"The record array is full. %i>=%i",recd_array->recdN,recd_array->allocRecdN);
     goto errLabel;
   }
   

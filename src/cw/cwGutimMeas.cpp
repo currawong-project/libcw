@@ -1426,7 +1426,7 @@ namespace cw
 
       if (Sxx == 0.0)
       {
-        cwLogWarning("Linear fit found 0 variance!");
+        cwLogDebug("Linear fit found 0 variance!");
         goto errLabel;
       }
       
