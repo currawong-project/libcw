@@ -6492,6 +6492,89 @@ namespace cw
         return rc;
       }
 
+      /*
+      unsigned _get_next_avail_voice( proc_t* proc, inst_t* p, unsigned pitch, unsigned seg_idx )
+      {
+        unsigned next_voice_idx   = kInvalidIdx;
+        unsigned max_age_idx      = kInvalidIdx;
+        unsigned inactive_idx     = kInvalidIdx;
+        unsigned early_stop_idx   = kInvalidIdx;
+        unsigned early_stop_idx0  = kInvalidIdx;
+        unsigned active_voice_cnt = 0;
+        unsigned min_voice_idx    = seg_idx * p->voicesPerSegN;
+
+        // examine all the voices in this segment
+        for(unsigned i=min_voice_idx; i<min_voice_idx + p->voicesPerSegN; ++i)
+        {
+          // if this voice is not active - then save the voice index
+          if( inactive_idx==kInvalidIdx && p->voiceA[i].activeFl == false )
+            inactive_idx = i;
+
+          // if this voice is active ...
+          if( p->voiceA[i].activeFl )
+          {
+            active_voice_cnt += 1;
+
+            // ... if this is the oldest active voice
+            if( max_age_idx == kInvalidIdx || p->voiceA[i].age > p->voiceA[ max_age_idx].age )
+            {
+              max_age_idx = i;              
+            }
+
+            // if this voice has not already been marked for eary stopping and it is older than the cur. early stop candiate
+            if( p->voiceA[i].earlyStopFl==false && (early_stop_idx == kInvalidIdx || p->voiceA[i].age > p->voiceA[early_stop_idx].age ) )
+            {
+              early_stop_idx = i;  // otherwise it is a candidate to stop early
+            }
+
+            // if this voice has not already been marked for eary stopping and it is the second oldest early stop candiate
+            if(    p->voiceA[i].earlyStopFl==false
+                   && early_stop_idx!=kInvalidIdx  // and an older candidate exists
+                   && ( (early_stop_idx0 == kInvalidIdx || (p->voiceA[i].age > p->voiceA[early_stop_idx0].age) )
+                        && (p->voiceA[i].age < p->voiceA[early_stop_idx].age)   ) )
+                  
+            {
+              early_stop_idx0 = i; 
+            }
+
+          }
+
+        }
+        
+        // if an inactive note was found
+        if( inactive_idx != kInvalidIdx )
+        {
+          next_voice_idx = inactive_idx;
+          active_voice_cnt += 1;
+        }
+        else
+        {
+          proc_warn(proc,"All voices (%i of %i) active!.",active_voice_cnt,p->voicesPerSegN);
+          next_voice_idx = max_age_idx;
+        }
+
+        // if more than 'prune_thresh' voices are in use then begin turning off old voices
+        if( active_voice_cnt > p->prune_thresh )
+        {
+
+          // if the early stop and max-age voice are same ... early stop the second oldest voice
+          if( early_stop_idx == max_age_idx )
+            early_stop_idx = early_stop_idx0;
+          
+          if( early_stop_idx == kInvalidIdx && max_age_idx == kInvalidIdx )
+            proc_warn(proc,"No available voices to prune.");
+          else
+          {
+            _stop_note_early(proc,p,early_stop_idx==kInvalidIdx ? max_age_idx : early_stop_idx, "prune voices" );
+          }
+        }
+
+        p->segA[seg_idx].active_voice_cnt = active_voice_cnt;
+        
+        return next_voice_idx;
+      }
+      */
+      
       unsigned _get_next_avail_voice( proc_t* proc, inst_t* p, unsigned pitch, unsigned seg_idx )
       {
         unsigned next_voice_idx   = kInvalidIdx;
@@ -6556,7 +6639,6 @@ namespace cw
         
         return next_voice_idx;
       }
-      
 
       rc_t _on_note_on( proc_t* proc, inst_t* p, const midi::ch_msg_t* m, unsigned seg_idx, unsigned& voice_idx_ref  )
       {
@@ -7275,7 +7357,6 @@ namespace cw
         {
           goto errLabel;
         }
-
         
         // create one output audio buffer
         if((rc = var_register_and_set( proc, "out", kBaseSfxId,kOutPId, kAnyChIdx, srate, kChCnt, proc->ctx->framesPerCycle )) != kOkRC )
@@ -7386,7 +7467,7 @@ namespace cw
       void _begin_note_release( inst_t* p, bool fast_release_fl=false )
       {
         p->gain_coeff = fast_release_fl ? 0.9 : p->kReleaseGain;
-        //p->gain_coeff = p->kReleaseGain;        
+        //p->gain_coeff = p->kReleaseGain;
       }
 
       void _on_note_off( proc_t* proc, inst_t* p, bool fast_release_fl=false )
@@ -12830,7 +12911,7 @@ namespace cw
       rc_t _create( proc_t* proc, inst_t* p )
       {
         rc_t          rc       = kOkRC; //
-        unsigned      recdBufN = 0;
+        unsigned      recdBufN = 1024;
         const rbuf_t* r0buf    = nullptr;
         const rbuf_t* rbuf     = nullptr;
         unsigned      inVarN   = var_mult_count(proc,"in");
@@ -12869,6 +12950,8 @@ namespace cw
           baseTypeN += rbuf->recd_array->typeN;          
           
           recdBufN = std::max(recdBufN,rbuf->recd_array->allocRecdN);
+
+          
           
         }
 

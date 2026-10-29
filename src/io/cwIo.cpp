@@ -1235,6 +1235,34 @@ namespace cw
       }
     }
 
+    rc_t _audioGroupUpdate( audioGroup_t* ag )
+    {
+      rc_t rc = kOkRC;
+      
+      msg_t msg;
+      msg.tid     = kAudioTId;
+      msg.u.audio = &ag->msg;
+
+      // While the all audio devices for this group are ready 
+      while( _audioGroupBufIsReady( ag->p, ag, true ) && _audioGroupBufIsReady( ag->p, ag, false) )
+      {
+        _audioGroupProcSampleBufs( ag->p, ag, kAudioGroupGetBuf, true );
+        _audioGroupProcSampleBufs( ag->p, ag, kAudioGroupGetBuf, false );
+
+        if((rc = _ioCallback( ag->p, ag->asyncFl, &msg)) != kOkRC )
+          cwLogError(rc,"Audio app callback failed %i.",ag->asyncFl);
+
+        _audio_latency_measure( ag->p, ag->msg );
+          
+        _audioGroupProcSampleBufs( ag->p, ag, kAudioGroupAdvBuf, true );
+        _audioGroupProcSampleBufs( ag->p, ag, kAudioGroupAdvBuf, false );
+      }
+
+      return rc;
+    }
+
+    bool _global_thread_fl = true;
+
     // This is the audio processing thread function. Block on the audio group condition var
     // which is triggered when all the devices in the group are ready by _audioGroupNotifyIfReady().    
     bool _audioGroupThreadFunc( void* arg )
@@ -1242,6 +1270,16 @@ namespace cw
       rc_t rc = kOkRC;
 
       audioGroup_t* ag = reinterpret_cast<audioGroup_t*>(arg);
+
+      if( !_global_thread_fl )
+      {
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        CPU_SET(8,&cpuset);
+        pthread_setaffinity_np(pthread_self(),sizeof(cpuset),&cpuset);
+        
+        _global_thread_fl = true;
+      }
 
       // block on the cond. var
       if((rc = mutex::waitOnCondVar(ag->mutexH,false,ag->threadTimeOutMs)) != kOkRC )
@@ -1257,6 +1295,7 @@ namespace cw
       // if the cond. var was signaled and ag->mutexH is locked
       if( rc == kOkRC )
       {
+        /*
         msg_t msg;
         msg.tid     = kAudioTId;
         msg.u.audio = &ag->msg;
@@ -1275,6 +1314,8 @@ namespace cw
           _audioGroupProcSampleBufs( ag->p, ag, kAudioGroupAdvBuf, true );
           _audioGroupProcSampleBufs( ag->p, ag, kAudioGroupAdvBuf, false );
         }
+        */
+        _audioGroupUpdate(ag);
       }
      
       return true;

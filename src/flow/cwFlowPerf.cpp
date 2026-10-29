@@ -1762,6 +1762,7 @@ namespace cw
       enum {
         kVelTblFnamePId,
         kVelTblLabelPId,
+        kAltTblLabelPId,
         kInPId,
         kOutPId,
         kRecdBufNPId
@@ -1779,6 +1780,7 @@ namespace cw
       {
         vel_tbl_t*    velTblL;
         vel_tbl_t*    activeVelTbl;
+        vel_tbl_t*    altVelTbl;
         unsigned      i_midi_fld_idx;
         unsigned      i_score_vel_fld_idx;
         unsigned      o_midi_fld_idx;
@@ -1880,13 +1882,13 @@ namespace cw
 
         return rc;
       }
-      
-      rc_t _activate_vel_table( proc_t* proc, inst_t* p, const char* vel_tbl_label )
+
+      rc_t _get_vel_table( proc_t* proc, inst_t* p, const char* vel_tbl_label, vel_tbl_t*& vel_tbl_ref )
       {
         for(vel_tbl_t* vt = p->velTblL; vt!=nullptr; vt=vt->link)
           if( textIsEqual(vt->label,vel_tbl_label))
           {
-            p->activeVelTbl = vt;
+            vel_tbl_ref = vt;
             return kOkRC;
           }
 
@@ -1894,12 +1896,14 @@ namespace cw
         
         return kOkRC;
       }
+      
 
       rc_t _create( proc_t* proc, inst_t* p )
       {
         rc_t          rc            = kOkRC;        
         const char*   vel_tbl_fname = nullptr;
         const char*   vel_tbl_label = nullptr;
+        const char*   alt_vt_label  = nullptr;
         const rbuf_t* rbuf          = nullptr;
         rbuf_t*       o_rbuf        = nullptr;
         unsigned      recdBufN      = 128;
@@ -1907,6 +1911,7 @@ namespace cw
         if((rc = var_register_and_get(proc,kAnyChIdx,
                                       kVelTblFnamePId,   "vel_tbl_fname", kBaseSfxId, vel_tbl_fname,
                                       kVelTblLabelPId,   "vel_tbl_label", kBaseSfxId, vel_tbl_label,
+                                      kAltTblLabelPId,    "alt_tbl_label",  kBaseSfxId, alt_vt_label,
                                       kRecdBufNPId,      "recdbufN",      kBaseSfxId, recdBufN,
                                       kInPId,            "in",            kBaseSfxId, rbuf)) != kOkRC )
         {
@@ -1920,9 +1925,19 @@ namespace cw
         }
 
         // activate the selected velocity table
-        if((rc = _activate_vel_table( proc, p, vel_tbl_label )) != kOkRC )
+        if((rc = _get_vel_table( proc, p, vel_tbl_label, p->activeVelTbl )) != kOkRC )
         {
           goto errLabel;
+        }
+
+        if( textLength(alt_vt_label) > 0 )
+        {
+          // activate the selected alternate velocity table
+          if((rc = _get_vel_table( proc, p, alt_vt_label, p->altVelTbl )) != kOkRC )
+          {
+            goto errLabel;
+          }
+          proc_info(proc,"Alt vel-table %s activated.",cwStringNullGuard(alt_vt_label));
         }
 
         // get the record field index for the incoming record
@@ -2057,8 +2072,18 @@ namespace cw
                   goto errLabel;                  
                 }
 
-                // apply the score_vel to the map
+                // apply the score_vel to the map                
                 o_m->d1 = p->activeVelTbl->tblA[ score_vel ];
+              }
+              else
+              {
+                // if an alternate vel table was given 
+                if( p->altVelTbl != nullptr )
+                {
+                  // apply the vel to the alternate map
+                  if( i_m->d1 < p->altVelTbl->tblN )
+                    o_m->d1 = p->altVelTbl->tblA[ i_m->d1 ];
+                }
               }
               
             }
@@ -2847,7 +2872,7 @@ namespace cw
 
         unsigned pri = p->cur_manual_pri_preset_idx == kInvalidIdx ? p->cur_pri_preset_idx : p->cur_manual_pri_preset_idx;
         unsigned sec = p->cur_manual_sec_preset_idx == kInvalidIdx ? p->cur_sec_preset_idx : p->cur_manual_sec_preset_idx;
-        proc_debug(proc,"Preset:%s%s%s",_preset_index_to_label(p,pri), p->sec_fl ? "->":" ",_preset_index_to_label(p,sec));
+        proc_info(proc,"Preset:%s%s%s",_preset_index_to_label(p,pri), p->sec_fl ? "->":" ",_preset_index_to_label(p,sec));
         return rc;
       }
       
@@ -5508,12 +5533,12 @@ namespace cw
         p->max_ioi_fact = 1.5;
         float dvel = 1.0;
         cw::score_follow_2::args_t sf_args = {
-          .pre_affinity_sec = 1.0,
+          .pre_affinity_sec = 3.0, //1.0,
           .post_affinity_sec = 3.0,
-          .min_affinity_loc_cnt = 2,
-          .pre_wnd_sec = 2.0,
+          .min_affinity_loc_cnt = 4, //2,
+          .pre_wnd_sec = 4.0, //2.0,
           .post_wnd_sec = 5.0,
-          .min_wnd_loc_cnt = 2,
+          .min_wnd_loc_cnt = 4, //2,
           .decay_coeff = 0.995,
           .d_sec_err_thresh_lo = 0.4,
           .d_loc_thresh_lo = 3,
