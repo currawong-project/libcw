@@ -200,7 +200,7 @@ namespace cw
 }
 
 
-cw::rc_t cw::thread::create( handle_t& hRef, cbFunc_t func, void* funcArg, const char* label, int stateMicros, int pauseMicros )
+cw::rc_t cw::thread::create( handle_t& hRef, cbFunc_t func, void* funcArg, const char* label, int stateMicros, int pauseMicros, int waitMicros )
 {
   rc_t rc;
   int  sysRC;
@@ -215,7 +215,7 @@ cw::rc_t cw::thread::create( handle_t& hRef, cbFunc_t func, void* funcArg, const
   p->stateMicros = stateMicros;
   p->pauseMicros = pauseMicros;
   p->stateId     = kPausedThId;
-  p->waitMicros = 15000;
+  p->waitMicros  = waitMicros;
   p->label       = mem::duplStr(label);
 
   if((sysRC = pthread_attr_init(&p->attr)) != 0)
