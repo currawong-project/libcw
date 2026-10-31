@@ -372,33 +372,45 @@ namespace cw
     bool _timerThreadCb( void* arg )
     {
       timer_t* t = (timer_t*)arg;
+      bool isIoStartedFl = t->io->startedFl.load();
+      const int max_sleep_time_us = 7500;
 
       time::spec_t t0;
       time::get(t0);
 
       int usec = time::diffMicros(t0,t->nextTime);
 
-      if( usec > 0 )
-        sleepUs(usec);
+      // If the time to wait is greater than max_sleep_time_us then
+      // wait for max_sleep_time_us ... otherwise only wait for the time
+      // remaining in this period.
+      // We do this so that the thread is not inactive at shutdown
+      // and thus does not respond to the destroy() request.
+      if( usec > max_sleep_time_us )
+        sleepUs(max_sleep_time_us);
+      else
+      {
+        if( usec > 0 )
+          sleepUs(usec);
 
-      time::advanceMicros(t->nextTime,t->periodMicroSec);
+        time::advanceMicros(t->nextTime,t->periodMicroSec);
 
       
-      if( t->startedFl && !t->deletedFl )
-      {
-        rc_t        rc = kOkRC;
-        msg_t       m;        
-        timer_msg_t tm;
+        if( isIoStartedFl && t->startedFl && !t->deletedFl )
+        {
+          rc_t        rc = kOkRC;
+          msg_t       m;        
+          timer_msg_t tm;
         
-        tm.id     = t->id;
-        tm.index  = t->index;
-        m.tid     = kTimerTId;
-        m.u.timer = &tm;
+          tm.id     = t->id;
+          tm.index  = t->index;
+          m.tid     = kTimerTId;
+          m.u.timer = &tm;
         
-        if((rc = _ioCallback( t->io, t->asyncFl, &m )) != kOkRC )
-          cwLogError(rc,"Timer app callback failed.");
+          if((rc = _ioCallback( t->io, t->asyncFl, &m )) != kOkRC )
+            cwLogError(rc,"Timer app callback failed.");
+        }
       }
-
+      
       return !t->deletedFl;
     }
 
