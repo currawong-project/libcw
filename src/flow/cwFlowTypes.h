@@ -320,8 +320,12 @@ namespace cw
 
       ui_net_t* ui_net;
 
-      time::spec_t prof_dur; // total time spent executing this network
-      unsigned     prof_cnt; // total count of executions of this network
+      time::spec_t prof_dur;              // total time spent executing this network
+      unsigned     prof_cnt;              // total count of executions of this network
+      time::spec_t prof_max_dur;          // max. duration
+      unsigned     prof_max_dur_idx;      // call index associated with prof_max_dur.
+      unsigned     prof_time_overrun_cnt; // count of cycles with a duration greater than the DSP period
+      
             
     } network_t;
     
@@ -335,6 +339,7 @@ namespace cw
       bool                 non_real_time_fl;     // set if this is a non-real-time program
       bool                 warn_on_rt_alloc_fl;  // Log a warning if memory is allocated/freed during runtime.
       unsigned             framesPerCycle;       // sample frames per cycle (64)
+      time::spec_t         secPerCycle;          // seconds per cycle - as derived from framesPerCycle and sample_rate;
       srate_t              sample_rate;          // default sample rate (48000.0)
       unsigned             maxCycleCount;        // count of cycles to run on flow::exec() or 0 if there is no limit.
       unsigned             uiUpdateCycleCount;   // count of cycles between UI updates (1)
@@ -379,8 +384,6 @@ namespace cw
       global_var_t* globalVarL;
 
       bool         prof_fl;     // set to turn profiling on
-      time::spec_t prof_dur;    // total execution time
-      unsigned     prof_cnt;    // total count of execution cycles
       time::spec_t prof_ui_dur; // total time spent updating UI
       unsigned     trace_id;
       

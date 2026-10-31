@@ -4287,13 +4287,26 @@ namespace cw
       _network_profile_proc_total(net,acc);
       acc_sec = time::seconds(acc);
 
-      printf("%s : net:%8.5fs accum:%8.5fs\n",net.label==nullptr ? "<none>" : net.label,time::seconds(net.prof_dur),acc_sec);
+      double cycle_secs  = (double)net.flow->framesPerCycle / net.flow->sample_rate;
+      double max_secs    = time::seconds(net.prof_max_dur);
+      double max_pct     = 100.0 * max_secs/cycle_secs;
+      double max_idx_pct = net.prof_cnt==0 ? 0.0 : (double)net.prof_max_dur_idx / net.prof_cnt;
 
+      unsigned long long avg_cycle_us = time::specToMicroseconds( net.prof_dur ) / net.prof_cnt;
+      unsigned long long dsp_cycle_us = cycle_secs * 1000000;
+      double             cycle_pct    = (double)100.0 * avg_cycle_us/dsp_cycle_us;
+      
+      cwLogPrint("%s : net:%8.5fs accum:%8.5fs : AVG %ius (%5.2f)  : MAX call dur:%8.5fs (%5.1f pct) max call index:%i (%5.1f pct) overruns:%i\n",
+                 net.label==nullptr ? "<none>" : net.label,time::seconds(net.prof_dur),acc_sec,
+                 avg_cycle_us, cycle_pct,
+                 max_secs,max_pct,net.prof_max_dur_idx,max_idx_pct,net.prof_time_overrun_cnt);
+      
       for(unsigned i=0; i<net.procN; ++i)
       {
         double dur_sec = time::seconds(net.procA[i]->prof_dur);
-        
-        printf("%2i %6.2f  %8.5fs %s::%i\n",level,dur_sec/acc_sec,dur_sec,net.procA[i]->label,net.procA[i]->label_sfx_id);
+
+        double pct = acc_sec == 0 ? 0 : dur_sec/acc_sec;
+        cwLogPrint("%2i %6.2f  %8.5fs %s::%i\n",level,pct,dur_sec,net.procA[i]->label,net.procA[i]->label_sfx_id);
 
         for(const network_t* n = net.procA[i]->internal_net; n!=nullptr; n=n->poly_link)
           _network_profile_report(*n,level+1);        
@@ -4425,8 +4438,9 @@ cw::rc_t cw::flow::exec_cycle( network_t& net )
   rc_t rc = kOkRC;
   bool halt_fl = false;
   time::spec_t net_t0;
+  bool profile_fl = net.flow->prof_fl;
   
-  if( net.flow->prof_fl )
+  if( profile_fl )
     time::get(net_t0);
 
   for(unsigned i=0; i<net.procN && rc==kOkRC; ++i)
@@ -4434,7 +4448,7 @@ cw::rc_t cw::flow::exec_cycle( network_t& net )
     time::spec_t t0;
     proc_t* proc = net.procA[i];
     
-    if( net.flow->prof_fl)
+    if( profile_fl)
       time::get(t0);
 
     TRACE_TIME( proc->trace_id, tracer::kBegEvtId, net.flow->cycleIndex,0 );
@@ -4452,16 +4466,37 @@ cw::rc_t cw::flow::exec_cycle( network_t& net )
     
     TRACE_TIME( proc->trace_id, tracer::kEndEvtId, net.flow->cycleIndex,0 );
 
-    if( net.flow->prof_fl )
+    if( profile_fl )
     {
       time::accumulate_elapsed_current(proc->prof_dur,t0);
       proc->prof_cnt += 1;
     }
   }
 
-  if( net.flow->prof_fl )
+  if( profile_fl )
   {
-    time::accumulate_elapsed_current(net.prof_dur,net_t0);
+    time::spec_t dur{};
+
+    // get the duration of this execution cycle.
+    time::accumulate_elapsed_current( dur, net_t0);
+
+    // track the max cycle duration
+    if( time::isGT(dur,net.prof_max_dur ) )
+    {      
+      net.prof_max_dur = dur;
+      net.prof_max_dur_idx = net.flow->cycleIndex;
+
+      // track the count of times we cross the max cycle duration threshold
+      if( time::isGT(dur,net.flow->secPerCycle) )
+      {
+        net.prof_time_overrun_cnt += 1;
+      }
+    }
+
+    // track the total time spent inside the network
+    time::accumulate(net.prof_dur,dur);
+
+    // track the total profile cycle count
     net.prof_cnt += 1;
   }
 
