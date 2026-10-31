@@ -961,7 +961,7 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   p->ui_callback        = ui_callback;
   p->ui_callback_arg    = ui_callback_arg;
   p->ui_var_head.store(&p->ui_var_stub);
-  p->ui_var_tail        = &p->ui_var_stub;
+  p->ui_var_tail        = &p->ui_var_stub;  
   
   // parse the optional args
   if((rc = pgmCfg->readv("network",              0,      p->networkCfg,
@@ -1017,6 +1017,7 @@ cw::rc_t cw::flow::create( handle_t&          hRef,
   
   p->uiUpdateCycleCount = std::max(1U, (unsigned)(((uiUpdateMs * p->sample_rate) / 1000.0) / p->framesPerCycle));
 
+  time::fracSecondsToSpec(p->secPerCycle,(double)p->framesPerCycle/p->sample_rate);
 
   // print the class dict
   if( printClassDictFl )
@@ -1181,9 +1182,6 @@ cw::rc_t cw::flow::destroy( handle_t& hRef )
 
   p = _handleToPtr(hRef);
 
-  if( p->prof_fl )
-    profile_report(hRef);
-
   _destroy(p);
 
   hRef.clear();
@@ -1310,6 +1308,45 @@ cw::rc_t cw::flow::apply_preset( handle_t h, const multi_preset_selector_t& mps 
   return network_apply_preset(*p->net,mps);
 }
 
+cw::rc_t    cw::flow::profile_enable( handle_t h, bool enable_fl )
+{
+  flow_t* p  = _handleToPtr(h);
+  p->prof_fl = enable_fl;
+  return kOkRC;
+}
+
+bool        cw::flow::profile_is_enabled( handle_t h )
+{
+  flow_t* p  = _handleToPtr(h);
+  return p->prof_fl;
+}
+
+unsigned    cw::flow::profile_overrun_count( handle_t h )
+{
+  flow_t* p  = _handleToPtr(h);
+  
+  if( p->net == nullptr )
+    return 0;
+  
+  return p->net->prof_time_overrun_cnt;
+}
+
+void cw::flow::profile_report( handle_t h )
+{
+  flow_t* p = _handleToPtr(h);
+  if( p->net != nullptr )
+  {
+    if( p->prof_fl )
+    {
+      double ui_dur = time::seconds(p->prof_ui_dur);
+      cwLogPrint("UI:%8.5fs\n",ui_dur);
+    
+      network_profile_report(*p->net);
+    }
+  }
+}
+
+
 cw::rc_t cw::flow::set_variable_user_arg( handle_t h, const ui_var_t* ui_var, void* arg )
 { return set_variable_user_arg( *_handleToPtr(h)->net, ui_var, arg );  }
 
@@ -1387,19 +1424,4 @@ void cw::flow::print_network( handle_t h )
   network_print(*p->net);
 }
 
-void cw::flow::profile_report( handle_t h )
-{
-  flow_t* p = _handleToPtr(h);
-  if( p->net != nullptr )
-  {
-    if( p->prof_fl )
-    {
-      double dur = time::seconds(p->prof_dur);
-      double ui_dur = time::seconds(p->prof_ui_dur);
-      printf("%8.5fs UI:%8.5fs\n",dur,ui_dur);
-    
-      network_profile_report(*p->net);
-    }
-  }
-}
 

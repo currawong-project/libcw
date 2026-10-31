@@ -62,6 +62,11 @@ namespace cw
     rc_t apply_dual_preset( handle_t h, const char* presetLabel_0, const char* presetLabel_1, double coeff );
     rc_t apply_preset( handle_t h, const multi_preset_selector_t& multi_preset_sel );
 
+    rc_t     profile_enable( handle_t h, bool enable_fl );
+    bool     profile_is_enabled( handle_t h );
+    unsigned profile_overrun_count( handle_t h );
+    void     profile_report( handle_t h );
+    
         
     rc_t set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, bool value     );
     rc_t set_variable_value( handle_t h, const char* inst_label, const char* var_label, unsigned chIdx, int value      );
@@ -96,7 +101,6 @@ namespace cw
     
     void print_class_list( handle_t h );
     void print_network( handle_t h );
-    void profile_report( handle_t h );
 
   }
 }
