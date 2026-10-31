@@ -613,7 +613,6 @@ All other variable types are logged on every cycle.
 
 Tracing
 -------
-
 The tracer is a global object which supports logging elapsed time information from local trace variables.
 It is automatically instantiated by the 'caw' and 'cli', and configured by their respective 
 program files like this:
@@ -713,6 +712,21 @@ Direction:
 4. Clock 'Latency Reset' again.
 
 The latency report will then be printed to stdout.
+
+Profiling:
+---------
+Set network parameter flag: `profile_fl` to true to generate
+a profile report on network destroy.  The report gives the total time spent in seconds
+and as a percentage of all sibling proc instances within the parent network.
+Each subnet gives the following information:
+'net seconds': Total time spent inside the network.
+'accum seconds': Total time spent inside child proc instances.
+'max': Maximum time spent executing a single cycle.
+(max-pct) : 'max' as a percentage of the cycle duration - as determined by `flow_t.framesPerCycle/flow_t.sample_rate`.
+`max_call_overrun` : Execution cycle index where the maximum cycle occurrend.
+(`max_call_overrun pct`) : `max_call_overrun` as a percentage of the entire runtime.
+`overruns` : Count of times the measured cycle time exceeded `flow_t.framesPerCycle/flow_t.sample_rate`,
+
 
 
 UI
