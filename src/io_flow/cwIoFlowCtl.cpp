@@ -999,6 +999,78 @@ const cw::flow::ui_net_t* cw::io_flow_ctl::program_ui_net( handle_t h )
   return ui_net(p->flowH);
 }
 
+cw::rc_t cw::io_flow_ctl::program_profile_enable( handle_t h, bool enable_fl )
+{
+  rc_t rc = kOkRC;
+  io_flow_ctl_t* p  = _handleToPtr(h);
+
+  if( !p->flowH.isValid() )
+  {
+    rc = cwLogError(kInvalidStateRC,"Profile enable failed. No network exists.");
+    goto errLabel;
+  }
+      
+  rc = profile_enable(p->flowH,enable_fl);
+  
+errLabel:
+  return rc;
+}
+
+bool        cw::io_flow_ctl::program_profile_is_enabled( handle_t h )
+{
+  io_flow_ctl_t* p  = _handleToPtr(h);
+  bool ret_val = false;
+  
+  if( !p->flowH.isValid() )
+  {
+    cwLogError(kInvalidStateRC,"Profile enable state query failed. No network exists.");
+    goto errLabel;
+  }
+      
+  ret_val = profile_is_enabled(p->flowH);
+
+errLabel:
+  return ret_val;
+  
+}
+
+unsigned    cw::io_flow_ctl::program_profile_overrun_count( handle_t h )
+{
+  rc_t           rc      = kOkRC;
+  io_flow_ctl_t* p       = _handleToPtr(h);
+  unsigned       ret_val = 0;
+  
+  if( !p->flowH.isValid() )
+  {
+    rc = cwLogError(kInvalidStateRC,"Profile overrun count access failed. No network exists.");
+    goto errLabel;
+  }
+
+  ret_val = profile_overrun_count(p->flowH);
+
+errLabel:
+  return ret_val;
+}
+
+cw::rc_t        cw::io_flow_ctl::program_profile_report( handle_t h )
+{
+  rc_t           rc      = kOkRC;
+  io_flow_ctl_t* p       = _handleToPtr(h);
+  unsigned       ret_val = 0;
+  
+  if( !p->flowH.isValid() )
+  {
+    rc = cwLogError(kInvalidStateRC,"Profile report failed. No network exists.");
+    goto errLabel;
+  }
+
+  profile_report(p->flowH);
+
+errLabel:
+  return rc;
+}
+
+
 
 cw::rc_t    cw::io_flow_ctl::exec_nrt( handle_t h )
 {
@@ -1029,7 +1101,12 @@ cw::rc_t    cw::io_flow_ctl::exec_nrt( handle_t h )
       rc = cwLogError(rc,"%s execution failed.", cwStringNullGuard(p->pgmA[p->pgm_idx].label));
       goto errLabel;
     }
+
+    if( profile_is_enabled(p->flowH) )
+      profile_report(p->flowH);
   }
+
+  
   
 errLabel:
   return rc;

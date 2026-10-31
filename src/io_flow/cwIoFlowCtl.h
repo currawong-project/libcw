@@ -45,6 +45,12 @@ namespace cw
 
     // Get the UI description data structures for the current program.
     const flow::ui_net_t* program_ui_net( handle_t h );
+
+    rc_t        program_profile_enable( handle_t h, bool enable_fl );
+    bool        program_profile_is_enabled( handle_t h );
+    unsigned    program_profile_overrun_count( handle_t h );
+    rc_t        program_profile_report( handle_t h );
+    
     
     // Execute the currently loaded non-real-time program to completion.
     rc_t        exec_nrt( handle_t h );
