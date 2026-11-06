@@ -1257,7 +1257,7 @@ namespace cw
         if( snprintf(mbuf,mbufN,mFmt,opStr,uuId,vbuf) >= mbufN-1 )
           return cwLogError(kBufTooSmallRC,"The msg buffer is too small.");
 
-        _websockSend(p,wsSessId,mbuf);
+        rc = _websockSend(p,wsSessId,mbuf);
       }
 
       return rc;
