@@ -59,8 +59,6 @@ namespace cw
     rc_t send_ui_updates( handle_t h );
 
     rc_t apply_preset( handle_t h, const char* presetLabel );
-    rc_t apply_dual_preset( handle_t h, const char* presetLabel_0, const char* presetLabel_1, double coeff );
-    rc_t apply_preset( handle_t h, const multi_preset_selector_t& multi_preset_sel );
 
     rc_t     profile_enable( handle_t h, bool enable_fl );
     bool     profile_is_enabled( handle_t h );

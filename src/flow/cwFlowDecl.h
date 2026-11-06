@@ -85,19 +85,6 @@ namespace cw
       unsigned    order;
     } preset_order_t;
     
-    typedef struct multi_preset_selector_str
-    {
-      unsigned              flags;
-      const double*         coeffV;
-      const double*         coeffMinV;
-      const double*         coeffMaxV;
-      unsigned              coeffN;
-      
-      const preset_order_t* presetA;
-      unsigned              presetN;
-    } multi_preset_selector_t;
-
-    
     typedef struct ui_preset_str
     {
       const char* label;
@@ -108,6 +95,8 @@ namespace cw
     {
       const char*  label;     // class label
       const char*  add_class; // additional DOM class name for this UI element.
+      const char*  ui_template; // ui.cfg template that this proc uses (e.g. proc,proc_col_list, ...}
+      const char*  ui_list_name; // name of the 'ui_template' element that holds child procs. If set this proc is a UI container.
       ui_preset_t* presetA;   // presetA[ presetN ]
       unsigned     presetN;      
     } ui_proc_desc_t;

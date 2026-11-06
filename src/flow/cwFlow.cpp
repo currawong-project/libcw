@@ -108,7 +108,8 @@ namespace cw
       { "score_player_ctl",&score_player_ctl::members },
       { "midi_recorder",   &midi_recorder::members },
       { "button_array",    &button_array::members },
-      {"button_list", &button_list::members },
+      {"button_list",      &button_list::members },
+      {"ui_container",     &ui_container::members },
       // perf
       { "score_player",    &score_player::members },
       { "multi_player",    &multi_player::members },
@@ -357,7 +358,9 @@ namespace cw
 
       if( uiD != nullptr )
       {
-        if((rc = uiD->getv_opt("add_class",desc->ui->add_class)) != kOkRC )
+        if((rc = uiD->getv_opt("add_class",desc->ui->add_class,
+                               "ui_template",desc->ui->ui_template,
+                               "ui_list_name",desc->ui->ui_list_name)) != kOkRC )
         {
           rc = cwLogError(rc,"Parsing proc class UI desc. failed on proc. class '%s'.",cwStringNullGuard(desc->label));
           goto errLabel;
@@ -1294,18 +1297,6 @@ cw::rc_t cw::flow::apply_preset( handle_t h, const char* presetLabel )
 {
   flow_t* p  = _handleToPtr(h);
   return network_apply_preset(*p->net,presetLabel);
-}
-
-cw::rc_t cw::flow::apply_dual_preset( handle_t h, const char* presetLabel_0, const char* presetLabel_1, double coeff )
-{
-  flow_t* p  = _handleToPtr(h);
-  return network_apply_dual_preset(*p->net,presetLabel_0, presetLabel_1, coeff );
-}
-
-cw::rc_t cw::flow::apply_preset( handle_t h, const multi_preset_selector_t& mps )
-{
-  flow_t* p  = _handleToPtr(h);
-  return network_apply_preset(*p->net,mps);
 }
 
 cw::rc_t    cw::flow::profile_enable( handle_t h, bool enable_fl )
