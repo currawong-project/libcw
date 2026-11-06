@@ -179,7 +179,7 @@ namespace cw
       char*        ui_list_name;     // overrides the class desc ui_list_name
       char*        ui_add_class;     // additional UI class label which is added to the desc class label.
       char*        ui_parent_label;  // UI parent container name used to assign this proc to a specific container
-      unsigned     ui_parent_sfx_id; // label suffix id that accompanies 'ui_parent_label'.
+      unsigned     ui_parent_sfx_id; // label suffix id that accompanies 'ui_parent_label', or kInvalidId to use the poly index of the network being searched.
 
       
     } ui_proc_t;
@@ -189,6 +189,7 @@ namespace cw
     typedef struct ui_net_str
     {
       struct network_str* net;
+      const ui_proc_t*    parent_ui_proc;  // Proc that owns this internal network, or nullptr for the root network.
 
       bool ui_create_fl;  // Set via network flag 'ui_create_fl'. 
       

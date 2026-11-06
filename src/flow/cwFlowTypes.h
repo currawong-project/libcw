@@ -193,7 +193,6 @@ namespace cw
       unsigned     prof_cnt; // total count of calls to this proc
       unsigned     trace_id;
 
-      ui_proc_t*  ui_proc;   // null until create_net_ui_desc() runs.
     } proc_t;
 
     struct network_preset_str;

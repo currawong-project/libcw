@@ -3698,7 +3698,7 @@ namespace cw
       const char*     ui_list_name  = nullptr;
       const char*     ui_add_class  = nullptr;
       const char*     parent_name   = nullptr;
-      unsigned        parent_sfx_id = kBaseSfxId;      
+      unsigned        parent_sfx_id = kInvalidId;  // kInvalidId selects the poly index of the network being searched.
       const object_t* varsL_cfg     = nullptr;
 
       if( ui_proc->cfg == nullptr )
@@ -3794,9 +3794,7 @@ namespace cw
         ui_proc->varA         = mem::allocZ<ui_var_t>(net.procA[i]->varMapN);
         ui_proc->ui_uuid      = kInvalidId;
 
-        // set mutual pointers between the engine and UI components of the proc instance
         ui_proc->proc         = net.procA[i];
-        net.procA[i]->ui_proc = ui_proc;
 
         for(unsigned j=0; j<net.procA[i]->varMapN; ++j)
         {
@@ -3848,6 +3846,9 @@ namespace cw
         {
           if((rc = _form_net_ui_desc(p, *net.procA[i]->internal_net, ui_proc->internal_net )) != kOkRC )
             goto errLabel;
+
+          for(ui_net_t* n = ui_proc->internal_net; n!=nullptr; n=n->poly_link)
+            n->parent_ui_proc = ui_proc;
         }
         
       }

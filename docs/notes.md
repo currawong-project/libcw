@@ -777,8 +777,8 @@ ui: { create_fl: true|false,  # Create a UI for this proc.
 	  ui_template:<>,         # ui.cfg template name (defaults to 'proc')
 	  ui_list_name:<>,        # template proc list name
 	  add_class:<>,           # Additional class name for this proc
-	  parent_name:<>          # Parent container name
-	  parent_sfx_id:<>        # Parent label sfx id
+	  parent_name:<>          # Parent container name. See 'UI parent search' below.
+	  parent_sfx_id:<>        # Parent label sfx id. See 'UI parent search' below.
       vars:{
 	    <var_label>:{ 'sfx_id':<> 'ch_idx':<>, 'title':<>, 'btn_title':<>, 'add_class':<>, 
 		              'flags':[hide,show,enable,disable,no_title,title_to_label] 
@@ -786,6 +786,11 @@ ui: { create_fl: true|false,  # Create a UI for this proc.
 
     }
 ```
+
+UI parent search: `parent_name` is searched for in the proc's own network and then in each
+enclosing network. The nearest match wins. If `parent_sfx_id` is not given then each network
+being searched uses its own poly index as the sfx id. This gives each copy of a poly network
+its own container, and selects the base sfx id (0) in a network which has no poly copies.
 
 UI Implementation
 -----------------
