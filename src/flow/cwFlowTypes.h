@@ -199,7 +199,13 @@ namespace cw
       unsigned     prof_cnt; // total count of calls to this proc
       unsigned     trace_id;
 
-      char* ui_title;
+      unsigned     ui_uuid;
+      char*        ui_title;
+      char*        ui_template;      // overrides the class desc ui_template
+      char*        ui_list_name;     // overrides the class desc ui_list_name
+      char*        ui_add_class;     // added to the class desc add_class
+      char*        ui_parent_label;
+      unsigned     ui_parent_sfx_id;
 
     } proc_t;
 

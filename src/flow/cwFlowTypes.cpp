@@ -1141,6 +1141,10 @@ void cw::flow::proc_destroy( proc_t* proc )
   proc->varL = nullptr;
 
   mem::release(proc->ui_title);
+  mem::release(proc->ui_template);
+  mem::release(proc->ui_list_name);
+  mem::release(proc->ui_add_class);
+  mem::release(proc->ui_parent_label);
   mem::release(proc->label);
   mem::release(proc->varMapA);
   mem::release(proc->modVarMapA);

@@ -2100,6 +2100,11 @@ namespace cw
       bool ui_create_fl = false;
       bool ui_title_fl  = true;
       const char* ui_proc_title = nullptr;
+      const char* ui_template = nullptr;
+      const char* ui_list_name = nullptr;
+      const char* ui_add_class = nullptr;
+      const char* parent_name = nullptr;
+      unsigned    parent_sfx_id = kBaseSfxId;
       
       const object_t* varsL_cfg = nullptr;
 
@@ -2119,6 +2124,11 @@ namespace cw
       if((rc = pstate.ui_cfg->getv_opt("create_fl",  ui_create_fl,
                                        "title_fl",ui_title_fl,
                                        "title",ui_proc_title,
+                                       "ui_template",ui_template,
+                                       "ui_list_name",ui_list_name,
+                                       "add_class",ui_add_class,
+                                       "parent_name",parent_name,
+                                       "parent_sfx_id",parent_sfx_id,
                                        "vars", varsL_cfg)) != kOkRC )
       {
         goto errLabel;        
@@ -2132,6 +2142,22 @@ namespace cw
 
       if( ui_proc_title != nullptr )
         proc->ui_title = mem::duplStr(ui_proc_title);
+
+      if( ui_template != nullptr )
+        proc->ui_template = mem::duplStr(ui_template);
+
+      if( ui_list_name != nullptr )
+        proc->ui_list_name = mem::duplStr(ui_list_name);
+
+      if( ui_add_class != nullptr )
+        proc->ui_add_class = mem::duplStr(ui_add_class);
+
+      if( parent_name != nullptr )
+      {
+        proc->ui_parent_label = mem::duplStr(parent_name);
+        proc->ui_parent_sfx_id = parent_sfx_id;
+      }
+      
 
       if( varsL_cfg  != nullptr )
         rc = _proc_parse_ui_var_list_cfg(proc,varsL_cfg);
@@ -2577,42 +2603,6 @@ namespace cw
     }
 
 
-    /*
-    rc_t  _process_net_preset(proc_t* proc, const object_t* net_preset_cfgD)
-    {
-      rc_t rc = kOkRC;
-      const object_t* proc_preset_cfg;
-
-      // if no network preset dict exists or if this proc. is not mentioned in it then there is nothing to do
-      if( net_preset_cfgD==nullptr || (proc_preset_cfg=net_preset_cfgD->find_child(proc->label)) == nullptr )
-        return rc;
-      
-      switch( proc_preset_cfg->type_id() )
-      {
-        case kDictTId:
-          if((rc = _process_args_stmt(proc,proc_preset_cfg)) != kOkRC )
-            goto errLabel;
-          break;
-          
-        case kListTId:
-        case kStringTId:
-          if((rc = _class_apply_presets(proc,proc_preset_cfg)) != kOkRC )
-            goto errLabel;
-          break;
-          
-        default:
-          rc = cwLogError(kInvalidStateRC,"A network preset must be either a dictionary, list or string.");
-          goto errLabel;
-          break;
-      }
-      
-    errLabel:
-      if(rc != kOkRC )
-        rc = cwLogError(rc,"Network preset application failed for proc instance:%s.",cwStringNullGuard(proc->label));
-      
-      return rc;
-    }
-    */
     
     void _pstate_destroy( proc_inst_parse_state_t pstate )
     {
@@ -2679,6 +2669,7 @@ namespace cw
       proc->class_desc    = class_desc;
       proc->net           = &net;
       proc->logLevel      = log::kInvalid_LogLevel;
+      proc->ui_uuid       = kInvalidId;
 
       TRACE_REG(proc->label,proc->label_sfx_id,proc->trace_id);
 
@@ -2732,13 +2723,6 @@ namespace cw
         if((rc = _process_args_stmt(proc,pstate.arg_cfg)) != kOkRC )
           goto errLabel;
       }
-
-      // If the the network preset holds a preset for this proc
-      //if( net_preset_cfgD!=nullptr && (proc_preset_cfg=net_preset_cfgD->find_child(proc->label)) != nullptr )
-      //{
-      //  if((rc = _process_net_preset(proc,net_preset_cfgD)) != kOkRC )
-      //    goto errLabel;
-      //}
       
       // All the proc instance arg values have now been set and those variables
       // that were expressed with a list have numeric channel indexes assigned.
@@ -3240,74 +3224,7 @@ namespace cw
       return rc;
     }
 
-    rc_t _network_preset_parse_dual_label(network_t& net, const object_t* list_cfg, unsigned idx, const char* pri_sec_label, const char* network_preset_label, const network_preset_t*& vlist_ref )
-    {
-      rc_t rc = kOkRC;
-      const char* preset_label = nullptr;
-      //const preset_value_list_t* vlist = nullptr;
-
-      vlist_ref = nullptr;
-      
-      if( !list_cfg->child_ele(idx)->is_string() )
-      {
-        rc = net_error(&net,kSyntaxErrorRC,"The dual preset list %s preset is not a string on network preset:'%s'.",pri_sec_label,cwStringNullGuard(network_preset_label));
-        goto errLabel;
-      }
-
-      if((rc = list_cfg->child_ele(idx)->value(preset_label)) != kOkRC )
-      {
-        rc = net_error(&net,kOpFailRC,"The dual preset %s preset could not be parsed on network preset:'%s'.",pri_sec_label,cwStringNullGuard(network_preset_label));
-        goto errLabel;
-      }
-
-      if((vlist_ref = network_preset_from_label(net, preset_label )) == nullptr )
-      {
-        rc = net_error(&net,kEleNotFoundRC,"The dual preset %s preset could not be found on network preset:'%s'.",pri_sec_label,cwStringNullGuard(network_preset_label));
-        goto errLabel;
-      }
-
-    errLabel:
-      return rc;
-    }
     
-    rc_t _network_preset_parse_dual(flow_t* p, network_t& net, const object_t* dual_list_cfg, network_preset_t& network_preset )
-    {
-      rc_t rc = kOkRC;
-
-
-      if( dual_list_cfg==nullptr || !dual_list_cfg->is_list() )
-      {
-        rc = net_error(&net,kSyntaxErrorRC,"The dual preset specification is not a list on network preset:'%s'.",cwStringNullGuard(network_preset.label));
-        goto errLabel;
-      }
-
-      if( dual_list_cfg->child_count() != 3 )
-      {
-        rc = net_error(&net,kSyntaxErrorRC,"The dual preset list does not have 3 elements on network preset:'%s'.",cwStringNullGuard(network_preset.label));
-        goto errLabel;
-      }
-
-      if((rc = _network_preset_parse_dual_label(net,dual_list_cfg, 0, "primary", network_preset.label, network_preset.u.dual.pri )) != kOkRC )
-        goto errLabel;
-      
-
-      if((rc = _network_preset_parse_dual_label(net,dual_list_cfg, 1, "secondary", network_preset.label, network_preset.u.dual.sec )) != kOkRC )
-        goto errLabel;
-        
-      
-      if((rc = dual_list_cfg->child_ele(2)->value(network_preset.u.dual.coeff)) != kOkRC )
-      {
-        rc = net_error(&net,kSyntaxErrorRC,"The dual preset coeff could not be parsed on network preset:'%s'.",cwStringNullGuard(network_preset.label));
-        goto errLabel;
-      }
-      
-      network_preset.tid = kPresetDualTId;
-
-
-    errLabel:
-      return rc;
-    }
-
     rc_t _network_preset_handle_poly_preset_ref(network_preset_t& network_preset, network_t* poly_net, const char* preset_label )      
     {
       rc_t            rc           = kOkRC;
@@ -3612,15 +3529,7 @@ namespace cw
               goto errLabel;            
             }
             break;
-
-          case kListTId: // dual preset
-            if((rc = _network_preset_parse_dual(p, net, preset_pair_cfg->pair_value(), network_preset)) != kOkRC )
-            {
-              rc = net_error(&net,kSyntaxErrorRC,"Network dual preset parse failed on preset:'%s'.",cwStringNullGuard(network_preset.label));
-              goto errLabel;              
-            }
-            break;
-
+            
           default:
             rc = net_error(&net,kAssertFailRC,"Unknown preset type on network preset: '%s'.",cwStringNullGuard(network_preset.label));
             goto errLabel;
@@ -3639,140 +3548,7 @@ namespace cw
       return rc;
     }
 
-    // Given a network preset label return the dictionary of proc presets that is associated with it.
-    /*
-    rc_t _get_network_preset_cfg( const object_t* presetsCfg, const char* preset_label, const object_t*& preset_ref )
-    {
-      rc_t rc = kOkRC;
-      preset_ref = nullptr;
-      
-      if( preset_label == nullptr )
-        return rc;
-
-      if( presetsCfg == nullptr )
-      {
-        rc = cwLogError(kInvalidArgRC,"The network preset '%s' could not be found because there is no network 'presets' dictionary.",cwStringNullGuard(preset_label));
-        goto errLabel;
-      }
-
-      if((preset_ref = presetsCfg->find_child( preset_label)) == nullptr )
-      {
-        rc = cwLogError(kEleNotFoundRC,"The network preset '%s' was not found in the 'presets' dictionary.");
-        goto errLabel;
-      }
-
-      switch( preset_ref->type_id() )
-      {
-        case kDictTId: // this is a dictionary of proc presets
-          break;
-          
-        case kListTId: // this is a 'dual' preset - skip it
-          preset_ref = nullptr;
-          break;
-          
-        default:
-          rc = cwLogError(kSyntaxErrorRC,"Network presets must be either dictionaries or lists. Preset '%s' is neither.",cwStringNullGuard(preset_label));
-          preset_ref = nullptr;
-      }
-      
-    errLabel:
-      return rc;
-        
-    }
-    */
-    
-
-    template<typename T0, typename T1 >
-    rc_t _preset_set_var_from_dual_interp_1( variable_t* var, T0 v0, T1 v1, double coeff )
-    {
-      return var_set(var, (T0)(v0 + (v1-v0)*coeff ));
-    }
-    
-    template< typename T >
-    rc_t _preset_set_var_from_dual_interp_0( variable_t* var,  T v0, const value_t* v1, double coeff )
-    {
-      rc_t rc = kOkRC;
-      switch( v1->tflag & kTypeMask )
-      {
-        case kUIntTFl:
-          rc = _preset_set_var_from_dual_interp_1(var,v0,v1->u.u,coeff);
-          break;
-          
-        case kIntTFl:
-          rc = _preset_set_var_from_dual_interp_1(var,v0,v1->u.i,coeff);
-          break;
-          
-        case kFloatTFl:
-          rc = _preset_set_var_from_dual_interp_1(var,v0,v1->u.f,coeff);
-          break;
-          
-        case kDoubleTFl:          
-          rc = _preset_set_var_from_dual_interp_1(var,v0,v1->u.d,coeff);
-          break;
-          
-        default:
-          rc = var_error(var,kInvalidDataTypeRC,"The second operand of a set by interpolation had a non-numeric data type.");
-      }
-      return rc;
-    }
-
   
-
-    rc_t _preset_set_var_from_dual( const preset_value_t* preset_val, const value_t* value_1, double coeff )
-    {
-      rc_t rc = kOkRC;
-      unsigned legalTypeMask = kUIntTFl | kIntTFl | kFloatTFl | kDoubleTFl;
-
-      if(preset_val->tid != kDirectPresetValueTId )
-      {
-        rc = cwLogError(rc,"A poly-preset was encountered while setting a dual value.");
-        goto errLabel;
-      }
-      
-      if( value_1 == nullptr || (preset_val->u.pvv.value.tflag & legalTypeMask)==0 )
-        rc = var_set( preset_val->u.pvv.var, &preset_val->u.pvv.value );
-      else
-      {
-        if( (value_1->tflag & legalTypeMask) == 0 )
-        {
-          rc = cwLogError(kInvalidDataTypeRC,"The type of value-1 (0x%x) is not a scalar number.",value_1->tflag);
-          goto errLabel;
-        }
-
-        switch( preset_val->u.pvv.value.tflag & legalTypeMask )
-        {
-          case kUIntTFl:
-            rc = _preset_set_var_from_dual_interp_0( preset_val->u.pvv.var, preset_val->u.pvv.value.u.u, value_1, coeff );
-            break;
-            
-          case kIntTFl:
-            rc = _preset_set_var_from_dual_interp_0( preset_val->u.pvv.var, preset_val->u.pvv.value.u.i, value_1, coeff );
-            break;
-            
-          case kFloatTFl:
-            rc = _preset_set_var_from_dual_interp_0( preset_val->u.pvv.var, preset_val->u.pvv.value.u.f, value_1, coeff );
-            break;
-            
-          case kDoubleTFl:
-            rc = _preset_set_var_from_dual_interp_0( preset_val->u.pvv.var, preset_val->u.pvv.value.u.d, value_1, coeff );
-            break;
-
-        default:
-          rc = cwLogError(kInvalidDataTypeRC,"The first operand of a set by interpolation had a non-numeric data type.");
-            
-        }
-      }
-
-    errLabel:
-      if(rc != kOkRC )
-        if( preset_val->tid == kDirectPresetValueTId )
-          rc = cwLogError(rc,"Set variable from dual preset failed on '%s:%i'-'%s:%i' ch:0.",
-                          cwStringNullGuard(preset_val->u.pvv.proc->label),preset_val->u.pvv.proc->label_sfx_id,
-                          cwStringNullGuard(preset_val->u.pvv.var->label),preset_val->u.pvv.var->label_sfx_id,
-                          preset_val->u.pvv.var->chIdx);
-      return rc;
-    }
-
     rc_t _network_apply_preset( network_t& net, const network_preset_t* network_preset, unsigned proc_label_sfx_id );
     
     rc_t _network_apply_vlist_preset( network_t& net,  const preset_value_list_t* vlist, unsigned proc_label_sfx_id )
@@ -3820,66 +3596,6 @@ namespace cw
       return rc;
     }
     
-    rc_t _network_apply_dual_preset( network_t& net, const network_preset_t* net_ps0, const network_preset_t* net_ps1, double coeff,  unsigned proc_label_sfx_id )
-    {
-      rc_t rc = kOkRC;
-      
-      // clear the value field of the preset-pair array
-      for(unsigned i=0; i<net.preset_pairN; ++i)
-        net.preset_pairA[i].value = nullptr;
-
-      // set the value pointer in each of the preset-pair records referenced by preset-1
-      for(const preset_value_t* pv1=net_ps1->u.vlist.value_head; pv1!=nullptr; pv1=pv1->link)
-      {
-        if( pv1->tid!=kDirectPresetValueTId )
-        {
-        }
-        
-        if( proc_label_sfx_id == kInvalidId || pv1->u.pvv.proc->label_sfx_id == proc_label_sfx_id )
-        {
-          if( pv1->u.pvv.var->chIdx != kAnyChIdx )
-            net.preset_pairA[ pv1->u.pvv.pairTblIdx ].value = &pv1->u.pvv.value;
-          else
-          {
-            for(unsigned i=0; i<net.preset_pairA[ pv1->u.pvv.pairTblIdx ].chN; ++i)
-            {
-              net.preset_pairA[ pv1->u.pvv.pairTblIdx+i ].value = &pv1->u.pvv.value;
-              assert( textIsEqual(net.preset_pairA[ pv1->u.pvv.pairTblIdx+i ].var->label, pv1->u.pvv.var->label) && net.preset_pairA[ pv1->u.pvv.pairTblIdx+i ].var->label_sfx_id == pv1->u.pvv.var->label_sfx_id );        
-            }
-          }    
-        }
-      }
-      
-      // 
-      for(const preset_value_t* pv0=net_ps0->u.vlist.value_head; pv0!=nullptr; pv0=pv0->link)
-      {
-        if( proc_label_sfx_id == kInvalidId || (pv0->tid!=kDirectPresetValueTId) || (pv0->tid==kDirectPresetValueTId && pv0->u.pvv.proc->label_sfx_id == proc_label_sfx_id) )
-        {
-          if( pv0->tid!=kDirectPresetValueTId )
-          {
-          }
-          
-          if( pv0->u.pvv.var->chIdx != kAnyChIdx )
-          {
-            rc = _preset_set_var_from_dual( pv0, net.preset_pairA[ pv0->u.pvv.pairTblIdx ].value, coeff );
-          }
-          else
-          {
-            for(unsigned i=0; i<net.preset_pairA[ pv0->u.pvv.pairTblIdx ].chN; ++i)
-            {
-              if((rc = _preset_set_var_from_dual( pv0, net.preset_pairA[ pv0->u.pvv.pairTblIdx+i ].value, coeff )) != kOkRC )
-                goto errLabel;
-
-              assert( textIsEqual(net.preset_pairA[ pv0->u.pvv.pairTblIdx+i ].var->label,pv0->u.pvv.var->label) && net.preset_pairA[ pv0->u.pvv.pairTblIdx+i ].var->label_sfx_id == pv0->u.pvv.var->label_sfx_id );        
-            }
-          }    
-        }
-      }
-
-    errLabel:
-      return rc;
-    }
-
     rc_t _network_apply_preset( network_t& net, const network_preset_t* network_preset, unsigned proc_label_sfx_id )
     {
       rc_t rc = kOkRC;
@@ -3890,12 +3606,7 @@ namespace cw
           if((rc = _network_apply_vlist_preset( net, &network_preset->u.vlist, proc_label_sfx_id )) != kOkRC )
             goto errLabel;
           break;
-      
-        case kPresetDualTId:
-          if((rc = _network_apply_dual_preset(net, network_preset->u.dual.pri, network_preset->u.dual.sec, network_preset->u.dual.coeff,  proc_label_sfx_id )) != kOkRC )
-            goto errLabel;
-          break;
-      
+            
         default:
           rc = net_error(&net,kAssertFailRC,"Unknown preset type.");
           break;
@@ -3907,154 +3618,9 @@ namespace cw
     
     //==================================================================================================================
     //
-    // Presets - Probabilistic Selection
+    // Presets
     //
-
-    unsigned _select_ranked_ele_by_rank_prob( const preset_order_t* presetA, const bool* selV , unsigned presetN )
-    {
-
-      // get a count of the candidate presets
-      unsigned rankN = selV==nullptr ? presetN : std::count_if(selV,selV+presetN,[](const bool& x){ return x; });
-
-      if( rankN == 0 )
-      {
-        cwLogWarning("All preset candidates have been eliminated.");
-        return kInvalidIdx;
-      }
-
-      unsigned rankV[  rankN ];
-      unsigned idxMapA[ rankN ];
-
-      // fill rankV[] with candidates 'order' value
-      for(unsigned i=0,j=0; i<presetN; ++i)
-        if( selV==nullptr || selV[i] )
-        {
-          assert( j < rankN );
-          rankV[j]   = presetA[i].order;
-          idxMapA[j] = i;
-          ++j;
-        }
-
-      // if only one element remains to be selected
-      if( rankN == 1 )
-        return idxMapA[0];
-
-      assert( rankN > 1 );
-      
-      unsigned threshV[ rankN ];
-      unsigned uniqueRankV[ rankN ];      
-      unsigned uniqueRankN = 0;
-      unsigned sel_idx = rankN - 1; //
-
-      // for each possible rank value
-      for(unsigned i=0; i<rankN; ++i)
-      {
-        // locate the rank in the uniqueRankV[]
-        unsigned j=0;
-        for(; j<uniqueRankN; ++j)
-          if( uniqueRankV[j]==rankV[i] )
-            break;
-
-        // if the rank was not found then include it here
-        if( j == uniqueRankN )
-          uniqueRankV[uniqueRankN++] = rankV[i];
-
-      }
-
-      // uniqueRankV[] now includes the set of possible rank values
-      
-      // Take the product of all possible values.
-      // (this will be evenly divisible by all values)
-      unsigned prod = vop::prod(uniqueRankV,uniqueRankN);
-
-      unsigned thresh = 0;
-      for(unsigned i=0; i<rankN; ++i)
-        threshV[i] = (thresh += rankV[i] * prod);
-
-      // Thresh is now set to the max possible random value.
-      
-      // Generate a random number between 0 and thresh
-      double   fval = (double)std::rand() * thresh / RAND_MAX;
-
-      unsigned thresh0 = 0;
-      for(unsigned i=0; i<rankN; ++i)
-      {
-        if( thresh0 <= fval && fval < threshV[i] )
-        {
-          sel_idx = i;
-          break;
-        }
-      }
-
-      assert( sel_idx < rankN );
-      
-      return idxMapA[sel_idx];
-    }
-
     
-    const char* _select_ranked_ele_label_by_rank_prob( const preset_order_t* rankV, const bool* selA, unsigned rankN )
-    {
-      unsigned sel_idx;
-
-      if((sel_idx = _select_ranked_ele_by_rank_prob( rankV, selA, rankN )) == kInvalidIdx )
-      {
-        cwLogWarning("The multi-preset select function failed. Selecting preset 0.");
-        sel_idx = 0;
-      }
-
-      return rankV[sel_idx].preset_label;
-
-    }
-    
-
-    double _calc_multi_preset_dual_coeff( const multi_preset_selector_t& mps )
-    {
-      double result = 0;
-      unsigned resultN = 0;
-      
-      if( mps.coeffN == 0 )
-      {
-        result = 0.5;
-      }
-      else
-      {  
-        for(unsigned i=0; i<mps.coeffN; ++i)
-        {
-          /*
-
-            Temporarily commented out because coeffV[] values
-            have already been normalized.
-            
-          double norm_factor = (mps.coeffMaxV[i] - mps.coeffMinV[i]);
-          
-          if( norm_factor <= 0 )
-            cwLogWarning("Invalid normalization factor in aggregated distance measurement.");
-          else
-            norm_factor = 1;
-          
-          
-          result += std::max( mps.coeffMinV[i], std::min( mps.coeffMaxV[i], mps.coeffV[i] ) ) / norm_factor;
-          */
-
-          // WOULD DISTANCE BE BETTER THAN AVERAGE????
-          
-          if( mps.coeffV[i] != 0 )
-          {
-            result += mps.coeffV[i];
-            resultN += 1;
-          }
-        }
-
-        if( resultN <= 0 )
-            cwLogWarning("Invalid normalization factor in aggregated distance measurement.");
-        else
-          result = std::min(1.0,std::max(0.0,result/mps.coeffN));
-      }
-      
-      
-      return result;
-    }
-
     rc_t _network_parse_records_registry( network_t* net, const object_t* records_cfg )
     {
       rc_t rc = kOkRC;
@@ -4558,6 +4124,7 @@ errLabel:
   return rc;
 }
 
+
 cw::rc_t cw::flow::network_apply_preset( network_t& net, const char* preset_label, unsigned proc_label_sfx_id )
 {
   rc_t                    rc             = kOkRC;
@@ -4582,136 +4149,3 @@ errLabel:
  
 }
 
-
-cw::rc_t cw::flow::network_apply_dual_preset( network_t& net, const char* preset_label_0, const char* preset_label_1, double coeff, unsigned proc_label_sfx_id )
-{
-  rc_t                    rc      = kOkRC;
-  const network_preset_t* net_ps0 = nullptr;
-  const network_preset_t* net_ps1 = nullptr;
-  
-  if((net_ps0 = network_preset_from_label(net, preset_label_0 )) == nullptr )
-  {
-    rc = net_error(&net,kInvalidIdRC,"The network preset '%s' could not be found.", preset_label_0 );
-    goto errLabel;
-  }
-
-  if((net_ps1 = network_preset_from_label(net, preset_label_1 )) == nullptr )
-  {
-    rc = net_error(&net,kInvalidIdRC,"The network preset '%s' could not be found.", preset_label_1 );
-    goto errLabel;
-  }
-
-  if((rc = _network_apply_dual_preset(net, net_ps0, net_ps1, coeff,  proc_label_sfx_id )) != kOkRC )
-    goto errLabel;
-
-errLabel:
-  if( rc != kOkRC )
-    rc = net_error(&net,rc,"Apply dual-preset failed.");  
-  
-  return rc;
-}
-
-
-cw::rc_t cw::flow::network_apply_preset( network_t& net, const multi_preset_selector_t& mps, unsigned proc_label_sfx_id )
-{
-  rc_t        rc        = kOkRC;
-  const char* label0    = nullptr;
-  const char* label1    = nullptr;
-  bool        priProbFl = cwIsFlag(mps.flags, kPriPresetProbFl );
-  bool        secProbFl = cwIsFlag(mps.flags, kSecPresetProbFl );
-  bool        interpFl  = cwIsFlag(mps.flags, kInterpPresetFl );
-
-  //printf("preset flags: pri:%i sec:%i interp:%i\n",priProbFl,secProbFl,interpFl);
-  
-  // verify that the set of candidate presets is not empty
-  if( mps.presetN == 0 )
-  {
-    net_error(&net,kInvalidArgRC,"A multi-preset application was requested but no presets were provided.");
-    goto errLabel;    
-  }
-
-  // if only a single candidate preset exists or needs to be selected
-  if( interpFl==false || mps.presetN==1 )
-  {
-    // if only a single candidate preset is available or pri. probablity is not enabled 
-    if( mps.presetN == 1 || priProbFl==false )
-      label0 = mps.presetA[0].preset_label;
-    else
-    {
-      if( priProbFl )
-        label0 = _select_ranked_ele_label_by_rank_prob( mps.presetA, nullptr, mps.presetN );
-      else
-        label0 = mps.presetA[0].preset_label;
-    }
-  }
-  else  // interpolation has been selected and at least 2 presets exist
-  {    
-    unsigned pri_sel_idx = 0;
-        
-    // select the primary preset
-    if( priProbFl )
-      pri_sel_idx = _select_ranked_ele_by_rank_prob( mps.presetA, nullptr, mps.presetN );
-    else
-    {
-      // select all presets assigned to order == 1
-      bool selA[ mps.presetN ];
-      for(unsigned i=0; i<mps.presetN; ++i)
-        selA[i]= mps.presetA[i].order==1;
-
-      // select the preset among all presets marked as 1
-      pri_sel_idx = _select_ranked_ele_by_rank_prob( mps.presetA, selA, mps.presetN );
-    }
-
-    if( pri_sel_idx == kInvalidIdx )
-      pri_sel_idx    = 0;
-    
-    // the primary preset has now been selected
-
-    // if there is only one candidate secondary preset
-    if( mps.presetN == 2)
-    {
-      assert( pri_sel_idx <= 1 );
-      label1  = mps.presetA[ pri_sel_idx == 0 ? 1 : 0 ].preset_label;
-    }
-    else  // at least two remaining presets exist to select between
-    {
-      // mark the selected primary preset as not-available
-      bool selA[ mps.presetN ];
-      vop::fill(selA,mps.presetN,true);
-      selA[pri_sel_idx] = false;
-
-      // if the second preset should be selected probabilistically
-      if( secProbFl )
-        label1 = _select_ranked_ele_label_by_rank_prob( mps.presetA, selA, mps.presetN );
-      else 
-      {
-        // select the best preset that is not the primary preset
-        for(unsigned i=0; i<mps.presetN; ++i)
-          if( i != pri_sel_idx )
-          {
-            label1 = mps.presetA[i].preset_label;
-            break;
-          }        
-      }
-    }
-    
-    assert( pri_sel_idx != kInvalidIdx );
-    label0               = mps.presetA[ pri_sel_idx ].preset_label;
-  }
-    
-  assert(label0 != nullptr );
-  
-  if( label1 == nullptr )
-  {
-    rc = network_apply_preset( net, label0, proc_label_sfx_id );
-  }
-  else
-  {
-    double coeff = _calc_multi_preset_dual_coeff(mps);
-    rc = network_apply_dual_preset( net, label0, label1, coeff, proc_label_sfx_id );
-  }
-  
-
-errLabel:
-  return rc;
-}
