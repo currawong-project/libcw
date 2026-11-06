@@ -108,6 +108,7 @@ namespace cw
     namespace midi_recorder    { extern class_members_t members; }
     namespace button_array     { extern class_members_t members; }
     namespace button_list      { extern class_members_t members; }
+    namespace ui_container     { extern class_members_t members; }
       
   }
 }
