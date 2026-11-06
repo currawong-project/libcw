@@ -505,8 +505,6 @@ namespace cw
       var->value        = nullptr;
       var->type         = kInvalidTFl;
       var->ui_title     = nullptr;
-      var->ui_hide_fl   = cwIsFlag(vd->flags,kUiHideVarDescFl);
-      var->ui_disable_fl= cwIsFlag(vd->flags,kUiDisableVarDescFl);
       var->mod_cycle_idx.store(0);
 
       if( altTypeFl != kInvalidTFl )
@@ -1690,8 +1688,6 @@ void cw::flow::var_destroy( variable_t* var )
     
     mem::release(var->label);    
     mem::release(var->ui_title);
-    mem::release(var->ui_btn_title);
-    mem::release(var->ui_add_class);
     mem::release(var);
   }
 }

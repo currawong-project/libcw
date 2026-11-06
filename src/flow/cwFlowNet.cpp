@@ -157,7 +157,15 @@ namespace cw
         mem::release(ui_net->procA[i].ui_template);
         mem::release(ui_net->procA[i].ui_list_name);
         mem::release(ui_net->procA[i].ui_add_class);
-        mem::release(ui_net->procA[i].ui_parent_label);        
+        mem::release(ui_net->procA[i].ui_parent_label);
+
+        for(unsigned j=0; j<ui_net->procA[i].varN; ++j)
+        {
+          mem::release(ui_net->procA[i].varA[j].title);
+          mem::release(ui_net->procA[i].varA[j].btn_title);
+          mem::release(ui_net->procA[i].varA[j].add_class);
+        }
+
         mem::release(ui_net->procA[i].varA);
 
       }
@@ -3554,7 +3562,8 @@ namespace cw
         const char*     add_class = nullptr;
         const object_t* flagsL    = nullptr;
         variable_t*     var       = nullptr;
-        
+        ui_var_t*       ui_var    = nullptr;
+
         if((var_label = var_ui_cfg->pair_label()) == nullptr )
         {
           rc = proc_error(proc,rc,"An error occurred while accessing a 'ui' variable label.");
@@ -3584,19 +3593,29 @@ namespace cw
           goto errLabel;
         }
 
+        // A var which is not in proc->varMapA[] has no UI.
+        if((ui_var = var->ui_var) == nullptr )
+        {
+          proc_warn(proc,"The variable '%s:%i' ch:%i referenced in the 'ui' cfg. has no UI and will be ignored.",cwStringNullGuard(var_label),sfx_id,ch_idx);
+          continue;
+        }
+
         if( title != nullptr )
         {
-          var->ui_title = mem::duplStr(title);
+          mem::release(ui_var->title);
+          ui_var->title = mem::duplStr(title);
         }
 
         if( btn_title != nullptr )
         {
-          var->ui_btn_title = mem::duplStr(btn_title);
+          mem::release(ui_var->btn_title);
+          ui_var->btn_title = mem::duplStr(btn_title);
         }
 
         if( add_class != nullptr )
         {
-          var->ui_add_class = mem::duplStr(add_class);
+          mem::release(ui_var->add_class);
+          ui_var->add_class = mem::duplStr(add_class);
         }
 
 
@@ -3624,27 +3643,27 @@ namespace cw
             switch( labelToId(flagA,flag_str, kInvalidId ) )
             {
               case kHideId:
-                var->ui_hide_fl = true;
+                ui_var->hide_fl = true;
                 break;
-                
+
               case kShowId:
-                var->ui_hide_fl = false;
+                ui_var->hide_fl = false;
                 break;
-                
+
               case kEnableId:
-                var->ui_disable_fl = false;
+                ui_var->disable_fl = false;
                 break;
-                
+
               case kDisableId:
-                var->ui_disable_fl = true;
+                ui_var->disable_fl = true;
                 break;
 
               case kNoTitleId:
-                var->ui_no_title_fl = true;
+                ui_var->no_title_fl = true;
                 break;
 
               case kTitleToLabelId:
-                var->ui_title_to_label_fl = true;
+                ui_var->title_to_label_fl = true;
                 break;
                 
               case kInvalidId:
@@ -3779,12 +3798,6 @@ namespace cw
         ui_proc->proc         = net.procA[i];
         net.procA[i]->ui_proc = ui_proc;
 
-        // parse the proc instance UI stanza
-        if((rc = _proc_parse_ui_cfg(ui_proc )) != kOkRC )
-        {
-          goto errLabel;
-        }
-        
         for(unsigned j=0; j<net.procA[i]->varMapN; ++j)
         {
           variable_t* var = net.procA[i]->varMapA[j];
@@ -3798,13 +3811,11 @@ namespace cw
             ui_var->label             = var->label;
             ui_var->label_sfx_id      = var->label_sfx_id;
             ui_var->has_source_fl     = is_connected_to_source( var );
-            ui_var->title             = var->ui_title == nullptr ? var->label : var->ui_title;
-            ui_var->btn_title         = var->ui_btn_title;
-            ui_var->add_class         = var->ui_add_class;
-            ui_var->disable_fl        = var->ui_disable_fl || ui_var->has_source_fl || cwIsFlag(var->varDesc->flags,flow::kInitVarDescFl) || cwIsFlag(var->varDesc->flags,flow::kReadOnlyVarDescFl);
-            ui_var->hide_fl           = var->ui_hide_fl;
-            ui_var->no_title_fl       = var->ui_no_title_fl || cwIsFlag(var->varDesc->flags,flow::kUiNoTitleVarDescFl);
-            ui_var->title_to_label_fl = var->ui_title_to_label_fl || cwIsFlag(var->varDesc->flags,flow::kUiTitleToLabelVarDescFl);
+            ui_var->title             = mem::duplStr(var->ui_title == nullptr ? var->label : var->ui_title);
+            ui_var->disable_fl        = cwIsFlag(var->classVarDesc->flags,kUiDisableVarDescFl);
+            ui_var->hide_fl           = cwIsFlag(var->classVarDesc->flags,kUiHideVarDescFl);
+            ui_var->no_title_fl       = cwIsFlag(var->varDesc->flags,flow::kUiNoTitleVarDescFl);
+            ui_var->title_to_label_fl = cwIsFlag(var->varDesc->flags,flow::kUiTitleToLabelVarDescFl);
             ui_var->vid               = var->vid;
             ui_var->ch_cnt            = var_channel_count( net.procA[i], var->label, var->label_sfx_id );
             ui_var->ch_idx            = var->chIdx;
@@ -3816,6 +3827,21 @@ namespace cw
 
             var->ui_var = ui_var;
           }
+        }
+
+        // parse the proc instance UI stanza - this must follow the creation of the ui_var records because it may update them.
+        if((rc = _proc_parse_ui_cfg(ui_proc )) != kOkRC )
+        {
+          goto errLabel;
+        }
+
+        // These conditions must follow the 'ui' stanza because it may not enable these variables.
+        for(unsigned j=0; j<ui_proc->varN; ++j)
+        {
+          ui_var_t* ui_var = ui_proc->varA + j;
+
+          if( ui_var->has_source_fl || cwIsFlag(ui_var->desc_flags,flow::kInitVarDescFl) || cwIsFlag(ui_var->desc_flags,flow::kReadOnlyVarDescFl) )
+            ui_var->disable_fl = true;
         }
 
         if( net.procA[i]->internal_net != nullptr )

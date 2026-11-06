@@ -140,9 +140,9 @@ namespace cw
       // in var_destroy().
       void* user_arg;  
 
-      const char* title;             // UI override title from proc inst 'ui' cfg
-      const char* btn_title;         // btn title from var instance ui:{}
-      const char* add_class;         // additional DOM class name for this var set from var instance ui:{}
+      char*       title;             // UI title (var instance ui:{}, then var_set_ui_title(), then the var label). Owned by this record.
+      char*       btn_title;         // btn title from var instance ui:{}. Owned by this record.
+      char*       add_class;         // additional DOM class name for this var set from var instance ui:{}. Owned by this record.
       bool        disable_fl;        // true if this ui var is disabled
       bool        hide_fl;           // true if this ui var is hidden
       bool        no_title_fl;       // true if this ui var does not display a title

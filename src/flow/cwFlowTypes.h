@@ -123,13 +123,7 @@ namespace cw
       unsigned             log_verbosity;   // Logging verbosity for this variable (See k???ValPrintVerb)
       struct variable_str* log_link;        // Link used by proc_t.logVarL;
       
-      char*                ui_title;     // class description UI overrides from the proc. inst 'ui' cfg. for this varaible
-      char*                ui_btn_title;
-      char*                ui_add_class;
-      bool                 ui_hide_fl;
-      bool                 ui_disable_fl;
-      bool                 ui_no_title_fl;
-      bool                 ui_title_to_label_fl;
+      char*                ui_title;     // Title set by the proc's _create() via var_set_ui_title(), since ui_var does not exist yet. See ui_var_t.title.
       
       ui_var_t*            ui_var;       // this variables UI description
       std::atomic<struct variable_str*> ui_var_link; // UI update var link based on flow_t ui_var_head;
