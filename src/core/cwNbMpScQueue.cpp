@@ -56,6 +56,8 @@ namespace cw
       node_t*              tail; // first-out
 
       node_t*              peek;
+
+      bool buf_full_fl;
       
     } nbmpscq_t;
 
@@ -292,6 +294,8 @@ cw::rc_t cw::nbmpscq::push( handle_t h, const void* blob, unsigned blobByteN )
         // 2. Set the old-head next pointer to the new node (thereby adding the new node to the list)
         prev->next.store(n,std::memory_order_release); // RELEASE 'next' to consumer            
 
+        p->buf_full_fl = false;
+
         break;
       }
     }
@@ -303,10 +307,15 @@ cw::rc_t cw::nbmpscq::push( handle_t h, const void* blob, unsigned blobByteN )
     // TODO: continue to iterate through the blocks waiting for the consumer
     // to make more space available.
     // _block_report(p);
-
-    rc = kBufTooSmallRC;    
-    // Report errors via stderr to prevent recursive crash due to queue use in the websocket UI output routine.
-    fprintf(stderr,"NbMpScQueue overflow. Increase 'queueBlkCnt' and/or 'queueBlkByteCnt'");
+    
+    rc = kBufTooSmallRC;
+    if( !p->buf_full_fl )
+    {
+      // Report errors via stderr to prevent recursive crash due to queue use in the websocket UI output routine.
+      fprintf(stderr,"\nNbMpScQueue overflow. Data was lost. Increase 'queueBlkCnt' and/or 'queueBlkByteCnt' line:%i %s\n",__LINE__,__FILE__);
+    }
+    
+    p->buf_full_fl = true;
     
   }
   
