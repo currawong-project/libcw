@@ -771,7 +771,9 @@ cw::rc_t cw::websock::send(handle_t h,  unsigned protocolId, unsigned sessionId,
   // put the outgoing msgs on the queue 
   if((rc = nbmpscq::push(p->_qH,mem,dataByteN)) != kOkRC )
   {
-    rc = cwLogError(rc,"Websock queue push failed.");
+    // don't report this error via log because the outgoing queue is probably full 
+    fprintf(stderr,"\nWebsock push failed in line:%i %s'\n",__LINE__,__FILE__);
+    
     goto errLabel;
   }
 
