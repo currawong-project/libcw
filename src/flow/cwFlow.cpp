@@ -1163,6 +1163,7 @@ cw::rc_t cw::flow::initialize( handle_t h,
   if((rc = create_net_ui_desc(p)) != kOkRC )
   {
     rc = cwLogError(rc,"UI description formation failed.");
+    network_destroy(p->net);
     goto errLabel;
   }
   

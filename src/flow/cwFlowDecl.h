@@ -160,18 +160,27 @@ namespace cw
     {
       const struct ui_net_str* ui_net;
 
-      struct proc_str* proc;
+      struct proc_str* proc;      // proc instance associated with this ui_proc
       
-      const ui_proc_desc_t* desc; 
+      const ui_proc_desc_t* desc; // 
       const object_t*       cfg;  // complete proc inst. cfg
       
-      const char* label;        // flow::proc_t::label
-      unsigned    label_sfx_id; // 
+      const char* label;          // flow::proc_t::label
+      unsigned    label_sfx_id;   //  
       
-      ui_var_t*   varA;       // varA[varN] 
-      unsigned    varN;       //
+      ui_var_t*   varA;           // varA[varN] 
+      unsigned    varN;           //
 
       struct ui_net_str* internal_net;
+
+      unsigned     ui_uuid;          // UI uuid associated with the proc UI (set by the UI layer when the proc's UI is created, and is kInvalidId until then)
+      char*        ui_title;         // custom UI title for this instance
+      char*        ui_template;      // overrides the class desc ui_template
+      char*        ui_list_name;     // overrides the class desc ui_list_name
+      char*        ui_add_class;     // additional UI class label which is added to the desc class label.
+      char*        ui_parent_label;  // UI parent container name used to assign this proc to a specific container
+      unsigned     ui_parent_sfx_id; // label suffix id that accompanies 'ui_parent_label'.
+
       
     } ui_proc_t;
 

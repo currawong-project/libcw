@@ -152,7 +152,12 @@ namespace cw
           _destroy_ui_net(iun);
           iun = iun0;
         }
-          
+
+        mem::release(ui_net->procA[i].ui_title);
+        mem::release(ui_net->procA[i].ui_template);
+        mem::release(ui_net->procA[i].ui_list_name);
+        mem::release(ui_net->procA[i].ui_add_class);
+        mem::release(ui_net->procA[i].ui_parent_label);        
         mem::release(ui_net->procA[i].varA);
 
       }
@@ -1957,217 +1962,6 @@ namespace cw
       return rcSelect(rc,rc1);
     }
 
-    rc_t _proc_parse_ui_var_list_cfg( proc_t* proc, const object_t* varL_cfg )
-    {
-      rc_t            rc         = kOkRC;
-      const object_t* var_ui_cfg = nullptr;
-      
-      if( !varL_cfg->is_dict() )
-      {
-        rc = proc_error(proc,kSyntaxErrorRC,"The 'ui' cfg must be a list.");
-        goto errLabel;
-      }
-
-      while((var_ui_cfg = varL_cfg->next_child_ele(var_ui_cfg)) != nullptr )
-      {
-        const char* var_label;
-        const object_t* var_recd = nullptr;
-        
-        unsigned        sfx_id = kBaseSfxId;
-        unsigned        ch_idx = kAnyChIdx;
-        const char*     title  = nullptr;
-        const char*     btn_title = nullptr;
-        const char*     add_class = nullptr;
-        const object_t* flagsL = nullptr;
-        variable_t*     var = nullptr;
-        
-        if((var_label = var_ui_cfg->pair_label()) == nullptr )
-        {
-          rc = proc_error(proc,rc,"An error occurred while accessing a 'ui' variable label.");
-          goto errLabel;                    
-        }
-
-        if((var_recd = var_ui_cfg->pair_value()) == nullptr )
-        {
-          rc = proc_error(proc,rc,"An error occurred while accessing 'ui' variable record for '%s'",cwStringNullGuard(var_label));
-          goto errLabel;                    
-        }
-
-        if((rc = var_recd->readv( "sfx_id", kOptFl, sfx_id,
-                                  "ch_idx",    kOptFl, ch_idx,
-                                  "title",     kOptFl, title,
-                                  "btn_title", kOptFl, btn_title,
-                                  "add_class", kOptFl, add_class,
-                                  "flags",     kOptFl, flagsL )) != kOkRC )
-        {
-          rc = proc_error(proc,rc,"An error occurred while parsing the 'ui' variable record for '%s'",cwStringNullGuard(var_label));
-          goto errLabel;          
-        }
-
-        if((rc = var_find(proc, var_label, sfx_id, ch_idx, var )) != kOkRC )
-        {
-          rc = proc_error(proc,rc,"The variable '%s:%i' ch:%i referenced in the 'ui' cfg. could not be found.",cwStringNullGuard(var_label),sfx_id,ch_idx);
-          goto errLabel;
-        }
-
-        if( title != nullptr )
-        {
-          var->ui_title = mem::duplStr(title);
-        }
-
-        if( btn_title != nullptr )
-        {
-          var->ui_btn_title = mem::duplStr(btn_title);
-        }
-
-        if( add_class != nullptr )
-        {
-          var->ui_add_class = mem::duplStr(add_class);
-        }
-
-
-        if( flagsL != nullptr )
-        {
-          const object_t* flag = nullptr;
-          while((flag = flagsL->next_child_ele(flag)) != nullptr)
-          {
-            enum { kHideId, kShowId, kEnableId, kDisableId, kNoTitleId, kTitleToLabelId };
-            idLabelPair_t flagA[] = { {kHideId,"hide"},
-                                      {kShowId,"show"},
-                                      {kEnableId,"enable"},
-                                      {kDisableId,"disable"},
-                                      {kNoTitleId,"no_title"},
-                                      {kTitleToLabelId,"title_to_label"},
-                                      {kInvalidId,nullptr} };
-            
-            const char* flag_str = nullptr;
-            if( flag->value(flag_str ) != kOkRC )
-            {
-              rc = proc_error(proc,kSyntaxErrorRC,"A 'ui' flag value could not be parsed.");
-              goto errLabel;
-            }
-
-            switch( labelToId(flagA,flag_str, kInvalidId ) )
-            {
-              case kHideId:
-                var->ui_hide_fl = true;
-                break;
-                
-              case kShowId:
-                var->ui_hide_fl = false;
-                break;
-                
-              case kEnableId:
-                var->ui_disable_fl = false;
-                break;
-                
-              case kDisableId:
-                var->ui_disable_fl = true;
-                break;
-
-              case kNoTitleId:
-                var->ui_no_title_fl = true;
-                break;
-
-              case kTitleToLabelId:
-                var->ui_title_to_label_fl = true;
-                break;
-                
-              case kInvalidId:
-                rc = proc_error(proc,kSyntaxErrorRC,"The 'ui' flag attribute '%s' is not valid.",cwStringNullGuard(flag_str));
-                goto errLabel;
-            }
-            
-          }
-        }
-      }
-
-      
-      
-    errLabel:
-      if( rc != kOkRC )
-      {
-        rc = proc_error(proc,rc,"Parsing the 'ui' cfg. failed for the proc instance '%s:%i'.",cwStringNullGuard(proc->label),proc->label_sfx_id);
-      }
-
-      return rc;
-      
-    }
-
-    rc_t _proc_parse_ui_cfg(proc_t* proc, const proc_inst_parse_state_t& pstate)
-    {
-      rc_t rc = kOkRC;
-      bool ui_create_fl = false;
-      bool ui_title_fl  = true;
-      const char* ui_proc_title = nullptr;
-      const char* ui_template = nullptr;
-      const char* ui_list_name = nullptr;
-      const char* ui_add_class = nullptr;
-      const char* parent_name = nullptr;
-      unsigned    parent_sfx_id = kBaseSfxId;
-      
-      const object_t* varsL_cfg = nullptr;
-
-      if( pstate.ui_cfg == nullptr )
-        goto errLabel;
-
-      if( pstate.ui_cfg->is_dict() == false )
-      {
-        rc = proc_error(proc,kSyntaxErrorRC,"The UI cfg. record is not a dictionary.");
-        goto errLabel;
-      }
-
-      if( pstate.ui_cfg->find("create_fl") == nullptr )
-        ui_create_fl = proc->ctx->ui_create_fl;
-      
-      // parse the optional args
-      if((rc = pstate.ui_cfg->getv_opt("create_fl",  ui_create_fl,
-                                       "title_fl",ui_title_fl,
-                                       "title",ui_proc_title,
-                                       "ui_template",ui_template,
-                                       "ui_list_name",ui_list_name,
-                                       "add_class",ui_add_class,
-                                       "parent_name",parent_name,
-                                       "parent_sfx_id",parent_sfx_id,
-                                       "vars", varsL_cfg)) != kOkRC )
-      {
-        goto errLabel;        
-      }
-      
-      if( ui_create_fl )
-        proc->flags |= kUiCreateProcFl;
-      
-      if( ui_title_fl )
-        proc->flags |= kUiTitleProcFl;
-
-      if( ui_proc_title != nullptr )
-        proc->ui_title = mem::duplStr(ui_proc_title);
-
-      if( ui_template != nullptr )
-        proc->ui_template = mem::duplStr(ui_template);
-
-      if( ui_list_name != nullptr )
-        proc->ui_list_name = mem::duplStr(ui_list_name);
-
-      if( ui_add_class != nullptr )
-        proc->ui_add_class = mem::duplStr(ui_add_class);
-
-      if( parent_name != nullptr )
-      {
-        proc->ui_parent_label = mem::duplStr(parent_name);
-        proc->ui_parent_sfx_id = parent_sfx_id;
-      }
-      
-
-      if( varsL_cfg  != nullptr )
-        rc = _proc_parse_ui_var_list_cfg(proc,varsL_cfg);
-      
-    errLabel:
-      if( rc != kOkRC )
-        rc = proc_error(proc,kSyntaxErrorRC,"The proc instance cfg. '%s:%i' UI configuration parse failed.",pstate.proc_label,pstate.proc_label_sfx_id);
-
-      return rc;
-    }
     
     rc_t _proc_verify_required_record_fields( const proc_t* proc )
     {
@@ -2313,7 +2107,7 @@ namespace cw
                                                      "args",     kOptFl, arg_dict,
                                                      "in",       kOptFl, pstate.in_dict_cfg,
                                                      "out",      kOptFl, pstate.out_dict_cfg,
-                                                     "ui",       kOptFl, pstate.ui_cfg,
+                                                     "ui",       kOptFl, pstate.ui_cfg, // Required by readv(), which rejects unlisted fields. Parsed by _proc_parse_ui_cfg().
                                                      "preset",   kOptFl, pstate.preset_labels,
                                                      "presets",  kOptFl, pstate.presets_dict,
                                                      "network",  kOptFl, network,
@@ -2669,7 +2463,7 @@ namespace cw
       proc->class_desc    = class_desc;
       proc->net           = &net;
       proc->logLevel      = log::kInvalid_LogLevel;
-      proc->ui_uuid       = kInvalidId;
+
 
       TRACE_REG(proc->label,proc->label_sfx_id,proc->trace_id);
 
@@ -2783,11 +2577,6 @@ namespace cw
       if((rc = _proc_do_pre_runtime_variable_notification( proc )) != kOkRC )
         goto errLabel;
 
-
-      // parse the proc UI cfg record
-      if(pstate.ui_cfg != nullptr )
-        if((rc = _proc_parse_ui_cfg(proc,pstate)) != kOkRC )
-          goto errLabel;
 
       // validate the proc's state.
       if((rc = proc_validate(proc)) != kOkRC )
@@ -3021,11 +2810,11 @@ namespace cw
     }
 
     rc_t _network_preset_get_preset_cfg_dict(  network_t&       net,
-                                           const char*      network_preset_label,
-                                           const char*      proc_label,
-                                           unsigned         proc_sfx_id,
-                                           const char*      class_preset_label,
-                                           const object_t*& class_preset_cfg_ref )
+                                               const char*      network_preset_label,
+                                               const char*      proc_label,
+                                               unsigned         proc_sfx_id,
+                                               const char*      class_preset_label,
+                                               const object_t*& class_preset_cfg_ref )
     {
       rc_t                  rc                 = kOkRC;
       const class_preset_t* class_preset       = nullptr;
@@ -3741,8 +3530,231 @@ namespace cw
       return rc;
     }
 
-    rc_t _form_net_ui_desc( const flow_t* p, network_t& net, ui_net_t*& ui_net_ref );
 
+
+    rc_t _proc_parse_ui_var_list_cfg( proc_t* proc, const object_t* varL_cfg )
+    {
+      rc_t            rc         = kOkRC;
+      const object_t* var_ui_cfg = nullptr;
+      
+      if( !varL_cfg->is_dict() )
+      {
+        rc = proc_error(proc,kSyntaxErrorRC,"The 'ui' cfg must be a list.");
+        goto errLabel;
+      }
+
+      while((var_ui_cfg = varL_cfg->next_child_ele(var_ui_cfg)) != nullptr )
+      {
+        const char*     var_label = nullptr;
+        const object_t* var_recd  = nullptr;        
+        unsigned        sfx_id    = kBaseSfxId;
+        unsigned        ch_idx    = kAnyChIdx;
+        const char*     title     = nullptr;
+        const char*     btn_title = nullptr;
+        const char*     add_class = nullptr;
+        const object_t* flagsL    = nullptr;
+        variable_t*     var       = nullptr;
+        
+        if((var_label = var_ui_cfg->pair_label()) == nullptr )
+        {
+          rc = proc_error(proc,rc,"An error occurred while accessing a 'ui' variable label.");
+          goto errLabel;                    
+        }
+
+        if((var_recd = var_ui_cfg->pair_value()) == nullptr )
+        {
+          rc = proc_error(proc,rc,"An error occurred while accessing 'ui' variable record for '%s'",cwStringNullGuard(var_label));
+          goto errLabel;                    
+        }
+
+        if((rc = var_recd->readv( "sfx_id", kOptFl, sfx_id,
+                                  "ch_idx",    kOptFl, ch_idx,
+                                  "title",     kOptFl, title,
+                                  "btn_title", kOptFl, btn_title,
+                                  "add_class", kOptFl, add_class,
+                                  "flags",     kOptFl, flagsL )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"An error occurred while parsing the 'ui' variable record for '%s'",cwStringNullGuard(var_label));
+          goto errLabel;          
+        }
+
+        if((rc = var_find(proc, var_label, sfx_id, ch_idx, var )) != kOkRC )
+        {
+          rc = proc_error(proc,rc,"The variable '%s:%i' ch:%i referenced in the 'ui' cfg. could not be found.",cwStringNullGuard(var_label),sfx_id,ch_idx);
+          goto errLabel;
+        }
+
+        if( title != nullptr )
+        {
+          var->ui_title = mem::duplStr(title);
+        }
+
+        if( btn_title != nullptr )
+        {
+          var->ui_btn_title = mem::duplStr(btn_title);
+        }
+
+        if( add_class != nullptr )
+        {
+          var->ui_add_class = mem::duplStr(add_class);
+        }
+
+
+        if( flagsL != nullptr )
+        {
+          const object_t* flag = nullptr;
+          while((flag = flagsL->next_child_ele(flag)) != nullptr)
+          {
+            enum { kHideId, kShowId, kEnableId, kDisableId, kNoTitleId, kTitleToLabelId };
+            idLabelPair_t flagA[] = { {kHideId,"hide"},
+                                      {kShowId,"show"},
+                                      {kEnableId,"enable"},
+                                      {kDisableId,"disable"},
+                                      {kNoTitleId,"no_title"},
+                                      {kTitleToLabelId,"title_to_label"},
+                                      {kInvalidId,nullptr} };
+            
+            const char* flag_str = nullptr;
+            if( flag->value(flag_str ) != kOkRC )
+            {
+              rc = proc_error(proc,kSyntaxErrorRC,"A 'ui' flag value could not be parsed.");
+              goto errLabel;
+            }
+
+            switch( labelToId(flagA,flag_str, kInvalidId ) )
+            {
+              case kHideId:
+                var->ui_hide_fl = true;
+                break;
+                
+              case kShowId:
+                var->ui_hide_fl = false;
+                break;
+                
+              case kEnableId:
+                var->ui_disable_fl = false;
+                break;
+                
+              case kDisableId:
+                var->ui_disable_fl = true;
+                break;
+
+              case kNoTitleId:
+                var->ui_no_title_fl = true;
+                break;
+
+              case kTitleToLabelId:
+                var->ui_title_to_label_fl = true;
+                break;
+                
+              case kInvalidId:
+                rc = proc_error(proc,kSyntaxErrorRC,"The 'ui' flag attribute '%s' is not valid.",cwStringNullGuard(flag_str));
+                goto errLabel;
+            }
+            
+          }
+        }
+      }
+
+      
+      
+    errLabel:
+      if( rc != kOkRC )
+      {
+        rc = proc_error(proc,rc,"Parsing the 'ui' cfg. failed for the proc instance '%s:%i'.",cwStringNullGuard(proc->label),proc->label_sfx_id);
+      }
+
+      return rc;
+      
+    }
+
+    rc_t _proc_parse_ui_cfg(ui_proc_t* ui_proc )
+    {
+      rc_t            rc            = kOkRC;
+      const object_t* ui_cfg        = nullptr;
+      bool            ui_create_fl  = false;
+      bool            ui_title_fl   = true;
+      const char*     ui_proc_title = nullptr;
+      const char*     ui_template   = nullptr;
+      const char*     ui_list_name  = nullptr;
+      const char*     ui_add_class  = nullptr;
+      const char*     parent_name   = nullptr;
+      unsigned        parent_sfx_id = kBaseSfxId;      
+      const object_t* varsL_cfg     = nullptr;
+
+      if( ui_proc->cfg == nullptr )
+        return rc;
+      
+      if((rc = ui_proc->cfg->getv_opt("ui",ui_cfg)) != kOkRC )
+      {
+        rc = proc_error(ui_proc->proc,kSyntaxErrorRC,"Attempt to access the 'ui' stanza failed.");
+        goto errLabel;
+      }
+      
+
+      if( ui_cfg == nullptr )
+        goto errLabel;
+
+      if( ui_cfg->is_dict() == false )
+      {
+        rc = proc_error(ui_proc->proc,kSyntaxErrorRC,"The UI cfg. record is not a dictionary.");
+        goto errLabel;
+      }
+
+      if( ui_cfg->find("create_fl") == nullptr )
+        ui_create_fl = ui_proc->proc->ctx->ui_create_fl;
+      
+      // parse the optional args
+      if((rc = ui_cfg->getv_opt("create_fl",  ui_create_fl,
+                                "title_fl",ui_title_fl,
+                                "title",ui_proc_title,
+                                "ui_template",ui_template,
+                                "ui_list_name",ui_list_name,
+                                "add_class",ui_add_class,
+                                "parent_name",parent_name,
+                                "parent_sfx_id",parent_sfx_id,
+                                "vars", varsL_cfg)) != kOkRC )
+      {
+        goto errLabel;        
+      }
+      
+      if( ui_create_fl )
+        ui_proc->proc->flags |= kUiCreateProcFl;
+      
+      if( ui_title_fl )
+        ui_proc->proc->flags |= kUiTitleProcFl;
+
+      if( ui_proc_title != nullptr )
+        ui_proc->ui_title = mem::duplStr(ui_proc_title);
+
+      if( ui_template != nullptr )
+        ui_proc->ui_template = mem::duplStr(ui_template);
+
+      if( ui_list_name != nullptr )
+        ui_proc->ui_list_name = mem::duplStr(ui_list_name);
+
+      if( ui_add_class != nullptr )
+        ui_proc->ui_add_class = mem::duplStr(ui_add_class);
+
+      if( parent_name != nullptr )
+      {
+        ui_proc->ui_parent_label = mem::duplStr(parent_name);
+        ui_proc->ui_parent_sfx_id = parent_sfx_id;
+      }
+      
+
+      if( varsL_cfg  != nullptr )
+        rc = _proc_parse_ui_var_list_cfg(ui_proc->proc,varsL_cfg);
+      
+    errLabel:
+      if( rc != kOkRC )
+        rc = proc_error(ui_proc->proc,kSyntaxErrorRC,"The proc instance cfg. UI configuration parse failed.");
+
+      return rc;
+    }
+    
+    
+    rc_t _form_net_ui_desc( const flow_t* p, network_t& net, ui_net_t*& ui_net_ref );
     
     rc_t  _fill_net_ui_proc_and_preset_arrays( const flow_t* p, network_t& net, ui_net_t*& ui_net_ref )
     {
@@ -3753,7 +3765,7 @@ namespace cw
       
       for(unsigned i=0; i<ui_net_ref->procN; ++i)
       {
-        ui_proc_t* ui_proc = ui_net_ref->procA + i;
+        ui_proc_t* ui_proc    = ui_net_ref->procA + i;
         ui_proc->ui_net       = ui_net_ref;
         ui_proc->label        = net.procA[i]->label;
         ui_proc->label_sfx_id = net.procA[i]->label_sfx_id;
@@ -3761,11 +3773,17 @@ namespace cw
         ui_proc->cfg          = net.procA[i]->proc_cfg;
         ui_proc->varN         = 0;
         ui_proc->varA         = mem::allocZ<ui_var_t>(net.procA[i]->varMapN);
+        ui_proc->ui_uuid      = kInvalidId;
 
-        proc_t* proc_ptr = proc_find(net,ui_proc->label,ui_proc->label_sfx_id );
-        assert(proc_ptr != nullptr );
-        ui_proc->proc = proc_ptr;
-        
+        // set mutual pointers between the engine and UI components of the proc instance
+        ui_proc->proc         = net.procA[i];
+        net.procA[i]->ui_proc = ui_proc;
+
+        // parse the proc instance UI stanza
+        if((rc = _proc_parse_ui_cfg(ui_proc )) != kOkRC )
+        {
+          goto errLabel;
+        }
         
         for(unsigned j=0; j<net.procA[i]->varMapN; ++j)
         {
@@ -3833,7 +3851,8 @@ namespace cw
       ui_net_ref->ui_create_fl = p->ui_create_fl;
 
       if( net.poly_link != nullptr )
-        _form_net_ui_desc(p,*net.poly_link,ui_net_ref->poly_link);
+        if((rc = _form_net_ui_desc(p,*net.poly_link,ui_net_ref->poly_link)) != kOkRC )
+          goto errLabel;
 
     errLabel:
       return rc;
