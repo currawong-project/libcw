@@ -734,9 +734,20 @@ UI
 Proc Desc.
 ```
 ui: {
-  add_class:<>  # Assign an additional class name to this proc.
+  add_class:<>     # Assign an additional class name to this proc.
+  ui_template:<>   # ui.cfg template name (defaults to 'proc')
+  ui_list_name:<>  # Name of the template element that holds child procs. Setting this makes the proc a UI container.
 }
 ```
+A proc instance `ui:{}` may override `ui_template` and `ui_list_name`.
+
+`add_class` is applied to the proc's variable list panel, or, for a container, to its `ui_list_name` element.
+A proc instance `add_class` is applied in addition to the proc description `add_class`.
+
+A container template must either include a label element named `procInstLabel`,
+or each instance of the container must set `title_fl:false`.
+Otherwise the UI creation fails because the title label cannot be found.
+
 Proc Var Desc:
 ```
 flags:[ no_ui,             # do not create a UI for this var
@@ -763,6 +774,11 @@ Proc and Var Instance:
 ui: { create_fl: true|false,  # Create a UI for this proc.
       title_fl: true|false,   # Show a title for this proc
 	  title: <>,              # Override the default title
+	  ui_template:<>,         # ui.cfg template name (defaults to 'proc')
+	  ui_list_name:<>,        # template proc list name
+	  add_class:<>,           # Additional class name for this proc
+	  parent_name:<>          # Parent container name
+	  parent_sfx_id:<>        # Parent label sfx id
       vars:{
 	    <var_label>:{ 'sfx_id':<> 'ch_idx':<>, 'title':<>, 'btn_title':<>, 'add_class':<>, 
 		              'flags':[hide,show,enable,disable,no_title,title_to_label] 
@@ -770,6 +786,57 @@ ui: { create_fl: true|false,  # Create a UI for this proc.
 
     }
 ```
+
+UI Implementation
+-----------------
+
+### UI Creation:
+See: cwFlow.cpp `initialize()` -> cwFlowNet.cpp `create_net_ui_desc()`  : Forms the UI description
+See: main.cpp `_load_pgm_thread_func() -> program_ui_net();` cawUi.cpp `create()`.
+See: cawUi.cpp calls to io::uiCreateXXXX() - these calls in turn make calls to the websock library which forwards them to connected clients (web-browsers).
+  
+### Proc Instances -> Browser  
+The proc instances may send changes to the UI as follows:
+See: `var_send_to_ui()` adds then adds itself (variable_t) to `flow->ui_var_head`.
+See: cwFlow.cpp: `exec_cycle()` periodically calls cwFlow.cpp `_make_flow_to_ui_callback()` which calls back to the `ui_callback()`
+     on each variable in the list. `ui_callback()` is a function which was set in the original call to flow::create().
+	 `caw` sets this callback to cwIoFlowCtl.cpp `_ui_callback()` which in turn calls `io::uiSendValue()` or attribute change
+	 functions like: `io::uiSetEnable()` and `io::uiSetVisible()`.
+
+### Browser -> Proc Instances
+The UI may send changes to the proc instances as follows:
+See: Incoming websock messages from the UI are sent to the main application IO callback function. See: `main.cpp:_io_callback()` as `kUiTId` messages.
+     these messages are forwarded to `main.cpp:_ui_callback()`.
+See: Incoming value  updates from the UI are handled by `main.cpp:_ui_value_callback()` and forwarded to `cwIoFlowCtl.cpp:set_variable_value()` which
+	 in turn calls `var_set()`
+See: Incoming 'echo' requests (requests by the UI to get widget values) are handled by `main.cpp:_ui_echo_callback()` and serviced via calls
+	 to `cwIoFlowCtl.cpp:get_variable_value()` which in turn calls `var_get()`.
+
+
+
+Notes on UI id's:
+-----------------
+1. The appId, when set via an enum, is primarily for identifying a UI element in a callback switch statement.
+There is no requirement that they be unique - although it may be useful that they are guaranteed to be unique
+or warned when they are not. Their primary use is to identify a UI element or class of UI
+elements in a callback switch statement. Note that the callback also contains the uuId of the element
+which can then be used to send information back, or change the state of, the specific element which 
+generated the callback. In this case there is never a need to do a appId->uuId lookup because the
+callback contains both items.  
+
+2. UUid's are the preferred way to interact from the app to the UI because they are unique
+and the fastest way to lookup the object that represents the element.
+
+3. The 'blob' is useful for storing application information that is associated with an UI element.
+Using the 'blob' can avoid having to maintain a data structure which parallels the internal
+UI data structure for application related data.  The 'blob' can be accessed efficiently via the uuId.
+
+4. The most labor intensive GUI related accesses are changing the state of a UI element outside
+of a callback from that GUI element.  In this case it may be advantageous to store UUID's of elements
+which affect one anothers state within each others blobs.  Alternatively use 
+uiElementChildCout() and uiElementChildIndexToUuid() or uiElementChildAppIdToUuid() to 
+iterate child elements given a parent element uuid.
+
 
 Record Data Type
 ------------------
@@ -1477,3 +1544,4 @@ transmit them to connected processes.
 
     apt install libasound2-dev
     
+
