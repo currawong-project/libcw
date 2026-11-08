@@ -164,6 +164,7 @@ namespace cw
           mem::release(ui_net->procA[i].varA[j].title);
           mem::release(ui_net->procA[i].varA[j].btn_title);
           mem::release(ui_net->procA[i].varA[j].add_class);
+          mem::release(ui_net->procA[i].varA[j].msgIdA);
         }
 
         mem::release(ui_net->procA[i].varA);
@@ -3822,6 +3823,8 @@ namespace cw
             ui_var->desc_flags        = var->varDesc->flags;
             ui_var->ui_cfg            = var->varDesc->ui_cfg;
             ui_var->user_arg          = nullptr;
+            ui_var->msgIdN            = p->uiUpdateCycleCount + 1;
+            ui_var->msgIdA            = mem::allocZ<unsigned>(ui_var->msgIdN);
 
             var->ui_var = ui_var;
           }

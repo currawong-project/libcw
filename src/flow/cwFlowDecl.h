@@ -112,9 +112,6 @@ namespace cw
       kListClearUiVarMsgId,
       kListReloadUiVarMsgId,
     };
-    enum {
-      kMsgIdN = 8
-    };
     
     typedef struct ui_var_str
     {
@@ -149,8 +146,11 @@ namespace cw
       bool        title_to_label_fl; // true if this ui var button should display is's title inside the button
 
 
-      unsigned msgIdA[ kMsgIdN ];
-      unsigned msgId_idx;
+      // Queue of messages waiting to be sent to the UI.  This is emptied on every UI update.
+      // It is allocated with one slot per execution cycle in the UI update period.
+      unsigned* msgIdA;    // msgIdA[ msgIdN ]
+      unsigned  msgIdN;
+      unsigned  msgId_idx;
       
     } ui_var_t;
 
