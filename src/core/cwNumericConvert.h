@@ -109,15 +109,19 @@ namespace cw
       if (endptr == s || *endptr != '\0')
       {
         rc = cwLogError(kOpFailRC,"String to number conversion failed on '%s': invalid format.", cwStringNullGuard(s));
+        goto errLabel;
       }
-      else
+      
+      // strtod() sets ERANGE on underflow too, but then returns a usable value (zero or a
+      // denormal). Overflow returns +/-inf so it, along with 'nan' and 'inf', is caught here.
+      if(  !std::isfinite(valueRef) )
       {
-        if (errno == ERANGE)
-        {
-          rc = cwLogError(kOpFailRC,"String to number conversion failed on '%s': out of range.", cwStringNullGuard(s));
-        }
+        rc = cwLogError(kOpFailRC,"String to number conversion failed on '%s': %s.", cwStringNullGuard(s), errno==ERANGE ? "out of range" : "not a finite number");
+        goto errLabel;
       }
+      
     }
+  errLabel:
     return rc;
   }
 
@@ -129,6 +133,10 @@ namespace cw
     rc_t rc;
     if((rc = string_to_number<double>(s,d)) != kOkRC )
       return rc;
+
+    // numeric_convert() only checks the upper limit, so a large negative value would overflow to -inf.
+    if( d < -std::numeric_limits<float>::max() )
+      return cwLogError(kOpFailRC,"String to number conversion failed on '%s': out of range.", cwStringNullGuard(s));
 
     return numeric_convert(d,valueRef);
   }
