@@ -70,6 +70,12 @@ namespace cw
     } appIdMapRecd_t;
 
     
+    typedef struct state_msg_str
+    {
+      char*                 msg;
+      struct state_msg_str* link;
+    } state_msg_t;
+
     typedef struct ele_str
     {
       struct ele_str* phys_parent;    // pointer to actual parent ele - or nullptr if this ele is the root ui ele
@@ -82,6 +88,8 @@ namespace cw
       object_t*       attr;      // attribute dictionary object containing key:value pairs
       void*           blob;      // blob[ blobByteN ] user data
       unsigned        blobByteN; //
+      char*           titleMsg;   // last 'title' msg, re-sent on replay
+      state_msg_t*    statusMsgL; // 'attach_status_state' msgs, re-sent on replay
 
       bool            destroyFl;  // used by the deleteElement() algorithm
     } ele_t;
@@ -277,6 +285,16 @@ namespace cw
 
       mem::release(e->eleName);
       mem::release(e->blob);
+      mem::release(e->titleMsg);
+
+      while( e->statusMsgL != nullptr )
+      {
+        state_msg_t* m = e->statusMsgL->link;
+        mem::release(e->statusMsgL->msg);
+        mem::release(e->statusMsgL);
+        e->statusMsgL = m;
+      }
+
       mem::release(e);      
     }
     
@@ -654,6 +672,80 @@ namespace cw
     }
     
 
+    // Return true if the space separated list 'list' contains the class 'name'.
+    bool _class_list_has( const char* list, const char* name )
+    {
+      unsigned nameN = textLength(name);
+
+      for(const char* s=list; s!=nullptr && *s!=0; )
+      {
+        while( *s==' ' ) ++s;
+        const char* e = s;
+        while( *e!=0 && *e!=' ' ) ++e;
+
+        if( (unsigned)(e-s)==nameN && strncmp(s,name,nameN)==0 )
+          return true;
+
+        s = e;
+      }
+      return false;
+    }
+
+    // Append one class name to the space separated class list attribute 'label'.
+    // A value containing several classes is stored correctly, but is not compared against the existing names.
+    void _class_attr_append( ele_t* e, const char* label, const char* name )
+    {
+      const char* cur = nullptr;
+
+      if( _has_attribute(e,label) )
+        _get_attribute_value(e,label,cur);
+
+      if( _class_list_has(cur,name) )
+        return;
+
+      unsigned n = textLength(cur) + textLength(name) + 2;
+      char*    s = mem::allocZ<char>(n);
+
+      snprintf(s,n,"%s%s%s",cur==nullptr ? "" : cur, textLength(cur)==0 ? "" : " ", name);
+      _set_or_create_attribute<const char*>(e,label,s);
+      mem::release(s);
+    }
+
+    // Remove one class name from the space separated class list attribute 'label'.
+    void _class_attr_remove( ele_t* e, const char* label, const char* name )
+    {
+      const char* cur = nullptr;
+
+      if( !_has_attribute(e,label) || _get_attribute_value(e,label,cur) != kOkRC || cur == nullptr )
+        return;
+
+      unsigned nameN = textLength(name);
+      char*    s     = mem::allocZ<char>(textLength(cur)+1);
+      char*    d     = s;
+
+      for(const char* c=cur; *c!=0; )
+      {
+        while( *c==' ' ) ++c;
+        const char* t = c;
+        while( *c!=0 && *c!=' ' ) ++c;
+
+        unsigned n = c-t;
+        if( n>0 && !(n==nameN && strncmp(t,name,n)==0) )
+        {
+          if( d != s ) *d++ = ' ';
+          strncpy(d,t,n);
+          d += n;
+        }
+      }
+
+      if( d == s )
+        _remove_attribute(e,label);
+      else
+        _set_or_create_attribute<const char*>(e,label,s);
+
+      mem::release(s);
+    }
+
     // Convert the ele_t 'attr' object into the attributes for a JSON message.
     unsigned _format_attributes( char* buf, unsigned n, unsigned i, ele_t* ele )
     {
@@ -705,12 +797,26 @@ namespace cw
       
     }
 
+    // Re-send the state which is not stored in ele->attr. This must follow the element's 'create' message.
+    rc_t _transmitEleStateMsgs( ui_t* p, unsigned wsSessId, ele_t* ele )
+    {
+      rc_t rc = kOkRC;
+
+      if( ele->titleMsg != nullptr )
+        rc = _websockSend(p,wsSessId,ele->titleMsg);
+
+      for(state_msg_t* m=ele->statusMsgL; m!=nullptr && rc==kOkRC; m=m->link)
+        rc = _websockSend(p,wsSessId,m->msg);
+
+      return rc;
+    }
+
     rc_t _transmitTree( ui_t* p, unsigned wsSessId, ele_t* ele )
     {
       rc_t rc;
 
       // transmit the parent (unelss 'ele' is the root
-      if(ele->uuId == kRootUuId || (rc = _transmitOneEle(p,wsSessId,ele)) == kOkRC )
+      if(ele->uuId == kRootUuId || ((rc = _transmitOneEle(p,wsSessId,ele)) == kOkRC && (rc = _transmitEleStateMsgs(p,wsSessId,ele)) == kOkRC) )
       {
         // Transmit each of the children to the remote UI's.
         // Note that this requires going through all the nodes and picking out the ones whose
@@ -915,6 +1021,12 @@ namespace cw
             child_idx += 1;
           else
           {
+            // Replace the default attributes set by _createBaseEle() (e.g. 'enable').
+            // If both were kept then find() would update the first while the
+            // browser would use the last when this element is replayed.
+            if( _has_attribute(ele,pair_label) )
+              _remove_attribute(ele,pair_label);
+            
             child->unlink();
             ele->attr->append_child(child);
           }
@@ -1015,30 +1127,39 @@ namespace cw
 
 
     // value message format: 'value' <uuid> <value_data_type> ':' <value>
-    ele_t* _parse_value_msg( ui_t* p, value_t& valueRef, const char* msg )
+    rc_t _parse_value_msg( ui_t* p, value_t& valueRef, const char* msg, ele_t*& ele_ref )
     {
-      rc_t     rc      = kOkRC;
-      char     argType    = 0;
-      ele_t*   ele     = nullptr;
-      unsigned eleUuId = kInvalidId;
+      rc_t        rc      = kOkRC;
+      char        argType = 0;
+      unsigned    eleUuId = kInvalidId;
+      const char* s       = nullptr;
       
       valueRef.tid   = kInvalidTId;
+      ele_ref        = nullptr;
       
       if( msg == nullptr )
       {
-        cwLogWarning("Empty 'value' message received from UI.");
-        return nullptr;
+        rc = cwLogError(kInvalidArgRC,"Empty 'value' message received from UI.");
+        goto errLabel;
       }
 
       // locate the colon prior to the value
-      const char* s = strchr(msg,':');
+      s = strchr(msg,':');
             
       if( s == nullptr || sscanf(msg, "value %i %c ",&eleUuId,&argType) != 2 )
       {
-        cwLogError(kSyntaxErrorRC,"Invalid 'value' message from UI: '%s'.", msg );
+        rc = cwLogError(kSyntaxErrorRC,"Invalid 'value' message from UI: '%s'.", msg );
         goto errLabel;
       }
       
+      // locate the element record
+      // This precedes parsing the value so that the caller can resync the element when the value is rejected.
+      if((ele_ref = _uuIdToEle( p, eleUuId )) == nullptr )
+      {
+        rc = cwLogError(kInvalidIdRC,"UI message elment not found.");
+        goto errLabel;
+      }
+
       // advance s past the colon
       s += 1;
 
@@ -1071,7 +1192,7 @@ namespace cw
           break;
 
         case 's':
-          if((valueRef.u.s = nextNonWhiteChar(s)) != nullptr )
+          if((valueRef.u.s = nextNonWhiteCharEOS(s)) != nullptr )            
             valueRef.tid = kStringTId;
           break;
           
@@ -1080,16 +1201,9 @@ namespace cw
           goto errLabel;
       }
 
-      // locate the element record
-      if((ele = _uuIdToEle( p, eleUuId )) == nullptr )
-      {
-        cwLogError(kInvalidIdRC,"UI message elment not found.");
-        goto errLabel;
-      }
-      
     errLabel:
 
-      return ele;
+      return rc;
     }
 
     ele_t* _parse_corrupt_msg( ui_t* p, const char* msg )
@@ -1263,9 +1377,50 @@ namespace cw
       return rc;
     }
 
+    // Update the stored value of an element which was created with a 'value' attribute.
+    // This does not use _uuIdToEle() because this function must not add log messages to the send path.
+    void _update_value_attr( ui_t* p, unsigned uuId, const value_t& value )
+    {
+      object_t* v;
+
+      if( uuId >= p->eleN || p->eleA[uuId] == nullptr || (v = p->eleA[uuId]->attr->find("value")) == nullptr )
+        return;
+
+      switch( value.tid )
+      {
+        case kBoolTId:   v->set_value(value.u.b); break;
+        case kIntTId:    v->set_value(value.u.i); break;
+        case kUIntTId:   v->set_value(value.u.u); break;
+        case kFloatTId:  v->set_value(value.u.f); break;
+        case kDoubleTId: v->set_value(value.u.d); break;
+        case kStringTId: v->set_value(value.u.s); break;
+        default: break;
+      }
+    }
+
     rc_t _sendValue( ui_t* p, unsigned wsSessId, unsigned uuId, const value_t& value )
     {
       rc_t rc = kOkRC;
+
+      // NaN and inf cannot be represented in JSON prevent that 
+      switch( value.tid )
+      {
+        case kFloatTId:
+          if( !std::isfinite(value.u.f) )
+            return cwLogError(kInvalidArgRC,"The non-finite float value %f was not sent to the UI element uuid:%i.", (double)value.u.f, uuId);
+          break;
+          
+        case kDoubleTId:
+          if( !std::isfinite(value.u.d) )
+            return cwLogError(kInvalidArgRC,"The non-finite double value %f was not sent to the UI element uuid:%i.", value.u.d, uuId);
+          break;
+          
+        default:
+          break;
+      }
+
+      _update_value_attr(p,uuId,value);
+
       switch( value.tid )
       {
         case kBoolTId:
@@ -1273,19 +1428,19 @@ namespace cw
           break;
           
         case kIntTId:
-           rc = _sendValue<int>(p,wsSessId,uuId,"%i",value.u.i);
-           break;
+          rc = _sendValue<int>(p,wsSessId,uuId,"%i",value.u.i);
+          break;
 
         case kUIntTId:
-           rc = _sendValue<unsigned>(p,wsSessId,uuId,"%i",value.u.u);
+          rc = _sendValue<unsigned>(p,wsSessId,uuId,"%i",value.u.u);
           break;
           
         case kFloatTId:
-           rc = _sendValue<float>(p,wsSessId,uuId,"%f",value.u.f);
+          rc = _sendValue<float>(p,wsSessId,uuId,"%f",value.u.f);
           break;
           
         case kDoubleTId:
-           rc = _sendValue<double>(p,wsSessId,uuId,"%f",value.u.d);
+          rc = _sendValue<double>(p,wsSessId,uuId,"%f",value.u.d);
           break;
           
         case kStringTId:
@@ -1293,19 +1448,27 @@ namespace cw
           break;
           
         default:
-          assert(0);
+          rc = cwLogError(kInvalidArgRC,"An unknown UI type (%i) was encountered.",value.tid);
       }
 
       return rc;
     }
 
 
-    void _reflect_value_msg( ui_t* p, unsigned wsSessId, ele_t* ele, const value_t& value )
+    rc_t  _reflect_value_msg( ui_t* p, unsigned wsSessId, ele_t* ele, const value_t& value )
     {
+      rc_t rc = kOkRC;
+      
       // send a 'value' message to all sessions except 'wsSessId'.
       for(unsigned i=0; i<p->sessN; ++i)
         if( p->sessA[i] != wsSessId )
-          _sendValue(p,p->sessA[i],ele->uuId, value );
+          if((rc = _sendValue(p,p->sessA[i],ele->uuId, value )) != kOkRC )
+          {
+            goto errLabel;
+          }
+
+    errLabel:
+      return rc;
     }
 
 
@@ -1328,7 +1491,7 @@ namespace cw
     }
 
     template< typename T >
-    rc_t _setPropertyValue( handle_t h, const char* propertyStr, unsigned uuId, const T& value )
+    rc_t _setPropertyValue( handle_t h, const char* propertyStr, unsigned uuId, const T& value, bool storeAttrFl=true )
     {
       ui_t* p = _handleToPtr(h);
       rc_t rc = kOkRC;
@@ -1366,7 +1529,7 @@ namespace cw
         goto errLabel;
       }
       
-      if((rc = _set_or_create_attribute(ele,propertyStr,value)) != kOkRC )
+      if( storeAttrFl && (rc = _set_or_create_attribute(ele,propertyStr,value)) != kOkRC )
       {
         cwLogError(rc,"Property assignment failed.");
         goto errLabel;
@@ -1619,45 +1782,6 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* void_msg,
   const char* msg  = nullptr;
   value_t     value;
   
-  /*
-  const char* src_msg = (const char*)void_msg;
-  const char* msg = src_msg;
-
-  // if the incoming message is valid
-  if( msgByteN > 0 and src_msg != nullptr )
-  {
-    // if there is a partial msg in the recv buffer (recvBufIdx!=0)
-    // or the incoming message is a partial mesg - then buffer the message
-    // (Note: incoming messages that are not zero terminated are partial.")
-    if( p->recvBufIdx != 0 || src_msg[msgByteN-1] != 0 )
-    {
-      // verify the buffer is large enough to hold the msg
-      if(p->recvBufIdx + msgByteN > p->recvBufN )
-      {
-        rc = cwLogError(kOpFailRC,"The UI input buffer (%i) is too small.", p->recvBufN);
-        p->recvBufIdx = 0;                
-      }
-      else
-      {
-        // update it with the incoming text
-        strncpy( p->recvBuf + p->recvBufIdx, src_msg, msgByteN );
-        p->recvBufIdx += msgByteN;
-        msg = p->recvBuf;
-      }
-    }
-
-    // if the incoming message is not zero terminated then it was a partial
-    // message it was buffered and there is nothing else to do.
-    if( src_msg[msgByteN-1] != 0)
-      return rc;        
-  }
-
-
-  // the message is being processed so the buffer will end up empty
-  // (if it was being used)
-  p->recvBufIdx = 0;
-  */
-
   // buffer the incoming msg
   if((rc = _copy_msg_to_recv_buffer( p, void_msg, msgByteN )) != kOkRC )
     goto errLabel;
@@ -1682,21 +1806,28 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* void_msg,
         break;
                 
       case kValueOpId:
-        if((ele = _parse_value_msg(p, value, (const char*)msg )) == nullptr )
-          cwLogError(kOpFailRC,"UI 'value' message parse failed.");
+        if((rc = _parse_value_msg(p, value, (const char*)msg,ele )) != kOkRC )
+        {
+          rc = cwLogError(rc,"UI 'value' message parse failed.");
+
+          // The sender's control is now showing a value which the app never received.
+          // Ask the app to send the current value so that the control is restored.
+          if( ele != nullptr )
+            p->uiCbFunc( p->uiCbArg, wsSessId, kEchoOpId, ele->logical_parent->appId, ele->uuId, ele->appId, ele->chanId, nullptr );
+        }
         else
         {
           p->uiCbFunc( p->uiCbArg, wsSessId, opId, ele->logical_parent->appId, ele->uuId, ele->appId, ele->chanId, &value );
 
           // reflect the UI element value state to other wsSessions
-          _reflect_value_msg( p, wsSessId, ele, value );
+          rc = _reflect_value_msg( p, wsSessId, ele, value );
           
         }
         break;
 
       case kCorruptOpId:
         if((ele = _parse_corrupt_msg(p, (const char*)msg )) == nullptr )
-          cwLogError(kOpFailRC,"UI 'corrupt' message parse failed.");
+          rc = cwLogError(kOpFailRC,"UI 'corrupt' message parse failed.");
         else
           p->uiCbFunc( p->uiCbArg, wsSessId, opId, ele->logical_parent->appId, ele->uuId, ele->appId, ele->chanId, &value );                  
         break;
@@ -1704,7 +1835,7 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* void_msg,
 
       case kClickOpId:
         if((ele = _parse_click_msg(p, (const char*)msg )) == nullptr )
-          cwLogError(kOpFailRC,"UI 'click' message parse failed.");
+          rc = cwLogError(kOpFailRC,"UI 'click' message parse failed.");
         else
         {
           p->uiCbFunc( p->uiCbArg, wsSessId, opId, ele->logical_parent->appId, ele->uuId, ele->appId, ele->chanId, &value );
@@ -1713,7 +1844,7 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* void_msg,
 
       case kSelectOpId:
         if((ele = _parse_select_msg(p, value, (const char*)msg )) == nullptr )
-          cwLogError(kOpFailRC,"UI 'select' message parse failed.");
+          rc = cwLogError(kOpFailRC,"UI 'select' message parse failed.");
         else
         {
           p->uiCbFunc( p->uiCbArg, wsSessId, opId, ele->logical_parent->appId, ele->uuId, ele->appId, ele->chanId, &value );
@@ -1722,7 +1853,7 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* void_msg,
       
       case kEchoOpId:
         if((ele = _parse_echo_msg(p,(const char*)msg)) == nullptr )
-          cwLogError(kOpFailRC,"UI Echo message parse failed.");
+          rc = cwLogError(kOpFailRC,"UI Echo message parse failed.");
         else
         {
           p->uiCbFunc( p->uiCbArg, wsSessId, opId, ele->logical_parent->appId, ele->uuId, ele->appId, ele->chanId,nullptr );               
@@ -1734,11 +1865,11 @@ cw::rc_t cw::ui::onReceive( handle_t h, unsigned wsSessId, const void* void_msg,
         break;
 
       case kInvalidOpId:
-        cwLogError(kInvalidIdRC,"The UI received a NULL op. id.");
+        rc = cwLogError(kInvalidIdRC,"The UI received a NULL op. id.");
         break;
 
       default:
-        cwLogError(kInvalidIdRC,"The UI received an unknown op. id.");
+        rc = cwLogError(kInvalidIdRC,"The UI received an unknown op. id.");
         break;
                 
     } // switch opId
@@ -2006,6 +2137,12 @@ cw::rc_t cw::ui::setTitle( handle_t h, unsigned uuId, const char* title )
   
   rc = _websockSend(p,kInvalidId,mbuf);
 
+  if( ele_t* ele = _uuIdToEle(p,uuId) )
+  {
+    mem::release(ele->titleMsg);
+    ele->titleMsg = mem::duplStr(mbuf);
+  }
+
   return rc;
 }
 
@@ -2057,6 +2194,17 @@ cw::rc_t cw::ui::attachStatusState(   handle_t h, unsigned uuId, const char* lab
     return cwLogError(kBufTooSmallRC,"The msg buffer is too small.");
   
   rc = _websockSend(p,kInvalidId,mbuf);
+
+  if( ele_t* ele = _uuIdToEle(p,uuId) )
+  {
+    state_msg_t* m = mem::allocZ<state_msg_t>();
+    m->msg = mem::duplStr(mbuf);
+
+    state_msg_t** tail = &ele->statusMsgL;
+    while( *tail != nullptr )
+      tail = &(*tail)->link;
+    *tail = m;
+  }
 
   return rc;  
 }
@@ -2143,24 +2291,6 @@ cw::rc_t cw::ui::emptyParent(    handle_t h, unsigned uuId )
       }
   }
   
-    /*
-  const char* mFmt = "{ \"op\":\"empty\", \"uuId\":%i }";
-  const int   mbufN = 256;
-  char        mbuf[mbufN];
-      
-  if( snprintf(mbuf,mbufN,mFmt,uuId) >= mbufN-1 )
-  {
-    rc = cwLogError(kBufTooSmallRC,"The msg buffer is too small for 'empty' msg.");
-    goto errLabel;
-  }
-  
-  if((rc = _websockSend(p,kInvalidId,mbuf)) != kOkRC )
-  {
-    cwLogError(rc,"'empty' msg transmit failed.");
-    goto errLabel;
-  }
-    */
-    
 errLabel:
   mem::release(childUuIdA);
   return rc;
@@ -2263,7 +2393,14 @@ cw::rc_t cw::ui::setClassName(    handle_t h, unsigned uuId, const char* classNa
   ele_t* ele = nullptr;
   int orderKey = 0;
   if((ele = _uuIdToEle(p,uuId)) != nullptr)
-    rc = _setPropertyValue(h, UI_SET_CLASS_LABEL, uuId, className );
+  {
+    _set_or_create_attribute<const char*>(ele,"className",className);
+
+    if( _has_attribute(ele,"addClassName") )
+      _remove_attribute(ele,"addClassName");
+
+    rc = _setPropertyValue(h, UI_SET_CLASS_LABEL, uuId, className, false );
+  }
   return rc;
 }
     
@@ -2274,8 +2411,14 @@ cw::rc_t cw::ui::replaceClassName(handle_t h, unsigned uuId, const char* curClas
   ele_t* ele = nullptr;
   int orderKey = 0;
   if((ele = _uuIdToEle(p,uuId)) != nullptr)
-    if((rc = _setPropertyValue(h, UI_REM_CLASS_LABEL, uuId, curClassName )) == kOkRC )
-      rc = _setPropertyValue(h, UI_ADD_CLASS_LABEL, uuId, newClassName );
+  {
+    _class_attr_remove(ele,"className",curClassName);
+    _class_attr_remove(ele,"addClassName",curClassName);
+    _class_attr_append(ele,"addClassName",newClassName);
+
+    if((rc = _setPropertyValue(h, UI_REM_CLASS_LABEL, uuId, curClassName, false )) == kOkRC )
+      rc = _setPropertyValue(h, UI_ADD_CLASS_LABEL, uuId, newClassName, false );
+  }
   
   return rc;
 }
@@ -2287,7 +2430,10 @@ cw::rc_t cw::ui::appendClassName(    handle_t h, unsigned uuId, const char* clas
   ele_t* ele = nullptr;
   int orderKey = 0;
   if((ele = _uuIdToEle(p,uuId)) != nullptr)
-    rc = _setPropertyValue(h, UI_ADD_CLASS_LABEL, uuId, className );
+  {
+    _class_attr_append(ele,"addClassName",className);
+    rc = _setPropertyValue(h, UI_ADD_CLASS_LABEL, uuId, className, false );
+  }
   return rc;
 }
 
@@ -2550,6 +2696,46 @@ cw::rc_t cw::ui::sendMsg( handle_t h, const char* msg )
 {
   ui_t* p  = _handleToPtr(h);
   return _websockSend(p,kInvalidId,msg);
+}
+
+namespace cw
+{
+  namespace ui
+  {
+    template< typename T >
+    rc_t _value_to_number( const value_t* v, T& ref )
+    {
+      if( v == nullptr )
+        return cwLogError(kInvalidArgRC,"A null UI value cannot be converted to a number.");
+
+      switch( v->tid )
+      {
+        case kBoolTId:   ref = (T)v->u.b; break;
+        case kIntTId:    ref = (T)v->u.i; break;
+        case kUIntTId:   ref = (T)v->u.u; break;
+        case kFloatTId:  ref = (T)v->u.f; break;
+        case kDoubleTId: ref = (T)v->u.d; break;
+        default:
+          return cwLogError(kInvalidArgRC,"The UI value type (%i) cannot be converted to a number.",v->tid);
+      }
+      return kOkRC;
+    }
+  }
+}
+
+cw::rc_t cw::ui::valueTo( const value_t* v, bool&     ref ) { return _value_to_number(v,ref); }
+cw::rc_t cw::ui::valueTo( const value_t* v, int&      ref ) { return _value_to_number(v,ref); }
+cw::rc_t cw::ui::valueTo( const value_t* v, unsigned& ref ) { return _value_to_number(v,ref); }
+cw::rc_t cw::ui::valueTo( const value_t* v, float&    ref ) { return _value_to_number(v,ref); }
+cw::rc_t cw::ui::valueTo( const value_t* v, double&   ref ) { return _value_to_number(v,ref); }
+
+cw::rc_t cw::ui::valueTo( const value_t* v, const char*& ref )
+{
+  if( v == nullptr || v->tid != kStringTId )
+    return cwLogError(kInvalidArgRC,"The UI value type (%i) is not a string.",v==nullptr ? kInvalidTId : v->tid);
+
+  ref = v->u.s;
+  return kOkRC;
 }
 
 void cw::ui::report( handle_t h )
