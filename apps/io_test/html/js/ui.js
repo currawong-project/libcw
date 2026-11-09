@@ -84,7 +84,10 @@ function dom_id_to_ele( id )
 // { return document.getElementById(id); }
 
 function dom_set_checkbox( ele_id, fl )
-{ dom_id_to_ele(ele_id).checked = fl }
+{
+    dom_id_to_ele(ele_id).checked = fl
+}
+ 
 
 function dom_get_checkbox( ele_id )
 { return dom_id_to_ele(ele_id).checked }
@@ -172,7 +175,8 @@ function ui_create_ele( parent_ele, ele_type, d, dfltClassName )
 {
     // create the ctl object
     var ele = dom_create_ele(ele_type);
-
+    var acn = "<None>"
+    
     if( ele == null )
 	ui_error(ele_type +" element create failed.");
     else
@@ -187,6 +191,7 @@ function ui_create_ele( parent_ele, ele_type, d, dfltClassName )
 	if(d.hasOwnProperty('addClassName') )
 	{
 	    ele.className += " " + d.addClassName
+	    acn = d.addClassName
 	}
 
 	if(d.hasOwnProperty('appId'))
@@ -200,7 +205,15 @@ function ui_create_ele( parent_ele, ele_type, d, dfltClassName )
 	if( d.hasOwnProperty('enable') )
 	    ui_set_enable( ele, d.enable )
 
-	//console.log("Created: " + ele_type  + " parent:" + d.parentUuId + " id:" + ele.id + " appId:" + ele.appId)
+	if( d.hasOwnProperty('visible') )
+	    ui_set_visible( ele, d.visible )
+
+	// Not ui_set_select(), which would send a 'select' message back to the app.
+	if( d.hasOwnProperty('select') )
+	    _ui_modify_class( ele, "uiSelected", d.select )
+
+	// console.log("Created: " + ele_type  + " parent:" + d.parentUuId + " id:" + ele.id + " appId:" + ele.appId + " class:" + ele.className + " acn:" + acn )
+	// console.log("D:",d)
 	
 	parent_ele.appendChild(ele);
 	
@@ -222,7 +235,7 @@ function ui_create_ctl( parent_ele, ele_type, label, d, dfltEleClassName )
     
     var label_ele = div_ele
     
-    // if label is not null then create an enclosing 'label' element
+    // if label is not null then create a 'label' element
     if( label != null )
     {
 	label = label.trim();
@@ -334,7 +347,7 @@ function ui_create_button( parent_ele, d )
 function ui_create_check( parent_ele, d )
 {
     var ele = ui_create_ctl( parent_ele, "input", d.title, d, "uiCheck" )
-    
+
     if( ele != null )
     {
 	ele.type = "checkbox";
@@ -362,6 +375,7 @@ function ui_create_check( parent_ele, d )
 //
 function ui_on_select( ele )
 {
+    //console.log("SELECT:"+ele.options[ ele.selectedIndex ].appId)
     ui_send_int_value(ele,ele.options[ ele.selectedIndex ].appId);
 }
 
@@ -369,12 +383,14 @@ function ui_select_set_from_option_app_id( sel_ele, option_appId )
 {
     var i;
     for(i=0; i<sel_ele.options.length; ++i)
+    {
 	if( sel_ele.options[i].appId == option_appId )
         {
 	    sel_ele.selectedIndex = i;
 	    return;
         }
-
+    }
+    
     ui_error("Select option index not found.");    
 }
 
@@ -382,7 +398,7 @@ function ui_create_select( parent_ele, d )
 {
     var ele = ui_create_ctl( parent_ele, "select", d.title, d, "uiSelect" );
     ele.onchange = function() { ui_on_select(this) }
-    ele.onclick  = function() { ui_on_select(this) }
+    //ele.onclick  = function() { ui_on_select(this) }
     
     if( !d.hasOwnProperty('value') )
     {
@@ -443,12 +459,22 @@ function ui_set_str_display( ele_id, value )
     }
 }
 
+// 'enable_able' must exist before ui_set_enable() can apply the disabled text style.
+function ui_make_enable_able( ele, d )
+{
+    ele.className += " enable_able"
+
+    if( d.hasOwnProperty('enable') && !d.enable )
+	ui_set_enable( ele, false )
+}
+
 function ui_create_str_display( parent_ele, d )
 {
     var ele = ui_create_ctl( parent_ele, "label", d.title, d, "uiStringDisp" );
     
     if( ele != null )
     {
+	ui_make_enable_able( ele, d )
 	if( d.hasOwnProperty('value') )
 	{
 	    ui_set_str_display(ele.id, d.value);
@@ -457,6 +483,51 @@ function ui_create_str_display( parent_ele, d )
 	{
 	    ui_send_echo(ele);
 	}
+    }
+    
+    return ele;
+}
+
+function ui_attach_status_state(ele, d)
+{
+    // console.log("Attaching: "+ele.id+" to "+d.value + " count:" + ele.statusA.length)
+    ele.statusA.push(d)
+}
+
+function ui_set_status_value( ele, int_value )
+{
+    var i;
+
+    // console.log("Setting: "+ele.id+" to "+int_value + " count:" + ele.statusA.length)
+    
+    for(i=0; i<ele.statusA.length; ++i)
+    {
+	if( ele.statusA[i].value == int_value )
+	{
+	    //console.log("Set: "+ele.id+" to "+int_value+ " " + ele.statusA[i].label )
+
+	    ui_set_str_display(ele.id, ele.statusA[i].label );
+	    ele.style.backgroundColor = ele.statusA[i].color;
+	    return
+	}
+    }
+
+    console.log("status widget value " + int_value + " invalid on element " + ele.id)
+}
+
+function ui_create_status( parent_ele, d )
+{
+    var ele = ui_create_ctl( parent_ele, "label", d.title, d, "uiStatus" );
+    
+    if( ele != null )
+    {
+	ui_make_enable_able( ele, d )
+	ele.statusA = [ ]  // array to be filled with { label, value, color } records in ui_attach_status_state()
+
+	// when the status is created it has no status records yet and so it has
+	// to have it's value echoed.
+	ui_send_echo(ele);
+	
     }
     
     return ele;
@@ -497,13 +568,24 @@ function ui_create_string( parent_ele, d )
 
 function _ui_send_number( ele )
 {
-    var val = 0;
-    if( ele.decpl == 0 )
-	val = Number.parseInt(ele.value)
-    else
-	val = Number.parseFloat(ele.value)
+    var val      = 0;
+    var valid_fl = true;
 
-    if( !(ele.minValue<=val && val<=ele.maxValue))
+    if( ele.decpl == 0 )
+    {
+	// parseInt() and parseFloat() stop at the first invalid character, so '1.5' in an
+	// integer box or '1.5x' in a float box would pass the range check as '1' or '1.5',
+	// but the app rejects them because it parses the raw text.
+	valid_fl = /^\s*[-+]?\d+$/.test(ele.value)
+	val      = Number.parseInt(ele.value)
+    }
+    else
+    {
+	valid_fl = /^\s*[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(ele.value)
+	val      = Number.parseFloat(ele.value)
+    }
+
+    if( !valid_fl || !(ele.minValue<=val && val<=ele.maxValue))
     {
 	ele.style.borderColor = "red"
 	ui_send_corrupt_state(ele)
@@ -628,20 +710,33 @@ function ui_create_number( parent_ele, d )
     return ele;
 }
 
+function precisionRound(number, precision)
+{
+    var factor = Math.pow(10, precision);
+    return Math.round(number * factor) / factor;
+}
+
 function ui_set_number_display( ele_id, value )
 {
-    //console.log("Numb disp: " + ele_id + " " + value)
-    
     var ele = dom_id_to_ele(ele_id);
 
     if( typeof(value)=="number")
     {
 	var val = value.toString();
-    
-	if( ele.decpl == 0 )
-	    ele.innerHTML = parseInt(val,10);
+
+	var defined_fl = (typeof ele.decpl !== 'undefined');
+
+	if( defined_fl )
+	{
+	    if( ele.decpl == 0 )
+		ele.innerHTML = parseInt(val,10);
+	    else
+		ele.innerHTML = precisionRound(parseFloat(val),ele.decpl)
+	}
 	else
-	    ele.innerHTML = parseFloat(val);
+	{
+	    ele.innerHTML = parseFloat(val)
+	}
     }
 }
 
@@ -831,6 +926,11 @@ function ui_set_value( d )
 	    //ele.value = d.value
 	    break;
 
+	    case "status":
+	    ui_set_status_value(ele, d.value)
+	    break;
+
+
 	    case "log":
 	    ui_set_log_text( ele, d.value )
 	    break
@@ -843,27 +943,10 @@ function ui_set_value( d )
 
 function _ui_modify_class( ele, classLabelArg, enableFl )
 {
-    let classLabel  = " " + classLabelArg; // prefix the class label with a space
-
-    //console.log(ele.id + " " + classLabelArg + " " + enableFl )
-
-    let isEnabledFl = false;
-    
-    if( ele.hasOwnProperty("className") )
-	isEnabledFl = ele.className.includes(classLabel)
+    if( enableFl )
+	ele.classList.add(classLabelArg)
     else
-	ele.className = ""
-
-    // if the class is not already enabled/disabled
-    if( enableFl != isEnabledFl )
-    {
-	if( enableFl )
-	    ele.className += classLabel;
-	else
-	    ele.className = ele.className.replace(classLabel, "");
-    }
-
-    //console.log(ele.id + " " + ele.className + " " + enableFl )
+	ele.classList.remove(classLabelArg)
 }
 
 function ui_set_select( ele, enableFl )
@@ -885,27 +968,34 @@ function ui_set_clickable( ele, enableFl )
 
 function ui_set_visible( ele, enableFl )
 {    
-    if(enableFl)
-    {
-	if(ele.hasOwnProperty("style_display") )
-	{
-	    ele.style.display = ele.style_display;
-	}
-	else
-	{
-	    ele.style.display = "block";
-	}
-    }
-    else
-    {
-	ele.style_display = ele.style.display;
-	ele.style.display = "none";
-    }
+    // Clearing the inline display restores the value from the element's CSS classes.
+    ele.style.display = enableFl ? "" : "none";
 }
 
 function ui_set_enable( ele, enableFl )
 {
     ele.disabled = !enableFl
+
+    if( ele.className.includes("enable_able")  )
+    {
+	if( enableFl )
+	{
+	    ele.className = ele.className.replace("text_disabled","text_enabled")
+	    
+	    if(!ele.className.includes("text_enabled"))
+		 ele.className += " text_enabled"
+	    
+	}
+	else
+	{
+	    ele.className = ele.className.replace("text_enabled","text_disabled")
+	    
+	    if(!ele.className.includes("text_disabled"))
+		ele.className += " text_disabled"
+	    
+	}
+    }
+    
 }
 
 function ui_set_order_key(ele, orderKey)
@@ -931,6 +1021,23 @@ function ui_set_order_key(ele, orderKey)
     
 }
 
+function ui_set_class(ele,className)
+{
+    ele.className = className
+}
+
+function ui_append_class(ele,className)
+{
+    ele.className += " " + className
+}
+
+function ui_remove_class(ele,className)
+{
+    // classList.remove() rejects names containing spaces, so split a multi-class value first.
+    ele.classList.remove( ...className.split(/\s+/).filter(Boolean) )
+}
+
+
 function ui_set( d )
 {
     //console.log(d)
@@ -955,6 +1062,10 @@ function ui_set( d )
 	    ui_set_prog_range(ele, d)
 	    break;
 
+	    case "attach_status_state":
+	    ui_attach_status_state(ele, d)
+	    break;
+	    
 	    case "select":
 	    ui_set_select(ele,d.value)
 	    break
@@ -973,6 +1084,18 @@ function ui_set( d )
 
 	    case "order":
 	    ui_set_order_key(ele,d.value)
+	    break
+
+	    case "set_class":
+	    ui_set_class(ele,d.value)
+	    break
+
+	    case "add_class":
+	    ui_append_class(ele,d.value)
+	    break
+
+	    case "rem_class":
+	    ui_remove_class(ele,d.value)
 	    break
 	    
 	}
@@ -1043,6 +1166,10 @@ function ui_create( d )
 
 	    case "str_disp":
 	    ele = ui_create_str_display( parent_ele, d );
+	    break;
+
+	    case "status":
+	    ele = ui_create_status( parent_ele, d );
 	    break;
 	    
 	    case "string":
@@ -1173,7 +1300,7 @@ function _ws_on_msg( d )
 
 function ws_on_msg( jsonMsg )
 {
-    //console.log(jsonMsg)
+    // console.log(jsonMsg)
     
     d = JSON.parse(jsonMsg.data);
 

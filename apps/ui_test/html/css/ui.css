@@ -1,6 +1,28 @@
+html, body {
+    height: 100%;
+    margin: 0;
+}
 
+/* body is a column so uiAppDiv gets exactly the height left below
+   appTitleDiv (height:100% on uiAppDiv would overflow the viewport). */
 body {
+    display: flex;
+    flex-direction: column;
     background-color: LightCyan;
+}
+
+#appTitleDiv {
+    flex: none;
+}
+
+/* Root of the dynamically created UI (see ui.js main()).
+   min-height:0 lets it shrink below its content so that inner
+   elements, rather than the page, get the scroll bars. */
+.uiAppDiv {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
 }
 
 
@@ -15,31 +37,24 @@ body {
 input, label, button, select {
     font-family: sans-serif;
     font-size: 10px;
-    height: 20px;
 }
 
 
 div {
-    /*border: 1px solid black;    */
     background-color: LightSteelBlue;
 }
 
 div p {
     font-family: sans-serif;
     font-size: 12px;
-    margin-top: 2px;
-    margin-bottom: 2px;
     background-color: LightSteelBlue;
 }
 
 label {
-    /*border: 1px solid red;*/
     width: 50px;
     padding-left: 10px;
-    margin-top: 3px;
+    height: 20px;
 }
-
-
 
 .uiCtlDiv {
     display: flex;
@@ -54,6 +69,17 @@ label {
 
 .uiNumberDiv input {
     width: 50px;
+}
+
+.uiCheckDiv  input {
+}
+
+.uiStringDiv  input {
+}
+
+.uiStatus {
+  display: grid;
+  place-items: center;     
 }
 
 .uiPanel {
@@ -82,6 +108,7 @@ label {
 
     align-items: flex-start;     /* left justify */
     align-content: flex-stretch; /* fill horizontal space */
+    margin-left: 10px;
     
 }
 
@@ -97,7 +124,7 @@ label {
     display:flex;
     flex-direction: column;
 
-    height: 150px;
+    height: 600px;
     overflow-x: hidden; /* 'hidden' to remove x scroll bar */
     overflow-y: auto; 
     width: 100%;
@@ -169,7 +196,23 @@ label {
 
 
 .uiStringDisp {
+    display: flex;
+    align-items: center;
+    padding: 0px 5px;
     width: 100%;
+    color: black;
+}
+
+.uiStringDisp:empty {
+    display:none;
+}
+
+.text_disabled {
+    color: darkgray;
+}
+
+.text_enabled {
+    color: black;
 }
 
 .uiSelected {
