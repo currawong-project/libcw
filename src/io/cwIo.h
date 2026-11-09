@@ -467,6 +467,17 @@ namespace cw
 
     rc_t uiSendMsg( handle_t h, const char* msg );
 
+    // Convert a value received from the UI to the type of the application variable it is assigned to.
+    // The UI chooses the value type, not the application (e.g. number widgets with decimal places
+    // send doubles), so the value must be read from the union field selected by 'v->tid'.
+    // Any numeric type converts to any numeric type. Strings convert only to strings.
+    rc_t uiValueTo( const ui::value_t* v, bool&        ref );
+    rc_t uiValueTo( const ui::value_t* v, int&         ref );
+    rc_t uiValueTo( const ui::value_t* v, unsigned&    ref );
+    rc_t uiValueTo( const ui::value_t* v, float&       ref );
+    rc_t uiValueTo( const ui::value_t* v, double&      ref );
+    rc_t uiValueTo( const ui::value_t* v, const char*& ref );
+    
 
     typedef struct
     {

@@ -4414,6 +4414,14 @@ cw::rc_t cw::io::uiSendMsg( handle_t h, const char* msg )
   return rc;
 }
 
+
+cw::rc_t cw::io::uiValueTo( const ui::value_t* v, bool&        ref ) { return ui::valueTo(v,ref); }
+cw::rc_t cw::io::uiValueTo( const ui::value_t* v, int&         ref ) { return ui::valueTo(v,ref); }
+cw::rc_t cw::io::uiValueTo( const ui::value_t* v, unsigned&    ref ) { return ui::valueTo(v,ref); }
+cw::rc_t cw::io::uiValueTo( const ui::value_t* v, float&       ref ) { return ui::valueTo(v,ref); }
+cw::rc_t cw::io::uiValueTo( const ui::value_t* v, double&      ref ) { return ui::valueTo(v,ref); }
+cw::rc_t cw::io::uiValueTo( const ui::value_t* v, const char*& ref ) { return ui::valueTo(v,ref); }
+
 void cw::io::latency_measure_setup(handle_t h)
 {
   io_t* p = _handleToPtr(h);
