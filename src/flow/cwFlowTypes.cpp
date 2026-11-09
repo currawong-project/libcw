@@ -2257,6 +2257,10 @@ void cw::flow::var_disconnect( variable_t* in_var )
         else
           v0->dst_link = v->dst_link;
 
+        // if the tail was removed then the previous var is the new tail
+        if( out_var->dst_tail == in_var )
+          out_var->dst_tail = v0;
+
         break;
       }
 

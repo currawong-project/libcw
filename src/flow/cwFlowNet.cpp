@@ -965,6 +965,55 @@ namespace cw
       
     }
     
+    // If 'dst_var' is an 'any' channel variable which was never channelized, and it is
+    // connected to an 'any' channel source variable which has been channelized, then
+    // 'dst_var' will never see updates because the source proc writes to its
+    // channel variables, not to its 'any' channel variable.
+    // If the source has exactly one channel then connect 'dst_var' to that channel,
+    // otherwise the connection would silently ignore source channels - which is an error.
+    rc_t _resolve_any_ch_connection( variable_t* dst_var )
+    {
+      rc_t        rc         = kOkRC;
+      variable_t* src_var    = dst_var->src_var;
+      unsigned    src_ch_cnt = 0;
+
+      // the dst must be an unchannelized 'any' channel var connected to a source
+      if( dst_var->chIdx != kAnyChIdx || dst_var->ch_link != nullptr || !is_connected_to_source(dst_var) )
+        goto errLabel;
+
+      // the src must be an 'any' channel var that has been channelized
+      if( src_var->chIdx != kAnyChIdx || src_var->ch_link == nullptr )
+        goto errLabel;
+
+      for(variable_t* v=src_var->ch_link; v!=nullptr; v=v->ch_link)
+        ++src_ch_cnt;
+
+      if( src_ch_cnt > 1 )
+      {
+        rc = var_error(dst_var,kInvalidStateRC,"The single channel variable '%s:%i.%s:%i' is connected to the %i channel source '%s:%i.%s:%i'. Source channels would be ignored.",
+                       dst_var->proc->label, dst_var->proc->label_sfx_id, dst_var->label, dst_var->label_sfx_id, src_ch_cnt,
+                       src_var->proc->label, src_var->proc->label_sfx_id, src_var->label, src_var->label_sfx_id );
+        goto errLabel;
+      }
+
+      // re-connect the dst var to the single source channel
+      var_disconnect( dst_var );
+      var_connect( src_var->ch_link, dst_var );
+
+    errLabel:
+      return rc;
+    }
+
+    // Apply _resolve_any_ch_connection() to all variables on 'proc'.
+    rc_t _resolve_any_ch_connections( proc_t* proc )
+    {
+      rc_t rc = kOkRC;
+      for(variable_t* var=proc->varL; var!=nullptr; var=var->var_link)
+        if((rc = _resolve_any_ch_connection(var)) != kOkRC )
+          break;
+      return rc;
+    }
+
     rc_t _io_stmt_connect_vars(network_t&       net,
                                proc_t*          proc,
                                const char*      local_label,
@@ -1085,6 +1134,10 @@ namespace cw
             // var_disconnect( remote_var );
             
             var_connect( local_var, remote_var ); // ... otherwise it is an out-stmt
+
+            // the src proc (this proc) and the dst proc have both been created, so channelization is complete
+            if((rc = _resolve_any_ch_connection( remote_var )) != kOkRC )
+              goto errLabel;
           }
         }                
       }
@@ -2559,6 +2612,14 @@ namespace cw
       if((rc = class_desc->members->create( proc )) != kOkRC )
       {
         rc = proc_error(proc,kInvalidArgRC,"Custom instantiation failed." );
+        goto errLabel;
+      }
+
+      // Now that this proc's channelization is complete, fix up any 'any' channel
+      // input connections to channelized sources.
+      if((rc = _resolve_any_ch_connections( proc )) != kOkRC )
+      {
+        rc = proc_error(proc,rc,"Input channel resolution failed.");
         goto errLabel;
       }
 
