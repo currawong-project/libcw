@@ -717,6 +717,12 @@ namespace cw
           goto errLabel;
         }
 
+        if( !networkCfg->is_dict() )
+        {
+          rc = proc_error(proc,rc,"The 'network' cfg is not a dictionary.");
+          goto errLabel;
+        }
+
         // get the 'parallel flag'
         if((rc  = var_register_and_get( proc, kAnyChIdx,
                                         kPresetSfxIdPId,"preset_sfx_id", kBaseSfxId, preset_sfx_id,
