@@ -235,6 +235,12 @@ namespace cw
     // Returns true if the this value type is can 'notify()' the owning 'proc' when it changes.
     bool           value_can_auto_notify( const value_t* value );
 
+    // value_set() converts 'v' to the type given by val->tflag, or sets val->tflag to the type of 'v'
+    // if it is kInvalidTFl.
+    // The float and double versions return kInvalidArgRC, without logging an error, when 'v' is NaN or inf,
+    // or when it cannot be represented by val->tflag (e.g. a negative value to a uint, or a double which
+    // overflows a float). The caller is responsible for reporting it because, at runtime, this may occur
+    // on every cycle and the caller decides how often to report it. Other errors are logged here.
     rc_t value_get( const value_t* val, bool& valRef );
     rc_t value_set(       value_t* val, bool v );
     
@@ -427,7 +433,11 @@ namespace cw
       // set the base of this record
       recd_set_base(type,recd,base);
       
-      return value_set( recd->valA + field_idx, val );
+      rc_t rc;
+      if((rc = value_set( recd->valA + field_idx, val )) != kOkRC )
+        rc = cwLogError(rc,"Field set failed on '%s'.", cwStringNullGuard(recd_type_field_index_to_label( type, field_idx )));
+      
+      return rc;
     }
 
     inline rc_t _recd_set( const recd_type_t* recd_type, recd_t* recd ) { return kOkRC; }
@@ -531,7 +541,10 @@ namespace cw
       value_t value;
       value.tflag = kInvalidTFl;
       if((rc = value_set(&value,v)) != kOkRC )
+      {
+        rc = cwLogError(rc,"The value for the list element '%s' could not be set.",cwStringNullGuard(label));
         goto errLabel;
+      }
 
       if((rc = list_append(list,label,value)) != kOkRC )
         goto errLabel;

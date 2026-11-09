@@ -216,15 +216,12 @@ namespace cw
       
       // it is not legal to set the value of a variable that is connected to a 'source' variable.
       if( var->src_var != nullptr )
-        return var_error(var,kInvalidStateRC, "The variable '%s:%i %s:%i' cannot be set because it is connected to a source variable.", var->proc->label,var->proc->label_sfx_id, var->label, var->label_sfx_id);      
+        return var_error(var,kInvalidStateRC, "The variable '%s:%i %s:%i' cannot be set because it is connected to a source variable.", var->proc->label,var->proc->label_sfx_id, var->label, var->label_sfx_id);
 
-      
       // var->type is the allowable type for this var's value.
       // It may be set to kInvalidTFl if the type has not yet been determined.
       unsigned value_type_flag    = var->type;
-      
-      // release the previous value 
-      value_release(&var->my_value);
+      value_t  new_value          = {};
 
       // if the value type of this variable has not been established
       if( value_type_flag == kInvalidTFl  )
@@ -249,14 +246,52 @@ namespace cw
       }
 
       // set the type of the LHS to force the incoming value to be coerced to this type
-      var->my_value.tflag = value_type_flag;
+      new_value.tflag = value_type_flag;
 
-      // set the new local value in var->local_value[next_local_value_idx]
-      if((rc = value_set(&var->my_value, val)) != kOkRC )
+      // The incoming value is converted into 'new_value', rather than directly into var->my_value,
+      // so that the current value is unchanged if the new value is rejected.
+      // value_set() returns kInvalidArgRC, without logging, when the value is NaN or inf or cannot be
+      // represented by the variable's type (e.g. a double 1e39 assigned to a float variable).
+      if((rc = value_set(&new_value, val)) == kInvalidArgRC )
+      {
+        double bad_val = 0; // only the float and double versions of value_set() return kInvalidArgRC
+        if constexpr ( std::is_floating_point_v<T> )
+          bad_val = val;
+        
+        // Before runtime the value is from the cfg (or the proc's create()) so it is an error,
+        // and a variable that has never had a value cannot keep its previous value.
+        if( !var->proc->ctx->isInRuntimeFl || var->value == nullptr )
+        {
+          rc = var_error(var,rc,"The value %g assigned to '%s:%i %s:%i' is not finite or is out of range for its type (%s).",bad_val,var->proc->label,var->proc->label_sfx_id, var->label, var->label_sfx_id,value_type_flag_to_label(value_type_flag));
+          goto errLabel;
+        }
+
+        // At runtime the variable keeps its previous value and kOkRC is returned, because procs return
+        // var_set() errors from their exec() and that would stop the procs which follow on every cycle.
+        // The error is only reported once until a valid value is assigned, since this may occur on every cycle.
+        if( !var->non_finite_fl )
+        {
+          var->non_finite_fl = true;
+          var_error(var,rc,"The value %g assigned to '%s:%i %s:%i' is not finite or is out of range for its type (%s). The variable keeps its previous value.",bad_val,var->proc->label,var->proc->label_sfx_id, var->label, var->label_sfx_id,value_type_flag_to_label(value_type_flag));
+        }
+        
+        rc = kOkRC;
+        goto errLabel;
+      }
+      
+      if( rc != kOkRC )
       {
         rc = var_error(var,rc,"Value set failed on '%s:%i %s:%i",var->proc->label,var->proc->label_sfx_id,var->label,var->label_sfx_id);
         goto errLabel;
       }
+
+      var->non_finite_fl = false;
+
+      // Release the previous value and replace it. Only the value fields are assigned because
+      // var->my_value.link is not part of the value.
+      value_release(&var->my_value);
+      var->my_value.tflag = new_value.tflag;
+      var->my_value.u     = new_value.u;
 
       // make the new local value current
       var->value           = &var->my_value;
@@ -551,17 +586,58 @@ namespace cw
       return rc;
     }
 
+    // Messages in the same group set the same piece of UI state, and therefore
+    // only the most recent message in the group has any lasting effect.
+    // Returns kInvalidId if the message does not set a state (e.g. list messages).
+    unsigned _ui_var_msg_id_to_state_group( unsigned msgId )
+    {
+      switch( msgId )
+      {
+        case kDisableUiVarMsgId:
+        case kEnableUiVarMsgId:
+          return kEnableUiVarMsgId;
+          
+        case kShowUiVarMsgId:
+        case kHideUiVarMsgId:
+          return kShowUiVarMsgId;
+      }
+
+      return kInvalidId;
+    }
+    
     rc_t _var_send_msg_id_to_ui( proc_t* proc, variable_t* var, unsigned msgId )
     {
       rc_t rc = kOkRC;
+
+      if( !var_has_a_ui(var) )
+        return kOkRC;
+
+      ui_var_t* ui_var = var->ui_var;
+
+      // If this message repeats the last queued message then there is nothing to do.
+      // (The var must already be on the UI update list because it has a queued message.)
+      if( ui_var->msgId_idx > 0 && ui_var->msgIdA[ ui_var->msgId_idx-1 ] == msgId )
+        return kOkRC;
       
-      if( var->ui_var->msgId_idx >= kMsgIdN )
+      if( ui_var->msgId_idx >= ui_var->msgIdN )
       {
+        // The queue is full. If this message replaces the state set by a queued message then
+        // overwrite the most recent message in the group, so that the final state is preserved.
+        unsigned state_group = _ui_var_msg_id_to_state_group(msgId);
+        
+        if( state_group != kInvalidId )
+          for(unsigned i=ui_var->msgId_idx; i>0; --i)
+            if( _ui_var_msg_id_to_state_group(ui_var->msgIdA[i-1]) == state_group )
+            {
+              ui_var->msgIdA[i-1] = msgId;
+              return kOkRC;
+            }
+        
         rc = var_error(var,kOpFailRC,"The UI var msg queue (ui_var->msgIdA[]) is full. Message %i dropped.",msgId );
         goto errLabel;
       }
 
-      var->ui_var->msgIdA[ var->ui_var->msgId_idx++ ] = msgId;
+      ui_var->msgIdA[ ui_var->msgId_idx++ ] = msgId;
 
       if((rc = var_send_to_ui(var)) != kOkRC )
       {

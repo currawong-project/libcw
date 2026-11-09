@@ -1130,11 +1130,13 @@ cw::rc_t cw::flow::value_from_value( const value_t& src, value_t& dst )
       break;
       
     case kFloatTFl:
-      rc = value_set(&dst,src.u.f);
+      if((rc = value_set(&dst,src.u.f)) == kInvalidArgRC )
+        rc = cwLogError(rc,"The value %g is not finite or is out of range for the destination type %s.",(double)src.u.f,_typeFlagToLabel(dst.tflag));
       break;
       
     case kDoubleTFl:
-      rc = value_set(&dst,src.u.d);
+      if((rc = value_set(&dst,src.u.d)) == kInvalidArgRC )
+        rc = cwLogError(rc,"The value %g is not finite or is out of range for the destination type %s.",(double)src.u.d,_typeFlagToLabel(dst.tflag));
       break;
       
     case kBoolMtxTFl:
@@ -1424,6 +1426,39 @@ cw::rc_t cw::flow::value_get( const value_t* val, bool& valRef )
   return rc;
 }
 
+namespace cw
+{
+  namespace flow
+  {
+    // Check that the real value 'v' can be represented by the numeric type 'dst_tflag'.
+    // NaN and inf are never accepted. Integer destinations must hold the truncated value,
+    // since converting a value outside their range is undefined, and float destinations must not overflow.
+    // This returns kInvalidArgRC without logging. See value_set() in cwFlowValue.h.
+    rc_t _value_check_real( double v, unsigned dst_tflag )
+    {
+      switch( dst_tflag & kTypeMask )
+      {
+        case kBoolTFl:
+        case kDoubleTFl:
+        case kInvalidTFl:
+          return std::isfinite(v) ? kOkRC : kInvalidArgRC;
+          
+        case kUIntTFl:
+          return (-1.0 < v && v < (double)std::numeric_limits<uint_t>::max() + 1.0) ? kOkRC : kInvalidArgRC;
+          
+        case kIntTFl:
+          return ((double)std::numeric_limits<int_t>::min() - 1.0 < v && v < (double)std::numeric_limits<int_t>::max() + 1.0) ? kOkRC : kInvalidArgRC;
+          
+        case kFloatTFl:
+          return (std::isfinite(v) && std::fabs(v) <= std::numeric_limits<float>::max()) ? kOkRC : kInvalidArgRC;
+      }
+
+      // Non-numeric destinations are reported as a type mismatch by value_set().
+      return kOkRC;
+    }
+  }
+}
+
 cw::rc_t cw::flow::value_set( value_t* val, bool v )
 {
   rc_t rc = kOkRC;
@@ -1546,6 +1581,10 @@ cw::rc_t cw::flow::value_get( const value_t* val, float& valRef )
 cw::rc_t cw::flow::value_set( value_t* val, float v )
 {
   rc_t rc = kOkRC;
+
+  // A value which cannot be represented by the destination type is not logged here. See value_set() in cwFlowValue.h.
+  if((rc = _value_check_real(v,val->tflag)) != kOkRC )
+    return rc;
       
   switch( val->tflag & kTypeMask )
   {
@@ -1585,6 +1624,10 @@ cw::rc_t cw::flow::value_get( const value_t* val, double& valRef )
 cw::rc_t cw::flow::value_set( value_t* val, double v )
 {
   rc_t rc = kOkRC;
+
+  // A value which cannot be represented by the destination type is not logged here. See value_set() in cwFlowValue.h.
+  if((rc = _value_check_real(v,val->tflag)) != kOkRC )
+    return rc;
       
   switch( val->tflag & kTypeMask )
   {

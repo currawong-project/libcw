@@ -130,7 +130,9 @@ namespace cw
       std::atomic<unsigned> ui_var_link_fl;          // Counter to guard against attempting to a variable on the UI update list multiple times.
 
       std::atomic<unsigned> modN; // count of modifications made to this variable during this cycle
-      
+
+      bool non_finite_fl; // Set when a NaN, inf or out of range assignment was rejected and cleared by the next valid assignment. See _var_set_template().
+
     } variable_t;
 
 
