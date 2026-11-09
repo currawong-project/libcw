@@ -179,37 +179,47 @@ namespace cw
           break;
 
         case kCheckId:
-          printf("Check:%i\n", v->u.b);
-          p->appCheckFl = v->u.b;
-          _insert_log_line( p, "check!\n" );
+          if((rc = valueTo(v,p->appCheckFl)) == kOkRC )
+          {
+            printf("Check:%i\n", p->appCheckFl);
+            _insert_log_line( p, "check!\n" );
+          }
           break;
 
         case kSelectId:
-          printf("Selected: option appId:%i\n", v->u.i);
-          p->appSelOptAppId = v->u.i;
+          if((rc = valueTo(v,p->appSelOptAppId)) == kOkRC )
+            printf("Selected: option appId:%i\n", p->appSelOptAppId);
           break;
 
         case kStringId:
-          printf("String: %s\n",v->u.s);
-          mem::release(p->appString);
-          if( v->u.s != nullptr )
-            p->appString = mem::duplStr(v->u.s);
+          {
+            const char* s = nullptr;
+            if((rc = valueTo(v,s)) == kOkRC )
+            {
+              printf("String: %s\n",cwStringNullGuard(s));
+              mem::release(p->appString);
+              if( s != nullptr )
+                p->appString = mem::duplStr(s);
+            }
+          }
           break;
           
         case kIntegerId:
           {
-            printf("Integer: %i\n",v->u.i);
-            p->appInteger = v->u.i;
+            if((rc = valueTo(v,p->appInteger)) != kOkRC )
+              break;
+            
+            printf("Integer: %i\n",p->appInteger);
           
             handle_t uiH = srv::uiHandle(p->wsUiSrvH);
             unsigned progUuId = parentAndAppIdToUuId(   uiH, kDivId, kProgressId );
-            sendValueInt(   uiH, progUuId, v->u.i );
+            sendValueInt(   uiH, progUuId, p->appInteger );
           }
           break;
           
         case kFloatId:
-          printf("Float: %f\n",v->u.f);
-          p->appFloat = v->u.f;
+          if((rc = valueTo(v,p->appFloat)) == kOkRC )
+            printf("Float: %f\n",p->appFloat);
           break;
 
         case kPanelBtn1Id:
@@ -228,8 +238,10 @@ namespace cw
           
         case kPanelCheck1Id:
           {
-            printf("check 2: %i\n",v->u.b);
-            p->appCheck1Fl = v->u.b;
+            if((rc = valueTo(v,p->appCheck1Fl)) != kOkRC )
+              break;
+            
+            printf("check 2: %i\n",p->appCheck1Fl);
             
             handle_t uiH       = srv::uiHandle(p->wsUiSrvH);
             unsigned progUuId  = parentAndAppIdToUuId( uiH,   kDivId, kProgressId );
@@ -244,26 +256,30 @@ namespace cw
           break;
           
         case kPanelCheck2Id:
-          printf("check 1: %i\n",v->u.b);
-          p->appCheck1Fl = v->u.b;
-          _insert_list_ele( p );
+          if((rc = valueTo(v,p->appCheck1Fl)) == kOkRC )
+          {
+            printf("check 1: %i\n",p->appCheck1Fl);
+            _insert_list_ele( p );
+          }
           break;
           
         case kPanelFloaterId:
-          printf("numb: %f\n",v->u.f);
-          p->appNumb = v->u.f;
+          if((rc = valueTo(v,p->appNumb)) == kOkRC )
+            printf("numb: %f\n",p->appNumb);
           break;
 
         case kSelId:
           {
-            printf("sel: %i\n",v->u.i);
-            p->appSelId = v->u.i;
+            if((rc = valueTo(v,p->appSelId)) != kOkRC )
+              break;
+            
+            printf("sel: %i\n",p->appSelId);
 
             handle_t       uiH  = srv::uiHandle(p->wsUiSrvH);
             unsigned       uuId = parentAndAppIdToUuId(   uiH, kPanelDivId, kStatusId );
             const unsigned sN   = 32;
             char s[ sN ];
-            snprintf(s,sN,"sel:%i",v->u.i);
+            snprintf(s,sN,"sel:%i",p->appSelId);
             sendValueString( uiH, uuId, s );
           }
           break;
