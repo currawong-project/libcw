@@ -5125,6 +5125,19 @@ namespace cw
         return rc;
       }
 
+      void _update_var_visibility( proc_t* proc, inst_t* p )
+      {
+        var_send_to_ui_show(proc, kSecProbFlPId,    kAnyChIdx, p->interp_fl );            
+        var_send_to_ui_show(proc, kInterpRandFlPId, kAnyChIdx, p->interp_fl );            
+        var_send_to_ui_show(proc, kInterpDistPId,   kAnyChIdx, p->interp_fl & (!p->interp_rand_fl) );
+                
+        var_send_to_ui_show(proc, kSecUniformFlPId,   kAnyChIdx, p->interp_fl && p->sec_prob_fl );
+        var_send_to_ui_show(proc, kSecDryOnPlayFlPId, kAnyChIdx, p->interp_fl && p->sec_prob_fl );
+        var_send_to_ui_show(proc, kSecAllowAllFlPId,  kAnyChIdx, p->interp_fl && p->sec_prob_fl && p->sec_uniform_fl);
+        var_send_to_ui_show(proc, kSecDryOnSelFlPId,  kAnyChIdx, p->interp_fl && p->sec_prob_fl && p->sec_uniform_fl && p->sec_allow_all_fl );
+      }
+      
+
       
       rc_t _update_ui_state( proc_t* proc, inst_t* p, variable_t* var )
       {
@@ -5175,9 +5188,7 @@ namespace cw
 
           case kInterpFlPId:
             var_get(var,p->interp_fl);
-            var_send_to_ui_enable(proc, kSecProbFlPId,    kAnyChIdx, p->interp_fl );            
-            var_send_to_ui_enable(proc, kInterpRandFlPId, kAnyChIdx, p->interp_fl );            
-            var_send_to_ui_enable(proc, kInterpDistPId,   kAnyChIdx, p->interp_fl & (!p->interp_rand_fl) );                        
+            _update_var_visibility(proc,p);
             break;
             
           case kInterpDistPId:
@@ -5186,21 +5197,17 @@ namespace cw
             
           case kInterpRandFlPId:
             var_get(var,p->interp_rand_fl);
-            var_send_to_ui_enable(proc, kInterpDistPId, kAnyChIdx, p->interp_fl & (!p->interp_rand_fl) );            
+            _update_var_visibility(proc,p);
             break;
             
           case kSecProbFlPId:
             var_get(var,p->sec_prob_fl);
-            var_send_to_ui_enable(proc, kSecUniformFlPId,   kAnyChIdx, p->sec_prob_fl );
-            var_send_to_ui_enable(proc, kSecDryOnPlayFlPId, kAnyChIdx, p->sec_prob_fl );
-            var_send_to_ui_enable(proc, kSecAllowAllFlPId,  kAnyChIdx, p->sec_prob_fl && p->sec_uniform_fl);
-            var_send_to_ui_enable(proc, kSecDryOnSelFlPId,  kAnyChIdx, p->sec_prob_fl && p->sec_uniform_fl && p->sec_allow_all_fl );
+            _update_var_visibility(proc,p);
             break;
             
           case kSecUniformFlPId:
             var_get(var,p->sec_uniform_fl);
-            var_send_to_ui_enable(proc, kSecAllowAllFlPId,  kAnyChIdx, p->sec_uniform_fl );
-            var_send_to_ui_enable(proc, kSecDryOnSelFlPId,  kAnyChIdx, p->sec_uniform_fl && p->sec_allow_all_fl );
+            _update_var_visibility(proc,p);
             break;
             
           case kSecDryOnPlayFlPId:
@@ -5209,7 +5216,7 @@ namespace cw
             
           case kSecAllowAllFlPId:
             var_get(var,p->sec_allow_all_fl);
-            var_send_to_ui_enable(proc, kSecDryOnSelFlPId,  kAnyChIdx, p->sec_allow_all_fl );
+            _update_var_visibility(proc,p);
             break;
             
           case kSecDryOnSelFlPId:
@@ -5244,6 +5251,9 @@ namespace cw
       rc_t _exec( proc_t* proc, inst_t* p )
       {
         rc_t rc;
+
+        if( proc->ctx->cycleIndex == 0 )
+          _update_var_visibility(proc,p);
 
         if((rc = _exec_track_loc(proc,p)) != kOkRC )
           goto errLabel;
