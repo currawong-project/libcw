@@ -2299,11 +2299,14 @@ namespace cw
         return rc;
       
       unsigned argN = arg_cfg->child_count();
+      io_ele_t r    = {}; // declared outside the loop so that 'r.label' can be released on error
 
       for(unsigned i=0; i<argN; ++i)
       {
         const object_t* arg_pair = arg_cfg->child_ele(i);
-        io_ele_t r = {};
+
+        mem::release(r.label);
+        r = {};
 
         // validate the arg pair 
         if( arg_pair==nullptr || !arg_pair->is_pair() || arg_pair->pair_label()==nullptr || arg_pair->pair_value()==nullptr )
@@ -2394,11 +2397,12 @@ namespace cw
           }
         }
 
-        mem::release(r.label);
       }
 
         
     errLabel:
+      mem::release(r.label);
+      
       if(rc != kOkRC )
         rc = proc_error(proc,rc,"'args' processing failed on proc '%s'.",cwStringNullGuard(proc->label));
       
@@ -3127,8 +3131,9 @@ namespace cw
                                            const object_t* network_preset_dict_cfg,
                                            network_preset_t& network_preset )
     {
-      rc_t rc = kOkRC;
-      unsigned pairN = 0;
+      rc_t     rc      = kOkRC;
+      unsigned pairN   = 0;
+      io_ele_t proc_id = {}; // declared here so that 'proc_id.label' can be released on error and on the 'continue' which follows a poly preset reference
       
       if( network_preset_dict_cfg==nullptr || !network_preset_dict_cfg->is_dict() )
       {
@@ -3146,8 +3151,10 @@ namespace cw
         const object_t* var_dict         = nullptr;
         const object_t* proc_preset_pair = network_preset_dict_cfg->child_ele(i);
         const char*     proc_label       = nullptr;
-        io_ele_t        proc_id          = {};
         unsigned        varN             = 0;
+
+        mem::release(proc_id.label);
+        proc_id = {};
 
         
         // validate the process preset syntax
@@ -3277,12 +3284,10 @@ namespace cw
           }          
         }
 
-        // BUG BUG BUG: This procid.label is not being cleaned if certain errors are thrown
-        
-        mem::release(proc_id.label);
       }
       
     errLabel:
+      mem::release(proc_id.label);
       return rc;
     }
 
